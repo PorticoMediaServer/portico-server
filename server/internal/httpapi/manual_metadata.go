@@ -50,7 +50,7 @@ func (d Dependencies) manualMetadataAuthorize(ctx context.Context, tx *sql.Tx, p
 
 func (d Dependencies) manualMetadataRoutes(mux *http.ServeMux) {
 	for _, method := range []string{"GET", "PATCH"} {
-		mux.HandleFunc(method+" /v1/items/{id}/metadata/manual", d.manualMetadataHandler(method, d.Catalog.ManualMetadata))
+		d.httpHandle(mux, method+" /v1/items/{id}/metadata/manual", d.manualMetadataHandler(method, d.Catalog.ManualMetadata))
 	}
 }
 

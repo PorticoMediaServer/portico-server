@@ -1,3 +1,4 @@
+import {apiRoot, encodedRoutePath} from "../../contracts/src/routes.ts";
 import {unreadableServerResponse} from './server-messages.ts';
 import {firstOfEach,keepReadable,noteSkipped,oneOf,oneOfOr} from './tolerant.ts';
 import {parseScreenMetadata,screenTarget,type ScreenMetadataContext,type ScreenPolicyInput,type ScreenIdentity,type ScreenOrder,type ScreenProvider} from './screen-metadata.ts';
@@ -72,7 +73,7 @@ function parse(raw:unknown,s:MetadataReviewScope,t:MetadataReviewTarget):Metadat
  const observation=tv||raw.observation===undefined?[]:keepReadable('metadata-review','observation',[raw.observation],parseMusicObservation);
  return Object.freeze({scope:Object.freeze({...s,libraryId:t.libraryId,entityId:t.entityId,viewerFence:raw.viewerFence}),provider:tv?'tvdb':'musicbrainz',revision:raw.revision,status,selectedId,order,orders:Object.freeze(choices),actions:Object.freeze(actions),candidates:Object.freeze(candidates),attempts:raw.attempts,nextAttempt:raw.nextAttempt,providerError:raw.error,attribution:raw.attribution,...(tv?{page:raw.page as number}:{manual:raw.manual as boolean,...(published?{published}:{}),...(raw.policy!==undefined?{policy:parseMusicPolicy(raw.policy)}:{}),...(observation.length?{observation:observation[0]}:{})})});
 }
-function path(t:MetadataReviewTarget):string {return '/v1/'+(t.kind==='show'?'shows':t.kind==='album'?'albums':'items')+'/'+encodeURIComponent(t.entityId)+'/metadata/'+(screenTarget(t)?'screen':t.kind==='show'?'tvdb':'musicbrainz');}
+function path(t:MetadataReviewTarget):string {return apiRoot+(t.kind==='show'?'shows':t.kind==='album'?'albums':'items')+'/'+encodeURIComponent(t.entityId)+'/metadata/'+(screenTarget(t)?'screen':t.kind==='show'?'tvdb':'musicbrainz');}
 export class MetadataReviewService {
  private api:MetadataReviewApi; private bound:MetadataReviewScope; private timeout:number; private generation=0; private read=0; private stopped=false; private controllers=new Set<AbortController>(); private readController?:AbortController; private listeners=new Set<()=>void>(); private state:MetadataReviewSnapshot; private command?:{key:string;promise:Promise<void>};
  constructor(o:{api:MetadataReviewApi;scope:MetadataReviewScope;timeoutMs?:number}){this.api=o.api;this.bound=scope(o.scope);this.timeout=o.timeoutMs??15000;if(!Number.isFinite(this.timeout)||this.timeout<=0||this.timeout>120000)throw new Error('Invalid provider review deadline.');this.state=this.empty();}
@@ -112,7 +113,7 @@ export class MetadataReviewService {
    if(!data.screen)throw new Error('Screen metadata context is missing.');
    if(action==='select')body={...body,candidateKey:candidateId,order:order??''};
    if(action==='search'){if(!options||!data.screen.policy.providers.includes(options.provider as ScreenProvider))throw new Error('Choose an enabled provider to search.');body={...options,expectedRevision:data.revision};}
-   if(action==='policy'){if(!options)throw new Error('Metadata settings are required.');body={...options,expectedRevision:data.screen.policy.revision,expectedConsentRevision:data.screen.policy.consentRevision};endpoint='/v1/libraries/'+encodeURIComponent(t.libraryId)+'/metadata/screen';method='PUT';}
+   if(action==='policy'){if(!options)throw new Error('Metadata settings are required.');body={...options,expectedRevision:data.screen.policy.revision,expectedConsentRevision:data.screen.policy.consentRevision};endpoint=encodedRoutePath("get_libraries_id_metadata_screen", {"id": encodeURIComponent(t.libraryId)});method='PUT';}
    if(action==='map_season'){body={...options,expectedRevision:data.revision};endpoint=path(t)+'/season';method='PUT';}
   }else if(action==='select'){body.providerId=t.kind==='show'?Number(candidateId):candidateId;if(t.kind==='show')body.order=order;}
   if(!screen&&action==='policy'){if((t.kind!=='song'&&t.kind!=='album')||!data.policy||!options||!['off','supplement','prefer'].includes(options.localMode as string)||typeof options.musicBrainzEnabled!=='boolean'||typeof options.acoustidEnabled!=='boolean')throw new Error('Choose a valid music metadata policy.');Object.assign(body,options,{expectedPolicyRevision:data.policy.revision});}

@@ -1,3 +1,5 @@
+import {routeBody as hostedRouteBody} from "../../contracts/src/hosted/routes.ts";
+import {routePath as hostedRoutePath, encodedRoutePath as hostedEncodedRoutePath} from "../../contracts/src/hosted/routes.ts";
 /**
  * The Portico Account's in-app notification feed and data export (BE-hosted, `be/hosted` da0a9db):
  * no push and no alert email any more. Parsers are strict about the shapes and lenient about
@@ -79,31 +81,31 @@ export class AccountNotificationsClient {
   private readonly request: Request;
   constructor(request: Request) { this.request = request; }
   async page(cursor?: string, signal?: AbortSignal): Promise<AccountNotificationPage> {
-    return parseAccountNotificationPage(await this.request('/v1/account/notifications' + (cursor ? '?cursor=' + encodeURIComponent(cursor) : ''), 'GET', undefined, signal));
+    return parseAccountNotificationPage(await this.request(hostedRoutePath("account_notifications_list") + (cursor ? '?cursor=' + encodeURIComponent(cursor) : ''), 'GET', undefined, signal));
   }
   async one(id: string, signal?: AbortSignal): Promise<AccountNotification> {
-    return parseAccountNotification(await this.request('/v1/account/notifications/' + encodeURIComponent(id), 'GET', undefined, signal));
+    return parseAccountNotification(await this.request(hostedEncodedRoutePath("account_notification_get", {"id": encodeURIComponent(id)}), 'GET', undefined, signal));
   }
   async markRead(ids: readonly string[] | 'all'): Promise<void> {
     if (ids !== 'all' && !ids.length) return;
-    await this.request('/v1/account/notifications/read', 'POST', ids === 'all' ? {all: true} : {ids: [...ids]});
+    await this.request(hostedRoutePath("account_notifications_read"), 'POST', ids === 'all' ? {all: true} : {ids: [...ids]});
   }
   async preferences(signal?: AbortSignal): Promise<NotificationPreferences> {
-    return parseNotificationPreferences(await this.request('/v1/account/notification-preferences', 'GET', undefined, signal));
+    return parseNotificationPreferences(await this.request(hostedRoutePath("account_notification_preferences_get"), 'GET', undefined, signal));
   }
   async savePreferences(p: NotificationPreferences): Promise<NotificationPreferences> {
-    return parseNotificationPreferences(await this.request('/v1/account/notification-preferences', 'PUT', {serverOffline: p.serverOffline, storageNearlyFull: p.storageNearlyFull, invitationAccepted: p.invitationAccepted}));
+    return parseNotificationPreferences(await this.request(hostedRoutePath("account_notification_preferences_set"), 'PUT', hostedRouteBody("account_notification_preferences_set", {serverOffline: p.serverOffline, storageNearlyFull: p.storageNearlyFull, invitationAccepted: p.invitationAccepted})));
   }
   /** Starts (or rejoins) the account's export with the signed-in session (BE-hosted cc222bf: `{operationId}`, 16–128 characters, no proof). Idempotent per operation id. */
   async requestExport(operationId: string): Promise<AccountExportJob> {
     if (operationId.length < 16 || operationId.length > 128) throw new Error('An export operation id is 16 to 128 characters.');
-    return parseAccountExportJob(await this.request('/v1/account/export', 'POST', {operationId}));
+    return parseAccountExportJob(await this.request(hostedRoutePath("account_export_request"), 'POST', hostedRouteBody("account_export_request", {operationId})));
   }
   async exportStatus(id: string, signal?: AbortSignal): Promise<AccountExportJob> {
-    return parseAccountExportJob(await this.request('/v1/account/exports/' + encodeURIComponent(id), 'GET', undefined, signal));
+    return parseAccountExportJob(await this.request(hostedEncodedRoutePath("account_export_get", {"export": encodeURIComponent(id)}), 'GET', undefined, signal));
   }
   async downloadExport(id: string): Promise<unknown> {
-    return this.request('/v1/account/exports/' + encodeURIComponent(id) + '/download', 'POST', {});
+    return this.request(hostedEncodedRoutePath("account_export_download", {"export": encodeURIComponent(id)}), 'POST', hostedRouteBody("account_export_download", {}));
   }
 }
 

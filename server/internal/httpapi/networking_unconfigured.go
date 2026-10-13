@@ -11,7 +11,7 @@ import (
 // can render their unconfigured state without treating it as a transport fault.
 func (d Dependencies) unconfiguredNetworkingRoutes(mux *http.ServeMux) {
 	for _, path := range []string{"/v1/networking/claim", "/v1/networking/certificate", "/v1/networking/remote"} {
-		mux.HandleFunc("GET "+path, func(w http.ResponseWriter, r *http.Request) {
+		d.httpHandle(mux, "GET "+path, func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Cache-Control", "no-store")
 			if _, err := d.owner(r); err != nil {
 				administrationFailure(w, err)

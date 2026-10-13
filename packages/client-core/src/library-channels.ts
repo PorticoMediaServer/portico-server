@@ -1,3 +1,6 @@
+import {routeBody} from "../../contracts/src/routes.ts";
+import type {RouteResponse} from "../../contracts/src/routes.ts";
+import {routePath} from "../../contracts/src/routes.ts";
 import {unreadableServerResponse} from './server-messages.ts';
 /** Library Channels are server-authored schedules, not client playlists. */
 import type {ChannelApi} from './channel-guide';
@@ -55,23 +58,23 @@ export function parseLibraryChannel(v:unknown):LibraryChannel{
  return {...v,config} as LibraryChannel;
 }
 function response(v:unknown,serverId:string){const r=envelope(v,serverId);if(r.protocolVersion!==LINEAR_PROTOCOL)invalid();return r}
-export async function readLibraryChannels(api:ChannelApi,serverId:string,signal?:AbortSignal):Promise<LibraryChannel[]>{const r=response(await api.request('/v1/admin/library-channels','GET',undefined,signal),serverId);if(!Array.isArray(r.channels)||r.channels.length>64)invalid();
+export async function readLibraryChannels(api:ChannelApi,serverId:string,signal?:AbortSignal):Promise<LibraryChannel[]>{const r=response(await api.request(routePath("get_admin_library_channels"),'GET',undefined,signal),serverId);if(!Array.isArray(r.channels)||r.channels.length>64)invalid();
  // A channel is edited and saved whole, so its settings stay exact: one this app cannot read (a
  // setting from a newer server) is left out of the list alone, and the others can still be managed.
  return keepReadable('library-channels','channels',r.channels,parseLibraryChannel)}
-export async function readLibraryTemplates(api:ChannelApi,serverId:string,signal?:AbortSignal):Promise<LibraryChannelTemplate[]>{const r=response(await api.request('/v1/admin/library-channels/templates','GET',undefined,signal),serverId);if(!Array.isArray(r.templates)||r.templates.length>64)invalid();return keepReadable('library-channels','templates',r.templates,v=>{if(!isRecord(v)||!id(v.id)||!boundedText(v.name,120)||!boundedText(v.description,2048)||!safeCounter(v.minimumCandidates,1000000)||typeof v.applicable!=='boolean'||!boundedText(v.reason,512))invalid();return {...v,config:parseLibraryChannelConfig(v.config)} as LibraryChannelTemplate})}
-export async function previewLibraryChannel(api:ChannelApi,serverId:string,config:LibraryChannelConfig,signal?:AbortSignal):Promise<LibraryChannelPreview>{const r=response(await api.request('/v1/admin/library-channels/preview','POST',config,signal),serverId);const v=r.preview;if(!isRecord(v)||!boundedText(v.catalogFence,32768)||!boundedText(v.boundaryPolicy,256)||!Array.isArray(v.blocks)||v.blocks.length>768||!list(v.rules,16,r=>isRecord(r)&&id(r.ruleId)&&safeCounter(r.eligible)&&safeCounter(r.unresolved)&&safeCounter(r.semanticLimit,1000000)&&list(r.sample,8,s=>isRecord(s)&&id(s.itemId)&&boundedText(s.title,512)&&safeCounter(s.durationMs)&&(s.showTitle===undefined||boundedText(s.showTitle,512)))))invalid();
+export async function readLibraryTemplates(api:ChannelApi,serverId:string,signal?:AbortSignal):Promise<LibraryChannelTemplate[]>{const r=response(await api.request(routePath("get_admin_library_channels_templates"),'GET',undefined,signal),serverId);if(!Array.isArray(r.templates)||r.templates.length>64)invalid();return keepReadable('library-channels','templates',r.templates,v=>{if(!isRecord(v)||!id(v.id)||!boundedText(v.name,120)||!boundedText(v.description,2048)||!safeCounter(v.minimumCandidates,1000000)||typeof v.applicable!=='boolean'||!boundedText(v.reason,512))invalid();return {...v,config:parseLibraryChannelConfig(v.config)} as LibraryChannelTemplate})}
+export async function previewLibraryChannel(api:ChannelApi,serverId:string,config:LibraryChannelConfig,signal?:AbortSignal):Promise<LibraryChannelPreview>{const r=response(await api.request(routePath("post_admin_library_channels_preview"),'POST',config,signal),serverId);const v=r.preview;if(!isRecord(v)||!boundedText(v.catalogFence,32768)||!boundedText(v.boundaryPolicy,256)||!Array.isArray(v.blocks)||v.blocks.length>768||!list(v.rules,16,r=>isRecord(r)&&id(r.ruleId)&&safeCounter(r.eligible)&&safeCounter(r.unresolved)&&safeCounter(r.semanticLimit,1000000)&&list(r.sample,8,s=>isRecord(s)&&id(s.itemId)&&boundedText(s.title,512)&&safeCounter(s.durationMs)&&(s.showTitle===undefined||boundedText(s.showTitle,512)))))invalid();
  // Builder fields (older servers omit them: counts were then complete and there was no first day).
  for(const rule of v.rules as Record<string,unknown>[]){if(!safeCounter(rule.durationMs??0)||typeof(rule.complete??true)!=='boolean')invalid();rule.durationMs??=0;rule.complete??=true;rule.scanned??=0;}
  if(v.firstDay===undefined||v.firstDay===null)v.firstDay=[];
  if(!list(v.firstDay,2000,e=>isRecord(e)&&boundedText(e.id,128)&&safeCounter(e.startMs)&&safeCounter(e.endMs)&&typeof e.itemId==='string'&&boundedText(e.title,512)&&typeof e.unavailableReason==='string'))invalid();
  v.durationMs??=(v.rules as {durationMs:number}[]).reduce((n,r)=>n+r.durationMs,0);v.complete??=true;
  return v as unknown as LibraryChannelPreview}
-export async function saveLibraryChannel(api:ChannelApi,serverId:string,config:LibraryChannelConfig,expectedRevision:number,requestId:string,signal?:AbortSignal){return parseLibraryChannel(response(await api.request('/v1/admin/library-channels','POST',{config,expectedRevision,requestId},signal),serverId).channel)}
+export async function saveLibraryChannel(api:ChannelApi,serverId:string,config:LibraryChannelConfig,expectedRevision:number,requestId:string,signal?:AbortSignal){return parseLibraryChannel(response(await api.request(routePath("post_admin_library_channels"),'POST',routeBody("post_admin_library_channels", {config,expectedRevision,requestId}),signal),serverId).channel)}
 /** A new custom draft is server-selected from the current authorized catalog.
  * Client identities are used only for explicit subsequent editor mutations. */
 export async function readLibraryDefaults(api:ChannelApi,serverId:string,timezone:string,signal?:AbortSignal):Promise<LibraryChannelConfig>{
- const v=envelope(await api.request<unknown>('/v1/admin/library-channels/defaults','POST',{timezone},signal),serverId);
+ const v=envelope(await api.request<RouteResponse<"post_admin_library_channels_defaults">>(routePath("post_admin_library_channels_defaults"),'POST',routeBody("post_admin_library_channels_defaults", {timezone}),signal),serverId);
  return parseLibraryChannelConfig(v.config);
 }
 /** How a preview sample is named in "Some of what plays": its show for an episode, else its title. */

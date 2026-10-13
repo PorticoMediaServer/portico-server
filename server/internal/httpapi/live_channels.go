@@ -221,7 +221,7 @@ func (d Dependencies) liveChannelRoutes(mux *http.ServeMux, store *livechannels.
 	}
 	d.guideDirectoryRoutes(mux, store, handle)
 
-	mux.HandleFunc("POST /v1/admin/live-sources/{id}/enabled", handle(true, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
+	d.httpHandle(mux, "POST /v1/admin/live-sources/{id}/enabled", handle(true, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
 		if r.URL.RawQuery != "" {
 			return nil, livechannels.ErrInvalid
 		}
@@ -240,7 +240,7 @@ func (d Dependencies) liveChannelRoutes(mux *http.ServeMux, store *livechannels.
 		return map[string]any{"protocolVersion": "1.0", "serverId": d.Identity.ID(), "saved": e == nil}, e
 	}))
 
-	mux.HandleFunc("POST /v1/admin/live-sources/{id}/refresh", handle(true, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
+	d.httpHandle(mux, "POST /v1/admin/live-sources/{id}/refresh", handle(true, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
 		if r.URL.RawQuery != "" {
 			return nil, livechannels.ErrInvalid
 		}
@@ -253,7 +253,7 @@ func (d Dependencies) liveChannelRoutes(mux *http.ServeMux, store *livechannels.
 		e := store.RequestRefresh(ctx, d.liveAuthority(p), r.PathValue("id"), in.ExpectedRevision)
 		return map[string]any{"protocolVersion": "1.0", "serverId": d.Identity.ID(), "scheduled": e == nil}, e
 	}))
-	mux.HandleFunc("POST /v1/admin/live-sources/{id}/remove", handle(true, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
+	d.httpHandle(mux, "POST /v1/admin/live-sources/{id}/remove", handle(true, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
 		if r.URL.RawQuery != "" {
 			return nil, livechannels.ErrInvalid
 		}
@@ -267,7 +267,7 @@ func (d Dependencies) liveChannelRoutes(mux *http.ServeMux, store *livechannels.
 		e := store.Remove(ctx, d.liveAuthority(p), r.PathValue("id"), in.ExpectedRevision, in.RequestID)
 		return map[string]any{"protocolVersion": "1.0", "serverId": d.Identity.ID(), "removed": e == nil}, e
 	}))
-	mux.HandleFunc("POST /v1/channels/preferences", handle(false, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
+	d.httpHandle(mux, "POST /v1/channels/preferences", handle(false, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
 		if r.URL.RawQuery != "" {
 			return nil, livechannels.ErrInvalid
 		}
@@ -278,7 +278,7 @@ func (d Dependencies) liveChannelRoutes(mux *http.ServeMux, store *livechannels.
 		revision, e := store.SetPreference(ctx, d.liveAuthority(p), channelSubject(p), in)
 		return map[string]any{"protocolVersion": "1.0", "serverId": d.Identity.ID(), "revision": revision}, e
 	}))
-	mux.HandleFunc("GET /v1/guide", handle(false, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
+	d.httpHandle(mux, "GET /v1/guide", handle(false, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
 		q := r.URL.Query()
 		for key, values := range q {
 			switch key {

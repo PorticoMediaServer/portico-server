@@ -404,10 +404,10 @@ test('events: one stream, prefix subscriptions, reconnect from the cursor after 
   events.stop();
 });
 
-test('events: a refused stream (409 stream_exists) falls back to long-poll; an old cursor resyncs', async () => {
+test('events: an unsupported stream (404) falls back to long-poll; an old cursor resyncs', async () => {
   const c = clockwork();
   const server = new FakePlaybackServer({now: c.now, setTimer: c.setTimer, clearTimer: c.clearTimer, ring: 5});
-  server.refuseStreams(409);
+  server.refuseStreams(404);
   const events = new EventsClient({http: fakeHttp(server), openStream: server.openStream, waitSeconds: 25, setTimer: c.setTimer, clearTimer: c.clearTimer, cursor: '0'});
   const seen: string[] = [];
   let resyncs = 0;

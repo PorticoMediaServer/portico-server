@@ -1,3 +1,5 @@
+import {routePath as hostedRoutePath} from "../../contracts/src/hosted/routes.ts";
+import {routePath} from "../../contracts/src/routes.ts";
 import {randomId} from './random-id.ts';
 import {ApiError, HttpLocalApi} from './index.ts';
 import type {DeviceAuthorization} from './device-authorization.ts';
@@ -293,7 +295,7 @@ export type SetupPreview = {clientRequestId?:string;publicKey?:string;protocol?:
 export class SetupCodeApprover {
   private readonly api:HttpLocalApi;readonly authority:'hosted'|'local';
   constructor(api:HttpLocalApi,authority:'hosted'|'local'){this.api=api;this.authority=authority;}
-  private get path() {return this.authority === 'hosted' ? '/v1/device-authorizations' : '/v1/quick-connect';}
+  private get path() {return this.authority === 'hosted' ? hostedRoutePath("device_authorization_create") : routePath("post_quick_connect");}
   async review(code: string, signal?: AbortSignal) {
     const result = await this.api.request<SetupPreview>(this.path + '/review', 'POST', {userCode: normalizeSetupCode(code)}, signal);
     if (!result || typeof result.requestId !== 'string' || result.requestId.length > 128 ||

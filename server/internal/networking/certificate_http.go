@@ -155,7 +155,7 @@ func sameCertificateOrder(q certificateState, mat certificateMaterial, o certifi
 	v := q.Scope.Intent
 	return validCertificateOrderID(o.ID) && o.RequestID == mat.RequestID && o.Namespace == q.Namespace && o.OperationID == v.OperationID && o.ClaimGeneration == v.ClaimGeneration && o.CredentialGeneration == v.CredentialGeneration && o.Environment == q.Environment && o.Issuer == q.Issuer
 }
-func (h *ClaimHandler) registerCertificates(mux *http.ServeMux) {
+func (h *ClaimHandler) registerCertificates(mux HTTPRegistrar) {
 	if h.certificates == nil {
 		return
 	}

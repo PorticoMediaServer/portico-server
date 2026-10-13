@@ -176,13 +176,13 @@ func (d Dependencies) deletionRoutes(mux *http.ServeMux) {
 	preview := func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal, ids []string) (any, error) {
 		return d.Administration.PreviewDelete(ctx, d.administrationAuthority(p), ids)
 	}
-	mux.HandleFunc("POST /v1/items/{id}/delete/preview", d.administrationHandler(30*time.Second, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
+	d.httpHandle(mux, "POST /v1/items/{id}/delete/preview", d.administrationHandler(30*time.Second, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
 		if r.URL.RawQuery != "" {
 			return nil, administration.ErrInput
 		}
 		return preview(ctx, w, r, p, []string{r.PathValue("id")})
 	}))
-	mux.HandleFunc("POST /v1/admin/media/delete/preview", d.administrationHandler(30*time.Second, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
+	d.httpHandle(mux, "POST /v1/admin/media/delete/preview", d.administrationHandler(30*time.Second, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
 		var body struct {
 			ItemIDs []string `json:"itemIds"`
 		}
@@ -191,7 +191,7 @@ func (d Dependencies) deletionRoutes(mux *http.ServeMux) {
 		}
 		return preview(ctx, w, r, p, body.ItemIDs)
 	}))
-	mux.HandleFunc("POST /v1/items/{id}/delete", d.administrationHandler(120*time.Second, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
+	d.httpHandle(mux, "POST /v1/items/{id}/delete", d.administrationHandler(120*time.Second, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
 		var body administration.DeleteRequest
 		if err := decodeLegacyRevision(w, r, &body); err != nil {
 			return nil, errors.Join(administration.ErrInput, err)
@@ -203,7 +203,7 @@ func (d Dependencies) deletionRoutes(mux *http.ServeMux) {
 		body.ItemIDs = []string{r.PathValue("id")}
 		return d.Administration.Delete(ctx, d.administrationAuthority(p), administrationActor(p), body)
 	}))
-	mux.HandleFunc("POST /v1/admin/media/delete", d.administrationHandler(300*time.Second, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
+	d.httpHandle(mux, "POST /v1/admin/media/delete", d.administrationHandler(300*time.Second, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
 		var body administration.DeleteRequest
 		if err := decodeLegacyRevision(w, r, &body); err != nil {
 			return nil, errors.Join(administration.ErrInput, err)
@@ -215,7 +215,7 @@ func (d Dependencies) deletionRoutes(mux *http.ServeMux) {
 // ---------------------------------------------------------------- libraries
 
 func (d Dependencies) libraryAdministrationRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("GET /v1/admin/filesystem", d.administrationHandler(30*time.Second, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
+	d.httpHandle(mux, "GET /v1/admin/filesystem", d.administrationHandler(30*time.Second, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
 		query, err := administrationQuery(r, "path", "cursor", "limit", "includeFiles")
 		if err != nil {
 			return nil, err
@@ -229,7 +229,7 @@ func (d Dependencies) libraryAdministrationRoutes(mux *http.ServeMux) {
 		}
 		return d.Administration.Browse(ctx, query["path"], query["cursor"], limit, query["includeFiles"] == "true")
 	}))
-	mux.HandleFunc("GET /v1/admin/library-settings", d.administrationHandler(30*time.Second, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
+	d.httpHandle(mux, "GET /v1/admin/library-settings", d.administrationHandler(30*time.Second, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
 		query, err := administrationQuery(r, "cursor", "limit")
 		if err != nil {
 			return nil, err
@@ -240,13 +240,13 @@ func (d Dependencies) libraryAdministrationRoutes(mux *http.ServeMux) {
 		}
 		return d.Administration.LibraryIndex(ctx, d.administrationAuthority(p), query["cursor"], limit)
 	}))
-	mux.HandleFunc("GET /v1/admin/analysis-operations", d.administrationHandler(15*time.Second, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
+	d.httpHandle(mux, "GET /v1/admin/analysis-operations", d.administrationHandler(15*time.Second, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
 		if r.URL.RawQuery != "" {
 			return nil, administration.ErrInput
 		}
 		return administration.Matrix(), nil
 	}))
-	mux.HandleFunc("GET /v1/admin/metadata-providers", d.administrationHandler(15*time.Second, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
+	d.httpHandle(mux, "GET /v1/admin/metadata-providers", d.administrationHandler(15*time.Second, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
 		if r.URL.RawQuery != "" {
 			return nil, administration.ErrInput
 		}
@@ -259,7 +259,7 @@ func (d Dependencies) libraryAdministrationRoutes(mux *http.ServeMux) {
 
 func (d Dependencies) liveAdministrationRoutes(mux *http.ServeMux) {
 
-	mux.HandleFunc("GET /v1/admin/live-sources/{id}/channel-map", d.administrationHandler(30*time.Second, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
+	d.httpHandle(mux, "GET /v1/admin/live-sources/{id}/channel-map", d.administrationHandler(30*time.Second, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
 		query, err := administrationQuery(r, "cursor", "limit")
 		if err != nil {
 			return nil, err
@@ -270,14 +270,14 @@ func (d Dependencies) liveAdministrationRoutes(mux *http.ServeMux) {
 		}
 		return d.Administration.ChannelMap(ctx, d.administrationAuthority(p), r.PathValue("id"), query["cursor"], limit)
 	}))
-	mux.HandleFunc("PUT /v1/admin/live-sources/{id}/channel-map", d.administrationHandler(60*time.Second, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
+	d.httpHandle(mux, "PUT /v1/admin/live-sources/{id}/channel-map", d.administrationHandler(60*time.Second, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
 		var body administration.ChannelMapChange
 		if err := decodeLegacyRevision(w, r, &body); err != nil {
 			return nil, errors.Join(administration.ErrInput, err)
 		}
 		return d.Administration.SaveChannelMap(ctx, d.administrationAuthority(p), r.PathValue("id"), body)
 	}))
-	mux.HandleFunc("POST /v1/admin/live-sources/{id}/logos", d.administrationHandler(120*time.Second, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
+	d.httpHandle(mux, "POST /v1/admin/live-sources/{id}/logos", d.administrationHandler(120*time.Second, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
 		var body struct {
 			OperationID string `json:"operationId"`
 		}
@@ -286,7 +286,7 @@ func (d Dependencies) liveAdministrationRoutes(mux *http.ServeMux) {
 		}
 		return d.Administration.ImportLogos(ctx, d.administrationAuthority(p), r.PathValue("id"), body.OperationID)
 	}))
-	mux.HandleFunc("POST /v1/admin/live-sources/discover", d.administrationHandler(30*time.Second, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
+	d.httpHandle(mux, "POST /v1/admin/live-sources/discover", d.administrationHandler(30*time.Second, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
 		var body struct {
 			WindowSeconds int `json:"windowSeconds"`
 		}
@@ -305,13 +305,13 @@ func (d Dependencies) liveAdministrationRoutes(mux *http.ServeMux) {
 func (d Dependencies) dvrAdministrationRoutes(mux *http.ServeMux) {
 	d.recordingPermissionRoutes(mux)
 	d.recordingOwnersRoute(mux)
-	mux.HandleFunc("GET /v1/admin/dvr/settings", d.administrationHandler(30*time.Second, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
+	d.httpHandle(mux, "GET /v1/admin/dvr/settings", d.administrationHandler(30*time.Second, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
 		if r.URL.RawQuery != "" {
 			return nil, administration.ErrInput
 		}
 		return d.Administration.DVRSettings(ctx, d.administrationAuthority(p))
 	}))
-	mux.HandleFunc("PUT /v1/admin/dvr/settings", d.administrationHandler(30*time.Second, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
+	d.httpHandle(mux, "PUT /v1/admin/dvr/settings", d.administrationHandler(30*time.Second, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
 		var body administration.Change[administration.DVRDefaults]
 		if err := decodeLegacyRevision(w, r, &body); err != nil {
 			return nil, errors.Join(administration.ErrInput, err)
@@ -319,7 +319,7 @@ func (d Dependencies) dvrAdministrationRoutes(mux *http.ServeMux) {
 		return d.Administration.SaveDVRSettings(ctx, d.administrationAuthority(p), body)
 	}))
 
-	mux.HandleFunc("GET /v1/admin/dvr/recording-groups", d.administrationHandler(30*time.Second, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
+	d.httpHandle(mux, "GET /v1/admin/dvr/recording-groups", d.administrationHandler(30*time.Second, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
 		query, err := administrationQuery(r, "cursor", "limit")
 		if err != nil {
 			return nil, err
@@ -330,21 +330,21 @@ func (d Dependencies) dvrAdministrationRoutes(mux *http.ServeMux) {
 		}
 		return d.Administration.RecordingGroups(ctx, d.administrationAuthority(p), query["cursor"], limit)
 	}))
-	mux.HandleFunc("POST /v1/admin/dvr/recording-groups", d.administrationHandler(30*time.Second, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
+	d.httpHandle(mux, "POST /v1/admin/dvr/recording-groups", d.administrationHandler(30*time.Second, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
 		var body administration.RecordingGroupChange
 		if err := decodeLegacyRevision(w, r, &body); err != nil {
 			return nil, errors.Join(administration.ErrInput, err)
 		}
 		return d.Administration.SaveRecordingGroup(ctx, d.administrationAuthority(p), "", body)
 	}))
-	mux.HandleFunc("PUT /v1/admin/dvr/recording-groups/{id}", d.administrationHandler(30*time.Second, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
+	d.httpHandle(mux, "PUT /v1/admin/dvr/recording-groups/{id}", d.administrationHandler(30*time.Second, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
 		var body administration.RecordingGroupChange
 		if err := decodeLegacyRevision(w, r, &body); err != nil {
 			return nil, errors.Join(administration.ErrInput, err)
 		}
 		return d.Administration.SaveRecordingGroup(ctx, d.administrationAuthority(p), r.PathValue("id"), body)
 	}))
-	mux.HandleFunc("DELETE /v1/admin/dvr/recording-groups/{id}", d.administrationHandler(30*time.Second, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
+	d.httpHandle(mux, "DELETE /v1/admin/dvr/recording-groups/{id}", d.administrationHandler(30*time.Second, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
 		query, err := administrationQuery(r, "expectedRevision", "operationId")
 		if err != nil {
 			return nil, err
@@ -366,7 +366,7 @@ func (d Dependencies) dvrAdministrationRoutes(mux *http.ServeMux) {
 // ---------------------------------------------------------------- channels
 
 func (d Dependencies) channelAdministrationRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("GET /v1/admin/library-channels/criteria", d.administrationHandler(30*time.Second, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
+	d.httpHandle(mux, "GET /v1/admin/library-channels/criteria", d.administrationHandler(30*time.Second, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
 		query, err := administrationQuery(r, "libraryId", "field", "cursor", "limit")
 		if err != nil {
 			return nil, err
@@ -377,7 +377,7 @@ func (d Dependencies) channelAdministrationRoutes(mux *http.ServeMux) {
 		}
 		return d.Administration.Criteria(ctx, d.administrationAuthority(p), query["libraryId"], query["field"], query["cursor"], limit)
 	}))
-	mux.HandleFunc("GET /v1/admin/library-channels/block-presets", d.administrationHandler(30*time.Second, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
+	d.httpHandle(mux, "GET /v1/admin/library-channels/block-presets", d.administrationHandler(30*time.Second, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
 		query, err := administrationQuery(r, "cursor", "limit")
 		if err != nil {
 			return nil, err
@@ -388,21 +388,21 @@ func (d Dependencies) channelAdministrationRoutes(mux *http.ServeMux) {
 		}
 		return d.Administration.BlockPresets(ctx, d.administrationAuthority(p), query["cursor"], limit)
 	}))
-	mux.HandleFunc("POST /v1/admin/library-channels/block-presets", d.administrationHandler(30*time.Second, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
+	d.httpHandle(mux, "POST /v1/admin/library-channels/block-presets", d.administrationHandler(30*time.Second, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
 		var body administration.BlockPresetChange
 		if err := decode(w, r, &body); err != nil {
 			return nil, administration.ErrInput
 		}
 		return d.Administration.SaveBlockPreset(ctx, d.administrationAuthority(p), "", body)
 	}))
-	mux.HandleFunc("PUT /v1/admin/library-channels/block-presets/{id}", d.administrationHandler(30*time.Second, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
+	d.httpHandle(mux, "PUT /v1/admin/library-channels/block-presets/{id}", d.administrationHandler(30*time.Second, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
 		var body administration.BlockPresetChange
 		if err := decode(w, r, &body); err != nil {
 			return nil, administration.ErrInput
 		}
 		return d.Administration.SaveBlockPreset(ctx, d.administrationAuthority(p), r.PathValue("id"), body)
 	}))
-	mux.HandleFunc("DELETE /v1/admin/library-channels/block-presets/{id}", d.administrationHandler(30*time.Second, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
+	d.httpHandle(mux, "DELETE /v1/admin/library-channels/block-presets/{id}", d.administrationHandler(30*time.Second, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
 		query, err := administrationQuery(r, "expectedRevision", "operationId")
 		if err != nil {
 			return nil, err
@@ -416,13 +416,13 @@ func (d Dependencies) channelAdministrationRoutes(mux *http.ServeMux) {
 		}
 		return map[string]any{"deleted": true, "id": r.PathValue("id")}, nil
 	}))
-	mux.HandleFunc("GET /v1/admin/library-channels/{id}/health", d.administrationHandler(30*time.Second, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
+	d.httpHandle(mux, "GET /v1/admin/library-channels/{id}/health", d.administrationHandler(30*time.Second, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
 		if r.URL.RawQuery != "" {
 			return nil, administration.ErrInput
 		}
 		return d.Administration.ChannelHealthFor(ctx, d.administrationAuthority(p), r.PathValue("id"))
 	}))
-	mux.HandleFunc("POST /v1/admin/library-channels/{id}/logo", d.administrationHandler(60*time.Second, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
+	d.httpHandle(mux, "POST /v1/admin/library-channels/{id}/logo", d.administrationHandler(60*time.Second, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
 		// The upload carries its fields in the multipart body, so a query string
 		// here is a mistake rather than a filter.
 		if r.URL.RawQuery != "" {
@@ -436,7 +436,7 @@ func (d Dependencies) channelAdministrationRoutes(mux *http.ServeMux) {
 	}))
 	// A channel logo is part of what a viewer sees, so this read is the one
 	// endpoint on these pages that is not owner-only.
-	mux.HandleFunc("GET /v1/library-channels/{id}/logo", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "GET /v1/library-channels/{id}/logo", func(w http.ResponseWriter, r *http.Request) {
 		if d.Administration == nil {
 			administrationFailure(w, administration.ErrUnavailable)
 			return
@@ -501,13 +501,13 @@ func readLogoUpload(w http.ResponseWriter, r *http.Request) ([]byte, *int64, str
 // ---------------------------------------------------------------- maintenance
 
 func (d Dependencies) maintenanceRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("GET /v1/admin/storage-usage", d.administrationHandler(120*time.Second, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
+	d.httpHandle(mux, "GET /v1/admin/storage-usage", d.administrationHandler(120*time.Second, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
 		if r.URL.RawQuery != "" {
 			return nil, administration.ErrInput
 		}
 		return d.Administration.Storage(ctx, d.administrationAuthority(p))
 	}))
-	mux.HandleFunc("POST /v1/admin/storage-usage/{category}/cleanup", d.administrationHandler(300*time.Second, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
+	d.httpHandle(mux, "POST /v1/admin/storage-usage/{category}/cleanup", d.administrationHandler(300*time.Second, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
 		var body administration.CleanupRequest
 		if err := decodeLegacyRevision(w, r, &body); err != nil {
 			return nil, errors.Join(administration.ErrInput, err)

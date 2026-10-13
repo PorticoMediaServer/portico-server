@@ -66,7 +66,7 @@ func (d Dependencies) preparedMediaRoutes(mux *http.ServeMux) {
 	}
 	type handle func(http.ResponseWriter, *http.Request, identity.Principal) (any, error)
 	register := func(pattern string, fn handle) {
-		mux.HandleFunc(pattern, func(w http.ResponseWriter, r *http.Request) {
+		d.httpHandle(mux, pattern, func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Cache-Control", "private, no-store")
 			if r.URL.RawQuery != "" {
 				preparedFailure(w, preparedmedia.ErrInput)

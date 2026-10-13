@@ -1,3 +1,4 @@
+import {encodedRoutePath} from "../../../contracts/src/routes.ts";
 /**
  * Film and TV metadata lookups per library (`GET`/`PUT /v1/libraries/{id}/metadata/screen`).
  * Remote lookups are on by default with a per-library opt-out; the console
@@ -93,7 +94,7 @@ export function lookupUpdate(p: ScreenLookupPolicy, on: boolean): Record<string,
 type Request = <T>(path: string, method?: string, body?: unknown) => Promise<T>;
 /** Saves the switch; a 409 (someone changed it meanwhile) reloads and retries once. */
 export async function saveLookup(request: Request, libraryId: string, policy: ScreenLookupPolicy, on: boolean): Promise<void> {
-  const path = `/v1/libraries/${encodeURIComponent(libraryId)}/metadata/screen`;
+  const path = encodedRoutePath("get_libraries_id_metadata_screen", {"id": encodeURIComponent(libraryId)});
   try {
     await request(path, 'PUT', lookupUpdate(policy, on));
   } catch (e) {

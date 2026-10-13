@@ -1,3 +1,5 @@
+import type {RouteResponse} from "../../contracts/src/routes.ts";
+import {encodedRoutePath} from "../../contracts/src/routes.ts";
 /** Local/mounted inventory administration. No provider credentials, persistent
  * path cache, automatic command replay, or client-side identity heuristics. */
 import type {ContentScope, LibraryContentApi} from './library-content.ts';
@@ -48,7 +50,7 @@ export class LibraryInventoryService {
  subscribe=(listener:()=>void)=>{this.listeners.add(listener);return()=>this.listeners.delete(listener);};getSnapshot=()=>this.state;
  private publish(update:Partial<LibraryInventorySnapshot>){if(this.disposed)return;this.state=Object.freeze({...this.state,...update});for(const listener of this.listeners)listener();}
  dispose(){this.epoch++;this.disposed=true;for(const c of this.controllers)c.abort();this.controllers.clear();this.listeners.clear();this.state=Object.freeze({...this.state,config:null,objects:null});}
- private base(){return '/v1/admin/libraries/'+encodeURIComponent(this.libraryId);}
+ private base(){return encodedRoutePath("get_admin_libraries_id", {"id": encodeURIComponent(this.libraryId)});}
  private async request(path:string,method='GET',body?:unknown){if(this.disposed)throw new Error('Inventory view is closed.');const c=new AbortController();this.controllers.add(c);let timer:ReturnType<typeof setTimeout>|undefined;
   try{return await Promise.race([this.api.request<unknown>(path,method,body,c.signal),new Promise<never>((_,reject)=>{timer=setTimeout(()=>{c.abort();reject(new Error('Inventory response interrupted. Check current state before issuing the command again.'));},15000);})]);}finally{if(timer)clearTimeout(timer);this.controllers.delete(c);}
  }
@@ -91,7 +93,7 @@ export function scanProgress(status:ViewerInventoryStatus|null|undefined):ScanPr
 }
 /** Callers own polling lifetime and cancel on server/viewer/library transitions. */
 export async function fetchInventoryStatus(api:LibraryContentApi,serverId:string,libraryId:string,signal:AbortSignal):Promise<ViewerInventoryStatus>{
- const raw=await api.request<unknown>('/v1/libraries/'+encodeURIComponent(libraryId)+'/inventory-status','GET',undefined,signal);
+ const raw=await api.request<RouteResponse<"get_libraries_id_inventory_status">>(encodedRoutePath("get_libraries_id_inventory_status", {"id": encodeURIComponent(libraryId)}),'GET',undefined,signal);
  assert(!signal.aborted&&record(raw)&&raw.serverId===serverId&&record(raw.inventory));const v=raw.inventory;assert(v.libraryId===libraryId&&integer(v.revision));
  const sources=list(v.sources,64).map(s=>{assert(record(s)&&id(s.id)&&text(s.health,128)&&text(s.lastCompleteAt,128)&&text(s.jobId,256)&&text(s.status,128)&&text(s.phase,128)&&integer(s.discovered)&&integer(s.analyzed)&&integer(s.warnings)&&text(s.pauseReason,128));return Object.freeze({id:s.id,health:s.health,lastCompleteAt:s.lastCompleteAt,jobId:s.jobId,status:s.status,phase:s.phase,discovered:s.discovered,analyzed:s.analyzed,warnings:s.warnings,pauseReason:s.pauseReason});});
  return Object.freeze({libraryId,revision:v.revision,sources:Object.freeze(sources)});

@@ -1,16 +1,28 @@
 # Portico server API
 
-Start with the [developer guide](guide/README.md). The route registry produces
-[portico.openapi.json](portico.openapi.json) and the TypeScript contract in
-`packages/contracts`. Registered operations publish `x-access`, `x-scope`, body
-bounds and their request/response shapes.
+[portico.openapi.json](portico.openapi.json) is the complete API contract. It is generated from the typed registry used by the production router, including conditional features and raw media, upload and event-stream operations. The server and first-party clients use the same API as external clients.
 
-The current registry is not yet the whole router. Authentication and some
-catalogue routes remain hand-registered. For those, the guide cites the handler
-and service source. The hand-written YAML files are historical descriptions,
-not a second authoritative API; some tests and the existing example checker
-still read them. They must remain until those consumers move to the registry.
-Do not build a new integration from their obsolete sign-in or playback shapes.
+Regenerate the contract from `server/`:
+
+```sh
+GOFLAGS=-p=2 go run ./cmd/apigen
+```
+
+The same command updates `packages/contracts/src` and the generated admission table. The TypeScript contract exports typed route builders, parameter types, request and response types, schemas and decoders. Supply unescaped parameters to `routePath`; `encodedRoutePath` supports existing callers that have already encoded their parameters. Existing shared-client parsers retain their row-level tolerance and public service interfaces.
+
+Each operation publishes its credential scope (`x-scope`), access class (`x-access`), work class (`x-lane`), database cost class (`x-cost`) and admission pool (`x-admission`). An API key or personal access token never widens the member's authority. Session-only operations cannot be invoked with those credentials. Media grants and other narrow protocol credentials retain their own handler checks.
+
+Plain HTTP and direct access remain supported. Optional features still depend on the services configured by the owner. Read the operation's response schema and error envelope, respect `Retry-After`, and retain opaque cursors and revisions exactly as returned.
+
+For external automation, see the [tool integration guide](guide/README.md). Old hand-authored specifications and retired playback documentation are no longer published.
+
+Hosted account/connectivity contracts live in `packages/contracts/src/hosted`. After regenerating the Hosted registry in its own checkout, sync its generated contract directory with:
+
+```sh
+node packages/contracts/scripts/sync-hosted.mjs <hosted-generated-contract-directory>
+```
+
+This reads the Hosted artifacts and applies the same shared builder template; it writes only the local contract package. The local server generator does not describe Hosted endpoints.
 
 This is a prerelease API with no compatibility promise. The current public
 routes use `/v1`; the former `/v2` playback model has been removed. There are no

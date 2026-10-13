@@ -66,7 +66,7 @@ type TopShelfToken struct {
 }
 
 func (d Dependencies) topShelfRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("POST /v1/topshelf/token", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "POST /v1/topshelf/token", func(w http.ResponseWriter, r *http.Request) {
 		p, e := d.principal(r)
 		if e != nil {
 			failure(w, e)
@@ -87,7 +87,7 @@ func (d Dependencies) topShelfRoutes(mux *http.ServeMux) {
 		w.Header().Set("Cache-Control", "no-store")
 		write(w, 201, TopShelfToken{Token: out.Token, ExpiresAt: out.ExpiresAt, FeedURL: "/v1/topshelf"})
 	})
-	mux.HandleFunc("GET /v1/topshelf", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "GET /v1/topshelf", func(w http.ResponseWriter, r *http.Request) {
 		grant, e := d.Identity.TopShelfGrant(r.Context(), topShelfBearer(r))
 		if e != nil {
 			failure(w, e)
@@ -133,7 +133,7 @@ func (d Dependencies) topShelfRoutes(mux *http.ServeMux) {
 		w.Header().Set("Cache-Control", "private, no-store")
 		write(w, 200, out)
 	})
-	mux.HandleFunc("GET /v1/topshelf/art/{id}", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "GET /v1/topshelf/art/{id}", func(w http.ResponseWriter, r *http.Request) {
 		grant, e := d.Identity.ResolveTopShelfArtwork(r.Context(), r.URL.Query().Get("grant"), r.PathValue("id"))
 		if e != nil {
 			failure(w, e)

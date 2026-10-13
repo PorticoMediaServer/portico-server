@@ -42,7 +42,18 @@ func TestEveryRegisteredRouteHasALane(t *testing.T) {
 			}
 			for _, match := range pattern.FindAllStringSubmatch(string(data), -1) {
 				if _, ok := routeLanes[match[1]]; !ok {
-					missing = append(missing, match[1])
+					found := false
+					if strings.HasSuffix(match[1], "/") {
+						for route := range routeLanes {
+							if strings.HasPrefix(route, match[1]) {
+								found = true
+								break
+							}
+						}
+					}
+					if !found {
+						missing = append(missing, match[1])
+					}
 				}
 			}
 		}
@@ -53,8 +64,10 @@ func TestEveryRegisteredRouteHasALane(t *testing.T) {
 	}
 	for _, route := range registry.Definitions() {
 		key := route.Method + " " + route.Path
-		if _, ok := routeLanes[key]; !ok {
+		if lane, ok := routeLanes[key]; !ok {
 			missing = append(missing, key)
+		} else if lane != route.Admission {
+			t.Errorf("%s: generated admission %q differs from registry %q", key, lane, route.Admission)
 		}
 	}
 	if len(missing) > 0 {

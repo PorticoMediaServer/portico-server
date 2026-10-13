@@ -26,7 +26,7 @@ type recordingOwnerChoice struct {
 // Candidates come from the existing identity authorities. Listing them neither
 // creates a recording grant nor bypasses current membership/claim checks.
 func (d Dependencies) recordingOwnersRoute(mux *http.ServeMux) {
-	mux.HandleFunc("GET /v1/admin/dvr/recording-owners", d.administrationHandler(30*time.Second, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
+	d.httpHandle(mux, "GET /v1/admin/dvr/recording-owners", d.administrationHandler(30*time.Second, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
 		q, err := url.ParseQuery(r.URL.RawQuery)
 		if err != nil {
 			return nil, administration.ErrInput

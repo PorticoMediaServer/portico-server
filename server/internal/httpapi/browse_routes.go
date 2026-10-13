@@ -76,7 +76,7 @@ type browseRequestBody struct {
 }
 
 func (d Dependencies) browseRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("GET /v1/libraries/{id}/browse-capabilities", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "GET /v1/libraries/{id}/browse-capabilities", func(w http.ResponseWriter, r *http.Request) {
 		if _, ok := d.browseLibrary(w, r); !ok {
 			return
 		}
@@ -99,7 +99,7 @@ func (d Dependencies) browseRoutes(mux *http.ServeMux) {
 	if d.registry == nil {
 		mux.HandleFunc("GET /v1/libraries/{id}/facets", d.facetsHandler)
 	}
-	mux.HandleFunc("PUT /v1/saved-pins/order", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "PUT /v1/saved-pins/order", func(w http.ResponseWriter, r *http.Request) {
 		p, _, fence, e := d.homeScope(r)
 		if e != nil {
 			failure(w, e)
@@ -122,7 +122,7 @@ func (d Dependencies) browseRoutes(mux *http.ServeMux) {
 		}
 		d.savedResponse(w, r, fence, map[string]any{"serverId": d.Identity.ID(), "viewerFence": fence, "revision": out.Revision, "order": out.Order})
 	})
-	mux.HandleFunc("GET /v1/saved-pins/order", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "GET /v1/saved-pins/order", func(w http.ResponseWriter, r *http.Request) {
 		p, _, fence, e := d.homeScope(r)
 		if e != nil {
 			failure(w, e)
@@ -135,7 +135,7 @@ func (d Dependencies) browseRoutes(mux *http.ServeMux) {
 		}
 		d.savedResponse(w, r, fence, map[string]any{"serverId": d.Identity.ID(), "viewerFence": fence, "revision": out.Revision, "order": out.Order})
 	})
-	mux.HandleFunc("GET /v1/me/library-navigation", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "GET /v1/me/library-navigation", func(w http.ResponseWriter, r *http.Request) {
 		p, libraries, fence, e := d.homeScope(r)
 		if e != nil {
 			failure(w, e)
@@ -152,7 +152,7 @@ func (d Dependencies) browseRoutes(mux *http.ServeMux) {
 		}
 		d.savedResponse(w, r, fence, out)
 	})
-	mux.HandleFunc("PUT /v1/me/library-navigation", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "PUT /v1/me/library-navigation", func(w http.ResponseWriter, r *http.Request) {
 		p, _, fence, e := d.homeScope(r)
 		if e != nil {
 			failure(w, e)

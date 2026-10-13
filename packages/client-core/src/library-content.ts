@@ -1,3 +1,5 @@
+import type {RouteResponse} from "../../contracts/src/routes.ts";
+import {encodedRoutePath} from "../../contracts/src/routes.ts";
 import {wireDurations,wireDisplayDurations} from './wire-units.ts';
 import {unreadableServerResponse} from './server-messages.ts';
 import {parseListeningJourney,type ListeningJourney} from './listening.ts';
@@ -384,7 +386,7 @@ export class LibraryContentService {
       const query = new URLSearchParams({ view: route.view, limit: String(this.pageSize) });
       for (const field of ['entityId','sort','direction','category','q'] as const) if (route[field] !== undefined) query.set(field, route[field]!);
       const raw = await Promise.race([
-        api.request<unknown>('/v1/libraries/' + encodeURIComponent(route.libraryId) + '/content?' + query, 'GET', undefined, controller.signal),
+        api.request<RouteResponse<"get_libraries_id_content">>(encodedRoutePath("get_libraries_id_content", {"id": encodeURIComponent(route.libraryId)}) + "?" + (query), 'GET', undefined, controller.signal),
         new Promise<never>((_, reject) => { timer = setTimeout(() => { reject(new ContentFailure('timeout', 'The server took too long to respond. Try again.', true)); controller.abort(); }, this.timeoutMs); }),
       ]);
       if (this.disposed || generation !== this.generation || controller.signal.aborted) return;
@@ -453,7 +455,7 @@ export class LibraryContentService {
     const query = new URLSearchParams({ view: op.route.view, limit: String(this.pageSize) });
     for (const field of ['entityId','sort','direction','category','q'] as const) if (op.route[field] !== undefined) query.set(field, op.route[field]!);
     if (op.page.cursor) query.set('cursor', op.page.cursor);
-    const path = ('/v1/libraries/' + encodeURIComponent(op.route.libraryId) + '/content?') + query;
+    const path = encodedRoutePath("get_libraries_id_content", {"id": encodeURIComponent(op.route.libraryId)}) + "?" + (query);
     try {
       const cancelled = new Promise<never>((_, reject) => { onAbort = () => reject(new ContentFailure('cancelled', 'Library request cancelled.')); controller.signal.addEventListener('abort', onAbort, { once: true }); });
       const raw = await Promise.race([api.request<unknown>(path, 'GET', undefined, controller.signal), cancelled, new Promise<never>((_, reject) => { timer = setTimeout(() => { reject(new ContentFailure('timeout', 'The server took too long to respond. Try again.', true)); controller.abort(); }, this.timeoutMs); })]);
@@ -470,7 +472,7 @@ export class LibraryContentService {
     } catch (error) {
       if (this.disposed || generation !== this.generation) return;
       const e = error as { code?: unknown; retryable?: unknown; message?: unknown; status?: unknown } | null;
-      // Q5: checked `server/api/openapi.yaml` — `/v1/content` and
+      // Q5: checked `server/api/portico.openapi.json` — `/v1/content` and
       // `/v1/libraries/{id}/content` accept only `cursor` + `limit` (no
       // `range.start`; that exists only on POST browse). A stale or expired
       // section continuation therefore cannot re-anchor by index client-side;

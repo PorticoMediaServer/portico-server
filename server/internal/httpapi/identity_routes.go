@@ -32,7 +32,7 @@ func (d Dependencies) identityRoutes(mux *http.ServeMux) {
 }
 
 func (d Dependencies) identityProfileRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("POST /v1/direct/profiles/{id}/avatar", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "POST /v1/direct/profiles/{id}/avatar", func(w http.ResponseWriter, r *http.Request) {
 		if e := d.Identity.AuthorizeProfileAvatarUpload(r.Context(), directBearer(r), r.PathValue("id")); e != nil {
 			closeUnreadUpload(w, r)
 			failure(w, e)
@@ -69,14 +69,14 @@ func (d Dependencies) identityProfileRoutes(mux *http.ServeMux) {
 		}
 		write(w, 201, out)
 	})
-	mux.HandleFunc("DELETE /v1/direct/profiles/{id}/avatar", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "DELETE /v1/direct/profiles/{id}/avatar", func(w http.ResponseWriter, r *http.Request) {
 		if e := d.Identity.DeleteProfileAvatar(r.Context(), directBearer(r), r.PathValue("id")); e != nil {
 			failure(w, e)
 			return
 		}
 		w.WriteHeader(204)
 	})
-	mux.HandleFunc("GET /v1/profiles/{id}/avatar", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "GET /v1/profiles/{id}/avatar", func(w http.ResponseWriter, r *http.Request) {
 		// Reading an avatar needs a viewing session on the same account: a
 		// profile picture is personal data, not public artwork.
 		p, e := d.principal(r)
@@ -152,7 +152,7 @@ func avatarBody(r *http.Request) ([]byte, error) {
 // Remaining direct session and remembered-account routes. Device records use
 // the shared /v1/devices typed registry in device_contract.go.
 func (d Dependencies) identityDeviceRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("POST /v1/direct/profile-switch", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "POST /v1/direct/profile-switch", func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
 			InstallationID    string `json:"installationId"`
 			OutgoingProfileID string `json:"outgoingProfileId"`
@@ -167,7 +167,7 @@ func (d Dependencies) identityDeviceRoutes(mux *http.ServeMux) {
 		}
 		w.WriteHeader(204)
 	})
-	mux.HandleFunc("POST /v1/direct/remembered-accounts", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "POST /v1/direct/remembered-accounts", func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
 			InstallationID  string `json:"installationId"`
 			AutomaticSignIn bool   `json:"automaticSignIn"`
@@ -186,7 +186,7 @@ func (d Dependencies) identityDeviceRoutes(mux *http.ServeMux) {
 }
 
 func (d Dependencies) identityAuthRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("POST /v1/auth/refresh", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "POST /v1/auth/refresh", func(w http.ResponseWriter, r *http.Request) {
 		var q struct {
 			RefreshToken   string `json:"refreshToken"`
 			InstallationID string `json:"installationId"`
@@ -204,7 +204,7 @@ func (d Dependencies) identityAuthRoutes(mux *http.ServeMux) {
 		w.Header().Set("Cache-Control", "no-store")
 		write(w, 200, out)
 	})
-	mux.HandleFunc("POST /v1/auth/register", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "POST /v1/auth/register", func(w http.ResponseWriter, r *http.Request) {
 		var body identity.SelfRegistrationRequest
 		if e := decode(w, r, &body); e != nil {
 			failure(w, e)
@@ -218,7 +218,7 @@ func (d Dependencies) identityAuthRoutes(mux *http.ServeMux) {
 		w.Header().Set("Cache-Control", "no-store")
 		writeAuth(w, r, 201, out)
 	})
-	mux.HandleFunc("POST /v1/auth/two-factor/challenge", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "POST /v1/auth/two-factor/challenge", func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
 			Token string `json:"token"`
 			Code  string `json:"code"`
@@ -235,7 +235,7 @@ func (d Dependencies) identityAuthRoutes(mux *http.ServeMux) {
 		w.Header().Set("Cache-Control", "no-store")
 		writeAuth(w, r, 200, out)
 	})
-	mux.HandleFunc("GET /v1/direct/two-factor", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "GET /v1/direct/two-factor", func(w http.ResponseWriter, r *http.Request) {
 		out, e := d.Identity.TwoFactor(r.Context(), directBearer(r))
 		if e != nil {
 			failure(w, e)
@@ -243,7 +243,7 @@ func (d Dependencies) identityAuthRoutes(mux *http.ServeMux) {
 		}
 		write(w, 200, out)
 	})
-	mux.HandleFunc("POST /v1/direct/two-factor/enrol", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "POST /v1/direct/two-factor/enrol", func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
 			Password string `json:"password"`
 		}
@@ -259,7 +259,7 @@ func (d Dependencies) identityAuthRoutes(mux *http.ServeMux) {
 		w.Header().Set("Cache-Control", "no-store")
 		write(w, 201, out)
 	})
-	mux.HandleFunc("POST /v1/direct/two-factor/verify", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "POST /v1/direct/two-factor/verify", func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
 			Password string `json:"password"`
 			Code     string `json:"code"`
@@ -275,7 +275,7 @@ func (d Dependencies) identityAuthRoutes(mux *http.ServeMux) {
 		}
 		write(w, 200, out)
 	})
-	mux.HandleFunc("DELETE /v1/direct/two-factor", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "DELETE /v1/direct/two-factor", func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
 			Password string `json:"password"`
 			Code     string `json:"code"`

@@ -1,3 +1,5 @@
+import {routeBody} from "../../contracts/src/routes.ts";
+import {routePath} from "../../contracts/src/routes.ts";
 import type {HttpLocalApi} from './index.ts';
 import {routeOrigin} from './route-identity.ts';
 import {keepReadable} from './tolerant.ts';
@@ -23,12 +25,12 @@ export function parseRemoteAccess(v:unknown):RemoteAccess{
  const mappings=keepReadable('remote-access','mappings',v.mappings,row=>{if(!object(row)||typeof row.protocol!=='string'||typeof row.state!=='string'||!Number.isInteger(row.externalPort)||typeof row.expiresAt!=='string')throw new Error('The gateway mapping response was incomplete.');return row;});
  return {...v,candidates,mappings} as unknown as RemoteAccess;
 }
-export async function loadRemoteAccess(api:HttpLocalApi,signal?:AbortSignal){return parseRemoteAccess(await api.request('/v1/networking/remote','GET',undefined,signal));}
+export async function loadRemoteAccess(api:HttpLocalApi,signal?:AbortSignal){return parseRemoteAccess(await api.request(routePath("get_networking_remote"),'GET',undefined,signal));}
 export async function saveRemoteAccess(api:HttpLocalApi,status:RemoteAccess,config:RemoteConfiguration,signal?:AbortSignal){
  if(config.revision!==status.config.revision)throw new Error('Reload remote-access settings before saving.');
- return parseRemoteAccess(await api.request('/v1/networking/remote/config','POST',{authorityId:status.authorityId,config},signal));
+ return parseRemoteAccess(await api.request(routePath("post_networking_remote_config"),'POST',routeBody("post_networking_remote_config", {authorityId:status.authorityId,config}),signal));
 }
-export async function checkRemoteAccess(api:HttpLocalApi,signal?:AbortSignal){return parseRemoteAccess(await api.request('/v1/networking/remote/check','POST',{},signal));}
+export async function checkRemoteAccess(api:HttpLocalApi,signal?:AbortSignal){return parseRemoteAccess(await api.request(routePath("post_networking_remote_check"),'POST',routeBody("post_networking_remote_check", {}),signal));}
 export function remoteAccessSummary(status:RemoteAccess):string{return ({reachable:'Remote access verified by Portico Account.',disabled:'Remote access is off. Verified local connections remain available.',claim_required:'Connect this server to a Portico Account before publishing remote routes.',certificate_pending:'Waiting for a publicly trusted HTTPS certificate.',manual_only:'Reachable through your own addresses only (a reverse proxy or VPN). Apps test them directly.',hosted_unavailable:'Portico Account is unavailable. Existing verified local connections still work.',remote_unavailable:'No verified public route is available.',checking:'Checking this server and its current network.',lan_only:'Available locally; no public route has been verified.'} as Record<string,string>)[status.state]??'Remote access is being checked.';}
 export function remoteAccessHelp(code?:string):string{
  return ({listener_loopback_only:'The listener accepts only this device. Bind the server to its private LAN interface before enabling other devices.',gateway_not_found:'No supported default gateway was found. Configure a private gateway or a manual HTTPS reverse proxy.',gateway_outside_listener:'The gateway-selected interface is outside the server listener.',no_public_route:'The router may be behind carrier-grade NAT or another router. Use a reachable public IPv6 address, configure upstream forwarding, or provide a public HTTPS reverse proxy. Portico does not bypass carrier-grade NAT.',external_proof_or_hosted_unavailable:'A router lease or certificate alone is not proof of reachability. Check upstream NAT, firewall rules, public HTTPS, and the account-service connection.',mapping_not_authorized:'The router did not authorize this mapping.',mapping_unsupported:'This gateway does not support the requested mapping protocol.',mapping_conflict:'This port belongs to another mapping. Choose a different public port; Portico will not overwrite it.'} as Record<string,string>)[code??'']??(code?'The worker will retry where safe. Inspect the diagnostic code and gateway configuration.':'');

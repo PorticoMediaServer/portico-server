@@ -1,3 +1,4 @@
+import {routePath} from "../../contracts/src/routes.ts";
 import {unreadableServerResponse} from './server-messages.ts';
 /** Versioned, renderer-independent linear feature DTOs. Credentials are write-only. */
 import type {ChannelApi} from './channel-guide';
@@ -21,7 +22,7 @@ export function parseRemoteSourcePreview(raw:unknown,serverId:string):RemoteSour
  const d=v.preview.diagnostics;if(!isRecord(d)||!safeCounter(d.skippedChannels,100000000)||!safeCounter(d.skippedProgrammes,100000000)||!safeCounter(d.adjustedProgrammes,100000000)||!Array.isArray(d.examples)||d.examples.length>10||d.examples.some(x=>!boundedText(x,256)))bad();
  return v as unknown as RemoteSourcePreview;
 }
-export async function previewRemoteSource(api:ChannelApi,serverId:string,draft:RemoteSourceDraft,signal?:AbortSignal){return parseRemoteSourcePreview(await api.request('/v1/admin/live-sources/remote/preview','POST',draft,signal),serverId)}
+export async function previewRemoteSource(api:ChannelApi,serverId:string,draft:RemoteSourceDraft,signal?:AbortSignal){return parseRemoteSourcePreview(await api.request(routePath("preview_remote_live_source"),'POST',draft,signal),serverId)}
 export function linearError(error:unknown,fallback='The request did not finish. Try again.'):string{
  if(!isRecord(error))return fallback;const code=typeof error.code==='string'?error.code:isRecord(error.error)?error.error.code:undefined;
  if(error.status===401||error.status===403)return 'Your access changed. Reopen this server to continue.';

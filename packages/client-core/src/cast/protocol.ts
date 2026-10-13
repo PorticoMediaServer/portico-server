@@ -1,3 +1,4 @@
+import {apiRoot} from "../../../contracts/src/routes.ts";
 /**
  * The Portico Cast channel (`urn:x-cast:tv.getportico.cast`), shared by every sender. The receiver
  * is `server/receiver/cast/receiver.js`.
@@ -72,6 +73,6 @@ export function castMetadataFields(meta: CastMetadata): Record<string, string | 
   if (Number.isInteger(meta.season)) out.season = meta.season!;
   if (Number.isInteger(meta.episode)) out.episode = meta.episode!;
   if (meta.kind) out.kind = meta.kind.slice(0, 32);
-  if (meta.artworkPath && meta.artworkPath.startsWith('/v1/')) out.artworkPath = meta.artworkPath.slice(0, 512);
+  if (meta.artworkPath && meta.artworkPath.startsWith(apiRoot)) out.artworkPath = meta.artworkPath.slice(0, 512);
   return out;
 }

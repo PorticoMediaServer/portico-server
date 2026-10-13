@@ -12,7 +12,7 @@ import (
 )
 
 func (d Dependencies) playbackDiagnosticsRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("GET /v1/admin/playback/diagnostics", d.playbackDiagnosticsHandler(d.Playback.DeliveryDiagnostics))
+	d.httpHandle(mux, "GET /v1/admin/playback/diagnostics", d.playbackDiagnosticsHandler(d.Playback.DeliveryDiagnostics))
 }
 
 // diagnosticsCapacity composes the transcoding half of the overview. It holds

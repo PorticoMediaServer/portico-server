@@ -1,3 +1,5 @@
+import type {RouteResponse} from "../../contracts/src/routes.ts";
+import {encodedRoutePath} from "../../contracts/src/routes.ts";
 import {wireDurations,wireDisplayDurations,durationIntent} from './wire-units.ts';
 import {unreadableServerResponse} from './server-messages.ts';
 import {parseLocalBook,parseLocalAudioPolicy,type LocalAudioPolicy,type LocalBookMetadata} from "./music-metadata.ts";
@@ -93,7 +95,7 @@ function part<T>(name: string, value: unknown, read: (value: unknown) => T): T |
 /** One credit row as the detail and the credits pages carry it. A row needs its id; a portrait or person link that cannot be read is left out, and missing words are empty. */
 function creditRow(row: unknown, itemId: string): DetailCredit {
   if (!obj(row) || !id(row.id) || !str(row.name ?? '') || !str(row.role ?? '') || !str(row.department ?? '') || !str(row.provider ?? '', 256)) invalid();
-  const portrait = str(row.portraitUrl) && row.portraitUrl.startsWith('/v1/metadata/item/'+encodeURIComponent(itemId)+'/art/portrait?') && !/[\\\r\n]/.test(row.portraitUrl) ? row.portraitUrl : undefined;
+  const portrait = str(row.portraitUrl) && row.portraitUrl.startsWith(encodedRoutePath("get_metadata_kind_id_art_role", {"kind": "item", "id": encodeURIComponent(itemId), "role": "portrait"}) + "?") && !/[\\\r\n]/.test(row.portraitUrl) ? row.portraitUrl : undefined;
   if (!portrait && row.portraitUrl) left('credit.portraitUrl', row.portraitUrl);
   return Object.freeze({ id: row.id, name: (row.name ?? '') as string, role: (row.role ?? '') as string, department: (row.department ?? '') as string, provider: (row.provider ?? '') as string,...(portrait?{portraitUrl:portrait}:{}),...(id(row.personId)?{personId:row.personId}:{}) });
 }
@@ -277,7 +279,7 @@ export class DetailService {
     this.publish({ phase: 'loading', error: null });
     const task = (async () => {
       try {
-        const raw = await this.deadline(api.request<unknown>('/v1/items/' + encodeURIComponent(target.itemId) + '/detail?related=all', 'GET', undefined, controller.signal), controller);
+        const raw = await this.deadline(api.request<RouteResponse<"get_items_id_detail">>(encodedRoutePath("get_items_id_detail", {"id": encodeURIComponent(target.itemId)}) + "?related=all", 'GET', undefined, controller.signal), controller);
         if (this.disposed || generation !== this.generation || read !== this.readGeneration) return;
         const data = projection(raw, bound, target);
         if (this.state.data && (data.scope.viewerFence!==this.state.data.scope.viewerFence || data.revision.catalog<this.state.data.revision.catalog)) throw new Failure('detail_scope_changed','The catalog or your access changed. Reload these details before continuing.',true);
@@ -304,7 +306,7 @@ export class DetailService {
     context?.signal?.addEventListener('abort', stop, { once: true });
     const generation = this.generation, read = this.readGeneration, bound = this.bound, api = this.api;
     try {
-      const raw = await this.deadline(api.request<unknown>('/v1/items/' + encodeURIComponent(target.itemId) + '/detail?related=all', 'GET', undefined, controller.signal), controller);
+      const raw = await this.deadline(api.request<RouteResponse<"get_items_id_detail">>(encodedRoutePath("get_items_id_detail", {"id": encodeURIComponent(target.itemId)}) + "?related=all", 'GET', undefined, controller.signal), controller);
       if (this.disposed || generation !== this.generation || read !== this.readGeneration) return;
       const data = projection(raw, bound, target);
       await context?.settle?.();
@@ -367,7 +369,7 @@ export class DetailService {
       }
       const field = command.intent.action === 'watchlist' ? 'watchlisted' : command.intent.action;
       const body = { operationId: command.operationId, expectedRevision: command.expectedRevision, [field]: command.intent.value, ...(command.offline?{offline:command.offline}:{}) };
-      const raw = await this.deadline(api.request<unknown>('/v1/items/' + encodeURIComponent(data.scope.itemId) + '/personal-state', 'PUT', durationIntent(body,{progressSeconds:'progressMs'}), controller.signal), controller);
+      const raw = await this.deadline(api.request<RouteResponse<"put_items_id_personal_state">>(encodedRoutePath("put_items_id_personal_state", {"id": encodeURIComponent(data.scope.itemId)}), 'PUT', durationIntent(body,{progressSeconds:'progressMs'}), controller.signal), controller);
       if (this.disposed || generation !== this.generation) return;
       const applied = receipt(raw, command.operationId, data);
       if (this.state.data && applied.personal.revision >= this.state.data.personal.revision) this.publish({ data: Object.freeze({ ...this.state.data, item:Object.freeze({...this.state.data.item,progressSeconds:applied.personal.progressSeconds}), personal: applied.personal }) });

@@ -1,3 +1,4 @@
+import {encodedRoutePath} from "../../../contracts/src/routes.ts";
 /**
  * A library's metadata source (`GET`/`PUT /v1/libraries/{id}/metadata/agent`),
  * Plex-agent style: `online` (Portico's online providers after the library's own files, the
@@ -73,9 +74,9 @@ export function parseKindMetadataAgents(raw: unknown): KindMetadataAgents {
   return Object.freeze({libraryKind: text(o.libraryKind, 32), agents: Object.freeze(agents)});
 }
 
-export const metadataAgentPath = (libraryId: string) => `/v1/libraries/${encodeURIComponent(libraryId)}/metadata/agent`;
+export const metadataAgentPath = (libraryId: string) => encodedRoutePath("get_libraries_id_metadata_agent", {"id": encodeURIComponent(libraryId)});
 
-export const kindMetadataAgentsPath = (kind: string) => `/v1/library-kinds/${encodeURIComponent(kind)}/metadata-agents`;
+export const kindMetadataAgentsPath = (kind: string) => encodedRoutePath("get_library_kinds_kind_metadata_agents", {"kind": encodeURIComponent(kind)});
 
 /** The `PUT` body that chooses `agent` for the library as it was read. */
 export const metadataAgentChange = (current: LibraryMetadataAgent, agent: MetadataAgentId) => ({expectedRevision: current.revision, agent});

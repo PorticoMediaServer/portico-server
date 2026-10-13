@@ -1,3 +1,4 @@
+import {encodedRoutePath} from "../../contracts/src/routes.ts";
 import {enUS,type MessageId} from '../../i18n/src/index.ts';
 import {unreadableServerResponse} from './server-messages.ts';
 import type {LibraryContentApi} from './library-content.ts';
@@ -66,7 +67,7 @@ export function validateSubtitlePlan(v:unknown):SubtitlePlan{
  if(resources.some(r=>r.sourceId!==v.sourceId)||discovered.some(r=>r.sourceId!==v.sourceId)||selected&&selected.sourceId!==v.sourceId)invalid();
  if(new Set(resources.map(r=>r.id)).size!==resources.length||new Set(discovered.map(r=>r.id)).size!==discovered.length)invalid();
  if((v.mode==='off')!==(selected===null)||v.mode==='off'&&(v.offsetUs!=='0'||v.documentUrl!==undefined))invalid();
- if(v.documentUrl!==undefined&&(!selected||!text(v.documentUrl,512)||!new RegExp('^/v1/media/subtitles/[A-Za-z0-9_-]{1,128}/'+selected.id+'/'+selected.revision+'$').test(v.documentUrl)))invalid();
+ if(v.documentUrl!==undefined&&(!selected||!text(v.documentUrl,512)||!new RegExp('^'+encodedRoutePath('get_v1_media_subtitles_grant_resource_revision',{grant:'[A-Za-z0-9_-]{1,128}',resource:selected.id,revision:String(selected.revision)})+'$').test(v.documentUrl)))invalid();
  if(selected&&(selected.pinned!==true||selected.renderer!==v.renderer))invalid();if(v.mode==='off'&&v.renderer!=='external_text')invalid();if(selected?.enabled&&v.renderer==='external_text'&&!v.documentUrl)invalid();if(v.renderer==='burn_in'&&v.documentUrl!==undefined)invalid();
  if(v.presentation!==undefined){const p=v.presentation;if(!record(p)||p.sessionId!==v.sessionId||p.generation!==v.generation||!text(p.streamUrl,1024)||!/^\/v1\/media\/[A-Za-z0-9_-]+(?:\/master\.m3u8)?$/.test(p.streamUrl)||!['direct','hls'].includes(String(p.mode))||!decimal(p.positionUs))invalid();}
  if(v.appliedRevision!==undefined&&(!integer(v.appliedRevision)||v.appliedRevision>v.revision))invalid();
@@ -152,9 +153,9 @@ export class SubtitleService {
  constructor(api:LibraryContentApi,target:SubtitleTarget,operationId:()=>string,transport?:{positionUs:()=>string;reserve?:(payload:Record<string,unknown>)=>Promise<Record<string,unknown>>;select?:(path:string,payload:Record<string,unknown>)=>Promise<unknown>;install:(presentation:SubtitlePresentation)=>boolean}){this.api=api;this.target=target;this.operationId=operationId;this.transport=transport;if(!id(target.itemId)||(target.sourceId!==undefined?!id(target.sourceId):!id(target.sessionId)||!integer(target.generation)))throw new Error('Invalid subtitle target.');}
  getSnapshot=()=>this.state;subscribe=(fn:()=>void)=>{this.listeners.add(fn);return()=>{this.listeners.delete(fn);};};
  private publish(p:Partial<SubtitleSnapshot>){this.state=Object.freeze({...this.state,...p});this.listeners.forEach(f=>f());}
- private path(suffix=''){return '/v1/items/'+this.target.itemId+'/subtitles'+suffix;}
+ private path(suffix=''){return encodedRoutePath("get_v1_items_itemId_subtitles", {"itemId": this.target.itemId}) + (suffix);}
  get sourceId(){return this.target.sourceId??this.state.plan?.sourceId;}
- private selectionPath(){if(this.target.sourceId!==undefined)throw new Error('Start playback to select subtitles.');return '/v1/items/'+this.target.itemId+'/playback/'+this.target.sessionId+'/subtitles';}
+ private selectionPath(){if(this.target.sourceId!==undefined)throw new Error('Start playback to select subtitles.');return encodedRoutePath("get_v1_items_itemId_playback_session_subtitles", {"itemId": this.target.itemId, "session": this.target.sessionId});}
  private polling=true;
  start(){if(this.active)return;this.active=true;this.life++;void this.refresh();this.arm();}
  private arm(){if(this.interval){clearInterval(this.interval);this.interval=undefined;}if(this.active&&this.polling&&this.target.sourceId===undefined)this.interval=setInterval(()=>void this.refresh(),25000);}

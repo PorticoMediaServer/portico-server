@@ -1,3 +1,6 @@
+import {routeBody} from "../../contracts/src/routes.ts";
+import type {RouteResponse} from "../../contracts/src/routes.ts";
+import {encodedRoutePath} from "../../contracts/src/routes.ts";
 import {unreadableServerResponse} from './server-messages.ts';
 import {keepReadable,noteSkipped} from './tolerant.ts';
 /** Bounded music/local-book projections. No provider requests or client ranking. */
@@ -53,7 +56,7 @@ export async function saveLocalBookPolicy(api:{request<T>(path:string,method?:st
  if(!itemId||!libraryId||itemId.length>256||libraryId.length>256||signal.aborted)throw new Error('Local metadata scope changed.');
  let abort:(()=>void)|undefined;
  try {
- const out=await Promise.race([api.request<unknown>('/v1/items/'+encodeURIComponent(itemId)+'/metadata/local-audio/policy','POST',{libraryId,expectedRevision:policy.revision,localMode},signal),new Promise<never>((_,reject)=>{abort=()=>reject(new Error('Local metadata request cancelled. Refresh to confirm the current policy.'));signal.addEventListener('abort',abort,{once:true});if(signal.aborted)abort();})]);
+ const out=await Promise.race([api.request<RouteResponse<"post_items_id_metadata_local_audio_policy">>(encodedRoutePath("post_items_id_metadata_local_audio_policy", {"id": encodeURIComponent(itemId)}),'POST',routeBody("post_items_id_metadata_local_audio_policy", {libraryId,expectedRevision:policy.revision,localMode}),signal),new Promise<never>((_,reject)=>{abort=()=>reject(new Error('Local metadata request cancelled. Refresh to confirm the current policy.'));signal.addEventListener('abort',abort,{once:true});if(signal.aborted)abort();})]);
  if(signal.aborted)throw new Error('Local metadata request cancelled. Refresh to confirm the current policy.');
  if(!obj(out)||out.entityId!==itemId||out.status!=='saved')invalid();
  } finally {if(abort)signal.removeEventListener('abort',abort);}

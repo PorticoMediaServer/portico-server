@@ -44,7 +44,7 @@ func fmtSetupInterval(n int) string {
 	return strconv.Itoa(n)
 }
 func (d Dependencies) onboardingRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("POST /v1/setup/resume", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "POST /v1/setup/resume", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 		var q struct {
 			RequestID  string `json:"requestId"`
@@ -65,7 +65,7 @@ func (d Dependencies) onboardingRoutes(mux *http.ServeMux) {
 		}
 		writeAuth(w, r, 200, out)
 	})
-	mux.HandleFunc("GET /v1/setup/state", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "GET /v1/setup/state", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 		p, e := d.localOwner(r)
 		if e != nil {
@@ -81,7 +81,7 @@ func (d Dependencies) onboardingRoutes(mux *http.ServeMux) {
 	})
 	for _, action := range []string{"finish", "remote-recovery"} {
 		action := action
-		mux.HandleFunc("POST /v1/setup/"+action, func(w http.ResponseWriter, r *http.Request) {
+		d.httpHandle(mux, "POST /v1/setup/"+action, func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Cache-Control", "no-store")
 			p, e := d.localOwner(r)
 			if e != nil {
@@ -110,7 +110,7 @@ func (d Dependencies) onboardingRoutes(mux *http.ServeMux) {
 			write(w, 200, out)
 		})
 	}
-	mux.HandleFunc("POST /v1/quick-connect", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "POST /v1/quick-connect", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 		defer cancel()
@@ -136,7 +136,7 @@ func (d Dependencies) onboardingRoutes(mux *http.ServeMux) {
 		}
 		write(w, 201, out)
 	})
-	mux.HandleFunc("POST /v1/quick-connect/review", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "POST /v1/quick-connect/review", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 		p, e := d.principal(r)
 		if e != nil {
@@ -163,7 +163,7 @@ func (d Dependencies) onboardingRoutes(mux *http.ServeMux) {
 		}
 		write(w, 200, out)
 	})
-	mux.HandleFunc("POST /v1/quick-connect/decision", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "POST /v1/quick-connect/decision", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 		p, e := d.principal(r)
 		if e != nil {
@@ -193,7 +193,7 @@ func (d Dependencies) onboardingRoutes(mux *http.ServeMux) {
 	})
 	for _, action := range []string{"token", "cancel"} {
 		action := action
-		mux.HandleFunc("POST /v1/quick-connect/"+action, func(w http.ResponseWriter, r *http.Request) {
+		d.httpHandle(mux, "POST /v1/quick-connect/"+action, func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Cache-Control", "no-store")
 			ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 			defer cancel()

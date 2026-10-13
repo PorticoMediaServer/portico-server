@@ -13,7 +13,7 @@ import (
 )
 
 func (d Dependencies) operationsRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("GET /v1/admin/operations/{panel}", d.operationsHandler(operations.Read))
+	d.httpHandle(mux, "GET /v1/admin/operations/{panel}", d.operationsHandler(operations.Read))
 }
 func (d Dependencies) operationsHandler(read func(context.Context, *sql.DB, string) (operations.Panel, error)) http.HandlerFunc {
 	slots := make(chan struct{}, 4)

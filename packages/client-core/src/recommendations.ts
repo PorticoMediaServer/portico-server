@@ -1,3 +1,5 @@
+import type {RouteResponse} from "../../contracts/src/routes.ts";
+import {encodedRoutePath, routePath} from "../../contracts/src/routes.ts";
 import {unreadableServerResponse} from './server-messages.ts';
 /** Viewer suggestions and per-item related rows. Reasons, ranking and row shape are server-authored. */
 import {validateContentEntry, type ContentEntry} from './library-content.ts';
@@ -98,15 +100,15 @@ export function validateShowRecommendations(value: unknown, showId: string): Sho
 }
 
 export async function fetchShowRecommendations(api: HomeApi, showId: string, limit?: number, signal?: AbortSignal): Promise<ShowRecommendations> {
-  const path = '/v1/shows/' + encodeURIComponent(showId) + '/recommendations' + (limit === undefined ? '' : '?limit=' + limit);
+  const path = encodedRoutePath("get_shows_id_recommendations", {"id": encodeURIComponent(showId)}) + (limit === undefined ? '' : '?limit=' + limit);
   return validateShowRecommendations(await api.request<unknown>(path, 'GET', undefined, signal), showId);
 }
 
 export async function fetchSuggestions(api: HomeApi, limit?: number, signal?: AbortSignal): Promise<Suggestions> {
-  return validateSuggestions(await api.request<unknown>('/v1/suggestions' + (limit === undefined ? '' : '?limit=' + limit), 'GET', undefined, signal));
+  return validateSuggestions(await api.request<RouteResponse<"get_suggestions">>(routePath("get_suggestions") + (limit === undefined ? '' : '?limit=' + limit), 'GET', undefined, signal));
 }
 
 export async function fetchItemRecommendations(api: HomeApi, itemId: string, limit?: number, signal?: AbortSignal): Promise<ItemRecommendations> {
-  const path = '/v1/items/' + encodeURIComponent(itemId) + '/recommendations' + (limit === undefined ? '' : '?limit=' + limit);
+  const path = encodedRoutePath("get_items_id_recommendations", {"id": encodeURIComponent(itemId)}) + (limit === undefined ? '' : '?limit=' + limit);
   return validateItemRecommendations(await api.request<unknown>(path, 'GET', undefined, signal), itemId);
 }

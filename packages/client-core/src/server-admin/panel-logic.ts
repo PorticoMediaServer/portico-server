@@ -1,3 +1,4 @@
+import {routePath} from "../../../contracts/src/routes.ts";
 /**
  * The rules behind the Server pages' panels that are not a settings document: what a broadcast
  * may carry, how a WebDAV dialog maps onto the server's credential rules, when "remove what's
@@ -120,7 +121,7 @@ export function regenerationBody(channel: {revision: number; replacementBoundary
 // ── People ──────────────────────────────────────────────────────────────────────────────────
 
 /** CD-07: the server allows at most 100 rows a page; every list stays on that limit and follows nextCursor. */
-export const accessLists = {members: '/v1/admin/access/members', invitations: '/v1/admin/access/invitations', devices: '/v1/admin/access/devices', apiKeys: '/v1/admin/api-keys'} as const;
+export const accessLists = {members: routePath("get_admin_access_members"), invitations: routePath("get_admin_access_invitations"), devices: routePath("get_admin_access_devices"), apiKeys: routePath("list_api_keys")} as const;
 export const accessListPath = (list: keyof typeof accessLists, cursor = '') => `${accessLists[list]}?limit=100${cursor ? '&cursor=' + encodeURIComponent(cursor) : ''}`;
 export const tierLabels: Readonly<Record<AccessTier, string>> = {owner: 'Owner', admin: 'Administrator', member: 'Member'};
 /** A key's access, as the simple picker offers it: four ready-made choices of scopes. */
@@ -156,7 +157,7 @@ export function filesystemPath(path: string, cursor = ''): string {
   const parts = ['limit=200'];
   if (path) parts.push('path=' + encodeURIComponent(path));
   if (cursor) parts.push('cursor=' + encodeURIComponent(cursor));
-  return '/v1/admin/filesystem?' + parts.join('&');
+  return routePath("get_admin_filesystem") + "?" + (parts.join('&'));
 }
 /** Appends the next page of a folder, keeping the server's order and never listing an entry twice. */
 export function mergeFilesystemPages(current: FilesystemPage, next: FilesystemPage): FilesystemPage {

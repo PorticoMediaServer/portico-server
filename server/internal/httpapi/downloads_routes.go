@@ -154,12 +154,67 @@ func registerDownloads(r *apikit.Registry, d Dependencies) {
 		}
 		return requires
 	}
+	admission := func(id string) string {
+		switch id {
+		case "act_on_download_preparation":
+			return laneDefault
+		case "create_download_grant":
+			return laneDefault
+		case "create_download_preparations":
+			return laneDefault
+		case "create_download_request":
+			return laneDefault
+		case "get_download_artifact":
+			return laneBulkTransfer
+		case "get_download_artwork":
+			return laneMedia
+		case "get_download_bundle":
+			return laneDefault
+		case "get_download_options":
+			return laneBrowsing
+		case "get_download_preparation":
+			return laneDefault
+		case "get_download_request":
+			return laneBrowsing
+		case "get_download_settings":
+			return laneDefault
+		case "get_download_subtitle":
+			return laneMedia
+		case "get_download_subtitle_original":
+			return laneMedia
+		case "get_download_usage":
+			return laneDefault
+		case "head_download_artifact":
+			return laneBulkTransfer
+		case "issue_download_receipts":
+			return laneDefault
+		case "list_download_preparations":
+			return laneDefault
+		case "list_download_receipt_keys":
+			return laneDefault
+		case "list_download_requests":
+			return laneBrowsing
+		case "list_download_revocations":
+			return laneSecurityFence
+		case "put_download_settings":
+			return laneDefault
+		case "revalidate_download_receipts":
+			return laneDefault
+		case "revoke_download_receipts":
+			return laneSecurityFence
+		case "revoke_profile_downloads":
+			return laneSecurityFence
+		case "sync_download_progress":
+			return laneDefault
+		}
+		return laneDefault
+	}
 	route := func(id, method, path, summary string, access apikit.Access, lane apikit.Lane, cost apikit.Cost, status int, bodyLimit int64, query []string) apikit.Metadata {
 		failures := read
 		if method != "GET" {
 			failures = write
 		}
-		return apikit.Metadata{ID: id, Method: method, Path: path, Summary: summary, Access: access, Requires: scope(id), Lane: lane, Cost: cost, Status: status, BodyLimit: bodyLimit, Query: query, Errors: failures}
+		return apikit.Metadata{Admission: admission(id), ID: id, Method: method, Path: path, Summary: summary, Access: access, Requires: scope(id), Lane: lane, Cost: cost, Status: status, BodyLimit: bodyLimit, Query: query, Errors: failures}
 	}
 	v1Route(r, route("get_download_options", "GET", "/v1/items/{itemId}/download-options", "List offline qualities this device can play and this server can produce", apikit.ViewerItem, apikit.Browsing, apikit.PageSized, 200, 0, nil), func(ctx context.Context, q *http.Request, _ noBody) (downloads.DownloadOptionsView, error) {
 		p, owner, e := d.downloadViewer(q)
@@ -291,8 +346,8 @@ func registerDownloads(r *apikit.Registry, d Dependencies) {
 		http.ServeContent(body, q, out.Artifact.FileName, out.Modified, out.Reader)
 	}
 	rawRoute := func(id, method, path, summary string, lane apikit.Lane, query []string, serve http.HandlerFunc) {
-		m := apikit.Metadata{ID: id, Method: method, Path: path, Summary: summary, Access: apikit.Public, Requires: scope(id), Lane: lane, Cost: apikit.Constant, Status: 200, Query: query, Errors: []string{"invalid_request", "invalid_download_grant", "downloads_not_allowed", "download_unavailable", "download_not_ready", "download_source_offline", "downloads_unavailable", "not_found", "internal"}}
-		if err := apikit.RegisterRaw(r, apikit.RawRoute[noBody, noBody]{Metadata: m, Serve: serve}); err != nil {
+		m := apikit.Metadata{ResponseContentType: "application/octet-stream", Admission: admission(id), ID: id, Method: method, Path: path, Summary: summary, Access: apikit.Public, Requires: scope(id), Lane: lane, Cost: apikit.Constant, Status: 200, Query: query, Errors: []string{"invalid_request", "invalid_download_grant", "downloads_not_allowed", "download_unavailable", "download_not_ready", "download_source_offline", "downloads_unavailable", "not_found", "internal"}}
+		if err := apikit.RegisterRaw(r, apikit.RawRoute[noBody, SubtitleBytesContract]{Metadata: m, Serve: serve}); err != nil {
 			panic(m.ID + ": " + err.Error())
 		}
 	}

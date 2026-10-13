@@ -15,6 +15,7 @@ Manage them in the console or with an owner's key that has the `admin` scope:
 | Send a test | `POST /v1/admin/webhooks/{id}/test (portico.openapi.json, operationId test_webhook)` |
 | Delivery log | `GET /v1/admin/webhooks/{id}/deliveries (portico.openapi.json, operationId list_webhook_deliveries)` |
 
+<!-- example: create-webhook file=portico.openapi.json operationId=create_webhook direction=request schema=@request /v1/admin/webhooks post -->
 ```json
 {
   "name": "Home Assistant",

@@ -15,7 +15,7 @@ import (
 // no client-side fan-out, no per-row round trip.
 func (d Dependencies) peopleRoutes(mux *http.ServeMux) {
 	personalRate := &personalLimiter{}
-	d.projectedHandle(mux, "GET /v1/people", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "GET /v1/people", func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
 		for key, values := range q {
 			if len(values) != 1 || (key != "q" && key != "limit") {
@@ -83,7 +83,7 @@ func (d Dependencies) peopleRoutes(mux *http.ServeMux) {
 		}
 		d.savedResponse(w, r, fence, out)
 	})
-	d.projectedHandle(mux, "GET /v1/people/{id}/portrait", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "GET /v1/people/{id}/portrait", func(w http.ResponseWriter, r *http.Request) {
 		p, err := d.principal(r)
 		if err != nil {
 			failure(w, err)
@@ -192,7 +192,7 @@ func (d Dependencies) peopleRoutes(mux *http.ServeMux) {
 		out.ViewerFence = fence
 		d.savedResponse(w, r, fence, out)
 	})
-	d.projectedHandle(mux, "POST /v1/collections/{id}/items:batch", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "POST /v1/collections/{id}/items:batch", func(w http.ResponseWriter, r *http.Request) {
 		if _, e := d.owner(r); e != nil {
 			failure(w, e)
 			return

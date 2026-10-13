@@ -179,3 +179,36 @@ func TestGeneratedBinaryResponseUsesItsContentType(t *testing.T) {
 		t.Fatal("binary response labelled JSON")
 	}
 }
+
+func TestHTTPDocumentationKeepsMultipartHeadersAndEmptyResponses(t *testing.T) {
+	definitions := []Definition{{Metadata: Metadata{ID: "upload", Method: "POST", Path: "/v1/files/{id}", Summary: "Upload a file", Access: Owner, Requires: ScopeLibrary, Lane: Default, Cost: Constant, Status: 202, BodyLimit: 64, RequestContentTypes: []string{"multipart/form-data"}, Headers: []string{"X-Installation"}, NoResponseBody: true}, Request: reflect.TypeFor[struct {
+		File testBinary `json:"file"`
+	}](), Response: reflect.TypeFor[struct{}]()}}
+	generated, err := Generate(definitions)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var document map[string]any
+	if err = json.Unmarshal(generated.OpenAPI, &document); err != nil {
+		t.Fatal(err)
+	}
+	operation := document["paths"].(map[string]any)["/v1/files/{id}"].(map[string]any)["post"].(map[string]any)
+	reply := operation["responses"].(map[string]any)["202"].(map[string]any)
+	if _, ok := reply["content"]; ok {
+		t.Fatal("empty success advertises a JSON body")
+	}
+	params := operation["parameters"].([]any)
+	if len(params) != 2 || params[0].(map[string]any)["in"] != "path" || params[1].(map[string]any)["in"] != "header" {
+		t.Fatalf("parameters: %v", params)
+	}
+	request := operation["requestBody"].(map[string]any)["content"].(map[string]any)["multipart/form-data"].(map[string]any)["schema"].(map[string]any)
+	if request["properties"].(map[string]any)["file"].(map[string]any)["format"] != "binary" {
+		t.Fatal("multipart file must be binary")
+	}
+}
+
+type testBinary string
+
+func (testBinary) JSONSchema() map[string]any {
+	return map[string]any{"type": "string", "format": "binary"}
+}

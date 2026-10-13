@@ -1,3 +1,4 @@
+import {routePath} from "../../contracts/src/routes.ts";
 /** P09 connection evidence. None of these values grants a viewer or media lease. */
 export type ServerPin = Readonly<{serverId:string;publicKey:string;fingerprint:string}>;
 export type SignedRoutes = Readonly<{payload:string;signature:string}>;
@@ -118,7 +119,7 @@ export async function probeRoute(origin:string,pin:ServerPin|undefined,options:{
  const controller=new AbortController(),cancel=()=>controller.abort();options.signal?.addEventListener('abort',cancel,{once:true});const timer=setTimeout(cancel,3000);
  try{
   if(options.signal?.aborted)cancel();if(controller.signal.aborted)throw new RouteError('cancelled','Connection check cancelled.');
-  const response=await (options.fetcher??globalThis.fetch)(baseUrl+'/v1/networking/identity-proof',{method:'POST',redirect:'error',credentials:'omit',referrerPolicy:'no-referrer',signal:controller.signal,headers:{Accept:'application/json','Content-Type':'application/json'},body:JSON.stringify({baseUrl,nonce})});
+  const response=await (options.fetcher??globalThis.fetch)((baseUrl) + routePath("prove_network_identity"),{method:'POST',redirect:'error',credentials:'omit',referrerPolicy:'no-referrer',signal:controller.signal,headers:{Accept:'application/json','Content-Type':'application/json'},body:JSON.stringify({baseUrl,nonce})});
   const signed=envelope(await routeJSON(response,controller.signal,8192)),v=parseSignedJSON(signed);
   if(v.kind!=='portico.route-proof'||v.version!=='1'||v.baseUrl!==baseUrl||v.nonce!==nonce||typeof v.serverId!=='string'||typeof v.publicKey!=='string'||typeof v.fingerprint!=='string')throw new RouteError('identity_mismatch','The server did not prove this connection.');
   const actual=await serverPin(v.serverId,v.publicKey,v.fingerprint,crypto);if(pin&&!sameServerPin(actual,pin))throw new RouteError('identity_mismatch','This address belongs to a different server. No credentials were sent.');

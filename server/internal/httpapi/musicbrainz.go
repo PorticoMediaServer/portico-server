@@ -9,7 +9,7 @@ import (
 
 func (d Dependencies) musicBrainzRoutes(mux *http.ServeMux) {
 	rate := &personalLimiter{}
-	mux.HandleFunc("POST /v1/items/{id}/metadata/local-audio/policy", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "POST /v1/items/{id}/metadata/local-audio/policy", func(w http.ResponseWriter, r *http.Request) {
 		p, e := d.owner(r)
 		if e != nil {
 			failure(w, e)
@@ -31,7 +31,7 @@ func (d Dependencies) musicBrainzRoutes(mux *http.ServeMux) {
 		write(w, 200, map[string]string{"entityId": r.PathValue("id"), "status": "saved"})
 	})
 	for _, route := range []struct{ path, kind string }{{"/v1/albums/{id}/metadata/musicbrainz", "album"}, {"/v1/items/{id}/metadata/musicbrainz", "song"}} {
-		mux.HandleFunc("GET "+route.path, func(w http.ResponseWriter, r *http.Request) {
+		d.httpHandle(mux, "GET "+route.path, func(w http.ResponseWriter, r *http.Request) {
 			if _, e := d.owner(r); e != nil {
 				failure(w, e)
 				return
@@ -64,7 +64,7 @@ func (d Dependencies) musicBrainzRoutes(mux *http.ServeMux) {
 			write(w, 200, out)
 		})
 		for _, operation := range []struct{ method, suffix string }{{"PUT", ""}, {"POST", "/retry"}, {"POST", "/search"}, {"POST", "/policy"}} {
-			mux.HandleFunc(operation.method+" "+route.path+operation.suffix, func(w http.ResponseWriter, r *http.Request) {
+			d.httpHandle(mux, operation.method+" "+route.path+operation.suffix, func(w http.ResponseWriter, r *http.Request) {
 				p, e := d.owner(r)
 				if e != nil {
 					failure(w, e)

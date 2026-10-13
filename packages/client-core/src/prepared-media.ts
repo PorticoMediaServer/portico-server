@@ -1,3 +1,4 @@
+import {encodedRoutePath, routePrefix} from "../../contracts/src/routes.ts";
 import {unreadableServerResponse} from './server-messages.ts';
 import type {ContentScope, LibraryContentApi} from './library-content.ts';
 import {firstOfEach, keepReadable} from './tolerant.ts';
@@ -106,7 +107,7 @@ export class PreparedMediaService {
     if(this.disposed)return;clearTimeout(this.timer);this.read?.abort();const serial=++this.serial,read=this.read=new AbortController();
     const timeout=setTimeout(()=>read.abort(),12000);this.update({loading:true});
     try{
-      const raw=await this.api.request('/v1/items/'+this.itemId+'/prepared-versions','GET',undefined,read.signal);
+      const raw=await this.api.request(encodedRoutePath("get_items_id_prepared_versions", {"id": this.itemId}),'GET',undefined,read.signal);
       const data=parsePreparedView(raw,this.itemId);if(serial!==this.serial||this.disposed)return;
       this.update({data,error:this.state.uncertain?this.state.error:null});
     }catch(e){if(serial!==this.serial||this.disposed)return;const status=(e as {status?:number})?.status;this.update({...(status===401||status===403?{data:null}:{}),error:'Prepared versions could not be refreshed. Check the connection and retry.'});}
@@ -114,15 +115,15 @@ export class PreparedMediaService {
   }
   submit(source:OptimizationSource,profile:OptimizationProfile,targetId:string):Promise<void> {
     const v=this.state.data;if(!v?.canManage||!v.configured||!v.sources.some(s=>s.id===source.id&&s.revision===source.revision&&s.available)||!v.profiles.some(p=>p.id===profile.id)||!v.targets.some(t=>t.id===targetId))return this.reject('Refresh the source, profile and target before optimizing.');
-    return this.begin('/v1/items/'+this.itemId+'/optimizations',{itemId:this.itemId,sourceId:source.id,expectedSourceRevision:source.revision,profileId:profile.id,targetId});
+    return this.begin(encodedRoutePath("post_items_id_optimizations", {"id": this.itemId}),{itemId:this.itemId,sourceId:source.id,expectedSourceRevision:source.revision,profileId:profile.id,targetId});
   }
   command(job:OptimizationJob,action:'cancel'|'retry'):Promise<void> {
     if(!this.state.data?.canManage||!this.state.data.jobs.some(j=>j.id===job.id&&j.revision===job.revision))return this.reject('Refresh the job before changing it.');
-    return this.begin('/v1/optimization-jobs/'+job.id+'/'+action,{expectedRevision:job.revision});
+    return this.begin(encodedRoutePath(action==='cancel'?'post_optimization_jobs_id_cancel':'post_optimization_jobs_id_retry',{id:job.id}),{expectedRevision:job.revision});
   }
   remove(version:PreparedVersion):Promise<void> {
     if(!this.state.data?.canManage||!this.state.data.versions.some(v=>v.id===version.id&&v.revision===version.revision))return this.reject('Refresh the version before removing it.');
-    return this.begin('/v1/prepared-versions/'+version.id+'/delete',{expectedRevision:version.revision});
+    return this.begin(encodedRoutePath("post_prepared_versions_id_delete", {"id": version.id}),{expectedRevision:version.revision});
   }
   private reject(message:string):Promise<void>{this.update({error:message});return Promise.resolve();}
   private begin(path:string,body:Record<string,unknown>):Promise<void> {

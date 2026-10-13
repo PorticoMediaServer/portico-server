@@ -25,7 +25,8 @@ export const routes = [
       "downloads_unavailable",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "default"
   },
   {
     "id": "add_queue_segment",
@@ -47,7 +48,8 @@ export const routes = [
       "queue_too_large",
       "queue_building"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "playback"
   },
   {
     "id": "advance_queue",
@@ -73,7 +75,8 @@ export const routes = [
       "transcode_not_allowed",
       "unsupported_media"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "playback"
   },
   {
     "id": "browse_library",
@@ -92,7 +95,8 @@ export const routes = [
       "not_found",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "browsing"
   },
   {
     "id": "change_connectivity_policy",
@@ -113,7 +117,8 @@ export const routes = [
       "internal",
       "revision_required"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "admin"
   },
   {
     "id": "change_console_settings",
@@ -135,7 +140,8 @@ export const routes = [
       "internal",
       "revision_required"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "admin"
   },
   {
     "id": "change_playback_session",
@@ -159,7 +165,8 @@ export const routes = [
       "unsupported_media",
       "connection_too_slow"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "playback"
   },
   {
     "id": "clear_playback_failure_memory",
@@ -177,7 +184,8 @@ export const routes = [
       "invalid_request",
       "internal"
     ],
-    "status": 204
+    "status": 204,
+    "admission": "admin"
   },
   {
     "id": "commit_queue_next",
@@ -202,7 +210,8 @@ export const routes = [
       "prepared_canceled",
       "not_implemented"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "playback"
   },
   {
     "id": "control_admin_session",
@@ -225,7 +234,8 @@ export const routes = [
       "session_ended",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "media"
   },
   {
     "id": "create_access_token",
@@ -249,7 +259,8 @@ export const routes = [
       "administration_unavailable",
       "internal"
     ],
-    "status": 201
+    "status": 201,
+    "admission": "security-fence"
   },
   {
     "id": "create_api_key",
@@ -273,7 +284,8 @@ export const routes = [
       "administration_unavailable",
       "internal"
     ],
-    "status": 201
+    "status": 201,
+    "admission": "security-fence"
   },
   {
     "id": "create_download_grant",
@@ -300,7 +312,8 @@ export const routes = [
       "downloads_unavailable",
       "internal"
     ],
-    "status": 201
+    "status": 201,
+    "admission": "default"
   },
   {
     "id": "create_download_preparations",
@@ -327,7 +340,8 @@ export const routes = [
       "downloads_unavailable",
       "internal"
     ],
-    "status": 201
+    "status": 201,
+    "admission": "default"
   },
   {
     "id": "create_download_request",
@@ -348,7 +362,8 @@ export const routes = [
       "rate_limited",
       "internal"
     ],
-    "status": 202
+    "status": 202,
+    "admission": "default"
   },
   {
     "id": "create_job",
@@ -369,7 +384,8 @@ export const routes = [
       "rate_limited",
       "internal"
     ],
-    "status": 202
+    "status": 202,
+    "admission": "default"
   },
   {
     "id": "create_queue",
@@ -397,7 +413,8 @@ export const routes = [
       "unsupported_media",
       "source_unavailable"
     ],
-    "status": 201
+    "status": 201,
+    "admission": "playback"
   },
   {
     "id": "create_webhook",
@@ -419,7 +436,8 @@ export const routes = [
       "administration_unavailable",
       "internal"
     ],
-    "status": 201
+    "status": 201,
+    "admission": "admin"
   },
   {
     "id": "delete_admin_backup",
@@ -438,7 +456,92 @@ export const routes = [
       "administration_unavailable",
       "internal"
     ],
-    "status": 204
+    "status": 204,
+    "admission": "admin-heavy"
+  },
+  {
+    "id": "delete_admin_dvr_recording_groups_id",
+    "method": "DELETE",
+    "path": "/v1/admin/dvr/recording-groups/{id}",
+    "summary": "Remove server dvr recording groups",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin"
+  },
+  {
+    "id": "delete_admin_ingestion_jobs_id",
+    "method": "DELETE",
+    "path": "/v1/admin/ingestion/jobs/{id}",
+    "summary": "Remove server ingestion jobs",
+    "access": "owner",
+    "requires": "library",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 204,
+    "http": true,
+    "admission": "default"
+  },
+  {
+    "id": "delete_admin_libraries_id_sources_source",
+    "method": "DELETE",
+    "path": "/v1/admin/libraries/{id}/sources/{source}",
+    "summary": "Remove server library sources",
+    "access": "owner",
+    "requires": "library",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 204,
+    "http": true,
+    "admission": "admin"
+  },
+  {
+    "id": "delete_admin_library_channels_block_presets_id",
+    "method": "DELETE",
+    "path": "/v1/admin/library-channels/block-presets/{id}",
+    "summary": "Remove server library channels block presets",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin"
   },
   {
     "id": "delete_client_log",
@@ -455,7 +558,50 @@ export const routes = [
       "not_found",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "admin"
+  },
+  {
+    "id": "delete_collections_id",
+    "method": "DELETE",
+    "path": "/v1/collections/{id}",
+    "summary": "Remove collections",
+    "access": "owner",
+    "requires": "library",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 204,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "delete_collections_id_items_itemId",
+    "method": "DELETE",
+    "path": "/v1/collections/{id}/items/{itemId}",
+    "summary": "Remove collections title",
+    "access": "owner",
+    "requires": "library",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 204,
+    "http": true,
+    "admission": "browsing"
   },
   {
     "id": "delete_device",
@@ -473,7 +619,8 @@ export const routes = [
       "not_found",
       "internal"
     ],
-    "status": 204
+    "status": 204,
+    "admission": "auth"
   },
   {
     "id": "delete_device_sessions",
@@ -491,7 +638,8 @@ export const routes = [
       "not_found",
       "internal"
     ],
-    "status": 204
+    "status": 204,
+    "admission": "auth"
   },
   {
     "id": "delete_direct_member",
@@ -512,7 +660,50 @@ export const routes = [
       "internal",
       "revision_required"
     ],
-    "status": 204
+    "status": 204,
+    "admission": "security-fence"
+  },
+  {
+    "id": "delete_direct_profiles_id",
+    "method": "DELETE",
+    "path": "/v1/direct/profiles/{id}",
+    "summary": "Remove account profile",
+    "access": "device",
+    "requires": "session",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 204,
+    "http": true,
+    "admission": "auth"
+  },
+  {
+    "id": "delete_direct_profiles_id_avatar",
+    "method": "DELETE",
+    "path": "/v1/direct/profiles/{id}/avatar",
+    "summary": "Remove account profile avatar",
+    "access": "device",
+    "requires": "session",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 204,
+    "http": true,
+    "admission": "auth"
   },
   {
     "id": "delete_direct_remembered_account",
@@ -530,7 +721,8 @@ export const routes = [
       "invalid_request",
       "internal"
     ],
-    "status": 204
+    "status": 204,
+    "admission": "auth"
   },
   {
     "id": "delete_direct_session",
@@ -552,7 +744,205 @@ export const routes = [
       "invalid_request",
       "internal"
     ],
-    "status": 204
+    "status": 204,
+    "admission": "security-fence"
+  },
+  {
+    "id": "delete_direct_trust",
+    "method": "DELETE",
+    "path": "/v1/direct/trust",
+    "summary": "Remove account trust",
+    "access": "device",
+    "requires": "session",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 204,
+    "http": true,
+    "admission": "security-fence"
+  },
+  {
+    "id": "delete_direct_two_factor",
+    "method": "DELETE",
+    "path": "/v1/direct/two-factor",
+    "summary": "Remove account two-factor verification",
+    "access": "device",
+    "requires": "session",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 204,
+    "http": true,
+    "admission": "security-fence"
+  },
+  {
+    "id": "delete_dvr_recordings_id",
+    "method": "DELETE",
+    "path": "/v1/dvr/recordings/{id}",
+    "summary": "Remove dvr recordings",
+    "access": "device",
+    "requires": "playback",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "delete_dvr_rules_id",
+    "method": "DELETE",
+    "path": "/v1/dvr/rules/{id}",
+    "summary": "Remove dvr rules",
+    "access": "device",
+    "requires": "playback",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "delete_items_id_lyrics_resource",
+    "method": "DELETE",
+    "path": "/v1/items/{id}/lyrics/{resource}",
+    "summary": "Remove title lyrics",
+    "access": "device",
+    "requires": "library",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 2097152,
+    "query": [
+      "sessionId",
+      "sourceId",
+      "sourceVersion"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "delete_metadata_kind_id_art_role_upload_candidateId",
+    "method": "DELETE",
+    "path": "/v1/metadata/{kind}/{id}/art/{role}/upload/{candidateId}",
+    "summary": "Remove metadata art upload",
+    "access": "owner",
+    "requires": "library",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "query": [
+      "expectedRevision"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "delete_playlists_id",
+    "method": "DELETE",
+    "path": "/v1/playlists/{id}",
+    "summary": "Remove playlists",
+    "access": "device",
+    "requires": "playback",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
+  },
+  {
+    "id": "delete_playlists_id_entries_entryId",
+    "method": "DELETE",
+    "path": "/v1/playlists/{id}/entries/{entryId}",
+    "summary": "Remove playlists entries",
+    "access": "device",
+    "requires": "playback",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
+  },
+  {
+    "id": "delete_playlists_id_shares",
+    "method": "DELETE",
+    "path": "/v1/playlists/{id}/shares",
+    "summary": "Remove playlists shares",
+    "access": "device",
+    "requires": "playback",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
   },
   {
     "id": "delete_queue",
@@ -568,7 +958,134 @@ export const routes = [
       "unauthorized",
       "not_found"
     ],
-    "status": 204
+    "status": 204,
+    "admission": "default"
+  },
+  {
+    "id": "delete_saved_resources_id",
+    "method": "DELETE",
+    "path": "/v1/saved-resources/{id}",
+    "summary": "Remove saved resources",
+    "access": "device",
+    "requires": "playback",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
+  },
+  {
+    "id": "delete_saved_resources_id_shares",
+    "method": "DELETE",
+    "path": "/v1/saved-resources/{id}/shares",
+    "summary": "Remove saved resources shares",
+    "access": "device",
+    "requires": "playback",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
+  },
+  {
+    "id": "delete_search_history",
+    "method": "DELETE",
+    "path": "/v1/search/history",
+    "summary": "Remove search history",
+    "access": "device",
+    "requires": "playback",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "expensive"
+  },
+  {
+    "id": "delete_sessions_current",
+    "method": "DELETE",
+    "path": "/v1/sessions/current",
+    "summary": "Sign out this session family",
+    "access": "device",
+    "requires": "session",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 204,
+    "http": true,
+    "admission": "security-fence"
+  },
+  {
+    "id": "delete_storage_mounts_id",
+    "method": "DELETE",
+    "path": "/v1/storage/mounts/{id}",
+    "summary": "Remove storage mounts",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
+  },
+  {
+    "id": "delete_storage_sources_webdav_id",
+    "method": "DELETE",
+    "path": "/v1/storage/sources/webdav/{id}",
+    "summary": "Remove storage sources webdav",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
   },
   {
     "id": "delete_title_version",
@@ -590,7 +1107,8 @@ export const routes = [
       "administration_unavailable",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "admin-heavy"
   },
   {
     "id": "delete_upgrade_copy",
@@ -609,7 +1127,8 @@ export const routes = [
       "invalid_request",
       "internal"
     ],
-    "status": 204
+    "status": 204,
+    "admission": "admin"
   },
   {
     "id": "delete_v1_items_itemId_subtitles_resource",
@@ -640,7 +1159,8 @@ export const routes = [
       "subtitle_unsupported",
       "subtitle_invalid_input"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "default"
   },
   {
     "id": "delete_webhook",
@@ -661,7 +1181,8 @@ export const routes = [
       "administration_unavailable",
       "internal"
     ],
-    "status": 204
+    "status": 204,
+    "admission": "admin"
   },
   {
     "id": "download_client_log",
@@ -678,7 +1199,8 @@ export const routes = [
       "not_found",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "admin"
   },
   {
     "id": "empty_missing_titles",
@@ -698,7 +1220,8 @@ export const routes = [
       "internal"
     ],
     "status": 200,
-    "optionalBody": true
+    "optionalBody": true,
+    "admission": "admin-heavy"
   },
   {
     "id": "get_admin_access_devices",
@@ -723,7 +1246,125 @@ export const routes = [
       "invalid_request",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "admin"
+  },
+  {
+    "id": "get_admin_access_invitations",
+    "method": "GET",
+    "path": "/v1/admin/access/invitations",
+    "summary": "Read server access invitations",
+    "access": "admin_scope",
+    "adminScope": "access",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "cursor",
+      "limit",
+      "state"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin"
+  },
+  {
+    "id": "get_admin_access_members",
+    "method": "GET",
+    "path": "/v1/admin/access/members",
+    "summary": "Read server access members",
+    "access": "admin_scope",
+    "adminScope": "access",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "cursor",
+      "limit"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin"
+  },
+  {
+    "id": "get_admin_access_members_id_limits",
+    "method": "GET",
+    "path": "/v1/admin/access/members/{id}/limits",
+    "summary": "Read server access members limits",
+    "access": "admin_scope",
+    "adminScope": "access",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin"
+  },
+  {
+    "id": "get_admin_analysis_operations",
+    "method": "GET",
+    "path": "/v1/admin/analysis-operations",
+    "summary": "Read server analysis operations",
+    "access": "owner",
+    "requires": "library",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin-heavy"
+  },
+  {
+    "id": "get_admin_attention",
+    "method": "GET",
+    "path": "/v1/admin/attention",
+    "summary": "Read server attention",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin"
   },
   {
     "id": "get_admin_backups",
@@ -740,7 +1381,29 @@ export const routes = [
       "administration_unavailable",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "admin-heavy"
+  },
+  {
+    "id": "get_admin_console_accounts",
+    "method": "GET",
+    "path": "/v1/admin/console/accounts",
+    "summary": "Read server console accounts",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin"
   },
   {
     "id": "get_admin_console_alerts",
@@ -759,7 +1422,8 @@ export const routes = [
       "not_found",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "admin"
   },
   {
     "id": "get_admin_console_diagnostics_lane",
@@ -781,7 +1445,8 @@ export const routes = [
       "not_found",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "admin"
   },
   {
     "id": "get_admin_console_exports_id",
@@ -800,7 +1465,29 @@ export const routes = [
       "not_found",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "admin"
+  },
+  {
+    "id": "get_admin_console_job_kinds",
+    "method": "GET",
+    "path": "/v1/admin/console/job-kinds",
+    "summary": "Read server console job kinds",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin"
   },
   {
     "id": "get_admin_console_jobs",
@@ -822,7 +1509,8 @@ export const routes = [
       "not_found",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "admin"
   },
   {
     "id": "get_admin_console_panels_panel",
@@ -841,7 +1529,8 @@ export const routes = [
       "not_found",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "admin"
   },
   {
     "id": "get_admin_console_schedules",
@@ -860,7 +1549,178 @@ export const routes = [
       "not_found",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "admin"
+  },
+  {
+    "id": "get_admin_console_stream_options",
+    "method": "GET",
+    "path": "/v1/admin/console/stream-options",
+    "summary": "Read server console stream options",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin"
+  },
+  {
+    "id": "get_admin_diagnostics_bundle",
+    "method": "GET",
+    "path": "/v1/admin/diagnostics/bundle",
+    "summary": "Read server diagnostics bundle",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "responseContentType": "application/zip",
+    "http": true,
+    "admission": "admin-heavy"
+  },
+  {
+    "id": "get_admin_diagnostics_concurrency",
+    "method": "GET",
+    "path": "/v1/admin/diagnostics/concurrency",
+    "summary": "Read server diagnostics concurrency",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin"
+  },
+  {
+    "id": "get_admin_diagnostics_pprof_profile",
+    "method": "GET",
+    "path": "/v1/admin/diagnostics/pprof/{profile}",
+    "summary": "Read server diagnostics pprof",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "responseContentType": "application/octet-stream",
+    "http": true,
+    "admission": "admin-heavy"
+  },
+  {
+    "id": "get_admin_dvr_recording_groups",
+    "method": "GET",
+    "path": "/v1/admin/dvr/recording-groups",
+    "summary": "Read server dvr recording groups",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin"
+  },
+  {
+    "id": "get_admin_dvr_recording_owners",
+    "method": "GET",
+    "path": "/v1/admin/dvr/recording-owners",
+    "summary": "Read server dvr recording owners",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin"
+  },
+  {
+    "id": "get_admin_dvr_recording_permissions",
+    "method": "GET",
+    "path": "/v1/admin/dvr/recording-permissions",
+    "summary": "Read server dvr recording permissions",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin"
+  },
+  {
+    "id": "get_admin_dvr_settings",
+    "method": "GET",
+    "path": "/v1/admin/dvr/settings",
+    "summary": "Read server dvr settings",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin"
   },
   {
     "id": "get_admin_feedback",
@@ -883,7 +1743,8 @@ export const routes = [
       "not_found",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "admin"
   },
   {
     "id": "get_admin_feedback_id",
@@ -902,7 +1763,8 @@ export const routes = [
       "not_found",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "admin"
   },
   {
     "id": "get_admin_feedback_reports",
@@ -930,7 +1792,8 @@ export const routes = [
       "not_found",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "admin"
   },
   {
     "id": "get_admin_feedback_reports_id",
@@ -949,7 +1812,354 @@ export const routes = [
       "not_found",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "admin"
+  },
+  {
+    "id": "get_admin_filesystem",
+    "method": "GET",
+    "path": "/v1/admin/filesystem",
+    "summary": "Read server filesystem",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin"
+  },
+  {
+    "id": "get_admin_ingestion_jobs_id",
+    "method": "GET",
+    "path": "/v1/admin/ingestion/jobs/{id}",
+    "summary": "Read server ingestion jobs",
+    "access": "owner",
+    "requires": "library",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
+  },
+  {
+    "id": "get_admin_jobs",
+    "method": "GET",
+    "path": "/v1/admin/jobs",
+    "summary": "Read server jobs",
+    "access": "owner",
+    "requires": "library",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin"
+  },
+  {
+    "id": "get_admin_libraries",
+    "method": "GET",
+    "path": "/v1/admin/libraries",
+    "summary": "Read server library",
+    "access": "owner",
+    "requires": "library",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin"
+  },
+  {
+    "id": "get_admin_libraries_id",
+    "method": "GET",
+    "path": "/v1/admin/libraries/{id}",
+    "summary": "Read server library",
+    "access": "owner",
+    "requires": "library",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin"
+  },
+  {
+    "id": "get_admin_libraries_id_inventory_config",
+    "method": "GET",
+    "path": "/v1/admin/libraries/{id}/inventory-config",
+    "summary": "Read server library inventory config",
+    "access": "owner",
+    "requires": "library",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin-heavy"
+  },
+  {
+    "id": "get_admin_library_channels",
+    "method": "GET",
+    "path": "/v1/admin/library-channels",
+    "summary": "Read server library channels",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin"
+  },
+  {
+    "id": "get_admin_library_channels_block_presets",
+    "method": "GET",
+    "path": "/v1/admin/library-channels/block-presets",
+    "summary": "Read server library channels block presets",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin"
+  },
+  {
+    "id": "get_admin_library_channels_criteria",
+    "method": "GET",
+    "path": "/v1/admin/library-channels/criteria",
+    "summary": "Read server library channels criteria",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin"
+  },
+  {
+    "id": "get_admin_library_channels_id_health",
+    "method": "GET",
+    "path": "/v1/admin/library-channels/{id}/health",
+    "summary": "Read server library channels health",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin"
+  },
+  {
+    "id": "get_admin_library_channels_templates",
+    "method": "GET",
+    "path": "/v1/admin/library-channels/templates",
+    "summary": "Read server library channels templates",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin"
+  },
+  {
+    "id": "get_admin_library_settings",
+    "method": "GET",
+    "path": "/v1/admin/library-settings",
+    "summary": "Read server library settings",
+    "access": "owner",
+    "requires": "library",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin"
+  },
+  {
+    "id": "get_admin_live_sources_id_channel_map",
+    "method": "GET",
+    "path": "/v1/admin/live-sources/{id}/channel-map",
+    "summary": "Read server live sources channel map",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin"
+  },
+  {
+    "id": "get_admin_logs",
+    "method": "GET",
+    "path": "/v1/admin/logs",
+    "summary": "Read server logs",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "category",
+      "cursor",
+      "level",
+      "limit"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin-heavy"
+  },
+  {
+    "id": "get_admin_logs_events",
+    "method": "GET",
+    "path": "/v1/admin/logs/events",
+    "summary": "Read server logs events",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "realtime",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "query": [
+      "level"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "responseContentType": "text/event-stream",
+    "http": true,
+    "admission": "realtime"
+  },
+  {
+    "id": "get_admin_logs_settings",
+    "method": "GET",
+    "path": "/v1/admin/logs/settings",
+    "summary": "Read server logs settings",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin"
   },
   {
     "id": "get_admin_maintenance_settings",
@@ -966,7 +2176,71 @@ export const routes = [
       "administration_unavailable",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "admin"
+  },
+  {
+    "id": "get_admin_metadata_providers",
+    "method": "GET",
+    "path": "/v1/admin/metadata-providers",
+    "summary": "Read server metadata providers",
+    "access": "owner",
+    "requires": "library",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin"
+  },
+  {
+    "id": "get_admin_notifications_settings",
+    "method": "GET",
+    "path": "/v1/admin/notifications/settings",
+    "summary": "Read server notifications settings",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin"
+  },
+  {
+    "id": "get_admin_operations_panel",
+    "method": "GET",
+    "path": "/v1/admin/operations/{panel}",
+    "summary": "Read server operations",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin"
   },
   {
     "id": "get_admin_play_history",
@@ -992,7 +2266,8 @@ export const routes = [
       "not_found",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "admin"
   },
   {
     "id": "get_admin_play_history_summary",
@@ -1014,7 +2289,29 @@ export const routes = [
       "not_found",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "admin"
+  },
+  {
+    "id": "get_admin_playback_diagnostics",
+    "method": "GET",
+    "path": "/v1/admin/playback/diagnostics",
+    "summary": "Read server playback diagnostics",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "media",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "playback"
   },
   {
     "id": "get_admin_playback_history",
@@ -1038,7 +2335,77 @@ export const routes = [
       "not_found",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "admin"
+  },
+  {
+    "id": "get_admin_playback_history_csv",
+    "method": "GET",
+    "path": "/v1/admin/playback/history.csv",
+    "summary": "Read server playback history.csv",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "media",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "responseContentType": "text/csv",
+    "http": true,
+    "admission": "playback"
+  },
+  {
+    "id": "get_admin_playback_operations_operationId",
+    "method": "GET",
+    "path": "/v1/admin/playback-operations/{operationId}",
+    "summary": "Read server playback operations",
+    "access": "owner",
+    "requires": "playback",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin"
+  },
+  {
+    "id": "get_admin_playback_sessions",
+    "method": "GET",
+    "path": "/v1/admin/playback-sessions",
+    "summary": "Read server playback sessions",
+    "access": "owner",
+    "requires": "playback",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "cursor",
+      "limit",
+      "status"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin"
   },
   {
     "id": "get_admin_resource_usage",
@@ -1055,7 +2422,8 @@ export const routes = [
       "not_permitted",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "admin"
   },
   {
     "id": "get_admin_session_controls",
@@ -1078,7 +2446,116 @@ export const routes = [
       "session_ended",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "media"
+  },
+  {
+    "id": "get_admin_storage_usage",
+    "method": "GET",
+    "path": "/v1/admin/storage-usage",
+    "summary": "Read server storage usage",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin"
+  },
+  {
+    "id": "get_admin_support_report",
+    "method": "GET",
+    "path": "/v1/admin/support-report",
+    "summary": "Read server support report",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin"
+  },
+  {
+    "id": "get_admin_telemetry",
+    "method": "GET",
+    "path": "/v1/admin/telemetry",
+    "summary": "Read server telemetry",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "query": [
+      "window"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin"
+  },
+  {
+    "id": "get_admin_telemetry_now",
+    "method": "GET",
+    "path": "/v1/admin/telemetry/now",
+    "summary": "Read server telemetry now",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin"
+  },
+  {
+    "id": "get_admin_transcode_capacity",
+    "method": "GET",
+    "path": "/v1/admin/transcode/capacity",
+    "summary": "Read server transcode capacity",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin"
   },
   {
     "id": "get_admin_updates",
@@ -1094,7 +2571,54 @@ export const routes = [
       "unauthorized",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "admin"
+  },
+  {
+    "id": "get_albums_id_metadata_musicbrainz",
+    "method": "GET",
+    "path": "/v1/albums/{id}/metadata/musicbrainz",
+    "summary": "Read album metadata musicbrainz",
+    "access": "owner",
+    "requires": "library",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
+  },
+  {
+    "id": "get_albums_id_songs",
+    "method": "GET",
+    "path": "/v1/albums/{id}/songs",
+    "summary": "Read album songs",
+    "access": "device",
+    "requires": "read",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "cursor",
+      "limit"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
   },
   {
     "id": "get_api_access_options",
@@ -1111,7 +2635,54 @@ export const routes = [
       "session_required",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "default"
+  },
+  {
+    "id": "get_artists_id_albums",
+    "method": "GET",
+    "path": "/v1/artists/{id}/albums",
+    "summary": "Read artist album",
+    "access": "device",
+    "requires": "read",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "cursor",
+      "limit"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
+  },
+  {
+    "id": "get_attribution",
+    "method": "GET",
+    "path": "/v1/attribution",
+    "summary": "Read attribution",
+    "access": "public",
+    "requires": "open",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
   },
   {
     "id": "get_auth_capabilities",
@@ -1126,7 +2697,58 @@ export const routes = [
     "errors": [
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "auth"
+  },
+  {
+    "id": "get_books_id_chapters",
+    "method": "GET",
+    "path": "/v1/books/{id}/chapters",
+    "summary": "Read book chapters",
+    "access": "device",
+    "requires": "read",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "cursor",
+      "limit"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
+  },
+  {
+    "id": "get_books_id_files",
+    "method": "GET",
+    "path": "/v1/books/{id}/files",
+    "summary": "Read book files",
+    "access": "device",
+    "requires": "read",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "cursor",
+      "limit"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
   },
   {
     "id": "get_bootstrap",
@@ -1147,7 +2769,8 @@ export const routes = [
       "invalid_request",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "browsing"
   },
   {
     "id": "get_capabilities",
@@ -1163,7 +2786,8 @@ export const routes = [
       "unauthorized",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "default"
   },
   {
     "id": "get_capability_report",
@@ -1179,7 +2803,8 @@ export const routes = [
       "unauthorized",
       "not_permitted"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "admin"
   },
   {
     "id": "get_catalogue_failures",
@@ -1197,7 +2822,8 @@ export const routes = [
       "not_permitted",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "default"
   },
   {
     "id": "get_client_log",
@@ -1214,7 +2840,8 @@ export const routes = [
       "not_found",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "admin"
   },
   {
     "id": "get_client_logs",
@@ -1235,7 +2862,29 @@ export const routes = [
       "invalid_request",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "admin-heavy"
+  },
+  {
+    "id": "get_collections_id",
+    "method": "GET",
+    "path": "/v1/collections/{id}",
+    "summary": "Read collections",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
   },
   {
     "id": "get_collections_id_items",
@@ -1262,7 +2911,8 @@ export const routes = [
       "not_found",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "browsing"
   },
   {
     "id": "get_connection",
@@ -1277,7 +2927,8 @@ export const routes = [
     "errors": [
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "default"
   },
   {
     "id": "get_connectivity_policy",
@@ -1294,7 +2945,8 @@ export const routes = [
       "not_permitted",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "admin"
   },
   {
     "id": "get_connectivity_status",
@@ -1312,7 +2964,8 @@ export const routes = [
       "not_permitted",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "admin"
   },
   {
     "id": "get_console_registry",
@@ -1333,7 +2986,8 @@ export const routes = [
       "rate_limited",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "admin"
   },
   {
     "id": "get_console_settings",
@@ -1354,7 +3008,8 @@ export const routes = [
       "rate_limited",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "admin"
   },
   {
     "id": "get_container_personal_state",
@@ -1375,7 +3030,8 @@ export const routes = [
       "rate_limited",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "browsing"
   },
   {
     "id": "get_device_capabilities",
@@ -1391,7 +3047,8 @@ export const routes = [
       "unauthorized",
       "not_found"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "browsing"
   },
   {
     "id": "get_devices",
@@ -1411,7 +3068,8 @@ export const routes = [
       "invalid_request",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "auth"
   },
   {
     "id": "get_direct_account",
@@ -1430,7 +3088,8 @@ export const routes = [
       "device_denied",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "default"
   },
   {
     "id": "get_direct_member_deletion_preview",
@@ -1449,7 +3108,29 @@ export const routes = [
       "not_found",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "auth"
+  },
+  {
+    "id": "get_direct_members",
+    "method": "GET",
+    "path": "/v1/direct/members",
+    "summary": "Read account members",
+    "access": "device",
+    "requires": "session",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "auth"
   },
   {
     "id": "get_direct_pin_recovery",
@@ -1470,7 +3151,8 @@ export const routes = [
       "not_permitted",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "security-fence"
   },
   {
     "id": "get_direct_profile_avatars",
@@ -1489,7 +3171,8 @@ export const routes = [
       "device_denied",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "auth"
   },
   {
     "id": "get_direct_profile_restrictions",
@@ -1509,7 +3192,29 @@ export const routes = [
       "invalid_request",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "security-fence"
+  },
+  {
+    "id": "get_direct_profiles_id_deletion_preview",
+    "method": "GET",
+    "path": "/v1/direct/profiles/{id}/deletion-preview",
+    "summary": "Read account profile deletion preview",
+    "access": "device",
+    "requires": "session",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "auth"
   },
   {
     "id": "get_direct_registration_policy",
@@ -1526,7 +3231,8 @@ export const routes = [
       "not_permitted",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "auth"
   },
   {
     "id": "get_direct_sessions",
@@ -1547,7 +3253,29 @@ export const routes = [
       "not_permitted",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "auth"
+  },
+  {
+    "id": "get_direct_two_factor",
+    "method": "GET",
+    "path": "/v1/direct/two-factor",
+    "summary": "Read account two-factor verification",
+    "access": "device",
+    "requires": "session",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "security-fence"
   },
   {
     "id": "get_download_artifact",
@@ -1570,7 +3298,9 @@ export const routes = [
       "not_found",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "responseContentType": "application/octet-stream",
+    "admission": "bulk-transfer"
   },
   {
     "id": "get_download_artwork",
@@ -1593,7 +3323,9 @@ export const routes = [
       "not_found",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "responseContentType": "application/octet-stream",
+    "admission": "media"
   },
   {
     "id": "get_download_bundle",
@@ -1615,7 +3347,8 @@ export const routes = [
       "downloads_unavailable",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "default"
   },
   {
     "id": "get_download_options",
@@ -1637,7 +3370,8 @@ export const routes = [
       "downloads_unavailable",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "browsing"
   },
   {
     "id": "get_download_preparation",
@@ -1659,7 +3393,8 @@ export const routes = [
       "downloads_unavailable",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "default"
   },
   {
     "id": "get_download_request",
@@ -1684,7 +3419,8 @@ export const routes = [
       "rate_limited",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "browsing"
   },
   {
     "id": "get_download_settings",
@@ -1706,7 +3442,8 @@ export const routes = [
       "downloads_unavailable",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "default"
   },
   {
     "id": "get_download_subtitle",
@@ -1729,7 +3466,9 @@ export const routes = [
       "not_found",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "responseContentType": "application/octet-stream",
+    "admission": "media"
   },
   {
     "id": "get_download_subtitle_original",
@@ -1752,7 +3491,9 @@ export const routes = [
       "not_found",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "responseContentType": "application/octet-stream",
+    "admission": "media"
   },
   {
     "id": "get_download_usage",
@@ -1779,7 +3520,126 @@ export const routes = [
       "downloads_unavailable",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "default"
+  },
+  {
+    "id": "get_dvr",
+    "method": "GET",
+    "path": "/v1/dvr",
+    "summary": "Read dvr",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "cursor",
+      "limit",
+      "state"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "get_dvr_channels",
+    "method": "GET",
+    "path": "/v1/dvr/channels",
+    "summary": "Read dvr channels",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "cursor",
+      "search",
+      "sourceId"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "get_dvr_recordings_id",
+    "method": "GET",
+    "path": "/v1/dvr/recordings/{id}",
+    "summary": "Read dvr recordings",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "query": [
+      "after"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "get_dvr_recordings_id_delete_preview",
+    "method": "GET",
+    "path": "/v1/dvr/recordings/{id}/delete-preview",
+    "summary": "Read dvr recordings delete preview",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "get_dvr_storage",
+    "method": "GET",
+    "path": "/v1/dvr/storage",
+    "summary": "Read dvr storage",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
   },
   {
     "id": "get_events",
@@ -1803,7 +3663,8 @@ export const routes = [
       "internal"
     ],
     "status": 200,
-    "sse": true
+    "sse": true,
+    "admission": "realtime"
   },
   {
     "id": "get_feedback",
@@ -1826,7 +3687,29 @@ export const routes = [
       "not_found",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "default"
+  },
+  {
+    "id": "get_feedback_capabilities",
+    "method": "GET",
+    "path": "/v1/feedback/capabilities",
+    "summary": "Read feedback capabilities",
+    "access": "device",
+    "requires": "read",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
   },
   {
     "id": "get_feedback_id",
@@ -1845,7 +3728,8 @@ export const routes = [
       "not_found",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "default"
   },
   {
     "id": "get_feedback_reports",
@@ -1873,7 +3757,8 @@ export const routes = [
       "not_found",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "default"
   },
   {
     "id": "get_feedback_reports_id",
@@ -1892,7 +3777,174 @@ export const routes = [
       "not_found",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "default"
+  },
+  {
+    "id": "get_guide",
+    "method": "GET",
+    "path": "/v1/guide",
+    "summary": "Read guide",
+    "access": "device",
+    "requires": "read",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "channels",
+      "cursor",
+      "end",
+      "favorites",
+      "group",
+      "includeHidden",
+      "kind",
+      "limit",
+      "programmes",
+      "search",
+      "sourceId",
+      "start",
+      "timezone"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
+  },
+  {
+    "id": "get_guide_channels",
+    "method": "GET",
+    "path": "/v1/guide/channels",
+    "summary": "Read guide channels",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "query": [
+      "anchorChannelId",
+      "anchorProvenance",
+      "anchorSourceId",
+      "direction",
+      "favorites",
+      "group",
+      "includeHidden",
+      "kind",
+      "limit",
+      "offset",
+      "revision",
+      "search",
+      "sort",
+      "sourceId",
+      "timezone"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "get_guide_images_digest",
+    "method": "GET",
+    "path": "/v1/guide/images/{digest}",
+    "summary": "Read guide images",
+    "access": "device",
+    "requires": "read",
+    "lane": "media",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "responseContentType": "application/octet-stream",
+    "http": true,
+    "admission": "media"
+  },
+  {
+    "id": "get_guide_sources",
+    "method": "GET",
+    "path": "/v1/guide/sources",
+    "summary": "Read guide sources",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "query": [
+      "includeHidden",
+      "timezone"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "get_health_live",
+    "method": "GET",
+    "path": "/health/live",
+    "summary": "Read server liveness",
+    "access": "public",
+    "requires": "open",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
+  },
+  {
+    "id": "get_health_ready",
+    "method": "GET",
+    "path": "/health/ready",
+    "summary": "Read server readiness",
+    "access": "public",
+    "requires": "open",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "responseStatuses": [
+      503
+    ],
+    "http": true,
+    "admission": "default"
   },
   {
     "id": "get_home",
@@ -1917,7 +3969,29 @@ export const routes = [
       "rate_limited",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "browsing"
+  },
+  {
+    "id": "get_home_layout",
+    "method": "GET",
+    "path": "/v1/home/layout",
+    "summary": "Read home layout",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
   },
   {
     "id": "get_home_row",
@@ -1946,7 +4020,8 @@ export const routes = [
       "rate_limited",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "browsing"
   },
   {
     "id": "get_inventory_changes",
@@ -1970,7 +4045,8 @@ export const routes = [
       "idempotency_key_reused",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "admin"
   },
   {
     "id": "get_items",
@@ -1994,7 +4070,8 @@ export const routes = [
       "not_found",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "browsing"
   },
   {
     "id": "get_items_id",
@@ -2013,7 +4090,101 @@ export const routes = [
       "not_found",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "browsing"
+  },
+  {
+    "id": "get_items_id_analysis",
+    "method": "GET",
+    "path": "/v1/items/{id}/analysis",
+    "summary": "Read title analysis",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "get_items_id_analysis_artifacts_artifact",
+    "method": "GET",
+    "path": "/v1/items/{id}/analysis/artifacts/{artifact}",
+    "summary": "Read title analysis artifacts",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "get_items_id_art_kind",
+    "method": "GET",
+    "path": "/v1/items/{id}/art/{kind}",
+    "summary": "Read title art",
+    "access": "device",
+    "requires": "read",
+    "lane": "media",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "query": [
+      "v"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "responseContentType": "application/octet-stream",
+    "http": true,
+    "admission": "media"
+  },
+  {
+    "id": "get_items_id_credits",
+    "method": "GET",
+    "path": "/v1/items/{id}/credits",
+    "summary": "Read title credits",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "cursor",
+      "group",
+      "limit"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
   },
   {
     "id": "get_items_id_detail",
@@ -2035,7 +4206,254 @@ export const routes = [
       "not_found",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "browsing"
+  },
+  {
+    "id": "get_items_id_listening",
+    "method": "GET",
+    "path": "/v1/items/{id}/listening",
+    "summary": "Read title listening",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "get_items_id_lyrics",
+    "method": "GET",
+    "path": "/v1/items/{id}/lyrics",
+    "summary": "Read title lyrics",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "query": [
+      "sessionId",
+      "sourceId",
+      "sourceVersion"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "get_items_id_lyrics_resource_revisions_revision",
+    "method": "GET",
+    "path": "/v1/items/{id}/lyrics/{resource}/revisions/{revision}",
+    "summary": "Read title lyrics revisions",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "query": [
+      "sessionId",
+      "sourceId",
+      "sourceVersion"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "get_items_id_metadata_manual",
+    "method": "GET",
+    "path": "/v1/items/{id}/metadata/manual",
+    "summary": "Read title metadata manual",
+    "access": "owner",
+    "requires": "library",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "get_items_id_metadata_musicbrainz",
+    "method": "GET",
+    "path": "/v1/items/{id}/metadata/musicbrainz",
+    "summary": "Read title metadata musicbrainz",
+    "access": "owner",
+    "requires": "library",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "get_items_id_playback_offers",
+    "method": "GET",
+    "path": "/v1/items/{id}/playback-offers",
+    "summary": "Read title playback offers",
+    "access": "device",
+    "requires": "read",
+    "lane": "media",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "query": [
+      "revision",
+      "sessionId"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "playback"
+  },
+  {
+    "id": "get_items_id_prepared_versions",
+    "method": "GET",
+    "path": "/v1/items/{id}/prepared-versions",
+    "summary": "Read title prepared versions",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "get_items_id_recommendations",
+    "method": "GET",
+    "path": "/v1/items/{id}/recommendations",
+    "summary": "Read title recommendations",
+    "access": "device",
+    "requires": "read",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "expensive"
+  },
+  {
+    "id": "get_items_id_source_availability",
+    "method": "GET",
+    "path": "/v1/items/{id}/source-availability",
+    "summary": "Read title source availability",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "get_items_id_trickplay",
+    "method": "GET",
+    "path": "/v1/items/{id}/trickplay",
+    "summary": "Read title trickplay",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "get_items_id_trickplay_set_thumbnails_vtt",
+    "method": "GET",
+    "path": "/v1/items/{id}/trickplay/{set}/thumbnails.vtt",
+    "summary": "Read title trickplay thumbnails.vtt",
+    "access": "device",
+    "requires": "read",
+    "lane": "media",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "responseContentType": "application/octet-stream",
+    "http": true,
+    "admission": "media"
   },
   {
     "id": "get_items_screen_metadata",
@@ -2053,7 +4471,8 @@ export const routes = [
       "not_found",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "browsing"
   },
   {
     "id": "get_job",
@@ -2074,7 +4493,8 @@ export const routes = [
       "rate_limited",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "default"
   },
   {
     "id": "get_job_failures",
@@ -2099,7 +4519,79 @@ export const routes = [
       "internal",
       "invalid_cursor"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "default"
+  },
+  {
+    "id": "get_libraries",
+    "method": "GET",
+    "path": "/v1/libraries",
+    "summary": "List visible libraries",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "get_libraries_id_artists",
+    "method": "GET",
+    "path": "/v1/libraries/{id}/artists",
+    "summary": "Read library artist",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "cursor",
+      "limit"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "get_libraries_id_books",
+    "method": "GET",
+    "path": "/v1/libraries/{id}/books",
+    "summary": "Read library book",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "cursor",
+      "limit"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
   },
   {
     "id": "get_libraries_id_browse",
@@ -2126,7 +4618,78 @@ export const routes = [
       "not_found",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "browsing"
+  },
+  {
+    "id": "get_libraries_id_browse_capabilities",
+    "method": "GET",
+    "path": "/v1/libraries/{id}/browse-capabilities",
+    "summary": "Read library browse capabilities",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "query": [
+      "pivot"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "get_libraries_id_categories",
+    "method": "GET",
+    "path": "/v1/libraries/{id}/categories",
+    "summary": "Read library categories",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "get_libraries_id_collections",
+    "method": "GET",
+    "path": "/v1/libraries/{id}/collections",
+    "summary": "Read library collections",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "cursor",
+      "limit"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
   },
   {
     "id": "get_libraries_id_content",
@@ -2157,7 +4720,8 @@ export const routes = [
       "not_found",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "browsing"
   },
   {
     "id": "get_libraries_id_discover",
@@ -2176,7 +4740,54 @@ export const routes = [
       "not_found",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "browsing"
+  },
+  {
+    "id": "get_libraries_id_episode_issues",
+    "method": "GET",
+    "path": "/v1/libraries/{id}/episode-issues",
+    "summary": "Read library episode issues",
+    "access": "owner",
+    "requires": "library",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "cursor",
+      "limit"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "get_libraries_id_inventory_status",
+    "method": "GET",
+    "path": "/v1/libraries/{id}/inventory-status",
+    "summary": "Read library inventory status",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
   },
   {
     "id": "get_libraries_id_listening_selection",
@@ -2205,7 +4816,169 @@ export const routes = [
       "not_found",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "browsing"
+  },
+  {
+    "id": "get_libraries_id_metadata_agent",
+    "method": "GET",
+    "path": "/v1/libraries/{id}/metadata/agent",
+    "summary": "Read library metadata agent",
+    "access": "device",
+    "requires": "library",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "get_libraries_id_metadata_screen",
+    "method": "GET",
+    "path": "/v1/libraries/{id}/metadata/screen",
+    "summary": "Read library metadata screen",
+    "access": "owner",
+    "requires": "library",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "get_libraries_id_network_roots",
+    "method": "GET",
+    "path": "/v1/libraries/{id}/network-roots",
+    "summary": "Read library network roots",
+    "access": "owner",
+    "requires": "library",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "get_libraries_id_show_workspace",
+    "method": "GET",
+    "path": "/v1/libraries/{id}/show-workspace",
+    "summary": "Read library show workspace",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "cursor",
+      "episodeId",
+      "group",
+      "seasonCursor",
+      "seasonId",
+      "selectedSeasonId",
+      "showId"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "get_libraries_id_shows",
+    "method": "GET",
+    "path": "/v1/libraries/{id}/shows",
+    "summary": "Read library show",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "cursor",
+      "limit"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "get_libraries_id_strm_analysis_policy",
+    "method": "GET",
+    "path": "/v1/libraries/{id}/strm-analysis-policy",
+    "summary": "Read library strm analysis policy",
+    "access": "owner",
+    "requires": "library",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "get_library_channels_id_logo",
+    "method": "GET",
+    "path": "/v1/library-channels/{id}/logo",
+    "summary": "Read library channels logo",
+    "access": "device",
+    "requires": "read",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "responseContentType": "application/octet-stream",
+    "http": true,
+    "admission": "default"
   },
   {
     "id": "get_library_facets",
@@ -2229,7 +5002,8 @@ export const routes = [
       "not_found",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "browsing"
   },
   {
     "id": "get_library_inventory",
@@ -2256,7 +5030,29 @@ export const routes = [
       "revision_mismatch",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "admin-heavy"
+  },
+  {
+    "id": "get_library_kinds_kind_metadata_agents",
+    "method": "GET",
+    "path": "/v1/library-kinds/{kind}/metadata-agents",
+    "summary": "Read library kinds metadata agents",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
   },
   {
     "id": "get_library_settings",
@@ -2277,7 +5073,29 @@ export const routes = [
       "idempotency_key_reused",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "admin"
+  },
+  {
+    "id": "get_listening_preferences",
+    "method": "GET",
+    "path": "/v1/listening/preferences",
+    "summary": "Read listening preferences",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
   },
   {
     "id": "get_live_settings",
@@ -2304,7 +5122,8 @@ export const routes = [
       "source_unavailable",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "admin"
   },
   {
     "id": "get_live_source_configuration",
@@ -2331,7 +5150,8 @@ export const routes = [
       "source_unavailable",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "admin"
   },
   {
     "id": "get_live_tuners",
@@ -2358,7 +5178,163 @@ export const routes = [
       "source_unavailable",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "admin"
+  },
+  {
+    "id": "get_me",
+    "method": "GET",
+    "path": "/v1/me",
+    "summary": "Read the current viewer",
+    "access": "device",
+    "requires": "read",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
+  },
+  {
+    "id": "get_me_library_navigation",
+    "method": "GET",
+    "path": "/v1/me/library-navigation",
+    "summary": "Read viewer library navigation",
+    "access": "device",
+    "requires": "read",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
+  },
+  {
+    "id": "get_media_grant",
+    "method": "GET",
+    "path": "/v1/media/{grant}",
+    "summary": "Read media",
+    "access": "device",
+    "requires": "playback",
+    "lane": "media",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "responseContentType": "application/octet-stream",
+    "http": true,
+    "admission": "media-body"
+  },
+  {
+    "id": "get_media_grant_audio",
+    "method": "GET",
+    "path": "/v1/media/{grant}/audio",
+    "summary": "Read media audio",
+    "access": "device",
+    "requires": "playback",
+    "lane": "media",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "responseContentType": "application/octet-stream",
+    "http": true,
+    "admission": "media-body"
+  },
+  {
+    "id": "get_media_grant_audio_converted",
+    "method": "GET",
+    "path": "/v1/media/{grant}/audio-converted",
+    "summary": "Read media audio converted",
+    "access": "device",
+    "requires": "playback",
+    "lane": "media",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "query": [
+      "fromFrame"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "responseContentType": "application/octet-stream",
+    "http": true,
+    "admission": "media-body"
+  },
+  {
+    "id": "get_media_grant_file",
+    "method": "GET",
+    "path": "/v1/media/{grant}/{file}",
+    "summary": "Read media",
+    "access": "device",
+    "requires": "playback",
+    "lane": "media",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "responseContentType": "application/octet-stream",
+    "http": true,
+    "admission": "media-body"
+  },
+  {
+    "id": "get_media_linear_playbackId_generation_token_name",
+    "method": "GET",
+    "path": "/v1/media/linear/{playbackId}/{generation}/{token}/{name}",
+    "summary": "Read media linear",
+    "access": "device",
+    "requires": "playback",
+    "lane": "media",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "responseContentType": "application/octet-stream",
+    "http": true,
+    "admission": "media-body"
   },
   {
     "id": "get_metadata_attention",
@@ -2384,7 +5360,8 @@ export const routes = [
       "rate_limited",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "browsing"
   },
   {
     "id": "get_metadata_attention_counts",
@@ -2405,7 +5382,80 @@ export const routes = [
       "rate_limited",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "browsing"
+  },
+  {
+    "id": "get_metadata_kind_id",
+    "method": "GET",
+    "path": "/v1/metadata/{kind}/{id}",
+    "summary": "Read metadata",
+    "access": "owner",
+    "requires": "library",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
+  },
+  {
+    "id": "get_metadata_kind_id_art_role",
+    "method": "GET",
+    "path": "/v1/metadata/{kind}/{id}/art/{role}",
+    "summary": "Read metadata art",
+    "access": "owner",
+    "requires": "read",
+    "lane": "media",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "candidate",
+      "subject",
+      "v"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "responseContentType": "application/octet-stream",
+    "http": true,
+    "admission": "media"
+  },
+  {
+    "id": "get_metadata_kind_id_preview",
+    "method": "GET",
+    "path": "/v1/metadata/{kind}/{id}/preview",
+    "summary": "Read metadata preview",
+    "access": "owner",
+    "requires": "library",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "query": [
+      "mergeId"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
   },
   {
     "id": "get_metadata_settings",
@@ -2424,7 +5474,71 @@ export const routes = [
       "revision_mismatch",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "admin"
+  },
+  {
+    "id": "get_networking_certificate",
+    "method": "GET",
+    "path": "/v1/networking/certificate",
+    "summary": "Read network certificate",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "auth"
+  },
+  {
+    "id": "get_networking_claim",
+    "method": "GET",
+    "path": "/v1/networking/claim",
+    "summary": "Read network claim",
+    "access": "owner",
+    "requires": "session",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "auth"
+  },
+  {
+    "id": "get_networking_remote",
+    "method": "GET",
+    "path": "/v1/networking/remote",
+    "summary": "Read network remote",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "auth"
   },
   {
     "id": "get_notifications",
@@ -2447,7 +5561,29 @@ export const routes = [
       "not_found",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "default"
+  },
+  {
+    "id": "get_notifications_capabilities",
+    "method": "GET",
+    "path": "/v1/notifications/capabilities",
+    "summary": "Read notifications capabilities",
+    "access": "device",
+    "requires": "read",
+    "lane": "realtime",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "realtime"
   },
   {
     "id": "get_notifications_inbox",
@@ -2472,7 +5608,8 @@ export const routes = [
       "not_found",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "default"
   },
   {
     "id": "get_notifications_unread_count",
@@ -2494,7 +5631,33 @@ export const routes = [
       "not_found",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "default"
+  },
+  {
+    "id": "get_people",
+    "method": "GET",
+    "path": "/v1/people",
+    "summary": "Read people",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "limit",
+      "q"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
   },
   {
     "id": "get_people_id",
@@ -2518,7 +5681,33 @@ export const routes = [
       "not_found",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "browsing"
+  },
+  {
+    "id": "get_people_id_portrait",
+    "method": "GET",
+    "path": "/v1/people/{id}/portrait",
+    "summary": "Read people portrait",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "query": [
+      "v"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "responseContentType": "image/jpeg",
+    "http": true,
+    "admission": "browsing"
   },
   {
     "id": "get_personal_history",
@@ -2546,7 +5735,29 @@ export const routes = [
       "rate_limited",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "default"
+  },
+  {
+    "id": "get_playback_delivery_policy",
+    "method": "GET",
+    "path": "/v1/playback/delivery-policy",
+    "summary": "Read playback delivery policy",
+    "access": "device",
+    "requires": "read",
+    "lane": "media",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "playback"
   },
   {
     "id": "get_playback_options",
@@ -2574,7 +5785,8 @@ export const routes = [
       "unauthorized",
       "not_found"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "playback"
   },
   {
     "id": "get_playback_session",
@@ -2590,7 +5802,34 @@ export const routes = [
       "unauthorized",
       "not_found"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "security-fence"
+  },
+  {
+    "id": "get_playback_sessions_id_chapters",
+    "method": "GET",
+    "path": "/v1/playback/sessions/{id}/chapters",
+    "summary": "Read playback sessions chapters",
+    "access": "device",
+    "requires": "read",
+    "lane": "security",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "cursor",
+      "limit",
+      "revision"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "security-fence"
   },
   {
     "id": "get_playlist_order",
@@ -2616,7 +5855,128 @@ export const routes = [
       "rate_limited",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "browsing"
+  },
+  {
+    "id": "get_playlists_id",
+    "method": "GET",
+    "path": "/v1/playlists/{id}",
+    "summary": "Read playlists",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "get_playlists_id_content",
+    "method": "GET",
+    "path": "/v1/playlists/{id}/content",
+    "summary": "Read playlists content",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "cursor",
+      "limit"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "get_playlists_id_share_candidates",
+    "method": "GET",
+    "path": "/v1/playlists/{id}/share-candidates",
+    "summary": "Read playlists share candidates",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "cursor",
+      "limit"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "get_preferences",
+    "method": "GET",
+    "path": "/v1/preferences",
+    "summary": "Read preferences",
+    "access": "device",
+    "requires": "read",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "deviceClass"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
+  },
+  {
+    "id": "get_profiles_id_avatar",
+    "method": "GET",
+    "path": "/v1/profiles/{id}/avatar",
+    "summary": "Read profile avatar",
+    "access": "device",
+    "requires": "read",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "query": [
+      "v"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "responseContentType": "application/octet-stream",
+    "http": true,
+    "admission": "default"
   },
   {
     "id": "get_queue",
@@ -2632,7 +5992,8 @@ export const routes = [
       "unauthorized",
       "not_found"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "browsing"
   },
   {
     "id": "get_queue_window",
@@ -2654,7 +6015,8 @@ export const routes = [
       "unauthorized",
       "not_found"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "browsing"
   },
   {
     "id": "get_rating_systems",
@@ -2670,7 +6032,29 @@ export const routes = [
       "unauthorized",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "default"
+  },
+  {
+    "id": "get_readiness",
+    "method": "GET",
+    "path": "/v1/readiness",
+    "summary": "Read readiness",
+    "access": "public",
+    "requires": "open",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
   },
   {
     "id": "get_remote_playback_controls",
@@ -2696,7 +6080,8 @@ export const routes = [
       "session_ended",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "media"
   },
   {
     "id": "get_saved_content",
@@ -2726,7 +6111,76 @@ export const routes = [
       "rate_limited",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "browsing"
+  },
+  {
+    "id": "get_saved_pins_order",
+    "method": "GET",
+    "path": "/v1/saved-pins/order",
+    "summary": "Read saved pins order",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "get_saved_resources",
+    "method": "GET",
+    "path": "/v1/saved-resources",
+    "summary": "Read saved resources",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "cursor",
+      "kind",
+      "pinned"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "get_saved_resources_id",
+    "method": "GET",
+    "path": "/v1/saved-resources/{id}",
+    "summary": "Read saved resources",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
   },
   {
     "id": "get_saved_resources_id_content",
@@ -2749,7 +6203,32 @@ export const routes = [
       "not_found",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "browsing"
+  },
+  {
+    "id": "get_saved_resources_id_share_candidates",
+    "method": "GET",
+    "path": "/v1/saved-resources/{id}/share-candidates",
+    "summary": "Read saved resources share candidates",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "cursor"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
   },
   {
     "id": "get_scan_issues",
@@ -2774,7 +6253,54 @@ export const routes = [
       "idempotency_key_reused",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "browsing"
+  },
+  {
+    "id": "get_search_history",
+    "method": "GET",
+    "path": "/v1/search/history",
+    "summary": "Read search history",
+    "access": "device",
+    "requires": "read",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "expensive"
+  },
+  {
+    "id": "get_seasons_id_episodes",
+    "method": "GET",
+    "path": "/v1/seasons/{id}/episodes",
+    "summary": "Read season episodes",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "cursor",
+      "limit"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
   },
   {
     "id": "get_server",
@@ -2789,7 +6315,8 @@ export const routes = [
     "errors": [
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "default"
   },
   {
     "id": "get_server_metadata_attention",
@@ -2815,7 +6342,117 @@ export const routes = [
       "rate_limited",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "browsing"
+  },
+  {
+    "id": "get_setup_state",
+    "method": "GET",
+    "path": "/v1/setup/state",
+    "summary": "Read setup state",
+    "access": "owner",
+    "requires": "session",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
+  },
+  {
+    "id": "get_shows_id_episodes",
+    "method": "GET",
+    "path": "/v1/shows/{id}/episodes",
+    "summary": "Read show episodes",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "cursor",
+      "limit"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "get_shows_id_metadata_tvdb",
+    "method": "GET",
+    "path": "/v1/shows/{id}/metadata/tvdb",
+    "summary": "Read show metadata tvdb",
+    "access": "owner",
+    "requires": "library",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "get_shows_id_recommendations",
+    "method": "GET",
+    "path": "/v1/shows/{id}/recommendations",
+    "summary": "Read show recommendations",
+    "access": "device",
+    "requires": "read",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "expensive"
+  },
+  {
+    "id": "get_shows_id_seasons",
+    "method": "GET",
+    "path": "/v1/shows/{id}/seasons",
+    "summary": "Read show season",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
   },
   {
     "id": "get_shows_screen_metadata",
@@ -2833,7 +6470,92 @@ export const routes = [
       "not_found",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "browsing"
+  },
+  {
+    "id": "get_storage_mounts",
+    "method": "GET",
+    "path": "/v1/storage/mounts",
+    "summary": "Read storage mounts",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
+  },
+  {
+    "id": "get_storage_operations_id",
+    "method": "GET",
+    "path": "/v1/storage/operations/{id}",
+    "summary": "Read storage operations",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
+  },
+  {
+    "id": "get_storage_source_operations_id",
+    "method": "GET",
+    "path": "/v1/storage/source-operations/{id}",
+    "summary": "Read storage source operations",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
+  },
+  {
+    "id": "get_storage_sources",
+    "method": "GET",
+    "path": "/v1/storage/sources",
+    "summary": "Read storage sources",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
   },
   {
     "id": "get_storage_status",
@@ -2852,7 +6574,96 @@ export const routes = [
       "invalid_request",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "admin"
+  },
+  {
+    "id": "get_suggestions",
+    "method": "GET",
+    "path": "/v1/suggestions",
+    "summary": "Read suggestions",
+    "access": "device",
+    "requires": "read",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "expensive"
+  },
+  {
+    "id": "get_system",
+    "method": "GET",
+    "path": "/v1/system",
+    "summary": "Read system",
+    "access": "public",
+    "requires": "open",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
+  },
+  {
+    "id": "get_topshelf",
+    "method": "GET",
+    "path": "/v1/topshelf",
+    "summary": "Read topshelf",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "get_topshelf_art_id",
+    "method": "GET",
+    "path": "/v1/topshelf/art/{id}",
+    "summary": "Read topshelf art",
+    "access": "device",
+    "requires": "read",
+    "lane": "media",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "query": [
+      "grant"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "responseContentType": "application/octet-stream",
+    "http": true,
+    "admission": "media"
   },
   {
     "id": "get_v1_items_id_chapters_chapter_image",
@@ -2884,7 +6695,8 @@ export const routes = [
       "subtitle_invalid_input"
     ],
     "status": 200,
-    "responseContentType": "image/jpeg"
+    "responseContentType": "image/jpeg",
+    "admission": "media"
   },
   {
     "id": "get_v1_items_id_trickplay_set_tiles_tile_jpg",
@@ -2916,7 +6728,8 @@ export const routes = [
       "subtitle_invalid_input"
     ],
     "status": 200,
-    "responseContentType": "image/jpeg"
+    "responseContentType": "image/jpeg",
+    "admission": "media"
   },
   {
     "id": "get_v1_items_itemId_playback_session_subtitles",
@@ -2947,7 +6760,8 @@ export const routes = [
       "subtitle_unsupported",
       "subtitle_invalid_input"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "playback"
   },
   {
     "id": "get_v1_items_itemId_subtitles",
@@ -2978,7 +6792,8 @@ export const routes = [
       "subtitle_unsupported",
       "subtitle_invalid_input"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "browsing"
   },
   {
     "id": "get_v1_media_subtitles_grant_resource_revision",
@@ -3009,7 +6824,8 @@ export const routes = [
       "subtitle_unsupported",
       "subtitle_invalid_input"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "media-body"
   },
   {
     "id": "get_v1_media_subtitles_grant_resource_revision_fonts",
@@ -3040,7 +6856,8 @@ export const routes = [
       "subtitle_unsupported",
       "subtitle_invalid_input"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "media-body"
   },
   {
     "id": "get_v1_media_subtitles_grant_resource_revision_fonts_font",
@@ -3072,7 +6889,8 @@ export const routes = [
       "subtitle_invalid_input"
     ],
     "status": 200,
-    "responseContentType": "font/ttf"
+    "responseContentType": "font/ttf",
+    "admission": "media-body"
   },
   {
     "id": "get_v1_media_subtitles_grant_resource_revision_original_ass",
@@ -3104,7 +6922,8 @@ export const routes = [
       "subtitle_invalid_input"
     ],
     "status": 200,
-    "responseContentType": "text/x-ssa"
+    "responseContentType": "text/x-ssa",
+    "admission": "media-body"
   },
   {
     "id": "get_v1_media_subtitles_grant_resource_revision_original_idx",
@@ -3136,7 +6955,8 @@ export const routes = [
       "subtitle_invalid_input"
     ],
     "status": 200,
-    "responseContentType": "text/plain"
+    "responseContentType": "text/plain",
+    "admission": "media-body"
   },
   {
     "id": "get_v1_media_subtitles_grant_resource_revision_original_mks",
@@ -3168,7 +6988,8 @@ export const routes = [
       "subtitle_invalid_input"
     ],
     "status": 200,
-    "responseContentType": "application/octet-stream"
+    "responseContentType": "application/octet-stream",
+    "admission": "media-body"
   },
   {
     "id": "get_v1_media_subtitles_grant_resource_revision_original_ssa",
@@ -3200,7 +7021,8 @@ export const routes = [
       "subtitle_invalid_input"
     ],
     "status": 200,
-    "responseContentType": "text/x-ssa"
+    "responseContentType": "text/x-ssa",
+    "admission": "media-body"
   },
   {
     "id": "get_v1_media_subtitles_grant_resource_revision_original_sub",
@@ -3232,7 +7054,8 @@ export const routes = [
       "subtitle_invalid_input"
     ],
     "status": 200,
-    "responseContentType": "application/octet-stream"
+    "responseContentType": "application/octet-stream",
+    "admission": "media-body"
   },
   {
     "id": "get_v1_media_subtitles_grant_resource_revision_original_sup",
@@ -3264,7 +7087,8 @@ export const routes = [
       "subtitle_invalid_input"
     ],
     "status": 200,
-    "responseContentType": "application/octet-stream"
+    "responseContentType": "application/octet-stream",
+    "admission": "media-body"
   },
   {
     "id": "get_v1_media_subtitles_grant_resource_revision_vtt",
@@ -3296,7 +7120,8 @@ export const routes = [
       "subtitle_invalid_input"
     ],
     "status": 200,
-    "responseContentType": "text/vtt"
+    "responseContentType": "text/vtt",
+    "admission": "media-body"
   },
   {
     "id": "head_download_artifact",
@@ -3319,7 +7144,31 @@ export const routes = [
       "not_found",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "responseContentType": "application/octet-stream",
+    "admission": "bulk-transfer"
+  },
+  {
+    "id": "head_media_grant_audio",
+    "method": "HEAD",
+    "path": "/v1/media/{grant}/audio",
+    "summary": "Read headers for media audio",
+    "access": "device",
+    "requires": "playback",
+    "lane": "media",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "responseContentType": "application/octet-stream",
+    "http": true,
+    "admission": "media-body"
   },
   {
     "id": "head_v1_media_subtitles_grant_resource_revision_fonts_font",
@@ -3351,7 +7200,8 @@ export const routes = [
       "subtitle_invalid_input"
     ],
     "status": 200,
-    "responseContentType": "font/ttf"
+    "responseContentType": "font/ttf",
+    "admission": "media-body"
   },
   {
     "id": "head_v1_media_subtitles_grant_resource_revision_original_ass",
@@ -3383,7 +7233,8 @@ export const routes = [
       "subtitle_invalid_input"
     ],
     "status": 200,
-    "responseContentType": "text/x-ssa"
+    "responseContentType": "text/x-ssa",
+    "admission": "media-body"
   },
   {
     "id": "head_v1_media_subtitles_grant_resource_revision_original_idx",
@@ -3415,7 +7266,8 @@ export const routes = [
       "subtitle_invalid_input"
     ],
     "status": 200,
-    "responseContentType": "text/plain"
+    "responseContentType": "text/plain",
+    "admission": "media-body"
   },
   {
     "id": "head_v1_media_subtitles_grant_resource_revision_original_mks",
@@ -3447,7 +7299,8 @@ export const routes = [
       "subtitle_invalid_input"
     ],
     "status": 200,
-    "responseContentType": "application/octet-stream"
+    "responseContentType": "application/octet-stream",
+    "admission": "media-body"
   },
   {
     "id": "head_v1_media_subtitles_grant_resource_revision_original_ssa",
@@ -3479,7 +7332,8 @@ export const routes = [
       "subtitle_invalid_input"
     ],
     "status": 200,
-    "responseContentType": "text/x-ssa"
+    "responseContentType": "text/x-ssa",
+    "admission": "media-body"
   },
   {
     "id": "head_v1_media_subtitles_grant_resource_revision_original_sub",
@@ -3511,7 +7365,8 @@ export const routes = [
       "subtitle_invalid_input"
     ],
     "status": 200,
-    "responseContentType": "application/octet-stream"
+    "responseContentType": "application/octet-stream",
+    "admission": "media-body"
   },
   {
     "id": "head_v1_media_subtitles_grant_resource_revision_original_sup",
@@ -3543,7 +7398,8 @@ export const routes = [
       "subtitle_invalid_input"
     ],
     "status": 200,
-    "responseContentType": "application/octet-stream"
+    "responseContentType": "application/octet-stream",
+    "admission": "media-body"
   },
   {
     "id": "issue_download_receipts",
@@ -3570,7 +7426,8 @@ export const routes = [
       "downloads_unavailable",
       "internal"
     ],
-    "status": 201
+    "status": 201,
+    "admission": "default"
   },
   {
     "id": "list_access_tokens",
@@ -3594,7 +7451,8 @@ export const routes = [
       "administration_unavailable",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "default"
   },
   {
     "id": "list_admin_sessions",
@@ -3616,7 +7474,8 @@ export const routes = [
       "unauthorized",
       "not_permitted"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "admin"
   },
   {
     "id": "list_api_keys",
@@ -3640,7 +7499,8 @@ export const routes = [
       "administration_unavailable",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "admin"
   },
   {
     "id": "list_download_preparations",
@@ -3669,7 +7529,8 @@ export const routes = [
       "downloads_unavailable",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "default"
   },
   {
     "id": "list_download_receipt_keys",
@@ -3691,7 +7552,8 @@ export const routes = [
       "downloads_unavailable",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "default"
   },
   {
     "id": "list_download_requests",
@@ -3716,7 +7578,8 @@ export const routes = [
       "downloads_unavailable",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "browsing"
   },
   {
     "id": "list_download_revocations",
@@ -3743,7 +7606,8 @@ export const routes = [
       "downloads_unavailable",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "security-fence"
   },
   {
     "id": "list_live_source_channels",
@@ -3770,7 +7634,8 @@ export const routes = [
       "administration_unavailable",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "admin"
   },
   {
     "id": "list_live_source_groups",
@@ -3797,7 +7662,8 @@ export const routes = [
       "administration_unavailable",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "admin"
   },
   {
     "id": "list_live_sources",
@@ -3824,7 +7690,8 @@ export const routes = [
       "source_unavailable",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "admin"
   },
   {
     "id": "list_member_access_tokens",
@@ -3849,7 +7716,8 @@ export const routes = [
       "administration_unavailable",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "admin"
   },
   {
     "id": "list_missing_titles",
@@ -3873,7 +7741,8 @@ export const routes = [
       "invalid_request",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "admin"
   },
   {
     "id": "list_playback_failure_memory",
@@ -3890,7 +7759,8 @@ export const routes = [
       "not_permitted",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "admin"
   },
   {
     "id": "list_queue_entries",
@@ -3912,7 +7782,8 @@ export const routes = [
       "unauthorized",
       "not_found"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "browsing"
   },
   {
     "id": "list_webhook_deliveries",
@@ -3937,7 +7808,8 @@ export const routes = [
       "administration_unavailable",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "admin"
   },
   {
     "id": "list_webhooks",
@@ -3957,7 +7829,8 @@ export const routes = [
       "administration_unavailable",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "admin"
   },
   {
     "id": "mcp",
@@ -3976,7 +7849,8 @@ export const routes = [
       "unsupported_media_type",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "tools"
   },
   {
     "id": "mcp_stream",
@@ -3991,7 +7865,8 @@ export const routes = [
     "errors": [
       "method_not_allowed"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "default"
   },
   {
     "id": "merge_titles",
@@ -4010,7 +7885,8 @@ export const routes = [
       "invalid_request",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "admin-heavy"
   },
   {
     "id": "move_queue_entry",
@@ -4032,7 +7908,8 @@ export const routes = [
       "queue_too_large",
       "queue_building"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "default"
   },
   {
     "id": "patch_admin_feedback_id",
@@ -4051,7 +7928,113 @@ export const routes = [
       "not_found",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "admin-heavy"
+  },
+  {
+    "id": "patch_admin_libraries_id",
+    "method": "PATCH",
+    "path": "/v1/admin/libraries/{id}",
+    "summary": "Change server library",
+    "access": "owner",
+    "requires": "library",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin"
+  },
+  {
+    "id": "patch_admin_libraries_id_sources_source",
+    "method": "PATCH",
+    "path": "/v1/admin/libraries/{id}/sources/{source}",
+    "summary": "Change server library sources",
+    "access": "owner",
+    "requires": "library",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin-heavy"
+  },
+  {
+    "id": "patch_admin_logs_settings",
+    "method": "PATCH",
+    "path": "/v1/admin/logs/settings",
+    "summary": "Change server logs settings",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin"
+  },
+  {
+    "id": "patch_admin_notifications_settings",
+    "method": "PATCH",
+    "path": "/v1/admin/notifications/settings",
+    "summary": "Change server notifications settings",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin-heavy"
+  },
+  {
+    "id": "patch_collections_id",
+    "method": "PATCH",
+    "path": "/v1/collections/{id}",
+    "summary": "Change collections",
+    "access": "owner",
+    "requires": "library",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
   },
   {
     "id": "patch_device",
@@ -4069,7 +8052,246 @@ export const routes = [
       "not_found",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "auth"
+  },
+  {
+    "id": "patch_direct_members_id",
+    "method": "PATCH",
+    "path": "/v1/direct/members/{id}",
+    "summary": "Change account members",
+    "access": "device",
+    "requires": "session",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 204,
+    "http": true,
+    "admission": "auth"
+  },
+  {
+    "id": "patch_direct_profiles_id",
+    "method": "PATCH",
+    "path": "/v1/direct/profiles/{id}",
+    "summary": "Change account profile",
+    "access": "device",
+    "requires": "session",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "auth"
+  },
+  {
+    "id": "patch_dvr_recordings_id",
+    "method": "PATCH",
+    "path": "/v1/dvr/recordings/{id}",
+    "summary": "Change dvr recordings",
+    "access": "device",
+    "requires": "playback",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "patch_items_id_lyrics_resource_offset",
+    "method": "PATCH",
+    "path": "/v1/items/{id}/lyrics/{resource}/offset",
+    "summary": "Change title lyrics offset",
+    "access": "device",
+    "requires": "library",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 2097152,
+    "query": [
+      "sessionId",
+      "sourceId",
+      "sourceVersion"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "patch_items_id_metadata_manual",
+    "method": "PATCH",
+    "path": "/v1/items/{id}/metadata/manual",
+    "summary": "Change title metadata manual",
+    "access": "owner",
+    "requires": "library",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 262144,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "patch_playlists_id",
+    "method": "PATCH",
+    "path": "/v1/playlists/{id}",
+    "summary": "Change playlists",
+    "access": "device",
+    "requires": "playback",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
+  },
+  {
+    "id": "patch_preferences",
+    "method": "PATCH",
+    "path": "/v1/preferences",
+    "summary": "Change preferences",
+    "access": "device",
+    "requires": "playback",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
+  },
+  {
+    "id": "patch_saved_resources_id",
+    "method": "PATCH",
+    "path": "/v1/saved-resources/{id}",
+    "summary": "Change saved resources",
+    "access": "device",
+    "requires": "playback",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
+  },
+  {
+    "id": "post_access_invitations_accept",
+    "method": "POST",
+    "path": "/v1/access/invitations/accept",
+    "summary": "Run access invitations accept",
+    "access": "public",
+    "requires": "session",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 201,
+    "http": true,
+    "admission": "default"
+  },
+  {
+    "id": "post_admin_access_invitations",
+    "method": "POST",
+    "path": "/v1/admin/access/invitations",
+    "summary": "Run server access invitations",
+    "access": "admin_scope",
+    "adminScope": "access",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 201,
+    "http": true,
+    "admission": "admin"
+  },
+  {
+    "id": "post_admin_access_invitations_id_revoke",
+    "method": "POST",
+    "path": "/v1/admin/access/invitations/{id}/revoke",
+    "summary": "Run server access invitations revoke",
+    "access": "admin_scope",
+    "adminScope": "access",
+    "requires": "admin",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "security-fence"
   },
   {
     "id": "post_admin_background_pause",
@@ -4089,7 +8311,8 @@ export const routes = [
       "administration_unavailable",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "admin"
   },
   {
     "id": "post_admin_backups",
@@ -4109,7 +8332,8 @@ export const routes = [
       "administration_unavailable",
       "internal"
     ],
-    "status": 202
+    "status": 202,
+    "admission": "admin-heavy"
   },
   {
     "id": "post_admin_backups_restore",
@@ -4135,7 +8359,29 @@ export const routes = [
       "administration_unavailable",
       "internal"
     ],
-    "status": 202
+    "status": 202,
+    "admission": "admin-long"
+  },
+  {
+    "id": "post_admin_console_alerts_id_acknowledge",
+    "method": "POST",
+    "path": "/v1/admin/console/alerts/{id}/acknowledge",
+    "summary": "Run server console alerts acknowledge",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin-heavy"
   },
   {
     "id": "post_admin_console_diagnostics_capture",
@@ -4154,7 +8400,8 @@ export const routes = [
       "not_found",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "admin-heavy"
   },
   {
     "id": "post_admin_console_exports",
@@ -4173,7 +8420,8 @@ export const routes = [
       "not_found",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "admin-heavy"
   },
   {
     "id": "post_admin_console_jobs",
@@ -4192,7 +8440,8 @@ export const routes = [
       "not_found",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "admin-heavy"
   },
   {
     "id": "post_admin_console_jobs_id_action",
@@ -4211,7 +8460,71 @@ export const routes = [
       "not_found",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "admin-heavy"
+  },
+  {
+    "id": "post_admin_diagnostics_integrity",
+    "method": "POST",
+    "path": "/v1/admin/diagnostics/integrity",
+    "summary": "Run server diagnostics integrity",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin-long"
+  },
+  {
+    "id": "post_admin_diagnostics_integrity_repair",
+    "method": "POST",
+    "path": "/v1/admin/diagnostics/integrity/repair",
+    "summary": "Run server diagnostics integrity repair",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin-long"
+  },
+  {
+    "id": "post_admin_dvr_recording_groups",
+    "method": "POST",
+    "path": "/v1/admin/dvr/recording-groups",
+    "summary": "Run server dvr recording groups",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin"
   },
   {
     "id": "post_admin_feedback_reports_id_status",
@@ -4230,7 +8543,526 @@ export const routes = [
       "not_found",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "admin-heavy"
+  },
+  {
+    "id": "post_admin_ingestion_jobs_id_action",
+    "method": "POST",
+    "path": "/v1/admin/ingestion/jobs/{id}/{action}",
+    "summary": "Run server ingestion jobs",
+    "access": "owner",
+    "requires": "library",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 204,
+    "successStatuses": [
+      202,
+      204
+    ],
+    "http": true,
+    "admission": "default"
+  },
+  {
+    "id": "post_admin_libraries_id_inventory_object_action",
+    "method": "POST",
+    "path": "/v1/admin/libraries/{id}/inventory/{object}/{action}",
+    "summary": "Run server library inventory",
+    "access": "owner",
+    "requires": "library",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 204,
+    "successStatuses": [
+      200,
+      204
+    ],
+    "http": true,
+    "admission": "admin-heavy"
+  },
+  {
+    "id": "post_admin_libraries_id_sources",
+    "method": "POST",
+    "path": "/v1/admin/libraries/{id}/sources",
+    "summary": "Run server library sources",
+    "access": "owner",
+    "requires": "library",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin-heavy"
+  },
+  {
+    "id": "post_admin_libraries_id_sources_source_check",
+    "method": "POST",
+    "path": "/v1/admin/libraries/{id}/sources/{source}/check",
+    "summary": "Run server library sources check",
+    "access": "owner",
+    "requires": "library",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin"
+  },
+  {
+    "id": "post_admin_libraries_id_sources_source_scans",
+    "method": "POST",
+    "path": "/v1/admin/libraries/{id}/sources/{source}/scans",
+    "summary": "Run server library sources scans",
+    "access": "owner",
+    "requires": "library",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "query": [
+      "mode"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 202,
+    "http": true,
+    "admission": "admin-heavy"
+  },
+  {
+    "id": "post_admin_library_channels",
+    "method": "POST",
+    "path": "/v1/admin/library-channels",
+    "summary": "Run server library channels",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 1048576,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin"
+  },
+  {
+    "id": "post_admin_library_channels_block_presets",
+    "method": "POST",
+    "path": "/v1/admin/library-channels/block-presets",
+    "summary": "Run server library channels block presets",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin"
+  },
+  {
+    "id": "post_admin_library_channels_defaults",
+    "method": "POST",
+    "path": "/v1/admin/library-channels/defaults",
+    "summary": "Run server library channels defaults",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 4096,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin"
+  },
+  {
+    "id": "post_admin_library_channels_id_delete",
+    "method": "POST",
+    "path": "/v1/admin/library-channels/{id}/delete",
+    "summary": "Run server library channels delete",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 4096,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin"
+  },
+  {
+    "id": "post_admin_library_channels_id_logo",
+    "method": "POST",
+    "path": "/v1/admin/library-channels/{id}/logo",
+    "summary": "Run server library channels logo",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 11534336,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "requestContentTypes": [
+      "multipart/form-data"
+    ],
+    "http": true,
+    "admission": "admin"
+  },
+  {
+    "id": "post_admin_library_channels_id_regenerate",
+    "method": "POST",
+    "path": "/v1/admin/library-channels/{id}/regenerate",
+    "summary": "Run server library channels regenerate",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 4096,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin"
+  },
+  {
+    "id": "post_admin_library_channels_preview",
+    "method": "POST",
+    "path": "/v1/admin/library-channels/preview",
+    "summary": "Run server library channels preview",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 1048576,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin"
+  },
+  {
+    "id": "post_admin_library_channels_reorder",
+    "method": "POST",
+    "path": "/v1/admin/library-channels/reorder",
+    "summary": "Run server library channels reorder",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 32768,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin"
+  },
+  {
+    "id": "post_admin_library_channels_templates_id_install",
+    "method": "POST",
+    "path": "/v1/admin/library-channels/templates/{id}/install",
+    "summary": "Run server library channels templates install",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 4096,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin"
+  },
+  {
+    "id": "post_admin_live_sources_discover",
+    "method": "POST",
+    "path": "/v1/admin/live-sources/discover",
+    "summary": "Run server live sources discover",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin"
+  },
+  {
+    "id": "post_admin_live_sources_id_enabled",
+    "method": "POST",
+    "path": "/v1/admin/live-sources/{id}/enabled",
+    "summary": "Run server live sources enabled",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin"
+  },
+  {
+    "id": "post_admin_live_sources_id_logos",
+    "method": "POST",
+    "path": "/v1/admin/live-sources/{id}/logos",
+    "summary": "Run server live sources logos",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin"
+  },
+  {
+    "id": "post_admin_live_sources_id_refresh",
+    "method": "POST",
+    "path": "/v1/admin/live-sources/{id}/refresh",
+    "summary": "Run server live sources refresh",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin"
+  },
+  {
+    "id": "post_admin_live_sources_id_remove",
+    "method": "POST",
+    "path": "/v1/admin/live-sources/{id}/remove",
+    "summary": "Run server live sources remove",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin"
+  },
+  {
+    "id": "post_admin_logs_debug_window",
+    "method": "POST",
+    "path": "/v1/admin/logs/debug-window",
+    "summary": "Run server logs debug window",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin"
+  },
+  {
+    "id": "post_admin_media_delete",
+    "method": "POST",
+    "path": "/v1/admin/media/delete",
+    "summary": "Delete selected media files",
+    "access": "owner",
+    "requires": "library",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin-heavy"
+  },
+  {
+    "id": "post_admin_media_delete_preview",
+    "method": "POST",
+    "path": "/v1/admin/media/delete/preview",
+    "summary": "Preview deleting selected media files",
+    "access": "owner",
+    "requires": "library",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin-heavy"
+  },
+  {
+    "id": "post_admin_notifications_broadcast",
+    "method": "POST",
+    "path": "/v1/admin/notifications/broadcast",
+    "summary": "Run server notifications broadcast",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin-heavy"
+  },
+  {
+    "id": "post_admin_playback_sessions_id_stop",
+    "method": "POST",
+    "path": "/v1/admin/playback-sessions/{id}/stop",
+    "summary": "Run server playback sessions stop",
+    "access": "owner",
+    "requires": "playback",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin-heavy"
   },
   {
     "id": "post_admin_restart",
@@ -4247,7 +9079,8 @@ export const routes = [
       "administration_unavailable"
     ],
     "status": 202,
-    "optionalBody": true
+    "optionalBody": true,
+    "admission": "admin"
   },
   {
     "id": "post_admin_state_permissions_fix",
@@ -4265,7 +9098,134 @@ export const routes = [
       "internal"
     ],
     "status": 200,
-    "optionalBody": true
+    "optionalBody": true,
+    "admission": "admin-heavy"
+  },
+  {
+    "id": "post_admin_storage_usage_category_cleanup",
+    "method": "POST",
+    "path": "/v1/admin/storage-usage/{category}/cleanup",
+    "summary": "Run server storage usage cleanup",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin"
+  },
+  {
+    "id": "post_albums_id_metadata_musicbrainz_policy",
+    "method": "POST",
+    "path": "/v1/albums/{id}/metadata/musicbrainz/policy",
+    "summary": "Run album metadata musicbrainz policy",
+    "access": "owner",
+    "requires": "library",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 202,
+    "http": true,
+    "admission": "default"
+  },
+  {
+    "id": "post_albums_id_metadata_musicbrainz_retry",
+    "method": "POST",
+    "path": "/v1/albums/{id}/metadata/musicbrainz/retry",
+    "summary": "Run album metadata musicbrainz retry",
+    "access": "owner",
+    "requires": "library",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 202,
+    "http": true,
+    "admission": "default"
+  },
+  {
+    "id": "post_albums_id_metadata_musicbrainz_search",
+    "method": "POST",
+    "path": "/v1/albums/{id}/metadata/musicbrainz/search",
+    "summary": "Run album metadata musicbrainz search",
+    "access": "owner",
+    "requires": "library",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 202,
+    "http": true,
+    "admission": "default"
+  },
+  {
+    "id": "post_auth_refresh",
+    "method": "POST",
+    "path": "/v1/auth/refresh",
+    "summary": "Run sign-in refresh",
+    "access": "public",
+    "requires": "session",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "auth"
+  },
+  {
+    "id": "post_auth_register",
+    "method": "POST",
+    "path": "/v1/auth/register",
+    "summary": "Run sign-in register",
+    "access": "public",
+    "requires": "session",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 201,
+    "http": true,
+    "admission": "auth"
   },
   {
     "id": "post_auth_remembered_accounts",
@@ -4281,7 +9241,50 @@ export const routes = [
       "invalid_request",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "auth"
+  },
+  {
+    "id": "post_auth_two_factor_challenge",
+    "method": "POST",
+    "path": "/v1/auth/two-factor/challenge",
+    "summary": "Run sign-in two-factor verification challenge",
+    "access": "public",
+    "requires": "session",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "security-fence"
+  },
+  {
+    "id": "post_channels_preferences",
+    "method": "POST",
+    "path": "/v1/channels/preferences",
+    "summary": "Run channels preferences",
+    "access": "device",
+    "requires": "playback",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
   },
   {
     "id": "post_client_log",
@@ -4300,7 +9303,29 @@ export const routes = [
       "client_log_budget",
       "internal"
     ],
-    "status": 201
+    "status": 201,
+    "admission": "upload"
+  },
+  {
+    "id": "post_collections_id_items_batch",
+    "method": "POST",
+    "path": "/v1/collections/{id}/items:batch",
+    "summary": "Run collections items batch",
+    "access": "owner",
+    "requires": "library",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
   },
   {
     "id": "post_device",
@@ -4319,7 +9344,8 @@ export const routes = [
       "invalid_request",
       "internal"
     ],
-    "status": 201
+    "status": 201,
+    "admission": "auth"
   },
   {
     "id": "post_device_approval",
@@ -4338,7 +9364,8 @@ export const routes = [
       "not_found",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "auth"
   },
   {
     "id": "post_device_session_binding",
@@ -4357,7 +9384,122 @@ export const routes = [
       "not_found",
       "internal"
     ],
-    "status": 204
+    "status": 204,
+    "admission": "auth"
+  },
+  {
+    "id": "post_direct_members",
+    "method": "POST",
+    "path": "/v1/direct/members",
+    "summary": "Run account members",
+    "access": "device",
+    "requires": "session",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 201,
+    "http": true,
+    "admission": "auth"
+  },
+  {
+    "id": "post_direct_ownership",
+    "method": "POST",
+    "path": "/v1/direct/ownership",
+    "summary": "Run account ownership",
+    "access": "device",
+    "requires": "session",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "headers": [
+      "X-Portico-Installation-Id"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 204,
+    "http": true,
+    "admission": "auth"
+  },
+  {
+    "id": "post_direct_ownership_custody",
+    "method": "POST",
+    "path": "/v1/direct/ownership/custody",
+    "summary": "Run account ownership custody",
+    "access": "device",
+    "requires": "session",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "headers": [
+      "X-Portico-Installation-Id"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 204,
+    "http": true,
+    "admission": "auth"
+  },
+  {
+    "id": "post_direct_password",
+    "method": "POST",
+    "path": "/v1/direct/password",
+    "summary": "Run account password",
+    "access": "device",
+    "requires": "session",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 204,
+    "http": true,
+    "admission": "auth"
+  },
+  {
+    "id": "post_direct_portico_challenge",
+    "method": "POST",
+    "path": "/v1/direct/portico-challenge",
+    "summary": "Request a signed account sign-in challenge",
+    "access": "public",
+    "requires": "session",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "headers": [
+      "X-Portico-Installation-Id"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "auth"
   },
   {
     "id": "post_direct_profile_pin_reset",
@@ -4380,7 +9522,144 @@ export const routes = [
       "request_in_progress",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "security-fence"
+  },
+  {
+    "id": "post_direct_profile_switch",
+    "method": "POST",
+    "path": "/v1/direct/profile-switch",
+    "summary": "Run account profile switch",
+    "access": "device",
+    "requires": "session",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 204,
+    "http": true,
+    "admission": "auth"
+  },
+  {
+    "id": "post_direct_profiles",
+    "method": "POST",
+    "path": "/v1/direct/profiles",
+    "summary": "Run account profile",
+    "access": "device",
+    "requires": "session",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 201,
+    "http": true,
+    "admission": "auth"
+  },
+  {
+    "id": "post_direct_profiles_id_avatar",
+    "method": "POST",
+    "path": "/v1/direct/profiles/{id}/avatar",
+    "summary": "Run account profile avatar",
+    "access": "device",
+    "requires": "session",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 5242880,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 201,
+    "requestContentTypes": [
+      "multipart/form-data",
+      "application/octet-stream",
+      "image/png",
+      "image/jpeg",
+      "image/webp"
+    ],
+    "http": true,
+    "admission": "auth"
+  },
+  {
+    "id": "post_direct_profiles_id_select",
+    "method": "POST",
+    "path": "/v1/direct/profiles/{id}/select",
+    "summary": "Run account profile select",
+    "access": "device",
+    "requires": "session",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "auth"
+  },
+  {
+    "id": "post_direct_remembered_accounts",
+    "method": "POST",
+    "path": "/v1/direct/remembered-accounts",
+    "summary": "Run account remembered accounts",
+    "access": "device",
+    "requires": "session",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "auth"
+  },
+  {
+    "id": "post_direct_sign_in",
+    "method": "POST",
+    "path": "/v1/direct/sign-in",
+    "summary": "Sign in to this server",
+    "access": "public",
+    "requires": "session",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "headers": [
+      "X-Portico-Installation-Id"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "auth"
   },
   {
     "id": "post_direct_sign_out_everywhere",
@@ -4401,7 +9680,113 @@ export const routes = [
       "not_permitted",
       "internal"
     ],
-    "status": 204
+    "status": 204,
+    "admission": "auth"
+  },
+  {
+    "id": "post_direct_two_factor_enrol",
+    "method": "POST",
+    "path": "/v1/direct/two-factor/enrol",
+    "summary": "Run account two-factor verification enrol",
+    "access": "device",
+    "requires": "session",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 201,
+    "http": true,
+    "admission": "security-fence"
+  },
+  {
+    "id": "post_direct_two_factor_verify",
+    "method": "POST",
+    "path": "/v1/direct/two-factor/verify",
+    "summary": "Run account two-factor verification verify",
+    "access": "device",
+    "requires": "session",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "security-fence"
+  },
+  {
+    "id": "post_dvr_recordings",
+    "method": "POST",
+    "path": "/v1/dvr/recordings",
+    "summary": "Run dvr recordings",
+    "access": "device",
+    "requires": "playback",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "post_dvr_recordings_id_cancel",
+    "method": "POST",
+    "path": "/v1/dvr/recordings/{id}/cancel",
+    "summary": "Run dvr recordings cancel",
+    "access": "device",
+    "requires": "playback",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "post_dvr_rules_preview",
+    "method": "POST",
+    "path": "/v1/dvr/rules/preview",
+    "summary": "Run dvr rules preview",
+    "access": "device",
+    "requires": "playback",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
   },
   {
     "id": "post_feedback",
@@ -4420,7 +9805,8 @@ export const routes = [
       "not_found",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "default"
   },
   {
     "id": "post_feedback_reports",
@@ -4439,7 +9825,526 @@ export const routes = [
       "not_found",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "default"
+  },
+  {
+    "id": "post_home_layout_reset",
+    "method": "POST",
+    "path": "/v1/home/layout/reset",
+    "summary": "Run home layout reset",
+    "access": "device",
+    "requires": "playback",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "post_hosted_wake",
+    "method": "POST",
+    "path": "/v1/hosted/wake",
+    "summary": "Run hosted wake",
+    "access": "public",
+    "requires": "session",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "noResponseBody": true,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 202,
+    "http": true,
+    "admission": "auth"
+  },
+  {
+    "id": "post_items_id_analysis_jobs",
+    "method": "POST",
+    "path": "/v1/items/{id}/analysis/jobs",
+    "summary": "Run title analysis jobs",
+    "access": "device",
+    "requires": "library",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 2097152,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "post_items_id_analysis_jobs_job_control",
+    "method": "POST",
+    "path": "/v1/items/{id}/analysis/jobs/{job}/control",
+    "summary": "Run title analysis jobs control",
+    "access": "device",
+    "requires": "library",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 2097152,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "post_items_id_analysis_markers",
+    "method": "POST",
+    "path": "/v1/items/{id}/analysis/markers",
+    "summary": "Run title analysis markers",
+    "access": "device",
+    "requires": "library",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 2097152,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "post_items_id_delete",
+    "method": "POST",
+    "path": "/v1/items/{id}/delete",
+    "summary": "Delete a title’s files",
+    "access": "device",
+    "requires": "library",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "post_items_id_delete_preview",
+    "method": "POST",
+    "path": "/v1/items/{id}/delete/preview",
+    "summary": "Preview deleting a title’s files",
+    "access": "device",
+    "requires": "library",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "post_items_id_lyrics",
+    "method": "POST",
+    "path": "/v1/items/{id}/lyrics",
+    "summary": "Run title lyrics",
+    "access": "device",
+    "requires": "library",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 2097152,
+    "query": [
+      "sessionId",
+      "sourceId",
+      "sourceVersion"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "post_items_id_lyrics_search",
+    "method": "POST",
+    "path": "/v1/items/{id}/lyrics/search",
+    "summary": "Run title lyrics search",
+    "access": "device",
+    "requires": "library",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 2097152,
+    "query": [
+      "sessionId",
+      "sourceId",
+      "sourceVersion"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "post_items_id_metadata_local_audio_policy",
+    "method": "POST",
+    "path": "/v1/items/{id}/metadata/local-audio/policy",
+    "summary": "Run title metadata local audio policy",
+    "access": "owner",
+    "requires": "library",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "post_items_id_metadata_musicbrainz_policy",
+    "method": "POST",
+    "path": "/v1/items/{id}/metadata/musicbrainz/policy",
+    "summary": "Run title metadata musicbrainz policy",
+    "access": "owner",
+    "requires": "library",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 202,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "post_items_id_metadata_musicbrainz_retry",
+    "method": "POST",
+    "path": "/v1/items/{id}/metadata/musicbrainz/retry",
+    "summary": "Run title metadata musicbrainz retry",
+    "access": "owner",
+    "requires": "library",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 202,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "post_items_id_metadata_musicbrainz_search",
+    "method": "POST",
+    "path": "/v1/items/{id}/metadata/musicbrainz/search",
+    "summary": "Run title metadata musicbrainz search",
+    "access": "owner",
+    "requires": "library",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 202,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "post_items_id_metadata_screen_retry",
+    "method": "POST",
+    "path": "/v1/items/{id}/metadata/screen/retry",
+    "summary": "Run title metadata screen retry",
+    "access": "owner",
+    "requires": "library",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 202,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "post_items_id_metadata_screen_search",
+    "method": "POST",
+    "path": "/v1/items/{id}/metadata/screen/search",
+    "summary": "Run title metadata screen search",
+    "access": "owner",
+    "requires": "library",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 202,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "post_items_id_optimizations",
+    "method": "POST",
+    "path": "/v1/items/{id}/optimizations",
+    "summary": "Run title optimizations",
+    "access": "device",
+    "requires": "library",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "post_libraries",
+    "method": "POST",
+    "path": "/v1/libraries",
+    "summary": "Create a library",
+    "access": "owner",
+    "requires": "library",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 201,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "post_libraries_id_collections",
+    "method": "POST",
+    "path": "/v1/libraries/{id}/collections",
+    "summary": "Run library collections",
+    "access": "owner",
+    "requires": "library",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 201,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "post_libraries_id_episode_assignments",
+    "method": "POST",
+    "path": "/v1/libraries/{id}/episode-assignments",
+    "summary": "Run library episode assignments",
+    "access": "owner",
+    "requires": "library",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "post_libraries_id_lyrics_fetch",
+    "method": "POST",
+    "path": "/v1/libraries/{id}/lyrics/fetch",
+    "summary": "Run library lyrics fetch",
+    "access": "owner",
+    "requires": "library",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "post_libraries_id_network_roots",
+    "method": "POST",
+    "path": "/v1/libraries/{id}/network-roots",
+    "summary": "Run library network roots",
+    "access": "owner",
+    "requires": "library",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "post_libraries_id_scans",
+    "method": "POST",
+    "path": "/v1/libraries/{id}/scans",
+    "summary": "Run library scans",
+    "access": "owner",
+    "requires": "library",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "query": [
+      "mode"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 202,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "post_library_channels_preferences",
+    "method": "POST",
+    "path": "/v1/library-channels/preferences",
+    "summary": "Run library channels preferences",
+    "access": "device",
+    "requires": "playback",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 4096,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
+  },
+  {
+    "id": "post_me_recommendations_reset",
+    "method": "POST",
+    "path": "/v1/me/recommendations:reset",
+    "summary": "Run viewer recommendations reset",
+    "access": "device",
+    "requires": "playback",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
   },
   {
     "id": "post_metadata_attention",
@@ -4460,7 +10365,830 @@ export const routes = [
       "rate_limited",
       "internal"
     ],
-    "status": 202
+    "status": 202,
+    "admission": "browsing"
+  },
+  {
+    "id": "post_metadata_bulk",
+    "method": "POST",
+    "path": "/v1/metadata/bulk",
+    "summary": "Run metadata bulk",
+    "access": "owner",
+    "requires": "library",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "post_metadata_kind_id",
+    "method": "POST",
+    "path": "/v1/metadata/{kind}/{id}",
+    "summary": "Run metadata",
+    "access": "owner",
+    "requires": "library",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
+  },
+  {
+    "id": "post_metadata_kind_id_art_role_upload",
+    "method": "POST",
+    "path": "/v1/metadata/{kind}/{id}/art/{role}/upload",
+    "summary": "Run metadata art upload",
+    "access": "owner",
+    "requires": "library",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 11534336,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "requestContentTypes": [
+      "multipart/form-data"
+    ],
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "post_networking_certificate_config",
+    "method": "POST",
+    "path": "/v1/networking/certificate/config",
+    "summary": "Run network certificate config",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
+  },
+  {
+    "id": "post_networking_certificate_retry",
+    "method": "POST",
+    "path": "/v1/networking/certificate/retry",
+    "summary": "Run network certificate retry",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
+  },
+  {
+    "id": "post_networking_claim_approve",
+    "method": "POST",
+    "path": "/v1/networking/claim/approve",
+    "summary": "Run network claim approve",
+    "access": "owner",
+    "requires": "session",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
+  },
+  {
+    "id": "post_networking_claim_await_approval",
+    "method": "POST",
+    "path": "/v1/networking/claim/await-approval",
+    "summary": "Run network claim await approval",
+    "access": "owner",
+    "requires": "session",
+    "lane": "realtime",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "realtime"
+  },
+  {
+    "id": "post_networking_claim_cancel",
+    "method": "POST",
+    "path": "/v1/networking/claim/cancel",
+    "summary": "Run network claim cancel",
+    "access": "owner",
+    "requires": "session",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
+  },
+  {
+    "id": "post_networking_claim_continue",
+    "method": "POST",
+    "path": "/v1/networking/claim/continue",
+    "summary": "Run network claim continue",
+    "access": "owner",
+    "requires": "session",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
+  },
+  {
+    "id": "post_networking_claim_endpoint",
+    "method": "POST",
+    "path": "/v1/networking/claim/endpoint",
+    "summary": "Run network claim endpoint",
+    "access": "owner",
+    "requires": "session",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "auth"
+  },
+  {
+    "id": "post_networking_claim_prepare",
+    "method": "POST",
+    "path": "/v1/networking/claim/prepare",
+    "summary": "Run network claim prepare",
+    "access": "owner",
+    "requires": "session",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
+  },
+  {
+    "id": "post_networking_claim_web_approval",
+    "method": "POST",
+    "path": "/v1/networking/claim/web-approval",
+    "summary": "Run network claim web approval",
+    "access": "owner",
+    "requires": "session",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "auth"
+  },
+  {
+    "id": "post_networking_endpoint_proof",
+    "method": "POST",
+    "path": "/v1/networking/endpoint-proof",
+    "summary": "Run network endpoint proof",
+    "access": "public",
+    "requires": "session",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "auth"
+  },
+  {
+    "id": "post_networking_remote_check",
+    "method": "POST",
+    "path": "/v1/networking/remote/check",
+    "summary": "Run network remote check",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
+  },
+  {
+    "id": "post_networking_remote_config",
+    "method": "POST",
+    "path": "/v1/networking/remote/config",
+    "summary": "Run network remote config",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
+  },
+  {
+    "id": "post_notifications_id_read",
+    "method": "POST",
+    "path": "/v1/notifications/{id}/read",
+    "summary": "Run notifications read",
+    "access": "device",
+    "requires": "playback",
+    "lane": "realtime",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "realtime"
+  },
+  {
+    "id": "post_notifications_inbox_actions",
+    "method": "POST",
+    "path": "/v1/notifications/inbox/actions",
+    "summary": "Run notifications inbox actions",
+    "access": "device",
+    "requires": "playback",
+    "lane": "realtime",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "realtime"
+  },
+  {
+    "id": "post_optimization_jobs_id_cancel",
+    "method": "POST",
+    "path": "/v1/optimization-jobs/{id}/cancel",
+    "summary": "Run optimization jobs cancel",
+    "access": "owner",
+    "requires": "library",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
+  },
+  {
+    "id": "post_optimization_jobs_id_retry",
+    "method": "POST",
+    "path": "/v1/optimization-jobs/{id}/retry",
+    "summary": "Run optimization jobs retry",
+    "access": "owner",
+    "requires": "library",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
+  },
+  {
+    "id": "post_personal_history_actions",
+    "method": "POST",
+    "path": "/v1/personal-history/actions",
+    "summary": "Run personal history actions",
+    "access": "device",
+    "requires": "playback",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
+  },
+  {
+    "id": "post_playlists",
+    "method": "POST",
+    "path": "/v1/playlists",
+    "summary": "Run playlists",
+    "access": "device",
+    "requires": "playback",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
+  },
+  {
+    "id": "post_playlists_id_entries",
+    "method": "POST",
+    "path": "/v1/playlists/{id}/entries",
+    "summary": "Run playlists entries",
+    "access": "device",
+    "requires": "playback",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
+  },
+  {
+    "id": "post_prepared_versions_id_delete",
+    "method": "POST",
+    "path": "/v1/prepared-versions/{id}/delete",
+    "summary": "Run prepared versions delete",
+    "access": "device",
+    "requires": "library",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
+  },
+  {
+    "id": "post_quick_connect",
+    "method": "POST",
+    "path": "/v1/quick-connect",
+    "summary": "Run quick connect",
+    "access": "public",
+    "requires": "session",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 201,
+    "http": true,
+    "admission": "default"
+  },
+  {
+    "id": "post_quick_connect_cancel",
+    "method": "POST",
+    "path": "/v1/quick-connect/cancel",
+    "summary": "Run quick connect cancel",
+    "access": "public",
+    "requires": "session",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 204,
+    "http": true,
+    "admission": "default"
+  },
+  {
+    "id": "post_quick_connect_decision",
+    "method": "POST",
+    "path": "/v1/quick-connect/decision",
+    "summary": "Run quick connect decision",
+    "access": "device",
+    "requires": "session",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 204,
+    "http": true,
+    "admission": "default"
+  },
+  {
+    "id": "post_quick_connect_review",
+    "method": "POST",
+    "path": "/v1/quick-connect/review",
+    "summary": "Run quick connect review",
+    "access": "device",
+    "requires": "session",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
+  },
+  {
+    "id": "post_quick_connect_token",
+    "method": "POST",
+    "path": "/v1/quick-connect/token",
+    "summary": "Run quick connect token",
+    "access": "public",
+    "requires": "session",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
+  },
+  {
+    "id": "post_saved_resources",
+    "method": "POST",
+    "path": "/v1/saved-resources",
+    "summary": "Run saved resources",
+    "access": "device",
+    "requires": "playback",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
+  },
+  {
+    "id": "post_setup_finish",
+    "method": "POST",
+    "path": "/v1/setup/finish",
+    "summary": "Run setup finish",
+    "access": "owner",
+    "requires": "session",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "auth"
+  },
+  {
+    "id": "post_setup_remote_recovery",
+    "method": "POST",
+    "path": "/v1/setup/remote-recovery",
+    "summary": "Run setup remote recovery",
+    "access": "owner",
+    "requires": "session",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "auth"
+  },
+  {
+    "id": "post_setup_resume",
+    "method": "POST",
+    "path": "/v1/setup/resume",
+    "summary": "Run setup resume",
+    "access": "public",
+    "requires": "session",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
+  },
+  {
+    "id": "post_shows_id_metadata_screen_retry",
+    "method": "POST",
+    "path": "/v1/shows/{id}/metadata/screen/retry",
+    "summary": "Run show metadata screen retry",
+    "access": "owner",
+    "requires": "library",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 202,
+    "http": true,
+    "admission": "default"
+  },
+  {
+    "id": "post_shows_id_metadata_screen_search",
+    "method": "POST",
+    "path": "/v1/shows/{id}/metadata/screen/search",
+    "summary": "Run show metadata screen search",
+    "access": "owner",
+    "requires": "library",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 202,
+    "http": true,
+    "admission": "default"
+  },
+  {
+    "id": "post_shows_id_metadata_tvdb_retry",
+    "method": "POST",
+    "path": "/v1/shows/{id}/metadata/tvdb/retry",
+    "summary": "Run show metadata tvdb retry",
+    "access": "owner",
+    "requires": "library",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 202,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "post_storage_mounts",
+    "method": "POST",
+    "path": "/v1/storage/mounts",
+    "summary": "Run storage mounts",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
+  },
+  {
+    "id": "post_storage_mounts_id_actions",
+    "method": "POST",
+    "path": "/v1/storage/mounts/{id}/actions",
+    "summary": "Run storage mounts actions",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
+  },
+  {
+    "id": "post_storage_sources_webdav",
+    "method": "POST",
+    "path": "/v1/storage/sources/webdav",
+    "summary": "Run storage sources webdav",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
+  },
+  {
+    "id": "post_topshelf_token",
+    "method": "POST",
+    "path": "/v1/topshelf/token",
+    "summary": "Run topshelf token",
+    "access": "device",
+    "requires": "session",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 201,
+    "http": true,
+    "admission": "browsing"
   },
   {
     "id": "post_v1_items_itemId_subtitles",
@@ -4491,7 +11219,8 @@ export const routes = [
       "subtitle_unsupported",
       "subtitle_invalid_input"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "default"
   },
   {
     "id": "post_v1_items_itemId_subtitles_apply",
@@ -4522,7 +11251,8 @@ export const routes = [
       "subtitle_unsupported",
       "subtitle_invalid_input"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "default"
   },
   {
     "id": "post_v1_items_itemId_subtitles_import",
@@ -4553,7 +11283,8 @@ export const routes = [
       "subtitle_unsupported",
       "subtitle_invalid_input"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "default"
   },
   {
     "id": "post_v1_items_itemId_subtitles_refresh",
@@ -4584,7 +11315,8 @@ export const routes = [
       "subtitle_unsupported",
       "subtitle_invalid_input"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "default"
   },
   {
     "id": "post_v1_items_itemId_subtitles_remote",
@@ -4615,7 +11347,8 @@ export const routes = [
       "subtitle_unsupported",
       "subtitle_invalid_input"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "default"
   },
   {
     "id": "post_v1_items_itemId_subtitles_search",
@@ -4646,7 +11379,8 @@ export const routes = [
       "subtitle_unsupported",
       "subtitle_invalid_input"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "default"
   },
   {
     "id": "prepare_queue_next",
@@ -4673,7 +11407,8 @@ export const routes = [
       "prepare_not_allowed",
       "not_implemented"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "playback"
   },
   {
     "id": "preview_delete_title_version",
@@ -4696,7 +11431,8 @@ export const routes = [
       "internal"
     ],
     "status": 200,
-    "optionalBody": true
+    "optionalBody": true,
+    "admission": "admin-heavy"
   },
   {
     "id": "preview_invitation",
@@ -4714,7 +11450,8 @@ export const routes = [
       "invalid_request",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "default"
   },
   {
     "id": "preview_live_source",
@@ -4741,7 +11478,8 @@ export const routes = [
       "source_unavailable",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "upload"
   },
   {
     "id": "preview_remote_live_source",
@@ -4768,7 +11506,8 @@ export const routes = [
       "source_unavailable",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "admin"
   },
   {
     "id": "prove_network_identity",
@@ -4785,7 +11524,8 @@ export const routes = [
       "rate_limited",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "auth"
   },
   {
     "id": "publish_remote_live_source",
@@ -4812,7 +11552,8 @@ export const routes = [
       "source_unavailable",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "admin"
   },
   {
     "id": "put_admin_access_device_trust",
@@ -4834,7 +11575,52 @@ export const routes = [
       "internal",
       "revision_required"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "security-fence"
+  },
+  {
+    "id": "put_admin_access_members_id_limits",
+    "method": "PUT",
+    "path": "/v1/admin/access/members/{id}/limits",
+    "summary": "Save server access members limits",
+    "access": "admin_scope",
+    "adminScope": "access",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin"
+  },
+  {
+    "id": "put_admin_access_members_id_role",
+    "method": "PUT",
+    "path": "/v1/admin/access/members/{id}/role",
+    "summary": "Save server access members role",
+    "access": "admin_scope",
+    "adminScope": "access",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin"
   },
   {
     "id": "put_admin_console_schedules",
@@ -4853,7 +11639,176 @@ export const routes = [
       "not_found",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "admin-heavy"
+  },
+  {
+    "id": "put_admin_dvr_recording_groups_id",
+    "method": "PUT",
+    "path": "/v1/admin/dvr/recording-groups/{id}",
+    "summary": "Save server dvr recording groups",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin"
+  },
+  {
+    "id": "put_admin_dvr_recording_permissions",
+    "method": "PUT",
+    "path": "/v1/admin/dvr/recording-permissions",
+    "summary": "Save server dvr recording permissions",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin"
+  },
+  {
+    "id": "put_admin_dvr_settings",
+    "method": "PUT",
+    "path": "/v1/admin/dvr/settings",
+    "summary": "Save server dvr settings",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin"
+  },
+  {
+    "id": "put_admin_libraries_id_scan_policy",
+    "method": "PUT",
+    "path": "/v1/admin/libraries/{id}/scan-policy",
+    "summary": "Save server library scan policy",
+    "access": "owner",
+    "requires": "library",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin-heavy"
+  },
+  {
+    "id": "put_admin_libraries_id_shows_show_settings",
+    "method": "PUT",
+    "path": "/v1/admin/libraries/{id}/shows/{show}/settings",
+    "summary": "Save server library show settings",
+    "access": "owner",
+    "requires": "library",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin"
+  },
+  {
+    "id": "put_admin_libraries_order",
+    "method": "PUT",
+    "path": "/v1/admin/libraries/order",
+    "summary": "Save server library order",
+    "access": "owner",
+    "requires": "library",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin"
+  },
+  {
+    "id": "put_admin_library_channels_block_presets_id",
+    "method": "PUT",
+    "path": "/v1/admin/library-channels/block-presets/{id}",
+    "summary": "Save server library channels block presets",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin"
+  },
+  {
+    "id": "put_admin_live_sources_id_channel_map",
+    "method": "PUT",
+    "path": "/v1/admin/live-sources/{id}/channel-map",
+    "summary": "Save server live sources channel map",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin"
   },
   {
     "id": "put_admin_maintenance_settings",
@@ -4876,7 +11831,50 @@ export const routes = [
       "internal",
       "revision_required"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "admin"
+  },
+  {
+    "id": "put_albums_id_metadata_musicbrainz",
+    "method": "PUT",
+    "path": "/v1/albums/{id}/metadata/musicbrainz",
+    "summary": "Save album metadata musicbrainz",
+    "access": "owner",
+    "requires": "library",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 202,
+    "http": true,
+    "admission": "default"
+  },
+  {
+    "id": "put_collections_id_items_itemId",
+    "method": "PUT",
+    "path": "/v1/collections/{id}/items/{itemId}",
+    "summary": "Save collections title",
+    "access": "owner",
+    "requires": "library",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 204,
+    "http": true,
+    "admission": "browsing"
   },
   {
     "id": "put_device_capabilities",
@@ -4893,7 +11891,8 @@ export const routes = [
       "unauthorized",
       "revision_mismatch"
     ],
-    "status": 204
+    "status": 204,
+    "admission": "default"
   },
   {
     "id": "put_direct_profile_restrictions",
@@ -4917,7 +11916,29 @@ export const routes = [
       "internal",
       "revision_required"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "security-fence"
+  },
+  {
+    "id": "put_direct_profiles_order",
+    "method": "PUT",
+    "path": "/v1/direct/profiles/order",
+    "summary": "Save account profile order",
+    "access": "device",
+    "requires": "session",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "auth"
   },
   {
     "id": "put_direct_registration_policy",
@@ -4935,7 +11956,8 @@ export const routes = [
       "invalid_request",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "auth"
   },
   {
     "id": "put_download_settings",
@@ -4963,7 +11985,181 @@ export const routes = [
       "internal",
       "revision_required"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "default"
+  },
+  {
+    "id": "put_dvr_recordings_id_keep",
+    "method": "PUT",
+    "path": "/v1/dvr/recordings/{id}/keep",
+    "summary": "Save dvr recordings keep",
+    "access": "device",
+    "requires": "playback",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "put_dvr_rules_id",
+    "method": "PUT",
+    "path": "/v1/dvr/rules/{id}",
+    "summary": "Save dvr rules",
+    "access": "device",
+    "requires": "playback",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "put_dvr_storage",
+    "method": "PUT",
+    "path": "/v1/dvr/storage",
+    "summary": "Save dvr storage",
+    "access": "device",
+    "requires": "admin",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "put_home_layout",
+    "method": "PUT",
+    "path": "/v1/home/layout",
+    "summary": "Save home layout",
+    "access": "device",
+    "requires": "playback",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "put_items_id_analysis_policy",
+    "method": "PUT",
+    "path": "/v1/items/{id}/analysis/policy",
+    "summary": "Save title analysis policy",
+    "access": "device",
+    "requires": "library",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 2097152,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "put_items_id_lyrics_selection",
+    "method": "PUT",
+    "path": "/v1/items/{id}/lyrics/selection",
+    "summary": "Save title lyrics selection",
+    "access": "device",
+    "requires": "playback",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 2097152,
+    "query": [
+      "sessionId",
+      "sourceId",
+      "sourceVersion"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "put_items_id_metadata_musicbrainz",
+    "method": "PUT",
+    "path": "/v1/items/{id}/metadata/musicbrainz",
+    "summary": "Save title metadata musicbrainz",
+    "access": "owner",
+    "requires": "library",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 202,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "put_items_id_metadata_screen",
+    "method": "PUT",
+    "path": "/v1/items/{id}/metadata/screen",
+    "summary": "Save title metadata screen",
+    "access": "owner",
+    "requires": "library",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 202,
+    "http": true,
+    "admission": "browsing"
   },
   {
     "id": "put_items_id_personal_state",
@@ -4982,7 +12178,8 @@ export const routes = [
       "not_found",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "browsing"
   },
   {
     "id": "put_items_personal_state_batch",
@@ -5001,7 +12198,71 @@ export const routes = [
       "not_found",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "browsing"
+  },
+  {
+    "id": "put_libraries_id_metadata_agent",
+    "method": "PUT",
+    "path": "/v1/libraries/{id}/metadata/agent",
+    "summary": "Save library metadata agent",
+    "access": "device",
+    "requires": "library",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "put_libraries_id_metadata_screen",
+    "method": "PUT",
+    "path": "/v1/libraries/{id}/metadata/screen",
+    "summary": "Save library metadata screen",
+    "access": "owner",
+    "requires": "library",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 202,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "put_libraries_id_strm_analysis_policy",
+    "method": "PUT",
+    "path": "/v1/libraries/{id}/strm-analysis-policy",
+    "summary": "Save library strm analysis policy",
+    "access": "owner",
+    "requires": "library",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
   },
   {
     "id": "put_library_settings",
@@ -5023,7 +12284,71 @@ export const routes = [
       "internal",
       "revision_required"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "admin"
+  },
+  {
+    "id": "put_listening_preferences",
+    "method": "PUT",
+    "path": "/v1/listening/preferences",
+    "summary": "Save listening preferences",
+    "access": "device",
+    "requires": "playback",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "put_lyrics_provider",
+    "method": "PUT",
+    "path": "/v1/lyrics/provider",
+    "summary": "Save lyrics provider",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "put_me_library_navigation",
+    "method": "PUT",
+    "path": "/v1/me/library-navigation",
+    "summary": "Save viewer library navigation",
+    "access": "device",
+    "requires": "playback",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
   },
   {
     "id": "put_metadata_settings",
@@ -5043,7 +12368,197 @@ export const routes = [
       "internal",
       "revision_required"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "admin"
+  },
+  {
+    "id": "put_playlists_id_shares",
+    "method": "PUT",
+    "path": "/v1/playlists/{id}/shares",
+    "summary": "Save playlists shares",
+    "access": "device",
+    "requires": "playback",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
+  },
+  {
+    "id": "put_saved_pins_kind_id",
+    "method": "PUT",
+    "path": "/v1/saved-pins/{kind}/{id}",
+    "summary": "Save saved pins",
+    "access": "device",
+    "requires": "playback",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "put_saved_pins_order",
+    "method": "PUT",
+    "path": "/v1/saved-pins/order",
+    "summary": "Save saved pins order",
+    "access": "device",
+    "requires": "playback",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "put_saved_resources_id_entries",
+    "method": "PUT",
+    "path": "/v1/saved-resources/{id}/entries",
+    "summary": "Save saved resources entries",
+    "access": "device",
+    "requires": "playback",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
+  },
+  {
+    "id": "put_saved_resources_id_shares",
+    "method": "PUT",
+    "path": "/v1/saved-resources/{id}/shares",
+    "summary": "Save saved resources shares",
+    "access": "device",
+    "requires": "playback",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
+  },
+  {
+    "id": "put_shows_id_metadata_screen",
+    "method": "PUT",
+    "path": "/v1/shows/{id}/metadata/screen",
+    "summary": "Save show metadata screen",
+    "access": "owner",
+    "requires": "library",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 202,
+    "http": true,
+    "admission": "default"
+  },
+  {
+    "id": "put_shows_id_metadata_screen_season",
+    "method": "PUT",
+    "path": "/v1/shows/{id}/metadata/screen/season",
+    "summary": "Save show metadata screen season",
+    "access": "owner",
+    "requires": "library",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 202,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "put_shows_id_metadata_tvdb",
+    "method": "PUT",
+    "path": "/v1/shows/{id}/metadata/tvdb",
+    "summary": "Save show metadata tvdb",
+    "access": "owner",
+    "requires": "library",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "put_storage_sources_webdav_id",
+    "method": "PUT",
+    "path": "/v1/storage/sources/webdav/{id}",
+    "summary": "Save storage sources webdav",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
   },
   {
     "id": "put_v1_items_itemId_playback_session_subtitles",
@@ -5074,7 +12589,8 @@ export const routes = [
       "subtitle_unsupported",
       "subtitle_invalid_input"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "playback"
   },
   {
     "id": "put_v1_items_itemId_subtitles_resource",
@@ -5105,7 +12621,8 @@ export const routes = [
       "subtitle_unsupported",
       "subtitle_invalid_input"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "default"
   },
   {
     "id": "query_titles",
@@ -5139,7 +12656,8 @@ export const routes = [
       "not_found",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "browsing"
   },
   {
     "id": "refresh_items_metadata",
@@ -5159,7 +12677,8 @@ export const routes = [
       "internal"
     ],
     "status": 202,
-    "optionalBody": true
+    "optionalBody": true,
+    "admission": "browsing"
   },
   {
     "id": "refresh_shows_metadata",
@@ -5179,7 +12698,8 @@ export const routes = [
       "internal"
     ],
     "status": 202,
-    "optionalBody": true
+    "optionalBody": true,
+    "admission": "browsing"
   },
   {
     "id": "remove_library",
@@ -5202,7 +12722,8 @@ export const routes = [
       "internal",
       "revision_required"
     ],
-    "status": 202
+    "status": 202,
+    "admission": "admin"
   },
   {
     "id": "remove_queue_entry",
@@ -5224,7 +12745,8 @@ export const routes = [
       "queue_too_large",
       "queue_building"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "default"
   },
   {
     "id": "reorder_playlist_window",
@@ -5247,7 +12769,8 @@ export const routes = [
       "internal",
       "revision_required"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "default"
   },
   {
     "id": "report_changed_paths",
@@ -5267,7 +12790,8 @@ export const routes = [
       "administration_unavailable",
       "internal"
     ],
-    "status": 202
+    "status": 202,
+    "admission": "default"
   },
   {
     "id": "report_playback_timeline",
@@ -5288,7 +12812,8 @@ export const routes = [
       "revision_mismatch",
       "rate_limited"
     ],
-    "status": 204
+    "status": 204,
+    "admission": "playback"
   },
   {
     "id": "revalidate_download_receipts",
@@ -5315,7 +12840,8 @@ export const routes = [
       "downloads_unavailable",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "default"
   },
   {
     "id": "revoke_access_token",
@@ -5336,7 +12862,8 @@ export const routes = [
       "administration_unavailable",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "security-fence"
   },
   {
     "id": "revoke_api_key",
@@ -5357,7 +12884,8 @@ export const routes = [
       "administration_unavailable",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "security-fence"
   },
   {
     "id": "revoke_download_receipts",
@@ -5384,7 +12912,8 @@ export const routes = [
       "downloads_unavailable",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "security-fence"
   },
   {
     "id": "revoke_member_access_token",
@@ -5405,7 +12934,8 @@ export const routes = [
       "administration_unavailable",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "security-fence"
   },
   {
     "id": "revoke_profile_downloads",
@@ -5425,7 +12955,8 @@ export const routes = [
       "downloads_unavailable",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "security-fence"
   },
   {
     "id": "save_live_source",
@@ -5452,7 +12983,8 @@ export const routes = [
       "source_unavailable",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "upload"
   },
   {
     "id": "save_queue_as_playlist",
@@ -5476,7 +13008,8 @@ export const routes = [
       "idempotency_key_required",
       "idempotency_key_reused"
     ],
-    "status": 201
+    "status": 201,
+    "admission": "default"
   },
   {
     "id": "search",
@@ -5506,7 +13039,8 @@ export const routes = [
       "not_found",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "expensive"
   },
   {
     "id": "set_container_personal_state",
@@ -5528,7 +13062,8 @@ export const routes = [
       "internal",
       "revision_required"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "default"
   },
   {
     "id": "set_live_settings",
@@ -5556,7 +13091,8 @@ export const routes = [
       "internal",
       "revision_required"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "admin"
   },
   {
     "id": "set_live_source_configuration",
@@ -5584,7 +13120,8 @@ export const routes = [
       "internal",
       "revision_required"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "admin"
   },
   {
     "id": "setup_server",
@@ -5603,7 +13140,8 @@ export const routes = [
       "setup_already_complete",
       "internal"
     ],
-    "status": 201
+    "status": 201,
+    "admission": "auth"
   },
   {
     "id": "social_delete_v1_cast_devices_id",
@@ -5662,7 +13200,8 @@ export const routes = [
       "revision_conflict",
       "target_unavailable"
     ],
-    "status": 204
+    "status": 204,
+    "admission": "default"
   },
   {
     "id": "social_delete_v1_groups_id_invites_inviteId",
@@ -5721,7 +13260,8 @@ export const routes = [
       "revision_conflict",
       "target_unavailable"
     ],
-    "status": 204
+    "status": 204,
+    "admission": "default"
   },
   {
     "id": "social_delete_v1_receivers_id",
@@ -5780,7 +13320,8 @@ export const routes = [
       "revision_conflict",
       "target_unavailable"
     ],
-    "status": 204
+    "status": 204,
+    "admission": "default"
   },
   {
     "id": "social_get_v1_cast_bootstrap_id",
@@ -5839,7 +13380,8 @@ export const routes = [
       "revision_conflict",
       "target_unavailable"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "browsing"
   },
   {
     "id": "social_get_v1_cast_configuration",
@@ -5898,7 +13440,8 @@ export const routes = [
       "revision_conflict",
       "target_unavailable"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "browsing"
   },
   {
     "id": "social_get_v1_groups",
@@ -5957,7 +13500,8 @@ export const routes = [
       "revision_conflict",
       "target_unavailable"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "browsing"
   },
   {
     "id": "social_get_v1_groups_id",
@@ -6016,7 +13560,8 @@ export const routes = [
       "revision_conflict",
       "target_unavailable"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "browsing"
   },
   {
     "id": "social_get_v1_groups_id_events",
@@ -6076,7 +13621,8 @@ export const routes = [
       "target_unavailable"
     ],
     "status": 200,
-    "sse": true
+    "sse": true,
+    "admission": "realtime"
   },
   {
     "id": "social_get_v1_groups_id_queue",
@@ -6135,7 +13681,8 @@ export const routes = [
       "revision_conflict",
       "target_unavailable"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "browsing"
   },
   {
     "id": "social_get_v1_handoffs_id",
@@ -6194,7 +13741,8 @@ export const routes = [
       "revision_conflict",
       "target_unavailable"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "browsing"
   },
   {
     "id": "social_get_v1_receivers",
@@ -6253,7 +13801,8 @@ export const routes = [
       "revision_conflict",
       "target_unavailable"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "browsing"
   },
   {
     "id": "social_get_v1_receivers_id_grants",
@@ -6312,7 +13861,8 @@ export const routes = [
       "revision_conflict",
       "target_unavailable"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "browsing"
   },
   {
     "id": "social_get_v1_receivers_id_inbox",
@@ -6371,7 +13921,8 @@ export const routes = [
       "revision_conflict",
       "target_unavailable"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "browsing"
   },
   {
     "id": "social_get_v1_receivers_id_inbox_wait",
@@ -6433,7 +13984,8 @@ export const routes = [
       "revision_conflict",
       "target_unavailable"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "realtime"
   },
   {
     "id": "social_post_v1_cast_bootstrap",
@@ -6492,7 +14044,8 @@ export const routes = [
       "revision_conflict",
       "target_unavailable"
     ],
-    "status": 201
+    "status": 201,
+    "admission": "default"
   },
   {
     "id": "social_post_v1_cast_reconnect",
@@ -6551,7 +14104,8 @@ export const routes = [
       "revision_conflict",
       "target_unavailable"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "default"
   },
   {
     "id": "social_post_v1_cast_redeem",
@@ -6610,7 +14164,8 @@ export const routes = [
       "revision_conflict",
       "target_unavailable"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "default"
   },
   {
     "id": "social_post_v1_groups",
@@ -6669,7 +14224,8 @@ export const routes = [
       "revision_conflict",
       "target_unavailable"
     ],
-    "status": 201
+    "status": 201,
+    "admission": "default"
   },
   {
     "id": "social_post_v1_groups_id_end",
@@ -6728,7 +14284,8 @@ export const routes = [
       "revision_conflict",
       "target_unavailable"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "default"
   },
   {
     "id": "social_post_v1_groups_id_heartbeat",
@@ -6787,7 +14344,8 @@ export const routes = [
       "revision_conflict",
       "target_unavailable"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "default"
   },
   {
     "id": "social_post_v1_groups_id_host_transfer",
@@ -6846,7 +14404,8 @@ export const routes = [
       "revision_conflict",
       "target_unavailable"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "default"
   },
   {
     "id": "social_post_v1_groups_id_invites",
@@ -6905,7 +14464,8 @@ export const routes = [
       "revision_conflict",
       "target_unavailable"
     ],
-    "status": 201
+    "status": 201,
+    "admission": "default"
   },
   {
     "id": "social_post_v1_groups_id_leave",
@@ -6964,7 +14524,8 @@ export const routes = [
       "revision_conflict",
       "target_unavailable"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "default"
   },
   {
     "id": "social_post_v1_groups_id_queue",
@@ -7023,7 +14584,8 @@ export const routes = [
       "revision_conflict",
       "target_unavailable"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "default"
   },
   {
     "id": "social_post_v1_groups_id_readiness",
@@ -7082,7 +14644,8 @@ export const routes = [
       "revision_conflict",
       "target_unavailable"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "default"
   },
   {
     "id": "social_post_v1_groups_id_settings",
@@ -7141,7 +14704,8 @@ export const routes = [
       "revision_conflict",
       "target_unavailable"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "default"
   },
   {
     "id": "social_post_v1_groups_id_transport",
@@ -7200,7 +14764,8 @@ export const routes = [
       "revision_conflict",
       "target_unavailable"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "default"
   },
   {
     "id": "social_post_v1_groups_join",
@@ -7259,7 +14824,8 @@ export const routes = [
       "revision_conflict",
       "target_unavailable"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "default"
   },
   {
     "id": "social_post_v1_handoffs",
@@ -7318,7 +14884,8 @@ export const routes = [
       "revision_conflict",
       "target_unavailable"
     ],
-    "status": 201
+    "status": 201,
+    "admission": "default"
   },
   {
     "id": "social_post_v1_handoffs_id_commit",
@@ -7377,7 +14944,8 @@ export const routes = [
       "revision_conflict",
       "target_unavailable"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "default"
   },
   {
     "id": "social_post_v1_handoffs_id_readiness",
@@ -7436,7 +15004,8 @@ export const routes = [
       "revision_conflict",
       "target_unavailable"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "default"
   },
   {
     "id": "social_post_v1_handoffs_id_rollback",
@@ -7495,7 +15064,8 @@ export const routes = [
       "revision_conflict",
       "target_unavailable"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "default"
   },
   {
     "id": "social_post_v1_receivers",
@@ -7554,7 +15124,8 @@ export const routes = [
       "revision_conflict",
       "target_unavailable"
     ],
-    "status": 201
+    "status": 201,
+    "admission": "default"
   },
   {
     "id": "social_post_v1_receivers_id_grants",
@@ -7613,7 +15184,8 @@ export const routes = [
       "revision_conflict",
       "target_unavailable"
     ],
-    "status": 201
+    "status": 201,
+    "admission": "default"
   },
   {
     "id": "social_post_v1_receivers_id_grants_grantId_decision",
@@ -7672,7 +15244,8 @@ export const routes = [
       "revision_conflict",
       "target_unavailable"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "default"
   },
   {
     "id": "social_post_v1_receivers_id_heartbeat",
@@ -7731,7 +15304,8 @@ export const routes = [
       "revision_conflict",
       "target_unavailable"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "default"
   },
   {
     "id": "social_put_v1_cast_configuration",
@@ -7790,7 +15364,8 @@ export const routes = [
       "revision_conflict",
       "target_unavailable"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "default"
   },
   {
     "id": "start_browser_setup",
@@ -7809,7 +15384,8 @@ export const routes = [
       "setup_already_complete",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "default"
   },
   {
     "id": "start_playback_session",
@@ -7836,7 +15412,8 @@ export const routes = [
       "no_tuner_available",
       "queue_building"
     ],
-    "status": 201
+    "status": 201,
+    "admission": "playback"
   },
   {
     "id": "stop_playback_session",
@@ -7854,7 +15431,8 @@ export const routes = [
       "not_found"
     ],
     "status": 204,
-    "optionalBody": true
+    "optionalBody": true,
+    "admission": "security-fence"
   },
   {
     "id": "sync_download_progress",
@@ -7881,7 +15459,8 @@ export const routes = [
       "downloads_unavailable",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "default"
   },
   {
     "id": "terminate_admin_session",
@@ -7901,7 +15480,8 @@ export const routes = [
       "not_found"
     ],
     "status": 204,
-    "optionalBody": true
+    "optionalBody": true,
+    "admission": "admin"
   },
   {
     "id": "test_webhook",
@@ -7923,7 +15503,8 @@ export const routes = [
       "administration_unavailable",
       "internal"
     ],
-    "status": 202
+    "status": 202,
+    "admission": "admin"
   },
   {
     "id": "undo_container_personal_state",
@@ -7945,7 +15526,8 @@ export const routes = [
       "internal",
       "operation_expired"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "default"
   },
   {
     "id": "update_queue",
@@ -7967,7 +15549,8 @@ export const routes = [
       "queue_too_large",
       "queue_building"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "default"
   },
   {
     "id": "update_webhook",
@@ -7989,6 +15572,671 @@ export const routes = [
       "administration_unavailable",
       "internal"
     ],
-    "status": 200
+    "status": 200,
+    "admission": "admin"
   }
 ] as const;
+export const routePaths = {
+  "act_on_download_preparation": "/v1/downloads/preparations/{id}/actions",
+  "add_queue_segment": "/v1/queues/{id}/segments",
+  "advance_queue": "/v1/queues/{id}:advance",
+  "browse_library": "/v1/libraries/{id}/browse",
+  "change_connectivity_policy": "/v1/admin/connectivity/policy",
+  "change_console_settings": "/v1/admin/console/settings",
+  "change_playback_session": "/v1/playback/sessions/{id}",
+  "clear_playback_failure_memory": "/v1/admin/playback/route-failures/{sourceId}",
+  "commit_queue_next": "/v1/queues/{id}:commit-next",
+  "control_admin_session": "/v1/admin/sessions/{id}/controls",
+  "create_access_token": "/v1/me/access-tokens",
+  "create_api_key": "/v1/admin/api-keys",
+  "create_download_grant": "/v1/downloads/preparations/{id}/grant",
+  "create_download_preparations": "/v1/downloads/preparations",
+  "create_download_request": "/v1/downloads/requests",
+  "create_job": "/v1/jobs",
+  "create_queue": "/v1/queues",
+  "create_webhook": "/v1/admin/webhooks",
+  "delete_admin_backup": "/v1/admin/backups/{id}",
+  "delete_admin_dvr_recording_groups_id": "/v1/admin/dvr/recording-groups/{id}",
+  "delete_admin_ingestion_jobs_id": "/v1/admin/ingestion/jobs/{id}",
+  "delete_admin_libraries_id_sources_source": "/v1/admin/libraries/{id}/sources/{source}",
+  "delete_admin_library_channels_block_presets_id": "/v1/admin/library-channels/block-presets/{id}",
+  "delete_client_log": "/v1/admin/diagnostics/client-logs/{id}",
+  "delete_collections_id": "/v1/collections/{id}",
+  "delete_collections_id_items_itemId": "/v1/collections/{id}/items/{itemId}",
+  "delete_device": "/v1/devices/{id}",
+  "delete_device_sessions": "/v1/devices/{id}/sessions",
+  "delete_direct_member": "/v1/direct/members/{id}",
+  "delete_direct_profiles_id": "/v1/direct/profiles/{id}",
+  "delete_direct_profiles_id_avatar": "/v1/direct/profiles/{id}/avatar",
+  "delete_direct_remembered_account": "/v1/direct/remembered-accounts/{accountId}",
+  "delete_direct_session": "/v1/direct/sessions/{id}",
+  "delete_direct_trust": "/v1/direct/trust",
+  "delete_direct_two_factor": "/v1/direct/two-factor",
+  "delete_dvr_recordings_id": "/v1/dvr/recordings/{id}",
+  "delete_dvr_rules_id": "/v1/dvr/rules/{id}",
+  "delete_items_id_lyrics_resource": "/v1/items/{id}/lyrics/{resource}",
+  "delete_metadata_kind_id_art_role_upload_candidateId": "/v1/metadata/{kind}/{id}/art/{role}/upload/{candidateId}",
+  "delete_playlists_id": "/v1/playlists/{id}",
+  "delete_playlists_id_entries_entryId": "/v1/playlists/{id}/entries/{entryId}",
+  "delete_playlists_id_shares": "/v1/playlists/{id}/shares",
+  "delete_queue": "/v1/queues/{id}",
+  "delete_saved_resources_id": "/v1/saved-resources/{id}",
+  "delete_saved_resources_id_shares": "/v1/saved-resources/{id}/shares",
+  "delete_search_history": "/v1/search/history",
+  "delete_sessions_current": "/v1/sessions/current",
+  "delete_storage_mounts_id": "/v1/storage/mounts/{id}",
+  "delete_storage_sources_webdav_id": "/v1/storage/sources/webdav/{id}",
+  "delete_title_version": "/v1/admin/items/{id}/files/{fileId}",
+  "delete_upgrade_copy": "/v1/admin/storage/upgrade-copies/{id}",
+  "delete_v1_items_itemId_subtitles_resource": "/v1/items/{itemId}/subtitles/{resource}",
+  "delete_webhook": "/v1/admin/webhooks/{id}",
+  "download_client_log": "/v1/admin/diagnostics/client-logs/{id}/download",
+  "empty_missing_titles": "/v1/admin/missing-titles/empty",
+  "get_admin_access_devices": "/v1/admin/access/devices",
+  "get_admin_access_invitations": "/v1/admin/access/invitations",
+  "get_admin_access_members": "/v1/admin/access/members",
+  "get_admin_access_members_id_limits": "/v1/admin/access/members/{id}/limits",
+  "get_admin_analysis_operations": "/v1/admin/analysis-operations",
+  "get_admin_attention": "/v1/admin/attention",
+  "get_admin_backups": "/v1/admin/backups",
+  "get_admin_console_accounts": "/v1/admin/console/accounts",
+  "get_admin_console_alerts": "/v1/admin/console/alerts",
+  "get_admin_console_diagnostics_lane": "/v1/admin/console/diagnostics/{lane}",
+  "get_admin_console_exports_id": "/v1/admin/console/exports/{id}",
+  "get_admin_console_job_kinds": "/v1/admin/console/job-kinds",
+  "get_admin_console_jobs": "/v1/admin/console/jobs",
+  "get_admin_console_panels_panel": "/v1/admin/console/panels/{panel}",
+  "get_admin_console_schedules": "/v1/admin/console/schedules",
+  "get_admin_console_stream_options": "/v1/admin/console/stream-options",
+  "get_admin_diagnostics_bundle": "/v1/admin/diagnostics/bundle",
+  "get_admin_diagnostics_concurrency": "/v1/admin/diagnostics/concurrency",
+  "get_admin_diagnostics_pprof_profile": "/v1/admin/diagnostics/pprof/{profile}",
+  "get_admin_dvr_recording_groups": "/v1/admin/dvr/recording-groups",
+  "get_admin_dvr_recording_owners": "/v1/admin/dvr/recording-owners",
+  "get_admin_dvr_recording_permissions": "/v1/admin/dvr/recording-permissions",
+  "get_admin_dvr_settings": "/v1/admin/dvr/settings",
+  "get_admin_feedback": "/v1/admin/feedback",
+  "get_admin_feedback_id": "/v1/admin/feedback/{id}",
+  "get_admin_feedback_reports": "/v1/admin/feedback/reports",
+  "get_admin_feedback_reports_id": "/v1/admin/feedback/reports/{id}",
+  "get_admin_filesystem": "/v1/admin/filesystem",
+  "get_admin_ingestion_jobs_id": "/v1/admin/ingestion/jobs/{id}",
+  "get_admin_jobs": "/v1/admin/jobs",
+  "get_admin_libraries": "/v1/admin/libraries",
+  "get_admin_libraries_id": "/v1/admin/libraries/{id}",
+  "get_admin_libraries_id_inventory_config": "/v1/admin/libraries/{id}/inventory-config",
+  "get_admin_library_channels": "/v1/admin/library-channels",
+  "get_admin_library_channels_block_presets": "/v1/admin/library-channels/block-presets",
+  "get_admin_library_channels_criteria": "/v1/admin/library-channels/criteria",
+  "get_admin_library_channels_id_health": "/v1/admin/library-channels/{id}/health",
+  "get_admin_library_channels_templates": "/v1/admin/library-channels/templates",
+  "get_admin_library_settings": "/v1/admin/library-settings",
+  "get_admin_live_sources_id_channel_map": "/v1/admin/live-sources/{id}/channel-map",
+  "get_admin_logs": "/v1/admin/logs",
+  "get_admin_logs_events": "/v1/admin/logs/events",
+  "get_admin_logs_settings": "/v1/admin/logs/settings",
+  "get_admin_maintenance_settings": "/v1/admin/maintenance/settings",
+  "get_admin_metadata_providers": "/v1/admin/metadata-providers",
+  "get_admin_notifications_settings": "/v1/admin/notifications/settings",
+  "get_admin_operations_panel": "/v1/admin/operations/{panel}",
+  "get_admin_play_history": "/v1/admin/play-history",
+  "get_admin_play_history_summary": "/v1/admin/play-history/summary",
+  "get_admin_playback_diagnostics": "/v1/admin/playback/diagnostics",
+  "get_admin_playback_history": "/v1/admin/playback/history",
+  "get_admin_playback_history_csv": "/v1/admin/playback/history.csv",
+  "get_admin_playback_operations_operationId": "/v1/admin/playback-operations/{operationId}",
+  "get_admin_playback_sessions": "/v1/admin/playback-sessions",
+  "get_admin_resource_usage": "/v1/admin/resource-usage",
+  "get_admin_session_controls": "/v1/admin/sessions/{id}/controls",
+  "get_admin_storage_usage": "/v1/admin/storage-usage",
+  "get_admin_support_report": "/v1/admin/support-report",
+  "get_admin_telemetry": "/v1/admin/telemetry",
+  "get_admin_telemetry_now": "/v1/admin/telemetry/now",
+  "get_admin_transcode_capacity": "/v1/admin/transcode/capacity",
+  "get_admin_updates": "/v1/admin/updates",
+  "get_albums_id_metadata_musicbrainz": "/v1/albums/{id}/metadata/musicbrainz",
+  "get_albums_id_songs": "/v1/albums/{id}/songs",
+  "get_api_access_options": "/v1/me/api-access",
+  "get_artists_id_albums": "/v1/artists/{id}/albums",
+  "get_attribution": "/v1/attribution",
+  "get_auth_capabilities": "/v1/auth/capabilities",
+  "get_books_id_chapters": "/v1/books/{id}/chapters",
+  "get_books_id_files": "/v1/books/{id}/files",
+  "get_bootstrap": "/v1/bootstrap",
+  "get_capabilities": "/v1/capabilities",
+  "get_capability_report": "/v1/admin/diagnostics/capabilities",
+  "get_catalogue_failures": "/v1/admin/catalogue/failures",
+  "get_client_log": "/v1/admin/diagnostics/client-logs/{id}",
+  "get_client_logs": "/v1/admin/diagnostics/client-logs",
+  "get_collections_id": "/v1/collections/{id}",
+  "get_collections_id_items": "/v1/collections/{id}/items",
+  "get_connection": "/v1/networking/connection",
+  "get_connectivity_policy": "/v1/admin/connectivity/policy",
+  "get_connectivity_status": "/v1/admin/connectivity/status",
+  "get_console_registry": "/v1/console/registry",
+  "get_console_settings": "/v1/admin/console/settings",
+  "get_container_personal_state": "/v1/containers/{kind}/{id}/personal-state",
+  "get_device_capabilities": "/v1/me/devices/current/capabilities",
+  "get_devices": "/v1/devices",
+  "get_direct_account": "/v1/direct",
+  "get_direct_member_deletion_preview": "/v1/direct/members/{id}/deletion-preview",
+  "get_direct_members": "/v1/direct/members",
+  "get_direct_pin_recovery": "/v1/direct/pin-recovery",
+  "get_direct_profile_avatars": "/v1/direct/profiles/avatars",
+  "get_direct_profile_restrictions": "/v1/direct/profiles/{id}/restrictions",
+  "get_direct_profiles_id_deletion_preview": "/v1/direct/profiles/{id}/deletion-preview",
+  "get_direct_registration_policy": "/v1/direct/registration-policy",
+  "get_direct_sessions": "/v1/direct/sessions",
+  "get_direct_two_factor": "/v1/direct/two-factor",
+  "get_download_artifact": "/v1/downloads/artifacts/{grant}",
+  "get_download_artwork": "/v1/downloads/artifacts/{grant}/artwork/{role}",
+  "get_download_bundle": "/v1/downloads/preparations/{id}/bundle",
+  "get_download_options": "/v1/items/{itemId}/download-options",
+  "get_download_preparation": "/v1/downloads/preparations/{id}",
+  "get_download_request": "/v1/downloads/requests/{id}",
+  "get_download_settings": "/v1/downloads/settings",
+  "get_download_subtitle": "/v1/downloads/artifacts/{grant}/subtitles/{resource}/{revision}.vtt",
+  "get_download_subtitle_original": "/v1/downloads/artifacts/{grant}/subtitles/{resource}/{revision}/{file}",
+  "get_download_usage": "/v1/downloads/usage",
+  "get_dvr": "/v1/dvr",
+  "get_dvr_channels": "/v1/dvr/channels",
+  "get_dvr_recordings_id": "/v1/dvr/recordings/{id}",
+  "get_dvr_recordings_id_delete_preview": "/v1/dvr/recordings/{id}/delete-preview",
+  "get_dvr_storage": "/v1/dvr/storage",
+  "get_events": "/v1/events",
+  "get_feedback": "/v1/feedback",
+  "get_feedback_capabilities": "/v1/feedback/capabilities",
+  "get_feedback_id": "/v1/feedback/{id}",
+  "get_feedback_reports": "/v1/feedback/reports",
+  "get_feedback_reports_id": "/v1/feedback/reports/{id}",
+  "get_guide": "/v1/guide",
+  "get_guide_channels": "/v1/guide/channels",
+  "get_guide_images_digest": "/v1/guide/images/{digest}",
+  "get_guide_sources": "/v1/guide/sources",
+  "get_health_live": "/health/live",
+  "get_health_ready": "/health/ready",
+  "get_home": "/v1/home",
+  "get_home_layout": "/v1/home/layout",
+  "get_home_row": "/v1/home/rows/{id}",
+  "get_inventory_changes": "/v1/admin/libraries/{id}/sources/{source}/changes",
+  "get_items": "/v1/items",
+  "get_items_id": "/v1/items/{id}",
+  "get_items_id_analysis": "/v1/items/{id}/analysis",
+  "get_items_id_analysis_artifacts_artifact": "/v1/items/{id}/analysis/artifacts/{artifact}",
+  "get_items_id_art_kind": "/v1/items/{id}/art/{kind}",
+  "get_items_id_credits": "/v1/items/{id}/credits",
+  "get_items_id_detail": "/v1/items/{id}/detail",
+  "get_items_id_listening": "/v1/items/{id}/listening",
+  "get_items_id_lyrics": "/v1/items/{id}/lyrics",
+  "get_items_id_lyrics_resource_revisions_revision": "/v1/items/{id}/lyrics/{resource}/revisions/{revision}",
+  "get_items_id_metadata_manual": "/v1/items/{id}/metadata/manual",
+  "get_items_id_metadata_musicbrainz": "/v1/items/{id}/metadata/musicbrainz",
+  "get_items_id_playback_offers": "/v1/items/{id}/playback-offers",
+  "get_items_id_prepared_versions": "/v1/items/{id}/prepared-versions",
+  "get_items_id_recommendations": "/v1/items/{id}/recommendations",
+  "get_items_id_source_availability": "/v1/items/{id}/source-availability",
+  "get_items_id_trickplay": "/v1/items/{id}/trickplay",
+  "get_items_id_trickplay_set_thumbnails_vtt": "/v1/items/{id}/trickplay/{set}/thumbnails.vtt",
+  "get_items_screen_metadata": "/v1/items/{id}/metadata/screen",
+  "get_job": "/v1/jobs/{id}",
+  "get_job_failures": "/v1/jobs/{id}/failures",
+  "get_libraries": "/v1/libraries",
+  "get_libraries_id_artists": "/v1/libraries/{id}/artists",
+  "get_libraries_id_books": "/v1/libraries/{id}/books",
+  "get_libraries_id_browse": "/v1/libraries/{id}/browse",
+  "get_libraries_id_browse_capabilities": "/v1/libraries/{id}/browse-capabilities",
+  "get_libraries_id_categories": "/v1/libraries/{id}/categories",
+  "get_libraries_id_collections": "/v1/libraries/{id}/collections",
+  "get_libraries_id_content": "/v1/libraries/{id}/content",
+  "get_libraries_id_discover": "/v1/libraries/{id}/discover",
+  "get_libraries_id_episode_issues": "/v1/libraries/{id}/episode-issues",
+  "get_libraries_id_inventory_status": "/v1/libraries/{id}/inventory-status",
+  "get_libraries_id_listening_selection": "/v1/libraries/{id}/listening/selection",
+  "get_libraries_id_metadata_agent": "/v1/libraries/{id}/metadata/agent",
+  "get_libraries_id_metadata_screen": "/v1/libraries/{id}/metadata/screen",
+  "get_libraries_id_network_roots": "/v1/libraries/{id}/network-roots",
+  "get_libraries_id_show_workspace": "/v1/libraries/{id}/show-workspace",
+  "get_libraries_id_shows": "/v1/libraries/{id}/shows",
+  "get_libraries_id_strm_analysis_policy": "/v1/libraries/{id}/strm-analysis-policy",
+  "get_library_channels_id_logo": "/v1/library-channels/{id}/logo",
+  "get_library_facets": "/v1/libraries/{id}/facets",
+  "get_library_inventory": "/v1/admin/libraries/{id}/inventory",
+  "get_library_kinds_kind_metadata_agents": "/v1/library-kinds/{kind}/metadata-agents",
+  "get_library_settings": "/v1/admin/libraries/{id}/settings",
+  "get_listening_preferences": "/v1/listening/preferences",
+  "get_live_settings": "/v1/admin/live/settings",
+  "get_live_source_configuration": "/v1/admin/live-sources/{id}/configuration",
+  "get_live_tuners": "/v1/admin/dvr/tuners",
+  "get_me": "/v1/me",
+  "get_me_library_navigation": "/v1/me/library-navigation",
+  "get_media_grant": "/v1/media/{grant}",
+  "get_media_grant_audio": "/v1/media/{grant}/audio",
+  "get_media_grant_audio_converted": "/v1/media/{grant}/audio-converted",
+  "get_media_grant_file": "/v1/media/{grant}/{file}",
+  "get_media_linear_playbackId_generation_token_name": "/v1/media/linear/{playbackId}/{generation}/{token}/{name}",
+  "get_metadata_attention": "/v1/libraries/{id}/metadata/attention",
+  "get_metadata_attention_counts": "/v1/admin/metadata/attention/counts",
+  "get_metadata_kind_id": "/v1/metadata/{kind}/{id}",
+  "get_metadata_kind_id_art_role": "/v1/metadata/{kind}/{id}/art/{role}",
+  "get_metadata_kind_id_preview": "/v1/metadata/{kind}/{id}/preview",
+  "get_metadata_settings": "/v1/admin/metadata/settings",
+  "get_networking_certificate": "/v1/networking/certificate",
+  "get_networking_claim": "/v1/networking/claim",
+  "get_networking_remote": "/v1/networking/remote",
+  "get_notifications": "/v1/notifications",
+  "get_notifications_capabilities": "/v1/notifications/capabilities",
+  "get_notifications_inbox": "/v1/notifications/inbox",
+  "get_notifications_unread_count": "/v1/notifications/unread-count",
+  "get_people": "/v1/people",
+  "get_people_id": "/v1/people/{id}",
+  "get_people_id_portrait": "/v1/people/{id}/portrait",
+  "get_personal_history": "/v1/personal-history",
+  "get_playback_delivery_policy": "/v1/playback/delivery-policy",
+  "get_playback_options": "/v1/items/{itemId}/playback-options",
+  "get_playback_session": "/v1/playback/sessions/{id}",
+  "get_playback_sessions_id_chapters": "/v1/playback/sessions/{id}/chapters",
+  "get_playlist_order": "/v1/playlists/{id}/order",
+  "get_playlists_id": "/v1/playlists/{id}",
+  "get_playlists_id_content": "/v1/playlists/{id}/content",
+  "get_playlists_id_share_candidates": "/v1/playlists/{id}/share-candidates",
+  "get_preferences": "/v1/preferences",
+  "get_profiles_id_avatar": "/v1/profiles/{id}/avatar",
+  "get_queue": "/v1/queues/{id}",
+  "get_queue_window": "/v1/queues/{id}/window",
+  "get_rating_systems": "/v1/rating-systems",
+  "get_readiness": "/v1/readiness",
+  "get_remote_playback_controls": "/v1/playback/controls",
+  "get_saved_content": "/v1/content",
+  "get_saved_pins_order": "/v1/saved-pins/order",
+  "get_saved_resources": "/v1/saved-resources",
+  "get_saved_resources_id": "/v1/saved-resources/{id}",
+  "get_saved_resources_id_content": "/v1/saved-resources/{id}/content",
+  "get_saved_resources_id_share_candidates": "/v1/saved-resources/{id}/share-candidates",
+  "get_scan_issues": "/v1/admin/libraries/{id}/scans/{job}/issues",
+  "get_search_history": "/v1/search/history",
+  "get_seasons_id_episodes": "/v1/seasons/{id}/episodes",
+  "get_server": "/v1/server",
+  "get_server_metadata_attention": "/v1/admin/metadata/attention",
+  "get_setup_state": "/v1/setup/state",
+  "get_shows_id_episodes": "/v1/shows/{id}/episodes",
+  "get_shows_id_metadata_tvdb": "/v1/shows/{id}/metadata/tvdb",
+  "get_shows_id_recommendations": "/v1/shows/{id}/recommendations",
+  "get_shows_id_seasons": "/v1/shows/{id}/seasons",
+  "get_shows_screen_metadata": "/v1/shows/{id}/metadata/screen",
+  "get_storage_mounts": "/v1/storage/mounts",
+  "get_storage_operations_id": "/v1/storage/operations/{id}",
+  "get_storage_source_operations_id": "/v1/storage/source-operations/{id}",
+  "get_storage_sources": "/v1/storage/sources",
+  "get_storage_status": "/v1/admin/storage/status",
+  "get_suggestions": "/v1/suggestions",
+  "get_system": "/v1/system",
+  "get_topshelf": "/v1/topshelf",
+  "get_topshelf_art_id": "/v1/topshelf/art/{id}",
+  "get_v1_items_id_chapters_chapter_image": "/v1/items/{id}/chapters/{chapter}/image",
+  "get_v1_items_id_trickplay_set_tiles_tile_jpg": "/v1/items/{id}/trickplay/{set}/tiles/{tile}.jpg",
+  "get_v1_items_itemId_playback_session_subtitles": "/v1/items/{itemId}/playback/{session}/subtitles",
+  "get_v1_items_itemId_subtitles": "/v1/items/{itemId}/subtitles",
+  "get_v1_media_subtitles_grant_resource_revision": "/v1/media/subtitles/{grant}/{resource}/{revision}",
+  "get_v1_media_subtitles_grant_resource_revision_fonts": "/v1/media/subtitles/{grant}/{resource}/{revision}/fonts",
+  "get_v1_media_subtitles_grant_resource_revision_fonts_font": "/v1/media/subtitles/{grant}/{resource}/{revision}/fonts/{font}",
+  "get_v1_media_subtitles_grant_resource_revision_original_ass": "/v1/media/subtitles/{grant}/{resource}/{revision}/original.ass",
+  "get_v1_media_subtitles_grant_resource_revision_original_idx": "/v1/media/subtitles/{grant}/{resource}/{revision}/original.idx",
+  "get_v1_media_subtitles_grant_resource_revision_original_mks": "/v1/media/subtitles/{grant}/{resource}/{revision}/original.mks",
+  "get_v1_media_subtitles_grant_resource_revision_original_ssa": "/v1/media/subtitles/{grant}/{resource}/{revision}/original.ssa",
+  "get_v1_media_subtitles_grant_resource_revision_original_sub": "/v1/media/subtitles/{grant}/{resource}/{revision}/original.sub",
+  "get_v1_media_subtitles_grant_resource_revision_original_sup": "/v1/media/subtitles/{grant}/{resource}/{revision}/original.sup",
+  "get_v1_media_subtitles_grant_resource_revision_vtt": "/v1/media/subtitles/{grant}/{resource}/{revision}.vtt",
+  "head_download_artifact": "/v1/downloads/artifacts/{grant}",
+  "head_media_grant_audio": "/v1/media/{grant}/audio",
+  "head_v1_media_subtitles_grant_resource_revision_fonts_font": "/v1/media/subtitles/{grant}/{resource}/{revision}/fonts/{font}",
+  "head_v1_media_subtitles_grant_resource_revision_original_ass": "/v1/media/subtitles/{grant}/{resource}/{revision}/original.ass",
+  "head_v1_media_subtitles_grant_resource_revision_original_idx": "/v1/media/subtitles/{grant}/{resource}/{revision}/original.idx",
+  "head_v1_media_subtitles_grant_resource_revision_original_mks": "/v1/media/subtitles/{grant}/{resource}/{revision}/original.mks",
+  "head_v1_media_subtitles_grant_resource_revision_original_ssa": "/v1/media/subtitles/{grant}/{resource}/{revision}/original.ssa",
+  "head_v1_media_subtitles_grant_resource_revision_original_sub": "/v1/media/subtitles/{grant}/{resource}/{revision}/original.sub",
+  "head_v1_media_subtitles_grant_resource_revision_original_sup": "/v1/media/subtitles/{grant}/{resource}/{revision}/original.sup",
+  "issue_download_receipts": "/v1/downloads/receipts",
+  "list_access_tokens": "/v1/me/access-tokens",
+  "list_admin_sessions": "/v1/admin/sessions",
+  "list_api_keys": "/v1/admin/api-keys",
+  "list_download_preparations": "/v1/downloads/preparations",
+  "list_download_receipt_keys": "/v1/downloads/receipt-keys",
+  "list_download_requests": "/v1/downloads/requests",
+  "list_download_revocations": "/v1/downloads/receipts/revocations",
+  "list_live_source_channels": "/v1/admin/live/sources/{id}/channels",
+  "list_live_source_groups": "/v1/admin/live/sources/{id}/groups",
+  "list_live_sources": "/v1/admin/live-sources",
+  "list_member_access_tokens": "/v1/admin/access-tokens",
+  "list_missing_titles": "/v1/admin/missing-titles",
+  "list_playback_failure_memory": "/v1/admin/playback/route-failures",
+  "list_queue_entries": "/v1/queues/{id}/entries",
+  "list_webhook_deliveries": "/v1/admin/webhooks/{id}/deliveries",
+  "list_webhooks": "/v1/admin/webhooks",
+  "mcp": "/v1/mcp",
+  "mcp_stream": "/v1/mcp",
+  "merge_titles": "/v1/admin/titles/merge",
+  "move_queue_entry": "/v1/queues/{id}/entries/{entryId}:move",
+  "patch_admin_feedback_id": "/v1/admin/feedback/{id}",
+  "patch_admin_libraries_id": "/v1/admin/libraries/{id}",
+  "patch_admin_libraries_id_sources_source": "/v1/admin/libraries/{id}/sources/{source}",
+  "patch_admin_logs_settings": "/v1/admin/logs/settings",
+  "patch_admin_notifications_settings": "/v1/admin/notifications/settings",
+  "patch_collections_id": "/v1/collections/{id}",
+  "patch_device": "/v1/devices/{id}",
+  "patch_direct_members_id": "/v1/direct/members/{id}",
+  "patch_direct_profiles_id": "/v1/direct/profiles/{id}",
+  "patch_dvr_recordings_id": "/v1/dvr/recordings/{id}",
+  "patch_items_id_lyrics_resource_offset": "/v1/items/{id}/lyrics/{resource}/offset",
+  "patch_items_id_metadata_manual": "/v1/items/{id}/metadata/manual",
+  "patch_playlists_id": "/v1/playlists/{id}",
+  "patch_preferences": "/v1/preferences",
+  "patch_saved_resources_id": "/v1/saved-resources/{id}",
+  "post_access_invitations_accept": "/v1/access/invitations/accept",
+  "post_admin_access_invitations": "/v1/admin/access/invitations",
+  "post_admin_access_invitations_id_revoke": "/v1/admin/access/invitations/{id}/revoke",
+  "post_admin_background_pause": "/v1/admin/maintenance/background-pause",
+  "post_admin_backups": "/v1/admin/backups",
+  "post_admin_backups_restore": "/v1/admin/backups/restore",
+  "post_admin_console_alerts_id_acknowledge": "/v1/admin/console/alerts/{id}/acknowledge",
+  "post_admin_console_diagnostics_capture": "/v1/admin/console/diagnostics/capture",
+  "post_admin_console_exports": "/v1/admin/console/exports",
+  "post_admin_console_jobs": "/v1/admin/console/jobs",
+  "post_admin_console_jobs_id_action": "/v1/admin/console/jobs/{id}/{action}",
+  "post_admin_diagnostics_integrity": "/v1/admin/diagnostics/integrity",
+  "post_admin_diagnostics_integrity_repair": "/v1/admin/diagnostics/integrity/repair",
+  "post_admin_dvr_recording_groups": "/v1/admin/dvr/recording-groups",
+  "post_admin_feedback_reports_id_status": "/v1/admin/feedback/reports/{id}/status",
+  "post_admin_ingestion_jobs_id_action": "/v1/admin/ingestion/jobs/{id}/{action}",
+  "post_admin_libraries_id_inventory_object_action": "/v1/admin/libraries/{id}/inventory/{object}/{action}",
+  "post_admin_libraries_id_sources": "/v1/admin/libraries/{id}/sources",
+  "post_admin_libraries_id_sources_source_check": "/v1/admin/libraries/{id}/sources/{source}/check",
+  "post_admin_libraries_id_sources_source_scans": "/v1/admin/libraries/{id}/sources/{source}/scans",
+  "post_admin_library_channels": "/v1/admin/library-channels",
+  "post_admin_library_channels_block_presets": "/v1/admin/library-channels/block-presets",
+  "post_admin_library_channels_defaults": "/v1/admin/library-channels/defaults",
+  "post_admin_library_channels_id_delete": "/v1/admin/library-channels/{id}/delete",
+  "post_admin_library_channels_id_logo": "/v1/admin/library-channels/{id}/logo",
+  "post_admin_library_channels_id_regenerate": "/v1/admin/library-channels/{id}/regenerate",
+  "post_admin_library_channels_preview": "/v1/admin/library-channels/preview",
+  "post_admin_library_channels_reorder": "/v1/admin/library-channels/reorder",
+  "post_admin_library_channels_templates_id_install": "/v1/admin/library-channels/templates/{id}/install",
+  "post_admin_live_sources_discover": "/v1/admin/live-sources/discover",
+  "post_admin_live_sources_id_enabled": "/v1/admin/live-sources/{id}/enabled",
+  "post_admin_live_sources_id_logos": "/v1/admin/live-sources/{id}/logos",
+  "post_admin_live_sources_id_refresh": "/v1/admin/live-sources/{id}/refresh",
+  "post_admin_live_sources_id_remove": "/v1/admin/live-sources/{id}/remove",
+  "post_admin_logs_debug_window": "/v1/admin/logs/debug-window",
+  "post_admin_media_delete": "/v1/admin/media/delete",
+  "post_admin_media_delete_preview": "/v1/admin/media/delete/preview",
+  "post_admin_notifications_broadcast": "/v1/admin/notifications/broadcast",
+  "post_admin_playback_sessions_id_stop": "/v1/admin/playback-sessions/{id}/stop",
+  "post_admin_restart": "/v1/admin/restart",
+  "post_admin_state_permissions_fix": "/v1/admin/state-permissions:fix",
+  "post_admin_storage_usage_category_cleanup": "/v1/admin/storage-usage/{category}/cleanup",
+  "post_albums_id_metadata_musicbrainz_policy": "/v1/albums/{id}/metadata/musicbrainz/policy",
+  "post_albums_id_metadata_musicbrainz_retry": "/v1/albums/{id}/metadata/musicbrainz/retry",
+  "post_albums_id_metadata_musicbrainz_search": "/v1/albums/{id}/metadata/musicbrainz/search",
+  "post_auth_refresh": "/v1/auth/refresh",
+  "post_auth_register": "/v1/auth/register",
+  "post_auth_remembered_accounts": "/v1/auth/remembered-accounts",
+  "post_auth_two_factor_challenge": "/v1/auth/two-factor/challenge",
+  "post_channels_preferences": "/v1/channels/preferences",
+  "post_client_log": "/v1/diagnostics/client-logs",
+  "post_collections_id_items_batch": "/v1/collections/{id}/items:batch",
+  "post_device": "/v1/devices",
+  "post_device_approval": "/v1/devices/{id}/approval",
+  "post_device_session_binding": "/v1/devices/{id}/sessions/bind",
+  "post_direct_members": "/v1/direct/members",
+  "post_direct_ownership": "/v1/direct/ownership",
+  "post_direct_ownership_custody": "/v1/direct/ownership/custody",
+  "post_direct_password": "/v1/direct/password",
+  "post_direct_portico_challenge": "/v1/direct/portico-challenge",
+  "post_direct_profile_pin_reset": "/v1/direct/profiles/{id}/pin-reset",
+  "post_direct_profile_switch": "/v1/direct/profile-switch",
+  "post_direct_profiles": "/v1/direct/profiles",
+  "post_direct_profiles_id_avatar": "/v1/direct/profiles/{id}/avatar",
+  "post_direct_profiles_id_select": "/v1/direct/profiles/{id}/select",
+  "post_direct_remembered_accounts": "/v1/direct/remembered-accounts",
+  "post_direct_sign_in": "/v1/direct/sign-in",
+  "post_direct_sign_out_everywhere": "/v1/direct/sessions/sign-out-everywhere",
+  "post_direct_two_factor_enrol": "/v1/direct/two-factor/enrol",
+  "post_direct_two_factor_verify": "/v1/direct/two-factor/verify",
+  "post_dvr_recordings": "/v1/dvr/recordings",
+  "post_dvr_recordings_id_cancel": "/v1/dvr/recordings/{id}/cancel",
+  "post_dvr_rules_preview": "/v1/dvr/rules/preview",
+  "post_feedback": "/v1/feedback",
+  "post_feedback_reports": "/v1/feedback/reports",
+  "post_home_layout_reset": "/v1/home/layout/reset",
+  "post_hosted_wake": "/v1/hosted/wake",
+  "post_items_id_analysis_jobs": "/v1/items/{id}/analysis/jobs",
+  "post_items_id_analysis_jobs_job_control": "/v1/items/{id}/analysis/jobs/{job}/control",
+  "post_items_id_analysis_markers": "/v1/items/{id}/analysis/markers",
+  "post_items_id_delete": "/v1/items/{id}/delete",
+  "post_items_id_delete_preview": "/v1/items/{id}/delete/preview",
+  "post_items_id_lyrics": "/v1/items/{id}/lyrics",
+  "post_items_id_lyrics_search": "/v1/items/{id}/lyrics/search",
+  "post_items_id_metadata_local_audio_policy": "/v1/items/{id}/metadata/local-audio/policy",
+  "post_items_id_metadata_musicbrainz_policy": "/v1/items/{id}/metadata/musicbrainz/policy",
+  "post_items_id_metadata_musicbrainz_retry": "/v1/items/{id}/metadata/musicbrainz/retry",
+  "post_items_id_metadata_musicbrainz_search": "/v1/items/{id}/metadata/musicbrainz/search",
+  "post_items_id_metadata_screen_retry": "/v1/items/{id}/metadata/screen/retry",
+  "post_items_id_metadata_screen_search": "/v1/items/{id}/metadata/screen/search",
+  "post_items_id_optimizations": "/v1/items/{id}/optimizations",
+  "post_libraries": "/v1/libraries",
+  "post_libraries_id_collections": "/v1/libraries/{id}/collections",
+  "post_libraries_id_episode_assignments": "/v1/libraries/{id}/episode-assignments",
+  "post_libraries_id_lyrics_fetch": "/v1/libraries/{id}/lyrics/fetch",
+  "post_libraries_id_network_roots": "/v1/libraries/{id}/network-roots",
+  "post_libraries_id_scans": "/v1/libraries/{id}/scans",
+  "post_library_channels_preferences": "/v1/library-channels/preferences",
+  "post_me_recommendations_reset": "/v1/me/recommendations:reset",
+  "post_metadata_attention": "/v1/libraries/{id}/metadata/attention",
+  "post_metadata_bulk": "/v1/metadata/bulk",
+  "post_metadata_kind_id": "/v1/metadata/{kind}/{id}",
+  "post_metadata_kind_id_art_role_upload": "/v1/metadata/{kind}/{id}/art/{role}/upload",
+  "post_networking_certificate_config": "/v1/networking/certificate/config",
+  "post_networking_certificate_retry": "/v1/networking/certificate/retry",
+  "post_networking_claim_approve": "/v1/networking/claim/approve",
+  "post_networking_claim_await_approval": "/v1/networking/claim/await-approval",
+  "post_networking_claim_cancel": "/v1/networking/claim/cancel",
+  "post_networking_claim_continue": "/v1/networking/claim/continue",
+  "post_networking_claim_endpoint": "/v1/networking/claim/endpoint",
+  "post_networking_claim_prepare": "/v1/networking/claim/prepare",
+  "post_networking_claim_web_approval": "/v1/networking/claim/web-approval",
+  "post_networking_endpoint_proof": "/v1/networking/endpoint-proof",
+  "post_networking_remote_check": "/v1/networking/remote/check",
+  "post_networking_remote_config": "/v1/networking/remote/config",
+  "post_notifications_id_read": "/v1/notifications/{id}/read",
+  "post_notifications_inbox_actions": "/v1/notifications/inbox/actions",
+  "post_optimization_jobs_id_cancel": "/v1/optimization-jobs/{id}/cancel",
+  "post_optimization_jobs_id_retry": "/v1/optimization-jobs/{id}/retry",
+  "post_personal_history_actions": "/v1/personal-history/actions",
+  "post_playlists": "/v1/playlists",
+  "post_playlists_id_entries": "/v1/playlists/{id}/entries",
+  "post_prepared_versions_id_delete": "/v1/prepared-versions/{id}/delete",
+  "post_quick_connect": "/v1/quick-connect",
+  "post_quick_connect_cancel": "/v1/quick-connect/cancel",
+  "post_quick_connect_decision": "/v1/quick-connect/decision",
+  "post_quick_connect_review": "/v1/quick-connect/review",
+  "post_quick_connect_token": "/v1/quick-connect/token",
+  "post_saved_resources": "/v1/saved-resources",
+  "post_setup_finish": "/v1/setup/finish",
+  "post_setup_remote_recovery": "/v1/setup/remote-recovery",
+  "post_setup_resume": "/v1/setup/resume",
+  "post_shows_id_metadata_screen_retry": "/v1/shows/{id}/metadata/screen/retry",
+  "post_shows_id_metadata_screen_search": "/v1/shows/{id}/metadata/screen/search",
+  "post_shows_id_metadata_tvdb_retry": "/v1/shows/{id}/metadata/tvdb/retry",
+  "post_storage_mounts": "/v1/storage/mounts",
+  "post_storage_mounts_id_actions": "/v1/storage/mounts/{id}/actions",
+  "post_storage_sources_webdav": "/v1/storage/sources/webdav",
+  "post_topshelf_token": "/v1/topshelf/token",
+  "post_v1_items_itemId_subtitles": "/v1/items/{itemId}/subtitles",
+  "post_v1_items_itemId_subtitles_apply": "/v1/items/{itemId}/subtitles/apply",
+  "post_v1_items_itemId_subtitles_import": "/v1/items/{itemId}/subtitles/import",
+  "post_v1_items_itemId_subtitles_refresh": "/v1/items/{itemId}/subtitles/refresh",
+  "post_v1_items_itemId_subtitles_remote": "/v1/items/{itemId}/subtitles/remote",
+  "post_v1_items_itemId_subtitles_search": "/v1/items/{itemId}/subtitles/search",
+  "prepare_queue_next": "/v1/queues/{id}:prepare-next",
+  "preview_delete_title_version": "/v1/admin/items/{id}/files/{fileId}/delete/preview",
+  "preview_invitation": "/v1/access/invitations/preview",
+  "preview_live_source": "/v1/admin/live-sources/preview",
+  "preview_remote_live_source": "/v1/admin/live-sources/remote/preview",
+  "prove_network_identity": "/v1/networking/identity-proof",
+  "publish_remote_live_source": "/v1/admin/live-sources/remote/save",
+  "put_admin_access_device_trust": "/v1/admin/access/devices/{id}/trust",
+  "put_admin_access_members_id_limits": "/v1/admin/access/members/{id}/limits",
+  "put_admin_access_members_id_role": "/v1/admin/access/members/{id}/role",
+  "put_admin_console_schedules": "/v1/admin/console/schedules",
+  "put_admin_dvr_recording_groups_id": "/v1/admin/dvr/recording-groups/{id}",
+  "put_admin_dvr_recording_permissions": "/v1/admin/dvr/recording-permissions",
+  "put_admin_dvr_settings": "/v1/admin/dvr/settings",
+  "put_admin_libraries_id_scan_policy": "/v1/admin/libraries/{id}/scan-policy",
+  "put_admin_libraries_id_shows_show_settings": "/v1/admin/libraries/{id}/shows/{show}/settings",
+  "put_admin_libraries_order": "/v1/admin/libraries/order",
+  "put_admin_library_channels_block_presets_id": "/v1/admin/library-channels/block-presets/{id}",
+  "put_admin_live_sources_id_channel_map": "/v1/admin/live-sources/{id}/channel-map",
+  "put_admin_maintenance_settings": "/v1/admin/maintenance/settings",
+  "put_albums_id_metadata_musicbrainz": "/v1/albums/{id}/metadata/musicbrainz",
+  "put_collections_id_items_itemId": "/v1/collections/{id}/items/{itemId}",
+  "put_device_capabilities": "/v1/me/devices/current/capabilities",
+  "put_direct_profile_restrictions": "/v1/direct/profiles/{id}/restrictions",
+  "put_direct_profiles_order": "/v1/direct/profiles/order",
+  "put_direct_registration_policy": "/v1/direct/registration-policy",
+  "put_download_settings": "/v1/downloads/settings",
+  "put_dvr_recordings_id_keep": "/v1/dvr/recordings/{id}/keep",
+  "put_dvr_rules_id": "/v1/dvr/rules/{id}",
+  "put_dvr_storage": "/v1/dvr/storage",
+  "put_home_layout": "/v1/home/layout",
+  "put_items_id_analysis_policy": "/v1/items/{id}/analysis/policy",
+  "put_items_id_lyrics_selection": "/v1/items/{id}/lyrics/selection",
+  "put_items_id_metadata_musicbrainz": "/v1/items/{id}/metadata/musicbrainz",
+  "put_items_id_metadata_screen": "/v1/items/{id}/metadata/screen",
+  "put_items_id_personal_state": "/v1/items/{id}/personal-state",
+  "put_items_personal_state_batch": "/v1/items/personal-state:batch",
+  "put_libraries_id_metadata_agent": "/v1/libraries/{id}/metadata/agent",
+  "put_libraries_id_metadata_screen": "/v1/libraries/{id}/metadata/screen",
+  "put_libraries_id_strm_analysis_policy": "/v1/libraries/{id}/strm-analysis-policy",
+  "put_library_settings": "/v1/admin/libraries/{id}/settings",
+  "put_listening_preferences": "/v1/listening/preferences",
+  "put_lyrics_provider": "/v1/lyrics/provider",
+  "put_me_library_navigation": "/v1/me/library-navigation",
+  "put_metadata_settings": "/v1/admin/metadata/settings",
+  "put_playlists_id_shares": "/v1/playlists/{id}/shares",
+  "put_saved_pins_kind_id": "/v1/saved-pins/{kind}/{id}",
+  "put_saved_pins_order": "/v1/saved-pins/order",
+  "put_saved_resources_id_entries": "/v1/saved-resources/{id}/entries",
+  "put_saved_resources_id_shares": "/v1/saved-resources/{id}/shares",
+  "put_shows_id_metadata_screen": "/v1/shows/{id}/metadata/screen",
+  "put_shows_id_metadata_screen_season": "/v1/shows/{id}/metadata/screen/season",
+  "put_shows_id_metadata_tvdb": "/v1/shows/{id}/metadata/tvdb",
+  "put_storage_sources_webdav_id": "/v1/storage/sources/webdav/{id}",
+  "put_v1_items_itemId_playback_session_subtitles": "/v1/items/{itemId}/playback/{session}/subtitles",
+  "put_v1_items_itemId_subtitles_resource": "/v1/items/{itemId}/subtitles/{resource}",
+  "query_titles": "/v1/titles",
+  "refresh_items_metadata": "/v1/items/{id}/metadata/refresh",
+  "refresh_shows_metadata": "/v1/shows/{id}/metadata/refresh",
+  "remove_library": "/v1/admin/libraries/{id}",
+  "remove_queue_entry": "/v1/queues/{id}/entries/{entryId}",
+  "reorder_playlist_window": "/v1/playlists/{id}/order",
+  "report_changed_paths": "/v1/libraries/paths-changed",
+  "report_playback_timeline": "/v1/playback/sessions/{id}/timeline",
+  "revalidate_download_receipts": "/v1/downloads/receipts/revalidate",
+  "revoke_access_token": "/v1/me/access-tokens/{id}",
+  "revoke_api_key": "/v1/admin/api-keys/{id}",
+  "revoke_download_receipts": "/v1/downloads/receipts/revoke",
+  "revoke_member_access_token": "/v1/admin/access-tokens/{id}",
+  "revoke_profile_downloads": "/v1/admin/downloads/revoke",
+  "save_live_source": "/v1/admin/live-sources",
+  "save_queue_as_playlist": "/v1/queues/{id}:save-as-playlist",
+  "search": "/v1/search",
+  "set_container_personal_state": "/v1/containers/{kind}/{id}/personal-state",
+  "set_live_settings": "/v1/admin/live/settings",
+  "set_live_source_configuration": "/v1/admin/live-sources/{id}/configuration",
+  "setup_server": "/v1/setup",
+  "social_delete_v1_cast_devices_id": "/v1/cast/devices/{id}",
+  "social_delete_v1_groups_id_invites_inviteId": "/v1/groups/{id}/invites/{inviteId}",
+  "social_delete_v1_receivers_id": "/v1/receivers/{id}",
+  "social_get_v1_cast_bootstrap_id": "/v1/cast/bootstrap/{id}",
+  "social_get_v1_cast_configuration": "/v1/cast/configuration",
+  "social_get_v1_groups": "/v1/groups",
+  "social_get_v1_groups_id": "/v1/groups/{id}",
+  "social_get_v1_groups_id_events": "/v1/groups/{id}/events",
+  "social_get_v1_groups_id_queue": "/v1/groups/{id}/queue",
+  "social_get_v1_handoffs_id": "/v1/handoffs/{id}",
+  "social_get_v1_receivers": "/v1/receivers",
+  "social_get_v1_receivers_id_grants": "/v1/receivers/{id}/grants",
+  "social_get_v1_receivers_id_inbox": "/v1/receivers/{id}/inbox",
+  "social_get_v1_receivers_id_inbox_wait": "/v1/receivers/{id}/inbox/wait",
+  "social_post_v1_cast_bootstrap": "/v1/cast/bootstrap",
+  "social_post_v1_cast_reconnect": "/v1/cast/reconnect",
+  "social_post_v1_cast_redeem": "/v1/cast/redeem",
+  "social_post_v1_groups": "/v1/groups",
+  "social_post_v1_groups_id_end": "/v1/groups/{id}/end",
+  "social_post_v1_groups_id_heartbeat": "/v1/groups/{id}/heartbeat",
+  "social_post_v1_groups_id_host_transfer": "/v1/groups/{id}/host-transfer",
+  "social_post_v1_groups_id_invites": "/v1/groups/{id}/invites",
+  "social_post_v1_groups_id_leave": "/v1/groups/{id}/leave",
+  "social_post_v1_groups_id_queue": "/v1/groups/{id}/queue",
+  "social_post_v1_groups_id_readiness": "/v1/groups/{id}/readiness",
+  "social_post_v1_groups_id_settings": "/v1/groups/{id}/settings",
+  "social_post_v1_groups_id_transport": "/v1/groups/{id}/transport",
+  "social_post_v1_groups_join": "/v1/groups/join",
+  "social_post_v1_handoffs": "/v1/handoffs",
+  "social_post_v1_handoffs_id_commit": "/v1/handoffs/{id}/commit",
+  "social_post_v1_handoffs_id_readiness": "/v1/handoffs/{id}/readiness",
+  "social_post_v1_handoffs_id_rollback": "/v1/handoffs/{id}/rollback",
+  "social_post_v1_receivers": "/v1/receivers",
+  "social_post_v1_receivers_id_grants": "/v1/receivers/{id}/grants",
+  "social_post_v1_receivers_id_grants_grantId_decision": "/v1/receivers/{id}/grants/{grantId}/decision",
+  "social_post_v1_receivers_id_heartbeat": "/v1/receivers/{id}/heartbeat",
+  "social_put_v1_cast_configuration": "/v1/cast/configuration",
+  "start_browser_setup": "/v1/setup/browser",
+  "start_playback_session": "/v1/playback/sessions",
+  "stop_playback_session": "/v1/playback/sessions/{id}",
+  "sync_download_progress": "/v1/downloads/progress",
+  "terminate_admin_session": "/v1/admin/sessions/{id}:terminate",
+  "test_webhook": "/v1/admin/webhooks/{id}/test",
+  "undo_container_personal_state": "/v1/containers/{kind}/{id}/personal-state/undo",
+  "update_queue": "/v1/queues/{id}",
+  "update_webhook": "/v1/admin/webhooks/{id}"
+} as const;
+
+import type { RouteContracts } from './types.ts';
+
+export type RouteId = typeof routes[number]['id'];
+type RouteFor<I extends RouteId> = Extract<typeof routes[number], {readonly id: I}>;
+type ParameterNames<P extends string> = P extends `${string}{${infer K}}${infer Rest}` ? K | ParameterNames<Rest> : never;
+export type RouteParameters<I extends RouteId> = { readonly [K in ParameterNames<RouteFor<I>['path']>]: string | number };
+export type RouteRequest<I extends RouteId> = RouteContracts[I]['request'];
+export type RouteResponse<I extends RouteId> = RouteContracts[I]['response'];
+declare const routeContract: unique symbol;
+/** A generated path retains the operation's request and response contract. */
+export type RoutePath<I extends RouteId = RouteId> = string & {readonly [routeContract]: I};
+const byId: ReadonlyMap<string, string> = new Map(Object.entries(routePaths));
+/** Parameters are supplied unescaped. Query strings stay with the caller. */
+export function routePath<I extends RouteId>(id: I, ...args: keyof RouteParameters<I> extends never ? [parameters?: RouteParameters<I>] : [parameters: RouteParameters<I>]): RoutePath<I> {
+  return buildPath(id, args[0], encodeURIComponent);
+}
+/** Retains an existing caller's parameter encoding during a migration. */
+export function encodedRoutePath<I extends RouteId>(id: I, ...args: keyof RouteParameters<I> extends never ? [parameters?: RouteParameters<I>] : [parameters: RouteParameters<I>]): RoutePath<I> {
+  return buildPath(id, args[0], value => value);
+}
+function buildPath<I extends RouteId>(id: I, supplied: RouteParameters<I> | undefined, encode: (value: string) => string): RoutePath<I> {
+  const route = byId.get(id);
+  if (!route) throw new Error('Unknown API operation');
+  const parameters = supplied as Record<string, string | number> | undefined;
+  const expected = new Set(Array.from(route.matchAll(/\{([^}]+)\}/g), match => match[1]));
+  if (Object.keys(parameters ?? {}).some(key => !expected.has(key))) throw new Error('Unknown route parameter');
+  return route.replace(/\{([^}]+)\}/g, (_, key: string) => {
+    const value = parameters?.[key];
+    if (value === undefined || value === null || String(value).length === 0) throw new Error('Missing route parameter');
+    return encode(String(value));
+  }) as RoutePath<I>;
+}
+/** Typed payloads are still parsed by the service's existing tolerant boundary. */
+type WireInput<T> = T extends readonly unknown[] ? readonly WireInput<T[number]>[] : T extends object ? {readonly [K in keyof T]?: WireInput<T[K]>} : T;
+export function routeBody<I extends RouteId>(_operation: I, body: Partial<WireInput<RouteRequest<I>>>): Partial<WireInput<RouteRequest<I>>> { return body; }
+
+export const apiRoot = '/v1/';
+export function routePattern<I extends RouteId>(id: I): RouteFor<I>['path'] {const route=byId.get(id);if(!route)throw new Error('Unknown API operation');return route as RouteFor<I>['path'];}
+export function routePrefix<I extends RouteId>(id: I, segments: number): string {return routePattern(id).split('/').slice(0, segments + 1).join('/') + '/';}

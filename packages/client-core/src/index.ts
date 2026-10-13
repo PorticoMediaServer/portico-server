@@ -1,3 +1,7 @@
+import {routeBody} from "../../contracts/src/routes.ts";
+import type {RouteResponse} from "../../contracts/src/routes.ts";
+import {routePath as hostedRoutePath} from "../../contracts/src/hosted/routes.ts";
+import {routePrefix, routePath, apiRoot, encodedRoutePath} from "../../contracts/src/routes.ts";
 import {parseMediaItem} from './media-item.ts';
 import {parseConnectionDocument,type ConnectionDocument} from './server-administration.ts';
 import {trackName} from './presentation/language.ts';
@@ -170,7 +174,7 @@ export function requestDeadlineMs(path: string, method: string): number {
   const held = /[?&]waitSeconds=(\d{1,4})(?:&|$)/.exec(path);
   if (held) return (Math.min(Number(held[1]), 600) + 15) * 1000;
   if (method === 'GET' || method === 'HEAD') return 30_000;
-  return path.startsWith('/v1/admin/') ? 120_000 : 60_000;
+  return path.startsWith(routePrefix("change_connectivity_policy", 2)) ? 120_000 : 60_000;
 }
 /** Runs `work` under the request's deadline and the caller's own cancellation. A caller's cancel stays a cancel; the deadline is a timeout. */
 async function withinDeadline<T>(ms: number, signal: AbortSignal | undefined, work: (signal: AbortSignal) => Promise<T>): Promise<T> {
@@ -336,7 +340,7 @@ export class HttpLocalApi {
     if(raw!==undefined&&raw.length>2048)throw new Error('Certificate configuration is too large.');
     const token=this.token,epoch=this.certificateSessionEpoch;
     const bounded=AbortSignal.any([signal,AbortSignal.timeout(10000)]);
-    const response=await this.fetcher(this.baseUrl+'/v1/networking/certificate'+suffix,{method:action==='status'?'GET':'POST',signal:bounded,redirect:'error',credentials:'omit',headers:{Accept:'application/json',...(raw===undefined?{}:{'Content-Type':'application/json'}),...(token?{Authorization:'Bearer '+token}:{})},...(raw===undefined?{}:{body:raw})});
+    const response=await this.fetcher(this.baseUrl + routePath(action==='status'?'get_networking_certificate':action==='config'?'post_networking_certificate_config':'post_networking_certificate_retry'),{method:action==='status'?'GET':'POST',signal:bounded,redirect:'error',credentials:'omit',headers:{Accept:'application/json',...(raw===undefined?{}:{'Content-Type':'application/json'}),...(token?{Authorization:'Bearer '+token}:{})},...(raw===undefined?{}:{body:raw})});
     if(bounded.aborted||this.certificateSessionEpoch!==epoch){void response.body?.cancel().catch(()=>{});throw new Error('The server session changed.');}
     const value=await readCertificateResponse<T>(response,bounded);
     if(bounded.aborted||this.certificateSessionEpoch!==epoch)throw new Error('The server session changed.');
@@ -345,7 +349,7 @@ export class HttpLocalApi {
   /** GET-only bounded diagnostics transport; existing request behavior is unchanged. */
   async requestBounded<T>(path:string,maxBytes:number,signal:AbortSignal):Promise<T>{
     if(!Number.isSafeInteger(maxBytes)||maxBytes<1||maxBytes>1048576)throw new Error('Invalid response byte limit.');
-    if(!path.startsWith('/v1/')||path.includes('?')||path.includes('#'))throw new Error('Use a fixed selected-server API path.');
+    if(!path.startsWith(apiRoot)||path.includes('?')||path.includes('#'))throw new Error('Use a fixed selected-server API path.');
     const token=this.token,fetcher=this.fetcher;
     const bounded=AbortSignal.any([signal,AbortSignal.timeout(10000)]);
     const response=await fetcher(this.baseUrl+path,{method:'GET',signal:bounded,headers:{Accept:'application/json',...(token?{Authorization:'Bearer '+token}:{})}});
@@ -356,7 +360,7 @@ export class HttpLocalApi {
   }
   /** Bounded selected-server console transport, including paged reads and writes. */
   async requestConsole<T>(path:string, method:string, body:unknown, signal:AbortSignal):Promise<T>{
-    if(!path.startsWith('/v1/')||path.includes('#')||path.includes('\\')||!['GET','POST','PATCH','PUT'].includes(method))throw new Error('Invalid console request.');
+    if(!path.startsWith(apiRoot)||path.includes('#')||path.includes('\\')||!['GET','POST','PATCH','PUT'].includes(method))throw new Error('Invalid console request.');
     const payload=body===undefined?undefined:JSON.stringify(body);
     if(payload!==undefined&&consoleUTF8Size(payload)>65536)throw new Error('Console request is too large.');
     const token=this.token,c=new AbortController();const abort=()=>c.abort();signal.addEventListener('abort',abort,{once:true});
@@ -405,7 +409,7 @@ export class HttpLocalApi {
   }
   /** Send with a live token; on a 401 renew once and resend (the server did not act on it). */
   private async exchange(path: string, method: string, body: unknown, signal: AbortSignal | undefined, extra?: Readonly<Record<string, string>>): Promise<Response> {
-    if (!path.startsWith("/v1/"))
+    if (!path.startsWith(apiRoot))
       throw new Error("API path must remain on the selected server.");
     // Sign-in and refresh never refresh or retry themselves.
     const exchange = provesIdentity(path, method);
@@ -417,7 +421,7 @@ export class HttpLocalApi {
       try { next = await this.auth.recover(token); } catch { next = undefined; }
       if (next && next !== token) { void response.body?.cancel().catch(() => {}); response = await this.send(path, method, body, signal, next, extra); }
     }
-    if(response.status===403&&this.auth?.permissionDenied&&!exchange&&!path.startsWith('/v1/me')&&!signal?.aborted){
+    if(response.status===403&&this.auth?.permissionDenied&&!exchange&&!path.startsWith(routePath("get_me"))&&!signal?.aborted){
       let changed=false;try{changed=await this.auth.permissionDenied();}catch{}
       if(changed){void response.body?.cancel().catch(()=>{});response=await this.send(path,method,body,signal,this.token,extra);}
     }
@@ -429,7 +433,7 @@ export class HttpLocalApi {
    * awaited, renewed or retried; the server's own time limits cover a message that never arrives.
    */
   farewell(path: string, method: string, body?: unknown): void {
-    if (!path.startsWith("/v1/") || provesIdentity(path, method)) return;
+    if (!path.startsWith(apiRoot) || provesIdentity(path, method)) return;
     try { void this.send(path, method, body, undefined, this.token, undefined, true).then(r => { void r.body?.cancel().catch(() => {}); }, () => {}); } catch { /* the page is going away */ }
   }
   /**
@@ -485,38 +489,38 @@ export class HttpLocalApi {
     return response.status === 204 ? (undefined as T) : response.json();
   }
   connection(signal?:AbortSignal):Promise<ConnectionDocument> {
-    return this.request<unknown>("/v1/networking/connection","GET",undefined,signal).then(parseConnectionDocument);
+    return this.request<RouteResponse<"get_connection">>(routePath("get_connection"),"GET",undefined,signal).then(parseConnectionDocument);
   }
   system() {
-    return this.request<SystemInfo>("/v1/system");
+    return this.request<SystemInfo>(routePath("get_system"));
   }
   setup(setupToken: string, username: string, password: string, name: string) {
-    return this.request<unknown>("/v1/setup", "POST", {
+    return this.request<RouteResponse<"setup_server">>(routePath("setup_server"), "POST", routeBody("setup_server", {
       setupToken,
       username,
       password,
       name,
-    }).then(value=>parseLocalSession(value,{authority:'local'}));
+    })).then(value=>parseLocalSession(value,{authority:'local'}));
   }
   me() {
-    return this.request<{ viewer: Viewer }>("/v1/me");
+    return this.request<{ viewer: Viewer }>(routePath("get_me"));
   }
   logout() {
-    return this.request<void>("/v1/sessions/current", "DELETE");
+    return this.request<void>(routePath("delete_sessions_current"), "DELETE");
   }
   libraries() {
-    return this.request<unknown>("/v1/libraries").then(parseLibraryList);
+    return this.request<RouteResponse<"get_libraries">>(routePath("get_libraries")).then(parseLibraryList);
   }
   items(libraryId = "", cursor = "", limit = 40) {
     const q = new URLSearchParams({ limit: String(limit) });
     if (libraryId) q.set("libraryId", libraryId);
     if (cursor) q.set("cursor", cursor);
     return this.request<{ items: MediaItem[]; nextCursor?: string }>(
-      "/v1/items?" + q
+      routePath("get_items") + "?" + (q)
     ).then(page=>({...page,items:page.items.map(parseMediaItem)}));
   }
   item(id: string) {
-    return this.request<unknown>("/v1/items/" + encodeURIComponent(id)).then(parseMediaItem);
+    return this.request<RouteResponse<"get_items_id">>(encodedRoutePath("get_items_id", {"id": encodeURIComponent(id)})).then(parseMediaItem);
   }
   mediaUrl(path: string) {
     if (this.routes) return this.routes.mediaURL(path);
@@ -1894,7 +1898,7 @@ export class HttpHostedApi {
   }
   /** `GET /v1/servers`. `version` and `watch` feed `ServerListWatcher.adopt`. */
   async servers(signal?: AbortSignal): Promise<{ items: HostedServer[]; version?: string; watch?: string }> {
-    const out = await this.http.request<{ items: HostedServer[]; version?: string; watch?: string }>("/v1/servers", "GET", undefined, signal);
+    const out = await this.http.request<{ items: HostedServer[]; version?: string; watch?: string }>(hostedRoutePath("servers_list"), "GET", undefined, signal);
     if (!out || !Array.isArray(out.items)) return out;
     return { ...out, items: out.items.map(server => {
       if (!server || typeof server !== "object") return server;
@@ -1908,7 +1912,7 @@ export class HttpHostedApi {
     return this.http.request<T>(path, method, body, signal);
   }
   logout() {
-    return this.http.request<void>("/v1/sessions/current", "DELETE");
+    return this.http.request<void>(routePath("delete_sessions_current"), "DELETE");
   }
 }
 export {

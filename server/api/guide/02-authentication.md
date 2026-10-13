@@ -45,7 +45,7 @@ trying to use an account-only session as a viewer.
 Choose a profile from the returned `profiles`:
 
 ```text
-POST /v1/direct/profiles/<profile-id>/select
+POST /v1/direct/profiles/{id}/select
 Authorization: Bearer <session.accessToken>
 ```
 
@@ -57,7 +57,7 @@ For a profile without a PIN, omit `pin`. Selection returns a new `session` and
 optionally `trustedSelection`; store the new credentials. Remembered trust can
 skip a future PIN by sending its `trustToken` for the same installation.
 `GET /v1/direct` reads the account snapshot; `GET /v1/me` reads the viewer.
-`POST /v1/sessions` is removed. Source: `internal/httpapi/direct_identity.go`,
+The legacy session-creation sign-in route is removed. Source: `internal/httpapi/direct_identity.go`,
 `internal/identity/direct_accounts.go` and `direct_profiles.go`.
 
 A shell example for a one-profile account without a PIN or second factor:

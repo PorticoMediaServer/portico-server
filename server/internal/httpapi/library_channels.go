@@ -164,11 +164,11 @@ func (d Dependencies) libraryChannelRoutes(mux *http.ServeMux) {
 	envelope := func(key string, value any) any {
 		return map[string]any{"protocolVersion": librarychannels.ProtocolVersion, "serverId": d.Identity.ID(), key: value}
 	}
-	mux.HandleFunc("GET /v1/admin/library-channels", handle(true, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
+	d.httpHandle(mux, "GET /v1/admin/library-channels", handle(true, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
 		v, e := s.List(ctx, d.libraryAuthority(p))
 		return envelope("channels", v), e
 	}))
-	mux.HandleFunc("POST /v1/admin/library-channels", handle(true, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
+	d.httpHandle(mux, "POST /v1/admin/library-channels", handle(true, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
 		var in librarychannels.SaveInput
 		if e := liveDecode(w, r, &in, 1<<20); e != nil {
 			return nil, e
@@ -176,7 +176,7 @@ func (d Dependencies) libraryChannelRoutes(mux *http.ServeMux) {
 		v, e := s.Save(ctx, d.libraryAuthority(p), in)
 		return envelope("channel", v), e
 	}))
-	mux.HandleFunc("POST /v1/admin/library-channels/defaults", handle(true, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
+	d.httpHandle(mux, "POST /v1/admin/library-channels/defaults", handle(true, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
 		var in struct {
 			Timezone string `json:"timezone"`
 		}
@@ -186,7 +186,7 @@ func (d Dependencies) libraryChannelRoutes(mux *http.ServeMux) {
 		v, err := s.Defaults(ctx, d.libraryAuthority(p), in.Timezone)
 		return envelope("config", v), err
 	}))
-	mux.HandleFunc("POST /v1/admin/library-channels/preview", handle(true, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
+	d.httpHandle(mux, "POST /v1/admin/library-channels/preview", handle(true, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
 		var in librarychannels.Config
 		if e := liveDecode(w, r, &in, 1<<20); e != nil {
 			return nil, e
@@ -194,7 +194,7 @@ func (d Dependencies) libraryChannelRoutes(mux *http.ServeMux) {
 		v, e := s.Preview(ctx, d.libraryAuthority(p), in)
 		return envelope("preview", v), e
 	}))
-	mux.HandleFunc("POST /v1/admin/library-channels/reorder", handle(true, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
+	d.httpHandle(mux, "POST /v1/admin/library-channels/reorder", handle(true, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
 		var in librarychannels.ReorderInput
 		if e := liveDecode(w, r, &in, 32768); e != nil {
 			return nil, e
@@ -202,7 +202,7 @@ func (d Dependencies) libraryChannelRoutes(mux *http.ServeMux) {
 		e := s.Reorder(ctx, d.libraryAuthority(p), in)
 		return envelope("saved", e == nil), e
 	}))
-	mux.HandleFunc("POST /v1/admin/library-channels/{id}/regenerate", handle(true, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
+	d.httpHandle(mux, "POST /v1/admin/library-channels/{id}/regenerate", handle(true, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
 		var in struct {
 			RequestID        string `json:"requestId"`
 			ExpectedRevision int64  `json:"expectedRevision"`
@@ -214,7 +214,7 @@ func (d Dependencies) libraryChannelRoutes(mux *http.ServeMux) {
 		v, e := s.Regenerate(ctx, d.libraryAuthority(p), r.PathValue("id"), librarychannels.Mutation{RequestID: in.RequestID, ExpectedRevision: in.ExpectedRevision}, in.Boundary)
 		return envelope("channel", v), e
 	}))
-	mux.HandleFunc("POST /v1/admin/library-channels/{id}/delete", handle(true, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
+	d.httpHandle(mux, "POST /v1/admin/library-channels/{id}/delete", handle(true, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
 		var in librarychannels.Mutation
 		if e := liveDecode(w, r, &in, 4096); e != nil {
 			return nil, e
@@ -222,11 +222,11 @@ func (d Dependencies) libraryChannelRoutes(mux *http.ServeMux) {
 		e := s.Delete(ctx, d.libraryAuthority(p), r.PathValue("id"), in)
 		return envelope("deleted", e == nil), e
 	}))
-	mux.HandleFunc("GET /v1/admin/library-channels/templates", handle(true, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
+	d.httpHandle(mux, "GET /v1/admin/library-channels/templates", handle(true, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
 		v, e := s.Templates(ctx, d.libraryAuthority(p))
 		return envelope("templates", v), e
 	}))
-	mux.HandleFunc("POST /v1/admin/library-channels/templates/{id}/install", handle(true, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
+	d.httpHandle(mux, "POST /v1/admin/library-channels/templates/{id}/install", handle(true, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
 		var in struct {
 			RequestID string `json:"requestId"`
 			Timezone  string `json:"timezone"`
@@ -244,7 +244,7 @@ func (d Dependencies) libraryChannelRoutes(mux *http.ServeMux) {
 		v, e := s.InstallTemplate(ctx, d.libraryAuthority(p), r.PathValue("id"), in.RequestID, in.Timezone)
 		return envelope("channel", v), e
 	}))
-	mux.HandleFunc("POST /v1/library-channels/preferences", handle(false, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
+	d.httpHandle(mux, "POST /v1/library-channels/preferences", handle(false, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
 		var in livechannels.PreferenceInput
 		if e := liveDecode(w, r, &in, 4096); e != nil {
 			return nil, e

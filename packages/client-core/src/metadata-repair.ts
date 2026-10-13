@@ -1,3 +1,5 @@
+import type {RouteResponse} from "../../contracts/src/routes.ts";
+import {encodedRoutePath} from "../../contracts/src/routes.ts";
 import {unreadableServerResponse} from './server-messages.ts';
 import {keepReadable} from './tolerant.ts';
 /** Owner repairs are current-view CAS commands. A lost response is reconciled, never replayed. */
@@ -70,7 +72,7 @@ export function validateRepair(raw:unknown,scope:RepairScope,target:RepairTarget
  if(ident!==undefined&&(!obj(ident)||!str(ident.provider,40)||!str(ident.id,256)||!num(ident.revision)||!str(ident.status,64)||typeof ident.locked!=='boolean'||ident.order!==undefined&&!str(ident.order,160)||ident.engine!==undefined&&ident.engine!=='screen'||ident.type!==undefined&&!str(ident.type,40)))bad();
  // Genres, credits, pictures, candidates, history and progress are lists of rows: each row is read on its own.
  const relationships=readable('relationships',raw.snapshot.relationships,200,r=>(r.recordId===undefined||str(r.recordId,256))&&(r.provider===undefined||str(r.provider,40))&&(r.department===undefined||str(r.department,200))&&id(r.kind)&&id(r.targetKind)&&str(r.targetId,256)&&str(r.label,2048)&&str(r.source,100)&&typeof r.locked==='boolean'&&num(r.ordinal)&&(r.role===undefined||str(r.role,500))&&(r.observedAt===undefined||when(r.observedAt)));
- const prefix='/v1/metadata/'+encodeURIComponent(target.kind)+'/'+encodeURIComponent(target.id)+'/art/';
+ const prefix=encodedRoutePath("get_metadata_kind_id", {"kind": encodeURIComponent(target.kind), "id": encodeURIComponent(target.id)})+'/art/';
  const chosenArtwork=readable('snapshot.artwork',raw.snapshot.artwork,200,a=>roles.includes(String(a.role))&&str(a.subject,256)&&hash(a.candidateId)&&hash(a.digest)&&hash(a.thumbnailDigest)&&typeof a.locked==='boolean'&&num(a.revision)&&str(a.attribution,2048)&&str(a.url,2048)&&a.url.startsWith(prefix)&&!/[\r\n\\]/.test(a.url));
  const candidates=readable('candidates',raw.candidates,50,c=>id(c.id)&&str(c.provider,40)&&str(c.title,2048)&&str(c.subtitle,2048)&&when(c.observedAt)&&(c.year===undefined||num(c.year)&&c.year<=9999)&&(c.previewUrl===undefined||str(c.previewUrl,2048)&&c.previewUrl.startsWith(prefix)&&!/[\r\n\\]/.test(c.previewUrl))&&(c.orders===undefined||arr(c.orders,64,o=>id(o.id)&&str(o.id,160)&&str(o.name,2048)))),history=readable('history',raw.history,30,h=>num(h.id)&&h.id>0&&str(h.trigger,100)&&when(h.observedAt));
  const art=obj(raw.artwork)?raw.artwork:{};
@@ -94,12 +96,12 @@ export class MetadataRepairService {
  private publish(state:RepairView){if(this.disposed)return;this.state=Object.freeze(state);for(const fn of this.listeners)fn();}
  cancel(){this.epoch++;this.controller?.abort();this.target=undefined;this.fence=undefined;this.publish({phase:'idle',data:null,error:null,preview:null});}
  dispose(){this.cancel();this.disposed=true;this.listeners.clear();}
- private async request(target:RepairTarget,method:string,body?:unknown,suffix=''){
+ private async request(target:RepairTarget,method:string,body?:unknown,suffix=''):Promise<unknown>{
   const c=new AbortController();this.controller?.abort();this.controller=c;
   let rejectAbort!:(reason:Error)=>void;const cancelled=new Promise<never>((_,reject)=>{rejectAbort=reject;});
   const abort=()=>rejectAbort(new Error('Repair request interrupted.'));c.signal.addEventListener('abort',abort,{once:true});
   const timer=setTimeout(()=>c.abort(),this.options.timeoutMs??15000);
-  try{return await Promise.race([this.options.api.request<unknown>('/v1/metadata/'+encodeURIComponent(target.kind)+'/'+encodeURIComponent(target.id)+suffix,method,body,c.signal),cancelled]);}
+  try{return await Promise.race([this.options.api.request<RouteResponse<"get_metadata_kind_id"> | RouteResponse<"get_metadata_kind_id_preview">>((suffix.startsWith('/preview')?encodedRoutePath('get_metadata_kind_id_preview',{kind:encodeURIComponent(target.kind),id:encodeURIComponent(target.id)})+suffix.slice(8):encodedRoutePath(method==='GET'?'get_metadata_kind_id':'post_metadata_kind_id',{kind:encodeURIComponent(target.kind),id:encodeURIComponent(target.id)})+suffix),method,body,c.signal),cancelled]);}
   finally{clearTimeout(timer);c.signal.removeEventListener('abort',abort);}
  }
  async load(target:RepairTarget){

@@ -211,3 +211,22 @@ test('a holder whose stream fails hands on: the next window tries, and a window 
   assert.deepEqual(settled.map(r => r.status), ['rejected', 'rejected', 'rejected'], 'no window is left believing the feed is up');
   assert.equal((settled[0] as PromiseRejectedResult).reason.code, 'network');
 });
+
+test('an overlapping SSE reconnect retries streaming without falling back to polling', async () => {
+ const timers: (() => void)[]=[];
+ let opened=0, polls=0;
+ const client=new EventsClient({
+  http:{send:async()=>{polls++;throw new Error('unexpected poll');}},
+  openStream:async(_cursor,_event,signal)=>{
+   opened++;
+   if(opened===1)throw Object.assign(new Error('previous stream retired'),{status:409,code:'event_stream_exists'});
+   await new Promise<void>(resolve=>signal.addEventListener('abort',()=>resolve(),{once:true}));
+  },
+  setTimer:(fn)=>{timers.push(fn);return fn;},clearTimer:()=>{},random:()=>0,
+ });
+ client.start();await tick();
+ assert.equal(opened,1);assert.equal(timers.length,1);
+ timers.shift()!();await tick();
+ assert.equal(opened,2);assert.equal(polls,0);assert.equal(client.getStatus().mode,'stream');
+ client.stop();await tick();
+});

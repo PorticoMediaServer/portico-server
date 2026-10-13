@@ -1,3 +1,4 @@
+import {encodedRoutePath} from "../../../contracts/src/routes.ts";
 import {watchedWords} from './card-caption.ts';
 /**
  * The entry actions menu (card "⋯", long press, right-click), one model for every client (CON-24).
@@ -25,8 +26,8 @@ export function canRefreshMetadata(kind: string | undefined): boolean {
  * client offers Refresh metadata exactly where this answers.
  */
 export function refreshMetadataPath(kind: string | undefined, id: string): string | undefined {
-  if (kind === 'show') return '/v1/shows/' + encodeURIComponent(id) + '/metadata/refresh';
-  return canRefreshMetadata(kind) ? '/v1/items/' + encodeURIComponent(id) + '/metadata/refresh' : undefined;
+  if (kind === 'show') return encodedRoutePath("refresh_shows_metadata", {"id": encodeURIComponent(id)});
+  return canRefreshMetadata(kind) ? encodedRoutePath("refresh_items_metadata", {"id": encodeURIComponent(id)}) : undefined;
 }
 export type EntryActionId =
   | 'play' | 'resume' | 'playFromStart' | 'playNext' | 'addToQueue'

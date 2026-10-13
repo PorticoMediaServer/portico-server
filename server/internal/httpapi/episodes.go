@@ -33,7 +33,7 @@ func (d Dependencies) episodeRoutes(mux *http.ServeMux) {
 		}
 		return p, true
 	}
-	mux.HandleFunc("GET /v1/libraries/{id}/shows", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "GET /v1/libraries/{id}/shows", func(w http.ResponseWriter, r *http.Request) {
 		lib := r.PathValue("id")
 		p, ok := access(w, r, lib, nil)
 		if !ok {
@@ -57,7 +57,7 @@ func (d Dependencies) episodeRoutes(mux *http.ServeMux) {
 		setGridTag(w, tag)
 		write(w, 200, map[string]any{"shows": rows, "nextCursor": next})
 	})
-	mux.HandleFunc("GET /v1/shows/{id}/seasons", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "GET /v1/shows/{id}/seasons", func(w http.ResponseWriter, r *http.Request) {
 		lib, err := d.Catalog.WithContext(r.Context()).LibraryForShow(r.PathValue("id"))
 		p, ok := access(w, r, lib, err)
 		if !ok {
@@ -75,7 +75,7 @@ func (d Dependencies) episodeRoutes(mux *http.ServeMux) {
 		}
 		write(w, 200, map[string]any{"seasons": rows})
 	})
-	mux.HandleFunc("GET /v1/seasons/{id}/episodes", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "GET /v1/seasons/{id}/episodes", func(w http.ResponseWriter, r *http.Request) {
 		lib, err := d.Catalog.WithContext(r.Context()).LibraryForSeason(r.PathValue("id"))
 		p, ok := access(w, r, lib, err)
 		if !ok {
@@ -94,7 +94,7 @@ func (d Dependencies) episodeRoutes(mux *http.ServeMux) {
 		}
 		write(w, 200, map[string]any{"episodes": rows, "nextCursor": next})
 	})
-	mux.HandleFunc("GET /v1/shows/{id}/episodes", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "GET /v1/shows/{id}/episodes", func(w http.ResponseWriter, r *http.Request) {
 		lib, err := d.Catalog.WithContext(r.Context()).LibraryForShow(r.PathValue("id"))
 		p, ok := access(w, r, lib, err)
 		if !ok {
@@ -113,7 +113,7 @@ func (d Dependencies) episodeRoutes(mux *http.ServeMux) {
 		}
 		write(w, 200, map[string]any{"episodes": rows, "nextCursor": next, "group": "unassigned_absolute"})
 	})
-	mux.HandleFunc("GET /v1/shows/{id}/recommendations", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "GET /v1/shows/{id}/recommendations", func(w http.ResponseWriter, r *http.Request) {
 		if e := homeAllowedQuery(r, "limit"); e != nil {
 			homeFailure(w, e)
 			return
@@ -151,7 +151,7 @@ func (d Dependencies) episodeRoutes(mux *http.ServeMux) {
 		}
 		write(w, 200, map[string]any{"showId": r.PathValue("id"), "rows": rows, "revision": revision})
 	})
-	mux.HandleFunc("GET /v1/libraries/{id}/episode-issues", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "GET /v1/libraries/{id}/episode-issues", func(w http.ResponseWriter, r *http.Request) {
 		if _, err := d.owner(r); err != nil {
 			failure(w, err)
 			return
@@ -164,7 +164,7 @@ func (d Dependencies) episodeRoutes(mux *http.ServeMux) {
 		}
 		write(w, 200, map[string]any{"issues": rows, "nextCursor": next})
 	})
-	mux.HandleFunc("POST /v1/libraries/{id}/episode-assignments", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "POST /v1/libraries/{id}/episode-assignments", func(w http.ResponseWriter, r *http.Request) {
 		if _, err := d.owner(r); err != nil {
 			failure(w, err)
 			return

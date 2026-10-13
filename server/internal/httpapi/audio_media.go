@@ -130,11 +130,11 @@ func (d Dependencies) audioDecodeRoutes(mux *http.ServeMux) {
 			return e
 		})
 	}
-	mux.HandleFunc("GET /v1/media/{grant}/audio", serveDirect)
-	mux.HandleFunc("HEAD /v1/media/{grant}/audio", serveDirect)
+	d.httpHandle(mux, "GET /v1/media/{grant}/audio", serveDirect)
+	d.httpHandle(mux, "HEAD /v1/media/{grant}/audio", serveDirect)
 	// Converted: FLAC or Ogg Opus, exact (spec §18.1). ?fromFrame=N starts at
 	// output frame N; before commit only from frame 0, within prefetchBytes.
-	mux.HandleFunc("GET /v1/media/{grant}/audio-converted", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "GET /v1/media/{grant}/audio-converted", func(w http.ResponseWriter, r *http.Request) {
 		_, aid, item, session, plan, private, ok := d.audioGrant(w, r, "converted")
 		if !ok {
 			return

@@ -1,3 +1,4 @@
+import {encodedRoutePath} from "../../contracts/src/routes.ts";
 import {unreadableServerResponse} from './server-messages.ts';
 /** Trickplay set descriptors and their delivery URLs.
  *
@@ -70,8 +71,8 @@ function parseTrickplaySet(raw: unknown, target: TrickplayTarget): TrickplaySet 
   // Frames are captured over the whole source; a trimmed item starts later in it.
   assertTrickplay(typeof raw.sourceOffsetSeconds === 'number' && Number.isFinite(raw.sourceOffsetSeconds) && raw.sourceOffsetSeconds >= 0);
   assertTrickplay(typeof raw.stale === 'boolean');
-  const tilesUrl = '/v1/items/' + target.itemId + '/trickplay/' + raw.id + '/tiles';
-  const thumbnailsUrl = '/v1/items/' + target.itemId + '/trickplay/' + raw.id + '/thumbnails.vtt';
+  const tilesUrl = encodedRoutePath("get_items_id", {"id": target.itemId}) + '/trickplay/' + raw.id + '/tiles';
+  const thumbnailsUrl = encodedRoutePath("get_items_id_trickplay_set_thumbnails_vtt", {"id": target.itemId, "set": raw.id});
   // Delivery URLs are server authored; accept only the ones this item can serve.
   assertTrickplay(raw.tilesUrl === tilesUrl && raw.thumbnailsUrl === thumbnailsUrl);
   return Object.freeze({

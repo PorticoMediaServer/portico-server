@@ -25,7 +25,7 @@ func (d Dependencies) resourceAuthorize(tx *sql.Tx, p identity.Principal, librar
 }
 func (d Dependencies) playlistRoutes(mux *http.ServeMux) {
 	rate := &personalLimiter{}
-	mux.HandleFunc("GET /v1/playlists/{id}", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "GET /v1/playlists/{id}", func(w http.ResponseWriter, r *http.Request) {
 		p, _, fence, e := d.homeScope(r)
 		if e != nil {
 			failure(w, e)
@@ -47,7 +47,7 @@ func (d Dependencies) playlistRoutes(mux *http.ServeMux) {
 		}
 		write(w, 200, out)
 	})
-	mux.HandleFunc("GET /v1/playlists/{id}/content", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "GET /v1/playlists/{id}/content", func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
 		for k, v := range q {
 			if len(v) != 1 || (k != "cursor" && k != "limit") {
@@ -90,7 +90,7 @@ func (d Dependencies) playlistRoutes(mux *http.ServeMux) {
 		}
 		write(w, 200, out)
 	})
-	mux.HandleFunc("GET /v1/playlists/{id}/share-candidates", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "GET /v1/playlists/{id}/share-candidates", func(w http.ResponseWriter, r *http.Request) {
 		p, _, fence, e := d.homeScope(r)
 		if e != nil {
 			failure(w, e)
@@ -128,7 +128,7 @@ func (d Dependencies) playlistRoutes(mux *http.ServeMux) {
 		write(w, 200, out)
 	})
 	for _, route := range []struct{ pattern, action string }{{"POST /v1/playlists", "create"}, {"PATCH /v1/playlists/{id}", "update"}, {"DELETE /v1/playlists/{id}", "delete"}, {"POST /v1/playlists/{id}/entries", "add"}, {"DELETE /v1/playlists/{id}/entries/{entryId}", "remove"}, {"PUT /v1/playlists/{id}/shares", "share"}, {"DELETE /v1/playlists/{id}/shares", "unshare"}} {
-		mux.HandleFunc(route.pattern, func(w http.ResponseWriter, r *http.Request) {
+		d.httpHandle(mux, route.pattern, func(w http.ResponseWriter, r *http.Request) {
 			p, _, _, e := d.homeScope(r)
 			if e != nil {
 				failure(w, e)

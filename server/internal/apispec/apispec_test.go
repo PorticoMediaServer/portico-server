@@ -9,13 +9,11 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Every published API document must be valid YAML, or neither clients nor
-// these contract checks can read it.
+// The generated API document must parse before any contract checks run.
 func TestEveryDocumentParses(t *testing.T) {
 	_, here, _, _ := runtime.Caller(0)
 	dir := filepath.Join(filepath.Dir(here), "..", "..", "api")
-	files, _ := filepath.Glob(filepath.Join(dir, "*.openapi.yaml"))
-	files = append(files, filepath.Join(dir, "openapi.yaml"))
+	files := []string{filepath.Join(dir, "portico.openapi.json")}
 	for _, file := range files {
 		raw, err := os.ReadFile(file)
 		if err != nil {

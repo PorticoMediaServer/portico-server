@@ -1,3 +1,6 @@
+import {routeBody as hostedRouteBody} from "../../contracts/src/hosted/routes.ts";
+import {routePath as hostedRoutePath} from "../../contracts/src/hosted/routes.ts";
+import {routePath} from "../../contracts/src/routes.ts";
 import {randomId} from './random-id.ts';
 import { ApiError, HttpLocalApi, type HostedSession } from "./index.ts";
 export type DeviceAuthorization = {
@@ -36,28 +39,28 @@ export class HttpDeviceAuthorizationApi implements DeviceAuthorizationApi {
     signal?: AbortSignal
   ) {
     return this.http.request<DeviceAuthorization>(
-      "/v1/device-authorizations",
+      hostedRoutePath("device_authorization_create"),
       "POST",
-      { requestId, deviceName, platform, appVersion },
+      hostedRouteBody("device_authorization_create", { requestId, deviceName, platform, appVersion }),
       signal
     );
   }
   poll(deviceCode: string, signal?: AbortSignal) {
     return this.http.request<HostedSession>(
-      "/v1/device-authorizations/token",
+      hostedRoutePath("device_authorization_token"),
       "POST",
-      { deviceCode },
+      hostedRouteBody("device_authorization_token", { deviceCode }),
       signal
     );
   }
   cancel(deviceCode: string) {
-    return this.http.request<void>("/v1/device-authorizations/cancel", "POST", {
+    return this.http.request<void>(hostedRoutePath("device_authorization_cancel"), "POST", hostedRouteBody("device_authorization_cancel", {
       deviceCode,
-    });
+    }));
   }
   revoke(session: HostedSession) {
     return new HttpLocalApi(this.baseUrl, session.accessToken).request<void>(
-      "/v1/sessions/current",
+      routePath("delete_sessions_current"),
       "DELETE"
     );
   }

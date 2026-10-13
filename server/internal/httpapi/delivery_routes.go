@@ -65,7 +65,7 @@ func (d Dependencies) withDelivery(r *http.Request) *http.Request {
 func (d Dependencies) deliveryRoutes(mux *http.ServeMux) {
 	// GET /v1/playback/delivery-policy — one indexed row read plus the viewer's
 	// preference documents. Constant cost, no paging.
-	mux.HandleFunc("GET /v1/playback/delivery-policy", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "GET /v1/playback/delivery-policy", func(w http.ResponseWriter, r *http.Request) {
 		p, e := d.principal(r)
 		if e != nil {
 			failure(w, e)

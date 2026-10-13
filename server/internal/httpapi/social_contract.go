@@ -39,8 +39,23 @@ func socialContract[Req, Resp any](r *apikit.Registry, pattern string, h http.Ha
 		m.Query = []string{"waitSeconds"}
 		m.Lane = apikit.Realtime
 	}
-	if scope, ok := routeScopes[pattern]; ok {
-		m.Requires = scope
+	if parts[0] == "GET" {
+		m.Requires = apikit.ScopeRead
+	}
+	switch parts[1] {
+	case "/v1/cast/bootstrap", "/v1/cast/bootstrap/{id}", "/v1/cast/devices/{id}", "/v1/cast/reconnect", "/v1/cast/redeem":
+		m.Requires = apikit.ScopeSession
+	case "/v1/cast/configuration":
+		if parts[0] == "PUT" {
+			m.Requires = apikit.ScopeAdmin
+		}
+	}
+	m.Admission = laneDefault
+	if parts[0] == "GET" {
+		m.Admission = laneBrowsing
+	}
+	if m.Lane == apikit.Realtime {
+		m.Admission = laneRealtime
 	}
 	if e := apikit.RegisterRaw(r, apikit.RawRoute[Req, Resp]{Metadata: m, Serve: func(w http.ResponseWriter, q *http.Request) { w.Header().Set("Cache-Control", "no-store"); h(w, q) }}); e != nil {
 		panic(e)

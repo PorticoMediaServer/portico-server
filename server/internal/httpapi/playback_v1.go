@@ -330,6 +330,9 @@ func muxPattern(method, path string) string {
 func (d Dependencies) mountRegistry(mux *http.ServeMux, registry *apikit.Registry) {
 	mounted := map[string]bool{}
 	for _, route := range registry.Definitions() {
+		if route.HTTP {
+			continue
+		}
 		pattern := muxPattern(route.Method, route.Path)
 		if mounted[pattern] {
 			continue

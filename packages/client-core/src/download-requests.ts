@@ -1,3 +1,4 @@
+import {routePath} from "../../contracts/src/routes.ts";
 import {unreadableServerResponse} from './server-messages.ts';
 import {parseDownloadPreparation,type DownloadPreparation} from './downloads.ts';
 import {firstOfEach,keepReadable,noteSkipped,oneOf} from './tolerant.ts';
@@ -34,7 +35,7 @@ export type DownloadRequest=Readonly<{
 }>;
 export interface DownloadRequestsApi{request<T>(path:string,method?:string,body?:unknown,signal?:AbortSignal):Promise<T>}
 
-export const DOWNLOAD_REQUESTS_PATH='/v1/downloads/requests';
+export const DOWNLOAD_REQUESTS_PATH=routePath("list_download_requests");
 export const downloadRequestStates:readonly DownloadRequestState[]=Object.freeze(['capturing','admitting','preparing','complete','failed'] as const);
 /** Complete means no queued/running/paused members remain (individual failures may remain). */
 export const isDownloadRequestTerminal=(state:DownloadRequestState):boolean=>state==='complete'||state==='failed';

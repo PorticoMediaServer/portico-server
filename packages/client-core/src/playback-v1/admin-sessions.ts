@@ -1,3 +1,4 @@
+import {routePath, encodedRoutePath} from "../../../contracts/src/routes.ts";
 /**
  * Now Playing administration (spec §14): the active sessions with their delivery decisions, a
  * terminate command that shows the viewer a message. Playback history is the console's
@@ -15,13 +16,13 @@ export class AdminSessionsClient {
   async list(cursor?: string, limit = 50, signal?: AbortSignal) {
     const q = new URLSearchParams({limit: String(Math.max(1, Math.min(limit, 200)))});
     if (cursor) q.set('cursor', cursor);
-    return parsePage((await call(this.http, {method: 'GET', path: `/v1/admin/sessions?${q}`, signal})).body, parseAdminSession);
+    return parsePage((await call(this.http, {method: 'GET', path: routePath("list_admin_sessions") + "?" + (q), signal})).body, parseAdminSession);
   }
 
   /** End a viewer's session; the optional `message` is shown to them. */
   async terminate(sessionId: string, message?: string, signal?: AbortSignal): Promise<void> {
     const text = message?.trim();
-    await call(this.http, {method: 'POST', path: `/v1/admin/sessions/${enc(sessionId)}:terminate`, headers: {'Idempotency-Key': this.key()}, body: text ? {message: text.slice(0, 500)} : {}, signal}, [200, 202, 204, 404]);
+    await call(this.http, {method: 'POST', path: encodedRoutePath("terminate_admin_session", {"id": enc(sessionId)}), headers: {'Idempotency-Key': this.key()}, body: text ? {message: text.slice(0, 500)} : {}, signal}, [200, 202, 204, 404]);
   }
 
 }

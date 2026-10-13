@@ -9,10 +9,11 @@ Use a hostname of its own; hosting under `/portico` or any other sub-path is
 unsupported. HTTP is accepted from any address. Use TLS for untrusted networks.
 
 There is no stable API yet. Current routes use `/v1`; former `/v2` playback and
-`POST /v1/sessions` sign-in routes were removed. Changes during prerelease need
+legacy sign-in routes were removed. Changes during prerelease need
 matching consumer updates. The registry contract is
-[portico.openapi.json](../portico.openapi.json). Not all hand-registered routes
-have moved there yet; their current handlers take precedence over old YAML.
+[portico.openapi.json](../portico.openapi.json), generated from every production
+API operation, including retained HTTP handlers and raw streams. It is the sole
+specification; old YAML documents are removed.
 
 ## Time and numeric values
 
@@ -88,13 +89,12 @@ result is known and retry an identical payload with that key. Reusing it for a
 different request is refused. Replay windows differ by resource. Playback starts
 without the required key answer **428 `idempotency_key_required`**.
 
-Typed routes reject unknown and repeated query parameters and bound JSON bodies.
-Bounds are published as `x-max-body-bytes`; other handlers have their own read
-bounds. A limit is not permission to send unbounded nested data. Session sign-in
+Typed JSON routes reject unknown and repeated query parameters and bound JSON
+bodies. Retained HTTP handlers keep their existing decoding rules. Bounds are
+published as `x-max-body-bytes`. A limit is not permission to send unbounded nested data. Session sign-in
 has per-address, network and account budgets; API keys and tokens have their own
 rate and concurrency budgets, documented in [keys and tokens](07-keys-tokens-and-scopes.md).
 
-The checked-in generated contract also needs regeneration as source-registered
-routes move forward. For example, current account-session routes are registered
-in `internal/httpapi/foundation.go` but are missing from this generated snapshot.
-Use their documented current source until that snapshot is refreshed.
+Regenerate the checked-in contract after changing a registry declaration:
+run `GOFLAGS=-p=2 go run ./cmd/apigen` from `server/`. The published-document
+check compares the actual artifact with the live registry.

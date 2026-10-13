@@ -1,3 +1,4 @@
+import {routePath} from "../../contracts/src/routes.ts";
 import {parsePreferenceSnapshot,type DeviceClass,type PreferencePatch,type PreferenceScope,type PreferenceSnapshot} from './preferences.ts';
 
 /**
@@ -35,7 +36,7 @@ export class PreferencesReader {
       const out=parse(raw.data);this.fence=raw.scope.viewerFence;return out;
     }finally{clearTimeout(timer);this.requests.delete(c);}
   }
-  preferences(deviceClass:DeviceClass){return this.call('/v1/preferences?deviceClass='+deviceClass,'GET',undefined,parsePreferenceSnapshot);}
+  preferences(deviceClass:DeviceClass){return this.call(routePath("get_preferences") + "?deviceClass=" + (deviceClass),'GET',undefined,parsePreferenceSnapshot);}
   /** `values` carries only the keys that change; `null` clears that override. */
-  applyPreferences(scope:PreferenceScope,deviceClass:DeviceClass,expectedRevision:number,values:PreferencePatch){return this.call('/v1/preferences','PATCH',{scope,deviceClass,expectedRevision,values,idempotencyKey:preferencesOperationId()},parsePreferenceSnapshot);}
+  applyPreferences(scope:PreferenceScope,deviceClass:DeviceClass,expectedRevision:number,values:PreferencePatch){return this.call(routePath("patch_preferences"),'PATCH',{scope,deviceClass,expectedRevision,values,idempotencyKey:preferencesOperationId()},parsePreferenceSnapshot);}
 }

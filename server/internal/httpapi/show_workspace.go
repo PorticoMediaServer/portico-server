@@ -8,7 +8,7 @@ import (
 )
 
 func (d Dependencies) showWorkspaceRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("GET /v1/libraries/{id}/show-workspace", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "GET /v1/libraries/{id}/show-workspace", func(w http.ResponseWriter, r *http.Request) {
 		p, libraries, fence, e := d.homeScope(r)
 		if e != nil {
 			failure(w, e)

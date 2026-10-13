@@ -77,7 +77,7 @@ client to reread; they do not replace the resource. Revocation ends grant access
 ## Subtitle delivery
 
 The generated registry contract in `portico.openapi.json` describes the subtitle
-routes. `GET /v1/items/{id}/subtitles` includes all admitted discoveries as
+routes. `GET /v1/items/{itemId}/subtitles` includes all admitted discoveries as
 selectable resources. Discovery is enough to choose or automatically choose a
 track: clients do not import a track before playback. Its bytes are an internal
 cache, filled on first delivery. A disconnected first request does not discard

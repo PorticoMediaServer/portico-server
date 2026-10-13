@@ -406,7 +406,7 @@ func TestCredentialIsNeverAnUnscopedSession(t *testing.T) {
 		t.Fatal("credential shape is not distinct from a session token")
 	}
 	// A route nothing has classified is closed to credentials.
-	if legacyRouteScope("GET /v1/not-yet-classified") != apikit.ScopeSession {
+	if f.deps.patternScope("GET /v1/not-yet-classified", "GET", "/v1/not-yet-classified") != apikit.ScopeSession {
 		t.Fatal("an unclassified route is open to credentials")
 	}
 }
@@ -531,7 +531,7 @@ func TestEveryRouteDeclaresACredentialScope(t *testing.T) {
 	literal := regexp.MustCompile(`"((?:GET|POST|PUT|PATCH|DELETE|HEAD) /[^"]*)"`)
 	missing := map[string]bool{}
 	check := func(route string) {
-		if strings.HasSuffix(route, "/") && route != "GET /v1/admin/" {
+		if strings.HasSuffix(route, "/") {
 			return // a prefix a route is concatenated onto; the whole routes are listed
 		}
 		if _, ok := routeScopes[route]; ok {

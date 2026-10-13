@@ -1,3 +1,6 @@
+import {routeBody} from "../../contracts/src/routes.ts";
+import type {RouteResponse} from "../../contracts/src/routes.ts";
+import {routePath, encodedRoutePath} from "../../contracts/src/routes.ts";
 import {randomId} from './random-id.ts';
 /** The server side of downloads, as one framework-free service shared by web and Apple: what
  * the server is preparing for this profile, what may be asked for, and the actions on each.
@@ -50,7 +53,7 @@ export class DownloadsService{
  /** Starts following the list. Safe to call again; `stop` ends the polling without forgetting. */
  start(){this.watching=true;void this.refresh();void this.refreshRequests();}
  stop(){this.watching=false;clearTimeout(this.timer);}
- private pagePath(cursor:string,state?:string){return '/v1/downloads/preparations?limit='+PAGE_LIMIT+(cursor?'&cursor='+encodeURIComponent(cursor):'')+(state?'&state='+encodeURIComponent(state):'');}
+ private pagePath(cursor:string,state?:string){return routePath("list_download_preparations") + "?limit=" + (PAGE_LIMIT) + (cursor?'&cursor='+encodeURIComponent(cursor):'') + (state?'&state='+encodeURIComponent(state):'');}
  /** PERF-S12: the UI pages the list — one page per call, newest first — instead of re-reading up
   * to 10 × 100 every 5 s. Every page is reachable; nothing is silently truncated. */
  async refresh():Promise<void>{
@@ -61,7 +64,7 @@ export class DownloadsService{
    if(generation!==this.generation)return;
    this.failures=0;
    this.publish({phase:'ready',items:Object.freeze(result.items.filter(p=>p.state!=='cancelled'||p.actions.length>0)),nextCursor:result.nextCursor,loadingMore:false,error:undefined,failure:undefined,unavailable:false});
-    void this.api.request<unknown>('/v1/downloads/usage').then(raw=>{try{if(generation===this.generation)this.publish({usage:parseDownloadUsage(raw)});}catch{}},()=>{});
+    void this.api.request<RouteResponse<"get_download_usage">>(routePath("get_download_usage")).then(raw=>{try{if(generation===this.generation)this.publish({usage:parseDownloadUsage(raw)});}catch{}},()=>{});
   }catch(e){
    if(generation!==this.generation)return;
    const status=(e as {status?:number}|null)?.status;
@@ -120,7 +123,7 @@ export class DownloadsService{
    const probes=Array.from({length:Math.min(200,missing.length)},(_,i)=>missing[(start+i)%missing.length]);
    this.probeOffset=start+probes.length;
    if(probes.length){
-    const page=parseDownloadPage(await this.api.request<unknown>('/v1/downloads/preparations?'+new URLSearchParams({limit:'200',ids:probes.map(p=>p.id).join(',')})));
+    const page=parseDownloadPage(await this.api.request<RouteResponse<"list_download_preparations">>(routePath("list_download_preparations") + "?" + (new URLSearchParams({limit:'200',ids:probes.map(p=>p.id).join(',')}))));
     const returned=new Set(page.items.map(p=>p.id));
     for(const p of page.items)byId.set(p.id,p);
     for(const p of probes)if(!returned.has(p.id))byId.delete(p.id);
@@ -141,23 +144,23 @@ export class DownloadsService{
  }
  /** What may be downloaded for one title, with sizes; the server decides, this shows it. */
  async options(itemId:string,signal?:AbortSignal):Promise<DownloadOptionsView>{
-  return parseDownloadOptions(await this.api.request<unknown>('/v1/items/'+encodeURIComponent(itemId)+'/download-options','GET',undefined,signal),itemId);
+  return parseDownloadOptions(await this.api.request<RouteResponse<"get_download_options">>(encodedRoutePath("get_download_options", {"itemId": encodeURIComponent(itemId)}),'GET',undefined,signal),itemId);
  }
  /** The qualities a whole show, season, album, book or playlist may be asked for: the original,
   * and each smaller quality this server can make. The server decides; nothing is assumed here. */
- async revokeProfile(profileKey:string){return parseDownloadProfileRevocation(await this.api.request<unknown>('/v1/admin/downloads/revoke','POST',{profileKey,operationId:this.operationId()}));}
+ async revokeProfile(profileKey:string){return parseDownloadProfileRevocation(await this.api.request<RouteResponse<"revoke_profile_downloads">>(routePath("revoke_profile_downloads"),'POST',routeBody("revoke_profile_downloads", {profileKey,operationId:this.operationId()})));}
 
- async serverUsage(cursor='',limit=256){return parseDownloadUsage(await this.api.request<unknown>(`/v1/downloads/usage?scope=server&cursor=${encodeURIComponent(cursor)}&limit=${limit}`));}
+ async serverUsage(cursor='',limit=256){return parseDownloadUsage(await this.api.request<RouteResponse<"get_download_usage">>(routePath("get_download_usage") + "?scope=server&cursor=" + (encodeURIComponent(cursor)) + "&limit=" + (limit)));}
 
  async qualities(signal?:AbortSignal):Promise<readonly DownloadQualityChoice[]>{
-  return parseDownloadSettings(await this.api.request<unknown>('/v1/downloads/settings','GET',undefined,signal)).qualities;
+  return parseDownloadSettings(await this.api.request<RouteResponse<"get_download_settings">>(routePath("get_download_settings"),'GET',undefined,signal)).qualities;
  }
  /** Asks the server to prepare one title, several, a whole season or album, or the next one.
   * A batch is partial by design: what could not be accepted is reported, the rest proceeds. */
  async request(target:DownloadTarget,quality:string):Promise<DownloadBatch>{
   // Only the item fields are sent, whatever else the caller's object carries (containers are durable requests).
   const body={operationId:this.operationId(),...(target.versionId?{versionId:target.versionId}:{}),...(target.mediaId?{mediaId:target.mediaId}:{}),...(target.mediaIds?{mediaIds:[...target.mediaIds]}:{}),...(target.nextAfterMediaId?{nextAfterMediaId:target.nextAfterMediaId}:{}),quality};
-  const batch=parseDownloadBatch(await this.api.request<unknown>('/v1/downloads/preparations','POST',body));
+  const batch=parseDownloadBatch(await this.api.request<RouteResponse<"create_download_preparations">>(routePath("create_download_preparations"),'POST',body));
   void this.refresh();return batch;
  }
  /**
@@ -245,7 +248,7 @@ export class DownloadsService{
  async act(preparation:DownloadPreparation,action:DownloadAction):Promise<void>{
   if(this.state.busy.includes(preparation.id))return;
   this.publish({busy:[...this.state.busy,preparation.id],error:undefined,failure:undefined});
-  const path='/v1/downloads/preparations/'+encodeURIComponent(preparation.id);
+  const path=encodedRoutePath("get_download_preparation", {"id": encodeURIComponent(preparation.id)});
   const send=async(revision:number)=>parseDownloadPreparation(await this.api.request<unknown>(path+'/actions','POST',{operationId:this.operationId(),action,expectedRevision:revision}));
   const show=(next:DownloadPreparation)=>this.publish({items:action==='remove'?this.state.items.filter(p=>p.id!==next.id):this.state.items.map(p=>p.id===next.id?next:p)});
   try{
@@ -270,12 +273,12 @@ export class DownloadsService{
   * already holds for the download (`renew`) to keep that same address alive; a transfer the
   * device's own downloader is holding then carries on under it. */
  async grant(preparation:Pick<DownloadPreparation,'id'>,renew?:string):Promise<DownloadGrant>{
-  return parseDownloadGrant(await this.api.request<unknown>('/v1/downloads/preparations/'+encodeURIComponent(preparation.id)+'/grant','POST',{operationId:this.operationId(),...(renew?{renew}:{})}));
+  return parseDownloadGrant(await this.api.request<RouteResponse<"create_download_grant">>(encodedRoutePath("create_download_grant", {"id": encodeURIComponent(preparation.id)}),'POST',routeBody("create_download_grant", {operationId:this.operationId(),...(renew?{renew}:{})})));
  }
  /** Everything that travels with a ready download: title facts, artwork, chapters, markers,
   * audio and subtitle tracks. The files it names are fetched under the grant's address. */
  async bundle(preparation:Pick<DownloadPreparation,'id'>,signal?:AbortSignal):Promise<DownloadBundle>{
-  return parseDownloadBundle(await this.api.request<unknown>('/v1/downloads/preparations/'+encodeURIComponent(preparation.id)+'/bundle','GET',undefined,signal),preparation.id);
+  return parseDownloadBundle(await this.api.request<RouteResponse<"get_download_bundle">>(encodedRoutePath("get_download_bundle", {"id": encodeURIComponent(preparation.id)}),'GET',undefined,signal),preparation.id);
  }
  reason(preparation:DownloadPreparation):string{return preparation.reason?downloadReasonMessage(preparation.reason):'';}
 }

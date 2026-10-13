@@ -2,9 +2,9 @@
 
 Use the server's own origin, such as `http://127.0.0.1:32500` or
 `https://media.example.com`. Hosted is not needed for local API integrations.
-The [generated registry contract](../portico.openapi.json) describes typed
-routes. This guide also covers hand-registered routes by reading their handlers;
-the old YAML files and their example checker have not caught up with the router.
+The complete [generated registry contract](../portico.openapi.json) describes
+production routes, including retained HTTP handlers and raw streams. It is the
+sole API specification; the old YAML files are removed.
 Examples below are illustrative requests, with IDs and secrets to replace.
 
 1. [Conventions](01-overview.md): time, paging, errors, revisions and limits.
@@ -38,5 +38,6 @@ and original seasonal coordinates are retained as provenance. Client-core's
 same show use the selected base order without the absolute offset.
 
 Regenerate the checked-in registry contract when source-registered routes change:
-run `GOFLAGS=-p=2 go run ./cmd/apigen` from `server/`. For routes outside the
-typed registry, use the current source handlers and their topic references.
+run `GOFLAGS=-p=2 go run ./cmd/apigen` from `server/`. This updates the shared
+TypeScript contracts and admission table as well. Validate guide examples with
+`node server/api/guide/check-examples.mjs`.

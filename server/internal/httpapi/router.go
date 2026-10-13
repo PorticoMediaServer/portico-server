@@ -140,7 +140,8 @@ type Dependencies struct {
 	v1     *playbackv1.Service
 	social *social.Store
 	// registry is the typed apikit registry (foundation and playback v1).
-	registry *apikit.Registry
+	registry             *apikit.Registry
+	httpContractsPrivate bool
 }
 
 func write(w http.ResponseWriter, status int, v any) {
@@ -802,7 +803,7 @@ func New(d Dependencies) http.Handler {
 			}
 			return func(ctx context.Context, tx *sql.Tx) error { return d.ownerAuthorityTx(ctx, tx, p) }, nil
 		})
-		d.Networking.Register(mux)
+		d.Networking.Register(httpRegistrar{d, mux})
 	} else {
 		d.unconfiguredNetworkingRoutes(mux)
 	}
@@ -845,7 +846,7 @@ func New(d Dependencies) http.Handler {
 	d.browseRoutes(mux)
 	d.notificationRoutes(mux)
 	d.socialRoutes(mux)
-	mux.HandleFunc("GET /v1/attribution", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "GET /v1/attribution", func(w http.ResponseWriter, r *http.Request) {
 		write(w, 200, map[string]any{"providers": []map[string]string{{"name": "TMDB", "notice": metadata.Attribution, "url": "https://www.themoviedb.org"}, {"name": "TheTVDB", "notice": "Metadata provided by TheTVDB.", "url": "https://thetvdb.com"}, {"name": "MusicBrainz", "notice": "Music metadata provided by MusicBrainz.", "url": "https://musicbrainz.org"}, {"name": "Cover Art Archive", "notice": "Cover art provided by Cover Art Archive / MusicBrainz and Internet Archive. Images copyright their respective owners.", "url": "https://coverartarchive.org"}}})
 	})
 	// hostedConfigured says this build can reach the Portico Account service at all (every release
@@ -857,10 +858,10 @@ func New(d Dependencies) http.Handler {
 	// (id, source digest, build time) is for the owner, who reads it from the
 	// maintenance document; published here it tells a scanner which servers
 	// carry a known flaw.
-	mux.HandleFunc("GET /v1/system", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "GET /v1/system", func(w http.ResponseWriter, r *http.Request) {
 		write(w, 200, map[string]any{"id": d.Identity.ID(), "name": d.Identity.Name(), "setupRequired": d.Identity.SetupRequired(), "hostedConfigured": d.Hosted.Configured(), "hostedAttached": d.Identity.Hosted(), "version": buildinfo.Info()["version"]})
 	})
-	mux.HandleFunc("GET /v1/me", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "GET /v1/me", func(w http.ResponseWriter, r *http.Request) {
 		p, e := d.principal(r)
 		if e != nil {
 			failure(w, e)
@@ -868,8 +869,8 @@ func New(d Dependencies) http.Handler {
 		}
 		write(w, 200, map[string]any{"viewer": p.Viewer})
 	})
-	mux.HandleFunc("DELETE /v1/sessions/current", d.sessionFamilyLogout)
-	mux.HandleFunc("POST /v1/hosted/wake", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "DELETE /v1/sessions/current", d.sessionFamilyLogout)
+	d.httpHandle(mux, "POST /v1/hosted/wake", func(w http.ResponseWriter, r *http.Request) {
 		var body hosted.Signed
 		if e := decode(w, r, &body); e != nil {
 			failure(w, e)
@@ -881,7 +882,7 @@ func New(d Dependencies) http.Handler {
 		}
 		w.WriteHeader(202)
 	})
-	mux.HandleFunc("GET /v1/libraries", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "GET /v1/libraries", func(w http.ResponseWriter, r *http.Request) {
 		p, e := d.principal(r)
 		if e != nil {
 			failure(w, e)
@@ -894,7 +895,7 @@ func New(d Dependencies) http.Handler {
 		}
 		write(w, 200, map[string]any{"items": visible})
 	})
-	mux.HandleFunc("POST /v1/libraries", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "POST /v1/libraries", func(w http.ResponseWriter, r *http.Request) {
 		p, e := d.owner(r)
 		if e != nil {
 			failure(w, e)
@@ -960,7 +961,7 @@ func New(d Dependencies) http.Handler {
 		}
 		write(w, 201, l)
 	})
-	mux.HandleFunc("POST /v1/libraries/{id}/network-roots", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "POST /v1/libraries/{id}/network-roots", func(w http.ResponseWriter, r *http.Request) {
 		p, _, e := d.storageOwner(r)
 		if e != nil {
 			failure(w, e)
@@ -981,7 +982,7 @@ func New(d Dependencies) http.Handler {
 		}
 		write(w, 200, map[string]any{"approvals": approvals})
 	})
-	mux.HandleFunc("POST /v1/libraries/{id}/scans", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "POST /v1/libraries/{id}/scans", func(w http.ResponseWriter, r *http.Request) {
 		p, e := d.owner(r)
 		if e != nil {
 			failure(w, e)
@@ -994,7 +995,7 @@ func New(d Dependencies) http.Handler {
 		}
 		write(w, 202, j)
 	})
-	mux.HandleFunc("GET /v1/admin/ingestion/jobs/{id}", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "GET /v1/admin/ingestion/jobs/{id}", func(w http.ResponseWriter, r *http.Request) {
 		if _, e := d.owner(r); e != nil {
 			failure(w, e)
 			return
@@ -1006,7 +1007,7 @@ func New(d Dependencies) http.Handler {
 		}
 		write(w, 200, j)
 	})
-	mux.HandleFunc("DELETE /v1/admin/ingestion/jobs/{id}", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "DELETE /v1/admin/ingestion/jobs/{id}", func(w http.ResponseWriter, r *http.Request) {
 		p, e := d.owner(r)
 		if e != nil {
 			failure(w, e)
@@ -1019,7 +1020,7 @@ func New(d Dependencies) http.Handler {
 		w.WriteHeader(204)
 	})
 	d.projectedHandle(mux, "GET /v1/items", d.itemsReadHandler)
-	mux.HandleFunc("GET /v1/items/{id}/art/{kind}", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "GET /v1/items/{id}/art/{kind}", func(w http.ResponseWriter, r *http.Request) {
 		p, e := d.principal(r)
 		if e == nil {
 			e = d.itemAccess(r.Context(), p, r.PathValue("id"))
@@ -1054,7 +1055,7 @@ func New(d Dependencies) http.Handler {
 	})
 	d.projectedHandle(mux, "GET /v1/items/{id}", d.itemReadHandler)
 	d.audioDecodeRoutes(mux)
-	mux.HandleFunc("GET /v1/media/{grant}/{file}", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "GET /v1/media/{grant}/{file}", func(w http.ResponseWriter, r *http.Request) {
 		grant := r.PathValue("grant")
 		_, p, item, e := d.Playback.ResolveGrantContext(r.Context(), grant)
 		if e == nil {
@@ -1114,7 +1115,7 @@ func New(d Dependencies) http.Handler {
 		defer body.release()
 		http.ServeContent(body, r, r.PathValue("file"), info.ModTime(), &guardedFile{File: f, check: newStreamAuthority(check).check})
 	})
-	mux.HandleFunc("GET /v1/media/{grant}", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "GET /v1/media/{grant}", func(w http.ResponseWriter, r *http.Request) {
 		grant := r.PathValue("grant")
 		aid, p, item, e := d.Playback.ResolveGrantContext(r.Context(), grant)
 		if e == nil {

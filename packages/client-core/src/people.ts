@@ -1,3 +1,4 @@
+import {encodedRoutePath, routePath} from "../../contracts/src/routes.ts";
 import {unreadableServerResponse} from './server-messages.ts';
 /** Canonical person pages. The server owns person identity, credit membership, ordering and
  * paging; this module only rejects a payload that does not match what it asked for. */
@@ -83,17 +84,17 @@ export function personPath(personId:string,options:Readonly<{role?:PersonRole;li
  const params=new URLSearchParams({limit:String(limit)});
  if(options.role)params.set('role',options.role);
  if(options.cursor)params.set('cursor',options.cursor);
- return '/v1/people/'+encodeURIComponent(personId)+'?'+params;
+ return encodedRoutePath("get_people_id", {"id": encodeURIComponent(personId)}) + "?" + (params);
 }
 export function peopleSearchPath(q:string,limit=25):string{
  if(typeof q!=='string'||!q.trim())throw new Error('A person name query is required.');
  if(!Number.isInteger(limit)||limit<1||limit>MAX_PERSON_CREDITS)throw new Error('People search returns 1 to 100 rows.');
- return '/v1/people?'+new URLSearchParams({q:q.split(/\p{White_Space}+/u).filter(Boolean).join(' '),limit:String(limit)});
+ return routePath("get_people") + "?" + (new URLSearchParams({q:q.split(/\p{White_Space}+/u).filter(Boolean).join(' '),limit:String(limit)}));
 }
 /** The portrait address is server-authored; a client never composes a provider URL. */
 export function personPortraitPath(personId:string,size:'thumbnail'|'full'='thumbnail'):string{
  if(!id(personId))throw new Error('A person id is required.');
- return '/v1/people/'+encodeURIComponent(personId)+'/portrait'+(size==='thumbnail'?'?size=thumbnail':'');
+ return encodedRoutePath("get_people_id_portrait", {"id": encodeURIComponent(personId)})+(size==='thumbnail'?'?size=thumbnail':'');
 }
 export async function readPerson(api:LibraryContentApi,scope:ContentScope,personId:string,options:Readonly<{role?:PersonRole;limit?:number;cursor?:string|null;signal?:AbortSignal}>={}):Promise<PersonPage>{
  const limit=options.limit??40;

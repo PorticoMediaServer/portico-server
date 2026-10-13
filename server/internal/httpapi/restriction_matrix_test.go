@@ -30,6 +30,7 @@ import (
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/livechannels"
 	"portico.local/server/internal/livechannels/dvr"
+	"portico.local/server/internal/lyrics"
 	"portico.local/server/internal/mediaanalysis"
 	"portico.local/server/internal/metadata"
 	"portico.local/server/internal/notify"
@@ -283,6 +284,7 @@ const (
 // restrictionRoutes classifies every GET route the router registers.
 func restrictionRoutes() map[string]restrictionRoute {
 	return map[string]restrictionRoute{
+		"GET /v1/admin/playback/route-failures":                                      exempt(reasonAdmin),
 		"GET /v1/downloads/artifacts/{grant}/artwork/{role}":                         exempt("download transfer grant rechecked against current item and library visibility by downloadExtra"),
 		"GET /v1/downloads/artifacts/{grant}/subtitles/{resource}/{revision}.vtt":    exempt("download transfer grant rechecked against current item and library visibility by downloadExtra"),
 		"GET /v1/downloads/artifacts/{grant}/subtitles/{resource}/{revision}/{file}": exempt("download transfer grant rechecked against current item and library visibility by downloadExtra"),
@@ -346,6 +348,36 @@ func restrictionRoutes() map[string]restrictionRoute {
 			}
 			return out
 		}),
+		"GET /v1/admin/attention":                                   exempt(reasonAdmin),
+		"GET /v1/admin/console/accounts":                            exempt(reasonAdmin),
+		"GET /v1/admin/console/job-kinds":                           exempt(reasonAdmin),
+		"GET /v1/admin/console/stream-options":                      exempt(reasonAdmin),
+		"GET /v1/admin/jobs":                                        exempt(reasonAdmin),
+		"GET /v1/admin/libraries":                                   exempt(reasonAdmin),
+		"GET /v1/admin/libraries/{id}":                              exempt(reasonAdmin),
+		"GET /v1/admin/notifications/settings":                      exempt(reasonAdmin),
+		"GET /v1/admin/playback-operations/{operationId}":           exempt(reasonAdmin),
+		"GET /v1/admin/playback-sessions":                           exempt(reasonAdmin),
+		"GET /v1/admin/telemetry":                                   exempt(reasonAdmin),
+		"GET /v1/admin/telemetry/now":                               exempt(reasonAdmin),
+		"GET /v1/admin/transcode/capacity":                          exempt(reasonAdmin),
+		"GET /v1/albums/{id}/metadata/musicbrainz":                  exempt("owner-only metadata state; member refused before catalogue access (manual_metadata_test, musicbrainz_test)"),
+		"GET /v1/albums/{id}/songs":                                 perEntity("/v1/albums/", "album", "/songs"),
+		"GET /v1/artists/{id}/albums":                               perEntity("/v1/artists/", "artist", "/albums"),
+		"GET /v1/books/{id}/chapters":                               perEntity("/v1/books/", "book", "/chapters"),
+		"GET /v1/books/{id}/files":                                  perEntity("/v1/books/", "book", "/files"),
+		"GET /v1/feedback/capabilities":                             exempt("caller-authored feedback and reports; no catalogue lookup, scoped to the caller (notifications_routes_test)"),
+		"GET /v1/items/{id}/analysis":                               perItem("/analysis"),
+		"GET /v1/items/{id}/analysis/artifacts/{artifact}":          perItem("/analysis/artifacts/unknown"),
+		"GET /v1/items/{id}/lyrics":                                 perItem("/lyrics"),
+		"GET /v1/items/{id}/lyrics/{resource}/revisions/{revision}": perItem("/lyrics/unknown/revisions/1"),
+		"GET /v1/items/{id}/metadata/manual":                        exempt("owner-only metadata state; member refused before catalogue access (manual_metadata_test, musicbrainz_test)"),
+		"GET /v1/items/{id}/metadata/musicbrainz":                   exempt("owner-only metadata state; member refused before catalogue access (manual_metadata_test, musicbrainz_test)"),
+		"GET /v1/items/{id}/prepared-versions":                      perItem("/prepared-versions"),
+		"GET /v1/metadata/{kind}/{id}":                              exempt("owner-only metadata state; member refused before catalogue access (manual_metadata_test, musicbrainz_test)"),
+		"GET /v1/notifications/capabilities":                        static("/v1/notifications/capabilities"),
+		"GET /v1/preferences":                                       exempt(reasonNoTitles),
+
 		"GET /v1/items/{id}/metadata/screen":                                 perItem("/metadata/screen"),
 		"GET /v1/shows/{id}/metadata/screen":                                 perEntity("/v1/shows/", "show", "/metadata/screen"),
 		"GET /v1/admin/live/sources/{id}/groups":                             exempt("owner-only line-up choices"),
@@ -849,7 +881,7 @@ func buildRestrictionMatrix(t *testing.T) *restrictionEnv {
 	}
 	console := operations.New(db)
 	scheduler := operations.NewScheduler(console)
-	deps := Dependencies{Console: console, Access: AccessArea{Access: access.New(db)}, Scheduler: scheduler, DB: db, Identity: ident, Catalog: cat, Hosted: host, Playback: playback.New(db), Downloads: offline, Metadata: metadata.New(db, ""), Analysis: analysis, LiveChannels: live, DVR: recordings}
+	deps := Dependencies{Console: console, Access: AccessArea{Access: access.New(db)}, Scheduler: scheduler, DB: db, Identity: ident, Catalog: cat, Hosted: host, Playback: playback.New(db), Downloads: offline, Metadata: metadata.New(db, ""), Analysis: analysis, Lyrics: &lyrics.Service{DB: db}, LiveChannels: live, DVR: recordings}
 	// The tool endpoint authenticates a personal access token and then calls
 	// this same handler as that token's profile.
 	deps.credentials = newCredentialGate()

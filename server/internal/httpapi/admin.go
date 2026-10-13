@@ -59,7 +59,7 @@ func (d Dependencies) adminRoutes(mux *http.ServeMux) {
 		if kind == "resource" {
 			route = "GET /v1/admin/libraries/{id}"
 		}
-		mux.HandleFunc(route, func(w http.ResponseWriter, r *http.Request) {
+		d.httpHandle(mux, route, func(w http.ResponseWriter, r *http.Request) {
 			ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 			defer cancel()
 			r = r.WithContext(ctx)
@@ -91,7 +91,7 @@ func (d Dependencies) adminRoutes(mux *http.ServeMux) {
 		})
 	}
 	// The owner's order of the libraries, as every client lists them (GET /v1/libraries).
-	mux.HandleFunc("PUT /v1/admin/libraries/order", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "PUT /v1/admin/libraries/order", func(w http.ResponseWriter, r *http.Request) {
 		p, e := d.owner(r)
 		if e != nil {
 			failure(w, e)
@@ -111,7 +111,7 @@ func (d Dependencies) adminRoutes(mux *http.ServeMux) {
 		write(w, 200, map[string]any{"libraryIds": body.LibraryIDs})
 	})
 	// How one show's episodes are presented (Spec — Title Pages §4): the owner's, from the show's page.
-	mux.HandleFunc("PUT /v1/admin/libraries/{id}/shows/{show}/settings", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "PUT /v1/admin/libraries/{id}/shows/{show}/settings", func(w http.ResponseWriter, r *http.Request) {
 		p, e := d.owner(r)
 		if e != nil {
 			failure(w, e)
@@ -129,7 +129,7 @@ func (d Dependencies) adminRoutes(mux *http.ServeMux) {
 		}
 		write(w, 200, out)
 	})
-	mux.HandleFunc("PATCH /v1/admin/libraries/{id}", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "PATCH /v1/admin/libraries/{id}", func(w http.ResponseWriter, r *http.Request) {
 		q, e := d.adminRequest(r, "resource")
 		if e != nil {
 			failure(w, e)

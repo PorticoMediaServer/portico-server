@@ -1,3 +1,4 @@
+import {apiRoot} from "../../../contracts/src/routes.ts";
 /**
  * MU4 CAST-03: the cast title's display facts, remembered where the cast
  * started. The receiver protocol carries no artwork and the sender's snapshot
@@ -12,7 +13,7 @@ const MAX = 20;
 /** Remember what was sent to the TV (bounded: the last few titles). */
 export function noteCastMeta(itemId: string, meta: CastMeta): void {
   if (typeof itemId !== 'string' || !itemId || !meta || typeof meta.title !== 'string') return;
-  metas.set(itemId, Object.freeze({title: meta.title.slice(0, 200), ...(meta.subtitle ? {subtitle: meta.subtitle.slice(0, 200)} : {}), ...(meta.artworkPath && meta.artworkPath.startsWith('/v1/') ? {artworkPath: meta.artworkPath.slice(0, 512)} : {})}));
+  metas.set(itemId, Object.freeze({title: meta.title.slice(0, 200), ...(meta.subtitle ? {subtitle: meta.subtitle.slice(0, 200)} : {}), ...(meta.artworkPath && meta.artworkPath.startsWith(apiRoot) ? {artworkPath: meta.artworkPath.slice(0, 512)} : {})}));
   while (metas.size > MAX) metas.delete(metas.keys().next().value!);
 }
 

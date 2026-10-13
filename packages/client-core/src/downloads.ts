@@ -1,3 +1,4 @@
+import {routePrefix, encodedRoutePath} from "../../contracts/src/routes.ts";
 import {wireDurations} from './wire-units.ts';
 import {unreadableServerResponse} from './server-messages.ts';
 import {serviceText} from './presentation/service-text.ts';
@@ -230,8 +231,8 @@ export function parseDownloadGrant(raw: unknown): DownloadGrant {
   if (!object(raw) || !id(raw.preparationId) || !id(raw.itemId) || !base64url(raw.token, 200)) invalid();
   // The URL is a path this server published. A client must never construct one,
   // and an absolute URL here would be an attempt to redirect the transfer.
-  if (typeof raw.url !== 'string' || !raw.url.startsWith('/v1/downloads/artifacts/') || raw.url.includes('..')) invalid();
-  if (raw.url !== '/v1/downloads/artifacts/' + raw.token) invalid();
+  if (typeof raw.url !== 'string' || !raw.url.startsWith(routePrefix("get_download_artifact", 3)) || raw.url.includes('..')) invalid();
+  if (raw.url !== encodedRoutePath("get_download_artifact", {"grant": raw.token})) invalid();
   if (!instant(raw.issuedAt) || !instant(raw.expiresAt) || !count(raw.renewAfterSeconds) || raw.renewAfterSeconds < 1 || typeof raw.renewed !== 'boolean') invalid();
   if (Date.parse(raw.expiresAt) <= Date.parse(raw.issuedAt)) invalid();
   const bytes = artifact(raw.artifact);

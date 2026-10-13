@@ -1,3 +1,6 @@
+import {routeBody} from "../../contracts/src/routes.ts";
+import type {RouteResponse} from "../../contracts/src/routes.ts";
+import {routePath} from "../../contracts/src/routes.ts";
 import {wireDurations} from './wire-units.ts';
 /**
  * API keys, personal access tokens, outbound webhooks, and the two routes that
@@ -108,7 +111,7 @@ export function parseApiAccessOptions(raw:unknown):ApiAccessOptions{
  return Object.freeze({scopes,maximumKeys:whole(raw.maximumKeys,'maximumKeys'),maximumTokens:whole(raw.maximumTokens,'maximumTokens'),tokensAllowed:flag(raw.tokensAllowed,'tokensAllowed'),requestsPerMinute:whole(raw.requestsPerMinute,'requestsPerMinute')});
 }
 
-const API_KEYS='/v1/admin/api-keys',MEMBER_TOKENS='/v1/admin/access-tokens',MY_TOKENS='/v1/me/access-tokens',OPTIONS='/v1/me/api-access';
+const API_KEYS=routePath("list_api_keys"),MEMBER_TOKENS=routePath("list_member_access_tokens"),MY_TOKENS=routePath("list_access_tokens"),OPTIONS=routePath("get_api_access_options");
 const id=(value:string):string=>encodeURIComponent(value);
 const body=(q:NewApiCredential)=>({operationId:q.operationId,name:q.name,scopes:[...q.scopes],...(q.expiresAt?{expiresAt:q.expiresAt}:{})});
 
@@ -168,7 +171,7 @@ export function parseWebhookDeliveryPage(raw:unknown):WebhookDeliveryPage{
  return Object.freeze({items:Object.freeze(firstOfEach('api-access','deliveries',keepReadable('api-access','deliveries',list(raw.items,100,v=>v,'delivery page items'),parseWebhookDelivery),row=>row.id)),limit:whole(raw.limit,'delivery page limit'),nextCursor:optional(raw.nextCursor,512,'delivery page cursor')});
 }
 
-const WEBHOOKS='/v1/admin/webhooks';
+const WEBHOOKS=routePath("list_webhooks");
 export const listWebhooks=async(t:ApiAccessTransport,signal?:AbortSignal):Promise<WebhookList>=>parseWebhookList(await t.request<unknown>(WEBHOOKS,'GET',undefined,signal));
 export const createWebhook=async(t:ApiAccessTransport,q:NewWebhook,signal?:AbortSignal):Promise<IssuedWebhook>=>parseIssuedWebhook(await t.request<unknown>(WEBHOOKS,'POST',{...q,events:[...q.events]},signal));
 /** A field left out of `change` is left as it is. */
@@ -203,7 +206,7 @@ export function parseTitlePage(raw:unknown):TitlePage{
  if(!object(raw))return invalid('title page');
  return Object.freeze({items:Object.freeze(firstOfEach('api-access','titles',keepReadable('api-access','titles',list(raw.items,100,v=>v,'title page items'),parseTitleRow),row=>row.id)),limit:whole(raw.limit,'title page limit'),nextCursor:optional(raw.nextCursor,4096,'title page cursor')});
 }
-export const queryTitles=async(t:ApiAccessTransport,q:TitleQuery,signal?:AbortSignal):Promise<TitlePage>=>parseTitlePage(await t.request<unknown>('/v1/titles'+query({...q}),'GET',undefined,signal));
+export const queryTitles=async(t:ApiAccessTransport,q:TitleQuery,signal?:AbortSignal):Promise<TitlePage>=>parseTitlePage(await t.request<RouteResponse<"query_titles">>(routePath("query_titles") + (query({...q})),'GET',undefined,signal));
 
 export type PathChangeKind='added'|'changed'|'removed';
 export type ReportedPath=Readonly<{path:string;status:'queued'|'outside_libraries'|'invalid';libraryId?:string;sourceId?:string;folder?:string}>;
@@ -217,4 +220,4 @@ export function parsePathReport(raw:unknown):PathReport{
 }
 /** Tells the server which absolute paths were added, changed or removed, so it scans only those folders. */
 export const reportChangedPaths=async(t:ApiAccessTransport,paths:readonly Readonly<{path:string;change?:PathChangeKind}>[],signal?:AbortSignal):Promise<PathReport>=>
- parsePathReport(await t.request<unknown>('/v1/libraries/paths-changed','POST',{paths:paths.map(p=>p.change?{path:p.path,change:p.change}:{path:p.path})},signal));
+ parsePathReport(await t.request<RouteResponse<"report_changed_paths">>(routePath("report_changed_paths"),'POST',routeBody("report_changed_paths", {paths:paths.map(p=>p.change?{path:p.path,change:p.change}:{path:p.path})}),signal));

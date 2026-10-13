@@ -1,3 +1,6 @@
+import {routeBody} from "../../contracts/src/routes.ts";
+import type {RouteResponse} from "../../contracts/src/routes.ts";
+import {routePath, encodedRoutePath} from "../../contracts/src/routes.ts";
 import {unreadableServerResponse} from './server-messages.ts';
 /** Server-composed home rows. Clients render membership, order and policy as published; they never rank, hide or page a row themselves. */
 import {validateContentEntry, type ContentEntry} from './library-content.ts';
@@ -216,11 +219,11 @@ function pageQuery(page: HomeRowPage): string {
 }
 
 export async function fetchHome(api: HomeApi, limit?: number, signal?: AbortSignal): Promise<HomeDocument> {
-  return validateHomeDocument(await api.request<unknown>('/v1/home' + (limit === undefined ? '' : '?limit=' + limit), 'GET', undefined, signal));
+  return validateHomeDocument(await api.request<RouteResponse<"get_home">>(routePath("get_home") + (limit === undefined ? '' : '?limit=' + limit), 'GET', undefined, signal));
 }
 
 export async function fetchHomeLayout(api: HomeApi, signal?: AbortSignal): Promise<HomeLayoutView> {
-  return validateHomeLayoutView(await api.request<unknown>('/v1/home/layout', 'GET', undefined, signal));
+  return validateHomeLayoutView(await api.request<RouteResponse<"get_home_layout">>(routePath("get_home_layout"), 'GET', undefined, signal));
 }
 
 /**
@@ -240,18 +243,18 @@ export function appendHomeRowPage(row: HomeRow, page: HomeRow, max = HOME_ROW_MA
 
 export async function fetchHomeRow(api: HomeApi, rowId: string, page: HomeRowPage = {}, signal?: AbortSignal): Promise<HomeRow> {
   if (page.cursor && (page.start !== undefined || page.anchorId)) throw new Error('A home row pages by cursor or by anchored range, not both.');
-  const row = validateHomeRow(await api.request<unknown>('/v1/home/rows/' + encodeURIComponent(rowId) + pageQuery(page), 'GET', undefined, signal));
+  const row = validateHomeRow(await api.request<RouteResponse<"get_home_row">>(encodedRoutePath("get_home_row", {"id": encodeURIComponent(rowId)}) + (pageQuery(page)), 'GET', undefined, signal));
   if (row.id !== rowId) invalid();
   return row;
 }
 
 export async function saveHomeLayout(api: HomeApi, intent: HomeLayoutIntent, signal?: AbortSignal): Promise<HomeLayout> {
-  return validateHomeLayout(await api.request<unknown>('/v1/home/layout', 'PUT', {
+  return validateHomeLayout(await api.request<RouteResponse<"put_home_layout">>(routePath("put_home_layout"), 'PUT', routeBody("put_home_layout", {
     expectedRevision: intent.expectedRevision, idempotencyKey: intent.idempotencyKey ?? '',
     rowOrder: [...intent.rowOrder], hiddenRowIds: [...intent.hiddenRowIds],
-  }, signal));
+  }), signal));
 }
 
 export async function resetHomeLayout(api: HomeApi, idempotencyKey = '', signal?: AbortSignal): Promise<HomeLayout> {
-  return validateHomeLayout(await api.request<unknown>('/v1/home/layout/reset', 'POST', {idempotencyKey}, signal));
+  return validateHomeLayout(await api.request<RouteResponse<"post_home_layout_reset">>(routePath("post_home_layout_reset"), 'POST', routeBody("post_home_layout_reset", {idempotencyKey}), signal));
 }

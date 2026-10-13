@@ -1,3 +1,4 @@
+import {routePath} from "../../../contracts/src/routes.ts";
 import {GUIDE_PROTOCOL, parseGuideChannels, parseGuideSources, type ChannelApi, type GuideChannel, type GuideSource} from '../channel-guide.ts';
 import {unreadableServerResponse} from '../server-messages.ts';
 import {keepReadable} from '../tolerant.ts';
@@ -37,5 +38,5 @@ export function parseGuideSourceSummaries(raw:unknown,serverId:string):GuideSour
 }
 export function guideEndpointUnsupported(error:unknown):boolean{return object(error)&&(error.status===404||error.status===405);}
 export async function fetchGuideSourceSummaries(api:ChannelApi,serverId:string,timezone:string,signal?:AbortSignal):Promise<GuideSourceSummaries>{
- return parseGuideSourceSummaries(await api.request('/v1/guide/sources?'+new URLSearchParams({timezone}),'GET',undefined,signal),serverId);
+ return parseGuideSourceSummaries(await api.request(routePath("get_guide_sources") + "?" + (new URLSearchParams({timezone})),'GET',undefined,signal),serverId);
 }

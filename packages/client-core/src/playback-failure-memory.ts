@@ -1,3 +1,5 @@
+import {routePath} from "../../contracts/src/routes.ts";
+import type {RouteResponse} from "../../contracts/src/routes.ts";
 import {unreadableServerResponse} from './server-messages.ts';
 import {keepReadable} from './tolerant.ts';
 export type PlaybackFailure = Readonly<{sourceId:string;engine:'native'|'mpv';route:'original'|'copy_remux'|'audio_conversion'|'video_conversion';code:string;detail:string;reportedAtMs:number;expiresAtMs:number}>;
@@ -14,5 +16,5 @@ export function parsePlaybackFailureMemory(raw:unknown):PlaybackFailureMemory {
  });
  return Object.freeze({items:Object.freeze(items),more:raw.more});
 }
-export async function readPlaybackFailureMemory(api:Api,signal?:AbortSignal):Promise<PlaybackFailureMemory>{return parsePlaybackFailureMemory(await api.request('/v1/admin/playback/route-failures','GET',undefined,signal));}
-export async function clearPlaybackFailureMemory(api:Api,sourceId:string,signal?:AbortSignal):Promise<void>{if(!/^[A-Za-z0-9_-]{1,128}$/.test(sourceId))throw new Error(unreadableServerResponse);await api.request('/v1/admin/playback/route-failures/'+encodeURIComponent(sourceId),'DELETE',undefined,signal);}
+export async function readPlaybackFailureMemory(api:Api,signal?:AbortSignal):Promise<PlaybackFailureMemory>{return parsePlaybackFailureMemory(await api.request<RouteResponse<'list_playback_failure_memory'>>(routePath('list_playback_failure_memory'),'GET',undefined,signal));}
+export async function clearPlaybackFailureMemory(api:Api,sourceId:string,signal?:AbortSignal):Promise<void>{if(!/^[A-Za-z0-9_-]{1,128}$/.test(sourceId))throw new Error(unreadableServerResponse);await api.request(routePath('clear_playback_failure_memory',{sourceId}),'DELETE',undefined,signal);}

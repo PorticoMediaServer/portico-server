@@ -105,7 +105,7 @@ func (d Dependencies) analysisRoutes(mux *http.ServeMux) {
 		{"POST /v1/items/{id}/analysis/markers", "markers"},
 		{"PUT /v1/items/{id}/analysis/policy", "policy"},
 	} {
-		mux.HandleFunc(route.pattern, func(w http.ResponseWriter, r *http.Request) {
+		d.httpHandle(mux, route.pattern, func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Cache-Control", "no-store")
 			w.Header().Set("X-Content-Type-Options", "nosniff")
 			if d.Analysis == nil {

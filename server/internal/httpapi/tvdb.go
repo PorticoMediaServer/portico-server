@@ -8,7 +8,7 @@ import (
 
 func (d Dependencies) tvdbRoutes(mux *http.ServeMux) {
 	rate := &personalLimiter{}
-	mux.HandleFunc("GET /v1/shows/{id}/metadata/tvdb", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "GET /v1/shows/{id}/metadata/tvdb", func(w http.ResponseWriter, r *http.Request) {
 		if _, e := d.owner(r); e != nil {
 			failure(w, e)
 			return
@@ -36,7 +36,7 @@ func (d Dependencies) tvdbRoutes(mux *http.ServeMux) {
 		out.ViewerFence = fence
 		write(w, 200, out)
 	})
-	mux.HandleFunc("PUT /v1/shows/{id}/metadata/tvdb", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "PUT /v1/shows/{id}/metadata/tvdb", func(w http.ResponseWriter, r *http.Request) {
 		p, e := d.owner(r)
 		if e != nil {
 			failure(w, e)
@@ -60,7 +60,7 @@ func (d Dependencies) tvdbRoutes(mux *http.ServeMux) {
 		}
 		write(w, 200, map[string]any{"showId": r.PathValue("id"), "status": "pending_episodes"})
 	})
-	mux.HandleFunc("POST /v1/shows/{id}/metadata/tvdb/retry", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "POST /v1/shows/{id}/metadata/tvdb/retry", func(w http.ResponseWriter, r *http.Request) {
 		p, e := d.owner(r)
 		if e != nil {
 			failure(w, e)

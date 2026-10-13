@@ -1,3 +1,4 @@
+import {routePath, encodedRoutePath} from "../../contracts/src/routes.ts";
 import {unreadableServerResponse} from './server-messages.ts';
 export type UpgradeCopy=Readonly<{id:string;createdAt:string;bytes:number;path:string}>;
 export type StorageStatus=Readonly<{databasePath:string;cacheDirectory:string;backupDirectory:string;reclaimableBytes:number;lastReclaimedAt?:string;lastReclaimedBytes:number;upgradeCopies:readonly UpgradeCopy[]}>;
@@ -16,6 +17,6 @@ export function parseFFmpegValidation(v:unknown):FFmpegValidation{
  return Object.freeze({path:v.path,state:v.state as FFmpegValidation['state'],inUse:v.inUse,checkedAt:v.checkedAt,missingFeatures:Object.freeze(v.missingFeatures as string[]),...(typeof v.reasonCode==='string'?{reasonCode:v.reasonCode}:{})});
 }
 export function storageStatusService(request:<T>(path:string,method?:string,body?:unknown)=>Promise<T>){return Object.freeze({
- async read(){return parseStorageStatus(await request<unknown>('/v1/admin/storage/status'));},
- async removeUpgradeCopy(copy:UpgradeCopy){await request<unknown>('/v1/admin/storage/upgrade-copies/'+encodeURIComponent(copy.id),'DELETE');},
+ async read(){return parseStorageStatus(await request<unknown>(routePath("get_storage_status")));},
+ async removeUpgradeCopy(copy:UpgradeCopy){await request<unknown>(encodedRoutePath("delete_upgrade_copy", {"id": encodeURIComponent(copy.id)}),'DELETE');},
 });}

@@ -1,3 +1,4 @@
+import {routePrefix} from "../../contracts/src/routes.ts";
 import {unreadableServerResponse} from './server-messages.ts';
 /** Device records, remembered browser accounts and the tvOS Top Shelf feed.
  *
@@ -114,7 +115,7 @@ export function parseTopShelfFeed(raw:unknown):TopShelfFeed{
    if(entry.subtitle!==undefined&&!text(entry.subtitle,256))fail('subtitle');
    // Image URLs are server-relative; deep links use the app scheme. Neither may
    // be an arbitrary URL, or a feed row could send a viewer anywhere.
-   if(entry.imageUrl!==undefined&&entry.imageUrl!==''&&(typeof entry.imageUrl!=='string'||!entry.imageUrl.startsWith('/v1/topshelf/art/')||entry.imageUrl.length>1024))fail('imageUrl');
+   if(entry.imageUrl!==undefined&&entry.imageUrl!==''&&(typeof entry.imageUrl!=='string'||!entry.imageUrl.startsWith(routePrefix("get_topshelf_art_id", 3))||entry.imageUrl.length>1024))fail('imageUrl');
    for(const field of ['displayUrl','playUrl']){
     const value=entry[field];
     if(field==='displayUrl'?typeof value!=='string':value!==undefined&&value!==''){

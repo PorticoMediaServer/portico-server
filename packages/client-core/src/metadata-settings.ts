@@ -1,3 +1,4 @@
+import {routePath} from "../../contracts/src/routes.ts";
 import {unreadableServerResponse} from './server-messages.ts';
 export type MetadataSettings=Readonly<{revision:number;localArtworkLimitBytes:number;localArtworkUsedBytes:number;includeAdult:boolean;tmdbCredentialConfigured:boolean;tvdbCredentialConfigured:boolean}>;
 export type MetadataSettingsChange=Readonly<{expectedRevision:number;localArtworkLimitBytes:number;includeAdult:boolean;tmdbReadToken?:string;tvdbProjectKey?:string}>;
@@ -9,7 +10,7 @@ export function parseMetadataSettings(raw:unknown):MetadataSettings{
  return Object.freeze({localArtworkUsedBytes:v.localArtworkUsedBytes,revision:v.revision,localArtworkLimitBytes:v.localArtworkLimitBytes,includeAdult:v.includeAdult,tmdbCredentialConfigured:v.tmdbCredentialConfigured,tvdbCredentialConfigured:v.tvdbCredentialConfigured});
 }
 type Request=<T>(path:string,method?:string,body?:unknown)=>Promise<T>;
-export function metadataSettingsService(request:Request){const path='/v1/admin/metadata/settings';return Object.freeze({async read(){return parseMetadataSettings(await request<unknown>(path));},async save(change:MetadataSettingsChange){return parseMetadataSettings(await request<unknown>(path,'PUT',change));}});}
+export function metadataSettingsService(request:Request){const path=routePath("get_metadata_settings");return Object.freeze({async read(){return parseMetadataSettings(await request<unknown>(path));},async save(change:MetadataSettingsChange){return parseMetadataSettings(await request<unknown>(path,'PUT',change));}});}
 const GIBIBYTE=2**30;
 /** The stored artwork limit as its field shows it, in gigabytes: a whole number where it is one, otherwise up to two places. */
 export function artworkLimitText(bytes:number):string{const gb=bytes/GIBIBYTE;return Number.isInteger(gb)?String(gb):gb.toFixed(2).replace(/0+$/,'').replace(/\.$/,'');}

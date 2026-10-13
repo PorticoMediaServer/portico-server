@@ -1,3 +1,4 @@
+import {routePath} from "../../../contracts/src/routes.ts";
 /**
  * Shared guide adapter: current servers page globally ordered channel rows and
  * summarize sources without loading programmes; visible programme blocks name
@@ -43,7 +44,7 @@ function query(route: GuideRoute, cursor: string, select: GuideSelection = {}): 
   if (route.favorites !== undefined) q.set('favorites', String(route.favorites));
   if (route.includeHidden) q.set('includeHidden', 'true');
   if (route.group) q.set('group', route.group);
-  return '/v1/guide?' + q.toString();
+  return routePath("get_guide") + "?" + (q.toString());
 }
 
 /** Every page of one window, in order. */
@@ -227,7 +228,7 @@ export function legacyGuideSource(api:ChannelApi,serverId:string,o:LegacyGuideOp
    const q=new URLSearchParams({kind:o.kind,sourceId:o.sourceId,timezone:o.timezone,sort:o.sort??'server',limit:'1',anchorChannelId:native.id,anchorSourceId:native.sourceId,anchorProvenance:native.provenance,direction:delta>0?'next':'previous'});
    if(o.group)q.set('group',o.group);if(o.favorites!==undefined)q.set('favorites',String(o.favorites));if(o.includeHidden)q.set('includeHidden','true');if(revision)q.set('revision',revision);
    try{
-    const page=parseGuideDirectory(await api.request('/v1/guide/channels?'+q,'GET',undefined,signal),serverId,undefined,1);
+    const page=parseGuideDirectory(await api.request(routePath("get_guide_channels") + "?" + (q),'GET',undefined,signal),serverId,undefined,1);
     if(signal.aborted)throw signal.reason??new Error('aborted');
     if(revision&&revision!==page.revision||viewerFence&&viewerFence!==page.viewerFence)throw Object.assign(new Error('The guide changed. Refresh this view.'),{code:'guide_refresh_required',retryable:true});
     revision=page.revision;viewerFence=page.viewerFence;
@@ -247,7 +248,7 @@ export function legacyGuideSource(api:ChannelApi,serverId:string,o:LegacyGuideOp
    const q=new URLSearchParams({kind:o.kind,sourceId:o.sourceId,timezone:o.timezone,sort:o.sort??'server',offset:String(from),limit:String(limit)});
    if(o.group)q.set('group',o.group);if(o.favorites!==undefined)q.set('favorites',String(o.favorites));if(o.includeHidden)q.set('includeHidden','true');if(revision)q.set('revision',revision);
    try{
-    const page=parseGuideDirectory(await api.request('/v1/guide/channels?'+q,'GET',undefined,signal),serverId,from,limit);
+    const page=parseGuideDirectory(await api.request(routePath("get_guide_channels") + "?" + (q),'GET',undefined,signal),serverId,from,limit);
     if(signal.aborted)throw signal.reason??new Error('aborted');
     if(revision&&revision!==page.revision||viewerFence&&viewerFence!==page.viewerFence)throw Object.assign(new Error('The guide changed. Refresh this view.'),{code:'guide_refresh_required',retryable:true});
     mode='windowed';revision=page.revision;viewerFence=page.viewerFence;

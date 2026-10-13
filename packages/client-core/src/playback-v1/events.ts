@@ -1,3 +1,4 @@
+import {routePath} from "../../../contracts/src/routes.ts";
 /**
  * The one event feed (spec §15; style guide amendment 8; Public API ARCH-API-07): `/v1/events` as
  * SSE, with a long-poll fallback (`GET /v1/events?after=<id>&waitSeconds=25` → `{events, nextAfter}`).
@@ -8,7 +9,7 @@
  * - `stream.resync` (the cursor fell out of the server's ring, or the client was too slow) tells
  *   every subscriber to refetch what it shows. `stream.closed` reconnects after `reconnectAfterMs`.
  * - Streaming falls back to long-poll when the platform can't stream, the server refuses
- *   (`409 stream_exists`, 404, 405), or the stream keeps failing.
+ *   (404 or 405), or the stream keeps failing.
  * - Redelivered events (after a reconnect) are dropped by id.
  */
 import {call, type V1Http} from './http.ts';
@@ -159,7 +160,12 @@ export class EventsClient {
       } catch (e) {
         if (signal.aborted) break;
         const status = (e as {status?: unknown} | null)?.status;
-        if (streaming) this.streamFailures = status === 409 || status === 404 || status === 405 ? Infinity : this.streamFailures + 1;
+        if (streaming) {
+          // An overlapping reconnect retires the previous stream. It is a
+          // transient conflict, so keep streaming and retry with the cursor.
+          if (status === 404 || status === 405) this.streamFailures = Infinity;
+          else if (status !== 409) this.streamFailures++;
+        }
         failures++;
         this.setStatus({connected: false, failures});
         const directed = (e as {retryAfterMs?: unknown} | null)?.retryAfterMs;
@@ -210,7 +216,7 @@ export class EventsClient {
   private async pollOnce(signal: AbortSignal): Promise<number> {
     const wait = Math.max(1, Math.min(this.o.waitSeconds ?? 25, 25));
     const cursor = this.status.cursor;
-    const r = await call(this.o.http, {method: 'GET', path: `/v1/events?waitSeconds=${wait}${cursor ? `&after=${encodeURIComponent(cursor)}` : ''}`, signal});
+    const r = await call(this.o.http, {method: 'GET', path: routePath("get_events") + "?waitSeconds=" + (wait) + (cursor ? `&after=${encodeURIComponent(cursor)}` : ''), signal});
     if (signal.aborted) return 0;
     this.setStatus({connected: true});
     const b = r.body as {events?: unknown; nextAfter?: unknown} | undefined;

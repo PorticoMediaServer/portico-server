@@ -49,7 +49,7 @@ func storageFailure(w http.ResponseWriter, e error) {
 	write(w, status, map[string]any{"error": map[string]any{"code": code, "message": publicErrorMessage(code), "retryable": false, "serverTime": time.Now().UTC().Format(time.RFC3339Nano)}})
 }
 func (d Dependencies) mountRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("GET /v1/storage/mounts", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "GET /v1/storage/mounts", func(w http.ResponseWriter, r *http.Request) {
 		_, scope, e := d.storageOwner(r)
 		if e != nil {
 			storageFailure(w, e)
@@ -84,7 +84,7 @@ func (d Dependencies) mountRoutes(mux *http.ServeMux) {
 		}
 		write(w, 200, map[string]any{"scope": scope, "revision": after, "limits": map[string]int{"definitions": 8, "active": 4}, "mounts": rows, "mountSupported": mounts.MountSupported()})
 	})
-	mux.HandleFunc("GET /v1/storage/operations/{id}", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "GET /v1/storage/operations/{id}", func(w http.ResponseWriter, r *http.Request) {
 		p, scope, e := d.storageOwner(r)
 		if e != nil {
 			storageFailure(w, e)
@@ -110,7 +110,7 @@ func (d Dependencies) mountRoutes(mux *http.ServeMux) {
 		}{scope, receipt})
 	})
 	for _, route := range []struct{ path, action string }{{"POST /v1/storage/mounts", "create"}, {"POST /v1/storage/mounts/{id}/actions", ""}, {"DELETE /v1/storage/mounts/{id}", "delete"}} {
-		mux.HandleFunc(route.path, func(w http.ResponseWriter, r *http.Request) {
+		d.httpHandle(mux, route.path, func(w http.ResponseWriter, r *http.Request) {
 			p, scope, e := d.storageOwner(r)
 			if e != nil {
 				storageFailure(w, e)

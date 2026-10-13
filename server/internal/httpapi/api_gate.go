@@ -380,6 +380,9 @@ func (d Dependencies) patternScope(pattern, method, escapedPath string) apikit.S
 		registry = d.self.registry
 	}
 	if registry != nil {
+		if m, ok := registry.MetadataForPattern(pattern); ok {
+			return m.Requires
+		}
 		if m, ok := registry.Lookup(method, escapedPath); ok && muxPattern(m.Method, m.Path) == pattern {
 			if listed && legacy != m.Requires {
 				return apikit.ScopeSession

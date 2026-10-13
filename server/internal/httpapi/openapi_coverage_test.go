@@ -1,24 +1,26 @@
 package httpapi
 
 import (
+	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
 	"testing"
+
+	"portico.local/apikit"
 )
 
 // The published API document must describe every route this package registers.
 // Standing principle 2a.1 of the Feature Depth Program requires third parties to
 // be able to build players and automations against a documented endpoint for
 // everything a first-party client can do, so an undocumented route is a defect
-// rather than an omission. This test reads server/api/openapi.yaml as
-// text — the module has no YAML dependency and does not need one for a document
-// whose path keys are a two-space-indented block — and fails when the code and
-// the document drift apart.
+// rather than an omission. This test reads the generated JSON artifact and
+// fails when the live registry, source bindings and published document drift.
 
-const openAPIPath = "../../api/openapi.yaml"
+const openAPIPath = "../../api/portico.openapi.json"
 
 var (
 	// "METHOD /path" as registered with mux.HandleFunc / mux.Handle.
@@ -26,9 +28,6 @@ var (
 	// A bare path literal that some handlers concatenate a method onto, or
 	// compare r.URL.Path against.
 	pathLiteral = regexp.MustCompile(`"(/(?:v[0-9]+|health)/[^"]*)"`)
-	// Path keys in the document's paths: block.
-	specPathKey = regexp.MustCompile(`^  (/\S*):\s*$`)
-	specMethod  = regexp.MustCompile(`^    (get|post|put|patch|delete|head|options):\s*$`)
 )
 
 // composedRoutes are registered from fragments joined at run time, so a source
@@ -88,46 +87,25 @@ type specIndex struct {
 
 func readSpec(t *testing.T) specIndex {
 	t.Helper()
-	// Feature areas may keep their own spec next to the main document
-	// (browse.openapi.yaml, home.openapi.yaml, …); every file counts.
-	files, _ := filepath.Glob(filepath.Join(filepath.Dir(openAPIPath), "*.openapi.yaml"))
-	files = append([]string{openAPIPath}, files...)
-	var combined strings.Builder
-	for _, name := range files {
-		raw, err := os.ReadFile(name)
-		if err != nil {
-			t.Fatalf("read %s: %v", name, err)
-		}
-		combined.Write(raw)
-		combined.WriteString("\n")
+	raw, err := os.ReadFile(openAPIPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc struct {
+		Paths map[string]map[string]json.RawMessage `json:"paths"`
+	}
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		t.Fatal(err)
 	}
 	index := specIndex{operations: map[string]bool{}}
-	inPaths, current := false, ""
-	for _, line := range strings.Split(combined.String(), "\n") {
-		trimmed := strings.TrimRight(line, "\r")
-		if trimmed == "paths:" {
-			inPaths = true
-			continue
-		}
-		if !inPaths {
-			continue
-		}
-		// A top-level key (components:, tags:, …) ends the paths block.
-		if trimmed != "" && !strings.HasPrefix(trimmed, " ") {
-			inPaths = false
-			continue
-		}
-		if m := specPathKey.FindStringSubmatch(trimmed); m != nil {
-			current = m[1]
-			index.paths = append(index.paths, current)
-			continue
-		}
-		if m := specMethod.FindStringSubmatch(trimmed); m != nil && current != "" {
-			index.operations[strings.ToUpper(m[1])+" "+current] = true
+	for path, methods := range doc.Paths {
+		index.paths = append(index.paths, path)
+		for method := range methods {
+			index.operations[strings.ToUpper(method)+" "+path] = true
 		}
 	}
 	if len(index.operations) == 0 {
-		t.Fatalf("no operations parsed from %s", openAPIPath)
+		t.Fatal("generated OpenAPI has no operations")
 	}
 	return index
 }
@@ -171,14 +149,16 @@ func (s specIndex) hasPrefix(prefix string) bool {
 
 func TestOpenAPICoversRegisteredRoutes(t *testing.T) {
 	spec := readSpec(t)
-	// Migrated routes are documented from their live typed registry.
+	// The published artifact must cover the live registry; do not add its
+	// declarations to the parsed document, which would hide stale generation.
 	foundation, err := FoundationRegistry(Dependencies{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, route := range foundation.Definitions() {
-		spec.paths = append(spec.paths, route.Path)
-		spec.operations[route.Method+" "+route.Path] = true
+		if !spec.operations[route.Method+" "+route.Path] {
+			t.Errorf("generated document is missing %s %s", route.Method, route.Path)
+		}
 	}
 
 	missing := map[string]string{}
@@ -213,14 +193,16 @@ func TestOpenAPICoversRegisteredRoutes(t *testing.T) {
 
 func TestOpenAPICoversPathLiterals(t *testing.T) {
 	spec := readSpec(t)
-	// Migrated routes are documented from their live typed registry.
+	// The published artifact must cover the live registry; do not add its
+	// declarations to the parsed document, which would hide stale generation.
 	foundation, err := FoundationRegistry(Dependencies{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, route := range foundation.Definitions() {
-		spec.paths = append(spec.paths, route.Path)
-		spec.operations[route.Method+" "+route.Path] = true
+		if !spec.operations[route.Method+" "+route.Path] {
+			t.Errorf("generated document is missing %s %s", route.Method, route.Path)
+		}
 	}
 
 	missing := map[string]string{}
@@ -246,5 +228,28 @@ func report(t *testing.T, missing map[string]string, message string) {
 	sort.Strings(keys)
 	for _, key := range keys {
 		t.Errorf("%s: %q (%s)", message, key, missing[key])
+	}
+}
+
+// Published schemas and policy metadata must change together with the router.
+func TestPublishedOpenAPIMatchesRegistry(t *testing.T) {
+	registry, err := FoundationRegistry(Dependencies{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	components, wire, err := PublishedSchemas()
+	if err != nil {
+		t.Fatal(err)
+	}
+	generated, err := apikit.GenerateWith(registry.Definitions(), apikit.Options{Errors: registry.ErrorDefinitions(), Components: components, WireSchemas: wire})
+	if err != nil {
+		t.Fatal(err)
+	}
+	published, err := os.ReadFile(openAPIPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(generated.OpenAPI, published) {
+		t.Fatal("published API differs from the registry; regenerate with go run ./cmd/apigen")
 	}
 }

@@ -76,7 +76,7 @@ func backupRouteError(err error) error {
 }
 
 func registerBackups(registry *apikit.Registry, d Dependencies) error {
-	err := apikit.Register(registry, apikit.Route[struct{}, struct{}]{Metadata: apikit.Metadata{
+	err := apikit.Register(registry, apikit.Route[struct{}, struct{}]{Metadata: apikit.Metadata{Admission: laneAdmin,
 		ID: "post_admin_restart", Method: "POST", Path: "/v1/admin/restart", Summary: "Restart the server", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Cost: apikit.Constant, OptionalBody: true, BodyLimit: 4096, Status: 202, Errors: []string{"unauthorized", "administration_unavailable"},
 	}, Handler: func(ctx context.Context, r *http.Request, _ struct{}) (struct{}, error) {
 		if _, err := d.ownerContext(ctx, r); err != nil {
@@ -91,7 +91,7 @@ func registerBackups(registry *apikit.Registry, d Dependencies) error {
 	if err != nil {
 		return err
 	}
-	err = apikit.Register(registry, apikit.Route[struct{}, BackupsDocument]{Metadata: apikit.Metadata{
+	err = apikit.Register(registry, apikit.Route[struct{}, BackupsDocument]{Metadata: apikit.Metadata{Admission: laneAdminHeavy,
 		ID: "get_admin_backups", Method: "GET", Path: "/v1/admin/backups", Summary: "List server backups and restore status", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Cost: apikit.Constant, Status: 200, Errors: []string{"unauthorized", "administration_unavailable", "internal"},
 	}, Handler: func(ctx context.Context, r *http.Request, _ struct{}) (BackupsDocument, error) {
 		out := BackupsDocument{Backups: []backup.Info{}}
@@ -121,7 +121,7 @@ func registerBackups(registry *apikit.Registry, d Dependencies) error {
 	if err != nil {
 		return err
 	}
-	err = apikit.Register(registry, apikit.Route[StartBackupRequest, StartBackupResponse]{Metadata: apikit.Metadata{
+	err = apikit.Register(registry, apikit.Route[StartBackupRequest, StartBackupResponse]{Metadata: apikit.Metadata{Admission: laneAdminHeavy,
 		ID: "post_admin_backups", Method: "POST", Path: "/v1/admin/backups", Summary: "Start a server backup", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Cost: apikit.Constant, BodyLimit: 4096, Status: 202, Errors: []string{"unauthorized", "invalid_request", "request_in_progress", "insufficient_disk", "administration_unavailable", "internal"},
 	}, Handler: func(ctx context.Context, r *http.Request, body StartBackupRequest) (StartBackupResponse, error) {
 		if d.Backups == nil {
@@ -139,7 +139,7 @@ func registerBackups(registry *apikit.Registry, d Dependencies) error {
 	if err != nil {
 		return err
 	}
-	err = apikit.Register(registry, apikit.Route[struct{}, struct{}]{Metadata: apikit.Metadata{
+	err = apikit.Register(registry, apikit.Route[struct{}, struct{}]{Metadata: apikit.Metadata{Admission: laneAdminHeavy,
 		ID: "delete_admin_backup", Method: "DELETE", Path: "/v1/admin/backups/{id}", Summary: "Delete a server backup", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Cost: apikit.Constant, Status: 204, Errors: []string{"unauthorized", "invalid_request", "not_found", "administration_unavailable", "internal"},
 	}, Handler: func(ctx context.Context, r *http.Request, _ struct{}) (struct{}, error) {
 		if d.Backups == nil {
@@ -156,7 +156,7 @@ func registerBackups(registry *apikit.Registry, d Dependencies) error {
 	if err != nil {
 		return err
 	}
-	err = apikit.Register(registry, apikit.Route[RestoreBackupRequest, StartBackupResponse]{Metadata: apikit.Metadata{
+	err = apikit.Register(registry, apikit.Route[RestoreBackupRequest, StartBackupResponse]{Metadata: apikit.Metadata{Admission: laneAdminLong,
 		ID: "post_admin_backups_restore", Method: "POST", Path: "/v1/admin/backups/restore", Summary: "Start restoring a backup", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Cost: apikit.Constant, BodyLimit: 4096, Status: 202, Errors: []string{"unauthorized", "invalid_request", "request_in_progress", "restore_lock_unavailable", "restore_source_invalid", "restore_schema_newer", "restore_pre_release", "restore_integrity_failed", "restore_not_portico", "insufficient_disk", "administration_unavailable", "internal"},
 	}, Handler: func(ctx context.Context, r *http.Request, body RestoreBackupRequest) (StartBackupResponse, error) {
 		if d.Backups == nil {
@@ -180,7 +180,7 @@ func registerBackups(registry *apikit.Registry, d Dependencies) error {
 	if err != nil {
 		return err
 	}
-	err = apikit.Register(registry, apikit.Route[struct{}, StatePermissionsDocument]{Metadata: apikit.Metadata{
+	err = apikit.Register(registry, apikit.Route[struct{}, StatePermissionsDocument]{Metadata: apikit.Metadata{Admission: laneAdminHeavy,
 		ID: "post_admin_state_permissions_fix", Method: "POST", Path: "/v1/admin/state-permissions:fix", Summary: "Tighten state folder permissions", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Cost: apikit.Constant, BodyLimit: 4096, OptionalBody: true, Status: 200, Errors: []string{"unauthorized", "administration_unavailable", "internal"},
 	}, Handler: func(ctx context.Context, r *http.Request, _ struct{}) (StatePermissionsDocument, error) {
 		if d.Administration == nil || d.Console == nil || d.Administration.StateDirectory() == "" {
