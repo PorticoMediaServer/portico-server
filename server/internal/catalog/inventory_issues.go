@@ -13,7 +13,7 @@ func InventoryIssueTx(ctx context.Context, tx *sql.Tx, job string, issue storage
 	if !filepath.IsLocal(issue.Path) || len(issue.Path) > 16384 || issue.Reason == "" || len(issue.Reason) > 128 {
 		return ErrAdminQuery
 	}
-	result, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO inventory_scan_issues(job_id,relative_path,reason,protect,warning) VALUES(?,?,?,?,?)`, job, issue.Path, issue.Reason, issue.Protect, issue.Warning)
+	result, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO inventory_scan_issues(job_id,relative_path,reason,line,protect,warning) VALUES(?,?,?,?,?,?)`, job, issue.Path, issue.Reason, issue.Line, issue.Protect, issue.Warning)
 	if err != nil {
 		return err
 	}

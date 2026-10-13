@@ -216,6 +216,7 @@ index identity_refresh_receipts_expiry
 index identity_refresh_receipts_family
 index identity_unknown_attempts_age
 index inventory_analysis_pending
+index inventory_artwork_sources_role
 index inventory_changes_source
 index inventory_directories_pending
 index inventory_directories_visited
@@ -228,6 +229,7 @@ index inventory_objects_identity
 index inventory_objects_missing
 index inventory_objects_path
 index inventory_objects_source
+index inventory_runs_retention
 index inventory_runs_source
 index inventory_runs_turn
 index inventory_scan_issues_job
@@ -235,6 +237,7 @@ index inventory_scan_issues_protected
 index inventory_sidecars_directory
 index inventory_version_links_item
 index item_extras_asset
+index item_extras_owner
 index item_extras_parent
 index jobs_directory
 index jobs_library_directory
@@ -702,6 +705,7 @@ table identity_refresh_predecessors
 table identity_refresh_receipts
 table identity_unknown_attempts
 table inventory_analysis_queue
+table inventory_artwork_sources
 table inventory_changes
 table inventory_directories
 table inventory_directory_cache
@@ -716,6 +720,8 @@ table inventory_sidecar_changes
 table inventory_sidecars
 table inventory_source_active
 table inventory_version_links
+table inventory_video_ids
+table inventory_video_names
 table item_extras
 table job_observations
 table jobs
@@ -1654,6 +1660,8 @@ trigger screen_source_change
 trigger screen_wake_item_assets_DELETE
 trigger screen_wake_item_assets_INSERT
 trigger screen_wake_item_assets_UPDATE
+trigger screen_wake_video_names_INSERT
+trigger screen_wake_video_names_UPDATE
 trigger screen_wake_video_nfo_evidence_DELETE
 trigger screen_wake_video_nfo_evidence_INSERT
 trigger screen_wake_video_nfo_evidence_UPDATE

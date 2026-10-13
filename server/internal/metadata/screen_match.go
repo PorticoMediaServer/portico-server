@@ -99,6 +99,18 @@ func screenQueries(b screenBase) ([]string, int, []metadataprovider.ScreenID) {
 	ids := []metadataprovider.ScreenID{}
 	idseen := map[metadataprovider.ScreenID]bool{}
 	year := b.Year
+	fileWins := false
+	fileNames := map[string]bool{}
+	fileProviders := map[string]bool{}
+	for _, e := range b.Evidence {
+		if (e.Source == string(naming.FileName) || e.Source == string(naming.EmbeddedMetadata)) && e.Confidence >= .8 {
+			fileWins = true
+			fileNames[normalizedScreenName(e.Title)] = true
+			for _, id := range e.IDs {
+				fileProviders[id.Provider] = true
+			}
+		}
+	}
 	for _, evidence := range b.Evidence[:min(len(b.Evidence), 16)] {
 		if year == 0 && evidence.Year > 0 {
 			year = evidence.Year
@@ -127,8 +139,13 @@ func screenQueries(b screenBase) ([]string, int, []metadataprovider.ScreenID) {
 		return out, year, ids
 	}
 	for _, evidence := range b.Evidence[:min(len(b.Evidence), 16)] {
-		add(evidence.Title)
+		if !fileWins || (evidence.Source == string(naming.FileName) || evidence.Source == string(naming.EmbeddedMetadata)) || fileNames[normalizedScreenName(evidence.Title)] {
+			add(evidence.Title)
+		}
 		for _, id := range evidence.IDs {
+			if evidence.Source != string(naming.FileName) && evidence.Source != string(naming.EmbeddedMetadata) && fileWins && (fileProviders[id.Provider] || !fileNames[normalizedScreenName(evidence.Title)]) {
+				continue
+			}
 			addID(id)
 		}
 	}

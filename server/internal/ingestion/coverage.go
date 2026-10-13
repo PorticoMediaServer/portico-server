@@ -24,7 +24,8 @@ func (s *Service) excludeDirectory(ctx context.Context, job, relative, reason st
 	}
 	defer gated.Rollback()
 	tx := gated.Tx()
-	if _, err = catalog.InventoryFenceTx(ctx, tx, job); err != nil {
+	source, err := catalog.InventoryFenceTx(ctx, tx, job)
+	if err != nil {
 		return err
 	}
 	if err = catalog.InventoryIssueTx(ctx, tx, job, storage.InventoryIssue{Path: filepath.Clean(relative), Reason: reason, Protect: true, Warning: true}); err != nil {
@@ -32,6 +33,11 @@ func (s *Service) excludeDirectory(ctx context.Context, job, relative, reason st
 	}
 	if _, err = tx.ExecContext(ctx, `UPDATE inventory_directories SET state='blocked',cursor='' WHERE job_id=? AND relative_path=?`, job, relative); err != nil {
 		return err
+	}
+	if reason == "directory_changed" {
+		if err = recordNoticeTx(ctx, tx, source.ID, relative, time.Now().UnixMilli()); err != nil {
+			return err
+		}
 	}
 	return gated.Commit()
 }

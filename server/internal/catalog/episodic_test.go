@@ -82,11 +82,11 @@ func TestEpisodeStackSuffixAcceptance(t *testing.T) {
 	}{
 		{"Cowboy Bebop/Season 01/Cowboy Bebop - S01E12 - Jupiter Jazz (Part 1).mkv", "tv", 1, []int{12}, ""},
 		{"Show/Season 01/Show - S01E05 - The Part 2 Problem.mkv", "tv", 1, []int{5}, ""},
-		{"Show/Season 01/Show - S01E05 - pt1.mkv", "tv", 0, nil, "multipart_episode_requires_assignment"},
-		{"Show/Season 01/Show - S01E05 - pt2.mkv", "tv", 0, nil, "multipart_episode_requires_assignment"},
-		{"Show/Season 01/Show.S01E05.part2.mkv", "tv", 0, nil, "multipart_episode_requires_assignment"},
-		{"Show/Season 01/Show S01E05 cd1.mkv", "tv", 0, nil, "multipart_episode_requires_assignment"},
-		{"Show/Season 01/Show - S01E05 - Title - Disc 2.mkv", "tv", 0, nil, "multipart_episode_requires_assignment"},
+		{"Show/Season 01/Show - S01E05 - pt1.mkv", "tv", 1, []int{5}, ""},
+		{"Show/Season 01/Show - S01E05 - pt2.mkv", "tv", 1, []int{5}, ""},
+		{"Show/Season 01/Show.S01E05.part2.mkv", "tv", 1, []int{5}, ""},
+		{"Show/Season 01/Show S01E05 cd1.mkv", "tv", 1, []int{5}, ""},
+		{"Show/Season 01/Show - S01E05 - Title - Disc 2.mkv", "tv", 1, []int{5}, ""},
 	}
 	for _, c := range cases {
 		t.Run(c.path, func(t *testing.T) {

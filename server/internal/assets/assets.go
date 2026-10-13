@@ -13,6 +13,7 @@ import (
 	"portico.local/server/internal/audiotags"
 	"portico.local/server/internal/mediaexec"
 	"portico.local/server/internal/mediatools"
+	"portico.local/server/internal/naming"
 	"portico.local/server/internal/storage"
 	"portico.local/server/internal/subtitles"
 	"strconv"
@@ -26,6 +27,9 @@ type Chapter struct {
 	End   float64 `json:"endSeconds"`
 }
 type Facts struct {
+	VideoName           naming.Embedded      `json:"-"`
+	VideoNameSkipped    bool                 `json:"-"`
+	ArtworkObserved     bool                 `json:"-"`
 	AnalysisAlgorithm   string               `json:"-"`
 	SubtitleTextPending bool                 `json:"-"`
 	VideoMetadata       []VideoNFO           `json:"-"`
@@ -103,7 +107,7 @@ func (p Probe) inspect(ctx context.Context, path string, options []string) (Fact
 	if bin == "" {
 		bin = mediatools.Resolve("ffprobe")
 	}
-	args := append(options, []string{"-v", "error", "-show_format", "-show_streams", "-show_chapters", "-show_entries", "format:stream:chapter:format_tags=:stream_tags=language,title:chapter_tags=title", "-of", "json", path}...)
+	args := append(options, []string{"-v", "error", "-show_format", "-show_streams", "-show_chapters", "-show_entries", "format:stream:chapter:format_tags=title,show,tv_show,year,date,season_number,episode_sort,edition,imdb,imdbid,tmdb,tmdbid,tvdb,tvdbid,anilist,anilistid:stream_tags=language,title:chapter_tags=title", "-of", "json", path}...)
 	out := &boundedBuffer{limit: 1 << 20}
 	var runErr error
 	if p.ReadGuard != nil {
@@ -259,6 +263,9 @@ func (p Probe) inspect(ctx context.Context, path string, options []string) (Fact
 		} else {
 			f.LocalMetadataIssue = "unreadable_audio_tags"
 		}
+	}
+	if f.VideoCodec != "" {
+		f.VideoName, f.VideoNameSkipped = EmbeddedVideoName(raw.Format.Tags)
 	}
 	f.Chapters, f.ChapterStatus = CleanChapters(f.Chapters, f.Duration)
 	if f.ChapterStatus == "partial" {

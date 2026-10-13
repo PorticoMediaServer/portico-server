@@ -52,7 +52,7 @@ func inventoryStreamHelper(r InventoryRequest, out io.Writer) error {
 	for {
 		page, err := LocalInventoryPage(r)
 		if err != nil {
-			return err
+			return inventoryFailure(err, out)
 		}
 		if err = encoder.Encode(page); err != nil {
 			return err
@@ -287,6 +287,9 @@ func (s *inventoryStream) produce(ctx context.Context) {
 			}
 			if err != nil {
 				return err
+			}
+			if page.ErrorCode != "" {
+				return inventoryCodeError(page.ErrorCode)
 			}
 			if final != nil || len(page.Entries) > 128 || page.RootIdentity == "" || page.DirectoryIdentity == "" || page.DirectoryRevision == "" {
 				return ErrInventoryChanged

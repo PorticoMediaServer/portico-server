@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"log"
 	"path/filepath"
 	"portico.local/server/internal/assets"
 	"portico.local/server/internal/catalog"
@@ -323,6 +324,9 @@ func (s *Service) Run(ctx context.Context) {
 	// Everything this loop writes is bulk catalogue work, so it queues behind
 	// playback, authentication and interactive edits at the write gate.
 	ctx = dbwork.WithClass(ctx, dbwork.ClassBackgroundMedia)
+	monitorDone := make(chan struct{})
+	supervise.Go("ingestion.monitor", func() { defer close(monitorDone); s.runMonitor(ctx) })
+	defer func() { <-monitorDone }()
 	var workers sync.WaitGroup
 	defer workers.Wait()
 	defer func() {
@@ -343,6 +347,8 @@ func (s *Service) Run(ctx context.Context) {
 	// floored, so on its own it paced every source at one bounded step per poll
 	// however idle the machine was.
 	advanced := workerloop.NewSignal()
+	pruneAfter := ""
+	nextPrune := time.Time{}
 	workerloop.RunWith(ctx, "ingestion.scan", advanced, wake, func(ctx context.Context) time.Duration {
 		pending := false
 		{
@@ -350,6 +356,20 @@ func (s *Service) Run(ctx context.Context) {
 			s.recoverPolicyChanges(ctx)
 			s.schedule(ctx)
 			s.startWaitingReports(ctx)
+			if !time.Now().Before(nextPrune) {
+				var source string
+				if e := s.db.QueryRowContext(ctx, `SELECT id FROM library_sources WHERE id>? ORDER BY id LIMIT 1`, pruneAfter).Scan(&source); e == nil {
+					more, _ := s.PruneSource(ctx, source)
+					if more {
+						advanced.Wake()
+					} else {
+						pruneAfter = source
+					}
+				} else {
+					pruneAfter = ""
+					nextPrune = time.Now().Add(time.Minute)
+				}
+			}
 			rows, err := s.db.QueryContext(ctx, `SELECT j.id,j.library_id,r.source_id,r.phase FROM jobs j JOIN inventory_runs r ON r.job_id=j.id WHERE j.status IN('queued','running') ORDER BY r.last_turn,j.created_at,j.id LIMIT 16`)
 			if err != nil {
 				return time.Second
@@ -422,7 +442,11 @@ func (s *Service) Run(ctx context.Context) {
 		if pending {
 			return time.Minute
 		}
-		return s.nextScheduledScan(ctx)
+		due := s.nextScheduledScan(ctx)
+		if due == 0 || due > time.Minute {
+			due = time.Minute
+		}
+		return due
 	})
 }
 
@@ -511,6 +535,8 @@ func (s *Service) processQuantum(ctx context.Context, id, library string) bool {
 		err = s.inventoryPage(ctx, id, source)
 	case "legacy_inventory":
 		err = s.adoptLegacyPage(ctx, id, source)
+	case "extras":
+		err = s.attachExtrasPage(ctx, id, source)
 	case "verifying":
 		err = s.verifyPage(ctx, id, source)
 	case "reconciling":
@@ -525,6 +551,7 @@ func (s *Service) processQuantum(ctx context.Context, id, library string) bool {
 		err = catalog.ErrAdminQuery
 	}
 	if err != nil && ctx.Err() == nil && !errors.Is(err, context.Canceled) && !errors.Is(err, storage.ErrBusy) {
+		log.Printf("library scan step %s failed: %v", phase, err)
 		s.fail(ctx, id, sourceID, err)
 	}
 	if err != nil || ctx.Err() != nil {

@@ -12,15 +12,15 @@ import (
 
 // EpisodeParserVersion names how ParseEpisode reads a file name. Bump it with
 // every change to that reading: sources the old reading left with a naming
-// issue are read again once (ReparseEpisodicIssues), because a scan never
-// re-reads a file whose directory hasn't changed.
+// issue are read again once (ReparseEpisodicIssues), so saved issues become usable without waiting for another scan.
 //
 //	1: the original reader.
 //	2: NEW-26, only a trailing stack suffix ("- pt1", ".part2", "cd1") is a
 //	   stacked part; "Jupiter Jazz (Part 1)" is a title.
 //
 // 3: shared path evidence, file precedence and flat/translated season layouts.
-const EpisodeParserVersion = 3
+// 4: episode zero and stacked episode parts can be attached.
+const EpisodeParserVersion = 4
 
 const episodeParserVersionKey = "catalog.episode_parser_version"
 

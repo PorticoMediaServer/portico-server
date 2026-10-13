@@ -1904,7 +1904,7 @@ CREATE TABLE library_sources (
  enabled INTEGER NOT NULL DEFAULT 1, follow_symlinks INTEGER NOT NULL DEFAULT 0,
  interval_seconds INTEGER NOT NULL DEFAULT 0 CHECK(interval_seconds=0 OR interval_seconds>=900),
  next_scan_at TEXT NOT NULL DEFAULT '', last_complete_job TEXT NOT NULL DEFAULT '',
- last_complete_at TEXT NOT NULL DEFAULT '', last_integrity_at TEXT NOT NULL DEFAULT '', last_progress_at TEXT NOT NULL DEFAULT '',
+ last_complete_at TEXT NOT NULL DEFAULT '', last_integrity_at TEXT NOT NULL DEFAULT '', changes_pruned_sequence INTEGER NOT NULL DEFAULT 0, last_progress_at TEXT NOT NULL DEFAULT '',
  UNIQUE(library_id,root)
 ) STRICT;
 CREATE TABLE library_scan_policies (
@@ -1920,7 +1920,7 @@ CREATE TABLE inventory_runs (
  job_id TEXT PRIMARY KEY REFERENCES jobs(id), source_id TEXT NOT NULL REFERENCES library_sources(id),
  source_generation INTEGER NOT NULL, root_incarnation TEXT NOT NULL, root_identity TEXT NOT NULL,
  policy_revision INTEGER NOT NULL, phase TEXT NOT NULL DEFAULT 'inventory',
- authoritative INTEGER NOT NULL DEFAULT 0, discovered INTEGER NOT NULL DEFAULT 0,
+ authoritative INTEGER NOT NULL DEFAULT 0, reported INTEGER NOT NULL DEFAULT 0, root_rebound INTEGER NOT NULL DEFAULT 0, discovered INTEGER NOT NULL DEFAULT 0,
  analyzed INTEGER NOT NULL DEFAULT 0, warnings INTEGER NOT NULL DEFAULT 0,
  reconcile_cursor TEXT NOT NULL DEFAULT '', verify_cursor TEXT NOT NULL DEFAULT '',
  last_turn TEXT NOT NULL DEFAULT '', pause_reason TEXT NOT NULL DEFAULT '',
@@ -1955,11 +1955,19 @@ CREATE TABLE inventory_changes (
 ) STRICT;
 CREATE TABLE inventory_scan_issues (
  sequence INTEGER PRIMARY KEY AUTOINCREMENT,job_id TEXT NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
- relative_path TEXT NOT NULL,reason TEXT NOT NULL,protect INTEGER NOT NULL DEFAULT 0,warning INTEGER NOT NULL DEFAULT 0,
- UNIQUE(job_id,relative_path,reason)
+ relative_path TEXT NOT NULL,reason TEXT NOT NULL,line INTEGER NOT NULL DEFAULT 0,protect INTEGER NOT NULL DEFAULT 0,warning INTEGER NOT NULL DEFAULT 0,
+ UNIQUE(job_id,relative_path,reason,line)
 ) STRICT;
 CREATE INDEX inventory_scan_issues_job ON inventory_scan_issues(job_id,sequence);
 CREATE INDEX inventory_scan_issues_protected ON inventory_scan_issues(job_id,relative_path) WHERE protect=1;
+CREATE TABLE inventory_video_names(
+ asset_id TEXT NOT NULL REFERENCES catalog_assets(token) ON DELETE CASCADE,revision TEXT NOT NULL,
+ title TEXT NOT NULL,show_title TEXT NOT NULL,year INTEGER NOT NULL,season INTEGER,number INTEGER,edition TEXT NOT NULL,ids_digest TEXT NOT NULL,PRIMARY KEY(asset_id,revision)
+) STRICT;
+CREATE TABLE inventory_video_ids(
+ asset_id TEXT NOT NULL,revision TEXT NOT NULL,
+ provider TEXT NOT NULL,provider_id TEXT NOT NULL,PRIMARY KEY(asset_id,revision,provider),FOREIGN KEY(asset_id,revision) REFERENCES inventory_video_names(asset_id,revision) ON DELETE CASCADE
+) STRICT;
 CREATE TABLE inventory_sidecars (
  source_id TEXT NOT NULL REFERENCES library_sources(id) ON DELETE CASCADE,incarnation TEXT NOT NULL,
  relative_path TEXT NOT NULL,directory_path TEXT NOT NULL,revision TEXT NOT NULL,seen_job TEXT NOT NULL,
@@ -2381,10 +2389,12 @@ CREATE TABLE item_extras(
   item_id INTEGER PRIMARY KEY REFERENCES catalog_entities(id) ON DELETE CASCADE,
   library_id TEXT NOT NULL REFERENCES libraries(id),
   parent_path TEXT NOT NULL,
+  owner_id INTEGER REFERENCES catalog_entities(id) ON DELETE SET NULL,
   kind TEXT NOT NULL CHECK(kind IN('trailer','featurette','deleted_scene','behind_the_scenes','interview','scene','short','other')),
   title TEXT NOT NULL,
   asset_id TEXT NOT NULL REFERENCES catalog_assets(token),
   relative_path TEXT NOT NULL) STRICT;
+CREATE INDEX item_extras_owner ON item_extras(owner_id,kind,item_id);
 CREATE TABLE personal_batch_receipts(profile_id TEXT NOT NULL,operation_id TEXT NOT NULL,request_hash TEXT NOT NULL,response TEXT NOT NULL,created_at TEXT NOT NULL,PRIMARY KEY(profile_id,operation_id)) STRICT;
 CREATE TABLE telemetry_rollups(
  minute_ms INTEGER PRIMARY KEY CHECK(minute_ms>0),
@@ -3732,11 +3742,17 @@ CREATE TABLE local_artwork(
  library_id TEXT NOT NULL REFERENCES libraries(id) ON DELETE CASCADE,
  kind TEXT NOT NULL CHECK(kind IN('show','season','artist','item')),
  entity_id INTEGER NOT NULL,
- role TEXT NOT NULL CHECK(role IN('poster','backdrop','logo','portrait')),
+ role TEXT NOT NULL CHECK(role IN('poster','backdrop','logo','portrait','still')),
  art_key TEXT NOT NULL,
  observed_at TEXT NOT NULL,
  PRIMARY KEY(library_id,kind,entity_id,role)
 ) STRICT;
+CREATE TABLE inventory_artwork_sources (
+ asset_id TEXT NOT NULL REFERENCES catalog_assets(token) ON DELETE CASCADE,kind TEXT NOT NULL,
+ entity_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,role TEXT NOT NULL,art_key TEXT NOT NULL,
+ PRIMARY KEY(asset_id,kind,entity_id,role)
+) STRICT;
+CREATE INDEX inventory_artwork_sources_role ON inventory_artwork_sources(kind,entity_id,role,art_key);
 CREATE VIEW inventory_asset_availability AS
  SELECT asset_id,MAX(CASE WHEN o.retired=0 AND o.state='available' AND o.unsupported_reason='' AND s.enabled=1 AND s.health NOT IN('offline','removing','root_changed') AND o.root_incarnation=s.incarnation THEN 1 ELSE 0 END) AS available
  FROM inventory_objects o JOIN library_sources s ON s.id=o.source_id GROUP BY asset_id;
@@ -3802,6 +3818,7 @@ CREATE INDEX media_analysis_item_candidates ON media_analysis_item_mappings(item
 CREATE INDEX library_sources_due ON library_sources(enabled,next_scan_at,id);
 CREATE INDEX library_sources_library ON library_sources(library_id,id);
 CREATE INDEX inventory_runs_source ON inventory_runs(source_id,job_id);
+CREATE INDEX inventory_runs_retention ON inventory_runs(source_id,finished_at,job_id);
 CREATE INDEX inventory_runs_turn ON inventory_runs(last_turn,job_id);
 CREATE UNIQUE INDEX inventory_directories_visited ON inventory_directories(job_id,identity) WHERE identity!='';
 CREATE INDEX inventory_directories_pending ON inventory_directories(job_id,state,relative_path);
@@ -4599,6 +4616,14 @@ CREATE TRIGGER tvdb_publication_item_source AFTER UPDATE OF source_revision ON m
 CREATE TRIGGER artwork_source_changed AFTER UPDATE OF source_revision,identity_revision ON metadata_publication_heads WHEN OLD.source_revision IS NOT NEW.source_revision OR OLD.identity_revision IS NOT NEW.identity_revision BEGIN
  UPDATE artwork_entity_heads SET revision=revision+1 WHERE entity_id=NEW.item_id OR entity_id IN(SELECT book_id FROM catalog_book_files WHERE entity_id=NEW.item_id);
  INSERT INTO artwork_dirty VALUES('item',NEW.item_id) ON CONFLICT(kind,entity_id) DO NOTHING;END;
+CREATE TRIGGER screen_wake_video_names_INSERT AFTER INSERT ON inventory_video_names BEGIN
+ UPDATE screen_metadata_work SET status='pending',generation=generation+1,revision=revision+1,lease='',lease_until='',next_attempt='',error=''
+ WHERE target_id IN(SELECT l.entity_id FROM catalog_assets a JOIN catalog_asset_links l ON l.asset_id=a.id WHERE a.token=NEW.asset_id
+  UNION SELECT ep.show_id FROM catalog_assets a JOIN catalog_asset_links l ON l.asset_id=a.id JOIN catalog_episodes ep ON ep.entity_id=l.entity_id WHERE a.token=NEW.asset_id);END;
+CREATE TRIGGER screen_wake_video_names_UPDATE AFTER UPDATE ON inventory_video_names BEGIN
+ UPDATE screen_metadata_work SET status='pending',generation=generation+1,revision=revision+1,lease='',lease_until='',next_attempt='',error=''
+ WHERE target_id IN(SELECT l.entity_id FROM catalog_assets a JOIN catalog_asset_links l ON l.asset_id=a.id WHERE a.token=NEW.asset_id
+  UNION SELECT ep.show_id FROM catalog_assets a JOIN catalog_asset_links l ON l.asset_id=a.id JOIN catalog_episodes ep ON ep.entity_id=l.entity_id WHERE a.token=NEW.asset_id);END;
 CREATE TRIGGER screen_wake_video_nfo_evidence_INSERT AFTER INSERT ON video_nfo_evidence BEGIN
  UPDATE screen_metadata_work SET status='pending',generation=generation+1,revision=revision+1,lease='',lease_until='',next_attempt='',error=''
  WHERE target_id IN(SELECT l.entity_id FROM catalog_assets a JOIN catalog_asset_links l ON l.asset_id=a.id WHERE a.token=NEW.asset_id

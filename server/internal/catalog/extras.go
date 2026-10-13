@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/naming"
-	"sort"
 )
 
 // Sidecar extras are recognised from the owning media folder, never from
@@ -75,6 +74,14 @@ func (s *Service) publishExtraTx(ctx context.Context, tx *sql.Tx, source Library
 	if err != nil {
 		return err
 	}
+	owner, err := ResolveExtraOwnerTx(ctx, tx, source.LibraryID, path, extra.ParentPath)
+	if err != nil {
+		return err
+	}
+	var ownerID any
+	if owner != 0 {
+		ownerID = owner
+	}
 	root, err := compactcatalog.LibraryRootTx(ctx, tx, handle)
 	if err != nil {
 		return err
@@ -86,9 +93,9 @@ func (s *Service) publishExtraTx(ctx context.Context, tx *sql.Tx, source Library
 	if err = compactcatalog.LinkAssetTx(ctx, tx, item, assetID, compactcatalog.Link{}); err != nil {
 		return err
 	}
-	_, err = tx.ExecContext(ctx, `INSERT INTO item_extras(item_id,library_id,parent_path,kind,title,asset_id,relative_path) VALUES(?,?,?,?,?,?,?)
- ON CONFLICT(item_id) DO UPDATE SET library_id=excluded.library_id,parent_path=excluded.parent_path,kind=excluded.kind,title=excluded.title,asset_id=excluded.asset_id,relative_path=excluded.relative_path`,
-		item, source.LibraryID, extra.ParentPath, extra.Kind, extra.Title, asset, filepath.ToSlash(relative))
+	_, err = tx.ExecContext(ctx, `INSERT INTO item_extras(item_id,library_id,parent_path,owner_id,kind,title,asset_id,relative_path) VALUES(?,?,?,?,?,?,?,?)
+ ON CONFLICT(item_id) DO UPDATE SET library_id=excluded.library_id,parent_path=excluded.parent_path,owner_id=excluded.owner_id,kind=excluded.kind,title=excluded.title,asset_id=excluded.asset_id,relative_path=excluded.relative_path`,
+		item, source.LibraryID, extra.ParentPath, ownerID, extra.Kind, extra.Title, asset, filepath.ToSlash(relative))
 	return err
 }
 
@@ -106,48 +113,23 @@ func (s *Service) itemExtras(profile string, item Item) ([]DetailExtra, error) {
 	if item.Kind == "extra" {
 		return out, nil
 	}
-	rows, e := s.read().Query(`SELECT DISTINCT a.path FROM catalog_entities i JOIN catalog_asset_links link ON link.entity_id=i.id JOIN catalog_assets a ON a.id=link.asset_id WHERE i.public_id=pid_blob(?)`, item.ID)
+	grouped := map[string][]string{}
+	rows, e := s.read().Query(`SELECT pid(i.public_id),e.kind FROM item_extras e JOIN catalog_entities i ON i.id=e.item_id JOIN catalog_entities owner ON owner.id=e.owner_id WHERE owner.public_id=pid_blob(?) AND e.library_id=? AND `+homeVisible("i.id")+` ORDER BY e.kind,e.title COLLATE NOCASE,e.item_id`, item.ID, item.LibraryID)
 	if e != nil {
 		return nil, e
 	}
-	folders := map[string]bool{}
 	for rows.Next() {
-		var path string
-		if e = rows.Scan(&path); e != nil {
+		var id, kind string
+		if e = rows.Scan(&id, &kind); e != nil {
 			rows.Close()
 			return nil, e
 		}
-		folders[filepath.Dir(path)] = true
+		grouped[kind] = append(grouped[kind], id)
 	}
 	e = rows.Err()
 	rows.Close()
-	if e != nil || len(folders) == 0 {
-		return out, e
-	}
-	ordered := []string{}
-	for folder := range folders {
-		ordered = append(ordered, folder)
-	}
-	sort.Strings(ordered)
-	grouped := map[string][]string{}
-	for _, folder := range ordered {
-		rows, e := s.read().Query(`SELECT pid(i.public_id),e.kind FROM item_extras e JOIN catalog_entities i ON i.id=e.item_id JOIN catalog_libraries l ON l.id=i.library_id AND l.library_id=e.library_id WHERE e.library_id=? AND e.parent_path=? AND `+homeVisible("i.id")+` ORDER BY e.kind,e.title COLLATE NOCASE,e.item_id`, item.LibraryID, folder)
-		if e != nil {
-			return nil, e
-		}
-		for rows.Next() {
-			var id, kind string
-			if e = rows.Scan(&id, &kind); e != nil {
-				rows.Close()
-				return nil, e
-			}
-			grouped[kind] = append(grouped[kind], id)
-		}
-		e = rows.Err()
-		rows.Close()
-		if e != nil {
-			return nil, e
-		}
+	if e != nil {
+		return nil, e
 	}
 	for _, kind := range ExtraKinds() {
 		ids := grouped[kind]

@@ -35,6 +35,7 @@ type InventoryRequest struct {
 	FollowSymlinks    bool   `json:"followSymlinks"`
 }
 type InventoryIssue struct {
+	Line    int    `json:"line"`
 	Path    string `json:"path"`
 	Reason  string `json:"reason"`
 	Protect bool   `json:"protect"`
@@ -42,6 +43,7 @@ type InventoryIssue struct {
 }
 
 type InventoryPage struct {
+	ErrorCode         string           `json:"errorCode,omitempty"`
 	Issues            []InventoryIssue `json:"issues,omitempty"`
 	Unstable          bool             `json:"unstable,omitempty"`
 	Remote            *RemotePage      `json:"-"`
@@ -104,6 +106,9 @@ func (c *Client) InventoryPage(ctx context.Context, key string, r InventoryReque
 		return c.retainedInventoryPage(ctx, key, r)
 	}
 	err := c.inventoryRequest(ctx, key, "inventory-page", r, &page)
+	if err == nil {
+		err = inventoryCodeError(page.ErrorCode)
+	}
 	return page, err
 }
 func (c *Client) InventoryDirectory(ctx context.Context, key string, r InventoryRequest) (Snapshot, error) {
@@ -112,6 +117,9 @@ func (c *Client) InventoryDirectory(ctx context.Context, key string, r Inventory
 		return c.remoteInventoryStat(ctx, r, true)
 	}
 	err := c.inventoryRequest(ctx, key, "inventory-directory", r, &v)
+	if err == nil {
+		err = inventoryCodeError(v.ErrorCode)
+	}
 	return v, err
 }
 
@@ -258,7 +266,7 @@ func inventoryPageHelper(r InventoryRequest, out io.Writer) error {
 	}
 	p, err := LocalInventoryPage(r)
 	if err != nil {
-		return err
+		return inventoryFailure(err, out)
 	}
 	return json.NewEncoder(out).Encode(p)
 }
@@ -356,6 +364,9 @@ func (c *Client) InventoryStat(ctx context.Context, key string, r InventoryReque
 		return c.remoteInventoryStat(ctx, r, false)
 	}
 	err := c.inventoryRequest(ctx, key, "inventory-stat", r, &v)
+	if err == nil {
+		err = inventoryCodeError(v.ErrorCode)
+	}
 	return v, err
 }
 func LocalInventoryStat(r InventoryRequest) (Snapshot, error) { return inspectInventoryObject(r) }

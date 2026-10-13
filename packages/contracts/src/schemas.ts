@@ -8886,6 +8886,87 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "GetInventoryChangesRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetInventoryChangesResponse": {
+    "properties": {
+      "hasMore": {
+        "type": "boolean"
+      },
+      "items": {
+        "items": {
+          "properties": {
+            "assetId": {
+              "type": "string"
+            },
+            "createdAt": {
+              "type": "string"
+            },
+            "jobId": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string"
+            },
+            "objectId": {
+              "type": "string"
+            },
+            "revision": {
+              "type": "string"
+            },
+            "sequence": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "sourceId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "sequence",
+            "sourceId",
+            "jobId",
+            "objectId",
+            "assetId",
+            "revision",
+            "kind",
+            "createdAt"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "nextSequence": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "oldestSequence": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "resetRequired": {
+        "type": "boolean"
+      },
+      "sourceId": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "sourceId",
+      "items",
+      "nextSequence",
+      "hasMore",
+      "resetRequired",
+      "oldestSequence"
+    ],
+    "type": "object"
+  },
   "GetItemsScreenMetadataRequest": {
     "properties": {},
     "required": [],
@@ -9706,6 +9787,342 @@ export const schemas = {
       "done",
       "failed",
       "totalKnown"
+    ],
+    "type": "object"
+  },
+  "GetLibrarySettingsRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetLibrarySettingsResponse": {
+    "properties": {
+      "analysisMatrix": {
+        "properties": {
+          "costClasses": {
+            "items": {
+              "properties": {
+                "description": {
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "order": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "description",
+                "order"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "operations": {
+            "items": {
+              "properties": {
+                "costClass": {
+                  "type": "string"
+                },
+                "defaultEnabled": {
+                  "type": "boolean"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "mediaKinds": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "network": {
+                  "type": "boolean"
+                },
+                "producesArtifacts": {
+                  "type": "boolean"
+                },
+                "requires": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "costClass",
+                "description",
+                "mediaKinds",
+                "defaultEnabled",
+                "requires",
+                "producesArtifacts",
+                "network"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "costClasses",
+          "operations"
+        ],
+        "type": "object"
+      },
+      "availableProviders": {
+        "items": {
+          "properties": {
+            "attributionNote": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            },
+            "mediaKinds": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "name": {
+              "type": "string"
+            },
+            "supportsApiKey": {
+              "type": "boolean"
+            },
+            "supportsLocale": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "id",
+            "name",
+            "mediaKinds",
+            "supportsApiKey",
+            "supportsLocale",
+            "attributionNote"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "digest": {
+        "type": "string"
+      },
+      "enumerations": {
+        "additionalProperties": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "type": "object"
+      },
+      "libraryId": {
+        "type": "string"
+      },
+      "libraryKind": {
+        "type": "string"
+      },
+      "libraryName": {
+        "type": "string"
+      },
+      "revision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "settings": {
+        "properties": {
+          "allowMediaDeletion": {
+            "type": "boolean"
+          },
+          "analysis": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "continueWatching": {
+            "properties": {
+              "includeSeasonPremieres": {
+                "nullable": true,
+                "type": "boolean"
+              },
+              "maximumItems": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "videoCompletion": {
+                "type": "string"
+              },
+              "videoPlayedThreshold": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "weeks": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "weeks",
+              "maximumItems",
+              "includeSeasonPremieres",
+              "videoPlayedThreshold",
+              "videoCompletion"
+            ],
+            "type": "object"
+          },
+          "monitorChanges": {
+            "type": "boolean"
+          },
+          "navigation": {
+            "properties": {
+              "chapterThumbnailMode": {
+                "type": "string"
+              },
+              "trickplayIntervalSeconds": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "trickplayMaxTiles": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "trickplayTileWidth": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "videoPreviewEnabled": {
+                "type": "boolean"
+              },
+              "videoPreviewSeconds": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "trickplayIntervalSeconds",
+              "trickplayTileWidth",
+              "trickplayMaxTiles",
+              "chapterThumbnailMode",
+              "videoPreviewEnabled",
+              "videoPreviewSeconds"
+            ],
+            "type": "object"
+          },
+          "providers": {
+            "items": {
+              "properties": {
+                "apiKey": {
+                  "type": "string"
+                },
+                "apiKeySet": {
+                  "type": "boolean"
+                },
+                "language": {
+                  "type": "string"
+                },
+                "mediaKind": {
+                  "type": "string"
+                },
+                "provider": {
+                  "type": "string"
+                },
+                "region": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "mediaKind",
+                "provider",
+                "apiKey",
+                "apiKeySet",
+                "language",
+                "region"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "monitorChanges",
+          "allowMediaDeletion",
+          "continueWatching",
+          "providers",
+          "analysis",
+          "navigation"
+        ],
+        "type": "object"
+      },
+      "sources": {
+        "items": {
+          "properties": {
+            "classification": {
+              "type": "string"
+            },
+            "enabled": {
+              "type": "boolean"
+            },
+            "id": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "root": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "name",
+            "root",
+            "classification",
+            "enabled"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      }
+    },
+    "required": [
+      "libraryId",
+      "libraryName",
+      "libraryKind",
+      "revision",
+      "digest",
+      "settings",
+      "analysisMatrix",
+      "availableProviders",
+      "enumerations",
+      "sources"
     ],
     "type": "object"
   },
@@ -11146,6 +11563,71 @@ export const schemas = {
     },
     "required": [
       "items"
+    ],
+    "type": "object"
+  },
+  "GetScanIssuesRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetScanIssuesResponse": {
+    "properties": {
+      "hasMore": {
+        "type": "boolean"
+      },
+      "items": {
+        "items": {
+          "properties": {
+            "line": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "messageKey": {
+              "type": "string"
+            },
+            "path": {
+              "type": "string"
+            },
+            "reason": {
+              "type": "string"
+            },
+            "sequence": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "warning": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "line",
+            "sequence",
+            "path",
+            "reason",
+            "messageKey",
+            "warning"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "jobId": {
+        "type": "string"
+      },
+      "nextSequence": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "jobId",
+      "items",
+      "nextSequence",
+      "hasMore"
     ],
     "type": "object"
   },
@@ -15366,6 +15848,487 @@ export const schemas = {
     "required": [
       "selfRegistration",
       "deviceApproval"
+    ],
+    "type": "object"
+  },
+  "PutLibrarySettingsRequest": {
+    "properties": {
+      "expectedRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "operationId": {
+        "type": "string"
+      },
+      "settings": {
+        "properties": {
+          "allowMediaDeletion": {
+            "type": "boolean"
+          },
+          "analysis": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "continueWatching": {
+            "properties": {
+              "includeSeasonPremieres": {
+                "nullable": true,
+                "type": "boolean"
+              },
+              "maximumItems": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "videoCompletion": {
+                "type": "string"
+              },
+              "videoPlayedThreshold": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "weeks": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "weeks",
+              "maximumItems",
+              "includeSeasonPremieres",
+              "videoPlayedThreshold",
+              "videoCompletion"
+            ],
+            "type": "object"
+          },
+          "monitorChanges": {
+            "type": "boolean"
+          },
+          "navigation": {
+            "properties": {
+              "chapterThumbnailMode": {
+                "type": "string"
+              },
+              "trickplayIntervalSeconds": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "trickplayMaxTiles": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "trickplayTileWidth": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "videoPreviewEnabled": {
+                "type": "boolean"
+              },
+              "videoPreviewSeconds": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "trickplayIntervalSeconds",
+              "trickplayTileWidth",
+              "trickplayMaxTiles",
+              "chapterThumbnailMode",
+              "videoPreviewEnabled",
+              "videoPreviewSeconds"
+            ],
+            "type": "object"
+          },
+          "providers": {
+            "items": {
+              "properties": {
+                "apiKey": {
+                  "type": "string"
+                },
+                "apiKeySet": {
+                  "type": "boolean"
+                },
+                "language": {
+                  "type": "string"
+                },
+                "mediaKind": {
+                  "type": "string"
+                },
+                "provider": {
+                  "type": "string"
+                },
+                "region": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "mediaKind",
+                "provider",
+                "apiKey",
+                "apiKeySet",
+                "language",
+                "region"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "monitorChanges",
+          "allowMediaDeletion",
+          "continueWatching",
+          "providers",
+          "analysis",
+          "navigation"
+        ],
+        "type": "object"
+      }
+    },
+    "required": [
+      "expectedRevision",
+      "operationId",
+      "settings"
+    ],
+    "type": "object"
+  },
+  "PutLibrarySettingsResponse": {
+    "properties": {
+      "analysisMatrix": {
+        "properties": {
+          "costClasses": {
+            "items": {
+              "properties": {
+                "description": {
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "order": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "description",
+                "order"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "operations": {
+            "items": {
+              "properties": {
+                "costClass": {
+                  "type": "string"
+                },
+                "defaultEnabled": {
+                  "type": "boolean"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "mediaKinds": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "network": {
+                  "type": "boolean"
+                },
+                "producesArtifacts": {
+                  "type": "boolean"
+                },
+                "requires": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "costClass",
+                "description",
+                "mediaKinds",
+                "defaultEnabled",
+                "requires",
+                "producesArtifacts",
+                "network"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "costClasses",
+          "operations"
+        ],
+        "type": "object"
+      },
+      "availableProviders": {
+        "items": {
+          "properties": {
+            "attributionNote": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            },
+            "mediaKinds": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "name": {
+              "type": "string"
+            },
+            "supportsApiKey": {
+              "type": "boolean"
+            },
+            "supportsLocale": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "id",
+            "name",
+            "mediaKinds",
+            "supportsApiKey",
+            "supportsLocale",
+            "attributionNote"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "digest": {
+        "type": "string"
+      },
+      "enumerations": {
+        "additionalProperties": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "type": "object"
+      },
+      "libraryId": {
+        "type": "string"
+      },
+      "libraryKind": {
+        "type": "string"
+      },
+      "libraryName": {
+        "type": "string"
+      },
+      "revision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "settings": {
+        "properties": {
+          "allowMediaDeletion": {
+            "type": "boolean"
+          },
+          "analysis": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "continueWatching": {
+            "properties": {
+              "includeSeasonPremieres": {
+                "nullable": true,
+                "type": "boolean"
+              },
+              "maximumItems": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "videoCompletion": {
+                "type": "string"
+              },
+              "videoPlayedThreshold": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "weeks": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "weeks",
+              "maximumItems",
+              "includeSeasonPremieres",
+              "videoPlayedThreshold",
+              "videoCompletion"
+            ],
+            "type": "object"
+          },
+          "monitorChanges": {
+            "type": "boolean"
+          },
+          "navigation": {
+            "properties": {
+              "chapterThumbnailMode": {
+                "type": "string"
+              },
+              "trickplayIntervalSeconds": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "trickplayMaxTiles": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "trickplayTileWidth": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "videoPreviewEnabled": {
+                "type": "boolean"
+              },
+              "videoPreviewSeconds": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "trickplayIntervalSeconds",
+              "trickplayTileWidth",
+              "trickplayMaxTiles",
+              "chapterThumbnailMode",
+              "videoPreviewEnabled",
+              "videoPreviewSeconds"
+            ],
+            "type": "object"
+          },
+          "providers": {
+            "items": {
+              "properties": {
+                "apiKey": {
+                  "type": "string"
+                },
+                "apiKeySet": {
+                  "type": "boolean"
+                },
+                "language": {
+                  "type": "string"
+                },
+                "mediaKind": {
+                  "type": "string"
+                },
+                "provider": {
+                  "type": "string"
+                },
+                "region": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "mediaKind",
+                "provider",
+                "apiKey",
+                "apiKeySet",
+                "language",
+                "region"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "monitorChanges",
+          "allowMediaDeletion",
+          "continueWatching",
+          "providers",
+          "analysis",
+          "navigation"
+        ],
+        "type": "object"
+      },
+      "sources": {
+        "items": {
+          "properties": {
+            "classification": {
+              "type": "string"
+            },
+            "enabled": {
+              "type": "boolean"
+            },
+            "id": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "root": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "name",
+            "root",
+            "classification",
+            "enabled"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      }
+    },
+    "required": [
+      "libraryId",
+      "libraryName",
+      "libraryKind",
+      "revision",
+      "digest",
+      "settings",
+      "analysisMatrix",
+      "availableProviders",
+      "enumerations",
+      "sources"
     ],
     "type": "object"
   },

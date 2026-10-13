@@ -13,6 +13,9 @@ import (
 // Deletions are observed only under complete, stable coverage. Failed or
 // changing paths keep their prior evidence, just as media files do.
 func (s *Service) reconcileSidecars(ctx context.Context, job string, source catalog.LibrarySource) error {
+	if more, err := s.pruneDirectoryCachePage(ctx, job, source); more || err != nil {
+		return err
+	}
 	rows, err := s.db.QueryContext(ctx, `SELECT c.relative_path FROM inventory_sidecars c JOIN inventory_runs r ON r.source_id=c.source_id WHERE r.job_id=? AND r.authoritative=1 AND c.incarnation=r.root_incarnation AND c.seen_job<>? AND
  (NOT EXISTS(SELECT 1 FROM inventory_run_targets t WHERE t.job_id=r.job_id) OR EXISTS(SELECT 1 FROM inventory_run_targets t WHERE t.job_id=r.job_id AND (c.directory_path=t.relative_path OR substr(c.directory_path,1,length(t.relative_path)+1)=t.relative_path||?))) AND
  NOT EXISTS(SELECT 1 FROM inventory_scan_issues x WHERE x.job_id=r.job_id AND x.protect=1 AND (x.relative_path='.' OR c.relative_path=x.relative_path OR substr(c.relative_path,1,length(x.relative_path)+1)=x.relative_path||?)) ORDER BY c.relative_path LIMIT 32`, job, job, string(filepath.Separator), string(filepath.Separator))

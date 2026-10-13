@@ -2,6 +2,8 @@ package localmetadata
 
 import (
 	"context"
+	"errors"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -177,10 +179,14 @@ func (s *Service) sidecarKey(ctx context.Context, library, full string) (string,
 	}
 	raw, err := s.readSmall(ctx, library, full, 4<<20)
 	if err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			artworkReadFailed(ctx)
+		}
 		return "", false
 	}
 	key, err := s.store(raw)
 	if err != nil {
+		artworkReadFailed(ctx)
 		return "", false
 	}
 	s.mu.Lock()
@@ -205,5 +211,16 @@ func (s *Service) InvalidateSidecars(folder string) {
 		if err == nil && filepath.IsLocal(relative) {
 			delete(s.sidecars, path)
 		}
+	}
+}
+
+type artworkReadCheckKey struct{}
+
+func WithArtworkReadCheck(ctx context.Context, failed func()) context.Context {
+	return context.WithValue(ctx, artworkReadCheckKey{}, failed)
+}
+func artworkReadFailed(ctx context.Context) {
+	if failed, ok := ctx.Value(artworkReadCheckKey{}).(func()); ok {
+		failed()
 	}
 }

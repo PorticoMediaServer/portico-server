@@ -285,6 +285,9 @@ func startTargetedTx(ctx context.Context, tx *sql.Tx, source string) (Job, error
 	if err != nil {
 		return Job{}, err
 	}
+	if _, err = tx.ExecContext(ctx, `UPDATE inventory_runs SET reported=1 WHERE job_id=?`, job.ID); err != nil {
+		return Job{}, err
+	}
 	if _, err = tx.ExecContext(ctx, `DELETE FROM inventory_path_notices WHERE source_id=?`, source); err != nil {
 		return Job{}, err
 	}

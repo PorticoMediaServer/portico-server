@@ -838,6 +838,30 @@ export const routes = [
     "sse": true
   },
   {
+    "id": "get_inventory_changes",
+    "method": "GET",
+    "path": "/v1/admin/libraries/{id}/sources/{source}/changes",
+    "summary": "Read retained inventory changes and cursor expiry",
+    "access": "owner",
+    "requires": "library",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "after"
+    ],
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "invalid_request",
+      "revision_mismatch",
+      "idempotency_key_reused",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
     "id": "get_items_screen_metadata",
     "method": "GET",
     "path": "/v1/items/{id}/metadata/screen",
@@ -898,6 +922,27 @@ export const routes = [
       "rate_limited",
       "internal",
       "invalid_cursor"
+    ],
+    "status": 200
+  },
+  {
+    "id": "get_library_settings",
+    "method": "GET",
+    "path": "/v1/admin/libraries/{id}/settings",
+    "summary": "Read a library's scanning and metadata settings",
+    "access": "owner",
+    "requires": "library",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "invalid_request",
+      "revision_mismatch",
+      "idempotency_key_reused",
+      "internal"
     ],
     "status": 200
   },
@@ -1064,6 +1109,31 @@ export const routes = [
     "bodyLimit": 0,
     "errors": [
       "unauthorized",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
+    "id": "get_scan_issues",
+    "method": "GET",
+    "path": "/v1/admin/libraries/{id}/scans/{job}/issues",
+    "summary": "List files and folders skipped during a scan",
+    "access": "owner",
+    "requires": "library",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "after",
+      "limit"
+    ],
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "invalid_request",
+      "revision_mismatch",
+      "idempotency_key_reused",
       "internal"
     ],
     "status": 200
@@ -1701,6 +1771,27 @@ export const routes = [
       "unauthorized",
       "not_permitted",
       "invalid_request",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
+    "id": "put_library_settings",
+    "method": "PUT",
+    "path": "/v1/admin/libraries/{id}/settings",
+    "summary": "Save a library's scanning and metadata settings",
+    "access": "owner",
+    "requires": "library",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "invalid_request",
+      "revision_mismatch",
+      "idempotency_key_reused",
       "internal"
     ],
     "status": 200

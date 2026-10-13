@@ -72,7 +72,11 @@ func inventoryIgnoreRules(root *os.Root, r InventoryRequest) ([]naming.IgnoreRul
 			rule, diagnostics := naming.ParseIgnore(filepath.ToSlash(scope), string(content), scope == ".")
 			rules = append(rules, rule)
 			for _, d := range diagnostics {
-				issues = append(issues, InventoryIssue{Path: relative, Reason: d.Reason, Warning: true})
+				if len(issues) >= 256 {
+					issues = append(issues, InventoryIssue{Path: relative, Reason: "ignore_diagnostic_budget_exceeded", Line: d.Line, Warning: true})
+					return rules, issues
+				}
+				issues = append(issues, InventoryIssue{Path: relative, Reason: d.Reason, Line: d.Line, Warning: true})
 			}
 		}
 	}

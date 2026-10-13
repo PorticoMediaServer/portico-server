@@ -15,6 +15,7 @@ import (
 )
 
 type Snapshot struct {
+	ErrorCode string `json:"errorCode,omitempty"`
 	// Opaque adapter evidence; never a provider locator.
 	Revision       string `json:"revision,omitempty"`
 	ObjectID       string `json:"objectId,omitempty"`
@@ -33,6 +34,7 @@ type request struct {
 	// Argv is a media tool invocation built by mediaexec in the server, reading
 	// its input from descriptor 3 (inventory-command).
 	Argv                   []string              `json:"argv,omitempty"`
+	Watch                  *WatchRequest         `json:"watch,omitempty"`
 	Inventory              *InventoryRequest     `json:"inventory,omitempty"`
 	LyricsRoot             string                `json:"lyricsRoot,omitempty"`
 	LyricsLanguage         string                `json:"lyricsLanguage,omitempty"`
@@ -154,6 +156,11 @@ func Helper(in io.Reader, out io.Writer) (result error) {
 	}
 	encoder := json.NewEncoder(out)
 	switch r.Operation {
+	case "inventory-watch":
+		if r.Watch == nil {
+			return errors.New("missing watcher request")
+		}
+		return inventoryWatchHelper(*r.Watch, out)
 	case "inventory-page":
 		if r.Inventory == nil {
 			return errors.New("missing inventory request")
@@ -165,7 +172,7 @@ func Helper(in io.Reader, out io.Writer) (result error) {
 		}
 		v, e := inspectInventoryObject(*r.Inventory)
 		if e != nil {
-			return e
+			return inventoryFailure(e, out)
 		}
 		return encoder.Encode(v)
 	case "inventory-directory":
@@ -174,7 +181,7 @@ func Helper(in io.Reader, out io.Writer) (result error) {
 		}
 		v, e := inspectInventoryDirectory(*r.Inventory)
 		if e != nil {
-			return e
+			return inventoryFailure(e, out)
 		}
 		return encoder.Encode(v)
 	case "inventory-audio-cover":

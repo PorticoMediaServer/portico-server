@@ -58,6 +58,9 @@ func (s *Service) readySource(ctx context.Context, job string, source *catalog.L
 			return err
 		}
 		source.RootIdentity = actual
+		if _, err = dbwork.ExecWrite(ctx, s.db, dbwork.ClassBackgroundMedia, `UPDATE inventory_runs SET root_rebound=1 WHERE job_id=?`, job); err != nil {
+			return err
+		}
 	}
 	if source.RootIdentity == "" {
 		gated, e := dbwork.Begin(ctx, s.db, dbwork.ClassBackgroundMedia)
@@ -107,7 +110,7 @@ func (s *Service) inventoryPage(ctx context.Context, job string, source catalog.
 			return e
 		}
 		if mode == "incremental" {
-			return s.phase(ctx, job, "verifying", true)
+			return s.phase(ctx, job, "extras", true)
 		}
 		return s.phase(ctx, job, "legacy_inventory", true)
 	}
@@ -175,6 +178,19 @@ func (s *Service) readDirectoryPage(ctx context.Context, job string, source cata
 		return err
 	}
 	s.noteDirectoryPage(job, relative, cursor, page)
+	if page.Unstable {
+		gated, e := dbwork.Begin(ctx, s.db, dbwork.ClassBackgroundMedia)
+		if e != nil {
+			return e
+		}
+		defer gated.Rollback()
+		if e = recordNoticeTx(ctx, gated.Tx(), source.ID, relative, time.Now().UnixMilli()); e != nil {
+			return e
+		}
+		if e = gated.Commit(); e != nil {
+			return e
+		}
+	}
 	return nil
 }
 func (s *Service) phase(ctx context.Context, job, phase string, reset bool) error {

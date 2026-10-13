@@ -50,15 +50,32 @@ func (s *Service) enqueueAnalysisPage(ctx context.Context, job string, source ca
 		}
 		return gated.Commit()
 	}
-	rows, err := tx.QueryContext(ctx, `SELECT o.id,o.revision,o.analysis_revision,o.analysis_operations_json,o.relative_path FROM inventory_objects o JOIN inventory_runs r ON r.source_id=o.source_id WHERE r.job_id=? AND o.id>r.reconcile_cursor AND o.retired=0 AND o.state='available' AND o.root_incarnation=r.root_incarnation AND o.unsupported_reason='' AND (o.analysis_revision<>o.revision OR o.analysis_policy<>r.policy_revision OR o.analysis_state='pending' OR o.analysis_generation<>r.source_generation OR (o.analysis_algorithm<>? AND EXISTS(SELECT 1 FROM json_each((SELECT operations_json FROM library_scan_policies WHERE library_id=?)) WHERE value IN('checksum','chapter_images','trickplay','waveform','loudness','fingerprint','segment_detection')))) ORDER BY o.id LIMIT `+analysisEnqueuePageSize+``, job, mediaanalysis.Algorithm, source.LibraryID)
+	var strmEnabled bool
+	var strmRevision int64
+	err = tx.QueryRowContext(ctx, `SELECT enabled,revision FROM source_strm_analysis WHERE library_id=?`, source.LibraryID).Scan(&strmEnabled, &strmRevision)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+	required := append([]string(nil), policy.Operations...)
+	if policy.Allows("probe") {
+		required = append(required, assets.PlaybackAnalysisRevision)
+	}
+	requiredJSON, _ := json.Marshal(required)
+	rows, err := tx.QueryContext(ctx, `SELECT o.id,o.revision,o.analysis_revision,o.analysis_operations_json,o.relative_path,o.analysis_generation,o.analysis_algorithm FROM inventory_objects o JOIN inventory_runs r ON r.source_id=o.source_id WHERE r.job_id=? AND o.id>r.reconcile_cursor AND o.retired=0 AND o.state='available' AND o.root_incarnation=r.root_incarnation AND o.unsupported_reason='' AND (lower(substr(o.relative_path,-5))<>'.strm' OR ?=1) AND (o.analysis_revision<>o.revision OR o.analysis_policy<>? OR o.analysis_state='pending' OR o.analysis_generation<>r.source_generation OR (o.analysis_algorithm<>? AND EXISTS(SELECT 1 FROM json_each((SELECT operations_json FROM library_scan_policies WHERE library_id=?)) WHERE value IN('checksum','chapter_images','trickplay','waveform','loudness','fingerprint','segment_detection'))) OR
+ (lower(substr(o.relative_path,-5))<>'.strm' AND EXISTS(SELECT 1 FROM json_each(?) wanted WHERE NOT EXISTS(SELECT 1 FROM json_each(o.analysis_operations_json) done WHERE done.value=wanted.value))) OR
+ EXISTS(SELECT 1 FROM json_each(?) wanted WHERE wanted.value IN('checksum','chapter_images','trickplay','waveform','loudness','fingerprint','segment_detection') AND NOT EXISTS(SELECT 1 FROM analysis_heads h JOIN analysis_results a ON a.id=h.result_id WHERE h.object_id=o.id AND h.source_revision=o.revision AND h.stage=wanted.value AND a.algorithm=? AND a.root_incarnation=r.root_incarnation AND a.configuration_generation=r.source_generation AND a.retired_ms=0)) OR
+ (lower(substr(o.relative_path,-5))='.strm' AND NOT EXISTS(SELECT 1 FROM json_each(o.analysis_operations_json) done WHERE done.value=?))) ORDER BY o.id LIMIT `+analysisEnqueuePageSize+``, job, strmEnabled && policy.Allows("probe"), policy.Revision, mediaanalysis.Algorithm, source.LibraryID, string(requiredJSON), string(requiredJSON), mediaanalysis.Algorithm, "strm_target:"+strconv.FormatInt(strmRevision, 10))
 	if err != nil {
 		return err
 	}
-	type object struct{ id, revision, analyzed, ops, path string }
+	type object struct {
+		id, revision, analyzed, ops, path, algorithm string
+		generation                                   int64
+	}
 	batch := []object{}
 	for rows.Next() {
 		var o object
-		if err = rows.Scan(&o.id, &o.revision, &o.analyzed, &o.ops, &o.path); err != nil {
+		if err = rows.Scan(&o.id, &o.revision, &o.analyzed, &o.ops, &o.path, &o.generation, &o.algorithm); err != nil {
 			rows.Close()
 			return err
 		}
@@ -67,12 +84,6 @@ func (s *Service) enqueueAnalysisPage(ctx context.Context, job string, source ca
 	err = rows.Err()
 	rows.Close()
 	if err != nil {
-		return err
-	}
-	var strmEnabled bool
-	var strmRevision int64
-	err = tx.QueryRowContext(ctx, `SELECT enabled,revision FROM source_strm_analysis WHERE library_id=?`, source.LibraryID).Scan(&strmEnabled, &strmRevision)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return err
 	}
 	for _, o := range batch {
@@ -89,7 +100,10 @@ func (s *Service) enqueueAnalysisPage(ctx context.Context, job string, source ca
 				}
 			}
 		}
-		pending := o.analyzed != o.revision
+		pending := o.analyzed != o.revision || o.generation != source.Generation
+		for _, op := range catalog.DeepScanOperations {
+			pending = pending || policy.Allows(op) && o.algorithm != mediaanalysis.Algorithm
+		}
 		var completed []string
 		if json.Unmarshal([]byte(o.ops), &completed) != nil {
 			pending = true
@@ -305,11 +319,13 @@ func (s *Service) analyzeOne(parent context.Context, job string, source catalog.
 		return s.analysisAllowed(check, job, source.LibraryID, policy.Revision, "probe")
 	}
 	listed := s.scanListed(ctx, job, source)
+	artworkObserved := true
 	readContext := func(operation string) context.Context {
 		rooted := storage.WithScanInput(ctx, s.storage, source.ID, storage.InventoryRequest{Root: source.ResolvedPath, RootIdentity: source.RootIdentity, FollowSymlinks: source.FollowSymlinks})
 		// What this scan saw when it listed the directory spares a helper
 		// process for every sidecar that is not there.
 		rooted = localmetadata.WithListing(rooted, listed)
+		rooted = localmetadata.WithArtworkReadCheck(rooted, func() { artworkObserved = false })
 		return storage.WithScanReadGuard(rooted, func(check context.Context, candidate string) error {
 			if err := s.analysisAllowed(check, job, source.LibraryID, policy.Revision, operation); err != nil {
 				return err
@@ -438,6 +454,7 @@ func (s *Service) analyzeOne(parent context.Context, job string, source catalog.
 		return s.analysisOutcome(parent, job, object, revision, queuedPolicy, true, "source_revision_changed")
 	}
 	f.ObservedSize, f.ObservedModifiedNS, f.ObservedRevision = before.Size, before.ModifiedNS, before.Revision
+	f.ArtworkObserved = policy.Allows("local_metadata") && s.LocalMetadata != nil && artworkObserved && f.LocalMetadataIssue == ""
 	f.AnalysisOperations = completed
 	f.AnalysisAlgorithm = mediaanalysis.Algorithm
 	f.SubtitleTextPending = !descriptor && policy.Allows("subtitles") && s.Subtitles != nil && f.VideoCodec != ""
@@ -540,6 +557,11 @@ func (s *Service) analysisOutcome(ctx context.Context, job, object, revision str
 		var relative string
 		if err = tx.QueryRowContext(ctx, `SELECT relative_path FROM inventory_objects WHERE id=?`, object).Scan(&relative); err != nil {
 			return err
+		}
+		if code == "source_revision_changed" {
+			if err = recordNoticeTx(ctx, tx, source.ID, filepath.Dir(relative), time.Now().UnixMilli()); err != nil {
+				return err
+			}
 		}
 		if err = catalog.InventoryIssueTx(ctx, tx, job, storage.InventoryIssue{Path: relative, Reason: code, Warning: false}); err != nil {
 			return err
