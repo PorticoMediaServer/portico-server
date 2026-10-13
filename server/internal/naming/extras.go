@@ -27,7 +27,7 @@ func extraFolder(s string, episodic bool) (string, bool) {
 func ReadExtras(relative, kind string) []Evidence[Extra] {
 	p := path.Clean(slash(relative))
 	parts := strings.Split(p, "/")
-	if len(p) > MaxPathBytes || len(parts) > MaxDepth {
+	if len(relative) > MaxPathBytes || strings.IndexByte(relative, 0) >= 0 || len(parts) > MaxDepth || p == ".." || strings.HasPrefix(p, "../") {
 		return nil
 	}
 	name := strings.TrimSuffix(parts[len(parts)-1], path.Ext(parts[len(parts)-1]))
@@ -37,11 +37,23 @@ func ReadExtras(relative, kind string) []Evidence[Extra] {
 			return []Evidence[Extra]{ev(Extra{s.kind, path.Dir(p)}, FileName, p, .98)}
 		}
 	}
-	if len(parts) >= 3 && (lower == "trailer" || lower == "trailers") {
-		return []Evidence[Extra]{ev(Extra{"trailer", path.Dir(p)}, FileName, p, .85)}
+	if kind == "tv" || kind == "anime" {
+		for _, loc := range episodeToken.FindAllStringIndex(name, 32) {
+			if validMarker(name, loc) {
+				return nil
+			}
+		}
+		if dateToken.MatchString(name) {
+			return nil
+		}
 	}
-	if len(parts) == 2 && (lower == "trailer" || lower == "trailers") {
-		return []Evidence[Extra]{ev(Extra{"trailer", path.Dir(p)}, FileName, p, .8)}
+	if len(parts) >= 2 && (lower == "trailer" || lower == "trailers") {
+		var owner Reading
+		readComponent(&owner, parts[len(parts)-2], parts[len(parts)-2], ParentFolder, path.Dir(p), .8)
+		ownerTitle, _ := owner.PreferredTitle()
+		if !strings.EqualFold(ownerTitle, "trailer") && !strings.EqualFold(ownerTitle, "trailers") {
+			return []Evidence[Extra]{ev(Extra{"trailer", path.Dir(p)}, FileName, p, .85)}
+		}
 	}
 	first := -1
 	k := ""

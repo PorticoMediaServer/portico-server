@@ -24,7 +24,7 @@ func TestExtrasCorpus(t *testing.T) {
 			t.Error(p, e)
 		}
 	}
-	for _, p := range []string{"Extras/Season 1/Extras - S01E01.mkv", "Shorts/Pixar - Bao (2018).mkv", "Trailers/Film (2020).mkv", "Show/Specials/S00E01.mkv", "Extras/Extras - S01E01.mkv", "Show/Extras/Other Show/Season 1/S01E01.mkv"} {
+	for _, p := range []string{"Extras/Season 1/Extras - S01E01.mkv", "Shorts/Pixar - Bao (2018).mkv", "Trailers/Film (2020).mkv", "Show/Specials/S00E01.mkv", "Extras/Extras - S01E01.mkv", "Category/Extras/Extras - S01E01.mkv", "Show/Extras/Other Show/Season 1/S01E01.mkv"} {
 		if len(ReadExtras(p, "tv")) != 0 {
 			t.Error(p)
 		}
@@ -39,7 +39,7 @@ func TestExtrasCorpus(t *testing.T) {
 			t.Error(p, e)
 		}
 	}
-	if len(ReadExtras("Trailer.mkv", "movie")) != 0 {
+	if len(ReadExtras("Trailer.mkv", "movie")) != 0 || len(ReadExtras("Trailer (2020)/Trailer.mkv", "movie")) != 0 {
 		t.Fatal("loose movie named Trailer classified as extra")
 	}
 }

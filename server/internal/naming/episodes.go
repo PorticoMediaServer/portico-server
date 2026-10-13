@@ -8,6 +8,7 @@ import (
 )
 
 var episodeToken = regexp.MustCompile(`(?i)s[0-9]{1,4}e[0-9]{1,4}(?:(?:e|-e?)[0-9]{1,4})*|[0-9]{1,4}x[0-9]{1,4}(?:(?:x|-x?)[0-9]{1,4})*`)
+var episodeContinuation = regexp.MustCompile(`(?i)^[ ._-]*[ex]([0-9]{1,4})(?:$|[ ._-])`)
 var digits = regexp.MustCompile(`[0-9]+`)
 var dateToken = regexp.MustCompile(`(?:^|[ ._-])((?:18|19|20)[0-9]{2})[ ._-]([0-9]{2})[ ._-]([0-9]{2})(?:$|[^0-9])`)
 var episodeOnly = regexp.MustCompile(`(?i)^(?:e|episode[ ._-]*)([0-9]{1,4})(?:$|[ ._-])`)
@@ -15,6 +16,7 @@ var leadingNumber = regexp.MustCompile(`^([0-9]{1,3})(?:$|[ ._-])`)
 var numberedTail = regexp.MustCompile(`(?i)^(.*?)[ ._]+-[ ._]+([0-9]{1,4})(?:v([0-9]{1,2}))?(?:$|[ ._\[-])`)
 var packedNumber = regexp.MustCompile(`^(.*?)[ ._-]+([0-9]{3})(?:$|[ ._-])`)
 var group = regexp.MustCompile(`^\[[^\]]{1,128}\][ ._]*`)
+var frameWidths = map[int]bool{7680: true, 4096: true, 3840: true, 3440: true, 2560: true, 2048: true, 1920: true, 1440: true, 1280: true, 1080: true, 1024: true, 960: true, 854: true, 852: true, 848: true, 800: true, 768: true, 720: true, 704: true, 640: true, 624: true, 608: true, 576: true, 544: true, 512: true, 480: true, 426: true, 320: true}
 var trackToken = regexp.MustCompile(`^(?:([0-9]{1,3})[.-])?([0-9]{1,4})[ ._-]+(.+)$`)
 var chapterToken = regexp.MustCompile(`(?i)^(?:chapter|part|track)[ ._-]*([0-9]{1,4})(?:[ ._-]+|$)`)
 
@@ -32,9 +34,12 @@ func validMarker(s string, loc []int) bool {
 	n := digits.FindAllString(raw, -1)
 	a, _ := strconv.Atoi(n[0])
 	b, _ := strconv.Atoi(n[1])
-	// A x B with either dimension in the hundreds and the other >=240 is a
-	// frame size, not a season. Explicit S/E accepts larger seasonal numbers.
-	return !(a >= 240 && b >= 240) && b != 264 && b != 265
+	// Common frame widths and long dimension pairs are picture sizes. Explicit
+	// S/E remains available for unusually large seasonal numbers.
+	if (b == 264 || b == 265) && loc[0] >= 2 && s[loc[0]-1] == '.' && s[loc[0]-2] >= '0' && s[loc[0]-2] <= '9' {
+		return false
+	}
+	return !(a >= 240 && b >= 240 || frameWidths[a] && b >= 100)
 }
 func parseNumbers(raw string) (int, []int, string) {
 	ns := digits.FindAllString(raw, -1)
@@ -69,8 +74,8 @@ func parseNumbers(raw string) (int, []int, string) {
 }
 func readEpisode(r *Reading, name, p, kind string, folderSeason int, hasFolder bool) string {
 	s := group.ReplaceAllString(name, "")
-	// Stop at release tags before looking for episode markers. Technical labels
-	// are also skipped individually so a resolution before S/E is harmless.
+	// Technical labels are skipped individually so a resolution before S/E is
+	// harmless. Explicit marker boundaries prevent matches inside title words.
 	var locs [][]int
 	for _, loc := range episodeToken.FindAllStringIndex(s, 32) {
 		if validMarker(s, loc) {
@@ -93,6 +98,24 @@ func readEpisode(r *Reading, name, p, kind string, folderSeason int, hasFolder b
 			r.Diagnostics = append(r.Diagnostics, issue)
 			return s[:first[0]]
 		}
+		remainder := s[first[1]:]
+		for {
+			continuation := episodeContinuation.FindStringSubmatchIndex(remainder)
+			if continuation == nil {
+				break
+			}
+			n, _ := strconv.Atoi(remainder[continuation[2]:continuation[3]])
+			if len(values) >= MaxEpisodeLinks {
+				r.Diagnostics = append(r.Diagnostics, "too_many_episode_links")
+				return s[:first[0]]
+			}
+			if n <= values[len(values)-1] {
+				r.Diagnostics = append(r.Diagnostics, "conflicting_episode_order")
+				return s[:first[0]]
+			}
+			values = append(values, n)
+			remainder = remainder[continuation[3]:]
+		}
 		r.Seasons = append([]Evidence[int]{ev(season, FileName, p, .99)}, r.Seasons...)
 		r.Episodes = append(r.Episodes, ev(values, FileName, p, .99))
 		title := s[:first[0]]
@@ -104,7 +127,7 @@ func readEpisode(r *Reading, name, p, kind string, folderSeason int, hasFolder b
 	}
 	if m := dateToken.FindStringSubmatchIndex(s); m != nil {
 		d := s[m[2]:m[3]] + "-" + s[m[4]:m[5]] + "-" + s[m[6]:m[7]]
-		if _, err := time.Parse("2006-01-02", d); err != nil {
+		if date, err := time.Parse("2006-01-02", d); err != nil || date.Year() < 1900 {
 			r.Diagnostics = append(r.Diagnostics, "invalid_air_date")
 		} else {
 			r.AirDates = append(r.AirDates, ev(d, FileName, p, .98))
@@ -183,7 +206,10 @@ func readAudio(r *Reading, name, p string, parts []string, kind string) string {
 		}
 	}
 	if album >= 0 {
-		r.Albums = append(r.Albums, ev(clean(parts[album]), source(len(parts)-1-album), strings.Join(parts[:album+1], "/"), .8))
+		var folder Reading
+		readComponent(&folder, parts[album], parts[album], source(len(parts)-1-album), strings.Join(parts[:album+1], "/"), .8)
+		title, _ := folder.PreferredTitle()
+		r.Albums = append(r.Albums, ev(title, source(len(parts)-1-album), strings.Join(parts[:album+1], "/"), .8))
 		if album > 0 {
 			r.Artists = append(r.Artists, ev(clean(parts[album-1]), source(len(parts)-album), strings.Join(parts[:album], "/"), .7))
 		}

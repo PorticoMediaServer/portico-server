@@ -6,7 +6,7 @@ import (
 )
 
 func TestBuiltinIgnoreRules(t *testing.T) {
-	for _, p := range []string{"._Film.mkv", ".Film.mkv", ".hidden/Film.mkv", "@eaDir/thumbnail.mp4", "#recycle/Film.mkv", "$RECYCLE.BIN/Film.mkv", "lost+found/Film.mkv", "Film/.grab/Film.mkv", "Film/Samples/sample.mkv", "Film/Sample/sample.mkv", "Film/Film-sample.mkv", "Film/Film.sample.mp4", "Film/sample-encode.mkv", "Film/.plexignore", "Film/.ignore"} {
+	for _, p := range []string{"._Film.mkv", ".Film.mkv", ".hidden/Film.mkv", "@eaDir/thumbnail.mp4", "#recycle/Film.mkv", "$RECYCLE.BIN/Film.mkv", "lost+found/Film.mkv", "Film/.grab/Film.mkv", "Film/Samples/sample.mkv", "Film/Sample/sample.mkv", "Film/Film-sample.mkv", "Film/Film.sample-GROUP.mkv", "Film/Film - sample.mkv", "Film/Film.mkv.grab", "Film/Film.sample.mp4", "Film/sample-encode.mkv", "Film/.plexignore", "Film/.ignore"} {
 		if !IgnorePath(p, false) {
 			t.Errorf("not ignored: %s", p)
 		}

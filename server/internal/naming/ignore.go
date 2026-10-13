@@ -12,13 +12,15 @@ const (
 	MaxIgnorePatternBytes = 1024
 )
 
+var sampleName = regexp.MustCompile(`(?i)(?:^|[._-][ ._-]*)sample(?:$|[._-])`)
+
 var systemFolders = map[string]bool{"@eadir": true, "#recycle": true, "$recycle.bin": true, "lost+found": true, "@recycle": true, "system volume information": true}
 
 // IgnoreName handles one entry before stat/probe. The library root itself is
 // never tested. Complete titles such as "Sample (2020)" are preserved.
 func IgnoreName(name string, directory bool) bool {
 	lower := strings.ToLower(name)
-	if strings.HasPrefix(name, ".") || systemFolders[lower] {
+	if strings.HasPrefix(name, ".") || systemFolders[lower] || strings.HasSuffix(lower, ".grab") {
 		return true
 	}
 	if directory {
@@ -29,7 +31,7 @@ func IgnoreName(name string, directory bool) bool {
 		return true
 	}
 	lower = strings.ToLower(stem)
-	return strings.HasSuffix(lower, "-sample") || strings.HasSuffix(lower, ".sample") || strings.HasSuffix(lower, "_sample") || strings.HasPrefix(lower, "sample-")
+	return sampleName.MatchString(lower)
 }
 func IgnorePath(relative string, directory bool) bool {
 	if len(relative) > MaxPathBytes || strings.IndexByte(relative, 0) >= 0 {

@@ -24,6 +24,7 @@ type Source string
 
 const (
 	FileName          Source = "file_name"
+	DirectoryName     Source = "folder_name"
 	ParentFolder      Source = "parent_folder"
 	GrandparentFolder Source = "grandparent_folder"
 	AncestorFolder    Source = "ancestor_folder"
@@ -80,7 +81,16 @@ func source(distance int) Source {
 }
 func clean(s string) string {
 	s = strings.NewReplacer(".", " ", "_", " ").Replace(s)
-	return norm.NFC.String(strings.Join(strings.Fields(strings.Trim(s, " -[]{}()")), " "))
+	s = strings.TrimSpace(strings.Trim(s, " -"))
+	for _, pair := range []string{"[]", "()", "{}"} {
+		if strings.HasPrefix(s, pair[:1]) && !strings.Contains(s, pair[1:]) {
+			s = strings.TrimPrefix(s, pair[:1])
+		}
+		if strings.HasSuffix(s, pair[1:]) && !strings.Contains(s, pair[:1]) {
+			s = strings.TrimSuffix(s, pair[1:])
+		}
+	}
+	return norm.NFC.String(strings.Join(strings.Fields(s), " "))
 }
 func same(a, b string) bool {
 	key := func(s string) string {
@@ -184,6 +194,10 @@ func Read(relative, kind string) Reading {
 		}
 	}
 	titleInput := name
+	if strings.EqualFold(name, "BDMV") || strings.EqualFold(name, "VIDEO_TS") {
+		r.Discs = DiscLayout(p)
+		titleInput = ""
+	}
 	if episodic {
 		titleInput = readEpisode(&r, name, p, kind, folderSeason, showIndex >= 0)
 	}
@@ -205,8 +219,15 @@ func Read(relative, kind string) Reading {
 			continue
 		}
 		cp := strings.Join(parts[:i+1], "/")
-		readComponent(&r, parts[i], parts[i], source(len(parts)-1-i), cp, .8)
+		strength := .8
+		if count > 0 {
+			strength = .5
+		}
+		readComponent(&r, parts[i], parts[i], source(len(parts)-1-i), cp, strength)
 		count++
+	}
+	if kind == "movie" {
+		readVersionLabel(&r, name, p)
 	}
 	r.Extras = ReadExtras(p, kind)
 	return r
@@ -240,19 +261,25 @@ func readComponent(r *Reading, input, raw string, src Source, p string, strength
 		if edition == "" {
 			edition = m[2]
 		}
-		r.Editions = append(r.Editions, ev(clean(edition), src, p, .95))
+		if label := clean(edition); label != "" {
+			r.Editions = append(r.Editions, ev(label, src, p, .95))
+		}
 	}
-	if m := partToken.FindStringSubmatch(raw); m != nil && isPartSuffix(raw) {
+	hasPart := false
+	partInput := raw
+	if loc := technicalToken.FindStringIndex(partInput); loc != nil {
+		partInput = strings.TrimRight(partInput[:loc[0]], " ._-")
+	}
+	if m := partToken.FindStringSubmatch(partInput); m != nil && isPartSuffix(partInput) {
 		n, _ := strconv.Atoi(m[1])
 		if n > 0 {
+			hasPart = true
 			r.Parts = append(r.Parts, ev(n, src, p, .9))
 		}
 	}
 	s := idToken.ReplaceAllString(input, " ")
 	s = imdbToken.ReplaceAllString(s, " ")
-	if src == FileName && strings.HasPrefix(s, "[") && strings.Contains(s, "] ") {
-		s = s[strings.Index(s, "]")+1:]
-	}
+
 	s = hashToken.ReplaceAllString(s, " ")
 	// The explicit year nearest the title wins over later encode dates. A bare
 	// year before that bracket is title text, unless release junk separates it.
@@ -298,6 +325,19 @@ func readComponent(r *Reading, input, raw string, src Source, p string, strength
 	if year > 0 {
 		r.Years = append(r.Years, ev(year, src, p, yearStrength))
 	}
+
+	alternate := ""
+	if cut >= 0 && yearStrength == .85 {
+		alternate = s
+		if loc := technicalToken.FindStringIndex(alternate); loc != nil {
+			alternate = alternate[:loc[0]]
+		}
+		alternate = editionToken.ReplaceAllString(alternate, " ")
+		if hasPart {
+			alternate = partToken.ReplaceAllString(alternate, "")
+		}
+		alternate = clean(alternate)
+	}
 	if cut >= 0 {
 		s = s[:cut]
 	}
@@ -312,7 +352,9 @@ func readComponent(r *Reading, input, raw string, src Source, p string, strength
 		}
 	}
 	s = editionToken.ReplaceAllString(s, " ")
-	s = partToken.ReplaceAllString(s, "")
+	if hasPart {
+		s = partToken.ReplaceAllString(s, "")
+	}
 	for _, suffix := range extraSuffixes {
 		if strings.HasSuffix(strings.ToLower(s), suffix.suffix) {
 			s = s[:len(s)-len(suffix.suffix)]
@@ -325,6 +367,10 @@ func readComponent(r *Reading, input, raw string, src Source, p string, strength
 			strength = .2
 		}
 		r.Titles = append(r.Titles, ev(title, src, p, strength))
+	}
+
+	if alternate != "" && alternate != title {
+		r.Titles = append(r.Titles, ev(alternate, src, p, .65))
 	}
 	// A low-confidence stripped alternative helps matching without mutilating
 	// titles such as Blade Runner 2049, Space 1999 or Summer of 1984.
@@ -391,4 +437,67 @@ func isPartSuffix(raw string) bool {
 		}
 	}
 	return true
+}
+
+// Named versions need folder corroboration when there is no explicit year;
+// otherwise a hyphen is as likely to be part of the real film title.
+func readVersionLabel(r *Reading, name, p string) {
+	if len(r.Versions) > 0 {
+		return
+	}
+	at := strings.LastIndex(name, " - ")
+	if at < 0 {
+		return
+	}
+	label := strings.TrimSpace(name[at+3:])
+	if label == "" || partToken.MatchString(label) || editionToken.MatchString(label) {
+		return
+	}
+	for _, suffix := range extraSuffixes {
+		if strings.HasSuffix(strings.ToLower(name), suffix.suffix) {
+			return
+		}
+	}
+	var prefix Reading
+	readComponent(&prefix, name[:at], name[:at], FileName, p, .9)
+	title, year := prefix.PreferredTitle()
+	supported := year > 0
+	for _, e := range r.Titles {
+		if e.Source != FileName && same(title, e.Value) {
+			supported = true
+		}
+	}
+	if !supported {
+		return
+	}
+	r.Versions = append(r.Versions, ev(clean(label), FileName, p, .8))
+	for i := range r.Titles {
+		if r.Titles[i].Source == FileName && r.Titles[i].Path == p && same(r.Titles[i].Value, clean(name)) {
+			r.Titles[i].Value = title
+		}
+	}
+}
+
+// DiscLayout identifies the disc root even when the input is the directory
+// itself. The identity lane uses ParentPath to group its streams, never each
+// individual VOB/M2TS as an independent film.
+func DiscLayout(relative string) []Evidence[Disc] {
+	if len(relative) > MaxPathBytes || strings.IndexByte(relative, 0) >= 0 {
+		return nil
+	}
+	p := path.Clean(slash(relative))
+	parts := strings.Split(p, "/")
+	if len(parts) > MaxDepth || p == ".." || strings.HasPrefix(p, "../") {
+		return nil
+	}
+	for i, part := range parts {
+		if strings.EqualFold(part, "BDMV") || strings.EqualFold(part, "VIDEO_TS") {
+			src := source(len(parts) - 1 - i)
+			if i == len(parts)-1 {
+				src = DirectoryName
+			}
+			return []Evidence[Disc]{ev(Disc{strings.ToUpper(part), strings.Join(parts[:i], "/")}, src, strings.Join(parts[:i+1], "/"), 1)}
+		}
+	}
+	return nil
 }

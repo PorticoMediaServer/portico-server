@@ -109,7 +109,7 @@ func TestEvidenceKeepsAlternativesAndPrecedence(t *testing.T) {
 	}
 }
 func TestUnsafeOrAmbiguousEpisodeEvidence(t *testing.T) {
-	for _, p := range []string{"Show 1920x1080.mkv", "Show x264.mkv", "Show H.265.mkv", "Show 2048x1080.mkv", "Show - 2019 [1080p].mkv", "Show - 2020 - 01.mkv", "Show 1080p.mkv", "Show 01.mkv", "Shows1e1.mkv", "S01E12345.mkv", "01.mkv"} {
+	for _, p := range []string{"Show 1920x1080.mkv", "Show x264.mkv", "Show H.265.mkv", "Show 2048x1080.mkv", "Show 320x180.mkv", "Show - 2019 [1080p].mkv", "Show - 2020 - 01.mkv", "Show 1080p.mkv", "Show 01.mkv", "Shows1e1.mkv", "S01E12345.mkv", "01.mkv"} {
 		r := Read(p, "anime")
 		if len(r.Episodes)+len(r.AbsoluteNumbers)+len(r.AirDates) > 0 {
 			t.Errorf("%s: %+v", p, r)
@@ -150,4 +150,86 @@ func FuzzRead(f *testing.F) {
 			}
 		}
 	})
+}
+
+func TestLabelsPartsAndDiscRoots(t *testing.T) {
+	for _, row := range []struct{ path, title, label string }{
+		{"Film (2020)/Film (2020) - Mobile.mkv", "Film", "Mobile"},
+		{"Film/Film - Commentary.mkv", "Film", "Commentary"},
+		{"Film (2020)/Film (2020) - 1080p.mkv", "Film", "1080p"},
+		{"Film (2020)/Film (2020) - 4K.mkv", "Film", "4K"},
+	} {
+		r := Read(row.path, "movie")
+		title, _ := r.PreferredTitle()
+		if title != row.title || len(r.Versions) != 1 || r.Versions[0].Value != row.label || r.Versions[0].Source != FileName {
+			t.Fatal(row, r)
+		}
+	}
+	r := Read("Show/Season 1/Show - S01E02 - Episode Title.mkv", "tv")
+	if len(r.Versions) > 0 {
+		t.Fatal("episode title became a version", r)
+	}
+	for _, p := range []string{"Film - part 3.mkv", "Film - part 3 1080p.mkv", "Film (2020) - cd3 2160p.mkv"} {
+		r := Read(p, "movie")
+		if len(r.Parts) != 1 || r.Parts[0].Value != 3 {
+			t.Fatal(p, r)
+		}
+	}
+	for _, p := range []string{"Film (2020)/BDMV", "Film (2020)/BDMV/STREAM/00001.m2ts", "Film (2020)/VIDEO_TS", "Film (2020)/VIDEO_TS/VTS_01_1.VOB"} {
+		d := DiscLayout(p)
+		if len(d) != 1 || d[0].Value.ParentPath != "Film (2020)" {
+			t.Fatal(p, d)
+		}
+	}
+}
+func TestAdditionalNumberingConventions(t *testing.T) {
+	r := Read("Show/Season 2/Show - 02x03 - x04 - x15.mkv", "tv")
+	if len(r.Episodes) != 1 || !reflect.DeepEqual(r.Episodes[0].Value, []int{3, 4, 15}) {
+		t.Fatal(r)
+	}
+	r = Read("Show/Season 2/Show - S02E03 E04 E05.mkv", "tv")
+	if len(r.Episodes) != 1 || !reflect.DeepEqual(r.Episodes[0].Value, []int{3, 4, 5}) {
+		t.Fatal(r)
+	}
+	r = Read("Artist/Album (2020)/Disc 2 - Live/03 - Song.flac", "music")
+	if len(r.Albums) != 1 || r.Albums[0].Value != "Album" || r.Artists[0].Value != "Artist" || r.DiscNumbers[0].Value != 2 {
+		t.Fatal(r)
+	}
+	r = Read("Harry Potter and the Deathly Hallows Part 1 (2010).mkv", "movie")
+	partTitle, _ := r.PreferredTitle()
+	if partTitle != "Harry Potter and the Deathly Hallows Part 1" || len(r.Parts) > 0 {
+		t.Fatal(r)
+	}
+	r = Read("[REC] (2007).mkv", "movie")
+	title, year := r.PreferredTitle()
+	if title != "[REC]" || year != 2007 {
+		t.Fatal(r)
+	}
+	r = Read("Blade.Runner.2049.1080p.mkv", "movie")
+	found := false
+	for _, e := range r.Titles {
+		if e.Value == "Blade Runner 2049" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("bare scene year ambiguity lost title candidate", r)
+	}
+}
+
+func TestCodecTagsAndLongSeasonalNumbers(t *testing.T) {
+	for _, row := range []struct {
+		path            string
+		season, episode int
+	}{
+		{"Show S01E01 1080p DD5.1x264.mkv", 1, 1},
+		{"Show 1x264.mkv", 1, 264},
+		{"Show 101x102.mkv", 101, 102},
+		{"Show S2019E1100.mkv", 2019, 1100},
+	} {
+		r := Read(row.path, "tv")
+		if len(r.Diagnostics) > 0 || len(r.Episodes) != 1 || r.Episodes[0].Value[0] != row.episode || r.Seasons[0].Value != row.season {
+			t.Fatal(row, r)
+		}
+	}
 }
