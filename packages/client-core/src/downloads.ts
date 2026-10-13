@@ -257,15 +257,15 @@ export function parseDownloadBundle(raw: unknown, preparationId: string): Downlo
     const file = bundleFile(v);
     return Object.freeze({role: v.role, path: file.path, contentType: file.contentType});
   });
-  const chapters = array(raw.chapters, 2000).map(v => {
+  const chapters = keepReadable('downloads', 'bundle.chapters', array(raw.chapters, 2000), v => {
     if (!object(v) || !count(v.index) || !text(v.title ?? '', 1024) || !seconds(v.startSeconds) || !seconds(v.endSeconds) || v.endSeconds <= v.startSeconds) invalid();
     return Object.freeze({index: v.index, title: String(v.title ?? ''), startSeconds: v.startSeconds, endSeconds: v.endSeconds});
   });
-  const markers = array(raw.markers, 256).map(v => {
+  const markers = keepReadable('downloads', 'bundle.markers', array(raw.markers, 256), v => {
     if (!object(v) || !id(v.kind) || !seconds(v.startSeconds) || !seconds(v.endSeconds) || v.endSeconds <= v.startSeconds || typeof v.automatic !== 'boolean') invalid();
     return Object.freeze({kind: v.kind, startSeconds: v.startSeconds, endSeconds: v.endSeconds, automatic: v.automatic});
   });
-  const audio = array(raw.audio, 64).map(v => {
+  const audio = keepReadable('downloads', 'bundle.audio', array(raw.audio, 64), v => {
     if (!object(v) || !count(v.index) || !text(v.language ?? '', 64) || !text(v.title ?? '', 512) || !text(v.codec ?? '', 64) || !count(v.channels) || typeof v.default !== 'boolean') invalid();
     return Object.freeze({index: v.index, language: String(v.language ?? ''), title: String(v.title ?? ''), codec: String(v.codec ?? ''), channels: v.channels, default: v.default});
   });

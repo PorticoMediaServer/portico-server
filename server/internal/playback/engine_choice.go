@@ -9,8 +9,8 @@ package playback
 // automatic the native player is used whenever it can play the file as it is
 // or with a plain repackaging. mpv is used only when the alternative on the
 // native player is a converted picture, a lossy audio conversion or subtitles
-// burned into the picture, and mpv itself can play the original file. In every
-// other case the title is converted for the native player.
+// burned into the picture, and mpv can keep the streams as they are, directly
+// or with a plain repackaging. In every other case the title is converted for the native player.
 //
 // A pinned engine (the re-plan of a presentation that is already playing) is
 // never changed here. An engine the viewer chose is used even when the other
@@ -69,7 +69,7 @@ func planDevice(in DeliveryInput) (DeliveryPlan, error) {
 		return native, nil
 	}
 	mpv, mpvErr := run(EngineMPV, NoteEngineAutomatic)
-	if mpvErr == nil && mpv.Strategy == DeliveryOriginal && mpv.Mode == "direct" && !engineCompromises(mpv) && !SubtitleNeedsBurnIn(doc.Profile(EngineMPV), in.SubtitleKind, mpv.Mode, in.SubtitleBesideStream) {
+	if mpvErr == nil && (mpv.Strategy == DeliveryOriginal || mpv.Strategy == DeliveryCopyRemux) && !engineCompromises(mpv) && !SubtitleNeedsBurnIn(doc.Profile(EngineMPV), in.SubtitleKind, mpv.Mode, in.SubtitleBesideStream) {
 		return mpv, nil
 	}
 	if nativeErr != nil {

@@ -303,32 +303,10 @@ type profilePINProof struct {
 	pinRevision int64
 }
 
-// PINFailuresAcrossDevices is how many wrong PINs a profile takes, counted
-// over every device in a day, before the profile is closed to PIN entry for
-// PINProfileCooloff after the last one. The per-device delays alone are reset
-// by signing in again as a new device; this count is not.
-const (
-	PINFailuresAcrossDevices = 20
-	PINProfileCooloff        = 15 * time.Minute
-)
-
-// profilePINLockedTx applies the across-devices count to one profile.
-func profilePINLockedTx(ctx context.Context, tx *sql.Tx, profile string, nowMS int64) error {
-	var failures, last int64
-	day := int64((24 * time.Hour) / time.Millisecond)
-	if e := tx.QueryRowContext(ctx, `SELECT COALESCE(SUM(failed_attempts),0),COALESCE(MAX(last_failed_ms),0) FROM direct_profile_pin_attempts WHERE profile_id=? AND last_failed_ms>?`, profile, nowMS-day).Scan(&failures, &last); e != nil {
-		return e
-	}
-	if failures >= PINFailuresAcrossDevices && nowMS < last+PINProfileCooloff.Milliseconds() {
-		return ErrProfileLocked
-	}
-	return nil
-}
-
 // proveProfilePIN compares the offered PIN with the profile's, reading what it
 // needs in a snapshot and hashing with no transaction open. A profile with no
-// PIN, or a selection covered by remembered trust, needs no proof. A device or
-// profile that is locked out is refused here, before any hashing is done for it.
+// PIN, or a selection covered by remembered trust, needs no proof. A device in its
+// own retry delay is refused before hashing; other devices remain unaffected.
 func (s *Service) proveProfilePIN(ctx context.Context, bearer, id string, q DirectSelection) (profilePINProof, error) {
 	var proof profilePINProof
 	gated, e := dbwork.BeginSnapshot(ctx, s.db)
@@ -368,10 +346,6 @@ func (s *Service) proveProfilePIN(ctx context.Context, bearer, id string, q Dire
 	if nowMS-lastFailed <= int64((24*time.Hour)/time.Millisecond) && locked > nowMS {
 		gated.Rollback()
 		return proof, ErrProfileLocked
-	}
-	if e = profilePINLockedTx(ctx, tx, id, nowMS); e != nil {
-		gated.Rollback()
-		return proof, e
 	}
 	gated.Rollback()
 	proof.checked = true
@@ -441,9 +415,6 @@ func (s *Service) SelectDirectProfileFrom(ctx context.Context, bearer, id string
 		}
 		if locked > nowMS {
 			return out, ErrProfileLocked
-		}
-		if e = profilePINLockedTx(ctx, tx, id, nowMS); e != nil {
-			return out, e
 		}
 		// The proof was made against the PIN as it was a moment ago. If the PIN
 		// has been changed, removed or set since, nothing was proved about the

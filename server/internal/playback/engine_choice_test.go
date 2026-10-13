@@ -28,7 +28,7 @@ func planDocument(t *testing.T, source *DeliverySource, doc CapabilityDocument, 
 // The plan names the engine. On automatic the native player keeps every title
 // it can play as it is or with a plain repackaging; mpv takes a title only
 // when the native player would need a converted picture, a lossy audio
-// conversion or burned-in subtitles and mpv can play the original file.
+// conversion or burned-in subtitles and mpv can keep the original streams.
 func TestAutomaticEngineChoice(t *testing.T) {
 	apple := appleTVProfile()
 	both := documentOf(apple, mpvProfile(apple))
@@ -62,7 +62,7 @@ func TestAutomaticEngineChoice(t *testing.T) {
 		})
 	}
 
-	t.Run("a title neither engine plays as it is is converted for the native player", func(t *testing.T) {
+	t.Run("mpv repackages when native would convert the picture", func(t *testing.T) {
 		limited := mpvProfile(apple)
 		for i := range limited.Transports {
 			if limited.Transports[i].Transport == TransportDirect {
@@ -70,6 +70,18 @@ func TestAutomaticEngineChoice(t *testing.T) {
 			}
 		}
 		p := planDocument(t, videoSource("mkv", "vp9", vp9, eac3), documentOf(apple, limited), nil)
+		if p.Engine != EngineMPV || p.Strategy != DeliveryCopyRemux || p.VideoAction != "copy" || p.AudioAction != "copy" {
+			t.Fatal(p.Engine, p.Strategy, p.VideoAction, p.AudioAction)
+		}
+	})
+
+	t.Run("mpv conversion does not displace a valid native conversion", func(t *testing.T) {
+		p := planDocument(t, videoSource("mkv", "vp9", vp9, eac3), both, func(in *DeliveryInput) {
+			in.ExcludedByEngine = map[string]map[DeliveryStrategy]RouteRejection{EngineMPV: {
+				DeliveryOriginal:  {Code: "decode_error"},
+				DeliveryCopyRemux: {Code: "decode_error"},
+			}}
+		})
 		if p.Engine != EngineNative || p.Strategy != DeliveryVideoConversion {
 			t.Fatal(p.Engine, p.Strategy)
 		}
@@ -108,8 +120,8 @@ func TestAutomaticEngineChoice(t *testing.T) {
 	t.Run("a route that failed in one engine is still open in the other", func(t *testing.T) {
 		failed := map[string]map[DeliveryStrategy]RouteRejection{EngineMPV: {DeliveryOriginal: {Code: "decode_error"}}}
 		p := planDocument(t, videoSource("mkv", "vp9", vp9, eac3), both, func(in *DeliveryInput) { in.ExcludedByEngine = failed })
-		if p.Engine != EngineNative || p.Strategy != DeliveryVideoConversion {
-			t.Fatal("mpv's failed original was offered again", p.Engine, p.Strategy)
+		if p.Engine != EngineMPV || p.Strategy != DeliveryCopyRemux {
+			t.Fatal("mpv should try repackaging without repeating its failed original", p.Engine, p.Strategy)
 		}
 		failed = map[string]map[DeliveryStrategy]RouteRejection{EngineNative: {DeliveryOriginal: {Code: "decode_error"}}}
 		p = planDocument(t, videoSource("mp4", "hevc", hdr10Detail, eac3), both, func(in *DeliveryInput) { in.ExcludedByEngine = failed })

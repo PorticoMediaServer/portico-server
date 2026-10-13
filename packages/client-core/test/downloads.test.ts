@@ -472,6 +472,25 @@ test('a bundle names only files under the grant, never a path out of it', () => 
   }
 });
 
+test('unreadable descriptive bundle rows cost only themselves while authority and bounds stay exact', () => {
+  resetSkippedParts();
+  const chapter = {index: 0, title: 'Opening', startSeconds: 0, endSeconds: 30};
+  const marker = {kind: 'intro', startSeconds: 0, endSeconds: 10, automatic: true};
+  const audio = {index: 1, language: 'en', title: 'English', codec: 'aac', channels: 2, default: true};
+  const raw = {...bundle(), chapters: [chapter, {...chapter, endSeconds: -1}], markers: [{...marker, automatic: 'yes'}, marker], audio: [audio, {...audio, channels: -1}]};
+  const parsed = parseDownloadBundle(raw, 'prep');
+  assert.deepEqual(parsed.chapters, [chapter]);
+  assert.deepEqual(parsed.markers, [marker]);
+  assert.deepEqual(parsed.audio, [audio]);
+  assert.equal(parsed.artwork[0].path, 'artwork/poster.jpg');
+  assert.deepEqual(skippedParts().map(p => [p.part, p.count]), [['bundle.chapters', 1], ['bundle.markers', 1], ['bundle.audio', 1]]);
+  for (const [field, bound] of [['chapters', 2000], ['markers', 256], ['audio', 64]] as const) {
+    assert.throws(() => parseDownloadBundle({...bundle(), [field]: Array(bound + 1).fill(null)}, 'prep'));
+  }
+  assert.throws(() => parseDownloadBundle({...raw, preparationId: 'other'}, 'prep'));
+  assert.throws(() => parseDownloadBundle({...raw, artwork: [{role: 'poster', path: 'artwork/../escape', contentType: 'image/jpeg'}]}, 'prep'));
+});
+
 test('downloaded subtitle originals and fonts retain server bundle paths without live grants', () => {
   const files = {
     ass: {path: 'subtitles/track/3.ass', contentType: 'text/x-ssa'},

@@ -8,15 +8,30 @@ const settle = async () => { for (let i = 0; i < 30; i++) await new Promise(setI
 const SERVER = 'srv';
 const NOW = Date.parse('2026-09-22T19:20:00Z');
 
-/** Today's `/v1/guide` over the demo fixture: 30 channels per signed page, one window per request. */
+/** Current directory, source summaries and named programme windows over the demo fixture. */
 function legacyApi(opts: {library?: boolean; failKind?: string; refreshState?: string} = {}) {
   const requests: string[] = [];
   const library = [{id: 'lc-1', name: 'Sharks', number: '900', group: ''}, {id: 'lc-2', name: 'Aardvarks', number: '901', group: ''}];
   const api = {
     async request<T>(path: string): Promise<T> {
-      if (!path.startsWith('/v1/guide?')) throw Object.assign(new Error('not found'),{status:404});
+      if (!path.startsWith('/v1/guide')) throw Object.assign(new Error('not found'),{status:404});
       requests.push(path);
       const q = new URL(path, 'http://x').searchParams;
+      const sourceRows = (kind: string) => kind === 'live-source' ? demoChannels : opts.library ? library : [];
+      const meta = (kind: string) => ({id: kind === 'live-source' ? 'antenna' : 'library-src', name: kind === 'live-source' ? 'Antenna' : 'Library Channels', generation: 'g1', publishedAt: new Date(NOW).toISOString(), availableStart: '', availableEnd: '', provenance: kind, refreshState: opts.refreshState ?? 'healthy'});
+      const directoryRow = (c: {id:string;name:string;number:string;group:string}, kind:string) => ({...c,sourceId:meta(kind).id,provenance:kind,generation:'g1',logoPath:'',programmes:[],tuneAvailable:true,recordAvailable:kind==='live-source',tuneUnavailableReason:'',recordUnavailableReason:kind==='live-source'?'':'not-recordable',favorite:false,hidden:false,preferenceRevision:0});
+      if (path.startsWith('/v1/guide/sources?')) {
+        const kinds = ['live-source', ...(opts.library ? ['library-channel'] : [])];
+        return {protocolVersion:'1.0',serverId:SERVER,viewerFence:'fence',revision:'r1',sources:kinds.map((kind,position)=>({...meta(kind),position,recordAvailable:kind==='live-source',guideDays:8,channelCount:sourceRows(kind).length,favoriteCount:0,groups:[],groupCounts:[],unavailableReasons:{}}))} as T;
+      }
+      if (path.startsWith('/v1/guide/channels?')) {
+        const kind=q.get('kind')!, kinds=kind==='all'?['live-source','library-channel']:[kind];
+        if (kind === opts.failKind) throw new Error('unavailable');
+        const all=kinds.filter(k=>k!==opts.failKind).flatMap(k=>sourceRows(k).map(c=>directoryRow(c,k)));
+        if(q.get('sort')==='name')all.sort((a,b)=>a.name.localeCompare(b.name));
+        const offset=Number(q.get('offset')),limit=Number(q.get('limit')),channels=all.slice(offset,offset+limit);
+        return {protocolVersion:'1.0',serverId:SERVER,directory:{viewerFence:'fence',revision:'r1',total:all.length,offset,limit,channels,sources:kinds.map(meta)}} as T;
+      }
       const kind = q.get('kind')!, start = q.get('start')!, end = q.get('end')!;
       if (kind === opts.failKind) throw new Error('unavailable');
       const page = Number(q.get('cursor') || 0);
@@ -40,7 +55,7 @@ function legacyApi(opts: {library?: boolean; failKind?: string; refreshState?: s
   return {api, requests};
 }
 
-test('stopgap adapter: the demo guide through the windowed store, one walk per block', async () => {
+test('guide adapter: the demo guide through the windowed store, one request per block', async () => {
   const {api, requests} = legacyApi();
   const source = legacyGuideSource(api, SERVER, {kind: 'live-source', sourceId: '', timezone: 'America/New_York', now: () => NOW});
   const store = new GuideWindowStore({source, channelPageSize: 50});
@@ -54,18 +69,21 @@ test('stopgap adapter: the demo guide through the windowed store, one walk per b
   const cells = layoutRow(row.programs, {viewStart: view.start, viewEnd: view.end, pxPerMs: pxPerMsFor(240), now: NOW});
   assert.ok(cells.some(c => c.state === 'now'));
   assert.deepEqual(layoutRow(store.programsFor(12, view.start, view.end).programs, {viewStart: view.start, viewEnd: view.end, pxPerMs: pxPerMsFor(240), now: NOW}).map(c => c.kind), ['gap']);
-  // 14 channels fit one legacy page: one request for the channel list, one per 3-hour block (2 visible + 2 margin).
-  assert.ok(requests.length <= 5, `${requests.length} requests`);
+  // The initial viewport requests its page and the next margin page while
+  // the total is unknown, then only named programme windows.
+  assert.equal(requests.filter(r => r.startsWith('/v1/guide/channels?')).length, 2);
+  assert.ok(requests.filter(r => r.startsWith('/v1/guide?')).every(r => new URL(r, 'http://x').searchParams.has('channels')));
+  assert.ok(requests.length <= 6, `${requests.length} requests`);
   store.dispose();
 });
 
-test('stopgap adapter: Channels entries from today\'s API', async () => {
+test('guide adapter: Channels entries from today\'s API', async () => {
   const {api} = legacyApi();
   const sources = await legacyChannelSources(api, SERVER, 'America/New_York', 'Library Channels', NOW);
   assert.deepEqual(sources.map(s => [s.id, s.name, s.type, s.recordAvailable]), [['antenna', 'Antenna', 'live', true]]);
 });
 
-test('stopgap adapter: rows and programs carry their /v1/guide objects and descriptions', async () => {
+test('guide adapter: rows and programs carry their /v1/guide objects and descriptions', async () => {
   const {api} = legacyApi();
   const source = legacyGuideSource(api, SERVER, {kind: 'live-source', sourceId: '', timezone: 'UTC', now: () => NOW});
   const signal = new AbortController().signal;
@@ -83,7 +101,7 @@ test('stopgap adapter: rows and programs carry their /v1/guide objects and descr
   assert.equal(legacyProgramme({...first, native: {}}), undefined);
 });
 
-test('stopgap adapter: All channels joins live sources and Library Channels, ordered, and survives one kind failing', async () => {
+test('guide adapter: All channels joins live sources and Library Channels, ordered, and survives one kind failing', async () => {
   const signal = new AbortController().signal;
   const {api, requests} = legacyApi({library: true});
   const all = legacyGuideSource(api, SERVER, {kind: 'all', sourceId: '', timezone: 'UTC', sort: 'number', includeHidden: true, now: () => NOW});
@@ -100,7 +118,7 @@ test('stopgap adapter: All channels joins live sources and Library Channels, ord
   await assert.rejects(legacyGuideSource(legacyApi({failKind: 'live-source'}).api, SERVER, {kind: 'live-source', sourceId: '', timezone: 'UTC', now: () => NOW}).channels(0, 10, signal));
 });
 
-test('stopgap adapter: only degraded and credentials-required sources are out of date', async () => {
+test('guide adapter: only degraded and credentials-required sources are out of date', async () => {
   assert.equal(legacyGuideState('degraded'), 'stale');
   assert.equal(legacyGuideState('credentials-required'), 'stale');
   for (const state of ['healthy', '', 'refreshed', 'something-new']) assert.equal(legacyGuideState(state), 'ready', state);
@@ -110,7 +128,7 @@ test('stopgap adapter: only degraded and credentials-required sources are out of
   assert.equal(unknown[0]!.guideState, 'ready');
 });
 
-test('stopgap adapter: programme facts map behind presence, malformed facts never fatal', async () => {
+test('guide adapter: programme facts map behind presence, malformed facts never fatal', async () => {
   const route = {kind: 'live-source' as const, start: new Date(NOW).toISOString(), end: new Date(NOW + HOUR_MS).toISOString(), timezone: 'UTC', search: '', sourceId: ''};
   const base = {id: 'p', channelId: 'c', title: 'Harbour Lights', start: route.start, end: route.end, lineage: 'provider-id'};
   const full = parseChannelGuide({protocolVersion: '1.0', serverId: SERVER, guide: {state: 'ready', viewerFence: 'f', start: route.start, end: route.end, timezone: 'UTC', nextCursor: '', observedAt: route.start, days: 8, sources: [{id: 's', name: 'Antenna', generation: 'g', publishedAt: route.start, availableStart: '', availableEnd: '', provenance: 'live-source', refreshState: 'healthy'}], channels: [{id: 'c', sourceId: 's', provenance: 'live-source', name: 'One', number: '1', group: '', generation: 'g', tuneAvailable: true, recordAvailable: true, tuneUnavailableReason: '', recordUnavailableReason: '', favorite: false, hidden: false, preferenceRevision: 0, programmes: [{...base, subtitle: 'The Arrival', episode: {season: 2, number: 5}, categories: ['Drama', 'Mystery'], rating: {system: 'VCHIP', value: 'TV-14'}, year: 2019, starRating: '7/10', flags: {live: true, new: false, premiere: false, repeat: false}, image: '/v1/items/item123/art/poster'}]}]}}, SERVER, route);
@@ -141,19 +159,12 @@ test('stopgap adapter: programme facts map behind presence, malformed facts neve
   assert.equal(malformed.days, undefined);
 });
 
-test('stopgap adapter: channel sources carry the guide days behind presence', async () => {
-  const api = {
-    async request<T>(path: string): Promise<T> {
-      if (!path.startsWith('/v1/guide?')) throw Object.assign(new Error('not found'),{status:404});
-      const q = new URL(path, 'http://x').searchParams;
-      const kind = q.get('kind')!;
-      const start = q.get('start')!, end = q.get('end')!;
-      const channels = kind === 'live-source' ? [{id: 'c1', sourceId: 'antenna', provenance: kind, name: 'One', number: '1', group: '', generation: 'g1', logoPath: '', programmes: [], tuneAvailable: true, recordAvailable: true, tuneUnavailableReason: '', recordUnavailableReason: '', favorite: false, hidden: false, preferenceRevision: 0}] : [];
-      return {protocolVersion: '1.0', serverId: SERVER, guide: {state: 'ready', viewerFence: 'fence', start, end, timezone: 'UTC', observedAt: new Date(NOW).toISOString(), nextCursor: '', days: 8, channels, sources: kind === 'live-source' ? [{id: 'antenna', name: 'Antenna', generation: 'g1', publishedAt: new Date(NOW).toISOString(), availableStart: '', availableEnd: '', provenance: kind, refreshState: 'healthy'}] : []}} as T;
-    },
-  };
-  const sources = await legacyChannelSources(api as never, SERVER, 'UTC', 'Library Channels', NOW);
+test('guide adapter: channel sources carry summary guide days without programme reads', async () => {
+  const {api, requests} = legacyApi();
+  const sources = await legacyChannelSources(api, SERVER, 'UTC', 'Library Channels', NOW);
   assert.equal(sources[0]!.guideDays, 8);
+  assert.equal(requests.length, 1);
+  assert.ok(requests[0].startsWith('/v1/guide/sources?'));
 });
 
 test('the guide asks for the channels on screen, never the whole lineup per window', async () => {
@@ -162,7 +173,7 @@ test('the guide asks for the channels on screen, never the whole lineup per wind
   const signal = new AbortController().signal;
   const list = await source.channels(0, 3, signal);
   assert.equal(list.total, 14);
-  assert.ok(requests.every(r => new URL(r, 'http://x').searchParams.get('programmes') === 'none'), 'the channel list carries no programmes');
+  assert.ok(requests.every(r => r.startsWith('/v1/guide/channels?')), 'the channel list uses the bounded directory');
   requests.length = 0;
   const ids = list.items.map(r => r.id);
   const programs = await source.programs(ids, NOW, NOW + 3 * HOUR_MS, signal);
