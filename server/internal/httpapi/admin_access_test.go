@@ -165,7 +165,7 @@ func TestMemberLimitsScopeCatalogueProjectionAndFence(t *testing.T) {
 func TestAdministrationTierBoundaries(t *testing.T) {
 	f := administrationFixtureNew(t)
 	adminTier := []string{"/v1/admin/access/members", "/v1/admin/access/invitations", "/v1/admin/access/devices",
-		"/v1/admin/logs", "/v1/admin/logs/settings", "/v1/admin/diagnostics/client-logs", "/v1/admin/connectivity/status"}
+		"/v1/admin/logs", "/v1/admin/logs/settings", "/v1/admin/connectivity/status"}
 	for _, path := range adminTier {
 		if w := f.call("GET", path, f.admin, ""); w.Code != 200 {
 			t.Fatalf("admin tier refused %s: %d %s", path, w.Code, w.Body)
@@ -176,7 +176,7 @@ func TestAdministrationTierBoundaries(t *testing.T) {
 			}
 		}
 	}
-	ownerOnly := []string{"/v1/admin/access/api-keys", "/v1/admin/connectivity/policy"}
+	ownerOnly := []string{"/v1/admin/diagnostics/client-logs", "/v1/admin/access/api-keys", "/v1/admin/connectivity/policy"}
 	for _, path := range ownerOnly {
 		if w := f.call("GET", path, f.owner, ""); w.Code != 200 {
 			t.Fatalf("owner refused %s: %d %s", path, w.Code, w.Body)
@@ -419,7 +419,7 @@ func TestClientLogUploadsAreBoundedStoredPerDeviceAndListedForAdmins(t *testing.
 	if w = f.call("POST", "/v1/diagnostics/client-logs", "", `{"body":"anonymous"}`); w.Code != 401 {
 		t.Fatalf("an unauthenticated upload was accepted: %d", w.Code)
 	}
-	w = f.call("GET", "/v1/admin/diagnostics/client-logs", f.owner, "")
+	w = f.call("GET", f.owner, "")
 	if w.Code != 200 || !strings.Contains(w.Body.String(), `"deviceId":"`+f.memberDevice+`"`) || strings.Contains(w.Body.String(), "a client trace") {
 		t.Fatalf("a list must carry metadata but not bodies: %d %s", w.Code, w.Body)
 	}
@@ -472,7 +472,7 @@ func TestClientLogRetentionIsPerAuthenticatedDevice(t *testing.T) {
 			t.Fatalf("upload %d: %d %s", i, w.Code, w.Body)
 		}
 	}
-	w := f.call("GET", "/v1/admin/diagnostics/client-logs", f.owner, "")
+	w := f.call("GET", f.owner, "")
 	var page servicelog.ClientUploadPage
 	if err := json.Unmarshal(w.Body.Bytes(), &page); err != nil || w.Code != 200 || len(page.Items) != servicelog.ClientUploadsPerDevice {
 		t.Fatalf("device retention: %d %v %+v", w.Code, err, page)

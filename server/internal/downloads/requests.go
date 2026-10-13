@@ -577,7 +577,8 @@ func (s *Service) Requests(ctx context.Context, p identity.Principal, device str
 	defer snap.Rollback()
 	tx := snap.Tx()
 	// The same check a new request passes: the device is one of this session's.
-	if _, _, e = s.requestAccess(ctx, tx, p, device); e != nil {
+	visible, bound, e := s.requestAccess(ctx, tx, p, device)
+	if e != nil {
 		return out, e
 	}
 	recent := s.millis() - int64(24*60*60*1000)
@@ -618,6 +619,15 @@ func (s *Service) Requests(ctx context.Context, p identity.Principal, device str
 			return out, err
 		}
 		f.Target.ID, f.CreatedAt = public, stamp(f.created)
+		query, values := requestSelection(f.Target)
+		var anyVisible bool
+		if err = tx.QueryRowContext(ctx, `SELECT EXISTS(`+query+` AND (`+visible+`))`, append(values, bound...)...).Scan(&anyVisible); err != nil {
+			return out, err
+		}
+		if !anyVisible {
+			continue
+		}
+
 		if f.preparing {
 			f.State = "preparing"
 		}

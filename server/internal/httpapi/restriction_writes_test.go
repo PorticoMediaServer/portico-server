@@ -393,6 +393,29 @@ const (
 // administration (/v1/admin/…), which is probed by rule.
 func restrictionWriteRoutes() map[string]writeRoute {
 	return map[string]writeRoute{
+		"HEAD /v1/media/subtitles/{grant}/{resource}/{revision}/fonts/{font}": writeExempt("read-only asset headers; originalSubtitleRoute rechecks grant and subtitle visibility"),
+		"HEAD /v1/media/subtitles/{grant}/{resource}/{revision}/original.mks": writeExempt("read-only asset headers; originalSubtitleRoute rechecks grant and subtitle visibility"),
+		"HEAD /v1/media/subtitles/{grant}/{resource}/{revision}/original.sub": writeExempt("read-only asset headers; originalSubtitleRoute rechecks grant and subtitle visibility"),
+		"HEAD /v1/media/subtitles/{grant}/{resource}/{revision}/original.idx": writeExempt("read-only asset headers; originalSubtitleRoute rechecks grant and subtitle visibility"),
+		"HEAD /v1/media/subtitles/{grant}/{resource}/{revision}/original.ssa": writeExempt("read-only asset headers; originalSubtitleRoute rechecks grant and subtitle visibility"),
+		"HEAD /v1/media/subtitles/{grant}/{resource}/{revision}/original.ass": writeExempt("read-only asset headers; originalSubtitleRoute rechecks grant and subtitle visibility"),
+		"HEAD /v1/media/subtitles/{grant}/{resource}/{revision}/original.sup": writeExempt("read-only asset headers; originalSubtitleRoute rechecks grant and subtitle visibility"),
+		"PUT /v1/items/{itemId}/playback/{session}/subtitles":                 perHidden("PUT", "/v1/items/ID/playback/unknown/subtitles", `{}`, "item"),
+		"DELETE /v1/items/{itemId}/subtitles/{resource}":                      perHidden("DELETE", "/v1/items/ID/subtitles/matrix-resource", `{}`, "item"),
+		"PUT /v1/items/{itemId}/subtitles/{resource}":                         perHidden("PUT", "/v1/items/ID/subtitles/matrix-resource", `{}`, "item"),
+		"POST /v1/items/{itemId}/subtitles/remote":                            perHidden("POST", "/v1/items/ID/subtitles/remote", `{}`, "item"),
+		"POST /v1/items/{itemId}/subtitles/search":                            perHidden("POST", "/v1/items/ID/subtitles/search", `{}`, "item"),
+		"POST /v1/items/{itemId}/subtitles/refresh":                           perHidden("POST", "/v1/items/ID/subtitles/refresh", `{}`, "item"),
+		"POST /v1/items/{itemId}/subtitles/import":                            perHidden("POST", "/v1/items/ID/subtitles/import", `{}`, "item"),
+		"POST /v1/items/{itemId}/subtitles/apply":                             perHidden("POST", "/v1/items/ID/subtitles/apply", `{}`, "item"),
+		"POST /v1/items/{itemId}/subtitles":                                   perHidden("POST", "/v1/items/ID/subtitles", `{}`, "item"),
+		"POST /v1/libraries/{id}/metadata/attention":                          perHidden("POST", "/v1/libraries/ID/metadata/attention", `{}`, "library"),
+		"POST /v1/shows/{id}/metadata/refresh":                                perHidden("POST", "/v1/shows/ID/metadata/refresh", `{}`, "show"),
+		"POST /v1/libraries/paths-changed":                                    perHidden("POST", "/v1/libraries/paths-changed", `{"libraryId":"ID","paths":["film.mkv"]}`, "library"),
+		"POST /v1/me/access-tokens":                                           writeExempt("the caller's credential creation; names scopes, no catalogue ids"),
+		"DELETE /v1/me/access-tokens/{id}":                                    writeExempt("the caller's credential revocation; names no catalogue id"),
+		"POST /v1/mcp":                                                        perHidden("POST", "/v1/mcp", `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"mark_watched","arguments":{"itemId":"ID"}}}`, "item"),
+
 		// Catalogue content named by id.
 		"PUT /v1/items/{id}/personal-state": perHidden("PUT", "/v1/items/ID/personal-state", `{"operationId":"OP","expectedRevision":0,"favorite":true}`, "item"),
 		// Not interested also names a show, album or book: those are probed too.

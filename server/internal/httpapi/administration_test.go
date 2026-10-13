@@ -108,8 +108,8 @@ func TestAdministrationOwnerBoundaryAndLibrarySettingsRoundTrip(t *testing.T) {
 	if err := json.Unmarshal(request("GET", "/v1/admin/updates", owner.AccessToken, "").Body.Bytes(), &updateRead); err != nil {
 		t.Fatal(err)
 	}
-	if updateRead.State != "unconfigured" || updateRead.Status != "no-feed" {
-		t.Fatalf("no-feed update state: %+v", updateRead)
+	if updateRead.State != "unavailable" || updateRead.Status != "unavailable" {
+		t.Fatalf("unconfigured update service state: %+v", updateRead)
 	}
 	grantBody := `{"owner":{"authority":"local","accountId":"owner","profileId":"profile"},"enabled":true,"inheritProfiles":false,"revision":0}`
 	if w := request("PUT", "/v1/admin/dvr/recording-permissions", member.AccessToken, grantBody); w.Code != 401 {

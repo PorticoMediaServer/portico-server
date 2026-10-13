@@ -502,7 +502,7 @@ func TestRecommendationCursorRejectsDailyRotationChange(t *testing.T) {
 	r.Now = r.Now.Add(24 * time.Hour)
 	_, err = s.HomeSingleRow(r, "recommended", HomeRowPage{Limit: 1, Cursor: first.NextCursor})
 	if err != ErrStaleContinuation {
-		t.Fatal("cursor crossed ranking changes", err)
+		t.Fatal("cursor could not continue after ranking changes", err)
 	}
 }
 

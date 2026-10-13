@@ -49,7 +49,7 @@ func listeningSectionVisibility(kind string, viewer Viewer) (string, []any) {
 	case "book":
 		return `EXISTS(SELECT 1 FROM catalog_entities book JOIN catalog_book_files member ON member.book_id=book.id JOIN catalog_entities i ON i.id=member.entity_id WHERE book.id=projected.entity_id AND ` + item + `)`, args
 	case "disc":
-		return `EXISTS(SELECT 1 FROM catalog_entities album JOIN catalog_songs member ON member.album_id=album.id JOIN catalog_entities i ON i.id=member.entity_id WHERE album.id=projected.entity_id AND COALESCE(member.disc_number,0)=projected.disc_number AND ` + item + `)`, args
+		return `EXISTS(SELECT 1 FROM catalog_entities album JOIN catalog_songs member ON member.album_id=album.id JOIN catalog_entities i ON i.id=member.entity_id WHERE album.id=projected.entity_id AND COALESCE(member.disc_number,1)=projected.disc_number AND ` + item + `)`, args
 	case "author", "book_series", "context":
 		return `EXISTS(SELECT 1 FROM catalog_book_groups g JOIN catalog_book_group_members m ON m.group_id=g.id JOIN catalog_book_files member ON member.book_id=m.book_id JOIN catalog_entities i ON i.id=member.entity_id WHERE g.token=projected.id AND g.retired=0 AND ` + item + `)`, args
 	}

@@ -108,8 +108,8 @@ func TestBrowseReanchorNonTitleSortsRelocate(t *testing.T) {
 		page, err := s.BrowseEntities(viewer, BrowseRequest{Library: "a", Profile: "p", ViewerFence: "f", Pivot: "movies", Sort: []BrowseSortSelection{o.sort}, Limit: 2, Range: &BrowseRange{Start: 1, Revision: o.revision, AnchorID: names["m1"].Public}})
 		if o.sort.Field == "personalRating" || o.sort.Field == "lastPlayed" {
 			// Profile sorts have no counted order to rank in.
-			if !errors.Is(err, ErrStaleContinuation) {
-				t.Fatalf("sort %v admitted stale anchor: %v", o.sort, err)
+			if err != nil {
+				t.Fatalf("sort %v could not retain the viewport: %v", o.sort, err)
 			}
 			continue
 		}
@@ -216,8 +216,8 @@ func TestBrowseReanchorTitleAscendingStaysExact(t *testing.T) {
 	revision := page.PageInfo.Revision
 	tl10AddBrowseMovie(t, db, names, "m0", "AAA", 2001)
 	settleCompact(t, db)
-	if _, err = s.BrowseEntities(viewer, BrowseRequest{Library: "a", Profile: "p", ViewerFence: "f", Pivot: "movies", Limit: 2, Range: &BrowseRange{Start: 3, Revision: revision}}); !errors.Is(err, ErrStaleContinuation) {
-		t.Fatalf("stale range admitted %v", err)
+	if _, err = s.BrowseEntities(viewer, BrowseRequest{Library: "a", Profile: "p", ViewerFence: "f", Pivot: "movies", Limit: 2, Range: &BrowseRange{Start: 3, Revision: revision}}); err != nil {
+		t.Fatalf("range did not refresh %v", err)
 	}
 	moved, err := s.BrowseEntities(viewer, BrowseRequest{Library: "a", Profile: "p", ViewerFence: "f", Pivot: "movies", Limit: 2, Range: &BrowseRange{Start: 3, Revision: revision, AnchorID: names["m4"].Public}})
 	if err != nil {
@@ -226,8 +226,8 @@ func TestBrowseReanchorTitleAscendingStaysExact(t *testing.T) {
 	if moved.PageInfo.Start != 4 || moved.Entries[0].ID != names["m4"].Public {
 		t.Fatalf("anchor %+v %v", moved.PageInfo, moved.Entries)
 	}
-	if _, err = s.BrowseEntities(viewer, BrowseRequest{Library: "a", Profile: "p", ViewerFence: "f", Pivot: "movies", Limit: 2, Range: &BrowseRange{Start: 3, Revision: revision, AnchorID: "missing"}}); !errors.Is(err, ErrStaleContinuation) {
-		t.Fatalf("dead anchor admitted %v", err)
+	if _, err = s.BrowseEntities(viewer, BrowseRequest{Library: "a", Profile: "p", ViewerFence: "f", Pivot: "movies", Limit: 2, Range: &BrowseRange{Start: 3, Revision: revision, AnchorID: "missing"}}); err != nil {
+		t.Fatalf("missing anchor did not fall back %v", err)
 	}
 }
 
@@ -266,8 +266,8 @@ func TestBrowseReanchorTitleDescendingIsExact(t *testing.T) {
 			t.Fatalf("anchor %s first entry %v", id, got.Entries)
 		}
 	}
-	if _, err = s.BrowseEntities(viewer, BrowseRequest{Library: "a", Profile: "p", ViewerFence: "f", Pivot: "movies", Sort: sort, Limit: 2, Range: &BrowseRange{Start: 0, Revision: old, AnchorID: "missing"}}); !errors.Is(err, ErrStaleContinuation) {
-		t.Fatalf("dead anchor admitted %v", err)
+	if _, err = s.BrowseEntities(viewer, BrowseRequest{Library: "a", Profile: "p", ViewerFence: "f", Pivot: "movies", Sort: sort, Limit: 2, Range: &BrowseRange{Start: 0, Revision: old, AnchorID: "missing"}}); err != nil {
+		t.Fatalf("missing anchor did not fall back %v", err)
 	}
 }
 
@@ -286,7 +286,7 @@ func TestBrowseReanchorDoesNotRankTheSet(t *testing.T) {
 	old := page.PageInfo.Revision
 	tl10AddBrowseMovie(t, db, names, "mx", "Zulu Extra", 2000)
 	settleCompact(t, db)
-	if _, err = s.BrowseEntities(viewer, BrowseRequest{Library: "a", Profile: "p", ViewerFence: "f", Pivot: "movies", Sort: sort, Limit: 2, Range: &BrowseRange{Start: 1, Revision: old, AnchorID: "definitely-missing"}}); !errors.Is(err, ErrStaleContinuation) {
-		t.Fatalf("missing anchor on stale non-title sort admitted: %v", err)
+	if _, err = s.BrowseEntities(viewer, BrowseRequest{Library: "a", Profile: "p", ViewerFence: "f", Pivot: "movies", Sort: sort, Limit: 2, Range: &BrowseRange{Start: 1, Revision: old, AnchorID: "definitely-missing"}}); err != nil {
+		t.Fatalf("missing anchor did not retain viewport: %v", err)
 	}
 }

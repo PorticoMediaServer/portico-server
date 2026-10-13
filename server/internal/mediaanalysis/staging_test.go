@@ -10,6 +10,7 @@ import (
 
 	"portico.local/server/internal/decoder"
 	"portico.local/server/internal/mediaartifact"
+	"portico.local/server/internal/persistence"
 )
 
 func TestAnalysisPreviewCapturesCloseWithoutEarlyPublication(t *testing.T) {
@@ -18,7 +19,12 @@ func TestAnalysisPreviewCapturesCloseWithoutEarlyPublication(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	service := &Service{artifacts: store, options: Options{MaxGeneratedBytes: 1 << 20, MaxPreviewFrames: 16}}
+	db, err := persistence.Open(filepath.Join(canonicalFixtureDir(t), "database.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	service := &Service{db: db, artifacts: store, options: Options{MaxGeneratedBytes: 1 << 20, MaxPreviewFrames: 16}}
 	retired := false
 	run := func(ctx context.Context, key string, spec decoder.AnalysisSpec, consume func(io.Reader) error) error {
 		if spec.Kind != "trickplay" {

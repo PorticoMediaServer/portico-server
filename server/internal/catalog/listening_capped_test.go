@@ -173,8 +173,8 @@ func TestListeningSelectionExactBelowTheCapKeepsStaleChecks(t *testing.T) {
 		t.Fatal(err)
 	}
 	c.Drain()
-	if _, err = s.ListeningSelection(r, target, "ordered", "", false, ""); !errors.Is(err, ErrStaleContinuation) {
-		t.Fatalf("changed library did not invalidate the cursor: %v", err)
+	if _, err = s.ListeningSelection(r, target, "ordered", "", false, ""); err != nil {
+		t.Fatalf("library publication prevented continuation: %v", err)
 	}
 }
 

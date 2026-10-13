@@ -176,6 +176,10 @@ func refusedStatus(token string) int {
 // nonSessionCredential are the GET routes authenticated by something other than
 // the session, so a session bearer there is rightly "not a credential" (401).
 var nonSessionCredential = map[string]string{
+	"GET /v1/downloads/artifacts/{grant}/artwork/{role}":                         "download transfer grant, resolved and reauthorized by downloadExtra",
+	"GET /v1/downloads/artifacts/{grant}/subtitles/{resource}/{revision}.vtt":    "download transfer grant, resolved and reauthorized by downloadExtra",
+	"GET /v1/downloads/artifacts/{grant}/subtitles/{resource}/{revision}/{file}": "download transfer grant, resolved and reauthorized by downloadExtra",
+
 	"GET /v1/topshelf":                                                   "Top Shelf device token",
 	"GET /v1/topshelf/art/{id}":                                          "Top Shelf device token",
 	"GET /v1/media/{grant}":                                              "media grant",
@@ -257,6 +261,16 @@ const (
 // restrictionRoutes classifies every GET route the router registers.
 func restrictionRoutes() map[string]restrictionRoute {
 	return map[string]restrictionRoute{
+		"GET /v1/downloads/artifacts/{grant}/artwork/{role}":                         exempt("download transfer grant rechecked against current item and library visibility by downloadExtra"),
+		"GET /v1/downloads/artifacts/{grant}/subtitles/{resource}/{revision}.vtt":    exempt("download transfer grant rechecked against current item and library visibility by downloadExtra"),
+		"GET /v1/downloads/artifacts/{grant}/subtitles/{resource}/{revision}/{file}": exempt("download transfer grant rechecked against current item and library visibility by downloadExtra"),
+		"GET /v1/downloads/requests":                                                 static("/v1/downloads/requests?deviceId=matrix-device"),
+		"GET /v1/downloads/preparations/{id}/bundle":                                 static("/v1/downloads/preparations/unknown/bundle"),
+		"GET /v1/admin/catalogue/failures":                                           exempt(reasonAdmin),
+		"GET /v1/admin/resource-usage":                                               exempt(reasonAdmin),
+		"GET /v1/admin/libraries/{id}/scans/{job}/issues":                            exempt(reasonAdmin),
+		"GET /v1/console/registry":                                                   exempt("owner setting definitions only; no catalogue titles"),
+
 		"GET /v1/networking/connection":                                      exempt(reasonNoTitles),
 		"GET /v1/me/api-access":                                              exempt(reasonNoTitles),
 		"GET /v1/me/access-tokens":                                           exempt("the caller's credentials, not catalogue content"),

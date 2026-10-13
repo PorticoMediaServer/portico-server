@@ -2,6 +2,7 @@ package subtitles
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"portico.local/server/internal/dbwork"
@@ -17,7 +18,7 @@ func TestSubtitleRequestsTakeTheWriteGateInTheirOwnClass(t *testing.T) {
 	}
 	for _, class := range []dbwork.Class{dbwork.ClassEstablishedPlayback, dbwork.ClassInteractive} {
 		own, background := acquired(class), acquired(dbwork.ClassBackgroundMedia)
-		if _, err := f.s.List(dbwork.WithClass(context.Background(), class), f.p, f.item.Public); err != nil {
+		if _, err := f.s.Mutate(dbwork.WithClass(context.Background(), class), f.p, f.item.Public, uploadMutation(fmt.Sprint(class), plainSubtitle, f.item.Token)); err != nil {
 			t.Fatal(err)
 		}
 		if acquired(class) != own+1 || acquired(dbwork.ClassBackgroundMedia) != background {
@@ -25,10 +26,21 @@ func TestSubtitleRequestsTakeTheWriteGateInTheirOwnClass(t *testing.T) {
 		}
 	}
 	background := acquired(dbwork.ClassBackgroundMedia)
-	if _, err := f.s.List(context.Background(), f.p, f.item.Public); err != nil {
+	if _, err := f.s.Mutate(context.Background(), f.p, f.item.Public, uploadMutation("background", plainSubtitle, f.item.Token)); err != nil {
 		t.Fatal(err)
 	}
 	if acquired(dbwork.ClassBackgroundMedia) != background+1 {
 		t.Fatal("work that names no class no longer takes the gate as background")
+	}
+}
+
+func TestSubtitleCatalogueReadsDoNotTakeTheWriteGate(t *testing.T) {
+	f := newSubtitleFixture(t)
+	before := dbwork.WriteGate().Stats().Acquired
+	if _, err := f.s.List(context.Background(), f.p, f.item.Public); err != nil {
+		t.Fatal(err)
+	}
+	if dbwork.WriteGate().Stats().Acquired != before {
+		t.Fatal("read acquired the write gate")
 	}
 }

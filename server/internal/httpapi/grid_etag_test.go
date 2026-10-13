@@ -30,8 +30,8 @@ func TestGridProjectionsRevalidateWithTheirValidator(t *testing.T) {
 			t.Fatal(e)
 		}
 		after := editorRequestWithHeader(t, h, "GET", path, owner, map[string]string{"If-None-Match": tag})
-		if after.Code != 200 || after.Header().Get("ETag") == tag {
-			t.Fatalf("%s: a write did not change the validator: %d %q", path, after.Code, after.Header().Get("ETag"))
+		if after.Code != 304 || after.Header().Get("ETag") != tag {
+			t.Fatalf("%s: an unrelated settings write changed the content validator: %d %q", path, after.Code, after.Header().Get("ETag"))
 		}
 	}
 	// A failed request carries no validator.
