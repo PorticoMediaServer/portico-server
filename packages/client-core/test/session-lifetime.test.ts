@@ -62,3 +62,8 @@ test('a created session returned after disposal is stopped without loading the p
  const start=ctl.start({itemId:'movie-a'});ctl.dispose();answer.resolve({status:201,headers:{},body:a});await start;
  assert.equal(p.source,undefined);assert.deepEqual(stopped,[`/v1/playback/sessions/${a.id}`]);
 });
+
+test('attaching a session that already ended never loads its media',async()=>{
+ const {http,a}=await setup(),p=player(),ctl=new PlaybackSessionController({http,player:p.port,timers});
+ try {ctl.attach({...a,state:'ended',end:{reason:'terminated'}});assert.equal(p.source,undefined);assert.equal(ctl.getSnapshot().phase,'ended');}finally{ctl.dispose();}
+});

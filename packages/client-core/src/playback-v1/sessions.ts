@@ -285,9 +285,10 @@ export class PlaybackSessionController {
   /** Adopt a server session (start, 412 recovery, `session.updated`): load a new generation's URL. */
   private adopt(session: Session, autoplay: boolean, startPositionMs?: number) {
     if (this.disposed || (this.gate.value !== undefined && session.presentation.generation < this.gate.value)) return;
+    if (session.state === 'ended') { this.publish({session}); void this.serverEnded(session.end ?? {reason: 'stopped'}); return; }
     const fresh = this.gate.advance(session.presentation.generation);
     if (!this.reporter) this.reporter = this.newReporter(session.id);
-    this.publish({session, phase: session.state === 'ended' ? 'ended' : 'active', ended: session.state === 'ended' ? session.end ?? {reason: 'stopped'} : undefined});
+    this.publish({session, phase: 'active', ended: undefined});
     if (!fresh) return;
     this.reporter.setGeneration(session.presentation.generation);
     this.player.load({

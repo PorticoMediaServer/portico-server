@@ -147,6 +147,12 @@ export class ConsoleClient {
   * still apply. A revision alone is never evidence that replaying an edit is safe.
   */
  private async mutate<T>(path:string,method:string,body:Record<string,unknown>,parse:(v:unknown)=>T,rebase?:()=>Promise<number|undefined>):Promise<T>{
+  const pending=this.intents.get(path);
+  if(pending&&pending.method===method&&'expectedRevision' in body){
+   const sent=JSON.parse(pending.body) as Record<string,unknown>;
+   // A rebased write whose answer was lost is still the same intent: replay its exact receipt key.
+   if(JSON.stringify({...body,expectedRevision:sent.expectedRevision})===pending.body)body=sent;
+  }
   for(let retries=0;;retries++){
    try{return await this.mutateOnce(path,method,body,parse);}
    catch(e){

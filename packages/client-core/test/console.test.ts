@@ -230,3 +230,16 @@ test('a quiet form reload keeps its original comparison basis while an owner edi
  assert.deepEqual(sent,{draft:{name:'My edit',limit:0},saved:{name:'Initial',limit:0}});
  form.dispose();
 });
+
+test('retrying a save after a rebase and a lost response reuses the exact committed payload',async()=>{
+ let stored={...values},rev=1,lost=true;const sent:any[]=[];
+ const c=client(async(_path,method,body)=>{
+  if(method==='GET')return envelope({...settings(rev),requested:stored,effective:stored});
+  sent.push(body);
+  if(sent.length>2&&body.idempotencyKey===sent[1].idempotencyKey)return envelope({...settings(rev),requested:stored,effective:stored});
+  if(body.expectedRevision!==rev)throw new ConsoleTransportError(409,'console_conflict',rev,[]);
+  stored={...stored,...body.values};rev++;if(lost){lost=false;throw new Error('lost');}return envelope({...settings(rev),requested:stored,effective:stored});
+ });
+ await c.settings();stored={...stored,connectionLimit:123};rev=2;
+ try {await assert.rejects(c.applySettings(1,{...values,name:'Renamed'}));assert.equal(c.hasUnconfirmed(),true);await c.applySettings(1,{...values,name:'Renamed'});assert.deepEqual(sent[2],sent[1]);assert.equal(stored.connectionLimit,123);}finally{c.dispose();}
+});

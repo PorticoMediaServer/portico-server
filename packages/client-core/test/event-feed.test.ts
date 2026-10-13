@@ -243,3 +243,12 @@ test('a follower joining after missed events resyncs its documents without movin
   emit({id:'3',data:JSON.stringify({id:'3',type:'library.changed'})});await tick();assert.equal(events.getStatus().cursor,'3');
  }finally{events.stop();stopA.abort();stopB.abort();await a;await tick();}
 });
+
+test('malformed long-poll documents fail into backoff instead of an immediate retry loop',async()=>{
+ for(const body of [{},{events:'wrong',nextAfter:'1'},{events:[],nextAfter:7},{events:[],nextAfter:'x'.repeat(129)},{events:Array(513).fill(null),nextAfter:'1'}]){
+  let calls=0;const waits:number[]=[];
+  const events=new EventsClient({http:{send:async()=>{calls++;return calls===1?{status:200,headers:{},body}:new Promise(()=>{});}},setTimer:(_fn,ms)=>{waits.push(ms);return 1;},clearTimer:()=>{},random:()=>0});
+  events.start();await tick();events.stop();
+  assert.equal(calls,1);assert.equal(waits.length,1);assert.ok(waits[0]!>0);
+ }
+});

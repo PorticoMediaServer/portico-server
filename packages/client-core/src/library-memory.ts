@@ -187,13 +187,18 @@ export class LibraryMemory {
     if (this.disposed) return;
     const saved = this.forgotAll ? new Map<string, RememberedLibrary>() : parseLibraryMemory(text);
     for (const id of this.forgotten) saved.delete(id);
-    for (const [id, library] of this.libraries) {
-      const before = saved.get(id), tabs = {...before?.tabs, ...library.tabs};
+    for (const id of new Set([...this.libraries.keys(), ...this.initialEdits.keys()])) {
+      const library = this.libraries.get(id);
+      const before = saved.get(id), tabs = {...before?.tabs, ...library?.tabs};
       for (const [tab, edit] of this.initialEdits.get(id) ?? []) {
         const merged = {...before?.tabs[tab], ...edit};
-        if (merged.sort || merged.filters) tabs[tab] = Object.freeze(merged); else delete tabs[tab];
+        delete tabs[tab];
+        if (merged.sort || merged.filters) tabs[tab] = Object.freeze(merged);
       }
-      saved.delete(id); saved.set(id, Object.freeze({...before, ...library, tabs: Object.freeze(tabs)}));
+      const keys = Object.keys(tabs);
+      for (const tab of keys.slice(0, Math.max(0, keys.length - MAX_TABS))) delete tabs[tab];
+      saved.delete(id);
+      if (library?.tab || before?.tab || Object.keys(tabs).length) saved.set(id, Object.freeze({...before, ...library, tabs: Object.freeze(tabs)}));
     }
     this.forgotten.clear(); this.initialEdits.clear();
     this.libraries = saved;

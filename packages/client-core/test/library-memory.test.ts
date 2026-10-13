@@ -154,3 +154,11 @@ test('an edit during the initial read preserves other tabs and honours an explic
  const recalled=parseLibraryMemory(saved).get('movies')!;
  assert.equal(recalled.tab,'collections');assert.equal(recalled.tabs.browse?.sort,undefined);assert.equal(recalled.tabs.browse?.filters?.length,1);assert.equal(recalled.tabs.collections?.sort?.direction,'desc');
 });
+
+test('resetting a sort before storage loads works without another library edit',async()=>{
+ let resolve!:(text:string)=>void;
+ const memory=new LibraryMemory({read:()=>new Promise<string>(r=>resolve=r),write:()=>{},remove:()=>{}},scope);
+ memory.rememberSort('movies','browse',undefined);
+ resolve(JSON.stringify({version:1,libraries:[{id:'movies',tab:'browse',tabs:{browse:{sort:{field:'year',direction:'asc'}}}}]}));await memory.ready;
+ assert.equal(memory.recall('movies')?.tabs.browse,undefined);
+});
