@@ -334,9 +334,6 @@ func containsString(v []string, s string) bool {
 // memberStep pushes if anything is unacknowledged and its retry deadline has
 // passed. It reports when it next needs to run (zero: nothing pending).
 func (s *Service) memberStep(ctx context.Context, v networking.Intent) (time.Time, error) {
-	if e := s.linkClaimOwner(ctx, v); e != nil {
-		return time.Time{}, e
-	}
 	q, e := s.memberSyncState(ctx)
 	if e != nil || !q.journalPending {
 		return time.Time{}, e
@@ -480,21 +477,23 @@ func (s *Service) applyDepartures(ctx context.Context, v networking.Intent, depa
 	})
 }
 
-// linkClaimOwner links the Portico Account that installed this claim to the
+// linkClaimOwnerTx links the Portico Account that installed this claim to the
 // local owner who consented to it, so the owner signs in with that account like
 // any other member. An owner already linked (to this or an earlier claim's
-// account) stays as it is. A read decides; the write happens once per claim.
-func (s *Service) linkClaimOwner(ctx context.Context, v networking.Intent) error {
+// account) stays as it is. It runs inside the credential installation transaction
+// so acknowledgment never precedes admission readiness.
+func (s *Service) linkClaimOwnerTx(ctx context.Context, tx *sql.Tx, v networking.Intent) error {
+	if tx == nil || v.ServerID != s.identity.ID() || v.Stage != networking.Installed {
+		return networking.ErrStale
+	}
 	if v.AccountID == "" || v.AccountID == networking.UnboundAccount {
 		return nil
 	}
 	var linked bool
-	e := s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM account_portico_links WHERE hosted_account_id=?) OR EXISTS(SELECT 1 FROM networking_claim_intents i JOIN account_portico_links l ON l.account_id=i.owner_id WHERE i.operation_id=?) OR NOT EXISTS(SELECT 1 FROM networking_claim_intents i JOIN accounts a ON a.id=i.owner_id WHERE i.operation_id=?)`, v.AccountID, v.OperationID, v.OperationID).Scan(&linked)
+	e := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM account_portico_links WHERE hosted_account_id=?) OR EXISTS(SELECT 1 FROM networking_claim_intents i JOIN account_portico_links l ON l.account_id=i.owner_id WHERE i.operation_id=?) OR NOT EXISTS(SELECT 1 FROM networking_claim_intents i JOIN accounts a ON a.id=i.owner_id WHERE i.operation_id=?)`, v.AccountID, v.OperationID, v.OperationID).Scan(&linked)
 	if e != nil || linked {
 		return e
 	}
-	return s.current.store.WithInstalledTransaction(ctx, v, func(ctx context.Context, tx *sql.Tx) error {
-		_, e := tx.ExecContext(ctx, `INSERT OR IGNORE INTO account_portico_links(account_id,hosted_account_id) SELECT owner_id,? FROM networking_claim_intents WHERE operation_id=?`, v.AccountID, v.OperationID)
-		return e
-	})
+	_, e = tx.ExecContext(ctx, `INSERT OR IGNORE INTO account_portico_links(account_id,hosted_account_id) SELECT owner_id,? FROM networking_claim_intents WHERE operation_id=?`, v.AccountID, v.OperationID)
+	return e
 }

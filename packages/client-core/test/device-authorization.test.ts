@@ -132,3 +132,14 @@ test('slow_down backs off and denial is terminal', async(t)=>{
  const denied=new DeviceAuthorizationService({create:async()=>authorization,poll:async()=>{throw new ApiError(400,'access_denied','This request was denied.')},cancel:async()=>{},revoke:async()=>{}},options,async()=>crypto.randomUUID());
  await denied.start('TV','tvos');await advance();assert.equal(denied.getSnapshot().phase,'error');assert.equal(denied.getSnapshot().error,'This request was denied.');denied.cancel();
 });
+
+test('activation adapter shares the sibling Hosted outage gate', async (t) => {
+  const {HttpDeviceAuthorizationApi, hostedGate} = await import('../src/index.ts');
+  const api = new HttpDeviceAuthorizationApi('https://activation-gate.example');
+  const gate = hostedGate('https://activation-gate.example/');
+  const fetch = t.mock.method(globalThis, 'fetch', async () => { throw new Error('must not fetch'); });
+  await assert.rejects(gate.run('interactive', async () => { throw new ApiError(503, 'unavailable', 'Down', true, 120); }));
+  await assert.rejects(api.poll('secret'), (e: unknown) => e instanceof ApiError && e.code === 'account_service_recovering');
+  assert.equal(fetch.mock.callCount(), 0);
+  gate.succeeded();
+});

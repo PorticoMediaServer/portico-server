@@ -403,7 +403,7 @@ func TestPorticoSignInKeepsLocalSecondFactorAndRecoveryScope(t *testing.T) {
 	f := newClaimFixture(t)
 	ctx := context.Background()
 	owner := f.owner.Viewer.AccountID
-	if _, e := f.db.Exec(`INSERT INTO account_portico_links(account_id,hosted_account_id) VALUES(?,'account')`, owner); e != nil {
+	if _, e := f.db.Exec(`INSERT OR IGNORE INTO account_portico_links(account_id,hosted_account_id) VALUES(?,'account')`, owner); e != nil {
 		t.Fatal(e)
 	}
 	if _, e := f.db.Exec(`INSERT INTO identity_account_factors(account_id,secret,confirmed,enrolled_at) VALUES(?,'x',1,'t')`, owner); e != nil {

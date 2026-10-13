@@ -21,7 +21,7 @@ func (s *Service) UseCurrentClaims(store *networking.SQLiteStore, runner *networ
 		return networking.ErrInvalid
 	}
 	s.current = &currentClaims{store: store, runner: runner, transport: transport}
-	return nil
+	return store.SetInstallationHooks(s.linkClaimOwnerTx, s.NetworkChanged)
 }
 func (s *Service) currentCall(ctx context.Context, method, path string, in, out any) error {
 	if s.current == nil {

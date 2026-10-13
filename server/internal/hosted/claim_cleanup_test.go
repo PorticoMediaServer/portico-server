@@ -64,7 +64,7 @@ func seedCleanupResources(t *testing.T, f *claimFixture) {
 			t.Fatal(e)
 		}
 		if account == "linked-account" {
-			if _, e := f.db.Exec(`INSERT INTO account_portico_links(account_id,hosted_account_id) VALUES(?,'account')`, account); e != nil {
+			if _, e := f.db.Exec(`INSERT OR IGNORE INTO account_portico_links(account_id,hosted_account_id) VALUES(?,'account')`, account); e != nil {
 				t.Fatal(e)
 			}
 		}
