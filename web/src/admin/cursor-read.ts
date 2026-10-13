@@ -1,5 +1,6 @@
 import {useCallback, useState} from 'react';
 import {useRead, type Read} from './console';
+import type {FreshnessDependency} from '@core/freshness-hub.ts';
 
 /**
  * PERF-S15: a console list read one page at a time by the server's cursor, with Previous and Next,
@@ -10,7 +11,7 @@ export type CursorRead<T> = Read<T> & {page: number; canPrevious: boolean; canNe
 
 const FIRST_PAGE: readonly string[] = [''];
 
-export function useCursorRead<T extends {nextCursor?: string}>(fetch: (cursor: string) => Promise<T>, deps: readonly unknown[]): CursorRead<T> {
+export function useCursorRead<T extends {nextCursor?: string}>(fetch: (cursor: string) => Promise<T>, deps: readonly unknown[], options: {on?: readonly FreshnessDependency[]} = {}): CursorRead<T> {
   const [walked, setWalked] = useState<{deps: readonly unknown[]; stack: readonly string[]}>({deps, stack: ['']});
   // A cursor belongs to the list it came from: when what is being listed changes (another
   // account, another filter) the walk starts again from the first page instead of sending the
@@ -20,7 +21,7 @@ export function useCursorRead<T extends {nextCursor?: string}>(fetch: (cursor: s
   const stack = sameList ? walked.stack : FIRST_PAGE;
   const setStack = useCallback((change: readonly string[] | ((stack: readonly string[]) => readonly string[])) => setWalked(prev => ({deps: prev.deps, stack: typeof change === 'function' ? change(prev.stack) : change})), []);
   const cursor = stack[stack.length - 1] ?? '';
-  const read = useRead(() => fetch(cursor), [...deps, cursor]);
+  const read = useRead(() => fetch(cursor), [...deps, cursor], options);
   const nextCursor = read.data?.nextCursor ?? '';
   const next = useCallback(() => { if (nextCursor) setStack(s => [...s, nextCursor].slice(-1000)); }, [nextCursor, setStack]);
   const previous = useCallback(() => setStack(s => (s.length > 1 ? s.slice(0, -1) : s)), [setStack]);
@@ -32,8 +33,8 @@ export function useCursorRead<T extends {nextCursor?: string}>(fetch: (cursor: s
 export const withCursor = (path: string, cursor: string) => (cursor ? `${path}${path.includes('?') ? '&' : '?'}cursor=${encodeURIComponent(cursor)}` : path);
 
 /** The same over a list whose page is `{items, nextCursor}`: `data` is the page's items. */
-export function useCursorList<T>(fetch: (cursor: string) => Promise<{items: T[]; nextCursor: string}>, deps: readonly unknown[]): CursorRead<T[]> {
-  const pages = useCursorRead(fetch, deps);
+export function useCursorList<T>(fetch: (cursor: string) => Promise<{items: T[]; nextCursor: string}>, deps: readonly unknown[], options: {on?: readonly FreshnessDependency[]} = {}): CursorRead<T[]> {
+  const pages = useCursorRead(fetch, deps, options);
   return {...pages, data: pages.data?.items} as CursorRead<T[]>;
 }
 

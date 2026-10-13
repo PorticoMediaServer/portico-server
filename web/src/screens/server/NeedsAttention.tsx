@@ -1,6 +1,6 @@
 import {useEffect, useMemo, useState} from 'react';
 import {useNavigate} from '@tanstack/react-router';
-import {metadataAttentionService, type AttentionCandidate, type AttentionCommand, type AttentionEntry} from '@core/metadata-attention.ts';
+import {metadataAttentionService, serverMetadataAttentionService, type AttentionCandidate, type AttentionCommand, type AttentionEntry} from '@core/metadata-attention.ts';
 import {attentionCount, attentionInProgress, attentionOffers, attentionReason, candidateFacts, candidateLine, hasAttentionList, providerName, typedProviderId, type AttentionCount} from '@core/server-admin/attention-words.ts';
 export {hasAttentionList} from '@core/server-admin/attention-words.ts';
 import {useAction} from '../../admin/console';
@@ -8,35 +8,38 @@ import {useCursorRead} from '../../admin/cursor-read';
 import {usePollWhile} from '../../admin/poll-while';
 import {ListPager} from './ListPager';
 import {useSession} from '../../app/session';
+import {useFreshDocument} from '../../app/freshness';
+import {dependsOn} from '@core/freshness-hub.ts';
 import {useI18n} from '../../app/i18n';
 import {Button, Dialog, Input, Menu, Notice, Select, SettingsGroup, SettingsRow, Text, type MenuItem} from '../../ui';
 import page from '../settings/Settings.module.css';
 
 type Api = ReturnType<typeof useSession>['api'];
+const ATTENTION_MOVES = [dependsOn.content()];
+const NEVER: readonly string[] = [];
 const serviceFor = (api: Api, libraryId: string) => metadataAttentionService(<T,>(path: string, method?: string, body?: unknown) => api.request<T>(path, method, body), libraryId);
 
 /**
- * How many titles wait for the owner in each library, for the badge beside it. The server has no
- * count of its own yet, so this reads each list's first page, one library after another, and
- * says "25+" when there are more pages. A library whose list cannot be read simply has no badge.
+ * How many titles wait for the owner in each library, for the badge beside it: the server's own
+ * exact totals, in one request for every library. When they cannot be read there is no badge.
  */
 export function useAttentionCounts(libraries: readonly {id: string; kind: string}[]): Readonly<Record<string, AttentionCount>> {
   const {api} = useSession();
   const [counts, setCounts] = useState<Readonly<Record<string, AttentionCount>>>({});
-  const ids = libraries.filter(l => hasAttentionList(l.kind)).map(l => l.id).join(',');
+  const wanted = libraries.some(l => hasAttentionList(l.kind));
+  const read = async (signal?: AbortSignal) => {
+    const out = await serverMetadataAttentionService(<T,>(path: string, method?: string, body?: unknown) => api.request<T>(path, method, body)).counts();
+    if (!signal?.aborted) setCounts(Object.fromEntries(out.libraries.map(l => [l.libraryId, {count: l.total, more: false}])));
+  };
   useEffect(() => {
-    let live = true;
-    void (async () => {
-      for (const id of ids ? ids.split(',') : []) {
-        try {
-          const first = await serviceFor(api, id).list('', 25);
-          if (!live) return;
-          setCounts(prev => ({...prev, [id]: attentionCount(first)}));
-        } catch { /* no badge for this library */ }
-      }
-    })();
-    return () => { live = false; };
-  }, [api, ids]);
+    if (!wanted) return;
+    const stop = new AbortController();
+    read(stop.signal).catch(() => {});
+    return () => stop.abort();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [api, wanted]);
+  // Titles matched or added elsewhere move the badge without a reload.
+  useFreshDocument(wanted ? ATTENTION_MOVES : NEVER, context => read(context.signal));
   return counts;
 }
 
@@ -51,7 +54,7 @@ export function NeedsAttentionPanel({libraryId, onCount}: {libraryId: string; on
   const {api} = useSession();
   const navigate = useNavigate();
   const service = useMemo(() => serviceFor(api, libraryId), [api, libraryId]);
-  const read = useCursorRead(cursor => service.list(cursor, 25), [service]);
+  const read = useCursorRead(cursor => service.list(cursor, 25), [service], {on: [dependsOn.content(libraryId)]});
   const action = useAction();
   const [searching, setSearching] = useState<AttentionEntry>();
   const [identifying, setIdentifying] = useState<AttentionEntry>();

@@ -46,8 +46,8 @@ async function orAbsent<T>(read: Promise<T>): Promise<T | null> {
 
 // ── Runtime settings: name, converting video, capacity, how long records are kept ───────────
 
-export type RuntimeStatus = Readonly<{revision: number; effective: RuntimeSettings; restartFields: readonly string[]}>;
-const runtimeLoaded = (doc: SettingsDocument): Loaded<RuntimeSettings, RuntimeStatus> => ({value: doc.requested, status: {revision: doc.revision, effective: doc.effective, restartFields: doc.restartFields}});
+export type RuntimeStatus = Readonly<{revision: number; effective: RuntimeSettings; restartFields: readonly string[]; /** Whether the owner's own FFmpeg build passed the server's checks, when one is named. */ ffmpegValidation?: SettingsDocument['ffmpegValidation']}>;
+const runtimeLoaded = (doc: SettingsDocument): Loaded<RuntimeSettings, RuntimeStatus> => ({value: doc.requested, status: {revision: doc.revision, effective: doc.effective, restartFields: doc.restartFields, ...(doc.ffmpegValidation ? {ffmpegValidation: doc.ffmpegValidation} : {})}});
 
 /** The retention the server accepts: diagnostics and finished tasks 1–30 days, notifications 1–180. */
 export const RETENTION_LIMITS: Readonly<Record<'diagnosticDays' | 'notificationDays' | 'jobDays', number>> = {diagnosticDays: 30, notificationDays: 180, jobDays: 30};

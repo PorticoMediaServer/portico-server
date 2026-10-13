@@ -19,10 +19,13 @@ import {useInlineForm} from '../settings/ServerForms';
 import page from '../settings/Settings.module.css';
 import {Badge, Button, Checkbox, ConfirmDialog, Dialog, Freshness, Icon, Input, ListRow, Loading, Menu, Notice, Select, SettingsGroup, SettingsRow, StateView, Tabs, Text, type MenuItem} from '../../ui';
 import {SectionHeader} from './Server';
+import {useFreshDocument} from '../../app/freshness';
+import {dependsOn} from '@core/freshness-hub.ts';
 import {NeedsAttentionPanel, hasAttentionList, useAttentionCounts} from './NeedsAttention';
 import {attentionCountText, type AttentionCount} from '@core/server-admin/attention-words.ts';
 import {removeLibrary} from '@core/title-identity.ts';
 
+const LIBRARY_LIST_MOVES = [dependsOn.libraries, dependsOn.event('library.scan.updated')];
 const kinds: readonly {value: ManagedLibrary['kind']; label: MessageId; description: MessageId}[] = [{value: 'movie', label: 'web.search.movies', description: 'web.libraries.typeMovies'}, {value: 'tv', label: 'builder.shows', description: 'web.libraries.typeTv'}, {value: 'anime', label: 'web.libraries.kindAnime', description: 'web.libraries.typeAnime'}, {value: 'music', label: 'pref.group.music.title', description: 'web.libraries.typeMusic'}, {value: 'audiobook', label: 'web.libraries.kindAudiobooks', description: 'web.libraries.typeAudiobooks'}];
 /** The Add dialog names a new library after its type ("Movies"), editable. */
 export function defaultLibraryName(kind: ManagedLibrary['kind'], t?: I18n['t']): string {
@@ -52,6 +55,8 @@ export function LibrariesPage() {
   useEffect(() => {
     if (selectedId) void service.selectLibrary(selectedId).catch(() => {});
   }, [service, selectedId]);
+  // A library added, removed or renamed elsewhere, or a scan moving on, shows here without a reload.
+  useFreshDocument(LIBRARY_LIST_MOVES, () => service.loadLibraries(), () => service.getSnapshot().directory.phase === 'ready');
   const [adding, setAdding] = useState(false);
   // The list is in the owner's order, the one every client shows (GET /v1/libraries).
   const order = useLibrariesContext();

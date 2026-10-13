@@ -10,6 +10,7 @@ import {GenreLinks} from './GenreLinks';
 import {PlaybackChoices, type PlaybackChoice} from './PlaybackChoices';
 import {TitleFiles} from './TitleFiles';
 import {SplitVersionDialog} from './SplitVersion';
+import {DeleteVersionDialog} from './DeleteVersion';
 import {SPLITTABLE_KINDS} from '@core/title-identity.ts';
 import type {TitleFile} from '@core/detail.ts';
 import {setPendingTrackChoice} from '../../player/pending-choice';
@@ -164,6 +165,7 @@ export function DetailScreen() {
   const [allPeople, setAllPeople] = useState(false);
   const [choice, setChoice] = useState<PlaybackChoice>({});
   const [splitting, setSplitting] = useState<{file: TitleFile; summary: string}>();
+  const [deletingVersion, setDeletingVersion] = useState<{file: TitleFile; summary: string}>();
   const editions = useMemo(() => Object.fromEntries((data?.files ?? []).filter(file => file.edition).map(file => [file.id, file.edition!])), [data?.files]);
   useEffect(() => { setAllPeople(false); setChoice({}); setSplitting(undefined); }, [itemId]);
   // The detail carries the cast's first page and the key crew; the rest of
@@ -263,7 +265,7 @@ export function DetailScreen() {
             <Section title={t('title.details')}>
               <div className={s.details}>
                 {detailRows.length ? <KeyValue rows={detailRows} /> : null}
-                {data?.files?.length ? <TitleFiles files={data.files} onSplit={owner && item && SPLITTABLE_KINDS.includes(item.kind) ? (file, summary) => setSplitting({file, summary}) : undefined} /> : null}
+                {data?.files?.length ? <TitleFiles files={data.files} onSplit={owner && item && SPLITTABLE_KINDS.includes(item.kind) ? (file, summary) => setSplitting({file, summary}) : undefined} onDelete={owner && item ? (file, summary) => setDeletingVersion({file, summary}) : undefined} /> : null}
               </div>
             </Section>
           ) : null}
@@ -282,6 +284,7 @@ export function DetailScreen() {
           </div>
         </Dialog>
       ) : null}
+      {deletingVersion && item ? <DeleteVersionDialog itemId={item.id} title={item.title} file={deletingVersion.file} summary={deletingVersion.summary} onClose={() => setDeletingVersion(undefined)} onDeleted={() => { setDeletingVersion(undefined); void retry(); }} /> : null}
       {splitting && item ? <SplitVersionDialog libraryId={item.libraryId} title={item.title} file={splitting.file} summary={splitting.summary} onClose={() => setSplitting(undefined)} /> : null}
       {ratingOpen && item ? <RatingDialog title={item.title} value={personal?.rating != null ? personal.rating / 2 : null} onClose={() => setRatingOpen(false)} onRate={stars => { mutate({action: 'rating', value: stars == null ? null : Math.round(stars * 2)}); setRatingOpen(false); }} /> : null}
       <AnchoredMenu open={!!organise} anchor={organise?.anchor} onOpenChange={open => !open && setOrganise(undefined)} label={organise?.mode === 'playlist' ? t('entry.sheet.addToPlaylist') : t('entry.sheet.addToCollection')}>
