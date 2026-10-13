@@ -55,6 +55,12 @@ func (h *HLS) prepareBurnInput(ctx context.Context, id, dir string, position flo
 			cleanup()
 			return nil, noop, e
 		}
+	} else {
+		b.InputStartUS, e = decoder.BurnInputOrigin(ctx, h.ffprobe, file, asset.Format)
+		if e != nil {
+			cleanup()
+			return nil, noop, e
+		}
 	}
 	return b, cleanup, nil
 }

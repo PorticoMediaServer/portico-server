@@ -75,8 +75,11 @@ func (h *HLS) highestServed(id string) int {
 	return served
 }
 
-func renditionPackaging(codec string) string {
-	switch codec {
+func renditionPackaging(r AudioRenditionPlan) string {
+	if r.Packaging != "" {
+		return r.Packaging
+	}
+	switch r.Codec {
 	case "flac", "opus", "truehd":
 		return "fmp4_hls"
 	}
@@ -84,7 +87,7 @@ func renditionPackaging(codec string) string {
 }
 func renditionSegmentFile(r AudioRenditionPlan, index int) string {
 	ext := "ts"
-	if renditionPackaging(r.Codec) == "fmp4_hls" {
+	if renditionPackaging(r) == "fmp4_hls" {
 		ext = "m4s"
 	}
 	return fmt.Sprintf("audio-%d-%06d.%s", r.Ordinal, index, ext)

@@ -61,7 +61,14 @@ func TestBurnGraphDrawsOnlyAtTheTitleClock(t *testing.T) {
 			if e = os.WriteFile(file, body, 0600); e != nil {
 				t.Fatal(e)
 			}
-			graph, e := BuildConversion(ConversionRequest{ConvertVideo: true, SoftwarePreset: "ultrafast", BurnIn: &BurnIn{File: file, Format: format, PositionUS: 4000000, Width: 160, Height: 90}, Toolchain: &facts})
+			origin := int64(0)
+			if format == "pgs" {
+				origin, e = BurnInputOrigin(ctx, decodertest.QualifiedFFprobe(t), file, format)
+				if e != nil {
+					t.Fatal(e)
+				}
+			}
+			graph, e := BuildConversion(ConversionRequest{ConvertVideo: true, SoftwarePreset: "ultrafast", BurnIn: &BurnIn{File: file, Format: format, InputStartUS: origin, PositionUS: 4000000, Width: 160, Height: 90}, Toolchain: &facts})
 			if e != nil {
 				t.Fatal(e)
 			}

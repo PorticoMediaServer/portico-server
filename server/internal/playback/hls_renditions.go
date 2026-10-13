@@ -24,11 +24,14 @@ import (
 // AudioRenditionPlan describes independently produced audio on the source clock.
 // A published but unrequested rendition owns no process or generated segments.
 type AudioRenditionPlan struct {
-	Failure       string `json:"failure,omitempty"`
-	Ordinal       int    `json:"ordinal"`
-	StreamIndex   int    `json:"streamIndex"`
-	Action        string `json:"action"`
-	Codec         string `json:"codec"`
+	Failure     string `json:"failure,omitempty"`
+	Ordinal     int    `json:"ordinal"`
+	StreamIndex int    `json:"streamIndex"`
+	Action      string `json:"action"`
+	Codec       string `json:"codec"`
+	// Packaging is derived from the containing delivery plan, including when
+	// that plan is loaded. It is not another persisted or public decision.
+	Packaging     string `json:"-"`
 	Channels      int    `json:"channels"`
 	BitrateBPS    int    `json:"bitrateBps"`
 	Downmix       string `json:"downmix,omitempty"`
@@ -73,6 +76,10 @@ func planAudioRenditions(p DeliveryPlan, source DeliverySource, client ClientPro
 	}
 	for _, a := range tracks {
 		r := AudioRenditionPlan{Ordinal: len(out), StreamIndex: a.Index, Action: "copy", Codec: a.Codec, Channels: a.Channels, BitrateBPS: int(a.BitRate), Language: manifestAudioLanguage(a.Language), Default: a.Index == p.AudioStream, Commentary: a.Commentary}
+		r.Packaging = "mpegts_hls"
+		if kind == TransportHLSFMP4 {
+			r.Packaging = "fmp4_hls"
+		}
 		if len(audioRejections(&a, client, *transport)) > 0 || !serverCopyAudio(kind, a.Codec) || bitrateOver(a.BitRate, target.MaxAudioBitrateBPS) {
 			if !convert {
 				continue
@@ -86,7 +93,7 @@ func planAudioRenditions(p DeliveryPlan, source DeliverySource, client ClientPro
 				r.Downmix = DownmixITULimited
 			}
 		}
-		if r.Channels == a.Channels && (a.Layout == "mono" || a.Layout == "stereo" || a.Layout == "5.1" || a.Layout == "5.1(side)" || a.Layout == "7.1") {
+		if r.Action == "copy" || r.Channels == a.Channels && (a.Layout == "mono" || a.Layout == "stereo" || a.Layout == "5.1" || a.Layout == "5.1(side)" || a.Layout == "7.1") {
 			r.ChannelLayout = a.Layout
 		}
 		if r.Codec == "flac" {
@@ -148,16 +155,23 @@ func videoCodecString(p *DeliveryPlan) string {
 		}
 		if p.VideoAction == "copy" && p.Trace != nil && p.Trace.Video != nil {
 			v := p.Trace.Video
+			if v.Profile == "" || v.Level <= 0 {
+				return ""
+			}
 			if v.Level > 0 {
 				level = v.Level
 			}
 			switch strings.ToLower(v.Profile) {
+			case "high":
+				profile = 100
 			case "baseline", "constrained baseline":
 				profile = 66
 			case "main":
 				profile = 77
 			case "high 10":
 				profile = 110
+			default:
+				return ""
 			}
 		} else {
 			w, h := convertedDimensions(*p)
@@ -172,6 +186,12 @@ func videoCodecString(p *DeliveryPlan) string {
 			if p.ConversionTarget != nil && p.ConversionTarget.VideoLevel > 0 {
 				level = p.ConversionTarget.VideoLevel
 			}
+		}
+		// Main/Baseline (and other source profiles) carry constraint flags
+		// that vary by encoder. The source facts and target do not capture
+		// those bytes; leave CODECS out rather than inventing zero flags.
+		if profile != 100 {
+			return ""
 		}
 		return fmt.Sprintf("avc1.%02x00%02x", profile, level)
 	case "hevc":
@@ -410,7 +430,7 @@ func publishRenditionManifests(dir string, p *DeliveryPlan, video []byte) error 
 	}
 	for _, r := range p.Renditions {
 		media := strings.ReplaceAll(string(hlsTimelineManifest(p.Duration)), "segment-", fmt.Sprintf("audio-%d-", r.Ordinal))
-		if renditionPackaging(r.Codec) == "fmp4_hls" {
+		if renditionPackaging(r) == "fmp4_hls" {
 			media = strings.ReplaceAll(string(fragmentedManifest([]byte(media))), "init.mp4", renditionInitFile(r.Ordinal))
 		}
 		if err := writeNamedManifest(dir, fmt.Sprintf("audio-%d.m3u8", r.Ordinal), []byte(media)); err != nil {
@@ -538,14 +558,14 @@ func (h *HLS) produceRendition(ctx context.Context, id string, r AudioRenditionP
 	}
 	offset := strconv.Itoa(from * HLSSegmentSeconds)
 	args := []string{"-nostdin", "-hide_banner", "-loglevel", "error", "-y", "-protocol_whitelist", "file,pipe", "-ss", offset, "-i", input.Argument, "-ss", "0", "-map", "0:" + strconv.Itoa(r.StreamIndex), "-vn", "-sn", "-dn"}
-	audioTarget := decoder.ConversionTarget{AudioCodec: r.Codec, AudioChannels: r.Channels, AudioBitrateBPS: r.BitrateBPS, AudioSampleRate: r.SampleRate, AudioChannelLayout: r.ChannelLayout, AudioBitDepth: r.BitDepth, Packaging: renditionPackaging(r.Codec)}
+	audioTarget := decoder.ConversionTarget{AudioCodec: r.Codec, AudioChannels: r.Channels, AudioBitrateBPS: r.BitrateBPS, AudioSampleRate: r.SampleRate, AudioChannelLayout: r.ChannelLayout, AudioBitDepth: r.BitDepth, Packaging: renditionPackaging(r)}
 	graph, err := decoder.BuildConversion(decoder.ConversionRequest{Target: &audioTarget, Toolchain: decoder.CurrentToolchain(), CopyAudio: r.Action == "copy", ConvertAudio: r.Action == "convert", AudioCodec: r.Codec, AudioChannels: r.Channels, AudioBitrateBPS: r.BitrateBPS, Downmix: r.Downmix == DownmixITULimited, AudioSampleRate: r.SampleRate})
 	if err != nil {
 		failed(FailureConverter)
 		return
 	}
 	args = append(args, graph.Audio...)
-	fragmented := renditionPackaging(r.Codec) == "fmp4_hls"
+	fragmented := renditionPackaging(r) == "fmp4_hls"
 	initWindow := fmt.Sprintf("audio-%d-init-%d.mp4", r.Ordinal, from)
 	outputDir := dir
 	clock := &convertedFragmentClock{}
@@ -665,7 +685,7 @@ func (h *HLS) renditionFile(ctx context.Context, id, name string, p *DeliveryPla
 	if parts == nil {
 		if isRenditionInit(name) {
 			var ordinal int
-			if _, err := fmt.Sscanf(name, "audio-%d-init.mp4", &ordinal); err != nil || ordinal < 0 || ordinal >= len(p.Renditions) || renditionPackaging(p.Renditions[ordinal].Codec) != "fmp4_hls" {
+			if _, err := fmt.Sscanf(name, "audio-%d-init.mp4", &ordinal); err != nil || ordinal < 0 || ordinal >= len(p.Renditions) || renditionPackaging(p.Renditions[ordinal]) != "fmp4_hls" {
 				return "", errors.New("unknown stream artifact")
 			}
 			if !segmentReady(path) {

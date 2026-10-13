@@ -2,42 +2,32 @@ package playback
 
 import (
 	"context"
+	"io"
 	"os"
 	"path/filepath"
 	"time"
 )
 
 // sweepOrphanDirectories reclaims crash leftovers even below the global budget.
-// Work is bounded to 128 directories per pass; a live session/producers own their
+// Work is bounded to 128 entries per pass; a live session/producers own their
 // output. No path saved in the database is followed.
 func (h *HLS) sweepOrphanDirectories(ctx context.Context) {
 	if h.db == nil {
 		return
 	}
-	h.mu.Lock()
-	after := h.orphanAfter
-	h.mu.Unlock()
-	entries, err := os.ReadDir(h.root)
-	if err != nil {
-		return
-	}
-	checked := 0
+	entries := h.nextOrphanEntries(ctx)
 	for _, entry := range entries {
-		if entry.Name() <= after || !entry.IsDir() || !generatedDirectoryID.MatchString(entry.Name()) {
+		if ctx.Err() != nil {
+			return
+		}
+		if !entry.IsDir() || !generatedDirectoryID.MatchString(entry.Name()) {
 			continue
 		}
 		info, err := entry.Info()
 		if err != nil || time.Since(info.ModTime()) < 2*time.Minute {
 			continue
 		}
-		if checked >= 128 || ctx.Err() != nil {
-			return
-		}
-		checked++
 		id := entry.Name()
-		h.mu.Lock()
-		h.orphanAfter = id
-		h.mu.Unlock()
 		var exists bool
 		if err := h.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM playback_sessions WHERE id=?) OR EXISTS(SELECT 1 FROM playback_artifacts WHERE session_id=?) OR EXISTS(SELECT 1 FROM playback_hls_reservations WHERE session_id=?)`, id, id, id).Scan(&exists); err != nil || exists {
 			continue
@@ -54,7 +44,37 @@ func (h *HLS) sweepOrphanDirectories(ctx context.Context) {
 			_ = os.RemoveAll(retired)
 		}
 	}
-	h.mu.Lock()
-	h.orphanAfter = ""
-	h.mu.Unlock()
+}
+
+func (h *HLS) nextOrphanEntries(ctx context.Context) []os.DirEntry {
+	h.orphanMu.Lock()
+	defer h.orphanMu.Unlock()
+	if ctx.Err() != nil {
+		return nil
+	}
+	if h.orphanDir == nil {
+		var err error
+		h.orphanDir, err = os.Open(h.root)
+		if err != nil {
+			return nil
+		}
+	}
+	entries, err := h.orphanDir.ReadDir(128)
+	if err != nil {
+		_ = h.orphanDir.Close()
+		h.orphanDir = nil
+		if err != io.EOF {
+			return nil
+		}
+	}
+	return entries
+}
+
+func (h *HLS) closeOrphanDirectory() {
+	h.orphanMu.Lock()
+	defer h.orphanMu.Unlock()
+	if h.orphanDir != nil {
+		_ = h.orphanDir.Close()
+		h.orphanDir = nil
+	}
 }
