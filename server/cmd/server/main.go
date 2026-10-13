@@ -323,6 +323,7 @@ func run() error {
 	if e != nil {
 		return e
 	}
+	decoder.SetBackgroundConversionLimit(startupMedia.MaxBackgroundSessions)
 	ffmpegTool, ffprobeTool := decoder.ResolveTools()
 	if startupMedia.FFmpegPath != "" {
 		ffmpegTool = startupMedia.FFmpegPath

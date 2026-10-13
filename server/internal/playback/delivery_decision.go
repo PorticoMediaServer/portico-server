@@ -62,6 +62,8 @@ type RouteEvaluation struct {
 }
 
 type TraceVideo struct {
+	Rotation                 int     `json:"rotation,omitempty"`
+	SampleAspectRatio        string  `json:"sampleAspectRatio,omitempty"`
 	OutputRange              string  `json:"outputRange,omitempty"`
 	DolbyVisionLevel         int     `json:"dolbyVisionLevel,omitempty"`
 	DolbyVisionCompatibility int     `json:"dolbyVisionCompatibility,omitempty"`

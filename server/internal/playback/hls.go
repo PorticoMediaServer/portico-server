@@ -478,16 +478,26 @@ func (h *HLS) produce(ctx context.Context, id string, from int) {
 				}
 			}
 		}
+		if plan != nil && plan.AudioAction == "copy" && (plan.OutputAudioCodec == "truehd" || plan.OutputAudioCodec == "flac") {
+			args = append(args, "-strict", "-2")
+		}
+		if plan != nil && plan.VideoAction == "convert" && plan.AudioAction == "copy" && grid && from > 0 {
+			args = append(args, "-bsf:a", "noise=drop='lt(pts*tb,0)'")
+		}
 		args = append(args, "-max_muxing_queue_size", "1024")
 		if timeline != nil {
 			args = append(args, "-muxdelay", "0", "-muxpreload", "0")
 			return append(args, copySegmentArgs(timeline, from, staging, fragmented)...), stages, nil
 		}
-		ext := "ts"
+		packaging := "mpegts_hls"
 		if fragmented {
-			ext = "m4s"
-			args = append(args, "-hls_segment_type", "fmp4", "-hls_fmp4_init_filename", "init-"+strconv.Itoa(from)+".mp4")
+			packaging = "fmp4_hls"
 		}
+		outputArgs, ext, err := decoder.HLSPackagingArgs(packaging, "init-"+strconv.Itoa(from)+".mp4")
+		if err != nil {
+			return nil, nil, err
+		}
+		args = append(args, outputArgs...)
 		args = append(args, "-f", "hls", "-hls_time", strconv.Itoa(HLSSegmentSeconds), "-hls_list_size", "0", "-hls_flags", "independent_segments+temp_file")
 		if grid {
 			// Absolute source timestamps and a grid-aligned start number are what
@@ -839,7 +849,7 @@ func (h *HLS) Ready(ctx context.Context, id string) error {
 	}
 }
 
-var artifactName = regexp.MustCompile(`^(master\.m3u8|video\.m3u8|text-[0-9]{1,2}\.m3u8|audio-[0-9]{1,2}\.m3u8|init\.mp4|segment-[0-9]{6}\.(?:ts|m4s)|audio-[0-9]{1,2}-[0-9]{6}\.ts)$`)
+var artifactName = regexp.MustCompile(`^(master\.m3u8|video\.m3u8|text-[0-9]{1,2}\.m3u8|audio-[0-9]{1,2}\.m3u8|init\.mp4|segment-[0-9]{6}\.(?:ts|m4s)|audio-[0-9]{1,2}-init\.mp4|audio-[0-9]{1,2}-[0-9]{6}\.(?:ts|m4s))$`)
 
 func (h *HLS) File(grant, name string) (string, error) {
 	return h.FileContext(context.Background(), grant, name)

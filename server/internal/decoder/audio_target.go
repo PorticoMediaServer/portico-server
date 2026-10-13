@@ -50,7 +50,7 @@ func buildAudioTarget(t ConversionTarget, downmix bool, facts *ToolchainFacts) (
 	}
 	out = append(out, "-af", filters)
 	if codec == "flac" {
-		return append(out, "-compression_level", "5", "-strict", "-2"), nil
+		return append(out, "-sample_fmt", "s32", "-bits_per_raw_sample", "24", "-compression_level", "5", "-strict", "-2"), nil
 	}
 	bitrate := t.AudioBitrateBPS
 	if bitrate == 0 {

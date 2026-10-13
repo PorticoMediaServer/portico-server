@@ -158,3 +158,20 @@ func promoteConvertedInit(dir string, from int) error {
 	}
 	return publishMP4Init(dir, data)
 }
+
+func promoteRenditionInit(dir, window string, ordinal int) error {
+	data, err := os.ReadFile(filepath.Join(dir, window))
+	if err != nil {
+		return err
+	}
+	target := filepath.Join(dir, renditionInitFile(ordinal))
+	if old, err := os.ReadFile(target); err == nil {
+		if string(old) != string(data) {
+			return errMP4InitChanged
+		}
+		return nil
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	return writeNamedManifest(dir, renditionInitFile(ordinal), data)
+}

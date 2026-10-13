@@ -5654,5 +5654,18 @@ CREATE INDEX video_nfo_status_asset_id_fk ON video_nfo_status(asset_id);
 
 CREATE TABLE playback_conversion_targets (
  session_id TEXT PRIMARY KEY REFERENCES playback_sessions(id) ON DELETE CASCADE,
- target_json TEXT NOT NULL CHECK(length(target_json)<=8192)
+ target_json TEXT NOT NULL CHECK(length(target_json)<=8192),
+ hardware_json TEXT NOT NULL DEFAULT '' CHECK(length(hardware_json)<=8192)
+);
+
+CREATE TABLE playback_conversion_failures (
+ sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+ session_id TEXT NOT NULL,
+ recorded_ms INTEGER NOT NULL,
+ failure_code TEXT NOT NULL,
+ diagnostic TEXT NOT NULL CHECK(length(diagnostic)<=2000),
+ strategy TEXT NOT NULL,
+ backend TEXT NOT NULL,
+ video TEXT NOT NULL,
+ audio TEXT NOT NULL
 );

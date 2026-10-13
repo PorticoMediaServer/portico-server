@@ -202,8 +202,18 @@ func (h *HLS) enforceSessionCeilings(ids []string) {
 			h.cancelSession(id)
 			continue
 		}
+		cfg := h.configuration()
+		limit := int64(cfg.SessionStorageMiB) << 20
+		fileLimit := sessionFileLimit(cfg.SessionStorageMiB)
+		if bytes > limit || files > fileLimit {
+			served := h.highestServed(id)
+			if served < 0 {
+				_ = h.db.QueryRow(`SELECT highest_served FROM playback_hls_demand WHERE session_id=?`, id).Scan(&served)
+			}
+			bytes, files = reclaimPlayedForBudget(filepath.Join(h.root, id), served, bytes, limit, files, fileLimit)
+		}
 		h.recordUsage(id, bytes, files, now)
-		if bytes > hlsSessionByteCeiling || files > audioArtifactFiles {
+		if bytes > limit || files > fileLimit {
 			h.cancelSession(id)
 		}
 	}
@@ -259,6 +269,7 @@ func (h *HLS) enforceGlobalBudget(ctx context.Context) {
 	if !due {
 		return
 	}
+	h.sweepOrphanDirectories(ctx)
 	entries, err := os.ReadDir(h.root)
 	if err != nil {
 		return

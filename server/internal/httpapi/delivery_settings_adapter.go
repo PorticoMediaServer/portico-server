@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"portico.local/server/internal/decoder"
 	"portico.local/server/internal/operations"
 	"portico.local/server/internal/playback"
 	"portico.local/server/internal/telemetry"
@@ -102,6 +103,7 @@ func (a *RegistryDeliverySettings) Refresh(ctx context.Context) {
 	if e != nil {
 		return
 	}
+	decoder.SetBackgroundConversionLimit(document.Effective.MaxBackgroundSessions)
 	a.snapshot, a.bitrateBPS, a.loaded, a.loadedAt = transcodeSettings(document.Effective), document.Effective.RemoteBitrateLimitKbps*1000, true, time.Now()
 }
 

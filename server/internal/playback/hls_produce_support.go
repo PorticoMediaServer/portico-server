@@ -121,6 +121,7 @@ func classifyConverterFailure(diagnostic string) string {
 
 // failedWith fails a session and records why, for the people who can read it.
 func (h *HLS) failedWith(ctx context.Context, id, code, diagnostic string) {
+	h.rememberConversionFailure(ctx, id, code, diagnostic)
 	if !h.failed(ctx, id) {
 		return
 	}

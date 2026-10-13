@@ -6,7 +6,7 @@ const fence='a'.repeat(64);
 const envelope=(data:unknown,serverId='server-one',viewerFence=fence)=>({scope:{serverId,viewerFence},data});
 const values:RuntimeSettings={name:'My server',transcodingEnabled:true,perAccountCap:null,serverCap:null,diagnosticDays:30,notificationDays:180,jobDays:30,
  hardwareBackend:'auto',hardwareDevice:'',hdrToneMapping:false,hdrToneMappingAlgorithm:'hable',x264Preset:'veryfast',directStreamRemux:true,
- planningPolicy:'maximum_fidelity',throttleBufferSeconds:60,playedRetentionSeconds:180,temporaryDirectory:'',
+ planningPolicy:'maximum_fidelity',throttleBufferSeconds:60,playedRetentionSeconds:180,temporaryDirectory:'',ffmpegPath:'',sessionStorageMiB:4096,
  maxConcurrentSessions:0,maxHardwareSessions:0,maxSoftwareSessions:0,maxBackgroundSessions:0};
 const settings=(revision=1)=>({revision,digest:'b'.repeat(64),requested:values,effective:values,activeRevision:revision,restartFields:[],registryRevision:'p08.0'});
 const report={id:'report-one',revision:1,createdAt:100,updatedAt:100,status:'open',category:'playback',message:'Playback stopped.',contextAvailable:true};

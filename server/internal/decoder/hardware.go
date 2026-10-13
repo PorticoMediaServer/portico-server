@@ -425,11 +425,7 @@ func (d *HardwareDetector) Probe(ctx context.Context, executable string, backend
 		chain := spec.toneMap(DefaultToneMapAlgorithm) + "," + spec.scale(120)
 		bounded, cancel = context.WithTimeout(ctx, timeout)
 		args := probeArgs(spec, device, chain)
-		if backend == BackendVAAPI {
-			out.NativeFilters = d.probeVAAPIFilters(bounded, executable, args) == nil
-		} else {
-			out.NativeFilters = d.run(bounded, executable, args) == nil
-		}
+		out.NativeFilters = d.probeVAAPIFilters(bounded, executable, args) == nil
 		out.ToneMapFilters = out.NativeFilters
 		cancel()
 	}
@@ -821,7 +817,7 @@ func BuildConversion(r ConversionRequest) (ConversionGraph, error) {
 				// backend's own, wherever either list happens to be empty.
 				upload := spec.upload
 				if r.ToneMap || target.BitDepth == 10 {
-					upload = strings.NewReplacer("format=nv12", "format=p010", "format=yuv420p", "format=p010").Replace(upload)
+					upload = strings.NewReplacer("format=nv12", "format=p010", "format=yuv420p", "format=p010le").Replace(upload)
 				}
 				hardware := append([]string{upload}, filters[pre:]...)
 				filters = append(filters[:pre:pre], hardware...)
@@ -878,20 +874,34 @@ func BuildConversion(r ConversionRequest) (ConversionGraph, error) {
 			}
 		}
 		out.Video = append(out.Video, "-c:v", encoder)
+		if backend == BackendSoftware {
+			out.Video = append(out.Video, "-threads", "2")
+		}
 		if backend == BackendSoftware || backend == BackendAMF || backend == BackendVideoToolbox {
 			out.Video = append(out.Video, "-pix_fmt", pixel)
 		}
 		out.Video = append(out.Video, videoRateArgs(target, encoder, preset)...)
 		out.Video = append(out.Video, videoColorArgs(target)...)
 		if target.VideoCodec == "h264" {
-			out.Video = append(out.Video, "-profile:v", "high")
+			level := target.VideoLevel
+			if level == 0 {
+				level = H264OutputLevel(target.Width, target.Height, target.FrameRate)
+			}
+			if encoder == "libx264" {
+				out.Video = append(out.Video, "-x264-params", "cabac=1:8x8dct=1:open-gop=0")
+			}
+			out.Video = append(out.Video, "-profile:v", "high", "-level:v", strconv.FormatFloat(float64(level)/10, 'f', 1, 64))
 		}
 		if target.VideoCodec == "hevc" {
 			profile := "main"
 			if target.BitDepth == 10 {
 				profile = "main10"
 			}
-			out.Video = append(out.Video, "-profile:v", profile, "-tag:v", "hvc1")
+			level := target.VideoLevel
+			if level == 0 {
+				level = HEVCOutputLevel(target.Width, target.Height, target.FrameRate)
+			}
+			out.Video = append(out.Video, "-profile:v", profile, "-tag:v", "hvc1", "-level:v", strconv.FormatFloat(float64(level)/30, 'f', 1, 64))
 			if encoder == "libx265" {
 				params := "pools=2:frame-threads=2:open-gop=0:repeat-headers=1"
 				if target.DynamicRange == "hdr10" {

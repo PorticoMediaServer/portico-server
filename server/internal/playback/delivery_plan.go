@@ -99,6 +99,7 @@ type BurnInSpec struct {
 
 type DeliveryPlan struct {
 	ConversionTarget *decoder.ConversionTarget `json:"-"`
+	ConversionProbe  *decoder.HardwareProbe    `json:"-"`
 	BurnIn           *BurnInSpec               `json:"burnIn,omitempty"`
 	TextRenditions   []TextRenditionPlan       `json:"-"`
 	Renditions       []AudioRenditionPlan      `json:"audioRenditions,omitempty"`
@@ -288,7 +289,7 @@ func planDelivery(in DeliveryInput) (p DeliveryPlan, err error) {
 	video := source.Video
 	if video != nil {
 		p.SourceVideoCodec, p.OutputVideoCodec = video.Codec, video.Codec
-		trace.Video = &TraceVideo{Codec: video.Codec, Profile: video.Profile, Level: video.Level, BitDepth: video.BitDepth, Width: video.Width, Height: video.Height, FrameRate: video.FrameRate, Interlaced: video.Interlaced, DynamicRange: video.DynamicRange, DolbyVisionProfile: video.DolbyVisionProfile, DolbyVisionLevel: video.DolbyVisionLevel, DolbyVisionCompatibility: video.DolbyVisionCompatibility, BitRate: video.BitRate}
+		trace.Video = &TraceVideo{Rotation: video.Rotation, SampleAspectRatio: video.SampleAspectRatio, Codec: video.Codec, Profile: video.Profile, Level: video.Level, BitDepth: video.BitDepth, Width: video.Width, Height: video.Height, FrameRate: video.FrameRate, Interlaced: video.Interlaced, DynamicRange: video.DynamicRange, DolbyVisionProfile: video.DolbyVisionProfile, DolbyVisionLevel: video.DolbyVisionLevel, DolbyVisionCompatibility: video.DolbyVisionCompatibility, BitRate: video.BitRate}
 	}
 	if audio != nil {
 		p.SourceAudioCodec, p.OutputAudioCodec = audio.Codec, audio.Codec
@@ -697,6 +698,9 @@ func planDelivery(in DeliveryInput) (p DeliveryPlan, err error) {
 	p.HardwareDevice = cfg.HardwareDevice
 	if in.Hardware.Available && in.Hardware.Backend != decoder.BackendSoftware {
 		p.HardwareBackend, p.HardwareNative = string(in.Hardware.Backend), in.Hardware.NativeFilters
+		if !p.ToneMap {
+			p.HardwareNative = p.HardwareNative || in.Hardware.ScaleFilters
+		}
 		p.ReasonCodes = append(p.ReasonCodes, ReasonHardwareBackend)
 	} else {
 		p.ReasonCodes = append(p.ReasonCodes, ReasonSoftwareFallback)
@@ -838,6 +842,9 @@ func (p DeliveryPlan) conversionGraph(burn *decoder.BurnIn) (decoder.ConversionG
 		Downmix:          p.Downmix == DownmixITULimited,
 		AudioSampleRate:  p.AudioSampleRate,
 	}
+	if p.ConversionProbe != nil && p.HardwareBackend == string(p.ConversionProbe.Backend) && p.HardwareBackend != string(decoder.BackendSoftware) {
+		request.Probe = *p.ConversionProbe
+	}
 	switch p.VideoAction {
 	case "copy":
 		request.CopyVideo = true
@@ -868,6 +875,28 @@ func (p DeliveryPlan) conversionGraph(burn *decoder.BurnIn) (decoder.ConversionG
 		copy.DolbyVisionProfile = p.Trace.Video.DolbyVisionProfile
 		copy.DolbyVisionCompatibility = p.Trace.Video.DolbyVisionCompatibility
 		request.Target = &copy
+	}
+	if request.ConvertVideo && p.OutputVideoCodec == "h264" && request.Target == nil && p.Trace != nil && p.Trace.Video != nil {
+		v := p.Trace.Video
+		w, h := convertedDimensions(p)
+		rate := v.FrameRate
+		if p.MaxFrameRate > 0 {
+			rate = min(rate, p.MaxFrameRate)
+		}
+		request.Target = &decoder.ConversionTarget{VideoCodec: "h264", BitDepth: 8, DynamicRange: "sdr", ToneMap: p.ToneMap, Width: p.TargetWidth, Height: p.TargetHeight, FrameRate: p.MaxFrameRate, VideoBitrateBPS: p.VideoBitrateBPS, VideoLevel: decoder.H264OutputLevel(w, h, rate), AudioCodec: p.OutputAudioCodec, AudioChannels: p.AudioChannels, AudioSampleRate: p.AudioSampleRate, AudioBitrateBPS: p.AudioBitrateBPS, Packaging: p.OutputContainer}
+	}
+	if request.Target != nil && request.Target.VideoCodec == "hevc" && request.Target.VideoLevel == 0 {
+		target := *request.Target
+		w, h := convertedDimensions(p)
+		rate := target.FrameRate
+		if p.Trace != nil && p.Trace.Video != nil {
+			rate = p.Trace.Video.FrameRate
+			if target.FrameRate > 0 {
+				rate = min(rate, target.FrameRate)
+			}
+		}
+		target.VideoLevel = decoder.HEVCOutputLevel(w, h, rate)
+		request.Target = &target
 	}
 	return decoder.BuildConversion(request)
 }

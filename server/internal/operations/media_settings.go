@@ -41,7 +41,7 @@ func effectiveMediaSettings(v Settings) (Settings, []string) {
 }
 func ConversionDirectory(state, configured string) string {
 	if configured != "" {
-		return configured
+		return filepath.Join(configured, "portico-hls")
 	}
 	return filepath.Join(state, "hls")
 }

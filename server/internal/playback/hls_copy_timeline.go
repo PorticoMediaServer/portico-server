@@ -172,7 +172,7 @@ func probeCopyTimeline(ctx context.Context, ffprobe string, input *assets.Playba
 		}
 		rows := strings.Split(strings.TrimSpace(string(out)), "\n")
 		if len(rows) != to-from {
-			return nil, errCopyTimeline
+			return probePacketTimeline(ctx, ffprobe, input, start, duration)
 		}
 		for i, row := range rows {
 			stamp, flags, _ := strings.Cut(strings.TrimSpace(row), ",")
@@ -183,7 +183,11 @@ func probeCopyTimeline(ctx context.Context, ffprobe string, input *assets.Playba
 			keyframes[from+i], ok[from+i] = value-start, true
 		}
 	}
-	return buildCopyTimeline(duration, keyframes, ok)
+	timeline, err := buildCopyTimeline(duration, keyframes, ok)
+	if err != nil && ctx.Err() == nil {
+		return probePacketTimeline(ctx, ffprobe, input, start, duration)
+	}
+	return timeline, err
 }
 
 func probeFormatStart(ctx context.Context, ffprobe string, input *assets.PlaybackInput) (float64, error) {
