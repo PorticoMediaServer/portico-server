@@ -7,11 +7,30 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"sync"
 	"time"
 
 	"portico.local/server/internal/dbwork"
 	sqlite "portico.local/server/internal/thirdparty/sqlite"
 )
+
+// Tests may refuse publication durability at the same boundary as a filesystem.
+var migrationBackupSyncDirectory = syncMigrationBackupDirectory
+
+var migrationCopyScrub struct {
+	sync.RWMutex
+	fn func(context.Context, string) error
+}
+
+// SetMigrationCopyScrubber connects the identity policy before opening state.
+// It returns the previous hook so isolated fixtures can restore their setup.
+func SetMigrationCopyScrubber(scrub func(context.Context, string) error) func(context.Context, string) error {
+	migrationCopyScrub.Lock()
+	defer migrationCopyScrub.Unlock()
+	prior := migrationCopyScrub.fn
+	migrationCopyScrub.fn = scrub
+	return prior
+}
 
 // backupBeforeMigrations is called only after validating the existing ledger.
 // The online backup includes WAL contents; a raw copy of the main file cannot.
@@ -31,6 +50,9 @@ func backupBeforeMigrations(ctx context.Context, db *sql.DB) error {
 	} // In-memory fixtures have no persistent state.
 	directory := filepath.Join(filepath.Dir(path), "migration-backups")
 	if err = os.MkdirAll(directory, 0700); err != nil {
+		return err
+	}
+	if err = migrationBackupSyncDirectory(filepath.Dir(directory)); err != nil {
 		return err
 	}
 	file, err := os.CreateTemp(directory, ".partial-*")
@@ -76,6 +98,14 @@ func backupBeforeMigrations(ctx context.Context, db *sql.DB) error {
 	if err != nil {
 		return err
 	}
+	migrationCopyScrub.RLock()
+	scrub := migrationCopyScrub.fn
+	migrationCopyScrub.RUnlock()
+	if scrub != nil {
+		if err = scrub(ctx, partial); err != nil {
+			return fmt.Errorf("remove sign-ins from migration copy: %w", err)
+		}
+	}
 	file, err = os.OpenFile(partial, os.O_RDWR, 0600)
 	if err != nil {
 		return err
@@ -92,6 +122,9 @@ func backupBeforeMigrations(ctx context.Context, db *sql.DB) error {
 	if err = os.Rename(partial, final); err != nil {
 		return err
 	}
+	if err = migrationBackupSyncDirectory(directory); err != nil {
+		return err
+	}
 	names, err := filepath.Glob(filepath.Join(directory, "before-*.sqlite"))
 	if err != nil {
 		return err
@@ -103,7 +136,7 @@ func backupBeforeMigrations(ctx context.Context, db *sql.DB) error {
 		}
 		names = names[1:]
 	}
-	return nil
+	return migrationBackupSyncDirectory(directory)
 }
 
 // ReclaimSpace moves at most 64 free pages per maintenance tick. It yields to

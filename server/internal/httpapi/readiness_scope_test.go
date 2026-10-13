@@ -12,9 +12,8 @@ import (
 	"portico.local/server/internal/persistence"
 )
 
-// Catalogue facts are synchronous; only a derived browse rebuild is a
-// readiness boundary. Browse fails closed while its derived domain rebuilds.
-func TestBrowseReadinessFailsClosedDuringDerivedRebuild(t *testing.T) {
+// A rebuild serves the previous published generation without exposing a preparing state.
+func TestBrowseServesItsPublishedGenerationDuringDerivedRebuild(t *testing.T) {
 	root := t.TempDir()
 	db, err := persistence.Open(filepath.Join(root, "db"))
 	if err != nil {
@@ -45,7 +44,7 @@ func TestBrowseReadinessFailsClosedDuringDerivedRebuild(t *testing.T) {
 	r.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, r)
-	if w.Code != 503 {
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `"title":"Film"`) {
 		t.Fatalf("browse during derived rebuild: %d %s", w.Code, w.Body.String())
 	}
 }

@@ -25,7 +25,9 @@ INSERT INTO catalog_kinds VALUES
 -- its life, so entity identity keys survive a later change of its source path
 -- and a library re-added from the same folder finds its old public ids.
 CREATE TABLE catalog_libraries(
- id INTEGER PRIMARY KEY,
+ -- AUTOINCREMENT: a removed library's handle is never given to a later one,
+ -- so rows still naming it can never be read as another library's.
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
  library_id TEXT NOT NULL UNIQUE REFERENCES libraries(id) ON DELETE CASCADE,
  root TEXT NOT NULL,
  name TEXT NOT NULL,
@@ -725,6 +727,8 @@ CREATE TABLE catalog_book_groups(
  retired INTEGER NOT NULL DEFAULT 0 CHECK(retired IN(0,1))) STRICT;
 CREATE UNIQUE INDEX catalog_book_groups_key ON catalog_book_groups(library_id,kind,name_key) WHERE retired=0;
 CREATE INDEX catalog_book_groups_library ON catalog_book_groups(library_id,kind,name COLLATE NOCASE,id) WHERE retired=0;
+-- Every group of a library, retired or not: removing the library clears them by this.
+CREATE INDEX catalog_book_groups_every ON catalog_book_groups(library_id,id);
 
 CREATE TABLE catalog_personal_sort_state(
  id INTEGER PRIMARY KEY CHECK(id=1),turn INTEGER NOT NULL DEFAULT 0,
@@ -2822,6 +2826,8 @@ CREATE TABLE playback_track_memory(
  updated_ms INTEGER NOT NULL,
  PRIMARY KEY(profile_id,item_id)
  ) WITHOUT ROWID, STRICT;
+-- Removing a title finds its remembered tracks by this, not by reading the table.
+CREATE INDEX playback_track_memory_item ON playback_track_memory(item_id);
 CREATE TABLE identity_refresh_credentials(
  family_id TEXT PRIMARY KEY REFERENCES authorization_session_families(id) ON DELETE CASCADE,
  device_id TEXT NOT NULL REFERENCES identity_devices(id),
@@ -3626,6 +3632,8 @@ CREATE TABLE catalog_personal_visibility_sort_buckets(
  profile_id TEXT NOT NULL,class_id INTEGER NOT NULL,generation INTEGER NOT NULL,library_id INTEGER NOT NULL,
  kind INTEGER NOT NULL,axis INTEGER NOT NULL CHECK(axis BETWEEN 7 AND 9),value TEXT NOT NULL,total INTEGER NOT NULL CHECK(total>=0),
  PRIMARY KEY(profile_id,class_id,generation,library_id,kind,axis,value)) WITHOUT ROWID, STRICT;
+-- A class's totals for every profile: removing the class's library clears them by this.
+CREATE INDEX catalog_personal_visibility_sort_bucket_class ON catalog_personal_visibility_sort_buckets(class_id,generation);
 CREATE TABLE catalog_personal_visibility_sort_profile_jobs(
  profile_id TEXT NOT NULL,entity_id INTEGER NOT NULL,sequence INTEGER NOT NULL DEFAULT 1,cursor_sequence INTEGER NOT NULL DEFAULT 0,
  class_cursor INTEGER NOT NULL DEFAULT 0,generation_cursor INTEGER NOT NULL DEFAULT 0,
@@ -3855,6 +3863,8 @@ CREATE TABLE inventory_artwork_sources (
  PRIMARY KEY(asset_id,kind,entity_id,role)
 ) STRICT;
 CREATE INDEX inventory_artwork_sources_role ON inventory_artwork_sources(kind,entity_id,role,art_key);
+-- Removing a title finds its artwork sources by this, not by reading the table.
+CREATE INDEX inventory_artwork_sources_entity ON inventory_artwork_sources(entity_id);
 CREATE VIEW inventory_asset_availability AS
  SELECT asset_id,MAX(CASE WHEN o.retired=0 AND o.state='available' AND o.unsupported_reason='' AND s.enabled=1 AND s.health NOT IN('offline','removing','root_changed') AND o.root_incarnation=s.incarnation THEN 1 ELSE 0 END) AS available
  FROM inventory_objects o JOIN library_sources s ON s.id=o.source_id GROUP BY asset_id;
@@ -4678,7 +4688,7 @@ CREATE TRIGGER book_resume_revision_insert AFTER INSERT ON book_resume BEGIN INS
 CREATE TRIGGER book_resume_revision_update AFTER UPDATE ON book_resume WHEN OLD.item_id IS NOT NEW.item_id BEGIN INSERT INTO viewer_revisions(profile_id,library_id,revision) SELECT NEW.profile_id,cl.library_id,1 FROM catalog_entities ce JOIN catalog_libraries cl ON cl.id=ce.library_id WHERE ce.id=NEW.book_id ON CONFLICT(profile_id,library_id) DO UPDATE SET revision=revision+1;END;
 CREATE TRIGGER book_resume_revision_delete AFTER DELETE ON book_resume BEGIN INSERT INTO viewer_revisions(profile_id,library_id,revision) SELECT OLD.profile_id,cl.library_id,1 FROM catalog_entities ce JOIN catalog_libraries cl ON cl.id=ce.library_id WHERE ce.id=OLD.book_id ON CONFLICT(profile_id,library_id) DO UPDATE SET revision=revision+1;END;
 CREATE TRIGGER personal_revision_insert AFTER INSERT ON personal_items BEGIN INSERT INTO viewer_revisions(profile_id,library_id,revision) SELECT NEW.profile_id,cl.library_id,1 FROM catalog_entities ce JOIN catalog_libraries cl ON cl.id=ce.library_id WHERE ce.id=NEW.item_id ON CONFLICT(profile_id,library_id) DO UPDATE SET revision=revision+1;END;
-CREATE TRIGGER personal_revision_update AFTER UPDATE ON personal_items WHEN OLD.watched IS NOT NEW.watched OR OLD.watchlisted IS NOT NEW.watchlisted OR OLD.favorite IS NOT NEW.favorite OR OLD.rating IS NOT NEW.rating OR OLD.not_interested IS NOT NEW.not_interested OR (OLD.last_played_at='' AND NEW.last_played_at<>'') BEGIN INSERT INTO viewer_revisions(profile_id,library_id,revision) SELECT NEW.profile_id,cl.library_id,1 FROM catalog_entities ce JOIN catalog_libraries cl ON cl.id=ce.library_id WHERE ce.id=NEW.item_id ON CONFLICT(profile_id,library_id) DO UPDATE SET revision=revision+1;END;
+CREATE TRIGGER personal_revision_update AFTER UPDATE ON personal_items WHEN OLD.revision IS NOT NEW.revision OR OLD.watched IS NOT NEW.watched OR OLD.watchlisted IS NOT NEW.watchlisted OR OLD.favorite IS NOT NEW.favorite OR OLD.rating IS NOT NEW.rating OR OLD.not_interested IS NOT NEW.not_interested OR (OLD.last_played_at='' AND NEW.last_played_at<>'') BEGIN INSERT INTO viewer_revisions(profile_id,library_id,revision) SELECT NEW.profile_id,cl.library_id,1 FROM catalog_entities ce JOIN catalog_libraries cl ON cl.id=ce.library_id WHERE ce.id=NEW.item_id ON CONFLICT(profile_id,library_id) DO UPDATE SET revision=revision+1;END;
 CREATE TRIGGER metadata_detail_revision AFTER INSERT ON metadata_details BEGIN UPDATE library_revisions SET revision=revision+1 WHERE library_id=(SELECT cl.library_id FROM catalog_entities ce JOIN catalog_libraries cl ON cl.id=ce.library_id WHERE ce.id=NEW.item_id);END;
 CREATE TRIGGER metadata_detail_revision_update AFTER UPDATE ON metadata_details BEGIN UPDATE library_revisions SET revision=revision+1 WHERE library_id=(SELECT cl.library_id FROM catalog_entities ce JOIN catalog_libraries cl ON cl.id=ce.library_id WHERE ce.id=NEW.item_id);END;
 CREATE TRIGGER tvdb_episode_link_insert AFTER INSERT ON tvdb_episode_links BEGIN UPDATE library_revisions SET revision=revision+1 WHERE library_id=(SELECT cl.library_id FROM catalog_entities ce JOIN catalog_libraries cl ON cl.id=ce.library_id WHERE ce.id=NEW.item_id);END;
@@ -6219,9 +6229,16 @@ CREATE TRIGGER browse_order_update AFTER UPDATE ON catalog_browse_rows
  UPDATE library_revisions SET order_revision=order_revision+1 WHERE library_id IN(SELECT library_id FROM catalog_libraries WHERE id IN(OLD.library_id,NEW.library_id)); END;
 CREATE TRIGGER progress_observation_update AFTER UPDATE ON progress_activity BEGIN
  INSERT INTO viewer_revisions(profile_id,library_id,revision,observation_revision) VALUES(NEW.profile_id,NEW.library_id,0,1) ON CONFLICT(profile_id,library_id) DO UPDATE SET observation_revision=observation_revision+1; END;
+CREATE TRIGGER progress_replay_membership AFTER UPDATE OF playback_id ON progress
+ WHEN OLD.playback_id IS NOT NEW.playback_id AND EXISTS(SELECT 1 FROM continue_dismissals d WHERE d.profile_id=OLD.profile_id AND d.item_id=OLD.item_id AND d.playback_id=OLD.playback_id) BEGIN
+ INSERT INTO viewer_revisions(profile_id,library_id,revision) SELECT NEW.profile_id,cl.library_id,1 FROM catalog_entities e JOIN catalog_libraries cl ON cl.id=e.library_id WHERE e.id=NEW.item_id ON CONFLICT(profile_id,library_id) DO UPDATE SET revision=revision+1; END;
 
 -- Change hints are coalesced by audience and resource before entering the ring.
 CREATE TABLE api_change_pending(audience TEXT NOT NULL,type TEXT NOT NULL,resource_kind TEXT NOT NULL,resource_id TEXT NOT NULL,revision TEXT NOT NULL,data TEXT NOT NULL DEFAULT '',PRIMARY KEY(audience,type,resource_kind,resource_id)) WITHOUT ROWID, STRICT;
+CREATE TRIGGER history_observation_hint_insert AFTER INSERT ON personal_activity_revisions BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision,data) VALUES('personal:'||NEW.profile_id,'progress.changed','personal','history',CAST(NEW.revision AS TEXT),json_object('observation',CAST(NEW.revision AS TEXT))) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision,data=excluded.data; END;
+CREATE TRIGGER history_observation_hint_update AFTER UPDATE OF revision ON personal_activity_revisions WHEN OLD.revision IS NOT NEW.revision BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision,data) VALUES('personal:'||NEW.profile_id,'progress.changed','personal','history',CAST(NEW.revision AS TEXT),json_object('observation',CAST(NEW.revision AS TEXT))) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision,data=excluded.data; END;
 CREATE TRIGGER library_change_hint AFTER UPDATE OF revision,order_revision ON library_revisions BEGIN
  INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision,data) VALUES('library:'||NEW.library_id,'library.changed','library',NEW.library_id,CAST(NEW.revision AS TEXT),json_object('content',CAST(NEW.revision AS TEXT),'contentOrder',CAST(NEW.order_revision AS TEXT))) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision,data=excluded.data; END;
 CREATE TRIGGER personal_change_hint AFTER INSERT ON viewer_revisions BEGIN

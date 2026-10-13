@@ -46,6 +46,15 @@ func deriveSearch(ctx context.Context, tx *sql.Tx, ids string) error {
 			return err
 		}
 	}
+	// A source hint may have reached readers before this queued batch ran.
+	// Publishing the serving index must wake them again; the replacement slot
+	// remains private until its generation switch publishes one invalidation.
+	if rebuilding != 1 || first == 1 {
+		_, err := tx.ExecContext(ctx, `UPDATE library_revisions SET revision=revision+1
+ WHERE library_id IN(SELECT cl.library_id FROM json_each(?) j
+ JOIN catalog_entities e ON e.id=j.value JOIN catalog_libraries cl ON cl.id=e.library_id)`, ids)
+		return err
+	}
 	return nil
 }
 

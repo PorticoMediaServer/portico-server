@@ -66,8 +66,8 @@ func TestAdminDirectoriesCASRestartAndProbe(t *testing.T) {
 	if _, e = db.Exec(`UPDATE jobs SET status='cancelled' WHERE id='job044'`); e != nil {
 		t.Fatal(e)
 	}
-	if _, e = s.AdminJobs(context.Background(), r); !errors.Is(e, ErrStaleContinuation) {
-		t.Fatal("directory revision", e)
+	if _, e = s.AdminJobs(context.Background(), r); e != nil {
+		t.Fatal("directory continuation did not refresh", e)
 	}
 	allow := func(*sql.Tx) error { return nil }
 	if e = s.RenameLibrary(context.Background(), "a", "Renamed", 1, allow); e != nil {

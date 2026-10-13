@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"math"
+	"strconv"
 
 	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/dbwork"
@@ -437,6 +438,13 @@ func (s *Service) MutateActivity(profile string, m ActivityMutation, authorize f
 		return out, e
 	}
 	if e = tx.QueryRow(`SELECT revision FROM personal_activity_revisions WHERE profile_id=?`, profile).Scan(&out.Revision); e != nil {
+		return out, e
+	}
+	// Explicit History commands must reach other devices even when no title's
+	// watched/resume state changed. History observations have their own hints.
+	if _, e = tx.Exec(`INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision)
+ VALUES(?,'personal.changed','personal','history',?)
+ ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision`, "personal:"+profile, strconv.FormatInt(out.Revision, 10)); e != nil {
 		return out, e
 	}
 	if e = fenceOperation(tx, profile, "activity", m.OperationID, hash); e != nil {

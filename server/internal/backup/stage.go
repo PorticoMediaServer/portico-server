@@ -3,7 +3,9 @@ package backup
 import (
 	"context"
 	"os"
+	"path"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"portico.local/server/internal/persistence"
@@ -41,7 +43,8 @@ type restoreMarker struct {
 	Files         []string `json:"files"`
 	PreRestore    string   `json:"preRestore,omitempty"`
 	// Reason is why a rolling_back restore is being rolled back.
-	Reason string `json:"reason,omitempty"`
+	Reason      string `json:"reason,omitempty"`
+	CompletedAt string `json:"completedAt,omitempty"`
 }
 
 const (
@@ -50,6 +53,8 @@ const (
 	markerSwitching   = "switching"
 	markerApplied     = "applied"
 	markerRollingBack = "rolling_back"
+	markerRestored    = "restored"
+	markerRolledBack  = "rolled_back"
 )
 
 // Stage validates the source and copies it into restore-staged/.incoming,
@@ -135,6 +140,9 @@ func (s *Service) Stage(ctx context.Context, source Source) (StageResult, error)
 	if err != nil {
 		return out, err
 	}
+	if err = syncRestoreDirectories(incoming, incoming, files); err != nil {
+		return out, err
+	}
 	marker := restoreMarker{State: markerStaged, Source: source, SchemaVersion: schemaVersion, Files: files}
 	if progress := s.RestoreProgress(); progress != nil {
 		marker.JobID = progress.JobID
@@ -178,16 +186,76 @@ func (s *Service) Stage(ctx context.Context, source Source) (StageResult, error)
 // database and its WAL, which checkManifestHashes has already verified.
 func stateFileNames(files []FileEntry) ([]string, bool) {
 	names := make([]string, 0, len(files))
+	seen := make(map[string]bool, len(files))
 	for _, entry := range files {
-		if entry.Name == ManifestName || strings.Contains(entry.Name, "\\") || strings.HasPrefix(entry.Name, "/") || strings.Contains(entry.Name, "../") {
+		name := entry.Name
+		if !safeRelativeFile(name) || !restorableFile(name) {
 			return nil, false
 		}
-		if entry.Name == DatabaseName || entry.Name == DatabaseName+"-wal" {
+		key := name
+		if runtime.GOOS == "windows" || runtime.GOOS == "darwin" {
+			key = strings.ToLower(key)
+		}
+		if seen[key] {
+			return nil, false
+		}
+		seen[key] = true
+		if name == DatabaseName || name == DatabaseName+"-wal" {
 			continue
 		}
-		names = append(names, entry.Name)
+		names = append(names, name)
 	}
 	return names, true
+}
+
+// Only files owned by the backup format may be installed in live state.
+func safeRelativeFile(name string) bool {
+	if name == "" || name == "." || name == ".." || path.Clean(name) != name || strings.HasPrefix(name, "/") || strings.HasPrefix(name, "../") || strings.ContainsAny(name, "\\:\x00") {
+		return false
+	}
+	return runtime.GOOS != "windows" || safeWindowsBackupName(name)
+}
+
+// Windows normalizes some names and reserves device names in every directory.
+// Refuse aliases before resolving a manifest entry inside the backup tree.
+func safeWindowsBackupName(name string) bool {
+	for _, part := range strings.Split(name, "/") {
+		if strings.Trim(part, " ") != part || strings.TrimRight(part, ".") != part || strings.ContainsAny(part, "<>\"\\|?*:") {
+			return false
+		}
+		for _, r := range part {
+			if r < 32 {
+				return false
+			}
+		}
+		stem, _, _ := strings.Cut(strings.ToUpper(part), ".")
+		switch stem {
+		case "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9", "COM¹", "COM²", "COM³", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9", "LPT¹", "LPT²", "LPT³":
+			return false
+		}
+	}
+	return true
+}
+
+func restorableFile(name string) bool {
+	if name == DatabaseName || name == DatabaseName+"-wal" {
+		return true
+	}
+	for _, root := range stateFiles() {
+		if name == root {
+			return true
+		}
+		if root == "supervisor/authority-incarnation.v1" || root == "networking-tls.pem" {
+			continue
+		}
+		if strings.HasPrefix(name, root+"/") {
+			if root == "managed-storage" {
+				return !strings.Contains(strings.TrimPrefix(name, root+"/"), "/") && strings.HasSuffix(name, ".conf")
+			}
+			return true
+		}
+	}
+	return false
 }
 
 // resolveSource maps a restore source to its database file, the directory its
@@ -197,17 +265,20 @@ func (s *Service) resolveSource(source Source) (db, dir string, files []string, 
 		if err = checkID(source.BackupID); err != nil {
 			return "", "", nil, ErrSourceInvalid
 		}
-		folder := filepath.Join(s.backupRoot(), source.BackupID)
+		folder, err := s.backupPath(source.BackupID)
+		if err != nil {
+			return "", "", nil, ErrSourceInvalid
+		}
 		manifest, err := readManifest(folder)
 		if err != nil {
 			return "", "", nil, ErrSourceInvalid
 		}
-		if err = checkManifestHashes(folder, manifest.Files); err != nil {
-			return "", "", nil, err
-		}
 		names, ok := stateFileNames(manifest.Files)
 		if !ok {
 			return "", "", nil, ErrSourceInvalid
+		}
+		if err = checkManifestHashes(folder, manifest.Files); err != nil {
+			return "", "", nil, err
 		}
 		return filepath.Join(folder, DatabaseName), folder, names, nil
 	}
@@ -224,12 +295,12 @@ func (s *Service) resolveSource(source Source) (db, dir string, files []string, 
 		if err != nil {
 			return "", "", nil, ErrSourceInvalid
 		}
-		if err = checkManifestHashes(path, manifest.Files); err != nil {
-			return "", "", nil, err
-		}
 		names, ok := stateFileNames(manifest.Files)
 		if !ok {
 			return "", "", nil, ErrSourceInvalid
+		}
+		if err = checkManifestHashes(path, manifest.Files); err != nil {
+			return "", "", nil, err
 		}
 		return filepath.Join(path, DatabaseName), path, names, nil
 	}

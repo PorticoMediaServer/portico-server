@@ -52,6 +52,9 @@ func initializeAdministration(ctx context.Context, db *sql.DB, console *operatio
 		if document, err := console.Settings(ctx, operations.AllowServerScope); err == nil {
 			recorder.SetLevel(document.Effective.LogLevel)
 			recorder.SetRetention(document.Effective.LogRetentionDays())
+			if err := out.ClientLogs.Prune(ctx, document.Effective.LogRetentionDays()["client"]); err != nil && ctx.Err() == nil {
+				log.Printf("warn: Client report retention: %v", err)
+			}
 			advertiser.Apply(document.Effective.LANDiscoveryEnabled)
 		}
 	}

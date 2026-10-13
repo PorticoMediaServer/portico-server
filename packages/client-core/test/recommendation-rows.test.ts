@@ -129,7 +129,9 @@ test('See all pages the whole row and starts again on a stale cursor', async () 
   pager.dispose();
 });
 
-test('stale cursor restart clears the old grid until its replacement first page arrives', async () => {
+// A screen that is open is never blanked: a refused cursor starts the row again
+// behind what is shown, and the first page replaces it when it arrives.
+test('stale cursor restart keeps the grid on screen until its replacement first page arrives', async () => {
   let resolveRestart!: (value: unknown) => void;
   const restart = new Promise<unknown>(resolve => { resolveRestart = resolve; });
   let first = true;
@@ -142,9 +144,12 @@ test('stale cursor restart clears the old grid until its replacement first page 
   await pager.load();
   const loading = pager.more();
   await new Promise(setImmediate);
-  assert.equal(pager.getSnapshot().phase, 'loading');
-  assert.deepEqual(pager.getSnapshot().entries, []);
-  assert.equal(pager.getSnapshot().row, undefined);
+  const shown = pager.getSnapshot().entries.map(card => card.id);
+  assert.equal(pager.getSnapshot().phase, 'ready');
+  assert.ok(shown.length > 0 && !shown.includes('fresh'), 'the entries already shown stay');
+  assert.notEqual(pager.getSnapshot().row, undefined);
+  assert.equal(pager.getSnapshot().nextCursor, '', 'the refused cursor is not offered again');
+  assert.equal(pager.getSnapshot().restarts, 1);
   resolveRestart(row({entries: [entry('fresh')], nextCursor: ''}));
   await loading;
   assert.deepEqual(pager.getSnapshot().entries.map(card => card.id), ['fresh']);

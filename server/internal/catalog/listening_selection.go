@@ -94,7 +94,7 @@ func (s *Service) listeningWhere(t ListeningTarget) (string, []any, error) {
 		where := `i.kind=7 AND EXISTS(SELECT 1 FROM catalog_songs ss JOIN catalog_entities album ON album.id=ss.album_id WHERE ss.entity_id=i.id AND album.public_id=pid_blob(?) AND album.retired=0`
 		args := []any{id}
 		if t.Kind == "disc" {
-			where += ` AND COALESCE(ss.disc_number,0)=?`
+			where += ` AND COALESCE(ss.disc_number,1)=?`
 			args = append(args, disc)
 		}
 		return where + `)`, args, nil

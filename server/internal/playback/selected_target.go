@@ -45,7 +45,7 @@ func bestAudioConversionTransport(transports []ClientTransport, client ClientPro
 
 // Complete and validate the contract before persisting it for the producer.
 func finishConversionTarget(p *DeliveryPlan, video *SourceVideo, audio *SourceAudio, client ClientProfile, probe decoder.HardwareProbe, facts *decoder.ToolchainFacts) error {
-	t := decoder.ConversionTarget{VideoCodec: p.OutputVideoCodec, BitDepth: p.OutputBitDepth, DynamicRange: p.OutputRange, ToneMap: p.ToneMap, Width: p.TargetWidth, Height: p.TargetHeight, FrameRate: p.MaxFrameRate, VideoBitrateBPS: p.VideoBitrateBPS, AudioCodec: p.OutputAudioCodec, AudioChannels: p.AudioChannels, AudioSampleRate: p.AudioSampleRate, AudioBitrateBPS: p.AudioBitrateBPS, Packaging: p.OutputContainer}
+	t := decoder.ConversionTarget{VideoCodec: p.OutputVideoCodec, BitDepth: p.OutputBitDepth, DynamicRange: p.OutputRange, ToneMap: p.ToneMap, Unmapped: p.ToneMapOff, Width: p.TargetWidth, Height: p.TargetHeight, FrameRate: p.MaxFrameRate, VideoBitrateBPS: p.VideoBitrateBPS, AudioCodec: p.OutputAudioCodec, AudioChannels: p.AudioChannels, AudioSampleRate: p.AudioSampleRate, AudioBitrateBPS: p.AudioBitrateBPS, Packaging: p.OutputContainer}
 	if p.VideoAction == "convert" {
 		t.RateControl = "bitrate"
 		if p.QualityID == "original" || p.QualityID == "auto" || p.QualityID == "automatic" || p.QualityID == "" {

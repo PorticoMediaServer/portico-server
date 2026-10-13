@@ -15,6 +15,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"portico.local/server/internal/supervise"
 	"strconv"
 	"sync"
 	"time"
@@ -191,7 +192,7 @@ func (d *Dispatcher) Step(ctx context.Context) time.Duration {
 		}
 		group.Add(1)
 		slots <- struct{}{}
-		go func() {
+		supervise.Go("webhooks.delivery", func() {
 			defer group.Done()
 			defer func() { <-slots }()
 			for _, q := range batch {
@@ -199,7 +200,7 @@ func (d *Dispatcher) Step(ctx context.Context) time.Duration {
 					return
 				}
 			}
-		}()
+		})
 	}
 	group.Wait()
 	// When is the next thing due? Nothing waiting and nobody subscribed means

@@ -138,6 +138,13 @@ func audioCodecs(defaultCodec string, overrides ...string) map[string]string {
 	}
 	return out
 }
+
+// Converted sound: a device that plays FLAC over the chosen transport is given
+// FLAC, so a conversion is never a second lossy encode, in as many channels
+// as the source has and the device's output carries (two for a phone or a
+// browser, six for Safari's, eight for an Apple TV on HDMI). A device without
+// FLAC there is given AAC. A track the device already plays (Opus on Android)
+// is copied while only the picture is converted.
 func matrixRows() []matrixRow {
 	aac := SourceAudio{Codec: "aac", Channels: 2, Default: true}
 	avc := avcDetail
@@ -190,23 +197,23 @@ func matrixRows() []matrixRow {
 		// Apple decodes AC3/EAC3 locally even with a stereo sink; passthrough-only
 		// clients require an active multichannel route. Losslessly coded surround
 		// goes to Dolby Digital Plus where the device decodes it to a surround output.
-		{source: "03_mkv_h264_ac3", build: build("mkv", "h264", avc, SourceAudio{Codec: "ac3", Channels: 6}), want: routes(A, "copy_remux:ios tvos safari_hdr appletv_dv", "original:shield_avr"), wantAudio: audioCodecs("aac", "ac3:ios tvos safari_hdr appletv_dv shield_avr")},
-		{source: "04_mkv_h264_dtshd", build: build("mkv", "h264", avc, SourceAudio{Codec: "dts", Channels: 8, StreamDetail: assets.StreamDetail{Profile: "DTS-HD MA"}}), want: routes(A, "original:shield_avr"), wantAudio: audioCodecs("aac", "dts:shield_avr", "eac3:safari_hdr appletv_dv")},
-		{source: "05_mkv_h264_truehd_atmos", build: build("mkv", "h264", avc, surround("truehd")), want: routes(A, "original:shield_avr"), wantAudio: audioCodecs("aac", "truehd:shield_avr", "eac3:safari_hdr appletv_dv")},
+		{source: "03_mkv_h264_ac3", build: build("mkv", "h264", avc, SourceAudio{Codec: "ac3", Channels: 6}), want: routes(A, "copy_remux:ios tvos safari_hdr appletv_dv", "original:shield_avr"), wantAudio: audioCodecs("aac", "ac3:ios tvos safari_hdr appletv_dv shield_avr", "flac:android androidtv chromium firetv")},
+		{source: "04_mkv_h264_dtshd", build: build("mkv", "h264", avc, SourceAudio{Codec: "dts", Channels: 8, StreamDetail: assets.StreamDetail{Profile: "DTS-HD MA"}}), want: routes(A, "original:shield_avr"), wantAudio: audioCodecs("aac", "dts:shield_avr", "flac:android androidtv chromium firetv ios tvos safari_hdr appletv_dv")},
+		{source: "05_mkv_h264_truehd_atmos", build: build("mkv", "h264", avc, surround("truehd")), want: routes(A, "original:shield_avr"), wantAudio: audioCodecs("aac", "truehd:shield_avr", "flac:android androidtv chromium firetv ios tvos safari_hdr appletv_dv")},
 		// Cast declares no EAC3 decoder. HDR-capable video alone cannot make this O/R.
-		{source: "06_mp4_hdr10_eac3", build: build("mp4", "hevc", hdr10Detail, SourceAudio{Codec: "eac3", Channels: 6}), want: routes(V, "original:safari_hdr appletv_dv shield_avr", "audio_conversion:ultra google_tv"), wantAudio: audioCodecs("aac", "eac3:ios tvos safari_hdr appletv_dv shield_avr")},
-		{source: "07_mkv_hdr10_eac3", build: build("mkv", "hevc", hdr10Detail, SourceAudio{Codec: "eac3", Channels: 6}), want: routes(V, "copy_remux:safari_hdr appletv_dv", "original:shield_avr", "audio_conversion:ultra google_tv"), wantAudio: audioCodecs("aac", "eac3:ios tvos safari_hdr appletv_dv shield_avr")},
+		{source: "06_mp4_hdr10_eac3", build: build("mp4", "hevc", hdr10Detail, SourceAudio{Codec: "eac3", Channels: 6}), want: routes(V, "original:safari_hdr appletv_dv shield_avr", "audio_conversion:ultra google_tv"), wantAudio: audioCodecs("aac", "eac3:ios tvos safari_hdr appletv_dv shield_avr", "flac:android androidtv chromium firetv")},
+		{source: "07_mkv_hdr10_eac3", build: build("mkv", "hevc", hdr10Detail, SourceAudio{Codec: "eac3", Channels: 6}), want: routes(V, "copy_remux:safari_hdr appletv_dv", "original:shield_avr", "audio_conversion:ultra google_tv"), wantAudio: audioCodecs("aac", "eac3:ios tvos safari_hdr appletv_dv shield_avr", "flac:android androidtv chromium firetv")},
 		{source: "08_dv_p5_dvh1", build: build("mp4", "hevc", dv(5, 0, "dvh1"), aac), want: routes(V, "original:appletv_dv shield_avr google_tv"), wantAudio: audioCodecs("aac")},
 		{source: "09_dv_p81_hvc1", build: build("mp4", "hevc", dv(8, 1, "hvc1"), aac), want: routes(V, "original:safari_hdr appletv_dv shield_avr ultra google_tv"), wantAudio: audioCodecs("aac")},
 		{source: "10_dv_p81_dvh1_hdr_only", build: build("mp4", "hevc", dv(8, 1, "dvh1"), aac), want: routes(V, "original:appletv_dv shield_avr google_tv", "copy_remux:safari_hdr ultra"), wantAudio: audioCodecs("aac")},
-		{source: "11_mkv_dv_p7_truehd", build: build("mkv", "hevc", dv(7, 1, ""), surround("truehd")), want: routes(V, "audio_conversion:safari_hdr appletv_dv ultra google_tv", "original:shield_avr"), wantAudio: audioCodecs("aac", "truehd:shield_avr", "eac3:safari_hdr appletv_dv")},
+		{source: "11_mkv_dv_p7_truehd", build: build("mkv", "hevc", dv(7, 1, ""), surround("truehd")), want: routes(V, "audio_conversion:safari_hdr appletv_dv ultra google_tv", "original:shield_avr"), wantAudio: audioCodecs("aac", "truehd:shield_avr", "flac:android androidtv chromium firetv ios tvos safari_hdr appletv_dv")},
 		// Google TV advertises AV1 decode but not AV1-in-HLS. Shield here has no AV1 probe.
-		{source: "12_mkv_av1_10_opus", build: build("mkv", "av1", av1, SourceAudio{Codec: "opus", Channels: 2}), want: routes(V, "copy_remux:chromium"), wantAudio: audioCodecs("aac", "opus:chromium")},
+		{source: "12_mkv_av1_10_opus", build: build("mkv", "av1", av1, SourceAudio{Codec: "opus", Channels: 2}), want: routes(V, "copy_remux:chromium"), wantAudio: audioCodecs("aac", "opus:chromium android androidtv firetv shield_avr", "flac:ios tvos safari_hdr appletv_dv")},
 		// Chromecast gen 3 has no VP9 claim; 'Chromecast' is not a shared codec profile.
-		{source: "13_webm_vp9_opus", build: build("webm", "vp9", vp9, SourceAudio{Codec: "opus", Channels: 2}), want: routes(V, "original:chromium android androidtv firetv webos tizen shield_avr ultra google_tv"), wantAudio: audioCodecs("aac", "opus:chromium android androidtv firetv webos tizen shield_avr ultra google_tv")},
+		{source: "13_webm_vp9_opus", build: build("webm", "vp9", vp9, SourceAudio{Codec: "opus", Channels: 2}), want: routes(V, "original:chromium android androidtv firetv webos tizen shield_avr ultra google_tv"), wantAudio: audioCodecs("aac", "opus:chromium android androidtv firetv webos tizen shield_avr ultra google_tv", "flac:ios tvos safari_hdr appletv_dv")},
 		{source: "14_mkv_hi10p", build: build("mkv", "h264", hi10, aac), want: routes(V), wantAudio: audioCodecs("aac")},
 		// The native Android probe does not report interlacing; TVs lack MP2 audio and MPEG2-in-HLS, so audio-only repair is unavailable.
-		{source: "15_interlaced_mpeg2_mp2", build: build("ts", "mpeg2video", mpeg2, SourceAudio{Codec: "mp2", Channels: 2}), want: routes(V), wantAudio: audioCodecs("aac")},
+		{source: "15_interlaced_mpeg2_mp2", build: build("ts", "mpeg2video", mpeg2, SourceAudio{Codec: "mp2", Channels: 2}), want: routes(V), wantAudio: audioCodecs("aac", "flac:android androidtv chromium firetv ios tvos safari_hdr appletv_dv shield_avr")},
 		{source: "16_vc1_mkv", build: build("mkv", "vc1", vc1, aac), want: routes(V, "original:shield_avr"), wantAudio: audioCodecs("aac")},
 		// Cast UHD tables stop at AVC level 5.1; a 5.2 source still needs conversion.
 		{source: "17_4k_h264_level52", build: build("mp4", "h264", uhd, aac), want: routes(O, "video_conversion:android androidtv firetv chromecast ultra google_tv"), wantAudio: audioCodecs("aac")},
@@ -252,12 +259,81 @@ func matrixInput(row matrixRow, client ClientProfile) DeliveryInput {
 		height = source.Video.Height
 	}
 	policy := openPolicy()
-	in := DeliveryInput{Source: &source, Client: client, Policy: policy, Target: autoTarget(policy, height), Config: DefaultDeliveryConfiguration(), TranscodingEnabled: true, FMP4Output: true}
+	in := DeliveryInput{Source: &source, Client: client, Server: matrixToolchain(), Policy: policy, Target: autoTarget(policy, height), Config: DefaultDeliveryConfiguration(), TranscodingEnabled: true, FMP4Output: true}
 	if row.configure != nil {
 		row.configure(&in)
 	}
 	return in
 }
+
+// matrixToolchain is a server whose converter can do everything the planner
+// may ask of it: every encoder and decoder, CPU tone mapping, Dolby Vision
+// reshaping, and the filters that strip Dolby Vision down to its compatible
+// base. The matrix says what each device is given when the server is not the
+// limit; what a lesser server does is TestMatrixWithoutDolbyVisionTools below.
+func matrixToolchain() *decoder.ToolchainFacts {
+	set := func(names ...string) map[string]bool {
+		out := map[string]bool{}
+		for _, name := range names {
+			out[name] = true
+		}
+		return out
+	}
+	return &decoder.ToolchainFacts{
+		Encoders:         set("libx264", "libx265", "libsvtav1", "libaom-av1", "aac", "ac3", "eac3", "flac", "libopus"),
+		Decoders:         set("h264", "hevc", "av1", "vp9", "vp8", "mpeg2video", "mpeg4", "vc1", "aac", "mp3", "mp2", "ac3", "eac3", "dca", "truehd", "flac", "alac", "opus", "vorbis", "pcm"),
+		Filters:          set("zscale", "tonemap", "bwdif", "libplacebo", "scale", "overlay"),
+		BitstreamFilters: set("dovi_rpu", "filter_units", "hevc_metadata"),
+		Muxers:           set("mp4", "hls", "mpegts"),
+		VulkanAvailable:  true,
+	}
+}
+
+// A server whose converter lacks the Dolby Vision tools never shows a wrong
+// picture and never sends Dolby Vision metadata to a device that cannot read
+// it. A title with no compatible base layer (profile 5) is refused on a device
+// without Dolby Vision rather than converted with the wrong colours; a title
+// with a base layer is converted from that base instead of being repackaged
+// with its Dolby Vision data stripped. Devices that play the title as it is
+// are unaffected.
+func TestMatrixWithoutDolbyVisionTools(t *testing.T) {
+	profiles := matrixProfiles(t)
+	lesser := func() *decoder.ToolchainFacts {
+		f := matrixToolchain()
+		delete(f.Filters, "libplacebo")
+		f.VulkanAvailable = false
+		f.BitstreamFilters = map[string]bool{}
+		return f
+	}
+	plan := func(source, device string) (DeliveryPlan, error) {
+		for _, row := range matrixRows() {
+			if row.source == source {
+				in := matrixInput(row, profiles[device])
+				in.Server = lesser()
+				return planDelivery(in)
+			}
+		}
+		t.Fatal("no such row", source)
+		return DeliveryPlan{}, nil
+	}
+	for _, device := range []string{"web", "android", "chromium", "ios", "safari_hdr", "chromecast"} {
+		if p, err := plan("08_dv_p5_dvh1", device); err == nil {
+			t.Errorf("%s was given profile 5 Dolby Vision by %s without the tools to reshape it", device, p.Strategy)
+		}
+	}
+	for _, device := range []string{"appletv_dv", "shield_avr", "google_tv"} {
+		if p, err := plan("08_dv_p5_dvh1", device); err != nil || p.Strategy != O {
+			t.Errorf("%s plays Dolby Vision itself and needs nothing of the server: %s %v", device, p.Strategy, err)
+		}
+	}
+	for _, c := range []struct{ source, device string }{{"10_dv_p81_dvh1_hdr_only", "safari_hdr"}, {"10_dv_p81_dvh1_hdr_only", "ultra"}, {"11_mkv_dv_p7_truehd", "safari_hdr"}, {"11_mkv_dv_p7_truehd", "appletv_dv"}} {
+		p, err := plan(c.source, c.device)
+		if err != nil || p.Strategy != V {
+			t.Errorf("%s on %s: want its base layer converted, got %s %v", c.source, c.device, p.Strategy, err)
+		}
+	}
+}
+
 func TestClientDeclaredTablesDriveDeliveryMatrix(t *testing.T) {
 	profiles := matrixProfiles(t)
 	rows := matrixRows()
@@ -306,8 +382,14 @@ func TestClientDeclaredTablesDriveDeliveryMatrix(t *testing.T) {
 					if p.Strategy == R && p.AudioAction != "copy" {
 						t.Error("audio was not copied")
 					}
-					if (row.source[:2] == "04" || row.source[:2] == "05") && (name == "safari_hdr" || name == "appletv_dv") && p.AudioChannels != 6 {
+					// Eight-channel sources keep every channel the output carries:
+					// six through Safari, all eight on an Apple TV over HDMI.
+					if (row.source[:2] == "04" || row.source[:2] == "05") && (name == "safari_hdr" && p.AudioChannels != 6 || name == "appletv_dv" && p.AudioChannels != 8) {
 						t.Error("surround not retained", p.AudioChannels)
+					}
+					// A stereo output is given two channels, never a silent drop to mono or an unplayable layout.
+					if (row.source[:2] == "03" || row.source[:2] == "04" || row.source[:2] == "05") && p.Strategy == A && (name == "android" || name == "chromium" || name == "ios") && p.AudioChannels != 2 {
+						t.Error("stereo output not given stereo", p.AudioChannels)
 					}
 					if row.source[:2] == "17" && name == "chromecast" && p.TargetHeight != 1080 {
 						t.Error("gen 3 not capped at 1080p", p.TargetHeight)

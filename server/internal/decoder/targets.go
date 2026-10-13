@@ -14,10 +14,15 @@ import (
 // than a fixed ladder rate. BitrateBPS, when supplied, still caps that mode.
 // Copy actions remain on ConversionRequest; a copy target names source codecs.
 type ConversionTarget struct {
-	VideoCodec               string  `json:"videoCodec"`
-	BitDepth                 int     `json:"bitDepth"`
-	DynamicRange             string  `json:"dynamicRange"`
-	ToneMap                  bool    `json:"toneMap"`
+	VideoCodec   string `json:"videoCodec"`
+	BitDepth     int    `json:"bitDepth"`
+	DynamicRange string `json:"dynamicRange"`
+	ToneMap      bool   `json:"toneMap"`
+	// Unmapped says an HDR picture is written as a standard one without tone
+	// mapping, because the owner turned tone mapping off. It is the one way a
+	// conversion from HDR to SDR may go without it: left out by accident, the
+	// target is refused.
+	Unmapped                 bool    `json:"unmapped,omitempty"`
 	Width                    int     `json:"width"`
 	Height                   int     `json:"height"`
 	FrameRate                float64 `json:"frameRate"`
@@ -114,7 +119,10 @@ func (t ConversionTarget) Normalized() (ConversionTarget, error) {
 	if t.CopyDolbyVision && (t.VideoCodec != "hevc" || t.BitDepth != 10 || t.DynamicRange != "dolby_vision" || t.SourceRange != "dolby_vision" || t.DolbyVisionProfile == 0 || t.Packaging != "fmp4_hls") {
 		return t, ErrInvalidConfiguration
 	}
-	if t.SourceRange != "" && t.SourceRange != "sdr" && t.DynamicRange == "sdr" && !t.ToneMap {
+	if t.Unmapped && (t.ToneMap || t.DynamicRange != "sdr") {
+		return t, ErrInvalidConfiguration
+	}
+	if t.SourceRange != "" && t.SourceRange != "sdr" && t.DynamicRange == "sdr" && !t.ToneMap && !t.Unmapped {
 		return t, errors.New("hdr_requires_tone_mapping")
 	}
 	if t.RateControl != "bitrate" && t.RateControl != "quality" || t.Quality < 0 || t.Quality > 51 {

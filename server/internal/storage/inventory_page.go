@@ -237,6 +237,16 @@ func LocalInventoryPage(r InventoryRequest) (InventoryPage, error) {
 			continue
 		}
 		v := snapshot(bindingPath, info)
+		if info.IsDir() && v.ObjectIdentity == "" {
+			// A folder's identity is taken from the open folder (it carries the
+			// filesystem it is on), so a folder that cannot be opened has none.
+			// It is left out like any folder that cannot be read, and what is
+			// already known beneath it is kept; the rest of this folder is
+			// still listed. Handing it on without an identity would have made
+			// the whole parent look as if it had changed under the scan.
+			p.Issues = append(p.Issues, InventoryIssue{Path: filepath.Join(r.RelativePath, name), Reason: "directory_unreadable", Protect: true, Warning: true})
+			continue
+		}
 		v.Path = filepath.Join(r.Root, r.RelativePath, name)
 		v.Name = name
 		p.Entries = append(p.Entries, v)

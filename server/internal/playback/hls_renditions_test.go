@@ -151,8 +151,7 @@ func TestRenditionWindowsShareOneClock(t *testing.T) {
 }
 
 func TestFragmentedSignallingFollowsActualDolbyVisionLayer(t *testing.T) {
-	facts := plannerToolchain()
-	facts.BitstreamFilters = map[string]bool{"dovi_rpu": true, "filter_units": true}
+	facts := matrixToolchain()
 	qualifiedCopy := func(in *DeliveryInput) { in.FMP4Output = true; in.Server = facts }
 	detail := hdr10Detail
 	detail.DynamicRange = assets.RangeDolbyVision
@@ -170,9 +169,14 @@ func TestFragmentedSignallingFollowsActualDolbyVisionLayer(t *testing.T) {
 	client.Video[1].DolbyVisionProfiles = nil
 	client.Video[1].DynamicRanges = []string{"sdr", "hdr10", "hlg"}
 	client.Display.DynamicRanges = []string{"sdr", "hdr10", "hlg"}
+	// A device without Dolby Vision is sent the title's own HDR10 base layer,
+	// copied, which needs a converter that can strip the Dolby Vision data.
 	p = decide(t, source, client, qualifiedCopy)
 	if p.VideoAction != "copy" {
 		t.Fatalf("expected qualified base copy, got %+v", p)
+	}
+	if p.Strategy != DeliveryCopyRemux && p.Strategy != DeliveryAudioConversion {
+		t.Fatal("the base layer was not copied", p.Strategy)
 	}
 	m = string(hlsMasterManifest(&p))
 	if strings.Contains(m, "dvh1") || strings.Contains(m, "SUPPLEMENTAL") || !strings.Contains(m, "hvc1.2.4.L153.B0") || !strings.Contains(m, "VIDEO-RANGE=PQ") {

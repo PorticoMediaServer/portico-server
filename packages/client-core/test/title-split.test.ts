@@ -30,17 +30,26 @@ test('a library\'s folders are read one by one, and an unreadable one is left ou
   assert.deepEqual(folders.map(f => f.id), ['s1', 's2']);
 });
 
-test('finding a file asks the library for that one file', async () => {
+test('finding a file asks the server for that one file, in one request', async () => {
   const calls: string[] = [];
-  const found = await findLibraryFile(api(() => ({items: [row(3), row(4, 'wanted')]}), calls), 'films', 'wanted', {folderId: 'folder-1'});
+  const progress: number[] = [];
+  const found = await findLibraryFile(api(path => {
+    if (new URL(path, 'http://x').searchParams.get('assetId') !== 'wanted') throw new Error('the file was not named');
+    return {items: [row(4, 'wanted')], nextCursor: ''};
+  }, calls), 'films', 'wanted', {folderId: 'folder-1', onProgress: n => progress.push(n)});
   assert.deepEqual(found, {objectId: 'object-4', revision: 'rev-4'});
-  assert.equal(calls.length, 1);
-  assert.match(calls[0]!, /^GET \/v1\/admin\/libraries\/films\/inventory\?limit=40&assetId=wanted&state=available&sourceId=folder-1$/);
+  assert.deepEqual(calls, ['GET /v1/admin/libraries/films/inventory?limit=40&assetId=wanted&state=available&sourceId=folder-1']);
+  assert.deepEqual(progress, [1]);
 });
 
-test('a file the library does not list is not found', async () => {
-  assert.equal(await findLibraryFile(api(() => ({items: [row(1)]})), 'films', 'wanted'), undefined);
-  assert.equal(await findLibraryFile(api(() => ({items: []})), 'films', 'wanted'), undefined);
+test('a file the server does not list is not found, and rows for other files are passed over', async () => {
+  let reads = 0;
+  assert.equal(await findLibraryFile(api(() => { reads++; return {items: [], nextCursor: ''}; }), 'films', 'wanted'), undefined);
+  assert.equal(reads, 1);
+  // An older server that ignores the filter answers with other files: none is taken for the one asked for, and the list is not walked.
+  assert.equal(await findLibraryFile(api(() => { reads++; return {items: [row(1), row(2)], nextCursor: 'more'}; }), 'films', 'wanted'), undefined);
+  assert.equal(reads, 2);
+  assert.deepEqual(await findLibraryFile(api(() => ({items: [row(1), row(4, 'wanted')], nextCursor: ''})), 'films', 'wanted'), {objectId: 'object-4', revision: 'rev-4'});
 });
 
 test('an answer that is not a file list is refused, and a stop is passed on', async () => {
