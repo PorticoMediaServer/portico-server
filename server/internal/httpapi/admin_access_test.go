@@ -515,7 +515,7 @@ func TestConnectivityPolicyRoundTripsAndStatusReportsTheHost(t *testing.T) {
 	f := administrationFixtureNew(t)
 	w := f.call("GET", "/v1/admin/connectivity/policy", f.owner, "")
 	var policy connectivity.Policy
-	if e := json.Unmarshal(w.Body.Bytes(), &policy); e != nil || policy.RemoteSignIn != "allow" || policy.SecureConnectionsPolicy != "preferred" {
+	if e := json.Unmarshal(w.Body.Bytes(), &policy); e != nil || policy.RemoteSignIn != "allow" {
 		t.Fatalf("defaults: %v %+v", e, policy)
 	}
 	body := `{"expectedRevision":` + tl6Itoa(policy.Revision) + `,"operationId":"connectivity-1","remoteSignInPolicy":"owner-only","remoteBitrateLimitKbps":8000,"secureConnectionsPolicy":"required","lanNetworks":["192.168.1.5/24"],"accessUrls":["https://media.example.com/"],"lanDiscoveryEnabled":false}`
@@ -562,96 +562,6 @@ func TestConnectivityPolicyRoundTripsAndStatusReportsTheHost(t *testing.T) {
 	delivery := adapter.Delivery()
 	if delivery.MaxVideoBitrateBPS != 8_000_000 {
 		t.Fatalf("the remote bitrate ceiling did not reach delivery: %d", delivery.MaxVideoBitrateBPS)
-	}
-}
-
-func TestClaimedRequiredConnectionsRefusePlainHTTPAndAdvertiseHTTPS(t *testing.T) {
-	f := administrationFixtureNew(t)
-	w := f.call("GET", "/v1/admin/connectivity/policy", f.owner, "")
-	var policy connectivity.Policy
-	if err := json.Unmarshal(w.Body.Bytes(), &policy); err != nil {
-		t.Fatal(err)
-	}
-	body := `{"expectedRevision":` + tl6Itoa(policy.Revision) + `,"operationId":"secure-required","secureConnectionsPolicy":"required","accessUrls":["https://media.example.test"]}`
-	if w = f.call("PATCH", "/v1/admin/connectivity/policy", f.owner, body); w.Code != 200 {
-		t.Fatalf("save policy: %d %s", w.Code, w.Body.String())
-	}
-	// A Direct Sign-In server without a claim or certificate remains usable.
-	if w = f.call("GET", "/v1/auth/capabilities", "", ""); w.Code != 200 {
-		t.Fatalf("direct sign-in degraded: %d %s", w.Code, w.Body.String())
-	}
-	// networking_claim_* now come from migration 0042 (BE-hosted 7574497).
-	serverID := "srv_" + strings.Repeat("a", 43)
-	if _, err := f.deps.DB.Exec(`INSERT INTO networking_server_identities(server_id,public_key,key_incarnation,created_at) VALUES(?,?,?,?)`, serverID, make([]byte, 32), "incarnation", time.Now().UTC().Format(time.RFC3339)); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := f.deps.DB.Exec(`INSERT INTO networking_claim_identity(singleton,server_id,public_key,reset_generation,active_operation_id,installed_operation_id) VALUES(1,?,?,0,'claim','claim')`, serverID, make([]byte, 32)); err != nil {
-		t.Fatal(err)
-	}
-	time.Sleep(1100 * time.Millisecond) // refresh the cached unclaimed state
-	// A configured URL alone cannot prove that TLS is available. Required
-	// falls back to Preferred and opens an owner alert until a route is live.
-	if w = f.call("GET", "/v1/auth/capabilities", "", ""); w.Code != 200 {
-		t.Fatalf("missing certificate locked out the owner: %d %s", w.Code, w.Body.String())
-	}
-	var alerts int
-	if err := f.deps.DB.QueryRow(`SELECT count(*) FROM console_alerts WHERE code='secure-connections-required-unavailable' AND status='open'`).Scan(&alerts); err != nil || alerts != 1 {
-		t.Fatalf("missing HTTPS did not raise an owner alert: %d %v", alerts, err)
-	}
-	tlsReady := true
-	f.deps.HTTPSRoute = func(context.Context) (string, bool, error) { return "https://media.example.test", tlsReady, nil }
-	f.handler = New(f.deps)
-	if w = f.call("GET", "/v1/auth/capabilities", "", ""); w.Code != 403 || !strings.Contains(w.Body.String(), `"code":"secure_connection_required"`) || !strings.Contains(w.Body.String(), `"httpsUrl":"https://media.example.test"`) {
-		t.Fatalf("claimed HTTP request was not redirected by policy: %d %s", w.Code, w.Body.String())
-	}
-	loopback := httptest.NewRequest("GET", "/v1/auth/capabilities", nil)
-	loopback.RemoteAddr = "127.0.0.1:1234"
-	w = httptest.NewRecorder()
-	f.handler.ServeHTTP(w, loopback)
-	if w.Code != 200 {
-		t.Fatalf("Required refused loopback recovery: %d %s", w.Code, w.Body.String())
-	}
-	// A trusted loopback reverse proxy represents its forwarded client, not
-	// itself. A public or malformed forwarded peer gets no loopback exemption.
-	f.deps.TrustedProxies = []netip.Prefix{netip.MustParsePrefix("127.0.0.1/32")}
-	f.handler = New(f.deps)
-	for _, forwarded := range []string{"198.51.100.7", "not-an-address"} {
-		proxied := httptest.NewRequest("GET", "/v1/auth/capabilities", nil)
-		proxied.RemoteAddr = "127.0.0.1:1234"
-		proxied.Header.Set("X-Forwarded-For", forwarded)
-		w = httptest.NewRecorder()
-		f.handler.ServeHTTP(w, proxied)
-		if w.Code != 403 {
-			t.Fatalf("trusted proxy client %q bypassed Required: %d %s", forwarded, w.Code, w.Body)
-		}
-	}
-	proxiedLocal := httptest.NewRequest("GET", "/v1/auth/capabilities", nil)
-	proxiedLocal.RemoteAddr = "127.0.0.1:1234"
-	proxiedLocal.Header.Set("X-Forwarded-For", "127.0.0.1")
-	w = httptest.NewRecorder()
-	f.handler.ServeHTTP(w, proxiedLocal)
-	if w.Code != 200 {
-		t.Fatalf("trusted local client lost recovery: %d %s", w.Code, w.Body)
-	}
-	probe := f.deps
-	probe.securePolicy = &securePolicyCache{}
-	if _, _, err := probe.requiredHTTPS(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	traced, statements := dbwork.TraceStatements(context.Background())
-	if _, _, err := probe.requiredHTTPS(traced); err != nil || len(statements()) != 0 {
-		t.Fatalf("warm Required policy still read SQL: %v %v", err, statements())
-	}
-	r := httptest.NewRequest("GET", "https://media.example.test/v1/auth/capabilities", nil)
-	w = httptest.NewRecorder()
-	f.handler.ServeHTTP(w, r)
-	if w.Code != 200 {
-		t.Fatalf("HTTPS request refused: %d %s", w.Code, w.Body.String())
-	}
-	tlsReady = false                    // expired or otherwise unusable certificate
-	time.Sleep(1100 * time.Millisecond) // allow the one-second route cache to expire
-	if w = f.call("GET", "/v1/auth/capabilities", "", ""); w.Code != 200 {
-		t.Fatalf("expired certificate locked out HTTP: %d %s", w.Code, w.Body.String())
 	}
 }
 

@@ -225,7 +225,6 @@ func (d Dependencies) consoleRoutes(mux *http.ServeMux) {
 		out, e := d.Console.ApplySettings(r.Context(), p, a, c)
 		if e == nil && d.securePolicy != nil {
 			d.securePolicy.set(out)
-			_, _, _ = d.requiredHTTPS(r.Context())
 		}
 		if e == nil && d.SettingsApplied != nil {
 			d.SettingsApplied(r.Context())

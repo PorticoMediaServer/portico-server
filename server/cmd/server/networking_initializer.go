@@ -18,6 +18,7 @@ import (
 	"portico.local/server/internal/networking"
 	"portico.local/server/internal/operations"
 	"strconv"
+	"strings"
 )
 
 func syncCurrentDirectory(path string) error {
@@ -161,7 +162,11 @@ func initializeCurrentClaimControl(db *sql.DB, state string, id *identity.Servic
 // while a settings read error (nil from accessURLsProvider) keeps them.
 func accessURLsForPublication(v operations.Settings, publicPort int) []string {
 	out := make([]string, 0, len(v.AccessURLs)+1)
-	out = append(out, v.AccessURLs...)
+	for _, u := range append(append([]string{}, v.AccessURLs...), v.AdvertiseURL) {
+		if strings.HasPrefix(u, "https://") {
+			out = append(out, u)
+		}
+	}
 	if v.CustomCertificateDomain != "" {
 		u := "https://" + v.CustomCertificateDomain
 		if publicPort != 443 {

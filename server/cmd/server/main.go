@@ -139,7 +139,7 @@ func env(k, fallback string) string {
 // defaultBind is the first-run LAN-reachable default (ONB-02 item 2). Setup
 // still accepts only private peers and public traffic still requires TLS, so
 // reachability does not widen trust.
-const defaultBind = "0.0.0.0:32500"
+const defaultBind = ":32500"
 
 // stateDirFreshThisProcess reports whether this process created the state
 // directory's database file. ONB-02 item 4: a foreign-schema warning about a
@@ -228,6 +228,9 @@ func run() error {
 		return e
 	}
 	ip := net.ParseIP(host)
+	if host == "" {
+		ip = net.IPv6unspecified
+	}
 	if ip == nil {
 		return errors.New("server requires an explicit IP bind")
 	}
@@ -815,7 +818,7 @@ func run() error {
 			return 0
 		})
 	})
-	trustedProxies, e := httpapi.ParseTrustedProxyCIDRs(os.Getenv("PORTICO_TRUSTED_PROXY_CIDRS"))
+	trustedProxies, e := httpapi.ParseTrustedProxyCIDRs("")
 	if e != nil {
 		return e
 	}
@@ -959,6 +962,15 @@ func run() error {
 	supervise.Supervise(ctx, "cmd.compact-catalogue", compactcatalog.NewWorker(db).Run)
 	server := &http.Server{Addr: bind, Handler: handlerSwitch, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 32 << 10, HTTP2: serverHTTP2Policy()}
 	connectionLimit := connectionBudget(hostlimits.EffectiveMemoryBytes())
+	if console != nil {
+		if document, err := console.Settings(ctx, operations.AllowServerScope); err == nil && document.Effective.ConnectionLimit > 0 {
+			connectionLimit = document.Effective.ConnectionLimit
+		}
+	}
+	transport := consoleConnections(listener, connectionLimit)
+	listener = transport
+	server.ConnContext = transport.context
+	server.Handler = transport.protectConsole(handlerSwitch)
 	// The watchdog and the deferred database housekeeping both start only now, so
 	// neither competes with the work of coming up.
 	supervise.Supervise(ctx, "cmd.database-watchdog", watchdog.Run)
@@ -988,17 +1000,9 @@ func run() error {
 
 	// A custom certificate serves even with no Hosted manager (unclaimed /
 	// Direct Sign-In): the listener exists whenever either source can serve.
-	customConfigured := false
-	if console != nil {
-		if document, err := console.Settings(ctx, operations.AllowServerScope); err == nil {
-			customConfigured = document.Effective.CustomCertificatePath != "" && document.Effective.CustomCertificateKeyPath != "" && document.Effective.CustomCertificateDomain != ""
-		}
-	}
-	usesDirectListener := certificates != nil || !ip.IsLoopback() || customConfigured
+	usesDirectListener := true
 	if usesDirectListener {
-		direct, err := boundedDirectListener(listener, connectionLimit, func(raw net.Listener) (*networking.DirectListener, error) {
-			return networking.NewDirectListenerWithCustom(raw, certificates, customCertificate)
-		})
+		direct, err := networking.NewDirectListenerWithCustom(listener, certificates, customCertificate)
 		if err != nil {
 			return err
 		}
@@ -1046,7 +1050,7 @@ func run() error {
 		listener = capConnections(listener, connectionLimit)
 	}
 	log.Printf("Connection ceiling set to %d (HTTP/2 streams per connection: %d)", connectionLimit, server.HTTP2.MaxConcurrentStreams)
-	log.Printf("Portico server listening on %s (remote traffic requires TLS; recovery HTTP is private-LAN only)", listener.Addr())
+	log.Printf("Portico server listening on %s (HTTP and HTTPS share this port)", listener.Addr())
 	// ONB-02 item 1: while setup is unfinished, every start names the address
 	// to open. The port comes from the bound listener, not the configured
 	// string, so a :0 or overridden bind still prints a reachable URL.

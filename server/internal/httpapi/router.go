@@ -822,7 +822,7 @@ func New(d Dependencies) http.Handler {
 			failure(w, e)
 			return
 		}
-		if e := d.Identity.SetupLimit(r.Context(), setupPeerSubject(r), "setup", 10); e != nil {
+		if e := d.Identity.SetupLimit(r.Context(), d.setupPeerSubject(r), "setup", 10); e != nil {
 			setupFailure(w, e)
 			return
 		}
@@ -842,7 +842,7 @@ func New(d Dependencies) http.Handler {
 			failure(w, e)
 			return
 		}
-		if e := d.Identity.SetupLimit(r.Context(), setupPeerSubject(r), "login", 20); e != nil {
+		if e := d.Identity.SetupLimit(r.Context(), d.setupPeerSubject(r), "login", 20); e != nil {
 			setupFailure(w, e)
 			return
 		}
@@ -1247,7 +1247,7 @@ func New(d Dependencies) http.Handler {
 		w.Header().Set("Cache-Control", "no-store")
 		origin := r.Header.Get("Origin")
 		if origin != "" {
-			allowed := sameRequestOrigin(r, origin)
+			allowed := d.sameRequestOrigin(r, origin)
 			for _, v := range d.Origins {
 				if origin == v {
 					allowed = true
@@ -1270,13 +1270,7 @@ func New(d Dependencies) http.Handler {
 			w.Header().Set("Access-Control-Max-Age", "86400")
 		}
 		if r.Method == "OPTIONS" {
-			if d.enforceSecureConnections(w, r) {
-				return
-			}
 			w.WriteHeader(204)
-			return
-		}
-		if d.enforceSecureConnections(w, r) {
 			return
 		}
 		r = r.WithContext(identity.WithSignInSource(r.Context(), d.signInPeer(r)))

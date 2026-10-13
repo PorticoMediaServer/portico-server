@@ -310,7 +310,7 @@ func FoundationRegistry(d Dependencies) (*apikit.Registry, error) {
 		if d.Identity == nil || d.Access.Access == nil {
 			return empty, &apierror.Error{Code: "internal"}
 		}
-		if err := d.Identity.SetupLimit(ctx, setupPeerSubject(r), "invitation", 10); err != nil {
+		if err := d.Identity.SetupLimit(ctx, d.setupPeerSubject(r), "invitation", 10); err != nil {
 			var rate *identity.SetupProtocolError
 			if errors.As(err, &rate) && rate.Code == "rate_limited" {
 				return empty, &apierror.Error{Code: "rate_limited", RetryAfterSeconds: rate.Interval}
@@ -603,6 +603,9 @@ func FoundationRegistry(d Dependencies) (*apikit.Registry, error) {
 		return d.bootstrap(r)
 	}})
 	if err != nil {
+		return nil, err
+	}
+	if err := registerConnectivity(registry, d); err != nil {
 		return nil, err
 	}
 	registerPlaybackV1(registry, d)

@@ -11,21 +11,20 @@ import (
 )
 
 // DirectListener serves ordinary publicly trusted TLS on the server's existing
-// port, while preserving the private-LAN HTTP bootstrap/recovery transport.
+// port, alongside plain HTTP from any address.
 // Peer admission is not authentication: downstream pairing, route proofs and
-// session authorization still apply. Public peers must use TLS.
+// session authorization still apply.
 // Classification and total accepted sockets are bounded separately.
 type DirectListener struct {
 	net.Listener
-	config      *tls.Config
-	ready       chan net.Conn
-	done        chan struct{}
-	classify    chan struct{}
-	connections chan struct{}
-	once        sync.Once
-	mu          sync.Mutex
-	pending     map[*countedTLSConn]struct{}
-	err         error
+	config   *tls.Config
+	ready    chan net.Conn
+	done     chan struct{}
+	classify chan struct{}
+	once     sync.Once
+	mu       sync.Mutex
+	pending  map[*countedTLSConn]struct{}
+	err      error
 }
 
 func NewDirectListener(inner net.Listener, manager *CertificateManager) (*DirectListener, error) {
@@ -54,7 +53,7 @@ func newDirectListener(inner net.Listener, manager *CertificateManager, override
 	if inner == nil {
 		return nil, ErrInvalid
 	}
-	l := &DirectListener{Listener: inner, ready: make(chan net.Conn, 64), done: make(chan struct{}), classify: make(chan struct{}, 64), connections: make(chan struct{}, 256), pending: map[*countedTLSConn]struct{}{}}
+	l := &DirectListener{Listener: inner, ready: make(chan net.Conn, 64), done: make(chan struct{}), classify: make(chan struct{}, 64), pending: map[*countedTLSConn]struct{}{}}
 	getCertificate := func(*tls.ClientHelloInfo) (*tls.Certificate, error) { return nil, ErrUnavailable }
 	if manager != nil {
 		getCertificate = manager.GetCertificate
@@ -113,13 +112,7 @@ func (l *DirectListener) acceptLoop() {
 			l.Close()
 			return
 		}
-		select {
-		case l.connections <- struct{}{}:
-		default:
-			raw.Close()
-			continue
-		}
-		c := &countedTLSConn{Conn: raw, closed: func() { <-l.connections }}
+		c := &countedTLSConn{Conn: raw, closed: func() {}}
 		l.mu.Lock()
 		l.pending[c] = struct{}{}
 		l.mu.Unlock()
@@ -133,9 +126,10 @@ func (l *DirectListener) acceptLoop() {
 		select {
 		case l.classify <- struct{}{}:
 			supervise.Go("networking.direct-listener.classify", func() { l.classifyConnection(c) })
-		default:
+		case <-l.done:
 			l.forget(c)
 			c.Close()
+			return
 		}
 	}
 }
@@ -154,7 +148,7 @@ func (l *DirectListener) classifyConnection(c *countedTLSConn) {
 	var conn net.Conn
 	if first[0] == 0x16 {
 		conn = tls.Server(buffered, l.config)
-	} else if localHTTPConnection(c.RemoteAddr()) && first[0] >= 'A' && first[0] <= 'Z' {
+	} else if first[0] >= 'A' && first[0] <= 'Z' {
 		conn = buffered
 	} else {
 		l.forget(c)
@@ -170,18 +164,6 @@ func (l *DirectListener) classifyConnection(c *countedTLSConn) {
 	}
 }
 
-// Classify the socket peer, never Host, Forwarded or X-Forwarded-For. In
-// particular a public peer cannot claim a LAN route with an HTTP header. A
-// reverse proxy remains a trust boundary and must not expose this LAN route.
-func localHTTPConnection(address net.Addr) bool {
-	peer, ok := address.(*net.TCPAddr)
-	if !ok || peer == nil {
-		return false
-	}
-	ip := peer.IP
-	return ip != nil && !ip.IsUnspecified() && !ip.IsMulticast() &&
-		(ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast())
-}
 func (l *DirectListener) Accept() (net.Conn, error) {
 	select {
 	case <-l.done:
@@ -253,3 +235,17 @@ type bufferedTLSConn struct {
 }
 
 func (c *bufferedTLSConn) Read(b []byte) (int, error) { return c.reader.Read(b) }
+
+// RawConnection unwraps the classifier without hiding *tls.Conn from net/http.
+func RawConnection(c net.Conn) net.Conn {
+	switch v := c.(type) {
+	case *tls.Conn:
+		return RawConnection(v.NetConn())
+	case *bufferedTLSConn:
+		return RawConnection(v.Conn)
+	case *countedTLSConn:
+		return RawConnection(v.Conn)
+	default:
+		return c
+	}
+}

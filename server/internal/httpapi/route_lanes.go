@@ -18,6 +18,7 @@ var routeLanes = map[string]string{
 	"PUT /v1/containers/{kind}/{id}/personal-state": laneDefault,
 	"GET /v1/containers/{kind}/{id}/personal-state": laneBrowsing,
 	"POST /v1/auth/refresh":                         laneAuth,
+	"GET /v1/networking/connection": laneDefault,
 	"GET /v1/server":                                laneDefault,
 	"GET /v1/capabilities":                          laneDefault,
 	"GET /v1/bootstrap":                             laneBrowsing,
