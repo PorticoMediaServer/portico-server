@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"errors"
 	"net/http/httptest"
 	"testing"
 
@@ -24,7 +25,7 @@ func TestViewerRestrictionCacheUsesAuthorityQualifiedProfile(t *testing.T) {
 	}
 	hosted := identity.Principal{Viewer: identity.Viewer{Authority: "hosted", AccountID: "other-account", ProfileID: "profile", Role: "member"}}
 	policy, _, err = d.viewerRestrictions(r, hosted)
-	if err != nil || policy.Active() {
-		t.Fatalf("Hosted profile borrowed the local cache entry: %+v %v", policy, err)
+	if !errors.Is(err, identity.ErrUnauthorized) || policy.Active() {
+		t.Fatalf("retired authority borrowed the local cache entry: %+v %v", policy, err)
 	}
 }

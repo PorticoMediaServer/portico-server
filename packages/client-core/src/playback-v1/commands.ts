@@ -1,3 +1,4 @@
+import {routePath, routeBody} from "../../../contracts/src/optional/routes.ts";
 /**
  * Remote control and transfer (spec §9.1, §9.2).
  *
@@ -7,7 +8,7 @@
  * app's handler. Control always goes through the server; local-network discovery only finds
  * devices (spec §9.3 as amended).
  */
-import {call, enc, idempotencyKey, type V1Http} from './http.ts';
+import {call, idempotencyKey, type V1Http} from './http.ts';
 import type {QualityRequest} from './quality.ts';
 import {parseDevice, parsePage, obj, type ControllableDevice, type Selector, type ServerEvent} from './types.ts';
 
@@ -32,19 +33,19 @@ export class DeviceCommandsClient {
 
   /** Devices this viewer may control, with what each is playing (`GET /v1/me/devices?controllable=true`). */
   async controllable(signal?: AbortSignal): Promise<readonly ControllableDevice[]> {
-    return parsePage((await call(this.http, {method: 'GET', path: '/v1/me/devices?controllable=true', signal})).body, parseDevice).items;
+    return parsePage((await call(this.http, {method: 'GET', path: routePath("get_controllable_devices")+"?controllable=true", signal})).body, parseDevice).items;
   }
 
   /** Send one command; resolves with the server's command id when it returns one. */
   async send(deviceId: string, command: DeviceCommand, signal?: AbortSignal): Promise<string | undefined> {
-    const r = await call(this.http, {method: 'POST', path: `/v1/devices/${enc(deviceId)}/commands`, headers: {'Idempotency-Key': this.key()}, body: command, signal}, [200, 201, 202, 204]);
+    const r = await call(this.http, {method: 'POST', path: routePath("send_device_command",{id:deviceId}), headers: {'Idempotency-Key': this.key()}, body: routeBody("send_device_command",command), signal}, [200, 201, 202, 204]);
     const b = r.body as {commandId?: unknown; id?: unknown} | undefined;
     return typeof b?.commandId === 'string' ? b.commandId : typeof b?.id === 'string' ? b.id : undefined;
   }
 
   /** Offer this device's session to another device (spec §9.2). The source keeps playing until the target commits. */
   async offerTransfer(sessionId: string, targetDeviceId: string, signal?: AbortSignal): Promise<string> {
-    const r = await call(this.http, {method: 'POST', path: `/v1/playback/sessions/${enc(sessionId)}/transfers`, headers: {'Idempotency-Key': this.key()}, body: {targetDeviceId}, signal}, [200, 201, 202]);
+    const r = await call(this.http, {method: 'POST', path: routePath("offer_session_transfer",{id:sessionId}), headers: {'Idempotency-Key': this.key()}, body: routeBody("offer_session_transfer",{targetDeviceId}), signal}, [200, 201, 202]);
     const id = (r.body as {transferId?: unknown} | undefined)?.transferId;
     if (typeof id !== 'string' || !id) throw new Error('transfer id missing');
     return id;

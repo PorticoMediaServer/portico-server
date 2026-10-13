@@ -39,3 +39,14 @@ The SQL preparation check covers complete literal statements, including concaten
 literals. Runtime query constructors require their owning package's semantic and
 query-plan tests; a passing literal check does not establish every generated shape
 or every query's scaling behavior.
+
+Development contracts are generated separately, from `server/`, with
+`GOFLAGS=-p=4 go run -tags devtrust ./cmd/apigen -development`. They live in
+`packages/contracts/src/development`; release builds register neither route.
+
+`GOFLAGS=-p=4 go run ./cmd/clientcontractgen` records the existing dormant
+remote-command and Hosted profile client protocols in
+`packages/contracts/src/optional`. These are client request expectations,
+not available production operations: their current unavailable behavior is
+preserved. Neither this module nor the development module enters the production
+OpenAPI document. Do not sync them from Hosted's production registry.

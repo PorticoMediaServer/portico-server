@@ -130,6 +130,7 @@ export const enUS = {
   'signIn.reset.working': 'Starting Portico again…',
   'signIn.reset.reopen': 'Close Portico and open it again to finish.',
   // Media that can never be played, as opposed to playback that stopped and may work on another try.
+  'player.cannotPlay.serverConversionUnavailable': 'This server cannot prepare a version of this title that this device can play.',
   'player.cannotPlay.title': 'This can’t be played',
   'player.cannotPlay.thisTitle': 'This title',
   'player.cannotPlay.gone': '{title} is no longer on this server.',

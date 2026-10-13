@@ -1,6 +1,7 @@
+import {routePath as developmentRoutePath} from "../../contracts/src/development/routes.ts";
 import {routeBody} from "../../contracts/src/routes.ts";
 import type {RouteResponse} from "../../contracts/src/routes.ts";
-import {routePath as hostedRoutePath} from "../../contracts/src/hosted/routes.ts";
+import {routePath as optionalRoutePath} from "../../contracts/src/optional/routes.ts";
 import {routePath, encodedRoutePath} from "../../contracts/src/routes.ts";
 import {CodedError,unreadableServerResponse} from './server-messages.ts';
 import {parseLocalSession,currentUTCTimestamp} from './local-session.ts';
@@ -92,11 +93,11 @@ export async function directSignIn(api:ProfileAPI,username:string,password:strin
 }
 /** Development builds only: the server's seeded e2e owner, if it has one (`GET /v1/dev/e2e`; 404 otherwise). */
 export async function devE2EUsername(api:ProfileAPI,signal?:AbortSignal):Promise<string|undefined>{
- try{const raw=await api.request<unknown>('/v1/dev/e2e','GET',undefined,signal);return obj(raw)&&text(raw.username,64)?raw.username:undefined;}catch{return undefined;}
+ try{const raw=await api.request<unknown>(developmentRoutePath("get_dev_e2e"),'GET',undefined,signal);return obj(raw)&&text(raw.username,64)?raw.username:undefined;}catch{return undefined;}
 }
 /** Development builds only: signs in as the seeded e2e owner without a password (`POST /v1/dev/e2e/sign-in`, loopback servers built with devtrust). */
 export async function devE2ESignIn(api:ProfileAPI,username:string,signal?:AbortSignal):Promise<DirectSignIn>{
- return parseDirectSignIn(await api.request<unknown>('/v1/dev/e2e/sign-in','POST',{username},signal));
+ return parseDirectSignIn(await api.request<unknown>(developmentRoutePath("post_dev_e2e_sign_in"),'POST',{username},signal));
 }
 /** Finishes a two-step sign-in: the challenge token and an authenticator or recovery code (`POST /v1/auth/two-factor/challenge`). */
 export async function completeDirectSignInChallenge(api:ProfileAPI,token:string,code:string,signal?:AbortSignal):Promise<DirectSignIn>{
@@ -143,8 +144,13 @@ export class ManagedProfilesClient {
    if(action==='delete')return routePath("delete_direct_profiles_id",{id:profileId});
    return routePath("get_direct_profiles_id_deletion_preview",{id:profileId});
   }
-  const path=hostedRoutePath("account_get")+'/profiles'+(profileId?'/'+encodeURIComponent(profileId):'');
-  return path+(action==='order'?'/order':action==='preview'?'/deletion-preview':'');
+  if(action==='list')return optionalRoutePath("get_account_profiles");
+  if(action==='create')return optionalRoutePath("create_account_profile");
+  if(action==='order')return optionalRoutePath("order_account_profiles");
+  if(!profileId)throw new Error('A profile is required.');
+  if(action==='edit')return optionalRoutePath("edit_account_profile",{id:profileId});
+  if(action==='delete')return optionalRoutePath("delete_account_profile",{id:profileId});
+  return optionalRoutePath("preview_account_profile_deletion",{id:profileId});
  }
  async list(signal?:AbortSignal):Promise<readonly ManagedProfile[]>{const raw=await this.api.request<RouteResponse<"get_direct_account"> & Record<string,unknown>>(this.scope.authority==='local'?routePath("get_direct_account"):this.path(),'GET',undefined,signal);if(this.scope.authority==='local')return parseDirectSnapshot(raw,this.scope,true).profiles;if(!obj(raw)||raw.accountId!==this.scope.accountId||raw.maxProfiles!==8)invalid();return parseManagedProfiles(raw.profiles,true);}
  async create(name:string,art:ProfileArt='blue',signal?:AbortSignal):Promise<void>{if(!text(name.trim(),120)||!PROFILE_ART.includes(art))throw new Error('Enter a profile name.');await this.api.request(this.path(undefined,'create'),'POST',{name:name.trim(),art},signal);}
@@ -156,10 +162,10 @@ export class ManagedProfilesClient {
   await this.api.request(this.path(profile.id,'edit'),'PATCH',{...change,...(policy?{policy}:{}),expectedRevision:profile.revision},signal);
  }
  async order(profiles:readonly ManagedProfile[],signal?:AbortSignal):Promise<void>{await this.api.request(this.path(undefined,'order'),'PUT',{profiles:profiles.map(p=>({id:p.id,revision:p.revision}))},signal);}
- async forgetTrust(profileId:string,signal?:AbortSignal):Promise<void>{await this.api.request(this.scope.authority==='local'?routePath("delete_direct_trust"):this.path(profileId)+'/trust','DELETE',this.scope.authority==='local'?{profileId}:undefined,signal);}
+ async forgetTrust(profileId:string,signal?:AbortSignal):Promise<void>{await this.api.request(this.scope.authority==='local'?routePath("delete_direct_trust"):optionalRoutePath("forget_account_profile_trust",{id:profileId}),'DELETE',this.scope.authority==='local'?{profileId}:undefined,signal);}
  async policies(profileId:string,signal?:AbortSignal):Promise<readonly ProfilePolicy[]>{
   if(this.scope.authority==='local'){const rows=await this.list(signal);const p=rows.find(v=>v.id===profileId);if(!p)invalid();return[{serverId:this.scope.serverId!,allowedLibraries:p.allowedLibraries??null}];}
-  const raw=await this.api.request<unknown>(this.path(profileId)+'/policies','GET',undefined,signal);if(!obj(raw)||!Array.isArray(raw.items)||raw.items.length>1000)invalid();return raw.items.map(v=>{if(!obj(v)||!text(v.serverId,128))invalid();return Object.freeze({serverId:v.serverId,allowedLibraries:v.allowedLibraries===null?null:ids(v.allowedLibraries)});});
+  const raw=await this.api.request<unknown>(optionalRoutePath("get_account_profile_policies",{id:profileId}),'GET',undefined,signal);if(!obj(raw)||!Array.isArray(raw.items)||raw.items.length>1000)invalid();return raw.items.map(v=>{if(!obj(v)||!text(v.serverId,128))invalid();return Object.freeze({serverId:v.serverId,allowedLibraries:v.allowedLibraries===null?null:ids(v.allowedLibraries)});});
  }
  async previewDelete(profile:ManagedProfile,signal?:AbortSignal):Promise<ProfileDeletion>{
   if(profile.primary)throw new Error('The primary profile is managed through account settings.');const raw=await this.api.request<unknown>(this.path(profile.id,'preview'),'GET',undefined,signal);
@@ -168,7 +174,7 @@ export class ManagedProfilesClient {
  async delete(preview:ProfileDeletion,signal?:AbortSignal):Promise<ProfileDeletion|undefined>{
   if(preview.primary||!revision(preview.revision))throw new Error('Preview this profile deletion first.');return this.api.request<ProfileDeletion|undefined>(this.path(preview.profileId,'delete'),'DELETE',{expectedRevision:preview.revision,deleteSavedResources:true},signal);
  }
- async deletionStatus(id:string,signal?:AbortSignal):Promise<ProfileDeletion>{if(this.scope.authority!=='hosted'||!text(id,128))invalid();const raw=await this.api.request<ProfileDeletion>('/v1/account/profile-deletions/'+encodeURIComponent(id),'GET',undefined,signal);if(raw.id!==id)invalid();return raw;}
+ async deletionStatus(id:string,signal?:AbortSignal):Promise<ProfileDeletion>{if(this.scope.authority!=='hosted'||!text(id,128))invalid();const raw=await this.api.request<ProfileDeletion>(optionalRoutePath("get_account_profile_deletion",{id}),'GET',undefined,signal);if(raw.id!==id)invalid();return raw;}
 }
 
 /** Retire a temporary account sign-in only after a distinct viewer family was accepted.

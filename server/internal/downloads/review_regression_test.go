@@ -44,9 +44,6 @@ func TestReceiptReplayRespectsRevocation(t *testing.T) {
 func TestPreparationReadsConcealRestrictedTitle(t *testing.T) {
 	h := newHarness(t)
 	ready := h.ready(t, "ready")
-	if _, err := h.db.Exec(`INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES('account','owner',X'00','profile',1)`); err != nil {
-		t.Fatal(err)
-	}
 	if _, err := h.db.Exec(`INSERT INTO profile_restrictions(profile_id,allow_unrated) VALUES(?,0)`, h.viewer.ProfileID); err != nil {
 		t.Fatal(err)
 	}
@@ -88,7 +85,7 @@ func TestOlderOfflinePlayKeepsLatestPlayDate(t *testing.T) {
 	h := newHarness(t)
 	ctx := context.Background()
 	for i, age := range []time.Duration{time.Minute, 2 * time.Minute} {
-		play := []ProgressEntry{{PlayID: []string{"newer", "older"}[i], ItemID: h.item, PositionSeconds: 20, Ended: true, ObservedAt: h.now.Add(-age).Format(time.RFC3339)}}
+		play := []ProgressEntry{{PlayID: []string{"newer", "older"}[i], ItemID: h.item, PositionSeconds: 60, Ended: true, ObservedAt: h.now.Add(-age).Format(time.RFC3339)}}
 		if _, err := h.service.SyncProgress(ctx, h.viewer, []string{"newer-op", "older-op"}[i], play); err != nil {
 			t.Fatal(err)
 		}

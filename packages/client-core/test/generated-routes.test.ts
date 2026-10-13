@@ -17,3 +17,15 @@ test('generated builders encode raw parameters once and preserve existing encodi
  assert.throws(() => routePath('get_items_id_detail', {id:''}));
  assert.throws(() => routePath('get_items_id_detail', {id:'a', extra:'b'} as never));
 });
+
+test('development and dormant protocols have separate contracts and retain encoded paths',async()=>{
+ const optional=await import('../../contracts/src/optional/routes.ts');
+ const development=await import('../../contracts/src/development/routes.ts');
+ const production=await import('../../contracts/src/routes.ts');
+ assert.equal(optional.routes.length,12);
+ assert.equal(development.routes.length,2);
+ assert.equal(optional.routePath('get_account_profile_deletion',{id:'a/b'}),'/v1/account/profile-deletions/a%2Fb');
+ assert.equal(optional.routePath('send_device_command',{id:'a b'}),'/v1/devices/a%20b/commands');
+ assert.equal(development.routePath('post_dev_e2e_sign_in'),'/v1/dev/e2e/sign-in');
+ for(const route of [...optional.routes,...development.routes]) assert.equal(production.routes.some(p=>p.method===route.method&&p.path===route.path),false);
+});

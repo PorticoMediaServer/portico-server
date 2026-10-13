@@ -2,8 +2,6 @@ package httpapi
 
 import (
 	"context"
-	"crypto/ed25519"
-	"crypto/rand"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -32,20 +30,16 @@ func hostedAdministrationFixture(t *testing.T, role string) (Dependencies, ident
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, private, err := ed25519.GenerateKey(rand.Reader)
-	if err != nil {
-		t.Fatal(err)
-	}
 	h, err := hosted.New(db, id, "http://127.0.0.1:1", testHostedRootPin(), testHostedRootID())
 	if err != nil {
 		t.Fatal(err)
 	}
 	policy := hosted.Policy{ServerID: id.ID(), Revision: 1, IssuedAt: time.Now().UTC().Format(time.RFC3339), ExpiresAt: time.Now().Add(time.Hour).UTC().Format(time.RFC3339), Members: []hosted.Member{{AccountID: "account", ProfileID: "profile", Role: role, AllLibraries: true}}}
 	raw, _ := json.Marshal(policy)
-	if err = h.Apply(certifiedHostedPolicy(t, private, "owner-test", raw)); err != nil {
+	if err = storeHTTPFixturePolicy(db, raw); err != nil {
 		t.Fatal(err)
 	}
-	envelope, err := issueHostedFixture(t, db, id, "account", "profile", role)
+	envelope, err := issuePorticoFixture(t, db, id, "account", "profile", role)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,7 +50,7 @@ func hostedAdministrationFixture(t *testing.T, role string) (Dependencies, ident
 	return Dependencies{DB: db, Identity: id, Hosted: h, Console: operations.New(db)}, envelope, principal
 }
 
-func TestHostedOwnerCanReadAdministrationButMemberCannot(t *testing.T) {
+func TestPorticoOwnerCanReadAdministrationButMemberCannot(t *testing.T) {
 	for _, role := range []string{"owner", "member"} {
 		t.Run(role, func(t *testing.T) {
 			d, session, p := hostedAdministrationFixture(t, role)
@@ -83,8 +77,9 @@ func TestHostedOwnerCanReadAdministrationButMemberCannot(t *testing.T) {
 			}
 			r := httptest.NewRequest("GET", "/v1/setup/state", nil)
 			r.Header.Set("Authorization", "Bearer "+session.AccessToken)
-			if _, err := d.localOwner(r); !errors.Is(err, identity.ErrUnauthorized) {
-				t.Fatal("Hosted identity entered local recovery", err)
+			_, err = d.localOwner(r)
+			if (err == nil) != (role == "owner") {
+				t.Fatal("local membership owner boundary", err)
 			}
 			tx, err := d.DB.Begin()
 			if err != nil {
@@ -99,14 +94,14 @@ func TestHostedOwnerCanReadAdministrationButMemberCannot(t *testing.T) {
 	}
 }
 
-func TestHostedOwnerRechecksPolicyAndFamilyInsideTransaction(t *testing.T) {
+func TestPorticoOwnerRechecksMembershipAndFamilyInsideTransaction(t *testing.T) {
 	cases := map[string]string{
-		"downgraded":      `UPDATE policy SET payload=json_set(payload,'$.members[0].role','member')`,
-		"removed":         `UPDATE policy SET payload=json_set(payload,'$.members',json('[]'))`,
-		"wrong account":   `UPDATE policy SET payload=json_set(payload,'$.members[0].accountId','other')`,
-		"wrong profile":   `UPDATE policy SET payload=json_set(payload,'$.members[0].profileId','other')`,
-		"expired policy":  `UPDATE policy SET expires_at='2000-01-01T00:00:00Z'`,
-		"revoked profile": `INSERT INTO restrictions VALUES('profile',1,1,'[]')`,
+		"downgraded":      `UPDATE direct_memberships SET role='member' WHERE account_id='account'`,
+		"removed":         `DELETE FROM direct_memberships WHERE account_id='account'`,
+		"wrong account":   `UPDATE authorization_session_families SET account_id='other'`,
+		"wrong profile":   `UPDATE authorization_session_families SET profile_id='other'`,
+		"expired token":   `UPDATE authorization_family_tokens SET expires_at='2000-01-01T00:00:00Z'`,
+		"revoked profile": `UPDATE direct_profiles SET deleted=1 WHERE id='profile'`,
 		"revoked session": `UPDATE authorization_session_families SET revoked=1`,
 		"retired token":   `UPDATE authorization_family_tokens SET retired=1`,
 	}
@@ -136,12 +131,12 @@ func TestHostedOwnerRechecksPolicyAndFamilyInsideTransaction(t *testing.T) {
 	}
 }
 
-func TestHostedOwnerLateRevocationDropsReadResponse(t *testing.T) {
+func TestPorticoOwnerLateRevocationDropsReadResponse(t *testing.T) {
 	d, session, _ := hostedAdministrationFixture(t, "owner")
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /v1/admin/operations/{panel}", d.operationsHandler(func(ctx context.Context, db *sql.DB, name string) (operations.Panel, error) {
 		panel, err := operations.Read(ctx, db, name)
-		if _, e := db.Exec(`UPDATE policy SET payload=json_set(payload,'$.members[0].role','member')`); e != nil {
+		if _, e := db.Exec(`UPDATE direct_memberships SET role='member' WHERE account_id='account'`); e != nil {
 			t.Fatal(e)
 		}
 		return panel, err
@@ -152,7 +147,7 @@ func TestHostedOwnerLateRevocationDropsReadResponse(t *testing.T) {
 	}
 }
 
-func TestHostedOwnerSettingsChangePersistsAndDowngradeBlocksFurtherWrites(t *testing.T) {
+func TestPorticoOwnerSettingsChangePersistsAndDowngradeBlocksFurtherWrites(t *testing.T) {
 	d, session, _ := hostedAdministrationFixture(t, "owner")
 	mux := http.NewServeMux()
 	registry, err := FoundationRegistry(d)
@@ -188,10 +183,10 @@ func TestHostedOwnerSettingsChangePersistsAndDowngradeBlocksFurtherWrites(t *tes
 	if !strings.Contains(w.Body.String(), "Owner updated server") {
 		t.Fatal("setting did not persist", w.Body.String())
 	}
-	if _, err := d.DB.Exec(`UPDATE policy SET payload=json_set(payload,'$.members[0].role','member')`); err != nil {
+	if _, err := d.DB.Exec(`UPDATE direct_memberships SET role='member' WHERE account_id='account'`); err != nil {
 		t.Fatal(err)
 	}
-	if w = apply(); w.Code != 403 {
+	if w = apply(); w.Code != 401 {
 		t.Fatal("downgraded owner wrote settings", w.Code, w.Body.String())
 	}
 }

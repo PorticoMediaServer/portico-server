@@ -13,9 +13,9 @@ func TestDirectProfileErasureRemovesOnlyExactRecordingGrant(t *testing.T) {
 		t.Fatal(e)
 	}
 	child := childProfile(t, rows)
-	for _, authority := range []string{"local", "hosted"} {
+	for _, account := range []string{"account", "other-account"} {
 		for _, profile := range []string{"", child.ID} {
-			if _, e = db.Exec(`INSERT INTO dvr_recording_grants VALUES(?,?,?,1,1,1)`, authority, "account", profile); e != nil {
+			if _, e = db.Exec(`INSERT INTO dvr_recording_grants VALUES(?,?,?,1,1,1)`, "local", account, profile); e != nil {
 				t.Fatal(e)
 			}
 		}
@@ -24,10 +24,10 @@ func TestDirectProfileErasureRemovesOnlyExactRecordingGrant(t *testing.T) {
 		t.Fatal(e)
 	}
 	var count int
-	if e = db.QueryRow(`SELECT count(*) FROM dvr_recording_grants WHERE authority='local' AND profile_id=?`, child.ID).Scan(&count); e != nil || count != 0 {
+	if e = db.QueryRow(`SELECT count(*) FROM dvr_recording_grants WHERE account_id='account' AND profile_id=?`, child.ID).Scan(&count); e != nil || count != 0 {
 		t.Fatal("deleted profile retained grant", count, e)
 	}
 	if e = db.QueryRow(`SELECT count(*) FROM dvr_recording_grants`).Scan(&count); e != nil || count != 3 {
-		t.Fatal("other authority or account inheritance removed", count, e)
+		t.Fatal("other account or account inheritance removed", count, e)
 	}
 }

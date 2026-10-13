@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/identity"
+	"portico.local/server/internal/requestinput"
 	"strconv"
 )
 
@@ -46,7 +47,7 @@ func (d Dependencies) shareTargetTx(tx *sql.Tx, authority, account, profile stri
 		return identity.DirectShareTarget(tx, account, profile)
 	}
 
-	return errors.New("invalid share authority")
+	return requestinput.New("invalid share authority")
 }
 func (d Dependencies) savedResourceRoutes(mux *http.ServeMux) {
 	rate := &personalLimiter{}

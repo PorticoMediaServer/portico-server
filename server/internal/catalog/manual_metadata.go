@@ -70,6 +70,9 @@ const manualMetadataQuery = `SELECT cl.library_id,k.name,e.title,COALESCE(d.over
 
 func readManualMetadata(ctx context.Context, tx *sql.Tx, server, fence, item string) (ManualMetadata, error) {
 	out := ManualMetadata{Scope: DetailScope{ServerID: server, ItemID: item, ViewerFence: fence}}
+	if _, ok := entityid.Decode(item); !ok {
+		return out, sql.ErrNoRows
+	}
 	var title, description sql.NullString
 	err := tx.QueryRowContext(ctx, manualMetadataQuery, item).Scan(&out.Scope.LibraryID, &out.Kind, &out.Title.Value, &out.Description.Value, &out.Title.AutomaticValue, &out.Description.AutomaticValue, &title, &description, &out.UpdatedAt)
 	if err != nil {

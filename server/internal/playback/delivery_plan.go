@@ -85,7 +85,7 @@ func (e ErrDeliveryRefused) Error() string {
 	case ReasonTranscodeRefused, ReasonTranscodeDisabledOwner:
 		return "This source needs conversion, which is not permitted for this network."
 	}
-	return "No permitted delivery route is available for this source on this network."
+	return "This server cannot prepare a version of this title that this device can play."
 }
 
 type BurnInSpec struct {

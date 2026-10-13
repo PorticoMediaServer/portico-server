@@ -56,23 +56,38 @@ func cleanupTestJob(f *claimFixture) cleanupJob {
 }
 func seedCleanupResources(t *testing.T, f *claimFixture) {
 	t.Helper()
-	for _, authority := range []string{"local", "hosted"} {
-		for _, profile := range []string{"", "viewer"} {
-			if _, e := f.db.Exec(`INSERT INTO dvr_recording_grants VALUES(?,?,?,1,1,1)`, authority, "account", profile); e != nil {
+	for _, account := range []string{"linked-account", "account"} {
+		if _, e := f.db.Exec(`INSERT INTO accounts(id,username,password_hash,profile_id) VALUES(?,?,x'00',?)`, account, account, account+"-primary"); e != nil {
+			t.Fatal(e)
+		}
+		if _, e := f.db.Exec(`INSERT INTO direct_profiles(id,account_id,name) VALUES(?,?,?)`, account+"-viewer", account, "Viewer"); e != nil {
+			t.Fatal(e)
+		}
+		if account == "linked-account" {
+			if _, e := f.db.Exec(`INSERT INTO account_portico_links(account_id,hosted_account_id) VALUES(?,'account')`, account); e != nil {
 				t.Fatal(e)
 			}
 		}
-	}
-	for _, authority := range []string{"hosted", "local"} {
-		key := identity.PersonalKey(identity.Viewer{Authority: authority, AccountID: "account", ProfileID: "viewer"})
-		if _, e := f.db.Exec(`INSERT INTO saved_resources(id,kind,owner_key,owner_authority,owner_account,owner_profile,name,created_at) VALUES(?,'collection',?,?,'account','viewer','Private collection','now')`, authority, key, authority); e != nil {
+		for _, profile := range []string{"", account + "-viewer"} {
+			if _, e := f.db.Exec(`INSERT INTO dvr_recording_grants VALUES('local',?,?,1,1,1)`, account, profile); e != nil {
+				t.Fatal(e)
+			}
+		}
+		key := identity.PersonalKey(identity.Viewer{Authority: "local", AccountID: account, ProfileID: account + "-viewer"})
+		if _, e := f.db.Exec(`INSERT INTO saved_resources(id,kind,owner_key,owner_authority,owner_account,owner_profile,name,created_at) VALUES(?,'collection',?,'local',?,?,'Private collection','now')`, account, key, account, account+"-viewer"); e != nil {
 			t.Fatal(e)
 		}
-		if _, e := f.db.Exec(`INSERT INTO download_preparations(id,profile_key,authority,account_id,profile_id,item_id,library_id,quality,origin,state,created_ms,updated_ms) VALUES(?,?,?,'account','viewer',1,'library','original','item','ready',1,1)`, authority, key, authority); e != nil {
+		if _, e := f.db.Exec(`INSERT INTO download_preparations(id,profile_key,authority,account_id,profile_id,item_id,library_id,quality,origin,state,created_ms,updated_ms) VALUES(?,?,'local',?,?,1,'library','original','item','ready',1,1)`, account, string(mustCleanupViewerJSON(account)), account, account+"-viewer"); e != nil {
 			t.Fatal(e)
 		}
 	}
+
 }
+func mustCleanupViewerJSON(account string) []byte {
+	raw, _ := json.Marshal([]string{"local", account, account + "-viewer"})
+	return raw
+}
+
 func countCleanup(t *testing.T, db *sql.DB, query string, args ...any) int {
 	t.Helper()
 	var n int
@@ -98,7 +113,7 @@ func TestClaimCleanupErasesBeforeRetireAndAcknowledgesAfterRestart(t *testing.T)
 		if w.AcknowledgeJobID != "erasure_one" {
 			t.Fatal("lost durable acknowledgement")
 		}
-		if countCleanup(t, f.db, `SELECT count(*) FROM saved_resources WHERE owner_authority='hosted'`) != 0 {
+		if countCleanup(t, f.db, `SELECT count(*) FROM saved_resources WHERE owner_account='linked-account'`) != 0 {
 			t.Fatal("ack before erasure")
 		}
 		return cleanupSigned(f, w, true, nil), nil
@@ -107,13 +122,13 @@ func TestClaimCleanupErasesBeforeRetireAndAcknowledgesAfterRestart(t *testing.T)
 	if e := cleanupStep(t, f); e != nil {
 		t.Fatal(e)
 	}
-	if countCleanup(t, f.db, `SELECT count(*) FROM saved_resources WHERE owner_authority='hosted'`)+countCleanup(t, f.db, `SELECT count(*) FROM download_preparations WHERE authority='hosted'`) != 0 {
+	if countCleanup(t, f.db, `SELECT count(*) FROM saved_resources WHERE owner_account='linked-account'`)+countCleanup(t, f.db, `SELECT count(*) FROM download_preparations WHERE account_id='linked-account' AND state<>'cancelled'`) != 0 {
 		t.Fatal("personal data remains")
 	}
-	if countCleanup(t, f.db, `SELECT count(*) FROM saved_resources WHERE owner_authority='local'`)+countCleanup(t, f.db, `SELECT count(*) FROM download_preparations WHERE authority='local'`) != 2 {
+	if countCleanup(t, f.db, `SELECT count(*) FROM saved_resources WHERE owner_account='account'`)+countCleanup(t, f.db, `SELECT count(*) FROM download_preparations WHERE account_id='account'`) != 2 {
 		t.Fatal("local namesake erased")
 	}
-	if countCleanup(t, f.db, `SELECT count(*) FROM dvr_recording_grants WHERE authority='hosted'`) != 0 || countCleanup(t, f.db, `SELECT count(*) FROM dvr_recording_grants WHERE authority='local'`) != 2 {
+	if countCleanup(t, f.db, `SELECT count(*) FROM dvr_recording_grants WHERE account_id='linked-account'`) != 0 || countCleanup(t, f.db, `SELECT count(*) FROM dvr_recording_grants WHERE account_id='account'`) != 2 {
 		t.Fatal("recording grant authority erasure failed")
 	}
 	if countCleanup(t, f.db, `SELECT count(*) FROM accounts WHERE id=?`, f.owner.Viewer.AccountID) != 1 {
@@ -160,7 +175,7 @@ func TestClaimCleanupFailureRollsBackRetirementAndNeverAcknowledges(t *testing.T
 	if e := cleanupStep(t, f); e == nil {
 		t.Fatal("expected write failure")
 	}
-	if countCleanup(t, f.db, `SELECT count(*) FROM saved_resources WHERE owner_authority='hosted'`) != 1 || countCleanup(t, f.db, `SELECT count(*) FROM networking_claim_credentials`) != 1 || countCleanup(t, f.db, `SELECT count(*) FROM hosted_claim_cleanup_receipts`) != 0 {
+	if countCleanup(t, f.db, `SELECT count(*) FROM saved_resources WHERE owner_account='linked-account'`) != 1 || countCleanup(t, f.db, `SELECT count(*) FROM networking_claim_credentials`) != 1 || countCleanup(t, f.db, `SELECT count(*) FROM hosted_claim_cleanup_receipts`) != 0 {
 		t.Fatal("partial erasure committed")
 	}
 	f.db.Exec(`DROP TRIGGER fail_cleanup`)
@@ -199,7 +214,7 @@ func TestClaimCleanupRejectsForgedStaleOrCrossClaimResults(t *testing.T) {
 			if e := cleanupStep(t, f); e == nil {
 				t.Fatal("invalid result accepted")
 			}
-			if countCleanup(t, f.db, `SELECT count(*) FROM networking_claim_credentials`) != 1 || countCleanup(t, f.db, `SELECT count(*) FROM saved_resources WHERE owner_authority='hosted'`) != 1 {
+			if countCleanup(t, f.db, `SELECT count(*) FROM networking_claim_credentials`) != 1 || countCleanup(t, f.db, `SELECT count(*) FROM saved_resources WHERE owner_account='linked-account'`) != 1 {
 				t.Fatal("invalid response changed authority/data")
 			}
 		})
@@ -285,7 +300,7 @@ func TestClaimCleanupCancelledLeaseCannotEraseOrRetire(t *testing.T) {
 	if e == nil {
 		t.Fatal("cancelled lease committed")
 	}
-	if countCleanup(t, f.db, `SELECT count(*) FROM networking_claim_credentials`) != 1 || countCleanup(t, f.db, `SELECT count(*) FROM saved_resources WHERE owner_authority='hosted'`) != 1 {
+	if countCleanup(t, f.db, `SELECT count(*) FROM networking_claim_credentials`) != 1 || countCleanup(t, f.db, `SELECT count(*) FROM saved_resources WHERE owner_account='linked-account'`) != 1 {
 		t.Fatal("cancelled work changed state")
 	}
 }

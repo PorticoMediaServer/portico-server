@@ -48,7 +48,7 @@ func deriveBrowseSortParent(ctx context.Context, tx *sql.Tx, k Key, limit int) (
 	if _, err = tx.ExecContext(ctx, `INSERT INTO catalog_fanouts(domain,key,revision,after) VALUES(?,?,?,?) ON CONFLICT(domain,key) DO UPDATE SET revision=excluded.revision,after=excluded.after`, DomainBrowseSortParents, k.ID, k.Revision, after); err != nil {
 		return false, err
 	}
-	ids, err := scanIDs(ctx, tx, `WITH albums AS(SELECT entity_id AS id FROM catalog_albums WHERE artist_id=?1 AND entity_id>?2 ORDER BY entity_id LIMIT ?3),members AS(SELECT item_id AS id FROM catalog_browse_memberships WHERE entity_id=?1 AND item_id>?2 GROUP BY item_id ORDER BY item_id LIMIT ?3) SELECT id FROM albums UNION SELECT id FROM members ORDER BY id LIMIT ?3`, k.ID, after, limit)
+	ids, err := scanIDs(ctx, tx, `WITH sort_albums AS(SELECT entity_id AS id FROM catalog_albums WHERE artist_id=?1 AND entity_id>?2 ORDER BY entity_id LIMIT ?3),members AS(SELECT item_id AS id FROM catalog_browse_memberships WHERE entity_id=?1 AND item_id>?2 GROUP BY item_id ORDER BY item_id LIMIT ?3) SELECT id FROM sort_albums UNION SELECT id FROM members ORDER BY id LIMIT ?3`, k.ID, after, limit)
 	if err != nil {
 		return false, err
 	}

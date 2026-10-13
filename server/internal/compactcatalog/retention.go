@@ -142,4 +142,6 @@ var previousKeys = map[string]string{
 	"catalog_item_availability":        "entity_id",
 	"catalog_facet_counts":             "library_id,field,value,rating_key,label_key",
 	"catalog_related_facets":           "entity_id,relation,provider,facet_id",
+	"catalog_browse_groups":            "library_id,field,value",
+	"catalog_facet_members":            "entity_id,field,value",
 }

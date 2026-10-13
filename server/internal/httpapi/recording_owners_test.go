@@ -30,7 +30,11 @@ INSERT INTO direct_profiles(id,account_id,name) VALUES('child','owner','Child'),
 UPDATE direct_profiles SET deleted=1 WHERE id='deleted';
 INSERT INTO accounts VALUES('disabled','Disabled',x'00','disabled-profile',1);
 UPDATE direct_memberships SET disabled=1 WHERE account_id='disabled';
-INSERT INTO restrictions(profile_id,revision,revoked) VALUES('revoked-profile',1,1);`)
+INSERT INTO accounts VALUES('a-revoked','Revoked',x'00','revoked-profile',1);
+UPDATE direct_memberships SET disabled=1 WHERE account_id='a-revoked';
+INSERT INTO accounts VALUES('hosted-account','Hosted account',x'00','hosted-profile',1);
+UPDATE direct_profiles SET name='Hosted child' WHERE id='hosted-profile';
+INSERT INTO account_portico_links(account_id,hosted_account_id) VALUES('hosted-account','portico-account');`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,16 +102,16 @@ INSERT INTO restrictions(profile_id,revision,revoked) VALUES('revoked-profile',1
 	if len(seen) != 3 || seen["primary"].AccountName != "Owner" || seen["child"].ProfileName != "Child" || seen["hosted-profile"].ProfileName != "Hosted child" {
 		t.Fatalf("directory %#v", seen)
 	}
-	if pages != 4 {
-		t.Fatalf("denied candidate did not advance independently: %d pages", pages)
+	if pages != 3 {
+		t.Fatalf("directory did not advance: %d pages", pages)
 	}
 	var grants int
 	if err = db.QueryRow(`SELECT count(*) FROM dvr_recording_grants`).Scan(&grants); err != nil || grants != 0 {
 		t.Fatalf("directory manufactured grants: %d %v", grants, err)
 	}
-	// An expired cached policy must stop offering its members even though its
-	// candidate bytes remain present; local owners/children remain selectable.
-	if _, err = db.Exec(`UPDATE policy SET expires_at=?`, time.Now().Add(-time.Hour).UTC().Format(time.RFC3339)); err != nil {
+	// A disabled Portico Account membership stops offering its profiles;
+	// the owner and child on the other account remain selectable.
+	if _, err = db.Exec(`UPDATE direct_memberships SET disabled=1 WHERE account_id='hosted-account'`); err != nil {
 		t.Fatal(err)
 	}
 	w := get(route)

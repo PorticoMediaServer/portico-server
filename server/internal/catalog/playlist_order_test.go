@@ -26,8 +26,8 @@ func phase34PlaylistOrderFixture(t *testing.T) (*catalogtest.Catalog, *Service, 
 func TestPlaylistOrderRightsSnapshotAndCAS(t *testing.T) {
 	_, s, item := phase34PlaylistOrderFixture(t)
 	owner := ResourceActor{"local", "owner", "p"}
-	editor := ResourceActor{"hosted", "editor", "p"}
-	viewer := ResourceActor{"hosted", "viewer", "p"}
+	editor := ResourceActor{"local", "editor", "p"}
+	viewer := ResourceActor{"local", "viewer", "p"}
 	name := "Order"
 	r, e := s.MutatePlaylist(owner, "", "create", "", PlaylistMutation{OperationID: "create", Name: &name}, nil)
 	if e != nil {
@@ -65,7 +65,7 @@ func TestPlaylistOrderRightsSnapshotAndCAS(t *testing.T) {
 	if _, e = s.PlaylistOrder("server", "fence", id, viewer, nil); !errors.Is(e, identity.ErrUnauthorized) {
 		t.Fatal("viewer gained order edit read", e)
 	}
-	if _, e = s.PlaylistOrder("server", "fence", id, ResourceActor{"local", "editor", "p"}, nil); !errors.Is(e, sql.ErrNoRows) {
+	if _, e = s.PlaylistOrder("server", "fence", id, ResourceActor{"hosted", "editor", "p"}, nil); !errors.Is(e, sql.ErrNoRows) {
 		t.Fatal("cross-authority access", e)
 	}
 	if _, e = s.PlaylistOrder("server", "fence", id, owner, func(*sql.Tx) error { return identity.ErrUnauthorized }); !errors.Is(e, identity.ErrUnauthorized) {

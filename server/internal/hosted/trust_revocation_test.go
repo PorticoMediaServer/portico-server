@@ -42,19 +42,22 @@ func TestRootRevocationSurvivesRestartAndOldCertificateReplay(t *testing.T) {
 	}
 }
 
-// A89: learning a root revocation revokes the Hosted-authority families of
-// servers whose policy signer is revoked, never local (direct sign-in) ones.
-func TestRootRevocationLeavesLocalFamilies(t *testing.T) {
+// A89: learning a signing-key revocation ends the local families admitted by
+// that key, while password-authenticated families keep working.
+func TestRootRevocationEndsSignedAdmissionsAndLeavesPasswordFamilies(t *testing.T) {
 	f := newClaimFixture(t)
 	server := f.id.ID()
 	if _, err := f.db.Exec(`INSERT INTO hosted_policy_signers(server_id,key_id) VALUES(?,'pin1')`, server); err != nil {
 		t.Fatal(err)
 	}
 	horizon := time.Now().Add(time.Hour).UTC().Format(time.RFC3339)
-	for _, row := range [][2]string{{"family-hosted", "hosted"}, {"family-local", "local"}} {
+	for _, row := range [][2]string{{"family-portico", "local"}, {"family-local", "local"}} {
 		if _, err := f.db.Exec(`INSERT INTO authorization_session_families(id,server_id,account_id,profile_id,authority,role,epoch,authorization_horizon,current_generation,revoked) VALUES(?,?,'account','profile',?,'member',1,?,1,0)`, row[0], server, row[1], horizon); err != nil {
 			t.Fatal(err)
 		}
+	}
+	if _, err := f.db.Exec(`INSERT INTO portico_admitted_families(family_id,signer_key_id) VALUES('family-portico','pin1')`); err != nil {
+		t.Fatal(err)
 	}
 	public, key, _ := ed25519.GenerateKey(rand.Reader)
 	now := time.Now()
@@ -66,7 +69,7 @@ func TestRootRevocationLeavesLocalFamilies(t *testing.T) {
 	if _, err = f.service.verifyEnvelope(t.Context(), envelope); err != nil {
 		t.Fatal(err)
 	}
-	for id, want := range map[string]int{"family-hosted": 1, "family-local": 0} {
+	for id, want := range map[string]int{"family-portico": 1, "family-local": 0} {
 		var revoked int
 		if err = f.db.QueryRow(`SELECT revoked FROM authorization_session_families WHERE id=?`, id).Scan(&revoked); err != nil || revoked != want {
 			t.Fatalf("%s revoked=%d want %d (%v)", id, revoked, want, err)

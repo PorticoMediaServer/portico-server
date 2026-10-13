@@ -3,8 +3,6 @@ package httpapi
 import (
 	"bytes"
 	"context"
-	"crypto/ed25519"
-	"crypto/rand"
 	"database/sql"
 	"encoding/json"
 	"net/http/httptest"
@@ -46,17 +44,13 @@ func TestLibraryDiscoveryAndCollectionPermissions(t *testing.T) {
 	itemA := makeMovie(a, "/a", "A", "/a/movie.mkv", "2026-01-01T00:00:00.000Z")
 	itemB := makeMovie(b, "/b", "B", "/b/movie.mkv", "2026-01-02T00:00:00.000Z")
 	c.Drain()
-	_, private, err := ed25519.GenerateKey(rand.Reader)
-	if err != nil {
-		t.Fatal(err)
-	}
 	control, err := hosted.New(db, ident, "http://127.0.0.1:19410", tl6HostedRootPin(), tl6HostedRootID())
 	if err != nil {
 		t.Fatal(err)
 	}
 	policy := hosted.Policy{ServerID: ident.ID(), Revision: 1, IssuedAt: time.Now().UTC().Format(time.RFC3339), ExpiresAt: time.Now().Add(time.Hour).UTC().Format(time.RFC3339), Members: []hosted.Member{{AccountID: "member", ProfileID: "reader", Role: "member", AllowedLibraries: []string{"a"}}}}
 	raw, _ := json.Marshal(policy)
-	if err = control.Apply(tl6CertifiedHostedPolicy(t, private, "fixture", raw)); err != nil {
+	if err = storeHTTPFixturePolicy(db, raw); err != nil {
 		t.Fatal(err)
 	}
 	reader, err := tl6IssueHostedFixture(t, db, ident, "member", "reader", "member")
@@ -265,14 +259,14 @@ func TestLibraryDiscoveryAndCollectionPermissions(t *testing.T) {
 			}
 		}
 	}
-	if _, err = db.Exec(`UPDATE policy SET expires_at='2000-01-01T00:00:00Z'`); err != nil {
+	if _, err = db.Exec(`UPDATE direct_memberships SET disabled=1 WHERE account_id='member'`); err != nil {
 		t.Fatal(err)
 	}
 	if w := request("PUT", "/v1/items/"+itemA.Public+"/personal-state", reader.AccessToken, mutation); w.Code != 401 {
-		t.Fatal("receipt replay bypassed expired policy", w.Code)
+		t.Fatal("receipt replay bypassed disabled membership", w.Code)
 	}
 	if w := request("GET", "/v1/home", reader.AccessToken, ""); w.Code != 401 {
-		t.Fatal("expired policy fabricated empty Home", w.Code, w.Body.String())
+		t.Fatal("disabled membership received Home", w.Code, w.Body.String())
 	}
 
 }

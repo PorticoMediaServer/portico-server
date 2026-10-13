@@ -1,8 +1,6 @@
 package httpapi
 
 import (
-	"crypto/ed25519"
-	"crypto/rand"
 	"encoding/json"
 	"net/http/httptest"
 	"net/url"
@@ -34,7 +32,6 @@ func TestSearchAuthorizationAndRevocation(t *testing.T) {
 	c.Movie(a, "/a/second.mkv", "Harbor Second", 2020)
 	c.Movie(b, "/b/secret.mkv", "Harbor Secret", 2020)
 	c.Drain()
-	_, priv, _ := ed25519.GenerateKey(rand.Reader)
 	control, e := hosted.New(db, ident, "http://127.0.0.1:19410", tl6HostedRootPin(), tl6HostedRootID())
 	if e != nil {
 		t.Fatal(e)
@@ -42,7 +39,7 @@ func TestSearchAuthorizationAndRevocation(t *testing.T) {
 	apply := func(revision int64, libraries []string) {
 		p := hosted.Policy{ServerID: ident.ID(), Revision: revision, IssuedAt: time.Now().UTC().Format(time.RFC3339), ExpiresAt: time.Now().Add(time.Hour).UTC().Format(time.RFC3339), Members: []hosted.Member{{AccountID: "member", ProfileID: "p", Role: "member", AllowedLibraries: libraries}}}
 		raw, _ := json.Marshal(p)
-		if e = control.Apply(tl6CertifiedHostedPolicy(t, priv, "key", raw)); e != nil {
+		if e = storeHTTPFixturePolicy(db, raw); e != nil {
 			t.Fatal(e)
 		}
 	}
@@ -90,6 +87,9 @@ func TestSearchAuthorizationAndRevocation(t *testing.T) {
 	}
 	cursor := out.Groups[0].NextCursor
 	apply(2, []string{"b"})
+	if _, e = db.Exec(`UPDATE direct_memberships SET allowed_libraries='["b"]',revision=revision+1 WHERE account_id='member'`); e != nil {
+		t.Fatal(e)
+	}
 	w = request(path+"&cursor="+url.QueryEscape(cursor), session.AccessToken)
 	if w.Code != 400 && w.Code != 409 {
 		t.Fatal("stale auth cursor", w.Code, w.Body.String())
@@ -101,7 +101,7 @@ func TestSearchAuthorizationAndRevocation(t *testing.T) {
 	if strings.Contains(w.Body.String(), "Harbor First") {
 		t.Fatal("revocation leak")
 	}
-	if _, e = db.Exec(`INSERT INTO restrictions(profile_id,revision,allowed_libraries,revoked) VALUES('p',1,'[]',1)`); e != nil {
+	if _, e = db.Exec(`UPDATE direct_memberships SET disabled=1 WHERE account_id='member'`); e != nil {
 		t.Fatal(e)
 	}
 	if w = request(path, session.AccessToken); w.Code != 401 {

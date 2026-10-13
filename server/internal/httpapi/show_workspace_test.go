@@ -1,8 +1,6 @@
 package httpapi
 
 import (
-	"crypto/ed25519"
-	"crypto/rand"
 	"encoding/json"
 	"net/http/httptest"
 	"path/filepath"
@@ -34,18 +32,24 @@ func TestShowWorkspaceHTTPPermissionAndParentResolution(t *testing.T) {
 	seasonA := c.Season(showA, 1)
 	seasonB := c.Season(showB, 1)
 	c.Drain()
-	_, priv, e := ed25519.GenerateKey(rand.Reader)
-	if e != nil {
-		t.Fatal(e)
-	}
 	control, e := hosted.New(db, ident, "http://127.0.0.1:19410", tl6HostedRootPin(), tl6HostedRootID())
 	if e != nil {
 		t.Fatal(e)
 	}
 	policy := hosted.Policy{ServerID: ident.ID(), Revision: 1, IssuedAt: time.Now().UTC().Format(time.RFC3339), ExpiresAt: time.Now().Add(time.Hour).UTC().Format(time.RFC3339), Members: []hosted.Member{{AccountID: "account", ProfileID: "profile", Role: "member", AllowedLibraries: []string{"a"}}}}
 	apply := func() {
+		if len(policy.Members) == 0 {
+			if _, e = db.Exec(`UPDATE direct_memberships SET disabled=1 WHERE account_id='account'`); e != nil {
+				t.Fatal(e)
+			}
+		} else {
+			encoded, _ := json.Marshal(policy.Members[0].AllowedLibraries)
+			if _, e = db.Exec(`UPDATE direct_memberships SET allowed_libraries=?,revision=revision+1 WHERE account_id='account'`, string(encoded)); e != nil {
+				t.Fatal(e)
+			}
+		}
 		raw, _ := json.Marshal(policy)
-		if e = control.Apply(tl6CertifiedHostedPolicy(t, priv, "fixture", raw)); e != nil {
+		if e = storeHTTPFixturePolicy(db, raw); e != nil {
 			t.Fatal(e)
 		}
 	}

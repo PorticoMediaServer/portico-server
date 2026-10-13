@@ -112,7 +112,7 @@ func (s *Service) SetPersonalBatch(account, profile string, m PersonalBatchMutat
 		return out, requestinput.New("invalid operationId")
 	}
 	if len(m.Items) == 0 || len(m.Items) > MaxPersonalBatch {
-		return out, fmt.Errorf("a batch carries 1 to %d items", MaxPersonalBatch)
+		return out, requestinput.New(fmt.Sprintf("a batch carries 1 to %d items", MaxPersonalBatch))
 	}
 	seen := map[string]bool{}
 	for _, item := range m.Items {

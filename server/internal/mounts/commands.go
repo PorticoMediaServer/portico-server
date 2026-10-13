@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/requestinput"
 	"regexp"
 	"strconv"
 	"strings"
@@ -213,8 +214,8 @@ func (s *Service) Command(ctx context.Context, actor, id string, c Command, auth
 	if c.Action == "delete" && s.NativeBusy != nil && s.NativeBusy(id) {
 		return zero, errors.New("stop active playback using this source before removal")
 	}
-	if (c.Action == "start" || c.Action == "restart") && !MountSupported() {
-		return zero, errors.New("this host does not provide supported FUSE mount semantics; native listing and playback remain available")
+	if (c.Action == "start" || c.Action == "restart") && !s.mountSupported() {
+		return zero, requestinput.New("Managed mounts are unavailable on this host. Native listing and playback remain available.")
 	}
 	if c.Action == "delete" && (m.DesiredState != "stopped" || s.active[id] != nil) {
 		return zero, errors.New("stop the managed mount and wait for its process to exit before removing it")

@@ -2,8 +2,6 @@ package httpapi
 
 import (
 	"context"
-	"crypto/ed25519"
-	"crypto/rand"
 	"database/sql"
 	"encoding/json"
 	"net/http"
@@ -54,17 +52,16 @@ func TestPeopleBatchAndCollectionRoutesAreAuthorizedAndBounded(t *testing.T) {
 	}); e != nil {
 		t.Fatal(e)
 	}
-	_, priv, _ := ed25519.GenerateKey(rand.Reader)
 	control, e := hosted.New(db, ident, "http://127.0.0.1:19410", testHostedRootPin(), testHostedRootID())
 	if e != nil {
 		t.Fatal(e)
 	}
 	policy := hosted.Policy{ServerID: ident.ID(), Revision: 1, IssuedAt: time.Now().UTC().Format(time.RFC3339), ExpiresAt: time.Now().Add(time.Hour).UTC().Format(time.RFC3339), Members: []hosted.Member{{AccountID: "member", ProfileID: "p", Role: "member", AllowedLibraries: []string{"a"}}}}
 	raw, _ := json.Marshal(policy)
-	if e = control.Apply(certifiedHostedPolicy(t, priv, "key", raw)); e != nil {
+	if e = storeHTTPFixturePolicy(db, raw); e != nil {
 		t.Fatal(e)
 	}
-	session, e := issueHostedFixture(t, db, ident, "member", "p", "member")
+	session, e := issuePorticoFixture(t, db, ident, "member", "p", "member")
 	if e != nil {
 		t.Fatal(e)
 	}

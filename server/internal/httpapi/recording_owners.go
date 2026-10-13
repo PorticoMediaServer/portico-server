@@ -23,8 +23,8 @@ type recordingOwnerChoice struct {
 	ProfileName string             `json:"profileName"`
 }
 
-// Candidates come from the existing identity authorities. Listing them neither
-// creates a recording grant nor bypasses current membership/claim checks.
+// Candidates are this server's local profiles, including Portico Account
+// members. Listing them creates no grant and rechecks current membership.
 func (d Dependencies) recordingOwnersRoute(mux *http.ServeMux) {
 	d.httpHandle(mux, "GET /v1/admin/dvr/recording-owners", d.administrationHandler(30*time.Second, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
 		q, err := url.ParseQuery(r.URL.RawQuery)
@@ -77,11 +77,7 @@ func (d Dependencies) recordingOwnersRoute(mux *http.ServeMux) {
  SELECT 'local' authority,a.id account_id,p.id profile_id,a.username account_name,p.name profile_name
  FROM accounts a JOIN direct_profiles p ON p.account_id=a.id JOIN direct_memberships m ON m.account_id=a.id
  WHERE p.deleted=0 AND m.disabled=0
- UNION ALL
- SELECT 'hosted',COALESCE(json_extract(m.value,'$.accountId'),''),COALESCE(json_extract(m.value,'$.profileId'),''),
- COALESCE(json_extract(m.value,'$.username'),''),COALESCE(json_extract(m.value,'$.profileName'),'')
- FROM policy p,json_each(p.payload,'$.members') m WHERE p.server_id=?
- ) WHERE (authority,account_id,profile_id)>(?,?,?) ORDER BY authority,account_id,profile_id LIMIT ?`, d.Identity.ID(), after[0], after[1], after[2], limit+1)
+ ) WHERE (authority,account_id,profile_id)>(?,?,?) ORDER BY authority,account_id,profile_id LIMIT ?`, after[0], after[1], after[2], limit+1)
 		if err != nil {
 			return nil, err
 		}
