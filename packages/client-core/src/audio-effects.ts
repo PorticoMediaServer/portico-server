@@ -10,7 +10,7 @@ export const defaultAudioEffects:AudioEffectsSettings=Object.freeze({gapless:tru
 export const noAudioEffects:AudioEffectsSettings=Object.freeze({gapless:false,crossfadeSeconds:0,normalization:'off'});
 /** A prepared next track (§18.2): the version 2 on-device-decode plan (`audio`, §18.1)
  * that v1 queues prepare. */
-export type PreparedAudio=Readonly<{token:string;expiresAtMs:number;audio?:AudioRenderV2}>;
+export type PreparedAudio=Readonly<{token:string;expiresAtMs:number;itemId?:string;audio?:AudioRenderV2}>;
 export type AudioEffectsSnapshot=Readonly<{
  settings:AudioEffectsSettings;rendering:boolean;rate:number;notice:string;effectiveRate?:number;waiting?:boolean;
  prepared?:PreparedAudio;committed?:Readonly<{token:string;itemId:string;session:PlaybackSession}>;

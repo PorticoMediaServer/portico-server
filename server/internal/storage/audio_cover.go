@@ -83,7 +83,7 @@ func inventoryAudioCoverHelper(r request, out io.Writer) error {
 		}
 		sort.Slice(names, func(i, j int) bool { return names[i].Name() < names[j].Name() })
 		for _, stem := range []string{"cover", "folder", "front", "album", "poster", "default", "albumart"} {
-			for _, ext := range []string{".jpg", ".jpeg", ".png"} {
+			for _, ext := range []string{".jpg", ".jpeg", ".png", ".webp"} {
 				wanted := stem + ext
 				for _, entry := range names {
 					if entry.IsDir() || !strings.EqualFold(entry.Name(), wanted) {

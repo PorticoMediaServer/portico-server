@@ -22,6 +22,8 @@ export type TrackConfig = Readonly<{
   sampleRate: number;
   numberOfChannels: number;
   description?: Uint8Array;
+  /** Raw decoded packet length, independent of a trimmed container timestamp. */
+  framesPerPacket?: number;
   /** PCM only: how samples are stored. */
   pcm?: Readonly<{bits: number; float: boolean; bigEndian: boolean}>;
 }>;
@@ -38,6 +40,10 @@ export interface Demuxer {
    * position). `rawStart` is the raw index of the first packet's first frame, and is exact.
    * Absent, or answering undefined: the caller walks `packets` from the start. */
   seek?(target: number, preroll: number, signal?: AbortSignal): SeekResult | undefined | Promise<SeekResult | undefined>;
+  /** A bounded search for the same start in a stream with no usable index, each candidate
+   * confirmed by its checksum. Throws when no start near the position is confirmed, so the
+   * caller hands the position to the ordinary player instead of reading everything before it. */
+  locate?(target: number, preroll: number, signal?: AbortSignal): Promise<SeekResult>;
 }
 
 export type SeekResult = {packets: AsyncGenerator<Packet>; rawStart: number};

@@ -1,3 +1,4 @@
+import {qualifyBrowserDecoders, qualifiedConfigs} from '../bridge/audio/qualification';
 /**
  * Dev-only §18.8 conformance run (not part of the app build): decodes every fixture in this
  * browser, through WebCodecs and through decodeAudioData, and reports how many frames each path
@@ -183,7 +184,8 @@ async function crossfade() {
 }
 
 async function run() {
-  const report: Record<string, unknown> = {browser: browserName(), userAgent: navigator.userAgent, webCodecs: 'AudioDecoder' in globalThis, results: {}};
+  await qualifyBrowserDecoders();
+  const report: Record<string, unknown> = {browser: browserName(), userAgent: navigator.userAgent, webCodecs: 'AudioDecoder' in globalThis, qualifiedCodecs: Object.keys(qualifiedConfigs), results: {}};
   const out = document.getElementById('out')!;
   const singles = Object.values(sidecars).filter((s): s is Sidecar => 'file' in s);
   singles.sort((a, b) => a.file.localeCompare(b.file));

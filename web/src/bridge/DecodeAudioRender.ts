@@ -65,7 +65,7 @@ export class DecodeAudioRender {
     // the page goes to the background unless the page says it is playing media.
     try { const session = (navigator as Navigator & {audioSession?: {type: string}}).audioSession; if (session && session.type !== 'playback') session.type = 'playback'; } catch { /* not offered here */ }
     this.context = createContext(rate);
-    this.context.addEventListener('statechange', this.interrupted);
+    this.context.addEventListener('statechange', this.contextChanged);
     document.addEventListener('visibilitychange', this.interrupted);
     this.master = this.context.createGain();
     this.master.connect(this.context.destination);
@@ -83,6 +83,14 @@ export class DecodeAudioRender {
     if (this.disposed || this.starting || this.context.state === 'running' || this.context.state === 'closed') return;
     if (document.visibilityState !== 'visible' || this.service.getSnapshot().intent !== 'playing' || this.service.getSnapshot().seekError) return;
     void this.context.resume().catch(() => {});
+  };
+  /** While the context is not running nothing is heard, so the position stops; once it runs
+   * again the schedule is brought up to date. An interruption is also answered as above. */
+  private contextChanged = () => {
+    if (this.disposed) return;
+    if (this.context.state === 'running') this.tick();
+    else this.service.audioRenderStatus?.(0, false);
+    this.interrupted();
   };
   private volume = () => { this.master.gain.setTargetAtTime(this.element.muted ? 0 : this.element.volume, this.context.currentTime, 0.01); };
   private gesture = () => {
@@ -119,7 +127,7 @@ export class DecodeAudioRender {
     if (!stream) return undefined;
     const frames = plan.durationFrames - fromFrame;
     const source = speed === 1 ? stream : new Stretch(stream, speed, frames);
-    return new Deck(this.context, this.master, source, {frames: speed === 1 ? frames : (source as Stretch).outputFrames, gain: this.gainFor(plan), label});
+    return new Deck(this.context, this.master, source, {frames: speed === 1 ? frames : (source as Stretch).outputFrames, gain: this.gainFor(plan), label, holdTail: this.snapshot.audioEffects.settings.gapless || this.snapshot.audioEffects.settings.crossfadeSeconds === 0});
   }
 
   /** A candidate cancelled before its deck opened has no deck yet; its reader still closes. */
@@ -157,7 +165,7 @@ export class DecodeAudioRender {
 
   private transport(s: PlaybackSnapshot) {
     if (s.intent === 'paused' || s.seekError) { void this.context.suspend(); return; }
-    if (this.context.state === 'suspended' && !this.starting && !this.askedForGesture) {
+    if ((this.context.state as string === 'suspended' || this.context.state as string === 'interrupted') && !this.starting && !this.askedForGesture) {
       // An autoplay denial needs a gesture: say so rather than failing.
       this.askedForGesture = true;
       void this.context.resume().then(() => {
@@ -207,6 +215,14 @@ export class DecodeAudioRender {
         if (!deck) throw new Error('No decoder.');
         if (this.candidate !== pending || revision !== this.revision) { deck.close(); return; }
         pending.deck = deck;
+        const previous = this.primary;
+        const joins = previous && previous.speed === 1 && speed === 1
+          && (s.audioEffects.settings.crossfadeSeconds === 0 || !!prepared.itemId && this.sameAlbum(s.itemId, prepared.itemId));
+        if (joins) {
+          await previous.deck.pump(AHEAD_SECONDS);
+          if (this.candidate !== pending || revision !== this.revision) { deck.close(); return; }
+          deck.continueFrom(previous.deck);
+        }
         await deck.pump(PREPARE_SECONDS);
         if (this.candidate !== pending) return;
         if (deck.failure) throw deck.failure;
@@ -262,6 +278,7 @@ export class DecodeAudioRender {
     void p.deck.pump(AHEAD_SECONDS);
     if (this.incoming && this.incoming.deck.startFrame !== undefined && frame >= this.incoming.edge - AHEAD_SECONDS * this.context.sampleRate) void this.incoming.deck.pump(AHEAD_SECONDS);
     const end = p.deck.endFrame ?? Infinity;
+    if (!this.incoming && this.context.currentTime >= p.deck.tailDeadlineSeconds) p.deck.finishTail();
     const playing = s.intent === 'playing' && this.context.state === 'running' && p.deck.startFrame !== undefined && frame >= p.deck.startFrame;
     const starving = playing && !p.deck.complete && p.deck.aheadSeconds < 0.05;
     this.service.audioRenderStatus?.(playing && !starving ? s.audioEffects.rate : 0, starving);
@@ -288,7 +305,7 @@ export class DecodeAudioRender {
     document.removeEventListener('click', this.gesture);
     document.removeEventListener('keydown', this.gesture);
     this.element.removeEventListener('volumechange', this.volume);
-    this.context.removeEventListener('statechange', this.interrupted);
+    this.context.removeEventListener('statechange', this.contextChanged);
     document.removeEventListener('visibilitychange', this.interrupted);
     this.master.disconnect();
     void this.context.close();

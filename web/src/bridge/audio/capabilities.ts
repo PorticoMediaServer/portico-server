@@ -1,4 +1,5 @@
 import type {AudioDecodeCapability} from '@core/playback-v1/audio-render.ts';
+import {qualifyBrowserDecoders, qualifiedConfigs} from './qualification';
 import {WEBCODECS_SKIP, browserEngine, type BrowserEngine} from './track';
 
 /**
@@ -7,7 +8,7 @@ import {WEBCODECS_SKIP, browserEngine, type BrowserEngine} from './track';
  * (`WEBCODECS_SKIP`), confirmed by `AudioDecoder.isConfigSupported` at startup. The server plays
  * those files as they are and converts the rest to FLAC or Opus.
  */
-export type ConfigCheck = (config: {codec: string; sampleRate: number; numberOfChannels: number; description?: Uint8Array}) => Promise<boolean>;
+export type ConfigCheck = ((config: {codec: string; sampleRate: number; numberOfChannels: number; description?: Uint8Array}) => Promise<boolean>) & {ready?: Promise<void>};
 
 const aacConfig = (rate: number, channels: number) => {
   const rates = [96000, 88200, 64000, 48000, 44100, 32000, 24000, 22050, 16000, 12000, 11025, 8000];
@@ -29,6 +30,7 @@ async function highest(options: readonly number[], check: (v: number) => Promise
 }
 
 export async function probeAudioDecode(check: ConfigCheck | undefined, engine: BrowserEngine = browserEngine()): Promise<AudioDecodeCapability[]> {
+  await check?.ready;
   const known = WEBCODECS_SKIP[engine];
   const out: AudioDecodeCapability[] = [];
   const ok = async (c: Parameters<ConfigCheck>[0]) => { try { return !!check && await check(c); } catch { return false; } };
@@ -49,6 +51,10 @@ export async function probeAudioDecode(check: ConfigCheck | undefined, engine: B
   if (known.opus !== undefined && await ok({codec: 'opus', sampleRate: 48000, numberOfChannels: 2, description: opusHead(2)})) {
     out.push({codec: 'opus', containers: ['ogg', 'mp4'], maxSampleRate: 48000, maxChannels: 2, maxBitDepth: 32, via: 'webcodecs'});
   }
+  const vorbis = qualifiedConfigs.vorbis;
+  if (known.vorbis !== undefined && vorbis && await ok(vorbis)) {
+    out.push({codec: 'vorbis', containers: ['ogg'], maxSampleRate: vorbis.sampleRate, sampleRates: [vorbis.sampleRate], maxChannels: vorbis.numberOfChannels, maxBitDepth: 32, via: 'webcodecs'});
+  }
   return out;
 }
 
@@ -56,5 +62,6 @@ export async function probeAudioDecode(check: ConfigCheck | undefined, engine: B
 export function browserConfigCheck(): ConfigCheck | undefined {
   const Decoder = (globalThis as unknown as {AudioDecoder?: {isConfigSupported(c: unknown): Promise<{supported?: boolean}>}}).AudioDecoder;
   if (!Decoder) return undefined;
-  return async c => (await Decoder.isConfigSupported(c)).supported === true;
+  return Object.assign(async (c: Parameters<ConfigCheck>[0]) => (await Decoder.isConfigSupported(c)).supported === true,
+    {ready: qualifyBrowserDecoders()});
 }
