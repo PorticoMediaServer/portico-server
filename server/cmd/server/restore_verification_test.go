@@ -13,7 +13,6 @@ import (
 	"strings"
 	"testing"
 
-	"portico.local/server/internal/administration"
 	"portico.local/server/internal/backup"
 	"portico.local/server/internal/buildinfo"
 	"portico.local/server/internal/identity"
@@ -530,80 +529,6 @@ func TestRestoreRefusesABackgroundPriorityStartupWouldNotAccept(t *testing.T) {
 		if e = requirement.check(ctx, db, state); e != nil {
 			t.Fatalf("an untouched state fails a start-up requirement (%s): %v", requirement.reason, e)
 		}
-	}
-}
-
-// A file operation interrupted before the restart leaves its journal in the
-// state folder, and start-up finishes it from the evidence in the database: a
-// receipt with the journal's digest means it committed, none means it did not.
-// A receipt for the same operation with a different digest is a conflict that
-// stops every start. A restore must not put such a database in place while the
-// journal is waiting; it is rolled back, and start-up then finishes the
-// operation on the database it belongs to.
-func TestRestoreIsRefusedWhenAnInterruptedFileOperationDisagreesWithIt(t *testing.T) {
-	const operation, journalDigest = "review-operation-1", "digest-of-the-interrupted-request"
-	for name, c := range map[string]struct {
-		restored string // the receipt digest the restored database holds; "" for none
-		kept     bool
-	}{
-		"the restored database holds the same receipt":    {journalDigest, true},
-		"the restored database has no receipt for it":     {"", true},
-		"the restored database holds a different receipt": {"digest-of-another-request", false},
-	} {
-		t.Run(name, func(t *testing.T) {
-			ctx := context.Background()
-			state, serverID := startedState(t)
-			db, e := persistence.Open(filepath.Join(state, "server.sqlite"))
-			if e != nil {
-				t.Fatal(e)
-			}
-			if _, e = db.Exec(`INSERT INTO admin_receipts(scope,operation_id,digest,result,created_ms) VALUES('media-delete',?,?,'{}',1)`, operation, journalDigest); e != nil {
-				t.Fatal(e)
-			}
-			db.Close()
-			stageBackupFolder(t, state, serverID, "journal", func(folder string) {
-				changeBackupDatabase(t, folder, `DELETE FROM admin_receipts`)
-				if c.restored != "" {
-					changeBackupDatabase(t, folder, `INSERT INTO admin_receipts(scope,operation_id,digest,result,created_ms) VALUES('media-delete','`+operation+`','`+c.restored+`','{}',1)`)
-				}
-			})
-			// The interrupted operation: a journal with nothing left to move, so
-			// only the database decides what recovery does with it.
-			journal := filepath.Join(state, "file-operations", "interrupted.json")
-			if e = os.MkdirAll(filepath.Dir(journal), 0700); e != nil {
-				t.Fatal(e)
-			}
-			raw, _ := json.Marshal(map[string]any{"Version": 1, "Scope": "media-delete", "OperationID": operation, "Digest": journalDigest, "Moves": []any{}, "RemoveAfterCommit": []string{}})
-			if e = os.WriteFile(journal, raw, 0600); e != nil {
-				t.Fatal(e)
-			}
-			applied := backup.ApplyStaged(ctx, state, verifyRestoredState(state))
-			if c.kept != (applied == nil) {
-				t.Fatalf("restore kept=%v, want %v: %v", applied == nil, c.kept, applied)
-			}
-			if _, e = os.Stat(journal); e != nil {
-				t.Fatalf("deciding on the restore touched the journal: %v", e)
-			}
-			_, probe := restoredProbe(t, state)
-			if c.kept != (probe == "journal") {
-				t.Fatalf("the database in place is not the expected one: probe %q", probe)
-			}
-			// Whatever was decided, the mandatory recovery at start-up now succeeds.
-			db, e = persistence.Open(filepath.Join(state, "server.sqlite"))
-			if e != nil {
-				t.Fatal(e)
-			}
-			defer db.Close()
-			if e = administration.NewAt(db, state).RecoverFileOperations(ctx); e != nil {
-				t.Fatalf("start-up cannot finish the interrupted operation on the state the restore left: %v", e)
-			}
-			if _, e = os.Stat(journal); !os.IsNotExist(e) {
-				t.Fatalf("recovery left the journal behind: %v", e)
-			}
-			if e = startable(t, state); e != nil {
-				t.Fatalf("the server cannot start on what the restore left behind: %v", e)
-			}
-		})
 	}
 }
 

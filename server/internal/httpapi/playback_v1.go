@@ -61,6 +61,7 @@ func v1ErrorDefinitions() []apierror.Definition {
 		{Code: "event_stream_exists", Status: 409, Message: "An existing stream was retired; reconnect using your last event ID.", Retry: apierror.SameRequest},
 		{Code: "stream_unavailable", Status: 503, Message: "This connection cannot stream events.", Retry: apierror.SameRequest},
 		{Code: "administration_unavailable", Status: 503, Message: "Administration is temporarily unavailable.", Retry: apierror.SameRequest},
+		{Code: "confirmation_mismatch", Status: 409, Message: "Type the name exactly as shown to confirm.", Retry: apierror.Never},
 		{Code: "password_change_required", Status: 403, Message: "Change your password before continuing.", Retry: apierror.Never},
 		{Code: "device_approval_pending", Status: 403, Message: "This device is waiting for approval.", Retry: apierror.Never},
 		{Code: "device_denied", Status: 403, Message: "This device is not approved.", Retry: apierror.Never},

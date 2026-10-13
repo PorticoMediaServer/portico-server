@@ -41,7 +41,6 @@ func StorageCategories() []StorageCategory {
 		{"live-cache", "Live buffer", "Buffered live and channel segments.", []string{"linear-media"}, false, true, "conversions"},
 		{"downloads", "Downloads", "Packages staged for a client to take offline.", []string{"downloads"}, false, true, "downloads"},
 		{"logs", "Logs", "Diagnostic records written to disk.", []string{"logs"}, true, false, "logs"},
-		{"trash", "Trash", "Files held after a delete, waiting for their retention to run out.", []string{"trash"}, false, false, "trash"},
 		{"backups", "Backups", "Server backups.", []string{"backups"}, false, false, ""},
 		{"recordings", "Recordings", "Captured recordings. These are content: the maintenance page never removes them.", []string{"recordings"}, false, false, ""},
 	}
@@ -56,9 +55,6 @@ type StorageUsage struct {
 	Paths      []string `json:"paths"`
 	Present    bool     `json:"present"`
 	OldestDays int      `json:"oldestDays"`
-	// Entries is the held count for the trash category, which is measured from
-	// the ledger rather than from the tree.
-	Entries int64 `json:"entries,omitempty"`
 }
 
 // StorageReport is the whole storage care page.
@@ -115,12 +111,8 @@ func (s *Service) Storage(ctx context.Context, auth Authorize) (StorageReport, e
 	if s.StateDirectory() == "" {
 		return out, ErrUnavailable
 	}
-	var heldCount, heldBytes int64
-	if err := s.snapshot(ctx, auth, func(tx *sql.Tx) error {
-		var err error
-		heldCount, heldBytes, err = s.trashBytes(ctx, tx)
-		return err
-	}); err != nil {
+	// The owner is checked before anything is measured.
+	if err := s.snapshot(ctx, auth, func(*sql.Tx) error { return nil }); err != nil {
 		return out, err
 	}
 	now := s.now()
@@ -141,12 +133,6 @@ func (s *Service) Storage(ctx context.Context, auth Authorize) (StorageReport, e
 				usage.OldestDays = oldest
 			}
 			out.Truncated = out.Truncated || truncated
-		}
-		if category.ID == "trash" {
-			usage.Entries = heldCount
-			if usage.Bytes == 0 {
-				usage.Bytes = heldBytes
-			}
 		}
 		usage.BytesText = formatBytes(usage.Bytes)
 		out.TotalBytes += usage.Bytes
@@ -177,8 +163,7 @@ type CleanupResult struct {
 
 // Cleanup only removes unowned diagnostic files. Media, artwork and artifacts
 // belong to reference/lease-aware services and must never be swept by age here. Content categories
-// (recordings, backups) refuse; the trash has its own endpoint because emptying
-// it is a different decision.
+// (recordings, backups) refuse.
 func (s *Service) Cleanup(ctx context.Context, auth Authorize, category string, request CleanupRequest) (CleanupResult, error) {
 	out := CleanupResult{Category: category}
 	if !validOperationID(request.OperationID) || !safeText(request.Confirmation, 80) {
@@ -194,7 +179,7 @@ func (s *Service) Cleanup(ctx context.Context, auth Authorize, category string, 
 	if chosen == nil {
 		return out, ErrNotFound
 	}
-	if !chosen.Cleanable || chosen.ID == "trash" {
+	if !chosen.Cleanable {
 		return out, ErrDenied
 	}
 	if s.StateDirectory() == "" {
@@ -301,9 +286,9 @@ func MaintenanceCadences() []MaintenanceCadence {
 var MaintenanceTasks = []string{"library-scan", "metadata-refresh", "analysis", "trickplay", "backup"}
 
 // RetentionCategories bounds legacy cache settings. Artwork has no age policy;
-// its owner retains referenced objects indefinitely, including recoverable Trash.
+// its owner retains referenced objects indefinitely.
 func RetentionCategories() map[string]int {
-	return map[string]int{"trickplay": 3650, "prepared": 3650, "conversions": 90, "subtitles": 3650, "downloads": 365, "logs": 365, "trash": 3650}
+	return map[string]int{"trickplay": 3650, "prepared": 3650, "conversions": 90, "subtitles": 3650, "downloads": 365, "logs": 365}
 }
 
 // MaintenanceSettingsDocument is the maintenance configuration.
@@ -319,7 +304,7 @@ type MaintenanceSettingsDocument struct {
 // DefaultMaintenanceSettings is the answer before any owner write: one nightly
 // window and the shipped retention values.
 func DefaultMaintenanceSettings() MaintenanceSettingsDocument {
-	retention := map[string]int{"trickplay": 365, "prepared": 90, "conversions": 7, "subtitles": 365, "downloads": 30, "logs": 30, "trash": 30}
+	retention := map[string]int{"trickplay": 365, "prepared": 90, "conversions": 7, "subtitles": 365, "downloads": 30, "logs": 30}
 	return MaintenanceSettingsDocument{
 		Windows:                []MaintenanceWindow{{ID: "nightly", Name: "Overnight", Enabled: true, Cadence: "nightly", Days: append([]string{}, Days...), StartMinute: 180, DurationMinutes: 240, Timezone: "", Tasks: []string{"library-scan", "analysis", "trickplay", "backup"}}},
 		Retention:              retention,

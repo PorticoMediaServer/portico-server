@@ -52,14 +52,18 @@ CREATE INDEX catalog_entities_added ON catalog_entities(library_id,added_ms DESC
 CREATE INDEX catalog_entities_parent ON catalog_entities(parent_id,id) WHERE parent_id IS NOT NULL;
 CREATE INDEX catalog_entities_library ON catalog_entities(library_id,kind,id);
 
--- The entity-identity ledger (Direct Design §4): the same folder and source
--- key get the same public id after a rescan or a re-added library. Never deleted.
+-- The entity-identity ledger: every name a title is known by inside its
+-- library's identity root. A title can have several (the name its first file
+-- was read as, the name a later file was read as, a provider identity), so a
+-- rescan, a replacement file or a re-added library finds the same title. A
+-- title's rows leave with it when it is finally removed.
 CREATE TABLE catalog_identities(
- public_id BLOB PRIMARY KEY CHECK(length(public_id)=16),
  root TEXT NOT NULL,
  source_key TEXT NOT NULL,
+ public_id BLOB NOT NULL CHECK(length(public_id)=16),
  kind INTEGER NOT NULL,
- UNIQUE(root,source_key)) WITHOUT ROWID, STRICT;
+ PRIMARY KEY(root,source_key)) WITHOUT ROWID, STRICT;
+CREATE INDEX catalog_identities_public ON catalog_identities(public_id);
 
 -- One asset table: physical evidence and probed facts. token is the asset's
 -- public id (assets are not entities; the format is unchanged).
@@ -76,6 +80,9 @@ CREATE TABLE catalog_assets(
  height INTEGER NOT NULL,
  duration REAL NOT NULL,
  available INTEGER NOT NULL DEFAULT 1 CHECK(available IN(0,1))) STRICT;
+-- A title's files. Each file of part_index 0 is a version of the title (a
+-- title with parts has one row per part and version). edition is the version's
+-- edition label where the name or local metadata gave one ('Director''s Cut').
 CREATE TABLE catalog_asset_links(
  entity_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,
  asset_id INTEGER NOT NULL REFERENCES catalog_assets(id) ON DELETE CASCADE,
@@ -83,6 +90,7 @@ CREATE TABLE catalog_asset_links(
  available INTEGER NOT NULL DEFAULT 1 CHECK(available IN(0,1)),
  start_seconds REAL NOT NULL DEFAULT 0,
  end_seconds REAL,
+ edition TEXT NOT NULL DEFAULT '',
  PRIMARY KEY(entity_id,asset_id)) WITHOUT ROWID, STRICT;
 CREATE INDEX catalog_asset_links_order ON catalog_asset_links(entity_id,part_index,asset_id);
 CREATE INDEX catalog_asset_links_asset ON catalog_asset_links(asset_id,entity_id);
@@ -108,6 +116,47 @@ CREATE TABLE catalog_item_availability(
  entity_id INTEGER PRIMARY KEY REFERENCES catalog_entities(id) ON DELETE CASCADE,
  available INTEGER NOT NULL CHECK(available IN(0,1)),
  retired INTEGER NOT NULL DEFAULT 0 CHECK(retired IN(0,1))) STRICT;
+
+-- Titles whose every file has gone from disk. The title, its metadata and
+-- everyone's state stay; a file that resolves to the title removes the row.
+-- The owner's missing-titles rule decides when a row here becomes a removal.
+-- A fact, not derived data: missing_since_ms is when the last file went.
+CREATE TABLE catalog_missing_titles(
+ entity_id INTEGER PRIMARY KEY REFERENCES catalog_entities(id) ON DELETE CASCADE,
+ library_id INTEGER NOT NULL REFERENCES catalog_libraries(id),
+ missing_since_ms INTEGER NOT NULL) STRICT;
+CREATE INDEX catalog_missing_titles_library ON catalog_missing_titles(library_id,missing_since_ms,entity_id);
+
+-- What each profile had done with a title that has since been removed, kept so
+-- the same title coming back (to this library or another) gets it all back.
+-- A removed title is remembered under every identity it had: a provider's
+-- ('provider:tmdb:movie:348', with '#seasonal/2/5' for an episode of a series)
+-- and the names it was read as in its library ('local:<root>|<key>'). Bounded
+-- per profile; the oldest rows go first.
+CREATE TABLE retained_title_state(
+ id INTEGER PRIMARY KEY,
+ profile_id TEXT NOT NULL,
+ kind INTEGER NOT NULL,
+ title TEXT NOT NULL DEFAULT '',
+ watched INTEGER NOT NULL DEFAULT 0 CHECK(watched IN(0,1)),
+ watchlisted INTEGER NOT NULL DEFAULT 0 CHECK(watchlisted IN(0,1)),
+ favorite INTEGER NOT NULL DEFAULT 0 CHECK(favorite IN(0,1)),
+ not_interested INTEGER NOT NULL DEFAULT 0 CHECK(not_interested IN(0,1)),
+ rating REAL,
+ last_played_at TEXT NOT NULL DEFAULT '',
+ plays INTEGER NOT NULL DEFAULT 0,
+ position INTEGER NOT NULL DEFAULT 0,
+ unit INTEGER NOT NULL DEFAULT 0,
+ completed INTEGER NOT NULL DEFAULT 0 CHECK(completed IN(0,1)),
+ progress_at TEXT NOT NULL DEFAULT '',
+ retained_ms INTEGER NOT NULL) STRICT;
+CREATE INDEX retained_title_state_profile ON retained_title_state(profile_id,retained_ms,id);
+CREATE TABLE retained_title_identities(
+ identity TEXT NOT NULL,
+ profile_id TEXT NOT NULL,
+ state_id INTEGER NOT NULL REFERENCES retained_title_state(id) ON DELETE CASCADE,
+ PRIMARY KEY(identity,profile_id)) WITHOUT ROWID, STRICT;
+CREATE INDEX retained_title_identities_state ON retained_title_identities(state_id);
 
 -- Kind side tables.
 CREATE TABLE catalog_shows(
@@ -1852,7 +1901,6 @@ CREATE TABLE library_sources (
  generation INTEGER NOT NULL DEFAULT 1, incarnation TEXT NOT NULL DEFAULT(lower(hex(randomblob(16)))),
  root_identity TEXT NOT NULL DEFAULT '', identity_confirmed INTEGER NOT NULL DEFAULT 0, health TEXT NOT NULL DEFAULT 'ready',
  enabled INTEGER NOT NULL DEFAULT 1, follow_symlinks INTEGER NOT NULL DEFAULT 0,
- missing_grace_seconds INTEGER NOT NULL DEFAULT 86400 CHECK(missing_grace_seconds>=0),
  interval_seconds INTEGER NOT NULL DEFAULT 0 CHECK(interval_seconds=0 OR interval_seconds>=900),
  next_scan_at TEXT NOT NULL DEFAULT '', last_complete_job TEXT NOT NULL DEFAULT '',
  last_complete_at TEXT NOT NULL DEFAULT '', last_progress_at TEXT NOT NULL DEFAULT '',
@@ -1893,7 +1941,7 @@ CREATE TABLE inventory_objects (
  evidence_json TEXT NOT NULL, size INTEGER NOT NULL, modified_ns INTEGER NOT NULL,
  seen_job TEXT NOT NULL DEFAULT '', state TEXT NOT NULL DEFAULT 'available',
  retired INTEGER NOT NULL DEFAULT 0, missing_since TEXT NOT NULL DEFAULT '', missing_observations INTEGER NOT NULL DEFAULT 0,
- last_missing_job TEXT NOT NULL DEFAULT '', trashed_at TEXT NOT NULL DEFAULT '', unsupported_reason TEXT NOT NULL DEFAULT '',
+ last_missing_job TEXT NOT NULL DEFAULT '', unsupported_reason TEXT NOT NULL DEFAULT '',
  analysis_revision TEXT NOT NULL DEFAULT '', analysis_policy INTEGER NOT NULL DEFAULT 0, analysis_operations_json TEXT NOT NULL DEFAULT '[]',
  analysis_state TEXT NOT NULL DEFAULT 'pending', analysis_error TEXT NOT NULL DEFAULT ''
 , directory_path TEXT NOT NULL DEFAULT '.') STRICT;
@@ -2560,11 +2608,6 @@ CREATE TABLE download_progress_marks(
  PRIMARY KEY(profile_key,item_id)) STRICT;
 CREATE TABLE admin_documents(scope TEXT PRIMARY KEY,revision INTEGER NOT NULL CHECK(revision>0),body TEXT NOT NULL,updated_ms INTEGER NOT NULL) STRICT;
 CREATE TABLE admin_receipts(scope TEXT NOT NULL,operation_id TEXT NOT NULL,digest TEXT NOT NULL,result TEXT NOT NULL,created_ms INTEGER NOT NULL,PRIMARY KEY(scope,operation_id)) STRICT;
-CREATE TABLE admin_trash(
- id TEXT PRIMARY KEY,library_id TEXT NOT NULL,item_id INTEGER NOT NULL,title TEXT NOT NULL,kind TEXT NOT NULL,
- files_json TEXT NOT NULL,file_count INTEGER NOT NULL,bytes INTEGER NOT NULL,
- trashed_ms INTEGER NOT NULL,expires_ms INTEGER NOT NULL,
- state TEXT NOT NULL CHECK(state IN('held','restored','purged')),actor TEXT NOT NULL,operation_id TEXT NOT NULL DEFAULT '') STRICT;
 CREATE TABLE admin_dvr_groups(
  id TEXT PRIMARY KEY,kind TEXT NOT NULL CHECK(kind IN('series','keyword')),name TEXT NOT NULL,
  match_text TEXT NOT NULL,source_id TEXT NOT NULL DEFAULT '',enabled INTEGER NOT NULL DEFAULT 1,
@@ -3807,8 +3850,6 @@ CREATE INDEX download_receipts_viewer ON download_receipts(profile_key,item_id,i
 CREATE INDEX download_receipts_preparation ON download_receipts(preparation_id);
 CREATE INDEX download_receipts_revocations ON download_receipts(revoked_ms,sequence);
 CREATE INDEX admin_receipts_age ON admin_receipts(created_ms);
-CREATE INDEX admin_trash_page ON admin_trash(state,trashed_ms DESC,id DESC);
-CREATE INDEX admin_trash_expiry ON admin_trash(state,expires_ms);
 CREATE INDEX admin_dvr_groups_page ON admin_dvr_groups(created_ms DESC,id DESC);
 CREATE INDEX admin_channel_presets_page ON admin_channel_presets(name_key,id);
 CREATE UNIQUE INDEX direct_one_owner ON direct_memberships(role) WHERE role='owner';
@@ -4122,7 +4163,7 @@ CREATE TRIGGER inventory_library_create AFTER INSERT ON libraries BEGIN
  INSERT INTO library_sources(id,library_id,name,configured_root,root) VALUES(NEW.id,NEW.id,NEW.name,NEW.root,NEW.root);
  INSERT INTO library_scan_policies(library_id) VALUES(NEW.id);
 END;
-CREATE TRIGGER inventory_source_configuration AFTER UPDATE OF name,root,configured_root,classification,follow_symlinks,missing_grace_seconds,interval_seconds,enabled,root_identity,identity_confirmed ON library_sources BEGIN
+CREATE TRIGGER inventory_source_configuration AFTER UPDATE OF name,root,configured_root,classification,follow_symlinks,interval_seconds,enabled,root_identity,identity_confirmed ON library_sources BEGIN
  UPDATE library_configuration SET revision=revision+1 WHERE library_id=NEW.library_id;
  UPDATE admin_revision SET revision=revision+1 WHERE id=1;
 END;
@@ -4439,8 +4480,7 @@ INSERT INTO catalog_content_eligible_state(id,after_entity_id,backfill_done,turn
 -- ===== views
 CREATE VIEW inventory_item_availability AS
  SELECT l.entity_id AS item_id,a.token AS asset_id,
- CASE WHEN EXISTS(SELECT 1 FROM admin_trash held WHERE held.item_id=l.entity_id AND held.state='held') THEN 0
- WHEN EXISTS(SELECT 1 FROM dvr_catalog_retirements gone WHERE gone.item_id=l.entity_id) THEN 0
+ CASE WHEN EXISTS(SELECT 1 FROM dvr_catalog_retirements gone WHERE gone.item_id=l.entity_id) THEN 0
  WHEN EXISTS(SELECT 1 FROM inventory_objects o JOIN library_sources s ON s.id=o.source_id WHERE o.asset_id=a.token AND s.library_id=cl.library_id)
  THEN EXISTS(SELECT 1 FROM inventory_objects o JOIN library_sources s ON s.id=o.source_id WHERE o.asset_id=a.token AND s.library_id=cl.library_id AND o.retired=0 AND o.state='available' AND o.unsupported_reason='' AND s.enabled=1 AND s.health NOT IN('offline','root_changed','removing') AND o.root_incarnation=s.incarnation)
  ELSE a.available=1 AND NOT EXISTS(SELECT 1 FROM library_sources s WHERE s.id=cl.library_id AND (s.enabled=0 OR s.health IN('offline','root_changed','removing'))) END AS available
@@ -4619,7 +4659,7 @@ CREATE TRIGGER catalog_library_update AFTER UPDATE OF name,kind ON libraries BEG
  UPDATE catalog_libraries SET name=NEW.name,kind=CASE NEW.kind WHEN 'movie' THEN 1 WHEN 'tv' THEN 2 WHEN 'anime' THEN 3 WHEN 'music' THEN 4 WHEN 'audiobook' THEN 5 ELSE 99 END WHERE library_id=NEW.id;
 END;
 
--- Availability follows inventory evidence, source health, DVR retirement and trash.
+-- Availability follows inventory evidence, source health and DVR retirement.
 CREATE TRIGGER catalog_availability_object_insert AFTER INSERT ON inventory_objects BEGIN
  INSERT INTO catalog_dirty(domain,entity_id,revision) SELECT 20,l.entity_id,1 FROM catalog_assets a JOIN catalog_asset_links l INDEXED BY catalog_asset_links_asset ON l.asset_id=a.id WHERE a.token=NEW.asset_id
  ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
@@ -4643,18 +4683,6 @@ CREATE TRIGGER catalog_availability_retired_insert AFTER INSERT ON dvr_catalog_r
 END;
 CREATE TRIGGER catalog_availability_retired_delete AFTER DELETE ON dvr_catalog_retirements BEGIN
  INSERT INTO catalog_dirty(domain,entity_id,revision) SELECT d.column1,OLD.item_id,1 FROM (VALUES(20),(18),(27)) d WHERE EXISTS(SELECT 1 FROM catalog_entities WHERE id=OLD.item_id)
- ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
-END;
-CREATE TRIGGER catalog_availability_trash_insert AFTER INSERT ON admin_trash BEGIN
- INSERT INTO catalog_dirty(domain,entity_id,revision) SELECT 20,id,1 FROM catalog_entities WHERE id=NEW.item_id
- ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
-END;
-CREATE TRIGGER catalog_availability_trash_update AFTER UPDATE OF state ON admin_trash BEGIN
- INSERT INTO catalog_dirty(domain,entity_id,revision) SELECT 20,id,1 FROM catalog_entities WHERE id=NEW.item_id
- ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
-END;
-CREATE TRIGGER catalog_availability_trash_delete AFTER DELETE ON admin_trash BEGIN
- INSERT INTO catalog_dirty(domain,entity_id,revision) SELECT 20,id,1 FROM catalog_entities WHERE id=OLD.item_id
  ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
 END;
 
@@ -4836,10 +4864,6 @@ CREATE TRIGGER compact_visibility_dirty_link_delete AFTER DELETE ON catalog_asse
   JOIN compact_visibility_classes c ON c.library_id=r.library_id AND c.retired=0 WHERE m.item_id=OLD.entity_id AND r.kind IN(2,3) ON CONFLICT DO NOTHING;
 END;
 
--- inventory_item_availability asks, for every file link it evaluates, whether
--- the item is held in the trash; without this the question scans every held
--- trash entry.
-CREATE INDEX admin_trash_item ON admin_trash(item_id,state);
 
 -- Triggers reach these by id alone (an entity's artwork heads of any kind; an
 -- item's or show's screen work; a song's or album's MusicBrainz job), and their

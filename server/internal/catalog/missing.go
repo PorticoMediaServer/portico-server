@@ -1,0 +1,513 @@
+package catalog
+
+import (
+	"context"
+	"database/sql"
+	"errors"
+	"strconv"
+	"time"
+
+	"portico.local/server/internal/compactcatalog"
+	"portico.local/server/internal/dbwork"
+)
+
+// Missing files, the way Plex's "trash" works. Nothing here is a folder.
+//
+// A file that is no longer on disk is marked missing the first time a
+// complete scan of its folder does not find it. It stops being a version of
+// its title at once (it is not offered, picked or played), and a title left
+// with no file at all stays in the library, marked missing with the time its
+// last file went, shown as unavailable. A file that resolves to the title
+// brings it back whole.
+//
+// Missing things are finally removed by the owner's rule (immediately, after
+// a number of days, never) or by "empty now". Removing a title keeps each
+// profile's state under the title's identities (retained_state.go).
+//
+// A source that cannot be read, or whose folder is suddenly empty where it
+// held media before, is not a list of missing files: its scan fails before
+// anything is marked.
+
+// ErrSourceLooksUnmounted: the scan found an empty folder where there was
+// media before. That is what an unmounted disk looks like, so nothing was
+// marked missing.
+var ErrSourceLooksUnmounted = errors.New("the folder is empty but held media before; nothing was marked missing")
+
+// SourceLooksUnmounted reports whether a completed listing found nothing at
+// all (no media files and no folders) under a source that had available files
+// before this scan. The scan loop asks before it marks anything missing.
+func (s *Service) SourceLooksUnmounted(ctx context.Context, job, source string) (bool, error) {
+	var unmounted bool
+	err := s.db.QueryRowContext(ctx, `SELECT r.discovered=0
+ AND EXISTS(SELECT 1 FROM inventory_directories d WHERE d.job_id=r.job_id AND d.relative_path='.' AND d.state='done' AND d.skipped=0)
+ AND NOT EXISTS(SELECT 1 FROM inventory_directories d WHERE d.job_id=r.job_id AND d.relative_path<>'.')
+ AND EXISTS(SELECT 1 FROM inventory_objects o WHERE o.source_id=r.source_id AND o.retired=0 AND o.state='available' AND o.root_incarnation=r.root_incarnation AND o.seen_job<>r.job_id)
+ FROM inventory_runs r WHERE r.job_id=? AND r.source_id=?`, job, source).Scan(&unmounted)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	return unmounted, err
+}
+
+// MarkInventoryMissingTx records that a complete, verified listing of a file's
+// folder did not contain it. The file is missing from now; the titles it
+// backed are settled (a title with no file left is marked missing).
+func MarkInventoryMissingTx(ctx context.Context, tx *sql.Tx, source, job, object string, now time.Time) error {
+	var asset, revision, state, since string
+	var observations int
+	var last string
+	err := tx.QueryRowContext(ctx, `SELECT asset_id,revision,state,missing_since,missing_observations,last_missing_job FROM inventory_objects WHERE id=? AND source_id=? AND retired=0`, object, source).Scan(&asset, &revision, &state, &since, &observations, &last)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if last != job {
+		observations++
+	}
+	if since == "" {
+		since = now.UTC().Format(time.RFC3339Nano)
+	}
+	if _, err = tx.ExecContext(ctx, `UPDATE inventory_objects SET missing_since=?,missing_observations=?,last_missing_job=?,state='missing' WHERE id=?`, since, observations, job, object); err != nil {
+		return err
+	}
+	if state == "missing" {
+		return nil
+	}
+	assetID, err := compactcatalog.AssetByTokenTx(ctx, tx, asset)
+	if err != nil {
+		return err
+	}
+	if assetID != 0 {
+		var available bool
+		if err = tx.QueryRowContext(ctx, `SELECT COALESCE((SELECT available FROM inventory_asset_availability WHERE asset_id=?),0)`, asset).Scan(&available); err != nil {
+			return err
+		}
+		if err = compactcatalog.SetAssetAvailableTx(ctx, tx, assetID, available); err != nil {
+			return err
+		}
+		if err = compactcatalog.SettleAssetMissingTx(ctx, tx, assetID); err != nil {
+			return err
+		}
+	}
+	_, err = tx.ExecContext(ctx, `INSERT OR IGNORE INTO inventory_changes(source_id,job_id,object_id,asset_id,revision,kind,created_at) VALUES(?,?,?,?,?,'missing',?)`, source, job, object, asset, revision, now.UTC().Format(time.RFC3339Nano))
+	return err
+}
+
+// MissingRule is the owner's choice of when missing titles are emptied.
+type MissingRule struct {
+	Mode string // "immediately", "after_days" or "never"
+	Days int
+}
+
+// DefaultMissingRule keeps missing titles for thirty days.
+var DefaultMissingRule = MissingRule{Mode: "after_days", Days: 30}
+
+// MissingRule reads the owner's rule from the server settings document.
+func (s *Service) MissingRule(ctx context.Context) MissingRule {
+	rule := DefaultMissingRule
+	var mode sql.NullString
+	var days sql.NullInt64
+	if err := s.db.QueryRowContext(ctx, `SELECT json_extract(body,'$."library.missingTitles"'),json_extract(body,'$."library.missingTitlesDays"') FROM console_documents WHERE scope='server'`).Scan(&mode, &days); err != nil {
+		return rule
+	}
+	switch mode.String {
+	case "immediately", "after_days", "never":
+		rule.Mode = mode.String
+	}
+	if days.Valid && days.Int64 >= 1 && days.Int64 <= 3650 {
+		rule.Days = int(days.Int64)
+	}
+	return rule
+}
+
+// Cutoff is the time before which a missing title is due for removal under
+// the rule, and whether anything is due at all.
+func (r MissingRule) Cutoff(now time.Time) (time.Time, bool) {
+	switch r.Mode {
+	case "immediately":
+		return now, true
+	case "never":
+		return time.Time{}, false
+	}
+	return now.Add(-time.Duration(r.Days) * 24 * time.Hour), true
+}
+
+// forgetAssetTx removes a file's catalogue row and the evidence that hangs off
+// it. A file something else still points at (a session in flight, subtitles
+// or lyrics a person attached to it, a recording's provenance) keeps its row,
+// unlinked and unavailable, so those references stay valid.
+func forgetAssetTx(ctx context.Context, tx *sql.Tx, id int64, token string) error {
+	var held bool
+	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM item_extras WHERE asset_id=?1) OR EXISTS(SELECT 1 FROM playback_sessions WHERE asset_id=?1) OR EXISTS(SELECT 1 FROM lyric_resources WHERE asset_id=?1) OR EXISTS(SELECT 1 FROM lyric_candidates WHERE asset_id=?1) OR EXISTS(SELECT 1 FROM subtitle_resources WHERE source_id=?1) OR EXISTS(SELECT 1 FROM dvr_catalog_provenance WHERE asset_id=?1)`, token).Scan(&held); err != nil {
+		return err
+	}
+	for _, query := range []string{
+		`DELETE FROM inventory_analysis_queue WHERE object_id IN(SELECT id FROM inventory_objects WHERE asset_id=?)`,
+		`DELETE FROM inventory_objects WHERE asset_id=?`,
+	} {
+		if _, err := tx.ExecContext(ctx, query, token); err != nil {
+			return err
+		}
+	}
+	if held {
+		items, err := scanInt64s(tx.QueryContext(ctx, `SELECT entity_id FROM catalog_asset_links INDEXED BY catalog_asset_links_asset WHERE asset_id=?`, id))
+		if err != nil {
+			return err
+		}
+		for _, item := range items {
+			if err = compactcatalog.UnlinkAssetTx(ctx, tx, item, id); err != nil {
+				return err
+			}
+		}
+		return compactcatalog.SetAssetAvailableTx(ctx, tx, id, false)
+	}
+	for _, query := range []string{
+		`DELETE FROM audio_tag_evidence WHERE asset_id=?`,
+		`DELETE FROM audio_source_metadata WHERE asset_id=?`,
+		`DELETE FROM episodic_sources WHERE asset_id=?`,
+	} {
+		if _, err := tx.ExecContext(ctx, query, token); err != nil {
+			return err
+		}
+	}
+	return compactcatalog.DeleteAssetTx(ctx, tx, id)
+}
+
+// RemoveTitleTx removes a title for good: each profile's state is kept under
+// the title's identities, then the title, its files' catalogue rows and its
+// names in the ledger go. A season or show left without episodes, an album
+// without tracks and a book without parts follow. Files on disk are never
+// touched here.
+func RemoveTitleTx(ctx context.Context, tx *sql.Tx, entity int64) error {
+	var kind compactcatalog.Kind
+	err := tx.QueryRowContext(ctx, `SELECT kind FROM catalog_entities WHERE id=?`, entity).Scan(&kind)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	var show, season, album, book sql.NullInt64
+	switch kind {
+	case compactcatalog.Episode:
+		err = tx.QueryRowContext(ctx, `SELECT show_id,season_id FROM catalog_episodes WHERE entity_id=?`, entity).Scan(&show, &season)
+	case compactcatalog.Track:
+		err = tx.QueryRowContext(ctx, `SELECT album_id FROM catalog_songs WHERE entity_id=?`, entity).Scan(&album)
+	case compactcatalog.Part:
+		err = tx.QueryRowContext(ctx, `SELECT book_id FROM catalog_book_files WHERE entity_id=?`, entity).Scan(&book)
+	}
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+	if err = retainStateTx(ctx, tx, entity); err != nil {
+		return err
+	}
+	if err = compactcatalog.ForgetIdentitiesTx(ctx, tx, entity); err != nil {
+		return err
+	}
+	if _, err = tx.ExecContext(ctx, `DELETE FROM book_resume WHERE item_id=?`, entity); err != nil {
+		return err
+	}
+	if err = purgeEntityTx(ctx, tx, entity); err != nil {
+		return err
+	}
+	if season.Valid {
+		if err = removeEmptyContainerTx(ctx, tx, season.Int64, `SELECT EXISTS(SELECT 1 FROM catalog_episodes WHERE season_id=?)`); err != nil {
+			return err
+		}
+	}
+	if show.Valid {
+		var episodes bool
+		if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM catalog_episodes INDEXED BY catalog_episodes_show WHERE show_id=?)`, show.Int64).Scan(&episodes); err != nil {
+			return err
+		}
+		if !episodes {
+			seasons, e := scanInt64s(tx.QueryContext(ctx, `SELECT entity_id FROM catalog_seasons WHERE show_id=?`, show.Int64))
+			if e != nil {
+				return e
+			}
+			for _, id := range seasons {
+				if e = removeContainerTx(ctx, tx, id); e != nil {
+					return e
+				}
+			}
+			if e = removeContainerTx(ctx, tx, show.Int64); e != nil {
+				return e
+			}
+		}
+	}
+	if album.Valid {
+		if err = retireEmptiedAlbumTx(ctx, tx, album.Int64); err != nil {
+			return err
+		}
+	}
+	if book.Valid {
+		if err = settleEmptiedBook(ctx, tx, book.Int64); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func removeEmptyContainerTx(ctx context.Context, tx *sql.Tx, id int64, hasMembers string) error {
+	var members bool
+	if err := tx.QueryRowContext(ctx, hasMembers, id).Scan(&members); err != nil || members {
+		return err
+	}
+	return removeContainerTx(ctx, tx, id)
+}
+
+// removeContainerTx removes a show or season that has no members left,
+// keeping what people had marked on it.
+func removeContainerTx(ctx context.Context, tx *sql.Tx, id int64) error {
+	if err := retainStateTx(ctx, tx, id); err != nil {
+		return err
+	}
+	if err := compactcatalog.ForgetIdentitiesTx(ctx, tx, id); err != nil {
+		return err
+	}
+	for _, q := range []string{
+		`DELETE FROM container_personal_state WHERE container_id=?`,
+		`DELETE FROM container_personal_resets WHERE container_id=?`,
+		`DELETE FROM playback_sessions WHERE item_id=?`,
+	} {
+		if _, err := tx.ExecContext(ctx, q, id); err != nil {
+			return err
+		}
+	}
+	return compactcatalog.DeleteEntityTx(ctx, tx, id)
+}
+
+// MissingEmptied says what one pass of emptying removed.
+type MissingEmptied struct {
+	Titles int  `json:"titles"`
+	Files  int  `json:"files"`
+	More   bool `json:"more"`
+}
+
+const missingBatch = 24
+
+// EmptyMissing removes, in one bounded transaction, missing files and missing
+// titles that went missing at or before cutoff. library "" means every
+// library. More is true when another pass has work to do. Files under a
+// source that is offline, being scanned or waiting for its folder to be
+// accepted are left alone: only a healthy source's absences are acted on.
+func (s *Service) EmptyMissing(ctx context.Context, library string, cutoff time.Time, authorize func(*sql.Tx) error) (MissingEmptied, error) {
+	var out MissingEmptied
+	err := dbwork.WithWriteTx(ctx, s.db, dbwork.ClassFrom(ctx, dbwork.ClassMaintenance), func(tx *sql.Tx) error {
+		out = MissingEmptied{}
+		if authorize != nil {
+			if err := authorize(tx); err != nil {
+				return err
+			}
+		}
+		type gone struct{ object, token string }
+		rows, err := tx.QueryContext(ctx, `SELECT o.id,o.asset_id FROM library_sources s CROSS JOIN inventory_objects o INDEXED BY inventory_objects_missing ON o.source_id=s.id
+ WHERE (?1='' OR s.library_id=?1) AND s.health NOT IN('offline','root_changed','inventory_running') AND o.state='missing' AND o.retired=0 AND o.missing_since<>'' AND o.missing_since<=?2
+ AND NOT EXISTS(SELECT 1 FROM inventory_source_active a WHERE a.source_id=s.id) ORDER BY o.id LIMIT ?3`, library, cutoff.UTC().Format(time.RFC3339Nano), missingBatch+1)
+		if err != nil {
+			return err
+		}
+		var files []gone
+		for rows.Next() {
+			var g gone
+			if err = rows.Scan(&g.object, &g.token); err != nil {
+				rows.Close()
+				return err
+			}
+			files = append(files, g)
+		}
+		err = rows.Err()
+		rows.Close()
+		if err != nil {
+			return err
+		}
+		if len(files) > missingBatch {
+			files, out.More = files[:missingBatch], true
+		}
+		for _, g := range files {
+			if _, err = tx.ExecContext(ctx, `DELETE FROM inventory_analysis_queue WHERE object_id=?`, g.object); err != nil {
+				return err
+			}
+			if _, err = tx.ExecContext(ctx, `DELETE FROM inventory_objects WHERE id=?`, g.object); err != nil {
+				return err
+			}
+			var elsewhere bool
+			if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM inventory_objects WHERE asset_id=? AND retired=0)`, g.token).Scan(&elsewhere); err != nil {
+				return err
+			}
+			if !elsewhere {
+				id, e := compactcatalog.AssetByTokenTx(ctx, tx, g.token)
+				if e != nil {
+					return e
+				}
+				if id != 0 {
+					if e = forgetAssetTx(ctx, tx, id, g.token); e != nil {
+						return e
+					}
+				}
+			}
+			out.Files++
+		}
+		titles, err := scanInt64s(tx.QueryContext(ctx, `SELECT m.entity_id FROM catalog_missing_titles m JOIN catalog_libraries cl ON cl.id=m.library_id
+ WHERE (?1='' OR cl.library_id=?1) AND m.missing_since_ms<=?2
+ AND NOT EXISTS(SELECT 1 FROM inventory_source_active a JOIN library_sources src ON src.id=a.source_id WHERE src.library_id=cl.library_id)
+ ORDER BY m.library_id,m.missing_since_ms,m.entity_id LIMIT ?3`, library, cutoff.UnixMilli(), missingBatch+1))
+		if err != nil {
+			return err
+		}
+		if len(titles) > missingBatch {
+			titles, out.More = titles[:missingBatch], true
+		}
+		for _, title := range titles {
+			// The mark is rechecked against the files as they are now.
+			if err = compactcatalog.SettleMissingTx(ctx, tx, title); err != nil {
+				return err
+			}
+			var still bool
+			if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM catalog_missing_titles WHERE entity_id=?)`, title).Scan(&still); err != nil {
+				return err
+			}
+			if !still {
+				continue
+			}
+			if err = RemoveTitleTx(ctx, tx, title); err != nil {
+				return err
+			}
+			out.Titles++
+		}
+		if out.Titles > 0 {
+			return PruneRetainedStateTx(ctx, tx)
+		}
+		return nil
+	})
+	return out, err
+}
+
+// EmptyMissingDue applies the owner's rule once: everything due is removed in
+// bounded passes until nothing is left or the context ends.
+func (s *Service) EmptyMissingDue(ctx context.Context) (MissingEmptied, error) {
+	var total MissingEmptied
+	cutoff, due := s.MissingRule(ctx).Cutoff(time.Now())
+	if !due {
+		return total, nil
+	}
+	for ctx.Err() == nil {
+		step, err := s.EmptyMissing(ctx, "", cutoff, nil)
+		total.Titles += step.Titles
+		total.Files += step.Files
+		if err != nil || !step.More {
+			return total, err
+		}
+		if step.Titles == 0 && step.Files == 0 {
+			// Only things waiting on a source remain.
+			return total, nil
+		}
+		dbwork.Yield(ctx)
+	}
+	return total, ctx.Err()
+}
+
+// MissingTitle is one title whose files are all gone, for the owner's list.
+type MissingTitle struct {
+	ID           string `json:"id"`
+	LibraryID    string `json:"libraryId"`
+	Kind         string `json:"kind"`
+	Title        string `json:"title"`
+	ParentTitle  string `json:"parentTitle,omitempty"`
+	Year         int    `json:"year,omitempty"`
+	MissingSince string `json:"missingSince"`
+	// RemovedAt is when the owner's rule will remove the title; empty when the
+	// rule is "never".
+	RemovedAt string `json:"removedAt,omitempty"`
+}
+
+// MissingTitlesPage is a page of the owner's missing-titles list.
+type MissingTitlesPage struct {
+	Items      []MissingTitle `json:"items"`
+	NextCursor string         `json:"nextCursor,omitempty"`
+	Total      int64          `json:"total"`
+	Rule       string         `json:"rule"`
+	Days       int            `json:"days"`
+}
+
+// MissingTitles lists missing titles, oldest first. library "" lists every
+// library. The cursor is opaque: the last row's time and id.
+func (s *Service) MissingTitles(ctx context.Context, library, cursor string, limit int) (MissingTitlesPage, error) {
+	rule := s.MissingRule(ctx)
+	out := MissingTitlesPage{Items: []MissingTitle{}, Rule: rule.Mode, Days: rule.Days}
+	if limit < 1 || limit > 200 {
+		limit = 50
+	}
+	var afterMS, afterID int64
+	if cursor != "" {
+		ms, id, ok := cutCursor(cursor)
+		if !ok {
+			return out, ErrAdminQuery
+		}
+		afterMS, afterID = ms, id
+	}
+	if err := s.read().QueryRowContext(ctx, `SELECT count(*) FROM catalog_missing_titles m JOIN catalog_libraries cl ON cl.id=m.library_id WHERE (?1='' OR cl.library_id=?1) AND cl.retired=0`, library).Scan(&out.Total); err != nil {
+		return out, err
+	}
+	rows, err := s.read().QueryContext(ctx, `SELECT m.entity_id,m.missing_since_ms,pid(e.public_id),cl.library_id,k.name,e.title,e.year,
+ COALESCE((SELECT sh.title FROM catalog_episodes ep JOIN catalog_entities sh ON sh.id=ep.show_id WHERE ep.entity_id=e.id),
+  (SELECT al.title FROM catalog_songs so JOIN catalog_entities al ON al.id=so.album_id WHERE so.entity_id=e.id),
+  (SELECT bk.title FROM catalog_book_files bf JOIN catalog_entities bk ON bk.id=bf.book_id WHERE bf.entity_id=e.id),'')
+ FROM catalog_missing_titles m JOIN catalog_entities e ON e.id=m.entity_id JOIN catalog_kinds k ON k.id=e.kind JOIN catalog_libraries cl ON cl.id=m.library_id
+ WHERE (?1='' OR cl.library_id=?1) AND cl.retired=0 AND (m.missing_since_ms>?2 OR m.missing_since_ms=?2 AND m.entity_id>?3)
+ ORDER BY m.missing_since_ms,m.entity_id LIMIT ?4`, library, afterMS, afterID, limit+1)
+	if err != nil {
+		return out, err
+	}
+	defer rows.Close()
+	var lastMS, lastID int64
+	for rows.Next() {
+		var v MissingTitle
+		var id, ms int64
+		if err = rows.Scan(&id, &ms, &v.ID, &v.LibraryID, &v.Kind, &v.Title, &v.Year, &v.ParentTitle); err != nil {
+			return out, err
+		}
+		if len(out.Items) == limit {
+			out.NextCursor = strconv.FormatInt(lastMS, 10) + "." + strconv.FormatInt(lastID, 10)
+			break
+		}
+		since := time.UnixMilli(ms).UTC()
+		v.MissingSince = since.Format(time.RFC3339)
+		switch rule.Mode {
+		case "immediately":
+			v.RemovedAt = v.MissingSince
+		case "after_days":
+			v.RemovedAt = since.Add(time.Duration(rule.Days) * 24 * time.Hour).Format(time.RFC3339)
+		}
+		out.Items = append(out.Items, v)
+		lastMS, lastID = ms, id
+	}
+	return out, rows.Err()
+}
+
+func cutCursor(cursor string) (ms, id int64, ok bool) {
+	for i := 0; i < len(cursor); i++ {
+		if cursor[i] == '.' {
+			a, errA := strconv.ParseInt(cursor[:i], 10, 64)
+			b, errB := strconv.ParseInt(cursor[i+1:], 10, 64)
+			return a, b, errA == nil && errB == nil && a >= 0 && b >= 0
+		}
+	}
+	return 0, 0, false
+}
+
+// MissingSince returns when a title went missing ("" when it is not missing).
+func (s *Service) MissingSince(ctx context.Context, item string) (string, error) {
+	var ms sql.NullInt64
+	err := s.read().QueryRowContext(ctx, `SELECT m.missing_since_ms FROM catalog_entities e JOIN catalog_missing_titles m ON m.entity_id=e.id WHERE e.public_id=pid_blob(?)`, item).Scan(&ms)
+	if errors.Is(err, sql.ErrNoRows) || err == nil && !ms.Valid {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	return time.UnixMilli(ms.Int64).UTC().Format(time.RFC3339), nil
+}

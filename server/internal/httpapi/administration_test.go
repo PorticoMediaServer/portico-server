@@ -59,7 +59,7 @@ func TestAdministrationOwnerBoundaryAndLibrarySettingsRoundTrip(t *testing.T) {
 		{"GET", "/v1/admin/library-settings"},
 		{"GET", "/v1/admin/analysis-operations"},
 		{"GET", "/v1/admin/libraries/lib/settings"},
-		{"GET", "/v1/admin/trash"},
+		{"GET", "/v1/admin/missing-titles"},
 		{"GET", "/v1/admin/dvr/settings"},
 		{"GET", "/v1/admin/dvr/recording-permissions"},
 		{"GET", "/v1/admin/dvr/recording-owners"},
@@ -96,17 +96,10 @@ func TestAdministrationOwnerBoundaryAndLibrarySettingsRoundTrip(t *testing.T) {
 	if err := json.Unmarshal(storage.Body.Bytes(), &usage); err != nil {
 		t.Fatal(err)
 	}
-	foundTrash := false
 	for _, category := range usage.Result.Categories {
 		if category.ID == "trash" {
-			foundTrash = true
-			if category.Cleanable {
-				t.Fatal("trash advertises a cleanup action that the server refuses")
-			}
+			t.Fatal("storage report still lists a trash: deleted files are not kept anywhere")
 		}
-	}
-	if !foundTrash {
-		t.Fatal("storage report omits trash")
 	}
 	var updateRead struct {
 		State  string `json:"state"`
@@ -129,7 +122,7 @@ func TestAdministrationOwnerBoundaryAndLibrarySettingsRoundTrip(t *testing.T) {
 		t.Fatalf("grant revision not fenced: %d %s", w.Code, w.Body.String())
 	}
 	// An unknown query parameter is a refusal, not a silently ignored filter.
-	if w := request("GET", "/v1/admin/trash?unknown=1", owner.AccessToken, ""); w.Code != 400 {
+	if w := request("GET", "/v1/admin/missing-titles?unknown=1", owner.AccessToken, ""); w.Code != 400 {
 		t.Fatalf("unknown query parameter answered %d", w.Code)
 	}
 	var read struct {
@@ -137,7 +130,6 @@ func TestAdministrationOwnerBoundaryAndLibrarySettingsRoundTrip(t *testing.T) {
 			Revision int64 `json:"revision"`
 			Settings struct {
 				AllowMediaDeletion bool     `json:"allowMediaDeletion"`
-				TrashRetentionDays int      `json:"trashRetentionDays"`
 				Analysis           []string `json:"analysis"`
 			} `json:"settings"`
 			Matrix struct {
@@ -154,14 +146,14 @@ func TestAdministrationOwnerBoundaryAndLibrarySettingsRoundTrip(t *testing.T) {
 	if read.Result.Revision != 1 || read.Result.Settings.AllowMediaDeletion || len(read.Result.Matrix.Operations) == 0 {
 		t.Fatalf("library document %+v", read.Result)
 	}
-	body := `{"expectedRevision":1,"operationId":"films-settings-1","settings":{"allowMediaDeletion":true,"trashRetentionDays":14,"providers":[],"analysis":["probe","local_metadata"],"navigation":{"trickplayIntervalSeconds":10,"trickplayTileWidth":320,"trickplayMaxTiles":400,"chapterThumbnailMode":"embedded","videoPreviewEnabled":false,"videoPreviewSeconds":30}}}`
+	body := `{"expectedRevision":1,"operationId":"films-settings-1","settings":{"allowMediaDeletion":true,"providers":[],"analysis":["probe","local_metadata"],"navigation":{"trickplayIntervalSeconds":10,"trickplayTileWidth":320,"trickplayMaxTiles":400,"chapterThumbnailMode":"embedded","videoPreviewEnabled":false,"videoPreviewSeconds":30}}}`
 	if w = request("PUT", "/v1/admin/libraries/lib/settings", owner.AccessToken, body); w.Code != 200 {
 		t.Fatalf("write answered %d: %s", w.Code, w.Body.String())
 	}
 	if err = json.Unmarshal(w.Body.Bytes(), &read); err != nil {
 		t.Fatal(err)
 	}
-	if read.Result.Revision <= 1 || !contains(read.Result.Settings.Analysis, "probe") || !contains(read.Result.Settings.Analysis, "local_metadata") || len(read.Result.Settings.Analysis) != 2 || !read.Result.Settings.AllowMediaDeletion || read.Result.Settings.TrashRetentionDays != 14 {
+	if read.Result.Revision <= 1 || !contains(read.Result.Settings.Analysis, "probe") || !contains(read.Result.Settings.Analysis, "local_metadata") || len(read.Result.Settings.Analysis) != 2 || !read.Result.Settings.AllowMediaDeletion {
 		t.Fatalf("document after write %+v", read.Result.Settings)
 	}
 	savedRevision := read.Result.Revision
@@ -177,12 +169,12 @@ func TestAdministrationOwnerBoundaryAndLibrarySettingsRoundTrip(t *testing.T) {
 		t.Fatalf("a replay must not advance the revision: %d", read.Result.Revision)
 	}
 	// A fresh operation at the now-stale revision is a conflict.
-	stale := `{"expectedRevision":1,"operationId":"films-settings-2","settings":{"allowMediaDeletion":true,"trashRetentionDays":21,"providers":[],"analysis":["probe"],"navigation":{"trickplayIntervalSeconds":10,"trickplayTileWidth":320,"trickplayMaxTiles":400,"chapterThumbnailMode":"embedded","videoPreviewEnabled":false,"videoPreviewSeconds":30}}}`
+	stale := `{"expectedRevision":1,"operationId":"films-settings-2","settings":{"allowMediaDeletion":true,"providers":[],"analysis":["probe"],"navigation":{"trickplayIntervalSeconds":10,"trickplayTileWidth":320,"trickplayMaxTiles":400,"chapterThumbnailMode":"embedded","videoPreviewEnabled":false,"videoPreviewSeconds":30}}}`
 	if w = request("PUT", "/v1/admin/libraries/lib/settings", owner.AccessToken, stale); w.Code != 409 {
 		t.Fatalf("stale write answered %d: %s", w.Code, w.Body.String())
 	}
 	// A field-level refusal names the field.
-	bad := `{"expectedRevision":2,"operationId":"invalid-settings-key","settings":{"allowMediaDeletion":false,"trashRetentionDays":99999,"providers":[],"analysis":["probe"],"navigation":{"trickplayIntervalSeconds":10,"trickplayTileWidth":320,"trickplayMaxTiles":400,"chapterThumbnailMode":"nonsense","videoPreviewEnabled":false,"videoPreviewSeconds":30}}}`
+	bad := `{"expectedRevision":2,"operationId":"invalid-settings-key","settings":{"allowMediaDeletion":false,"providers":[],"analysis":["probe"],"navigation":{"trickplayIntervalSeconds":10,"trickplayTileWidth":320,"trickplayMaxTiles":400,"chapterThumbnailMode":"nonsense","videoPreviewEnabled":false,"videoPreviewSeconds":30}}}`
 	w = request("PUT", "/v1/admin/libraries/lib/settings", owner.AccessToken, bad)
 	if w.Code != 400 {
 		t.Fatalf("invalid write answered %d", w.Code)
@@ -196,7 +188,7 @@ func TestAdministrationOwnerBoundaryAndLibrarySettingsRoundTrip(t *testing.T) {
 	if err = json.Unmarshal(w.Body.Bytes(), &failure); err != nil {
 		t.Fatal(err)
 	}
-	if failure.Error.Code != "invalid_administration_input" || len(failure.Error.Fields) != 2 {
+	if failure.Error.Code != "invalid_administration_input" || len(failure.Error.Fields) != 1 {
 		t.Fatalf("failure %+v", failure.Error)
 	}
 	// The delete preview is reachable and reports the library's own policy.

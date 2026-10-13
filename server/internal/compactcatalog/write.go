@@ -646,7 +646,10 @@ func UpsertAssetTx(ctx context.Context, tx *sql.Tx, a Asset) (int64, string, err
 		return 0, "", err
 	}
 	if wasUnavailable {
-		return id, token, touchAssetItems(ctx, tx, id)
+		if err = touchAssetItems(ctx, tx, id); err != nil {
+			return 0, "", err
+		}
+		return id, token, SettleAssetMissingTx(ctx, tx, id)
 	}
 	return id, token, TouchTx(ctx, tx, DomainAssetMetrics, id)
 }
@@ -698,7 +701,13 @@ func SetAssetTx(ctx context.Context, tx *sql.Tx, asset int64, values map[string]
 	if n, _ := res.RowsAffected(); n == 0 {
 		return nil
 	}
-	return touchAssetItems(ctx, tx, asset)
+	if err = touchAssetItems(ctx, tx, asset); err != nil {
+		return err
+	}
+	if _, ok := values["available"]; ok {
+		return SettleAssetMissingTx(ctx, tx, asset)
+	}
+	return nil
 }
 
 // AssetByPathTx returns the asset recorded at path (0 when none).
@@ -732,7 +741,10 @@ func SetAssetAvailableTx(ctx context.Context, tx *sql.Tx, asset int64, available
 	if n, _ := res.RowsAffected(); n == 0 {
 		return nil
 	}
-	return touchAssetItems(ctx, tx, asset)
+	if err = touchAssetItems(ctx, tx, asset); err != nil {
+		return err
+	}
+	return SettleAssetMissingTx(ctx, tx, asset)
 }
 
 func touchAssetItems(ctx context.Context, tx *sql.Tx, asset int64) error {
@@ -744,45 +756,121 @@ func touchAssetItems(ctx context.Context, tx *sql.Tx, asset int64) error {
 	return TouchTx(ctx, tx, DomainAssetMetrics, asset)
 }
 
-// DeleteAssetTx forgets a file: its links go with it, and the items it backed
-// re-derive their availability (an item left with no file is the caller's to
-// delete).
-func DeleteAssetTx(ctx context.Context, tx *sql.Tx, asset int64) error {
-	if err := touchAssetItems(ctx, tx, asset); err != nil {
-		return err
+// A file is present while some place it was last seen still holds it: an
+// inventory record that is neither retired nor missing. A file no inventory
+// knows (a recording, a file catalogued before inventories) is present while
+// it is marked available. A source being offline or unreachable is not
+// absence: nothing under it is missing because the disk is away.
+const presentFileSQL = `(EXISTS(SELECT 1 FROM inventory_objects o WHERE o.asset_id=a.token AND o.retired=0 AND o.state='available')
+ OR (a.available=1 AND NOT EXISTS(SELECT 1 FROM inventory_objects o WHERE o.asset_id=a.token)))`
+
+// SettleMissingTx brings the missing mark of playable titles in step with
+// their files: a title with no present file is marked missing from now (an
+// existing mark keeps its time), and a title with one loses the mark. Every
+// writer that changes which files a title has, or whether a file is present,
+// calls it for the titles concerned.
+func SettleMissingTx(ctx context.Context, tx *sql.Tx, items ...int64) error {
+	for _, item := range items {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM catalog_missing_titles WHERE entity_id=?1
+ AND EXISTS(SELECT 1 FROM catalog_asset_links l JOIN catalog_assets a ON a.id=l.asset_id WHERE l.entity_id=?1 AND `+presentFileSQL+`)`, item); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `INSERT INTO catalog_missing_titles(entity_id,library_id,missing_since_ms)
+ SELECT e.id,e.library_id,?2 FROM catalog_entities e JOIN catalog_kinds k ON k.id=e.kind AND k.playable=1
+ WHERE e.id=?1 AND NOT EXISTS(SELECT 1 FROM catalog_asset_links l JOIN catalog_assets a ON a.id=l.asset_id WHERE l.entity_id=?1 AND `+presentFileSQL+`)
+ ON CONFLICT(entity_id) DO NOTHING`, item, time.Now().UnixMilli()); err != nil {
+			return err
+		}
 	}
-	_, err := tx.ExecContext(ctx, `DELETE FROM catalog_assets WHERE id=?`, asset)
-	return err
+	return nil
 }
 
-// Link is one of an item's physical parts.
+// SettleAssetMissingTx settles the titles a file backs (after the file's
+// presence changed).
+func SettleAssetMissingTx(ctx context.Context, tx *sql.Tx, asset int64) error {
+	items, err := linkedItems(ctx, tx, asset)
+	if err != nil {
+		return err
+	}
+	return SettleMissingTx(ctx, tx, items...)
+}
+
+// DeleteAssetTx forgets a file: its links go with it, and the items it backed
+// re-derive their availability. A title left with no file stays in the
+// catalogue, marked missing.
+func DeleteAssetTx(ctx context.Context, tx *sql.Tx, asset int64) error {
+	items, err := linkedItems(ctx, tx, asset)
+	if err != nil {
+		return err
+	}
+	if err = touchAssetItems(ctx, tx, asset); err != nil {
+		return err
+	}
+	if _, err = tx.ExecContext(ctx, `DELETE FROM catalog_assets WHERE id=?`, asset); err != nil {
+		return err
+	}
+	for _, item := range items {
+		if err = touchLinked(ctx, tx, item); err != nil {
+			return err
+		}
+	}
+	return SettleMissingTx(ctx, tx, items...)
+}
+
+func linkedItems(ctx context.Context, tx *sql.Tx, asset int64) ([]int64, error) {
+	rows, err := tx.QueryContext(ctx, `SELECT entity_id FROM catalog_asset_links INDEXED BY catalog_asset_links_asset WHERE asset_id=?`, asset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []int64
+	for rows.Next() {
+		var id int64
+		if err = rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out = append(out, id)
+	}
+	return out, rows.Err()
+}
+
+// Link is one of an item's physical parts. Files of the same part are
+// versions of one another; Edition labels a version where one is known.
 type Link struct {
 	Part       int
 	Start      float64
 	End        *float64
 	HasSegment bool
+	Edition    string
 }
 
-// LinkAssetTx attaches a file to an item (idempotent).
+// LinkAssetTx attaches a file to an item (idempotent). An empty edition never
+// erases a label an earlier reading gave the version.
 func LinkAssetTx(ctx context.Context, tx *sql.Tx, item, asset int64, l Link) error {
 	var end any
 	if l.End != nil {
 		end = *l.End
 	}
-	res, err := tx.ExecContext(ctx, `INSERT INTO catalog_asset_links(entity_id,asset_id,part_index,available,start_seconds,end_seconds)
- SELECT ?1,?2,?3,a.available,?4,?5 FROM catalog_assets a WHERE a.id=?2
- ON CONFLICT(entity_id,asset_id) DO UPDATE SET part_index=excluded.part_index,start_seconds=excluded.start_seconds,end_seconds=excluded.end_seconds
- WHERE catalog_asset_links.part_index IS NOT excluded.part_index OR catalog_asset_links.start_seconds IS NOT excluded.start_seconds OR catalog_asset_links.end_seconds IS NOT excluded.end_seconds`, item, asset, l.Part, l.Start, end)
+	res, err := tx.ExecContext(ctx, `INSERT INTO catalog_asset_links(entity_id,asset_id,part_index,available,start_seconds,end_seconds,edition)
+ SELECT ?1,?2,?3,a.available,?4,?5,?6 FROM catalog_assets a WHERE a.id=?2
+ ON CONFLICT(entity_id,asset_id) DO UPDATE SET part_index=excluded.part_index,start_seconds=excluded.start_seconds,end_seconds=excluded.end_seconds,
+ edition=CASE WHEN excluded.edition='' THEN catalog_asset_links.edition ELSE excluded.edition END
+ WHERE catalog_asset_links.part_index IS NOT excluded.part_index OR catalog_asset_links.start_seconds IS NOT excluded.start_seconds OR catalog_asset_links.end_seconds IS NOT excluded.end_seconds
+ OR (excluded.edition<>'' AND catalog_asset_links.edition IS NOT excluded.edition)`, item, asset, l.Part, l.Start, end, l.Edition)
 	if err != nil {
 		return err
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
 		return nil
 	}
-	return touchLinked(ctx, tx, item)
+	if err = touchLinked(ctx, tx, item); err != nil {
+		return err
+	}
+	return SettleMissingTx(ctx, tx, item)
 }
 
-// UnlinkAssetTx detaches a file from an item.
+// UnlinkAssetTx detaches a file from an item. An item left with no file stays
+// in the catalogue, marked missing.
 func UnlinkAssetTx(ctx context.Context, tx *sql.Tx, item, asset int64) error {
 	res, err := tx.ExecContext(ctx, `DELETE FROM catalog_asset_links WHERE entity_id=? AND asset_id=?`, item, asset)
 	if err != nil {
@@ -791,7 +879,10 @@ func UnlinkAssetTx(ctx context.Context, tx *sql.Tx, item, asset int64) error {
 	if n, _ := res.RowsAffected(); n == 0 {
 		return nil
 	}
-	return touchLinked(ctx, tx, item)
+	if err = touchLinked(ctx, tx, item); err != nil {
+		return err
+	}
+	return SettleMissingTx(ctx, tx, item)
 }
 
 func touchLinked(ctx context.Context, tx *sql.Tx, item int64) error {

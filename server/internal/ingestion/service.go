@@ -586,3 +586,20 @@ func (s *Service) recoverPolicyChanges(ctx context.Context) {
 		_ = s.PolicyChanged(ctx, id)
 	}
 }
+
+// InterruptLibrary stops every scan of a library that is running in this
+// process (the library was removed).
+func (s *Service) InterruptLibrary(ctx context.Context, library string) {
+	s.mu.Lock()
+	ids := make([]string, 0, len(s.active))
+	for id := range s.active {
+		ids = append(ids, id)
+	}
+	s.mu.Unlock()
+	for _, id := range ids {
+		var owner string
+		if s.db.QueryRowContext(ctx, `SELECT library_id FROM jobs WHERE id=?`, id).Scan(&owner) == nil && owner == library {
+			s.stopActive(id)
+		}
+	}
+}

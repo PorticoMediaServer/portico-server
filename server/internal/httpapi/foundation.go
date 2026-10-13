@@ -613,6 +613,7 @@ func FoundationRegistry(d Dependencies) (*apikit.Registry, error) {
 	registerDownloadRequests(registry, d)
 	registerPlaylistWindows(registry, d)
 	registerCapabilityReport(registry)
+	registerIdentityRoutes(registry, d)
 	// Lane C's /v1/events (886f5011) on the shared contextual registry.
 	err = apikit.Register(registry, apikit.Route[struct{}, eventfeed.Page]{Metadata: apikit.Metadata{
 		ID: "get_events", Method: "GET", Path: "/v1/events", Summary: "Read the authorized event ring by long-poll or server-sent stream", Access: apikit.Device, Lane: apikit.Realtime, Cost: apikit.Constant, Status: 200, SSE: true, Query: []string{"after", "waitSeconds", "topics"}, Errors: []string{"unauthorized", "invalid_request", "invalid_cursor", "event_stream_exists", "stream_unavailable", "internal"},
