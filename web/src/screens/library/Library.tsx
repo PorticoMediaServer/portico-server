@@ -4,7 +4,7 @@ import {useServerPreferences} from '../../app/server-preferences';
 import type {LibraryContentSnapshot} from '@core/library-content.ts';
 import type {BrowseSortSelection} from '@core/browse.ts';
 import {parseBrowseResult} from '@core/browse.ts';
-import {BROWSE_PAGE, decodePredicates, encodePredicates, seeAllPredicates, useBrowseCapabilities, useBrowseCollection, type Predicate} from '../../app/browse';
+import {BROWSE_PAGE, decodePredicates, encodePredicates, seeAllPredicates, useBrowseCapabilities, useBrowseCollection, useShuffled, type Predicate} from '../../app/browse';
 import {listWindowKey} from '../../app/list-position';
 import {BrowseBar} from './BrowseFilters';
 import {EngineResults} from './EngineResults';
@@ -140,11 +140,13 @@ export function LibraryScreen() {
   // The order the tab opens in (Recently aired: the latest episode first) is only where it starts: any
   // sort the server offers can be chosen, and the choice is remembered for the tab.
   const tabSort = useMemo<BrowseSortSelection>(() => libraryTabSort(active, capabilities?.sorts, capabilities?.resolvedPivot?.defaultSort[0]), [active, capabilities]);
-  const sort = useMemo<BrowseSortSelection>(() => {
+  const chosenSort = useMemo<BrowseSortSelection>(() => {
     const chosen = search.sort ? capabilities?.sorts.find(x => x.id === search.sort) : undefined;
     if (search.sort && chosen) return {field: search.sort, direction: search.direction ?? chosen.defaultDirection};
     return tabSort;
   }, [search.sort, search.direction, capabilities, tabSort]);
+  // Random is one shuffle for as long as the app is open (paging and Back read the same one); choosing it again draws another.
+  const sort = useShuffled(chosenSort);
   const browse = useBrowseCollection({libraryId, pivot, predicates, sort, enabled: engine && !!capabilities, pageSize: capabilities ? Math.min(BROWSE_PAGE, capabilities.queryLimits.maximumLimit) : undefined});
   const browseTotal = useSyncExternalStore(browse.collection?.subscribe ?? noSubscribe, () => browse.collection?.getSnapshot().total);
   useSelectionRefresh(engine ? browse.refresh : refresh);
@@ -153,22 +155,22 @@ export function LibraryScreen() {
   // Registering sends nothing; the revision resolves lazily at submit with one
   // tiny browse request, cached per query (a moved set falls back to items).
   const revisionCache = useRef<{key: string; promise: Promise<string | undefined>} | null>(null);
-  const browseTargetKey = engine && pivot && !groups ? `browse:${libraryId}:${pivot}:${search.filters ?? ''}:${JSON.stringify(sort)}` : '';
+  const browseTargetKey = engine && pivot && !groups ? `browse:${libraryId}:${pivot}:${search.filters ?? ''}:${JSON.stringify(chosenSort)}` : '';
   const browseTarget = useMemo<SelectionTarget | undefined>(() => {
     if (!browseTargetKey || !pivot || browseTotal === undefined) return undefined;
     const key = browseTargetKey;
     const resolveRevision = () => {
       const hit = revisionCache.current;
       if (hit && hit.key === key) return hit.promise;
-      const promise = api.request<unknown>(`/v1/libraries/${encodeURIComponent(libraryId)}/browse`, 'POST', {pivot, ...(predicates.length ? {query: {all: predicates}} : {}), sort: [sort], limit: 1, range: {start: 0}}).then(
+      const promise = api.request<unknown>(`/v1/libraries/${encodeURIComponent(libraryId)}/browse`, 'POST', {pivot, ...(predicates.length ? {query: {all: predicates}} : {}), sort: [chosenSort], limit: 1, range: {start: 0}}).then(
         raw => { try { return parseBrowseResult(raw).pageInfo.revision || undefined; } catch { return undefined; } },
         () => undefined,
       );
       revisionCache.current = {key, promise};
       return promise;
     };
-    return {selector: {query: {libraryId, pivot, ...(predicates.length ? {filter: {all: predicates}} : {}), sort: [sort]}}, total: browseTotal, resolveRevision};
-  }, [browseTargetKey, pivot, libraryId, predicates, sort, browseTotal, api]);
+    return {selector: {query: {libraryId, pivot, ...(predicates.length ? {filter: {all: predicates}} : {}), sort: [chosenSort]}}, total: browseTotal, resolveRevision};
+  }, [browseTargetKey, pivot, libraryId, predicates, chosenSort, browseTotal, api]);
   useSelectionQueryTarget(browseTargetKey, browseTarget);
   // MU2: when a scan finishes, refresh once so the titles that arrived appear.
   const finishedSeen = useRef<number | undefined>(undefined);
@@ -256,7 +258,7 @@ export function LibraryScreen() {
       {engine && capabilities ? (
         <Inset>
           <BrowseBar libraryId={libraryId} libraryKind={library?.kind ?? ''} pivot={pivot} capabilities={capabilities} predicates={chosenPredicates} onChange={next => { filtersFromMemory.current = false; memory.rememberTab(libraryId, tab); memory.rememberFilters(libraryId, tab, next); setSearch({filters: encodePredicates(next)}); }} sort={sort} onSort={chooseSort} defaultSort={tabSort} total={browseTotal} onSave={active.fixedFilter || groups ? undefined : () => setSavingView(true)} />
-          <SaveViewDialog open={savingView} onClose={() => setSavingView(false)} onSave={async name => { const service = new PersonalSavedService(api, viewerScope(session, api), () => Promise.resolve(crypto.randomUUID())); try { await service.select({view: 'views'}); await service.mutate({action: 'create', kind: 'view', name, definition: {libraryId, pivot: pivot!, query: predicates.length ? {all: predicates} : null, sort: [sort], presentation: view}}); } finally { service.dispose?.(); } }} />
+          <SaveViewDialog open={savingView} onClose={() => setSavingView(false)} onSave={async name => { const service = new PersonalSavedService(api, viewerScope(session, api), () => Promise.resolve(crypto.randomUUID())); try { await service.select({view: 'views'}); await service.mutate({action: 'create', kind: 'view', name, definition: {libraryId, pivot: pivot!, query: predicates.length ? {all: predicates} : null, sort: [chosenSort], presentation: view}}); } finally { service.dispose?.(); } }} />
         </Inset>
       ) : null}
       {active.shows === 'playlists' ? <LibraryPlaylists sort={search.sort ? {field: search.sort, direction: search.direction ?? 'asc'} : undefined} onSort={chooseSort} /> : null}
