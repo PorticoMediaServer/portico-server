@@ -93,6 +93,7 @@ export const preferenceMessages = {
   'pref.value.music.repeatDefault.all': 'All',
   'pref.label.privacy.pauseWatchHistory': 'Pause watch history',
   'pref.help.privacy.pauseWatchHistory': 'Nothing new is added to your History, watched marks or recommendations while paused. Existing progress still resumes. The server’s owner can still see what was played.',
+  'pref.note.privacy.ownerSeesPlays': 'The owner of this server can always see what is played on it, by whom and on which device. Pausing or clearing your own history does not change that.',
   'pref.label.privacy.showActivityToMembers': 'Show my activity to others on this server',
   'pref.label.privacy.includeInWatchTogether': 'Include me in Watch Together activity',
   'pref.label.search.rememberHistory': 'Remember recent searches',

@@ -549,6 +549,7 @@ func restrictionWriteRoutes() map[string]writeRoute {
 		"POST /v1/hosted/wake":                              writeExempt(reasonNetworking),
 		"POST /v1/direct/members":                           writeExempt("owner member management (admin_access_test); no catalogue ids"),
 		"PATCH /v1/direct/members/{id}":                     writeExempt("owner member management (admin_access_test); no catalogue ids"),
+		"DELETE /v1/direct/members/{id}":                    writeExempt("owner member management (member_deletion_test); no catalogue ids"),
 		"POST /v1/direct/ownership":                         writeExempt(reasonOwnSession),
 		"POST /v1/direct/ownership/custody":                 writeExempt(reasonOwnSession),
 		"POST /v1/direct/password":                          writeExempt(reasonOwnSession),

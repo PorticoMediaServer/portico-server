@@ -265,6 +265,7 @@ func restrictionRoutes() map[string]restrictionRoute {
 		"GET /v1/devices":                               exempt(reasonNoTitles),
 		"GET /v1/direct":                                exempt(reasonNoTitles),
 		"GET /v1/direct/members":                        exempt(reasonAdmin),
+		"GET /v1/direct/members/{id}/deletion-preview":  exempt(reasonAdmin),
 		"GET /v1/direct/pin-recovery":                   exempt(reasonNoTitles),
 		"GET /v1/direct/profiles/avatars":               exempt(reasonNoTitles),
 		"GET /v1/direct/profiles/{id}/deletion-preview": exempt(reasonNoTitles),

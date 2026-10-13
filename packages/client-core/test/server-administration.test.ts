@@ -4,6 +4,7 @@ import {
  parseAccessMember,parseAccessMemberPage,parseLimitsDocument,parseMemberLimits,parseInvitation,parseInvitationPage,
  parseAccessDevicePage,parseAccessAPIKey,parseLogPage,parseLogSettings,parseLogEvent,parseClientLogUploadPage,
  parseConnectivityPolicy,parseConnectivityStatus,grantsTier,managesTier,isAPIKeySecret,apiKeyPrefix,
+ parseMemberDeletionPreview,previewMemberDeletion,deleteMember,
 } from '../src/server-administration.ts';
 
 const limits={maxStreams:1,remoteBitrateKbps:4000,maxContentRating:'PG-13',allowUnrated:true,
@@ -198,4 +199,22 @@ test('connectivity policy: network parity rows parse, with shipped defaults for 
   assert.equal(newer.advertisedInterface, 'br0');
   assert.equal(newer.customCertificateKeyPath, '/certs/key.pem');
   assert.throws(() => parseConnectivityPolicy({...base, pausedSessionTimeoutMinutes: 5000}));
+});
+
+test('member deletion: the preview is read, checked and confirmed with its revision', async () => {
+ const doc={accountId:'acct_1',username:'sam',role:'member',revision:4,porticoAccount:false,profiles:2,devices:3,playlists:1,savedResources:0,playsKept:57};
+ assert.equal(parseMemberDeletionPreview(doc).playsKept, 57);
+ assert.throws(() => parseMemberDeletionPreview({...doc, role: 'superuser'}));
+ assert.throws(() => parseMemberDeletionPreview({...doc, revision: 0}));
+ assert.throws(() => parseMemberDeletionPreview({...doc, profiles: -1}));
+ const calls: {path: string; method?: string; body?: unknown}[] = [];
+ const api={request:async <T,>(path:string,method?:string,body?:unknown):Promise<T>=>{calls.push({path,method,body});return (method==='GET'?doc:undefined) as T;}};
+ const preview=await previewMemberDeletion(api,'acct_1');
+ await deleteMember(api,preview);
+ assert.deepEqual(calls,[
+  {path:'/v1/direct/members/acct_1/deletion-preview',method:'GET',body:undefined},
+  {path:'/v1/direct/members/acct_1',method:'DELETE',body:{expectedRevision:4}},
+ ]);
+ // A preview that answers for a different member is refused rather than confirmed.
+ await assert.rejects(previewMemberDeletion(api,'acct_2'));
 });

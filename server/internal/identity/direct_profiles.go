@@ -491,6 +491,10 @@ func (s *Service) DeleteDirectProfile(ctx context.Context, bearer, id string, ex
 	if _, e = tx.ExecContext(ctx, `UPDATE direct_profiles SET deleted=1,name='Deleted profile',pin_hash=NULL,art='slate',revision=revision+1,pin_revision=pin_revision+1 WHERE id=?`, id); e != nil {
 		return e
 	}
+	// The owner's play history keeps this profile's plays without its name.
+	if e = ForgetPlayHistoryNamesTx(ctx, tx, "local", c.account.ID, id); e != nil {
+		return e
+	}
 	return gated7.Commit()
 }
 

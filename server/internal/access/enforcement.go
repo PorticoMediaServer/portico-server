@@ -181,14 +181,17 @@ func (e *Enforcer) now() time.Time {
 	return time.Now()
 }
 
-// withinSchedule evaluates the access schedule in the member's own timezone. An
+// withinSchedule evaluates the access schedule in its own time zone, or in the
+// server's when it names none. An
 // empty window list means no restriction. A window whose end minute is not after
 // its start wraps past local midnight and is evaluated as two bands.
 func withinSchedule(schedule AccessSchedule, now time.Time) error {
 	if len(schedule.Windows) == 0 {
 		return nil
 	}
-	location := time.UTC
+	// A schedule with no time zone named runs on the server's own clock,
+	// which is what the People screen calls "server time".
+	location := time.Local
 	if schedule.Timezone != "" {
 		if loaded, err := time.LoadLocation(schedule.Timezone); err == nil {
 			location = loaded
