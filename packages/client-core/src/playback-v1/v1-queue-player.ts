@@ -392,7 +392,7 @@ export class V1QueuePlayer implements QueueController {
   }
 
   /**
-   * Changes the quality, version or audio track of what is playing: the live session is
+   * Changes the quality, version, audio track or subtitle track of what is playing: the live session is
    * re-planned at its position and stays the same session on the same entry. A session the
    * server no longer has (its lease lapsed) starts again in place with the choice instead.
    */
@@ -401,7 +401,8 @@ export class V1QueuePlayer implements QueueController {
     if (this.disposed || !session || this.nativeOwns()) return;
     if (choices.quality && !('step' in choices.quality && choices.quality.step)) this.qualityOverride = choices.quality;
     const change: SessionChange = {...(choices.quality ? {quality: choices.quality} : {}), ...(choices.versionId ? {versionId: choices.versionId} : {}), ...(choices.audioTrackId ? {audio: {trackId: choices.audioTrackId}} : {}),
-      ...(choices.subtitleTrackId !== undefined ? {subtitles: {trackId: choices.subtitleTrackId}} : {}), ...(choices.throughputKbps !== undefined ? {throughputKbps: choices.throughputKbps} : {})};
+      ...(choices.subtitleTrackId !== undefined ? {subtitles: {trackId: choices.subtitleTrackId, ...(choices.subtitleTrackId !== null && choices.subtitleDelivery ? {delivery: choices.subtitleDelivery} : {})}} : {}),
+      ...(choices.subtitleTrackId && choices.subtitleOffsetMs !== undefined && Number.isFinite(choices.subtitleOffsetMs) ? {subtitleOffsetMs: Math.round(choices.subtitleOffsetMs)} : {}), ...(choices.throughputKbps !== undefined ? {throughputKbps: choices.throughputKbps} : {})};
     if (!Object.keys(change).length) return;
     const generation = this.generation;
     const live = () => !this.disposed && generation === this.generation && this.session?.id === session.id;

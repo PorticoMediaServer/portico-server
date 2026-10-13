@@ -18,6 +18,13 @@ export type PlaybackChoices = Readonly<{
   audioTrackId?: string;
   /** The subtitle track, by its playback-options id; `null` turns subtitles off. Sent with a change only. */
   subtitleTrackId?: string | null;
+  /** How a styled or image subtitle track is to reach the viewer: `embeddedClient` when this device
+   * draws the kind itself (it is handed the original file and the video is left alone), `burn` to
+   * have it put in the picture. Absent: the server decides from what the device said it draws.
+   * Sent with a change that names a track. */
+  subtitleDelivery?: 'embeddedClient' | 'burn';
+  /** The viewer's subtitle timing correction, in milliseconds. Sent with a change that names a track. */
+  subtitleOffsetMs?: number;
   /** This device's estimate of its connection to the server, sent with a quality change so the server can refuse one the connection cannot carry. */
   throughputKbps?: number;
 }>;

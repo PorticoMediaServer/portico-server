@@ -1,0 +1,47 @@
+/**
+ * The worker that reads image subtitles. It keeps the decoded track; the page asks for one cue's
+ * pictures at a time, a little before they are due, so the page never decodes anything itself.
+ */
+import type {BitmapTrack} from './bitmap.ts';
+import {parseDvb} from './dvb.ts';
+import type {FrameRect, ImageWorkerReply, ImageWorkerRequest} from './image-protocol.ts';
+import {parsePgs} from './pgs.ts';
+import {parseVobSub} from './vobsub.ts';
+
+const scope = self as unknown as {postMessage(message: ImageWorkerReply, transfer?: Transferable[]): void; onmessage: ((event: {data: ImageWorkerRequest}) => void) | null};
+let track: BitmapTrack | null = null;
+let bitmaps = typeof createImageBitmap === 'function' && typeof ImageData === 'function';
+
+async function paint(index: number): Promise<void> {
+  const rects: FrameRect[] = [], transfer: Transferable[] = [];
+  for (const rect of track?.cues[index]?.paint() ?? []) {
+    const placed = {x: rect.x, y: rect.y, width: rect.width, height: rect.height};
+    if (bitmaps) {
+      try {
+        const bitmap = await createImageBitmap(new ImageData(rect.rgba as unknown as Uint8ClampedArray<ArrayBuffer>, rect.width, rect.height));
+        rects.push({...placed, bitmap});
+        transfer.push(bitmap);
+        continue;
+      } catch { bitmaps = false; }
+    }
+    const rgba = rect.rgba.buffer as ArrayBuffer;
+    rects.push({...placed, rgba});
+    transfer.push(rgba);
+  }
+  scope.postMessage({type: 'frame', index, rects}, transfer);
+}
+
+scope.onmessage = event => {
+  const message = event.data;
+  try {
+    if (message.type === 'load') {
+      const data = new Uint8Array(message.data);
+      track = message.kind === 'pgs' ? parsePgs(data) : message.kind === 'vobsub' ? parseVobSub(message.index ?? '', data) : parseDvb(data);
+      if (!track.cues.length || !track.width || !track.height) { scope.postMessage({type: 'failed', message: 'This subtitle has no pictures that can be shown.'}); return; }
+      const starts = Float64Array.from(track.cues, cue => cue.startMs), ends = Float64Array.from(track.cues, cue => cue.endMs);
+      scope.postMessage({type: 'ready', width: track.width, height: track.height, starts, ends, skipped: track.skipped}, [starts.buffer, ends.buffer]);
+    } else if (message.type === 'paint') void paint(message.index).catch(() => scope.postMessage({type: 'frame', index: message.index, rects: []}));
+  } catch (error) {
+    scope.postMessage({type: 'failed', message: error instanceof Error ? error.message : 'This subtitle could not be read.'});
+  }
+};
