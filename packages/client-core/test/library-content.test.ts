@@ -484,3 +484,17 @@ test('everything read so far is one list per section: later pages append, More w
   assert.equal(nav.getSnapshot().appended[1], untouched, 'a section that did not change is the same object');
   assert.equal(nav.getSnapshot().appended[0].nextCursor, '', 'the section continues from where the person was (its end)');
 });
+
+
+test('author and series heroes are exact entities in their own library',async()=>{
+ for(const view of ['author','book_series'] as const){
+  const target:ContentRoute={libraryId:'books',view,entityId:'group'};
+  for(const change of [null,{id:'other'},{libraryId:'private'},{kind:'book'}]){
+   const nav=service(async path=>projection(path,{entity:{id:'group',libraryId:'books',kind:view,title:'Writer',...change},sections:[]}));
+   await nav.select(target);
+   assert.equal(nav.getSnapshot().phase,change===null?'ready':'error');
+   if(change===null)assert.equal(nav.getSnapshot().projection?.entity?.title,'Writer');
+   nav.dispose();
+  }
+ }
+});

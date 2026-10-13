@@ -154,6 +154,18 @@ try{
    const state=await driver.evaluate(`({nonce:document.querySelector('meta[name="portico-style-nonce"]').content,global:window.__webpack_nonce__,overflow:getComputedStyle(document.body).overflow,accepted:[...document.querySelectorAll('style')].some(s=>s.nonce&&s.sheet)})`);
    assert.equal(state.nonce,state.global);assert.equal(state.overflow,'hidden');assert(state.accepted);await driver.clickText('Cancel','[role="dialog"] button');return state;
   });
+  let keySecret;
+  await step('desktop-api-key-issued',async()=>{
+   await driver.clickText('Create a key');await driver.waitFor(`document.querySelector('[role="dialog"] input')`);await driver.fill('[role="dialog"] input','Browser integration key');await pause(120);await driver.clickText('Create','[role="dialog"] button');await driver.waitFor(`document.querySelector('[role="dialog"] textarea')`);
+   keySecret=await driver.evaluate(`document.querySelector('[role="dialog"] textarea').value`);
+   const read=await fetch(base+'/v1/libraries',{headers:{Authorization:'Bearer '+keySecret}});assert.equal(read.status,200);
+   await driver.screenshot('desktop-api-key-secret');await driver.clickText('I’ve copied it');await driver.waitFor(`!document.querySelector('[role="dialog"]')`);return {created:true,readScopeWorks:true};
+  });
+  await step('desktop-api-key-revoked',async()=>{
+   await driver.waitFor(`document.body.innerText.includes('Browser integration key')`);await driver.clickText('Revoke');await driver.waitFor(`document.querySelector('[role="dialog"]')`);await driver.clickText('Revoke','[role="dialog"] button');await driver.waitFor(`!document.querySelector('[role="dialog"]')`);
+   if(keySecret){const denied=await fetch(base+'/v1/libraries',{headers:{Authorization:'Bearer '+keySecret}});assert.equal(denied.status,401);}
+   return {revoked:true};
+  });
   await step('desktop-untrusted-style-refused',async()=>{
    const refused=await driver.evaluate(`(()=>{const style=document.createElement('style');style.textContent='.portico-csp-probe {color:rgb(1, 2, 3)}';document.head.append(style);const denied=!style.sheet;style.remove();return denied;})()`);
    assert(refused);return {arbitraryInlineStyleBlocked:true,expectedPolicyViolation:true};
@@ -172,16 +184,19 @@ try{
   for(const [viewport,width,height] of [['desktop',1440,1000],['phone',390,844]]){
    await driver.viewport(width,height);
    await step(viewport+'-profile-switched',async()=>{
+    const eventStart=driver.events.length;
     await driver.clickSelector(viewport==='desktop'?'button[class*="avatarItem"]':'button[class*="topAvatar"]');await driver.waitFor(`document.querySelector('[role="menuitem"]')`);await driver.clickText('Switch profile…','[role="menuitem"]');
     await driver.waitFor(`document.querySelector('[role="dialog"]')?.innerText.includes('Browser Viewer')`);
     const option=await driver.evaluate(`[...document.querySelectorAll('[role="dialog"] button')].find(b=>b.innerText.includes('Browser Viewer')).innerText.trim()`);await driver.clickText(option,'[role="dialog"] button');
     await driver.waitFor(`!document.querySelector('[role="dialog"]')`);await pause(450);
     await go('/settings/profile');await driver.waitFor(`document.body.innerText.includes('Browser Viewer')`);
     assert(!await driver.evaluate(`document.body.innerText.includes('Two-step verification')||document.body.innerText.includes('Change password')`),'Secondary profiles must not receive account-management controls');
-    assert(!driver.events.slice(-12).some(e=>e.kind==='http'&&e.status===403),'Profile switch must not send forbidden account requests');
+    assert(!driver.events.slice(eventStart).some(e=>e.kind==='http'&&e.status===403),'Profile switch must not send forbidden account requests');
     await driver.screenshot(viewport+'-viewer-profile');
     await driver.clickSelector(viewport==='desktop'?'button[class*="avatarItem"]':'button[class*="topAvatar"]');await driver.clickText('Switch profile…','[role="menuitem"]');await driver.waitFor(`document.querySelector('[role="dialog"]')?.innerText.includes('Browser Viewer')`);
     const owner=await driver.evaluate(`[...document.querySelectorAll('[role="dialog"] button')].find(b=>b.innerText.includes(${JSON.stringify(credentials.username)})).innerText.trim()`);await driver.clickText(owner,'[role="dialog"] button');await driver.waitFor(`!document.querySelector('[role="dialog"]')`);
+    await pause(450);
+    assert(!driver.events.slice(eventStart).some(e=>e.kind==='http'&&e.status===403),'Returning from another profile must respect the server account grant');
     return {switchedToViewerAndBack:true};
    });
   }

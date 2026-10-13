@@ -10,6 +10,9 @@ import (
 // An album cover is never inferred from whichever track happens to sort first.
 func (s *Service) listeningEntity(r ContentRequest, title string) (*ContentEntry, error) {
 	kind, id := r.View, r.EntityID
+	if kind == "author" || kind == "book_series" {
+		return &ContentEntry{ID: id, Kind: kind, LibraryID: r.Library, Title: title}, nil
+	}
 	if kind != "artist" && kind != "album" && kind != "book" && kind != "disc" {
 		return nil, nil
 	}

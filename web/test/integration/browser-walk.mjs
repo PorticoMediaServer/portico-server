@@ -33,7 +33,7 @@ try {
    await pause(900);
    const screen=await driver.inspect();
    const screenshot=await driver.screenshot(viewport+'-'+name);
-   const failed=/Something went wrong|couldn.t open|Unable to|Try again|Loading…/.test(screen.text) || !screen.text.trim();
+   const failed=/Something went wrong|couldn.t open|Unable to|Try again|Loading…/.test(screen.text) || !(screen.mainText ?? screen.text).trim() || driver.events.slice(before).some(e=>e.kind==='exception'||e.kind==='http');
    const result={viewport,name,route,screenshot,status:failed?'review':'rendered',screen,events:driver.events.slice(before)};
    results.push(result);
    writeFileSync(path.join(output,'walk-results.json'),JSON.stringify(results,null,2));
@@ -41,3 +41,5 @@ try {
   }
  }
 } finally { driver.close(); }
+
+if(results.some(r=>r.status==='review'))process.exitCode=1;

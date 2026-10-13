@@ -41,6 +41,9 @@ func TestAuthorBrowseAndBookContextOpenTheSameAuthor(t *testing.T) {
 	if err != nil || len(page.Sections) != 1 || len(page.Sections[0].Entries) != 1 || page.Sections[0].Entries[0].ID != book.Public {
 		t.Fatalf("browse author opens its book: %+v, %v", page, err)
 	}
+	if page.Entity == nil || page.Entity.ID != authorID || page.Entity.Title != "Élodie Author" {
+		t.Fatalf("author hero stays in loading state: %+v", page.Entity)
+	}
 	listing := base
 	listing.View = "authors"
 	page, err = s.Content(listing)

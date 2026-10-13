@@ -38,7 +38,7 @@ function SettingsFrame({address}: {address?: string}) {
   const server = useServerPreferences();
   const downloads = useDownloads();
   const local = session.session?.viewer.authority === 'local';
-  const primary = local && !!session.local?.profiles.some(p => p.primary && p.id === session.session?.viewer.profileId);
+  const manageAccount = local && !!session.local?.canManage && session.local.managementFamily === session.session?.sessionFamilyId;
   const registry = server.snapshot?.registry;
   const structure = useMemo(() => settingsStructure({
     owner: session.owner,
@@ -46,20 +46,20 @@ function SettingsFrame({address}: {address?: string}) {
     capabilities: {
       ...(registry ? {preferenceKeys: new Set(registry.fields.map(f => f.key))} : {}),
       localAccount: local,
-      manageSignIn: primary && !session.local?.hostedAccountId,
-      manageDevices: primary,
+      manageSignIn: manageAccount && !session.local?.hostedAccountId,
+      manageDevices: manageAccount,
       porticoMember: local && !!session.local?.hostedAccountId,
       hostedAccount: !!session.hosted,
       downloads: !downloads.state.unavailable,
       // The devices list (and renaming this browser in it) is the server account's.
-      deviceName: primary,
+      deviceName: manageAccount,
       // The owner makes API keys under Server › Integrations; everyone else makes personal tokens.
       accessTokens: !!session.session && !session.owner,
       // A browser decodes sound itself and never hands it on undecoded; HDR is offered where the screen shows it.
       audioPassthrough: false,
       hdr: hdrScreen(),
     },
-  }), [session.owner, session.session, registry, local, primary, session.local?.hostedAccountId, session.hosted, downloads.state.unavailable]);
+  }), [session.owner, session.session, registry, local, manageAccount, session.local?.hostedAccountId, session.local?.canManage, session.local?.managementFamily, session.hosted, downloads.state.unavailable]);
   const [query, setQuery] = useState('');
   const matches = useMemo(() => searchSettings(structure, query, t), [structure, query, t]);
   const current = address || !narrow ? findSettingsPage(structure, address) : undefined;

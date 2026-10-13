@@ -106,7 +106,7 @@ export class ChromeDriver {
     return this.evaluate(`(() => {const el = document.querySelector(${JSON.stringify(selector)}); if (!el) throw new Error('Input not found'); const proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : el.tagName === 'SELECT' ? HTMLSelectElement.prototype : HTMLInputElement.prototype; Object.getOwnPropertyDescriptor(proto, 'value').set.call(el, ${JSON.stringify(value)}); el.dispatchEvent(new Event('input', {bubbles:true})); el.dispatchEvent(new Event('change', {bubbles:true})); return true;})()`);
   }
   async inspect() {
-    return this.evaluate(`({url:location.href, title:document.title, text:document.body.innerText, controls:[...document.querySelectorAll('input,select,button,a,[role="tab"]')].filter(e=>e.getClientRects().length).map(e=>({tag:e.tagName,type:e.type,id:e.id,text:e.innerText,aria:e.getAttribute('aria-label'),placeholder:e.placeholder,href:e.getAttribute('href'),value:e.type==='password'?'[redacted]':e.value,disabled:e.disabled}))})`);
+    return this.evaluate(`({url:location.href, title:document.title, text:document.body.innerText, mainText:document.querySelector('main')?.innerText, controls:[...document.querySelectorAll('input,select,button,a,[role="tab"]')].filter(e=>e.getClientRects().length).map(e=>({tag:e.tagName,type:e.type,id:e.id,text:e.innerText,aria:e.getAttribute('aria-label'),placeholder:e.placeholder,href:e.getAttribute('href'),value:e.type==='password'?'[redacted]':e.value,disabled:e.disabled}))})`);
   }
   close() { this.ws.close(); }
 }
