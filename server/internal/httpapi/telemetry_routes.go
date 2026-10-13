@@ -310,5 +310,5 @@ func (s *telemetryService) register(mux *http.ServeMux, pattern string, query []
 }
 
 func telemetryScope(d Dependencies, p identity.Principal) map[string]string {
-	return map[string]string{"serverId": d.Identity.ID(), "viewerFence": fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprintf("%s:%d", p.Hash, p.Epoch))))}
+	return map[string]string{"serverId": d.Identity.ID(), "viewerFence": fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprintf("%s:%d", presentationIdentity(p), p.Epoch))))}
 }

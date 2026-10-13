@@ -11,6 +11,12 @@ import (
 	"time"
 )
 
+// presentationIdentity binds documents to the server and viewer, independently
+// of access-token rotation. Authorization still uses the current token hash.
+func presentationIdentity(p identity.Principal) string {
+	return p.ServerID + ":" + identity.PersonalKey(p.Viewer)
+}
+
 func viewerScope(p identity.Principal) string {
 	return p.Authority + ":" + p.AccountID + ":" + p.ProfileID
 }
@@ -67,7 +73,7 @@ func (d Dependencies) discoveryRoutes(mux *http.ServeMux) {
 				return
 			}
 		}
-		fence := fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprintf("%s:%d:%d:%d", p.Hash, p.Epoch, policy, restriction))))
+		fence := fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprintf("%s:%d:%d:%d", presentationIdentity(p), p.Epoch, policy, restriction))))
 		restrictions, _, err := d.viewerRestrictions(r, p)
 		if err != nil {
 			failure(w, err)

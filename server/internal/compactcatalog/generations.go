@@ -12,6 +12,7 @@ import (
 var ServingTables = []string{
 	"catalog_browse_rows", "catalog_browse_blocks", "catalog_browse_buckets",
 	"catalog_browse_counted_rows", "catalog_browse_memberships", "catalog_browse_member_metrics",
+	"catalog_movie_category_members", "catalog_movie_category_summaries",
 	"catalog_home_buckets", "catalog_item_availability", "catalog_facet_counts", "catalog_related_facets",
 }
 
@@ -22,11 +23,35 @@ var servingNames = func() *strings.Replacer {
 	}
 	return strings.NewReplacer(pairs...)
 }()
-var servingIndex = regexp.MustCompile(`\s+INDEXED BY (?:catalog_browse_[a-z_]+|catalog_home_[a-z_]+|catalog_related_[a-z_]+|catalog_facet_[a-z_]+)`)
+var servingIndex = regexp.MustCompile(`\s+INDEXED BY (?:catalog_browse_[a-z_]+|catalog_home_[a-z_]+|catalog_related_[a-z_]+|catalog_facet_[a-z_]+|catalog_movie_category_[a-z_]+)`)
 
 // ServingSQL is used only by catalogue readers. Workers keep writing the new
 // generation; SQL views select the serving generation in the reader's snapshot.
+var browseReadAliases = regexp.MustCompile(`(?i)\b(?:FROM|JOIN)\s+catalog_browse_rows(?:\s+(?:AS\s+)?([a-z_][a-z_0-9]*))?`)
+
 func ServingSQL(query string) string {
+	// Compound serving views can merge their two indexed runs only when ORDER
+	// BY names output columns. Normalize these equivalent expressions to the
+	// view's computed columns, preserving the original indexes and collation.
+	aliases := browseReadAliases.FindAllStringSubmatch(query, -1)
+	for _, match := range aliases {
+		alias := match[1]
+		switch strings.ToLower(alias) {
+		case "where", "join", "left", "inner", "indexed", "order", "group", "limit", "union", "":
+			alias = ""
+		}
+		prefix := alias
+		if prefix != "" {
+			prefix += "."
+		}
+		query = strings.NewReplacer(
+			prefix+"sort_key COLLATE NOCASE", prefix+"sort_key",
+			"lower("+prefix+"sort_key)", prefix+"sort_key",
+			"COALESCE("+prefix+"added_text,'')", prefix+"order_added",
+			"COALESCE("+prefix+"duration_max,0)", prefix+"order_duration",
+			"COALESCE("+prefix+"rating_max,0)", prefix+"order_rating",
+		).Replace(query)
+	}
 	return servingNames.Replace(servingIndex.ReplaceAllString(query, ""))
 }
 
@@ -49,7 +74,7 @@ func SearchServingSQL(ctx context.Context, q ReadQuery, query string) (string, e
 }
 
 func beginGeneration(ctx context.Context, tx *sql.Tx) error {
-	_, err := tx.ExecContext(ctx, `UPDATE catalog_generations SET generation=generation+1,retaining=1 WHERE singleton=1 AND retaining=0 AND EXISTS(SELECT 1 FROM catalog_browse_rows)`)
+	_, err := tx.ExecContext(ctx, `UPDATE catalog_generations SET generation=generation+1,retaining=1 WHERE singleton=1 AND retaining=0 AND EXISTS(SELECT 1 FROM catalog_browse_rows WHERE entity_id>0)`)
 	return err
 }
 

@@ -27,7 +27,7 @@ func registerFreshnessRoutes(registry *apikit.Registry, d Dependencies) {
 		if _, err := d.owner(r); err != nil {
 			return out, foundationAuthError(err)
 		}
-		rows, err := d.DB.QueryContext(ctx, `SELECT f.domain,COALESCE(pid(e.public_id),''),COALESCE(e.title,''),f.reason,f.attempts,f.failed_ms FROM catalog_derivation_failures f LEFT JOIN catalog_entities e ON e.id=f.entity_id ORDER BY f.failed_ms DESC,f.domain,f.entity_id LIMIT 101`)
+		rows, err := d.DB.QueryContext(ctx, `SELECT f.domain,COALESCE(pid(e.public_id),''),COALESCE(e.title,''),f.reason,f.attempts,f.failed_ms FROM catalog_derivation_failures f LEFT JOIN catalog_entities e ON e.id=f.entity_id AND f.domain NOT IN(26,28,29) ORDER BY f.failed_ms DESC,f.domain,f.entity_id LIMIT 101`)
 		if err != nil {
 			return out, err
 		}

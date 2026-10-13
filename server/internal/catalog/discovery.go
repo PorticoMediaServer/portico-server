@@ -297,7 +297,7 @@ func (s *Service) Categories(viewer Viewer, library string) ([]Category, error) 
 			return nil, err
 		}
 		if !ready {
-			return nil, ErrVisibilityBuilding
+			return []Category{}, nil
 		}
 		return s.compactMovieCategoriesForClass(library, key, generation)
 	}

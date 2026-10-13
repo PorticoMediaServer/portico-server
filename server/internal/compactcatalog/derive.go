@@ -363,7 +363,7 @@ func (w *Worker) retryDue() bool {
 }
 
 // workable is the next domain with work the Worker can finish: queued ids that
-// are not set aside, or a rebuild that is not stalled behind one. A domain
+// are not set aside, or a rebuild with more source ids. A domain
 // with neither waits behind the step workers. It answers -1 when there is none.
 func (w *Worker) workable(ctx context.Context, tx *sql.Tx) (int, int, error) {
 	const next = `SELECT domain,rebuilding FROM catalog_derivations st WHERE rebuilding=1
@@ -434,7 +434,7 @@ func Drain(ctx context.Context, db *sql.DB) error {
 
 // drainDomain runs one batch of a domain. retry is the turn of what was set
 // aside for failing: one id, the next in the domain's rotation, and after the
-// last of them the rebuild that stalled behind one. It reports the id of a
+// last of them it resumes source enumeration. It reports the id of a
 // batch of one and whether the batch came from rebuild enumeration.
 func (w *Worker) drainDomain(ctx context.Context, tx *sql.Tx, domain, rebuilding, limit int, retry bool) (int, int64, bool, error) {
 	d, ok := derivation(domain)
@@ -444,13 +444,13 @@ func (w *Worker) drainDomain(ctx context.Context, tx *sql.Tx, domain, rebuilding
 			return 0, 0, false, err
 		}
 		if cleaning == 1 {
-			ids, err := scanIDs(ctx, tx, searchTables(`SELECT entity_id FROM catalog_search_documents ORDER BY entity_id LIMIT ?`, 1-slot), limit)
+			ids, err := scanIDs(ctx, tx, searchTables(`SELECT entity_id FROM catalog_search_documents WHERE entity_id>? ORDER BY entity_id LIMIT ?`, 1-slot), 0, limit)
 			if err != nil {
 				return 0, 0, false, err
 			}
 			if len(ids) > 0 {
 				raw := mustJSON(ids)
-				for _, query := range []string{`INSERT INTO catalog_search_titles(catalog_search_titles,rowid,title,kind) SELECT 'delete',entity_id,title,kind FROM catalog_search_documents WHERE entity_id IN(SELECT value FROM json_each(?))`, `DELETE FROM catalog_search_documents WHERE entity_id IN(SELECT value FROM json_each(?))`} {
+				for _, query := range []string{`DELETE FROM catalog_search_documents WHERE entity_id IN(SELECT value FROM json_each(?))`} {
 					if _, err = tx.ExecContext(ctx, searchTables(query, 1-slot), raw); err != nil {
 						return 0, 0, false, err
 					}

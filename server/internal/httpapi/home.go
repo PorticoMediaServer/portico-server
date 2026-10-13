@@ -74,7 +74,7 @@ func (d Dependencies) homeScopeFor(r *http.Request, p identity.Principal) ([]str
 		if e != nil {
 			return e
 		}
-		fence = fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprintf("%s:%d:%d:%d:%s:%s", p.Hash, p.Epoch, policy, restriction, raw, contentFence))))
+		fence = fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprintf("%s:%d:%d:%d:%s:%s", presentationIdentity(p), p.Epoch, policy, restriction, raw, contentFence))))
 		return nil
 	}
 	if d.DB == nil {

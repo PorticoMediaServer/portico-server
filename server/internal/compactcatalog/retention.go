@@ -130,14 +130,16 @@ func PruneTx(ctx context.Context, tx *sql.Tx, limit int) (bool, error) {
 }
 
 var previousKeys = map[string]string{
-	"catalog_browse_rows":           "entity_id",
-	"catalog_browse_blocks":         "library_id,kind,ordering,sort_value,entity_id",
-	"catalog_browse_buckets":        "library_id,kind,container,axis,value,rating_key,label_key",
-	"catalog_browse_counted_rows":   "entity_id",
-	"catalog_browse_memberships":    "entity_id,item_id,source",
-	"catalog_browse_member_metrics": "entity_id,item_id,source",
-	"catalog_home_buckets":          "library_id,kind,available,recent,backdrop,rating_key,label_key,dated,retired",
-	"catalog_item_availability":     "entity_id",
-	"catalog_facet_counts":          "library_id,field,value,rating_key,label_key",
-	"catalog_related_facets":        "entity_id,relation,provider,facet_id",
+	"catalog_movie_category_summaries": "library_id,kind,value",
+	"catalog_movie_category_members":   "library_id,kind,value,item_id",
+	"catalog_browse_rows":              "entity_id",
+	"catalog_browse_blocks":            "library_id,kind,ordering,sort_value,entity_id",
+	"catalog_browse_buckets":           "library_id,kind,container,axis,value,rating_key,label_key",
+	"catalog_browse_counted_rows":      "entity_id",
+	"catalog_browse_memberships":       "entity_id,item_id,source",
+	"catalog_browse_member_metrics":    "entity_id,item_id,source",
+	"catalog_home_buckets":             "library_id,kind,available,recent,backdrop,rating_key,label_key,dated,retired",
+	"catalog_item_availability":        "entity_id",
+	"catalog_facet_counts":             "library_id,field,value,rating_key,label_key",
+	"catalog_related_facets":           "entity_id,relation,provider,facet_id",
 }

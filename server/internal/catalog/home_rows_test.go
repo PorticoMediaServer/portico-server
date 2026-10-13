@@ -571,12 +571,12 @@ func TestHomeRowPagingAnchorAfterPublication(t *testing.T) {
 		t.Fatal("anchor did not re-resolve after publication", anchored.Start, anchored.Entries, anchored.Total)
 	}
 	settleCompact(t, db)
-	if _, e = service.HomeSingleRow(request, "recent_movies", HomeRowPage{Limit: 2, Cursor: row.NextCursor}); !errors.Is(e, ErrStaleContinuation) {
-		t.Fatal("cursor survived a publication", e)
+	if _, e = service.HomeSingleRow(request, "recent_movies", HomeRowPage{Limit: 2, Cursor: row.NextCursor}); e != nil {
+		t.Fatal("cursor did not re-anchor after publication", e)
 	}
 	settleCompact(t, db)
-	if _, e = service.HomeSingleRow(request, "recent_movies", HomeRowPage{Limit: 2, Revision: "1:1"}); !errors.Is(e, ErrStaleContinuation) {
-		t.Fatal("a mismatched revision was accepted", e)
+	if _, e = service.HomeSingleRow(request, "recent_movies", HomeRowPage{Limit: 2, Revision: "1:1"}); e != nil {
+		t.Fatal("a stale revision did not refresh quietly", e)
 	}
 }
 

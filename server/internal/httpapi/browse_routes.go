@@ -50,7 +50,7 @@ func (d Dependencies) browseFence(r *http.Request, p identity.Principal) (string
 	if e != nil {
 		return "", e
 	}
-	return fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprintf("%s:%d:%d:%d:%s", p.Hash, p.Epoch, policy, restriction, contentFence)))), nil
+	return fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprintf("%s:%d:%d:%d:%s", presentationIdentity(p), p.Epoch, policy, restriction, contentFence)))), nil
 }
 
 func (d Dependencies) browseLibrary(w http.ResponseWriter, r *http.Request) (identity.Principal, bool) {
@@ -171,7 +171,7 @@ func (d Dependencies) browseRoutes(mux *http.ServeMux) {
 		// keyed on the restriction fence inside the service. The validator says
 		// the same thing to the client.
 		if revision, revisionErr := d.Catalog.WithContext(r.Context()).ContentRevision(r.PathValue("id"), identity.PersonalKey(p.Viewer)); revisionErr == nil {
-			tag := responseTag("facets", r.PathValue("id"), p.Hash, restrictionFence, q.Get("field"), q.Get("q"), strconv.Itoa(limit), number(revision.Catalog), number(revision.Viewer))
+			tag := responseTag("facets", r.PathValue("id"), presentationIdentity(p), restrictionFence, q.Get("field"), q.Get("q"), strconv.Itoa(limit), number(revision.Catalog), number(revision.Viewer))
 			if conditional(w, r, tag) {
 				return
 			}

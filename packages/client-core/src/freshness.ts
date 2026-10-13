@@ -2,18 +2,18 @@ import type {ServerEvent} from './playback-v1/types.ts';
 import type {EventsClient} from './playback-v1/events.ts';
 
 /** Counters are decimal strings; compare them as BigInt, never floating point. */
-export type FreshnessCounters = Readonly<{content?: string; contentOrder?: string; personal?: string; observation?: string}>;
-export type FreshnessChange = Readonly<{type: 'library.changed' | 'libraries.changed' | 'personal.changed' | 'progress.changed' | 'settings.changed'; resourceId: string; counters: FreshnessCounters}>;
+export type FreshnessCounters = Readonly<{directory?: string; content?: string; contentOrder?: string; personal?: string; observation?: string}>;
+export type FreshnessChange = Readonly<{type: 'library.changed' | 'libraries.changed' | 'personal.changed' | 'progress.changed' | 'settings.changed'; resourceId: string; revision?: string; counters: FreshnessCounters}>;
 const types = new Set(['library.changed', 'libraries.changed', 'personal.changed', 'progress.changed', 'settings.changed']);
 export function parseFreshnessChange(event: ServerEvent): FreshnessChange | undefined {
   if (!types.has(event.type) || !event.resource?.id) return undefined;
   const data = event.data && typeof event.data === 'object' ? event.data as Record<string, unknown> : {};
   const counters: Record<string, string> = {};
-  for (const key of ['content', 'contentOrder', 'personal', 'observation']) {
+  for (const key of ['directory', 'content', 'contentOrder', 'personal', 'observation']) {
     const value = data[key];
     if (typeof value === 'string' && /^\d{1,20}$/.test(value)) counters[key] = value;
   }
-  return {type: event.type as FreshnessChange['type'], resourceId: event.resource.id, counters};
+  return {type: event.type as FreshnessChange['type'], resourceId: event.resource.id, revision:event.revision, counters};
 }
 
 /** Features share the existing device feed; this helper opens no connection. */

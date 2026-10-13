@@ -18,7 +18,7 @@ func (d Dependencies) adminRequest(r *http.Request, kind string) (catalog.AdminR
 	if e != nil {
 		return catalog.AdminRequest{}, e
 	}
-	out := catalog.AdminRequest{ServerID: d.Identity.ID(), Profile: identity.PersonalKey(p.Viewer), ViewerFence: fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprintf("%s:%d", p.Hash, p.Epoch)))), Limit: 40, LibraryID: r.PathValue("id")}
+	out := catalog.AdminRequest{ServerID: d.Identity.ID(), Profile: identity.PersonalKey(p.Viewer), ViewerFence: fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprintf("%s:%d", presentationIdentity(p), p.Epoch)))), Limit: 40, LibraryID: r.PathValue("id")}
 	for key, values := range r.URL.Query() {
 		if len(values) != 1 {
 			return out, catalog.ErrAdminQuery

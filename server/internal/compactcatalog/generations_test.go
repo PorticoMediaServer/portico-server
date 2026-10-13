@@ -3,6 +3,7 @@ package compactcatalog
 import (
 	"context"
 	"database/sql"
+	"strings"
 	"testing"
 )
 
@@ -93,5 +94,64 @@ func TestRetentionKeepsReferencedTerms(t *testing.T) {
 	}
 	if n := cc1Scalar(t, db, `SELECT count(*) FROM catalog_terms WHERE key='unused'`); n != 0 {
 		t.Fatal("unused vocabulary retained")
+	}
+}
+
+func TestFirstSearchBuildServesEachCommittedBatch(t *testing.T) {
+	db := cc1OpenDB(t, "first-generation.sqlite")
+	library := cc1Library(t, db, "films", "Films", "movie", "/films")
+	cc1Entity(t, db, Entity{Library: library, Kind: Movie, Key: "one", Title: "First"}, nil)
+	cc1Entity(t, db, Entity{Library: library, Kind: Movie, Key: "two", Title: "Second"}, nil)
+	w := NewWorker(db)
+	if _, err := w.Step(context.Background(), 1); err != nil {
+		t.Fatal(err)
+	}
+	if n := cc1Scalar(t, db, `SELECT count(*) FROM catalog_search_titles WHERE catalog_search_titles MATCH 'First'`); n != 1 {
+		t.Fatal("first committed batch unavailable")
+	}
+	if n := cc1Scalar(t, db, `SELECT rebuilding FROM catalog_derivations WHERE domain=17`); n != 1 {
+		t.Fatal("fixture did not leave the build running")
+	}
+}
+
+func TestRetainedBrowseRowsKeepIndexedOrder(t *testing.T) {
+	db, _ := failingFixture(t, "generation-indexes.sqlite")
+	for _, order := range []struct{ expression, index string }{
+		{"e.sort_key COLLATE NOCASE", "title"},
+		{"COALESCE(e.added_text,'')", "added"},
+		{"e.year", "year"},
+		{"COALESCE(e.duration_max,0)", "duration"},
+		{"COALESCE(e.rating_max,0)", "rating"},
+	} {
+		t.Run(order.index, func(t *testing.T) {
+			query := ServingSQL(`SELECT ce.public_id,e.entity_id,e.title,e.year,COALESCE(e.added_text,''),e.sort_key,COALESCE(e.duration_max,0),COALESCE(e.rating_max,0) FROM catalog_browse_rows e JOIN catalog_entities ce ON ce.id=e.entity_id WHERE e.library_id=? AND e.kind=? ORDER BY ` + order.expression + `,e.entity_id LIMIT 20`)
+			rows, err := db.Query(`EXPLAIN QUERY PLAN `+query, 1, 1)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer rows.Close()
+			previousIndex := false
+			var plans []string
+			for rows.Next() {
+				var a, b, c int
+				var detail string
+				if err = rows.Scan(&a, &b, &c, &detail); err != nil {
+					t.Fatal(err)
+				}
+				plans = append(plans, detail)
+				if strings.Contains(detail, "USE TEMP B-TREE") {
+					t.Fatalf("browse order materializes the generation: %v", plans)
+				}
+				if strings.Contains(detail, "catalog_browse_"+order.index+"_previous") {
+					previousIndex = true
+				}
+			}
+			if err = rows.Err(); err != nil {
+				t.Fatal(err)
+			}
+			if !previousIndex {
+				t.Fatalf("retained generation did not use its order index: %v", plans)
+			}
+		})
 	}
 }

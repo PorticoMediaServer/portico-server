@@ -166,7 +166,7 @@ func (d Dependencies) writeRepairState(w http.ResponseWriter, r *http.Request, c
 		return
 	}
 	out.Server = d.Identity.ID()
-	out.ViewerFence = fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprintf("%s:%d", p.Hash, p.Epoch))))
+	out.ViewerFence = fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprintf("%s:%d", presentationIdentity(p), p.Epoch))))
 	write(w, 200, out)
 }
 

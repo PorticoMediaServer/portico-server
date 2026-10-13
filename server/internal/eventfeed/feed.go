@@ -20,8 +20,8 @@ import (
 
 const PageLimit = 100
 
-// Separate endpoint probes preserve SQLite's min/max optimization. Combining
-// both aggregates scans the retained ring for every subscriber on every wake.
+// The indexed minimum detects retention gaps. The durable sequence keeps the
+// resume position when scheduled pruning empties the ring.
 const eventBoundsSQL = `SELECT COALESCE((SELECT min(id) FROM api_events),0),COALESCE((SELECT seq FROM sqlite_sequence WHERE name='api_events'),0)`
 
 type Resource struct {

@@ -154,7 +154,7 @@ func (d Dependencies) consoleRoutes(mux *http.ServeMux) {
 				consoleError(w, e)
 				return
 			}
-			consoleWrite(w, 200, map[string]any{"scope": map[string]string{"serverId": d.Identity.ID(), "viewerFence": fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprintf("%s:%d", p.Hash, p.Epoch))))}, "data": out})
+			consoleWrite(w, 200, map[string]any{"scope": map[string]string{"serverId": d.Identity.ID(), "viewerFence": fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprintf("%s:%d", presentationIdentity(p), p.Epoch))))}, "data": out})
 		})
 	}
 	decodeBody := func(r *http.Request, v any) error {

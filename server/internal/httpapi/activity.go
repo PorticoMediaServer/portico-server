@@ -43,7 +43,7 @@ func (d Dependencies) activityRoutes(mux *http.ServeMux) {
 				failure(w, e)
 				return
 			}
-			scope := playback.ActivityScope{ServerID: d.Identity.ID(), ViewerFence: fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprintf("%s:%d", p.Hash, p.Epoch))))}
+			scope := playback.ActivityScope{ServerID: d.Identity.ID(), ViewerFence: fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprintf("%s:%d", presentationIdentity(p), p.Epoch))))}
 			var out any
 			statusCode := 200
 			if route == "GET /v1/admin/playback-sessions" {
