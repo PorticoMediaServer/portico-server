@@ -118,10 +118,17 @@ export const schemas = {
       "policy": {
         "properties": {
           "allowedLibraries": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "serverId": {
             "type": "string"
@@ -232,10 +239,17 @@ export const schemas = {
         "items": {
           "properties": {
             "allowedLibraries": {
-              "items": {
-                "type": "string"
-              },
-              "type": "array"
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             },
             "serverId": {
               "type": "string"
@@ -589,7 +603,14 @@ export const schemas = {
         "type": "string"
       },
       "subtitles": {
-        "type": "string"
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ]
       },
       "target": {
         "properties": {

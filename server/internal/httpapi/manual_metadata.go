@@ -39,8 +39,7 @@ func (d Dependencies) manualMetadataOwner(ctx context.Context, r *http.Request) 
 	return d.ownerContext(ctx, r)
 }
 
-// Keep the bounded direct-owner query while Hosted owners use current policy
-// and token-family checks in the same metadata transaction.
+// Recheck the live owner membership and token family in the metadata transaction.
 func (d Dependencies) manualMetadataAuthorize(ctx context.Context, tx *sql.Tx, p identity.Principal) error {
 	if p.Authority == "local" {
 		return manualMetadataAuthorize(ctx, tx, p)

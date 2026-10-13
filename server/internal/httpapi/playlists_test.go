@@ -86,7 +86,11 @@ func TestPlaylistHTTPShareNeverGrantsMedia(t *testing.T) {
 			t.Fatal(w.Code, w.Body.String())
 		}
 	}
-	share := map[string]any{"operationId": "share", "expectedRevision": 3, "authority": "hosted", "accountId": "member", "profileId": "member-p", "role": "editor"}
+	share := map[string]any{"operationId": "share", "expectedRevision": 3, "authority": "local", "accountId": "member", "profileId": "member-p", "role": "editor"}
+	retired := map[string]any{"operationId": "retired-share", "expectedRevision": 3, "authority": "hosted", "accountId": "member", "profileId": "member-p", "role": "editor"}
+	if w := request("PUT", "/v1/playlists/"+id+"/shares", owner.AccessToken, retired); w.Code != 400 {
+		t.Fatal("retired authority reached persistence", w.Code, w.Body.String())
+	}
 	if w := request("PUT", "/v1/playlists/"+id+"/shares", owner.AccessToken, share); w.Code != 200 {
 		t.Fatal(w.Code, w.Body.String())
 	}
@@ -150,7 +154,7 @@ func TestPlaylistHTTPShareNeverGrantsMedia(t *testing.T) {
 	if w.Code != 200 {
 		t.Fatal(w.Code, w.Body.String())
 	}
-	if w = request("DELETE", "/v1/playlists/"+id+"/shares", owner.AccessToken, map[string]any{"operationId": "remove-share", "expectedRevision": 4, "authority": "hosted", "accountId": "member", "profileId": "member-p"}); w.Code != 200 {
+	if w = request("DELETE", "/v1/playlists/"+id+"/shares", owner.AccessToken, map[string]any{"operationId": "remove-share", "expectedRevision": 4, "authority": "local", "accountId": "member", "profileId": "member-p"}); w.Code != 200 {
 		t.Fatal(w.Code, w.Body.String())
 	}
 	if w = request("GET", "/v1/playlists/"+id+"/content?limit=1&cursor="+page.Sections[0].NextCursor, member.AccessToken, nil); w.Code != 404 {

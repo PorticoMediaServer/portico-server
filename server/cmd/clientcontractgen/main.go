@@ -36,21 +36,33 @@ type Quality struct {
 	ID   string `json:"id,omitempty"`
 	Step string `json:"step,omitempty"`
 }
+type NullableString string
+
+func (NullableString) JSONSchema() map[string]any {
+	return map[string]any{"anyOf": []any{map[string]any{"type": "string"}, map[string]any{"type": "null"}}}
+}
+
+type NullableLibraries []string
+
+func (NullableLibraries) JSONSchema() map[string]any {
+	return map[string]any{"anyOf": []any{map[string]any{"type": "array", "items": map[string]any{"type": "string"}}, map[string]any{"type": "null"}}}
+}
+
 type Command struct {
 	Type       string               `json:"type"`
 	Target     *PlayTarget          `json:"target,omitempty"`
 	StartFrom  string               `json:"startFrom,omitempty"`
 	PositionMS *int64               `json:"positionMs,omitempty"`
 	Audio      *string              `json:"audio,omitempty"`
-	Subtitles  *string              `json:"subtitles,omitempty"`
+	Subtitles  *NullableString      `json:"subtitles,omitempty"`
 	Quality    *Quality             `json:"quality,omitempty"`
 	Level      *float64             `json:"level,omitempty"`
 	Rate       *float64             `json:"rate,omitempty"`
 	Selector   *playbackv1.Selector `json:"selector,omitempty"`
 }
 type ProfilePolicy struct {
-	ServerID         string   `json:"serverId"`
-	AllowedLibraries []string `json:"allowedLibraries"`
+	ServerID         string            `json:"serverId"`
+	AllowedLibraries NullableLibraries `json:"allowedLibraries"`
 }
 type ProfileEdit struct {
 	Name             *string        `json:"name,omitempty"`
@@ -81,7 +93,18 @@ func register[Request, Response any](r *apikit.Registry, id, method, path string
 	if method != "GET" {
 		limit = 65536
 	}
-	err := apikit.RegisterHTTP[Request, Response](r, apikit.Metadata{ID: id, Method: method, Path: path, Summary: "Retained client request; unavailable in production", Access: apikit.Device, Requires: apikit.ScopeSession, Lane: apikit.Default, Admission: "default", Cost: apikit.Constant, BodyLimit: limit, Status: status, Errors: []string{"not_found"}})
+	metadata := apikit.Metadata{ID: id, Method: method, Path: path, Summary: "Retained client request; unavailable in production", Access: apikit.Device, Requires: apikit.ScopeSession, Lane: apikit.Default, Admission: "default", Cost: apikit.Constant, BodyLimit: limit, Status: status, Errors: []string{"not_found"}}
+	if id == "get_controllable_devices" {
+		metadata.Query = []string{"controllable"}
+	}
+	if id == "send_device_command" || id == "offer_session_transfer" {
+		metadata.Headers = []string{"Idempotency-Key"}
+		metadata.SuccessStatuses = []int{200, 201, 202}
+		if id == "send_device_command" {
+			metadata.SuccessStatuses = append(metadata.SuccessStatuses, 204)
+		}
+	}
+	err := apikit.RegisterHTTP[Request, Response](r, metadata)
 	if err != nil {
 		fail(err)
 	}

@@ -380,7 +380,7 @@ func TestPlaylistAdmissionLimitsAndExpiredCAS(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	if _, e = s.MutatePlaylist(a, r.PlaylistID, "share", "", PlaylistMutation{OperationID: "share-overflow", ExpectedRevision: 3, Authority: "hosted", AccountID: "new", ProfileID: "new", Role: "viewer"}, nil); !errors.Is(e, ErrPlaylistCapacity) {
+	if _, e = s.MutatePlaylist(a, r.PlaylistID, "share", "", PlaylistMutation{OperationID: "share-overflow", ExpectedRevision: 3, Authority: "local", AccountID: "new", ProfileID: "new", Role: "viewer"}, nil); !errors.Is(e, ErrPlaylistCapacity) {
 		t.Fatal("share cap not enforced", e)
 	}
 }

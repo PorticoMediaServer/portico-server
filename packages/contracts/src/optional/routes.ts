@@ -129,6 +129,9 @@ export const routes = [
     "lane": "default",
     "cost": "constant",
     "bodyLimit": 0,
+    "query": [
+      "controllable"
+    ],
     "errors": [
       "not_found"
     ],
@@ -146,10 +149,18 @@ export const routes = [
     "lane": "default",
     "cost": "constant",
     "bodyLimit": 65536,
+    "headers": [
+      "Idempotency-Key"
+    ],
     "errors": [
       "not_found"
     ],
     "status": 202,
+    "successStatuses": [
+      200,
+      201,
+      202
+    ],
     "http": true,
     "admission": "default"
   },
@@ -197,10 +208,19 @@ export const routes = [
     "lane": "default",
     "cost": "constant",
     "bodyLimit": 65536,
+    "headers": [
+      "Idempotency-Key"
+    ],
     "errors": [
       "not_found"
     ],
     "status": 202,
+    "successStatuses": [
+      200,
+      201,
+      202,
+      204
+    ],
     "http": true,
     "admission": "default"
   }

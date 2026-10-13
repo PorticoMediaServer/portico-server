@@ -44,9 +44,6 @@ func TestReceiptReplayRespectsRevocation(t *testing.T) {
 func TestPreparationReadsConcealRestrictedTitle(t *testing.T) {
 	h := newHarness(t)
 	ready := h.ready(t, "ready")
-	if _, err := h.db.Exec(`INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES('account','owner',X'00','profile',1)`); err != nil {
-		t.Fatal(err)
-	}
 	if _, err := h.db.Exec(`INSERT INTO profile_restrictions(profile_id,allow_unrated) VALUES(?,0)`, h.viewer.ProfileID); err != nil {
 		t.Fatal(err)
 	}

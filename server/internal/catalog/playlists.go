@@ -140,6 +140,9 @@ func (s *Service) MutatePlaylist(a ResourceActor, id, action, target string, m P
 	if (action == "share" || action == "unshare") && (m.Authority == "" || m.AccountID == "" || m.ProfileID == "") {
 		return out, requestinput.New("complete share target is required")
 	}
+	if (action == "share" || action == "unshare") && m.Authority != "local" {
+		return out, requestinput.New("invalid share authority")
+	}
 	raw, _ := json.Marshal(struct {
 		ID, Action, Target string
 		Mutation           PlaylistMutation
