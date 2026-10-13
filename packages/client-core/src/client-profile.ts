@@ -688,7 +688,10 @@ export function androidProfile(options:{family?:'android'|'androidtv'|'firetv';t
  const display:DynamicRange[]=['sdr',...(facts.displayHdr??[]).filter(x=>x!=='sdr')];
  // A decoder lists what it decodes. ExoPlayer does not tone-map for an SDR panel, so a range the
  // display cannot show is simply not presentable: the planner reads that from `display`.
- const video:ClientVideoCodec[]=facts.decoders.map(d=>defined({codec:d.codec,profiles:d.profiles,maxLevel:d.maxLevel,bitDepths:d.tenBit?[8,10]:[8],maxWidth:d.maxWidth,maxHeight:d.maxHeight,maxFrameRate:d.maxFrameRate,maxBitrateBps:d.maxBitrateBps,dynamicRanges:['sdr' as DynamicRange,...(d.hdr??[]).filter(x=>x!=='sdr')],dolbyVisionProfiles:d.dolbyVisionProfiles??[],evidence:'probed' as const}));
+ // A codec with only a software decoder states that decoder's limits, which say what it can
+ // decode, not what it can decode in real time: it is held to 1080p.
+ const soft=(d:{hardware?:boolean},value:number|undefined,cap:number)=>d.hardware===false?Math.min(value??cap,cap):value;
+ const video:ClientVideoCodec[]=facts.decoders.map(d=>defined({codec:d.codec,profiles:d.profiles,maxLevel:d.maxLevel,bitDepths:d.tenBit?[8,10]:[8],maxWidth:soft(d,d.maxWidth,1920),maxHeight:soft(d,d.maxHeight,1080),maxFrameRate:d.maxFrameRate,maxBitrateBps:d.maxBitrateBps,dynamicRanges:['sdr' as DynamicRange,...(d.hdr??[]).filter(x=>x!=='sdr')],dolbyVisionProfiles:d.dolbyVisionProfiles??[],evidence:'probed' as const}));
  const decoded=new Map((facts.audioDecoders??[]).map(x=>[x.codec,x]));
  // A decoder that states no channel limit keeps the declared one, or eight: it is not stereo.
  const channelsOf=(codec:string,fallback:number)=>decoded.get(codec)?.maxChannels||fallback;

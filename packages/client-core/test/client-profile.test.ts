@@ -180,3 +180,11 @@ test('an SDR display gets HDR10 only from an engine that tone-maps it',async()=>
  const hdrScreen=await probeWebProfile({...base,matchMedia:(q:string)=>/dynamic-range: high/.test(q)});
  assert.ok(hevcOf(hdrScreen).dynamicRanges!.includes('hdr10'));
 });
+
+test('a codec with only a software decoder is held to 1080p',()=>{
+ const d=androidProfile({},{decoders:[{codec:'h264',hardware:true,maxWidth:3840,maxHeight:2160},{codec:'av1',hardware:false,maxWidth:7680,maxHeight:4320},{codec:'vp9',hardware:false}]});
+ const of=(codec:string)=>d.engines.native.video!.find(v=>v.codec===codec)!;
+ assert.equal(of('h264').maxHeight,2160);
+ assert.equal(of('av1').maxHeight,1080);assert.equal(of('av1').maxWidth,1920);
+ assert.equal(of('vp9').maxHeight,1080,'a software decoder that states no limit still has one');
+});
