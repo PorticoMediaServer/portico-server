@@ -132,16 +132,16 @@ test('attention items must be actionable and the list stays bounded',()=>{
 });
 
 const entry=(overrides:Record<string,unknown>={})=>({id:'play-1',viewer:'Justin',authority:'local',accountId:'owner',profileId:'primary',
- title:'A film',mediaKind:'movie',libraryName:'Films',itemId:'item-1',startedAt:1758000000000,endedAt:null,durationSeconds:null,
+ title:'A film',mediaKind:'movie',libraryName:'Films',itemId:'item-1',startedAt:'2025-09-16T05:20:00Z',endedAt:null,durationMs:null,
  deliveryMode:'hls',deliveryStrategy:'video_conversion',qualityMode:'automatic',state:'active',...overrides});
 
 test('playback history keeps a running session open rather than zero length',()=>{
- const page=parsePlaybackHistory({items:[entry(),entry({id:'play-2',endedAt:1758000042000,durationSeconds:42,state:'ended'})],nextCursor:'t:1758000000000:play-2'});
+ const page=parsePlaybackHistory({items:[entry(),entry({id:'play-2',endedAt:'2025-09-16T05:20:42Z',durationMs:42000,state:'ended'})],nextCursor:'t:1758000000000:play-2'});
  assert.equal(page.items[0].durationSeconds,null);
  assert.equal(page.items[1].durationSeconds,42);
  assert.equal(page.nextCursor,'t:1758000000000:play-2');
- assert.deepEqual(parsePlaybackHistory({items:[entry({endedAt:1,durationSeconds:0})],nextCursor:''}).items,[]);
- assert.deepEqual(parsePlaybackHistory({items:[entry({durationSeconds:5})],nextCursor:''}).items,[]);
+ assert.deepEqual(parsePlaybackHistory({items:[entry({endedAt:'1970-01-01T00:00:00.001Z',durationMs:0})],nextCursor:''}).items,[]);
+ assert.deepEqual(parsePlaybackHistory({items:[entry({durationMs:5000})],nextCursor:''}).items,[]);
   // B8b: the history cursor is opaque (t:<ms>:<id>); only its type and length are checked.
   assert.equal(parsePlaybackHistory({items:[entry()],nextCursor:'t:1758000000000:play-1'}).nextCursor,'t:1758000000000:play-1');
   assert.throws(()=>parsePlaybackHistory({items:[entry()],nextCursor:'x'.repeat(201)}),/Invalid/);
