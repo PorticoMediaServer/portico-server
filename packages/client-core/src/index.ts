@@ -32,6 +32,7 @@ import type {QueueController} from './queue-controller.ts';
 import {readLyricsResponse} from "./lyrics-http.ts";
 import {readBoundedJson} from './bounded-json.ts';
 import {parseLocalSession} from './local-session.ts';
+import {parseLibraryList} from './library-list.ts';
 import {installationHeaders,issuesCredentials,provesIdentity} from './installation.ts';
 import {AudioSelection,emptyAudio,type AudioPlan,type AudioBinding,type AudioSelectionSnapshot} from './audio-selection.ts';
 export type {AudioPlan,AudioBinding,AudioSelectionSnapshot} from './audio-selection.ts';
@@ -500,7 +501,7 @@ export class HttpLocalApi {
     return this.request<void>("/v1/sessions/current", "DELETE");
   }
   libraries() {
-    return this.request<{ items: Library[] }>("/v1/libraries");
+    return this.request<unknown>("/v1/libraries").then(parseLibraryList);
   }
   items(libraryId = "", cursor = "", limit = 40) {
     const q = new URLSearchParams({ limit: String(limit) });
