@@ -3,9 +3,11 @@ package catalog
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"portico.local/server/internal/catalogtest"
 	"portico.local/server/internal/compactcatalog"
+	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/storage"
 	"testing"
 	"time"
@@ -168,5 +170,69 @@ func TestMergePreservesProviderIdentityOfRemovedTitle(t *testing.T) {
 	c.Write(func(ctx context.Context, tx *sql.Tx) error { return RemoveTitleTx(ctx, tx, into) })
 	if n := rows(t, c, `SELECT count(*) FROM retained_title_identities WHERE profile_id='p' AND identity='provider:imdb:movie:tt0078748'`); n != 1 {
 		t.Fatalf("merged-away provider identity lost: retained imdb identities=%d", n)
+	}
+}
+
+func TestNamedProviderHintsGroupFilmVersions(t *testing.T) {
+	c := catalogtest.Open(t)
+	c.Library("m", "Movies", "movie", "/m")
+	var first, second int64
+	for i, path := range []string{"/m/Alien (1979) {tmdb-348}.mkv", "/m/Translated (1979) {tmdb-348}.mkv"} {
+		asset, _ := identityFile(t, c, "m", path, 1080)
+		c.Write(func(ctx context.Context, tx *sql.Tx) error {
+			id, err := commitMovieItem(ctx, tx, "m", asset, path)
+			if i == 0 {
+				first = id
+			} else {
+				second = id
+			}
+			return err
+		})
+	}
+	if first != second {
+		t.Fatalf("provider filename hints did not group versions: %d %d", first, second)
+	}
+}
+
+func TestConflictingProviderClaimsStaySeparate(t *testing.T) {
+	c := catalogtest.Open(t)
+	c.Library("m", "Movies", "movie", "/m")
+	var first, second int64
+	for i, id := range []string{"348", "399"} {
+		path := fmt.Sprintf("/m/%d.mkv", i)
+		asset, _ := identityFile(t, c, "m", path, 1080)
+		c.Write(func(ctx context.Context, tx *sql.Tx) error {
+			entity, err := AttachMovieTx(ctx, tx, MovieFile{Library: "m", Asset: asset, Path: path, Title: "Same title", Provider: []compactcatalog.ProviderIdentity{{Provider: "tmdb", Kind: "movie", ID: id}}})
+			if i == 0 {
+				first = entity
+			} else {
+				second = entity
+			}
+			return err
+		})
+	}
+	if first == second {
+		t.Fatal("different proven provider identities were merged by parsed title")
+	}
+}
+
+func TestMergeRejectsConflictingProviderIdentities(t *testing.T) {
+	c := catalogtest.Open(t)
+	c.Library("m", "Movies", "movie", "/m")
+	a, _ := identityFile(t, c, "m", "/m/a.mkv", 1080)
+	b, _ := identityFile(t, c, "m", "/m/b.mkv", 1080)
+	from := attachMovie(t, c, "m", a, "/m/a.mkv", "A", 0)
+	into := attachMovie(t, c, "m", b, "/m/b.mkv", "B", 0)
+	c.Exec(`INSERT INTO catalog_external_ids VALUES(?,'tmdb','movie','348')`, from)
+	c.Exec(`INSERT INTO catalog_external_ids VALUES(?,'tmdb','movie','399')`, into)
+	err := dbwork.WithWriteTx(context.Background(), c.DB, dbwork.ClassMaintenance, func(tx *sql.Tx) error { return MergeTitlesTx(context.Background(), tx, from, into) })
+	if !errors.Is(err, ErrNotMergeable) {
+		t.Fatalf("conflicting identities accepted: %v", err)
+	}
+	if n := rows(t, c, `SELECT count(*) FROM catalog_entities`); n != 2 {
+		t.Fatalf("rejected merge lost entities: %d", n)
+	}
+	if n := rows(t, c, `SELECT count(*) FROM catalog_asset_links`); n != 2 {
+		t.Fatalf("rejected merge changed files: %d", n)
 	}
 }
