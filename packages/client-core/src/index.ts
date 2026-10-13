@@ -468,7 +468,7 @@ export class HttpLocalApi {
       );
       const path = errorFieldPath(data?.error?.path);
       if (path) error.path = path;
-      const roots = errorConfirmRoots(data?.error?.confirmRoots);
+      const roots = errorConfirmRoots(data?.error?.current?.confirmRoots);
       if (roots) error.confirmRoots = roots;
       throw error;
     }

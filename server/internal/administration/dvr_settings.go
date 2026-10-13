@@ -221,6 +221,9 @@ type TunerAllocation struct {
 
 // TunerAssignment is one recording's claim on a tuner.
 type TunerAssignment struct {
+	Kind         string `json:"kind"`
+	AccountID    string `json:"accountId"`
+	ProfileID    string `json:"profileId"`
 	RecordingID  string `json:"recordingId"`
 	ChannelID    string `json:"channelId"`
 	Title        string `json:"title"`
@@ -275,11 +278,15 @@ func (s *Service) Tuners(ctx context.Context, auth Authorize) (TunerView, error)
 		}
 		for i := range out.Sources {
 			source := &out.Sources[i]
-			if source.Active, err = assignments(ctx, tx, source.SourceID, `state IN('recording','starting') AND end_ms>?`, now); err != nil {
+			if source.Active, err = activeAssignments(ctx, tx, source.SourceID, now); err != nil {
 				return err
 			}
-			source.InUse = len(source.Active)
-			if source.Upcoming, err = assignments(ctx, tx, source.SourceID, `state IN('scheduled','pending') AND start_ms>=? AND start_ms<`+itoa(horizon), now); err != nil {
+			channels := map[string]bool{}
+			for _, a := range source.Active {
+				channels[a.ChannelID] = true
+			}
+			source.InUse = len(channels)
+			if source.Upcoming, err = assignments(ctx, tx, source.SourceID, `state IN('scheduled','conflicted','waiting-source','waiting-guide') AND start_ms>=? AND start_ms<`+itoa(horizon), now); err != nil {
 				return err
 			}
 			source.Conflicts = overlapExcess(source.Upcoming, source.TunerCount)
@@ -296,7 +303,7 @@ func itoa(v int64) string {
 
 func assignments(ctx context.Context, tx *sql.Tx, source, condition string, bound int64) ([]TunerAssignment, error) {
 	out := []TunerAssignment{}
-	rows, err := tx.QueryContext(ctx, `SELECT id,channel_id,programme_json,state,start_ms,end_ms,allocation_id FROM dvr_recordings WHERE source_id=? AND `+condition+` ORDER BY start_ms,id`, source, bound)
+	rows, err := tx.QueryContext(ctx, `SELECT id,channel_id,programme_json,state,start_ms,end_ms,allocation_id,account_id,profile_id FROM dvr_recordings WHERE source_id=? AND `+condition+` ORDER BY start_ms,id`, source, bound)
 	if err != nil {
 		return out, err
 	}
@@ -305,13 +312,14 @@ func assignments(ctx context.Context, tx *sql.Tx, source, condition string, boun
 		var a TunerAssignment
 		var programme string
 		var start, end int64
-		if err = rows.Scan(&a.RecordingID, &a.ChannelID, &programme, &a.State, &start, &end, &a.AllocationID); err != nil {
+		if err = rows.Scan(&a.RecordingID, &a.ChannelID, &programme, &a.State, &start, &end, &a.AllocationID, &a.AccountID, &a.ProfileID); err != nil {
 			return out, err
 		}
 		var decoded struct {
 			Title string `json:"title"`
 		}
 		_ = json.Unmarshal([]byte(programme), &decoded)
+		a.Kind = "recording"
 		a.Title, a.StartsAt, a.EndsAt = decoded.Title, timeFromMilliseconds(start), timeFromMilliseconds(end)
 		out = append(out, a)
 	}
@@ -325,12 +333,17 @@ func overlapExcess(list []TunerAssignment, tuners int) int {
 		return 0
 	}
 	type point struct {
-		at    string
-		delta int
+		at      string
+		delta   int
+		channel string
 	}
 	points := make([]point, 0, len(list)*2)
 	for _, a := range list {
-		points = append(points, point{a.StartsAt, 1}, point{a.EndsAt, -1})
+		key := a.ChannelID
+		if key == "" {
+			key = a.RecordingID
+		}
+		points = append(points, point{a.StartsAt, 1, key}, point{a.EndsAt, -1, key})
 	}
 	sort.Slice(points, func(i, j int) bool {
 		if points[i].at == points[j].at {
@@ -339,8 +352,16 @@ func overlapExcess(list []TunerAssignment, tuners int) int {
 		return points[i].at < points[j].at
 	})
 	current, worst := 0, 0
+	counts := map[string]int{}
 	for _, p := range points {
-		current += p.delta
+		old := counts[p.channel]
+		counts[p.channel] += p.delta
+		if old == 0 && counts[p.channel] > 0 {
+			current++
+		}
+		if old > 0 && counts[p.channel] == 0 {
+			current--
+		}
 		if current > worst {
 			worst = current
 		}
@@ -445,4 +466,27 @@ func (s *Service) SaveRecordingGroup(ctx context.Context, auth Authorize, id str
 }
 func (s *Service) DeleteRecordingGroup(ctx context.Context, auth Authorize, id string, revision int64, operation string) error {
 	return s.deleteRuntimeRecordingGroup(ctx, auth, id, revision, operation)
+}
+
+func activeAssignments(ctx context.Context, tx *sql.Tx, source string, now int64) ([]TunerAssignment, error) {
+	out := []TunerAssignment{}
+	rows, e := tx.QueryContext(ctx, `SELECT a.resource_id,a.channel_id,COALESCE(json_extract(r.programme_json,'$.title'),c.name,''),a.kind,a.account_id,a.profile_id,a.state,a.created_ms,a.lease_until_ms,a.id FROM live_allocations a LEFT JOIN dvr_recordings r ON a.kind='recording' AND r.id=a.resource_id LEFT JOIN live_sources s ON s.id=a.source_id LEFT JOIN live_channel_versions c ON c.generation_id=s.active_generation AND c.channel_id=a.channel_id WHERE a.source_id=? AND a.state!='released' ORDER BY a.channel_id,a.kind,a.id`, source)
+	if e != nil {
+		return out, e
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var a TunerAssignment
+		var start, end int64
+		if e = rows.Scan(&a.RecordingID, &a.ChannelID, &a.Title, &a.Kind, &a.AccountID, &a.ProfileID, &a.State, &start, &end, &a.AllocationID); e != nil {
+			return out, e
+		}
+		a.StartsAt = timeFromMilliseconds(start)
+		a.EndsAt = timeFromMilliseconds(end)
+		if end <= now {
+			a.State = "retiring"
+		}
+		out = append(out, a)
+	}
+	return out, rows.Err()
 }

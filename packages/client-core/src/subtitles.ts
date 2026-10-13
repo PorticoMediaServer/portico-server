@@ -1,21 +1,25 @@
+import {enUS,type MessageId} from '../../i18n/src/index.ts';
 import {unreadableServerResponse} from './server-messages.ts';
 import type {LibraryContentApi} from './library-content.ts';
 
-export type SubtitleFormat='srt'|'vtt'|'ass'|'ssa'|'pgs'|'sup'|'vobsub'|'idx'|'dvb';
+export type SubtitleFormat='srt'|'vtt'|'ass'|'ssa'|'pgs'|'sup'|'vobsub'|'idx'|'dvb'|'smi'|'sami'|'ttml'|'dfxp';
+export type SubtitleRendering='text'|'ass'|'pgs'|'vobsub'|'dvb';
+export type SubtitleDelivery=Readonly<{format:SubtitleRendering;url?:string;companionUrl?:string;fontsUrl?:string}>;
+export type SubtitleFont=Readonly<{name:string;url:string}>;
 export type SubtitlePresentation=Readonly<{sessionId:string;generation:number;streamUrl:string;mode:'direct'|'hls';positionUs:string}>;
 export type SubtitleResource = Readonly<{
  manifestName?:string;id:string; sourceId:string; revision:number; scope:'personal'|'shared'; language:string; title:string;
  format:SubtitleFormat; origin:'upload'|'sidecar'|'embedded'|'provider'; provider?:string; attribution?:string;
  rights:string; offsetUs:string; canManage:boolean; enabled:boolean; reason?:string; pinned?:boolean;
- retired?:boolean; discoveryId?:string;renderer:'external_text'|'burn_in';default:boolean;forced:boolean;
+ retired?:boolean; discoveryId?:string;renderer:'external_text'|'burn_in'|'client';default:boolean;forced:boolean;hearingImpaired?:boolean;deliveries?:readonly SubtitleDelivery[];
 }>;
 export type SubtitleDiscovery = Readonly<{
  id:string;sourceId:string;revision:number;origin:'sidecar'|'embedded';format:string;language:string;title:string;
- default:boolean;forced:boolean;enabled:boolean;reason?:string;
+ default:boolean;forced:boolean;enabled:boolean;reason?:string;hearingImpaired?:boolean;
 }>;
 export type SubtitlePlan = Readonly<{
  version:1;sessionId:string;generation:number;sourceId:string;revision:number;catalogRevision:number;
- renderer:'external_text'|'burn_in';presentation?:SubtitlePresentation;mode:'off'|'track';offAvailable:true;offsetUs:string;selected:SubtitleResource|null;
+ renderer:'external_text'|'burn_in'|'client';presentation?:SubtitlePresentation;mode:'off'|'track';offAvailable:true;offsetUs:string;selected:SubtitleResource|null;
  documentUrl?:string;resources:readonly SubtitleResource[];discovered:readonly SubtitleDiscovery[];appliedRevision?:number;
 }>;
 export type SubtitleCatalog = Readonly<{
@@ -27,7 +31,7 @@ export type SubtitleCatalog = Readonly<{
 /** `italic` and `top` are the two presentation facts every player can honour:
  * a cue that is wholly italic, and a cue authored at the top of the picture. */
 export type SubtitleCue=Readonly<{startUs:string;endUs:string;text:string;italic?:boolean;top?:boolean}>;
-export type SubtitleDocument=Readonly<{version:1;timeDomain:'source-relative';cues:readonly SubtitleCue[]}>;
+export type SubtitleDocument=Readonly<{version:1;timeDomain:'source-relative';cues:readonly SubtitleCue[];skippedCues?:number}>;
 export type SubtitleCandidate=Readonly<{id:string;language:string;title:string;attribution:string}>;
 export type SubtitleReceipt=Readonly<{operationId:string;resourceId:string;revision:number;catalogRevision:number;deleted?:boolean}>;
 const record=(v:unknown):v is Record<string,unknown>=>!!v&&typeof v==='object'&&!Array.isArray(v);
@@ -37,21 +41,27 @@ const integer=(v:unknown,min=1):v is number=>typeof v==='number'&&Number.isSafeI
 const decimal=(v:unknown,max=86400000000,signed=false):v is string=>typeof v==='string'&&/^(?:0|[1-9]\d*|-[1-9]\d*)$/.test(v)&&Number.isSafeInteger(Number(v))&&Number(v)>=(signed?-max:0)&&Number(v)<=max;
 function invalid():never{throw Object.assign(new Error(unreadableServerResponse),{code:'invalid_subtitles'});}
 function array(v:unknown,max:number):unknown[]{if(!Array.isArray(v)||v.length>max)invalid();return v;}
+export function validateSubtitleDelivery(v:unknown):SubtitleDelivery{
+ if(!record(v)||!['text','ass','pgs','vobsub','dvb'].includes(String(v.format)))invalid();
+ for(const key of ['url','companionUrl','fontsUrl']){const path=v[key];if(path!==undefined&&(!text(path,1024)||!/^\/v1\/media\/[A-Za-z0-9_-]+\/subtitles\/[A-Za-z0-9_-]+\/[1-9]\d*(?:\.vtt|\/original\.(?:ass|ssa|sup|idx|sub|mks)|\/fonts)?$/.test(path)))invalid();}
+ return Object.freeze({...v}) as SubtitleDelivery;
+}
 function resource(v:unknown):SubtitleResource{
- if(!record(v)||!id(v.id)||!id(v.sourceId)||!integer(v.revision)||!['personal','shared'].includes(String(v.scope))||!text(v.language,64)||!text(v.title,160)||!['srt','vtt','ass','ssa','pgs','sup','vobsub','idx','dvb'].includes(String(v.format))||!['upload','sidecar','embedded','provider'].includes(String(v.origin))||!text(v.rights,500)||!decimal(v.offsetUs,600000000,true)||typeof v.canManage!=='boolean'||typeof v.enabled!=='boolean')invalid();
+ if(!record(v)||!id(v.id)||!id(v.sourceId)||!integer(v.revision)||!['personal','shared'].includes(String(v.scope))||!text(v.language,64)||!text(v.title,160)||!['srt','vtt','ass','ssa','pgs','sup','vobsub','idx','dvb','smi','sami','ttml','dfxp'].includes(String(v.format))||!['upload','sidecar','embedded','provider'].includes(String(v.origin))||!text(v.rights,500)||!decimal(v.offsetUs,600000000,true)||typeof v.canManage!=='boolean'||typeof v.enabled!=='boolean')invalid();
  for(const k of ['provider','attribution','reason','manifestName'])if(v[k]!==undefined&&!text(v[k],512))invalid();
- if(v.renderer!==undefined&&!['external_text','burn_in'].includes(String(v.renderer)))invalid();
- for(const k of ['default','forced','pinned','retired'])if(v[k]!==undefined&&typeof v[k]!=='boolean')invalid();
+ if(v.renderer!==undefined&&!['external_text','burn_in','client'].includes(String(v.renderer)))invalid();
+ for(const k of ['default','forced','pinned','retired','hearingImpaired'])if(v[k]!==undefined&&typeof v[k]!=='boolean')invalid();
  if(v.discoveryId!==undefined&&!id(v.discoveryId))invalid();
-  const renderer=v.renderer??'external_text';if(renderer==='external_text'&&!['srt','vtt','ass','ssa'].includes(String(v.format)))invalid();
- return Object.freeze({...v,renderer,default:v.default??false,forced:v.forced??false}) as SubtitleResource;
+  const renderer=v.renderer??'external_text';if(renderer==='external_text'&&!['srt','vtt','ass','ssa','smi','sami','ttml','dfxp'].includes(String(v.format)))invalid();
+ return Object.freeze({...v,...(v.deliveries===undefined?{}:{deliveries:Object.freeze(array(v.deliveries,5).map(validateSubtitleDelivery))}),renderer,default:v.default??false,forced:v.forced??false}) as SubtitleResource;
 }
 function discovery(v:unknown):SubtitleDiscovery{
  if(!record(v)||!id(v.id)||!id(v.sourceId)||!integer(v.revision)||!['sidecar','embedded'].includes(String(v.origin))||!text(v.format,64)||!text(v.language,64)||!text(v.title,160)||typeof v.default!=='boolean'||typeof v.forced!=='boolean'||typeof v.enabled!=='boolean'||v.reason!==undefined&&!text(v.reason,128))invalid();
+ if(v.hearingImpaired!==undefined&&typeof v.hearingImpaired!=='boolean')invalid();
  return Object.freeze({...v}) as SubtitleDiscovery;
 }
 export function validateSubtitlePlan(v:unknown):SubtitlePlan{
- if(!record(v)||v.version!==1||!id(v.sessionId)||!integer(v.generation)||!id(v.sourceId)||!integer(v.revision)||!integer(v.catalogRevision)||!['external_text','burn_in'].includes(String(v.renderer))||!['off','track'].includes(String(v.mode))||v.offAvailable!==true||!decimal(v.offsetUs,600000000,true))invalid();
+ if(!record(v)||v.version!==1||!id(v.sessionId)||!integer(v.generation)||!id(v.sourceId)||!integer(v.revision)||!integer(v.catalogRevision)||!['external_text','burn_in','client'].includes(String(v.renderer))||!['off','track'].includes(String(v.mode))||v.offAvailable!==true||!decimal(v.offsetUs,600000000,true))invalid();
  const resources=array(v.resources,128).map(resource),discovered=array(v.discovered,1024).map(discovery),selected=v.selected===null?null:resource(v.selected);
  if(resources.some(r=>r.sourceId!==v.sourceId)||discovered.some(r=>r.sourceId!==v.sourceId)||selected&&selected.sourceId!==v.sourceId)invalid();
  if(new Set(resources.map(r=>r.id)).size!==resources.length||new Set(discovered.map(r=>r.id)).size!==discovered.length)invalid();
@@ -81,6 +91,7 @@ export function validateSubtitleCatalog(v:unknown):SubtitleCatalog{
  * what is really a broken response. */
 export function validateSubtitleDocument(v:unknown):SubtitleDocument{
  if(!record(v)||v.version!==1||v.timeDomain!=='source-relative'||!Array.isArray(v.cues)||v.cues.length>20000)invalid();
+ if(v.skippedCues!==undefined&&(!integer(v.skippedCues,0)||v.skippedCues>4194304))invalid();
  const day=86_400_000_000;let total=0,ordered=true,previous=-1;
  const cues:{startUs:string;endUs:string;text:string;italic?:boolean;top?:boolean;at:number}[]=[];
  for(const c of v.cues as unknown[]){
@@ -96,7 +107,7 @@ export function validateSubtitleDocument(v:unknown):SubtitleDocument{
  }
  if(!cues.length&&v.cues.length)invalid();
  if(!ordered)cues.sort((a,b)=>a.at-b.at);
- return Object.freeze({version:1,timeDomain:'source-relative',cues:Object.freeze(cues.map(({at:_,...cue})=>Object.freeze(cue)))});
+ return Object.freeze({version:1,timeDomain:'source-relative',cues:Object.freeze(cues.map(({at:_,...cue})=>Object.freeze(cue))),...(v.skippedCues===undefined?{}:{skippedCues:v.skippedCues as number})});
 }
 /** One authorised read of the active subtitle document.
  *
@@ -124,9 +135,11 @@ export async function readSubtitleDocument(response:Response,signal:AbortSignal)
  try{while(!signal.aborted){const {done,value}=await reader.read();if(done)break;total+=value.length;if(total>max)invalid();chunks.push(value);}if(signal.aborted)throw new Error('Subtitle request cancelled.');const bytes=new Uint8Array(total);let offset=0;for(const chunk of chunks){bytes.set(chunk,offset);offset+=chunk.length;}return validateSubtitleDocument(JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(bytes)));}
  finally{signal.removeEventListener('abort',abort);void reader.cancel().catch(()=>{});reader.releaseLock();}
 }
-export function subtitleReason(reason?:string):string{
- const reasons:Record<string,string>={provider_not_configured:'Configure the OpenSubtitles API key on the server.',unsupported_format:'This format is not supported by the configured decoder.',unsupported_text_features:'This subtitle uses an unsupported or invalid text feature.',extraction_unavailable:'The server needs FFmpeg and verified source timing to extract this track.',source_changed:'The media source changed. Rescan and import again.',source_unavailable:'The media source is unavailable.',ambiguous_sidecar:'This sidecar matches more than one media file.',unsupported_timing:'Subtitle timing could not be validated.',capacity:'The subtitle exceeds a supported size or cue limit.'};return reasons[reason??'']??'This subtitle is unavailable. Refresh sources or upload a supported subtitle.';
+export function subtitleReason(reason?:string,translate:(id:MessageId)=>string=id=>enUS[id]):string{
+ const key:Record<string,MessageId>={provider_not_configured:'player.subtitleReason.provider',provider_sign_in_failed:'player.subtitleReason.signIn',unsupported_format:'player.subtitleReason.format',unsupported_text_features:'player.subtitleReason.text',extraction_unavailable:'player.subtitleReason.extraction',source_changed:'player.subtitleReason.changed',source_unavailable:'player.subtitleReason.source',ambiguous_association:'player.subtitleReason.association',unsupported_timing:'player.subtitleReason.timing',capacity:'player.subtitleReason.capacity'};
+ return translate(key[reason??'']??'player.subtitleReason.unavailable');
 }
+
 export type SubtitleTarget=Readonly<{itemId:string;sessionId:string;generation:number;sourceId?:never}>|Readonly<{itemId:string;sourceId:string;sessionId?:never;generation?:never}>;
 export type SubtitleSnapshot=Readonly<{catalog:SubtitleCatalog|null;plan:SubtitlePlan|null;busy:boolean;loading:boolean;suppressed:boolean;error:string|null;canRetry:boolean;candidates:readonly SubtitleCandidate[]}>;
 /** Bound to exactly one viewer/API and playback generation. No disk cache or
@@ -154,7 +167,7 @@ export class SubtitleService {
   try{const result=await this.api.request<unknown>(path,method,body,c.signal);if(!this.active||life!==this.life)throw new Error('Subtitle scope retired.');return result;}finally{clearTimeout(timer);this.controllers.delete(c);}
  }
  private acceptPlan(raw:unknown){const p=validateSubtitlePlan(raw);if(this.target.generation===undefined||p.sessionId!==this.target.sessionId||p.generation<this.target.generation)invalid();
- if(p.presentation){if(!this.transport||!this.transport.install(p.presentation))throw new Error('Subtitle playback scope retired.');}
+ if(p.presentation&&p.generation!==this.target.generation){if(!this.transport||!this.transport.install(p.presentation))throw new Error('Subtitle playback scope retired.');}
  if(p.generation!==this.target.generation){if(!p.presentation)invalid();this.target={itemId:this.target.itemId,sessionId:p.sessionId,generation:p.generation};}if(this.state.plan&&p.revision<this.state.plan.revision)return this.state.plan;this.publish({plan:p});return p;}
  private async plan(){return this.acceptPlan(await this.request(this.selectionPath()));}
  private fail(e:unknown){
@@ -175,23 +188,35 @@ export class SubtitleService {
  remote(name:string,format:SubtitleFormat,language:string,title:string,rights:string,scope:'personal'|'shared') {const payload={operationId:this.operationId(),sourceId:this.sourceId,name,format,language,title,rights,scope};return this.enqueue(async()=>{this.receipt(await this.request(this.path('/remote'),'POST',payload));});}
  retry(){if(this.retryOperation)return this.enqueue(this.retryOperation);return this.refresh();}
 
- choose(resource:SubtitleResource|null,offsetUs=resource?.offsetUs??'0'){
+ choose(resource:SubtitleResource|null,offsetUs=resource?.offsetUs??'0',rendering?:SubtitleRendering){
   if(this.target.sourceId!==undefined)return Promise.reject(new Error('Start playback to select subtitles.'));
   if(!decimal(offsetUs,600000000,true))return Promise.reject(new Error('Subtitle offset must be within ten minutes.'));
   const choice=++this.choice,op=this.operationId();let payload:Record<string,unknown>|undefined;
   // Text overlays can turn off immediately. Burned cues remain until the committed video replacement.
   if(!resource&&this.state.plan?.renderer!=='burn_in')this.publish({suppressed:true});
-  return this.enqueue(async()=>{if(choice!==this.choice)return;if(!payload){const current=await this.plan();payload={operationId:op,generation:this.target.generation,expectedRevision:current.revision,mode:resource?'track':'off',...(resource?{resourceId:resource.id,resourceRevision:resource.revision}:{}),offsetUs:resource?offsetUs:'0',positionUs:this.transport?.positionUs()??'0'};if(this.transport?.reserve)payload=await this.transport.reserve(payload);}const raw=payload.control&&this.transport?.select?await this.transport.select(this.selectionPath(),payload):await this.request(this.selectionPath(),'PUT',payload);if(choice===this.choice){this.acceptPlan(raw);this.publish({suppressed:false});}});
+  return this.enqueue(async()=>{if(choice!==this.choice)return;if(!payload){const current=await this.plan();payload={operationId:op,generation:this.target.generation,expectedRevision:current.revision,mode:resource?'track':'off',...(resource?{resourceId:resource.id,resourceRevision:resource.revision,...(rendering?{rendering}:{})}:{}),offsetUs:resource?offsetUs:'0',positionUs:this.transport?.positionUs()??'0'};if(this.transport?.reserve)payload=await this.transport.reserve(payload);}const raw=payload.control&&this.transport?.select?await this.transport.select(this.selectionPath(),payload):await this.request(this.selectionPath(),'PUT',payload);if(choice===this.choice){this.acceptPlan(raw);this.publish({suppressed:false});}});
  }
- import(track:SubtitleDiscovery){if(this.target.sourceId!==undefined)return Promise.reject(new Error('Start playback to import and select a track.'));const choice=++this.choice,op=this.operationId(),selectOp=this.operationId();let receipt:SubtitleReceipt|undefined;let selection:Record<string,unknown>|undefined;
-  return this.enqueue(async()=>{if(!receipt)receipt=this.receipt(await this.request(this.path('/import'),'POST',{operationId:op,sourceId:track.sourceId,discoveryId:track.id,expectedRevision:track.revision,scope:'personal'}));if(choice!==this.choice)return;if(!selection){const plan=await this.plan();selection={operationId:selectOp,generation:this.target.generation,expectedRevision:plan.revision,mode:'track',resourceId:receipt.resourceId,resourceRevision:receipt.revision,offsetUs:'0',positionUs:this.transport?.positionUs()??'0'};if(this.transport?.reserve)selection=await this.transport.reserve(selection);}const raw=selection.control&&this.transport?.select?await this.transport.select(this.selectionPath(),selection):await this.request(this.selectionPath(),'PUT',selection);if(choice===this.choice){this.acceptPlan(raw);this.publish({suppressed:false});}});
+ import(track:SubtitleDiscovery){
+  if(this.target.sourceId!==undefined)return Promise.reject(new Error('Start playback to select subtitles.'));
+  const resource=this.state.plan?.resources.find(r=>r.discoveryId===track.id&&r.sourceId===track.sourceId);
+  if(!resource)return Promise.reject(new Error(subtitleReason(track.reason)));
+  return this.choose(resource);
  }
+
  private receipt(v:unknown):SubtitleReceipt{if(!record(v)||!id(v.operationId)||!id(v.resourceId)||!integer(v.revision)||!integer(v.catalogRevision)||v.deleted!==undefined&&typeof v.deleted!=='boolean')invalid();return Object.freeze({...v}) as SubtitleReceipt;}
  save(input:{content?:string;data?:string;companion?:string;default?:boolean;forced?:boolean;format:SubtitleFormat;language:string;title:string;rights:string;scope:'personal'|'shared';offsetUs:string},resource?:SubtitleResource){
   const payload={...input,operationId:this.operationId(),sourceId:resource?.sourceId??this.sourceId,expectedRevision:resource?.revision??0,...(resource?{resourceId:resource.id}: {})};
   return this.enqueue(async()=>{this.receipt(await this.request(this.path(resource?'/'+resource.id:''),resource?'PUT':'POST',payload));});
  }
  remove(resource:SubtitleResource){const body={operationId:this.operationId(),expectedRevision:resource.revision};return this.enqueue(async()=>{this.receipt(await this.request(this.path('/'+resource.id),'DELETE',body));});}
- search(language:string,query='',page=1){return this.enqueue(async()=>{const raw=await this.request(this.path('/search'),'POST',{sourceId:this.sourceId,language,query,page});if(!record(raw)||raw.version!==1||!integer(raw.page))invalid();const candidates=array(raw.candidates,40).map(c=>{if(!record(c)||!id(c.id)||!text(c.language,64)||!text(c.title,160)||!text(c.attribution,512))invalid();return Object.freeze({...c}) as SubtitleCandidate;});this.publish({candidates:Object.freeze(candidates)});});}
+ search(language='',query='',page=1){return this.enqueue(async()=>{const raw=await this.request(this.path('/search'),'POST',{sourceId:this.sourceId,language,query,page});if(!record(raw)||raw.version!==1||!integer(raw.page))invalid();const candidates=array(raw.candidates,40).map(c=>{if(!record(c)||!id(c.id)||!text(c.language,64)||!text(c.title,160)||!text(c.attribution,512))invalid();return Object.freeze({...c}) as SubtitleCandidate;});this.publish({candidates:Object.freeze(candidates)});});}
  apply(candidate:SubtitleCandidate,scope:'personal'|'shared',rights:string){const payload={operationId:this.operationId(),candidateId:candidate.id,scope,rights};return this.enqueue(async()=>{this.receipt(await this.request(this.path('/apply'),'POST',payload));this.publish({candidates:[]});});}
+}
+
+export async function fetchSubtitleFonts(fetcher:typeof fetch,url:string,signal:AbortSignal):Promise<readonly SubtitleFont[]>{
+ if(!/^\/v1\/media\/[A-Za-z0-9_-]+\/subtitles\/[A-Za-z0-9_-]+\/[1-9]\d*\/fonts$/.test(url))invalid();
+ const response=await fetcher(url,{signal,credentials:'omit',cache:'no-store',redirect:'error'});
+ if(!response.ok)throw new Error(enUS['player.subtitleReason.fonts']);
+ const raw=await response.text();if(raw.length>32768)invalid();const v:unknown=JSON.parse(raw);if(!record(v))invalid();
+ return Object.freeze(array(v.fonts,16).map(f=>{if(!record(f)||!text(f.name,160)||!text(f.url,1024)||!f.url.startsWith(url+'/')||!/^\d+$/.test(f.url.slice(url.length+1)))invalid();return Object.freeze({name:f.name,url:f.url});}));
 }

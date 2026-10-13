@@ -91,6 +91,12 @@ export const errors = [
     "retry": "never"
   },
   {
+    "code": "channel_revision_conflict",
+    "status": 409,
+    "message": "The channel source changed. Refresh before saving.",
+    "retry": "after_refresh"
+  },
+  {
     "code": "channel_unavailable",
     "status": 503,
     "message": "This channel can't be played right now.",
@@ -274,6 +280,12 @@ export const errors = [
     "code": "internal",
     "status": 500,
     "message": "The request could not be completed.",
+    "retry": "never"
+  },
+  {
+    "code": "invalid_channel_input",
+    "status": 400,
+    "message": "The playlist or guide could not be used. Check it and try again.",
     "retry": "never"
   },
   {
@@ -553,6 +565,24 @@ export const errors = [
     "retry": "never"
   },
   {
+    "code": "source_credentials_required",
+    "status": 422,
+    "message": "The provider refused these credentials. Enter them again.",
+    "retry": "never"
+  },
+  {
+    "code": "source_lan_confirmation_required",
+    "status": 422,
+    "message": "Confirm the source addresses on your local network to continue.",
+    "retry": "never"
+  },
+  {
+    "code": "source_network_policy",
+    "status": 422,
+    "message": "This source address needs confirmation before it can be reached.",
+    "retry": "never"
+  },
+  {
     "code": "source_unavailable",
     "status": 503,
     "message": "The file for this title can't be reached right now.",
@@ -575,6 +605,60 @@ export const errors = [
     "status": 503,
     "message": "This connection cannot stream events.",
     "retry": "same_request"
+  },
+  {
+    "code": "subtitle_capacity",
+    "status": 422,
+    "message": "This subtitle exceeds the supported size, track or cue limit.",
+    "retry": "never"
+  },
+  {
+    "code": "subtitle_conflict",
+    "status": 409,
+    "message": "Subtitles changed. Refresh before applying this edit.",
+    "retry": "after_refresh"
+  },
+  {
+    "code": "subtitle_invalid_input",
+    "status": 400,
+    "message": "Check the subtitle request and try again.",
+    "retry": "never"
+  },
+  {
+    "code": "subtitle_not_found",
+    "status": 404,
+    "message": "This subtitle is not available.",
+    "retry": "never"
+  },
+  {
+    "code": "subtitle_operation_conflict",
+    "status": 409,
+    "message": "This request was already used for a different subtitle edit.",
+    "retry": "never"
+  },
+  {
+    "code": "subtitle_renderer_configuration",
+    "status": 422,
+    "message": "Ask the owner to finish setting up subtitle rendering.",
+    "retry": "never"
+  },
+  {
+    "code": "subtitle_renderer_platform_unsupported",
+    "status": 422,
+    "message": "This server cannot render this subtitle. Choose a text track or a player that supports it.",
+    "retry": "never"
+  },
+  {
+    "code": "subtitle_unavailable",
+    "status": 503,
+    "message": "Subtitles are temporarily unavailable. Try again.",
+    "retry": "same_request"
+  },
+  {
+    "code": "subtitle_unsupported",
+    "status": 422,
+    "message": "This subtitle format or timing cannot be used by this player.",
+    "retry": "never"
   },
   {
     "code": "target_unavailable",

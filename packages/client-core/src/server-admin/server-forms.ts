@@ -232,3 +232,9 @@ export function withFormValue<T extends object>(draft: T, path: string, value: u
   const current = (draft as Record<string, unknown>)[head!];
   return {...draft, [head!]: rest.length ? withFormValue((current ?? {}) as object, rest.join('.'), value) : value};
 }
+
+/** A list setting with one entry added: trimmed, never empty, never a repeat. */
+export function withListEntry(list: readonly string[], typed: string): readonly string[] {
+  const entry = typed.trim();
+  return !entry || list.includes(entry) ? list : [...list, entry];
+}

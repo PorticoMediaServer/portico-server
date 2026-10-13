@@ -13,7 +13,7 @@ import {useSession} from '../../app/session';
 import {repairTargetFor, useMetadataEditor} from '../../app/metadata-editor';
 import {useDetail, requestId} from '../../app/detail';
 import {useService} from '../../app/content';
-import {canRefreshMetadata, captionFor, entryActions, type EntryActionId} from '@core/presentation/index.ts';
+import {captionFor, entryActions, refreshMetadataPath, type EntryActionId} from '@core/presentation/index.ts';
 import {useOpenEntry} from '../../app/open';
 import {useMoreHandOff, usePlayer} from '../../player/engine';
 import {AnchoredMenu, Button, Input, ListRow, Loading, MenuHeading, MenuRow, MenuSeparator, Notice, Text} from '../../ui';
@@ -87,7 +87,8 @@ function Body({entry, origin, onDone}: {entry: ContentEntry; origin?: EntryOrigi
     queue.enqueue(queueItemInput(entry.playback.itemId), next).then(() => setNotice(i18n.t(next ? 'entry.playingNext' : 'entry.addedToQueue'))).catch(e => setNotice(errorText(e, 'generic')));
   };
   const refreshMetadata = () => {
-    void api.request('/v1/items/' + encodeURIComponent(entry.id) + '/metadata/refresh', 'POST', {}).then(() => setNotice(i18n.t('entry.refreshQueued'))).catch(() => setNotice(i18n.t('entry.refreshFailed')));
+    const path = refreshMetadataPath(entry.kind, entry.id);
+    if (path) void api.request(path, 'POST', {}).then(() => setNotice(i18n.t('entry.refreshQueued'))).catch(() => setNotice(i18n.t('entry.refreshFailed')));
   };
   const local = owner && session?.viewer.authority === 'local';
   const repair = repairTargetFor(entry);
@@ -123,7 +124,7 @@ function Body({entry, origin, onDone}: {entry: ContentEntry; origin?: EntryOrigi
     // No Details for the page already open (an album's own More menu).
     details: !!entry.navigation && !(entry.navigation.entityId && location.pathname.endsWith(`/${entry.navigation.view}/${entry.navigation.entityId}`)),
     editMetadata: !!(local && repair),
-    refreshMetadata: !!local && canRefreshMetadata(entry.kind),
+    refreshMetadata: !!local && !!refreshMetadataPath(entry.kind, entry.id),
     delete: !!(owner && entry.playback),
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [entry, origin, queue, together.inRoom, together.canQueue, data, downloadable, downloads.state.unavailable, local, repair, owner, loadingDetail, containerWatched.state, containerWatched.carries]);

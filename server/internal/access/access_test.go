@@ -1047,3 +1047,27 @@ func TestInvitationSpentAtRegistrationOnlyWhenItIsAPlainMembersAndUnspent(t *tes
 		t.Fatalf("an expired invitation was spent: %v", err)
 	}
 }
+
+func TestLiveProgrammeMemberRatingAppliesToKnownAndAbsentGuide(t *testing.T) {
+	s, db, _ := fixture(t)
+	ctx := context.Background()
+	_, e := s.SetLimits(ctx, nil, "member", LimitsChange{ExpectedRevision: 1, OperationID: "live-rating-limit", Limits: Limits{MaxContentRating: "PG", AllowUnrated: false}})
+	if e != nil {
+		t.Fatal(e)
+	}
+	tx, e := db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer tx.Rollback()
+	gate := Enforcer{Store: s}
+	p := identity.Principal{Viewer: identity.Viewer{AccountID: "member"}}
+	if e = gate.AdmitProgramme(ctx, tx, p, "PG"); e != nil {
+		t.Fatal(e)
+	}
+	for _, rating := range []string{"TV-MA", "", "unrecognised"} {
+		if e = gate.AdmitProgramme(ctx, tx, p, rating); !errors.Is(e, ErrContentRating) {
+			t.Fatalf("%q admitted: %v", rating, e)
+		}
+	}
+}

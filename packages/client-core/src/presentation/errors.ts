@@ -174,9 +174,15 @@ const codeBodies: Record<string, MessageId> = {
   // Add library with a language the server doesn't offer for the kind/agent (MU12): a definite
   // refusal with its own sentence, whatever the HTTP status category.
   invalid_metadata_language: 'web.libraries.error.metadataLanguage',
+  // Keys, tokens and webhooks have a ceiling; a member's tokens can be turned off by the owner.
+  credential_limit: 'error.credentialLimit',
+  access_tokens_off: 'api.tokens.off',
+  webhook_limit: 'error.webhookLimit',
+  // What was typed to confirm is not what the server asked for (removing a library).
+  confirmation_mismatch: 'error.confirmationMismatch',
 };
 /** Codes whose sentence says what to do instead, so the notice offers no Try again. */
-const noActionCodes = new Set(['local_metadata_only']);
+const noActionCodes = new Set(['local_metadata_only', 'credential_limit', 'access_tokens_off', 'webhook_limit']);
 
 export function presentError(error: unknown, context: ErrorContext = 'generic', options: PresentOptions = {}): PresentedError {
   const i18n = options.i18n ?? defaultI18n;

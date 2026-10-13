@@ -396,9 +396,9 @@ func TestDVRTemplatesAndTunerConflicts(t *testing.T) {
 	}
 	// Three overlapping recordings against two tuners is one conflict.
 	list := []TunerAssignment{
-		{StartsAt: "2026-09-16T20:00:00Z", EndsAt: "2026-09-16T21:00:00Z"},
-		{StartsAt: "2026-09-16T20:30:00Z", EndsAt: "2026-09-16T21:30:00Z"},
-		{StartsAt: "2026-09-16T20:45:00Z", EndsAt: "2026-09-16T21:15:00Z"},
+		{ChannelID: "one", StartsAt: "2026-09-16T20:00:00Z", EndsAt: "2026-09-16T21:00:00Z"},
+		{ChannelID: "two", StartsAt: "2026-09-16T20:30:00Z", EndsAt: "2026-09-16T21:30:00Z"},
+		{ChannelID: "three", StartsAt: "2026-09-16T20:45:00Z", EndsAt: "2026-09-16T21:15:00Z"},
 	}
 	if excess := overlapExcess(list, 2); excess != 1 {
 		t.Fatalf("overlap excess %d, want 1", excess)

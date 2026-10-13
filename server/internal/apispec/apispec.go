@@ -37,7 +37,7 @@ func Documents() ([]Document, error) {
 		_, here, _, _ := runtime.Caller(0)
 		dir := filepath.Join(filepath.Dir(here), "..", "..", "api")
 		files, _ := filepath.Glob(filepath.Join(dir, "*.openapi.yaml"))
-		files = append(files, filepath.Join(dir, "openapi.yaml"))
+		files = append(files, filepath.Join(dir, "openapi.yaml"), filepath.Join(dir, "portico.openapi.json"))
 		sort.Strings(files)
 		files = append(files, filepath.Join(dir, "portico.openapi.json"))
 		for _, file := range files {

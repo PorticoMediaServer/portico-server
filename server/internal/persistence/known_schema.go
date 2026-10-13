@@ -193,6 +193,7 @@ index download_receipts_viewer
 index download_requests_viewer
 index download_requests_work
 index dvr_catalog_provenance_asset_id_fk
+index dvr_recording_shares_capture
 index dvr_recordings_due
 index dvr_recordings_owner_page
 index dvr_recordings_rule
@@ -412,6 +413,7 @@ index social_group_receipts_age
 index social_groups_owner
 index social_handoffs_open
 index subtitle_candidates_expiry
+index subtitle_inventory_entries_association
 index subtitle_provider_candidates_item_id_fk
 index subtitle_resources_item
 index subtitle_resources_source_id_fk
@@ -661,6 +663,7 @@ table dvr_owner_revisions
 table dvr_private_libraries
 table dvr_receipts
 table dvr_recording_grants
+table dvr_recording_shares
 table dvr_recordings
 table dvr_retention_retry
 table dvr_rule_work
@@ -735,12 +738,14 @@ table listening_book_groups
 table listening_book_series
 table live_allocation_reconcile_cursor
 table live_allocations
+table live_channel_attributes
 table live_channel_logos
 table live_channel_preferences
 table live_channel_versions
 table live_enable_receipts
 table live_generations
 table live_icon_jobs
+table live_import_diagnostics
 table live_logo_failures
 table live_logo_jobs
 table live_operations
@@ -880,6 +885,8 @@ table playback_artifacts
 table playback_audio_plans
 table playback_channel_sessions
 table playback_client_profiles
+table playback_conversion_failures
+table playback_conversion_targets
 table playback_copy_timelines
 table playback_delivery_plans
 table playback_device_capabilities
@@ -916,12 +923,9 @@ table playback_sessions
 table playback_source_observations
 table playback_source_pins
 table playback_source_versions
-table playback_subtitle_files
 table playback_subtitle_pins
-table playback_subtitle_plans
 table playback_subtitle_presentations
 table playback_subtitle_state
-table playback_subtitle_tracks
 table playback_v1_prepared
 table playback_v1_sessions
 table playback_vod_intervals
@@ -1016,6 +1020,8 @@ table subtitle_collections
 table subtitle_inventory_entries
 table subtitle_inventory_evidence
 table subtitle_operations
+table subtitle_original_files
+table subtitle_original_revisions
 table subtitle_provider_candidates
 table subtitle_remote_sessions
 table subtitle_render_revisions

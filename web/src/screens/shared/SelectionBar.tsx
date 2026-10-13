@@ -7,6 +7,9 @@ import {Dialog, Icon, Menu, Spinner, useCompact} from '../../ui';
 import {CollectionPicker, PlaylistPicker} from './EntryActions';
 import {runBulkSelection, type BulkProgress} from './bulk-job';
 import type {JobArgs, JobCommand, JobFailure} from '@core/bulk-jobs.ts';
+import {canMergeTitles, mergeTitles} from '@core/title-identity.ts';
+import {errorText} from '../../app/errors';
+import {Button, Checkbox, Notice, Text} from '../../ui';
 import s from './SelectionBar.module.css';
 import {useI18n} from '../../app/i18n';
 
@@ -29,6 +32,7 @@ export function SelectionBar() {
   const [result, setResult] = useState<string>();
   const [playlist, setPlaylist] = useState(false);
   const [collection, setCollection] = useState(false);
+  const [merging, setMerging] = useState(false);
   if (!selection?.active) return null;
   const count = selection.entries.length;
   const ids = () => [...new Set(selection.entries.map(e => e.playback?.itemId ?? e.id))];
@@ -94,6 +98,8 @@ export function SelectionBar() {
         <Action icon="collection" label={t('web.selection.collection')} disabled={!count || !!busy} onClick={() => setCollection(true)} compact={compact} />
         {owner && session?.viewer.authority === 'local' ? <Action icon="edit" label={t('web.selection.edit')} disabled={!count || !!busy || !selection.entries.every(e => repairTargetFor(e))} onClick={() => editor?.open({targets: selection.entries.map(e => repairTargetFor(e)!), titles: selection.entries.map(e => e.title), onSaved: selection.refresh})} compact={compact} /> : null}
         {owner && session?.viewer.authority === 'local' ? <Action icon="refresh" label={t('web.selection.refresh')} busy={busy === 'refresh'} disabled={!count || !!busy} onClick={() => void submit('refresh', 'refresh', {})} compact={compact} /> : null}
+        {/* Two titles that are really one: offered when exactly two of one kind in one library are selected. */}
+        {owner && count === 2 && !selection.wholeSet && canMergeTitles(selection.entries[0]!, selection.entries[1]!) ? <Action icon="link" label={t('web.selection.merge')} disabled={!!busy} onClick={() => setMerging(true)} compact={compact} /> : null}
         {/* Deleting removes the files from disk, so a selection goes through the same preview and typed confirmation as one title, 200 at a time. */}
         {owner ? <Action icon="trash" label={t('web.selection.delete')} disabled={!count || !!busy || !deleter || !selection.entries.every(e => e.playback) || new Set(ids()).size > 200} onClick={() => deleter?.open({itemIds: ids(), titles: selection.entries.map(e => e.title), onDeleted: selection.refresh})} compact={compact} /> : null}
       </div>
@@ -102,6 +108,7 @@ export function SelectionBar() {
       <Dialog open={playlist} onOpenChange={setPlaylist} title={t('web.selection.addToPlaylist', {count})} width={480}>
         <PlaylistPicker bulk itemIds={selection.entries.map(e => e.playback?.itemId ?? e.id)} itemTitles={selection.entries.map(e => e.title)} onBack={() => setPlaylist(false)} onDone={message => { setPlaylist(false); setResult(message); }} />
       </Dialog>
+      {merging && count === 2 ? <MergeDialog titles={[selection.entries[0]!, selection.entries[1]!]} onClose={() => setMerging(false)} onMerged={() => { setMerging(false); setResult(t('web.selection.merged')); selection.refresh(); selection.exit(); }} /> : null}
       <Dialog open={collection} onOpenChange={setCollection} title={t('web.selection.addToCollection', {count})} width={480}>
         <CollectionPicker bulk itemIds={selection.entries.map(e => e.playback?.itemId ?? e.id)} onBack={() => setCollection(false)} onDone={message => { setCollection(false); setResult(message); }} />
       </Dialog>
@@ -110,7 +117,7 @@ export function SelectionBar() {
 }
 
 /** A bar button; forwards props and ref so it can also be a menu trigger. */
-type ActionProps = {icon: 'check' | 'eyeOff' | 'bookmark' | 'heart' | 'queue' | 'collection' | 'refresh' | 'edit' | 'trash'; label: string; busy?: boolean; compact: boolean} & Omit<React.ComponentPropsWithoutRef<'button'>, 'children'>;
+type ActionProps = {icon: 'check' | 'eyeOff' | 'bookmark' | 'heart' | 'queue' | 'collection' | 'refresh' | 'edit' | 'trash' | 'link'; label: string; busy?: boolean; compact: boolean} & Omit<React.ComponentPropsWithoutRef<'button'>, 'children'>;
 const Action = React.forwardRef<HTMLButtonElement, ActionProps>(function Action({icon, label, busy, compact, ...rest}, ref) {
   return (
     <button ref={ref} type="button" className={s.action} aria-label={label} aria-busy={busy || undefined} title={label} {...rest}>
@@ -119,3 +126,35 @@ const Action = React.forwardRef<HTMLButtonElement, ActionProps>(function Action(
     </button>
   );
 });
+
+type MergeTitle = Readonly<{id: string; title: string; year?: number; subtitle?: string}>;
+
+/**
+ * Merge two titles that are really one (owners): choose the one that remains. The other's files
+ * become versions of it (a show takes the other's seasons and episodes) and everyone's watch
+ * history is combined. Nothing on disk changes.
+ */
+function MergeDialog({titles, onClose, onMerged}: {titles: readonly [MergeTitle, MergeTitle]; onClose: () => void; onMerged: () => void}) {
+  const {t} = useI18n();
+  const {api} = useSession();
+  const [keep, setKeep] = useState(titles[0].id);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const other = titles.find(x => x.id !== keep)!;
+  const name = (x: MergeTitle) => [x.title, x.year ? String(x.year) : x.subtitle].filter(Boolean).join(' · ');
+  const merge = () => {
+    setBusy(true); setError('');
+    mergeTitles(api, other.id, keep).then(onMerged, e => { setError(errorText(e, 'server-console', 'action')); setBusy(false); });
+  };
+  return (
+    <Dialog open onOpenChange={o => !o && !busy && onClose()} dismissable={!busy} title={t('web.merge.title')} width={480}
+      actions={<><Button variant="ghost" label={t('action.cancel')} disabled={busy} onClick={onClose} /><Button variant="primary" label={t('web.selection.merge')} loading={busy} onClick={merge} /></>}>
+      {error ? <Notice tone="error" compact>{error}</Notice> : null}
+      <div role="radiogroup" aria-label={t('web.merge.keep')} style={{display: 'flex', flexDirection: 'column', gap: 8}}>
+        <Text as="span" variant="label" tone="secondary">{t('web.merge.keep')}</Text>
+        {titles.map(x => <Checkbox key={x.id} radio checked={keep === x.id} disabled={busy} onCheckedChange={on => { if (on) setKeep(x.id); }} label={name(x)} />)}
+      </div>
+      <Text as="p" variant="body" tone="secondary">{t('web.merge.body', {title: name(other)})}</Text>
+    </Dialog>
+  );
+}

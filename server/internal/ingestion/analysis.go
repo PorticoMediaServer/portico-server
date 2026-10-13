@@ -404,17 +404,13 @@ func (s *Service) analyzeOne(parent context.Context, job string, source catalog.
 					format = st.Codec
 					reason = "unsupported_format"
 				}
-				tracks = append(tracks, subtitles.Track{Origin: "embedded", StreamIndex: st.Index, Format: format, Language: st.Language, Title: st.Title, Default: st.Default, Forced: st.Forced, Reason: reason})
+				tracks = append(tracks, subtitles.Track{Origin: "embedded", StreamIndex: st.Index, Format: format, Language: st.Language, Title: st.Title, Default: st.Default, Forced: st.Forced, HearingImpaired: st.HearingImpaired, Reason: reason})
 			}
-			if s.storage.IsRemote(path) {
-				relative, _ := filepath.Rel(source.ResolvedPath, filepath.Dir(path))
-				if relative == "." {
-					relative = ""
-				}
-				f.SubtitleInventory, err = subtitles.DiscoverManaged(readContext("subtitles"), s.db, s.storage, source.ID, source.Incarnation, job, relative, path, tracks, f.OriginUS, f.TimingKnown)
-			} else {
-				f.SubtitleInventory, err = subtitles.Discover(readContext("subtitles"), s.storage, source.LibraryID, path, tracks, f.OriginUS, f.TimingKnown)
+			relative, _ := filepath.Rel(source.ResolvedPath, filepath.Dir(path))
+			if relative == "." {
+				relative = ""
 			}
+			f.SubtitleInventory, err = subtitles.DiscoverManaged(readContext("subtitles"), s.db, s.storage, source.ID, source.Incarnation, job, relative, path, tracks, f.OriginUS, f.TimingKnown)
 		}
 	}
 	if err == nil && !descriptor && policy.Allows("subtitles") && (f.VideoCodec == "" || f.SubtitleInventory != nil && f.SubtitleInventory.Status == "known") {

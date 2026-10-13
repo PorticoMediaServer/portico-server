@@ -78,3 +78,75 @@ export async function removeLibrary(api:TitleIdentityApi,libraryId:string,confir
  const out=await api.request<unknown>('/v1/admin/libraries/'+encodeURIComponent(libraryId),'DELETE',{confirmation,expectedRevision});
  if(!obj(out)||out.removing!==true)invalid('library removal');
 }
+
+// ── Merging and splitting ───────────────────────────────────────────────────
+
+/** The kinds of title two of which the server will make one: a show takes the other's seasons and episodes; the rest take the other's files as versions. */
+export const MERGEABLE_KINDS:readonly string[]=Object.freeze(['movie','show','episode','song','audiobook_file','extra']);
+/** Whether two titles can be offered for merging: different titles of one kind, and not known to be in different libraries (a list inside one library need not name it on every entry; the server refuses a pair that is not in one library). */
+export function canMergeTitles(a:Readonly<{id:string;kind:string;libraryId?:string}>,b:Readonly<{id:string;kind:string;libraryId?:string}>):boolean{
+ return a.id!==b.id&&a.kind===b.kind&&MERGEABLE_KINDS.includes(a.kind)&&(!a.libraryId||!b.libraryId||a.libraryId===b.libraryId);
+}
+/** The kinds of title a file can be split off: a film, a track or a book's file. An episode is placed by show, season and number instead. */
+export const SPLITTABLE_KINDS:readonly string[]=Object.freeze(['movie','song','audiobook_file']);
+
+/** The library's own record of one file: what a split is asked with. */
+export type LibraryFileRecord=Readonly<{objectId:string;revision:string}>;
+/** A library folder as far as finding a file needs it. */
+export type LibraryFolder=Readonly<{id:string;path:string;resolvedPath:string}>;
+
+/** The folder a file's path lies in: the folder with the longest path that leads to it, by either of the folder's paths. */
+export function folderOfPath(folders:readonly LibraryFolder[],filePath:string):string|undefined{
+ const under=(folder:string)=>!!folder&&(filePath===folder||filePath.startsWith(folder.replace(/[\\/]+$/,'')+'/')||filePath.startsWith(folder.replace(/[\\/]+$/,'')+'\\'));
+ let best:LibraryFolder|undefined,length=-1;
+ for(const folder of folders)for(const path of [folder.path,folder.resolvedPath])if(under(path)&&path.length>length){best=folder;length=path.length;}
+ return best?.id;
+}
+
+const libraryBase=(libraryId:string)=>'/v1/admin/libraries/'+encodeURIComponent(libraryId);
+
+/** A library's folders. An unreadable folder is left out alone: it only narrows the search, and a file is still found without it. */
+export async function libraryFolders(api:TitleIdentityApi,libraryId:string,signal?:AbortSignal):Promise<readonly LibraryFolder[]>{
+ const raw=await api.request<unknown>(libraryBase(libraryId)+'/inventory-config','GET',undefined,signal);
+ if(!obj(raw)||!Array.isArray(raw.sources))invalid('library folders');
+ return Object.freeze(keepReadable('title-identity','folders',raw.sources.slice(0,64),v=>{if(!obj(v)||!id(v.id)||!text(v.path,8192)||!text(v.resolvedPath,8192))invalid('library folder');return Object.freeze({id:v.id,path:v.path,resolvedPath:v.resolvedPath});}));
+}
+
+/**
+ * Finds the library's record of one of a title's files. The server lists a library's files a
+ * page at a time and cannot yet be asked for one file, so this reads the list (one folder's when
+ * the folder is known) until the file turns up. `onProgress` says how many files have been
+ * looked at; `signal` stops it. Nothing found returns undefined.
+ */
+export async function findLibraryFile(api:TitleIdentityApi,libraryId:string,fileId:string,options:Readonly<{folderId?:string;signal?:AbortSignal;onProgress?:(looked:number)=>void}>={}):Promise<LibraryFileRecord|undefined>{
+ if(!id(libraryId)||!id(fileId))invalid('file to find');
+ let cursor='',looked=0;
+ const seen=new Set<string>();
+ // A library of a few hundred thousand files is 5,000 pages; past that the list is not ending.
+ for(let page=0;page<10000;page++){
+  const params=new URLSearchParams({limit:'40',state:'available'});
+  if(options.folderId)params.set('sourceId',options.folderId);
+  if(cursor)params.set('cursor',cursor);
+  const raw=await api.request<unknown>(libraryBase(libraryId)+'/inventory?'+params,'GET',undefined,options.signal);
+  if(!obj(raw)||!Array.isArray(raw.items)||raw.items.length>40||(raw.nextCursor!==undefined&&!text(raw.nextCursor,4096)))invalid('library files');
+  for(const row of raw.items){
+   if(!obj(row)||row.assetId!==fileId)continue;
+   if(!id(row.id)||!id(row.revision))invalid('library file');
+   return Object.freeze({objectId:row.id,revision:row.revision});
+  }
+  looked+=raw.items.length;
+  options.onProgress?.(looked);
+  const next=typeof raw.nextCursor==='string'?raw.nextCursor:'';
+  if(!next||seen.has(next))return undefined;
+  seen.add(next);cursor=next;
+ }
+ return undefined;
+}
+
+/** Says one file is not a version of the title it was grouped with: it becomes a title of its own, and the choice is remembered across scans. Returns the new title's id. */
+export async function separateLibraryFile(api:TitleIdentityApi,libraryId:string,file:LibraryFileRecord):Promise<string>{
+ if(!id(libraryId)||!id(file.objectId)||!id(file.revision))invalid('file to separate');
+ const out=await api.request<unknown>(libraryBase(libraryId)+'/inventory/'+encodeURIComponent(file.objectId)+'/separate','POST',{revision:file.revision});
+ if(!obj(out)||!id(out.itemId))invalid('separated title');
+ return out.itemId;
+}

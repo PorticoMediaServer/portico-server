@@ -50,8 +50,10 @@ function SettingsFrame({address}: {address?: string}) {
       downloads: !downloads.state.unavailable,
       // The devices list (and renaming this browser in it) is the server account's.
       deviceName: local,
+      // The owner makes API keys under Server › Integrations; everyone else makes personal tokens.
+      accessTokens: !!session.session && !session.owner,
     },
-  }), [session.owner, registry, local, session.local?.hostedAccountId, session.hosted, downloads.state.unavailable]);
+  }), [session.owner, session.session, registry, local, session.local?.hostedAccountId, session.hosted, downloads.state.unavailable]);
   const [query, setQuery] = useState('');
   const matches = useMemo(() => searchSettings(structure, query, t), [structure, query, t]);
   const current = address || !narrow ? findSettingsPage(structure, address) : undefined;

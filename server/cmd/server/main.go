@@ -347,21 +347,6 @@ func run() (runErr error) {
 	if e != nil {
 		return e
 	}
-	// Resolve one verified pair. Qualification overlaps independent schema work,
-	// but is joined below before constructing the first playback service.
-	doneQualification := reporter.step("toolchain", "Verify and qualify the media tools")
-	ffmpegTool, ffprobeTool := decoder.ResolveTools()
-	qualificationCtx, qualificationCancel := context.WithTimeout(context.Background(), 40*time.Second)
-	defer qualificationCancel()
-	type toolchainResult struct {
-		facts decoder.ToolchainFacts
-		err   error
-	}
-	toolchainReady := make(chan toolchainResult, 1)
-	supervise.Go("cmd.toolchain-qualification", func() {
-		facts, err := decoder.ProbeToolchain(qualificationCtx, ffmpegTool)
-		toolchainReady <- toolchainResult{facts, err}
-	})
 	doneDatabase := reporter.step("database", "Open and install the database")
 	if _, err := os.Stat(filepath.Join(state, "server.sqlite")); os.IsNotExist(err) {
 		stateDirFreshThisProcess = true
@@ -372,6 +357,35 @@ func run() (runErr error) {
 		return e
 	}
 	defer db.Close()
+	// Resolve one verified pair. Qualification overlaps independent startup work,
+	// but is joined below before constructing the first playback service.
+	doneQualification := reporter.step("toolchain", "Verify and qualify the media tools")
+	startupMedia, e := operations.StartupMediaSettings(context.Background(), db)
+	if e != nil {
+		return e
+	}
+	decoder.SetBackgroundConversionLimit(startupMedia.MaxBackgroundSessions)
+	ffmpegTool, ffprobeTool := decoder.ResolveTools()
+	defaultFFmpegTool, defaultFFprobeTool := ffmpegTool, ffprobeTool
+	if startupMedia.FFmpegPath != "" {
+		ffmpegTool = startupMedia.FFmpegPath
+		ffprobeTool = decoder.CompanionProbe(ffmpegTool, ffprobeTool)
+	}
+	qualificationCtx, qualificationCancel := context.WithTimeout(context.Background(), 40*time.Second)
+	defer qualificationCancel()
+	type toolchainResult struct {
+		facts decoder.ToolchainFacts
+		err   error
+	}
+	toolchainReady := make(chan toolchainResult, 1)
+	supervise.Go("cmd.toolchain-qualification", func() {
+		facts, err := decoder.ProbeToolchain(qualificationCtx, ffmpegTool)
+		if err == nil && startupMedia.FFmpegPath != "" && len(facts.MissingRequired()) > 0 {
+			err = fmt.Errorf("configured FFmpeg lacks required media features: %v", facts.MissingRequired())
+		}
+		toolchainReady <- toolchainResult{facts, err}
+	})
+
 	// A copied state folder rebases Portico's own absolute paths on first
 	// start (spec §3): storage stays absolute and the move repairs it.
 	if e = persistence.RebaseStatePaths(context.Background(), db, state); e != nil {
@@ -457,9 +471,14 @@ func run() (runErr error) {
 	cat.SetStorage(storeIO)
 	// This is a barrier, not a background best-effort capability update. No
 	// playback service is constructed until qualification completes or times out.
+	overrideRejected := false
 	select {
 	case result := <-toolchainReady:
 		if result.err != nil {
+			if startupMedia.FFmpegPath != "" {
+				overrideRejected = true
+				log.Printf("Configured FFmpeg could not be qualified; using bundled tools: %v", result.err)
+			}
 			log.Printf("Media toolchain qualification unavailable: %v", result.err)
 		} else {
 			decoder.ConfigureToolchain(result.facts)
@@ -469,9 +488,31 @@ func run() (runErr error) {
 			}
 		}
 	case <-qualificationCtx.Done():
+		if startupMedia.FFmpegPath != "" {
+			overrideRejected = true
+			log.Printf("Configured FFmpeg qualification timed out; using bundled tools: %v", qualificationCtx.Err())
+		}
 		log.Printf("Media toolchain qualification unavailable: %v", qualificationCtx.Err())
 	}
 	qualificationCancel()
+	if overrideRejected {
+		ffmpegTool, ffprobeTool = defaultFFmpegTool, defaultFFprobeTool
+		startupMedia.FFmpegPath = ""
+		operations.UseBundledFFmpeg()
+		retry, retryCancel := context.WithTimeout(context.Background(), 40*time.Second)
+		facts, err := decoder.ProbeToolchain(retry, ffmpegTool)
+		retryCancel()
+		if err == nil {
+			decoder.ConfigureToolchain(facts)
+		} else {
+			log.Printf("Media toolchain qualification unavailable: %v", err)
+		}
+	}
+	if startupMedia.FFmpegPath != "" {
+		if e := decoder.ConfigureResolvedTools(ffmpegTool, ffprobeTool); e != nil {
+			return e
+		}
+	}
 	doneQualification(nil)
 	scanner := ingestion.New(db, cat, assets.Probe{Binary: ffprobeTool, Supervisor: storeIO.Supervisor})
 	scanner.Admission = workAdmission.Admit
@@ -704,15 +745,8 @@ func run() (runErr error) {
 	// never waits on ffmpeg. Sessions that arrive earlier take software until then.
 	player.ConfigureProbe(assets.Probe{Binary: ffprobeTool, Supervisor: storeIO.Supervisor})
 	supervise.Go("cmd.hardware-report", func() { player.HardwareReport(context.Background()) })
-	conversionDirectory := filepath.Join(cache, "hls")
-	conversionSettings, err := operations.New(db).Settings(ctx, operations.AllowServerScope)
-	if err != nil {
-		return err
-	}
-	appliedConversionSetting := conversionSettings.Effective.TemporaryDirectory
-	if appliedConversionSetting != "" {
-		conversionDirectory = appliedConversionSetting
-	}
+	appliedConversionSetting := startupMedia.TemporaryDirectory
+	conversionDirectory := operations.ConversionDirectory(cache, appliedConversionSetting)
 	hls, e := playback.NewHLS(ctx, db, conversionDirectory, ffmpegTool)
 	if e == nil {
 		hls.SourceStorage = storeIO

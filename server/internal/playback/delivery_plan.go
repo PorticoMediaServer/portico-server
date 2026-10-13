@@ -98,39 +98,41 @@ type BurnInSpec struct {
 }
 
 type DeliveryPlan struct {
-	BurnIn           *BurnInSpec             `json:"burnIn,omitempty"`
-	TextRenditions   []TextRenditionPlan     `json:"-"`
-	Renditions       []AudioRenditionPlan    `json:"audioRenditions,omitempty"`
-	Prepared         *PreparedDelivery       `json:"prepared,omitempty"`
-	Policy           *ResolvedDeliveryPolicy `json:"policy,omitempty"`
-	Trace            *DecisionTrace          `json:"trace,omitempty"`
-	SourceSize       int64                   `json:"-"`
-	SourceModifiedNS int64                   `json:"-"`
-	Profile          string                  `json:"profile"`
-	SourceID         string                  `json:"sourceId"`
-	FactsRevision    int64                   `json:"factsRevision"`
-	SourceContainer  string                  `json:"sourceContainer"`
-	SourceVideoCodec string                  `json:"sourceVideoCodec"`
-	SourceAudioCodec string                  `json:"sourceAudioCodec"`
-	Duration         float64                 `json:"duration"`
-	Mode             string                  `json:"mode"`
-	Strategy         DeliveryStrategy        `json:"strategy"`
-	Reason           string                  `json:"reason"`
-	ReasonCodes      []string                `json:"reasonCodes"`
-	OutputContainer  string                  `json:"outputContainer"`
-	VideoAction      string                  `json:"videoAction"`
-	AudioAction      string                  `json:"audioAction"`
-	OutputVideoCodec string                  `json:"outputVideoCodec"`
-	OutputAudioCodec string                  `json:"outputAudioCodec"`
-	AudioChannels    int                     `json:"audioChannels"`
-	QualityID        string                  `json:"qualityId"`
-	TargetWidth      int                     `json:"targetDisplayWidth,omitempty"`
-	TargetHeight     int                     `json:"targetDisplayHeight,omitempty"`
-	VideoBitrateBPS  int                     `json:"videoBitrateBps,omitempty"`
-	AudioBitrateBPS  int                     `json:"audioBitrateBps,omitempty"`
-	ToneMap          bool                    `json:"toneMap"`
-	ToneMapAlgorithm string                  `json:"toneMapAlgorithm,omitempty"`
-	HardwareBackend  string                  `json:"hardwareBackend"`
+	ConversionTarget *decoder.ConversionTarget `json:"-"`
+	ConversionProbe  *decoder.HardwareProbe    `json:"-"`
+	BurnIn           *BurnInSpec               `json:"burnIn,omitempty"`
+	TextRenditions   []TextRenditionPlan       `json:"-"`
+	Renditions       []AudioRenditionPlan      `json:"audioRenditions,omitempty"`
+	Prepared         *PreparedDelivery         `json:"prepared,omitempty"`
+	Policy           *ResolvedDeliveryPolicy   `json:"policy,omitempty"`
+	Trace            *DecisionTrace            `json:"trace,omitempty"`
+	SourceSize       int64                     `json:"-"`
+	SourceModifiedNS int64                     `json:"-"`
+	Profile          string                    `json:"profile"`
+	SourceID         string                    `json:"sourceId"`
+	FactsRevision    int64                     `json:"factsRevision"`
+	SourceContainer  string                    `json:"sourceContainer"`
+	SourceVideoCodec string                    `json:"sourceVideoCodec"`
+	SourceAudioCodec string                    `json:"sourceAudioCodec"`
+	Duration         float64                   `json:"duration"`
+	Mode             string                    `json:"mode"`
+	Strategy         DeliveryStrategy          `json:"strategy"`
+	Reason           string                    `json:"reason"`
+	ReasonCodes      []string                  `json:"reasonCodes"`
+	OutputContainer  string                    `json:"outputContainer"`
+	VideoAction      string                    `json:"videoAction"`
+	AudioAction      string                    `json:"audioAction"`
+	OutputVideoCodec string                    `json:"outputVideoCodec"`
+	OutputAudioCodec string                    `json:"outputAudioCodec"`
+	AudioChannels    int                       `json:"audioChannels"`
+	QualityID        string                    `json:"qualityId"`
+	TargetWidth      int                       `json:"targetDisplayWidth,omitempty"`
+	TargetHeight     int                       `json:"targetDisplayHeight,omitempty"`
+	VideoBitrateBPS  int                       `json:"videoBitrateBps,omitempty"`
+	AudioBitrateBPS  int                       `json:"audioBitrateBps,omitempty"`
+	ToneMap          bool                      `json:"toneMap"`
+	ToneMapAlgorithm string                    `json:"toneMapAlgorithm,omitempty"`
+	HardwareBackend  string                    `json:"hardwareBackend"`
 	// AudioStream is the absolute source stream index the session plays, -1 when
 	// the source has no audio or the plan predates track choice.
 	AudioStream    int     `json:"audioStream"`
@@ -148,8 +150,8 @@ type DeliveryPlan struct {
 	// made for "remote" or "local". The remote ceilings follow it on a later
 	// re-plan; a v1 plan stored without it is treated as remote.
 	TargetReach string `json:"-"`
-	// AudioSampleRate is the rate converted audio is resampled to; zero keeps
-	// the source's.
+	// AudioSampleRate is the explicit converted rate, including supported
+	// source rates. An unknown rate selects a device-supported rate.
 	AudioSampleRate int `json:"-"`
 }
 
@@ -287,7 +289,7 @@ func planDelivery(in DeliveryInput) (p DeliveryPlan, err error) {
 	video := source.Video
 	if video != nil {
 		p.SourceVideoCodec, p.OutputVideoCodec = video.Codec, video.Codec
-		trace.Video = &TraceVideo{Codec: video.Codec, Profile: video.Profile, Level: video.Level, BitDepth: video.BitDepth, Width: video.Width, Height: video.Height, FrameRate: video.FrameRate, Interlaced: video.Interlaced, DynamicRange: video.DynamicRange, DolbyVisionProfile: video.DolbyVisionProfile, DolbyVisionLevel: video.DolbyVisionLevel, DolbyVisionCompatibility: video.DolbyVisionCompatibility, BitRate: video.BitRate}
+		trace.Video = &TraceVideo{Rotation: video.Rotation, SampleAspectRatio: video.SampleAspectRatio, Codec: video.Codec, Profile: video.Profile, Level: video.Level, BitDepth: video.BitDepth, Width: video.Width, Height: video.Height, FrameRate: video.FrameRate, Interlaced: video.Interlaced, DynamicRange: video.DynamicRange, DolbyVisionProfile: video.DolbyVisionProfile, DolbyVisionLevel: video.DolbyVisionLevel, DolbyVisionCompatibility: video.DolbyVisionCompatibility, BitRate: video.BitRate}
 	}
 	if audio != nil {
 		p.SourceAudioCodec, p.OutputAudioCodec = audio.Codec, audio.Codec
@@ -675,7 +677,7 @@ func planDelivery(in DeliveryInput) (p DeliveryPlan, err error) {
 				trace.Notes = append(trace.Notes, NoteDolbyVisionNoLayer)
 				// COMPAT-04: only libplacebo applies Profile 5's reshaping; say so
 				// in the decision, so clients can warn before play.
-				if !decoder.ReshapesDolbyVision(decoder.ConversionRequest{ConvertVideo: true, ToneMap: true, Toolchain: decoder.CurrentToolchain(), Probe: in.Hardware}) {
+				if !decoder.ReshapesDolbyVision(decoder.ConversionRequest{ConvertVideo: true, ToneMap: true, Toolchain: decoder.CurrentToolchain(), Probe: in.Hardware, Target: &decoder.ConversionTarget{VideoCodec: "h264", ToneMap: true, DolbyVisionProfile: video.DolbyVisionProfile, DolbyVisionCompatibility: video.DolbyVisionCompatibility}}) {
 					p.ReasonCodes = append(p.ReasonCodes, ReasonDolbyVisionApproximate)
 				}
 			}
@@ -696,6 +698,9 @@ func planDelivery(in DeliveryInput) (p DeliveryPlan, err error) {
 	p.HardwareDevice = cfg.HardwareDevice
 	if in.Hardware.Available && in.Hardware.Backend != decoder.BackendSoftware {
 		p.HardwareBackend, p.HardwareNative = string(in.Hardware.Backend), in.Hardware.NativeFilters
+		if !p.ToneMap {
+			p.HardwareNative = p.HardwareNative || in.Hardware.ScaleFilters
+		}
 		p.ReasonCodes = append(p.ReasonCodes, ReasonHardwareBackend)
 	} else {
 		p.ReasonCodes = append(p.ReasonCodes, ReasonSoftwareFallback)
@@ -819,6 +824,7 @@ func (p DeliveryPlan) conversionGraph(burn *decoder.BurnIn) (decoder.ConversionG
 		return decoder.ConversionGraph{}, errors.New("delivery plan does not describe ordinary HLS")
 	}
 	request := decoder.ConversionRequest{
+		Target:           p.ConversionTarget,
 		BurnIn:           burn,
 		Toolchain:        decoder.CurrentToolchain(),
 		Probe:            decoder.HardwareProbe{Backend: decoder.HardwareBackend(p.HardwareBackend), Available: p.HardwareBackend != "" && p.HardwareBackend != string(decoder.BackendSoftware), NativeFilters: p.HardwareNative, Device: p.HardwareDevice},
@@ -836,6 +842,9 @@ func (p DeliveryPlan) conversionGraph(burn *decoder.BurnIn) (decoder.ConversionG
 		Downmix:          p.Downmix == DownmixITULimited,
 		AudioSampleRate:  p.AudioSampleRate,
 	}
+	if p.ConversionProbe != nil && p.HardwareBackend == string(p.ConversionProbe.Backend) && p.HardwareBackend != string(decoder.BackendSoftware) {
+		request.Probe = *p.ConversionProbe
+	}
 	switch p.VideoAction {
 	case "copy":
 		request.CopyVideo = true
@@ -849,13 +858,57 @@ func (p DeliveryPlan) conversionGraph(burn *decoder.BurnIn) (decoder.ConversionG
 	case "copy":
 		request.CopyAudio = true
 	case "convert":
-		if (p.OutputAudioCodec != "aac" && p.OutputAudioCodec != "ac3" && p.OutputAudioCodec != "eac3") || (p.AudioChannels != 2 && p.AudioChannels != 6) {
+		if p.ConversionTarget == nil && ((p.OutputAudioCodec != "aac" && p.OutputAudioCodec != "ac3" && p.OutputAudioCodec != "eac3") || (p.AudioChannels != 2 && p.AudioChannels != 6)) {
 			return decoder.ConversionGraph{}, errors.New("invalid delivery audio action")
 		}
 		request.ConvertAudio = true
 	case "none":
 	default:
 		return decoder.ConversionGraph{}, errors.New("invalid delivery audio action")
+	}
+	if request.ConvertVideo && p.Trace != nil && p.Trace.Video != nil && p.Trace.Video.DolbyVisionProfile > 0 {
+		t := request.Target
+		if t == nil {
+			t = &decoder.ConversionTarget{VideoCodec: p.OutputVideoCodec, BitDepth: 8, DynamicRange: "sdr", ToneMap: p.ToneMap, Width: p.TargetWidth, Height: p.TargetHeight, FrameRate: p.MaxFrameRate, VideoBitrateBPS: p.VideoBitrateBPS, AudioCodec: p.OutputAudioCodec, AudioChannels: p.AudioChannels, AudioSampleRate: p.AudioSampleRate, AudioBitrateBPS: p.AudioBitrateBPS, Packaging: p.OutputContainer}
+		}
+		copy := *t
+		copy.DolbyVisionProfile = p.Trace.Video.DolbyVisionProfile
+		copy.DolbyVisionCompatibility = p.Trace.Video.DolbyVisionCompatibility
+		request.Target = &copy
+	}
+	if request.ConvertVideo && p.OutputVideoCodec == "h264" && request.Target == nil && p.Trace != nil && p.Trace.Video != nil {
+		v := p.Trace.Video
+		w, h := convertedDimensions(p)
+		rate := v.FrameRate
+		if p.MaxFrameRate > 0 {
+			rate = min(rate, p.MaxFrameRate)
+		}
+		request.Target = &decoder.ConversionTarget{VideoCodec: "h264", BitDepth: 8, DynamicRange: "sdr", ToneMap: p.ToneMap, Width: p.TargetWidth, Height: p.TargetHeight, FrameRate: p.MaxFrameRate, VideoBitrateBPS: p.VideoBitrateBPS, VideoLevel: decoder.H264OutputLevel(w, h, rate), AudioCodec: p.OutputAudioCodec, AudioChannels: p.AudioChannels, AudioSampleRate: p.AudioSampleRate, AudioBitrateBPS: p.AudioBitrateBPS, Packaging: p.OutputContainer}
+	}
+	if request.Target != nil && (request.Target.VideoCodec == "hevc" || request.Target.VideoCodec == "h264") && request.Target.VideoLevel == 0 {
+		target := *request.Target
+		w, h := convertedDimensions(p)
+		rate := target.FrameRate
+		if p.Trace != nil && p.Trace.Video != nil {
+			rate = p.Trace.Video.FrameRate
+			if target.FrameRate > 0 {
+				rate = min(rate, target.FrameRate)
+			}
+		}
+		target.VideoLevel = decoder.HEVCOutputLevel(w, h, rate)
+		if target.VideoCodec == "h264" {
+			target.VideoLevel = decoder.H264OutputLevel(w, h, rate)
+		}
+		request.Target = &target
+	}
+	if p.Trace != nil && p.Trace.Video != nil {
+		v := p.Trace.Video
+		request.DisableHardwareDecode = v.Rotation != 0 || v.SampleAspectRatio != "" && v.SampleAspectRatio != "1:1" && v.SampleAspectRatio != "0:1"
+		if request.Target != nil && request.Target.SourceRange == "" {
+			target := *request.Target
+			target.SourceRange = v.DynamicRange
+			request.Target = &target
+		}
 	}
 	return decoder.BuildConversion(request)
 }
@@ -915,6 +968,9 @@ func loadDeliveryPlan(q audioQuery, session string) (*DeliveryPlan, error) {
 		}
 		p.Prepared = &prepared
 	} else if !errors.Is(err, sql.ErrNoRows) {
+		return nil, err
+	}
+	if err = loadConversionTarget(q, session, p); err != nil {
 		return nil, err
 	}
 	return p, nil

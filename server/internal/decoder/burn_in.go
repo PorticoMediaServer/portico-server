@@ -8,6 +8,8 @@ import (
 
 type BurnIn struct {
 	File, Format         string
+	FontsDirectory       string
+	DynamicRange         string
 	PositionUS, OffsetUS int64
 	Width, Height        int
 }
@@ -18,24 +20,36 @@ func burnFilter(b BurnIn, facts *ToolchainFacts) (string, []string, error) {
 	if !filepath.IsAbs(b.File) || filepath.Clean(b.File) != b.File || strings.ContainsAny(b.File, "\n\r\x00") || b.PositionUS < 0 || b.PositionUS > 86400000000 || b.OffsetUS < -600000000 || b.OffsetUS > 600000000 {
 		return "", nil, ErrInvalidConfiguration
 	}
+	if b.FontsDirectory != "" && (!filepath.IsAbs(b.FontsDirectory) || filepath.Clean(b.FontsDirectory) != b.FontsDirectory || strings.ContainsAny(b.FontsDirectory, "\n\r\x00")) {
+		return "", nil, ErrInvalidConfiguration
+	}
 	switch b.Format {
 	case "ass", "ssa":
 		if facts != nil && !facts.Filters["ass"] {
 			return "", nil, fmt.Errorf("subtitle_burn_filter_unavailable")
 		}
-		// Two escaping levels: AVOption's filename and the filtergraph parser.
-		file := strings.NewReplacer("\\", "\\\\", "'", "\\'", ":", "\\:").Replace(b.File)
-		file = strings.NewReplacer("\\", "\\\\", "'", "\\'", ",", "\\,", "[", "\\[", "]", "\\]", ";", "\\;").Replace(file)
+		file := escapeFilterPath(b.File)
+		ass := "ass=filename=" + file + ":alpha=1"
+		if b.FontsDirectory != "" {
+			ass += ":fontsdir=" + escapeFilterPath(b.FontsDirectory)
+		}
+		if b.Width > 0 && b.Height > 0 {
+			ass += fmt.Sprintf(":original_size=%dx%d", b.Width, b.Height)
+		}
 		shift := seconds(b.PositionUS - b.OffsetUS)
-		return "setpts=PTS+(" + shift + ")/TB,ass=filename=" + file + ",setpts=PTS-(" + shift + ")/TB", nil, nil
-	case "pgs", "vobsub", "mks":
+		draw := "setpts=PTS+(" + shift + ")/TB," + ass + ",setpts=PTS-(" + shift + ")/TB"
+		if b.DynamicRange == "hdr10" || b.DynamicRange == "hlg" {
+			return "split[burn_picture][burn_text];[burn_text]format=rgba,colorchannelmixer=aa=0," + draw + "," + hdrSubtitleFilter(b.DynamicRange) + "[burn_cues];[burn_picture][burn_cues]overlay=format=yuv420p10:eof_action=pass:shortest=0", []string{}, nil
+		}
+		return draw, nil, nil
+	case "pgs", "vobsub", "mks", "dvb":
 		if b.Width < 1 || b.Height < 1 || b.Width > 8192 || b.Height > 4320 {
 			return "", nil, ErrInvalidConfiguration
 		}
 		if facts != nil && !facts.Filters["overlay"] {
 			return "", nil, fmt.Errorf("subtitle_burn_filter_unavailable")
 		}
-		mux := map[string]string{"pgs": "sup", "vobsub": "vobsub", "mks": "matroska"}[b.Format]
+		mux := map[string]string{"pgs": "sup", "vobsub": "vobsub", "mks": "matroska", "dvb": "matroska"}[b.Format]
 		formats := mux
 		if b.Format == "vobsub" {
 			formats += " ,mpeg"
@@ -43,9 +57,35 @@ func burnFilter(b BurnIn, facts *ToolchainFacts) (string, []string, error) {
 		}
 		// Preserve the subtitle source clock; FFmpeg otherwise subtracts the
 		// first cue timestamp. Reset only the picture after the input seek.
-		inputs := []string{"-copyts", "-protocol_whitelist", "file", "-format_whitelist", formats, "-canvas_size", fmt.Sprintf("%dx%d", b.Width, b.Height), "-f", mux, "-i", b.File}
-		filter := fmt.Sprintf("setpts=PTS-STARTPTS[burn_picture];[1:s:0]settb=AVTB,setpts=PTS+(%s)/TB,scale=%d:%d[burn_cues];[burn_picture][burn_cues]overlay=eof_action=pass:shortest=0", seconds(b.OffsetUS-b.PositionUS), b.Width, b.Height)
+		inputs := []string{"-copyts", "-protocol_whitelist", "file", "-format_whitelist", formats, "-f", mux, "-i", b.File}
+		// The bitmap owns its canvas. Fit it without distorting its glyphs,
+		// centering transparent padding when a cropped video has a different shape.
+		fit := fmt.Sprintf("scale=w='max(2,trunc(iw*min(%d/iw,%d/ih)/2)*2)':h='max(2,trunc(ih*min(%d/iw,%d/ih)/2)*2)',pad=%d:%d:(ow-iw)/2:(oh-ih)/2:color=black@0", b.Width, b.Height, b.Width, b.Height, b.Width, b.Height)
+		cue := fmt.Sprintf("[1:s:0]settb=AVTB,setpts=PTS+(%s)/TB,format=rgba,%s", seconds(b.OffsetUS-b.PositionUS), fit)
+		overlay := "overlay=eof_action=pass:shortest=0"
+		if b.DynamicRange == "hdr10" || b.DynamicRange == "hlg" {
+			cue += "," + hdrSubtitleFilter(b.DynamicRange)
+			overlay = "overlay=format=yuv420p10:eof_action=pass:shortest=0"
+		}
+		filter := "setpts=PTS-STARTPTS[burn_picture];" + cue + "[burn_cues];[burn_picture][burn_cues]" + overlay
 		return filter, inputs, nil
 	}
 	return "", nil, ErrInvalidConfiguration
+}
+
+// FFmpeg parses AVOptions and then the filter graph, so paths need both
+// escaping layers, including the Windows drive colon and backslashes.
+func escapeFilterPath(path string) string {
+	path = strings.NewReplacer("\\", "\\\\", "'", "\\'", ":", "\\:").Replace(path)
+	return strings.NewReplacer("\\", "\\\\", "'", "\\'", ",", "\\,", "[", "\\[", "]", "\\]", ";", "\\;").Replace(path)
+}
+
+// Subtitle white is 100-nit BT.709, independently converted to the HDR output
+// transfer. The source picture never passes through an SDR working surface.
+func hdrSubtitleFilter(dynamicRange string) string {
+	transfer := "smpte2084"
+	if dynamicRange == "hlg" {
+		transfer = "arib-std-b67"
+	}
+	return "format=gbrap16le,zscale=pin=bt709:tin=bt709:min=gbr:p=bt2020:t=" + transfer + ":m=bt2020nc:r=tv:npl=100,format=yuva420p10le"
 }

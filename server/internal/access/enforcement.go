@@ -14,6 +14,7 @@ import (
 var (
 	ErrStreamLimit   = errors.New("This account already has as many streams playing as its limit allows.")
 	ErrSchedule      = errors.New("This account is outside the hours it is allowed to watch.")
+	ErrContentRating = errors.New("This title's rating is above the limit set for this account.")
 	ErrChannelDenied = errors.New("This channel is not allowed for this account.")
 )
 
@@ -140,6 +141,29 @@ func (e *Enforcer) AdmitChannel(ctx context.Context, tx *sql.Tx, p identity.Prin
 		return err
 	}
 	return channelAllowed(limits.Channels, channel)
+}
+
+// AdmitProgramme applies the account's rating limit to a live guide slot, which
+// has no catalogue item to judge. It is the rule the catalogue applies to a
+// title, on the same age scale: a programme rated above the limit is refused,
+// and one with no rating, or a rating the table does not know, is refused when
+// the account may not watch unrated titles. An absent guide slot is unrated.
+func (e *Enforcer) AdmitProgramme(ctx context.Context, tx *sql.Tx, p identity.Principal, rating string) error {
+	limits, err := e.limits(ctx, tx, p.AccountID)
+	if err != nil {
+		return err
+	}
+	age, rated := identity.RatingAge(rating)
+	if !rated {
+		if !limits.AllowUnrated {
+			return ErrContentRating
+		}
+		return nil
+	}
+	if ceiling := limits.Ceiling(); ceiling >= 0 && age > ceiling {
+		return ErrContentRating
+	}
+	return nil
 }
 
 func channelAllowed(policy ChannelPolicy, channel string) error {

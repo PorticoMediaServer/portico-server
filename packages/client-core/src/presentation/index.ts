@@ -8,7 +8,7 @@ export {presentError, errorMessage, type ErrorContext, type ErrorOperation, type
 export {preferenceGroupTitle, preferenceLabel, preferenceValueLabel, qualityNetworkLabels, managedElsewhere, deviceNoun, type CopyPlatform} from './preference-copy.ts';
 export {viewerScope, iconFor, captionFor, progressFor, formatDuration, formatClock, formatBytes, friendlyHost, sentence} from './content.ts';
 export {compatContentApi, sanitizeContentProjection, knownContentViews, type ContentRequestApi} from './content-compat.ts';
-export {canRefreshMetadata, entryActions, entryActionList, type EntryAction, type EntryActionGroup, type EntryActionGroupId, type EntryActionId, type EntryCapabilities} from './entry-actions.ts';
+export {canRefreshMetadata, refreshMetadataPath, entryActions, entryActionList, type EntryAction, type EntryActionGroup, type EntryActionGroupId, type EntryActionId, type EntryCapabilities} from './entry-actions.ts';
 export {detailActions, type DetailActions, type DetailPrimary, type DetailQuick, type DetailViewer} from './detail-actions.ts';
 export {profileActions, type ProfileAction, type ProfileActionId, type ProfileRef, type ProfileViewer} from './profile-actions.ts';
 export {localeChoices, type RegionChoice} from './region-choices.ts';

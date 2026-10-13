@@ -1,4 +1,5 @@
 import {useEffect, useMemo, useState} from 'react';
+import {useNavigate} from '@tanstack/react-router';
 import {parseEnvelope, parseFilesystemPage, parseLibraryDocument, providerChoices, type FilesystemPage, type LibrarySettings} from '@core/administration.ts';
 import {setLibraryAnalysis} from '../../admin/library-policy';
 import {filesystemPath, mergeFilesystemPages} from '@core/server-admin/panel-logic.ts';
@@ -81,7 +82,7 @@ export function FolderPicker({open, onOpenChange, onPick, start = ''}: {open: bo
 
 const MEDIA_KINDS = new Set(['movie', 'show', 'episode', 'music', 'book', 'audiobook', 'anime', 'photo']);
 
-export type LibraryTab = 'general' | 'metadata' | 'scanning' | 'advanced';
+export type LibraryTab = 'general' | 'metadata' | 'attention' | 'scanning' | 'advanced';
 
 /**
  * How one library is matched, analysed and cleaned up, as the sections of its page's tabs
@@ -95,9 +96,9 @@ export function LibrarySettingsSections({library, tab}: {library: {id: string; n
   const serverId = useServerId();
   const read = useRead(async () => parseEnvelope(await api.request<unknown>(`/v1/admin/libraries/${encodeURIComponent(library.id)}/settings`), serverId, parseLibraryDocument).result, [api, library.id, serverId]);
   const [draft, setDraft] = useState<LibrarySettings>();
-  const [keys, setKeys] = useState<Record<string, string>>({});
   const doc = read.data;
-  useEffect(() => { if (doc) { setDraft(doc.settings); setKeys({}); } }, [doc]);
+  const navigate = useNavigate();
+  useEffect(() => { if (doc) setDraft(doc.settings); }, [doc]);
   const byCost = useMemo(() => (doc ? [...doc.analysisMatrix.costClasses].sort((a, b) => a.order - b.order).map(c => ({cost: c, operations: doc.analysisMatrix.operations.filter(o => o.costClass === c.id)})).filter(g => g.operations.length) : []), [doc]);
   // The metadata source (online or local only) is its own resource with its own revision, saved
   // when the owner confirms the change; the film/TV lookup policy says whether lookups wait for consent.
@@ -129,7 +130,7 @@ export function LibrarySettingsSections({library, tab}: {library: {id: string; n
     }
     return listed;
   };
-  const settingsDirty = !!draft && !!doc && (JSON.stringify(draft) !== JSON.stringify(doc.settings) || Object.values(keys).some(Boolean));
+  const settingsDirty = !!draft && !!doc && JSON.stringify(draft) !== JSON.stringify(doc.settings);
   const dirty = settingsDirty;
   const toggle = (id: string, on: boolean) => {
     if (!draft || !doc) return;
@@ -140,17 +141,18 @@ export function LibrarySettingsSections({library, tab}: {library: {id: string; n
   const [opIds] = useState(createOperationIds);
   const inline = useInlineForm('library-settings:' + library.id, {
     dirty,
-    discard: () => { if (doc) { setDraft(doc.settings); setKeys({}); } },
+    discard: () => { if (doc) setDraft(doc.settings); },
     save: async () => {
       if (!draft || !doc) return;
-      const settings = {...draft, providers: draft.providers.map(p => ({...p, apiKey: keys[p.mediaKind] ?? ''}))};
+      // The owner's own provider keys are the server's (Server › Metadata); a library carries none.
+      const settings = {...draft, providers: draft.providers.map(p => ({...p, apiKey: ''}))};
       const key = JSON.stringify({revision: doc.revision, settings});
       await api.request(`/v1/admin/libraries/${encodeURIComponent(library.id)}/settings`, 'PUT', {expectedRevision: doc.revision, operationId: opIds.forPayload(key), settings});
       opIds.release();
       read.reload();
     },
   });
-  if (tab === 'general') return null;
+  if (tab === 'general' || tab === 'attention') return null;
   return (
     <>
       {read.error && !doc ? <Notice tone="error" action={{label: t('action.tryAgain'), onClick: read.reload}}>{read.error}</Notice> : null}
@@ -171,10 +173,10 @@ export function LibrarySettingsSections({library, tab}: {library: {id: string; n
                     <Select label={t('web.librarySettings.source')} value={p.provider} onChange={e => change({provider: e.target.value as typeof p.provider})} options={choices.map(c => ({value: c.id, label: c.name}))} />
                     {chosen?.supportsLocale ? (agentLanguages.length ? <Select label={t('web.librarySettings.language')} value={p.language || agentLanguages[0]} options={languageOptions(p.language)} onChange={e => change({language: e.target.value})} /> : <Input label={t('web.librarySettings.language')} placeholder={t('web.librarySettings.languageExample')} value={p.language} onChange={e => change({language: e.target.value})} />) : null}
                     {chosen?.supportsLocale ? <Input label={t('web.librarySettings.country')} placeholder={t('web.librarySettings.countryExample')} value={p.region} onChange={e => change({region: e.target.value.toUpperCase()})} /> : null}
-                    {chosen?.supportsApiKey ? <Input label={t('web.librarySettings.apiKey')} type="password" autoComplete="off" placeholder={p.apiKeySet ? t('web.librarySettings.apiKeySet') : t('web.librarySettings.apiKeyOptional')} value={keys[p.mediaKind] ?? ''} onChange={e => setKeys({...keys, [p.mediaKind]: e.target.value})} /> : null}
                   </div>} />
               );
             })}
+            <SettingsRow label={t('server.library.ownKeys')} help={t('server.library.ownKeysHelp')} control={<Button size="sm" variant="ghost" label={t('settings.server.metadata')} onClick={() => void navigate({to: '/settings/$section', params: {section: 'server-metadata'}, search: {}})} />} />
           </SettingsGroup> : null}
           {tab === 'scanning' ? byCost.map(g => (
             <SettingsGroup key={g.cost.id} title={g.cost.name} description={g.cost.description}>

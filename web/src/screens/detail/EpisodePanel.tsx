@@ -5,7 +5,7 @@ import {useCreditPages, useDetail} from '../../app/detail';
 import {episodeArt, placeholderTint} from '../../app/title-layout';
 import {ErrorNotice} from '../../app/errors';
 import {usePlayerActions} from '../../player/PlayerContext';
-import {Artwork, Button, Dialog, KeyValue, Loading, Text, anchorOf} from '../../ui';
+import {Artwork, Button, Dialog, KeyValue, Loading, Notice, Text, anchorOf} from '../../ui';
 import {entryOf} from './Detail';
 import {TitleFiles} from './TitleFiles';
 import {episodeCode, formatAirDate} from './EpisodeCard';
@@ -93,6 +93,7 @@ export function EpisodePanel({libraryId, showId, episodeId, preview, previous, n
         </div>
       ) : null}
       {snapshot.mutationError ? <ErrorNotice error={snapshot.mutationError} context="detail" operation="save" /> : null}
+      {data?.missingSince ? <Notice tone="warning" compact title={i18n.t('title.missing')}>{i18n.t('title.missingSince', {when: i18n.date(data.missingSince, 'long')})}</Notice> : null}
       {rows.length ? <KeyValue rows={rows} /> : null}
       {castTotal > 12 && !(allCast && castPages.done) ? <div><Button variant="link" label={t(allCast ? 'title.moreCast' : 'title.allCast')} onClick={() => { setAllCast(true); castPages.more(); }} /></div> : null}
       {crewLines.map(line => <Text key={line} as="p" variant="caption" tone="secondary">{line}</Text>)}

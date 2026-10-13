@@ -307,3 +307,30 @@ func TestProducedCountsMediaThatRetentionHasAlreadyRemoved(t *testing.T) {
 		})
 	}
 }
+
+func TestConfiguredSourceBufferDelaysReadyAndGoLive(t *testing.T) {
+	b := testBuffer(t, false)
+	if e := b.SetLiveDelay(8); e != nil {
+		t.Fatal(e)
+	}
+	base := b.options.OriginMS * 1000
+	b.segments = []*segment{{startUS: base, endUS: base + 4_000_000, sequence: 1}}
+	b.producedUS = 4_000_000
+	if b.Window().Ready {
+		t.Fatal("source ready before its configured buffer")
+	}
+	b.segments = append(b.segments, &segment{startUS: base + 4_000_000, endUS: base + 12_000_000, sequence: 2})
+	b.producedUS = 12_000_000
+	window := b.Window()
+	if !window.Ready || window.LiveUS != 4_000_000 {
+		t.Fatalf("%+v", window)
+	}
+	target, e := b.Resolve(nil)
+	if e != nil || target != 2_000_000 {
+		t.Fatalf("live target %d %v", target, e)
+	}
+	playlist, e := b.Playlist()
+	if e != nil || !strings.Contains(string(playlist), "#EXT-X-START:TIME-OFFSET=-10.000000") {
+		t.Fatalf("%s %v", playlist, e)
+	}
+}

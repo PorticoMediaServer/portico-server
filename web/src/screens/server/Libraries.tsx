@@ -19,6 +19,9 @@ import {useInlineForm} from '../settings/ServerForms';
 import page from '../settings/Settings.module.css';
 import {Badge, Button, Checkbox, ConfirmDialog, Dialog, Freshness, Icon, Input, ListRow, Loading, Menu, Notice, Select, SettingsGroup, SettingsRow, StateView, Tabs, Text, type MenuItem} from '../../ui';
 import {SectionHeader} from './Server';
+import {NeedsAttentionPanel, hasAttentionList, useAttentionCounts} from './NeedsAttention';
+import {attentionCountText, type AttentionCount} from '@core/server-admin/attention-words.ts';
+import {removeLibrary} from '@core/title-identity.ts';
 
 const kinds: readonly {value: ManagedLibrary['kind']; label: MessageId; description: MessageId}[] = [{value: 'movie', label: 'web.search.movies', description: 'web.libraries.typeMovies'}, {value: 'tv', label: 'builder.shows', description: 'web.libraries.typeTv'}, {value: 'anime', label: 'web.libraries.kindAnime', description: 'web.libraries.typeAnime'}, {value: 'music', label: 'pref.group.music.title', description: 'web.libraries.typeMusic'}, {value: 'audiobook', label: 'web.libraries.kindAudiobooks', description: 'web.libraries.typeAudiobooks'}];
 /** The Add dialog names a new library after its type ("Movies"), editable. */
@@ -56,14 +59,16 @@ export function LibrariesPage() {
   const libraries = [...(snapshot.directory.data?.items ?? [])].sort((a, b) => (rank.get(a.id) ?? 1e9) - (rank.get(b.id) ?? 1e9));
   const action = useAction();
   const [issuesFor, setIssuesFor] = useState<string>();
-  const select = (id?: string) => void navigate({to: '/settings/$section', params: {section: 'server-libraries'}, search: id ? {id} : {}});
+  const select = (id?: string, tab?: string) => void navigate({to: '/settings/$section', params: {section: 'server-libraries'}, search: id ? {id, ...(tab ? {tab} : {})} : {}});
+  // Titles waiting to be matched, beside each library that has any.
+  const waiting = useAttentionCounts(selectedId ? [] : libraries);
   const move = (index: number, by: -1 | 1) => {
     const ids = libraries.map(l => l.id);
     const [id] = ids.splice(index, 1);
     ids.splice(index + by, 0, id!);
     void action.run(() => api.request('/v1/admin/libraries/order', 'PUT', {libraryIds: ids})).then(ok => { if (ok) { order.reload(); void service.loadLibraries(); } });
   };
-  if (selectedId) return <LibraryDetail service={service} snapshot={snapshot} libraryId={selectedId} onBack={() => select()} />;
+  if (selectedId) return <LibraryDetail service={service} snapshot={snapshot} libraryId={selectedId} onBack={() => select()} onRemoved={() => { order.reload(); void service.loadLibraries(); select(); }} />;
   return (
     <>
       <SectionHeader lede={t('web.console.nav.librariesLede')} actions={<Button variant="primary" icon="plus" label={t('web.empty.addLibrary')} onClick={() => setAdding(true)} />} />
@@ -77,12 +82,14 @@ export function LibrariesPage() {
             const scan = l.lastScan;
             const facts = [libraryKindLabel(l.kind, t), l.source.path, scan?.finishedAt ? t('server.libraries.scanned', {when: i18n.date(scan.finishedAt, 'dayMonth')}) : ''].filter(Boolean).join(' · ');
             const warned = !!l.attention || !!scan?.warnings;
+            const toMatch = attentionCountText(waiting[l.id], n => i18n.number(n));
             const items: MenuItem[] = [{id: 'open', label: t('web.selection.edit'), icon: 'settings'}, {id: 'up', label: t('server.libraries.moveUp'), icon: 'chevronUp', disabled: i === 0, separatorBefore: true}, {id: 'down', label: t('server.libraries.moveDown'), icon: 'chevronDown', disabled: i === libraries.length - 1}];
             return (
               <SettingsRow key={l.id} icon={iconFor(l.kind)} label={<button type="button" className={page.rowLink} onClick={() => select(l.id)}>{l.name}</button>} help={facts}
                 control={<div style={{display: 'flex', gap: 8, alignItems: 'center'}}>
                   {l.source.availability === 'unavailable' ? <Badge tone="danger">{t('web.libraries.sourceUnavailable')}</Badge> : null}
                   {/* A status that needs reading opens what it is about. */}
+                  {toMatch ? <Button size="sm" variant="outline" label={t('server.attention.badge', {count: toMatch})} onClick={() => select(l.id, 'attention')} /> : null}
                   {warned ? <Button size="sm" variant="outline" icon="warning" label={l.attention ? t('server.libraries.needAttention', {count: l.attention.files}) : t('server.libraries.warnings', {count: scan?.warnings ?? 0})} onClick={() => (l.attention ? setIssuesFor(l.id) : select(l.id))} /> : scan ? <Badge tone={jobTone(scan.status)} dot={scan.status === 'running'} live={scan.status === 'running'}>{jobLabel[scan.status]}</Badge> : null}
                   <Menu label={l.name} trigger={<Button size="sm" variant="ghost" icon="more" aria-label={t('player.more')} />} items={items} onSelect={id => { if (id === 'open') select(l.id); else if (id === 'up') move(i, -1); else if (id === 'down') move(i, 1); }} />
                 </div>} />
@@ -235,7 +242,7 @@ export function AddLibraryDialog({open, onOpenChange, service, onCreated}: {open
   );
 }
 
-function LibraryDetail({service, snapshot, libraryId, onBack}: {service: LibraryManagementService; snapshot: LibraryManagementSnapshot; libraryId: string; onBack: () => void}) {
+function LibraryDetail({service, snapshot, libraryId, onBack, onRemoved}: {service: LibraryManagementService; snapshot: LibraryManagementSnapshot; libraryId: string; onBack: () => void; onRemoved: () => void}) {
   const {api} = useSession();
   const scope = useViewerScope();
   const inventory = useService<LibraryInventoryService, LibraryInventorySnapshot>(() => new LibraryInventoryService({api, scope, libraryId}), [api, scope, libraryId]);
@@ -246,7 +253,12 @@ function LibraryDetail({service, snapshot, libraryId, onBack}: {service: Library
   const library = snapshot.selected.data?.library;
   const search = useSearch({from: '/app/settings/$section'});
   const navigate = useNavigate();
-  const tab: LibraryTab = search.tab === 'metadata' || search.tab === 'scanning' || search.tab === 'advanced' ? search.tab : 'general';
+  const tab: LibraryTab = search.tab === 'metadata' || search.tab === 'attention' || search.tab === 'scanning' || search.tab === 'advanced' ? search.tab : 'general';
+  // The tab says how many titles wait: the first page's count until the list itself has been read.
+  const firstCounts = useAttentionCounts(library ? [library] : []);
+  const [counted, setCounted] = useState<AttentionCount>();
+  const waiting = counted ?? (library ? firstCounts[library.id] : undefined);
+  const [removing, setRemoving] = useState(false);
   const setTab = (id: string) => void navigate({to: '.', search: {id: libraryId, ...(id === 'general' ? {} : {tab: id})}});
   const lookup = useScreenLookup(libraryId, [tab]);
   const [rename, setRename] = useState<string | null>(null);
@@ -276,8 +288,9 @@ function LibraryDetail({service, snapshot, libraryId, onBack}: {service: Library
             </div>
           </div>
           {/* A library is a page with tabs, not a dialog (Justin, 2 Oct 2026). */}
-          <Tabs label={library.name} items={[{id: 'general', label: t('server.library.tab.general')}, {id: 'metadata', label: t('server.library.tab.metadata')}, {id: 'scanning', label: t('server.library.tab.scanning')}, {id: 'advanced', label: t('settings.section.advanced')}]} value={tab} onChange={setTab} />
-          {action.error ? <Notice tone="error" compact>{action.error}</Notice> : null}
+          <Tabs label={library.name} items={[{id: 'general', label: t('server.library.tab.general')}, {id: 'metadata', label: t('server.library.tab.metadata')}, ...(hasAttentionList(library.kind) ? [{id: 'attention', label: t('metadata.attention.title'), ...(waiting?.count ? {count: waiting.count} : {})}] : []), {id: 'scanning', label: t('server.library.tab.scanning')}, {id: 'advanced', label: t('settings.section.advanced')}]} value={tab} onChange={setTab} />
+          {action.error && !removing ? <Notice tone="error" compact>{action.error}</Notice> : null}
+          {tab === 'attention' && hasAttentionList(library.kind) ? <NeedsAttentionPanel libraryId={library.id} onCount={setCounted} /> : null}
           {tab === 'general' ? <SettingsGroup>
             <SettingsRow label={t('profile.name')} meta={library.name} control={<Button size="sm" variant="ghost" label={t('web.libraries.rename')} onClick={() => setRename(library.name)} />} />
             <SettingsRow label={t('server.library.type')} meta={libraryKindLabel(library.kind, t)} />
@@ -304,13 +317,19 @@ function LibraryDetail({service, snapshot, libraryId, onBack}: {service: Library
               }} />} />
             ))}
           </SettingsGroup> : null}
-          {/* Remove library returns with DELETE /v1/admin/libraries/{id} (lane C, BE-SRV-20); no dead control until then (WEB-SRV-04). */}
+          {/* Removing is the last thing on the page, said plainly: what goes, and what stays. */}
+          {tab === 'general' ? <SettingsGroup title={t('server.library.remove')}>
+            <SettingsRow label={t('server.library.removeRow')} help={t('server.library.removeHelp')} control={<Button size="sm" variant="danger" label={t('server.library.remove')} disabled={!config} onClick={() => { action.clear(); setRemoving(true); }} />} />
+          </SettingsGroup> : null}
         </div>
       )}
       <Dialog open={rename !== null} onOpenChange={o => !o && setRename(null)} title={t('web.libraries.renameTitle')} actions={<><Button variant="ghost" label={t('action.cancel')} onClick={() => setRename(null)} /><Button variant="primary" label={t('web.libraries.rename')} loading={action.busy} disabled={!rename?.trim()} onClick={() => library && void action.run(() => service.rename(rename!.trim(), library.revision)).then(ok => ok && setRename(null))} /></>}>
         <Input label={t('profile.name')} value={rename ?? ''} onChange={e => setRename(e.target.value)} maxLength={100} autoFocus />
       </Dialog>
       {issuesOpen && library ? <EpisodeIssuesDialog libraryId={library.id} onClose={() => setIssuesOpen(false)} /> : null}
+      <ConfirmDialog open={removing && !!library} onOpenChange={o => !o && setRemoving(false)} title={t('server.library.removeTitle', {name: library?.name ?? ''})} typedConfirmation={library?.name} confirmLabel={t('server.library.remove')} cancelLabel={t('action.cancel')} busy={action.busy} error={action.error}
+        body={<div style={{display: 'flex', flexDirection: 'column', gap: 8}}><span>{t('server.library.removeGoes')}</span><span>{t('server.library.removeKept')}</span></div>}
+        onConfirm={() => { if (library && config) void action.run(() => removeLibrary(api, library.id, library.name, config.revision)).then(ok => { if (ok) { setRemoving(false); onRemoved(); } }); }} />
       <SourceDialog value={editSource} onClose={() => setEditSource(null)} onSave={(id, settings) => void action.run(() => inventory.service.saveSource(id, settings), 'Saved.').then(ok => { if (ok) setEditSource(null); void inventory.service.refresh(); })} busy={action.busy} error={action.error} />
       <ConfirmDialog open={!!removeSource} onOpenChange={o => !o && setRemoveSource(null)} title={t('web.libraries.removeFolderTitle', {name: removeSource?.name ?? ''})} body={t('web.libraries.removeFolderBody')} confirmLabel={t('web.libraries.removeFolder')} busy={action.busy} onConfirm={() => { if (removeSource) void action.run(() => inventory.service.removeSource(removeSource.id, removeSource.revision)).then(ok => { if (ok) { setRemoveSource(null); void inventory.service.refresh(); } }); }} />
     </>
