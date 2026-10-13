@@ -274,6 +274,15 @@ func (s *Service) SeparateInventoryVersion(ctx context.Context, library, object,
 	if err = tx.QueryRowContext(ctx, `SELECT path FROM catalog_assets WHERE id=?`, assetID).Scan(&path); err != nil {
 		return "", err
 	}
+
+	link := compactcatalog.Link{}
+	var end sql.NullFloat64
+	if err = tx.QueryRowContext(ctx, `SELECT part_index,start_seconds,end_seconds,edition FROM catalog_asset_links WHERE entity_id=? AND asset_id=?`, current, assetID).Scan(&link.Part, &link.Start, &end, &link.Edition); err != nil {
+		return "", err
+	}
+	if end.Valid {
+		link.End = &end.Float64
+	}
 	if err = compactcatalog.UnlinkAssetTx(ctx, tx, current, assetID); err != nil {
 		return "", err
 	}
@@ -297,7 +306,7 @@ func (s *Service) SeparateInventoryVersion(ctx context.Context, library, object,
 	if err = moveDownloadClaimsTx(ctx, tx, current, separate, asset); err != nil {
 		return "", err
 	}
-	if err = compactcatalog.LinkAssetTx(ctx, tx, separate, assetID, compactcatalog.Link{}); err != nil {
+	if err = compactcatalog.LinkAssetTx(ctx, tx, separate, assetID, link); err != nil {
 		return "", err
 	}
 	if err = compactcatalog.TouchEntityTx(ctx, tx, separate); err != nil {

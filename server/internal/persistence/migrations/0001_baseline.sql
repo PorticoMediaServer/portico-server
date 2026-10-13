@@ -6013,3 +6013,6 @@ INSERT INTO database_maintenance_status(singleton) VALUES(1);
 
 CREATE TABLE live_channel_choices(generation_id TEXT NOT NULL REFERENCES live_generations(id) ON DELETE CASCADE,channel_key TEXT NOT NULL,name TEXT NOT NULL,group_name TEXT NOT NULL,PRIMARY KEY(generation_id,channel_key)) STRICT;
 CREATE INDEX live_channel_choices_groups ON live_channel_choices(generation_id,group_name,channel_key);
+
+CREATE INDEX download_request_items_item ON download_request_items(item_id,preparation_id);
+CREATE INDEX download_requests_target ON download_requests(target_id);

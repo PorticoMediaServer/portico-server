@@ -530,3 +530,9 @@ function decodeBase64url(v: string): Uint8Array {
   for (let i = 0; i < binary.length; i++) out[i] = binary.charCodeAt(i);
   return out;
 }
+
+export type DownloadProfileRevocation=Readonly<{claims:number;receipts:number;more:boolean}>;
+export function parseDownloadProfileRevocation(raw:unknown):DownloadProfileRevocation{
+ if(!object(raw)||!count(raw.claims)||raw.claims>100||!count(raw.receipts)||raw.receipts>100||typeof raw.more!=='boolean')invalid();
+ return Object.freeze({claims:raw.claims,receipts:raw.receipts,more:raw.more});
+}

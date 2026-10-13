@@ -1,4 +1,3 @@
-import {unreadableServerResponse} from './server-messages.ts';
 import {randomId} from './random-id.ts';
 /** The server side of downloads, as one framework-free service shared by web and Apple: what
  * the server is preparing for this profile, what may be asked for, and the actions on each.
@@ -6,7 +5,7 @@ import {randomId} from './random-id.ts';
  * Forgiving by design: a failed refresh keeps the list that is on screen. While anything is
  * still being prepared it polls gently; once everything has settled it stops. */
 import {serviceProblem} from './presentation/service-text.ts';
-import {downloadReasonMessage,parseDownloadBatch,parseDownloadBundle,parseDownloadGrant,parseDownloadOptions,parseDownloadPage,parseDownloadPreparation,parseDownloadSettings,parseDownloadUsage,type DownloadAction,type DownloadBatch,type DownloadBundle,type DownloadGrant,type DownloadOptionsView,type DownloadPreparation,type DownloadQualityChoice,type DownloadUsage} from './downloads.ts';
+import {downloadReasonMessage,parseDownloadProfileRevocation,parseDownloadBatch,parseDownloadBundle,parseDownloadGrant,parseDownloadOptions,parseDownloadPage,parseDownloadPreparation,parseDownloadSettings,parseDownloadUsage,type DownloadAction,type DownloadBatch,type DownloadBundle,type DownloadGrant,type DownloadOptionsView,type DownloadPreparation,type DownloadQualityChoice,type DownloadUsage} from './downloads.ts';
 import {createDownloadRequest,getDownloadRequest,isDownloadRequestTerminal,listDownloadRequests,type DownloadEpisodes,type DownloadRequest,type DownloadRequestKind} from './download-requests.ts';
 
 export type DownloadsApi={request<T>(path:string,method?:string,body?:unknown,signal?:AbortSignal):Promise<T>};
@@ -143,7 +142,7 @@ export class DownloadsService{
  }
  /** The qualities a whole show, season, album, book or playlist may be asked for: the original,
   * and each smaller quality this server can make. The server decides; nothing is assumed here. */
- async revokeProfile(profileKey:string){const raw=await this.api.request<unknown>('/v1/admin/downloads/revoke','POST',{profileKey,operationId:this.operationId()});if(typeof raw!=='object'||raw===null||!Number.isSafeInteger((raw as any).claims)||!Number.isSafeInteger((raw as any).receipts)||typeof (raw as any).more!=='boolean')throw new Error(unreadableServerResponse);return raw as Readonly<{claims:number;receipts:number;more:boolean}>;}
+ async revokeProfile(profileKey:string){return parseDownloadProfileRevocation(await this.api.request<unknown>('/v1/admin/downloads/revoke','POST',{profileKey,operationId:this.operationId()}));}
 
  async serverUsage(cursor='',limit=256){return parseDownloadUsage(await this.api.request<unknown>(`/v1/downloads/usage?scope=server&cursor=${encodeURIComponent(cursor)}&limit=${limit}`));}
 

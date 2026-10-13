@@ -192,6 +192,8 @@ index download_receipts_item
 index download_receipts_preparation
 index download_receipts_revocations
 index download_receipts_viewer
+index download_request_items_item
+index download_requests_target
 index download_requests_viewer
 index download_requests_work
 index dvr_catalog_provenance_asset_id_fk

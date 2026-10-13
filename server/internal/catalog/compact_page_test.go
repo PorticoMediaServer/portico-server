@@ -99,3 +99,23 @@ func TestCompactPageHydrationAndWholePageFence(t *testing.T) {
 		t.Fatalf("deleted source remained in the page after tombstone projection: %v", err)
 	}
 }
+
+func TestMissingFlagSurvivesPageAndCardProjection(t *testing.T) {
+	c := catalogtest.Open(t)
+	lib := c.Library("films", "Films", "movie", "/films")
+	item := c.Entity(compactcatalog.Entity{Library: lib, Kind: compactcatalog.Movie, Key: "file:missing-film", Title: "Missing film"}, nil)
+	c.Write(func(ctx context.Context, tx *sql.Tx) error { return compactcatalog.SettleMissingTx(ctx, tx, item.ID) })
+	s := New(c.DB)
+	rows, err := s.compactPageItems("", []string{item.Public}, false)
+	if err != nil || rows[item.Public] == nil || !rows[item.Public].Missing {
+		t.Fatal(rows, err)
+	}
+	card := contentItem(*rows[item.Public])
+	if !card.Missing || card.Playback != nil {
+		t.Fatal(card)
+	}
+	single, err := s.Get("", item.Public)
+	if err != nil || !single.Missing {
+		t.Fatal(single, err)
+	}
+}

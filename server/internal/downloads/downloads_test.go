@@ -1297,3 +1297,21 @@ func TestDownloadPinsRequestedVersionAndClaimsFollowMerge(t *testing.T) {
 		}
 	}
 }
+
+func TestDownloadUsageSeparatesStoredBytesAndRevokesAProfile(t *testing.T) {
+	h := newHarness(t)
+	p := h.ready(t, "usage-revoke-source")
+	ctx := context.Background()
+	usage, err := h.service.UsagePage(ctx, h.viewer, true, "", 1)
+	if err != nil || len(usage.Profiles) != 1 || usage.DistinctBytes != 0 || usage.Profiles[0].StoredBytes != 0 || usage.Profiles[0].AccountID != h.viewer.AccountID {
+		t.Fatal(usage, err)
+	}
+	out, err := h.service.RevokeProfile(ctx, h.viewer, usage.Profiles[0].ProfileKey, "revoke-one-profile", func(*sql.Tx) error { return nil })
+	if err != nil || out.Claims != 1 || out.More {
+		t.Fatal(out, err)
+	}
+	claim, err := h.service.Get(ctx, h.viewer, p.ID)
+	if err != nil || claim.State != StateCancelled || claim.Reason != ReasonRevoked {
+		t.Fatal(claim, err)
+	}
+}

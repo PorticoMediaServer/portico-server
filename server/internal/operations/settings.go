@@ -290,21 +290,30 @@ func (s *Store) Settings(ctx context.Context, auth Authorize) (out SettingsDocum
 // projectAppliedSettings uses the startup value held by the running consumer.
 // The stored requested document remains the single settings authority.
 func (s *Store) projectAppliedSettings(document *SettingsDocument) {
-	if s.AppliedTemporaryDirectory == nil {
-		return
+
+	appliedValues := map[string]string{}
+	if s.AppliedTemporaryDirectory != nil {
+		document.Effective.TemporaryDirectory = *s.AppliedTemporaryDirectory
+		appliedValues["temporaryDirectory"] = *s.AppliedTemporaryDirectory
 	}
-	applied := *s.AppliedTemporaryDirectory
-	document.Effective.TemporaryDirectory = applied
+	if s.AppliedFFmpegPath != nil {
+		document.Effective.FFmpegPath = *s.AppliedFFmpegPath
+		appliedValues["ffmpegPath"] = *s.AppliedFFmpegPath
+	}
 	fields := document.RestartFields[:0]
 	for _, field := range document.RestartFields {
-		if field != "temporaryDirectory" {
+		if _, ok := appliedValues[field]; !ok {
 			fields = append(fields, field)
 		}
 	}
 	document.RestartFields = fields
-	if document.Requested.TemporaryDirectory != applied {
+	if applied, ok := appliedValues["temporaryDirectory"]; ok && document.Requested.TemporaryDirectory != applied {
 		document.RestartFields = append(document.RestartFields, "temporaryDirectory")
 	}
+	if applied, ok := appliedValues["ffmpegPath"]; ok && document.Requested.FFmpegPath != applied {
+		document.RestartFields = append(document.RestartFields, "ffmpegPath")
+	}
+
 }
 
 func validCap(n *int) bool { return n == nil || *n >= 1 && *n <= 1000000 }

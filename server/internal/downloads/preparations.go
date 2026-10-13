@@ -141,7 +141,7 @@ func (s *Service) Submit(ctx context.Context, p identity.Principal, r Request, g
 		// it keeps a client that retried a batch from accumulating duplicates.
 		// One that failed is what the viewer is asking to have another go at:
 		// asking again starts it again, rather than handing back the failure.
-		existing, err := readPreparation(tx.QueryRowContext(ctx, `SELECT `+preparationColumns+` FROM download_preparations WHERE profile_key=? AND item_id=? AND quality=? AND source_asset_id=? AND state IN('queued','running','ready','paused','failed')`, key, entity, r.Quality, found.Asset))
+		existing, err := readPreparation(tx.QueryRowContext(ctx, `SELECT `+preparationColumns+` FROM download_preparations WHERE profile_key=? AND item_id=? AND quality=? AND source_asset_id=? AND state IN('queued','running','ready','paused','failed') ORDER BY CASE state WHEN 'ready' THEN 0 WHEN 'running' THEN 1 WHEN 'queued' THEN 2 WHEN 'paused' THEN 3 ELSE 4 END,id LIMIT 1`, key, entity, r.Quality, found.Asset))
 		if err == nil && existing.State == StateFailed {
 			if err = s.restart(ctx, tx, p, existing, now); errors.Is(err, ErrStorageFull) {
 				out.Rejected = append(out.Rejected, Rejection{item, ReasonStorageFull})

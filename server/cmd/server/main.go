@@ -917,6 +917,7 @@ func run() (runErr error) {
 	if console != nil {
 		console.FFmpegValidation = operations.FFmpegValidator(ffmpegTool)
 		console.AppliedTemporaryDirectory = &appliedConversionSetting
+		console.AppliedFFmpegPath = &startupMedia.FFmpegPath
 	}
 	doneConsole(e)
 	if e != nil {

@@ -112,6 +112,11 @@ func registerIdentityRoutes(r *apikit.Registry, d Dependencies) {
 					return administration.DeleteResult{}, &apierror.Error{Code: "administration_unavailable"}
 				}
 				out, e := d.Administration.DeleteVersion(ctx, d.administrationAuthority(p), q.PathValue("id"), q.PathValue("fileId"), in)
+				if e == nil && out.Removed > 0 && d.Catalog != nil && d.Catalog.MissingRule(ctx).Mode == "immediately" {
+					if _, err := d.Catalog.EmptyMissingDue(ctx); err != nil {
+						return out, err
+					}
+				}
 				return out, versionDeletionError(e)
 			})
 		}
