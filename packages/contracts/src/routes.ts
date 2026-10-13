@@ -1335,6 +1335,7 @@ export const routes = [
       "unauthorized",
       "invalid_request",
       "rate_limited",
+      "setup_already_complete",
       "internal"
     ],
     "status": 201
@@ -1352,6 +1353,7 @@ export const routes = [
       "unauthorized",
       "invalid_request",
       "rate_limited",
+      "setup_already_complete",
       "internal"
     ],
     "status": 200

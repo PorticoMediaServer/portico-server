@@ -10,6 +10,7 @@ import (
 	"portico.local/server/internal/operations"
 	"strconv"
 	"testing"
+	"time"
 )
 
 func TestSetupOriginAndContentType(t *testing.T) {
@@ -72,5 +73,33 @@ func TestConnectivityUsesOwnerNetworksAndProxyChain(t *testing.T) {
 	f.handler.ServeHTTP(w, r)
 	if w.Code != http.StatusOK {
 		t.Fatalf("proxy write %d %s", w.Code, w.Body)
+	}
+}
+
+func TestPreservedProxyHostNeedsNoOriginAllowList(t *testing.T) {
+	d := Dependencies{}
+	r := httptest.NewRequest("POST", "http://media.example/v1/setup/browser", nil)
+	r.RemoteAddr = "203.0.113.9:42"
+	r.Header.Set("Content-Type", "application/json")
+	r.Header.Set("Origin", "https://media.example")
+	r.Header.Set("Sec-Fetch-Site", "same-origin")
+	if !d.setupRequestAllowed(r) {
+		t.Fatal("TLS-terminating proxy cannot bootstrap with preserved Host")
+	}
+	r.Header.Set("Origin", "https://another.example")
+	if d.setupRequestAllowed(r) {
+		t.Fatal("another site's origin accepted")
+	}
+}
+
+func TestLargeUploadsHaveTheirOwnBoundedBudget(t *testing.T) {
+	spec := laneSpecs[laneUpload]
+	if spec.capacity != 2 || spec.budget != 60*time.Second || spec.queueWait != 0 {
+		t.Fatalf("%+v", spec)
+	}
+	for _, route := range []string{"POST /v1/admin/live-sources", "POST /v1/admin/live-sources/preview", "POST /v1/diagnostics/client-logs"} {
+		if routeLanes[route] != laneUpload {
+			t.Fatalf("%s has no upload budget", route)
+		}
 	}
 }

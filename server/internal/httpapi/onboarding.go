@@ -3,35 +3,16 @@ package httpapi
 import (
 	"context"
 	"errors"
-	"net"
 	"net/http"
 	"portico.local/server/internal/identity"
+	"portico.local/server/internal/networkpolicy"
 	"strconv"
-	"strings"
 	"time"
 )
 
 // Recovery and sign-in use the same owner-configured home networks as playback.
 func (d Dependencies) privateSetupPeer(r *http.Request) bool { return !d.requestIsRemote(r) }
 func (d Dependencies) signInPeer(r *http.Request) string     { return d.setupPeerSubject(r) }
-
-// The unauthenticated token convenience is only for a direct loopback browser.
-// Proxy operators and every other machine must read the local one-time code.
-func (d Dependencies) sameMachineSetup(r *http.Request) bool {
-	if len(d.TrustedProxies) != 0 || r.Header.Get("Forwarded") != "" || r.Header.Get("X-Forwarded-For") != "" {
-		return false
-	}
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	return err == nil && net.ParseIP(host).IsLoopback()
-}
-
-// Networking claim adapters that have no proxy configuration must fail closed.
-func privateSetupPeer(r *http.Request) bool {
-	if r.Header.Get("Forwarded") != "" || r.Header.Get("X-Forwarded-For") != "" {
-		return false
-	}
-	return (Dependencies{}).privateSetupPeer(r)
-}
 
 func (d Dependencies) setupPeerSubject(r *http.Request) string {
 	return clientAddress(r, d.trustedProxyPrefixes(r.Context()))
@@ -248,12 +229,5 @@ func (d Dependencies) onboardingRoutes(mux *http.ServeMux) {
 // quickApprovalOrigin is the origin the new device reached this server on. The
 // answer goes only to that device, so it cannot redirect anyone else.
 func (d Dependencies) quickApprovalOrigin(r *http.Request) string {
-	host := strings.ToLower(r.Host)
-	if host == "" || len(host) > 255 || strings.ContainsAny(host, "/\\@?#% ") {
-		return ""
-	}
-	if d.secureTransport(r) {
-		return "https://" + host
-	}
-	return "http://" + host
+	return networkpolicy.Origin(r, d.trustedProxyPrefixes(r.Context()))
 }

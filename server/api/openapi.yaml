@@ -5239,20 +5239,6 @@ components:
         username: { type: string }
         password: { type: string, format: password }
       additionalProperties: false
-    SetupOptions:
-      type: object
-      description: identity.SetupOptions
-      required: [setupToken, username, password, name]
-      properties:
-        requestId: { type: string }
-        setupToken: { type: string, description: From `POST /v1/setup/browser`. }
-        username: { type: string }
-        password: { type: string, format: password }
-        name: { type: string, description: Server display name. }
-        authMode: { type: string }
-        recoverySaved: { type: boolean }
-        interactive: { type: boolean }
-      additionalProperties: false
     OnboardingState:
       type: object
       description: identity.OnboardingState
@@ -6511,29 +6497,6 @@ components:
         scope: { type: string, description: 'Which layer to write, for example `profile-server` or `profile-device-class`.' }
         deviceClass: { type: string }
         values: { type: object, additionalProperties: true, description: Field id to value; null clears the override. Must be present even when empty. }
-      additionalProperties: false
-    SettingsChange:
-      type: object
-      description: operations.SettingsChange — a complete document write; every field of `values` must be present.
-      required: [expectedRevision, idempotencyKey, values]
-      properties:
-        expectedRevision: { type: integer, format: int64 }
-        idempotencyKey: { type: string }
-        values: { $ref: '#/components/schemas/Settings' }
-      additionalProperties: false
-    Settings:
-      type: object
-      description: operations.Settings
-      required: [name, transcodingEnabled, perAccountCap, serverCap, diagnosticDays, notificationDays, jobDays]
-      properties:
-        name: { type: string }
-        transcodingEnabled: { type: boolean }
-        perAccountCap: { type: [integer, 'null'], description: Null means no per-account stream cap. }
-        serverCap: { type: [integer, 'null'], description: Null means no server-wide stream cap. }
-        diagnosticDays: { type: integer }
-        notificationDays: { type: integer }
-        jobDays: { type: integer }
-        playHistoryDays: { type: integer, minimum: 0, maximum: 36500, description: "How long the play history is kept. 0, the default, keeps everything." }
       additionalProperties: false
     ScheduleChange:
       type: object

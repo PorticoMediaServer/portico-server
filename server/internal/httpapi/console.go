@@ -226,8 +226,8 @@ func (d Dependencies) consoleRoutes(mux *http.ServeMux) {
 			return nil, e
 		}
 		out, e := d.Console.ApplySettings(r.Context(), p, a, c)
-		if e == nil && d.securePolicy != nil {
-			d.securePolicy.set(out)
+		if e == nil && d.connectionPolicy != nil {
+			d.connectionPolicy.set(out)
 		}
 		if e == nil && d.SettingsApplied != nil {
 			d.SettingsApplied(r.Context())

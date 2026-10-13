@@ -2,9 +2,11 @@ package httpapi
 
 import (
 	"context"
+	"errors"
 	"mime"
 	"net/http"
 	"portico.local/apikit"
+	"portico.local/apikit/apierror"
 	"portico.local/server/internal/identity"
 )
 
@@ -47,24 +49,38 @@ type BrowserSetupResponse struct {
 
 func registerSetupTransport(registry *apikit.Registry, d Dependencies) error {
 	err := apikit.RegisterRaw(registry, apikit.RawRoute[identity.SetupOptions, identity.Envelope]{Metadata: apikit.Metadata{
-		ID: "setup_server", Method: "POST", Path: "/v1/setup", Summary: "Create the first owner", Access: apikit.Public, Lane: apikit.Security, Cost: apikit.Constant, Status: 201, BodyLimit: 65536, Errors: []string{"unauthorized", "invalid_request", "rate_limited", "internal"},
+		ID: "setup_server", Method: "POST", Path: "/v1/setup", Summary: "Create the first owner", Access: apikit.Public, Lane: apikit.Security, Cost: apikit.Constant, Status: 201, BodyLimit: 65536, Errors: []string{"unauthorized", "invalid_request", "rate_limited", "setup_already_complete", "internal"},
 	}, Serve: d.serveSetup})
 	if err != nil {
 		return err
 	}
 	return apikit.Register(registry, apikit.Route[struct{}, BrowserSetupResponse]{Metadata: apikit.Metadata{
-		ID: "start_browser_setup", Method: "POST", Path: "/v1/setup/browser", Summary: "Start first-run setup from this origin", Access: apikit.Public, Lane: apikit.Security, Cost: apikit.Constant, Status: 200, BodyLimit: 4096, Errors: []string{"unauthorized", "invalid_request", "rate_limited", "internal"},
+		ID: "start_browser_setup", Method: "POST", Path: "/v1/setup/browser", Summary: "Start first-run setup from this origin", Access: apikit.Public, Lane: apikit.Security, Cost: apikit.Constant, Status: 200, BodyLimit: 4096, Errors: []string{"unauthorized", "invalid_request", "rate_limited", "setup_already_complete", "internal"},
 	}, Handler: func(ctx context.Context, r *http.Request, _ struct{}) (BrowserSetupResponse, error) {
 		if !d.setupRequestAllowed(r) || !d.sameRequestOrigin(r, r.Header.Get("Origin")) {
 			return BrowserSetupResponse{}, foundationAuthError(identity.ErrUnauthorized)
 		}
 		if err := d.Identity.SetupLimit(ctx, d.setupPeerSubject(r), "browser-setup", 10); err != nil {
-			return BrowserSetupResponse{}, foundationAuthError(err)
+			return BrowserSetupResponse{}, setupTransportError(err)
 		}
 		token, err := d.Identity.BrowserSetupToken(ctx)
 		if err != nil {
-			return BrowserSetupResponse{}, foundationAuthError(err)
+			return BrowserSetupResponse{}, setupTransportError(err)
 		}
 		return BrowserSetupResponse{d.Identity.ID(), token}, nil
 	}})
+}
+
+func setupTransportError(err error) error {
+	if errors.Is(err, identity.ErrConflict) {
+		return &apierror.Error{Code: "setup_already_complete"}
+	}
+	var protocol *identity.SetupProtocolError
+	if errors.As(err, &protocol) && protocol.Code == "rate_limited" {
+		return &apierror.Error{Code: "rate_limited", RetryAfterSeconds: protocol.Interval}
+	}
+	return foundationAuthError(err)
+}
+func connectionErrorDefinitions() []apierror.Definition {
+	return []apierror.Definition{{Code: "setup_already_complete", Status: 409, Message: "This server is already set up.", Retry: apierror.Never}}
 }

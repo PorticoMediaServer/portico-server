@@ -231,9 +231,6 @@ func run() error {
 	if host == "" {
 		ip = net.IPv6unspecified
 	}
-	if ip == nil {
-		return errors.New("server requires an explicit IP bind")
-	}
 	// The socket is bound before anything expensive happens, so a client that
 	// arrives during startup gets an honest "starting" answer with phase progress
 	// instead of a connection refusal, and a supervisor's health check cannot
@@ -247,6 +244,7 @@ func run() error {
 		return e
 	}
 	reporter.finish("listener", nil)
+	ip = listener.Addr().(*net.TCPAddr).IP
 	defer listener.Close()
 	// One process owns one state directory. The lock is taken now — after the
 	// listener is bound, so a second instance's refusal is visible, and before
@@ -818,10 +816,6 @@ func run() error {
 			return 0
 		})
 	})
-	trustedProxies, e := httpapi.ParseTrustedProxyCIDRs("")
-	if e != nil {
-		return e
-	}
 	doneConsole := reporter.step("console", "Open the operations console")
 	console, scheduler, e := initializeConsole(db, scanner, player, hls, cat, lyricFetch, state)
 	doneConsole(e)
@@ -942,12 +936,12 @@ func run() error {
 	if manager := claimHandler.Remote(); manager != nil {
 		manager.SetAccessURLs(accessURLsProvider(console, manager))
 	}
-	handler := httpapi.New(httpapi.Dependencies{Events: events, Administration: adminOperations, Backups: backupService, Access: administration, SettingsApplied: func(ctx context.Context) {
+	handler := httpapi.New(httpapi.Dependencies{ListeningPort: listener.Addr().(*net.TCPAddr).Port, Events: events, Administration: adminOperations, Backups: backupService, Access: administration, SettingsApplied: func(ctx context.Context) {
 		control.NotifySettingsChanged(ctx)
 		supervise.Go("delivery-settings.refresh", func() { deliverySettings.Refresh(ctx) })
 		claimHandler.Remote().Wake()
 		invalidateCustomSource()
-	}, WebDirectory: os.Getenv("PORTICO_WEB_DIR"), Analysis: analysisService, Prepared: preparedVersions, Downloads: offlineDownloads, DVR: recordingStore, Subtitles: subtitleService, Lyrics: lyricService, LyricsBulk: lyricFetch, LyricsProbe: ffprobeTool, LibraryChannels: generatedChannels, Console: console, Scheduler: scheduler, Measurements: measurements, Networking: claimHandler, CustomCertificate: customCertificate, RouteIdentity: networking.NewRouteIdentityHandler(claimKeys, claimRunner), LiveChannels: liveSources, PlaybackRuntime: currentPlayback, AudioMedia: subtitleRenderer, Storage: storeIO, Mounts: managed, RemoteSources: sources, TrustedProxies: trustedProxies, DB: db, Watchdog: watchdog, Identity: ident, Catalog: cat, Ingestion: scanner, Playback: player, Hosted: control, Metadata: meta, Origins: origins})
+	}, WebDirectory: os.Getenv("PORTICO_WEB_DIR"), Analysis: analysisService, Prepared: preparedVersions, Downloads: offlineDownloads, DVR: recordingStore, Subtitles: subtitleService, Lyrics: lyricService, LyricsBulk: lyricFetch, LyricsProbe: ffprobeTool, LibraryChannels: generatedChannels, Console: console, Scheduler: scheduler, Measurements: measurements, Networking: claimHandler, CustomCertificate: customCertificate, RouteIdentity: networking.NewRouteIdentityHandler(claimKeys, claimRunner), LiveChannels: liveSources, PlaybackRuntime: currentPlayback, AudioMedia: subtitleRenderer, Storage: storeIO, Mounts: managed, RemoteSources: sources, DB: db, Watchdog: watchdog, Identity: ident, Catalog: cat, Ingestion: scanner, Playback: player, Hosted: control, Metadata: meta, Origins: origins})
 	// The timeout and 5xx log lines name the registered route pattern, which
 	// only the router can resolve for a request seen outside the mux.
 	measurements.Pattern = httpapi.RoutePattern
@@ -970,6 +964,15 @@ func run() error {
 	transport := consoleConnections(listener, connectionLimit)
 	listener = transport
 	server.ConnContext = transport.context
+	server.ConnState = transport.state
+	transport.ownerRequest = func(r *http.Request) bool {
+		header := r.Header.Get("Authorization")
+		if !strings.HasPrefix(header, "Bearer ") {
+			return false
+		}
+		p, err := ident.Authenticate(strings.TrimPrefix(header, "Bearer "))
+		return err == nil && p.Role == "owner"
+	}
 	server.Handler = transport.protectConsole(handlerSwitch)
 	// The watchdog and the deferred database housekeeping both start only now, so
 	// neither competes with the work of coming up.
@@ -1002,8 +1005,7 @@ func run() error {
 
 	// A custom certificate serves even with no Hosted manager (unclaimed /
 	// Direct Sign-In): the listener exists whenever either source can serve.
-	usesDirectListener := true
-	if usesDirectListener {
+	{
 		direct, err := networking.NewDirectListenerWithCustom(listener, certificates, customCertificate)
 		if err != nil {
 			return err
@@ -1060,12 +1062,7 @@ func run() error {
 		}, discoveryDone)
 	}
 
-	// The lanes protect handlers; this protects the process. Every accepted
-	// connection is a goroutine and two buffers before any lane is consulted.
-	if !usesDirectListener {
-		listener = capConnections(listener, connectionLimit)
-	}
-	log.Printf("Connection ceiling set to %d (HTTP/2 streams per connection: %d)", connectionLimit, server.HTTP2.MaxConcurrentStreams)
+	log.Printf("Ordinary connection ceiling set to %d, plus 32 reserved for the console (HTTP/2 streams per connection: %d)", connectionLimit, server.HTTP2.MaxConcurrentStreams)
 	log.Printf("Portico server listening on %s (HTTP and HTTPS share this port)", listener.Addr())
 	// ONB-02 item 1: while setup is unfinished, every start names the address
 	// to open. The port comes from the bound listener, not the configured

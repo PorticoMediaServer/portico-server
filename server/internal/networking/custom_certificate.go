@@ -2,9 +2,11 @@ package networking
 
 import (
 	"context"
+	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
+	"io"
 	"os"
 	"strings"
 	"sync"
@@ -16,7 +18,7 @@ import (
 // no passphrase; Portico keeps plain files.
 //
 // The source (paths and domain) is read on every handshake and status call.
-// File content is reloaded when either file's mtime or size changes, checked
+// File content is reloaded when either file changes, checked
 // at most once every 30 seconds, plus immediately when the source values
 // change. On any failure the last good certificate keeps serving while it
 // still matches the domain. Private keys are never logged or reported.
@@ -28,13 +30,15 @@ type CustomCertificate struct {
 	certPath, keyPath, domain string
 	cert                      *tls.Certificate
 
-	certMtime time.Time
-	certSize  int64
-	certOK    bool
-	keyMtime  time.Time
-	keySize   int64
-	keyOK     bool
-	lastCheck time.Time
+	certDigest [32]byte
+	keyDigest  [32]byte
+	certMtime  time.Time
+	certSize   int64
+	certOK     bool
+	keyMtime   time.Time
+	keySize    int64
+	keyOK      bool
+	lastCheck  time.Time
 
 	state     string
 	errorCode string
@@ -46,6 +50,7 @@ type CustomCertificate struct {
 // connectivity report. NotAfter is nil unless a certificate loaded.
 type CustomCertificateStatus struct {
 	State     string     `json:"state"`
+	Serving   bool       `json:"serving"`
 	ErrorCode string     `json:"errorCode,omitempty"`
 	Domain    string     `json:"domain,omitempty"`
 	NotAfter  *time.Time `json:"notAfter,omitempty"`
@@ -168,7 +173,7 @@ func (c *CustomCertificate) resetLocked() {
 }
 
 func (c *CustomCertificate) statusLocked() CustomCertificateStatus {
-	out := CustomCertificateStatus{State: c.state, ErrorCode: c.errorCode, Domain: c.domain, Issuer: c.issuer}
+	out := CustomCertificateStatus{Serving: c.cert != nil && c.cert.Leaf != nil && c.nowOrDefault().Before(c.cert.Leaf.NotAfter), State: c.state, ErrorCode: c.errorCode, Domain: c.domain, Issuer: c.issuer}
 	if out.State == "" {
 		out.State = "none"
 	}
@@ -194,32 +199,62 @@ func (c *CustomCertificate) ensureLocked(certPath, keyPath, domain string) {
 		return
 	}
 	c.lastCheck = now
-	certMtime, certSize, certOK := statIdentity(certPath)
-	keyMtime, keySize, keyOK := statIdentity(keyPath)
-	if certOK == c.certOK && keyOK == c.keyOK && certMtime.Equal(c.certMtime) && certSize == c.certSize && keyMtime.Equal(c.keyMtime) && keySize == c.keySize {
+	certMtime, certSize, certDigest, certOK := statIdentity(certPath)
+	keyMtime, keySize, keyDigest, keyOK := statIdentity(keyPath)
+	if certDigest == c.certDigest && keyDigest == c.keyDigest && certOK == c.certOK && keyOK == c.keyOK && certMtime.Equal(c.certMtime) && certSize == c.certSize && keyMtime.Equal(c.keyMtime) && keySize == c.keySize {
 		return
 	}
 	c.reloadLocked(certPath, keyPath, domain)
 }
 
-func statIdentity(path string) (time.Time, int64, bool) {
-	fi, e := os.Stat(path)
-	if e != nil {
-		return time.Time{}, 0, false
+const maxCertificatePEMBytes = 1 << 20
+
+func certificatePEM(path string) ([]byte, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, err
 	}
-	return fi.ModTime(), fi.Size(), true
+	if !info.Mode().IsRegular() || info.Size() > maxCertificatePEMBytes {
+		return nil, errors.New("certificate file must be a bounded regular file")
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	raw, err := io.ReadAll(io.LimitReader(file, maxCertificatePEMBytes+1))
+	if err != nil || len(raw) > maxCertificatePEMBytes {
+		clear(raw)
+		return nil, errors.New("certificate file exceeds its bound")
+	}
+	return raw, nil
+}
+func statIdentity(path string) (time.Time, int64, [32]byte, bool) {
+	fi, err := os.Stat(path)
+	if err != nil {
+		return time.Time{}, 0, [32]byte{}, false
+	}
+	raw, err := certificatePEM(path)
+	if err != nil {
+		return fi.ModTime(), fi.Size(), [32]byte{}, false
+	}
+	defer clear(raw)
+	return fi.ModTime(), fi.Size(), sha256.Sum256(raw), true
 }
 
 // reloadLocked loads the files and records state. On failure the last good
 // certificate keeps serving while it still covers the new domain.
 func (c *CustomCertificate) reloadLocked(certPath, keyPath, domain string) {
 	now := c.nowOrDefault()
+	certMtime, certSize, certDigest, certOK := statIdentity(certPath)
+	keyMtime, keySize, keyDigest, keyOK := statIdentity(keyPath)
+	// Keep the pre-load fingerprint: a replacement during the load must trigger
+	// another check, never make an older loaded pair look like the new files.
 	cert, leaf, code, e := loadCustomCertificate(certPath, keyPath, domain, now)
-	certMtime, certSize, certOK := statIdentity(certPath)
-	keyMtime, keySize, keyOK := statIdentity(keyPath)
 	previous := c.cert
 	c.certPath, c.keyPath, c.domain = certPath, keyPath, domain
 	c.certMtime, c.certSize, c.certOK = certMtime, certSize, certOK
+	c.certDigest, c.keyDigest = certDigest, keyDigest
 	c.keyMtime, c.keySize, c.keyOK = keyMtime, keySize, keyOK
 	c.lastCheck = now
 	if e != nil {
@@ -258,7 +293,17 @@ func issuerName(leaf *x509.Certificate) string {
 // loadCustomCertificate loads a PEM pair and rejects it when the leaf does
 // not cover the domain or is expired.
 func loadCustomCertificate(certPath, keyPath, domain string, now time.Time) (*tls.Certificate, *x509.Certificate, string, error) {
-	pair, e := tls.LoadX509KeyPair(certPath, keyPath)
+	certPEM, certErr := certificatePEM(certPath)
+	if certErr != nil {
+		return nil, nil, "custom_certificate_unreadable", certErr
+	}
+	defer clear(certPEM)
+	keyPEM, keyErr := certificatePEM(keyPath)
+	if keyErr != nil {
+		return nil, nil, "custom_certificate_unreadable", keyErr
+	}
+	defer clear(keyPEM)
+	pair, e := tls.X509KeyPair(certPEM, keyPEM)
 	if e != nil {
 		if _, s := os.Stat(certPath); s != nil {
 			return nil, nil, "custom_certificate_unreadable", e

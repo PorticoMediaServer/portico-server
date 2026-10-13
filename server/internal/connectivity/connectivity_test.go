@@ -189,3 +189,16 @@ func TestDiscoveryRunIsSupervisedAndStopsWithoutBlockingStatus(t *testing.T) {
 		}
 	}
 }
+
+func TestIPv6AccessOriginsKeepAddressAndFamily(t *testing.T) {
+	out := Reporter{}.Report(context.Background(), Policy{AdvertiseURL: "http://[2001:db8::9]", LANNetworks: []string{"2001:db8::/64"}})
+	for _, addr := range out.Addresses {
+		if addr.Source == "accessUrl" {
+			if addr.Address != "2001:db8::9" || addr.Family != "ipv6" || addr.Class != "lan" {
+				t.Fatalf("%+v", addr)
+			}
+			return
+		}
+	}
+	t.Fatal("external address absent")
+}

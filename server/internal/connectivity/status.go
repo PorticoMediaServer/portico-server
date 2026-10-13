@@ -7,8 +7,8 @@ import (
 	"context"
 	"net"
 	"net/netip"
+	"net/url"
 	"sort"
-	"strings"
 	"time"
 
 	"portico.local/server/internal/networking"
@@ -95,6 +95,7 @@ type TLS struct {
 
 // CustomCertificate is the owner-supplied certificate side of the report.
 type CustomCertificate struct {
+	Serving   bool   `json:"serving"`
 	State     string `json:"state,omitempty"`
 	ErrorCode string `json:"errorCode,omitempty"`
 	Domain    string `json:"domain,omitempty"`
@@ -162,18 +163,17 @@ func (r Reporter) Report(ctx context.Context, policy Policy) Status {
 		if raw == "" {
 			continue
 		}
-		host := raw
-		if index := strings.Index(host, "://"); index >= 0 {
-			host = host[index+3:]
+		origin, err := url.Parse(raw)
+		if err != nil || origin.Hostname() == "" {
+			continue
 		}
-		if h, _, err := net.SplitHostPort(host); err == nil {
-			host = h
-		}
-		class := "public"
+		host := origin.Hostname()
+		class, kind := "public", "hostname"
 		if addr, err := netip.ParseAddr(host); err == nil {
 			class = classify(addr, lan)
+			kind = family(addr)
 		}
-		out.Addresses = append(out.Addresses, Address{Address: host, Family: "hostname", Class: class, Source: "accessUrl"})
+		out.Addresses = append(out.Addresses, Address{Address: host, Family: kind, Class: class, Source: "accessUrl"})
 	}
 	if r.Certificates != nil {
 		if status, err := r.Certificates(ctx); err == nil {
@@ -187,7 +187,7 @@ func (r Reporter) Report(ctx context.Context, policy Policy) Status {
 	}
 	if r.Custom != nil {
 		custom := r.Custom(ctx)
-		entry := CustomCertificate{State: custom.State, ErrorCode: custom.ErrorCode, Domain: custom.Domain, Issuer: custom.Issuer}
+		entry := CustomCertificate{Serving: custom.Serving, State: custom.State, ErrorCode: custom.ErrorCode, Domain: custom.Domain, Issuer: custom.Issuer}
 		if custom.NotAfter != nil {
 			entry.NotAfter = custom.NotAfter.UTC().Format(time.RFC3339)
 		}
@@ -195,7 +195,7 @@ func (r Reporter) Report(ctx context.Context, policy Policy) Status {
 			entry.State = "none"
 		}
 		out.TLS.Custom = &entry
-		if entry.State == "ready" {
+		if entry.Serving {
 			out.TLS.Configured = true
 			out.TLS.TLSReady = true
 		}

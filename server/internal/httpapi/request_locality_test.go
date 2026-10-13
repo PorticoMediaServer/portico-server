@@ -53,7 +53,7 @@ func TestRemoteClientLocality(t *testing.T) {
 			for _, v := range c.forwarded {
 				r.Header.Add("X-Forwarded-For", v)
 			}
-			if got := remoteClient(r, c.proxies, c.policy, c.public); got != c.remote {
+			if got := remoteClient(r, c.proxies, c.policy); got != c.remote {
 				t.Fatalf("remote = %v, want %v", got, c.remote)
 			}
 		})

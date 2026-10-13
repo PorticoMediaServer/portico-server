@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"errors"
+	"net"
 	"net/http"
 	"net/url"
 	"portico.local/apikit"
@@ -10,6 +11,7 @@ import (
 	"portico.local/server/internal/access"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/networkpolicy"
+	"strconv"
 
 	"portico.local/server/internal/connectivity"
 	"portico.local/server/internal/networking"
@@ -109,6 +111,22 @@ func (d Dependencies) connectionDocument(r *http.Request) ConnectionDocument {
 	out := ConnectionDocument{Secure: secure, Remote: remote, PlainHTTPOutsideHome: !secure && remote, ClientAddress: d.setupPeerSubject(r), AccessURLs: []string{}}
 	if setting, err := d.connectionSetting(r.Context()); err == nil && setting != nil {
 		out.AccessURLs = append(out.AccessURLs, setting.accessURLs...)
+		if setting.certificateDomain != "" && d.ListeningPort > 0 {
+			host := setting.certificateDomain
+			if d.ListeningPort != 443 {
+				host = net.JoinHostPort(host, strconv.Itoa(d.ListeningPort))
+			}
+			candidate := "https://" + host
+			found := false
+			for _, origin := range out.AccessURLs {
+				if origin == candidate {
+					found = true
+				}
+			}
+			if !found {
+				out.AccessURLs = append(out.AccessURLs, candidate)
+			}
+		}
 	}
 	return out
 }

@@ -4,8 +4,10 @@ import (
 	"context"
 	"net/http"
 	"net/netip"
+	"net/url"
 	"portico.local/server/internal/networkpolicy"
 	"portico.local/server/internal/operations"
+	"strings"
 )
 
 var defaultLocality = newLocalityPolicy(operations.DefaultSettings())
@@ -45,9 +47,9 @@ func (d Dependencies) requestIsRemote(r *http.Request) bool {
 	if setting != nil {
 		policy = setting.locality
 	}
-	return remoteClient(r, d.trustedProxyPrefixes(r.Context()), policy, nil)
+	return remoteClient(r, d.trustedProxyPrefixes(r.Context()), policy)
 }
-func remoteClient(r *http.Request, proxies []netip.Prefix, policy localityPolicy, _ []netip.Addr) bool {
+func remoteClient(r *http.Request, proxies []netip.Prefix, policy localityPolicy) bool {
 	client, ok := networkpolicy.Client(r, proxies)
 	return !ok || !networkpolicy.Contains(policy.lan, client)
 }
@@ -59,5 +61,17 @@ func containsAddress(prefixes []netip.Prefix, addr netip.Addr) bool {
 	return networkpolicy.Contains(prefixes, addr)
 }
 func (d Dependencies) sameRequestOrigin(r *http.Request, origin string) bool {
-	return origin != "" && origin == networkpolicy.Origin(r, d.trustedProxyPrefixes(r.Context()))
+	if origin == "" {
+		return false
+	}
+	actual := networkpolicy.Origin(r, d.trustedProxyPrefixes(r.Context()))
+	if origin == actual {
+		return true
+	}
+	// A proxy can preserve Host before the owner has configured proxy trust.
+	// Browser Origin is checked against that exact host, without accepting any
+	// forwarded header from an untrusted peer or asserting that HTTP is TLS.
+	submitted, err := url.Parse(origin)
+	target, targetErr := url.Parse(actual)
+	return r.TLS == nil && err == nil && targetErr == nil && submitted.Scheme == "https" && submitted.Host == strings.ToLower(target.Host) && submitted.Path == "" && submitted.User == nil && submitted.RawQuery == "" && !submitted.ForceQuery && submitted.Fragment == ""
 }

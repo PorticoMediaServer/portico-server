@@ -83,15 +83,24 @@ func newDirectListener(inner net.Listener, manager *CertificateManager, override
 	// Resumed sessions must still be fenced by live claim authority. Go rotates
 	// in-memory ticket keys automatically; no ticket key is persisted. A custom
 	// certificate is not claim-fenced.
-	if manager != nil {
+	if manager != nil || custom != nil {
 		l.config.VerifyConnection = func(state tls.ConnectionState) error {
 			// A58: a full handshake already ran GetCertificate (and its
 			// authority fence) moments ago; only a resumed session skipped it.
 			if !state.DidResume {
 				return nil
 			}
-			if custom != nil && custom.Serves(state.ServerName) {
-				return nil
+			if custom != nil {
+				cert, err := custom.Get(&tls.ClientHelloInfo{ServerName: state.ServerName})
+				if err != nil {
+					return err
+				}
+				if cert != nil {
+					return nil
+				}
+			}
+			if manager == nil {
+				return ErrUnavailable
 			}
 			_, e := manager.GetCertificate(&tls.ClientHelloInfo{ServerName: state.ServerName})
 			return e

@@ -162,7 +162,7 @@ func initializeCurrentClaimControl(db *sql.DB, state string, id *identity.Servic
 // while a settings read error (nil from accessURLsProvider) keeps them.
 func accessURLsForPublication(v operations.Settings, publicPort int) []string {
 	out := make([]string, 0, len(v.AccessURLs)+1)
-	for _, u := range append(append([]string{}, v.AccessURLs...), v.AdvertiseURL) {
+	for _, u := range append([]string{v.AdvertiseURL}, v.AccessURLs...) {
 		if strings.HasPrefix(u, "https://") {
 			out = append(out, u)
 		}

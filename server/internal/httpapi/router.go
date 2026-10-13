@@ -52,9 +52,7 @@ import (
 )
 
 type Dependencies struct {
-	// HTTPSRoute may attest an externally terminated HTTPS route. The default
-	// uses the installed certificate manager; an access URL alone is not proof.
-	HTTPSRoute func(context.Context) (string, bool, error)
+	ListeningPort int
 	// SettingsApplied runs after an owner saves console settings so snapshot
 	// readers (delivery configuration) refresh off the request path.
 	SettingsApplied func(context.Context)
@@ -120,8 +118,8 @@ type Dependencies struct {
 	// access is the library-authority cache, kept on the same terms.
 	access *accessCache
 	// restrictions is the viewer content-restriction cache, kept on the same terms.
-	restrictions *restrictionCache
-	securePolicy *securePolicyCache
+	restrictions     *restrictionCache
+	connectionPolicy *connectionPolicyCache
 	// v1 is the Playback Protocol v1 resource service (playback_v1*.go),
 	// installed by New like the caches above.
 	v1 *playbackv1.Service
@@ -691,7 +689,7 @@ func New(d Dependencies) http.Handler {
 	d.principals = newPrincipalCache()
 	d.access = newAccessCache()
 	d.restrictions = newRestrictionCache()
-	d.securePolicy = &securePolicyCache{}
+	d.connectionPolicy = &connectionPolicyCache{}
 	// The typed registry captures d, so everything its handlers read must be
 	// installed first.
 	if d.Console == nil && d.DB != nil {
@@ -1234,6 +1232,9 @@ func New(d Dependencies) http.Handler {
 				if origin == v {
 					allowed = true
 				}
+			}
+			if r.URL.Path == "/v1/setup" || r.URL.Path == "/v1/setup/browser" {
+				allowed = d.sameRequestOrigin(r, origin)
 			}
 			if !allowed {
 				write(w, http.StatusForbidden, map[string]any{"error": map[string]any{"code": "origin_not_allowed", "message": "This origin is not permitted.", "retryable": false}})

@@ -6746,11 +6746,16 @@ export const schemas = {
               "notAfter": {
                 "type": "string"
               },
+              "serving": {
+                "type": "boolean"
+              },
               "state": {
                 "type": "string"
               }
             },
-            "required": [],
+            "required": [
+              "serving"
+            ],
             "type": "object"
           },
           "dnsName": {
