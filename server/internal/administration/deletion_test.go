@@ -148,7 +148,7 @@ func TestDeleteWithoutFilesLeavesThemAndKeepsEachProfilesState(t *testing.T) {
 	s, db, _, item, paths := deletionFixture(t)
 	ctx := context.Background()
 	c := catalogtest.New(t, db)
-	if _, err := db.Exec(`INSERT INTO personal_items(profile_id,item_id,watchlisted,favorite,rating,revision,watched,last_played_at,not_interested) VALUES('p1',?,0,1,4.5,1,1,'2026-10-01T00:00:00Z',0)`, c.ID(item)); err != nil {
+	if _, err := db.Exec(`INSERT INTO personal_items(profile_id,item_id,watchlisted,favorite,rating,revision,watched,last_played_at,not_interested) VALUES('p1',?,0,1,9,1,1,'2026-10-01T00:00:00Z',0)`, c.ID(item)); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := db.Exec(`INSERT INTO personal_watched_intents(profile_id,item_id,watched,authored_at) VALUES('p1',?,1,'2026-10-01T00:00:00.000000000Z')`, c.ID(item)); err != nil {
@@ -169,7 +169,7 @@ func TestDeleteWithoutFilesLeavesThemAndKeepsEachProfilesState(t *testing.T) {
 	}
 	var favorite, watched bool
 	var rating float64
-	if err = db.QueryRow(`SELECT favorite,watched,rating FROM retained_title_state WHERE profile_id='p1'`).Scan(&favorite, &watched, &rating); err != nil || !favorite || !watched || rating != 4.5 {
+	if err = db.QueryRow(`SELECT favorite,watched,rating FROM retained_title_state WHERE profile_id='p1'`).Scan(&favorite, &watched, &rating); err != nil || !favorite || !watched || rating != 9 {
 		t.Fatalf("kept state: favorite=%v watched=%v rating=%v err=%v", favorite, watched, rating, err)
 	}
 }

@@ -4407,6 +4407,16 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "ClearPlaybackFailureMemoryRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "ClearPlaybackFailureMemoryResponse": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
   "CommitQueueNextRequest": {
     "properties": {
       "token": {
@@ -11354,9 +11364,8 @@ export const schemas = {
               "type": "string"
             },
             "failedAt": {
-              "maximum": 9007199254740991,
-              "minimum": -9007199254740991,
-              "type": "integer"
+              "description": "RFC 3339 UTC instant; empty when absent.",
+              "type": "string"
             },
             "reason": {
               "type": "string"
@@ -36204,6 +36213,65 @@ export const schemas = {
       "total",
       "rule",
       "days"
+    ],
+    "type": "object"
+  },
+  "ListPlaybackFailureMemoryRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "ListPlaybackFailureMemoryResponse": {
+    "properties": {
+      "items": {
+        "items": {
+          "properties": {
+            "code": {
+              "type": "string"
+            },
+            "detail": {
+              "type": "string"
+            },
+            "engine": {
+              "type": "string"
+            },
+            "expiresAtMs": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "reportedAtMs": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "route": {
+              "type": "string"
+            },
+            "sourceId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "sourceId",
+            "engine",
+            "route",
+            "code",
+            "detail",
+            "reportedAtMs",
+            "expiresAtMs"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "more": {
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "items",
+      "more"
     ],
     "type": "object"
   },

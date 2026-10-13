@@ -8,12 +8,13 @@ import (
 	"net/url"
 	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/personalstate"
+	"portico.local/server/internal/requestinput"
 	"strconv"
 	"strings"
 	"time"
 )
 
-var ErrShowContext = errors.New("show, season and episode context do not agree")
+var ErrShowContext = requestinput.New("show, season and episode context do not agree")
 
 func (s *Service) showWorkspaceOnce(r ShowWorkspaceRequest) (ShowWorkspace, error) {
 	out := ShowWorkspace{Scope: ShowWorkspaceScope{r.ServerID, r.Library, r.ViewerFence}, Seasons: []Season{}, Groups: []ShowWorkspaceGroup{}}

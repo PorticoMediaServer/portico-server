@@ -93,11 +93,19 @@ func TestAddingAnEpisodeDoesNotRefetchTheOthers(t *testing.T) {
 	if err := db.QueryRow(`SELECT count(*) FROM screen_metadata_work w JOIN catalog_episodes e ON e.entity_id=w.target_id WHERE w.target_kind='item' AND w.status='matched'`).Scan(&matched); err != nil || matched != 4 {
 		t.Fatal("fixture episodes did not match", matched, err)
 	}
+	var publications int
+	if err := db.QueryRow(`SELECT count(*) FROM screen_metadata_publications WHERE target_kind='item'`).Scan(&publications); err != nil {
+		t.Fatal(err)
+	}
 	*now = now.Add(48 * time.Hour)
 	add(5)
 	settle()
 	if p.total() != 5 || p.episodeCalls["500/1/5/official/en-US"] != 1 {
 		t.Fatalf("one new episode cost %d episode requests: %v", p.total()-4, p.episodeCalls)
+	}
+	var after int
+	if err := db.QueryRow(`SELECT count(*) FROM screen_metadata_publications WHERE target_kind='item'`).Scan(&after); err != nil || after != publications+1 {
+		t.Fatalf("new episode republished old episodes: %d -> %d, %v", publications, after, err)
 	}
 	var title string
 	if err := db.QueryRow(`SELECT e.title FROM catalog_entities e JOIN catalog_episodes c ON c.entity_id=e.id WHERE c.number=1`).Scan(&title); err != nil || title != "Provider episode 1" {
@@ -138,5 +146,83 @@ func TestHeldEpisodeDocumentIsRefetchedWhenItNoLongerAnswers(t *testing.T) {
 	settle()
 	if p.total() != 12 || p.episodeCalls["500/1/1/official/fr-FR"] != 1 {
 		t.Fatalf("a language change reused documents in the old language: %v", p.episodeCalls)
+	}
+}
+
+func TestEpisodeCacheDoesNotReuseAnotherRegion(t *testing.T) {
+	s, db, p, _, _, settle := episodeFreshnessFixture(t)
+	settle()
+	publicationExec(t, db, `UPDATE screen_metadata_candidates SET region='CA' WHERE provider_type='episode'`)
+	publicationExec(t, db, `UPDATE screen_metadata_work SET status='pending' WHERE target_kind='item'`)
+	settle()
+	if p.total() != 8 {
+		t.Fatalf("reused another region's episodes: %d requests", p.total())
+	}
+	_ = s
+}
+
+func TestScreenAbsoluteOrderSelection(t *testing.T) {
+	r := metadataprovider.ScreenRecord{Identity: metadataprovider.ScreenID{Provider: "tmdb", Type: "show", ID: "500"}, Orders: []metadataprovider.ScreenOrder{{ID: "official"}, {ID: "tmdb-group:dvd"}}}
+	for _, order := range []string{"official", "tmdb-absolute:official:-12", "tmdb-absolute:tmdb-group:dvd:12"} {
+		if !screenOrderSupported(r, order) {
+			t.Fatal(order)
+		}
+	}
+	for _, order := range []string{"tmdb-absolute:official:-1000001", "tmdb-group:other", "tmdb-absolute:official:1;input"} {
+		if screenOrderSupported(r, order) {
+			t.Fatal(order)
+		}
+	}
+}
+
+func (p *episodeFixtureProvider) ScreenAbsoluteEpisode(ctx context.Context, show string, number int, order, language string) (metadataprovider.ScreenRecord, error) {
+	base, offset, ok := metadataprovider.TMDBAbsoluteOrder(order)
+	mapped := number + offset
+	if !ok || base != "official" || mapped < 1 || mapped > 4 {
+		return metadataprovider.ScreenRecord{}, &metadataprovider.Error{Provider: "tmdb", Code: "episode_outside_order"}
+	}
+	r, err := p.ScreenEpisode(ctx, show, 1, mapped, order, language)
+	originalSeason, originalEpisode := 1, mapped
+	r.Coordinates.Season = nil
+	r.Coordinates.Episode = number
+	r.Coordinates.Absolute = &number
+	r.Coordinates.OriginalSeason = &originalSeason
+	r.Coordinates.OriginalEpisode = &originalEpisode
+	r.StillPath = "/episode.jpg"
+	return r, err
+}
+
+func TestExplicitAnimeOffsetPublishesMappedEpisodesAndPreservesLocalNumbers(t *testing.T) {
+	s, db, _, _, _, settle := episodeFreshnessFixture(t)
+	settle()
+	var show string
+	if err := db.QueryRow(`SELECT pid(public_id) FROM catalog_entities WHERE kind=2 LIMIT 1`).Scan(&show); err != nil {
+		t.Fatal(err)
+	}
+	publicationExec(t, db, `UPDATE catalog_episodes SET numbering='absolute',season_id=NULL,number=number+12`)
+	publicationExec(t, db, `UPDATE screen_metadata_work SET status='pending',generation=generation+1,revision=revision+1 WHERE target_kind='show'`)
+	settle()
+	state, err := s.ScreenState(context.Background(), "show", show)
+	if err != nil || len(state.Candidates) != 1 {
+		t.Fatal(state, err)
+	}
+	if err = s.SelectScreen(context.Background(), "show", show, ScreenSelection{ExpectedRevision: state.Revision, CandidateKey: state.Candidates[0].Key, Order: "tmdb-absolute:official:-12"}, nil); err != nil {
+		t.Fatal(err)
+	}
+	settle()
+	var matched int
+	if err = db.QueryRow(`SELECT count(*) FROM catalog_episodes e JOIN screen_metadata_work w ON w.target_kind='item' AND w.target_id=e.entity_id WHERE e.number BETWEEN 13 AND 16 AND e.season_id IS NULL AND e.numbering='absolute' AND w.status='matched'`).Scan(&matched); err != nil || matched != 4 {
+		t.Fatal("local numbers or mapped publications lost", matched, err)
+	}
+	var title string
+	if err = db.QueryRow(`SELECT title FROM catalog_entities WHERE id=(SELECT entity_id FROM catalog_episodes WHERE number=15)`).Scan(&title); err != nil || title != "Provider episode 3" {
+		t.Fatal(title, err)
+	}
+	publicationExec(t, db, `UPDATE catalog_episodes SET number=1 WHERE number=13`)
+	publicationExec(t, db, `UPDATE screen_metadata_work SET status='pending',generation=generation+1,revision=revision+1 WHERE target_kind='item' AND target_id=(SELECT entity_id FROM catalog_episodes WHERE number=1)`)
+	settle()
+	var status string
+	if err = db.QueryRow(`SELECT status FROM screen_metadata_work WHERE target_kind='item' AND target_id=(SELECT entity_id FROM catalog_episodes WHERE number=1)`).Scan(&status); err != nil || status != "needs_order" {
+		t.Fatal("invalid mapping was retried instead of requesting a correction", status, err)
 	}
 }

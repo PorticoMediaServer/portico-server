@@ -9,16 +9,11 @@ import (
 	"portico.local/server/internal/dbwork"
 )
 
-// HostedRefreshVerifier checks the current signed Hosted policy and member
-// inside the same transaction as token rotation. A local account needs no
-// external verifier; a Hosted account must supply one.
-type HostedRefreshVerifier func(context.Context, *sql.Tx, Principal) (time.Time, error)
-
 // RefreshSession exchanges a device-bound refresh credential for another 15
 // minute access token and a new refresh credential. A retry with the same
 // request ID receives the exact committed response, stored plainly, until the
 // successor credential is first used (capped at the family horizon). Neither an access bearer nor an installation ID alone can refresh.
-func (s *Service) RefreshSession(ctx context.Context, secret, installation, requestID string, verify HostedRefreshVerifier) (Envelope, error) {
+func (s *Service) RefreshSession(ctx context.Context, secret, installation, requestID string) (Envelope, error) {
 	if len(secret) != 43 || !validInstallationID(installation) || !validFamilyID(requestID) {
 		return Envelope{}, ErrUnauthorized
 	}
@@ -37,7 +32,7 @@ func (s *Service) RefreshSession(ctx context.Context, secret, installation, requ
 		return Envelope{}, ErrSessionMigrated
 	}
 	if errors.Is(err, sql.ErrNoRows) {
-		out, reused, replayErr := s.replayRefreshTx(ctx, tx, hash, installation, requestID, verify)
+		out, reused, replayErr := s.replayRefreshTx(ctx, tx, hash, installation, requestID)
 		if reused != "" {
 			// A known predecessor outside its exact replay is evidence that the
 			// refresh credential escaped. Commit the revocation before returning
@@ -83,19 +78,7 @@ func (s *Service) RefreshSession(ctx context.Context, secret, installation, requ
 		return Envelope{}, err
 	}
 	horizon := now.Add(LocalSignInWindow)
-	if p.Authority == "hosted" {
-		if verify == nil {
-			return Envelope{}, ErrUnauthorized
-		}
-		verified, err := verify(ctx, tx, p)
-		if err != nil {
-			return Envelope{}, err
-		}
-		horizon, err = s.hostedFamilyHorizonTx(ctx, tx, verified, now)
-		if err != nil {
-			return Envelope{}, err
-		}
-	}
+
 	var currentGeneration int64
 	if err = tx.QueryRowContext(ctx, `SELECT current_generation FROM authorization_session_families WHERE id=? AND revoked=0`, family).Scan(&currentGeneration); err != nil || currentGeneration < generation {
 		return Envelope{}, ErrUnauthorized
@@ -147,7 +130,7 @@ func refreshAAD(family, predecessor, installation, request string) string {
 // A nonempty reused family identifies a known predecessor used outside the
 // exact-response replay window (after its successor was used). The caller must
 // commit its revocation.
-func (s *Service) replayRefreshTx(ctx context.Context, tx *sql.Tx, predecessor, installation, request string, verify HostedRefreshVerifier) (Envelope, string, error) {
+func (s *Service) replayRefreshTx(ctx context.Context, tx *sql.Tx, predecessor, installation, request string) (Envelope, string, error) {
 	var family, storedRequest, until string
 	var sealed []byte
 	if err := tx.QueryRowContext(ctx, `SELECT family_id,request_id,ciphertext,expires_at FROM identity_refresh_receipts WHERE predecessor_hash=?`, predecessor).Scan(&family, &storedRequest, &sealed, &until); err != nil {
@@ -190,13 +173,6 @@ func (s *Service) replayRefreshTx(ctx context.Context, tx *sql.Tx, predecessor, 
 	if err = admitAccountTx(ctx, tx, p.AccountID); err != nil {
 		return Envelope{}, "", err
 	}
-	if p.Authority == "hosted" {
-		if verify == nil {
-			return Envelope{}, "", ErrUnauthorized
-		}
-		if _, err = verify(ctx, tx, p); err != nil {
-			return Envelope{}, "", err
-		}
-	}
+
 	return out, "", nil
 }

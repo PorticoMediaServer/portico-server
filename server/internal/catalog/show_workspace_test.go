@@ -427,8 +427,8 @@ func TestShowWorkspaceRejectsCrossedParentsAndCursorFences(t *testing.T) {
 		return compactcatalog.SetFactsTx(ctx, tx, names["ep-008"].ID, map[string]any{"show_id": names["show"].ID, "season_id": names["season1"].ID, "numbering": "seasonal", "number": 250})
 	})
 	c.Drain()
-	if _, e = s.ShowWorkspace(r); !errors.Is(e, ErrStaleContinuation) {
-		t.Fatal("reorder not fenced", e)
+	if _, e = s.ShowWorkspace(r); e != nil {
+		t.Fatal("reorder prevented continuation", e)
 	}
 	r = workspaceRequest(names)
 	r.EpisodeID = names["ep-185"].Public

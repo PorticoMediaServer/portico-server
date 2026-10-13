@@ -432,9 +432,7 @@ func (s *Service) acquireScreen(ctx context.Context, p *screenClaim) ([]screenCa
 		}
 		if b.TargetKind == "show" && b.Mode == "owner" {
 			valid := false
-			for _, o := range screenRecordOrders(r) {
-				valid = valid || o.ID == b.Order
-			}
+			valid = screenOrderSupported(r, b.Order)
 			if !valid {
 				return nil, -1, "", &metadataprovider.Error{Provider: id.Provider, Code: "order_unavailable"}
 			}

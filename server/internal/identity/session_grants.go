@@ -9,9 +9,6 @@ import (
 // A session grant narrows a session below what its role would allow. A grant
 // is fixed when the session is issued and never widens.
 const (
-	// GrantViewerOnly is a device signed in to watch: it cannot manage the
-	// account it is signed in to.
-	GrantViewerOnly = "viewer_only"
 	// GrantCastTarget is a screen someone paired as a Cast target. It plays
 	// what it is told to play, as the profile that paired it, and can do
 	// nothing else: it cannot browse or search, manage the account or the

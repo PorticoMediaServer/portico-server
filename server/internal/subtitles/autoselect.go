@@ -128,6 +128,21 @@ func ChooseAutomatic(choice AutoChoice, candidates []AutoCandidate) *AutoCandida
 				return fallback
 			}
 		}
+		// An explicitly enabled track with no language preferences follows the
+		// file's sole default. A known viewer language is never overridden.
+		if choice.Enabled && len(choice.Languages) == 0 {
+			var selected *AutoCandidate
+			for i := range candidates {
+				c := &candidates[i]
+				if c.Default && !c.Forced {
+					if selected != nil {
+						return nil
+					}
+					selected = c
+				}
+			}
+			return selected
+		}
 		return nil
 	}
 	audio := subtitleLanguageKey(choice.AudioLanguage)
@@ -139,7 +154,19 @@ func ChooseAutomatic(choice AutoChoice, candidates []AutoCandidate) *AutoCandida
 			return c
 		}
 	}
-	return nil
+	// One untagged forced track is the file's translation fragment. Multiple
+	// untagged tracks remain a manual choice, even when one is marked default.
+	var untagged *AutoCandidate
+	for i := range candidates {
+		c := &candidates[i]
+		if c.Forced && subtitleLanguageKey(c.Language) == "" {
+			if untagged != nil {
+				return nil
+			}
+			untagged = c
+		}
+	}
+	return untagged
 }
 
 // ViewerKey is the key a viewer's personal subtitle tracks are stored under.

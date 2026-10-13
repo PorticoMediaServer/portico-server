@@ -110,7 +110,8 @@ export const routes = [
       "invalid_request",
       "revision_mismatch",
       "request_in_progress",
-      "internal"
+      "internal",
+      "revision_required"
     ],
     "status": 200
   },
@@ -131,7 +132,8 @@ export const routes = [
       "revision_mismatch",
       "idempotency_key_reused",
       "rate_limited",
-      "internal"
+      "internal",
+      "revision_required"
     ],
     "status": 200
   },
@@ -158,6 +160,24 @@ export const routes = [
       "connection_too_slow"
     ],
     "status": 200
+  },
+  {
+    "id": "clear_playback_failure_memory",
+    "method": "DELETE",
+    "path": "/v1/admin/playback/route-failures/{sourceId}",
+    "summary": "Forget remembered failures for a media file",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "invalid_request",
+      "internal"
+    ],
+    "status": 204
   },
   {
     "id": "commit_queue_next",
@@ -489,7 +509,8 @@ export const routes = [
       "invalid_request",
       "not_found",
       "revision_mismatch",
-      "internal"
+      "internal",
+      "revision_required"
     ],
     "status": 204
   },
@@ -3855,6 +3876,23 @@ export const routes = [
     "status": 200
   },
   {
+    "id": "list_playback_failure_memory",
+    "method": "GET",
+    "path": "/v1/admin/playback/route-failures",
+    "summary": "Read active remembered playback failures",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
     "id": "list_queue_entries",
     "method": "GET",
     "path": "/v1/queues/{id}/entries",
@@ -4066,6 +4104,7 @@ export const routes = [
     "errors": [
       "unauthorized",
       "invalid_request",
+      "request_in_progress",
       "insufficient_disk",
       "administration_unavailable",
       "internal"
@@ -4792,7 +4831,8 @@ export const routes = [
       "invalid_request",
       "not_found",
       "revision_mismatch",
-      "internal"
+      "internal",
+      "revision_required"
     ],
     "status": 200
   },
@@ -4833,7 +4873,8 @@ export const routes = [
       "not_found",
       "request_in_progress",
       "administration_unavailable",
-      "internal"
+      "internal",
+      "revision_required"
     ],
     "status": 200
   },
@@ -4873,7 +4914,8 @@ export const routes = [
       "not_permitted",
       "invalid_request",
       "revision_mismatch",
-      "internal"
+      "internal",
+      "revision_required"
     ],
     "status": 200
   },
@@ -4918,7 +4960,8 @@ export const routes = [
       "not_found",
       "downloads_not_allowed",
       "downloads_unavailable",
-      "internal"
+      "internal",
+      "revision_required"
     ],
     "status": 200
   },
@@ -4977,7 +5020,8 @@ export const routes = [
       "invalid_request",
       "revision_mismatch",
       "idempotency_key_reused",
-      "internal"
+      "internal",
+      "revision_required"
     ],
     "status": 200
   },
@@ -4996,7 +5040,8 @@ export const routes = [
       "not_permitted",
       "invalid_request",
       "revision_mismatch",
-      "internal"
+      "internal",
+      "revision_required"
     ],
     "status": 200
   },
@@ -5154,7 +5199,8 @@ export const routes = [
       "not_permitted",
       "not_found",
       "invalid_request",
-      "internal"
+      "internal",
+      "revision_required"
     ],
     "status": 202
   },
@@ -5198,7 +5244,8 @@ export const routes = [
       "revision_mismatch",
       "idempotency_key_reused",
       "rate_limited",
-      "internal"
+      "internal",
+      "revision_required"
     ],
     "status": 200
   },
@@ -5478,7 +5525,8 @@ export const routes = [
       "idempotency_key_reused",
       "revision_mismatch",
       "rate_limited",
-      "internal"
+      "internal",
+      "revision_required"
     ],
     "status": 200
   },
@@ -5505,7 +5553,8 @@ export const routes = [
       "source_network_policy",
       "source_credentials_required",
       "source_unavailable",
-      "internal"
+      "internal",
+      "revision_required"
     ],
     "status": 200
   },
@@ -5532,7 +5581,8 @@ export const routes = [
       "source_network_policy",
       "source_credentials_required",
       "source_unavailable",
-      "internal"
+      "internal",
+      "revision_required"
     ],
     "status": 200
   },

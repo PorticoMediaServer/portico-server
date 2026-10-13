@@ -8,6 +8,7 @@ import (
 	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/entityid"
+	"portico.local/server/internal/requestinput"
 	"strconv"
 	"time"
 
@@ -398,20 +399,20 @@ func (s *Service) AssociateInventoryVersion(ctx context.Context, library, object
 		return err
 	}
 	if n != 1 {
-		return errors.New("select an unambiguous whole-source item for a physical version")
+		return requestinput.New("select an unambiguous whole-source item for a physical version")
 	}
 	if err = tx.QueryRowContext(ctx, `SELECT part_index,start_seconds,end_seconds FROM catalog_asset_links WHERE entity_id=? ORDER BY asset_id LIMIT 1`, item).Scan(&part, &start, &end); err != nil {
 		return err
 	}
 	if start.Valid && start.Float64 != 0 || end.Valid {
-		return errors.New("range-bound versions require explicit boundary evidence")
+		return requestinput.New("range-bound versions require explicit boundary evidence")
 	}
 	if kind == "episode" {
 		if err = tx.QueryRowContext(ctx, `SELECT count(*) FROM episode_asset_boundaries WHERE item_id=? AND status='whole_source'`, item).Scan(&n); err != nil {
 			return err
 		}
 		if n < 1 {
-			return errors.New("episode boundary is unresolved")
+			return requestinput.New("episode boundary is unresolved")
 		}
 	}
 	if err = compactcatalog.LinkAssetTx(ctx, tx, item, assetID, compactcatalog.Link{Part: part}); err != nil {

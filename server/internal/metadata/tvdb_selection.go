@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"portico.local/server/internal/requestinput"
 
 	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/dbwork"
@@ -97,10 +98,10 @@ func (s *Service) SelectTVDB(show string, body TVDBSelection, authorize func(*sq
 	switch metadataprovider.EpisodeOrder(body.Order) {
 	case metadataprovider.Official, metadataprovider.DVD, metadataprovider.Absolute, metadataprovider.Default, metadataprovider.Alternate, metadataprovider.Regional:
 	default:
-		return errors.New("explicit valid TVDB ordering is required")
+		return requestinput.New("explicit valid TVDB ordering is required")
 	}
 	if body.ProviderID <= 0 || body.ExpectedRevision < 1 {
-		return errors.New("providerId and expectedRevision are required")
+		return requestinput.New("providerId and expectedRevision are required")
 	}
 	gated, e := dbwork.Begin(context.Background(), s.db, dbwork.ClassBackgroundMedia)
 	if e != nil {
@@ -142,10 +143,10 @@ func (s *Service) selectTVDBTx(tx *sql.Tx, show string, body TVDBSelection) erro
 	switch metadataprovider.EpisodeOrder(body.Order) {
 	case metadataprovider.Official, metadataprovider.DVD, metadataprovider.Absolute, metadataprovider.Default, metadataprovider.Alternate, metadataprovider.Regional:
 	default:
-		return errors.New("explicit valid TVDB ordering is required")
+		return requestinput.New("explicit valid TVDB ordering is required")
 	}
 	if body.ProviderID <= 0 || body.ExpectedRevision < 1 {
-		return errors.New("providerId and expectedRevision are required")
+		return requestinput.New("providerId and expectedRevision are required")
 	}
 	entity, e := resolveEntity(context.Background(), tx, show)
 	if e != nil {
@@ -163,7 +164,7 @@ func (s *Service) selectTVDBTx(tx *sql.Tx, show string, body TVDBSelection) erro
 		return e
 	}
 	if selected != 1 {
-		return errors.New("select an observed TVDB candidate")
+		return requestinput.New("select an observed TVDB candidate")
 	}
 	// Keep the last valid episode projection while replacement pages are acquired.
 	// New publication is fenced by the selection generation; no placeholder clearing.
@@ -224,7 +225,7 @@ func (s *Service) RetryTVDB(show string, revision int64, authorize func(*sql.Tx)
 		return ErrTVDBConflict
 	}
 	if status != "unavailable" && status != "unresolved" && status != "needs_selection" {
-		return errors.New("retry requires a failed or unresolved job; select a candidate to refresh completed metadata")
+		return requestinput.New("retry requires a failed or unresolved job; select a candidate to refresh completed metadata")
 	}
 	status = "pending_search"
 	if providerID > 0 && tvdbOrder(order) {

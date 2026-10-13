@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"portico.local/server/internal/requestinput"
 	"strconv"
 	"strings"
 	"time"
@@ -25,11 +26,11 @@ type Collection struct {
 func collectionName(name string) (string, string, error) {
 	name = strings.TrimSpace(name)
 	if len(name) == 0 || len(name) > 100 {
-		return "", "", errors.New("collection name must contain 1–100 bytes")
+		return "", "", requestinput.New("collection name must contain 1–100 bytes")
 	}
 	for _, c := range name {
 		if unicode.IsControl(c) {
-			return "", "", errors.New("collection name contains a control character")
+			return "", "", requestinput.New("collection name contains a control character")
 		}
 	}
 	return name, strings.ToLower(strings.Join(strings.Fields(name), " ")), nil
@@ -199,12 +200,12 @@ func (o *EntryOutcomes) fail(id, code string) {
 func (s *Service) SetCollectionItems(collection string, add, remove []string) (CollectionBatch, error) {
 	out := CollectionBatch{Entries: newEntryOutcomes()}
 	if len(add)+len(remove) == 0 || len(add) > MaxCollectionBatch || len(remove) > MaxCollectionBatch {
-		return out, errors.New("a collection membership batch carries 1 to 200 additions and 200 removals")
+		return out, requestinput.New("a collection membership batch carries 1 to 200 additions and 200 removals")
 	}
 	seen := map[string]bool{}
 	for _, id := range append(append([]string{}, add...), remove...) {
 		if id == "" || len(id) > 256 || seen[id] {
-			return out, errors.New("each batch item must name a distinct itemId")
+			return out, requestinput.New("each batch item must name a distinct itemId")
 		}
 		seen[id] = true
 	}

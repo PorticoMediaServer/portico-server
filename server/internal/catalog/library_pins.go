@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/requestinput"
 )
 
 // Pins carry order. The boolean pin remains the record of intent; this file owns
@@ -67,10 +68,10 @@ func (s *Service) PinOrder(a ResourceActor) (PinOrder, error) {
 func (s *Service) SetPinOrder(a ResourceActor, expected int64, order []PinOrderEntry, authorize func(*sql.Tx) error) (PinOrder, error) {
 	out := PinOrder{Order: []PinOrderEntry{}}
 	if a.Authority == "" || a.AccountID == "" || a.ProfileID == "" {
-		return out, errors.New("a complete viewer is required")
+		return out, requestinput.New("a complete viewer is required")
 	}
 	if len(order) > maximumPinOrder {
-		return out, errors.New("pin order exceeds 200 entries")
+		return out, requestinput.New("pin order exceeds 200 entries")
 	}
 	owner := actorKey(a)
 	gated, e := dbwork.Begin(context.Background(), s.db, dbwork.ClassFrom(context.Background(), dbwork.ClassInteractive))
@@ -92,10 +93,10 @@ func (s *Service) SetPinOrder(a ResourceActor, expected int64, order []PinOrderE
 	seen := map[PinOrderEntry]bool{}
 	for _, entry := range order {
 		if entry.Kind != "collection" && entry.Kind != "view" && entry.Kind != "playlist" {
-			return out, errors.New("pin kind must be collection, view or playlist")
+			return out, requestinput.New("pin kind must be collection, view or playlist")
 		}
 		if seen[entry] {
-			return out, errors.New("a pinned resource may appear once in the order")
+			return out, requestinput.New("a pinned resource may appear once in the order")
 		}
 		seen[entry] = true
 		var pinned int
@@ -156,10 +157,10 @@ func (s *Service) LibraryNavigation(a ResourceActor, allowed func(string) bool) 
 func (s *Service) SetLibraryNavigation(a ResourceActor, expected int64, libraries []string, authorize func(*sql.Tx, string) error) (LibraryNavigation, error) {
 	out := LibraryNavigation{PinnedLibraryIDs: []string{}}
 	if a.Authority == "" || a.AccountID == "" || a.ProfileID == "" {
-		return out, errors.New("a complete viewer is required")
+		return out, requestinput.New("a complete viewer is required")
 	}
 	if len(libraries) > maximumPinnedLibraries {
-		return out, errors.New("pinned libraries exceed 100 entries")
+		return out, requestinput.New("pinned libraries exceed 100 entries")
 	}
 	owner := actorKey(a)
 	gated2, e := dbwork.Begin(context.Background(), s.db, dbwork.ClassFrom(context.Background(), dbwork.ClassInteractive))
@@ -181,7 +182,7 @@ func (s *Service) SetLibraryNavigation(a ResourceActor, expected int64, librarie
 	seen := map[string]bool{}
 	for _, library := range libraries {
 		if seen[library] {
-			return out, errors.New("a library may appear once in the pin order")
+			return out, requestinput.New("a library may appear once in the pin order")
 		}
 		seen[library] = true
 		var exists int

@@ -675,10 +675,13 @@ func BuildConversion(r ConversionRequest) (ConversionGraph, error) {
 	if r.CopyVideo && r.ConvertVideo || r.CopyAudio && r.ConvertAudio || target.CopyDolbyVision && !r.CopyVideo {
 		return out, ErrInvalidConfiguration
 	}
+	if r.ConvertVideo && (target.BitDepth != 8 && target.BitDepth != 10 || target.VideoCodec == "h264" && (target.BitDepth != 8 || target.DynamicRange != "sdr")) {
+		return out, ErrInvalidConfiguration
+	}
 	if math.IsNaN(r.MaxFrameRate) || math.IsInf(r.MaxFrameRate, 0) || r.MaxFrameRate < 0 || r.MaxFrameRate > 240 {
 		return out, ErrInvalidConfiguration
 	}
-	if r.MaxWidth < 0 || r.MaxWidth > 32768 || r.MaxHeight < 0 || r.MaxHeight > 4320 || r.VideoBitrateBPS < 0 || r.VideoBitrateBPS > 200_000_000 || r.AudioBitrateBPS < 0 || r.AudioBitrateBPS > 4_096_000 || r.AudioChannels < 0 || r.AudioChannels > 8 {
+	if r.MaxWidth < 0 || r.MaxWidth > 32768 || r.MaxHeight < 0 || r.MaxHeight > 4320 || r.VideoBitrateBPS < 0 || r.VideoBitrateBPS > 200_000_000 || r.AudioBitrateBPS < 0 || r.AudioBitrateBPS > 4_096_000 || r.AudioChannels < 0 || r.AudioChannels > 64 {
 		return out, ErrInvalidConfiguration
 	}
 	if (r.ToneMap || r.BurnIn != nil) && !r.ConvertVideo {

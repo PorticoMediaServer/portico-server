@@ -23,7 +23,7 @@ func liveSecrets(t *testing.T, s *Service) (Envelope, []string) {
 	if err != nil || login.Session == nil {
 		t.Fatalf("%+v %v", login, err)
 	}
-	renewed, err := s.RefreshSession(phone, login.Session.RefreshToken, memberPhone, "renewal-before-backup", nil)
+	renewed, err := s.RefreshSession(phone, login.Session.RefreshToken, memberPhone, "renewal-before-backup")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -160,7 +160,7 @@ func TestARestoreSignsEveryoneOutOnce(t *testing.T) {
 			t.Fatalf("%s is still signed in after a restore: %v", name, err)
 		}
 	}
-	if _, err = s.RefreshSession(onDevice(t, memberPhone, "Member's phone"), session.RefreshToken, memberPhone, "renewal-after-restore", nil); !errors.Is(err, ErrUnauthorized) {
+	if _, err = s.RefreshSession(onDevice(t, memberPhone, "Member's phone"), session.RefreshToken, memberPhone, "renewal-after-restore"); !errors.Is(err, ErrUnauthorized) {
 		t.Fatalf("a session from before the restore renewed: %v", err)
 	}
 	var live, restored int

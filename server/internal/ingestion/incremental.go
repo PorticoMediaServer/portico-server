@@ -3,7 +3,7 @@ package ingestion
 import (
 	"context"
 	"database/sql"
-	"errors"
+	"portico.local/server/internal/requestinput"
 	"time"
 )
 
@@ -13,7 +13,7 @@ type scanModeKey struct{}
 // chooses first import, weekly integrity, or incremental automatically.
 func (s *Service) QueueMode(ctx context.Context, library, source, mode string, authorize func(*sql.Tx) error) (Job, error) {
 	if mode != "" && mode != "incremental" && mode != "full" && mode != "integrity" {
-		return Job{}, errors.New("invalid scan mode")
+		return Job{}, requestinput.New("invalid scan mode")
 	}
 	return s.QueueContext(context.WithValue(ctx, scanModeKey{}, mode), library, source, authorize)
 }

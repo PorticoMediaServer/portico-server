@@ -16,8 +16,8 @@ import (
 	"testing"
 	"time"
 
-	_ "portico.local/server/internal/thirdparty/sqlite"
 	"portico.local/server/internal/persistence"
+	_ "portico.local/server/internal/thirdparty/sqlite"
 )
 
 type sqlFixture struct {

@@ -2,6 +2,7 @@ package lyrics
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -155,11 +156,14 @@ func TestSupervisedLyricsRunSitsOutAProviderPause(t *testing.T) {
 	worker.MinSignalInterval = 5 * time.Millisecond
 	t.Cleanup(func() { worker.MinSignalInterval = floor })
 	var requests atomic.Int64
-	bulk.Service.Provider = &LRCLIB{origin: "https://lyrics.example", client: &http.Client{Transport: roundTrip(func(*http.Request) (*http.Response, error) {
+	bulk.Service.Provider = &LRCLIB{origin: "https://lyrics.example", client: &http.Client{Transport: roundTrip(func(r *http.Request) (*http.Response, error) {
 		if requests.Add(1) == 1 {
 			return &http.Response{StatusCode: 429, Header: http.Header{"Retry-After": {"3"}}, Body: io.NopCloser(strings.NewReader(""))}, nil
 		}
-		body := `[{"id":7,"trackName":"Song","artistName":"Fixture Artist","syncedLyrics":"[00:01.00]First line\n[00:10.00]Second line"}]`
+		// The provider answers with the recording that was asked for: a match
+		// is only published when its title, artist and length are the song's.
+		asked, _ := json.Marshal(strings.Fields(r.URL.Query().Get("q"))[0])
+		body := `[{"id":7,"trackName":` + string(asked) + `,"artistName":"Fixture Artist","duration":5400,"syncedLyrics":"[00:01.00]First line\n[00:10.00]Second line"}]`
 		return &http.Response{StatusCode: 200, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(body))}, nil
 	})}}
 	ctx, cancel := context.WithCancel(context.Background())

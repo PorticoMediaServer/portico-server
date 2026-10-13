@@ -6,12 +6,13 @@ import (
 	"errors"
 	"net/url"
 	"portico.local/server/internal/facettext"
+	"portico.local/server/internal/requestinput"
 	"strconv"
 	"strings"
 	"time"
 )
 
-var ErrPersonQuery = errors.New("person paging requires limit 1–100 and role cast, crew or all")
+var ErrPersonQuery = requestinput.New("person paging requires limit 1–100 and role cast, crew or all")
 
 type Person struct {
 	ID          string         `json:"id"`

@@ -8,6 +8,7 @@ import (
 	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/entityid"
+	"portico.local/server/internal/requestinput"
 	"strconv"
 	"strings"
 	"time"
@@ -239,31 +240,31 @@ func scanInt64s(rows *sql.Rows, err error) ([]int64, error) {
 
 func (s *Service) AssignEpisodes(ctx context.Context, library string, body EpisodeAssignment) error {
 	if len(body.ShowTitle) == 0 || len(body.ShowTitle) > 200 || body.Year < 0 || body.Year > 2200 || len(body.EpisodeNumbers) == 0 || len(body.EpisodeNumbers) > 8 {
-		return errors.New("invalid episode assignment")
+		return requestinput.New("invalid episode assignment")
 	}
 	plan := EpisodeNaming{ShowTitle: strings.TrimSpace(body.ShowTitle), Year: body.Year, Season: -1, Numbering: body.Numbering, Numbers: body.EpisodeNumbers}
 	if plan.Numbering == "date" {
 		date, err := time.Parse("2006-01-02", body.AirDate)
 		if err != nil || date.Year() < 1900 || body.SeasonNumber != nil && *body.SeasonNumber != date.Year() {
-			return errors.New("valid airDate and matching year season required")
+			return requestinput.New("valid airDate and matching year season required")
 		}
 		plan.AirDate, plan.Season, plan.Numbers = body.AirDate, date.Year(), []int{date.YearDay()}
 	}
 	if plan.ShowTitle == "" || (plan.Numbering != "seasonal" && plan.Numbering != "absolute" && plan.Numbering != "date") {
-		return errors.New("explicit seasonal, absolute, or date numbering is required")
+		return requestinput.New("explicit seasonal, absolute, or date numbering is required")
 	}
 	if plan.Numbering == "seasonal" {
 		if body.SeasonNumber == nil || *body.SeasonNumber < 0 || *body.SeasonNumber > 9999 {
-			return errors.New("seasonNumber is required for seasonal numbering")
+			return requestinput.New("seasonNumber is required for seasonal numbering")
 		}
 		plan.Season = *body.SeasonNumber
 	} else if plan.Numbering == "absolute" && body.SeasonNumber != nil {
-		return errors.New("absolute episodes must remain unassigned to a season")
+		return requestinput.New("absolute episodes must remain unassigned to a season")
 	}
 	seen := map[int]bool{}
 	for _, n := range plan.Numbers {
 		if n < 1 || n > 9999 || seen[n] {
-			return errors.New("episode numbers must be distinct positive numbers")
+			return requestinput.New("episode numbers must be distinct positive numbers")
 		}
 		seen[n] = true
 	}
@@ -278,7 +279,7 @@ func (s *Service) AssignEpisodes(ctx context.Context, library string, body Episo
 		return err
 	}
 	if plan.Numbering == "absolute" && kind != "anime" {
-		return errors.New("absolute numbering requires an anime library")
+		return requestinput.New("absolute numbering requires an anime library")
 	}
 	if err = s.commitEpisodes(tx, library, body.AssetID, name, plan, true); err != nil {
 		return err
@@ -297,7 +298,7 @@ func (s *Service) Shows(viewer Viewer, library, cursor string, limit int) ([]Sho
 	if cursor != "" {
 		var err error
 		if after, err = strconv.ParseInt(cursor, 10, 64); err != nil || after < 0 {
-			return nil, "", errors.New("invalid show cursor")
+			return nil, "", requestinput.New("invalid show cursor")
 		}
 	}
 	restriction, bound := ItemRestrictionSQL("item.id", viewer.EffectiveRestrictions())
@@ -417,7 +418,7 @@ func (s *Service) Episodes(viewer Viewer, show, season, cursor string, limit int
 		var err error
 		after, err = strconv.Atoi(cursor)
 		if err != nil || after < 0 {
-			return nil, "", errors.New("invalid episode cursor")
+			return nil, "", requestinput.New("invalid episode cursor")
 		}
 	}
 	restriction, bound := ItemRestrictionSQL("item.id", viewer.EffectiveRestrictions())

@@ -6,7 +6,9 @@ later change follows.
 ## The baseline
 
 `migrations/0001_baseline.sql` is the whole schema a new install gets. It replaced
-265 pre-release migrations on 25 Sep 2026. A database whose ledger
+the earlier development migration chain. Current pre-release schema changes are
+folded into it; no post-baseline development migrations ship and no historical
+data backfill runs at startup. A database whose ledger
 (`schema_migrations`) does not record migration 1 was written by an earlier
 pre-release Portico; `Open` refuses it, and backup restore refuses it, with one
 plain message:
@@ -22,9 +24,8 @@ every open), and each change is a new migration that follows the rules below.
 
 ## Migration rules
 
-Every migration after the baseline follows these rules. They exist so that a
-library of 5–10 million items upgrades in seconds and so that photos, books or
-any future kind arrive without rewriting an existing large table.
+Every migration after the baseline follows these rules. They keep migration
+work bounded and allow new kinds without rewriting an existing large table. They are design rules, not a measured upgrade-time claim.
 
 1. **Additive only.** Add tables, add nullable or defaulted columns
    (`ALTER TABLE ... ADD COLUMN`), add indexes, add triggers. Never drop or
@@ -74,3 +75,6 @@ belongs to one kind (movie categories, book series).
 Progress and history store a position with a unit (`0` milliseconds, `1`
 pages, `2` fraction in millionths) and a generic `completed` flag, so a book
 read by page and a photo album viewed by fraction need no new columns.
+
+For external inspection, use a backup copy. An open transaction in another
+program on the live database can delay writes and prevent WAL cleanup.

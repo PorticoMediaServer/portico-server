@@ -10,7 +10,7 @@ import (
 )
 
 func init() {
-	sqlite.MustRegisterDeterministicScalarFunction("portico_filter_fold", 1, func(_ *sqlite.FunctionContext, args []driver.Value) (driver.Value, error) {
+	sqlite.MustRegisterDeterministicScalarFunction("portico_fold_text", 1, func(_ *sqlite.FunctionContext, args []driver.Value) (driver.Value, error) {
 		if args[0] == nil {
 			return nil, nil
 		}

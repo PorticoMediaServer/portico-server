@@ -111,10 +111,7 @@ type Store struct {
 	// Identity issues the ordinary viewer session a redeemed Cast receiver plays
 	// with. Nil refuses redemption rather than inventing a credential.
 	Identity *identity.Service
-	// HostedHorizon verifies a Hosted viewer against the server's current cached
-	// Hosted policy and returns its horizon. Without it, Hosted viewers can't pair
-	// a Cast receiver (they are refused before a code is issued).
-	HostedHorizon func(context.Context, *sql.Tx, identity.Principal) (time.Time, error)
+
 	// CastApplicationID reads the published Google Cast application id from the
 	// `cast.applicationId` setting. It takes the caller's transaction because the
 	// server runs SQLite on a single connection: a second connection opened while

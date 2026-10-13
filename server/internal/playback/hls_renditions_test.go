@@ -151,6 +151,8 @@ func TestRenditionWindowsShareOneClock(t *testing.T) {
 }
 
 func TestFragmentedSignallingFollowsActualDolbyVisionLayer(t *testing.T) {
+	facts := matrixToolchain()
+	qualifiedCopy := func(in *DeliveryInput) { in.FMP4Output = true; in.Server = facts }
 	detail := hdr10Detail
 	detail.DynamicRange = assets.RangeDolbyVision
 	detail.DolbyVisionProfile = 8
@@ -158,7 +160,7 @@ func TestFragmentedSignallingFollowsActualDolbyVisionLayer(t *testing.T) {
 	detail.DolbyVisionCompatibility = 1
 	detail.CodecTag = "dvh1"
 	source := videoSource("mkv", "hevc", detail, SourceAudio{Codec: "eac3", Channels: 6})
-	p := decide(t, source, appleTVProfile(), func(in *DeliveryInput) { in.FMP4Output = true })
+	p := decide(t, source, appleTVProfile(), qualifiedCopy)
 	m := string(hlsMasterManifest(&p))
 	if !strings.Contains(m, `CODECS="dvh1.08.06,ec-3"`) || !strings.Contains(m, `SUPPLEMENTAL-CODECS="dvh1.08.06/db1p"`) || !strings.Contains(m, "VIDEO-RANGE=PQ") {
 		t.Fatal(m)
@@ -167,13 +169,24 @@ func TestFragmentedSignallingFollowsActualDolbyVisionLayer(t *testing.T) {
 	client.Video[1].DolbyVisionProfiles = nil
 	client.Video[1].DynamicRanges = []string{"sdr", "hdr10", "hlg"}
 	client.Display.DynamicRanges = []string{"sdr", "hdr10", "hlg"}
-	p = decide(t, source, client, func(in *DeliveryInput) { in.FMP4Output = true })
+	// A device without Dolby Vision is sent the title's own HDR10 base layer,
+	// copied, which needs a converter that can strip the Dolby Vision data.
+	p = decide(t, source, client, qualifiedCopy)
+	if p.VideoAction != "copy" {
+		t.Fatalf("expected qualified base copy, got %+v", p)
+	}
+	if p.Strategy != DeliveryCopyRemux && p.Strategy != DeliveryAudioConversion {
+		t.Fatal("the base layer was not copied", p.Strategy)
+	}
 	m = string(hlsMasterManifest(&p))
 	if strings.Contains(m, "dvh1") || strings.Contains(m, "SUPPLEMENTAL") || !strings.Contains(m, "hvc1.2.4.L153.B0") || !strings.Contains(m, "VIDEO-RANGE=PQ") {
 		t.Fatal(m)
 	}
 	source.Video.DolbyVisionCompatibility = 4
-	p = decide(t, source, client, func(in *DeliveryInput) { in.FMP4Output = true })
+	p = decide(t, source, client, qualifiedCopy)
+	if p.VideoAction != "copy" {
+		t.Fatalf("expected qualified HLG base copy, got %+v", p)
+	}
 	if !strings.Contains(string(hlsMasterManifest(&p)), "VIDEO-RANGE=HLG") {
 		t.Fatal(string(hlsMasterManifest(&p)))
 	}

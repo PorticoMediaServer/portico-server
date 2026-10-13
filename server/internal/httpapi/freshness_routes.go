@@ -4,15 +4,16 @@ import (
 	"context"
 	"net/http"
 	"portico.local/apikit"
+	"portico.local/server/internal/apiwire"
 )
 
 type derivationFailure struct {
-	Domain   int    `json:"domain"`
-	EntityID string `json:"entityId,omitempty"`
-	Title    string `json:"title,omitempty"`
-	Reason   string `json:"reason"`
-	Attempts int    `json:"attempts"`
-	FailedAt int64  `json:"failedAt"`
+	Domain   int             `json:"domain"`
+	EntityID string          `json:"entityId,omitempty"`
+	Title    string          `json:"title,omitempty"`
+	Reason   string          `json:"reason"`
+	Attempts int             `json:"attempts"`
+	FailedAt apiwire.Instant `json:"failedAt"`
 }
 type derivationReport struct {
 	Failures []derivationFailure `json:"failures"`

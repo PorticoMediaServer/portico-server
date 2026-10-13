@@ -92,21 +92,21 @@ func TestWebhookValidationRefusesWhatItShould(t *testing.T) {
 	ctx := context.Background()
 	good := Create{Name: "Home automation", URL: "http://192.168.1.20:8123/api/webhook/abc", Events: []string{PlaybackStarted}}
 	for name, bad := range map[string]Create{
-		"no name":         {URL: good.URL, Events: good.Events},
-		"control chars":   {Name: "a\nb", URL: good.URL, Events: good.Events},
-		"no url":          {Name: "x", Events: good.Events},
-		"file url":        {Name: "x", URL: "file:///etc/passwd", Events: good.Events},
-		"no host":         {Name: "x", URL: "http:///path", Events: good.Events},
-		"credentials":     {Name: "x", URL: "https://user:secret@example.com/hook", Events: good.Events},
-		"fragment":        {Name: "x", URL: "https://example.com/hook#x", Events: good.Events},
-		"relative":        {Name: "x", URL: "/hook", Events: good.Events},
-		"no events":       {Name: "x", URL: good.URL},
-		"unknown event":   {Name: "x", URL: good.URL, Events: []string{"everything"}},
-		"test event":      {Name: "x", URL: good.URL, Events: []string{Test}},
-		"repeated event":  {Name: "x", URL: good.URL, Events: []string{TitleAdded, TitleAdded}},
-		"short secret":    {Name: "x", URL: good.URL, Events: good.Events, Secret: "short"},
-		"spaced secret":   {Name: "x", URL: good.URL, Events: good.Events, Secret: "sixteen characters long"},
-		"very long url":   {Name: "x", URL: "https://example.com/" + strings.Repeat("a", 3000), Events: good.Events},
+		"no name":        {URL: good.URL, Events: good.Events},
+		"control chars":  {Name: "a\nb", URL: good.URL, Events: good.Events},
+		"no url":         {Name: "x", Events: good.Events},
+		"file url":       {Name: "x", URL: "file:///etc/passwd", Events: good.Events},
+		"no host":        {Name: "x", URL: "http:///path", Events: good.Events},
+		"credentials":    {Name: "x", URL: "https://user:secret@example.com/hook", Events: good.Events},
+		"fragment":       {Name: "x", URL: "https://example.com/hook#x", Events: good.Events},
+		"relative":       {Name: "x", URL: "/hook", Events: good.Events},
+		"no events":      {Name: "x", URL: good.URL},
+		"unknown event":  {Name: "x", URL: good.URL, Events: []string{"everything"}},
+		"test event":     {Name: "x", URL: good.URL, Events: []string{Test}},
+		"repeated event": {Name: "x", URL: good.URL, Events: []string{TitleAdded, TitleAdded}},
+		"short secret":   {Name: "x", URL: good.URL, Events: good.Events, Secret: "short"},
+		"spaced secret":  {Name: "x", URL: good.URL, Events: good.Events, Secret: "sixteen characters long"},
+		"very long url":  {Name: "x", URL: "https://example.com/" + strings.Repeat("a", 3000), Events: good.Events},
 	} {
 		if _, err := store.Create(ctx, nil, bad); !errors.Is(err, ErrInvalid) {
 			t.Fatalf("%s accepted: %v", name, err)

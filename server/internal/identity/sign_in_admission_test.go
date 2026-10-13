@@ -119,7 +119,7 @@ func TestAccountRuleRefusesIssuanceAndRenewalWithoutEndingTheSession(t *testing.
 	if _, err = s.IssueWithDevice(ctx, "account", "profile", "local", "owner", 1); !errors.Is(err, closed) {
 		t.Fatalf("issuance while closed: %v", err)
 	}
-	if _, err = s.RefreshSession(ctx, session.RefreshToken, registration.InstallationID, "renewal-0001", nil); !errors.Is(err, closed) {
+	if _, err = s.RefreshSession(ctx, session.RefreshToken, registration.InstallationID, "renewal-0001"); !errors.Is(err, closed) {
 		t.Fatalf("renewal while closed: %v", err)
 	}
 	var revoked, generation int
@@ -130,7 +130,7 @@ func TestAccountRuleRefusesIssuanceAndRenewalWithoutEndingTheSession(t *testing.
 		t.Fatalf("the session stopped working: %v", err)
 	}
 	open = true
-	renewed, err := s.RefreshSession(ctx, session.RefreshToken, registration.InstallationID, "renewal-0002", nil)
+	renewed, err := s.RefreshSession(ctx, session.RefreshToken, registration.InstallationID, "renewal-0002")
 	if err != nil || renewed.AccessToken == "" {
 		t.Fatalf("the same credential once open again: %v", err)
 	}

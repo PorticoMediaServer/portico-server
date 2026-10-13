@@ -3,7 +3,6 @@ package httpapi
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -123,49 +122,6 @@ func TestSessionFamilyHTTPLogoutAuthenticGenerations(t *testing.T) {
 				t.Fatal("authentic retry not idempotent", w.Code)
 			}
 		})
-	}
-}
-func TestSessionFamilyHTTPLogoutHostedPolicyDenied(t *testing.T) {
-	d, _ := logoutHTTPFixture(t)
-	ctx := context.Background()
-	horizon := time.Now().UTC().Add(time.Hour).Truncate(time.Second)
-	policy := hosted.Policy{ServerID: d.Identity.ID(), Revision: 1, IssuedAt: time.Now().UTC().Format(time.RFC3339), ExpiresAt: horizon.Format(time.RFC3339), Members: []hosted.Member{{AccountID: "hosted-account", ProfileID: "hosted-profile", Role: "member", AllowedLibraries: []string{}}}}
-	raw, e := json.Marshal(policy)
-	if e != nil {
-		t.Fatal(e)
-	}
-	if _, e = d.DB.Exec(`INSERT INTO policy VALUES(?,1,?,?)`, d.Identity.ID(), string(raw), horizon.Format(time.RFC3339)); e != nil {
-		t.Fatal(e)
-	}
-	tx, e := d.DB.BeginTx(ctx, nil)
-	if e != nil {
-		t.Fatal(e)
-	}
-	defer tx.Rollback()
-	p := identity.Principal{Viewer: identity.Viewer{AccountID: "hosted-account", ProfileID: "hosted-profile", ServerID: d.Identity.ID(), Authority: "hosted", Role: "member"}, Epoch: 1}
-	verified, e := d.Hosted.AuthorizationHorizonTx(ctx, tx, p)
-	if e != nil {
-		t.Fatal(e)
-	}
-	session, e := d.Identity.IssueTx(ctx, tx, p.AccountID, p.ProfileID, p.Authority, p.Role, p.Epoch, verified)
-	if e != nil {
-		t.Fatal(e)
-	}
-	if e = tx.Commit(); e != nil {
-		t.Fatal(e)
-	}
-	h := New(d)
-	if w := logoutHTTPRequest(h, "GET", "/v1/me", session.AccessToken); w.Code != 200 {
-		t.Fatal("positive hosted fixture did not authenticate", w.Code)
-	}
-	if _, e = d.DB.Exec(`INSERT INTO restrictions(profile_id,revision,revoked,allowed_libraries) VALUES('hosted-profile',1,1,'[]')`); e != nil {
-		t.Fatal(e)
-	}
-	if w := logoutHTTPRequest(h, "GET", "/v1/me", session.AccessToken); w.Code != 401 {
-		t.Fatal("restriction did not deny ordinary access", w.Code)
-	}
-	if w := logoutHTTPRequest(h, "DELETE", "/v1/sessions/current", session.AccessToken); w.Code != 204 {
-		t.Fatal("denied hosted scope could not revoke itself", w.Code)
 	}
 }
 

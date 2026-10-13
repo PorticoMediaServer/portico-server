@@ -39,6 +39,7 @@ func TestAdministrationMissingRevisionHTTP(t *testing.T) {
 	for _, body := range []string{`{"operationId":"revision-test-key","settings":{}}`, `{"expectedRevision":null,"operationId":"revision-test-key","settings":{}}`} {
 		r := httptest.NewRequest("PUT", "/v1/admin/libraries/missing/settings", strings.NewReader(body))
 		r.Header.Set("Authorization", "Bearer "+viewer.AccessToken)
+		r.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()
 		h.ServeHTTP(w, r)
 		if w.Code != 428 || errorCode(t, w) != "revision_required" {
@@ -62,6 +63,7 @@ func TestMetadataMissingRevisionHTTP(t *testing.T) {
 		t.Run(route.path, func(t *testing.T) {
 			r := httptest.NewRequest(route.method, route.path, strings.NewReader(`{}`))
 			r.Header.Set("Authorization", "Bearer "+viewer.AccessToken)
+			r.Header.Set("Content-Type", "application/json")
 			w := httptest.NewRecorder()
 			h.ServeHTTP(w, r)
 			if w.Code != 428 || errorCode(t, w) != "revision_required" {

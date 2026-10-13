@@ -81,3 +81,24 @@ func TestAutoSelectAppliesOnceAndOnlyToStoredText(t *testing.T) {
 	}
 	tx.Rollback()
 }
+
+func TestAutomaticUnknownForcedAndFileDefault(t *testing.T) {
+	tracks := []AutoCandidate{{ID: "untagged", Forced: true, Language: "und"}}
+	if got := ChooseAutomatic(AutoChoice{AudioLanguage: "eng"}, tracks); got == nil || got.ID != "untagged" {
+		t.Fatal(got)
+	}
+	if got := ChooseAutomatic(AutoChoice{Off: true, AudioLanguage: "eng"}, tracks); got != nil {
+		t.Fatal("explicit off ignored")
+	}
+	tracks = append(tracks, AutoCandidate{ID: "other", Forced: true})
+	if got := ChooseAutomatic(AutoChoice{AudioLanguage: "eng"}, tracks); got != nil {
+		t.Fatal("ambiguous forced track selected")
+	}
+	tracks = []AutoCandidate{{ID: "default", Default: true, Language: "eng"}}
+	if got := ChooseAutomatic(AutoChoice{Enabled: true}, tracks); got == nil {
+		t.Fatal("file default ignored without viewer language preferences")
+	}
+	if got := ChooseAutomatic(AutoChoice{Enabled: true, Languages: []string{"fr"}}, tracks); got != nil {
+		t.Fatal("file default overrode preferred language")
+	}
+}

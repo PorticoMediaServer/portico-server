@@ -7,10 +7,10 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"portico.local/server/internal/identity"
 	"time"
 
 	"portico.local/server/internal/dbwork"
-	"portico.local/server/internal/identity"
 )
 
 // Historical policy fixture retained only for isolated authorization tests.
@@ -89,57 +89,4 @@ func (s *Service) Apply(signed Signed) error {
 		}
 	}
 	return gated.Commit()
-}
-
-// Tickets are gone (Spec — Hosted at Scale); these issue a Hosted-authority
-// family from a fixture policy for the legacy authorization tests only.
-// issueAttachmentFamily runs after the ticket was redeemed and policy refreshed.
-// Membership, restriction, policy-revision and family issuance share one local
-// transaction, so a concurrent local restriction cannot slip between them.
-func (s *Service) issueAttachmentFamily(ctx context.Context, account, profile string, minimumPolicyRevision int64) (identity.Envelope, error) {
-	if account == "" || profile == "" || minimumPolicyRevision < 1 {
-		return identity.Envelope{}, identity.ErrUnauthorized
-	}
-	gated, err := dbwork.Begin(ctx, s.db, dbwork.ClassFrom(ctx, dbwork.ClassInteractive))
-	if err != nil {
-		return identity.Envelope{}, err
-	}
-	tx := gated.Tx()
-	defer gated.Rollback()
-	envelope, err := s.issueAttachmentFamilyTx(ctx, tx, account, profile, minimumPolicyRevision)
-	if err != nil {
-		return identity.Envelope{}, err
-	}
-	if err = gated.Commit(); err != nil {
-		return identity.Envelope{}, err
-	}
-	return envelope, nil
-}
-func (s *Service) issueAttachmentFamilyTx(ctx context.Context, tx *sql.Tx, account, profile string, minimumPolicyRevision int64) (identity.Envelope, error) {
-	if account == "" || profile == "" || minimumPolicyRevision < 1 {
-		return identity.Envelope{}, identity.ErrUnauthorized
-	}
-	policy, err := s.loadFrom(transactionPolicyReader{ctx, tx})
-	if err != nil || policy.Revision < minimumPolicyRevision {
-		if err == nil {
-			err = identity.ErrUnauthorized
-		}
-		return identity.Envelope{}, err
-	}
-	for _, member := range policy.Members {
-		if member.AccountID != account || member.ProfileID != profile {
-			continue
-		}
-		principal := identity.Principal{Viewer: identity.Viewer{AccountID: account, ProfileID: profile, ServerID: s.identity.ID(), Authority: "hosted", Role: member.Role}, Epoch: 1}
-		horizon, err := s.AuthorizationHorizonTx(ctx, tx, principal)
-		if err != nil {
-			return identity.Envelope{}, err
-		}
-		envelope, err := s.identity.IssueTx(ctx, tx, account, profile, "hosted", member.Role, 1, horizon)
-		if err != nil {
-			return identity.Envelope{}, err
-		}
-		return envelope, nil
-	}
-	return identity.Envelope{}, identity.ErrUnauthorized
 }

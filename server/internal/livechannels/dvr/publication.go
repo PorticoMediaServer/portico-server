@@ -3,6 +3,7 @@ package dvr
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"path/filepath"
@@ -31,6 +32,29 @@ func (s *Store) publish(ctx context.Context, c *claim, result CaptureResult) err
 	defer gated.Rollback()
 	if e = s.currentClaimTx(ctx, tx, c); e != nil {
 		return e
+	}
+	var ownerState string
+	if e = tx.QueryRowContext(ctx, `SELECT state FROM dvr_recordings WHERE id=?`, c.request.Recording.ID).Scan(&ownerState); e != nil {
+		return e
+	}
+	if ownerState == "cancelled" || ownerState == "pending-delete" {
+		// The bytes now have immutable custody. Keep the withdrawn owner's
+		// state and expose no catalogue item; the followers link these bytes.
+		cp := result.CaptureCheckpoint
+		cp.SharedReady = true
+		cp.SourceFence = c.checkpoint.SourceFence
+		if c.request.Input.Locator != "" {
+			cp.SourceFence = c.request.Input.Fence()
+		}
+		body, err := json.Marshal(cp)
+		if err != nil {
+			return err
+		}
+		_, e = tx.ExecContext(ctx, `UPDATE dvr_recordings SET artifact_digest=?,bytes=?,checkpoint_json=?,lease_until_ms=0,finished_ms=?,updated_ms=? WHERE id=? AND claim_token=?`, result.Object.Digest, result.Object.Size, string(body), s.now().UnixMilli(), s.now().UnixMilli(), c.request.Recording.ID, c.token)
+		if e != nil {
+			return e
+		}
+		return gated.Commit()
 	}
 	// A successful producer does not bypass a source change between the last
 	// renewal and publication. Preserve validated bytes as incomplete, including

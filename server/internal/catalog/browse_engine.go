@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"portico.local/server/internal/requestinput"
 	"strconv"
 	"strings"
 	"time"
@@ -20,7 +21,7 @@ import (
 
 // ErrBrowsePivot is returned when a caller names a pivot the library kind does
 // not publish.
-var ErrBrowsePivot = errors.New("pivot is not published for this library")
+var ErrBrowsePivot = requestinput.New("pivot is not published for this library")
 
 type BrowseSortSelection struct {
 	Field     string `json:"field"`
@@ -585,12 +586,20 @@ func (s *Service) browseSelect(request BrowseRequest) (BrowseResult, []browseRow
 	// A surviving anchor re-locates the viewport after a publication rather than
 	// throwing the reader back to the top of the library: the anchor's rank in a
 	// counted order is its block's running total plus a count inside the block.
-	// Shapes without blocks retain the requested position; a current revision
+	// Indexed fact orders count the index prefix. Profile orders retain the
+	// requested position; a current revision
 	// ignores the anchor entirely.
 	if request.Range != nil && request.Range.AnchorID != "" && stale {
 		primary, _ := shape.primary()
-		if shape.positional() && !primary.Profile && primary.Ordering >= 0 {
-			rank, found, err := s.browseAnchorRank(shape, request.Range.AnchorID)
+		if shape.positional() && !primary.Profile && (primary.Ordering >= 0 || primary.Ordering == -2) {
+			var rank int
+			var found bool
+			var err error
+			if primary.Ordering == -2 {
+				rank, found, err = s.indexedFactAnchorRank(shape, request.Range.AnchorID)
+			} else {
+				rank, found, err = s.browseAnchorRank(shape, request.Range.AnchorID)
+			}
 			if err != nil {
 				return out, nil, err
 			}
@@ -951,8 +960,12 @@ func (s *Service) browseListColumns(rows []browseRow) (map[int64]browseListColum
 	return out, dates.Err()
 }
 
+// nullableString is a row's text, or nil when the row has none. The browse
+// rows are selected with an empty string standing in for "no date", and a row
+// with no added date (an author, a grouping) says null on the wire, never an
+// empty string a client would try to read as a date.
 func nullableString(value sql.NullString) *string {
-	if !value.Valid {
+	if !value.Valid || value.String == "" {
 		return nil
 	}
 	copied := value.String

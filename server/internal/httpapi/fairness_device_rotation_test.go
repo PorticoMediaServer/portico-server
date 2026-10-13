@@ -37,7 +37,7 @@ func TestVerifiedDeviceFairnessSurvivesRefreshProfileAndGrant(t *testing.T) {
 		t.Fatal(err)
 	}
 	grant := strings.TrimPrefix(session.StreamURL, "/v1/media/")
-	successor, err := f.id.RefreshSession(context.Background(), f.owner.RefreshToken, f.owner.InstallationID, identity.Token(), nil)
+	successor, err := f.id.RefreshSession(context.Background(), f.owner.RefreshToken, f.owner.InstallationID, identity.Token())
 	if err != nil {
 		t.Fatal(err)
 	}

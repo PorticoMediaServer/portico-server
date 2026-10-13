@@ -90,6 +90,13 @@ func (s *Store) ReconcileOne(ctx context.Context) (bool, error) {
 			nextCursor = r.ID
 			// Only unclaimed intent (including reversible rule exclusions) changes.
 			p, e := s.live.ProgrammeTx(ctx, tx, c.SourceID, r.Occurrence.ChannelID, current, r.Occurrence.ProgrammeID)
+			shared, err := s.hasSharedCaptureTx(ctx, tx, r.ID)
+			if err != nil {
+				return false, err
+			}
+			if shared && enabled && !deleted && permitted {
+				p, e = r.Programme, nil
+			}
 			reason := ""
 			desired := "scheduled"
 			if !enabled || deleted {
@@ -146,6 +153,10 @@ func (s *Store) ReconcileOne(ctx context.Context) (bool, error) {
 		if !c.Enabled || !s.captureAvailable {
 			nextPhase, nextCursor = "idle", ""
 		} else {
+			programmeAllowed, err := programmePredicateTx(ctx, tx, o)
+			if err != nil {
+				return false, err
+			}
 			rows, e := tx.QueryContext(ctx, programmeQuery+` WHERE p.generation_id=? AND m.series_id=? AND p.id>? AND p.end_utc>? ORDER BY p.id LIMIT 64`, current, c.SeriesID, cursor, s.now().UTC().Format(time.RFC3339))
 			if e != nil {
 				return false, e
@@ -169,7 +180,7 @@ func (s *Store) ReconcileOne(ctx context.Context) (bool, error) {
 				if c.Episodes == "new" && p.NewEvidence == "unknown" {
 					diagnostic = "unknown-new-evidence-skipped"
 				}
-				if !c.Matches(p) {
+				if !c.Matches(p) || !programmeAllowed(programmeRating(p)) {
 					continue
 				}
 				if e = s.durable(ctx, tx, o, c.SourceID, p.ChannelID); e != nil {

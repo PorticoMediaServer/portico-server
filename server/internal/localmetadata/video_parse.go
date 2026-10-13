@@ -63,6 +63,7 @@ func ParseVideoNFO(raw []byte, anime bool) ([]assets.VideoNFO, error) {
 	xmlRaw := escapeNFOAmpersands(raw)
 	d := xml.NewDecoder(bytes.NewReader(xmlRaw))
 	d.Strict = true
+	d.CharsetReader = localXMLCharset
 	stack := []*nfoNode{}
 	roots := []*nfoNode{}
 	nodes := 0

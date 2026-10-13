@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"portico.local/server/internal/requestinput"
 
 	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/dbwork"
@@ -59,7 +60,7 @@ func (s *Service) musicPolicy(tx *sql.Tx, library string) (MusicPolicy, error) {
 }
 func (s *Service) UpdateMusicPolicy(kind, id string, m MusicPolicyChange, authorize func(*sql.Tx) error) error {
 	if m.ExpectedRevision < 1 || m.ExpectedPolicyRevision < 1 || (m.LocalMode != "prefer" && m.LocalMode != "supplement" && m.LocalMode != "off") {
-		return errors.New("invalid music metadata policy")
+		return requestinput.New("invalid music metadata policy")
 	}
 	gated, e := dbwork.Begin(context.Background(), s.db, dbwork.ClassBackgroundMedia)
 	if e != nil {

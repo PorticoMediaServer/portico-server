@@ -151,10 +151,26 @@ func TestLibraryDiscoveryAndCollectionPermissions(t *testing.T) {
 	if err = json.Unmarshal(ownerDetail.Body.Bytes(), &detail); err != nil || detail.Personal.Favorite {
 		t.Fatal("profile preference leaked", detail, err)
 	}
-	emptyResponse := request("GET", "/v1/content?view=home&limit=12", reader.AccessToken, "")
-	var emptyHome catalog.ContentEnvelope
-	if err = json.Unmarshal(emptyResponse.Body.Bytes(), &emptyHome); err != nil || emptyResponse.Code != 200 || len(emptyHome.Sections) != 1 || emptyHome.Sections[0].ID != "recently_added" || len(emptyHome.Sections[0].Entries) != 1 || emptyHome.Sections[0].Entries[0].ID != itemA.Public {
-		t.Fatal("Home without personalized activity", emptyResponse.Code, emptyHome, err)
+	// Home is read from its one composed route; the older content view of it is gone.
+	emptyResponse := request("GET", "/v1/home?limit=12", reader.AccessToken, "")
+	var emptyHome catalog.HomeDocument
+	if err = json.Unmarshal(emptyResponse.Body.Bytes(), &emptyHome); err != nil || emptyResponse.Code != 200 {
+		t.Fatal("Home without personalized activity", emptyResponse.Code, emptyResponse.Body.String(), err)
+	}
+	// With nothing watched, the only rows with anything in them are what was
+	// added lately, and all they hold is the one film this member may see.
+	filled := 0
+	for _, row := range emptyHome.Rows {
+		if len(row.Entries) == 0 {
+			continue
+		}
+		filled++
+		if !strings.HasPrefix(row.ID, "recent") || len(row.Entries) != 1 || row.Entries[0].ID != itemA.Public {
+			t.Fatal("Home without personalized activity", row.ID, emptyResponse.Body.String())
+		}
+	}
+	if filled == 0 {
+		t.Fatal("Home without personalized activity shows nothing", emptyResponse.Body.String())
 	}
 	if _, err = db.Exec(`INSERT INTO progress(profile_id,item_id,position,unit,completed,playback_id) VALUES(?,?,25000,0,0,'fixture'),(?,?,60000,0,0,'fixture')`, identity.PersonalKey(reader.Viewer), itemA.ID, identity.PersonalKey(owner.Viewer), itemB.ID); err != nil {
 		t.Fatal(err)
@@ -179,28 +195,40 @@ func TestLibraryDiscoveryAndCollectionPermissions(t *testing.T) {
 	if !resumeOK || !startOK {
 		t.Fatal("server playback intents absent", detail.Actions)
 	}
-	readHome := func(token string) (catalog.ContentEnvelope, string) {
+	// What a Home says, without the moment it was generated at.
+	readHome := func(token string) (catalog.HomeDocument, string) {
 		t.Helper()
-		w := request("GET", "/v1/content?view=home&limit=12", token, "")
-		var result catalog.ContentEnvelope
+		w := request("GET", "/v1/home?limit=12", token, "")
+		var result catalog.HomeDocument
 		if w.Code != 200 {
 			t.Fatal("home status", w.Code, w.Body.String())
 		}
 		if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil {
 			t.Fatal(err)
 		}
-		return result, w.Body.String()
+		said := result
+		said.GeneratedAt = ""
+		wire, err := json.Marshal(said)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return result, string(wire)
 	}
 	memberHome, wire := readHome(reader.AccessToken)
-	if memberHome.Scope.LibraryID != "" || memberHome.Scope.LibraryKind != "mixed" || memberHome.Scope.View != "home" {
+	if memberHome.ServerID != ident.ID() || memberHome.ViewerFence == "" || len(memberHome.Rows) == 0 {
 		t.Fatal("member home scope", memberHome)
 	}
-	for _, section := range memberHome.Sections {
-		for _, entry := range section.Entries {
+	shown := 0
+	for _, row := range memberHome.Rows {
+		for _, entry := range row.Entries {
+			shown++
 			if entry.LibraryID != "a" {
 				t.Fatal("Home permission leak", entry)
 			}
 		}
+	}
+	if shown == 0 {
+		t.Fatal("member Home shows nothing, so the permission check above checked nothing")
 	}
 	_, again := readHome(reader.AccessToken)
 	if wire != again {
@@ -213,22 +241,29 @@ func TestLibraryDiscoveryAndCollectionPermissions(t *testing.T) {
 		t.Fatal("unauthorized catalog affected Home revision or rows")
 	}
 	ownerHome, _ := readHome(owner.AccessToken)
-	if ownerHome.Sections[0].Entries[0].ID != itemB.Public {
+	if len(ownerHome.Rows) == 0 || len(ownerHome.Rows[0].Entries) == 0 || ownerHome.Rows[0].Entries[0].ID != itemB.Public {
 		t.Fatal("owner Home", ownerHome)
 	}
-	if w := request("GET", "/v1/content?view=home", "", ""); w.Code != 401 {
+	if w := request("GET", "/v1/home", "", ""); w.Code != 401 {
 		t.Fatal("anonymous Home allowed", w.Code)
 	}
-	if w := request("GET", "/v1/content?view=home&sort=title", reader.AccessToken, ""); w.Code != 400 {
+	if w := request("GET", "/v1/home?sort=title", reader.AccessToken, ""); w.Code != 400 {
 		t.Fatal("client Home sort admitted", w.Code)
+	}
+	if w := request("GET", "/v1/content?view=home&limit=12", reader.AccessToken, ""); w.Code != 400 {
+		t.Fatal("the retired content view of Home still answers", w.Code)
 	}
 	c.Write(func(ctx context.Context, tx *sql.Tx) error {
 		return compactcatalog.SetAssetAvailableTx(ctx, tx, itemA.Asset, false)
 	})
 	c.Drain()
 	unavailable, _ := readHome(reader.AccessToken)
-	if len(unavailable.Sections) != 1 || unavailable.Sections[0].ID != "recently_added" || unavailable.Sections[0].Entries[0].Playback != nil || *unavailable.Sections[0].Entries[0].Available {
-		t.Fatal("unavailable source offered Home playback", unavailable)
+	for _, row := range unavailable.Rows {
+		for _, entry := range row.Entries {
+			if entry.ID == itemA.Public && (entry.Playback != nil || entry.Available == nil || *entry.Available) {
+				t.Fatal("unavailable source offered Home playback", row.ID, entry)
+			}
+		}
 	}
 	if _, err = db.Exec(`UPDATE policy SET expires_at='2000-01-01T00:00:00Z'`); err != nil {
 		t.Fatal(err)
@@ -236,7 +271,7 @@ func TestLibraryDiscoveryAndCollectionPermissions(t *testing.T) {
 	if w := request("PUT", "/v1/items/"+itemA.Public+"/personal-state", reader.AccessToken, mutation); w.Code != 401 {
 		t.Fatal("receipt replay bypassed expired policy", w.Code)
 	}
-	if w := request("GET", "/v1/content?view=home", reader.AccessToken, ""); w.Code != 401 {
+	if w := request("GET", "/v1/home", reader.AccessToken, ""); w.Code != 401 {
 		t.Fatal("expired policy fabricated empty Home", w.Code, w.Body.String())
 	}
 

@@ -52,7 +52,7 @@ func registerDownloadRequests(r *apikit.Registry, d Dependencies) {
 			return downloads.RequestView{}, e
 		}
 		if d.Downloads == nil {
-			return downloads.RequestView{}, downloads.ErrPolicy
+			return downloads.RequestView{}, downloadRequestError(downloads.ErrPolicy)
 		}
 		out, e := d.Downloads.SubmitContainer(ctx, p, in)
 		return out, downloadRequestError(e)
@@ -63,7 +63,7 @@ func registerDownloadRequests(r *apikit.Registry, d Dependencies) {
 			return downloads.RequestView{}, e
 		}
 		if d.Downloads == nil {
-			return downloads.RequestView{}, downloads.ErrPolicy
+			return downloads.RequestView{}, downloadRequestError(downloads.ErrPolicy)
 		}
 		limit := 100
 		if v := q.URL.Query().Get("limit"); v != "" {

@@ -45,7 +45,7 @@ func bestAudioConversionTransport(transports []ClientTransport, client ClientPro
 
 // Complete and validate the contract before persisting it for the producer.
 func finishConversionTarget(p *DeliveryPlan, video *SourceVideo, audio *SourceAudio, client ClientProfile, probe decoder.HardwareProbe, facts *decoder.ToolchainFacts) error {
-	t := decoder.ConversionTarget{VideoCodec: p.OutputVideoCodec, BitDepth: p.OutputBitDepth, DynamicRange: p.OutputRange, ToneMap: p.ToneMap, Width: p.TargetWidth, Height: p.TargetHeight, FrameRate: p.MaxFrameRate, VideoBitrateBPS: p.VideoBitrateBPS, AudioCodec: p.OutputAudioCodec, AudioChannels: p.AudioChannels, AudioSampleRate: p.AudioSampleRate, AudioBitrateBPS: p.AudioBitrateBPS, Packaging: p.OutputContainer}
+	t := decoder.ConversionTarget{VideoCodec: p.OutputVideoCodec, BitDepth: p.OutputBitDepth, DynamicRange: p.OutputRange, ToneMap: p.ToneMap, Unmapped: p.ToneMapOff, Width: p.TargetWidth, Height: p.TargetHeight, FrameRate: p.MaxFrameRate, VideoBitrateBPS: p.VideoBitrateBPS, AudioCodec: p.OutputAudioCodec, AudioChannels: p.AudioChannels, AudioSampleRate: p.AudioSampleRate, AudioBitrateBPS: p.AudioBitrateBPS, Packaging: p.OutputContainer}
 	if p.VideoAction == "convert" {
 		t.RateControl = "bitrate"
 		if p.QualityID == "original" || p.QualityID == "auto" || p.QualityID == "automatic" || p.QualityID == "" {
@@ -87,7 +87,7 @@ func finishConversionTarget(p *DeliveryPlan, video *SourceVideo, audio *SourceAu
 				t.AudioBitrateBPS = 0
 			}
 		}
-		if t.AudioChannels == audio.Channels && (audio.Layout == "5.1" || audio.Layout == "5.1(side)" || audio.Layout == "7.1" || audio.Layout == "mono" || audio.Layout == "stereo") {
+		if p.AudioAction == "copy" || t.AudioChannels == audio.Channels && (audio.Layout == "5.1" || audio.Layout == "5.1(side)" || audio.Layout == "7.1" || audio.Layout == "mono" || audio.Layout == "stereo") {
 			t.AudioChannelLayout = audio.Layout
 		}
 		if t.AudioCodec == "flac" {
@@ -141,33 +141,56 @@ func boundConvertedPicture(p *DeliveryPlan, v *SourceVideo, cap *ClientVideoCode
 	if cap == nil {
 		return
 	}
-	height := v.Height
-	if height == 0 {
+	// Missing facts cannot justify a level for an arbitrarily large picture.
+	// Use a bounded conversion until a later scan supplies the source geometry.
+	if v.Width <= 0 || v.Height <= 0 {
+		if p.TargetWidth == 0 {
+			p.TargetWidth = 1920
+		}
+		if p.TargetHeight == 0 {
+			p.TargetHeight = 1080
+		}
+	}
+	// Decoder bounds apply after autorotation and square-pixel scaling, just
+	// like the dimensions advertised by the producer's master playlist.
+	width, height := convertedDimensions(DeliveryPlan{Trace: &DecisionTrace{Video: &TraceVideo{Width: v.Width, Height: v.Height, Rotation: v.Rotation, SampleAspectRatio: v.SampleAspectRatio}}})
+	if v.Height == 0 {
 		height = 1080
 	}
+	displayHeight := height
 	if p.TargetHeight > 0 {
 		height = min(height, p.TargetHeight)
 	}
 	if cap.MaxHeight > 0 {
 		height = min(height, cap.MaxHeight)
 	}
-	if cap.MaxWidth > 0 && v.Width > cap.MaxWidth {
-		height = min(height, v.Height*cap.MaxWidth/v.Width)
+	if cap.MaxWidth > 0 {
+		if p.TargetWidth == 0 || p.TargetWidth > cap.MaxWidth {
+			p.TargetWidth = cap.MaxWidth
+		}
+		if width > cap.MaxWidth {
+			height = min(height, displayHeight*cap.MaxWidth/width)
+		}
 	}
 	rate := v.FrameRate
-	if cap.MaxFrameRate > 0 && rate > cap.MaxFrameRate {
+	if rate == 0 {
+		if p.MaxFrameRate == 0 {
+			p.MaxFrameRate = 60
+		}
+		rate = p.MaxFrameRate
+	}
+	if cap.MaxFrameRate > 0 && (rate == 0 || rate > cap.MaxFrameRate) {
 		rate = cap.MaxFrameRate
 		p.MaxFrameRate = rate
 	}
 	if cap.MaxLevel > 0 && (p.OutputVideoCodec == "h264" || p.OutputVideoCodec == "hevc") {
 		for height > 2 {
-			width := v.Width
-			if v.Height > 0 {
-				width = width * height / v.Height
-			}
-			level := decoder.H264OutputLevel(width, height, rate)
+			fit := *p
+			fit.TargetHeight = height
+			w, h := convertedDimensions(fit)
+			level := decoder.H264OutputLevel(w, h, rate)
 			if p.OutputVideoCodec == "hevc" {
-				level = decoder.HEVCOutputLevel(width, height, rate)
+				level = decoder.HEVCOutputLevel(w, h, rate)
 			}
 			if level <= cap.MaxLevel {
 				break
@@ -175,7 +198,7 @@ func boundConvertedPicture(p *DeliveryPlan, v *SourceVideo, cap *ClientVideoCode
 			height -= 2
 		}
 	}
-	if height < v.Height || p.TargetHeight > 0 {
+	if height < displayHeight || p.TargetHeight > 0 || cap.MaxHeight > 0 {
 		p.TargetHeight = height - height%2
 	}
 }

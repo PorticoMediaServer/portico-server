@@ -1,7 +1,9 @@
 package catalog
 
 import (
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"strconv"
 )
 
@@ -291,4 +293,49 @@ func (s *Service) indexedPersonalPage(p pageShape, definition browseSort, desc b
 		p.seekKeys = nil
 	}
 	return out, nil
+}
+
+// indexedFactAnchorRank counts the indexed prefix before a surviving anchor,
+// using the same scope, tie break and seeded rotation as indexedFactPage.
+func (s *Service) indexedFactAnchorRank(p pageShape, anchor string) (int, bool, error) {
+	definition, desc := p.primary()
+	var value any
+	var entity int64
+	err := s.read().QueryRow(`SELECT `+definition.Expression+`,e.entity_id FROM catalog_browse_rows e WHERE `+p.where+
+		` AND e.entity_id=(SELECT id FROM catalog_entities WHERE public_id=pid_blob(?))`, append(append([]any{}, p.args...), anchor)...).Scan(&value, &entity)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, false, nil
+	}
+	if err != nil {
+		return 0, false, err
+	}
+	op := "<"
+	if desc {
+		op = ">"
+	}
+	key := definition.Expression
+	bound := `(` + key + op + `? OR ` + key + `=? AND e.entity_id` + op + `?)`
+	args := append(append([]any{}, p.args...), value, value, entity)
+	if definition.ID == "random" {
+		randomKey, ok := value.(int64)
+		if !ok {
+			return 0, false, ErrCursor
+		}
+		seed := int64(p.sorts[0].Seed)
+		first := key + `>=?`
+		inFirst := randomKey >= seed
+		if desc {
+			first = key + `<=?`
+			inFirst = randomKey <= seed
+		}
+		join := " OR "
+		if inFirst {
+			join = " AND "
+		}
+		bound = `(` + first + join + bound + `)`
+		args = append(append([]any{}, p.args...), seed, value, value, entity)
+	}
+	var rank int
+	err = s.read().QueryRow(`SELECT count(*) FROM catalog_browse_rows e WHERE `+p.where+` AND `+bound, args...).Scan(&rank)
+	return rank, err == nil, err
 }

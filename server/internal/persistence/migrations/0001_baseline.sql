@@ -25,7 +25,9 @@ INSERT INTO catalog_kinds VALUES
 -- its life, so entity identity keys survive a later change of its source path
 -- and a library re-added from the same folder finds its old public ids.
 CREATE TABLE catalog_libraries(
- id INTEGER PRIMARY KEY,
+ -- AUTOINCREMENT: a removed library's handle is never given to a later one,
+ -- so rows still naming it can never be read as another library's.
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
  library_id TEXT NOT NULL UNIQUE REFERENCES libraries(id) ON DELETE CASCADE,
  root TEXT NOT NULL,
  name TEXT NOT NULL,
@@ -409,7 +411,7 @@ CREATE TABLE catalog_derivations(
 
 -- Personal state per profile and item. not_interested hides a title from
 -- recommendations and counts against similar titles (recommendations plan).
-CREATE TABLE personal_items(profile_id TEXT NOT NULL,item_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,watchlisted INTEGER NOT NULL DEFAULT 0 CHECK(watchlisted IN(0,1)),favorite INTEGER NOT NULL DEFAULT 0 CHECK(favorite IN(0,1)),rating INTEGER CHECK(rating IS NULL OR (rating>=0 AND rating<=10)),revision INTEGER NOT NULL, reaction TEXT NOT NULL DEFAULT 'none' CHECK(reaction IN('none','like','dislike')), watched INTEGER NOT NULL DEFAULT 0 CHECK(watched IN(0,1)), last_played_at TEXT NOT NULL DEFAULT '', not_interested INTEGER NOT NULL DEFAULT 0 CHECK(not_interested IN(0,1)),PRIMARY KEY(profile_id,item_id)) STRICT;
+CREATE TABLE personal_items(profile_id TEXT NOT NULL,item_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,watchlisted INTEGER NOT NULL DEFAULT 0 CHECK(watchlisted IN(0,1)),favorite INTEGER NOT NULL DEFAULT 0 CHECK(favorite IN(0,1)),rating INTEGER CHECK(rating IS NULL OR (rating>=0 AND rating<=10)),revision INTEGER NOT NULL, watched INTEGER NOT NULL DEFAULT 0 CHECK(watched IN(0,1)), last_played_at TEXT NOT NULL DEFAULT '', not_interested INTEGER NOT NULL DEFAULT 0 CHECK(not_interested IN(0,1)),PRIMARY KEY(profile_id,item_id)) STRICT;
 -- Its indexes, as the 265 schema had them (a core.sql table replaces the old
 -- definition, indexes included).
 CREATE INDEX personal_watchlist ON personal_items(profile_id,watchlisted,item_id);
@@ -469,7 +471,6 @@ CREATE INDEX catalog_browse_title ON catalog_browse_rows(library_id,kind,sort_ke
 CREATE INDEX catalog_browse_added ON catalog_browse_rows(library_id,kind,COALESCE(added_text,''),entity_id);
 CREATE INDEX catalog_browse_year ON catalog_browse_rows(library_id,kind,year,entity_id);
 CREATE INDEX catalog_browse_item ON catalog_browse_rows(item_id) WHERE item_id IS NOT NULL;
-CREATE INDEX catalog_browse_feature ON catalog_browse_rows(library_id,kind,available,backdrop,entity_id);
 CREATE INDEX catalog_browse_recent_kind ON catalog_browse_rows(library_id,kind,COALESCE(added_text,'') DESC,entity_id DESC) WHERE item_id IS NOT NULL;
 CREATE INDEX catalog_browse_recent_all ON catalog_browse_rows(library_id,COALESCE(added_text,'') DESC,entity_id DESC) WHERE item_id IS NOT NULL;
 CREATE INDEX catalog_browse_duration ON catalog_browse_rows(library_id,kind,COALESCE(duration_max,0),entity_id);
@@ -751,6 +752,8 @@ CREATE TABLE catalog_book_groups(
  retired INTEGER NOT NULL DEFAULT 0 CHECK(retired IN(0,1))) STRICT;
 CREATE UNIQUE INDEX catalog_book_groups_key ON catalog_book_groups(library_id,kind,name_key) WHERE retired=0;
 CREATE INDEX catalog_book_groups_library ON catalog_book_groups(library_id,kind,name COLLATE NOCASE,id) WHERE retired=0;
+-- Every group of a library, retired or not: removing the library clears them by this.
+CREATE INDEX catalog_book_groups_every ON catalog_book_groups(library_id,id);
 
 CREATE TABLE catalog_personal_sort_state(
  id INTEGER PRIMARY KEY CHECK(id=1),turn INTEGER NOT NULL DEFAULT 0,
@@ -1359,7 +1362,7 @@ END;
 -- ===== everything else
 CREATE TABLE configuration(key TEXT PRIMARY KEY,value TEXT NOT NULL) STRICT;
 CREATE TABLE accounts(id TEXT PRIMARY KEY,username TEXT NOT NULL UNIQUE,password_hash BLOB NOT NULL,profile_id TEXT NOT NULL,epoch INTEGER NOT NULL DEFAULT 1) STRICT;
-CREATE TABLE libraries(id TEXT PRIMARY KEY,name TEXT NOT NULL,kind TEXT NOT NULL,root TEXT NOT NULL UNIQUE) STRICT;
+CREATE TABLE libraries(id TEXT PRIMARY KEY,name TEXT NOT NULL,kind TEXT NOT NULL,root TEXT NOT NULL UNIQUE, position INTEGER NOT NULL DEFAULT 0) STRICT;
 CREATE TABLE metadata_jobs(item_id INTEGER PRIMARY KEY REFERENCES catalog_entities(id) ON DELETE CASCADE,status TEXT NOT NULL DEFAULT 'pending',attempts INTEGER NOT NULL DEFAULT 0,next_attempt TEXT NOT NULL DEFAULT '',error TEXT NOT NULL DEFAULT '') STRICT;
 CREATE TABLE provider_evidence(item_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,provider TEXT NOT NULL,provider_id INTEGER NOT NULL,payload TEXT NOT NULL,observed_at TEXT NOT NULL,PRIMARY KEY(item_id,provider)) STRICT;
 CREATE TABLE jobs(id TEXT PRIMARY KEY,library_id TEXT NOT NULL REFERENCES libraries(id),status TEXT NOT NULL,processed INTEGER NOT NULL DEFAULT 0,error TEXT NOT NULL DEFAULT '',created_at TEXT NOT NULL) STRICT;
@@ -1820,7 +1823,7 @@ CREATE TABLE authorization_session_families(
  id TEXT PRIMARY KEY,
  server_id TEXT NOT NULL CHECK(length(server_id)>0),
  account_id TEXT NOT NULL, profile_id TEXT NOT NULL,
- authority TEXT NOT NULL CHECK(authority IN ('local','hosted')),
+ authority TEXT NOT NULL CHECK(authority='local'),
  role TEXT NOT NULL, epoch INTEGER NOT NULL,
  authorization_horizon TEXT NOT NULL,
  current_generation INTEGER NOT NULL CHECK(current_generation>0),
@@ -2119,7 +2122,7 @@ CREATE TABLE live_channel_attributes(
  PRIMARY KEY(generation_id,channel_id)) WITHOUT ROWID,STRICT;
 CREATE TABLE dvr_private_libraries(
  library_id TEXT PRIMARY KEY REFERENCES libraries(id) ON DELETE CASCADE,
- authority TEXT NOT NULL CHECK(authority IN('local','hosted')),
+ authority TEXT NOT NULL CHECK(authority='local'),
  account_id TEXT NOT NULL,profile_id TEXT NOT NULL,
  UNIQUE(authority,account_id,profile_id)) STRICT;
 CREATE TABLE dvr_catalog_provenance(
@@ -2365,7 +2368,7 @@ CREATE TABLE direct_profiles(
  name TEXT NOT NULL, is_primary INTEGER NOT NULL DEFAULT 0 CHECK(is_primary IN(0,1)),
  position INTEGER NOT NULL DEFAULT 0, art TEXT NOT NULL DEFAULT 'blue',
  revision INTEGER NOT NULL DEFAULT 1, pin_revision INTEGER NOT NULL DEFAULT 1,
- pin_hash BLOB, pin_attempts INTEGER NOT NULL DEFAULT 0, pin_locked_until INTEGER NOT NULL DEFAULT 0,
+ pin_hash BLOB,
  allowed_libraries TEXT CHECK(allowed_libraries IS NULL OR json_valid(allowed_libraries)),
  deleted INTEGER NOT NULL DEFAULT 0 CHECK(deleted IN(0,1)), UNIQUE(account_id,id)
 ) STRICT;
@@ -2400,7 +2403,7 @@ CREATE TABLE profile_avatars(
 ) STRICT;
 CREATE TABLE identity_devices(
  id TEXT PRIMARY KEY,
- authority TEXT NOT NULL DEFAULT 'local' CHECK(authority IN('local','hosted')),
+ authority TEXT NOT NULL DEFAULT 'local' CHECK(authority='local'),
  account_id TEXT NOT NULL,
  installation_id TEXT NOT NULL, name TEXT NOT NULL, platform TEXT NOT NULL,
  app TEXT NOT NULL, app_version TEXT NOT NULL, ip TEXT NOT NULL DEFAULT '',
@@ -2438,7 +2441,7 @@ CREATE TABLE identity_factor_challenges(
 ) STRICT;
 CREATE TABLE topshelf_tokens(
  token_hash TEXT PRIMARY KEY, device_id TEXT NOT NULL,
- authority TEXT NOT NULL DEFAULT 'local' CHECK(authority IN('local','hosted')),
+ authority TEXT NOT NULL DEFAULT 'local' CHECK(authority='local'),
  account_id TEXT NOT NULL, profile_id TEXT NOT NULL, expires_at TEXT NOT NULL
 ) STRICT;
 CREATE TABLE content_rating_ages(
@@ -2653,7 +2656,7 @@ CREATE TABLE social_cast_devices(
   state TEXT NOT NULL CHECK(state IN ('pending','active','stopped','expired','revoked')),
   created_at_ms INTEGER NOT NULL,
   expires_at_ms INTEGER NOT NULL,
-  last_seen_ms INTEGER NOT NULL,
+  last_seen_ms INTEGER NOT NULL, previous_token_digest TEXT NOT NULL DEFAULT '', previous_valid_until_ms INTEGER NOT NULL DEFAULT 0, session_family_id TEXT NOT NULL DEFAULT '',
   UNIQUE(authority,account_id,profile_id,device_id)) STRICT;
 CREATE TABLE social_rate(bucket TEXT PRIMARY KEY,window_start_ms INTEGER NOT NULL,count INTEGER NOT NULL) STRICT;
 CREATE TABLE artwork_uploads(
@@ -2780,7 +2783,7 @@ CREATE TABLE maintenance_policy(singleton INTEGER PRIMARY KEY CHECK(singleton=1)
 CREATE TABLE maintenance_windows(id TEXT PRIMARY KEY,name TEXT NOT NULL,enabled INTEGER NOT NULL CHECK(enabled IN(0,1)),cadence TEXT NOT NULL,start_minute INTEGER NOT NULL CHECK(start_minute BETWEEN 0 AND 1439),duration_minutes INTEGER NOT NULL CHECK(duration_minutes BETWEEN 15 AND 1440),timezone TEXT NOT NULL) STRICT;
 CREATE TABLE maintenance_window_days(window_id TEXT NOT NULL REFERENCES maintenance_windows(id) ON DELETE CASCADE,day TEXT NOT NULL,PRIMARY KEY(window_id,day)) STRICT;
 CREATE TABLE dvr_recording_grants(
- authority TEXT NOT NULL CHECK(authority IN('local','hosted')),account_id TEXT NOT NULL,profile_id TEXT NOT NULL,
+ authority TEXT NOT NULL CHECK(authority='local'),account_id TEXT NOT NULL,profile_id TEXT NOT NULL,
  enabled INTEGER NOT NULL CHECK(enabled IN(0,1)),inherit_profiles INTEGER NOT NULL CHECK(inherit_profiles IN(0,1)),revision INTEGER NOT NULL,
  PRIMARY KEY(authority,account_id,profile_id)) STRICT;
 CREATE TABLE dvr_defaults(singleton INTEGER PRIMARY KEY CHECK(singleton=1),revision INTEGER NOT NULL,before_seconds INTEGER NOT NULL,after_seconds INTEGER NOT NULL,retention_days INTEGER NOT NULL,episode_limit INTEGER NOT NULL) STRICT;
@@ -2831,11 +2834,12 @@ CREATE TABLE playback_route_failures(
  session_hash TEXT NOT NULL REFERENCES authorization_family_tokens(token_hash) ON DELETE CASCADE,
  asset_id TEXT NOT NULL,
  engine TEXT NOT NULL DEFAULT 'native' CHECK(engine IN ('native','mpv')),
- route TEXT NOT NULL CHECK(route IN ('original','copy_remux','audio_conversion')),
+ route TEXT NOT NULL CHECK(route IN ('original','copy_remux','audio_conversion','video_conversion')),
  code TEXT NOT NULL,detail TEXT NOT NULL DEFAULT '',
  reported_at_ms INTEGER NOT NULL,
  PRIMARY KEY(session_hash,asset_id,engine,route)
  ) STRICT;
+CREATE INDEX playback_route_failures_recent ON playback_route_failures(reported_at_ms DESC);
 -- The audio and subtitle choice a profile last made for a show (item_id is the
 -- show, for every episode of it) or a film, kept as languages so it carries
 -- from one file to the next. subtitle_mode: '' nothing remembered, 'off'
@@ -2849,6 +2853,8 @@ CREATE TABLE playback_track_memory(
  updated_ms INTEGER NOT NULL,
  PRIMARY KEY(profile_id,item_id)
  ) WITHOUT ROWID, STRICT;
+-- Removing a title finds its remembered tracks by this, not by reading the table.
+CREATE INDEX playback_track_memory_item ON playback_track_memory(item_id);
 CREATE TABLE identity_refresh_credentials(
  family_id TEXT PRIMARY KEY REFERENCES authorization_session_families(id) ON DELETE CASCADE,
  device_id TEXT NOT NULL REFERENCES identity_devices(id),
@@ -2919,7 +2925,7 @@ CREATE TABLE identity_credential_attempts(
 ) STRICT;
 CREATE TABLE authorization_family_grants(
  family_id TEXT PRIMARY KEY REFERENCES authorization_session_families(id) ON DELETE CASCADE,
- grant_kind TEXT NOT NULL CHECK(grant_kind IN ('viewer_only','cast_target'))
+ grant_kind TEXT NOT NULL CHECK(grant_kind='cast_target')
 ) STRICT;
 CREATE TABLE direct_profile_pin_attempts(
  profile_id TEXT NOT NULL REFERENCES direct_profiles(id) ON DELETE CASCADE,
@@ -3657,6 +3663,8 @@ CREATE TABLE catalog_personal_visibility_sort_buckets(
  profile_id TEXT NOT NULL,class_id INTEGER NOT NULL,generation INTEGER NOT NULL,library_id INTEGER NOT NULL,
  kind INTEGER NOT NULL,axis INTEGER NOT NULL CHECK(axis BETWEEN 7 AND 9),value TEXT NOT NULL,total INTEGER NOT NULL CHECK(total>=0),
  PRIMARY KEY(profile_id,class_id,generation,library_id,kind,axis,value)) WITHOUT ROWID, STRICT;
+-- A class's totals for every profile: removing the class's library clears them by this.
+CREATE INDEX catalog_personal_visibility_sort_bucket_class ON catalog_personal_visibility_sort_buckets(class_id,generation);
 CREATE TABLE catalog_personal_visibility_sort_profile_jobs(
  profile_id TEXT NOT NULL,entity_id INTEGER NOT NULL,sequence INTEGER NOT NULL DEFAULT 1,cursor_sequence INTEGER NOT NULL DEFAULT 0,
  class_cursor INTEGER NOT NULL DEFAULT 0,generation_cursor INTEGER NOT NULL DEFAULT 0,
@@ -3886,6 +3894,8 @@ CREATE TABLE inventory_artwork_sources (
  PRIMARY KEY(asset_id,kind,entity_id,role)
 ) STRICT;
 CREATE INDEX inventory_artwork_sources_role ON inventory_artwork_sources(kind,entity_id,role,art_key);
+-- Removing a title finds its artwork sources by this, not by reading the table.
+CREATE INDEX inventory_artwork_sources_entity ON inventory_artwork_sources(entity_id);
 CREATE VIEW inventory_asset_availability AS
  SELECT asset_id,MAX(CASE WHEN o.retired=0 AND o.state='available' AND o.unsupported_reason='' AND s.enabled=1 AND s.health NOT IN('offline','removing','root_changed') AND o.root_incarnation=s.incarnation THEN 1 ELSE 0 END) AS available
  FROM inventory_objects o JOIN library_sources s ON s.id=o.source_id GROUP BY asset_id;
@@ -4427,7 +4437,7 @@ CREATE TRIGGER lyric_head_monotonic BEFORE UPDATE ON lyric_resources
  WHEN NEW.revision<=OLD.revision OR NEW.item_id<>OLD.item_id OR NEW.asset_id<>OLD.asset_id OR NEW.source_version<>OLD.source_version OR NEW.source_duration<>OLD.source_duration OR NEW.source_start<>OLD.source_start OR NEW.source_end<>OLD.source_end OR NEW.scope<>OLD.scope OR NEW.authority<>OLD.authority OR NEW.account_id<>OLD.account_id OR NEW.profile_id<>OLD.profile_id
  BEGIN SELECT RAISE(ABORT,'invalid lyric resource transition'); END;
 CREATE TRIGGER screen_policy_create AFTER INSERT ON libraries WHEN NEW.kind IN('movie','tv','anime') BEGIN
- INSERT INTO screen_metadata_policies(library_id,providers) VALUES(NEW.id,CASE WHEN NEW.kind='anime' THEN '["anilist"]' ELSE '["tmdb","tvdb"]' END);
+ INSERT INTO screen_metadata_policies(library_id,providers) VALUES(NEW.id,'["tmdb"]');
 END;
 CREATE TRIGGER screen_configuration_change AFTER UPDATE OF revision ON library_configuration WHEN NEW.revision<>OLD.revision BEGIN
  UPDATE screen_metadata_work SET status='pending',generation=generation+1,revision=revision+1,lease='',lease_until='',next_attempt='',error='' WHERE library_id=NEW.library_id;
@@ -4709,7 +4719,7 @@ CREATE TRIGGER book_resume_revision_insert AFTER INSERT ON book_resume BEGIN INS
 CREATE TRIGGER book_resume_revision_update AFTER UPDATE ON book_resume WHEN OLD.item_id IS NOT NEW.item_id BEGIN INSERT INTO viewer_revisions(profile_id,library_id,revision) SELECT NEW.profile_id,cl.library_id,1 FROM catalog_entities ce JOIN catalog_libraries cl ON cl.id=ce.library_id WHERE ce.id=NEW.book_id ON CONFLICT(profile_id,library_id) DO UPDATE SET revision=revision+1;END;
 CREATE TRIGGER book_resume_revision_delete AFTER DELETE ON book_resume BEGIN INSERT INTO viewer_revisions(profile_id,library_id,revision) SELECT OLD.profile_id,cl.library_id,1 FROM catalog_entities ce JOIN catalog_libraries cl ON cl.id=ce.library_id WHERE ce.id=OLD.book_id ON CONFLICT(profile_id,library_id) DO UPDATE SET revision=revision+1;END;
 CREATE TRIGGER personal_revision_insert AFTER INSERT ON personal_items BEGIN INSERT INTO viewer_revisions(profile_id,library_id,revision) SELECT NEW.profile_id,cl.library_id,1 FROM catalog_entities ce JOIN catalog_libraries cl ON cl.id=ce.library_id WHERE ce.id=NEW.item_id ON CONFLICT(profile_id,library_id) DO UPDATE SET revision=revision+1;END;
-CREATE TRIGGER personal_revision_update AFTER UPDATE ON personal_items WHEN OLD.watched IS NOT NEW.watched OR OLD.watchlisted IS NOT NEW.watchlisted OR OLD.favorite IS NOT NEW.favorite OR OLD.rating IS NOT NEW.rating OR OLD.not_interested IS NOT NEW.not_interested OR (OLD.last_played_at='' AND NEW.last_played_at<>'') BEGIN INSERT INTO viewer_revisions(profile_id,library_id,revision) SELECT NEW.profile_id,cl.library_id,1 FROM catalog_entities ce JOIN catalog_libraries cl ON cl.id=ce.library_id WHERE ce.id=NEW.item_id ON CONFLICT(profile_id,library_id) DO UPDATE SET revision=revision+1;END;
+CREATE TRIGGER personal_revision_update AFTER UPDATE ON personal_items WHEN OLD.revision IS NOT NEW.revision OR OLD.watched IS NOT NEW.watched OR OLD.watchlisted IS NOT NEW.watchlisted OR OLD.favorite IS NOT NEW.favorite OR OLD.rating IS NOT NEW.rating OR OLD.not_interested IS NOT NEW.not_interested OR (OLD.last_played_at='' AND NEW.last_played_at<>'') BEGIN INSERT INTO viewer_revisions(profile_id,library_id,revision) SELECT NEW.profile_id,cl.library_id,1 FROM catalog_entities ce JOIN catalog_libraries cl ON cl.id=ce.library_id WHERE ce.id=NEW.item_id ON CONFLICT(profile_id,library_id) DO UPDATE SET revision=revision+1;END;
 CREATE TRIGGER metadata_detail_revision AFTER INSERT ON metadata_details BEGIN UPDATE library_revisions SET revision=revision+1 WHERE library_id=(SELECT cl.library_id FROM catalog_entities ce JOIN catalog_libraries cl ON cl.id=ce.library_id WHERE ce.id=NEW.item_id);END;
 CREATE TRIGGER metadata_detail_revision_update AFTER UPDATE ON metadata_details BEGIN UPDATE library_revisions SET revision=revision+1 WHERE library_id=(SELECT cl.library_id FROM catalog_entities ce JOIN catalog_libraries cl ON cl.id=ce.library_id WHERE ce.id=NEW.item_id);END;
 CREATE TRIGGER tvdb_episode_link_insert AFTER INSERT ON tvdb_episode_links BEGIN UPDATE library_revisions SET revision=revision+1 WHERE library_id=(SELECT cl.library_id FROM catalog_entities ce JOIN catalog_libraries cl ON cl.id=ce.library_id WHERE ce.id=NEW.item_id);END;
@@ -5333,7 +5343,7 @@ END;
 CREATE TRIGGER rec_profile_items_insert AFTER INSERT ON personal_items BEGIN
  INSERT INTO rec_profile_jobs(profile_id,work_id,revision) VALUES(NEW.profile_id,COALESCE((SELECT show_id FROM catalog_episodes WHERE entity_id=NEW.item_id),(SELECT album_id FROM catalog_songs WHERE entity_id=NEW.item_id),(SELECT book_id FROM catalog_book_files WHERE entity_id=NEW.item_id),NEW.item_id),1) ON CONFLICT(profile_id,work_id) DO UPDATE SET revision=revision+1;
 END;
-CREATE TRIGGER rec_profile_items_update AFTER UPDATE OF watchlisted,favorite,rating,reaction,watched,not_interested ON personal_items
+CREATE TRIGGER rec_profile_items_update AFTER UPDATE OF watchlisted,favorite,rating,watched,not_interested ON personal_items
  WHEN OLD.watchlisted IS NOT NEW.watchlisted OR OLD.favorite IS NOT NEW.favorite OR OLD.rating IS NOT NEW.rating OR OLD.watched IS NOT NEW.watched OR OLD.not_interested IS NOT NEW.not_interested BEGIN
  INSERT INTO rec_profile_jobs(profile_id,work_id,revision) VALUES(NEW.profile_id,COALESCE((SELECT show_id FROM catalog_episodes WHERE entity_id=NEW.item_id),(SELECT album_id FROM catalog_songs WHERE entity_id=NEW.item_id),(SELECT book_id FROM catalog_book_files WHERE entity_id=NEW.item_id),NEW.item_id),1) ON CONFLICT(profile_id,work_id) DO UPDATE SET revision=revision+1;
 END;
@@ -6260,9 +6270,16 @@ CREATE TRIGGER browse_order_update AFTER UPDATE ON catalog_browse_rows
  UPDATE library_revisions SET order_revision=order_revision+1 WHERE library_id IN(SELECT library_id FROM catalog_libraries WHERE id IN(OLD.library_id,NEW.library_id)); END;
 CREATE TRIGGER progress_observation_update AFTER UPDATE ON progress_activity BEGIN
  INSERT INTO viewer_revisions(profile_id,library_id,revision,observation_revision) VALUES(NEW.profile_id,NEW.library_id,0,1) ON CONFLICT(profile_id,library_id) DO UPDATE SET observation_revision=observation_revision+1; END;
+CREATE TRIGGER progress_replay_membership AFTER UPDATE OF playback_id ON progress
+ WHEN OLD.playback_id IS NOT NEW.playback_id AND EXISTS(SELECT 1 FROM continue_dismissals d WHERE d.profile_id=OLD.profile_id AND d.item_id=OLD.item_id AND d.playback_id=OLD.playback_id) BEGIN
+ INSERT INTO viewer_revisions(profile_id,library_id,revision) SELECT NEW.profile_id,cl.library_id,1 FROM catalog_entities e JOIN catalog_libraries cl ON cl.id=e.library_id WHERE e.id=NEW.item_id ON CONFLICT(profile_id,library_id) DO UPDATE SET revision=revision+1; END;
 
 -- Change hints are coalesced by audience and resource before entering the ring.
 CREATE TABLE api_change_pending(audience TEXT NOT NULL,type TEXT NOT NULL,resource_kind TEXT NOT NULL,resource_id TEXT NOT NULL,revision TEXT NOT NULL,data TEXT NOT NULL DEFAULT '',PRIMARY KEY(audience,type,resource_kind,resource_id)) WITHOUT ROWID, STRICT;
+CREATE TRIGGER history_observation_hint_insert AFTER INSERT ON personal_activity_revisions BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision,data) VALUES('personal:'||NEW.profile_id,'progress.changed','personal','history',CAST(NEW.revision AS TEXT),json_object('observation',CAST(NEW.revision AS TEXT))) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision,data=excluded.data; END;
+CREATE TRIGGER history_observation_hint_update AFTER UPDATE OF revision ON personal_activity_revisions WHEN OLD.revision IS NOT NEW.revision BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision,data) VALUES('personal:'||NEW.profile_id,'progress.changed','personal','history',CAST(NEW.revision AS TEXT),json_object('observation',CAST(NEW.revision AS TEXT))) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision,data=excluded.data; END;
 CREATE TRIGGER library_change_hint AFTER UPDATE OF revision,order_revision ON library_revisions BEGIN
  INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision,data) VALUES('library:'||NEW.library_id,'library.changed','library',NEW.library_id,CAST(NEW.revision AS TEXT),json_object('content',CAST(NEW.revision AS TEXT),'contentOrder',CAST(NEW.order_revision AS TEXT))) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision,data=excluded.data; END;
 CREATE TRIGGER personal_change_hint AFTER INSERT ON viewer_revisions BEGIN
@@ -6377,6 +6394,52 @@ CREATE INDEX live_channel_choices_groups ON live_channel_choices(generation_id,g
 
 CREATE INDEX download_request_items_item ON download_request_items(item_id,preparation_id);
 CREATE INDEX download_requests_target ON download_requests(target_id);
+
+-- Tables and indexes for current personal state, show settings and capture recovery.
+CREATE INDEX social_cast_devices_previous ON social_cast_devices(previous_token_digest) WHERE previous_token_digest<>'';
+
+CREATE TABLE catalog_show_settings(
+ entity_id INTEGER PRIMARY KEY REFERENCES catalog_entities(id) ON DELETE CASCADE,
+ hide_seasons INTEGER NOT NULL DEFAULT 0 CHECK(hide_seasons IN(0,1)),
+ absolute_numbering INTEGER NOT NULL DEFAULT 0 CHECK(absolute_numbering IN(0,1)),
+ ranges INTEGER NOT NULL DEFAULT 0 CHECK(ranges IN(0,1)),
+ newest_first INTEGER NOT NULL DEFAULT 0 CHECK(newest_first IN(0,1)),
+ revision INTEGER NOT NULL DEFAULT 1) STRICT;
+
+CREATE TABLE play_history(
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
+ playback_id TEXT NOT NULL UNIQUE,
+ authority TEXT NOT NULL,
+ account_id TEXT NOT NULL,
+ profile_id TEXT NOT NULL,
+ user_name TEXT NOT NULL,
+ profile_name TEXT NOT NULL DEFAULT '',
+ item_id INTEGER NOT NULL,
+ library_id TEXT NOT NULL,
+ kind INTEGER NOT NULL,
+ title TEXT NOT NULL,
+ parent_title TEXT NOT NULL DEFAULT '',
+ season INTEGER,
+ episode INTEGER,
+ device_id TEXT NOT NULL DEFAULT '',
+ device_name TEXT NOT NULL DEFAULT '',
+ platform TEXT NOT NULL DEFAULT '',
+ started_ms INTEGER NOT NULL,
+ updated_ms INTEGER NOT NULL,
+ position_ms INTEGER NOT NULL DEFAULT 0,
+ duration_ms INTEGER NOT NULL DEFAULT 0,
+ completed INTEGER NOT NULL DEFAULT 0 CHECK(completed IN(0,1)), converted INTEGER NOT NULL DEFAULT 0 CHECK(converted IN(0,1))) STRICT;
+
+CREATE INDEX play_history_recent ON play_history(started_ms DESC,id DESC);
+
+CREATE INDEX play_history_account ON play_history(account_id,started_ms DESC,id DESC);
+
+CREATE INDEX play_history_library ON play_history(library_id,started_ms DESC,id DESC);
+
+CREATE TABLE play_counts(
+ item_id INTEGER PRIMARY KEY REFERENCES catalog_entities(id) ON DELETE CASCADE,
+ plays INTEGER NOT NULL,
+ last_played_ms INTEGER NOT NULL) STRICT;
 
 CREATE TABLE personal_play_counts(
  profile_id TEXT NOT NULL,
@@ -6543,3 +6606,31 @@ END;
 CREATE TRIGGER browse_personal_order_update AFTER UPDATE OF library_id,kind,rating,last_played_at,play_count ON catalog_personal_sort_rows WHEN OLD.library_id IS NOT NEW.library_id OR OLD.kind IS NOT NEW.kind OR OLD.rating IS NOT NEW.rating OR OLD.last_played_at IS NOT NEW.last_played_at OR OLD.play_count IS NOT NEW.play_count BEGIN
  INSERT INTO viewer_revisions(profile_id,library_id,revision) SELECT NEW.profile_id,library_id,1 FROM catalog_libraries WHERE id IN(OLD.library_id,NEW.library_id) ON CONFLICT(profile_id,library_id) DO UPDATE SET revision=revision+1;
 END;
+
+
+CREATE TRIGGER catalog_facet_episode_insert AFTER INSERT ON catalog_episodes BEGIN
+ INSERT INTO catalog_dirty(domain,entity_id,revision) VALUES(33,NEW.show_id,1) ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
+END;
+
+CREATE TRIGGER catalog_facet_episode_delete AFTER DELETE ON catalog_episodes BEGIN
+ INSERT INTO catalog_dirty(domain,entity_id,revision) VALUES(33,OLD.show_id,1) ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
+END;
+
+CREATE TRIGGER catalog_facet_episode_move AFTER UPDATE OF show_id ON catalog_episodes WHEN OLD.show_id IS NOT NEW.show_id BEGIN
+ INSERT INTO catalog_dirty(domain,entity_id,revision) VALUES(33,OLD.show_id,1) ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
+ INSERT INTO catalog_dirty(domain,entity_id,revision) VALUES(33,NEW.show_id,1) ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
+END;
+
+CREATE INDEX rec_profile_signals_positive_recent ON rec_profile_signals(profile_id,at) WHERE weight>0;
+
+-- Resumable notice fan-out releases the writer between bounded pages.
+CREATE INDEX direct_profiles_broadcast ON direct_profiles(deleted,account_id,id);
+CREATE TABLE notice_broadcast_work(
+ scope TEXT NOT NULL,operation_id TEXT NOT NULL,digest TEXT NOT NULL,
+ last_account TEXT NOT NULL DEFAULT '',last_profile TEXT NOT NULL DEFAULT '',
+ upper_account TEXT NOT NULL,upper_profile TEXT NOT NULL,
+ delivered INTEGER NOT NULL DEFAULT 0,created INTEGER NOT NULL DEFAULT 0,
+ updated INTEGER NOT NULL DEFAULT 0,revision INTEGER NOT NULL DEFAULT 0,
+ ids TEXT NOT NULL DEFAULT '[]',expires_ms INTEGER NOT NULL,
+ PRIMARY KEY(scope,operation_id)) STRICT, WITHOUT ROWID;
+CREATE INDEX notice_broadcast_work_expiry ON notice_broadcast_work(expires_ms);

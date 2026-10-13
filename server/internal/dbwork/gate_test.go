@@ -375,3 +375,26 @@ func TestWatchdogWithoutSwapNeverRecycles(t *testing.T) {
 		t.Fatal("corruption must never recycle")
 	}
 }
+
+func TestProductionGateReportsActualStuckHold(t *testing.T) {
+	t.Setenv(StrictEnv, "0")
+	g := NewGate()
+	release, err := g.Acquire(context.Background(), ClassMaintenance)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer release()
+	g.mu.Lock()
+	g.heldSince = time.Now().Add(-StuckWait - time.Second)
+	g.mu.Unlock()
+	if err := g.StuckHolder(StuckWait); err == nil {
+		t.Fatal("long hold was silent without a waiter")
+	}
+	if err := g.StuckHolder(StuckWait); err == nil {
+		t.Fatal("health report disappeared after first log")
+	}
+	release()
+	if err := g.StuckHolder(StuckWait); err != nil {
+		t.Fatal("released gate still unwell", err)
+	}
+}

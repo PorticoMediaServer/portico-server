@@ -45,9 +45,7 @@ func (d Dependencies) shareTargetTx(tx *sql.Tx, authority, account, profile stri
 	if authority == "local" {
 		return identity.DirectShareTarget(tx, account, profile)
 	}
-	if authority == "hosted" {
-		return d.Hosted.AllowedTx(identity.Principal{Viewer: identity.Viewer{Authority: authority, AccountID: account, ProfileID: profile}}, "", tx)
-	}
+
 	return errors.New("invalid share authority")
 }
 func (d Dependencies) savedResourceRoutes(mux *http.ServeMux) {

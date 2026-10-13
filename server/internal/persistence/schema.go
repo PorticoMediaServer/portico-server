@@ -21,7 +21,7 @@ import (
 // baseline?". Which migrations have run is the schema_migrations set, not that
 // number, because numbers arrive out of order (see schemaMigrations).
 const baselineSchemaVersion = 1
-const schemaVersion = 11
+const schemaVersion = 1
 const schemaVersionKey = "schema_version"
 
 var ErrSchemaNewer = errors.New("this database was written by a newer version of Portico")
@@ -106,6 +106,9 @@ func migrateWith(ctx context.Context, db *sql.DB, steps []schemaMigration) error
 	// must get the reset message, not "upgrade Portico".
 	if exists != 0 && applied[baselineSchemaVersion] == "" {
 		return ErrSchemaResetRequired
+	}
+	if exists != 0 && applied[baselineSchemaVersion] != steps[0].digest {
+		return fmt.Errorf("schema migration 1 digest mismatch: %w", ErrSchemaResetRequired)
 	}
 	if stored > latest {
 		return fmt.Errorf("%w: database %d, binary %d; upgrade Portico or restore an earlier backup", ErrSchemaNewer, stored, latest)

@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"golang.org/x/sys/windows"
 	"path/filepath"
+	"portico.local/server/internal/supervise"
 	"sync"
 )
 
@@ -29,7 +30,7 @@ func newInventoryWatcher(r WatchRequest) (inventoryWatcher, error) {
 			continue
 		}
 		w.handles = append(w.handles, h)
-		go w.read(h, root)
+		supervise.Go("storage.inventory-watch", func() { w.read(h, root) })
 	}
 	if len(w.handles) == 0 {
 		return nil, ErrWatchUnavailable
@@ -74,7 +75,7 @@ func (w *windowsInventoryWatcher) read(h windows.Handle, root WatchRoot) {
 			for i := range words {
 				words[i] = binary.LittleEndian.Uint16(buf[int(at)+12+i*2:])
 			}
-			relative := filepath.Dir(windows.UTF16ToString(words))
+			relative := windows.UTF16ToString(words)
 			if filepath.IsLocal(relative) {
 				w.send(InventoryChange{SourceID: root.SourceID, RelativePath: relative})
 			}

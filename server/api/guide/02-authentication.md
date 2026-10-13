@@ -1,234 +1,150 @@
-# 2. Authentication
+# 2. Sessions and signing in
 
-There are two ways to authenticate, for two kinds of caller:
+An app signs a person in. A script or assistant normally uses a deliberately
+scoped [API key or personal token](07-keys-tokens-and-scopes.md). Local sign-in
+needs no Hosted account or application registration.
 
-- **An app a person uses** (a player, a remote, a companion app) signs that
-  person in and holds a **session**. This section. No app registration is
-  needed: any app may sign a member in, directly or with a code.
-- **A script, an integration or an assistant** carries an **API key** or a
-  **personal access token** that somebody made for it. See
-  `07-keys-tokens-and-scopes.md`.
+## Installation headers
 
-## Signing in from your own app
+Generate and persist a random installation ID, 32–128 characters using letters,
+digits, `-` and `_`. Keep it stable for this installation. Send it during sign-in
+and subsequent requests:
 
-Send these headers on every request, so the person can recognise and manage the
-device in their device list:
+```text
+X-Portico-Installation-Id: my-player-6de72ae2874c46f89b8ffef61d29d0ca
+X-Portico-Device-Name: Sam's laptop
+X-Portico-Device-Platform: linux
+X-Portico-App: My player
+X-Portico-App-Version: 1.0
+Content-Type: application/json
+```
 
-| Header | Value |
-|---|---|
-| `X-Portico-Installation-Id` | A random id your app generates once and keeps (32–128 characters of letters, digits, `-` and `_`). It ties refresh to this install. |
-| `X-Portico-Device-Name` | What the person would call the device ("Sam's laptop"). |
-| `X-Portico-Device-Platform` | For example `linux`, `android`, `web`. |
-| `X-Portico-App`, `X-Portico-App-Version` | Your app's name and version. |
-
-Then either:
-
-1. **Server address, user name and password.** `POST /v1/direct/sign-in
-   (openapi.yaml, operationId directSignIn)` with the credentials; pick a
-   profile with `POST /v1/direct/profiles/{id}/select (openapi.yaml,
-   operationId selectDirectProfile)`. For an account with one profile and no
-   second factor, `POST /v1/sessions (openapi.yaml, operationId createSession)`
-   does both in one call. This works on any server, whether or not it uses
-   Portico Accounts, for members who have a password on that server.
-2. **A code the person enters elsewhere** ("TV code", below). Your app shows a
-   short code; the person approves it in any Portico app already signed in to
-   that server, or on the server's own `/device` page. Use this when typing a
-   password is awkward, or for a member who signs in with a Portico Account.
-
-Both give an ordinary member session: an access token that lasts 15 minutes and
-a refresh token (see Refresh). The session is that member's, bounded by their
-role and restrictions, and appears in their device list, where they or the owner
-can end it. If the owner approves new devices by hand, a new device answers
-`device_approval_pending` until it is approved.
-
-Signing in through the Portico Account service ("Sign in with Portico") from a
-third-party app is not offered yet.
-
-Every authenticated call carries `Authorization: Bearer <accessToken>`. There
-are two session kinds: a **viewer session** (what catalogue, playback, and
-personal-state routes take) and a **direct account session** (`accountToken`,
-the bearer for the `/v1/direct/*` account-management routes). Which one a
-sign-in returns depends on the entry point.
+The installation ID is not a secret or proof of a device private key. The issued
+refresh token is a secret and is bound to it. Access tokens are bearer credentials.
 
 ## Direct sign-in
 
-`POST /v1/sessions (openapi.yaml, operationId createSession)` is the one-call
-shortcut: username and password straight to a viewer session.
+`POST /v1/direct/sign-in`:
 
-<!-- example: auth-credentials-request file=openapi.yaml operationId=createSession direction=request schema=@request /v1/sessions post -->
 ```json
-{
-  "username": "recovery-owner",
-  "password": "correct-horse-battery-staple"
-}
+{"username":"sam","password":"replace-with-your-password"}
 ```
 
-<!-- example: auth-session-response file=openapi.yaml operationId=createSession direction=response status=200 schema=#/components/schemas/AuthSession -->
-```json
-{
-  "accessToken": "tok_01J6X7QZ9MAB0CDEF123456789",
-  "expiresAt": "2026-09-24T13:00:00.000Z",
-  "viewer": {
-    "accountId": "acct_1",
-    "profileId": "prof_1",
-    "serverId": "srv_1",
-    "authority": "local",
-    "role": "member"
-  },
-  "sessionFamilyId": "fam_1",
-  "tokenGeneration": "3",
-  "authorizationHorizon": "2026-09-24T13:00:00.000Z"
-}
+Success returns the account/profile snapshot and `session`, whose `accessToken`
+is the bearer credential. There is no separate wire `accountToken` anymore.
+For one profile with no PIN and no required password change, the session can
+already browse. Otherwise its role is `account` until a profile is selected;
+it can use account routes but cannot authorize media. The response can instead
+carry `deviceApprovalPending: true`, or a two-factor `challenge` without a session.
+
+For two-factor, call `POST /v1/auth/two-factor/challenge` with
+`{"token":"<challenge.token>","code":"<current code>"}`. This returns the sign-in
+result after the factor is proven. Follow `passwordChangeRequired` before
+trying to use an account-only session as a viewer.
+
+Choose a profile from the returned `profiles`:
+
+```text
+POST /v1/direct/profiles/<profile-id>/select
+Authorization: Bearer <session.accessToken>
 ```
 
-`POST /v1/direct/sign-in (openapi.yaml, operationId directSignIn)` instead
-returns an account session (`accountToken`) for the `/v1/direct/*` routes —
-profiles, members, password, ownership. It accepts either `Credentials` or a
-Portico identity assertion (next section). To browse, select a profile with
-`POST /v1/direct/profiles/{id}/select (openapi.yaml, operationId
-selectDirectProfile)`, which returns the viewer session. `GET /v1/me
-(openapi.yaml, operationId getCurrentViewer)` reads the current viewer.
-
-Personal access tokens, API keys and scopes are described in
-`07-keys-tokens-and-scopes.md`. OAuth 2.1 (PKCE), `client_id`, consent screens
-and open bearer CORS are **not specified**.
-
-## Portico Account sign-in (challenge to assertion)
-
-A Portico Account member signs in to the server itself in two steps. First ask
-for a single-use challenge with `POST /v1/direct/portico-challenge
-(openapi.yaml, operationId porticoChallenge)`:
-
-<!-- example: auth-challenge-request file=openapi.yaml operationId=porticoChallenge direction=request schema=@request /v1/direct/portico-challenge post -->
 ```json
-{
-  "nonce": "n_01J6X7QZ9MAB0CDEF123456789"
-}
+{"pin":"1234","installationId":"my-player-6de72ae2874c46f89b8ffef61d29d0ca","trust":true}
 ```
 
-<!-- example: auth-challenge-response file=openapi.yaml operationId=porticoChallenge direction=response status=200 schema=@response /v1/direct/portico-challenge post 200 -->
-```json
-{
-  "challenge": "ch_01J6X7QZ9MAB0CDEF123456789",
-  "expiresAt": "2026-09-24T12:05:00.000Z",
-  "proof": {
-    "payload": "cGF5bG9hZA",
-    "signature": "c2lnbmF0dXJl"
-  }
-}
+For a profile without a PIN, omit `pin`. Selection returns a new `session` and
+optionally `trustedSelection`; store the new credentials. Remembered trust can
+skip a future PIN by sending its `trustToken` for the same installation.
+`GET /v1/direct` reads the account snapshot; `GET /v1/me` reads the viewer.
+`POST /v1/sessions` is removed. Source: `internal/httpapi/direct_identity.go`,
+`internal/identity/direct_accounts.go` and `direct_profiles.go`.
+
+A shell example for a one-profile account without a PIN or second factor:
+
+```bash
+BASE=http://127.0.0.1:32500
+INSTALLATION=my-player-6de72ae2874c46f89b8ffef61d29d0ca
+# Keep the password out of shell history and encode it as JSON.
+read -r -p 'Username: ' USERNAME
+read -r -s -p 'Password: ' PASSWORD; printf '\n'
+SIGN_IN=$(jq -nc --arg u "$USERNAME" --arg p "$PASSWORD" '{username:$u,password:$p}' |
+  curl -fsS "$BASE/v1/direct/sign-in" -H 'Content-Type: application/json' \
+    -H "X-Portico-Installation-Id: $INSTALLATION" --data-binary @-)
+unset PASSWORD
+TOKEN=$(printf '%s' "$SIGN_IN" | jq -er '.session.accessToken')
+curl -fsS "$BASE/v1/libraries" -H "Authorization: Bearer $TOKEN"
 ```
 
-Hosted signs an identity assertion answering that challenge; the client sends
-it as `porticoIdentity` to `POST /v1/direct/sign-in (openapi.yaml, operationId
-directSignIn)`. The assertion envelope is `SignedEnvelope` (payload,
-signature, keyId, verified offline against the pinned Hosted root):
+A full app must handle the account-only, PIN, two-factor, password-change and
+approval cases above. Do not print or log the session envelope.
 
-<!-- example: auth-signed-envelope file=openapi.yaml operationId=directSignIn direction=request schema=#/components/schemas/SignedEnvelope -->
+## Portico Account members
+
+The server accepts a Hosted-signed identity assertion for membership it already
+knows. Ask `POST /v1/direct/portico-challenge {"nonce":"<random nonce>"}` with
+installation headers; verify the server's returned signed proof. Hosted signs
+an assertion answering that challenge. Send it as `porticoIdentity` to
+`POST /v1/direct/sign-in`, without username/password. The server verifies it
+offline against its pinned Hosted trust. This server's own membership and role
+still decide admission. A third-party Portico Account issuance flow is not
+provided here; use local credentials or a TV code. Old Hosted ticket attachment
+and offline proof sign-in routes are removed.
+
+## Refresh and sign-out
+
+Access lasts up to 15 minutes, bounded by the family authorization horizon. A
+local family has a rolling 90-day sign-in window. Save the issued fields;
+do not calculate expiry from assumptions about another account authority.
+
+`POST /v1/auth/refresh` takes no access bearer:
+
 ```json
-{
-  "payload": "cGF5bG9hZA",
-  "signature": "c2lnbmF0dXJl",
-  "keyId": "hosted-root-2026"
-}
+{"refreshToken":"<issued refreshToken>","installationId":"my-player-6de72ae2874c46f89b8ffef61d29d0ca","requestId":"refresh-20261013-1"}
 ```
 
-Membership is this server's own: an account that is not a member here gets
-`403 access_refused`. Hosted ticket attach, Hosted restrictions, and offline
-profile proofs are gone and answer `410`. The Hosted-side issuance route is
-**not specified** in the server OpenAPI files.
+It returns the session envelope directly, not under `session`. Save both new
+tokens atomically. Retry a lost response with the same predecessor, installation
+and request ID. The exact receipt remains recoverable until the successor is
+used or its horizon expires. A predecessor used outside that exact retry can
+revoke the family. Do not refresh independently in several parts of one app.
+HTTP and HTTPS have the same credential semantics.
 
-## Device sessions
+`DELETE /v1/sessions/current` signs out the whole session family and accepts an
+authentic expired/retired family token so a stale device can still sign out.
+Send no query or body. Device administration uses `/v1/devices`. Account managers can list
+`GET /v1/direct/sessions`, revoke `DELETE /v1/direct/sessions/{id}`, or call
+`POST /v1/direct/sessions/sign-out-everywhere` with their ordinary session. Disabling an account, changing its password or
+blocking a device ends sessions. Ordinary permission changes apply live.
 
-A session belongs to a family: `sessionFamilyId` identifies it and
-`tokenGeneration` numbers the current token within it. Rotating a token is a
-new generation of the same family — the same device, not a new one.
-`GET /v1/direct/sessions (openapi.yaml, operationId listDirectSessions)`
-lists the account's live sessions with a `current` flag on the caller:
+## TV code
 
-<!-- example: auth-direct-sessions-response file=openapi.yaml operationId=listDirectSessions direction=response status=200 schema=@response /v1/direct/sessions get 200 -->
-```json
-{
-  "items": [
-    {
-      "id": "sess_1",
-      "profileId": "prof_1",
-      "profileName": "Living Room",
-      "expiresAt": "2026-09-24T13:00:00.000Z",
-      "current": true
-    }
-  ]
-}
-```
+1. The waiting device calls `POST /v1/quick-connect`:
 
-`DELETE /v1/direct/sessions/{id} (openapi.yaml, operationId
-revokeDirectSession)` revokes one session; `DELETE /v1/sessions/current
-(openapi.yaml, operationId logoutSessionFamily)` signs out the whole family
-and accepts any authentic token of the family, including an expired or retired
-generation, so a stale client can still sign itself out. Revocation is
-immediate: the fence is re-evaluated inside each request's transaction and
-in-flight media reads are re-checked mid-transfer. Short-lived (15-minute or
-1-hour) access tokens, rotating refresh semantics on the server side, and a
-"Connected apps" listing are **not specified**.
+   ```json
+   {"requestId":"tv-20261013-1","deviceName":"Living Room TV","platform":"tvos","appVersion":"1.0"}
+   ```
 
-## Refresh
+   The 201 response has `deviceCode` (secret), `userCode`, `verificationUri`,
+   `verificationUriComplete`, `expiresAt`, `expiresIn` and `interval`. Codes
+   currently last ten minutes; the initial poll interval is five seconds.
+2. Display the user code and verification address. A signed-in viewer calls
+   `POST /v1/quick-connect/review {"userCode":"<code>"}` to review the device,
+   then `POST /v1/quick-connect/decision`:
 
-First-party refresh is `POST /v1/auth/refresh (identity.openapi.yaml,
-operationId refreshFirstPartySession)` with the installation-bound refresh
-token:
+   ```json
+   {"requestId":"decision-20261013-1","userCode":"ABCD-1234","decision":"approve"}
+   ```
 
-<!-- example: auth-refresh-request file=identity.openapi.yaml operationId=refreshFirstPartySession direction=request schema=@request /v1/auth/refresh post -->
-```json
-{
-  "refreshToken": "hrt_01J6X7QZ9MAB0CDEF123456789",
-  "installationId": "my-player-1",
-  "requestId": "refresh-1"
-}
-```
+   A decision is 204; `deny` refuses it. **The new device gets the approver's
+   identity and role**, including owner authority when the owner approves.
+3. Poll `POST /v1/quick-connect/token {"deviceCode":"<secret>"}` at the returned
+   interval. Handle `authorization_pending` and `slow_down` with the returned
+   `Retry-After`; stop on expiry or refusal. Success is the session envelope.
+   Device approval policy and remote sign-in policy still apply.
+4. `POST /v1/quick-connect/cancel` with the device code cancels an unused attempt.
 
-Success returns an `AuthSession` (same shape as the direct sign-in example).
-During playback, a client renewing without interrupting uses `POST
-/v2/playback/authorization-renewal (openapi.yaml, operationId
-renewPlaybackAuthorization)` (bearer plus controller token); a retired
-generation answers `receipt_expired` with a reauthorize action. Refresh working
-identically over HTTP and HTTPS, and Secure-connections-required servers, are
-**not specified** in the OpenAPI.
-
-## TV code (device authorization)
-
-Quick Connect is the device-code flow for a TV, console, or headless client.
-The waiting device calls `POST /v1/quick-connect (openapi.yaml, operationId
-startQuickConnect)` and displays the `userCode`:
-
-<!-- example: auth-quickstart-request file=openapi.yaml operationId=startQuickConnect direction=request schema=@request /v1/quick-connect post -->
-```json
-{
-  "requestId": "req-tv-1",
-  "deviceName": "Living Room TV"
-}
-```
-
-Any member signed in to this server looks the code up with `POST
-/v1/quick-connect/review (openapi.yaml, operationId reviewQuickConnect)`
-(which returns the device's claimed name, platform, and app version) and then
-records the decision with `POST /v1/quick-connect/decision (openapi.yaml,
-operationId decideQuickConnect)`:
-
-<!-- example: auth-quickdecision-request file=openapi.yaml operationId=decideQuickConnect direction=request schema=@request /v1/quick-connect/decision post -->
-```json
-{
-  "requestId": "req-tv-1",
-  "userCode": "ABCD-1234",
-  "decision": "approve"
-}
-```
-
-The device polls `POST /v1/quick-connect/token (openapi.yaml, operationId
-pollQuickConnectToken)` with its `deviceCode`, receiving
-`authorization_pending` (or `slow_down` with `Retry-After`) until the decision
-lands, then its own session. `POST /v1/quick-connect/cancel (openapi.yaml,
-operationId cancelQuickConnect)` abandons the attempt. The new device is signed
-in as the member who approved the code, with that member's role, so approve only
-a code you are looking at on your own device. The answer to starting a code
-carries `verificationUri` (the server's own `/device` page) when the server knows
-an address to offer. RFC 8628 discovery metadata and expiry configuration beyond
-the issued `expiresAt`/`expiresIn`/`interval` are **not specified**.
+Source: `internal/httpapi/onboarding.go`, `internal/identity/quick_connect.go`.
+Store tokens privately. Browser requests are origin-checked; a third-party
+browser origin needs the owner's explicit API-origin allowance. Native clients
+can omit Origin. Use returned verification URLs rather than hard-code Hosted.

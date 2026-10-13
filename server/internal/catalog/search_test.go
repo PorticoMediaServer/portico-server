@@ -138,8 +138,8 @@ func TestSearchGroupsPagingAndIndexUpdates(t *testing.T) {
 		return err
 	})
 	c.Drain()
-	if _, err = s.Search(context.Background(), r); !errors.Is(err, ErrStaleContinuation) {
-		t.Fatal("stale admitted", err)
+	if _, err = s.Search(context.Background(), r); err != nil {
+		t.Fatal("continuation failed after publication", err)
 	}
 	r.Cursor, r.Q = "", "renam"
 	out, err = s.Search(context.Background(), r)
@@ -298,7 +298,7 @@ func TestSearchPersistenceLibraryMoveAndScale(t *testing.T) {
 	r.Cursor = out.Groups[0].NextCursor
 	c.Exec(`INSERT INTO progress(profile_id,item_id,position,playback_id) VALUES('p',?,1,'playback')`, scaleItem)
 	c.Exec(`INSERT INTO progress_activity(profile_id,item_id,library_id,updated_at,state) VALUES('p',?,'a','2026-09-04','paused')`, scaleItem)
-	if _, err = s.Search(context.Background(), r); !errors.Is(err, ErrStaleContinuation) {
+	if _, err = s.Search(context.Background(), r); err != nil {
 		t.Fatal("viewer progress fence", err)
 	}
 	c.Exec(`INSERT INTO catalog_search_titles(catalog_search_titles) VALUES('integrity-check')`)
@@ -396,8 +396,8 @@ func TestSearchSameTitleEpisodeHierarchyContext(t *testing.T) {
 		return err
 	})
 	c.Drain()
-	if _, err = s.Search(context.Background(), paged); !errors.Is(err, ErrStaleContinuation) {
-		t.Fatal("parent rename must fence continuation", err)
+	if _, err = s.Search(context.Background(), paged); err != nil {
+		t.Fatal("parent rename prevented continuation", err)
 	}
 	out, err = s.Search(context.Background(), request)
 	if err != nil {

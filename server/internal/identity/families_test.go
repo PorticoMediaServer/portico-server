@@ -235,57 +235,7 @@ func TestAuthorizationFamiliesAccountAndProjectionRevocation(t *testing.T) {
 		})
 	}
 }
-func TestAuthorizationFamiliesHostedHorizonAndMissingVerification(t *testing.T) {
-	s, db, _ := familyFixture(t)
-	ctx := context.Background()
-	horizon := time.Now().UTC().Add(2 * time.Hour).Truncate(time.Second)
-	if _, e := db.Exec(`INSERT INTO policy(server_id,revision,payload,expires_at) VALUES(?,1,'{}',?)`, s.ID(), horizon.Format(time.RFC3339)); e != nil {
-		t.Fatal(e)
-	}
-	if _, e := s.Issue("hosted-account", "hosted-profile", "hosted", "member", 1); !errors.Is(e, ErrUnauthorized) {
-		t.Fatal("hosted wrapper invented horizon")
-	}
-	tx, e := db.Begin()
-	if e != nil {
-		t.Fatal(e)
-	}
-	if _, e = s.IssueTx(ctx, tx, "hosted-account", "hosted-profile", "hosted", "member", 1, time.Time{}); !errors.Is(e, ErrUnauthorized) {
-		t.Fatal("missing verified horizon accepted")
-	}
-	tx.Rollback()
-	tx, e = db.Begin()
-	if e != nil {
-		t.Fatal(e)
-	}
-	first, e := s.IssueTx(ctx, tx, "hosted-account", "hosted-profile", "hosted", "member", 1, horizon)
-	if e != nil {
-		t.Fatal(e)
-	}
-	if e = tx.Commit(); e != nil {
-		t.Fatal(e)
-	}
-	proof := func(context.Context, *sql.Tx, Principal, RenewalBinding) (time.Time, error) { return horizon, nil }
-	second, e := s.RenewAuthorization(ctx, first.AccessToken, familyBinding("hosted"), proof)
-	if e != nil {
-		t.Fatal(e)
-	}
-	accessUntil, parseErr := time.Parse(time.RFC3339, second.ExpiresAt)
-	if second.AuthorizationHorizon != horizon.Format(time.RFC3339) || parseErr != nil || accessUntil.After(time.Now().Add(16*time.Minute)) {
-		t.Fatal("hosted horizon or 15-minute access lifetime incorrect")
-	}
-	inflated := func(context.Context, *sql.Tx, Principal, RenewalBinding) (time.Time, error) {
-		return horizon.Add(time.Second), nil
-	}
-	if _, e = s.RenewAuthorization(ctx, second.AccessToken, familyBinding("inflated"), inflated); !errors.Is(e, ErrUnauthorized) {
-		t.Fatal("inflated horizon accepted")
-	}
-	if _, e = db.Exec(`UPDATE policy SET expires_at='2000-01-01T00:00:00Z'`); e != nil {
-		t.Fatal(e)
-	}
-	if _, e = s.RenewAuthorization(ctx, first.AccessToken, familyBinding("hosted"), proof); !errors.Is(e, ErrUnauthorized) {
-		t.Fatal("expired cached policy replay accepted")
-	}
-}
+
 func TestAuthorizationFamiliesPlainReplaySurvivesRestart(t *testing.T) {
 	s, db, dir := familyFixture(t)
 	first := issueFamily(t, s)

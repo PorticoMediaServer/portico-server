@@ -55,7 +55,7 @@ const (
 // timestampLayout names a backup folder, in UTC.
 const timestampLayout = "2006-01-02T150405Z"
 
-// Kinds of backup. The keep count applies to scheduled and manual backups;
+// Kinds of backup. The keep count applies to scheduled backups;
 // pre-restore copies are the automatic copy taken before a restore applies.
 type Kind string
 
@@ -320,7 +320,9 @@ func (s *Service) SetCopyScrubber(fn func(ctx context.Context, path string) erro
 
 // Start begins an asynchronous backup. It is idempotent per operationID: the
 // same id twice returns the same job. Only one backup runs at a time; a new
-// operation while one is in progress joins the running job. The job's context
+// operation of the same kind while one is in progress joins the running job.
+// Different kinds must wait: a requested manual copy must never be scheduled
+// retention's property. The job's context
 // is detached from the request, so the lane budget cannot cancel it.
 func (s *Service) Start(ctx context.Context, kind Kind, operationID string) (string, error) {
 	if kind != KindScheduled && kind != KindManual {
@@ -352,7 +354,7 @@ func (s *Service) Start(ctx context.Context, kind Kind, operationID string) (str
 		}
 	}
 	if s.running != nil {
-		if kind == KindScheduled && s.running.kind != KindScheduled {
+		if kind != s.running.kind {
 			s.mu.Unlock()
 			return "", ErrBackupRunning
 		}
@@ -493,6 +495,14 @@ func (s *Service) createBackup(ctx context.Context, job *Job, kind Kind) (string
 		_ = os.RemoveAll(partial)
 		return "", err
 	}
+	names := make([]string, len(entries))
+	for i, entry := range entries {
+		names[i] = entry.Name
+	}
+	if err = syncRestoreDirectories(partial, partial, names); err != nil {
+		_ = os.RemoveAll(partial)
+		return "", err
+	}
 	if err = os.Rename(partial, filepath.Join(dir, id)); err != nil {
 		_ = os.RemoveAll(partial)
 		return "", err
@@ -512,36 +522,107 @@ func (s *Service) CreateKind(ctx context.Context, kind Kind) (string, error) {
 // List returns every complete backup, newest first. Dot-names (partial or
 // transient folders) are ignored.
 func (s *Service) List() ([]Info, error) {
-	dir := s.backupRoot()
-	names, err := os.ReadDir(dir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return []Info{}, nil
-		}
-		return nil, err
-	}
 	out := []Info{}
-	for _, name := range names {
-		id := name.Name()
-		if !name.IsDir() || len(id) == 0 || id[0] == '.' || checkID(id) != nil {
+	seen := map[string]bool{}
+	local := filepath.Join(s.state, BackupsDir)
+	roots := []string{local}
+	if s.backupRoot() != local {
+		roots = append(roots, s.backupRoot())
+	}
+	for _, dir := range roots {
+		names, err := os.ReadDir(dir)
+		if os.IsNotExist(err) {
 			continue
 		}
-		manifest, err := readManifest(filepath.Join(dir, id))
 		if err != nil {
-			continue
+			return nil, err
 		}
-		created := manifest.CreatedAt
-		if _, err = time.Parse(time.RFC3339, created); err != nil {
-			created = ""
+		for _, name := range names {
+			id := name.Name()
+			if !name.IsDir() || checkID(id) != nil || seen[id] {
+				continue
+			}
+			manifest, err := readManifest(filepath.Join(dir, id))
+			if err != nil {
+				continue
+			}
+			if dir == local && dir != s.backupRoot() && manifest.Kind != KindPreRestore {
+				continue
+			}
+			created := manifest.CreatedAt
+			if _, err = time.Parse(time.RFC3339, created); err != nil {
+				created = ""
+			}
+			out = append(out, Info{ID: id, CreatedAt: created, Kind: manifest.Kind, SchemaVersion: manifest.SchemaVersion, ServerVersion: manifest.ServerVersion, Bytes: backupBytes(filepath.Join(dir, id), manifest), Path: id})
+			seen[id] = true
 		}
-		out = append(out, Info{
-			ID: id, CreatedAt: created, Kind: manifest.Kind,
-			SchemaVersion: manifest.SchemaVersion, ServerVersion: manifest.ServerVersion,
-			Bytes: dirBytes(filepath.Join(dir, id)), Path: id,
-		})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].ID > out[j].ID })
 	return out, nil
+}
+
+// The manifest already describes the held state files. Polling the backup
+// list should not visit the same subtitle/logo tree again for each copy.
+func backupBytes(folder string, manifest Manifest) int64 {
+	var total int64
+	listed := map[string]bool{}
+	for _, entry := range manifest.Files {
+		if entry.Bytes >= 0 {
+			total += entry.Bytes
+		}
+		listed[entry.Name] = true
+	}
+	for _, name := range []string{DatabaseName, DatabaseName + "-wal", ManifestName} {
+		if listed[name] {
+			continue
+		}
+		if info, err := os.Lstat(filepath.Join(folder, name)); err == nil && info.Mode().IsRegular() {
+			total += info.Size()
+		}
+	}
+	return total
+}
+
+// Recovery copies stay beside live state for atomic restore, even when the
+// owner keeps regular backups on another disk. Their ids have a separate suffix.
+func (s *Service) backupPath(id string) (string, error) {
+	if err := checkID(id); err != nil {
+		return "", err
+	}
+	if strings.HasSuffix(id, "-pre-restore") {
+		local := filepath.Join(s.state, BackupsDir, id)
+		info, err := os.Lstat(local)
+		if err == nil {
+			if !info.IsDir() {
+				return "", ErrNotFound
+			}
+			return local, nil
+		}
+		if !os.IsNotExist(err) {
+			return "", err
+		}
+	}
+	return filepath.Join(s.backupRoot(), id), nil
+}
+
+func (s *Service) pruneRecoveryCopies() error {
+	listed, err := s.List()
+	if err != nil {
+		return err
+	}
+	kept := 0
+	for _, info := range listed {
+		if info.Kind != KindPreRestore {
+			continue
+		}
+		kept++
+		if kept > 3 {
+			if err = s.Delete(info.ID); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 // Delete removes one backup.
@@ -549,7 +630,10 @@ func (s *Service) Delete(id string) error {
 	if err := checkID(id); err != nil {
 		return err
 	}
-	path := filepath.Join(s.backupRoot(), id)
+	path, err := s.backupPath(id)
+	if err != nil {
+		return err
+	}
 	info, err := os.Lstat(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -563,7 +647,7 @@ func (s *Service) Delete(id string) error {
 	return os.RemoveAll(path)
 }
 
-// Prune keeps the newest keep scheduled and manual backups, and the newest
+// Prune keeps the newest keep scheduled backups, and the newest
 // three pre-restore folders.
 func (s *Service) Prune(keep int) error {
 	if keep < 1 {

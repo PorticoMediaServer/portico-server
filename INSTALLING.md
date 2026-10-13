@@ -3,11 +3,12 @@
 Portico is prerelease software. Back up your Portico data and media metadata
 before trying an early build, and read the notes on the release you install.
 
-The permanent download page is:
+Choose a build on the releases page; the latest-release address applies when a
+build is marked latest:
 
 <https://github.com/PorticoMediaServer/portico-server/releases/latest>
 
-Each development release provides unsigned packages for Windows x64/ARM64,
+The release workflow defines unsigned packages for Windows x64/ARM64,
 Apple Silicon macOS, Linux x64/ARM64, and a multi-architecture Docker image.
 
 - Windows: use the `Setup.exe` installer or portable ZIP.
@@ -26,6 +27,72 @@ Portico stores server data separately from the application. Linux packages use
 `/var/lib/portico-media-server`, Windows installs use
 `%ProgramData%\Portico Media Server`, and the macOS application uses
 `/Library/Application Support/Portico Media Server`.
+
+## First start and service commands
+
+Open `http://127.0.0.1:32500/` on the host and finish setup. From another device,
+use a reachable hostname or IP; IPv6 URLs need brackets, for example
+`http://[fd12:3456:789a::10]:32500/`. Allow inbound TCP 32500 through the host
+firewall where you want access. Portico does not support installation under a
+URL path such as `https://example.com/portico`; use a hostname of its own.
+
+### Debian/Ubuntu and RPM systems
+
+For x64 packages (use the arm64 filenames on ARM64):
+
+```sh
+sudo apt install ./portico-media-server-linux-x64.deb
+# Or, on an RPM system:
+sudo dnf install ./portico-media-server-linux-x64.rpm
+sudo systemctl status portico-media-server
+sudo systemctl restart portico-media-server
+sudo systemctl stop portico-media-server
+sudo systemctl start portico-media-server
+journalctl -u portico-media-server -n 100
+```
+
+First installation enables and starts the service when systemd is running,
+subject to the distribution's service-start policy. An upgrade restarts an
+active service and leaves a stopped service stopped. Reinstall the newer package
+with the same command. Confirm its status after installation.
+
+### Windows
+
+Run the Setup.exe as administrator. In an elevated PowerShell window:
+
+```powershell
+Get-Service PorticoMediaServer
+Restart-Service PorticoMediaServer
+Stop-Service PorticoMediaServer
+Start-Service PorticoMediaServer
+```
+
+### macOS
+
+Run the PKG, including the one inside the DMG. Then open the installed app, or
+open the console address in your browser. Inspect the service:
+
+```sh
+sudo launchctl print system/tv.getportico.server.service
+```
+
+For a restart, or a clean stop before copying state, use `launchctl bootout`
+and bootstrap it again afterwards:
+
+```sh
+sudo launchctl bootout system/tv.getportico.server.service
+sudo launchctl bootstrap system /Library/LaunchDaemons/tv.getportico.server.service.plist
+```
+
+### Portable archives
+
+Unpack the entire archive, including `web` and `third_party`. Run
+`./start-portico.sh` on Linux or `start-portico.cmd` on Windows. These run under
+your account and install no service or firewall rule. State defaults to `state`
+beside the launcher. Set an absolute `PORTICO_STATE_DIR` to keep it elsewhere.
+For an upgrade, stop the process, unpack the new build into a separate folder,
+and point its launcher at the existing state folder. Keep the previous build
+and a backup until the new build has started successfully.
 
 ## Linux package paths and permissions
 
@@ -112,6 +179,24 @@ A backup on the same disk does not protect against that disk failing.
 ## Docker
 
 Keep `/var/lib/portico` in a persistent volume, and mount media separately.
+A minimal example (choose the image tag from the release you install):
+
+```sh
+docker volume create portico-state
+docker run -d --name portico --restart unless-stopped --stop-timeout 45 \
+  -p 32500:32500 -e TZ=America/Halifax \
+  -v portico-state:/var/lib/portico -v /srv/media:/media:ro \
+  ghcr.io/porticomediaserver/portico-server:latest
+docker logs --tail 100 portico
+docker restart --time 45 portico
+```
+
+The container runs as `portico`; host permissions must allow that user to read
+media. The read-only media mount above prevents deletion. Use a writable mount
+only where you intend to allow media writes. To upgrade, pull the chosen image,
+stop and remove the old container, then run the same command with the new tag
+and the same state volume. Removing the container does not remove a named
+volume; do not delete that volume when upgrading.
 Optional cache and backup volumes use the paths above. The image includes an
 init for orphan reaping and the server's own restart parent; restore and Restart
 work without a Docker restart policy. A restart policy remains useful for host
@@ -137,7 +222,8 @@ The owner's **Home networks** (`lanNetworks`) list is the only definition of
 local access. Defaults include loopback, private IPv4, link-local, unique-local
 IPv6 and directly attached subnets. Replace the list to add or remove ranges;
 `[]` makes every request remote, including loopback. This controls recovery
-access, remote sign-in and streaming limits. No overlay or proxy is detected.
+access, remote sign-in and streaming limits. It does not create a route through NAT;
+an overlay, forwarded port or reachable proxy must provide the connection. No overlay or proxy is detected.
 
 For a reverse proxy on its own hostname, list its socket address or range in
 **Trusted proxies** (`trustedProxies`). Preserve `Host`, or set
@@ -177,3 +263,87 @@ count; increase it according to the machine and workload.
 First-run setup needs no local code. Browser setup writes require JSON and the
 same request origin; cross-site forms and cross-site preflights cannot claim the
 server. Native API clients may omit Origin but must send `application/json`.
+
+## Backup and restore
+
+Settings → Server → Storage & backups provides backup and restore controls.
+A manual backup creates a directory containing `portico.db`, a checksum manifest,
+server identity keys and selected non-rebuildable state: TLS identity,
+authority incarnation, managed-storage configuration, channel logos and
+subtitles. It excludes media files, recordings, generated artwork, conversion
+caches and logs. A database backup is not a backup of your collection.
+
+The API can start a backup with
+`POST /v1/admin/backups {"operationId":"backup-20261013-1"}`. It answers
+`202 {"jobId":"…"}`. Poll `GET /v1/admin/backups`: `running` reports progress,
+and the finished entry appears in `backups`. Copy the whole finished backup
+directory to separate storage. Scheduled copies use the configured keep count;
+manual copies remain until deleted.
+
+To restore a listed backup, send
+`POST /v1/admin/backups/restore {"operationId":"restore-20261013-1","source":{"backupId":"…"}}`.
+A full backup folder or supported standalone database file can instead be named
+with `source.path`, an absolute path on the server. Poll the same list for the
+restore job. Validation and copying happen in the background. The server stages
+the result and restarts; the connection dropping during that restart is expected.
+After it returns, sign in again and check `lastRestore`, your libraries and keys.
+
+Restore requires the server's single-instance lock. It refuses databases from
+an incompatible prerelease schema or a newer schema; do not assume an arbitrary
+old backup is accepted by a new build. Restore keeps the preceding database and
+state in a pre-restore folder beside the live database. If applying a staged
+restore cannot be completed safely, startup refuses a partial state; fix the
+reported disk or permission problem and start again. Keep those recovery files.
+
+People are signed out by restore. Passwords, two-factor seeds and approved
+devices return to their backup-time state. API keys and personal tokens survive,
+so a credential revoked after the backup may work again; review their lists.
+Owner-supplied certificates outside the selected state files, host service
+configuration, media and recordings need their own backups.
+
+For a complete offline recovery copy, stop Portico cleanly and copy the entire
+state folder, plus external media/recording/certificate folders you need. Never
+copy only the live `portico.db` while it is running: SQLite may also have data
+in its WAL. Restore an offline copy while stopped, preserve the old folder,
+retain ownership/ACLs, and start the same build first. A raw filesystem copy
+contains live session material; protect it as a secret and prefer the built-in
+restore path when restoring its database.
+
+## Reverse proxy and overlays
+
+An Nginx example for a proxy on the same machine, with your existing certificate:
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name media.example.com;
+    ssl_certificate /etc/nginx/certs/media.crt;
+    ssl_certificate_key /etc/nginx/certs/media.key;
+
+    location / {
+        proxy_pass http://127.0.0.1:32500;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header Connection "";
+        proxy_buffering off;
+        proxy_read_timeout 1h;
+    }
+}
+```
+
+Set Trusted proxies to the actual backend peer (`127.0.0.1/32` here) and External
+address to `https://media.example.com`. Overwriting forwarding headers in this
+single-proxy example prevents a client claiming another address. A multi-proxy
+chain must preserve only addresses validated by its trusted hops. Event streams
+need buffering disabled and an idle timeout longer than their 25-second heartbeat.
+The proxy must allow the upload sizes used by your chosen API operations.
+
+With Tailscale or another overlay, use the server's overlay address and the
+port, or a hostname that resolves to it. Add only the overlay ranges you want
+to count as home to Home networks; an overlay address is otherwise judged by
+the same owner list as every address. HTTP remains accepted. Overlay reachability
+and access policy are configured in the overlay itself. IPv6 literals need
+brackets in URLs; a custom certificate should match the hostname clients use.

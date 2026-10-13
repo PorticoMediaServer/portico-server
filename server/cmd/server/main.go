@@ -223,6 +223,7 @@ func logSetupBlock(port int, loopback bool) {
 	}
 }
 func run() (runErr error) {
+	persistence.SetMigrationCopyScrubber(identity.ScrubBackupCopy)
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 	if os.Getenv(supervise.WorkerEnvironment) == "1" {
@@ -772,11 +773,6 @@ func run() (runErr error) {
 		hls.ConfigureSettings(deliverySettings)
 		hls.ConfigureMemberCeiling(memberCeilingReader())
 		hls.ConfigureProbe(ffprobeTool)
-		if env("PORTICO_FINITE_VOD", "0") == "1" {
-			if e = hls.EnableFinite(ffprobeTool); e != nil {
-				return e
-			}
-		}
 		player.ConfigureHLS(hls)
 		supervise.Supervise(ctx, "cmd.hls", hls.Run)
 		// Converters are cancelled and then waited for: an ffmpeg child that
@@ -1066,6 +1062,9 @@ func run() (runErr error) {
 				log.Printf("warn: Owner notices: %v", err)
 			}
 			if document, err := console.Settings(maintenanceCtx, operations.AllowServerScope); err == nil {
+				if err := administration.ClientLogs.Prune(maintenanceCtx, document.Effective.LogRetentionDays()["client"]); err != nil && ctx.Err() == nil {
+					log.Printf("warn: Client report retention: %v", err)
+				}
 				info := buildinfo.Info()
 				current := adminops.UpdateBuild{Version: info["version"], BuildID: info["buildId"], SourceDigest: info["sourceDigest"], BuiltAt: info["builtAt"]}
 				report := adminOperations.CachedUpdates(maintenanceCtx, current, document.Effective.UpdateChannel, document.Effective.UpdateFeedURL)

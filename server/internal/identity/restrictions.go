@@ -6,11 +6,12 @@ import (
 	"encoding/json"
 	"errors"
 	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/requestinput"
 	"sort"
 	"strings"
 )
 
-var ErrRestrictionInput = errors.New("invalid profile restriction")
+var ErrRestrictionInput = requestinput.New("invalid profile restriction")
 var ErrRestrictionChanged = errors.New("These restrictions changed. Refresh before trying again.")
 
 // ProfileRestrictions is the complete per-profile restriction document. It is
@@ -197,8 +198,6 @@ func RestrictionsForViewerTx(ctx context.Context, tx *sql.Tx, viewer Viewer) (Pr
 			return ProfileRestrictions{}, err
 		}
 		return RestrictionsTx(ctx, tx, viewer.ProfileID)
-	case "hosted":
-		return DefaultRestrictions(viewer.ProfileID), nil
 	default:
 		return ProfileRestrictions{}, ErrUnauthorized
 	}
@@ -207,15 +206,13 @@ func RestrictionsForViewerTx(ctx context.Context, tx *sql.Tx, viewer Viewer) (Pr
 // ViewerRestrictions resolves the content restrictions a viewer session carries.
 // Catalog reads take this value; it never widens what a library policy allows.
 func (s *Service) ViewerRestrictions(ctx context.Context, p Principal) (ContentRestrictions, error) {
-	if p.Authority != "local" && p.Authority != "api-key" && p.Authority != "hosted" {
+	if p.Authority != "local" && p.Authority != "api-key" {
 		return ContentRestrictions{}, ErrUnauthorized
 	}
 	if p.ProfileID == "" {
 		return ContentRestrictions{}, nil
 	}
-	if p.Authority == "hosted" {
-		return DefaultRestrictions(p.ProfileID).Content(), nil
-	}
+
 	if p.Authority == "api-key" {
 		if err := apiKeyProfileBelongsToAccount(ctx, s.db, p.Viewer); err != nil {
 			return ContentRestrictions{}, err
@@ -337,15 +334,13 @@ var ErrContentRestricted = errors.New("This title is outside the limits set for 
 
 // WithProfileRestrictions exposes the complete current policy to route admission.
 func (s *Service) WithProfileRestrictions(ctx context.Context, p Principal, check func(ProfileRestrictions) error) error {
-	if p.Authority != "local" && p.Authority != "api-key" && p.Authority != "hosted" {
+	if p.Authority != "local" && p.Authority != "api-key" {
 		return ErrUnauthorized
 	}
 	if p.ProfileID == "" {
 		return ErrUnauthorized
 	}
-	if p.Authority == "hosted" {
-		return check(DefaultRestrictions(p.ProfileID))
-	}
+
 	if p.Authority == "api-key" {
 		if err := apiKeyProfileBelongsToAccount(ctx, s.db, p.Viewer); err != nil {
 			return err

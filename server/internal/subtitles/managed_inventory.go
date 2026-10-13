@@ -27,6 +27,12 @@ func CommitManagedPage(ctx context.Context, tx *sql.Tx, source, incarnation, job
 	return nil
 }
 func DiscoverManaged(ctx context.Context, db *sql.DB, c *storage.Client, source, incarnation, job, relative, path string, embedded []Track, origin int64, known bool) (*Inventory, error) {
+	// A source's own folder is listed as "."; a caller may also name it by the
+	// empty path. Without this a title sitting directly in a library's folder
+	// never found its folder's listing, and its scan ended with a warning.
+	if relative == "" {
+		relative = "."
+	}
 	var done int
 	e := db.QueryRowContext(ctx, `SELECT count(*) FROM inventory_directories d JOIN inventory_runs r ON r.job_id=d.job_id JOIN library_sources s ON s.id=r.source_id WHERE d.job_id=? AND d.relative_path=? AND d.state='done' AND s.id=? AND s.incarnation=? AND s.generation=r.source_generation AND s.enabled=1`, job, relative, source, incarnation).Scan(&done)
 	if e != nil {

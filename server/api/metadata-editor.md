@@ -75,7 +75,7 @@ POST /v1/metadata/{kind}/{id}
 For non-screen engines, omit both fields; nonempty query or nonzero year is refused.
 MusicBrainz search/retry uses existing scanned metadata rather than an owner-supplied query.
 `provider` picks the engine where more than one applies: movies and episodes use
-the screen engine's enabled providers, shows use tvdb through the same engine,
+the screen engine's enabled providers, shows use their library’s selected screen provider,
 albums and songs use musicbrainz, and artists and books have no remote matcher
 and refuse `search`.
 
@@ -88,10 +88,10 @@ publication changed the entity since the read, the write is refused:
 409 {"error": {"code": "metadata_conflict", "retryable": false}}
 ```
 
-Nothing was written. Re-read the state, show the owner what the values are now,
-and let them decide whether to apply their change again. Do not retry
-automatically — a conflict means someone or something else had something to say
-about this entity.
+Nothing was written. Re-read the state and retry quietly when the intended
+values have not changed; ask the owner to review a real competing edit. Candidate
+progress has a separate revision from editable values, so a new candidate alone
+should not interrupt a value edit.
 
 On success the response is the full state after the change, including a new
 `revision`. Use it directly; there is no need for a second read.

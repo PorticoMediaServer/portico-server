@@ -3,7 +3,7 @@ package catalog
 import (
 	"database/sql"
 	"encoding/json"
-	"errors"
+	"portico.local/server/internal/requestinput"
 	"sort"
 	"strconv"
 	"strings"
@@ -358,19 +358,19 @@ func (s *Service) facetsFromCounts(request FacetRequest) ([]FacetValue, error) {
 func browseCategoryPredicate(category string) (*BrowseNode, error) {
 	field, value, ok := strings.Cut(category, ":")
 	if !ok || value == "" {
-		return nil, errors.New("unknown category")
+		return nil, requestinput.New("unknown category")
 	}
 	switch field {
 	case "decade":
 		year, err := strconv.Atoi(value)
 		if err != nil || year < 1800 || year > 2190 || year%10 != 0 {
-			return nil, errors.New("invalid decade category")
+			return nil, requestinput.New("invalid decade category")
 		}
 		return &BrowseNode{Field: "decade", Operator: "equals", Value: float64(year)}, nil
 	case "genre", "series", "tag", "label", "studio", "network", "contentRating", "audioLanguage", "collection", "resolution":
 		definition, ok := browseFieldByID(field)
 		if !ok {
-			return nil, errors.New("unknown category")
+			return nil, requestinput.New("unknown category")
 		}
 		operator := "equals"
 		if definition.Type == valueSet {
@@ -380,9 +380,9 @@ func browseCategoryPredicate(category string) (*BrowseNode, error) {
 	case "year":
 		year, err := strconv.Atoi(value)
 		if err != nil || year < 1800 || year > 2199 {
-			return nil, errors.New("invalid year category")
+			return nil, requestinput.New("invalid year category")
 		}
 		return &BrowseNode{Field: "year", Operator: "equals", Value: float64(year)}, nil
 	}
-	return nil, errors.New("unknown category")
+	return nil, requestinput.New("unknown category")
 }

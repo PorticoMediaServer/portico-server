@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"portico.local/server/internal/requestinput"
 	"strings"
 	"time"
 
@@ -75,7 +76,7 @@ func (s *Service) RemoveLibrary(ctx context.Context, id, name string, expected i
 }
 
 // ErrConfirmationMismatch: what the owner typed is not the library's name.
-var ErrConfirmationMismatch = errors.New("the confirmation does not match")
+var ErrConfirmationMismatch = requestinput.New("the confirmation does not match")
 
 // LibraryRemovalAdapter is the background work behind RemoveLibrary.
 func (s *Service) LibraryRemovalAdapter() operations.Adapter {

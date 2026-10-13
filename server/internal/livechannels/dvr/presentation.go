@@ -36,7 +36,12 @@ func (s *Store) Detail(ctx context.Context, a livechannels.Authority, o livechan
 		if e != nil {
 			return e
 		}
+		programmeAllowed, err := programmePredicateTx(ctx, tx, o)
+		if err != nil {
+			return err
+		}
 		out.Recording = r
+		restrictRecording(&out.Recording, programmeAllowed)
 		if r.State == "pending-delete" {
 			var reason string
 			if err := tx.QueryRowContext(ctx, `SELECT reason FROM dvr_delete_work WHERE recording_id=?`, r.ID).Scan(&reason); err != nil && err != sql.ErrNoRows {
@@ -83,6 +88,7 @@ func (s *Store) Detail(ctx context.Context, a livechannels.Authority, o livechan
 			if e != nil {
 				return e
 			}
+			p.Admit(programmeAllowed)
 			v.Title = p.Title
 			v.Start = time.UnixMilli(start).UTC().Format(time.RFC3339Nano)
 			v.End = time.UnixMilli(end).UTC().Format(time.RFC3339Nano)

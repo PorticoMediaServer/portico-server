@@ -139,8 +139,6 @@ func openInput(ctx context.Context, in livechannels.Input) (*Gateway, error) {
 		return nil, ErrUnavailable
 	}
 	g.address = "http://127.0.0.1:" + strconv.Itoa(port)
-	acquisitionDeadline := time.AfterFunc(30*time.Second, cancel)
-	defer acquisitionDeadline.Stop()
 	client, response, e := g.fetch(child, in.Locator, "")
 	if e != nil {
 		g.Close()

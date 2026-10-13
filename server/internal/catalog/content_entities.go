@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"portico.local/server/internal/requestinput"
 	"strconv"
 	"strings"
 	"time"
@@ -128,7 +129,7 @@ func (s *Service) movieContentWhere(r ContentRequest, libraryID int) (string, []
 func movieCategoryKey(category string) (int, string, error) {
 	field, value, ok := strings.Cut(category, ":")
 	if !ok || value == "" {
-		return 0, "", errors.New("unknown category")
+		return 0, "", requestinput.New("unknown category")
 	}
 	switch field {
 	case "decade":
@@ -142,7 +143,7 @@ func movieCategoryKey(category string) (int, string, error) {
 	case "studio":
 		return 2, value, nil
 	}
-	return 0, "", errors.New("unknown category")
+	return 0, "", requestinput.New("unknown category")
 }
 func (s *Service) contentEntities(r ContentRequest, cursor string, limit int) ([]ContentEntry, string, int, error) {
 	entries := []ContentEntry{}

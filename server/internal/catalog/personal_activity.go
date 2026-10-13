@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"math"
+	"portico.local/server/internal/requestinput"
+	"strconv"
 
 	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/dbwork"
@@ -67,14 +69,19 @@ func acceptPlaybackProgress(tx *sql.Tx, v identity.Viewer, playbackID, item stri
 		thresholdHit = duration > 0 && position > 0 && duration-position <= math.Min(30, duration/20)
 	}
 	creditsHit := false
+	creditsAvailable := false
 	if video && settings.VideoCompletion != "threshold" && (settings.VideoCompletion == "credits" || !thresholdHit) {
 		creditsStart, creditsErr := firstApprovedCreditsTx(tx, item)
 		if creditsErr != nil {
 			return creditsErr
 		}
-		creditsHit = creditsStart.Valid && position >= creditsStart.Float64
+		creditsAvailable = creditsStart.Valid
+		creditsHit = creditsAvailable && position >= creditsStart.Float64
 	}
-	completed := state == "ended" || ((!video || settings.VideoCompletion != "credits") && thresholdHit) || creditsHit
+	// An early end-of-stream is not completion of a known longer title.
+	// Approved credits and the configured percentage can still finish it early.
+	terminal := state == "ended" && (duration <= 0 || position >= duration-math.Min(1, duration/100))
+	completed := terminal || ((!video || settings.VideoCompletion != "credits" || !creditsAvailable) && thresholdHit) || creditsHit
 	// Known durations honor the viewer percentage; unknown durations start at
 	// thirty seconds. Audiobook parts keep the listening rule of one second.
 	threshold := 30.
@@ -363,7 +370,7 @@ type ActivityReceipt struct {
 func (s *Service) MutateActivity(profile string, m ActivityMutation, authorize func(*sql.Tx) error) (ActivityReceipt, error) {
 	out := ActivityReceipt{OperationID: m.OperationID, Action: m.Action}
 	if !personalOperation.MatchString(m.OperationID) || m.ExpectedRevision < 0 || (m.Action != "clear-history" && m.Action != "reset-viewing-activity") {
-		return out, errors.New("invalid activity operation")
+		return out, requestinput.New("invalid activity operation")
 	}
 	gated, e := dbwork.Begin(context.Background(), s.db, dbwork.ClassFrom(context.Background(), dbwork.ClassInteractive))
 	if e != nil {
@@ -437,6 +444,13 @@ func (s *Service) MutateActivity(profile string, m ActivityMutation, authorize f
 		return out, e
 	}
 	if e = tx.QueryRow(`SELECT revision FROM personal_activity_revisions WHERE profile_id=?`, profile).Scan(&out.Revision); e != nil {
+		return out, e
+	}
+	// Explicit History commands must reach other devices even when no title's
+	// watched/resume state changed. History observations have their own hints.
+	if _, e = tx.Exec(`INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision)
+ VALUES(?,'personal.changed','personal','history',?)
+ ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision`, "personal:"+profile, strconv.FormatInt(out.Revision, 10)); e != nil {
 		return out, e
 	}
 	if e = fenceOperation(tx, profile, "activity", m.OperationID, hash); e != nil {

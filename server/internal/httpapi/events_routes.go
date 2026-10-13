@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"portico.local/server/internal/requestinput"
 	"strconv"
 	"time"
 
@@ -34,7 +35,7 @@ func eventAfter(raw string) (int64, bool, error) {
 	}
 	n, err := strconv.ParseInt(raw, 10, 64)
 	if err != nil || n < 0 {
-		return 0, false, errors.New("invalid event cursor")
+		return 0, false, requestinput.New("invalid event cursor")
 	}
 	return n, true, nil
 }

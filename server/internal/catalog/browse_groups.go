@@ -11,11 +11,10 @@ import (
 func (s *Service) browseAggregate(request BrowseRequest, pivot browsePivot) (BrowseResult, error) {
 	out := BrowseResult{Pivot: pivot.ID, Entries: []ContentEntry{}, PositionIndex: []BrowsePositionAnchor{}}
 	sorts := request.Sort
-	if len(sorts) == 0 {
+	// A library-wide title sort may be carried onto a grouping. Keep the
+	// grouping's meaningful sorts and report name order for other sorts.
+	if len(sorts) != 1 || sorts[0].Field != "title" && sorts[0].Field != "count" && sorts[0].Field != "recentActivity" {
 		sorts = titleAscending()
-	}
-	if len(sorts) != 1 {
-		return out, browseIssue("sort", "choose one grouping sort")
 	}
 	sorting := sorts[0]
 	defaults := map[string]string{"title": "asc", "count": "desc", "recentActivity": "desc"}
@@ -35,9 +34,9 @@ func (s *Service) browseAggregate(request BrowseRequest, pivot browsePivot) (Bro
 	if request.Cursor != "" && request.Range != nil {
 		return out, browseIssue("range", "a direct range cannot include a cursor")
 	}
-	if request.Seek != nil {
-		return out, browseIssue("seek", "this grouping does not support letter seeking")
-	}
+	// Groupings have no letter index; a carried letter jump leaves the
+	// ordinary page position unchanged and is absent from Applied.
+	request.Seek = nil
 	revision, err := s.browseRevision(request, pivot, sorts)
 	if err != nil {
 		return out, err

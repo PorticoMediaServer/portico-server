@@ -3,13 +3,13 @@ package metadata
 import (
 	"context"
 	"database/sql"
-	"errors"
+	"portico.local/server/internal/requestinput"
 )
 
 // ErrLibraryLanguageInput answers a metadata language the library's agent does
 // not offer: a code outside the agent's Languages, any language with the local
 // agent, or any language for music and audiobook libraries.
-var ErrLibraryLanguageInput = errors.New("Choose a metadata language offered for this library.")
+var ErrLibraryLanguageInput = requestinput.New("Choose a metadata language offered for this library.")
 
 // ApplyLibraryLanguageTx records the library's metadata language inside the
 // caller's transaction, keeping the same two columns ApplyAdministrationPolicyTx

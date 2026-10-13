@@ -8,6 +8,7 @@ import (
 	"io"
 	"portico.local/server/internal/assets"
 	"strings"
+	"unicode/utf8"
 )
 
 type audioNode struct {
@@ -15,6 +16,7 @@ type audioNode struct {
 	attrs    map[string]string
 	text     string
 	children []*audioNode
+	partial  bool
 }
 
 func parseAudioXML(raw []byte) (*audioNode, error) {
@@ -22,6 +24,7 @@ func parseAudioXML(raw []byte) (*audioNode, error) {
 		return nil, errors.New("sidecar size")
 	}
 	d := xml.NewDecoder(bytes.NewReader(raw))
+	d.CharsetReader = localXMLCharset
 	stack := []*audioNode{}
 	var root *audioNode
 	nodes := 0
@@ -66,9 +69,16 @@ func parseAudioXML(raw []byte) (*audioNode, error) {
 		case xml.CharData:
 			if len(stack) > 0 {
 				n := stack[len(stack)-1]
-				n.text += string(t)
-				if len(n.text) > 4096 {
-					return nil, errors.New("XML text budget")
+				if len(n.text)+len(t) > 4096 {
+					root.partial = true
+					room := 4096 - len(n.text)
+					kept := string(t[:room])
+					for len(kept) > 0 && !utf8.ValidString(kept) {
+						kept = kept[:len(kept)-1]
+					}
+					n.text += kept
+				} else {
+					n.text += string(t)
 				}
 			} else if strings.TrimSpace(string(t)) != "" {
 				return nil, errors.New("trailing XML text")
@@ -127,6 +137,9 @@ func parseOPF(raw []byte) (map[string]string, error) {
 		meta = m[0]
 	}
 	out := map[string]string{"album": meta.first("title"), "language": meta.first("language"), "publisher": meta.first("publisher"), "date": meta.first("date"), "description": meta.first("description")}
+	if root.partial {
+		out["_partial"] = "true"
+	}
 	roles := map[string]string{}
 	positions := map[string]string{}
 	collections := map[string]string{}
@@ -225,6 +238,9 @@ func parseMusicNFO(raw []byte, kind string) (map[string]string, error) {
 		return nil, errors.New("wrong music metadata kind")
 	}
 	out := map[string]string{}
+	if root.partial {
+		out["_partial"] = "true"
+	}
 	mapping := map[string]string{"title": "title", "album": "album", "artist": "artist", "albumartist": "album_artist", "year": "year", "releasedate": "date", "author": "author", "narrator": "narrator", "series": "series", "seriesposition": "series_position", "publisher": "publisher", "language": "language", "edition": "edition", "isbn": "isbn", "asin": "asin", "plot": "description", "track": "track", "disc": "disc", "barcode": "barcode", "cataloguenumber": "catalognumber", "musicbrainzalbumid": "musicbrainz_albumid", "musicbrainzreleasegroupid": "musicbrainz_releasegroupid", "musicbrainztrackid": "musicbrainz_trackid", "musicbrainzreleasetrackid": "musicbrainz_releasetrackid"}
 	for tag, key := range mapping {
 		out[key] = root.first(tag)

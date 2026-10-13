@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"portico.local/server/internal/requestinput"
 	"strconv"
 	"strings"
 	"time"
@@ -92,10 +93,10 @@ func (s *Service) contentOnce(request ContentRequest) (ContentEnvelope, error) {
 	}
 	request.Limit = pageLimit(request.Limit)
 	if len(request.Q) > 100 {
-		return out, errors.New("search prefix exceeds limit")
+		return out, requestinput.New("search prefix exceeds limit")
 	}
 	if request.View != "discover" && request.View != "browse" && request.View != "collections" && request.View != "categories" && request.View != "collection" && request.View != "show" && request.View != "season" && request.View != "artist" && request.View != "album" && request.View != "book" {
-		return out, errors.New("unknown library content view")
+		return out, requestinput.New("unknown library content view")
 	}
 	out.Heading = ContentHeading{Key: "library." + request.View, Fallback: lib.Name}
 	out.Scope = ContentScope{request.ServerID, lib.ID, lib.Kind, request.View, request.EntityID, request.ViewerFence}
@@ -163,16 +164,16 @@ func (s *Service) contentOnce(request ContentRequest) (ContentEnvelope, error) {
 		out.Sorts = []ContentSort{}
 	}
 	if !validSort {
-		return out, errors.New("sort is not applicable to this view")
+		return out, requestinput.New("sort is not applicable to this view")
 	}
 	if (request.View == "discover" || request.View == "categories" || request.View == "show" || request.View == "season" || request.View == "album" || request.View == "book") && (request.Q != "" || request.Category != "") {
-		return out, errors.New("search and category are not applicable to this view")
+		return out, requestinput.New("search and category are not applicable to this view")
 	}
 	if request.Category != "" && lib.Kind != "movie" {
-		return out, errors.New("category is not applicable to this library")
+		return out, requestinput.New("category is not applicable to this library")
 	}
 	if request.Category != "" && request.View != "browse" && request.View != "collection" {
-		return out, errors.New("category is not applicable to this view")
+		return out, requestinput.New("category is not applicable to this view")
 	}
 	out.Query = ContentQuery{request.Sort, request.Direction, request.Category, request.Q, request.Limit, "title_prefix"}
 	if request.View != "browse" && request.View != "collection" && request.View != "collections" && request.View != "artist" {
@@ -225,7 +226,7 @@ func (s *Service) contentOnce(request ContentRequest) (ContentEnvelope, error) {
 		case "artist", "album", "book":
 			actual, e = s.LibraryForAudioEntity(request.View, request.EntityID)
 		default:
-			return out, errors.New("entityId is not applicable to this view")
+			return out, requestinput.New("entityId is not applicable to this view")
 		}
 		if e != nil {
 			return out, e
@@ -245,7 +246,7 @@ func (s *Service) contentOnce(request ContentRequest) (ContentEnvelope, error) {
 			return out, e
 		}
 	} else if request.View == "collection" || request.View == "show" || request.View == "season" || request.View == "artist" || request.View == "album" || request.View == "book" {
-		return out, errors.New("entityId is required")
+		return out, requestinput.New("entityId is required")
 	}
 	if request.EntityID != "" {
 		var title string
@@ -297,7 +298,7 @@ func (s *Service) contentOnce(request ContentRequest) (ContentEnvelope, error) {
 			section := gridSection("items", "Movies", contentItems(rows), count, next, request.Start)
 			out.Sections = append(out.Sections, section)
 		} else if request.View == "collection" {
-			return out, errors.New("collections require a movie library")
+			return out, requestinput.New("collections require a movie library")
 		} else {
 			entries, next, count, e := s.contentEntities(request, inner, request.Limit)
 			if e != nil {
@@ -308,7 +309,7 @@ func (s *Service) contentOnce(request ContentRequest) (ContentEnvelope, error) {
 		}
 	case "collections", "artist":
 		if request.View == "collections" && lib.Kind != "movie" {
-			return out, errors.New("collections require a movie library")
+			return out, requestinput.New("collections require a movie library")
 		}
 		entries, next, count, e := s.contentEntities(request, inner, request.Limit)
 		if e != nil {
@@ -322,7 +323,7 @@ func (s *Service) contentOnce(request ContentRequest) (ContentEnvelope, error) {
 		out.Sections = append(out.Sections, section)
 	case "categories":
 		if lib.Kind != "movie" {
-			return out, errors.New("categories require a movie library")
+			return out, requestinput.New("categories require a movie library")
 		}
 		categories, e := s.Categories(request.Viewer, lib.ID)
 		if e != nil {

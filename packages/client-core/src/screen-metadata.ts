@@ -53,3 +53,9 @@ export function parseScreenMetadata(raw:unknown,s:MetadataReviewScope,t:Metadata
  const chosen=candidates.find(c=>c.screen?.identity.provider===selected?.provider&&c.screen?.identity.id===selected?.id&&c.screen?.identity.type===selected?.type);
  return Object.freeze({scope:Object.freeze({...s,libraryId:t.libraryId,entityId:t.entityId,viewerFence:raw.viewerFence}),provider:'screen',revision:raw.revision,status,selectedId:chosen?.id??'',order:string(raw.order,160),orders:Object.freeze((chosen?.screen?.orders??accepted?.orders??[]).map(o=>o.id)),actions:Object.freeze(actions),candidates:Object.freeze(candidates),attempts:raw.attempts,nextAttempt:string(raw.nextAttempt,128),providerError:string(raw.error,4096),attribution:string(raw.attribution,4096),screen:context});
 }
+
+/** Explicit anime numbering: local episode number plus offset is its position in the provider order. */
+export function tmdbAbsoluteOrder(order:string,offset:number):string {
+ if(!Number.isSafeInteger(offset)||Math.abs(offset)>1000000||!(order==='official'||/^tmdb-group:[A-Za-z0-9_-]{1,128}$/.test(order)))invalid();
+ return offset===0?order:`tmdb-absolute:${order}:${offset}`;
+}

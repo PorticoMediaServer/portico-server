@@ -11,13 +11,14 @@ type BurnIn struct {
 	FontsDirectory       string
 	DynamicRange         string
 	PositionUS, OffsetUS int64
+	InputStartUS         int64
 	Width, Height        int
 }
 
 // burnFilter runs on system frames after HDR-to-SDR and before scaling/upload.
 // Both subtitle formats retain the title clock across restarted HLS windows.
 func burnFilter(b BurnIn, facts *ToolchainFacts) (string, []string, error) {
-	if !filepath.IsAbs(b.File) || filepath.Clean(b.File) != b.File || strings.ContainsAny(b.File, "\n\r\x00") || b.PositionUS < 0 || b.PositionUS > 86400000000 || b.OffsetUS < -600000000 || b.OffsetUS > 600000000 {
+	if !filepath.IsAbs(b.File) || filepath.Clean(b.File) != b.File || strings.ContainsAny(b.File, "\n\r\x00") || b.PositionUS < 0 || b.PositionUS > 86400000000 || b.OffsetUS < -600000000 || b.OffsetUS > 600000000 || b.InputStartUS < -86400000000 || b.InputStartUS > 86400000000 {
 		return "", nil, ErrInvalidConfiguration
 	}
 	if b.FontsDirectory != "" && (!filepath.IsAbs(b.FontsDirectory) || filepath.Clean(b.FontsDirectory) != b.FontsDirectory || strings.ContainsAny(b.FontsDirectory, "\n\r\x00")) {
@@ -55,9 +56,9 @@ func burnFilter(b BurnIn, facts *ToolchainFacts) (string, []string, error) {
 			formats += " ,mpeg"
 			formats = strings.ReplaceAll(formats, " ", "")
 		}
-		// Preserve the subtitle source clock; FFmpeg otherwise subtracts the
-		// first cue timestamp. Reset only the picture after the input seek.
-		inputs := []string{"-copyts", "-protocol_whitelist", "file", "-format_whitelist", formats, "-f", mux, "-i", b.File}
+		// Undo only this input's demuxer-origin subtraction. Global copyts
+		// would also retain the sought movie's audio clock and offset it twice.
+		inputs := []string{"-itsoffset", seconds(b.InputStartUS), "-protocol_whitelist", "file", "-format_whitelist", formats, "-f", mux, "-i", b.File}
 		// The bitmap owns its canvas. Fit it without distorting its glyphs,
 		// centering transparent padding when a cropped video has a different shape.
 		fit := fmt.Sprintf("scale=w='max(2,trunc(iw*min(%d/iw,%d/ih)/2)*2)':h='max(2,trunc(ih*min(%d/iw,%d/ih)/2)*2)',pad=%d:%d:(ow-iw)/2:(oh-ih)/2:color=black@0", b.Width, b.Height, b.Width, b.Height, b.Width, b.Height)

@@ -38,7 +38,7 @@ func TestLostRefreshAnswerAcrossRestartReplaysAndKeepsTheFamily(t *testing.T) {
 		t.Fatal(err)
 	}
 	request := Token()
-	committed, err := s.RefreshSession(context.Background(), first.RefreshToken, installation, request, nil)
+	committed, err := s.RefreshSession(context.Background(), first.RefreshToken, installation, request)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,7 +75,7 @@ func TestLostRefreshAnswerAcrossRestartReplaysAndKeepsTheFamily(t *testing.T) {
 	closeDB()
 	s, closeDB = restart()
 	defer closeDB()
-	replayed, err := s.RefreshSession(context.Background(), first.RefreshToken, installation, request, nil)
+	replayed, err := s.RefreshSession(context.Background(), first.RefreshToken, installation, request)
 	if err != nil {
 		t.Fatal("lost refresh answer was not replayed after restarts:", err)
 	}
@@ -88,7 +88,7 @@ func TestLostRefreshAnswerAcrossRestartReplaysAndKeepsTheFamily(t *testing.T) {
 		t.Fatalf("family revoked by a lost answer: revoked=%d reason=%q err=%v", revoked, reason, err)
 	}
 	// The device carries on with the successor it finally received.
-	next, err := s.RefreshSession(context.Background(), replayed.RefreshToken, installation, Token(), nil)
+	next, err := s.RefreshSession(context.Background(), replayed.RefreshToken, installation, Token())
 	if err != nil {
 		t.Fatal("successor refresh refused after the replay:", err)
 	}

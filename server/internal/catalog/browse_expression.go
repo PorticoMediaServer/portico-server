@@ -374,7 +374,7 @@ func foldBrowseText(field browseField) bool {
 }
 func collated(field browseField, expression string) string {
 	if foldBrowseText(field) {
-		return "portico_filter_fold(" + expression + ")"
+		return "portico_fold_text(" + expression + ")"
 	}
 	if field.ID == "collection" || field.ID == "memberOf" || field.ID == "person" || field.ID == "list" {
 		return "(" + expression + ")"
