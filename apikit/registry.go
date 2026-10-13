@@ -136,6 +136,10 @@ type Metadata struct {
 	// (a DELETE whose body is optional); the handler then sees the zero Request.
 	OptionalBody bool `json:"optionalBody,omitempty"`
 	SSE          bool `json:"sse,omitempty"`
+	// HTTP marks a handler that owns access enforcement and HTTP response semantics.
+	HTTP bool `json:"http,omitempty"`
+	// Admission names the server pool; Lane describes its broad API work class.
+	Admission string `json:"admission,omitempty"`
 }
 type Route[Request, Response any] struct {
 	Metadata
@@ -167,6 +171,7 @@ type Registry struct {
 	authorizeCtx AuthorizeContext
 	scopes       ScopeGate
 	routes       []Definition
+	bound        map[string]bool
 	frozen       bool
 }
 

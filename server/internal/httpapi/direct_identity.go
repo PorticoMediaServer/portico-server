@@ -27,7 +27,7 @@ func (d Dependencies) directIdentityRoutes(mux *http.ServeMux) {
 	// with it. The answer is signed with this server's identity key over the
 	// client's nonce, so the client knows the challenge is this server's
 	// before it asks Hosted for anything (INT M7).
-	mux.HandleFunc("POST /v1/direct/portico-challenge", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "POST /v1/direct/portico-challenge", func(w http.ResponseWriter, r *http.Request) {
 		var q struct {
 			Nonce string `json:"nonce"`
 		}
@@ -63,7 +63,7 @@ func (d Dependencies) directIdentityRoutes(mux *http.ServeMux) {
 		}
 		writeAuth(w, r, 200, map[string]any{"challenge": challenge, "expiresAt": expires.UTC().Format(time.RFC3339), "proof": map[string]string{"payload": payload, "signature": signature}})
 	})
-	mux.HandleFunc("POST /v1/direct/sign-in", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "POST /v1/direct/sign-in", func(w http.ResponseWriter, r *http.Request) {
 		var q struct {
 			Username string `json:"username"`
 			Password string `json:"password"`
@@ -103,7 +103,7 @@ func (d Dependencies) directIdentityRoutes(mux *http.ServeMux) {
 		// context the router prepares), not here.
 		writeAuth(w, r, 200, out)
 	})
-	mux.HandleFunc("POST /v1/direct/profiles", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "POST /v1/direct/profiles", func(w http.ResponseWriter, r *http.Request) {
 		var q struct {
 			Name string `json:"name"`
 			Art  string `json:"art"`
@@ -119,7 +119,7 @@ func (d Dependencies) directIdentityRoutes(mux *http.ServeMux) {
 		}
 		write(w, 201, out)
 	})
-	mux.HandleFunc("PATCH /v1/direct/profiles/{id}", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "PATCH /v1/direct/profiles/{id}", func(w http.ResponseWriter, r *http.Request) {
 		var q identity.DirectProfileEdit
 		if e := decode(w, r, &q); e != nil {
 			failure(w, e)
@@ -132,7 +132,7 @@ func (d Dependencies) directIdentityRoutes(mux *http.ServeMux) {
 		}
 		write(w, 200, out)
 	})
-	mux.HandleFunc("PUT /v1/direct/profiles/order", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "PUT /v1/direct/profiles/order", func(w http.ResponseWriter, r *http.Request) {
 		var q struct {
 			Profiles []identity.ProfileOrderEntry `json:"profiles"`
 		}
@@ -147,7 +147,7 @@ func (d Dependencies) directIdentityRoutes(mux *http.ServeMux) {
 		}
 		write(w, 200, out)
 	})
-	mux.HandleFunc("POST /v1/direct/profiles/{id}/select", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "POST /v1/direct/profiles/{id}/select", func(w http.ResponseWriter, r *http.Request) {
 		var q identity.DirectSelection
 		if e := decode(w, r, &q); e != nil {
 			failure(w, e)
@@ -160,7 +160,7 @@ func (d Dependencies) directIdentityRoutes(mux *http.ServeMux) {
 		}
 		writeAuth(w, r, 200, out)
 	})
-	mux.HandleFunc("GET /v1/direct/profiles/{id}/deletion-preview", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "GET /v1/direct/profiles/{id}/deletion-preview", func(w http.ResponseWriter, r *http.Request) {
 		out, e := d.Identity.PreviewDirectProfileDeletion(r.Context(), directBearer(r), r.PathValue("id"))
 		if e != nil {
 			failure(w, e)
@@ -168,7 +168,7 @@ func (d Dependencies) directIdentityRoutes(mux *http.ServeMux) {
 		}
 		write(w, 200, out)
 	})
-	mux.HandleFunc("DELETE /v1/direct/profiles/{id}", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "DELETE /v1/direct/profiles/{id}", func(w http.ResponseWriter, r *http.Request) {
 		var q struct {
 			ExpectedRevision     int64 `json:"expectedRevision"`
 			DeleteSavedResources bool  `json:"deleteSavedResources"`
@@ -183,7 +183,7 @@ func (d Dependencies) directIdentityRoutes(mux *http.ServeMux) {
 		}
 		w.WriteHeader(204)
 	})
-	mux.HandleFunc("DELETE /v1/direct/trust", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "DELETE /v1/direct/trust", func(w http.ResponseWriter, r *http.Request) {
 		var q struct {
 			ProfileID      string `json:"profileId"`
 			InstallationID string `json:"installationId"`
@@ -198,7 +198,7 @@ func (d Dependencies) directIdentityRoutes(mux *http.ServeMux) {
 		}
 		w.WriteHeader(204)
 	})
-	mux.HandleFunc("POST /v1/direct/password", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "POST /v1/direct/password", func(w http.ResponseWriter, r *http.Request) {
 		var q struct {
 			CurrentPassword string `json:"currentPassword"`
 			NewPassword     string `json:"newPassword"`
@@ -214,7 +214,7 @@ func (d Dependencies) directIdentityRoutes(mux *http.ServeMux) {
 		}
 		w.WriteHeader(204)
 	})
-	mux.HandleFunc("GET /v1/direct/members", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "GET /v1/direct/members", func(w http.ResponseWriter, r *http.Request) {
 		out, e := d.Identity.DirectMembers(r.Context(), directBearer(r))
 		if e != nil {
 			failure(w, e)
@@ -222,7 +222,7 @@ func (d Dependencies) directIdentityRoutes(mux *http.ServeMux) {
 		}
 		write(w, 200, map[string]any{"items": out})
 	})
-	mux.HandleFunc("POST /v1/direct/members", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "POST /v1/direct/members", func(w http.ResponseWriter, r *http.Request) {
 		var q identity.DirectMemberInput
 		if e := decode(w, r, &q); e != nil {
 			failure(w, e)
@@ -235,7 +235,7 @@ func (d Dependencies) directIdentityRoutes(mux *http.ServeMux) {
 		}
 		write(w, 201, out)
 	})
-	mux.HandleFunc("PATCH /v1/direct/members/{id}", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "PATCH /v1/direct/members/{id}", func(w http.ResponseWriter, r *http.Request) {
 		var q identity.DirectMemberInput
 		if e := decodeLegacyRevision(w, r, &q); e != nil {
 			failure(w, e)
@@ -250,7 +250,7 @@ func (d Dependencies) directIdentityRoutes(mux *http.ServeMux) {
 	// A Portico Account owner accepts Hosted's custody of this server's claim
 	// (retiring it, its certificates) with its own custody assertion: after an
 	// ownership transfer to it, or when custody was released (INT M6, M10).
-	mux.HandleFunc("POST /v1/direct/ownership/custody", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "POST /v1/direct/ownership/custody", func(w http.ResponseWriter, r *http.Request) {
 		var q struct {
 			PorticoIdentity *hosted.Signed `json:"porticoIdentity"`
 		}
@@ -272,7 +272,7 @@ func (d Dependencies) directIdentityRoutes(mux *http.ServeMux) {
 		}
 		w.WriteHeader(204)
 	})
-	mux.HandleFunc("POST /v1/direct/ownership", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "POST /v1/direct/ownership", func(w http.ResponseWriter, r *http.Request) {
 		var q struct {
 			AccountID        string `json:"accountId"`
 			CurrentPassword  string `json:"currentPassword"`

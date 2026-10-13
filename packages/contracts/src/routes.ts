@@ -494,6 +494,48 @@ export const routes = [
     "status": 204
   },
   {
+    "id": "delete_direct_profiles_id",
+    "method": "DELETE",
+    "path": "/v1/direct/profiles/{id}",
+    "summary": "Delete id",
+    "access": "device",
+    "requires": "session",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 204,
+    "http": true,
+    "admission": "auth"
+  },
+  {
+    "id": "delete_direct_profiles_id_avatar",
+    "method": "DELETE",
+    "path": "/v1/direct/profiles/{id}/avatar",
+    "summary": "Delete avatar",
+    "access": "device",
+    "requires": "session",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 204,
+    "http": true,
+    "admission": "auth"
+  },
+  {
     "id": "delete_direct_remembered_account",
     "method": "DELETE",
     "path": "/v1/direct/remembered-accounts/{accountId}",
@@ -532,6 +574,48 @@ export const routes = [
       "internal"
     ],
     "status": 204
+  },
+  {
+    "id": "delete_direct_trust",
+    "method": "DELETE",
+    "path": "/v1/direct/trust",
+    "summary": "Delete trust",
+    "access": "device",
+    "requires": "session",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 204,
+    "http": true,
+    "admission": "security-fence"
+  },
+  {
+    "id": "delete_direct_two_factor",
+    "method": "DELETE",
+    "path": "/v1/direct/two-factor",
+    "summary": "Delete two factor",
+    "access": "device",
+    "requires": "session",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 204,
+    "http": true,
+    "admission": "security-fence"
   },
   {
     "id": "delete_queue",
@@ -1431,6 +1515,27 @@ export const routes = [
     "status": 200
   },
   {
+    "id": "get_direct_members",
+    "method": "GET",
+    "path": "/v1/direct/members",
+    "summary": "Get members",
+    "access": "device",
+    "requires": "session",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "auth"
+  },
+  {
     "id": "get_direct_pin_recovery",
     "method": "GET",
     "path": "/v1/direct/pin-recovery",
@@ -1491,6 +1596,27 @@ export const routes = [
     "status": 200
   },
   {
+    "id": "get_direct_profiles_id_deletion_preview",
+    "method": "GET",
+    "path": "/v1/direct/profiles/{id}/deletion-preview",
+    "summary": "Get deletion preview",
+    "access": "device",
+    "requires": "session",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "auth"
+  },
+  {
     "id": "get_direct_registration_policy",
     "method": "GET",
     "path": "/v1/direct/registration-policy",
@@ -1527,6 +1653,27 @@ export const routes = [
       "internal"
     ],
     "status": 200
+  },
+  {
+    "id": "get_direct_two_factor",
+    "method": "GET",
+    "path": "/v1/direct/two-factor",
+    "summary": "Get two factor",
+    "access": "device",
+    "requires": "session",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "security-fence"
   },
   {
     "id": "get_download_artifact",
@@ -2596,6 +2743,31 @@ export const routes = [
       "internal"
     ],
     "status": 200
+  },
+  {
+    "id": "get_profiles_id_avatar",
+    "method": "GET",
+    "path": "/v1/profiles/{id}/avatar",
+    "summary": "Get avatar",
+    "access": "device",
+    "requires": "read",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "query": [
+      "v"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "responseContentType": "application/octet-stream",
+    "http": true,
+    "admission": "default"
   },
   {
     "id": "get_queue",
@@ -4034,6 +4206,48 @@ export const routes = [
     "status": 200
   },
   {
+    "id": "patch_direct_members_id",
+    "method": "PATCH",
+    "path": "/v1/direct/members/{id}",
+    "summary": "Patch id",
+    "access": "device",
+    "requires": "session",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 204,
+    "http": true,
+    "admission": "auth"
+  },
+  {
+    "id": "patch_direct_profiles_id",
+    "method": "PATCH",
+    "path": "/v1/direct/profiles/{id}",
+    "summary": "Patch id",
+    "access": "device",
+    "requires": "session",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "auth"
+  },
+  {
     "id": "post_admin_background_pause",
     "method": "POST",
     "path": "/v1/admin/maintenance/background-pause",
@@ -4229,6 +4443,48 @@ export const routes = [
     "optionalBody": true
   },
   {
+    "id": "post_auth_refresh",
+    "method": "POST",
+    "path": "/v1/auth/refresh",
+    "summary": "Post refresh",
+    "access": "public",
+    "requires": "session",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "auth"
+  },
+  {
+    "id": "post_auth_register",
+    "method": "POST",
+    "path": "/v1/auth/register",
+    "summary": "Post register",
+    "access": "public",
+    "requires": "session",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 201,
+    "http": true,
+    "admission": "auth"
+  },
+  {
     "id": "post_auth_remembered_accounts",
     "method": "POST",
     "path": "/v1/auth/remembered-accounts",
@@ -4243,6 +4499,27 @@ export const routes = [
       "internal"
     ],
     "status": 200
+  },
+  {
+    "id": "post_auth_two_factor_challenge",
+    "method": "POST",
+    "path": "/v1/auth/two-factor/challenge",
+    "summary": "Post challenge",
+    "access": "public",
+    "requires": "session",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "security-fence"
   },
   {
     "id": "post_client_log",
@@ -4321,6 +4598,120 @@ export const routes = [
     "status": 204
   },
   {
+    "id": "post_direct_members",
+    "method": "POST",
+    "path": "/v1/direct/members",
+    "summary": "Post members",
+    "access": "device",
+    "requires": "session",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 201,
+    "http": true,
+    "admission": "auth"
+  },
+  {
+    "id": "post_direct_ownership",
+    "method": "POST",
+    "path": "/v1/direct/ownership",
+    "summary": "Post ownership",
+    "access": "device",
+    "requires": "session",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "query": [
+      "X-Portico-Installation-Id"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 204,
+    "http": true,
+    "admission": "auth"
+  },
+  {
+    "id": "post_direct_ownership_custody",
+    "method": "POST",
+    "path": "/v1/direct/ownership/custody",
+    "summary": "Post custody",
+    "access": "device",
+    "requires": "session",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "query": [
+      "X-Portico-Installation-Id"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 204,
+    "http": true,
+    "admission": "auth"
+  },
+  {
+    "id": "post_direct_password",
+    "method": "POST",
+    "path": "/v1/direct/password",
+    "summary": "Post password",
+    "access": "device",
+    "requires": "session",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 204,
+    "http": true,
+    "admission": "auth"
+  },
+  {
+    "id": "post_direct_portico_challenge",
+    "method": "POST",
+    "path": "/v1/direct/portico-challenge",
+    "summary": "Post portico challenge",
+    "access": "public",
+    "requires": "session",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "query": [
+      "X-Portico-Installation-Id"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "auth"
+  },
+  {
     "id": "post_direct_profile_pin_reset",
     "method": "POST",
     "path": "/v1/direct/profiles/{id}/pin-reset",
@@ -4344,6 +4735,138 @@ export const routes = [
     "status": 200
   },
   {
+    "id": "post_direct_profile_switch",
+    "method": "POST",
+    "path": "/v1/direct/profile-switch",
+    "summary": "Post profile switch",
+    "access": "device",
+    "requires": "session",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 204,
+    "http": true,
+    "admission": "auth"
+  },
+  {
+    "id": "post_direct_profiles",
+    "method": "POST",
+    "path": "/v1/direct/profiles",
+    "summary": "Post profiles",
+    "access": "device",
+    "requires": "session",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 201,
+    "http": true,
+    "admission": "auth"
+  },
+  {
+    "id": "post_direct_profiles_id_avatar",
+    "method": "POST",
+    "path": "/v1/direct/profiles/{id}/avatar",
+    "summary": "Post avatar",
+    "access": "device",
+    "requires": "session",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 6291456,
+    "query": [
+      "Connection"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 201,
+    "http": true,
+    "admission": "auth"
+  },
+  {
+    "id": "post_direct_profiles_id_select",
+    "method": "POST",
+    "path": "/v1/direct/profiles/{id}/select",
+    "summary": "Post select",
+    "access": "device",
+    "requires": "session",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "auth"
+  },
+  {
+    "id": "post_direct_remembered_accounts",
+    "method": "POST",
+    "path": "/v1/direct/remembered-accounts",
+    "summary": "Post remembered accounts",
+    "access": "device",
+    "requires": "session",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "auth"
+  },
+  {
+    "id": "post_direct_sign_in",
+    "method": "POST",
+    "path": "/v1/direct/sign-in",
+    "summary": "Post sign in",
+    "access": "public",
+    "requires": "session",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "query": [
+      "X-Portico-Installation-Id"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "auth"
+  },
+  {
     "id": "post_direct_sign_out_everywhere",
     "method": "POST",
     "path": "/v1/direct/sessions/sign-out-everywhere",
@@ -4363,6 +4886,48 @@ export const routes = [
       "internal"
     ],
     "status": 204
+  },
+  {
+    "id": "post_direct_two_factor_enrol",
+    "method": "POST",
+    "path": "/v1/direct/two-factor/enrol",
+    "summary": "Post enrol",
+    "access": "device",
+    "requires": "session",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 201,
+    "http": true,
+    "admission": "security-fence"
+  },
+  {
+    "id": "post_direct_two_factor_verify",
+    "method": "POST",
+    "path": "/v1/direct/two-factor/verify",
+    "summary": "Post verify",
+    "access": "device",
+    "requires": "session",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "security-fence"
   },
   {
     "id": "post_feedback",
@@ -4876,6 +5441,27 @@ export const routes = [
       "internal"
     ],
     "status": 200
+  },
+  {
+    "id": "put_direct_profiles_order",
+    "method": "PUT",
+    "path": "/v1/direct/profiles/order",
+    "summary": "Put order",
+    "access": "device",
+    "requires": "session",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "auth"
   },
   {
     "id": "put_direct_registration_policy",
