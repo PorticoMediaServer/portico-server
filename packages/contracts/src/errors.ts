@@ -37,6 +37,12 @@ export const errors = [
     "retry": "same_request"
   },
   {
+    "code": "confirmation_mismatch",
+    "status": 409,
+    "message": "Type the name exactly as shown to confirm.",
+    "retry": "never"
+  },
+  {
     "code": "credential_busy",
     "status": 429,
     "message": "This API key or access token has too many requests running. Try again shortly.",

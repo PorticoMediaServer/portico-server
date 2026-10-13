@@ -391,6 +391,26 @@ export const routes = [
     "status": 204
   },
   {
+    "id": "empty_missing_titles",
+    "method": "POST",
+    "path": "/v1/admin/missing-titles/empty",
+    "summary": "Remove missing titles and missing files now, whatever the owner's rule says; call again while more is true",
+    "access": "owner",
+    "requires": "library",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 4096,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "invalid_request",
+      "internal"
+    ],
+    "status": 200,
+    "optionalBody": true
+  },
+  {
     "id": "get_admin_backups",
     "method": "GET",
     "path": "/v1/admin/backups",
@@ -818,6 +838,24 @@ export const routes = [
     "sse": true
   },
   {
+    "id": "get_items_screen_metadata",
+    "method": "GET",
+    "path": "/v1/items/{id}/metadata/screen",
+    "summary": "Read match evidence, field provenance and provider candidates",
+    "access": "owner",
+    "requires": "library",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
     "id": "get_job",
     "method": "GET",
     "path": "/v1/jobs/{id}",
@@ -860,6 +898,50 @@ export const routes = [
       "rate_limited",
       "internal",
       "invalid_cursor"
+    ],
+    "status": 200
+  },
+  {
+    "id": "get_metadata_attention",
+    "method": "GET",
+    "path": "/v1/libraries/{id}/metadata/attention",
+    "summary": "List unmatched and uncertain titles with their best candidates",
+    "access": "owner",
+    "requires": "library",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "cursor",
+      "limit"
+    ],
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "invalid_request",
+      "revision_mismatch",
+      "rate_limited",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
+    "id": "get_metadata_settings",
+    "method": "GET",
+    "path": "/v1/admin/metadata/settings",
+    "summary": "Read provider credentials status and artwork storage limit",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "invalid_request",
+      "revision_mismatch",
+      "internal"
     ],
     "status": 200
   },
@@ -1002,6 +1084,24 @@ export const routes = [
     "status": 200
   },
   {
+    "id": "get_shows_screen_metadata",
+    "method": "GET",
+    "path": "/v1/shows/{id}/metadata/screen",
+    "summary": "Read match evidence, field provenance and provider candidates",
+    "access": "owner",
+    "requires": "library",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
     "id": "list_access_tokens",
     "method": "GET",
     "path": "/v1/me/access-tokens",
@@ -1092,6 +1192,30 @@ export const routes = [
       "session_required",
       "invalid_request",
       "administration_unavailable",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
+    "id": "list_missing_titles",
+    "method": "GET",
+    "path": "/v1/admin/missing-titles",
+    "summary": "List titles whose files are no longer on disk, oldest first, with when each will be removed",
+    "access": "owner",
+    "requires": "library",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "libraryId",
+      "cursor",
+      "limit"
+    ],
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "invalid_request",
       "internal"
     ],
     "status": 200
@@ -1194,6 +1318,25 @@ export const routes = [
     "bodyLimit": 0,
     "errors": [
       "method_not_allowed"
+    ],
+    "status": 200
+  },
+  {
+    "id": "merge_titles",
+    "method": "POST",
+    "path": "/v1/admin/titles/merge",
+    "summary": "Say that two titles of one library are the same title: the first becomes part of the second, with its files as versions and everyone's state combined",
+    "access": "owner",
+    "requires": "library",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 4096,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "invalid_request",
+      "internal"
     ],
     "status": 200
   },
@@ -1400,6 +1543,27 @@ export const routes = [
     "status": 204
   },
   {
+    "id": "post_metadata_attention",
+    "method": "POST",
+    "path": "/v1/libraries/{id}/metadata/attention",
+    "summary": "Accept a candidate, search, enter a provider ID or dismiss a title",
+    "access": "owner",
+    "requires": "library",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 4096,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "invalid_request",
+      "revision_mismatch",
+      "rate_limited",
+      "internal"
+    ],
+    "status": 202
+  },
+  {
     "id": "prepare_queue_next",
     "method": "POST",
     "path": "/v1/queues/{id}:prepare-next",
@@ -1542,6 +1706,25 @@ export const routes = [
     "status": 200
   },
   {
+    "id": "put_metadata_settings",
+    "method": "PUT",
+    "path": "/v1/admin/metadata/settings",
+    "summary": "Save provider credential overrides and artwork storage limit",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 32768,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "invalid_request",
+      "revision_mismatch",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
     "id": "query_titles",
     "method": "GET",
     "path": "/v1/titles",
@@ -1574,6 +1757,68 @@ export const routes = [
       "internal"
     ],
     "status": 200
+  },
+  {
+    "id": "refresh_items_metadata",
+    "method": "POST",
+    "path": "/v1/items/{id}/metadata/refresh",
+    "summary": "Fetch current metadata for a title",
+    "access": "owner",
+    "requires": "library",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 4096,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "invalid_request",
+      "internal"
+    ],
+    "status": 202,
+    "optionalBody": true
+  },
+  {
+    "id": "refresh_shows_metadata",
+    "method": "POST",
+    "path": "/v1/shows/{id}/metadata/refresh",
+    "summary": "Fetch current metadata for a title",
+    "access": "owner",
+    "requires": "library",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 4096,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "invalid_request",
+      "internal"
+    ],
+    "status": 202,
+    "optionalBody": true
+  },
+  {
+    "id": "remove_library",
+    "method": "DELETE",
+    "path": "/v1/admin/libraries/{id}",
+    "summary": "Remove a library: it disappears at once and is taken apart in the background; files on disk are not touched and each profile's state is kept in case its titles return",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 4096,
+    "errors": [
+      "revision_mismatch",
+      "confirmation_mismatch",
+      "administration_unavailable",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "invalid_request",
+      "internal"
+    ],
+    "status": 202
   },
   {
     "id": "remove_queue_entry",

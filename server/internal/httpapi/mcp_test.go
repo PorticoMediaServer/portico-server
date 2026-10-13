@@ -82,11 +82,11 @@ func TestMCPAuthenticatesWithACredentialAndSpeaksJSONRPC(t *testing.T) {
 	}
 	// Errors use the JSON-RPC codes.
 	for body, code := range map[string]int{
-		`{"jsonrpc":"2.0","id":3,"method":"resources/list"}`:                        -32601,
-		`{"jsonrpc":"1.0","id":3,"method":"ping"}`:                                  -32600,
-		`{"jsonrpc":"2.0","id":{"a":1},"method":"ping"}`:                            -32600,
-		`{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{}}`:                -32602,
-		`{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"nope"}}`:   -32602,
+		`{"jsonrpc":"2.0","id":3,"method":"resources/list"}`:                      -32601,
+		`{"jsonrpc":"1.0","id":3,"method":"ping"}`:                                -32600,
+		`{"jsonrpc":"2.0","id":{"a":1},"method":"ping"}`:                          -32600,
+		`{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{}}`:              -32602,
+		`{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"nope"}}`: -32602,
 		`{not json`: -32700,
 		`[]`:        -32600,
 	} {

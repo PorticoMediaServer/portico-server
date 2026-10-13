@@ -85,20 +85,20 @@ func TestTitleQueryPagesByIndexAndAppliesTheCallersRestrictions(t *testing.T) {
 	}
 	// Refusals: everything the indexes cannot answer, and anything unbounded.
 	for _, bad := range []string{
-		"kind=movie",                                      // no library
-		"library=movies",                                  // no kind
-		"library=movies&kind=nonsense",                    // unknown kind
-		"library=movies&kind=movie&sort=rating",           // no index for that sort
-		"library=movies&kind=movie&order=sideways",        //
-		"library=movies&kind=movie&yearFrom=2000",         // range on a key that is not the sort
+		"kind=movie",                               // no library
+		"library=movies",                           // no kind
+		"library=movies&kind=nonsense",             // unknown kind
+		"library=movies&kind=movie&sort=rating",    // no index for that sort
+		"library=movies&kind=movie&order=sideways", //
+		"library=movies&kind=movie&yearFrom=2000",  // range on a key that is not the sort
 		"library=movies&kind=movie&sort=title&addedAfter=2020-01-01T00:00:00Z",
 		"library=movies&kind=movie&sort=added&addedAfter=yesterday",
 		"library=movies&kind=movie&limit=101",
 		"library=movies&kind=movie&limit=0",
 		"library=movies&kind=movie&limit=-1",
 		"library=movies&kind=movie&cursor=forged",
-		"library=movies&kind=movie&filter=anything",       // unknown parameter
-		"library=movies&kind=movie&kind=show",             // repeated parameter
+		"library=movies&kind=movie&filter=anything", // unknown parameter
+		"library=movies&kind=movie&kind=show",       // repeated parameter
 		"provider=plex&providerId=1",
 		"provider=tmdb",
 		"provider=tmdb&providerId=603&sort=title",

@@ -29,7 +29,7 @@ func metadataAttentionError(err error) error {
 func registerMetadataAttention(registry *apikit.Registry, d Dependencies) {
 	failures := []string{"unauthorized", "not_permitted", "not_found", "invalid_request", "revision_mismatch", "rate_limited", "internal"}
 	rate := &personalLimiter{}
-	v1Route(registry, apikit.Metadata{ID: "get_metadata_attention", Method: "GET", Path: "/v1/libraries/{id}/metadata/attention", Summary: "List unmatched and uncertain titles with their best candidates", Access: apikit.Owner, Lane: apikit.Browsing, Cost: apikit.PageSized, Status: 200, Query: []string{"cursor", "limit"}, Errors: failures}, func(ctx context.Context, r *http.Request, _ noBody) (metadata.AttentionPage, error) {
+	v1Route(registry, apikit.Metadata{ID: "get_metadata_attention", Method: "GET", Path: "/v1/libraries/{id}/metadata/attention", Summary: "List unmatched and uncertain titles with their best candidates", Access: apikit.Owner, Requires: apikit.ScopeLibrary, Lane: apikit.Browsing, Cost: apikit.PageSized, Status: 200, Query: []string{"cursor", "limit"}, Errors: failures}, func(ctx context.Context, r *http.Request, _ noBody) (metadata.AttentionPage, error) {
 		if _, e := d.owner(r); e != nil {
 			return metadata.AttentionPage{}, e
 		}
@@ -48,7 +48,7 @@ func registerMetadataAttention(registry *apikit.Registry, d Dependencies) {
 		_, e = d.owner(r)
 		return out, e
 	})
-	v1Route(registry, apikit.Metadata{ID: "post_metadata_attention", Method: "POST", Path: "/v1/libraries/{id}/metadata/attention", Summary: "Accept a candidate, search, enter a provider ID or dismiss a title", Access: apikit.Owner, Lane: apikit.Browsing, Cost: apikit.Constant, Status: 202, BodyLimit: 4096, Errors: failures}, func(ctx context.Context, r *http.Request, in metadata.AttentionCommand) (attentionReceipt, error) {
+	v1Route(registry, apikit.Metadata{ID: "post_metadata_attention", Method: "POST", Path: "/v1/libraries/{id}/metadata/attention", Summary: "Accept a candidate, search, enter a provider ID or dismiss a title", Access: apikit.Owner, Requires: apikit.ScopeLibrary, Lane: apikit.Browsing, Cost: apikit.Constant, Status: 202, BodyLimit: 4096, Errors: failures}, func(ctx context.Context, r *http.Request, in metadata.AttentionCommand) (attentionReceipt, error) {
 		p, e := d.owner(r)
 		if e != nil {
 			return attentionReceipt{}, e
@@ -63,7 +63,7 @@ func registerMetadataAttention(registry *apikit.Registry, d Dependencies) {
 
 func registerMetadataSettings(registry *apikit.Registry, d Dependencies) {
 	failures := []string{"unauthorized", "not_permitted", "invalid_request", "revision_mismatch", "internal"}
-	v1Route(registry, apikit.Metadata{ID: "get_metadata_settings", Method: "GET", Path: "/v1/admin/metadata/settings", Summary: "Read provider credentials status and artwork storage limit", Access: apikit.Owner, Lane: apikit.Default, Cost: apikit.Constant, Status: 200, Errors: failures}, func(ctx context.Context, r *http.Request, _ noBody) (metadata.MetadataSettings, error) {
+	v1Route(registry, apikit.Metadata{ID: "get_metadata_settings", Method: "GET", Path: "/v1/admin/metadata/settings", Summary: "Read provider credentials status and artwork storage limit", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Cost: apikit.Constant, Status: 200, Errors: failures}, func(ctx context.Context, r *http.Request, _ noBody) (metadata.MetadataSettings, error) {
 		if _, e := d.owner(r); e != nil {
 			return metadata.MetadataSettings{}, e
 		}
@@ -74,7 +74,7 @@ func registerMetadataSettings(registry *apikit.Registry, d Dependencies) {
 		_, e = d.owner(r)
 		return out, e
 	})
-	v1Route(registry, apikit.Metadata{ID: "put_metadata_settings", Method: "PUT", Path: "/v1/admin/metadata/settings", Summary: "Save provider credential overrides and artwork storage limit", Access: apikit.Owner, Lane: apikit.Default, Cost: apikit.Constant, Status: 200, BodyLimit: 32768, Errors: failures}, func(ctx context.Context, r *http.Request, in metadata.MetadataSettingsUpdate) (metadata.MetadataSettings, error) {
+	v1Route(registry, apikit.Metadata{ID: "put_metadata_settings", Method: "PUT", Path: "/v1/admin/metadata/settings", Summary: "Save provider credential overrides and artwork storage limit", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Cost: apikit.Constant, Status: 200, BodyLimit: 32768, Errors: failures}, func(ctx context.Context, r *http.Request, in metadata.MetadataSettingsUpdate) (metadata.MetadataSettings, error) {
 		p, e := d.owner(r)
 		if e != nil {
 			return metadata.MetadataSettings{}, e
@@ -91,7 +91,7 @@ type refreshReceipt struct {
 
 func registerMetadataRefresh(registry *apikit.Registry, d Dependencies) {
 	for _, kind := range []string{"items", "shows"} {
-		v1Route(registry, apikit.Metadata{ID: "refresh_" + kind + "_metadata", Method: "POST", Path: "/v1/" + kind + "/{id}/metadata/refresh", Summary: "Fetch current metadata for a title", Access: apikit.Owner, Lane: apikit.Browsing, Cost: apikit.Constant, Status: 202, OptionalBody: true, BodyLimit: 4096, Errors: []string{"unauthorized", "not_permitted", "not_found", "invalid_request", "internal"}}, func(ctx context.Context, r *http.Request, _ noBody) (refreshReceipt, error) {
+		v1Route(registry, apikit.Metadata{ID: "refresh_" + kind + "_metadata", Method: "POST", Path: "/v1/" + kind + "/{id}/metadata/refresh", Summary: "Fetch current metadata for a title", Access: apikit.Owner, Requires: apikit.ScopeLibrary, Lane: apikit.Browsing, Cost: apikit.Constant, Status: 202, OptionalBody: true, BodyLimit: 4096, Errors: []string{"unauthorized", "not_permitted", "not_found", "invalid_request", "internal"}}, func(ctx context.Context, r *http.Request, _ noBody) (refreshReceipt, error) {
 			p, e := d.owner(r)
 			if e != nil {
 				return refreshReceipt{}, e
@@ -116,7 +116,7 @@ func registerMetadataRefresh(registry *apikit.Registry, d Dependencies) {
 func registerScreenMetadataReads(registry *apikit.Registry, d Dependencies) {
 	for _, target := range []struct{ route, kind string }{{"items", "item"}, {"shows", "show"}} {
 		kind := target.kind
-		v1Route(registry, apikit.Metadata{ID: "get_" + target.route + "_screen_metadata", Method: "GET", Path: "/v1/" + target.route + "/{id}/metadata/screen", Summary: "Read match evidence, field provenance and provider candidates", Access: apikit.Owner, Lane: apikit.Browsing, Cost: apikit.PageSized, Status: 200, Errors: []string{"unauthorized", "not_permitted", "not_found", "internal"}}, func(ctx context.Context, r *http.Request, _ noBody) (metadata.ScreenState, error) {
+		v1Route(registry, apikit.Metadata{ID: "get_" + target.route + "_screen_metadata", Method: "GET", Path: "/v1/" + target.route + "/{id}/metadata/screen", Summary: "Read match evidence, field provenance and provider candidates", Access: apikit.Owner, Requires: apikit.ScopeLibrary, Lane: apikit.Browsing, Cost: apikit.PageSized, Status: 200, Errors: []string{"unauthorized", "not_permitted", "not_found", "internal"}}, func(ctx context.Context, r *http.Request, _ noBody) (metadata.ScreenState, error) {
 			if _, e := d.owner(r); e != nil {
 				return metadata.ScreenState{}, e
 			}
