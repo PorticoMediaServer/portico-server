@@ -76,14 +76,15 @@ type AudioStream struct {
 	VisualImpaired bool   `json:"visualImpaired"`
 }
 type SubStream struct {
-	ID       string `json:"id"`
-	Format   string `json:"format"`
-	Source   string `json:"source"`
-	Language string `json:"language,omitempty"`
-	Title    string `json:"title,omitempty"`
-	Forced   bool   `json:"forced"`
-	SDH      bool   `json:"sdh"`
-	Default  bool   `json:"default"`
+	Deliveries []subtitles.Delivery `json:"deliveries"`
+	ID         string               `json:"id"`
+	Format     string               `json:"format"`
+	Source     string               `json:"source"`
+	Language   string               `json:"language,omitempty"`
+	Title      string               `json:"title,omitempty"`
+	Forced     bool                 `json:"forced"`
+	SDH        bool                 `json:"sdh"`
+	Default    bool                 `json:"default"`
 }
 type Chapter struct {
 	StartMs int64  `json:"startMs"`
@@ -501,7 +502,7 @@ func (s *Service) Options(ctx context.Context, p identity.Principal, item string
 			renderers[r.ID] = r.Renderer
 			if r.SourceID == first.id && r.Enabled {
 				lower := strings.ToLower(r.Title)
-				v.Subtitles = append(v.Subtitles, SubStream{ID: r.ID, Format: r.Format, Source: subtitleSource(r.Origin), Language: r.Language, Title: r.Title, Forced: r.Forced, SDH: strings.Contains(lower, "sdh") || strings.Contains(lower, "hearing"), Default: r.Default})
+				v.Subtitles = append(v.Subtitles, SubStream{Deliveries: r.Deliveries, ID: r.ID, Format: r.Format, Source: subtitleSource(r.Origin), Language: r.Language, Title: r.Title, Forced: r.Forced, SDH: r.HearingImpaired || strings.Contains(lower, "sdh") || strings.Contains(lower, "hearing"), Default: r.Default})
 			}
 		}
 		label := []string{}

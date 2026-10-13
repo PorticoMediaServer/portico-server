@@ -12,9 +12,6 @@ import (
 )
 
 const MaxTracks = 32
-const MaxPreparedTracks = 8
-const MaxPreparedBytes = 16 << 20
-const ChunkMS int64 = 240000
 
 type Track struct {
 	Origin, Locator, Format, Language, Title, Reason string
@@ -142,14 +139,20 @@ func discover(ctx context.Context, c *storage.Client, key, path string, embedded
 				if ext == ".sup" {
 					limit = MaxBinaryBytes
 				}
-				raw, e := c.ReadSmall(ctx, key, v.Path, limit)
+				var raw []byte
+				var e error
+				if ext == ".sup" {
+					raw, e = c.ReadSubtitleBinary(ctx, key, v.Path, limit)
+				} else {
+					raw, e = c.ReadSmall(ctx, key, v.Path, limit)
+				}
 				var companion []byte
 				var pairedBefore storage.Snapshot
 				if ext == ".idx" && e == nil {
 					pairedPath := strings.TrimSuffix(v.Path, filepath.Ext(v.Path)) + ".sub"
 					pairedBefore, e = c.Stat(ctx, key, pairedPath)
 					if e == nil {
-						companion, e = c.ReadSmall(ctx, key, pairedPath, MaxBinaryBytes)
+						companion, e = c.ReadSubtitleBinary(ctx, key, pairedPath, MaxBinaryBytes)
 					}
 					if e == nil {
 						after, x := c.Stat(ctx, key, pairedPath)

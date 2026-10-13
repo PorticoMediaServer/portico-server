@@ -13,6 +13,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"portico.local/apikit"
 	"portico.local/server/internal/decoder"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/playback"
@@ -104,13 +105,14 @@ func subtitleDecode(w http.ResponseWriter, r *http.Request, out any) error {
 	}
 	return nil
 }
-func (d Dependencies) subtitleRoutes(mux *http.ServeMux) {
+func (d Dependencies) registerSubtitleRoutes(registry *apikit.Registry) error {
 	if d.Subtitles == nil {
-		return
+		return nil
 	}
+	var registrationError error
 	type handler func(http.ResponseWriter, *http.Request, identity.Principal) (any, error)
 	register := func(pattern string, fn handler) {
-		mux.HandleFunc(pattern, func(w http.ResponseWriter, r *http.Request) {
+		serve := func(w http.ResponseWriter, r *http.Request) {
 			subtitleHeaders(w)
 			p, e := d.principal(r)
 			if e != nil {
@@ -123,7 +125,32 @@ func (d Dependencies) subtitleRoutes(mux *http.ServeMux) {
 				return
 			}
 			write(w, 200, out)
-		})
+		}
+		if registrationError != nil {
+			return
+		}
+		switch pattern {
+		case "GET /v1/items/{id}/subtitles":
+			registrationError = registerSubtitleRaw[struct{}, subtitles.Catalog](registry, pattern, serve)
+		case "POST /v1/items/{id}/subtitles", "PUT /v1/items/{id}/subtitles/{resource}":
+			registrationError = registerSubtitleRaw[subtitles.Mutation, subtitles.Receipt](registry, pattern, serve)
+		case "DELETE /v1/items/{id}/subtitles/{resource}":
+			registrationError = registerSubtitleRaw[subtitles.DeleteMutation, subtitles.Receipt](registry, pattern, serve)
+		case "POST /v1/items/{id}/subtitles/import":
+			registrationError = registerSubtitleRaw[subtitles.ImportRequest, subtitles.Receipt](registry, pattern, serve)
+		case "POST /v1/items/{id}/subtitles/refresh":
+			registrationError = registerSubtitleRaw[SubtitleRefreshRequest, subtitles.Catalog](registry, pattern, serve)
+		case "POST /v1/items/{id}/subtitles/remote":
+			registrationError = registerSubtitleRaw[subtitles.RemoteRequest, subtitles.Receipt](registry, pattern, serve)
+		case "POST /v1/items/{id}/subtitles/search":
+			registrationError = registerSubtitleRaw[subtitles.SearchRequest, subtitles.SearchResult](registry, pattern, serve)
+		case "POST /v1/items/{id}/subtitles/apply":
+			registrationError = registerSubtitleRaw[subtitles.ApplyRequest, subtitles.Receipt](registry, pattern, serve)
+		case "GET /v1/items/{id}/playback/{session}/subtitles":
+			registrationError = registerSubtitleRaw[struct{}, subtitles.PlaybackPlan](registry, pattern, serve)
+		case "PUT /v1/items/{id}/playback/{session}/subtitles":
+			registrationError = registerSubtitleRaw[subtitles.SelectRequest, subtitles.PlaybackPlan](registry, pattern, serve)
+		}
 	}
 	register("GET /v1/items/{id}/subtitles", func(w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
 		return d.Subtitles.List(r.Context(), p, r.PathValue("id"))
@@ -247,7 +274,10 @@ func (d Dependencies) subtitleRoutes(mux *http.ServeMux) {
 		}
 		return out, sessionNotVisible(e)
 	})
-	mux.HandleFunc("GET /v1/media/{grant}/subtitles/{resource}/{revision}", func(w http.ResponseWriter, r *http.Request) {
+	if registrationError != nil {
+		return registrationError
+	}
+	registrationError = registerSubtitleRaw[struct{}, SubtitleBytesContract](registry, "GET /v1/media/{grant}/subtitles/{resource}/{revision}", func(w http.ResponseWriter, r *http.Request) {
 		subtitleHeaders(w)
 		isVTT := strings.HasSuffix(r.PathValue("revision"), ".vtt")
 		revisionText := strings.TrimSuffix(r.PathValue("revision"), ".vtt")
@@ -317,6 +347,16 @@ func (d Dependencies) subtitleRoutes(mux *http.ServeMux) {
 		}
 		serveSubtitleDocument(w, r, id, revision, reader, check)
 	})
+	if registrationError != nil {
+		return registrationError
+	}
+	for _, path := range []string{"/v1/media/{grant}/subtitles/{resource}/{revision}/{file}", "/v1/media/{grant}/subtitles/{resource}/{revision}/fonts/{font}"} {
+		if e := registerSubtitleRaw[struct{}, SubtitleBytesContract](registry, "GET "+path, d.originalSubtitleRoute); e != nil {
+			return e
+		}
+	}
+	return registerSubtitleRaw[struct{}, subtitles.FontFiles](registry, "GET /v1/media/{grant}/subtitles/{resource}/{revision}/fonts", d.originalSubtitleRoute)
+
 }
 
 // subtitleETagMatches compares an If-None-Match header with this document's

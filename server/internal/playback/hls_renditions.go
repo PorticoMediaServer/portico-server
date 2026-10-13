@@ -192,7 +192,18 @@ func hlsMasterManifest(p *DeliveryPlan) []byte {
 	}
 	fmt.Fprintf(&b, "#EXTM3U\n#EXT-X-VERSION:%d\n#EXT-X-INDEPENDENT-SEGMENTS\n", version)
 	for i, r := range p.TextRenditions {
-		fmt.Fprintf(&b, "#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID=\"subtitles\",NAME=\"%s\",LANGUAGE=\"%s\",DEFAULT=NO,AUTOSELECT=NO,URI=\"text-%d.m3u8\"\n", manifestQuoted(r.Label), manifestAudioLanguage(r.Language), i)
+		def, auto, forced := "NO", "NO", "NO"
+		if r.Selected {
+			def, auto = "YES", "YES"
+		}
+		if r.Forced {
+			forced = "YES"
+		}
+		characteristics := ""
+		if r.HearingImpaired {
+			characteristics = ",CHARACTERISTICS=\"public.accessibility.transcribes-spoken-dialog,public.accessibility.describes-music-and-sound\""
+		}
+		fmt.Fprintf(&b, "#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID=\"subtitles\",NAME=\"%s\",LANGUAGE=\"%s\",DEFAULT=%s,AUTOSELECT=%s,FORCED=%s%s,URI=\"text-%d.m3u8\"\n", manifestQuoted(r.Label), manifestAudioLanguage(r.Language), def, auto, forced, characteristics, i)
 	}
 	codecs := []string{videoCodecString(p)}
 	audioRate := p.AudioBitrateBPS

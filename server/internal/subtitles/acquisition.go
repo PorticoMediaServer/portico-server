@@ -151,10 +151,11 @@ func (s *Service) Import(ctx context.Context, p identity.Principal, item string,
 		}
 		original = SidecarFingerprint(raw.Data, raw.Companion)
 	}
+	originalAsset := canonical
 	canonical = renderChoice(canonical, m.Render, int64(src.duration*1e6))
 	format := track.Format
 	mutation := Mutation{OperationID: m.OperationID, SourceID: m.SourceID, Scope: m.Scope, Format: format, Language: track.Language, Title: track.Title, Rights: "Imported from the viewer's authorized media source", OffsetUS: "0"}
-	pub := publication{source: src, origin: track.Origin, originalDigest: original, evidence: evidence, defaultTrack: track.Default, forcedTrack: track.Forced, discovery: track.ID, discoveryRevision: track.Revision}
+	pub := publication{originalAsset: originalAsset, source: src, origin: track.Origin, originalDigest: original, evidence: evidence, hearingImpaired: track.HearingImpaired, defaultTrack: track.Default, forcedTrack: track.Forced, discovery: track.ID, discoveryRevision: track.Revision}
 	if cache, ok := ctx.Value(lazyCacheKey{}).(lazyCacheTarget); ok {
 		if cache.discovery != track.ID || cache.source != src.ID {
 			return Receipt{}, ErrInput

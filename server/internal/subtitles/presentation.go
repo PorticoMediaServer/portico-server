@@ -44,8 +44,8 @@ func (s *Service) Select(ctx context.Context, p identity.Principal, item, sessio
 	if m.Mode == "off" && (m.ResourceID != "" || m.ResourceRevision != 0 || offset != 0) || m.Mode == "track" && (!validID(m.ResourceID) || m.ResourceRevision < 1) {
 		return PlaybackPlan{}, ErrInput
 	}
-	if m.Mode == "track" {
-		if e := s.ensureCached(ctx, p, item, m.ResourceID, m.ResourceRevision); e != nil {
+	if m.Mode == "track" && m.Rendering == "" {
+		if e := s.ensureBurnCached(ctx, p, item, m.ResourceID, m.ResourceRevision); e != nil {
 			return PlaybackPlan{}, e
 		}
 	}
@@ -112,7 +112,18 @@ func (s *Service) Select(ctx context.Context, p identity.Principal, item, sessio
 		if (resource.deleted || latest != resource.Revision) && (currentID != resource.ID || currentRevision != resource.Revision) {
 			return PlaybackPlan{}, ErrConflict
 		}
-		if resource.Renderer == "burn_in" {
+		if m.Rendering != "" {
+			matched := false
+			for _, d := range deliveryFormats(resource.Format) {
+				if d.Format == m.Rendering {
+					matched = true
+				}
+			}
+			if !matched {
+				return PlaybackPlan{}, ErrUnsupported
+			}
+		}
+		if resource.Renderer == "burn_in" && (m.Rendering == "" || m.Rendering == "text") {
 			if s.ChangeDeliveryTx == nil {
 				return PlaybackPlan{}, ErrUnavailable
 			}
@@ -132,7 +143,7 @@ func (s *Service) Select(ctx context.Context, p identity.Principal, item, sessio
 			defer reader.Close()
 		}
 	}
-	prepared.replace = resource.Renderer == "burn_in" || prepared.oldRender != "" || scope.mode == "hls" && currentOffset != offset
+	prepared.replace = resource.Renderer == "burn_in" && m.Rendering == "" || prepared.oldRender != "" || scope.mode == "hls" && currentOffset != offset
 	if prepared.replace {
 		position, e := strconv.ParseInt(m.PositionUS, 10, 64)
 		if e != nil || position < 0 || strconv.FormatInt(position, 10) != m.PositionUS {

@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"portico.local/server/internal/mediasource"
+	"strings"
 	"time"
 )
 
@@ -217,12 +218,16 @@ func Helper(in io.Reader, out io.Writer) (result error) {
 			return errors.New("not a directory")
 		}
 		return encoder.Encode(snapshot(path, info))
-	case "inventory-blob":
+	case "inventory-blob", "inventory-subtitle-blob":
 		return inventoryBlobHelper(r, out)
 	case "inventory-command":
 		return inventoryCommandHelper(r)
-	case "blob":
-		if r.Limit <= 0 || r.Limit > 8<<20 {
+	case "blob", "subtitle-blob":
+		maximum := int64(8 << 20)
+		if r.Operation == "subtitle-blob" && binarySubtitlePath(r.Path) {
+			maximum = 32 << 20
+		}
+		if r.Limit <= 0 || r.Limit > maximum {
 			return errors.New("invalid blob limit")
 		}
 		info, e := os.Lstat(r.Path)
@@ -365,7 +370,23 @@ func (c *Client) Mounted(ctx context.Context, path string) (bool, error) {
 }
 
 func (c *Client) ReadSmall(ctx context.Context, key, path string, limit int64) ([]byte, error) {
+	return c.readBlob(ctx, key, path, limit, false)
+}
+
+// ReadSubtitleBinary is a distinct, bounded contract for SUP and VobSub packets.
+// Metadata readers retain their smaller limits and the same rooted custody.
+func (c *Client) ReadSubtitleBinary(ctx context.Context, key, path string, limit int64) ([]byte, error) {
+	ext := strings.ToLower(filepath.Ext(path))
+	if (ext != ".sup" && ext != ".sub") || limit <= 0 || limit > 32<<20 {
+		return nil, errors.New("invalid subtitle binary read")
+	}
+	return c.readBlob(ctx, key, path, limit, true)
+}
+func (c *Client) readBlob(ctx context.Context, key, path string, limit int64, subtitle bool) ([]byte, error) {
 	if c.IsRemote(path) {
+		if subtitle {
+			return c.readRemoteBlob(ctx, path, limit, 32<<20)
+		}
 		return c.readRemoteSmall(ctx, path, limit)
 	}
 	if err := CheckScanRead(ctx, path); err != nil {
@@ -379,12 +400,18 @@ func (c *Client) ReadSmall(ctx context.Context, key, path string, limit int64) (
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	req := request{Operation: "blob", Path: path, Limit: limit, ManagedArtifact: c.managedRecording(path)}
+	if subtitle {
+		req.Operation = "subtitle-blob"
+	}
 	root, rooted, err := inventoryReadRequest(ctx, path)
 	if err != nil {
 		return nil, err
 	}
 	if rooted != nil {
 		req.Operation = "inventory-blob"
+		if subtitle {
+			req.Operation = "inventory-subtitle-blob"
+		}
 		req.Inventory = &root
 	}
 	if c.MountedRoot != nil {
@@ -421,4 +448,9 @@ func (c *Client) RemoveOwnedMountRoot(ctx context.Context, path, identity string
 	copy := *c
 	copy.expectedIdentity = identity
 	return copy.RemoveMountRoot(ctx, path)
+}
+
+func binarySubtitlePath(path string) bool {
+	ext := strings.ToLower(filepath.Ext(path))
+	return ext == ".sup" || ext == ".sub"
 }

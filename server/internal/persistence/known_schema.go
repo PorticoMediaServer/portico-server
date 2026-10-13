@@ -15,8 +15,7 @@ import (
 // for, and a count of foreign objects is how an owner finds out that is what
 // they have. Nothing is ever dropped automatically: a build that does not define
 // a table cannot know what removing it would cost.
-const knownSchemaObjects = `
-index access_api_keys_page
+const knownSchemaObjects = `index access_api_keys_page
 index access_devices_account
 index access_devices_page
 index access_invitation_page
@@ -408,6 +407,7 @@ index social_group_receipts_age
 index social_groups_owner
 index social_handoffs_open
 index subtitle_candidates_expiry
+index subtitle_inventory_entries_association
 index subtitle_provider_candidates_item_id_fk
 index subtitle_resources_item
 index subtitle_resources_source_id_fk
@@ -904,12 +904,9 @@ table playback_sessions
 table playback_source_observations
 table playback_source_pins
 table playback_source_versions
-table playback_subtitle_files
 table playback_subtitle_pins
-table playback_subtitle_plans
 table playback_subtitle_presentations
 table playback_subtitle_state
-table playback_subtitle_tracks
 table playback_v1_prepared
 table playback_v1_sessions
 table playback_vod_intervals
@@ -1000,6 +997,7 @@ table subtitle_collections
 table subtitle_inventory_entries
 table subtitle_inventory_evidence
 table subtitle_operations
+table subtitle_original_revisions
 table subtitle_provider_candidates
 table subtitle_remote_sessions
 table subtitle_render_revisions
@@ -1688,8 +1686,7 @@ view authorization_access
 view inventory_asset_availability
 view inventory_item_availability
 view inventory_library_availability
-view listening_book_context
-`
+view listening_book_context`
 
 // subsystemSchemaObjects is empty: the guardrail finds no runtime schema
 // declarations outside persistence. Persistence's own legacy installers need

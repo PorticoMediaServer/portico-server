@@ -6,6 +6,7 @@ import (
 	"errors"
 	"portico.local/server/internal/dbwork"
 	"strconv"
+	"strings"
 
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/segmentmarkers"
@@ -100,7 +101,7 @@ func ViewerMarkersTx(ctx context.Context, tx *sql.Tx, a Access, sourceID string)
 		if e = rows.Scan(&m.ID, &m.Kind, &start, &end, &confidence, &provenance, &approved); e != nil {
 			break
 		}
-		if !segmentmarkers.ViewerKind(m.Kind) {
+		if !segmentmarkers.ViewerKind(m.Kind) || !approved && strings.Contains(provenance, "luminance") {
 			continue
 		}
 		m.StartSeconds = float64(max(start, v.Start)-v.Start) / 1e6

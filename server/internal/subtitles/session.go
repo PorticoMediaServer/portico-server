@@ -93,7 +93,8 @@ func (s *Service) PlanTx(ctx context.Context, tx *sql.Tx, p identity.Principal, 
 	// nothing selected, no offset). The selection write pins it.
 	var selected string
 	var revision, offset int64
-	e = tx.QueryRowContext(ctx, `SELECT revision,resource_id,resource_revision,offset_us FROM playback_subtitle_state WHERE session_id=? AND generation=?`, session, scope.generation).Scan(&out.Revision, &selected, &revision, &offset)
+	var selectedRenderer string
+	e = tx.QueryRowContext(ctx, `SELECT revision,resource_id,resource_revision,offset_us,renderer FROM playback_subtitle_state WHERE session_id=? AND generation=?`, session, scope.generation).Scan(&out.Revision, &selected, &revision, &offset, &selectedRenderer)
 	if errors.Is(e, sql.ErrNoRows) {
 		out.Revision, selected, revision, offset, e = 1, "", 0, 0, nil
 	}
@@ -137,6 +138,10 @@ func (s *Service) PlanTx(ctx context.Context, tx *sql.Tx, p identity.Principal, 
 				return out, err
 			}
 		}
+		if selectedRenderer == "client" {
+			r.Renderer = "client"
+		}
+		r.Deliveries = deliveries("/v1/media/"+scope.grant+"/subtitles/"+r.ID+"/"+strconv.FormatInt(r.Revision, 10), r.Format)
 		out.Selected = &r
 		out.Mode = "track"
 		out.Renderer = r.Renderer
@@ -157,6 +162,7 @@ func (s *Service) PlanTx(ctx context.Context, tx *sql.Tx, p identity.Principal, 
 }
 
 type SelectRequest struct {
+	Rendering        string          `json:"rendering,omitempty"`
 	Recovery         bool            `json:"-"`
 	Control          json.RawMessage `json:"control,omitempty"`
 	ControlProof     string          `json:"-"`
@@ -263,9 +269,17 @@ func (s *Service) selectCommit(ctx context.Context, p identity.Principal, item, 
 		if _, e = tx.ExecContext(ctx, `INSERT OR IGNORE INTO playback_subtitle_pins VALUES(?,?,?)`, session, r.ID, r.Revision); e != nil {
 			return PlaybackPlan{}, e
 		}
+		if r.Renderer == "external_text" {
+			if _, e = tx.ExecContext(ctx, `INSERT OR IGNORE INTO playback_manifest_subtitles VALUES(?,?,?)`, session, r.ID, r.Revision); e != nil {
+				return PlaybackPlan{}, e
+			}
+		}
 	}
 	nextGeneration := scope.generation
 	renderer := "external_text"
+	if m.Rendering != "" && m.Rendering != "text" {
+		renderer = "client"
+	}
 	if prepared != nil && prepared.replace {
 		if prepared.ordinaryBurn {
 			renderer = "burn_in"

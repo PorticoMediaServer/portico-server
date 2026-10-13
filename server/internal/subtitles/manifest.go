@@ -20,7 +20,7 @@ func PinManifestTextTx(ctx context.Context, tx *sql.Tx, session, item, source, v
  SELECT ?,r.id,v.revision FROM subtitle_resources r JOIN subtitle_revisions v ON v.resource_id=r.id AND v.revision=r.current_revision
  JOIN catalog_assets a ON a.token=r.source_id JOIN subtitle_render_revisions rr ON rr.resource_id=r.id AND rr.revision=v.revision
  WHERE r.item_id=(SELECT id FROM catalog_entities WHERE public_id=pid_blob(?)) AND r.source_id=? AND r.deleted=0 AND (r.scope='shared' OR r.owner=?) AND rr.renderer='external_text'
- AND v.source_size=a.size AND v.source_modified_ns=a.modified_ns ORDER BY r.id LIMIT 8`, session, item, source, viewer)
+ AND v.source_size=a.size AND v.source_modified_ns=a.modified_ns ORDER BY rr.is_default DESC,rr.is_forced DESC,v.language,r.id LIMIT 32`, session, item, source, viewer)
 	if err != nil {
 		return err
 	}
@@ -131,7 +131,7 @@ func manifestDocumentTx(ctx context.Context, tx *sql.Tx, p identity.Principal, i
 	if !scope.available {
 		return Resource{}, 0, ErrUnavailable
 	}
-	r, e := scanResource(tx.QueryRowContext(ctx, `SELECT `+resourceColumns+` FROM playback_manifest_subtitles pin JOIN subtitle_resources r ON r.id=pin.resource_id JOIN subtitle_revisions v ON v.resource_id=r.id AND v.revision=pin.resource_revision WHERE pin.session_id=? AND pin.resource_id=? AND pin.resource_revision=? AND r.item_id=(SELECT id FROM catalog_entities WHERE public_id=pid_blob(?))`, session, id, revision, item))
+	r, e := scanResource(tx.QueryRowContext(ctx, `SELECT `+resourceColumns+` FROM playback_subtitle_pins pin JOIN subtitle_resources r ON r.id=pin.resource_id JOIN subtitle_revisions v ON v.resource_id=r.id AND v.revision=pin.resource_revision WHERE pin.session_id=? AND pin.resource_id=? AND pin.resource_revision=? AND r.item_id=(SELECT id FROM catalog_entities WHERE public_id=pid_blob(?))`, session, id, revision, item))
 	if e != nil || !visible(r, p) || r.Renderer != "external_text" || r.SourceID != scope.source || r.sourceSize != scope.size || r.sourceModified != scope.modified {
 		return Resource{}, 0, identity.ErrUnauthorized
 	}

@@ -43,7 +43,7 @@ func Persist(tx *sql.Tx, asset string, size, modified int64, f *Inventory) error
 			}
 		}
 		id := stable(asset + ":" + t.Origin + ":" + locator)
-		if _, e = tx.Exec(`INSERT INTO asset_subtitles VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`, id, asset, t.Origin, locator, t.StreamIndex, sidecar, t.Format, t.Language, t.Title, t.Default, t.Forced, t.Reason); e != nil {
+		if _, e = tx.Exec(`INSERT INTO asset_subtitles VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`, id, asset, t.Origin, locator, t.StreamIndex, sidecar, t.Format, t.Language, t.Title, t.Default, t.Forced, t.Reason, t.HearingImpaired); e != nil {
 			return e
 		}
 		if t.Reason == "" && validFormat(t.Format) {
@@ -86,18 +86,23 @@ func Persist(tx *sql.Tx, asset string, size, modified int64, f *Inventory) error
 			}
 			for _, v := range items {
 				resource := stable("discovered:" + strconv.FormatInt(v.item, 10) + ":" + id)
-				if _, err = tx.Exec(`INSERT INTO subtitle_resources(id,item_id,source_id,scope,owner,current_revision,discovery_id,discovery_revision) VALUES(?,?,?,'shared','',1,?,?) ON CONFLICT(id) DO UPDATE SET current_revision=current_revision+CASE WHEN discovery_revision!=excluded.discovery_revision THEN 1 ELSE 0 END,discovery_revision=excluded.discovery_revision,deleted=0`, resource, v.item, asset, id, discoveryRevision); err != nil {
+				if _, err = tx.Exec(`INSERT INTO subtitle_resources(id,item_id,source_id,scope,owner,current_revision,discovery_id,discovery_revision,discovered) VALUES(?,?,?,'shared','',1,?,?,1) ON CONFLICT(id) DO UPDATE SET current_revision=current_revision+CASE WHEN discovery_revision!=excluded.discovery_revision THEN 1 ELSE 0 END,discovery_revision=excluded.discovery_revision,deleted=0`, resource, v.item, asset, id, discoveryRevision); err != nil {
 					return err
 				}
 				if _, err = tx.Exec(`INSERT OR IGNORE INTO subtitle_revisions(resource_id,revision,digest,size,format,language,title,origin,rights,original_digest,source_size,source_modified_ns,source_facts_revision,created_at) SELECT id,current_revision,'',0,?,?,?,?,'', '',?,?,?,strftime('%Y-%m-%dT%H:%M:%SZ','now') FROM subtitle_resources WHERE id=?`, t.Format, language, title, t.Origin, size, modified, v.facts, resource); err != nil {
 					return err
 				}
-				if _, err = tx.Exec(`INSERT OR IGNORE INTO subtitle_render_revisions(resource_id,revision,renderer,is_default,is_forced,source_evidence) SELECT id,current_revision,?,?,?,? FROM subtitle_resources WHERE id=?`, renderer, t.Default, t.Forced, f.SourceEvidence, resource); err != nil {
+				if _, err = tx.Exec(`INSERT OR IGNORE INTO subtitle_render_revisions(resource_id,revision,renderer,is_default,is_forced,source_evidence,hearing_impaired) SELECT id,current_revision,?,?,?,?,? FROM subtitle_resources WHERE id=?`, renderer, t.Default, t.Forced, f.SourceEvidence, t.HearingImpaired, resource); err != nil {
 					return err
 				}
 			}
 		}
 
 	}
+	_, e = tx.Exec(`UPDATE subtitle_resources SET deleted=1 WHERE source_id=? AND discovered=1 AND discovery_id NOT IN(SELECT id FROM asset_subtitles WHERE asset_id=? AND reason='')`, asset, asset)
+	if e != nil {
+		return e
+	}
+
 	return nil
 }

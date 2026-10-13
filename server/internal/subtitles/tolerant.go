@@ -34,7 +34,6 @@ type StyledCue struct {
 }
 
 var (
-	tolerantBlock  = regexp.MustCompile(`\n[ \t]*\n+`)
 	tolerantTiming = regexp.MustCompile(`^\s*((?:\d{1,3}:)?\d{1,2}:\d{1,2}[,.]\d{1,3})\s*-->\s*((?:\d{1,3}:)?\d{1,2}:\d{1,2}[,.]\d{1,3})(.*)$`)
 	tolerantStamp  = regexp.MustCompile(`^(?:(\d{1,3}):)?(\d{1,2}):(\d{1,2})[,.](\d{1,3})$`)
 	markupTag      = regexp.MustCompile(`</?[A-Za-z][^<>]{0,255}>`)
@@ -140,23 +139,17 @@ func ParseTolerant(raw []byte, format string, durationUS int64) ([]StyledCue, er
 	if durationUS > 0 {
 		limitMS = durationUS/1000 + 2000
 	}
+
 	var cues []StyledCue
-	for _, block := range tolerantBlock.Split(strings.Trim(text, "\n \t"), -1) {
-		lines := strings.Split(strings.Trim(block, "\n"), "\n")
-		timing := -1
-		// The timing line is the first or second line: an SRT counter or a WebVTT
-		// cue identifier may sit above it. WEBVTT, NOTE, STYLE and REGION blocks
-		// have no timing line and fall through.
-		for i := 0; i < len(lines) && i < 2; i++ {
-			if strings.Contains(lines[i], "-->") {
-				timing = i
-				break
+	lines := strings.Split(text, "\n")
+	for i := 0; i < len(lines); i++ {
+		if strings.HasPrefix(strings.TrimSpace(lines[i]), "NOTE") || strings.TrimSpace(lines[i]) == "STYLE" || strings.TrimSpace(lines[i]) == "REGION" {
+			for i+1 < len(lines) && strings.TrimSpace(lines[i+1]) != "" {
+				i++
 			}
-		}
-		if timing < 0 || timing+1 >= len(lines) {
 			continue
 		}
-		m := tolerantTiming.FindStringSubmatch(lines[timing])
+		m := tolerantTiming.FindStringSubmatch(lines[i])
 		if m == nil {
 			continue
 		}
@@ -166,20 +159,28 @@ func ParseTolerant(raw []byte, format string, durationUS int64) ([]StyledCue, er
 			continue
 		}
 		if limitMS > 0 {
-			// A cue past the end of the film belongs to a different cut of it.
 			if start >= limitMS {
 				continue
 			}
-			if end > limitMS {
-				end = limitMS
+			end = min(end, limitMS)
+		}
+		endLine := i + 1
+		for endLine < len(lines) && strings.TrimSpace(lines[endLine]) != "" && !strings.Contains(lines[endLine], "-->") {
+			endLine++
+		}
+		bodyLines := lines[i+1 : endLine]
+		// Without a separator an SRT counter belongs to the next timing line.
+		if endLine < len(lines) && strings.Contains(lines[endLine], "-->") && len(bodyLines) > 1 {
+			if _, e := strconv.Atoi(strings.TrimSpace(bodyLines[len(bodyLines)-1])); e == nil {
+				bodyLines = bodyLines[:len(bodyLines)-1]
 			}
 		}
-		body, italic, top := plainCueText(strings.Join(lines[timing+1:], "\n"))
+		body, italic, top := plainCueText(strings.Join(bodyLines, "\n"))
 		if body == "" {
 			continue
 		}
 		if l := vttLine.FindStringSubmatch(m[3]); l != nil {
-			if v, convErr := strconv.ParseFloat(l[1], 64); convErr == nil && ((l[2] == "%" && v < 50) || (l[2] == "" && v >= 0 && v < 8)) {
+			if v, e := strconv.ParseFloat(l[1], 64); e == nil && (l[2] == "%" && v < 50 || l[2] == "" && v >= 0 && v < 8) {
 				top = true
 			}
 		}
@@ -187,6 +188,7 @@ func ParseTolerant(raw []byte, format string, durationUS int64) ([]StyledCue, er
 		if len(cues) > MaxCues {
 			return nil, ErrCapacity
 		}
+		i = endLine - 1
 	}
 	if len(cues) == 0 {
 		return nil, ErrText
@@ -214,6 +216,9 @@ func ParseASSAsText(raw []byte, durationUS int64) ([]StyledCue, error) {
 	var cues []StyledCue
 	for _, line := range strings.Split(text, "\n") {
 		line = strings.TrimSpace(line)
+		if len(line) > MaxCueBytes*4 {
+			continue
+		}
 		if strings.HasPrefix(line, "[") {
 			inEvents = strings.EqualFold(line, "[Events]")
 			continue
@@ -246,7 +251,7 @@ func ParseASSAsText(raw []byte, durationUS int64) ([]StyledCue, error) {
 		}
 		start, e1 := assTimestamp(strings.TrimSpace(fields[startColumn]))
 		end, e2 := assTimestamp(strings.TrimSpace(fields[endColumn]))
-		if e1 != nil || e2 != nil || end <= start || start > MaxDurationMS {
+		if e1 != nil || e2 != nil || end <= start || end > MaxDurationMS || start > MaxDurationMS {
 			continue
 		}
 		if limitMS > 0 {

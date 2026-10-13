@@ -58,8 +58,7 @@ func (s *Service) applySubtitles(ctx context.Context, p identity.Principal, item
 			case req.Delivery == "burn" && !burns, req.Delivery == "sidecar" && burns:
 				return out, &FieldError{Path: "subtitles.delivery"}
 			case burns && req.Delivery == "embeddedClient":
-				// The device draws the track from the stream itself.
-				return out, nil
+				m.Rendering = subtitles.RenderingFormat(chosen.Format)
 			}
 			m.Mode, m.ResourceID, m.ResourceRevision = "track", chosen.ID, chosen.Revision
 			m.OffsetUS = strconv.FormatInt(offsetMs*1000, 10)
@@ -77,7 +76,14 @@ func (s *Service) applySubtitles(ctx context.Context, p identity.Principal, item
 		out.replaced = plan.Presentation
 	}
 	if plan.Selected != nil && plan.DocumentURL != "" && plan.Renderer == "external_text" {
-		out.files = append(out.files, SubtitleFile{TrackID: plan.Selected.ID, Format: "webvtt", URL: plan.DocumentURL})
+		out.files = append(out.files, SubtitleFile{TrackID: plan.Selected.ID, Format: "webvtt", URL: plan.DocumentURL + ".vtt"})
+	}
+	if plan.Selected != nil && plan.Renderer == "client" {
+		for _, d := range plan.Selected.Deliveries {
+			if d.Format != "text" {
+				out.files = append(out.files, SubtitleFile{TrackID: plan.Selected.ID, Format: d.Format, URL: d.URL, CompanionURL: d.CompanionURL, FontsURL: d.FontsURL})
+			}
+		}
 	}
 	return out, nil
 }

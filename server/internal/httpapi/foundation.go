@@ -629,6 +629,9 @@ func FoundationRegistry(d Dependencies) (*apikit.Registry, error) {
 	if err := registerDeviceRoutes(registry, d); err != nil {
 		return nil, err
 	}
+	if err := d.registerSubtitleRoutes(registry); err != nil {
+		return nil, err
+	}
 	registry.Freeze()
 	return registry, nil
 }

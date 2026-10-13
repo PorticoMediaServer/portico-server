@@ -441,9 +441,6 @@ func (s *Service) create(ctx context.Context, p identity.Principal, item, qualit
 	if e = persistDeliveryPlan(tx, id, &delivery); e != nil {
 		return Session{}, e
 	}
-	if e = persistSubtitlePlan(tx, id, aid, mode); e != nil {
-		return Session{}, e
-	}
 	if mode == "remote" {
 		if prepared.subtitleEvidence != "" {
 			if _, e = tx.Exec(`INSERT INTO subtitle_remote_sessions VALUES(?,?)`, id, prepared.subtitleEvidence); e != nil {
