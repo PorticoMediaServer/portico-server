@@ -2300,7 +2300,7 @@ paths:
         '200': { description: The plan after the selection., content: { application/json: { schema: { $ref: '#/components/schemas/SubtitlePlaybackPlan' } } } }
         default: { $ref: '#/components/responses/SubtitleError' }
       x-error-codes: [unauthorized, subtitle_not_found, subtitle_invalid_input, subtitle_conflict, subtitle_operation_conflict, subtitle_renderer_configuration, subtitle_renderer_platform_unsupported, subtitle_unsupported, subtitle_unavailable]
-  /v1/media/{grant}/subtitles/{resource}/{revision}:
+  /v1/media/subtitles/{grant}/{resource}/{revision}:
     get:
       operationId: getSubtitleDocument
       tags: [media]
@@ -6131,7 +6131,7 @@ components:
         offAvailable: { type: boolean }
         offsetUs: { type: string }
         selected: { type: [object, 'null'], additionalProperties: true }
-        documentUrl: { type: string, description: 'Grant-bound URL under `/v1/media/{grant}/subtitles/...`.' }
+        documentUrl: { type: string, description: 'Grant-bound URL under `/v1/media/subtitles/{grant}/...`.' }
         resources: { type: array, items: { type: object, additionalProperties: true } }
         discovered: { type: array, items: { type: object, additionalProperties: true } }
         presentation: { type: [object, 'null'], additionalProperties: true }

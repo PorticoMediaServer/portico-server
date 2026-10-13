@@ -1808,9 +1808,9 @@ export const routes = [
     "status": 200
   },
   {
-    "id": "get_v1_media_grant_subtitles_resource_revision",
+    "id": "get_v1_media_subtitles_grant_resource_revision",
     "method": "GET",
-    "path": "/v1/media/{grant}/subtitles/{resource}/{revision}",
+    "path": "/v1/media/subtitles/{grant}/{resource}/{revision}",
     "summary": "Read or change authorized subtitles",
     "access": "public",
     "requires": "open",
@@ -1839,9 +1839,9 @@ export const routes = [
     "status": 200
   },
   {
-    "id": "get_v1_media_grant_subtitles_resource_revision_fonts",
+    "id": "get_v1_media_subtitles_grant_resource_revision_fonts",
     "method": "GET",
-    "path": "/v1/media/{grant}/subtitles/{resource}/{revision}/fonts",
+    "path": "/v1/media/subtitles/{grant}/{resource}/{revision}/fonts",
     "summary": "Read or change authorized subtitles",
     "access": "public",
     "requires": "open",
@@ -1870,9 +1870,9 @@ export const routes = [
     "status": 200
   },
   {
-    "id": "get_v1_media_grant_subtitles_resource_revision_fonts_font",
+    "id": "get_v1_media_subtitles_grant_resource_revision_fonts_font",
     "method": "GET",
-    "path": "/v1/media/{grant}/subtitles/{resource}/{revision}/fonts/{font}",
+    "path": "/v1/media/subtitles/{grant}/{resource}/{revision}/fonts/{font}",
     "summary": "Read or change authorized subtitles",
     "access": "public",
     "requires": "open",
@@ -1902,9 +1902,9 @@ export const routes = [
     "responseContentType": "font/ttf"
   },
   {
-    "id": "get_v1_media_grant_subtitles_resource_revision_original_ass",
+    "id": "get_v1_media_subtitles_grant_resource_revision_original_ass",
     "method": "GET",
-    "path": "/v1/media/{grant}/subtitles/{resource}/{revision}/original.ass",
+    "path": "/v1/media/subtitles/{grant}/{resource}/{revision}/original.ass",
     "summary": "Read or change authorized subtitles",
     "access": "public",
     "requires": "open",
@@ -1934,9 +1934,9 @@ export const routes = [
     "responseContentType": "text/x-ssa"
   },
   {
-    "id": "get_v1_media_grant_subtitles_resource_revision_original_idx",
+    "id": "get_v1_media_subtitles_grant_resource_revision_original_idx",
     "method": "GET",
-    "path": "/v1/media/{grant}/subtitles/{resource}/{revision}/original.idx",
+    "path": "/v1/media/subtitles/{grant}/{resource}/{revision}/original.idx",
     "summary": "Read or change authorized subtitles",
     "access": "public",
     "requires": "open",
@@ -1966,9 +1966,9 @@ export const routes = [
     "responseContentType": "text/plain"
   },
   {
-    "id": "get_v1_media_grant_subtitles_resource_revision_original_mks",
+    "id": "get_v1_media_subtitles_grant_resource_revision_original_mks",
     "method": "GET",
-    "path": "/v1/media/{grant}/subtitles/{resource}/{revision}/original.mks",
+    "path": "/v1/media/subtitles/{grant}/{resource}/{revision}/original.mks",
     "summary": "Read or change authorized subtitles",
     "access": "public",
     "requires": "open",
@@ -1998,9 +1998,9 @@ export const routes = [
     "responseContentType": "application/octet-stream"
   },
   {
-    "id": "get_v1_media_grant_subtitles_resource_revision_original_ssa",
+    "id": "get_v1_media_subtitles_grant_resource_revision_original_ssa",
     "method": "GET",
-    "path": "/v1/media/{grant}/subtitles/{resource}/{revision}/original.ssa",
+    "path": "/v1/media/subtitles/{grant}/{resource}/{revision}/original.ssa",
     "summary": "Read or change authorized subtitles",
     "access": "public",
     "requires": "open",
@@ -2030,9 +2030,9 @@ export const routes = [
     "responseContentType": "text/x-ssa"
   },
   {
-    "id": "get_v1_media_grant_subtitles_resource_revision_original_sub",
+    "id": "get_v1_media_subtitles_grant_resource_revision_original_sub",
     "method": "GET",
-    "path": "/v1/media/{grant}/subtitles/{resource}/{revision}/original.sub",
+    "path": "/v1/media/subtitles/{grant}/{resource}/{revision}/original.sub",
     "summary": "Read or change authorized subtitles",
     "access": "public",
     "requires": "open",
@@ -2062,9 +2062,9 @@ export const routes = [
     "responseContentType": "application/octet-stream"
   },
   {
-    "id": "get_v1_media_grant_subtitles_resource_revision_original_sup",
+    "id": "get_v1_media_subtitles_grant_resource_revision_original_sup",
     "method": "GET",
-    "path": "/v1/media/{grant}/subtitles/{resource}/{revision}/original.sup",
+    "path": "/v1/media/subtitles/{grant}/{resource}/{revision}/original.sup",
     "summary": "Read or change authorized subtitles",
     "access": "public",
     "requires": "open",
@@ -2094,9 +2094,9 @@ export const routes = [
     "responseContentType": "application/octet-stream"
   },
   {
-    "id": "get_v1_media_grant_subtitles_resource_revision_vtt",
+    "id": "get_v1_media_subtitles_grant_resource_revision_vtt",
     "method": "GET",
-    "path": "/v1/media/{grant}/subtitles/{resource}/{revision}.vtt",
+    "path": "/v1/media/subtitles/{grant}/{resource}/{revision}.vtt",
     "summary": "Read or change authorized subtitles",
     "access": "public",
     "requires": "open",
@@ -2149,9 +2149,9 @@ export const routes = [
     "status": 200
   },
   {
-    "id": "head_v1_media_grant_subtitles_resource_revision_fonts_font",
+    "id": "head_v1_media_subtitles_grant_resource_revision_fonts_font",
     "method": "HEAD",
-    "path": "/v1/media/{grant}/subtitles/{resource}/{revision}/fonts/{font}",
+    "path": "/v1/media/subtitles/{grant}/{resource}/{revision}/fonts/{font}",
     "summary": "Read or change authorized subtitles",
     "access": "public",
     "requires": "open",
@@ -2181,9 +2181,9 @@ export const routes = [
     "responseContentType": "font/ttf"
   },
   {
-    "id": "head_v1_media_grant_subtitles_resource_revision_original_ass",
+    "id": "head_v1_media_subtitles_grant_resource_revision_original_ass",
     "method": "HEAD",
-    "path": "/v1/media/{grant}/subtitles/{resource}/{revision}/original.ass",
+    "path": "/v1/media/subtitles/{grant}/{resource}/{revision}/original.ass",
     "summary": "Read or change authorized subtitles",
     "access": "public",
     "requires": "open",
@@ -2213,9 +2213,9 @@ export const routes = [
     "responseContentType": "text/x-ssa"
   },
   {
-    "id": "head_v1_media_grant_subtitles_resource_revision_original_idx",
+    "id": "head_v1_media_subtitles_grant_resource_revision_original_idx",
     "method": "HEAD",
-    "path": "/v1/media/{grant}/subtitles/{resource}/{revision}/original.idx",
+    "path": "/v1/media/subtitles/{grant}/{resource}/{revision}/original.idx",
     "summary": "Read or change authorized subtitles",
     "access": "public",
     "requires": "open",
@@ -2245,9 +2245,9 @@ export const routes = [
     "responseContentType": "text/plain"
   },
   {
-    "id": "head_v1_media_grant_subtitles_resource_revision_original_mks",
+    "id": "head_v1_media_subtitles_grant_resource_revision_original_mks",
     "method": "HEAD",
-    "path": "/v1/media/{grant}/subtitles/{resource}/{revision}/original.mks",
+    "path": "/v1/media/subtitles/{grant}/{resource}/{revision}/original.mks",
     "summary": "Read or change authorized subtitles",
     "access": "public",
     "requires": "open",
@@ -2277,9 +2277,9 @@ export const routes = [
     "responseContentType": "application/octet-stream"
   },
   {
-    "id": "head_v1_media_grant_subtitles_resource_revision_original_ssa",
+    "id": "head_v1_media_subtitles_grant_resource_revision_original_ssa",
     "method": "HEAD",
-    "path": "/v1/media/{grant}/subtitles/{resource}/{revision}/original.ssa",
+    "path": "/v1/media/subtitles/{grant}/{resource}/{revision}/original.ssa",
     "summary": "Read or change authorized subtitles",
     "access": "public",
     "requires": "open",
@@ -2309,9 +2309,9 @@ export const routes = [
     "responseContentType": "text/x-ssa"
   },
   {
-    "id": "head_v1_media_grant_subtitles_resource_revision_original_sub",
+    "id": "head_v1_media_subtitles_grant_resource_revision_original_sub",
     "method": "HEAD",
-    "path": "/v1/media/{grant}/subtitles/{resource}/{revision}/original.sub",
+    "path": "/v1/media/subtitles/{grant}/{resource}/{revision}/original.sub",
     "summary": "Read or change authorized subtitles",
     "access": "public",
     "requires": "open",
@@ -2341,9 +2341,9 @@ export const routes = [
     "responseContentType": "application/octet-stream"
   },
   {
-    "id": "head_v1_media_grant_subtitles_resource_revision_original_sup",
+    "id": "head_v1_media_subtitles_grant_resource_revision_original_sup",
     "method": "HEAD",
-    "path": "/v1/media/{grant}/subtitles/{resource}/{revision}/original.sup",
+    "path": "/v1/media/subtitles/{grant}/{resource}/{revision}/original.sup",
     "summary": "Read or change authorized subtitles",
     "access": "public",
     "requires": "open",

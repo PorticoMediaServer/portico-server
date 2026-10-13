@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {drawnRenderingFor, readSubtitleFile, readSubtitleFontList, selectedSubtitleOriginal, subtitleOriginals} from '../src/subtitle-originals.ts';
 
-const root = '/v1/media/grant_1/subtitles/res-1/3';
+const root = '/v1/media/subtitles/grant_1/res-1/3';
 const styled = {id: 'res-1', format: 'ass', deliveries: [{format: 'text', url: root + '.vtt'}, {format: 'ass', url: root + '/original.ass', fontsUrl: root + '/fonts'}]};
 const dvd = {id: 'res-1', format: 'vobsub', deliveries: [{format: 'vobsub', url: root + '/original.idx', companionUrl: root + '/original.sub'}]};
 
@@ -17,8 +17,9 @@ test('what a track offers: only originals this code understands, at addresses un
     {name: 'no list (an older server)', resource: {id: 'res-1', format: 'ass'}, want: []},
     {name: 'a format from a newer server', resource: {deliveries: [{format: 'ttml-image', url: root + '/original.sup'}]}, want: []},
     {name: 'an address somewhere else', resource: {deliveries: [{format: 'pgs', url: 'https://elsewhere.example/original.sup'}, {format: 'pgs', url: '/v1/items/x/original.sup'}]}, want: []},
+    {name: 'a live stream address cannot stand in for a subtitle original', resource: {deliveries: [{format: 'ass', url: '/v1/media/linear/subtitles/a/b/original.ass'}]}, want: []},
     {name: 'the wrong file for the format', resource: {deliveries: [{format: 'pgs', url: root + '/original.ass'}]}, want: []},
-    {name: 'fonts from another track are dropped, the script is kept', resource: {deliveries: [{format: 'ass', url: root + '/original.ssa', fontsUrl: '/v1/media/grant_1/subtitles/other/3/fonts'}]}, want: [{format: 'ass', url: root + '/original.ssa'}]},
+    {name: 'fonts from another track are dropped, the script is kept', resource: {deliveries: [{format: 'ass', url: root + '/original.ssa', fontsUrl: '/v1/media/subtitles/grant_1/other/3/fonts'}]}, want: [{format: 'ass', url: root + '/original.ssa'}]},
     {name: 'not a resource', resource: null, want: []},
     {name: 'a list of rubbish', resource: {deliveries: [1, null, 'x', {format: 'ass'}, {url: root + '/original.ass'}]}, want: []},
   ];

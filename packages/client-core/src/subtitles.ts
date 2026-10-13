@@ -43,7 +43,7 @@ function invalid():never{throw Object.assign(new Error(unreadableServerResponse)
 function array(v:unknown,max:number):unknown[]{if(!Array.isArray(v)||v.length>max)invalid();return v;}
 export function validateSubtitleDelivery(v:unknown):SubtitleDelivery{
  if(!record(v)||!['text','ass','pgs','vobsub','dvb'].includes(String(v.format)))invalid();
- for(const key of ['url','companionUrl','fontsUrl']){const path=v[key];if(path!==undefined&&(!text(path,1024)||!/^\/v1\/media\/[A-Za-z0-9_-]+\/subtitles\/[A-Za-z0-9_-]+\/[1-9]\d*(?:\.vtt|\/original\.(?:ass|ssa|sup|idx|sub|mks)|\/fonts)?$/.test(path)))invalid();}
+ for(const key of ['url','companionUrl','fontsUrl']){const path=v[key];if(path!==undefined&&(!text(path,1024)||!/^\/v1\/media\/subtitles\/[A-Za-z0-9_-]+\/[A-Za-z0-9_-]+\/[1-9]\d*(?:\.vtt|\/original\.(?:ass|ssa|sup|idx|sub|mks)|\/fonts)?$/.test(path)))invalid();}
  return Object.freeze({...v}) as SubtitleDelivery;
 }
 function resource(v:unknown):SubtitleResource{
@@ -66,7 +66,7 @@ export function validateSubtitlePlan(v:unknown):SubtitlePlan{
  if(resources.some(r=>r.sourceId!==v.sourceId)||discovered.some(r=>r.sourceId!==v.sourceId)||selected&&selected.sourceId!==v.sourceId)invalid();
  if(new Set(resources.map(r=>r.id)).size!==resources.length||new Set(discovered.map(r=>r.id)).size!==discovered.length)invalid();
  if((v.mode==='off')!==(selected===null)||v.mode==='off'&&(v.offsetUs!=='0'||v.documentUrl!==undefined))invalid();
- if(v.documentUrl!==undefined&&(!selected||!text(v.documentUrl,512)||!new RegExp('^/v1/media/[A-Za-z0-9_-]{1,128}/subtitles/'+selected.id+'/'+selected.revision+'$').test(v.documentUrl)))invalid();
+ if(v.documentUrl!==undefined&&(!selected||!text(v.documentUrl,512)||!new RegExp('^/v1/media/subtitles/[A-Za-z0-9_-]{1,128}/'+selected.id+'/'+selected.revision+'$').test(v.documentUrl)))invalid();
  if(selected&&(selected.pinned!==true||selected.renderer!==v.renderer))invalid();if(v.mode==='off'&&v.renderer!=='external_text')invalid();if(selected?.enabled&&v.renderer==='external_text'&&!v.documentUrl)invalid();if(v.renderer==='burn_in'&&v.documentUrl!==undefined)invalid();
  if(v.presentation!==undefined){const p=v.presentation;if(!record(p)||p.sessionId!==v.sessionId||p.generation!==v.generation||!text(p.streamUrl,1024)||!/^\/v1\/media\/[A-Za-z0-9_-]+(?:\/master\.m3u8)?$/.test(p.streamUrl)||!['direct','hls'].includes(String(p.mode))||!decimal(p.positionUs))invalid();}
  if(v.appliedRevision!==undefined&&(!integer(v.appliedRevision)||v.appliedRevision>v.revision))invalid();
@@ -214,7 +214,7 @@ export class SubtitleService {
 }
 
 export async function fetchSubtitleFonts(fetcher:typeof fetch,url:string,signal:AbortSignal):Promise<readonly SubtitleFont[]>{
- if(!/^\/v1\/media\/[A-Za-z0-9_-]+\/subtitles\/[A-Za-z0-9_-]+\/[1-9]\d*\/fonts$/.test(url))invalid();
+ if(!/^\/v1\/media\/subtitles\/[A-Za-z0-9_-]+\/[A-Za-z0-9_-]+\/[1-9]\d*\/fonts$/.test(url))invalid();
  const response=await fetcher(url,{signal,credentials:'omit',cache:'no-store',redirect:'error'});
  if(!response.ok)throw new Error(enUS['player.subtitleReason.fonts']);
  const raw=await response.text();if(raw.length>32768)invalid();const v:unknown=JSON.parse(raw);if(!record(v))invalid();

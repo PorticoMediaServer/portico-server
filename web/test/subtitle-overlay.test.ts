@@ -387,7 +387,7 @@ test('the capability declaration: one list, written into either document shape',
 });
 
 test('a subtitle choice as a change of the session: the original when the browser draws it, the picture when drawing failed', () => {
-  const root = '/v1/media/grant/subtitles/';
+  const root = '/v1/media/subtitles/grant/';
   const styled = {id: 'ass-1', format: 'ass', offsetUs: '-250000', deliveries: [{format: 'text', url: root + 'ass-1/2.vtt'}, {format: 'ass', url: root + 'ass-1/2/original.ass', fontsUrl: root + 'ass-1/2/fonts'}]};
   const bluray = {id: 'pgs-1', format: 'pgs', offsetUs: '0', deliveries: [{format: 'pgs', url: root + 'pgs-1/1/original.sup'}]};
   const plain = {id: 'srt-1', format: 'srt', offsetUs: '1500000', deliveries: [{format: 'text', url: root + 'srt-1/1.vtt'}]};
