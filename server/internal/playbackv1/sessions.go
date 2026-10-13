@@ -645,6 +645,10 @@ func (s *Service) present(ctx context.Context, c Caller, t presentationTarget) (
 	if err != nil {
 		return playback.Session{}, Presentation{}, err
 	}
+	if asset == "" {
+		// No version named and only one to choose from: the file a start plays.
+		asset, _ = s.Playback.SelectedAsset(ctx, t.item, &base)
+	}
 	choice := base
 	choice.AssetID = asset
 	if err = s.audioChoice(ctx, c, t.item, kind, &choice); err != nil {
