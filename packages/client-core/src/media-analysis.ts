@@ -1,4 +1,5 @@
-import {encodedRoutePath} from "../../contracts/src/routes.ts";
+import {routePath, routeBody} from "../../contracts/src/routes.ts";
+import type {RouteResponse} from "../../contracts/src/routes.ts";
 import type {LibraryContentApi, ContentScope} from './library-content.ts';
 import type {PlaybackSnapshot} from './index.ts';
 import {firstOfEach,keepReadable,oneOfOr} from './tolerant.ts';
@@ -69,21 +70,21 @@ export class MediaAnalysisService {
  subscribe=(f:()=>void)=>{this.listeners.add(f);return()=>this.listeners.delete(f);};getSnapshot=()=>this.state;
  private publish(update:Partial<AnalysisState>){if(this.disposed)return;this.state=Object.freeze({...this.state,...update});for(const f of this.listeners)f();}
  dispose(){this.disposed=true;this.epoch++;for(const c of this.controllers)c.abort();this.controllers.clear();this.listeners.clear();this.pendingMarker=undefined;this.state=Object.freeze({...this.state,data:null,image:null,waveform:null});}
- private base(){return encodedRoutePath("get_items_id_analysis", {"id": encodeURIComponent(this.target.itemId)});}
+ private base(){return routePath("get_items_id_analysis", {id: this.target.itemId});}
  private body(data:AnalysisView){return {sourceId:data.source.id,sourceRevision:data.source.revision,mappingRevision:data.source.mappingRevision,sessionId:this.target.sessionId??'',generation:this.target.generation??0};}
  private query(data?:AnalysisView,positionUS?:string){const q=new URLSearchParams();const target=data?this.body(data):{sourceId:this.target.sourceId??this.selectedSource??'',sessionId:this.target.sessionId??'',generation:this.target.generation??0};for(const [k,v]of Object.entries(target)){if(v!==''&&v!==0)q.set(k,String(v));}if(positionUS!==undefined)q.set('positionUS',positionUS);return '?'+q;}
- private async request(path:string,method='GET',body?:unknown):Promise<unknown>{
+ private async request<T=unknown>(path:string,method='GET',body?:unknown):Promise<T>{
   const c=new AbortController();this.controllers.add(c);let abort!:()=>void;
   const cancelled=new Promise<never>((_,reject)=>{abort=()=>reject(new Error('Analysis request timed out or was cancelled.'));c.signal.addEventListener('abort',abort,{once:true});});
   const timer=setTimeout(()=>c.abort(),this.timeoutMs);
-  try{return await Promise.race([this.api.request<unknown>(path,method,body,c.signal),cancelled]);}
+  try{return await Promise.race([this.api.request<T>(path,method,body,c.signal),cancelled]);}
   finally{clearTimeout(timer);c.signal.removeEventListener('abort',abort);this.controllers.delete(c);}
  }
  async refresh(positionUS='0'):Promise<void>{if(this.disposed||this.command)return;assert(analysisMicroseconds(positionUS));const epoch=++this.epoch;for(const c of this.controllers)c.abort();this.publish({busy:true,imageBusy:false,image:null,waveform:null,error:''});
-  try{const raw=await this.request(this.base()+this.query(undefined,positionUS));if(this.disposed||epoch!==this.epoch)return;const data=parseAnalysis(raw,this.scope,{...this.target,sourceId:this.target.sourceId??this.selectedSource});this.selectedSource=data.source.id;if(this.fence&&data.scope.viewerFence!==this.fence)throw new Error('Viewer permissions changed. Reopen the item.');this.fence=data.scope.viewerFence;this.publish({data,busy:false});}
+  try{const raw=await this.request<RouteResponse<"get_items_id_analysis">>(this.base()+this.query(undefined,positionUS));if(this.disposed||epoch!==this.epoch)return;const data=parseAnalysis(raw,this.scope,{...this.target,sourceId:this.target.sourceId??this.selectedSource});this.selectedSource=data.source.id;if(this.fence&&data.scope.viewerFence!==this.fence)throw new Error('Viewer permissions changed. Reopen the item.');this.fence=data.scope.viewerFence;this.publish({data,busy:false});}
   catch(e){if(this.disposed||epoch!==this.epoch)return;this.publish({data:null,busy:false,image:null,waveform:null,error:message(e)});}
  }
- private async artifact(id:string,data:AnalysisView):Promise<Record<string,unknown>>{const raw=await this.request(this.base()+'/artifacts/'+encodeURIComponent(id)+this.query(data));assert(object(raw)&&raw.id===id);const scope=checkedScope(raw.scope,this.scope,this.target),source=checkedSource(raw.source,this.target);assert(scope.viewerFence===data.scope.viewerFence&&source.id===data.source.id&&source.revision===data.source.revision&&source.mappingRevision===data.source.mappingRevision);return raw;}
+ private async artifact(id:string,data:AnalysisView):Promise<Record<string,unknown>>{const raw=await this.request<RouteResponse<"get_items_id_analysis_artifacts_artifact">>(routePath("get_items_id_analysis_artifacts_artifact",{id:this.target.itemId,artifact:id})+this.query(data));assert(object(raw)&&raw.id===id);const scope=checkedScope(raw.scope,this.scope,this.target),source=checkedSource(raw.source,this.target);assert(scope.viewerFence===data.scope.viewerFence&&source.id===data.source.id&&source.revision===data.source.revision&&source.mappingRevision===data.source.mappingRevision);return raw;}
  async image(id:string):Promise<void>{const data=this.state.data,epoch=this.epoch,seq=++this.imageSequence;if(!data||this.state.busy||!data.previews.some(p=>p.id===id))return;this.publish({imageBusy:true,image:null,error:''});
   try{const r=await this.artifact(id,data);if(this.disposed||epoch!==this.epoch||seq!==this.imageSequence||this.state.data!==data)return;assert(r.mime==='image/jpeg'&&text(r.data,3<<20)&&/^[A-Za-z0-9+/]+={0,2}$/.test(r.data));this.publish({imageBusy:false,image:Object.freeze({id,uri:'data:image/jpeg;base64,'+r.data})});}
   catch(e){if(!this.disposed&&epoch===this.epoch&&seq===this.imageSequence)this.publish({imageBusy:false,image:null,error:message(e)});}
@@ -94,15 +95,15 @@ export class MediaAnalysisService {
  }
  private current():AnalysisView{const d=this.state.data;if(!d||!d.canManage||this.state.busy||this.command||this.state.ambiguous)throw new Error('Refresh current analysis before changing it.');return d;}
  private async execute(path:string,method:string,body:unknown,marker=false){if(this.disposed||this.command)return;this.command=true;const epoch=++this.epoch;for(const c of this.controllers)c.abort();this.publish({busy:true,error:'',notice:'',imageBusy:false});
-  try{await this.request(this.base()+path,method,body);if(this.disposed||epoch!==this.epoch)return;this.pendingMarker=undefined;this.publish({busy:false,ambiguous:false,notice:marker?'Marker change saved.':'Request saved. The library source job uses the saved policy and yields to playback.'});this.command=false;await this.refresh();}
+  try{await this.request(path,method,body);if(this.disposed||epoch!==this.epoch)return;this.pendingMarker=undefined;this.publish({busy:false,ambiguous:false,notice:marker?'Marker change saved.':'Request saved. The library source job uses the saved policy and yields to playback.'});this.command=false;await this.refresh();}
   catch(e){if(this.disposed||epoch!==this.epoch)return;const code=object(e)&&typeof e.code==='string'?e.code:'';const definite=['analysis_clock_unavailable','analysis_conflict','invalid_analysis','analysis_budget_exceeded','unauthorized','forbidden','not_found','invalid_request','library_configuration_conflict'].includes(code);if(definite)this.pendingMarker=undefined;this.publish({busy:false,data:null,image:null,waveform:null,error:message(e),ambiguous:marker&&!definite});}
   finally{this.command=false;}
  }
- mutate(edit:MarkerEdit):Promise<void>{const d=this.current();assert(!d.source.needsProbe);if(edit.action!=='create')assert(d.markers.some(m=>m.id===edit.markerId));const body={...this.body(d),...edit,requestId:requestID(),expectedRevision:d.markerRevision};this.pendingMarker=body;return this.execute('/markers','POST',body,true);}
- retryMarker():Promise<void>{if(!this.pendingMarker)return Promise.resolve();return this.execute('/markers','POST',this.pendingMarker,true);}
- queue():Promise<void>{const d=this.current();return this.execute('/jobs','POST',this.body(d));}
- control(jobId:string,action:'pause'|'resume'|'cancel'|'retry'):Promise<void>{const d=this.current();assert(d.jobs.some(j=>j.jobId===jobId));return this.execute('/jobs/'+encodeURIComponent(jobId)+'/control','POST',{...this.body(d),action});}
- policy(tier:AnalysisView['policy']['tier'],operations:readonly string[]):Promise<void>{const d=this.current();return this.execute('/policy','PUT',{...this.body(d),tier,operations,expectedRevision:d.policy.revision});}
+ mutate(edit:MarkerEdit):Promise<void>{const d=this.current();assert(!d.source.needsProbe);if(edit.action!=='create')assert(d.markers.some(m=>m.id===edit.markerId));const body={...this.body(d),...edit,requestId:requestID(),expectedRevision:d.markerRevision};this.pendingMarker=body;return this.execute(routePath("post_items_id_analysis_markers",{id:this.target.itemId}),'POST',routeBody("post_items_id_analysis_markers",body),true);}
+ retryMarker():Promise<void>{if(!this.pendingMarker)return Promise.resolve();return this.execute(routePath("post_items_id_analysis_markers",{id:this.target.itemId}),'POST',this.pendingMarker,true);}
+ queue():Promise<void>{const d=this.current();return this.execute(routePath("post_items_id_analysis_jobs",{id:this.target.itemId}),'POST',routeBody("post_items_id_analysis_jobs",this.body(d)));}
+ control(jobId:string,action:'pause'|'resume'|'cancel'|'retry'):Promise<void>{const d=this.current();assert(d.jobs.some(j=>j.jobId===jobId));return this.execute(routePath("post_items_id_analysis_jobs_job_control",{id:this.target.itemId,job:jobId}),'POST',routeBody("post_items_id_analysis_jobs_job_control",{...this.body(d),action}));}
+ policy(tier:AnalysisView['policy']['tier'],operations:readonly string[]):Promise<void>{const d=this.current();return this.execute(routePath("put_items_id_analysis_policy",{id:this.target.itemId}),'PUT',routeBody("put_items_id_analysis_policy",{...this.body(d),tier,operations,expectedRevision:d.policy.revision}));}
 }
 
 /** A user gesture may inspect any candidate, but only owner-approved markers

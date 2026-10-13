@@ -67,7 +67,7 @@ func registerAdministrationHTTPContracts(registry *apikit.Registry) error {
 	if err := apikit.RegisterHTTP[struct{}, struct {
 		Ready  bool   `json:"ready"`
 		Status string `json:"status"`
-	}](registry, apikit.Metadata{ID: "get_readiness", Method: "GET", Path: "/v1/readiness", Summary: "Read readiness", Access: apikit.Public, Requires: apikit.ScopeOpen, Lane: apikit.Default, Admission: laneDefault, Cost: apikit.Constant, BodyLimit: 0, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	}](registry, apikit.Metadata{ID: "get_readiness", Method: "GET", Path: "/v1/readiness", Summary: "Read readiness", Access: apikit.Public, Requires: apikit.ScopeOpen, Lane: apikit.Default, Admission: laneDefault, Cost: apikit.Constant, BodyLimit: 0, Status: 200, ResponseStatuses: []int{503}, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/admin_diagnostics.go:44

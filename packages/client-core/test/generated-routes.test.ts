@@ -29,3 +29,27 @@ test('development and dormant protocols have separate contracts and retain encod
  assert.equal(development.routePath('post_dev_e2e_sign_in'),'/v1/dev/e2e/sign-in');
  for(const route of [...optional.routes,...development.routes]) assert.equal(production.routes.some(p=>p.method===route.method&&p.path===route.path),false);
 });
+
+test('generated parameters cannot change URL path segments or inject a query', async () => {
+ const modules = [
+  {api:await import('../../contracts/src/routes.ts'), operation:'get_items_id_detail'},
+  {api:await import('../../contracts/src/hosted/routes.ts'), operation:'account_notification_get'},
+  {api:await import('../../contracts/src/optional/routes.ts'), operation:'send_device_command'},
+ ];
+ for (const {api,operation} of modules) {
+  // Exercise the shared runtime through separately generated server/Hosted modules.
+  const raw = api.routePath as (id:string, parameters:{id:string})=>string;
+  const encoded = api.encodedRoutePath as (id:string, parameters:{id:string})=>string;
+  for (const id of ['.', '..']) assert.throws(() => raw(operation,{id}), `${operation}: raw ${id}`);
+  for (const id of ['.', '..', '%2e', '%2E%2e', '.%2e', '%2e.', 'a/b', 'a\\b', 'a?x=1', 'a#b', 'a\nb', 'a b', '%', '%ff']) {
+   assert.throws(() => encoded(operation,{id}), `${operation}: encoded ${id}`);
+  }
+  const parameter='a/b?c#d\\e% f';
+  const path=raw(operation,{id:parameter});
+  const url=new URL(path,'https://server.example');
+  assert.equal(url.search,''); assert.equal(url.hash,'');
+  assert.ok(url.pathname.includes(encodeURIComponent(parameter)));
+  assert.equal(encoded(operation,{id:encodeURIComponent(parameter)}),path);
+  assert.ok(new URL(raw(operation,{id:'%2e%2e'}),'https://server.example').pathname.includes('%252e%252e'));
+ }
+});

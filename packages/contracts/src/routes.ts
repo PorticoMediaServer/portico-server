@@ -841,11 +841,6 @@ export const routes = [
     "lane": "browsing",
     "cost": "constant",
     "bodyLimit": 2097152,
-    "query": [
-      "sessionId",
-      "sourceId",
-      "sourceVersion"
-    ],
     "errors": [
       "invalid_request",
       "unauthorized",
@@ -4103,6 +4098,14 @@ export const routes = [
     "lane": "browsing",
     "cost": "page_sized",
     "bodyLimit": 0,
+    "query": [
+      "sourceId",
+      "sourceRevision",
+      "mappingRevision",
+      "sessionId",
+      "generation",
+      "positionUS"
+    ],
     "errors": [
       "invalid_request",
       "unauthorized",
@@ -4124,6 +4127,14 @@ export const routes = [
     "lane": "browsing",
     "cost": "page_sized",
     "bodyLimit": 0,
+    "query": [
+      "sourceId",
+      "sourceRevision",
+      "mappingRevision",
+      "sessionId",
+      "generation",
+      "positionUS"
+    ],
     "errors": [
       "invalid_request",
       "unauthorized",
@@ -6053,6 +6064,9 @@ export const routes = [
       "internal"
     ],
     "status": 200,
+    "responseStatuses": [
+      503
+    ],
     "http": true,
     "admission": "default"
   },
@@ -8128,11 +8142,6 @@ export const routes = [
     "lane": "browsing",
     "cost": "constant",
     "bodyLimit": 2097152,
-    "query": [
-      "sessionId",
-      "sourceId",
-      "sourceVersion"
-    ],
     "errors": [
       "invalid_request",
       "unauthorized",
@@ -9876,7 +9885,7 @@ export const routes = [
     "method": "POST",
     "path": "/v1/items/{id}/analysis/jobs",
     "summary": "Run title analysis jobs",
-    "access": "device",
+    "access": "owner",
     "requires": "library",
     "lane": "browsing",
     "cost": "constant",
@@ -9888,7 +9897,7 @@ export const routes = [
       "not_found",
       "internal"
     ],
-    "status": 200,
+    "status": 202,
     "http": true,
     "admission": "browsing"
   },
@@ -9897,7 +9906,7 @@ export const routes = [
     "method": "POST",
     "path": "/v1/items/{id}/analysis/jobs/{job}/control",
     "summary": "Run title analysis jobs control",
-    "access": "device",
+    "access": "owner",
     "requires": "library",
     "lane": "browsing",
     "cost": "constant",
@@ -9910,6 +9919,9 @@ export const routes = [
       "internal"
     ],
     "status": 200,
+    "successStatuses": [
+      202
+    ],
     "http": true,
     "admission": "browsing"
   },
@@ -9918,7 +9930,7 @@ export const routes = [
     "method": "POST",
     "path": "/v1/items/{id}/analysis/markers",
     "summary": "Run title analysis markers",
-    "access": "device",
+    "access": "owner",
     "requires": "library",
     "lane": "browsing",
     "cost": "constant",
@@ -9986,11 +9998,6 @@ export const routes = [
     "lane": "browsing",
     "cost": "constant",
     "bodyLimit": 2097152,
-    "query": [
-      "sessionId",
-      "sourceId",
-      "sourceVersion"
-    ],
     "errors": [
       "invalid_request",
       "unauthorized",
@@ -10012,11 +10019,6 @@ export const routes = [
     "lane": "browsing",
     "cost": "constant",
     "bodyLimit": 2097152,
-    "query": [
-      "sessionId",
-      "sourceId",
-      "sourceVersion"
-    ],
     "errors": [
       "invalid_request",
       "unauthorized",
@@ -10247,7 +10249,7 @@ export const routes = [
     "requires": "library",
     "lane": "browsing",
     "cost": "constant",
-    "bodyLimit": 65536,
+    "bodyLimit": 2097152,
     "errors": [
       "invalid_request",
       "unauthorized",
@@ -10255,7 +10257,7 @@ export const routes = [
       "not_found",
       "internal"
     ],
-    "status": 200,
+    "status": 202,
     "http": true,
     "admission": "browsing"
   },
@@ -12077,7 +12079,7 @@ export const routes = [
     "method": "PUT",
     "path": "/v1/items/{id}/analysis/policy",
     "summary": "Save title analysis policy",
-    "access": "device",
+    "access": "owner",
     "requires": "library",
     "lane": "browsing",
     "cost": "constant",
@@ -12103,11 +12105,6 @@ export const routes = [
     "lane": "browsing",
     "cost": "constant",
     "bodyLimit": 2097152,
-    "query": [
-      "sessionId",
-      "sourceId",
-      "sourceVersion"
-    ],
     "errors": [
       "invalid_request",
       "unauthorized",
@@ -12317,7 +12314,7 @@ export const routes = [
     "requires": "admin",
     "lane": "browsing",
     "cost": "constant",
-    "bodyLimit": 65536,
+    "bodyLimit": 2097152,
     "errors": [
       "invalid_request",
       "unauthorized",
@@ -16215,13 +16212,13 @@ export type RoutePath<I extends RouteId = RouteId> = string & {readonly [routeCo
 const byId: ReadonlyMap<string, string> = new Map(Object.entries(routePaths));
 /** Parameters are supplied unescaped. Query strings stay with the caller. */
 export function routePath<I extends RouteId>(id: I, ...args: keyof RouteParameters<I> extends never ? [parameters?: RouteParameters<I>] : [parameters: RouteParameters<I>]): RoutePath<I> {
-  return buildPath(id, args[0], encodeURIComponent);
+  return buildPath(id, args[0], false);
 }
 /** Retains an existing caller's parameter encoding during a migration. */
 export function encodedRoutePath<I extends RouteId>(id: I, ...args: keyof RouteParameters<I> extends never ? [parameters?: RouteParameters<I>] : [parameters: RouteParameters<I>]): RoutePath<I> {
-  return buildPath(id, args[0], value => value);
+  return buildPath(id, args[0], true);
 }
-function buildPath<I extends RouteId>(id: I, supplied: RouteParameters<I> | undefined, encode: (value: string) => string): RoutePath<I> {
+function buildPath<I extends RouteId>(id: I, supplied: RouteParameters<I> | undefined, encoded: boolean): RoutePath<I> {
   const route = byId.get(id);
   if (!route) throw new Error('Unknown API operation');
   const parameters = supplied as Record<string, string | number> | undefined;
@@ -16230,7 +16227,11 @@ function buildPath<I extends RouteId>(id: I, supplied: RouteParameters<I> | unde
   return route.replace(/\{([^}]+)\}/g, (_, key: string) => {
     const value = parameters?.[key];
     if (value === undefined || value === null || String(value).length === 0) throw new Error('Missing route parameter');
-    return encode(String(value));
+    const supplied = String(value);
+    if (encoded && /[/?#\\\x00-\x20\x7f]/.test(supplied)) throw new Error('Invalid encoded route parameter');
+    const segment = encoded ? decodeURIComponent(supplied) : supplied;
+    if (segment === '.' || segment === '..') throw new Error('Invalid route parameter');
+    return encoded ? supplied : encodeURIComponent(supplied);
   }) as RoutePath<I>;
 }
 /** Typed payloads are still parsed by the service's existing tolerant boundary. */
