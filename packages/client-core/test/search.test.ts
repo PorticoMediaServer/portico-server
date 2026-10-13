@@ -155,6 +155,11 @@ test('history is recorded only when the caller asks for it',async()=>{
  await lying.select('harbor');
  assert.equal(lying.getSnapshot().phase,'error');
  lying.dispose();
+ // A server that declines to record (the profile has turned history off since) still answers the search.
+ const declined=service(async p=>{const raw=result(p);raw.query.recorded=false;return raw;});
+ await declined.select('harbor',{record:true});
+ assert.equal(declined.getSnapshot().phase,'ready');assert.equal(declined.getSnapshot().data!.query.recorded,false);
+ declined.dispose();
 });
 test('search history parses as the viewer own bounded list', ()=>{
  const page=parseSearchHistory({serverId:'server',viewerFence:'fence',maxEntries:50,entries:[{q:'harbor',updatedAt:'2026-09-16T00:00:00Z',uses:3}]},scope);

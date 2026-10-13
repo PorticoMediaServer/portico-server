@@ -107,8 +107,10 @@ function parse(raw:unknown,op:Operation,s:ContentScope,limit:number):SearchData{
  if(q.q!==op.query.q)invalid();
  // The order the client asked for must be the order answered; an order it left to the server and does not know reads as relevance, best first.
  if(op.query.sort&&q.sort!==op.query.sort||op.query.direction&&q.direction!==op.query.direction)invalid();
- // Recording a search in the viewer's history is the viewer's choice: an answer that says otherwise is refused.
- if(typeof q.recorded==='boolean'&&q.recorded!==(op.query.record===true))invalid();
+ // Recording a search in the viewer's history is the viewer's choice: an answer that says it recorded
+ // a search nobody asked it to is refused. One that declined to record (the profile has since turned
+ // history off, perhaps on another device) is an ordinary answer.
+ if(q.recorded===true&&op.query.record!==true)invalid();
  const sort=oneOfOr('search','query.sort',q.sort,sorts,'relevance'),direction=oneOfOr('search','query.direction',q.direction,directions,'desc');
  const echoedGroups=known('query.groups',q.groups,MAX_PUBLISHED,groups);
  const requested=op.query.group?[op.query.group]:op.query.groups;
@@ -149,6 +151,14 @@ export function parseSearchHistory(raw:unknown,scope:ContentScope):SearchHistory
   return Object.freeze({q:v.q,updatedAt:(v.updatedAt??'') as string,uses:count(v.uses)&&v.uses?v.uses:1});
  }),e=>e.q);
  return Object.freeze({serverId:raw.serverId as string,viewerFence:raw.viewerFence,entries:Object.freeze(entries),maxEntries:raw.maxEntries});
+}
+/** The profile's recent searches, newest first, as the server keeps them (it keeps none while the profile has history turned off). */
+export async function readSearchHistory(api:LibraryContentApi,scope:ContentScope,signal?:AbortSignal):Promise<SearchHistoryPage>{
+ return parseSearchHistory(await api.request<unknown>('/v1/search/history','GET',undefined,signal),bound(scope));
+}
+/** Forgets every search the server kept for this profile. */
+export async function clearSearchHistory(api:LibraryContentApi,signal?:AbortSignal):Promise<void>{
+ await api.request<unknown>('/v1/search/history','DELETE',undefined,signal);
 }
 export function searchPath(q:SearchQuery,limit:number,cursor?:string|null):string{
  const params=new URLSearchParams({q:q.q,limit:String(limit)});
