@@ -116,14 +116,14 @@ func runDatabaseHousekeeping(ctx context.Context, db *sql.DB) {
 			continue
 		}
 		if err := persistence.ReclaimSpace(ctx, db); err != nil {
-			log.Printf("Database space reclamation: %v", err)
+			log.Printf("warn: Database space reclamation: %v", err)
 		}
 		if time.Since(lastReceiptSweep) >= 15*time.Minute {
 			// Check the indexed expiry on a read connection first. Backlog is
 			// drained in short gated transactions rather than one long writer.
 			backlog, err := sweepDueReceipts(ctx, db, receipts)
 			if err != nil {
-				log.Printf("Idempotency receipt pruning failed: %v", err)
+				log.Printf("warn: Idempotency receipt pruning failed: %v", err)
 				lastReceiptSweep = time.Now()
 			} else if !backlog {
 				lastReceiptSweep = time.Now()
@@ -135,7 +135,7 @@ func runDatabaseHousekeeping(ctx context.Context, db *sql.DB) {
 			// maintenance priority even while foreground work continues.
 			result, err := dbwork.ExecWrite(ctx, db, dbwork.ClassMaintenance, `DELETE FROM identity_unknown_attempts WHERE rowid IN (SELECT rowid FROM identity_unknown_attempts WHERE last_failure<? ORDER BY last_failure LIMIT 100)`, time.Now().Add(-24*time.Hour).Unix())
 			if err != nil {
-				log.Printf("Unknown sign-in attempt pruning failed: %v", err)
+				log.Printf("warn: Unknown sign-in attempt pruning failed: %v", err)
 				lastUnknownSweep = time.Now()
 			} else if count, _ := result.RowsAffected(); count < 100 {
 				lastUnknownSweep = time.Now()

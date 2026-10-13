@@ -247,8 +247,22 @@ func readSettings(tx *sql.Tx) (SettingsDocument, error) {
 func restartFields(Settings) []string { return []string{} }
 func (s *Store) Settings(ctx context.Context, auth Authorize) (out SettingsDocument, e error) {
 	e = s.snapshot(ctx, auth, "", func(tx *sql.Tx) error { var err error; out, err = readSettings(tx); return err })
+	s.projectAppliedSettings(&out)
 	return
 }
+func (s *Store) projectAppliedSettings(document *SettingsDocument) {
+	if s.AppliedTemporaryDirectory == nil {
+		return
+	}
+	applied := *s.AppliedTemporaryDirectory
+	document.Effective.TemporaryDirectory = applied
+	if document.Requested.TemporaryDirectory != applied {
+		document.RestartFields = []string{"temporaryDirectory"}
+	} else {
+		document.RestartFields = []string{}
+	}
+}
+
 func validCap(n *int) bool { return n == nil || *n >= 1 && *n <= 1000000 }
 
 // clamp keeps a numeric transcoding control inside its published bounds rather
@@ -389,6 +403,7 @@ func (s *Store) ApplySettings(ctx context.Context, p identity.Principal, auth Au
 		}
 		return SaveReceipt(tx, scope, c.IdempotencyKey, digest, out, s.now())
 	})
+	s.projectAppliedSettings(&out)
 	return
 }
 

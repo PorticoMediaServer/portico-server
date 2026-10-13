@@ -219,6 +219,11 @@ func logSetupBlock(port int, loopback bool) {
 	}
 }
 func run() error {
+	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer cancel()
+	if os.Getenv(supervise.WorkerEnvironment) == "1" {
+		supervise.WatchParent(cancel, os.Stdin)
+	}
 	// Before anything opens a socket or a file: lift the descriptor limit to what
 	// the kernel will allow, and derive a conservative Go soft memory limit from
 	// physical/cgroup memory unless the owner provided GOMEMLIMIT. This leaves
@@ -230,7 +235,7 @@ func run() error {
 	// helpers' own rclone are all covered by this one call. Unix already lets a
 	// parent reach its descendants and uses process groups per child instead.
 	if err := childprocess.AdoptTree(); err != nil {
-		log.Printf("Child processes are not bound to this server's lifetime (%v); a crash may leave media processes running", err)
+		log.Printf("warn: Child processes are not bound to this server's lifetime (%v); a crash may leave media processes running", err)
 	}
 	state := env("PORTICO_STATE_DIR", "../../runtime/server")
 	state, e := filepath.Abs(state)
@@ -286,7 +291,7 @@ func run() error {
 	if lockErr != nil {
 		// Unsupported locking, or a filesystem that answered in a way we cannot
 		// interpret: say so once and carry on unguarded rather than refuse to run.
-		log.Printf("Single-instance lock unavailable on %s (%v); run only one server against this state directory", state, lockErr)
+		log.Printf("warn: Single-instance lock unavailable on %s (%v); run only one server against this state directory", state, lockErr)
 	} else {
 		defer instance.Close()
 	}
@@ -305,7 +310,7 @@ func run() error {
 		}
 	} else {
 		if err := backup.CleanupPartials(state); err != nil {
-			log.Printf("Backup staging cleanup: %v", err)
+			log.Printf("warn: Backup staging cleanup: %v", err)
 		}
 		if err := backup.ApplyStaged(context.Background(), state, verifyRestoredState(state)); err != nil {
 			if backup.RestoreUnresolved(state) {
@@ -314,7 +319,7 @@ func run() error {
 				// deleted, and the next start resumes the restore.
 				log.Fatalf("A restore didn't finish (%v). Portico won't start on a half-restored state folder; nothing has been deleted, and the previous data is kept under %s. Fix the cause (for example free disk space or folder permissions), then start Portico again: it resumes the restore.", err, filepath.Join(state, backup.BackupsDir))
 			}
-			log.Printf("Staged restore did not apply (%v); continuing on the current state", err)
+			log.Printf("warn: Staged restore did not apply (%v); continuing on the current state", err)
 		}
 	}
 	doneRestore(nil)
@@ -324,7 +329,7 @@ func run() error {
 	// Without the lock another server may still be running on this state
 	// directory, so its live jobs are not orphans: configure without the kill.
 	if reaped, mediaErr := mediaexec.Configure(mediaexec.Options{StateDir: state, SkipOrphanKill: lockErr != nil, Libraries: append(filepath.SplitList(os.Getenv("PORTICO_DECODER_LIBRARIES")), filepath.SplitList(os.Getenv("PORTICO_LINEAR_DECODER_LIBRARIES"))...)}); mediaErr != nil {
-		log.Printf("Media process limits and the orphan ledger are unavailable (%v); media still runs sandboxed where the platform allows", mediaErr)
+		log.Printf("warn: Media process limits and the orphan ledger are unavailable (%v); media still runs sandboxed where the platform allows", mediaErr)
 	} else if reaped > 0 {
 		log.Printf("Stopped %d media process group(s) a previous run of this server left running", reaped)
 	}
@@ -591,9 +596,7 @@ func run() error {
 			return e
 		}
 	}
-	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	preparedVersions.Start(ctx)
-	defer cancel()
 	generatedChannels, e := librarychannels.New(db)
 	if e != nil {
 		return errors.New("Library Channel storage could not be initialized")
@@ -690,8 +693,13 @@ func run() error {
 	player.ConfigureProbe(assets.Probe{Binary: ffprobeTool, Supervisor: storeIO.Supervisor})
 	supervise.Go("cmd.hardware-report", func() { player.HardwareReport(context.Background()) })
 	conversionDirectory := filepath.Join(cache, "hls")
-	if document, err := operations.New(db).Settings(ctx, operations.AllowServerScope); err == nil && document.Effective.TemporaryDirectory != "" {
-		conversionDirectory = document.Effective.TemporaryDirectory
+	conversionSettings, err := operations.New(db).Settings(ctx, operations.AllowServerScope)
+	if err != nil {
+		return err
+	}
+	appliedConversionSetting := conversionSettings.Effective.TemporaryDirectory
+	if appliedConversionSetting != "" {
+		conversionDirectory = appliedConversionSetting
 	}
 	hls, e := playback.NewHLS(ctx, db, conversionDirectory, ffmpegTool)
 	if e == nil {
@@ -717,7 +725,7 @@ func run() error {
 				stop, done := context.WithTimeout(context.Background(), drainBudget)
 				defer done()
 				if err := converter.Shutdown(stop); err != nil {
-					log.Printf("Media conversion shutdown incomplete: %v", err)
+					log.Printf("warn: Media conversion shutdown incomplete: %v", err)
 				}
 			})
 		}, hlsDrained)
@@ -853,6 +861,9 @@ func run() error {
 	}
 	doneConsole := reporter.step("console", "Open the operations console")
 	console, scheduler, e := initializeConsole(db, scanner, player, hls, cat, lyricFetch, state)
+	if console != nil {
+		console.AppliedTemporaryDirectory = &appliedConversionSetting
+	}
 	doneConsole(e)
 	if e != nil {
 		return e
@@ -971,9 +982,11 @@ func run() error {
 		ticker := time.NewTicker(5 * time.Minute)
 		defer ticker.Stop()
 		for {
+			administration.Logs.Prune()
+			administration.Logs.PruneFiles()
 			free, total, _ := telemetry.VolumeUsage(state)
 			if err := console.NotificationMaintenance(dbwork.WithClass(ctx, dbwork.ClassMaintenance), free, total); err != nil && ctx.Err() == nil {
-				log.Printf("Owner notices: %v", err)
+				log.Printf("warn: Owner notices: %v", err)
 			}
 			select {
 			case <-ctx.Done():
@@ -1027,7 +1040,9 @@ func run() error {
 		runDatabaseHousekeeping(life, db)
 	})
 	supervise.Go("hosted.storage", func() { control.ObserveStorage(ctx, state) })
+	shutdownDone := make(chan struct{})
 	supervise.Go("cmd.http-shutdown", func() {
+		defer close(shutdownDone)
 		<-ctx.Done()
 		stop, c := context.WithTimeout(context.Background(), 10*time.Second)
 		defer c()
@@ -1099,7 +1114,7 @@ func run() error {
 		listener = capConnections(listener, connectionLimit)
 	}
 	log.Printf("Connection ceiling set to %d (HTTP/2 streams per connection: %d)", connectionLimit, server.HTTP2.MaxConcurrentStreams)
-	log.Printf("Portico server listening on %s (remote traffic requires TLS; recovery HTTP is private-LAN only)", listener.Addr())
+	log.Printf("Portico server listening on %s", listener.Addr())
 	// ONB-02 item 1: while setup is unfinished, every start names the address
 	// to open. The port comes from the bound listener, not the configured
 	// string, so a :0 or overridden bind still prints a reachable URL.
@@ -1112,6 +1127,7 @@ func run() error {
 	}
 	e = server.Serve(listener)
 	if errors.Is(e, http.ErrServerClosed) {
+		<-shutdownDone
 		if restartRequested.Load() {
 			return errRestartRequested
 		}

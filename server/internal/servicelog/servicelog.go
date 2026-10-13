@@ -84,6 +84,7 @@ type subscriber struct {
 
 type Recorder struct {
 	mu          sync.Mutex
+	pruneMu     sync.Mutex
 	ring        []Record
 	next        int64
 	instance    string
@@ -570,6 +571,8 @@ func (r *Recorder) loadHistory() {
 	if r.options.Directory == "" {
 		return
 	}
+	tail := make([]Record, 0, r.options.Capacity)
+	next := 0
 	for index := r.options.FileCount; index >= 0; index-- {
 		file, err := os.Open(r.path(index))
 		if err != nil {
@@ -595,13 +598,18 @@ func (r *Recorder) loadHistory() {
 			}
 			r.next++
 			record := Record{Sequence: r.next, At: fields[0], Level: fields[1], Category: fields[2], Message: redactClientLog(fields[3])}
-			if len(r.ring) == r.options.Capacity {
-				copy(r.ring, r.ring[1:])
-				r.ring[len(r.ring)-1] = record
+			if len(tail) < r.options.Capacity {
+				tail = append(tail, record)
 			} else {
-				r.ring = append(r.ring, record)
+				tail[next] = record
+				next = (next + 1) % r.options.Capacity
 			}
 		}
 		file.Close()
+	}
+	if len(tail) == r.options.Capacity {
+		r.ring = append(tail[next:], tail[:next]...)
+	} else {
+		r.ring = tail
 	}
 }

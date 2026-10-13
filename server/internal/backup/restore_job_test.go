@@ -61,3 +61,20 @@ func TestSeparateBackupDestinationAndRestoreRefusalWithoutLock(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestCompletedRestoreReceiptReplaysAfterRestart(t *testing.T) {
+	service, state, db := testService(t)
+	source := Source{BackupID: "2026-10-13T010000Z"}
+	marker := restoreMarker{JobID: "completed-job", OperationID: "completed-operation", Source: source, SchemaVersion: service.schemaVersion}
+	if err := writeResult(state, "restored", "", marker); err != nil {
+		t.Fatal(err)
+	}
+	restarted := New(state, db, "server", "version", service.schemaVersion)
+	id, err := restarted.StartRestore(context.Background(), source, "completed-operation")
+	if err != nil || id != "completed-job" || restarted.RestoreProgress().Result == nil {
+		t.Fatal(id, err, restarted.RestoreProgress())
+	}
+	if _, err = restarted.StartRestore(context.Background(), Source{Path: "/different"}, "completed-operation"); err != ErrInvalid {
+		t.Fatal("operation accepted changed source", err)
+	}
+}

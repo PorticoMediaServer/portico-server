@@ -120,11 +120,6 @@ func migrateWith(ctx context.Context, db *sql.DB, steps []schemaMigration) error
 			return fmt.Errorf("%w: database has migration %d, binary %d does not; upgrade Portico or restore an earlier backup", ErrSchemaNewer, version, latest)
 		}
 	}
-	if exists == 0 {
-		if _, err = db.ExecContext(ctx, "PRAGMA auto_vacuum=INCREMENTAL"); err != nil {
-			return err
-		}
-	}
 	pending := false
 	for _, step := range steps {
 		if digest, ok := applied[step.version]; ok {

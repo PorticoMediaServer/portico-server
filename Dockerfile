@@ -85,6 +85,13 @@ RUN apt-get update \
 # writes — the database, converted media, artwork, logs — lives under this one
 # path, so it is the only volume a deployment has to think about.
 RUN useradd --system --create-home --home-dir /var/lib/portico --shell /usr/sbin/nologin portico
+COPY LICENSE THIRD-PARTY-NOTICES.md /usr/share/doc/portico/
+COPY server/internal/imagework/SCALE_LICENSE /usr/share/doc/portico/licenses/image-scaling.txt
+COPY server/internal/thirdparty/sqlite/LICENSE /usr/share/doc/portico/licenses/sqlite-driver.txt
+COPY server/internal/mediaexec/fonts/LICENSE /usr/share/doc/portico/licenses/decoder-fonts.txt
+COPY third_party/hls.js/LICENSE /usr/share/doc/portico/licenses/hls-js.txt
+COPY web/src/ui/fonts/OFL.txt /usr/share/doc/portico/licenses/manrope.txt
+COPY packages/design/LICENSE-LUCIDE /usr/share/doc/portico/licenses/lucide.txt
 COPY --from=build /out/portico-server /usr/local/bin/portico-server
 COPY --from=web /out/web /opt/portico/web
 COPY --from=web /out/release.json /opt/portico/release.json

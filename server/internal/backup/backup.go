@@ -21,6 +21,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -103,9 +104,13 @@ type RunningJob struct {
 
 // RestoreResult is the last restore's recorded outcome.
 type RestoreResult struct {
-	At      string `json:"at"`
-	Outcome string `json:"outcome"`
-	Reason  string `json:"reason,omitempty"`
+	OperationID   string `json:"operationId,omitempty"`
+	SourceDigest  string `json:"sourceDigest,omitempty"`
+	JobID         string `json:"jobId,omitempty"`
+	SchemaVersion int    `json:"schemaVersion,omitempty"`
+	At            string `json:"at"`
+	Outcome       string `json:"outcome"`
+	Reason        string `json:"reason,omitempty"`
 }
 
 var (
@@ -125,6 +130,7 @@ var (
 	ErrIntegrity = errors.New("backup files do not match their manifest")
 	// ErrRestorePending: a restore stopped part-way and must finish (the next
 	// start resumes it) before another can be staged.
+	ErrBackupRunning  = errors.New("another backup is running")
 	ErrRestorePending = errors.New("a restore is still finishing; restart the server to complete it first")
 )
 
@@ -234,6 +240,7 @@ type Service struct {
 	onStaged           func()
 	restoreUnavailable bool
 	restoreOperation   string
+	restoreSource      Source
 	restoreJob         *RestoreJob
 
 	// stageMu makes restore staging one at a time: every stage writes the same
@@ -281,7 +288,7 @@ func (s *Service) SetDirectory(directory string) error {
 		return err
 	}
 	s.directory = directory
-	return nil
+	return cleanupPartialsDirectory(directory)
 }
 
 // SetRestartFunc injects the restart that follows a staged restore.
@@ -323,6 +330,10 @@ func (s *Service) Start(ctx context.Context, kind Kind, operationID string) (str
 		}
 	}
 	if s.running != nil {
+		if kind == KindScheduled && s.running.kind != KindScheduled {
+			s.mu.Unlock()
+			return "", ErrBackupRunning
+		}
 		id := s.running.id
 		s.operations[operationID] = id
 		s.mu.Unlock()
@@ -449,6 +460,9 @@ func (s *Service) create(ctx context.Context, job *Job, kind Kind) (string, erro
 		_ = os.RemoveAll(partial)
 		return "", err
 	}
+	if err = syncDirectory(dir); err != nil {
+		return "", err
+	}
 	return id, nil
 }
 
@@ -568,7 +582,10 @@ func (s *Service) LastRestore() (*RestoreResult, error) {
 // CleanupPartials deletes stale .partial-* folders. It runs at startup,
 // before any staged restore is applied.
 func CleanupPartials(state string) error {
-	dir := filepath.Join(state, BackupsDir)
+	return cleanupPartialsDirectory(filepath.Join(state, BackupsDir))
+}
+
+func cleanupPartialsDirectory(dir string) error {
 	names, err := os.ReadDir(dir)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -578,7 +595,7 @@ func CleanupPartials(state string) error {
 	}
 	for _, name := range names {
 		id := name.Name()
-		if len(id) == 0 || id[0] != '.' {
+		if !strings.HasPrefix(id, ".partial-") || checkID(strings.TrimPrefix(id, ".partial-")) != nil {
 			continue
 		}
 		if err = os.RemoveAll(filepath.Join(dir, id)); err != nil {

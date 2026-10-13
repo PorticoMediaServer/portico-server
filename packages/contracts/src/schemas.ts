@@ -4634,11 +4634,19 @@ export const schemas = {
           "at": {
             "type": "string"
           },
+          "jobId": {
+            "type": "string"
+          },
           "outcome": {
             "type": "string"
           },
           "reason": {
             "type": "string"
+          },
+          "schemaVersion": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
           }
         },
         "required": [

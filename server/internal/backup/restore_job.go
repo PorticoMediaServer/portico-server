@@ -2,6 +2,9 @@ package backup
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 
 	"portico.local/server/internal/persistence"
@@ -26,8 +29,32 @@ func (s *Service) StartRestore(ctx context.Context, source Source, operation str
 	if s.restoreUnavailable {
 		return "", ErrRestorePending
 	}
+	last, err := s.LastRestore()
+	if err != nil {
+		return "", err
+	}
 	s.mu.Lock()
+	if last != nil && last.OperationID == operation && last.JobID != "" {
+		if last.SourceDigest != restoreSourceDigest(source) {
+			s.mu.Unlock()
+			return "", ErrInvalid
+		}
+		s.restoreOperation, s.restoreSource = operation, source
+		s.restoreJob = &RestoreJob{JobID: last.JobID, Phase: "staged"}
+		if last.Outcome == "restored" {
+			s.restoreJob.Result = &StageResult{Staged: true, RestartRequired: true, Validation: Validation{SchemaVersion: last.SchemaVersion, Integrity: "ok"}}
+		} else {
+			s.restoreJob.Phase = "failed"
+			s.restoreJob.ErrorCode = "restore_integrity_failed"
+		}
+		s.mu.Unlock()
+		return last.JobID, nil
+	}
 	if operation == s.restoreOperation && s.restoreJob != nil {
+		if source != s.restoreSource {
+			s.mu.Unlock()
+			return "", ErrInvalid
+		}
 		id := s.restoreJob.JobID
 		s.mu.Unlock()
 		return id, nil
@@ -37,7 +64,7 @@ func (s *Service) StartRestore(ctx context.Context, source Source, operation str
 		return "", ErrRestorePending
 	}
 	id := newToken()
-	s.restoreOperation = operation
+	s.restoreOperation, s.restoreSource = operation, source
 	s.restoreJob = &RestoreJob{JobID: id, Phase: "queued"}
 	s.mu.Unlock()
 	supervise.Go("backup.restore", func() {
@@ -92,4 +119,10 @@ func restoreCode(err error) string {
 	default:
 		return "internal"
 	}
+}
+
+func restoreSourceDigest(source Source) string {
+	raw, _ := json.Marshal(source)
+	digest := sha256.Sum256(raw)
+	return hex.EncodeToString(digest[:])
 }

@@ -11,7 +11,7 @@ Each development release provides unsigned packages for Windows x64/ARM64,
 Apple Silicon macOS, Linux x64/ARM64, and a multi-architecture Docker image.
 
 - Windows: use the `Setup.exe` installer or portable ZIP.
-- macOS: open the DMG and copy **Portico Media Server** to Applications.
+- macOS: run the `.pkg` installer, directly or from the DMG. It installs a system service and an app that opens the console.
 - Debian/Ubuntu: install the matching `.deb` package.
 - Fedora/RHEL-family systems: install the matching `.rpm` package.
 - Other Linux systems: unpack the matching `.tar.gz` archive.
@@ -25,7 +25,7 @@ unattended installation of these preview builds.
 Portico stores server data separately from the application. Linux packages use
 `/var/lib/portico-media-server`, Windows installs use
 `%ProgramData%\Portico Media Server`, and the macOS application uses
-`~/Library/Application Support/Portico Media Server`.
+`/Library/Application Support/Portico Media Server`.
 
 ## Linux package paths and permissions
 
@@ -63,3 +63,64 @@ directories using host ACLs. Keep the private key inaccessible to other users;
 do not make the whole Let’s Encrypt directory writable. Configure the actual
 certificate/key paths in the console. Certificate renewal must preserve that
 read access.
+
+## Windows service
+
+The installer registers **Portico Media Server** (`PorticoMediaServer`) with
+Windows Services, starting automatically at boot as LocalService. Its worker
+restarts after a restore or the owner Restart action without stopping the
+service. Stopping the service drains active work before installation files can
+be replaced. Run a newer installer into the same directory to upgrade. The
+uninstaller removes the service and firewall rule, retaining your data folder.
+The state folder is restricted to administrators, SYSTEM and the service SID.
+
+Grant `NT SERVICE\PorticoMediaServer` read access to selected local libraries
+and write access where you enable deletion or recordings. Junctions, symbolic
+links and mounted-volume library roots are resolved and opened as directory
+handles; links within a library still follow the storage safety rules. Mapped
+user drive letters are not service paths. For an authenticated NAS, use a UNC
+path and configure an account with access in Services > Log On. An upgrade
+retains that account. The installer adds a TCP 32500 firewall rule; adjust it
+if you choose another listening port.
+
+## macOS service
+
+The package installs `/Applications/Portico Media Server.app` and registers
+`tv.getportico.server.service` in `/Library/LaunchDaemons`, running as the
+hidden `_portico` account. It starts at boot without an interactive login.
+Grant that account access to your selected media folders. Use the same package
+to upgrade; its preinstall stops the service and postinstall starts the new
+build. Existing launchd configuration is preserved. Opening the app opens the
+console; `PORTICO_CONSOLE_URL` can select its address when opening from a shell.
+To uninstall, run with `sudo` the app's
+`Contents/Resources/launchd/uninstall.sh`. It removes the service and app while
+retaining data and the service account. Deleting the app alone is not uninstalling.
+
+## Cache and backup destinations
+
+One state folder remains the default. Set absolute `PORTICO_CACHE_DIR` and
+`PORTICO_BACKUP_DIR` paths before starting to place temporary conversion,
+prepared and live media files, and database backups on separate volumes.
+The conversion folder saved in Playback settings overrides the HLS directory
+and takes effect after Restart. Ensure the service can write the chosen paths;
+Linux paths also need additive `ReadWritePaths` entries. Pre-restore rollback
+copies and the newest three pre-migration database copies stay beside the
+live database so restart recovery remains atomic. Scheduled backup retention
+keeps the selected number; manual copies remain until you delete them.
+A backup on the same disk does not protect against that disk failing.
+
+## Docker
+
+Keep `/var/lib/portico` in a persistent volume, and mount media separately.
+Optional cache and backup volumes use the paths above. The image includes an
+init for orphan reaping and the server's own restart parent; restore and Restart
+work without a Docker restart policy. A restart policy remains useful for host
+reboots or crashes. Allow at least 45 seconds for container stop.
+For VAAPI or Quick Sync, pass `/dev/dri` and add the numeric render/video group
+IDs from the host with `--group-add`; the image includes the vendor drivers.
+Use host networking when you want LAN multicast discovery. Set `TZ` to your
+IANA time zone for maintenance schedules. The built-in health check needs no
+credentials and reports ready only after startup finishes.
+
+Update checks use the published release feed by default. Clear the release
+feed address in Updates settings to opt out. Updates are installed manually.

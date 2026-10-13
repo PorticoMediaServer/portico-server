@@ -28,8 +28,8 @@ if [[ -n "$icon" ]]; then
 fi
 if [[ -n "${PORTICO_MACOS_SIGNING_IDENTITY:-}" ]]; then
   : "${PORTICO_RELEASE_SIGNING_KEY_FILE:?A private release key is required to seal codesigned binaries}"
-  PUBLIC_KEY_FILE="${PORTICO_RELEASE_PUBLIC_KEY_FILE:-$PORTICO_RELEASE_SIGNING_KEY_FILE.public}"
-  python3 "$ROOT/scripts/seal-macos-payload.py" "$APP/Contents/Resources/server" --key "$PORTICO_RELEASE_SIGNING_KEY_FILE" --identity "$PORTICO_MACOS_SIGNING_IDENTITY" --public-key-output "$PUBLIC_KEY_FILE"
+  PUBLIC_KEY_FILE="${PORTICO_RELEASE_PUBLIC_KEY_FILE:?A pinned public release key is required}"
+  python3 "$ROOT/scripts/seal-macos-payload.py" "$APP/Contents/Resources/server" --key "$PORTICO_RELEASE_SIGNING_KEY_FILE" --identity "$PORTICO_MACOS_SIGNING_IDENTITY" --trusted-public-key "$PUBLIC_KEY_FILE"
   codesign --force --options runtime --timestamp=none --sign "$PORTICO_MACOS_SIGNING_IDENTITY" "$APP"
   codesign --verify --deep --strict "$APP"
   python3 "$ROOT/scripts/seal-macos-payload.py" "$APP/Contents/Resources/server" --public-key "$PUBLIC_KEY_FILE" --verify
@@ -43,7 +43,7 @@ cp -R "$APP" "$PKG_ROOT/Applications/"
 chmod +x "$ROOT/packaging/macos/package-scripts/"* "$PKG_ROOT/Applications/Portico Media Server.app/Contents/Resources/launchd/uninstall.sh"
 sign=()
 if [[ -n "${PORTICO_MACOS_INSTALLER_IDENTITY:-}" ]]; then sign=(--sign "$PORTICO_MACOS_INSTALLER_IDENTITY"); fi
-pkgbuild --root "$PKG_ROOT" --identifier tv.getportico.server --version "$VERSION" --install-location / --scripts "$ROOT/packaging/macos/package-scripts" "${sign[@]}" "$OUT/Portico-Media-Server-macOS-arm64.pkg"
+pkgbuild --component-plist "$ROOT/packaging/macos/components.plist" --root "$PKG_ROOT" --identifier tv.getportico.server --version "$VERSION" --install-location / --scripts "$ROOT/packaging/macos/package-scripts" "${sign[@]}" "$OUT/Portico-Media-Server-macOS-arm64.pkg"
 
 rm -rf "${DMG_ROOT:?}"
 mkdir -p "$DMG_ROOT"

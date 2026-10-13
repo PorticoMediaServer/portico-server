@@ -118,3 +118,23 @@ func TestRegistryPublishesEveryTranscodingFieldWithItsBounds(t *testing.T) {
 		t.Fatal("the working directory only takes effect on restart and must say so")
 	}
 }
+
+func TestConversionFolderReportsPendingRestart(t *testing.T) {
+	s, p, auth := consoleFixture(t)
+	applied := ""
+	s.AppliedTemporaryDirectory = &applied
+	ctx := context.Background()
+	before, err := s.Settings(ctx, auth)
+	if err != nil {
+		t.Fatal(err)
+	}
+	values := before.Requested
+	values.TemporaryDirectory = t.TempDir()
+	after, err := s.ApplySettings(ctx, p, auth, SettingsChange{ExpectedRevision: before.Revision, IdempotencyKey: "conversion-folder", Values: values})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.Requested.TemporaryDirectory != values.TemporaryDirectory || after.Effective.TemporaryDirectory != "" || len(after.RestartFields) != 1 || after.RestartFields[0] != "temporaryDirectory" {
+		t.Fatal(after)
+	}
+}

@@ -34,13 +34,26 @@ export async function restoreBackup(transport:BackupTransport,serverId:string,op
   if(typeof v!=='object'||v===null||typeof (v as {jobId?:unknown}).jobId!=='string')throw new Error('Invalid restore receipt.');
   return (v as {jobId:string}).jobId;
  }).result;
+ const started=Date.now();
  for(;;){
   signal?.throwIfAborted();
-  const doc=await getBackups(transport,serverId,signal);
+  let doc:BackupsDocument;
+  try{doc=await getBackups(transport,serverId,signal);}catch(e){
+   const status=(e as {status?:number})?.status;
+   const code=(e as {code?:string})?.code;
+   if(authenticationFailure(e)||code==='wrong_server'||code==='invalid_administration_response'||status!==undefined&&status<500&&status!==429)throw e;
+   if(Date.now()-started>600_000)throw Object.assign(new Error('The restore is still running.'),{code:'restore_progress_timeout'});
+   await delay(500,signal);continue;
+  }
+  if(doc.lastRestore?.jobId===receipt){
+   if(doc.lastRestore.outcome==='rolled_back')throw Object.assign(new Error('The restore was rolled back.'),{code:'restore_integrity_failed'});
+   return {staged:true,restartRequired:true,validation:{schemaVersion:doc.lastRestore.schemaVersion??0,integrity:'ok'}};
+  }
   if(doc.restore?.jobId===receipt){
    if(doc.restore.errorCode)throw Object.assign(new Error('The restore could not be staged.'),{code:doc.restore.errorCode});
    if(doc.restore.result)return doc.restore.result;
   }
+  if(Date.now()-started>600_000)throw Object.assign(new Error('The restore is still running.'),{code:'restore_progress_timeout'});
   await delay(500,signal);
  }
 }

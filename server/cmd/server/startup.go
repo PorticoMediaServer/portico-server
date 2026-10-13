@@ -93,11 +93,11 @@ func (s *startupReporter) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	if r.URL.Path == "/v1/readiness" || r.URL.Path == "/health/ready" {
 		w.WriteHeader(503)
-		_ = json.NewEncoder(w).Encode(map[string]any{"ready": false, "status": "starting", "phases": s.snapshot()})
+		_ = json.NewEncoder(w).Encode(map[string]any{"ready": false, "status": "starting"})
 		return
 	}
 	w.WriteHeader(503)
-	_ = json.NewEncoder(w).Encode(map[string]any{"error": map[string]any{"code": "starting", "message": "The server is still starting. Retry shortly.", "retryable": true}, "phases": s.snapshot()})
+	_ = json.NewEncoder(w).Encode(map[string]any{"error": map[string]any{"code": "starting", "message": "The server is still starting. Retry shortly.", "retryable": true}})
 }
 
 // switchableHandler lets the listener serve the startup reporter first and the

@@ -113,9 +113,6 @@ func (p Policy) DSN(path string) (string, error) {
 	// gate has already made short, and the busy timeout covers the rest. Reads
 	// that only read never open a transaction at all, so they pay nothing for it.
 	values.Set("_txlock", "immediate")
-	// Set the file format before WAL creates the first database header. Changing
-	// NONE after creation would require a full vacuum, which we never do.
-	values.Add("_pragma", "auto_vacuum(INCREMENTAL)")
 	values.Add("_pragma", "foreign_keys(ON)")
 	values.Add("_pragma", fmt.Sprintf("busy_timeout(%d)", p.BusyTimeoutMilli))
 	values.Add("_pragma", "journal_mode(WAL)")

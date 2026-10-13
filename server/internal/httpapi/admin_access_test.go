@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
@@ -755,4 +756,76 @@ func (s *streamRecorder) body() string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.ResponseRecorder.Body.String()
+}
+
+func TestOwnerCanDownloadAndDeleteClientReport(t *testing.T) {
+	f := administrationFixtureNew(t)
+	uploaded := f.call("POST", "/v1/diagnostics/client-logs", f.member, `{"platform":"android","deviceClass":"phone","appVersion":"1.2.3","body":"Bearer private-secret"}`)
+	if uploaded.Code != 201 {
+		t.Fatal(uploaded.Code, uploaded.Body.String())
+	}
+	var report servicelog.ClientUpload
+	if err := json.Unmarshal(uploaded.Body.Bytes(), &report); err != nil {
+		t.Fatal(err)
+	}
+	if report.DeviceClass != "phone" {
+		t.Fatal(report)
+	}
+	path := "/v1/admin/diagnostics/client-logs/" + report.ID
+	if response := f.call("GET", path+"/download", f.admin, ""); response.Code != 403 {
+		t.Fatal("admin read owner report", response.Code)
+	}
+	downloaded := f.call("GET", path+"/download", f.owner, "")
+	if downloaded.Code != 200 || !strings.Contains(downloaded.Body.String(), "REDACTED") || downloaded.Header().Get("Content-Disposition") == "" {
+		t.Fatal(downloaded.Code, downloaded.Body.String())
+	}
+	if removed := f.call("DELETE", path, f.owner, ""); removed.Code != 200 {
+		t.Fatal(removed.Code, removed.Body.String())
+	}
+	if response := f.call("GET", path, f.owner, ""); response.Code != 404 {
+		t.Fatal("deleted report remained", response.Code)
+	}
+}
+
+func TestClientReportsPageKeepsTimestampTiesAndGlobalBound(t *testing.T) {
+	f := administrationFixtureNew(t)
+	ctx := context.Background()
+	for n := 0; n < 105; n++ {
+		id := fmt.Sprintf("%022d", n)
+		if _, err := f.deps.DB.Exec(`INSERT INTO client_log_uploads(id,account_id,profile_id,device_id,platform,app_version,device_class,received_ms,bytes,body) VALUES(?,?,?,?,?,?,?,1000,1,'x')`, id, "other", "other", id, "test", "1", "phone"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// One signed-in upload enforces the global cap, independently of device retention.
+	response := f.call("POST", "/v1/diagnostics/client-logs", f.member, `{"platform":"test","body":"new"}`)
+	if response.Code != 201 {
+		t.Fatal(response.Code, response.Body.String())
+	}
+	var count int
+	f.deps.DB.QueryRow(`SELECT count(*) FROM client_log_uploads`).Scan(&count)
+	if count != 100 {
+		t.Fatal("global bound", count)
+	}
+	store := f.deps.Access.ClientLogs
+	cursor := ""
+	seen := map[string]bool{}
+	for {
+		page, err := store.List(ctx, cursor, 25)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, item := range page.Items {
+			if seen[item.ID] {
+				t.Fatal("duplicate", item.ID)
+			}
+			seen[item.ID] = true
+		}
+		if page.NextCursor == "" {
+			break
+		}
+		cursor = page.NextCursor
+	}
+	if len(seen) != 100 {
+		t.Fatal("timestamp ties lost", len(seen))
+	}
 }

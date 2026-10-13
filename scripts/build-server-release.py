@@ -146,7 +146,7 @@ def main():
         checked_env['PORTICO_PLAYBACK_TEST_HELPER']=str(helper)
     # The 20,000-row metadata boundary test is deliberately exhaustive. Race
     # instrumentation of pure-Go SQLite exceeds Go's default ten-minute limit.
-    subprocess.run([str(ROOT/'scripts/env.sh'),'go','test','-race','-timeout=30m','./...'],cwd=source,env=checked_env,check=True)
+    subprocess.run([str(ROOT/'scripts/env.sh'),'go','test','-race','-timeout=60m','./...'],cwd=source,env=checked_env,check=True)
     subprocess.run([str(ROOT/'scripts/env.sh'),'sh',str(ROOT/'scripts/vet-go.sh')],cwd=source,env=checked_env,check=True)
     built_at=datetime.datetime.now(datetime.timezone.utc).isoformat()
     prefix='portico.local/'+args.component+'/internal/buildinfo.'

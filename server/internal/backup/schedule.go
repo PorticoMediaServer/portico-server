@@ -3,6 +3,7 @@ package backup
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"log"
 	"time"
 
@@ -73,11 +74,14 @@ func (s *Scheduler) check(ctx context.Context) {
 			err = job.Result()
 		}
 	}
+	if errors.Is(err, ErrBackupRunning) {
+		return
+	}
 	if s.ReportFailure != nil {
 		s.ReportFailure(ctx, err != nil)
 	}
 	if err != nil {
-		log.Printf("Scheduled backup: %v", err)
+		log.Printf("warn: Scheduled backup: %v", err)
 		return
 	}
 	log.Printf("Scheduled backup %s", id)
@@ -88,7 +92,7 @@ func (s *Scheduler) check(ctx context.Context) {
 		}
 	}
 	if err = s.service.Prune(keep); err != nil {
-		log.Printf("Scheduled backup prune: %v", err)
+		log.Printf("warn: Scheduled backup prune: %v", err)
 	}
 }
 

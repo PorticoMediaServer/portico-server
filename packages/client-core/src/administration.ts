@@ -52,7 +52,7 @@ export type BackupKind='scheduled'|'manual'|'pre-restore';
 export type BackupSummary=Readonly<{id:string;createdAt:string;kind:BackupKind;schemaVersion:number;serverVersion:string;bytes:number;path:string}>;
 export type BackupRunning=Readonly<{jobId:string;phase:string;bytesDone:number;bytesTotal:number}>;
 export type RestoreOutcome='restored'|'rolled_back';
-export type LastRestore=Readonly<{at:string;outcome:RestoreOutcome;reason:string}>;
+export type LastRestore=Readonly<{at:string;outcome:RestoreOutcome;reason:string;jobId?:string;schemaVersion?:number}>;
 export type BackupsDocument=Readonly<{backups:readonly BackupSummary[];running?:BackupRunning;restore?:RestoreProgress;lastRestore?:LastRestore}>;
 export type RestoreSource=Readonly<{backupId:string}|{path:string}>;
 export type RestoreProgress=Readonly<{jobId:string;phase:string;bytesDone:number;bytesTotal:number;result?:RestoreStaged;errorCode?:string}>;
@@ -364,7 +364,7 @@ export function parseBackupsDocument(v:unknown):BackupsDocument{
  }
  if(v.lastRestore!==undefined&&v.lastRestore!==null){
   const r=v.lastRestore;
-  if(object(r)&&text(r.at,64)&&restoreOutcomes.includes(r.outcome as RestoreOutcome))doc.lastRestore=Object.freeze({at:r.at,outcome:r.outcome as RestoreOutcome,reason:text(r.reason,1024)?r.reason as string:''});
+  if(object(r)&&text(r.at,64)&&restoreOutcomes.includes(r.outcome as RestoreOutcome))doc.lastRestore=Object.freeze({at:r.at,outcome:r.outcome as RestoreOutcome,reason:text(r.reason,1024)?r.reason as string:'',...(filled(r.jobId,128)?{jobId:r.jobId as string}:{}),...(count(r.schemaVersion)?{schemaVersion:r.schemaVersion as number}:{})});
  }
  return Object.freeze(doc);
 }
