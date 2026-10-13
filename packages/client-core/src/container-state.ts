@@ -1,4 +1,5 @@
 import {unreadableServerResponse} from './server-messages.ts';
+import {noteSkipped} from './tolerant.ts';
 /**
  * Container personal state (`server/api/jobs.openapi.yaml`): an O(1) watched default for a show, season, album or book,
  * and the title's own Watchlist and Favorite flags (a show can be on the Watchlist; a show, album,
@@ -46,21 +47,25 @@ function checkKind(kind:string):ContainerKind{
  return kind as ContainerKind;
 }
 
+/**
+ * A container's personal state. The revision, the watched default and its watermark are exact:
+ * the next change is sent against them. Everything else is only shown: a field this app does not
+ * know is ignored, a flag that is missing or unreadable reads as off, a count that cannot be read
+ * as 0, and a library id that cannot be read is left out.
+ */
 function parse(raw:unknown,withCounts:boolean):ContainerState{
  if(!object(raw))invalid();
  if(!count(raw.revision)||typeof raw.watched!=='boolean'||typeof raw.watermark!=='string'||raw.watermark.length>128)invalid();
- if(Object.keys(raw).some(k=>k!=='revision'&&k!=='watched'&&k!=='watermark'&&k!=='watchlisted'&&k!=='favorite'&&k!=='watchedCount'&&k!=='unwatchedCount'&&k!=='libraryId'))invalid();
- if(raw.libraryId!==undefined&&!id(raw.libraryId))invalid();
- if(raw.watchlisted!==undefined&&typeof raw.watchlisted!=='boolean'||raw.favorite!==undefined&&typeof raw.favorite!=='boolean')invalid();
  const flags={watchlisted:raw.watchlisted===true,favorite:raw.favorite===true};
+ const shown=(part:string,v:unknown):number|undefined=>{if(count(v))return v;if(v!==undefined&&v!==null)noteSkipped('container-state',part);return undefined;};
+ const watchedCount=shown('watchedCount',raw.watchedCount),unwatchedCount=shown('unwatchedCount',raw.unwatchedCount);
  if(withCounts){
-  if(!count(raw.watchedCount)||!count(raw.unwatchedCount))invalid();
-  return Object.freeze({revision:raw.revision as number,watched:raw.watched as boolean,watermark:raw.watermark as string,...flags,watchedCount:raw.watchedCount as number,unwatchedCount:raw.unwatchedCount as number,...(raw.libraryId?{libraryId:raw.libraryId as string}:{})});
+  return Object.freeze({revision:raw.revision as number,watched:raw.watched as boolean,watermark:raw.watermark as string,...flags,watchedCount:watchedCount??0,unwatchedCount:unwatchedCount??0,...(id(raw.libraryId)?{libraryId:raw.libraryId}:{})});
  }
  return Object.freeze({
   revision:raw.revision as number,watched:raw.watched as boolean,watermark:raw.watermark as string,...flags,
-  ...(raw.watchedCount===undefined?{}:{watchedCount:raw.watchedCount as number}),
-  ...(raw.unwatchedCount===undefined?{}:{unwatchedCount:raw.unwatchedCount as number}),
+  ...(watchedCount===undefined?{}:{watchedCount}),
+  ...(unwatchedCount===undefined?{}:{unwatchedCount}),
  });
 }
 

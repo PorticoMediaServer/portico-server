@@ -1,5 +1,5 @@
-import {formatBytes} from '@core/presentation/content.ts';
-export {alertLabel, alertLabels, alertTone, duration, factLabel, factLabels, formatFact, jobLabel, jobLabels, jobStateLabel, jobTone, sentence, when} from '@core/server-admin/console-words.ts';
+export {alertLabel, alertLabels, alertTone, duration, factLabel, factLabels, formatFact, jobLabel, jobLabels, jobStateLabel, jobTone, sentence} from '@core/server-admin/console-words.ts';
+import type {I18n} from '@i18n';
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {ConsoleClient} from '@core/console.ts';
 import {presentError} from '@core/presentation/index.ts';
@@ -79,5 +79,12 @@ export function problem(e: unknown, operation: 'load' | 'action' = 'load'): stri
 /** A 404 from a console read means the feature isn't set up on this server (or this version lacks it): an empty state, never an error. */
 export const unconfigured = <T,>(read: Promise<T>): Promise<T | null> => read.catch(e => ((e as {status?: number} | null)?.status === 404 ? null : Promise.reject(e)));
 
-/** One byte formatter for every screen: client-core's. */
-export const bytes = (n: number): string => formatBytes(n);
+/**
+ * A moment as the console shows it: the time alone for today, the day and time before that, in
+ * the owner's locale and 12/24-hour clock.
+ */
+export function when(i18n: I18n, ms: number): string {
+  if (!ms) return '—';
+  const d = new Date(ms);
+  return d.toDateString() === new Date().toDateString() ? i18n.time(d) : i18n.formatDate(d, {month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'});
+}

@@ -1,6 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {AccountNotificationsClient, parseAccountNotificationPage, parseNotificationPreferences, runAccountExport} from '../src/account-notifications.ts';
+import {AccountNotificationsClient, parseAccountExportJob, parseAccountNotification, parseAccountNotificationPage, parseNotificationPreferences, runAccountExport} from '../src/account-notifications.ts';
+import {resetSkippedParts, skippedParts} from '../src/tolerant.ts';
 
 // The exact shapes BE-hosted sends (be/hosted da0a9db: postgres.Notification / NotificationFeed /
 // NotificationPreferences / ExportJob; detail per kind as documented in notifications.go).
@@ -27,7 +28,46 @@ test('the feed parses every documented kind and keeps an unknown kind as "other"
   assert.equal(page.items[5]!.rawKind, 'something_new');
   assert.equal(parseAccountNotificationPage({items: [], unread: 0}).nextCursor, undefined);
   assert.throws(() => parseAccountNotificationPage({items: [], unread: -1}));
-  assert.throws(() => parseAccountNotificationPage({items: [{...feed.items[0], read: 'no'}], unread: 0}));
+});
+
+test('one item that cannot be read is left out and the rest of the page is kept', () => {
+  resetSkippedParts();
+  const page = parseAccountNotificationPage({...feed, futureField: 1, items: [
+    {...feed.items[0], read: 'no'},
+    {...feed.items[1], futureField: {nested: true}},
+    {...feed.items[2], id: ''},
+    'not an item',
+    {...feed.items[3], occurredAt: 'yesterday'},
+    feed.items[5],
+  ]});
+  assert.deepEqual(page.items.map(i => i.id), ['sec_1', 'future_1']);
+  assert.equal('futureField' in page.items[0]!, false);
+  assert.equal(page.unread, 2);
+  assert.equal(page.nextCursor, 'cur_2');
+  assert.deepEqual(skippedParts(), [{document: 'account-notifications', part: 'items', count: 4}]);
+  // A single item read on its own has nothing else to keep.
+  assert.throws(() => parseAccountNotification({...feed.items[0], read: 'no'}));
+});
+
+test('a server reference or detail that cannot be read is left off the item', () => {
+  resetSkippedParts();
+  const offline = parseAccountNotification({...feed.items[2], server: {id: 'srv', name: 'x'.repeat(201)}, detail: 'none'});
+  assert.equal(offline.kind, 'server_offline');
+  assert.equal(offline.server, undefined);
+  assert.deepEqual(offline.detail, {});
+  assert.deepEqual(skippedParts().map(p => p.part), ['server', 'detail']);
+});
+
+test('the page size, cursor and unread count are still exact', () => {
+  assert.throws(() => parseAccountNotificationPage({items: Array.from({length: 201}, () => feed.items[0]), unread: 0}));
+  assert.throws(() => parseAccountNotificationPage({items: {}, unread: 0}));
+  assert.throws(() => parseAccountNotificationPage({items: [], unread: 0, nextCursor: 7}));
+  assert.throws(() => parseAccountNotificationPage({items: [], unread: 0, nextCursor: 'x'.repeat(2049)}));
+  assert.throws(() => parseAccountNotificationPage({items: [], unread: 1.5}));
+  assert.throws(() => parseAccountNotificationPage(null));
+  // An export in a state this app does not know is neither pending nor ready, so it is not guessed at.
+  assert.throws(() => parseAccountExportJob({id: 'export_x', state: 'failed', expiresAt: '2026-09-24T00:00:00Z'}));
+  assert.equal(parseAccountExportJob({id: 'export_x', state: 'ready', expiresAt: '2026-09-24T00:00:00Z', futureField: 1}).state, 'ready');
 });
 
 test('requests go to the documented routes with the documented bodies', async () => {

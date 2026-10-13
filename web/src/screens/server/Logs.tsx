@@ -36,7 +36,8 @@ export function RecordsPanel() {
 }
 
 function Record({record}: {record: EvidenceRecord}) {
-  const {t} = useI18n();
+  const i18n = useI18n();
+  const {t} = i18n;
   return (
     <div className={s.stream}>
       <div className={s.streamCopy}>
@@ -45,7 +46,7 @@ function Record({record}: {record: EvidenceRecord}) {
           <Text variant="bodyStrong">{record.code ? sentence(record.code) : record.action ? sentence(record.action) : t('web.logs.recordFallback')}</Text>
           {record.component ? <Text variant="caption" tone="tertiary">{sentence(record.component)}</Text> : null}
         </div>
-        <div className={s.streamMeta}><span>{when(record.at)}</span>{record.target ? <span>{record.target}</span> : null}{record.fields ? Object.entries(record.fields).map(([k, v]) => <span key={k}>{sentence(k)} {v}</span>) : null}</div>
+        <div className={s.streamMeta}><span>{when(i18n, record.at)}</span>{record.target ? <span>{record.target}</span> : null}{record.fields ? Object.entries(record.fields).map(([k, v]) => <span key={k}>{sentence(k)} {v}</span>) : null}</div>
       </div>
       <Text variant="mono" tone="muted" style={{fontSize: 11}}>#{record.sequence}</Text>
     </div>
@@ -55,7 +56,8 @@ function Record({record}: {record: EvidenceRecord}) {
 /** Troubleshooting › Support export: a file for whoever is helping, with what it leaves out said plainly. */
 export function SupportExportPanel() {
   const client = useConsole();
-  const {t} = useI18n();
+  const i18n = useI18n();
+  const {t} = i18n;
   const action = useAction();
   const [hours, setHours] = useState(24);
   const [chosen, setChosen] = useState<string[]>(['runtime', 'audit']);
@@ -77,7 +79,7 @@ export function SupportExportPanel() {
       <SettingsRow label={t('web.logs.include')} control={<div style={{display: 'flex', gap: 16, flexWrap: 'wrap'}}>{['runtime', 'client', 'audit', 'snapshot'].map(c => <Checkbox key={c} checked={chosen.includes(c)} onCheckedChange={() => toggle(c)} label={c === 'runtime' ? t('web.logs.includeServer') : c === 'client' ? t('web.logs.includeClient') : c === 'audit' ? t('web.logs.includeAudit') : t('web.logs.includeSnapshot')} />)}</div>} start />
       <SettingsRow label={t('web.logs.prepareExport')} control={<Button variant="primary" size="sm" label={t('web.logs.prepare')} loading={action.busy} disabled={!chosen.length} onClick={() => void action.run(async () => setResult(await client.createExport(Date.now() - hours * 3600000, Date.now(), chosen)))} />} />
       {result ? (
-        <SettingsRow label={t('web.logs.readyToDownload')} help={t('web.logs.readyHelp', {included: result.manifest.included.map(sentence).join(', ') || t('web.logs.exportNothing'), excluded: result.manifest.excluded.length ? result.manifest.excluded.map(sentence).join(', ') : 'none', redaction: sentence(result.manifest.redaction), expires: when(result.expiresAt)})} control={<Button variant="secondary" size="sm" icon="download" label={t('web.logs.downloadJson')} onClick={download} />} />
+        <SettingsRow label={t('web.logs.readyToDownload')} help={t('web.logs.readyHelp', {included: result.manifest.included.map(sentence).join(', ') || t('web.logs.exportNothing'), excluded: result.manifest.excluded.length ? result.manifest.excluded.map(sentence).join(', ') : 'none', redaction: sentence(result.manifest.redaction), expires: when(i18n, result.expiresAt)})} control={<Button variant="secondary" size="sm" icon="download" label={t('web.logs.downloadJson')} onClick={download} />} />
       ) : null}
       {action.error ? <div style={{padding: '0 16px 12px'}}><Notice tone="error" compact>{action.error}</Notice></div> : null}
     </SettingsGroup>

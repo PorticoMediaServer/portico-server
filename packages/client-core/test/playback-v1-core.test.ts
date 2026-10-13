@@ -370,7 +370,7 @@ test('transfer: the source keeps playing until the target reports playing, then 
 test('events: one stream, prefix subscriptions, reconnect from the cursor after stream.closed, no duplicates', async () => {
   const c = clockwork();
   const server = new FakePlaybackServer({now: c.now, setTimer: c.setTimer, clearTimer: c.clearTimer});
-  const events = new EventsClient({http: fakeHttp(server), openStream: server.openStream, setTimer: c.setTimer, clearTimer: c.clearTimer});
+  const events = new EventsClient({http: fakeHttp(server), openStream: server.openStream, random: () => 0, setTimer: c.setTimer, clearTimer: c.clearTimer});
   const seen: string[] = [];
   events.on('queue.', e => seen.push(e.type + '#' + e.id));
   events.on('session.updated', e => seen.push(e.type + '#' + e.id));

@@ -1,4 +1,5 @@
 import type {ContentScope} from './library-content.ts';
+import {noteSkipped} from './tolerant.ts';
 export const operationPanels=['memory','database','build'] as const;
 export type OperationPanelName=typeof operationPanels[number];
 type Build={version:string|null;buildId:string|null;sourceDigest:string|null;builtAt:string|null;targetOS:string;targetArch:string;goVersion:string|null};
@@ -15,17 +16,18 @@ export function parseOperationPanel(value:unknown,name:OperationPanelName):Opera
  if(!record(value)||value.name!==name||!date(value.observedAt)||!date(value.freshUntil)||Date.parse(value.freshUntil)-Date.parse(value.observedAt)!==30000)invalid();
  const base={name,observedAt:value.observedAt,freshUntil:value.freshUntil};
  if(name==='memory'){
-  const m=value.memory;if(!record(m)||!count(m.heapObjectsBytes)||!count(m.runtimeReservedBytes)||m.heapObjectsBytes>m.runtimeReservedBytes||value.database!==undefined||value.build!==undefined)invalid();
+  const m=value.memory;if(!record(m)||!count(m.heapObjectsBytes)||!count(m.runtimeReservedBytes)||m.heapObjectsBytes>m.runtimeReservedBytes)invalid();
   return {...base,memory:{heapObjectsBytes:m.heapObjectsBytes,runtimeReservedBytes:m.runtimeReservedBytes}};
  }
  if(name==='database'){
-  if(!record(value.database)||value.database.readable!==true||value.memory!==undefined||value.build!==undefined)invalid();
+  if(!record(value.database)||value.database.readable!==true)invalid();
   return {...base,database:{readable:true}};
  }
- const b=value.build;if(!record(b)||value.memory!==undefined||value.database!==undefined)invalid();
- for(const key of ['version','buildId','sourceDigest','goVersion'])if(b[key]!==null&&!token(b[key]))invalid();
- if(b.builtAt!==null&&!date(b.builtAt)||!token(b.targetOS)||!token(b.targetArch))invalid();
- return {...base,build:{version:b.version as string|null,buildId:b.buildId as string|null,sourceDigest:b.sourceDigest as string|null,builtAt:b.builtAt as string|null,targetOS:b.targetOS,targetArch:b.targetArch,goVersion:b.goVersion as string|null}};
+ const b=value.build;if(!record(b))invalid();
+ // A build detail this app cannot read is shown as not recorded. Only the panel that was asked for is ever read.
+ const detail=(key:string,ok:(v:unknown)=>v is string):string|null=>{if(b[key]===null||ok(b[key]))return b[key] as string|null;noteSkipped('operations','build.'+key);return null;};
+ if(!token(b.targetOS)||!token(b.targetArch))invalid();
+ return {...base,build:{version:detail('version',token),buildId:detail('buildId',token),sourceDigest:detail('sourceDigest',token),builtAt:detail('builtAt',date),targetOS:b.targetOS,targetArch:b.targetArch,goVersion:detail('goVersion',token)}};
 }
 const empty=():OperationPanelState=>({phase:'idle',panel:null,error:null});
 export class ServerOperationsService {

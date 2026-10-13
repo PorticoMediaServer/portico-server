@@ -1,5 +1,6 @@
 import type {LibraryContentApi, ContentScope} from './library-content.ts';
 import type {PlaybackSnapshot} from './index.ts';
+import {firstOfEach,keepReadable,oneOfOr} from './tolerant.ts';
 
 export const analysisOperations = ['checksum','chapter_images','trickplay','waveform','loudness','fingerprint','segment_detection'] as const;
 export type AnalysisOperation = typeof analysisOperations[number];
@@ -33,22 +34,25 @@ function checkedScope(raw:unknown,bound:ContentScope,t:AnalysisTarget):AnalysisS
  assert(object(raw)&&raw.serverId===bound.serverId&&raw.libraryId===t.libraryId&&raw.itemId===t.itemId&&text(raw.viewerFence,256)&&raw.viewerFence&&raw.sessionId===(t.sessionId??'')&&raw.sessionGeneration===(t.generation??0));return Object.freeze({...raw}) as AnalysisScope;
 }
 function checkedSource(raw:unknown,t:AnalysisTarget):AnalysisSource {assert(object(raw)&&text(raw.id,256)&&raw.id&&(!t.sourceId||raw.id===t.sourceId)&&text(raw.revision,256)&&raw.revision&&opaque(raw.mappingRevision)&&analysisMicroseconds(raw.durationUS)&&typeof raw.needsProbe==='boolean');return Object.freeze({...raw}) as AnalysisSource;}
+/** The scope, the source and its revisions, the marker and policy revisions and every list's bound are exact.
+ * Inside a list, a row that cannot be read (a stage, kind or assurance this app does not know, a time outside
+ * the source) or that repeats is left out and the rest are kept. */
 export function parseAnalysis(raw:unknown,bound:ContentScope,t:AnalysisTarget):AnalysisView{
  assert(object(raw));const scope=checkedScope(raw.scope,bound,t),source=checkedSource(raw.source,t);
  assert(typeof raw.canManage==='boolean'&&integer(raw.markerRevision)&&raw.markerRevision>0&&object(raw.policy));const p=raw.policy;
- assert(['file_list_only','basic','complete','custom'].includes(String(p.tier))&&integer(p.revision)&&p.revision>0);const operations=list(p.operations,32);assert(operations.every(x=>text(x,64)));
+ assert(text(p.tier,64)&&p.tier&&integer(p.revision)&&p.revision>0);const operations=list(p.operations,32);assert(operations.every(x=>text(x,64)));
  const trickplay=p.trickplay===undefined?{intervalSeconds:0,tileWidth:0,maxTiles:0}:p.trickplay;
  assert(object(trickplay)&&integer(trickplay.intervalSeconds)&&integer(trickplay.tileWidth)&&integer(trickplay.maxTiles));
  assert(trickplay.intervalSeconds<=600&&trickplay.tileWidth<=640&&trickplay.maxTiles<=20000);
- const results=list(raw.results,16).map(r=>{assert(object(r)&&analysisOperations.includes(r.stage as AnalysisOperation)&&text(r.algorithm,128)&&['observed_acquisition','strong_version'].includes(String(r.originAssurance))&&integer(r.createdMS)&&object(r.summary)&&(!r.artifactId||opaque(r.artifactId)));return Object.freeze({...r,summary:Object.freeze({...r.summary})}) as AnalysisResult;});
- assert(new Set(results.map(r=>r.stage)).size===results.length);
- const markers=list(raw.markers,512).map(m=>{assert(object(m)&&opaque(m.id)&&['intro','recap','credits','commercial','chapter'].includes(String(m.kind))&&text(m.title,512)&&text(m.provenance,512)&&analysisMicroseconds(m.startUS)&&analysisMicroseconds(m.endUS)&&Number(m.startUS)<Number(m.endUS)&&Number(m.endUS)<=Number(source.durationUS)&&typeof m.confidence==='number'&&Number.isFinite(m.confidence)&&m.confidence>=0&&m.confidence<=1&&typeof m.approved==='boolean'&&typeof m.edited==='boolean');return Object.freeze({...m}) as AnalysisMarker;});
- assert(new Set(markers.map(m=>m.id)).size===markers.length);
- const previews=list(raw.previews,12).map(p=>{assert(object(p)&&opaque(p.id)&&['trickplay','chapter_images'].includes(String(p.kind))&&analysisMicroseconds(p.startUS)&&analysisMicroseconds(p.endUS)&&Number(p.startUS)<Number(p.endUS)&&Number(p.endUS)<=Number(source.durationUS)&&integer(p.width)&&p.width>0&&p.width<=4096&&integer(p.height)&&p.height>0&&p.height<=4096);return Object.freeze({...p}) as AnalysisPreview;});
- const jobs=list(raw.jobs,33).map(j=>{assert(object(j)&&text(j.jobId,256)&&j.jobId&&text(j.jobStatus,64)&&text(j.stage,64)&&text(j.state,64)&&integer(j.attempt)&&analysisMicroseconds(j.processedBytes)&&text(j.errorCode,128)&&integer(j.updatedMS));return Object.freeze({...j}) as AnalysisJob;});
- const sources=list(raw.sources,32).map(v=>{assert(object(v)&&text(v.id,256)&&v.id&&text(v.label,128));return Object.freeze({id:v.id,label:v.label});});
+ // A tier this app does not know reads as custom: the operations the server lists are what it shows.
+ const tier=oneOfOr('analysis','policy.tier',p.tier,['file_list_only','basic','complete','custom'] as const,'custom');
+ const results=firstOfEach('analysis','results',keepReadable('analysis','results',list(raw.results,16),r=>{assert(object(r)&&analysisOperations.includes(r.stage as AnalysisOperation)&&text(r.algorithm,128)&&['observed_acquisition','strong_version'].includes(String(r.originAssurance))&&integer(r.createdMS)&&object(r.summary)&&(!r.artifactId||opaque(r.artifactId)));return Object.freeze({...r,summary:Object.freeze({...r.summary})}) as AnalysisResult;}),r=>r.stage);
+ const markers=firstOfEach('analysis','markers',keepReadable('analysis','markers',list(raw.markers,512),m=>{assert(object(m)&&opaque(m.id)&&['intro','recap','credits','commercial','chapter'].includes(String(m.kind))&&text(m.title,512)&&text(m.provenance,512)&&analysisMicroseconds(m.startUS)&&analysisMicroseconds(m.endUS)&&Number(m.startUS)<Number(m.endUS)&&Number(m.endUS)<=Number(source.durationUS)&&typeof m.confidence==='number'&&Number.isFinite(m.confidence)&&m.confidence>=0&&m.confidence<=1&&typeof m.approved==='boolean'&&typeof m.edited==='boolean');return Object.freeze({...m}) as AnalysisMarker;}),m=>m.id);
+ const previews=keepReadable('analysis','previews',list(raw.previews,12),p=>{assert(object(p)&&opaque(p.id)&&['trickplay','chapter_images'].includes(String(p.kind))&&analysisMicroseconds(p.startUS)&&analysisMicroseconds(p.endUS)&&Number(p.startUS)<Number(p.endUS)&&Number(p.endUS)<=Number(source.durationUS)&&integer(p.width)&&p.width>0&&p.width<=4096&&integer(p.height)&&p.height>0&&p.height<=4096);return Object.freeze({...p}) as AnalysisPreview;});
+ const jobs=keepReadable('analysis','jobs',list(raw.jobs,33),j=>{assert(object(j)&&text(j.jobId,256)&&j.jobId&&text(j.jobStatus,64)&&text(j.stage,64)&&text(j.state,64)&&integer(j.attempt)&&analysisMicroseconds(j.processedBytes)&&text(j.errorCode,128)&&integer(j.updatedMS));return Object.freeze({...j}) as AnalysisJob;});
+ const sources=keepReadable('analysis','sources',list(raw.sources,32),v=>{assert(object(v)&&text(v.id,256)&&v.id&&text(v.label,128));return Object.freeze({id:v.id,label:v.label});});
  assert(sources.some(v=>v.id===source.id));if(source.needsProbe)assert(!results.length&&!markers.length&&!previews.length);assert(raw.budgets===null||object(raw.budgets));
- return Object.freeze({scope,source,sources:Object.freeze(sources),canManage:raw.canManage,policy:Object.freeze({tier:p.tier,revision:p.revision,operations:Object.freeze(operations),trickplay:Object.freeze({intervalSeconds:trickplay.intervalSeconds,tileWidth:trickplay.tileWidth,maxTiles:trickplay.maxTiles})}) as AnalysisView['policy'],budgets:raw.budgets as AnalysisView['budgets'],results:Object.freeze(results),markers:Object.freeze(markers),markerRevision:raw.markerRevision,previews:Object.freeze(previews),jobs:Object.freeze(jobs)});
+ return Object.freeze({scope,source,sources:Object.freeze(sources),canManage:raw.canManage,policy:Object.freeze({tier,revision:p.revision,operations:Object.freeze(operations),trickplay:Object.freeze({intervalSeconds:trickplay.intervalSeconds,tileWidth:trickplay.tileWidth,maxTiles:trickplay.maxTiles})}) as AnalysisView['policy'],budgets:raw.budgets as AnalysisView['budgets'],results:Object.freeze(results),markers:Object.freeze(markers),markerRevision:raw.markerRevision,previews:Object.freeze(previews),jobs:Object.freeze(jobs)});
 }
 function message(error:unknown):string{return error instanceof Error?error.message:'Analysis request failed. Refresh to check its current state.';}
 let requestSequence=0;
@@ -84,7 +88,7 @@ export class MediaAnalysisService {
   catch(e){if(!this.disposed&&epoch===this.epoch&&seq===this.imageSequence)this.publish({imageBusy:false,image:null,error:message(e)});}
  }
  async waveform():Promise<void>{const data=this.state.data,epoch=this.epoch;const id=data?.results.find(r=>r.stage==='waveform')?.artifactId;if(!id||!data||this.state.busy)return;
-  try{const r=await this.artifact(id,data);if(this.disposed||epoch!==this.epoch||this.state.data!==data)return;assert(r.kind==='waveform'&&r.mime==='application/json'&&object(r.document));const points=list(r.document.points,2048).map(p=>{assert(object(p)&&analysisMicroseconds(p.startUS)&&analysisMicroseconds(p.endUS)&&Number(p.endUS)>Number(p.startUS)&&Number(p.endUS)<=Number(data.source.durationUS)&&typeof p.peak==='number'&&Number.isFinite(p.peak)&&p.peak>=0&&p.peak<=1&&typeof p.rms==='number'&&Number.isFinite(p.rms)&&p.rms>=0&&p.rms<=1);return Object.freeze({...p}) as WaveformPoint;});this.publish({waveform:Object.freeze(points)});}
+  try{const r=await this.artifact(id,data);if(this.disposed||epoch!==this.epoch||this.state.data!==data)return;assert(r.kind==='waveform'&&r.mime==='application/json'&&object(r.document));const points=keepReadable('analysis','waveform.points',list(r.document.points,2048),p=>{assert(object(p)&&analysisMicroseconds(p.startUS)&&analysisMicroseconds(p.endUS)&&Number(p.endUS)>Number(p.startUS)&&Number(p.endUS)<=Number(data.source.durationUS)&&typeof p.peak==='number'&&Number.isFinite(p.peak)&&p.peak>=0&&p.peak<=1&&typeof p.rms==='number'&&Number.isFinite(p.rms)&&p.rms>=0&&p.rms<=1);return Object.freeze({...p}) as WaveformPoint;});this.publish({waveform:Object.freeze(points)});}
   catch(e){if(!this.disposed&&epoch===this.epoch)this.publish({waveform:null,error:message(e)});}
  }
  private current():AnalysisView{const d=this.state.data;if(!d||!d.canManage||this.state.busy||this.command||this.state.ambiguous)throw new Error('Refresh current analysis before changing it.');return d;}

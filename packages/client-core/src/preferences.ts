@@ -1,4 +1,5 @@
 import {unreadableServerResponse} from './server-messages.ts';
+import {noteSkipped} from './tolerant.ts';
 /** Viewer preference registry published by the selected server on
  * `GET /v1/preferences`. The server owns every default, domain and clamp; a
  * client renders settings from the registry it is handed and never invents a
@@ -52,7 +53,8 @@ function parseValue(field:PreferenceField,value:unknown):PreferenceValue {
 }
 
 /** A field of a type this client doesn't know is left out (tolerant reader): the rest of the
- * registry still renders, and values for it are ignored. */
+ * registry still renders, and values for it are ignored. A field whose definition cannot be
+ * read throws here and is left out by the snapshot parser in the same way. */
 function parseField(raw:unknown):PreferenceField|undefined {
  if(!object(raw)||!key(raw.key)||typeof raw.type!=='string')invalid();
  if(!preferenceTypes.includes(raw.type as PreferenceType))return undefined;
@@ -93,8 +95,10 @@ function parseValues(fields:ReadonlyMap<string,PreferenceField>,raw:unknown,scop
  return Object.freeze(out);
 }
 
-/** Strict parser for the `data` of `GET`/`PATCH /v1/preferences`. Every value,
- * document scope and clamped key has to be one the published registry knows. */
+/** Parser for the `data` of `GET`/`PATCH /v1/preferences`. A registry field this client cannot
+ * read is left out with its values, and the rest of the snapshot is kept. Everything else is
+ * exact: the device class, the registry revision, each document's scope, revision and digest,
+ * and every value and clamped key, which has to be one the published registry knows. */
 export function parsePreferenceSnapshot(raw:unknown):PreferenceSnapshot {
  if(!object(raw))invalid();
  if(!deviceClasses.includes(raw.deviceClass as DeviceClass))invalid();
@@ -103,7 +107,16 @@ export function parsePreferenceSnapshot(raw:unknown):PreferenceSnapshot {
  const fields=new Map<string,PreferenceField>();
  const parsed:PreferenceField[]=[];
  const unknown=new Set<string>();
- for(const entry of raw.registry.fields){const field=parseField(entry);if(!field){unknown.add(String((entry as {key?:unknown}).key));continue;}if(fields.has(field.key))invalid();fields.set(field.key,field);parsed.push(field);}
+ for(const entry of raw.registry.fields){
+  let field:PreferenceField|undefined;try{field=parseField(entry);}catch{field=undefined;}
+  // The first field published under a key is the one that counts, readable or not.
+  if(!field||fields.has(field.key)||unknown.has(field.key)){
+   const name=field?field.key:object(entry)&&typeof entry.key==='string'&&entry.key.length<=160?entry.key:undefined;
+   if(name!==undefined&&!fields.has(name))unknown.add(name);
+   noteSkipped('preferences','registry.fields');continue;
+  }
+  fields.set(field.key,field);parsed.push(field);
+ }
  if(!Array.isArray(raw.documents)||raw.documents.length!==preferenceScopes.length)invalid();
  const seen=new Set<PreferenceScope>();
  const documents=raw.documents.map(entry=>{

@@ -2,7 +2,7 @@ import {FolderPicker, LibrarySettingsSections, type LibraryTab} from './LibraryS
 import {LookupStatusRow, useScreenLookup} from './MetadataLookup';
 import {MetadataSourceChoice} from './MetadataSource';
 import {kindMetadataAgentsPath, parseKindMetadataAgents, type KindMetadataAgents, type MetadataAgentId, type MetadataAgentOption} from '../../admin/metadata-agent';
-import {useI18n, type MessageId} from '../../app/i18n';
+import {useI18n, type MessageId, type I18n} from '../../app/i18n';
 import {useEffect, useMemo, useState} from 'react';
 import {useNavigate, useSearch} from '@tanstack/react-router';
 import {LibraryManagementService, fetchEpisodeIssues, type EpisodeIssue, type LibraryAdminJob, type LibraryManagementSnapshot, type ManagedLibrary} from '@core/library-management.ts';
@@ -22,8 +22,8 @@ import {SectionHeader} from './Server';
 
 const kinds: readonly {value: ManagedLibrary['kind']; label: MessageId; description: MessageId}[] = [{value: 'movie', label: 'web.search.movies', description: 'web.libraries.typeMovies'}, {value: 'tv', label: 'builder.shows', description: 'web.libraries.typeTv'}, {value: 'anime', label: 'web.libraries.kindAnime', description: 'web.libraries.typeAnime'}, {value: 'music', label: 'pref.group.music.title', description: 'web.libraries.typeMusic'}, {value: 'audiobook', label: 'web.libraries.kindAudiobooks', description: 'web.libraries.typeAudiobooks'}];
 /** The Add dialog names a new library after its type ("Movies"), editable. */
-export function defaultLibraryName(kind: ManagedLibrary['kind']): string {
-  return libraryKindLabel(kind);
+export function defaultLibraryName(kind: ManagedLibrary['kind'], t?: I18n['t']): string {
+  return libraryKindLabel(kind, t);
 }
 const jobTone = (s: LibraryAdminJob['status']): 'accent' | 'healthy' | 'warning' | 'danger' | 'neutral' => (s === 'running' ? 'accent' : s === 'complete' ? 'healthy' : s === 'complete_with_warnings' || s === 'paused' ? 'warning' : s === 'failed' ? 'danger' : 'neutral');
 
@@ -36,7 +36,8 @@ const opLabel: Record<string, string> = {probe: 'Inspect media files', local_met
  */
 export function LibrariesPage() {
   const {api} = useSession();
-  const {t} = useI18n();
+  const i18n = useI18n();
+  const {t} = i18n;
   const scope = useViewerScope();
   const {service, snapshot} = useService<LibraryManagementService, LibraryManagementSnapshot>(() => new LibraryManagementService({api, scope}), [api, scope]);
   const search = useSearch({from: '/app/settings/$section'});
@@ -74,7 +75,7 @@ export function LibrariesPage() {
         <SettingsGroup>
           {libraries.map((l, i) => {
             const scan = l.lastScan;
-            const facts = [libraryKindLabel(l.kind), l.source.path, scan?.finishedAt ? t('server.libraries.scanned', {when: new Date(scan.finishedAt).toLocaleDateString(undefined, {month: 'short', day: 'numeric'})}) : ''].filter(Boolean).join(' · ');
+            const facts = [libraryKindLabel(l.kind, t), l.source.path, scan?.finishedAt ? t('server.libraries.scanned', {when: i18n.date(scan.finishedAt, 'dayMonth')}) : ''].filter(Boolean).join(' · ');
             const warned = !!l.attention || !!scan?.warnings;
             const items: MenuItem[] = [{id: 'open', label: t('web.selection.edit'), icon: 'settings'}, {id: 'up', label: t('server.libraries.moveUp'), icon: 'chevronUp', disabled: i === 0, separatorBefore: true}, {id: 'down', label: t('server.libraries.moveDown'), icon: 'chevronDown', disabled: i === libraries.length - 1}];
             return (
@@ -116,7 +117,7 @@ export function AddLibraryDialog({open, onOpenChange, service, onCreated}: {open
   const {t} = i18n;
   const {api} = useSession();
   const action = useAction();
-  const [name, setName] = useState(defaultLibraryName('movie'));
+  const [name, setName] = useState(defaultLibraryName('movie', i18n.t));
   const [nameTouched, setNameTouched] = useState(false);
   const [kind, setKind] = useState<ManagedLibrary['kind']>('movie');
   const [path, setPath] = useState('');
@@ -128,7 +129,7 @@ export function AddLibraryDialog({open, onOpenChange, service, onCreated}: {open
   const uiBase = (i18n.locale.split('-')[0] ?? 'en').toLowerCase();
   useEffect(() => {
     if (open) {
-      setName(defaultLibraryName('movie'));
+      setName(defaultLibraryName('movie', i18n.t));
       setNameTouched(false);
       setKind('movie');
       setPath('');
@@ -190,7 +191,7 @@ export function AddLibraryDialog({open, onOpenChange, service, onCreated}: {open
   const effectiveLanguage = showLanguage && chosenOption ? (languageCodes.includes(language) ? language : initialAgentLanguage(chosenOption, uiBase)) : '';
   const pickKind = (next: ManagedLibrary['kind']) => {
     setKind(next);
-    if (!nameTouched) setName(defaultLibraryName(next));
+    if (!nameTouched) setName(defaultLibraryName(next, i18n.t));
     const nextDoc = choices[next];
     const nextOption = nextDoc?.agents.find(a => a.id === agent) ?? nextDoc?.agents[0];
     const nextId = nextOption ? onlineOrLocal(nextOption.id) : undefined;
@@ -253,7 +254,8 @@ function LibraryDetail({service, snapshot, libraryId, onBack}: {service: Library
   const [removeSource, setRemoveSource] = useState<{id: string; name: string; revision: number} | null>(null);
   const config = inventory.snapshot.config;
   const scan = library?.lastScan;
-  const {t} = useI18n();
+  const i18n = useI18n();
+  const {t} = i18n;
   const [issuesOpen, setIssuesOpen] = useState(false);
   const menu: MenuItem[] = [{id: 'rename', label: t('web.libraries.rename'), icon: 'edit'}, ...(library?.actions.includes('scan') ? [{id: 'scan-all', label: t('web.libraries.scanAllFiles'), icon: 'refresh' as const}] : []), ...(library?.kind === 'music' ? [{id: 'lyrics', label: t('web.libraries.fetchLyrics'), icon: 'lyrics' as const}] : [])];
   return (
@@ -266,7 +268,7 @@ function LibraryDetail({service, snapshot, libraryId, onBack}: {service: Library
           <div style={{display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap'}}>
             <div>
               <Text as="h1" variant="title">{library.name}</Text>
-              <Text as="p" variant="body" tone="secondary">{libraryKindLabel(library.kind)}</Text>
+              <Text as="p" variant="body" tone="secondary">{libraryKindLabel(library.kind, t)}</Text>
             </div>
             <div style={{display: 'flex', gap: 8}}>
               <Button variant="primary" icon="refresh" label={scan?.status === 'running' ? t('web.libraries.scanningNow') : t('web.libraries.scanNow')} disabled={!library.actions.includes('scan') || scan?.status === 'running'} loading={action.busy && snapshot.mutation.kind === 'scan'} onClick={() => void action.run(() => service.scan(), t('web.library.scanStarted'))} />
@@ -278,11 +280,11 @@ function LibraryDetail({service, snapshot, libraryId, onBack}: {service: Library
           {action.error ? <Notice tone="error" compact>{action.error}</Notice> : null}
           {tab === 'general' ? <SettingsGroup>
             <SettingsRow label={t('profile.name')} meta={library.name} control={<Button size="sm" variant="ghost" label={t('web.libraries.rename')} onClick={() => setRename(library.name)} />} />
-            <SettingsRow label={t('server.library.type')} meta={libraryKindLabel(library.kind)} />
+            <SettingsRow label={t('server.library.type')} meta={libraryKindLabel(library.kind, t)} />
           </SettingsGroup> : null}
           {tab === 'scanning' ? <SettingsGroup title={t('web.libraries.scan')} description={t('web.libraries.scanLede')}>
-            <SettingsRow label={t('web.libraries.lastScan')} state={scan ? `${jobLabel[scan.status]} · ${scan.processed.toLocaleString()} files${scan.warnings ? ` · ${scan.warnings} warnings` : ''}${scan.finishedAt ? ` · finished ${new Date(scan.finishedAt).toLocaleString()}` : scan.updatedAt ? ` · updated ${new Date(scan.updatedAt).toLocaleString()}` : ''}${scan.error ? ` · ${scan.error}` : ''}` : t('web.libraries.notScannedYet')} control={scan && scan.status === 'running' && scan.actions.includes('cancel') ? <Button size="sm" variant="outline" label={t('web.libraries.cancelScan')} onClick={() => void action.run(() => service.cancelJob(scan.id))} /> : scan?.status === 'paused' && scan.actions.includes('resume') ? <Button size="sm" variant="outline" label={t('entry.resume')} onClick={() => void action.run(() => service.controlJob(scan.id, 'resume'))} /> : scan?.status === 'failed' && scan.actions.includes('retry') ? <Button size="sm" variant="outline" label={t('action.tryAgain')} onClick={() => void action.run(() => service.controlJob(scan.id, 'retry'))} /> : undefined} meta={scan ? <Badge tone={jobTone(scan.status)} dot={scan.status === 'running'} live={scan.status === 'running'}>{jobLabel[scan.status]}</Badge> : undefined} />
-            {library.attention ? <SettingsRow icon="warning" label={library.attention.atLeast ? t('web.libraries.attentionAtLeast', {count: library.attention.files.toLocaleString()}) : t('web.libraries.attention', {count: library.attention.files})} help={t('web.libraries.attentionHelp')} control={<Button size="sm" variant="outline" label={t('web.libraries.attentionReview')} onClick={() => setIssuesOpen(true)} />} /> : null}
+            <SettingsRow label={t('web.libraries.lastScan')} state={scan ? [jobLabel[scan.status], t('server.libraries.files', {count: scan.processed}), scan.warnings ? t('server.libraries.warnings', {count: scan.warnings}) : '', scan.finishedAt ? t('web.libraries.scanFinished', {when: i18n.dateTime(scan.finishedAt)}) : scan.updatedAt ? t('web.libraries.scanUpdated', {when: i18n.dateTime(scan.updatedAt)}) : '', scan.error || ''].filter(Boolean).join(' · ') : t('web.libraries.notScannedYet')} control={scan && scan.status === 'running' && scan.actions.includes('cancel') ? <Button size="sm" variant="outline" label={t('web.libraries.cancelScan')} onClick={() => void action.run(() => service.cancelJob(scan.id))} /> : scan?.status === 'paused' && scan.actions.includes('resume') ? <Button size="sm" variant="outline" label={t('entry.resume')} onClick={() => void action.run(() => service.controlJob(scan.id, 'resume'))} /> : scan?.status === 'failed' && scan.actions.includes('retry') ? <Button size="sm" variant="outline" label={t('action.tryAgain')} onClick={() => void action.run(() => service.controlJob(scan.id, 'retry'))} /> : undefined} meta={scan ? <Badge tone={jobTone(scan.status)} dot={scan.status === 'running'} live={scan.status === 'running'}>{jobLabel[scan.status]}</Badge> : undefined} />
+            {library.attention ? <SettingsRow icon="warning" label={library.attention.atLeast ? t('web.libraries.attentionAtLeast', {count: i18n.number(library.attention.files)}) : t('web.libraries.attention', {count: library.attention.files})} help={t('web.libraries.attentionHelp')} control={<Button size="sm" variant="outline" label={t('web.libraries.attentionReview')} onClick={() => setIssuesOpen(true)} />} /> : null}
             {config ? <ScanPolicyRow inventory={inventory.service} snapshot={inventory.snapshot} /> : null}
             {lookup.data ? <LookupStatusRow policy={lookup.data} onChange={() => setTab('metadata')} /> : null}
             {/* When each folder is looked at again by itself: its schedule. */}
@@ -294,7 +296,7 @@ function LibraryDetail({service, snapshot, libraryId, onBack}: {service: Library
             {!config && !inventory.snapshot.error ? <div style={{padding: 12}}><Loading label={t('web.libraries.loadingFolders')} /></div> : null}
             {config && !config.sources.length ? <SettingsRow label={t('web.libraries.noFolders')} help={t('web.libraries.noFoldersHelp')} /> : null}
             {config?.sources.map(src => (
-              <SettingsRow key={src.id} icon="folder" label={src.name || src.path} help={<><span style={{fontFamily: 'var(--font-mono)', fontSize: 12}}>{src.path}</span>{src.classification === 'network' ? ' · Network' : ''}{src.lastCompleteAt ? ` · Scanned ${new Date(src.lastCompleteAt).toLocaleString()}` : ''}</>} meta={<Badge tone={src.health === 'healthy' || src.health === 'available' ? 'healthy' : src.health === 'unknown' ? 'neutral' : 'warning'} dot>{sentence(src.health || 'unknown')}{!src.enabled ? ' · Paused' : ''}</Badge>} control={<Menu label={t('web.libraries.folderMenu', {name: src.name})} trigger={<Button size="sm" variant="ghost" icon="more" aria-label={t('web.libraries.folderActions')} />} items={[{id: 'scan', label: t('web.libraries.scanFolder'), icon: 'refresh'}, {id: 'check', label: t('web.libraries.checkAvailability'), icon: 'pulse'}, {id: 'edit', label: t('web.selection.edit'), icon: 'edit'}, {id: 'remove', label: t('web.libraries.removeFolder'), icon: 'trash', destructive: true, separatorBefore: true}]} onSelect={id => {
+              <SettingsRow key={src.id} icon="folder" label={src.name || src.path} help={<><span style={{fontFamily: 'var(--font-mono)', fontSize: 12}}>{src.path}</span>{src.classification === 'network' ? ` · ${t('web.libraries.networkFolder')}` : ''}{src.lastCompleteAt ? ` · ${t('server.libraries.scanned', {when: i18n.dateTime(src.lastCompleteAt)})}` : ''}</>} meta={<Badge tone={src.health === 'healthy' || src.health === 'available' ? 'healthy' : src.health === 'unknown' ? 'neutral' : 'warning'} dot>{sentence(src.health || 'unknown')}{!src.enabled ? ` · ${t('web.libraries.folderPaused')}` : ''}</Badge>} control={<Menu label={t('web.libraries.folderMenu', {name: src.name})} trigger={<Button size="sm" variant="ghost" icon="more" aria-label={t('web.libraries.folderActions')} />} items={[{id: 'scan', label: t('web.libraries.scanFolder'), icon: 'refresh'}, {id: 'check', label: t('web.libraries.checkAvailability'), icon: 'pulse'}, {id: 'edit', label: t('web.selection.edit'), icon: 'edit'}, {id: 'remove', label: t('web.libraries.removeFolder'), icon: 'trash', destructive: true, separatorBefore: true}]} onSelect={id => {
                 if (id === 'scan') void action.run(() => inventory.service.scanSource(src.id), 'Scan started.');
                 else if (id === 'check') void action.run(() => inventory.service.checkSource(src.id), 'Checked.');
                 else if (id === 'edit') setEditSource({id: src.id, settings: {name: src.name, path: src.path, classification: src.classification, followSymlinks: src.followSymlinks, intervalSeconds: src.intervalSeconds, expectedRevision: config.revision, acceptReplacement: false}});

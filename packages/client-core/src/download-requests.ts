@@ -1,5 +1,6 @@
 import {unreadableServerResponse} from './server-messages.ts';
 import {parseDownloadPreparation,type DownloadPreparation} from './downloads.ts';
+import {firstOfEach,keepReadable,noteSkipped,oneOf} from './tolerant.ts';
 /**
  * Whole-container download requests
  * (`server/api/download-requests.openapi.yaml`):
@@ -36,7 +37,7 @@ export const isDownloadRequestTerminal=(state:DownloadRequestState):boolean=>sta
 const object=(v:unknown):v is Record<string,unknown>=>!!v&&typeof v==='object'&&!Array.isArray(v);
 const id=(v:unknown):v is string=>typeof v==='string'&&/^[A-Za-z0-9_-]{1,160}$/.test(v);
 const count=(v:unknown):v is number=>typeof v==='number'&&Number.isSafeInteger(v)&&v>=0;
-const requestErrorCodes:readonly string[]=Object.freeze(['selection_changed','authority_revoked','target_not_found']);
+const requestErrorCodes:readonly DownloadRequestErrorCode[]=Object.freeze(['selection_changed','authority_revoked','target_not_found'] as const);
 
 function invalid():never{throw new Error(unreadableServerResponse);}
 
@@ -54,26 +55,27 @@ export function parseDownloadRequest(raw:unknown):DownloadRequest{
  if(!object(raw)||!id(raw.requestId))invalid();
  if(!count(raw.total)||typeof raw.totalKnown!=='boolean')invalid();
  if(!downloadRequestStates.includes(String(raw.state) as DownloadRequestState))invalid();
- if(raw.errorCode!==undefined&&!requestErrorCodes.includes(String(raw.errorCode)))invalid();
- if(raw.errorCode!==undefined&&raw.state!=='failed')invalid();
+ // An error code this app does not know, or one on a request that has not failed, is left out.
+ const errorCode=raw.state==='failed'?oneOf(raw.errorCode,requestErrorCodes):undefined;
+ if(raw.errorCode!==undefined&&errorCode===undefined)noteSkipped('download-request','errorCode');
  for(const key of ['ready','preparing','queued','failed','paused'] as const)if(!count(raw[key]))invalid();
  if(!Array.isArray(raw.items)||raw.items.length>100)invalid();
- const items=Object.freeze(raw.items.map(entry=>{
+ // One member that cannot be read, or is listed twice, is left out and the rest are kept. A reason
+ // or a preparation is only shown: one that cannot be read is left out and its member is kept.
+ const items=Object.freeze(firstOfEach('download-request','items',keepReadable('download-request','items',raw.items,entry=>{
   if(!object(entry)||!id(entry.itemId))invalid();
-  if(Object.keys(entry).some(k=>k!=='itemId'&&k!=='reason'&&k!=='preparation'))invalid();
-  if(entry.reason!==undefined&&typeof entry.reason!=='string')invalid();
+  if(entry.reason!==undefined&&typeof entry.reason!=='string')noteSkipped('download-request','item.reason');
   return Object.freeze({
    itemId:entry.itemId as string,
-   ...(entry.reason===undefined?{}:{reason:entry.reason as string}),
-   ...(entry.preparation===undefined?{}:{preparation:parseDownloadPreparation(entry.preparation)}),
+   ...(typeof entry.reason==='string'?{reason:entry.reason}:{}),
+   ...(entry.preparation===undefined?{}:keepReadable('download-request','item.preparation',[entry.preparation],v=>({preparation:parseDownloadPreparation(v)}))[0]),
   });
- }));
- if(new Set(items.map(i=>i.itemId)).size!==items.length)invalid();
+ }),i=>i.itemId));
  if(raw.nextCursor!==undefined&&typeof raw.nextCursor!=='string')invalid();
  return Object.freeze({
   requestId:raw.requestId as string,total:raw.total as number,totalKnown:raw.totalKnown as boolean,
   state:raw.state as DownloadRequestState,
-  ...(raw.errorCode===undefined?{}:{errorCode:raw.errorCode as DownloadRequestErrorCode}),
+  ...(errorCode===undefined?{}:{errorCode}),
   ready:raw.ready as number,preparing:raw.preparing as number,queued:raw.queued as number,
   failed:raw.failed as number,paused:raw.paused as number,
   items,nextCursor:String(raw.nextCursor??''),

@@ -1,6 +1,7 @@
 import React from 'react';
 import {useI18n} from '../../app/i18n';
 import {cx, Wordmark} from '../../ui';
+import {PlainHttpNote} from './PlainHttpNote';
 import s from './Auth.module.css';
 
 /** The signed-out frame: atmosphere, a quiet panel, the wordmark, legal links last. */
@@ -17,6 +18,7 @@ export function AuthFrame({title, lede, children, wide, legal = true}: {title?: 
           </div>
         ) : null}
         {children}
+        <PlainHttpNote />
         {legal ? (
           <footer className={s.legal}>
             <a href="https://getportico.tv/terms" target="_blank" rel="noopener noreferrer">{t('web.about.terms')}</a>

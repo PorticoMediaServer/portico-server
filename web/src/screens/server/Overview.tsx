@@ -1,7 +1,6 @@
 import {TelemetryPanel} from './OverviewCharts';
 import type {Alert, Measurement} from '@core/console.ts';
 import {STATE_PERMISSIONS_CODE} from '@core/administration.ts';
-import {formatBytes} from '@core/presentation/index.ts';
 import {healthFacts} from '@core/server-admin/dashboard.ts';
 import {StatePermissionsCard} from './StatePermissions';
 import {alertLabel, alertTone, duration, sentence, useAction, useConsole, useRead, when} from '../../admin/console';
@@ -17,7 +16,8 @@ import page from '../settings/Settings.module.css';
  */
 export function HealthPanel() {
   const client = useConsole();
-  const {t} = useI18n();
+  const i18n = useI18n();
+  const {t} = i18n;
   const health = useRead<Measurement>(() => client.measurement('health'), [client], {every: 30000});
   const storage = useRead<Measurement>(() => client.measurement('storage'), [client], {every: 60000});
   const {degraded, uptimeSeconds: uptime, freeBytes: free, databaseBytes: database} = healthFacts(health.data, storage.data);
@@ -29,8 +29,8 @@ export function HealthPanel() {
       {health.data ? <div className={page.statusLine}><Status tone={degraded ? 'warning' : 'healthy'}>{degraded ? t('settings.server.health.attention') : t('settings.server.health.running')}</Status></div> : null}
       <div className={page.statusFacts}>
         {uptime !== undefined ? <span>{t('settings.server.health.upFor', {duration: duration(uptime)})}</span> : null}
-        {free !== undefined ? <span>{t('settings.server.health.free', {bytes: formatBytes(free)})}</span> : null}
-        {database !== undefined ? <span>{t('settings.server.health.database', {bytes: formatBytes(database)})}</span> : null}
+        {free !== undefined ? <span>{t('settings.server.health.free', {bytes: i18n.bytes(free)})}</span> : null}
+        {database !== undefined ? <span>{t('settings.server.health.database', {bytes: i18n.bytes(database)})}</span> : null}
       </div>
     </div>
   );
@@ -39,7 +39,8 @@ export function HealthPanel() {
 
 export function AlertsPanel() {
   const client = useConsole();
-  const {t} = useI18n();
+  const i18n = useI18n();
+  const {t} = i18n;
   const read = useRead<Alert[]>(() => client.alerts(), [client], {every: 60000});
   const action = useAction();
   const open = (read.data ?? []).filter(a => a.status !== 'resolved');
@@ -59,7 +60,7 @@ export function AlertsPanel() {
           <Badge tone={alertTone(a)} dot>{sentence(a.severity)}</Badge>
           <div className={s.alertBody}>
             <Text variant="bodyStrong">{alertLabel(a)}</Text>
-            <Text variant="caption" tone="tertiary">{[a.occurrences > 1 ? t('server.alert.seen', {count: a.occurrences, when: when(a.lastAt)}) : t('server.alert.firstSeen', {when: when(a.firstAt)}), a.status === 'acknowledged' ? t('server.alert.acknowledged') : ''].filter(Boolean).join(' · ')}</Text>
+            <Text variant="caption" tone="tertiary">{[a.occurrences > 1 ? t('server.alert.seen', {count: a.occurrences, when: when(i18n, a.lastAt)}) : t('server.alert.firstSeen', {when: when(i18n, a.firstAt)}), a.status === 'acknowledged' ? t('server.alert.acknowledged') : ''].filter(Boolean).join(' · ')}</Text>
             <details className={s.details}><summary>{t('server.technicalDetails')}</summary><dl><dt>Code</dt><dd>{a.code}</dd><dt>Alert</dt><dd>{a.id}</dd></dl></details> {/* lint-strings-allow: technical console readout (alert code/id field labels) */}
           </div>
           {a.status === 'open' ? <Button size="sm" variant="outline" label={t('web.overview.acknowledge')} loading={action.busy} onClick={() => void action.run(() => client.acknowledge(a)).then(ok => ok && read.reload())} /> : null}

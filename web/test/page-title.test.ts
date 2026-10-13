@@ -24,7 +24,7 @@ test('a page is named by its heading, or by the name it gives itself', async () 
   assert.equal(name(), '');
   assert.equal(name({text: 'x'.repeat(500)}).length, 200);
   assert.equal(name({text: 'Library', provisional: true}), '', 'a stand-in heading shown before the real name is known is not the page’s name');
-  assert.match(src('screens/home/Home.tsx'), /data-page-title=\{currentI18n\(\)\.t\('web\.shell\.home'\)\}/);
+  assert.match(src('screens/home/Home.tsx'), /data-page-title=\{t\('web\.shell\.home'\)\}/);
   assert.match(src('screens/library/Library.tsx'), /provisional=\{!library\?\.name && !projection\?\.heading\.fallback\}/, 'the library page marks its stand-in title');
   assert.match(src('ui/Page.tsx'), /<h1 className=\{s\.title\} data-provisional=\{provisional \|\| undefined\}>/);
 });

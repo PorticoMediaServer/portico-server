@@ -4,11 +4,11 @@ import {useSession} from '../../app/session';
 import {repairTargetFor, useMetadataEditor} from '../../app/metadata-editor';
 import {useDeleteMedia} from '../../app/delete-media';
 import {Dialog, Icon, Menu, Spinner, useCompact} from '../../ui';
-import {currentI18n} from '../../app/i18n';
 import {CollectionPicker, PlaylistPicker} from './EntryActions';
 import {runBulkSelection, type BulkProgress} from './bulk-job';
 import type {JobArgs, JobCommand, JobFailure} from '@core/bulk-jobs.ts';
 import s from './SelectionBar.module.css';
+import {useI18n} from '../../app/i18n';
 
 /**
  * Bulk actions for the current selection. Every action is one bulk job
@@ -18,6 +18,7 @@ import s from './SelectionBar.module.css';
  * falls back to one job per 200 loaded items.
  */
 export function SelectionBar() {
+  const {t} = useI18n();
   const selection = useSelection();
   const {api, owner, session} = useSession();
   const editor = useMetadataEditor();
@@ -29,7 +30,6 @@ export function SelectionBar() {
   const [playlist, setPlaylist] = useState(false);
   const [collection, setCollection] = useState(false);
   if (!selection?.active) return null;
-  const t = currentI18n().t;
   const count = selection.entries.length;
   const ids = () => [...new Set(selection.entries.map(e => e.playback?.itemId ?? e.id))];
 
@@ -90,7 +90,8 @@ export function SelectionBar() {
         <Menu label={t('web.selection.watchlist')} align="center" trigger={<Action icon="bookmark" label={t('web.selection.watchlist')} busy={busy === 'watchlist'} disabled={!count || !!busy} compact={compact} />} items={[{id: 'add', label: t('web.selection.watchlistAdd'), icon: 'bookmark'}, {id: 'remove', label: t('web.selection.watchlistRemove'), icon: 'close'}]} onSelect={id => personal('watchlist', {watchlisted: id === 'add'})} />
         <Menu label={t('web.selection.favorite')} align="center" trigger={<Action icon="heart" label={t('web.selection.favorite')} busy={busy === 'favorite'} disabled={!count || !!busy} compact={compact} />} items={[{id: 'add', label: t('web.selection.favoriteAdd'), icon: 'heart'}, {id: 'remove', label: t('web.selection.favoriteRemove'), icon: 'close'}]} onSelect={id => personal('favorite', {favorite: id === 'add'})} />
         <Action icon="queue" label={t('web.selection.playlist')} disabled={!count || !!busy} onClick={() => setPlaylist(true)} compact={compact} />
-        {owner ? <Action icon="collection" label={t('web.selection.collection')} disabled={!count || !!busy} onClick={() => setCollection(true)} compact={compact} /> : null}
+        {/* Collections are personal: anyone who can add one title to a collection can add several. */}
+        <Action icon="collection" label={t('web.selection.collection')} disabled={!count || !!busy} onClick={() => setCollection(true)} compact={compact} />
         {owner && session?.viewer.authority === 'local' ? <Action icon="edit" label={t('web.selection.edit')} disabled={!count || !!busy || !selection.entries.every(e => repairTargetFor(e))} onClick={() => editor?.open({targets: selection.entries.map(e => repairTargetFor(e)!), titles: selection.entries.map(e => e.title), onSaved: selection.refresh})} compact={compact} /> : null}
         {owner && session?.viewer.authority === 'local' ? <Action icon="refresh" label={t('web.selection.refresh')} busy={busy === 'refresh'} disabled={!count || !!busy} onClick={() => void submit('refresh', 'refresh', {})} compact={compact} /> : null}
         {/* Deleting removes the files from disk, so a selection goes through the same preview and typed confirmation as one title, 200 at a time. */}

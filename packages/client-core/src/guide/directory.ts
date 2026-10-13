@@ -1,5 +1,6 @@
 import {GUIDE_PROTOCOL, parseGuideChannels, parseGuideSources, type ChannelApi, type GuideChannel, type GuideSource} from '../channel-guide.ts';
 import {unreadableServerResponse} from '../server-messages.ts';
+import {keepReadable} from '../tolerant.ts';
 
 export type GuideDirectory = Readonly<{viewerFence:string;revision:string;total:number;offset:number;limit:number;channels:readonly GuideChannel[];sources:readonly GuideSource[]}>;
 export type GuideSourceSummary = GuideSource & Readonly<{position:number;recordAvailable:boolean;guideDays:number;channelCount:number;favoriteCount:number;groups:readonly string[];groupCounts:readonly Readonly<{name:string;count:number}>[];unavailableReasons:Readonly<Record<string,number>>}>;
@@ -18,8 +19,12 @@ export function parseGuideDirectory(raw:unknown,serverId:string,offset:number|un
 }
 export function parseGuideSourceSummaries(raw:unknown,serverId:string):GuideSourceSummaries{
  if(!object(raw)||raw.protocolVersion!==GUIDE_PROTOCOL||raw.serverId!==serverId||!text(raw.viewerFence)||!text(raw.revision)||!Array.isArray(raw.sources)||raw.sources.length>65)invalid();
- const sources=parseGuideSources(raw.sources).map((source,index)=>{
-  const value=(raw.sources as Record<string,unknown>[])[index];
+ // Each source is read with its own summary, so one that cannot be read is left out alone and never shifts another's counts.
+ const seen=new Set<string>();
+ const sources=keepReadable('guide','source-summaries',raw.sources as unknown[],(value):GuideSourceSummary=>{
+  const source=parseGuideSources([value])[0];
+  if(!source||!object(value)||seen.has(source.provenance+'\0'+source.id))invalid();
+  seen.add(source.provenance+'\0'+source.id);
   if(!whole(value.position)||typeof value.recordAvailable!=='boolean'||!whole(value.guideDays)||value.guideDays>31||!whole(value.channelCount)||!whole(value.favoriteCount)||value.favoriteCount>value.channelCount||!Array.isArray(value.groups)||value.groups.length>2000||!value.groups.every(v=>text(v,120))||!Array.isArray(value.groupCounts)||value.groupCounts.length>2000||!object(value.unavailableReasons)||Object.keys(value.unavailableReasons).length>64)invalid();
   const channelCount=value.channelCount;
   const groupCounts=value.groupCounts.map(v=>{if(!object(v)||!text(v.name,120)||!whole(v.count)||v.count>channelCount)invalid();return{name:v.name,count:v.count};});

@@ -7,12 +7,12 @@ import {useI18n} from '../../app/i18n';
 import {Button, Notice, Select, SettingsGroup, SettingsRow, Status, Switch, Text} from '../../ui';
 
 function useServerId() { const {system, session} = useSession(); return system?.id ?? session?.viewer.serverId ?? ''; }
-const time = (iso: string) => new Date(iso).toLocaleString(undefined, {weekday: 'short', hour: 'numeric', minute: '2-digit'});
 
 /** Which tuner is doing what, now and soon, and where two recordings will collide. */
 export function TunersGroup() {
   const {api} = useSession();
-  const {t} = useI18n();
+  const i18n = useI18n();
+  const {t} = i18n;
   const serverId = useServerId();
   const read = useRead(async () => parseEnvelope(await api.request<unknown>('/v1/admin/dvr/tuners'), serverId, parseTunerView).result, [api, serverId], {every: 60000});
   const view = read.data;
@@ -22,7 +22,7 @@ export function TunersGroup() {
       {view?.sources.map(src => (
         <SettingsRow key={src.sourceId} icon="live" label={src.sourceName} stack
           state={<Status tone={src.conflicts ? 'danger' : src.inUse >= src.tunerCount && src.tunerCount > 0 ? 'warning' : 'healthy'}>{src.conflicts ? `${src.conflicts} clash${src.conflicts === 1 ? '' : 'es'}` : `${src.inUse} of ${src.tunerCount} in use`}</Status>}
-          control={src.active.length || src.upcoming.length ? <div style={{display: 'flex', flexDirection: 'column', gap: 4}}>{[...src.active, ...src.upcoming.slice(0, 6)].map(a => <Text key={a.allocationId || a.recordingId} variant="caption" tone="secondary">{a.state === 'recording' ? 'Recording now' : time(a.startsAt)} · {a.title}</Text>)}</div> : <Text variant="caption" tone="tertiary">{t('web.dvrSettings.nothingScheduled')}</Text>} />
+          control={src.active.length || src.upcoming.length ? <div style={{display: 'flex', flexDirection: 'column', gap: 4}}>{[...src.active, ...src.upcoming.slice(0, 6)].map(a => <Text key={a.allocationId || a.recordingId} variant="caption" tone="secondary">{a.state === 'recording' ? t('server.live.recordingNow') : i18n.formatDate(a.startsAt, {weekday: 'short', hour: 'numeric', minute: '2-digit'})} · {a.title}</Text>)}</div> : <Text variant="caption" tone="tertiary">{t('web.dvrSettings.nothingScheduled')}</Text>} />
       ))}
       {view && !view.sources.length ? <div style={{padding: 16}}><Text variant="caption" tone="tertiary">{t('web.dvrSettings.noTuners')}</Text></div> : null}
     </SettingsGroup>

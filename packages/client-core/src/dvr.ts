@@ -1,6 +1,7 @@
 import {unreadableServerResponse} from './server-messages.ts';
 import {serviceProblem, serviceText} from './presentation/service-text.ts';
 import type {MessageId} from '../../i18n/src/index.ts';
+import {firstOfEach, keepReadable, oneOfOr} from './tolerant.ts';
 /** DVR intent protocol. This module never constructs a stream URL or starts playback.
  * Each instance belongs to one authenticated server/viewer lifetime. */
 import type {ChannelApi, GuideChannel, GuideProgramme} from './channel-guide';
@@ -35,10 +36,12 @@ const instant = (v: unknown): v is string => typeof v === 'string' && /^\d{4}-\d
 function invalid(): never { throw new Error(unreadableServerResponse); }
 export function validRecordingOptions(v: unknown): v is RecordingOptions {return object(v) && number(v.beforeSeconds,0,21600) && number(v.afterSeconds,0,21600) && number(v.priority,-1000,1000) && number(v.retentionDays,0,3650) && number(v.episodeLimit,0,100000);}
 function programme(v: unknown): GuideProgramme {
- if (!object(v) || !id(v.id) || !id(v.channelId) || !text(v.title,512) || !instant(v.start) || !instant(v.end) || Date.parse(v.start)>=Date.parse(v.end) || !['provider-id','interval-only','generated'].includes(v.lineage)) invalid();
- const seriesId=v.seriesId??'',episodeId=v.episodeId??'',description=v.description??'',newEvidence=v.newEvidence||'unknown';
- if(!text(seriesId,512)||!text(episodeId,512)||!text(description,8192)||!['new','repeat','unknown'].includes(newEvidence))invalid();
- return {id:v.id,channelId:v.channelId,title:v.title,start:v.start,end:v.end,lineage:v.lineage,seriesId,episodeId,description,newEvidence} as GuideProgramme;
+ if (!object(v) || !id(v.id) || !id(v.channelId) || !text(v.title,512) || !instant(v.start) || !instant(v.end) || Date.parse(v.start)>=Date.parse(v.end)) invalid();
+ // As in the guide: evidence of a kind this app does not know reads as the weakest.
+ const lineage=oneOfOr('dvr','programme.lineage',v.lineage,['provider-id','interval-only','generated'] as const,'interval-only');
+ const seriesId=v.seriesId??'',episodeId=v.episodeId??'',description=text(v.description??'',8192)?v.description??'':'',newEvidence=oneOfOr('dvr','programme.newEvidence',v.newEvidence||undefined,['new','repeat','unknown'] as const,'unknown');
+ if(!text(seriesId,512)||!text(episodeId,512))invalid();
+ return {id:v.id,channelId:v.channelId,title:v.title,start:v.start,end:v.end,lineage,seriesId,episodeId,description,newEvidence} as GuideProgramme;
 }
 export function parseRecording(v: unknown): Recording {
  if(!object(v)||!id(v.id)||!number(v.revision,1)||!object(v.occurrence)||!id(v.occurrence.sourceId,48)||!id(v.occurrence.channelId)||!id(v.occurrence.generation,48)||!id(v.occurrence.programmeId)||!validRecordingOptions(v.options)||!instant(v.start)||!instant(v.end)||!states.includes(v.state)||!text(v.reason,256)||typeof v.keep!=='boolean'||!text(v.ruleId,64)||v.ruleId!==''&&!id(v.ruleId)||!text(v.itemId,64)||!text(v.libraryId,64)||v.itemId!==''&&(!id(v.itemId)||!id(v.libraryId))||!number(v.bytes)||!Array.isArray(v.conflicts)||v.conflicts.length>100000)invalid();
@@ -74,11 +77,18 @@ function config(v:unknown):RuleConfig{
  return {name:v.name,sourceId:v.sourceId,seriesId:v.seriesId,enabled:v.enabled,episodes:v.episodes,allowedChannels:[...v.allowedChannels],blockedChannels:[...v.blockedChannels],keywords:[...v.keywords],blockedKeywords:[...v.blockedKeywords],options:{beforeSeconds:v.options.beforeSeconds,afterSeconds:v.options.afterSeconds,priority:v.options.priority,retentionDays:v.options.retentionDays,episodeLimit:v.options.episodeLimit}};
 }
 function rule(v:unknown):RecordingRule{if(!object(v)||!id(v.id)||!number(v.revision,1)||!text(v.reconcileState,64)||!text(v.diagnostic,256)||!instant(v.updatedAt))invalid();return {id:v.id,revision:v.revision,config:config(v.config),reconcileState:v.reconcileState,diagnostic:v.diagnostic,updatedAt:v.updatedAt} as RecordingRule;}
+/**
+ * One page of recordings and rules. The cursor, the revision and the bounds are exact. A
+ * recording or a rule that cannot be read (or is in a state this app does not know, so it could
+ * not offer the right actions) is left out alone, and a repeated one keeps its first row.
+ * Recording and deleting are offered only when the server says so outright; the usage figures are
+ * only shown and read as 0 when they cannot be read.
+ */
 export function parseDVRPage(v: unknown): DVRPage {
- if(!object(v)||!Array.isArray(v.recordings)||v.recordings.length>50||!Array.isArray(v.rules)||v.rules.length>50||!text(v.nextCursor,4096)||!number(v.revision)||typeof v.captureAvailable!=='boolean'||typeof v.deletionAvailable!=='boolean'||!text(v.captureUnavailableReason,256)||!object(v.usage)||!number(v.usage.bytes)||!number(v.usage.pendingDeleteBytes)||!number(v.usage.recordings))invalid();
- const recordings=v.recordings.map(parseRecording),rules=v.rules.map(rule);
- if(new Set(recordings.map((r:Recording)=>r.id)).size!==recordings.length||new Set(rules.map((r:RecordingRule)=>r.id)).size!==rules.length)invalid();
- return {recordings,rules,nextCursor:v.nextCursor,revision:v.revision,captureAvailable:v.captureAvailable,captureUnavailableReason:v.captureUnavailableReason,deletionAvailable:v.deletionAvailable,usage:{bytes:v.usage.bytes,pendingDeleteBytes:v.usage.pendingDeleteBytes,recordings:v.usage.recordings}} as DVRPage;
+ if(!object(v)||!Array.isArray(v.recordings)||v.recordings.length>50||!Array.isArray(v.rules)||v.rules.length>50||!text(v.nextCursor,4096)||!number(v.revision))invalid();
+ const recordings=firstOfEach('dvr','recordings',keepReadable('dvr','recordings',v.recordings as unknown[],parseRecording),r=>r.id),rules=firstOfEach('dvr','rules',keepReadable('dvr','rules',v.rules as unknown[],rule),r=>r.id);
+ const usage=object(v.usage)?v.usage:{},shown=(n:unknown)=>number(n)?n:0;
+ return {recordings,rules,nextCursor:v.nextCursor,revision:v.revision,captureAvailable:v.captureAvailable===true,captureUnavailableReason:text(v.captureUnavailableReason,256)?v.captureUnavailableReason:'',deletionAvailable:v.deletionAvailable===true,usage:{bytes:shown(usage.bytes),pendingDeleteBytes:shown(usage.pendingDeleteBytes),recordings:shown(usage.recordings)}} as DVRPage;
 }
 export function dvrMessage(error: unknown): string {
  const status=object(error)?error.status:0;

@@ -2,6 +2,7 @@ import {unreadableServerResponse} from './server-messages.ts';
 /** Viewer suggestions and per-item related rows. Reasons, ranking and row shape are server-authored. */
 import {validateContentEntry, type ContentEntry} from './library-content.ts';
 import {validateHomeRow, type HomeApi, type HomeRevision, type HomeRow} from './home.ts';
+import {firstOfEach, keepReadable, noteSkipped} from './tolerant.ts';
 
 export type Suggestion = Readonly<{entry: ContentEntry; reason: string; source: string; score: number}>;
 export type Suggestions = Readonly<{items: readonly Suggestion[]; total: number; revision: HomeRevision; generatedAt: string}>;
@@ -20,26 +21,47 @@ function revision(value: unknown): HomeRevision {
   return Object.freeze({catalog: value.catalog, viewer: value.viewer});
 }
 
+/** Text a suggestion is drawn with: absent reads as empty, and text over its bound refuses the suggestion. */
+function words(value: unknown, max: number): string {
+  if (value === undefined || value === null || value === '') return '';
+  if (!text(value, max)) invalid();
+  return value;
+}
+
+/**
+ * Suggestions. The revision and the bound of 100 are exact. A suggestion whose entry cannot be read
+ * is left out alone, a repeated entry keeps its first appearance, a missing reason or source is
+ * empty, and a score outside 0–1 reads as 0.
+ */
 export function validateSuggestions(value: unknown): Suggestions {
-  if (!object(value) || !Array.isArray(value.items) || value.items.length > 100 || !whole(value.total) || !text(value.generatedAt, 128)) invalid();
-  const items = value.items.map(raw => {
-    if (!object(raw) || !text(raw.reason, 1024) || !text(raw.source, 128)) invalid();
-    if (typeof raw.score !== 'number' || !Number.isFinite(raw.score) || raw.score <= 0 || raw.score > 1) invalid();
-    return Object.freeze({entry: validateContentEntry(raw.entry), reason: raw.reason, source: raw.source, score: raw.score});
-  });
-  if (new Set(items.map(item => item.entry.id)).size !== items.length || items.length !== value.total) invalid();
-  return Object.freeze({items: Object.freeze(items), total: value.total, revision: revision(value.revision), generatedAt: value.generatedAt});
+  if (!object(value) || !Array.isArray(value.items) || value.items.length > 100) invalid();
+  const items = firstOfEach('recommendations', 'suggestions', keepReadable('recommendations', 'suggestions', value.items, raw => {
+    if (!object(raw)) invalid();
+    const score = typeof raw.score === 'number' && Number.isFinite(raw.score) && raw.score > 0 && raw.score <= 1 ? raw.score : 0;
+    return Object.freeze({entry: validateContentEntry(raw.entry), reason: words(raw.reason, 1024), source: words(raw.source, 128), score});
+  }), item => item.entry.id);
+  // The total is at least the suggestions kept.
+  return Object.freeze({items: Object.freeze(items), total: Math.max(whole(value.total) ? value.total : 0, items.length), revision: revision(value.revision), generatedAt: words(value.generatedAt, 128)});
+}
+
+/**
+ * A title's rows: a row that cannot be read is left out alone, a repeated row keeps its first
+ * appearance, an entry that is the title itself is left out, and a row with nothing left is not shown.
+ */
+function rowsFor(list: readonly unknown[], self: string): HomeRow[] {
+  return firstOfEach('recommendations', 'rows', keepReadable('recommendations', 'rows', list, raw => {
+    const row = validateHomeRow(raw);
+    const entries = row.entries.filter(entry => entry.id !== self);
+    if (!entries.length) return undefined;
+    if (entries.length === row.entries.length) return row;
+    noteSkipped('recommendations', 'entries', row.entries.length - entries.length);
+    return Object.freeze({...row, entries: Object.freeze(entries)});
+  }), row => row.id);
 }
 
 export function validateItemRecommendations(value: unknown, itemId: string): ItemRecommendations {
   if (!object(value) || value.itemId !== itemId || !Array.isArray(value.rows) || value.rows.length > 12) invalid();
-  const rows = value.rows.map(row => validateHomeRow(row));
-  if (new Set(rows.map(row => row.id)).size !== rows.length) invalid();
-  for (const row of rows) {
-    // Related rows are always explained by a relation and never echo their own item.
-    if (!row.relation || row.entries.length === 0 || row.entries.some(entry => entry.id === itemId)) invalid();
-  }
-  return Object.freeze({itemId, rows: Object.freeze(rows), revision: revision(value.revision)});
+  return Object.freeze({itemId, rows: Object.freeze(rowsFor(value.rows, itemId)), revision: revision(value.revision)});
 }
 
 /**
@@ -72,12 +94,7 @@ export type ShowRecommendations = Readonly<{showId: string; rows: readonly HomeR
 /** A show page's rows (`GET /v1/shows/{id}/recommendations`): More like the show, From its creator… */
 export function validateShowRecommendations(value: unknown, showId: string): ShowRecommendations {
   if (!object(value) || value.showId !== showId || !Array.isArray(value.rows) || value.rows.length > 12) invalid();
-  const rows = value.rows.map(row => validateHomeRow(row));
-  if (new Set(rows.map(row => row.id)).size !== rows.length) invalid();
-  for (const row of rows) {
-    if (!row.relation || row.entries.length === 0 || row.entries.some(entry => entry.id === showId)) invalid();
-  }
-  return Object.freeze({showId, rows: Object.freeze(rows), revision: revision(value.revision)});
+  return Object.freeze({showId, rows: Object.freeze(rowsFor(value.rows, showId)), revision: revision(value.revision)});
 }
 
 export async function fetchShowRecommendations(api: HomeApi, showId: string, limit?: number, signal?: AbortSignal): Promise<ShowRecommendations> {

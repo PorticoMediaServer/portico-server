@@ -1,4 +1,5 @@
 import {originalTitleLine} from '@core/presentation/index.ts';
+import {useBack} from '../../app/back';
 import {personHref} from '../../app/open';
 import React, {useEffect, useMemo, useRef, useState} from 'react';
 import {useNavigate, useParams, useSearch} from '@tanstack/react-router';
@@ -14,7 +15,6 @@ import {titleRecommendationRows} from '@core/recommendations.ts';
 import {homeRowHeading} from '@core/home.ts';
 import {useNotInterested} from '../../app/not-interested-notice';
 import {withoutHidden} from '../../app/not-interested';
-import {currentI18n} from '../../app/i18n';
 import {repairTargetFor, useMetadataEditor} from '../../app/metadata-editor';
 import {useSession} from '../../app/session';
 import {usePlayerActions} from '../../player/PlayerContext';
@@ -22,8 +22,20 @@ import {anchorOf, AnchoredMenu, Button, Card, Dialog, Icon, Inset, KeyValue, Lis
 import {CollectionPicker, PlaylistPicker} from '../shared/EntryActions';
 import {LoadingGrid, SectionView} from '../shared/Sections';
 import s from './Detail.module.css';
-import {ErrorNotice, ErrorState, changedError} from '../../app/errors';
+import {ErrorNotice, ErrorState, changedError, errorText} from '../../app/errors';
 import {useDownloads} from '../../app/downloads';
+import {useDeleteMedia} from '../../app/delete-media';
+import {useGroupActions} from '../../app/together';
+import {usePlayer} from '../../player/engine';
+import {queueItemInput, type QueueController} from '@core/queue-controller.ts';
+import {useI18n, type I18n} from '../../app/i18n';
+
+/** Follows the player's queue for the page's menu without making the whole page re-render with the player. */
+function QueueBridge({queue, onPresence}: {queue: React.RefObject<QueueController | undefined>; onPresence: (has: boolean) => void}) {
+  const player = usePlayer();
+  useEffect(() => { queue.current = player.queue; onPresence(!!player.queue); }, [player.queue, queue, onPresence]);
+  return null;
+}
 
 /**
  * Media detail. Artwork hero, identity and decision facts, the primary
@@ -31,6 +43,8 @@ import {useDownloads} from '../../app/downloads';
  * server's related rows. Lower-frequency actions live in one More menu.
  */
 export function DetailScreen() {
+  const i18n = useI18n();
+  const {t} = i18n;
   const {itemId} = useParams({from: '/app/media/$itemId'});
   const {library} = useSearch({from: '/app/media/$itemId'});
   const navigate = useNavigate();
@@ -68,9 +82,24 @@ export function DetailScreen() {
   // CON-25: one shared model decides the hero actions. Primary Play/Resume with the
   // remaining time, quick Watchlist + Favorite toggles, everything else in More
   // grouped like the title ⋯ menu. No plus or star buttons; Media information stays.
-  const detail = useMemo(() => (data ? detailActions(data, {owner, local: owner && session?.viewer.authority === 'local', platform: 'web'}) : undefined), [data, owner, session]);
+  // The page's ⋯ offers what the title's card offers, with the same answers: the queue and the
+  // Watch Together group when there is one, Download only when this server and this title can be
+  // downloaded, Delete for the owner.
+  const queue = useRef<QueueController | undefined>(undefined);
+  const [hasQueue, setHasQueue] = useState(false);
+  const together = useGroupActions();
+  const deleter = useDeleteMedia();
+  const playItemId = play?.playback?.itemId;
+  const [downloadable, setDownloadable] = useState<boolean>();
+  useEffect(() => {
+    if (!playItemId || !downloads.service) return;
+    if (downloads.state.unavailable) { setDownloadable(false); return; }
+    const controller = new AbortController();
+    downloads.service.options(playItemId, controller.signal).then(view => setDownloadable(view.options.some(o => o.available)), () => setDownloadable(false));
+    return () => controller.abort();
+  }, [playItemId, downloads.service, downloads.state.unavailable]);
+  const detail = useMemo(() => (data ? detailActions(data, {owner, local: owner && session?.viewer.authority === 'local', platform: 'web', queue: hasQueue, group: together.inRoom && together.canQueue, downloads: !downloads.state.unavailable && downloadable === true, canDelete: owner}) : undefined), [data, owner, session, hasQueue, together.inRoom, together.canQueue, downloads.state.unavailable, downloadable]);
   const menuItems = useMemo<MenuItem[]>(() => {
-    const t = currentI18n().t;
     if (!detail) return [];
     const items: MenuItem[] = [];
     for (const group of detail.more) {
@@ -82,7 +111,7 @@ export function DetailScreen() {
     }
     return items;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [detail, item, data]);
+  }, [detail, item, data, t]);
   // The shared sheet positions itself from the control that opened it. The More
   // menu's own trigger is inside <Menu>, so the actions row is measured instead:
   // it is the same corner of the screen and it always exists when a command runs.
@@ -99,14 +128,22 @@ export function DetailScreen() {
     switch (id) {
       case 'playFromStart': if (restart?.playback) player.play(restart.playback.itemId, 0, entryOf(item)); break;
       case 'rate': setRatingOpen(true); break;
-      case 'refreshMetadata': void api.request('/v1/items/' + encodeURIComponent(item.id) + '/metadata/refresh', 'POST', {}).then(() => setOrganiseNotice(currentI18n().t('entry.refreshQueued')), () => setOrganiseNotice(currentI18n().t('entry.refreshFailed'))); break;
+      case 'refreshMetadata': void api.request('/v1/items/' + encodeURIComponent(item.id) + '/metadata/refresh', 'POST', {}).then(() => setOrganiseNotice(t('entry.refreshQueued')), () => setOrganiseNotice(t('entry.refreshFailed'))); break;
       case 'editMetadata': { const target = repairTargetFor(entryOf(item)); if (target) editor?.open({targets: [target], titles: [item.title], onSaved: () => void retry()}); break; }
       case 'addToPlaylist': openOrganise('playlist'); break;
       case 'addToCollection': openOrganise('collection'); break;
       case 'download': if (play?.playback) downloads.ask({target: {mediaId: play.playback.itemId}, title: item.title}); break;
+      case 'playNext': case 'addToQueue': {
+        const next = id === 'playNext';
+        if (play?.playback && queue.current) void queue.current.enqueue(queueItemInput(play.playback.itemId), next).then(() => setOrganiseNotice(t(next ? 'entry.playingNext' : 'entry.addedToQueue')), e => setOrganiseNotice(errorText(e, 'generic')));
+        break;
+      }
+      case 'watchWithGroup': if (play?.playback) void together.service?.watch(play.playback.itemId).then(ok => { if (ok) void navigate({to: '/together'}); }); break;
+      case 'addToGroupQueue': if (play?.playback) void together.service?.queueAdd([play.playback.itemId]).then(ok => setOrganiseNotice(t(ok ? 'entry.addedToGroupQueue' : 'entry.groupQueueFailed'))); break;
+      case 'delete': if (play?.playback) deleter?.open({itemIds: [play.playback.itemId], titles: [item.title]}); break;
     }
   }
-  const back = () => (history.length > 1 ? history.back() : void navigate({to: '/'}));
+  const back = useBack(() => void navigate({to: '/'}));
   // Spec — Title Pages §3: an episode isn't a destination of its own; it opens as the panel over its show.
   useEffect(() => {
     const episode = data?.item.episode;
@@ -132,16 +169,15 @@ export function DetailScreen() {
   if ((snapshot.phase === 'error' && !data) || missing) {
     return (
       <Page>
-        <div className={s.top}><Button variant="ghost" size="sm" icon="back" label={currentI18n().t('action.back')} onClick={back} /></div>
+        <div className={s.top}><Button variant="ghost" size="sm" icon="back" label={t('action.back')} onClick={back} /></div>
         <ErrorState error={missing ?? snapshot.error} context="detail" retry={retry} />
       </Page>
     );
   }
   // Providers repeat a genre under different ids ("Science Fiction" from TMDB and from TVDB); one name once.
-  const t = currentI18n().t;
   const genres = data ? dedupeNames(data.metadata.genres.map(g => g.name)).join(', ') : '';
   const ratings = data?.metadata.ratings ?? [];
-  const parent = item?.episode ? t('title.episodeContext', {show: item.episode.showTitle, code: episodeCodeOf(item.episode.seasonNumber, item.episode.number)}) : item?.song ? `${item.song.albumArtist} · ${item.song.albumTitle}` : item?.bookFile ? item.bookFile.bookTitle : undefined;
+  const parent = item?.episode ? t('title.episodeContext', {show: item.episode.showTitle, code: episodeCodeOf(t, item.episode.seasonNumber, item.episode.number)}) : item?.song ? `${item.song.albumArtist} · ${item.song.albumTitle}` : item?.bookFile ? item.bookFile.bookTitle : undefined;
   // WEB-DETAIL-03: who made it and who is in it, under the synopsis (one entry per person).
   const namesFor = (test: (d: string, r: string) => boolean) => dedupeNames(crew.filter(c => test(c.department.toLowerCase(), c.role.toLowerCase())).map(c => c.name)).join(', ');
   const directors = namesFor((d, r) => d === 'directing' || r === 'director');
@@ -161,14 +197,14 @@ export function DetailScreen() {
   const titleRowsShown = relatedRowsForPage(titleRows);
   const shownCast = castPages.credits.slice(0, CAST_ON_PAGE);
   const detailRows: [string, React.ReactNode][] = item ? ([
-    data?.facts?.releaseDate ? [t('title.releaseDate'), formatDate(data.facts.releaseDate)] : null,
+    data?.facts?.releaseDate ? [t('title.releaseDate'), formatDate(i18n, data.facts.releaseDate)] : null,
     data?.facts?.studio ? [t('title.studio'), data.facts.studio] : null,
     data?.facts?.network ? [t('title.network'), data.facts.network] : null,
     data?.facts?.country ? [t('title.country'), data.facts.country] : null,
     data?.facts?.edition ? [t('title.edition'), data.facts.edition] : null,
     genreLinks ? [t('title.genres'), genreLinks] : null,
-    ratings.length ? [t('title.ratings'), ratings.map(r => `${providerLabel(r.provider)} ${ratingLabel(r.value, r.max)}`).join(' · ')] : null,
-    item.addedAt ? [t('title.added'), formatDate(item.addedAt)] : null,
+    ratings.length ? [t('title.ratings'), ratings.map(r => `${providerLabel(t, r.provider)} ${ratingLabel(r.value, r.max)}`).join(' · ')] : null,
+    item.addedAt ? [t('title.added'), formatDate(i18n, item.addedAt)] : null,
   ] as ([string, React.ReactNode] | null)[]).filter((r): r is [string, React.ReactNode] => !!r) : [];
   return (
     <div style={{position: 'relative'}}>
@@ -182,7 +218,7 @@ export function DetailScreen() {
           originalTitle={originalTitleLine(item?.title, data?.facts?.originalTitle)}
           facts={facts}
           badge={data?.facts?.contentRating}
-          extra={ratings.length ? <span className={s.ratings}>{ratings.slice(0, 3).map(r => <span key={r.provider} className={s.rating}><span className={s.ratingProvider}>{providerLabel(r.provider)}</span><strong>{ratingLabel(r.value, r.max)}</strong></span>)}</span> : undefined}
+          extra={ratings.length ? <span className={s.ratings}>{ratings.slice(0, 3).map(r => <span key={r.provider} className={s.rating}><span className={s.ratingProvider}>{providerLabel(t, r.provider)}</span><strong>{ratingLabel(r.value, r.max)}</strong></span>)}</span> : undefined}
           tagline={data?.facts?.tagline}
           synopsis={item?.overview}
           credits={creditLines}
@@ -201,6 +237,7 @@ export function DetailScreen() {
         />
       <Page>
         <div className={s.body}>
+          <QueueBridge queue={queue} onPresence={setHasQueue} />
           {organiseNotice ? <Inset><Notice tone="info">{organiseNotice}</Notice></Inset> : null}
           {snapshot.mutationError ? <Inset><ErrorNotice error={snapshot.mutationError} context="detail" operation="save" retry={retryMutation} refresh={retry} /></Inset> : null}
           {snapshot.pending.some(p => p.phase === 'conflict') ? <Inset><Notice tone="warning" action={{label: t('title.ok'), onClick: dismissMutation}}>{t('title.changedElsewhere')}</Notice></Inset> : null}
@@ -231,6 +268,7 @@ export function DetailScreen() {
           <div className={s.peopleList}>
             {castPages.credits.length ? <Text variant="label" tone="tertiary">{t('title.cast')}</Text> : null}
             {castPages.credits.map(c => <ListRow key={c.id} title={c.name} subtitle={c.role} art={{path: c.portraitUrl, icon: 'person'}} artShape="circle" onClick={c.personId ? () => { setAllPeople(false); void navigate({to: '/person/$personId', params: {personId: c.personId!}}); } : undefined} />)}
+            {castPages.failed || crewPages.failed ? <Notice tone="error" compact action={{label: t('action.tryAgain'), onClick: () => { if (castPages.failed) castPages.more(); if (crewPages.failed) crewPages.more(); }}}>{t('title.peopleFailed')}</Notice> : null}
             {!castPages.done ? <div><Button variant="ghost" size="sm" label={t('title.moreCast')} onClick={castPages.more} /></div> : null}
             {crewPages.credits.length ? <Text variant="label" tone="tertiary" style={{marginTop: 12}}>{t('title.crew')}</Text> : null}
             {crewPages.credits.map(c => <ListRow key={c.id} title={c.name} subtitle={c.role || c.department} art={{path: c.portraitUrl, icon: 'person'}} artShape="circle" onClick={c.personId ? () => { setAllPeople(false); void navigate({to: '/person/$personId', params: {personId: c.personId!}}); } : undefined} />)}
@@ -239,7 +277,7 @@ export function DetailScreen() {
         </Dialog>
       ) : null}
       {ratingOpen && item ? <RatingDialog title={item.title} value={personal?.rating ?? null} onClose={() => setRatingOpen(false)} onRate={value => { mutate({action: 'rating', value}); setRatingOpen(false); }} /> : null}
-      <AnchoredMenu open={!!organise} anchor={organise?.anchor} onOpenChange={open => !open && setOrganise(undefined)} label={organise?.mode === 'playlist' ? currentI18n().t('entry.sheet.addToPlaylist') : currentI18n().t('entry.sheet.addToCollection')}>
+      <AnchoredMenu open={!!organise} anchor={organise?.anchor} onOpenChange={open => !open && setOrganise(undefined)} label={organise?.mode === 'playlist' ? t('entry.sheet.addToPlaylist') : t('entry.sheet.addToCollection')}>
         {item && organise ? (organise.mode === 'playlist'
           ? <PlaylistPicker key={item.id} itemId={item.id} itemTitles={[item.title]} onDone={notice => { setOrganiseNotice(notice); setOrganise(undefined); }} />
           : <CollectionPicker key={item.id} itemId={item.id} onDone={notice => { setOrganiseNotice(notice); setOrganise(undefined); }} />) : null}
@@ -250,16 +288,15 @@ export function DetailScreen() {
 
 /** Cast on the page before See all. */
 const CAST_ON_PAGE = 12;
-function episodeCodeOf(season: number | null | undefined, episode: number): string {
-  return season != null ? currentI18n().t('title.episodeCode', {season, episode}) : currentI18n().t('title.episodeOnly', {episode});
+function episodeCodeOf(t: I18n['t'], season: number | null | undefined, episode: number): string {
+  return season != null ? t('title.episodeCode', {season, episode}) : t('title.episodeOnly', {episode});
 }
-function formatDate(iso: string): string {
+function formatDate(i18n: I18n, iso: string): string {
   const d = /^\d{4}-\d{2}-\d{2}/.test(iso) ? new Date(iso.slice(0, 10) + 'T00:00:00') : new Date(iso);
-  return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString(undefined, {year: 'numeric', month: 'long', day: 'numeric'});
+  return Number.isNaN(d.getTime()) ? iso : i18n.date(d, 'long');
 }
 /** A rating's source as its badge names it: provider names are names; Portico's own aggregates are words from the catalogue. */
-export function providerLabel(provider: string): string {
-  const t = currentI18n().t;
+export function providerLabel(t: I18n['t'], provider: string): string {
   const names: Record<string, string> = {tmdb: 'TMDB', imdb: 'IMDb', tvdb: 'TVDB', anilist: 'AniList', mal: 'MyAnimeList', rottentomatoes: 'Rotten Tomatoes', metacritic: 'Metacritic'};
   switch (provider.toLowerCase()) {
     case 'effective': return t('title.rating.overall');
@@ -316,7 +353,7 @@ export function keyCrew<T extends {personId?: string; name: string; department: 
  * Click the left half of a star for a half; arrow keys step by a half.
  */
 function RatingDialog({title, value, onRate, onClose}: {title: string; value: number | null; onRate: (value: number | null) => void; onClose: () => void}) {
-  const t = currentI18n().t;
+  const {t} = useI18n();
   const [hover, setHover] = useState<number | null>(null);
   const [draft, setDraft] = useState<number>(value ?? 0);
   const shown = hover ?? draft;

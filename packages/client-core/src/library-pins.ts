@@ -1,4 +1,5 @@
 import {unreadableServerResponse} from './server-messages.ts';
+import {firstOfEach,keepReadable} from './tolerant.ts';
 /** Pinned libraries and pinned-resource order. The arrangement is server state:
  * clients read it, send a replacement with the revision they saw, and re-read.
  * Nothing here re-orders locally or remembers a pin the server did not confirm. */
@@ -35,14 +36,15 @@ export function parseLibraryNavigationPins(raw:unknown):LibraryNavigationPins{
 }
 
 /** The listing is already in the viewer's order; a client that re-sorts it will
- * disagree with every other surface, so this only checks that it is. */
+ * disagree with every other surface, so this only checks that it is. A library this app cannot
+ * read is left out alone and a repeated one keeps its first row. The two arrangements above are
+ * sent back whole when the viewer changes them, so they stay exact. */
 export function parsePinnedLibraries(raw:unknown):readonly PinnedLibrary[]{
  if(!obj(raw))bad();
- const items=rows(raw.items,2048).map(v=>{
+ const items=firstOfEach('library-pins','items',keepReadable('library-pins','items',rows(raw.items,2048),v=>{
   if(!obj(v)||!id(v.id)||!str(v.name,512)||!id(v.kind)||!str(v.defaultView,64)||typeof v.pinned!=='boolean')bad();
   return {id:v.id,name:v.name,kind:v.kind,defaultView:v.defaultView,pinned:v.pinned};
- });
- if(new Set(items.map(item=>item.id)).size!==items.length)bad();
+ }),item=>item.id);
  if(items.some((item,index)=>item.pinned&&index>0&&!items[index-1].pinned))bad();
  return freeze(items);
 }

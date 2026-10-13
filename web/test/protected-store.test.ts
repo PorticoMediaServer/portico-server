@@ -92,3 +92,39 @@ test('a vault that cannot be opened right now is not damage: the sign-in is kept
   assert.deepEqual(await refresh(store), {code: 'store_unavailable', signOut: false, asked: 0});
   assert.deepEqual(await store.read(), record('one'));
 });
+
+test('without browser encryption (a page on plain HTTP) a change reads, decides and writes in one database transaction', async t => {
+  const {db, store} = await vault(t);
+  // Count the transactions the vault opens, by mode.
+  const opened: string[] = [];
+  const open = db.indexedDB.open;
+  db.indexedDB.open = () => {
+    const r = open();
+    const ready = () => { const database = r.result; const transaction = database.transaction; database.transaction = (name: string, mode: string, options?: {durability?: string}) => { opened.push(mode); return transaction(name, mode, options); }; };
+    queueMicrotask(() => queueMicrotask(ready));
+    return new Proxy(r, {set: (target, key, value) => { target[key] = key === 'onsuccess' ? () => { ready(); value(); } : value; return true; }});
+  };
+  const hadCrypto = Object.getOwnPropertyDescriptor(globalThis, 'crypto');
+  Object.defineProperty(globalThis, 'crypto', {configurable: true, value: {getRandomValues: (a: Uint8Array) => a}});
+  t.after(() => { if (hadCrypto) Object.defineProperty(globalThis, 'crypto', hadCrypto); });
+
+  await store.change(() => record('one'));
+  assert.deepEqual(opened, ['readwrite'], 'no separate read before the write: another tab’s change cannot fall between them');
+  assert.deepEqual(db.data.get('selected'), {version: 2, plain: JSON.stringify(record('one'))});
+  assert.deepEqual(await store.read(), record('one'));
+
+  opened.length = 0;
+  let seen: unknown;
+  await store.change(current => { seen = current; return current; });
+  assert.deepEqual(seen, record('one'), 'the decision sees what is stored');
+  assert.deepEqual(opened, ['readwrite']);
+  assert.deepEqual(db.data.get('selected'), {version: 2, plain: JSON.stringify(record('one'))}, 'an update that changes nothing writes nothing');
+
+  await store.change(() => undefined);
+  assert.equal(db.data.has('selected'), false);
+  // Damaged plain text reads as absent, and a save replaces it.
+  db.data.set('selected', {version: 2, plain: '{broken'});
+  await store.change(current => { seen = current; return record('two'); });
+  assert.equal(seen, undefined);
+  assert.deepEqual(await store.read(), record('two'));
+});
