@@ -88,6 +88,7 @@ export const enUS = {
 
   // ── Common actions ────────────────────────────────────────────────
   'action.tryAgain': 'Try again',
+  'error.playbackConversionCapacity': 'This server is already converting as many streams as it is allowed. Wait a moment or stop another stream, then try again.',
   'error.queueTooLarge': 'This queue is too long. Remove some of it or start a new one.',
   'action.refresh': 'Refresh',
   'action.cancel': 'Cancel',

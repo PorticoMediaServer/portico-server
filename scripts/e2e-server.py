@@ -262,13 +262,25 @@ class Exercise:
         shows={e['title']:e['id'] for e in pages['Shows']['entries']}
         assert set(shows)=={'Example Show','Loose Show'}
         seasons=a.get('/v1/shows/'+shows['Example Show']+'/seasons')
-        episodes=a.get('/v1/shows/'+shows['Example Show']+'/episodes')
+        episodes={season['number']:a.get('/v1/seasons/'+season['id']+'/episodes') for season in seasons['seasons']}
+        assert sorted(seasons['seasons'],key=lambda x:x['number'])[0]['number']==1
+        assert {n:len(p['episodes']) for n,p in episodes.items()}=={1:1,2:2}
+        assert any(e['title'] for e in episodes[2]['episodes'])
         (self.directory/'shows.json').write_text(json.dumps({'seasons':seasons,'episodes':episodes},indent=2))
         music={e['title']:a.get('/v1/albums/'+e['id']+'/songs') for e in pages['Music']['entries']}
         books={e['title']:{'files':a.get('/v1/books/'+e['id']+'/files'),'chapters':a.get('/v1/books/'+e['id']+'/chapters')} for e in pages['Books']['entries']}
         attention=a.get('/v1/admin/metadata/attention?limit=50')
         (self.directory/'recognition.json').write_text(json.dumps({'music':music,'books':books,'attention':attention},indent=2))
         assert len(pages['Anime']['entries'])==1
+        anime=a.get('/v1/shows/'+pages['Anime']['entries'][0]['id']+'/episodes')
+        assert len(anime['episodes'])==1
+        assert len(music['Example Album']['songs'])==2
+        assert [e['song']['discNumber'] for e in music['Example Album']['songs']]==[1,2]
+        assert music['Collection']['songs'][0]['song']['albumArtist']=='Various Artists'
+        assert len(books['Example Book']['chapters']['chapters'])==2
+        assert details['Ten Bit']['files'][0]['video']['bitDepth']==10
+        assert details['Ten Bit']['files'][0]['audio'][0]['channels']==6
+        assert {t['language'] for t in details['Arrival']['files'][0]['subtitles']}=={'en','fr','de','es'}
         return {'films':len(details),'shows':len(shows),'albums':len(music),'books':len(books)}
 
     def browse_search(self):
@@ -290,6 +302,14 @@ class Exercise:
             result=a.post('/v1/libraries/'+self.libs['Movies']+'/browse',body)
             self.listings.append(('POST','/v1/libraries/'+self.libs['Movies']+'/browse',body))
             output[str(filter)]=result
+        pages=json.loads((self.directory/'browse.json').read_text())
+        grouped=[('Movies','movies','genre','Science Fiction'),('Shows','episodes','memberOf',pages['Shows']['entries'][0]['id']),('Music','songs','memberOf',next(e['id'] for e in pages['Music']['entries'] if e['title']=='Example Album'))]
+        for name,pivot,field,value in grouped:
+            for sort in ['title','year','duration','fileSize']:
+                body={'pivot':pivot,'query':{'field':field,'operator':'contains' if field=='genre' else 'equals','value':value},'sort':[{'field':sort,'direction':'desc'}],'limit':100}
+                path='/v1/libraries/'+self.libs[name]+'/browse'
+                output[str(body)]=a.post(path,body)
+                self.listings.append(('POST',path,body))
         for query in ['Arrival','Example','Moon','Ten']:
             for sort in ['title','releaseYear','dateAdded']:
                 path='/v1/search?'+urllib.parse.urlencode({'q':query,'sort':sort,'direction':'desc'})
@@ -357,6 +377,7 @@ class Exercise:
         assert styled['subtitles'], 'Embedded ASS not discovered'
         scenarios.append(('burned subtitles',self.movies['Styled'],{'subtitles':{'trackId':styled['subtitles'][0]['id'],'delivery':'burn'}}))
         sidecar=next(t for t in direct['subtitles'] if t['language']=='en')
+        scenarios.append(('original styled subtitles',self.movies['Styled'],{'subtitles':{'trackId':styled['subtitles'][0]['id'],'delivery':'embeddedClient'}}))
         scenarios.append(('delivered subtitles',self.movies['Arrival'],{'versionId':direct['id'],'subtitles':{'trackId':sidecar['id'],'delivery':'sidecar'}}))
         for name,item,extra in scenarios:
             session=self.start_session(item,extra)
@@ -413,9 +434,9 @@ class Exercise:
         profile=self.member.post('/v1/direct/profiles',{'name':'Restricted','art':''},(201,))
         (self.directory/'profile.json').write_text(json.dumps(profile,indent=2))
         profile_id=next(p['id'] for p in profile['profiles'] if p['name']=='Restricted')
-        restrictions=a.get('/v1/direct/profiles/'+profile_id+'/restrictions')
+        restrictions=self.member.get('/v1/direct/profiles/'+profile_id+'/restrictions')
         body={'expectedRevision':restrictions['revision'],'ratingSystem':'mpaa','maximumAgeRating':'PG-13','allowUnrated':True,'blockedLabels':[],'allowDownloads':False,'allowLiveTv':False,'allowDvr':False,'allowWatchTogether':False}
-        a.call('PUT','/v1/direct/profiles/'+profile_id+'/restrictions',body)
+        self.member.call('PUT','/v1/direct/profiles/'+profile_id+'/restrictions',body)
         selected=self.member.post('/v1/direct/profiles/'+profile_id+'/select',{'pin':'','installationId':self.member.installation,'trustToken':'','trust':False})
         self.restricted=API(self.base,selected['session']['accessToken'],self.member.installation)
         hidden=self.movies['Moon']
@@ -443,7 +464,7 @@ class Exercise:
             self.keys[scope]=key['secret']
             api=API(self.base,key['secret'])
             for required,(method,path,body,status) in paths.items():
-                api.call(method,path,body,expected=status if required==scope else (403,))
+                api.call(method,path,body,expected=status if required==scope or scope=='admin' else (403,))
             api.call('GET','/v1/admin/api-keys',expected=(403,))
             a.timings.extend(api.timings)
         (self.directory/'keys.json').write_text(json.dumps(self.keys))
@@ -478,7 +499,7 @@ class Exercise:
         a=self.api
         secret=secrets.token_urlsafe(32)
         try:
-            hook=a.post('/v1/admin/webhooks',{'name':'Local listener','url':f'http://127.0.0.1:{listener.server_port}/event','events':['library.scan.completed'],'enabled':True,'secret':secret},(201,))
+            hook=a.post('/v1/admin/webhooks',{'name':'Local listener','url':f'http://127.0.0.1:{listener.server_port}/event','events':['scan.finished'],'enabled':True,'secret':secret},(201,))
             id=hook['webhook']['id']
             a.post('/v1/admin/webhooks/'+id+'/test',expected=(202,))
             headers,body=messages.get(timeout=30)
@@ -534,6 +555,142 @@ class Exercise:
         (self.directory/'event.json').write_text(json.dumps(value,indent=2))
         return 'Personal change delivered over SSE'
 
+    def scan_again(self, library, mode='full'):
+        a=self.api
+        job=a.post('/v1/libraries/'+library+'/scans?mode='+mode,expected=(202,))
+        def done():
+            current=a.get('/v1/admin/ingestion/jobs/'+job['id'])
+            if current['status'] in ['failed','cancelled']:
+                raise AssertionError('Scan failed: '+str(current))
+            return current if current['status'] in ['complete','complete_with_warnings'] else False
+        return wait(done,120)
+
+    def files_and_missing(self):
+        a=self.api
+        library=self.libs['Movies']
+        cfg=a.get('/v1/admin/libraries/'+library+'/settings')
+        settings=cfg['settings']
+        settings['allowMediaDeletion']=True
+        a.call('PUT','/v1/admin/libraries/'+library+'/settings',{'expectedRevision':cfg['revision'],'operationId':str(uuid.uuid4()),'settings':settings})
+        item=self.movies['Arrival']
+        detail=a.get('/v1/items/'+item+'/detail')
+        file=next(f for f in detail['files'] if f['container']=='mkv')
+        path='/v1/admin/items/'+item+'/files/'+file['id']
+        preview=a.post(path+'/delete/preview',{})
+        result,_=a.call('DELETE',path,{'confirmation':preview['confirmation'],'previewKey':preview['previewKey'],'operationId':str(uuid.uuid4())})
+        assert result['removed']==1 and not Path(file['path']).exists()
+        remaining=a.get('/v1/items/'+item+'/detail')
+        assert len(remaining['files'])==1 and remaining['item']['id']==item
+        missing=self.movies['Moon']
+        prior=a.get('/v1/items/'+missing+'/detail')['personal']
+        a.call('PUT','/v1/items/'+missing+'/personal-state',{'operationId':str(uuid.uuid4()),'expectedRevision':prior['revision'],'favorite':True})
+        media=self.directory/'media/Movies/Moon.mp4'
+        hidden=self.directory/'Moon-away.mp4'
+        media.rename(hidden)
+        try:
+            report=a.post('/v1/libraries/paths-changed',{'paths':[{'path':str(media),'change':'removed'},{'path':str(self.directory/'outside'),'change':'added'}]},(202,))
+            assert report['jobs']
+            self.scan_again(library)
+            def gone():
+                d=a.get('/v1/items/'+missing+'/detail')
+                return d if d.get('missingSince') and d['item']['missing'] and not d['item']['available'] else False
+            gone=wait(gone)
+            assert gone['item']['missing'] and not gone['item']['available']
+            assert any(i['id']==missing for i in a.get('/v1/admin/missing-titles?libraryId='+library)['items'])
+        finally:
+            hidden.rename(media)
+        a.post('/v1/libraries/paths-changed',{'paths':[{'path':str(media),'change':'added'}]},(202,))
+        self.scan_again(library)
+        def restored():
+            d=a.get('/v1/items/'+missing+'/detail')
+            return d if not d.get('missingSince') and d['item']['available'] else False
+        restored=wait(restored)
+        assert restored['item']['id']==missing and restored['personal']['favorite']
+        (self.directory/'file-lifecycle.json').write_text(json.dumps({'delete':result,'pathReport':report,'missingId':missing,'restored':restored['item']['id']},indent=2))
+        return 'Version deleted on disk; missing title and state restored with same identity'
+
+    def reserve(self):
+        a=self.api
+        doc=a.get('/v1/admin/console/settings')['data']
+        saved=copy.deepcopy(doc['requested'])
+        values=copy.deepcopy(saved)
+        values.update({'maxConcurrentSessions':1,'maxSoftwareSessions':1,'maxHardwareSessions':1})
+        a.call('PATCH','/v1/admin/console/settings',{'expectedRevision':doc['revision'],'idempotencyKey':str(uuid.uuid4()),'values':values})
+        first=None
+        try:
+            first=self.start_session(self.movies['Ten Bit'])
+            self.fetch_presentation(first)
+            second=API(self.base)
+            auth=second.post('/v1/direct/sign-in',{'username':'owner','password':self.password})
+            second.token=auth['session']['accessToken']
+            second.call('PUT','/v1/me/devices/current/capabilities',capabilities(),(204,))
+            limited=second.post('/v1/playback/sessions',{'itemId':self.movies['Ten Bit'],'quality':{'mode':'original'}},(429,),{'Idempotency-Key':str(uuid.uuid4())})
+            assert limited['error']['code']=='conversion_capacity'
+            def owner_read(_):
+                client=API(self.base,a.token,a.installation)
+                start=time.monotonic()
+                result=client.get('/v1/admin/console/settings')
+                return time.monotonic()-start
+            with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+                timings=list(pool.map(owner_read,range(16)))
+            assert max(timings)<2, timings
+            a.timings.extend(second.timings)
+            return {'conversionSlots':1,'extraConversion':'refused','ownerMaxMs':round(max(timings)*1000,2)}
+        finally:
+            if first:
+                a.call('DELETE','/v1/playback/sessions/'+first['id'],expected=(204,))
+            doc=a.get('/v1/admin/console/settings')['data']
+            a.call('PATCH','/v1/admin/console/settings',{'expectedRevision':doc['revision'],'idempotencyKey':str(uuid.uuid4()),'values':saved})
+
+    def backup_restore(self):
+        a=self.api
+        a.post('/v1/admin/backups',{'operationId':str(uuid.uuid4())},(202,))
+        def finished():
+            page=a.get('/v1/admin/backups')
+            return page if page['backups'] and not page.get('running') else False
+        page=wait(finished,60)
+        backup=page['backups'][0]
+        before=a.get('/v1/admin/console/settings')['data']
+        values=copy.deepcopy(before['requested'])
+        values['name']='After backup'
+        a.call('PATCH','/v1/admin/console/settings',{'expectedRevision':before['revision'],'idempotencyKey':str(uuid.uuid4()),'values':values})
+        assert a.get('/v1/system')['name']=='After backup'
+        a.post('/v1/admin/backups/restore',{'operationId':str(uuid.uuid4()),'source':{'backupId':backup['id']}},(202,))
+        # Restoration retires sessions and the supervisor replaces the worker.
+        def restarted():
+            try:
+                out=a.call('GET','/v1/admin/console/settings',expected=(200,401,503))[0]
+                return out if out and out.get('error',{}).get('code')=='unauthorized' else False
+            except (OSError,AssertionError):
+                return False
+        wait(restarted,90)
+        def sign_in():
+            try:
+                auth=a.post('/v1/direct/sign-in',{'username':'owner','password':self.password})
+                a.token=auth['session']['accessToken']
+                return auth
+            except (OSError,AssertionError):
+                return False
+        wait(sign_in,30)
+        page=a.get('/v1/admin/backups')
+        assert page['lastRestore']['outcome']=='restored', page
+        assert a.get('/v1/system')['name']==before['requested']['name']
+        assert self.libs['Movies'] in json.dumps(a.get('/v1/libraries'))
+        assert self.movies['Arrival'] in json.dumps(a.get('/v1/libraries/'+self.libs['Movies']+'/content?view=browse'))
+        API(self.base,self.keys['read']).get('/v1/libraries')
+        (self.directory/'restore.json').write_text(json.dumps(page,indent=2))
+        return 'Backup restored, worker restarted, old session retired, settings/catalogue/API key read back'
+
+    def remove_library(self):
+        a=self.api
+        library=self.libs['Books']
+        cfg=a.get('/v1/admin/libraries/'+library+'/settings')
+        result,_=a.call('DELETE','/v1/admin/libraries/'+library,{'confirmation':'Books','expectedRevision':cfg['revision']},(202,))
+        assert result['removing']
+        assert library not in json.dumps(a.get('/v1/libraries'))
+        assert (self.directory/'media/Books/Example Author/Example Book/Example Book.m4b').exists()
+        return 'Library hidden immediately; media retained'
+
     def run(self):
         self.check('generate varied media',lambda:len(generate(self.directory/'media')))
         self.check('start production server',self.start)
@@ -547,6 +704,10 @@ class Exercise:
         self.check('API scopes and MCP',self.credentials_mcp)
         self.check('signed webhook delivery',self.webhook)
         self.check('event stream change',self.events)
+        self.check('file deletion, missing titles and paths changed',self.files_and_missing)
+        self.check('owner reserve at conversion capacity',self.reserve)
+        self.check('backup restore with automatic restart',self.backup_restore)
+        self.check('library removal',self.remove_library)
 
 
 def main():

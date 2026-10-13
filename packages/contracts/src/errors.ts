@@ -121,6 +121,12 @@ export const errors = [
     "retry": "never"
   },
   {
+    "code": "conversion_capacity",
+    "status": 429,
+    "message": "This server is already converting as many streams as it is allowed. Wait a moment or stop another stream, then try again.",
+    "retry": "same_request"
+  },
+  {
     "code": "credential_busy",
     "status": 429,
     "message": "This API key or access token has too many requests running. Try again shortly.",
