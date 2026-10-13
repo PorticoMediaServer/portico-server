@@ -80,6 +80,7 @@ type HLS struct {
 	// what orders eviction under the global byte budget; see hls_sweep.go.
 	usage       map[string]*hlsUsage
 	budgetSwept time.Time
+	orphanAfter string
 	// producers joins every produce goroutine, so shutdown can wait for the
 	// converters it just cancelled instead of leaving them to be killed with the
 	// process and orphan their ffmpeg children.
@@ -325,6 +326,7 @@ func (h *HLS) produce(ctx context.Context, id string, from int) {
 		h.failed(ctx, id)
 		return
 	}
+	h.selectOutputBackend(ctx, id, delivery)
 	input, remoteInput, e := h.openWindowInput(ctx, id, delivery)
 	if e != nil {
 		h.failed(ctx, id)
@@ -411,6 +413,9 @@ func (h *HLS) produce(ctx context.Context, id string, from int) {
 			protocols = "http,tcp"
 		}
 		args := []string{"-nostdin", "-hide_banner", "-loglevel", "error", "-y", "-protocol_whitelist", protocols}
+		if plan != nil && plan.VideoAction == "copy" {
+			args = append(args, "-fflags", "+genpts+discardcorrupt")
+		}
 		if grid && from > 0 {
 			// Input-side seek, so the decoder skips rather than decodes-and-drops.
 			// A copy window seeks a hair past its keyframe: the demuxer lands on
@@ -493,7 +498,11 @@ func (h *HLS) produce(ctx context.Context, id string, from int) {
 		if fragmented {
 			packaging = "fmp4_hls"
 		}
-		outputArgs, ext, err := decoder.HLSPackagingArgs(packaging, "init-"+strconv.Itoa(from)+".mp4")
+		initName := "init-" + strconv.Itoa(from) + ".mp4"
+		if !grid {
+			initName = "init.mp4"
+		}
+		outputArgs, ext, err := decoder.HLSPackagingArgs(packaging, initName)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -540,7 +549,7 @@ func (h *HLS) produce(ctx context.Context, id string, from int) {
 
 		args, stages, err := build(plan)
 		if err != nil {
-			return err, ""
+			return err, sanitizeConverterOutput(err.Error(), h.root)
 		}
 		if len(stages) > 0 {
 			h.recordStages(ctx, id, plan, stages)
@@ -660,7 +669,7 @@ func (h *HLS) produce(ctx context.Context, id string, from int) {
 		}
 	} else if grid {
 		produced = highestProducedSegment(dir, from)
-		if delivery != nil && delivery.OutputContainer == "fmp4_hls" {
+		if delivery != nil && delivery.OutputContainer == "fmp4_hls" && produced >= from {
 			if err := promoteConvertedInit(dir, from); err != nil {
 				h.fragmentedFailure(ctx, id, delivery, position, err)
 				return
@@ -708,7 +717,7 @@ func (h *HLS) watchWindow(ctx context.Context, id, dir, staging string, from, li
 			}
 		} else {
 			produced = highestProducedSegment(dir, from)
-			if plan != nil && plan.OutputContainer == "fmp4_hls" {
+			if plan != nil && plan.OutputContainer == "fmp4_hls" && produced >= from {
 				if err := promoteConvertedInit(dir, from); err != nil && !os.IsNotExist(err) {
 					h.publicationFailed(id, err)
 					cancel()

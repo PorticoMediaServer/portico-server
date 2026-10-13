@@ -3,6 +3,7 @@ package playback
 import (
 	"errors"
 	"fmt"
+	"io"
 	"math"
 	"os"
 	"path/filepath"
@@ -152,7 +153,7 @@ func fragmentedManifest(media []byte) []byte {
 	return []byte(strings.ReplaceAll(s, ".ts\n", ".m4s\n"))
 }
 func promoteConvertedInit(dir string, from int) error {
-	data, err := os.ReadFile(filepath.Join(dir, "init-"+strconv.Itoa(from)+".mp4"))
+	data, err := readConversionInit(filepath.Join(dir, "init-"+strconv.Itoa(from)+".mp4"))
 	if err != nil {
 		return err
 	}
@@ -160,12 +161,12 @@ func promoteConvertedInit(dir string, from int) error {
 }
 
 func promoteRenditionInit(dir, window string, ordinal int) error {
-	data, err := os.ReadFile(filepath.Join(dir, window))
+	data, err := readConversionInit(filepath.Join(dir, window))
 	if err != nil {
 		return err
 	}
 	target := filepath.Join(dir, renditionInitFile(ordinal))
-	if old, err := os.ReadFile(target); err == nil {
+	if old, err := readConversionInit(target); err == nil {
 		if string(old) != string(data) {
 			return errMP4InitChanged
 		}
@@ -174,4 +175,25 @@ func promoteRenditionInit(dir, window string, ordinal int) error {
 		return err
 	}
 	return writeNamedManifest(dir, renditionInitFile(ordinal), data)
+}
+
+// Init files are only read after a closed media segment proves the muxer has
+// finished writing them. Bound reads separately from the owner storage budget.
+func readConversionInit(path string) ([]byte, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	data, err := io.ReadAll(io.LimitReader(f, (4<<20)+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(data) > 4<<20 {
+		return nil, errMP4Box
+	}
+	if _, err = mp4Timescales(data); err != nil {
+		return nil, err
+	}
+	return data, nil
 }

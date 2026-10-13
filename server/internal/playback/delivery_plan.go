@@ -150,8 +150,8 @@ type DeliveryPlan struct {
 	// made for "remote" or "local". The remote ceilings follow it on a later
 	// re-plan; a v1 plan stored without it is treated as remote.
 	TargetReach string `json:"-"`
-	// AudioSampleRate is the rate converted audio is resampled to; zero keeps
-	// the source's.
+	// AudioSampleRate is the explicit converted rate, including supported
+	// source rates. An unknown rate selects a device-supported rate.
 	AudioSampleRate int `json:"-"`
 }
 
@@ -677,7 +677,7 @@ func planDelivery(in DeliveryInput) (p DeliveryPlan, err error) {
 				trace.Notes = append(trace.Notes, NoteDolbyVisionNoLayer)
 				// COMPAT-04: only libplacebo applies Profile 5's reshaping; say so
 				// in the decision, so clients can warn before play.
-				if !decoder.ReshapesDolbyVision(decoder.ConversionRequest{ConvertVideo: true, ToneMap: true, Toolchain: decoder.CurrentToolchain(), Probe: in.Hardware}) {
+				if !decoder.ReshapesDolbyVision(decoder.ConversionRequest{ConvertVideo: true, ToneMap: true, Toolchain: decoder.CurrentToolchain(), Probe: in.Hardware, Target: &decoder.ConversionTarget{VideoCodec: "h264", ToneMap: true, DolbyVisionProfile: video.DolbyVisionProfile, DolbyVisionCompatibility: video.DolbyVisionCompatibility}}) {
 					p.ReasonCodes = append(p.ReasonCodes, ReasonDolbyVisionApproximate)
 				}
 			}
@@ -897,6 +897,15 @@ func (p DeliveryPlan) conversionGraph(burn *decoder.BurnIn) (decoder.ConversionG
 		}
 		target.VideoLevel = decoder.HEVCOutputLevel(w, h, rate)
 		request.Target = &target
+	}
+	if p.Trace != nil && p.Trace.Video != nil {
+		v := p.Trace.Video
+		request.DisableHardwareDecode = v.Rotation != 0 || v.SampleAspectRatio != "" && v.SampleAspectRatio != "1:1" && v.SampleAspectRatio != "0:1"
+		if request.Target != nil && request.Target.SourceRange == "" {
+			target := *request.Target
+			target.SourceRange = v.DynamicRange
+			request.Target = &target
+		}
 	}
 	return decoder.BuildConversion(request)
 }

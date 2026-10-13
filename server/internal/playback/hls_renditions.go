@@ -111,8 +111,11 @@ func audioCodecString(codec string) string {
 		return "opus"
 	case "flac":
 		return "fLaC"
-	case "dts", "dts_hd":
-		return "dtsl"
+	case "dts":
+		return "dtsc"
+	case "dts_hd":
+		// The source facts do not distinguish DTS-HD High Resolution from MA.
+		return ""
 	case "truehd":
 		return "mlpa"
 	}
@@ -234,7 +237,11 @@ func hlsMasterManifest(p *DeliveryPlan) []byte {
 	for i, r := range p.TextRenditions {
 		fmt.Fprintf(&b, "#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID=\"subtitles\",NAME=\"%s\",LANGUAGE=\"%s\",DEFAULT=NO,AUTOSELECT=NO,URI=\"text-%d.m3u8\"\n", manifestQuoted(r.Label), manifestAudioLanguage(r.Language), i)
 	}
-	codecs := []string{videoCodecString(p)}
+	videoCodec := videoCodecString(p)
+	codecs := []string{}
+	if p.VideoAction != "none" {
+		codecs = append(codecs, videoCodec)
+	}
 	audioRate := p.AudioBitrateBPS
 	for _, r := range p.Renditions {
 		def, auto := "NO", "YES"
@@ -268,7 +275,7 @@ func hlsMasterManifest(p *DeliveryPlan) []byte {
 		peak = 200_000_000 + max(audioRate, 192000)
 	}
 	fmt.Fprintf(&b, "#EXT-X-STREAM-INF:BANDWIDTH=%d,AVERAGE-BANDWIDTH=%d", peak, average)
-	if codecs[0] != "" || p.VideoAction == "none" {
+	if (p.VideoAction != "none" && videoCodec != "" || p.VideoAction == "none") && len(codecs) > 0 {
 		fmt.Fprintf(&b, ",CODECS=\"%s\"", strings.Join(codecs, ","))
 	}
 	if hevcSampleEntry(p) == "dvh1" && p.Trace.Video.DolbyVisionProfile == 8 {
@@ -327,6 +334,19 @@ func hlsMasterManifest(p *DeliveryPlan) []byte {
 			}
 		}
 		fmt.Fprintf(&b, ",VIDEO-RANGE=%s", dr)
+	}
+	if p.VideoAction != "none" && p.ConversionTarget != nil && (p.Trace == nil || p.Trace.Video == nil) {
+		dr := "SDR"
+		switch p.ConversionTarget.DynamicRange {
+		case "hdr10":
+			dr = "PQ"
+		case "hlg":
+			dr = "HLG"
+		}
+		fmt.Fprintf(&b, ",VIDEO-RANGE=%s", dr)
+		if p.TargetWidth > 0 && p.TargetHeight > 0 {
+			fmt.Fprintf(&b, ",RESOLUTION=%dx%d", p.TargetWidth, p.TargetHeight)
+		}
 	}
 	b.WriteString("\nvideo.m3u8\n")
 	return []byte(b.String())
@@ -517,7 +537,7 @@ func (h *HLS) produceRendition(ctx context.Context, id string, r AudioRenditionP
 			for produced+1 < hlsSegmentCount(plan.Duration) && segmentReady(filepath.Join(dir, renditionSegmentFile(r, produced+1))) {
 				produced++
 			}
-			if fragmented {
+			if fragmented && produced >= from {
 				if err := promoteRenditionInit(dir, initWindow, r.Ordinal); err != nil && !os.IsNotExist(err) {
 					cancel()
 					failed(FailureConverter)
@@ -530,7 +550,7 @@ func (h *HLS) produceRendition(ctx context.Context, id string, r AudioRenditionP
 			h.mu.Unlock()
 			limit := max(12, h.configuration().ThrottleBufferSeconds)
 			edge := served + (limit+5)/6
-			if segmentReady(filepath.Join(dir, fmt.Sprintf("audio-%d-%06d.ts", r.Ordinal, edge))) {
+			if segmentReady(filepath.Join(dir, renditionSegmentFile(r, edge))) {
 				h.mu.Lock()
 				w.throttled = true
 				h.mu.Unlock()
@@ -570,6 +590,12 @@ func (h *HLS) produceRendition(ctx context.Context, id string, r AudioRenditionP
 	}
 	cancel()
 	<-watchDone
+	if fragmented && segmentReady(filepath.Join(dir, renditionSegmentFile(r, from))) {
+		if publishErr := promoteRenditionInit(dir, initWindow, r.Ordinal); publishErr != nil {
+			failed(FailureConverter)
+			return
+		}
+	}
 	h.mu.Lock()
 	throttled := w.throttled
 	h.mu.Unlock()
@@ -639,6 +665,9 @@ func (h *HLS) renditionFile(ctx context.Context, id, name string, p *DeliveryPla
 }
 
 func hevcSampleEntry(p *DeliveryPlan) string {
+	if p != nil && p.ConversionTarget != nil {
+		return "hvc1"
+	}
 	if p != nil && p.OutputVideoCodec == "hevc" && p.VideoAction == "copy" && p.Trace != nil && p.Trace.Video != nil && p.Trace.Video.OutputRange == assets.RangeDolbyVision && (p.Trace.Video.DolbyVisionProfile == 5 || p.Trace.Video.DolbyVisionProfile == 8) {
 		return "dvh1"
 	}

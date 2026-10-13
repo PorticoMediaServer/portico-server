@@ -2,6 +2,7 @@ package playback
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"sort"
@@ -207,7 +208,7 @@ func (h *HLS) enforceSessionCeilings(ids []string) {
 		fileLimit := sessionFileLimit(cfg.SessionStorageMiB)
 		if bytes > limit || files > fileLimit {
 			served := h.highestServed(id)
-			if served < 0 {
+			if served < 0 && h.db != nil {
 				_ = h.db.QueryRow(`SELECT highest_served FROM playback_hls_demand WHERE session_id=?`, id).Scan(&served)
 			}
 			bytes, files = reclaimPlayedForBudget(filepath.Join(h.root, id), served, bytes, limit, files, fileLimit)
@@ -392,19 +393,31 @@ func (h *HLS) enforceGlobalBudget(ctx context.Context) {
 // measureDirectory sums one session's output. It is one ReadDir and one stat per
 // entry, which is why it is amortised rather than run every second.
 func measureDirectory(dir string) (int64, int, error) {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return 0, 0, err
-	}
 	var total int64
-	for _, entry := range entries {
-		info, infoErr := entry.Info()
-		if infoErr != nil {
-			return total, len(entries), infoErr
+	files := 0
+	err := filepath.WalkDir(dir, func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(dir, path)
+		if err != nil {
+			return err
+		}
+		if strings.Count(rel, string(filepath.Separator)) > 8 || files > HLSMaxSegments*17 {
+			return errors.New("conversion output exceeds traversal bound")
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return err
 		}
 		total += info.Size()
-	}
-	return total, len(entries), nil
+		files++
+		return nil
+	})
+	return total, files, err
 }
 
 // roomToProduce reports whether the volume has room for another conversion. A

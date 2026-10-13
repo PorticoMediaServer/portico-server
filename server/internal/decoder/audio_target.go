@@ -26,6 +26,9 @@ func buildAudioTarget(t ConversionTarget, downmix bool, facts *ToolchainFacts) (
 	if rate == 0 {
 		rate = 48000
 	}
+	if codec == "aac" && !aacTargetRate(rate) {
+		return nil, ErrInvalidConfiguration
+	}
 	if codec != "flac" && rate > 48000 {
 		return nil, ErrInvalidConfiguration
 	}
@@ -38,9 +41,12 @@ func buildAudioTarget(t ConversionTarget, downmix bool, facts *ToolchainFacts) (
 		return nil, ErrInvalidConfiguration
 	}
 	out := []string{"-c:a", encoder, "-ac", strconv.Itoa(t.AudioChannels), "-ar", strconv.Itoa(rate), "-channel_layout", t.AudioChannelLayout}
-	filters := "aformat=channel_layouts=" + t.AudioChannelLayout
+	filters := "aresample=rematrix_maxval=1.0,aformat=channel_layouts=" + t.AudioChannelLayout
 	if downmix {
 		filters = DownmixFilter(t.AudioChannels)
+		if t.AudioChannels == 6 {
+			filters = "aresample=rematrix_maxval=1.0,aformat=channel_layouts=" + t.AudioChannelLayout
+		}
 		if t.AudioChannels == 1 {
 			filters = "aresample=rematrix_maxval=1.0,aformat=channel_layouts=mono"
 		}
@@ -50,7 +56,15 @@ func buildAudioTarget(t ConversionTarget, downmix bool, facts *ToolchainFacts) (
 	}
 	out = append(out, "-af", filters)
 	if codec == "flac" {
-		return append(out, "-sample_fmt", "s32", "-bits_per_raw_sample", "24", "-compression_level", "5", "-strict", "-2"), nil
+		depth := t.AudioBitDepth
+		if depth == 0 {
+			depth = 24
+		}
+		sample := "s32"
+		if depth == 16 {
+			sample = "s16"
+		}
+		return append(out, "-sample_fmt", sample, "-bits_per_raw_sample", strconv.Itoa(depth), "-compression_level", "5", "-strict", "-2"), nil
 	}
 	bitrate := t.AudioBitrateBPS
 	if bitrate == 0 {
@@ -76,4 +90,13 @@ func buildAudioTarget(t ConversionTarget, downmix bool, facts *ToolchainFacts) (
 		}
 	}
 	return out, nil
+}
+
+func aacTargetRate(rate int) bool {
+	for _, allowed := range []int{7350, 8000, 11025, 12000, 16000, 22050, 24000, 32000, 44100, 48000} {
+		if rate == allowed {
+			return true
+		}
+	}
+	return false
 }

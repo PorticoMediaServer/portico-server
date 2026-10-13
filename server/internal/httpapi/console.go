@@ -205,33 +205,6 @@ func (d Dependencies) consoleRoutes(mux *http.ServeMux) {
 		}
 		return nil
 	}
-	register("GET /v1/console/registry", false, nil, func(r *http.Request, p identity.Principal, a operations.Authorize) (any, error) {
-		fields := []operations.Field{}
-		for _, f := range operations.Registry() {
-			if f.Permission != "owner" || p.Role == "owner" {
-				fields = append(fields, f)
-			}
-		}
-		return map[string]any{"revision": operations.RegistryRevision, "fields": fields, "externalScopes": map[string]string{"account": "existing account and security surface", "library": "existing library configuration surface", "installation": "local platform preferences; never authorization"}}, nil
-	})
-	register("GET /v1/admin/console/settings", true, nil, func(r *http.Request, p identity.Principal, a operations.Authorize) (any, error) {
-		return d.Console.Settings(r.Context(), a)
-	})
-	register("PATCH /v1/admin/console/settings", true, nil, func(r *http.Request, p identity.Principal, a operations.Authorize) (any, error) {
-		var c operations.SettingsChange
-		if e := decodeBody(r, &c); e != nil {
-			return nil, e
-		}
-		out, e := d.Console.ApplySettings(r.Context(), p, a, c)
-		if e == nil && d.securePolicy != nil {
-			d.securePolicy.set(out)
-			_, _, _ = d.requiredHTTPS(r.Context())
-		}
-		if e == nil && d.SettingsApplied != nil {
-			d.SettingsApplied(r.Context())
-		}
-		return out, e
-	})
 	register("GET /v1/preferences", false, []string{"deviceClass"}, func(r *http.Request, p identity.Principal, a operations.Authorize) (any, error) {
 		return d.Console.Preferences(r.Context(), p, r.URL.Query().Get("deviceClass"), a)
 	})

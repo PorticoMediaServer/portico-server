@@ -11,7 +11,7 @@ func (h *HLS) rememberConversionFailure(ctx context.Context, id, code, diagnosti
 	defer cancel()
 	diagnostic = sanitizeConverterOutput(diagnostic, h.root)
 	if len(diagnostic) > 2000 {
-		diagnostic = diagnostic[:2000]
+		diagnostic = string([]rune(diagnostic)[:min(2000, len([]rune(diagnostic)))])
 	}
 	gated, err := dbwork.Begin(write, h.db, dbwork.ClassEstablishedPlayback)
 	if err != nil {

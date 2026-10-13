@@ -3,6 +3,7 @@ package decoder
 import (
 	"context"
 	"encoding/json"
+	"math"
 	"os"
 	"path/filepath"
 	"portico.local/server/internal/decodertest"
@@ -213,4 +214,98 @@ func TestHDRBurnKeepsSourceRange(t *testing.T) {
 	args = append(args, g.Video...)
 	args = append(args, "-map", g.VideoMap, "-an", filepath.Join(dir, "burn.mp4"))
 	runTinyMedia(t, ctx, binary, args, dir)
+}
+
+func TestSoftwareToneMapUsesHDRFixture(t *testing.T) {
+	binary := decodertest.QualifiedFFmpeg(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 40*time.Second)
+	defer cancel()
+	dir := t.TempDir()
+	input := filepath.Join(dir, "hdr.hevc")
+	if err := os.WriteFile(input, hdrProbeClip, 0600); err != nil {
+		t.Fatal(err)
+	}
+	target := ConversionTarget{VideoCodec: "h264", SourceRange: "hdr10", ToneMap: true, Width: 160, Height: 120, FrameRate: 10}
+	graph, err := BuildConversion(ConversionRequest{Target: &target, ConvertVideo: true, Toolchain: targetFacts()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	args := []string{"-v", "error", "-i", input}
+	args = append(args, graph.Video...)
+	args = append(args, "-frames:v", "5", "-an", filepath.Join(dir, "sdr.mp4"))
+	runTinyMedia(t, ctx, binary, args, dir)
+	if !strings.Contains(argValue(graph.Video, "-vf"), "tonemap=") || argValue(graph.Video, "-color_trc") != "bt709" {
+		t.Fatal(graph.Video)
+	}
+}
+
+func TestBackgroundConversionLimitWaitsAndCancels(t *testing.T) {
+	preparedAdmission.Lock()
+	before := preparedAdmission.limit
+	preparedAdmission.Unlock()
+	SetBackgroundConversionLimit(1)
+	defer SetBackgroundConversionLimit(before)
+	held, err := admitPreparedConversion(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	if release, err := admitPreparedConversion(ctx); err == nil {
+		release()
+		held()
+		t.Fatal("owner cap admitted concurrent work")
+	}
+	held()
+	release, err := admitPreparedConversion(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	release()
+}
+
+func TestBitmapBurnPreservesGlyphShapeOnCroppedVideo(t *testing.T) {
+	binary := decodertest.QualifiedFFmpeg(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	dir := t.TempDir()
+	file := filepath.Join(dir, "cue.sup")
+	if err := os.WriteFile(file, pgsFixture(), 0600); err != nil {
+		t.Fatal(err)
+	}
+	graph, err := BuildConversion(ConversionRequest{ConvertVideo: true, BurnIn: &BurnIn{File: file, Format: "pgs", PositionUS: 5000000, Width: 160, Height: 60}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	args := []string{"-v", "error", "-f", "lavfi", "-i", "color=black:s=160x60:r=24:d=1"}
+	args = append(args, graph.ExtraInput...)
+	for i := 0; i < len(graph.Video); i++ {
+		if graph.Video[i] == "-profile:v" || graph.Video[i] == "-level:v" || graph.Video[i] == "-x264-params" {
+			i++
+			continue
+		}
+		args = append(args, graph.Video[i])
+	}
+	path := filepath.Join(dir, "picture.gray")
+	args = append(args, "-map", graph.VideoMap, "-frames:v", "24", "-c:v", "rawvideo", "-pix_fmt", "gray", "-f", "rawvideo", path)
+	runTinyMedia(t, ctx, binary, args, dir)
+	frame, err := os.ReadFile(path)
+	if err != nil || len(frame) != 160*60*24 {
+		t.Fatal(err, len(frame))
+	}
+	frame = frame[12*160*60 : 13*160*60]
+	left, right, top, bottom := 160, 0, 60, 0
+	for i, value := range frame {
+		if value > 150 {
+			x, y := i%160, i/160
+			left = min(left, x)
+			right = max(right, x)
+			top = min(top, y)
+			bottom = max(bottom, y)
+		}
+	}
+	width, height := right-left+1, bottom-top+1
+	if height <= 0 || math.Abs(float64(width)/float64(height)-2) > 0.25 {
+		t.Fatal("bitmap glyph distorted", width, height, left, top)
+	}
 }

@@ -1,0 +1,61 @@
+package operations
+
+import (
+	"context"
+	"path/filepath"
+	"testing"
+)
+
+func TestMediaPathsApplyOnlyAfterRestart(t *testing.T) {
+	saved := startupMediaSettings.Load()
+	defer startupMediaSettings.Store(saved)
+	startupMediaSettings.Store(nil)
+	store, principal, auth := consoleFixture(t)
+	ctx := context.Background()
+	startup, err := StartupMediaSettings(ctx, store.DB)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, err := store.Settings(ctx, auth)
+	if err != nil {
+		t.Fatal(err)
+	}
+	values := before.Requested
+	values.FFmpegPath = filepath.Join(t.TempDir(), "ffmpeg")
+	values.TemporaryDirectory = t.TempDir()
+	values.SessionStorageMiB = 16384
+	after, err := store.ApplySettings(ctx, principal, auth, SettingsChange{ExpectedRevision: before.Revision, IdempotencyKey: "media-paths", Values: values})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.Effective.TemporaryDirectory != startup.TemporaryDirectory || after.Effective.FFmpegPath != startup.FFmpegPath || len(after.RestartFields) != 2 || after.Effective.SessionStorageMiB != 16384 {
+		t.Fatal(after)
+	}
+	adopted, err := StartupMediaSettings(ctx, store.DB)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if adopted.TemporaryDirectory != values.TemporaryDirectory || adopted.FFmpegPath != values.FFmpegPath {
+		t.Fatal(adopted)
+	}
+	after, err = store.Settings(ctx, auth)
+	if err != nil || len(after.RestartFields) != 0 {
+		t.Fatal(after, err)
+	}
+	if ConversionDirectory("/state", values.TemporaryDirectory) != filepath.Join(values.TemporaryDirectory, "portico-hls") {
+		t.Fatal("configured folder was not used")
+	}
+}
+
+func TestConversionSettingsRejectInvalidLimitsAndPaths(t *testing.T) {
+	values := DefaultSettings()
+	values.FFmpegPath = "relative/ffmpeg"
+	if validateSettings(&values) == nil {
+		t.Fatal("accepted relative executable")
+	}
+	values = DefaultSettings()
+	values.SessionStorageMiB = 1
+	if validateSettings(&values) == nil {
+		t.Fatal("accepted unsafe storage budget")
+	}
+}

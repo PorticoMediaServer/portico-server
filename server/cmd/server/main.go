@@ -447,6 +447,11 @@ func run() error {
 		log.Printf("Media toolchain qualification unavailable: %v", qualificationCtx.Err())
 	}
 	qualificationCancel()
+	if startupMedia.FFmpegPath != "" {
+		if e := decoder.ConfigureResolvedTools(ffmpegTool, ffprobeTool); e != nil {
+			return e
+		}
+	}
 	doneQualification(nil)
 	scanner := ingestion.New(db, cat, assets.Probe{Binary: ffprobeTool, Supervisor: storeIO.Supervisor})
 	scanner.Admission = workAdmission.Admit

@@ -5653,10 +5653,11 @@ CREATE INDEX subtitle_resources_source_id_fk ON subtitle_resources(source_id);
 CREATE INDEX video_nfo_status_asset_id_fk ON video_nfo_status(asset_id);
 
 CREATE TABLE playback_conversion_targets (
- session_id TEXT PRIMARY KEY REFERENCES playback_sessions(id) ON DELETE CASCADE,
+ session_id TEXT PRIMARY KEY REFERENCES playback_delivery_plans(session_id) ON DELETE CASCADE,
+ generation INTEGER NOT NULL CHECK(generation>0),
  target_json TEXT NOT NULL CHECK(length(target_json)<=8192),
  hardware_json TEXT NOT NULL DEFAULT '' CHECK(length(hardware_json)<=8192)
-);
+) STRICT;
 
 CREATE TABLE playback_conversion_failures (
  sequence INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -5668,4 +5669,4 @@ CREATE TABLE playback_conversion_failures (
  backend TEXT NOT NULL,
  video TEXT NOT NULL,
  audio TEXT NOT NULL
-);
+) STRICT;

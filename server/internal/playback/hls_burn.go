@@ -50,7 +50,7 @@ func (h *HLS) prepareBurnInput(ctx context.Context, id, dir string, position flo
 		b.Width, b.Height = plan.Trace.Video.Width, plan.Trace.Video.Height
 	}
 	if asset.Format == "ass" || asset.Format == "ssa" {
-		b.FontsDirectory, e = h.extractBurnFonts(ctx, input, remote, scratch)
+		b.FontsDirectory, e = h.extractBurnFonts(ctx, input, remote, dir)
 		if e != nil {
 			cleanup()
 			return nil, noop, e

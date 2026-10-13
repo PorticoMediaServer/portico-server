@@ -168,6 +168,9 @@ func probeCopyTimeline(ctx context.Context, ffprobe string, input *assets.Playba
 		}
 		out, runErr := runProbe(ctx, ffprobe, input, "-select_streams", "v:0", "-show_entries", "packet=pts_time,flags", "-of", "csv=p=0", "-read_intervals", strings.Join(intervals, ","))
 		if runErr != nil {
+			if ctx.Err() == nil {
+				return probePacketTimeline(ctx, ffprobe, input, start, duration)
+			}
 			return nil, runErr
 		}
 		rows := strings.Split(strings.TrimSpace(string(out)), "\n")

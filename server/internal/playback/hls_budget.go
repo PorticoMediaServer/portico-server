@@ -60,7 +60,7 @@ func reclaimPlayedForBudget(dir string, served int, bytes, limit int64, files, f
 func sessionFileLimit(mib int) int {
 	// Retain the original runaway-file bound at the default, scaling it alongside
 	// the owner's byte ceiling, with the seven-day manifest bound as the maximum.
-	return min(HLSMaxSegments*17, max(audioArtifactFiles, mib*2))
+	return min(HLSMaxSegments*17, max(audioArtifactFiles, mib))
 }
 
 func (h *HLS) highestServed(id string) int {

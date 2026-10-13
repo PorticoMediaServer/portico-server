@@ -3043,6 +3043,7 @@ playback_conversion_failures.sequence
 playback_conversion_failures.session_id
 playback_conversion_failures.strategy
 playback_conversion_failures.video
+playback_conversion_targets.generation
 playback_conversion_targets.hardware_json
 playback_conversion_targets.session_id
 playback_conversion_targets.target_json

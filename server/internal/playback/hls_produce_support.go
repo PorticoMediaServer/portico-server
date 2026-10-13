@@ -121,10 +121,10 @@ func classifyConverterFailure(diagnostic string) string {
 
 // failedWith fails a session and records why, for the people who can read it.
 func (h *HLS) failedWith(ctx context.Context, id, code, diagnostic string) {
-	h.rememberConversionFailure(ctx, id, code, diagnostic)
 	if !h.failed(ctx, id) {
 		return
 	}
+	h.rememberConversionFailure(ctx, id, code, diagnostic)
 	write, cancel := persist(ctx)
 	defer cancel()
 	_, _ = dbwork.ExecWrite(write, h.db, dbwork.ClassEstablishedPlayback, `UPDATE playback_artifacts SET failure_code=?,diagnostic=? WHERE session_id=?`, code, diagnostic, id)
@@ -144,6 +144,7 @@ func (h *HLS) recordSoftwareFallback(ctx context.Context, id, backend, diagnosti
 	defer cancel()
 	_, _ = dbwork.ExecWrite(write, h.db, dbwork.ClassEstablishedPlayback, `UPDATE playback_delivery_plans SET hardware_backend='software',hardware_native=0,hardware_device='',reason_codes=CASE WHEN instr(reason_codes,?)>0 THEN reason_codes ELSE reason_codes||','||? END WHERE session_id=?`, ReasonHardwareFailedSoftware, ReasonHardwareFailedSoftware, id)
 	_, _ = dbwork.ExecWrite(write, h.db, dbwork.ClassEstablishedPlayback, `UPDATE playback_artifacts SET failure_code=?,diagnostic=? WHERE session_id=?`, "hardware_encoder_failed:"+backend, diagnostic, id)
+	h.rememberConversionFailure(ctx, id, "hardware_encoder_failed:"+backend, diagnostic)
 	h.hardwareFailures.Add(1)
 }
 
@@ -223,18 +224,53 @@ func (h *HLS) downgradeCopyPlan(ctx context.Context, id string, plan *DeliveryPl
 	for _, route := range []DeliveryStrategy{DeliveryOriginal, DeliveryCopyRemux, DeliveryAudioConversion} {
 		excluded[route] = RouteRejection{Code: ReasonCopyTimelineUnavailable}
 	}
-	next, err := planDelivery(DeliveryInput{SourceID: source.ID, Source: &source, Client: clientProfileFor(ctx, tx, p), Server: decoder.CurrentToolchain(), Policy: policy, Target: target, Config: cfg, TranscodingEnabled: true, AudioStream: plan.AudioStream, HasAudioChoice: plan.AudioStream >= 0, Excluded: excluded, BurnIn: plan.BurnIn != nil, Remote: source.Container == "strm"})
-	if err != nil {
-		return nil, err
-	}
-	if next.VideoAction != "convert" {
-		return nil, ErrIncompatible
+	var next DeliveryPlan
+	richReplacement := len(replacement) > 0 && replacement[0] && plan.VideoAction == "convert" && plan.ConversionTarget != nil
+	if richReplacement {
+		// A different encoder has different initialization bytes. Retire the old
+		// generation while retaining its codec, range, layout and source custody.
+		next = *plan
+		t := *plan.ConversionTarget
+		if target.MaxVideoHeight > 0 && (t.Height == 0 || t.Height > target.MaxVideoHeight) {
+			t.Height = target.MaxVideoHeight
+		}
+		if target.MaxVideoBitrateBPS > 0 && (t.VideoBitrateBPS == 0 || t.VideoBitrateBPS > target.MaxVideoBitrateBPS) {
+			t.VideoBitrateBPS = target.MaxVideoBitrateBPS
+			t.RateControl = "bitrate"
+		}
+		if target.MaxAudioBitrateBPS > 0 {
+			if t.AudioCodec == "flac" {
+				return nil, ErrQualityUnavailable
+			}
+			if t.AudioBitrateBPS == 0 || t.AudioBitrateBPS > target.MaxAudioBitrateBPS {
+				t.AudioBitrateBPS = target.MaxAudioBitrateBPS
+			}
+		}
+		t, err = t.Normalized()
+		if err != nil {
+			return nil, err
+		}
+		next.ConversionTarget = &t
+		next.HardwareBackend, next.HardwareNative, next.HardwareDevice = "software", false, ""
+		next.OutputContainer, next.OutputVideoCodec, next.OutputAudioCodec = t.Packaging, t.VideoCodec, t.AudioCodec
+		next.TargetWidth, next.TargetHeight, next.VideoBitrateBPS, next.AudioBitrateBPS = t.Width, t.Height, t.VideoBitrateBPS, t.AudioBitrateBPS
+		next.ReasonCodes = append(append([]string{}, plan.ReasonCodes...), ReasonHardwareFailedSoftware)
+	} else {
+		next, err = planDelivery(DeliveryInput{SourceID: source.ID, Source: &source, Client: clientProfileFor(ctx, tx, p), Server: decoder.CurrentToolchain(), Policy: policy, Target: target, Config: cfg, TranscodingEnabled: true, AudioStream: plan.AudioStream, HasAudioChoice: plan.AudioStream >= 0, Excluded: excluded, BurnIn: plan.BurnIn != nil, Remote: source.Container == "strm"})
+		if err != nil {
+			return nil, err
+		}
+		if next.VideoAction != "convert" {
+			return nil, ErrIncompatible
+		}
 	}
 	next.SourceSize, next.SourceModifiedNS, next.FactsRevision = plan.SourceSize, plan.SourceModifiedNS, plan.FactsRevision
 	next.BurnIn = plan.BurnIn
 	next.QualityID = plan.QualityID
 	next.Target, next.TargetReach = replanned.target, replanned.reach
-	next.ReasonCodes = append(next.ReasonCodes, ReasonCopyTimelineUnavailable)
+	if !richReplacement {
+		next.ReasonCodes = append(next.ReasonCodes, ReasonCopyTimelineUnavailable)
+	}
 	if plan.Trace != nil && plan.Trace.Audio != nil && next.Trace != nil && next.Trace.Audio != nil {
 		next.Trace.Audio.ChosenBy = plan.Trace.Audio.ChosenBy
 	}
@@ -256,6 +292,11 @@ func (h *HLS) downgradeCopyPlan(ctx context.Context, id string, plan *DeliveryPl
 			return nil, err
 		}
 		if _, err = tx.ExecContext(ctx, `UPDATE playback_subtitle_presentations SET generation=generation+1 WHERE session_id=?`, id); err != nil {
+			return nil, err
+		}
+	}
+	if richReplacement {
+		if err = StoreConversionTarget(ctx, tx, id, *next.ConversionTarget); err != nil {
 			return nil, err
 		}
 	}

@@ -2,7 +2,7 @@ package decoder
 
 import "regexp"
 
-var hlsInitName = regexp.MustCompile(`^(?:init-[0-9]{1,6}|audio-[0-9]{1,2}-init-[0-9]{1,6})\.mp4$`)
+var hlsInitName = regexp.MustCompile(`^(?:init|init-[0-9]{1,6}|audio-[0-9]{1,2}-init-[0-9]{1,6})\.mp4$`)
 
 // HLSPackagingArgs selects the container and the per-window init segment. The
 // producer promotes an init only after checking it matches the presentation.

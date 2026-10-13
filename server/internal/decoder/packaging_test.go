@@ -51,9 +51,7 @@ func TestFragmentedConversionKeepsInitAcrossWindows(t *testing.T) {
 				if err := os.Mkdir(dir, 0700); err != nil {
 					t.Fatal(err)
 				}
-				args := []string{"-v", "error", "-nostdin", "-f", "lavfi", "-i", fmt.Sprintf("testsrc2=s=160x90:r=24:d=7,setpts=PTS+%d/TB", from*6)}
-				// Production rebases decoded input to zero before adding the output offset.
-				args[len(args)-1] = "testsrc2=s=160x90:r=24:d=7"
+				args := []string{"-v", "error", "-nostdin", "-f", "lavfi", "-i", "testsrc2=s=160x90:r=24:d=7"}
 				args = append(args, graph.Video...)
 				packaging, ext, err := HLSPackagingArgs("fmp4_hls", fmt.Sprintf("init-%d.mp4", from))
 				if err != nil {

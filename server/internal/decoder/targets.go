@@ -5,6 +5,7 @@ import (
 	"math"
 	"regexp"
 	"strconv"
+	"strings"
 )
 
 // ConversionTarget is the planner's complete output contract. Empty packaging
@@ -27,6 +28,7 @@ type ConversionTarget struct {
 	AudioChannels            int     `json:"audioChannels"`
 	AudioChannelLayout       string  `json:"audioChannelLayout"`
 	AudioBitrateBPS          int     `json:"audioBitrateBps"`
+	AudioBitDepth            int     `json:"audioBitDepth"`
 	AudioSampleRate          int     `json:"audioSampleRate"`
 	Packaging                string  `json:"packaging"`
 	SourceRange              string  `json:"sourceRange"`
@@ -65,7 +67,16 @@ func (t ConversionTarget) Normalized() (ConversionTarget, error) {
 			t.Packaging = "fmp4_hls"
 		}
 	}
-	if t.VideoLevel < 0 || t.VideoLevel > 186 {
+	if !validVideoLevel(t.VideoCodec, t.VideoLevel) {
+		return t, ErrInvalidConfiguration
+	}
+	if t.AudioBitDepth != 0 && t.AudioBitDepth != 16 && t.AudioBitDepth != 24 && t.AudioBitDepth != 32 {
+		return t, ErrInvalidConfiguration
+	}
+	if t.AudioCodec != "flac" && t.AudioBitDepth != 0 {
+		return t, ErrInvalidConfiguration
+	}
+	if t.AudioCodec == "flac" && t.AudioBitrateBPS > 0 {
 		return t, ErrInvalidConfiguration
 	}
 	if t.VideoCodec != "h264" && t.VideoCodec != "hevc" && t.VideoCodec != "av1" {
@@ -82,6 +93,12 @@ func (t ConversionTarget) Normalized() (ConversionTarget, error) {
 	}
 	if t.SourceRange != "" && t.SourceRange != "sdr" && t.SourceRange != "hdr10" && t.SourceRange != "hdr10_plus" && t.SourceRange != "hlg" && t.SourceRange != "dolby_vision" {
 		return t, ErrInvalidConfiguration
+	}
+	if base := DolbyVisionBaseRange(t.DolbyVisionProfile, t.DolbyVisionCompatibility); base != "" && t.SourceRange == "dolby_vision" {
+		t.SourceRange = base
+	}
+	if t.SourceRange != "" && t.DynamicRange != "sdr" && t.SourceRange != t.DynamicRange && !(t.SourceRange == "hdr10_plus" && t.DynamicRange == "hdr10") && t.DolbyVisionProfile == 0 {
+		return t, errors.New("dynamic_range_conversion_unavailable")
 	}
 	if t.SourceRange != "" && t.SourceRange != "sdr" && t.DynamicRange == "sdr" && !t.ToneMap {
 		return t, errors.New("hdr_requires_tone_mapping")
@@ -194,8 +211,10 @@ func videoRateArgs(t ConversionTarget, encoder, preset string) []string {
 			out = append(out, "-qp", strconv.Itoa(quality*5), "-b:v", "0")
 		case encoder == "libaom-av1" || encoder == "libsvtav1":
 			out = append(out, "-crf", strconv.Itoa(quality), "-b:v", "0")
-		default:
+		case encoder == "libx264" || encoder == "libx265":
 			out = append(out, "-crf", strconv.Itoa(quality))
+		default:
+			out = append(out, hardwareQualityArgs(encoder, quality)...)
 		}
 		if t.VideoBitrateBPS > 0 {
 			out = append(out, "-maxrate", strconv.Itoa(t.VideoBitrateBPS), "-bufsize", strconv.Itoa(t.VideoBitrateBPS*2))
@@ -212,4 +231,79 @@ func videoRateArgs(t ConversionTarget, encoder, preset string) []string {
 		out = append(out, "-b:v", strconv.Itoa(rate), "-maxrate", strconv.Itoa(rate), "-bufsize", strconv.Itoa(rate*2))
 	}
 	return out
+}
+
+func validVideoLevel(codec string, level int) bool {
+	if level == 0 {
+		return true
+	}
+	levels := []int{}
+	switch codec {
+	case "h264":
+		levels = []int{10, 11, 12, 13, 20, 21, 22, 30, 31, 32, 40, 41, 42, 50, 51, 52, 60, 61, 62}
+	case "hevc":
+		levels = []int{30, 60, 63, 90, 93, 120, 123, 150, 153, 156, 180, 183, 186}
+	}
+	for _, allowed := range levels {
+		if level == allowed {
+			return true
+		}
+	}
+	return false
+}
+
+func DolbyVisionBaseRange(profile, compatibility int) string {
+	if profile == 7 {
+		return "hdr10"
+	}
+	if profile == 8 {
+		switch compatibility {
+		case 1:
+			return "hdr10"
+		case 2:
+			return "sdr"
+		case 4:
+			return "hlg"
+		}
+	}
+	return ""
+}
+
+func hardwareQualityArgs(encoder string, quality int) []string {
+	switch {
+	case strings.HasSuffix(encoder, "_nvenc"):
+		return []string{"-rc", "vbr", "-cq", strconv.Itoa(quality), "-b:v", "0"}
+	case strings.HasSuffix(encoder, "_qsv"):
+		return []string{"-global_quality", strconv.Itoa(quality), "-b:v", "0"}
+	case strings.HasSuffix(encoder, "_vaapi"):
+		return []string{"-rc_mode", "CQP", "-qp", strconv.Itoa(quality), "-b:v", "0"}
+	case strings.HasSuffix(encoder, "_amf"):
+		return []string{"-rc", "cqp", "-qp_i", strconv.Itoa(quality), "-qp_p", strconv.Itoa(quality), "-qp_b", strconv.Itoa(quality), "-b:v", "0"}
+	case strings.HasSuffix(encoder, "_videotoolbox"):
+		return []string{"-q:v", strconv.Itoa(max(1, 100-quality*2)), "-b:v", "0"}
+	}
+	return nil
+}
+
+func probeQualityArgs(spec backendSpec, device string, depth int) []string {
+	args := probeArgs(spec, device, "")
+	filtered := []string{}
+	for i := 0; i < len(args); i++ {
+		if args[i] == "-b:v" {
+			i++
+			continue
+		}
+		filtered = append(filtered, args[i])
+	}
+	if depth == 10 {
+		for i := 0; i+1 < len(filtered); i++ {
+			if filtered[i] == "-vf" {
+				filtered[i+1] = strings.NewReplacer("format=nv12", "format=p010le", "format=yuv420p", "format=p010le").Replace(filtered[i+1])
+			}
+		}
+		if spec.upload == "" {
+			filtered = append(filtered[:len(filtered)-4], append([]string{"-pix_fmt", "yuv420p10le"}, filtered[len(filtered)-4:]...)...)
+		}
+	}
+	return append(filtered[:len(filtered)-4], append(hardwareQualityArgs(spec.encoder, 20), filtered[len(filtered)-4:]...)...)
 }

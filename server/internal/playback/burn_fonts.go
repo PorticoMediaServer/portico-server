@@ -15,7 +15,11 @@ import (
 // extractBurnFonts gives libass only bounded, server-named attachment files.
 // Container attachment names are never used as filesystem paths.
 func (h *HLS) extractBurnFonts(ctx context.Context, input *assets.PlaybackInput, remote subtitles.WindowInput, dir string) (string, error) {
-	fonts := filepath.Join(dir, "fonts")
+	fonts := filepath.Join(dir, "burn-fonts")
+	if ready, err := os.ReadFile(filepath.Join(fonts, "ready")); err == nil && string(ready) == "1" {
+		return fonts, nil
+	}
+	_ = os.RemoveAll(fonts)
 	if err := os.MkdirAll(fonts, 0700); err != nil {
 		return "", err
 	}
@@ -75,8 +79,26 @@ func (h *HLS) extractBurnFonts(ctx context.Context, input *assets.PlaybackInput,
 	}
 	// A source may have no attachments, or contain an unusable attachment among
 	// good ones. Libass can still use the valid fonts and the confined fallback.
-	if total == 0 && runErr != nil {
-		return "", nil
+	_ = runErr
+	pack, err := mediaexec.Fonts()
+	if err != nil {
+		return "", err
+	}
+	for _, name := range []string{"DejaVuSans.ttf", "NotoSansCJKjp-Regular.otf", "NotoSansThai.ttf", "NotoSansDevanagari.ttf"} {
+		source, target := filepath.Join(pack.Dir, name), filepath.Join(fonts, "zz-fallback-"+name)
+		if err := os.Link(source, target); err == nil {
+			continue
+		}
+		data, err := os.ReadFile(source)
+		if err != nil {
+			return "", err
+		}
+		if err := os.WriteFile(target, data, 0600); err != nil {
+			return "", err
+		}
+	}
+	if err := os.WriteFile(filepath.Join(fonts, "ready"), []byte("1"), 0600); err != nil {
+		return "", err
 	}
 	return fonts, nil
 }

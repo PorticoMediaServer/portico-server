@@ -34,7 +34,7 @@ func preparedArgs(input string, r PreparedRecipe, validate bool) ([]string, erro
 			return nil, ErrInvalidConfiguration
 		}
 		scale := fmt.Sprintf("scale=w='max(2,trunc(min(min(iw*sar,%d),%d*dar)/2)*2)':h='max(2,trunc(min(min(ih,%d),%d/dar)/2)*2)',setsar=1", r.Width, r.Height, r.Height, r.Width)
-		args = append(args, "-map", "0:v:0", "-map", "0:a?", "-vf", scale+",fps=fps='min(source_fps,60)'", "-c:v", "libx264", "-preset", "medium", "-pix_fmt", "yuv420p", "-profile:v", "high", "-level:v", strconv.FormatFloat(float64(H264OutputLevel(r.Width, r.Height, 60))/10, 'f', 1, 64), "-crf", "21", "-maxrate", strconv.Itoa(r.VideoKbps)+"k", "-bufsize", strconv.Itoa(r.VideoKbps*2)+"k", "-threads", "2")
+		args = append(args, "-map", "0:v:0", "-map", "0:a?", "-vf", scale, "-c:v", "libx264", "-preset", "medium", "-pix_fmt", "yuv420p", "-profile:v", "high", "-level:v", strconv.FormatFloat(float64(H264OutputLevel(r.Width, r.Height, 60))/10, 'f', 1, 64), "-fpsmax", "60", "-fps_mode", "vfr", "-crf", "21", "-maxrate", strconv.Itoa(r.VideoKbps)+"k", "-bufsize", strconv.Itoa(r.VideoKbps*2)+"k", "-threads", "2")
 	}
 	if r.DropChapters {
 		// Chapter positions are not copied into a derivative with a new clock.

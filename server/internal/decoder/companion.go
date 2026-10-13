@@ -12,3 +12,8 @@ func CompanionProbe(ffmpeg, fallback string) string {
 	}
 	return fallback
 }
+
+// ConfigureResolvedTools is called only after the startup toolchain probe.
+func ConfigureResolvedTools(ffmpeg, ffprobe string) error {
+	return mediatools.ConfigurePair(ffmpeg, ffprobe)
+}
