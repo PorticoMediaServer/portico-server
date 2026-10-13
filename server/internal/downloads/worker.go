@@ -10,7 +10,6 @@ import (
 	"errors"
 	"io"
 	"os"
-	"portico.local/server/internal/contentaccess"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/entityid"
 	"portico.local/server/internal/supervise"
@@ -172,7 +171,7 @@ func (s *Service) tidy(ctx context.Context) error {
 	}
 	endings := []ending{
 		{`state='ready' AND (CASE WHEN used_ms>0 THEN used_ms ELSE ready_ms END)<?`, StateExpired, ReasonRetention, []any{deadline}},
-		{`state IN('queued','running','paused','ready','failed') AND ` + titleGone + ``, StateUnavailable, ReasonItemDeleted, nil},
+		{`state IN('queued','running','paused','ready','failed') AND ` + titleGone, StateUnavailable, ReasonItemDeleted, nil},
 		{`state='ready' AND artifact_kind='prepared' AND NOT EXISTS(SELECT 1 FROM prepared_media_versions v WHERE v.id=download_preparations.artifact_ref AND v.digest=download_preparations.artifact_digest AND v.state='published')`, StateUnavailable, ReasonNotOptimized, nil},
 		{`state='ready' AND artifact_kind='source' AND NOT EXISTS(SELECT 1 FROM catalog_asset_links link JOIN catalog_assets a ON a.id=link.asset_id WHERE link.entity_id=download_preparations.item_id AND a.token=download_preparations.artifact_ref AND a.size=download_preparations.bytes_total AND a.modified_ns=download_preparations.source_modified_ns)`, StateUnavailable, ReasonSourceChanged, nil},
 	}
@@ -409,7 +408,7 @@ func (s *Service) prepare(ctx context.Context, id string) (plan, error) {
 			}
 			return out, terminal(ctx, gated2, id, StateUnavailable, ReasonItemDeleted, now)
 		}
-	} else if err := contentaccess.VisibleKnownItemTx(ctx, tx, principal, item); err != nil {
+	} else if err := s.visibleItem(ctx, tx, principal, item); err != nil {
 		if !errors.Is(err, identity.ErrContentRestricted) {
 			return out, err
 		}

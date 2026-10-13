@@ -138,6 +138,11 @@ func TestDownloadTransferSupportsRangeAndValidators(t *testing.T) {
 		t.Fatalf("preparation %+v", ready)
 	}
 
+	w = request("GET", "/v1/downloads/preparations?limit=1&ids="+preparation+",missing", auth.AccessToken, nil)
+	var sparse downloads.Page
+	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &sparse) != nil || len(sparse.Items) != 1 || sparse.Items[0].ID != preparation || sparse.NextCursor != "" {
+		t.Fatalf("sparse preparation snapshot %d %s", w.Code, w.Body.String())
+	}
 	w = request("POST", "/v1/downloads/preparations/"+preparation+"/grant", auth.AccessToken, map[string]any{"operationId": "op-http-2"})
 	if w.Code != 201 {
 		t.Fatalf("grant %d %s", w.Code, w.Body.String())

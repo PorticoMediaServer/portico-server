@@ -187,13 +187,17 @@ func registerDownloads(r *apikit.Registry, d Dependencies) {
 		}
 		return out, downloadError(e)
 	})
-	v1Route(r, route("list_download_preparations", "GET", "/v1/downloads/preparations", "List this viewer's download claims, newest first", apikit.Device, apikit.Default, apikit.PageSized, 200, 0, []string{"state", "profileId", "cursor", "limit"}), func(ctx context.Context, q *http.Request, _ noBody) (downloads.Page, error) {
+	v1Route(r, route("list_download_preparations", "GET", "/v1/downloads/preparations", "List this viewer's download claims, newest first", apikit.Device, apikit.Default, apikit.PageSized, 200, 0, []string{"state", "profileId", "cursor", "limit", "ids"}), func(ctx context.Context, q *http.Request, _ noBody) (downloads.Page, error) {
 		p, owner, e := d.downloadViewer(q)
 		if e != nil {
 			return downloads.Page{}, e
 		}
 		limit, _ := strconv.Atoi(q.URL.Query().Get("limit"))
-		out, e := d.Downloads.List(ctx, p, downloads.ListQuery{State: q.URL.Query().Get("state"), ProfileID: q.URL.Query().Get("profileId"), Cursor: q.URL.Query().Get("cursor"), Limit: limit}, owner)
+		var ids []string
+		if value := q.URL.Query().Get("ids"); value != "" {
+			ids = strings.Split(value, ",")
+		}
+		out, e := d.Downloads.List(ctx, p, downloads.ListQuery{IDs: ids, State: q.URL.Query().Get("state"), ProfileID: q.URL.Query().Get("profileId"), Cursor: q.URL.Query().Get("cursor"), Limit: limit}, owner)
 		return out, downloadError(e)
 	})
 	v1Route(r, route("get_download_preparation", "GET", "/v1/downloads/preparations/{id}", "Read one download claim", apikit.Device, apikit.Default, apikit.Constant, 200, 0, nil), func(ctx context.Context, q *http.Request, _ noBody) (downloads.Preparation, error) {

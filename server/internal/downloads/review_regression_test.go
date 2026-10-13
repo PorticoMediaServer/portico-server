@@ -88,7 +88,7 @@ func TestOlderOfflinePlayKeepsLatestPlayDate(t *testing.T) {
 	h := newHarness(t)
 	ctx := context.Background()
 	for i, age := range []time.Duration{time.Minute, 2 * time.Minute} {
-		play := []ProgressEntry{{PlayID: []string{"newer", "older"}[i], ItemID: h.item, PositionSeconds: 20, ObservedAt: h.now.Add(-age).Format(time.RFC3339)}}
+		play := []ProgressEntry{{PlayID: []string{"newer", "older"}[i], ItemID: h.item, PositionSeconds: 20, Ended: true, ObservedAt: h.now.Add(-age).Format(time.RFC3339)}}
 		if _, err := h.service.SyncProgress(ctx, h.viewer, []string{"newer-op", "older-op"}[i], play); err != nil {
 			t.Fatal(err)
 		}
@@ -100,6 +100,10 @@ func TestOlderOfflinePlayKeepsLatestPlayDate(t *testing.T) {
 	at, err := time.Parse(time.RFC3339, latest)
 	if err != nil || !at.Equal(h.now.Add(-time.Minute)) {
 		t.Fatalf("latest play moved backwards to %q: %v", latest, err)
+	}
+	var lastCounted int64
+	if err = h.db.QueryRow(`SELECT last_played_ms FROM play_counts WHERE item_id=?`, h.itemID).Scan(&lastCounted); err != nil || lastCounted != h.now.Add(-time.Minute).UnixMilli() {
+		t.Fatalf("owner latest play regressed: %d %v", lastCounted, err)
 	}
 	var count int
 	if err = h.db.QueryRow(`SELECT count(*) FROM personal_history`).Scan(&count); err != nil || count != 2 {
@@ -118,6 +122,10 @@ func TestLaterOfflineObservationReclaimsResume(t *testing.T) {
 		if out.Applied != 1 || out.Entries[0].PositionSeconds != position {
 			t.Fatalf("observation %d reports applied without moving resume to %v: %+v", i, position, out)
 		}
+	}
+	stale, err := h.service.SyncProgress(ctx, h.viewer, "op-stale-a", []ProgressEntry{{PlayID: "a", ItemID: h.item, PositionSeconds: 5, ObservedAt: h.now.Add(-2 * time.Minute).Format(time.RFC3339)}})
+	if err != nil || stale.Entries[0].Outcome != ProgressStale || stale.Entries[0].PositionSeconds != 30 {
+		t.Fatalf("stale report displaced the fresh writer: %+v %v", stale, err)
 	}
 	var count int
 	if err := h.db.QueryRow(`SELECT count(*) FROM personal_history`).Scan(&count); err != nil || count != 2 {
@@ -204,5 +212,45 @@ func TestTidyKeepsClaimUsedAfterCandidateRead(t *testing.T) {
 	current, err := h.service.Get(context.Background(), h.viewer, ready.ID)
 	if !called || err != nil || current.State != StateReady {
 		t.Fatalf("freshly used claim expired: %+v %v", current, err)
+	}
+}
+
+func TestStaleReportKeepsOwnerPlayDate(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	for i, age := range []time.Duration{time.Minute, 2 * time.Minute} {
+		if _, err := h.service.SyncProgress(ctx, h.viewer, []string{"new", "old"}[i], []ProgressEntry{{PlayID: "same-play", ItemID: h.item, PositionSeconds: 20, ObservedAt: h.now.Add(-age).Format(time.RFC3339)}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var updated int64
+	if err := h.db.QueryRow(`SELECT updated_ms FROM play_history`).Scan(&updated); err != nil || updated != h.now.Add(-time.Minute).UnixMilli() {
+		t.Fatalf("owner play timestamp regressed: %d %v", updated, err)
+	}
+}
+
+func TestSparsePreparationPageIsBoundedAndViewerScoped(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	own := h.ready(t, "own")
+	other := h.viewer
+	other.ProfileID = "other"
+	foreign, err := h.service.Submit(ctx, other, Request{OperationID: "foreign", MediaID: h.item, Quality: QualityOriginal}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	page, err := h.service.List(ctx, h.viewer, ListQuery{IDs: []string{own.ID, foreign.Items[0].ID, "missing"}}, false)
+	if err != nil || len(page.Items) != 1 || page.Items[0].ID != own.ID || page.NextCursor != "" {
+		t.Fatalf("sparse page disclosed another viewer or unrelated claim: %+v %v", page, err)
+	}
+	for _, query := range []ListQuery{{IDs: []string{"../bad"}}, {IDs: []string{own.ID}, Cursor: encodeCursor(h.now.UnixMilli(), own.ID)}, {IDs: make([]string, 201)}} {
+		if _, err := h.service.List(ctx, h.viewer, query, false); !errors.Is(err, ErrInput) {
+			t.Fatalf("unbounded or malformed sparse read accepted: %v", err)
+		}
+	}
+	h.service.SetLibraryAccess(func(context.Context, *sql.Tx, identity.Principal, string) error { return identity.ErrNotVisible })
+	page, err = h.service.List(ctx, h.viewer, ListQuery{IDs: []string{own.ID}}, false)
+	if err != nil || len(page.Items) != 0 {
+		t.Fatalf("sparse read disclosed a restricted claim: %+v %v", page, err)
 	}
 }

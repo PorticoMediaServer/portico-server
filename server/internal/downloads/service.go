@@ -438,6 +438,7 @@ func (s *Service) Get(ctx context.Context, p identity.Principal, id string) (Pre
 // routes layer has established as the server owner; a viewer naming another
 // profile reads their own, because a download list is personal state.
 type ListQuery struct {
+	IDs       []string
 	State     string
 	ProfileID string
 	Cursor    string
@@ -458,6 +459,17 @@ func (s *Service) List(ctx context.Context, p identity.Principal, q ListQuery, a
 	}
 	if q.ProfileID != "" && !validID.MatchString(q.ProfileID) {
 		return out, ErrInput
+	}
+	if len(q.IDs) > 200 || len(q.IDs) > 0 && q.Cursor != "" {
+		return out, ErrInput
+	}
+	for _, id := range q.IDs {
+		if !validID.MatchString(id) {
+			return out, ErrInput
+		}
+	}
+	if len(q.IDs) > 0 {
+		q.Limit = 200
 	}
 	before := int64(0)
 	after := ""
@@ -486,6 +498,11 @@ func (s *Service) List(ctx context.Context, p identity.Principal, q ListQuery, a
 	} else {
 		query += `profile_key=?`
 		args = append(args, operations.ViewerKey(p))
+	}
+	if len(q.IDs) > 0 {
+		ids, _ := json.Marshal(q.IDs)
+		query += ` AND id IN (SELECT value FROM json_each(?))`
+		args = append(args, string(ids))
 	}
 	if q.State != "" {
 		query += ` AND state=?`

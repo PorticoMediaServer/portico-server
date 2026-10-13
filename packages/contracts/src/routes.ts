@@ -2483,7 +2483,8 @@ export const routes = [
       "state",
       "profileId",
       "cursor",
-      "limit"
+      "limit",
+      "ids"
     ],
     "errors": [
       "invalid_request",

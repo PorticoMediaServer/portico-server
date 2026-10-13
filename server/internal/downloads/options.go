@@ -89,6 +89,12 @@ func (s *Service) Options(ctx context.Context, p identity.Principal, item string
 	}
 	tx := gated.Tx()
 	defer gated.Rollback()
+	if e = s.visibleItem(ctx, tx, p, item); e != nil {
+		if errors.Is(e, identity.ErrContentRestricted) {
+			return out, ErrNotFound
+		}
+		return out, e
+	}
 	allowed, e := ProfileAllowsDownloads(tx, p.Viewer)
 	if e != nil {
 		return out, e

@@ -85,6 +85,12 @@ with their ids, its season or disc number and its episode, track or part number,
 A list of claims reads as titles, in order, with no further request, and keeps reading that way
 after the title has left the library (`onServer: false`).
 
+`GET /v1/downloads/preparations?ids=<comma-separated preparation IDs>` reads a sparse
+snapshot of up to 200 claims, with the same viewer and title-access checks as the ordinary
+list. It returns all accessible requested claims; missing or inaccessible claims are omitted.
+This form cannot be combined with a cursor and uses a 200-row bound regardless of `limit`.
+Clients use it to refresh older queued claims together instead of issuing one request per row.
+
 An original is ready as soon as the server knows the file's SHA-256. The first claim on a file
 reads it once, in place, in checkpointed windows (a pause or restart costs one window). Every later
 claim on the same unchanged file, by anyone, is ready at once.
