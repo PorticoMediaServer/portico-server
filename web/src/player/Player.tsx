@@ -662,7 +662,8 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
         onEmptied={() => { setBuffering(false); setMediaPlaying(false); }}
         onPause={() => { setBuffering(false); setMediaPlaying(false); }}
       />
-      {!isAudio ? <canvas ref={subtitleCanvas} className={s.subtitleCanvas} aria-hidden /> : null}
+      {/* Always in the page, like the video element: the overlay is made once for the player's life. Hidden unless a drawn subtitle is on. */}
+      <canvas ref={subtitleCanvas} className={s.subtitleCanvas} aria-hidden />
       {!isAudio ? <div className={s.tap} onClick={tap} onDoubleClick={() => { if (pointerKind.current === 'mouse') { clearTimeout(clickTimer.current); void toggleFullscreen(); } }} onWheel={e => { if (!openBox && e.deltaY !== 0) changeVolume(e.deltaY < 0 ? 0.05 : -0.05); }} aria-hidden /> : null}
       {(buffering || state.recovering) && state.intent === 'playing' && !state.error ? <div className={s.spinner} aria-hidden /> : null}
       {!isAudio ? <PostPlay engine={engine} onClose={close} /> : null}
