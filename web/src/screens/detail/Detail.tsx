@@ -21,9 +21,20 @@ import {anchorOf, AnchoredMenu, Button, Card, Dialog, Icon, Inset, KeyValue, Lis
 import {CollectionPicker, PlaylistPicker} from '../shared/EntryActions';
 import {LoadingGrid, SectionView} from '../shared/Sections';
 import s from './Detail.module.css';
-import {ErrorNotice, ErrorState, changedError} from '../../app/errors';
+import {ErrorNotice, ErrorState, changedError, errorText} from '../../app/errors';
 import {useDownloads} from '../../app/downloads';
+import {useDeleteMedia} from '../../app/delete-media';
+import {useGroupActions} from '../../app/together';
+import {usePlayer} from '../../player/engine';
+import {queueItemInput, type QueueController} from '@core/queue-controller.ts';
 import {useI18n, type I18n} from '../../app/i18n';
+
+/** Follows the player's queue for the page's menu without making the whole page re-render with the player. */
+function QueueBridge({queue, onPresence}: {queue: React.RefObject<QueueController | undefined>; onPresence: (has: boolean) => void}) {
+  const player = usePlayer();
+  useEffect(() => { queue.current = player.queue; onPresence(!!player.queue); }, [player.queue, queue, onPresence]);
+  return null;
+}
 
 /**
  * Media detail. Artwork hero, identity and decision facts, the primary
@@ -70,7 +81,23 @@ export function DetailScreen() {
   // CON-25: one shared model decides the hero actions. Primary Play/Resume with the
   // remaining time, quick Watchlist + Favorite toggles, everything else in More
   // grouped like the title ⋯ menu. No plus or star buttons; Media information stays.
-  const detail = useMemo(() => (data ? detailActions(data, {owner, local: owner && session?.viewer.authority === 'local', platform: 'web'}) : undefined), [data, owner, session]);
+  // The page's ⋯ offers what the title's card offers, with the same answers: the queue and the
+  // Watch Together group when there is one, Download only when this server and this title can be
+  // downloaded, Delete for the owner.
+  const queue = useRef<QueueController | undefined>(undefined);
+  const [hasQueue, setHasQueue] = useState(false);
+  const together = useGroupActions();
+  const deleter = useDeleteMedia();
+  const playItemId = play?.playback?.itemId;
+  const [downloadable, setDownloadable] = useState<boolean>();
+  useEffect(() => {
+    if (!playItemId || !downloads.service) return;
+    if (downloads.state.unavailable) { setDownloadable(false); return; }
+    const controller = new AbortController();
+    downloads.service.options(playItemId, controller.signal).then(view => setDownloadable(view.options.some(o => o.available)), () => setDownloadable(false));
+    return () => controller.abort();
+  }, [playItemId, downloads.service, downloads.state.unavailable]);
+  const detail = useMemo(() => (data ? detailActions(data, {owner, local: owner && session?.viewer.authority === 'local', platform: 'web', queue: hasQueue, group: together.inRoom && together.canQueue, downloads: !downloads.state.unavailable && downloadable === true, canDelete: owner}) : undefined), [data, owner, session, hasQueue, together.inRoom, together.canQueue, downloads.state.unavailable, downloadable]);
   const menuItems = useMemo<MenuItem[]>(() => {
     if (!detail) return [];
     const items: MenuItem[] = [];
@@ -105,6 +132,14 @@ export function DetailScreen() {
       case 'addToPlaylist': openOrganise('playlist'); break;
       case 'addToCollection': openOrganise('collection'); break;
       case 'download': if (play?.playback) downloads.ask({target: {mediaId: play.playback.itemId}, title: item.title}); break;
+      case 'playNext': case 'addToQueue': {
+        const next = id === 'playNext';
+        if (play?.playback && queue.current) void queue.current.enqueue(queueItemInput(play.playback.itemId), next).then(() => setOrganiseNotice(t(next ? 'entry.playingNext' : 'entry.addedToQueue')), e => setOrganiseNotice(errorText(e, 'generic')));
+        break;
+      }
+      case 'watchWithGroup': if (play?.playback) void together.service?.watch(play.playback.itemId).then(ok => { if (ok) void navigate({to: '/together'}); }); break;
+      case 'addToGroupQueue': if (play?.playback) void together.service?.queueAdd([play.playback.itemId]).then(ok => setOrganiseNotice(t(ok ? 'entry.addedToGroupQueue' : 'entry.groupQueueFailed'))); break;
+      case 'delete': if (play?.playback) deleter?.open({itemIds: [play.playback.itemId], titles: [item.title]}); break;
     }
   }
   const back = () => (history.length > 1 ? history.back() : void navigate({to: '/'}));
@@ -201,6 +236,7 @@ export function DetailScreen() {
         />
       <Page>
         <div className={s.body}>
+          <QueueBridge queue={queue} onPresence={setHasQueue} />
           {organiseNotice ? <Inset><Notice tone="info">{organiseNotice}</Notice></Inset> : null}
           {snapshot.mutationError ? <Inset><ErrorNotice error={snapshot.mutationError} context="detail" operation="save" retry={retryMutation} refresh={retry} /></Inset> : null}
           {snapshot.pending.some(p => p.phase === 'conflict') ? <Inset><Notice tone="warning" action={{label: t('title.ok'), onClick: dismissMutation}}>{t('title.changedElsewhere')}</Notice></Inset> : null}
