@@ -15,6 +15,7 @@ import (
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/operations"
 	"portico.local/server/internal/playback"
+	"portico.local/server/internal/preparedmedia"
 )
 
 // SourceOpener reads an original catalog file. The server never opens a library
@@ -91,11 +92,41 @@ func New(o Options) (*Service, error) {
 func (s *Service) millis() int64 { return s.now().UnixMilli() }
 func (s *Service) signal()       { s.wake.Wake() }
 
-// Settings is the owner policy for downloads.
+// Settings is the owner policy for downloads, and with it the qualities this
+// server can hand over at all. A client asking for a whole show or album has
+// no single file to read a menu for, so it reads the list here: the original,
+// and each smaller quality the conversion code can make while conversions are
+// switched on. It is computed, never stored.
 type Settings struct {
-	MaxPreparedBytes int64 `json:"maxPreparedBytes"`
-	RetentionDays    int   `json:"retentionDays"`
-	Revision         int64 `json:"revision"`
+	MaxPreparedBytes int64           `json:"maxPreparedBytes"`
+	RetentionDays    int             `json:"retentionDays"`
+	Revision         int64           `json:"revision"`
+	Qualities        []QualityChoice `json:"qualities"`
+}
+
+// QualityChoice is one quality a download may be asked for.
+type QualityChoice struct {
+	Quality string `json:"quality"`
+	Label   string `json:"label"`
+	Kind    string `json:"kind"`
+	Height  int    `json:"targetDisplayHeight,omitempty"`
+}
+
+func producibleQualities(tx *sql.Tx) ([]QualityChoice, error) {
+	out := []QualityChoice{{Quality: QualityOriginal, Label: "Original", Kind: "source"}}
+	transcoding := false
+	if e := tx.QueryRow(`SELECT transcoding_enabled FROM playback_owner_policy WHERE singleton=1`).Scan(&transcoding); e != nil && !errors.Is(e, sql.ErrNoRows) {
+		return out, e
+	}
+	if !transcoding {
+		return out, nil
+	}
+	for _, rung := range playback.QualityLadder {
+		if preparedmedia.Producible(preparedProfile("movie", rung)) {
+			out = append(out, QualityChoice{Quality: rung.ID, Label: rung.Label, Kind: "optimized", Height: rung.Height})
+		}
+	}
+	return out, nil
 }
 
 // SettingsChange fences an owner write the same way every other console write
@@ -122,6 +153,9 @@ func (s *Service) Settings(ctx context.Context) (Settings, error) {
 	defer gated.Rollback()
 	out, e := readSettings(tx)
 	if e != nil {
+		return out, e
+	}
+	if out.Qualities, e = producibleQualities(tx); e != nil {
 		return out, e
 	}
 	return out, gated.Commit()
@@ -158,6 +192,9 @@ func (s *Service) ApplySettings(ctx context.Context, p identity.Principal, c Set
 		return out, e
 	}
 	if out, e = readSettings(tx); e != nil {
+		return out, e
+	}
+	if out.Qualities, e = producibleQualities(tx); e != nil {
 		return out, e
 	}
 	if e = operations.Audit(tx, now, operations.AccountKey(p), "downloads.settings", "downloads", out.Revision); e != nil {

@@ -9723,6 +9723,33 @@ export const schemas = {
         "minimum": -9007199254740991,
         "type": "integer"
       },
+      "qualities": {
+        "items": {
+          "properties": {
+            "kind": {
+              "type": "string"
+            },
+            "label": {
+              "type": "string"
+            },
+            "quality": {
+              "type": "string"
+            },
+            "targetDisplayHeight": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "quality",
+            "label",
+            "kind"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
       "retentionDays": {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
@@ -9737,7 +9764,8 @@ export const schemas = {
     "required": [
       "maxPreparedBytes",
       "retentionDays",
-      "revision"
+      "revision",
+      "qualities"
     ],
     "type": "object"
   },
@@ -14664,6 +14692,33 @@ export const schemas = {
         "minimum": -9007199254740991,
         "type": "integer"
       },
+      "qualities": {
+        "items": {
+          "properties": {
+            "kind": {
+              "type": "string"
+            },
+            "label": {
+              "type": "string"
+            },
+            "quality": {
+              "type": "string"
+            },
+            "targetDisplayHeight": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "quality",
+            "label",
+            "kind"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
       "retentionDays": {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
@@ -14678,7 +14733,8 @@ export const schemas = {
     "required": [
       "maxPreparedBytes",
       "retentionDays",
-      "revision"
+      "revision",
+      "qualities"
     ],
     "type": "object"
   },

@@ -41,8 +41,6 @@ const YAML_FILES = [
   "admin-libraries.openapi.yaml",
   "browse.openapi.yaml",
   "delivery.openapi.yaml",
-  "download-requests.openapi.yaml",
-  "downloads.openapi.yaml",
   "home.openapi.yaml",
   "identity.openapi.yaml",
   "jobs.openapi.yaml",

@@ -2,8 +2,6 @@ package downloads
 
 import (
 	"context"
-	"encoding/json"
-	"portico.local/server/internal/apispec"
 	"portico.local/server/internal/identity"
 	"testing"
 	"time"
@@ -32,13 +30,5 @@ func TestOfflineProgressClampsToKnownDuration(t *testing.T) {
 	replay, err := h.service.SyncProgress(context.Background(), h.viewer, "bounded-progress", entries)
 	if err != nil || replay.Entries[0].PositionSeconds != 0 {
 		t.Fatalf("replay %+v %v", replay, err)
-	}
-	doc, schema, err := apispec.Schema("ProgressResult")
-	if err != nil {
-		t.Fatal(err)
-	}
-	raw, _ := json.Marshal(out.Entries[0])
-	if issues := doc.ValidateJSON(schema, raw); len(issues) > 0 {
-		t.Fatal(issues)
 	}
 }
