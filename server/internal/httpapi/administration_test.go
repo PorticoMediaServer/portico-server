@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"portico.local/server/internal/assets"
@@ -49,6 +50,10 @@ func TestAdministrationOwnerBoundaryAndLibrarySettingsRoundTrip(t *testing.T) {
 		r := httptest.NewRequest(method, path, bytes.NewBufferString(body))
 		if token != "" {
 			r.Header.Set("Authorization", "Bearer "+token)
+		}
+		// A request with a body says what the body is, as every client does.
+		if body != "" {
+			r.Header.Set("Content-Type", "application/json")
 		}
 		w := httptest.NewRecorder()
 		handler.ServeHTTP(w, r)
@@ -125,22 +130,23 @@ func TestAdministrationOwnerBoundaryAndLibrarySettingsRoundTrip(t *testing.T) {
 	if w := request("GET", "/v1/admin/missing-titles?unknown=1", owner.AccessToken, ""); w.Code != 400 {
 		t.Fatalf("unknown query parameter answered %d", w.Code)
 	}
-	var read struct {
-		Result struct {
-			Revision int64 `json:"revision"`
-			Settings struct {
-				AllowMediaDeletion bool     `json:"allowMediaDeletion"`
-				Analysis           []string `json:"analysis"`
-			} `json:"settings"`
-			Matrix struct {
-				Operations []struct {
-					ID string `json:"id"`
-				} `json:"operations"`
-			} `json:"analysisMatrix"`
-		} `json:"result"`
+	// A library's settings are read and saved as the document itself, with no
+	// envelope around it.
+	type libraryDocument struct {
+		Revision int64 `json:"revision"`
+		Settings struct {
+			AllowMediaDeletion bool     `json:"allowMediaDeletion"`
+			Analysis           []string `json:"analysis"`
+		} `json:"settings"`
+		Matrix struct {
+			Operations []struct {
+				ID string `json:"id"`
+			} `json:"operations"`
+		} `json:"analysisMatrix"`
 	}
+	var read struct{ Result libraryDocument }
 	w := request("GET", "/v1/admin/libraries/lib/settings", owner.AccessToken, "")
-	if err = json.Unmarshal(w.Body.Bytes(), &read); err != nil {
+	if err = json.Unmarshal(w.Body.Bytes(), &read.Result); err != nil {
 		t.Fatal(err)
 	}
 	if read.Result.Revision != 1 || read.Result.Settings.AllowMediaDeletion || len(read.Result.Matrix.Operations) == 0 {
@@ -150,7 +156,7 @@ func TestAdministrationOwnerBoundaryAndLibrarySettingsRoundTrip(t *testing.T) {
 	if w = request("PUT", "/v1/admin/libraries/lib/settings", owner.AccessToken, body); w.Code != 200 {
 		t.Fatalf("write answered %d: %s", w.Code, w.Body.String())
 	}
-	if err = json.Unmarshal(w.Body.Bytes(), &read); err != nil {
+	if err = json.Unmarshal(w.Body.Bytes(), &read.Result); err != nil {
 		t.Fatal(err)
 	}
 	if read.Result.Revision <= 1 || !contains(read.Result.Settings.Analysis, "probe") || !contains(read.Result.Settings.Analysis, "local_metadata") || len(read.Result.Settings.Analysis) != 2 || !read.Result.Settings.AllowMediaDeletion {
@@ -162,7 +168,7 @@ func TestAdministrationOwnerBoundaryAndLibrarySettingsRoundTrip(t *testing.T) {
 	if w = request("PUT", "/v1/admin/libraries/lib/settings", owner.AccessToken, body); w.Code != 200 {
 		t.Fatalf("replay answered %d: %s", w.Code, w.Body.String())
 	}
-	if err = json.Unmarshal(w.Body.Bytes(), &read); err != nil {
+	if err = json.Unmarshal(w.Body.Bytes(), &read.Result); err != nil {
 		t.Fatal(err)
 	}
 	if read.Result.Revision != savedRevision {
@@ -170,7 +176,7 @@ func TestAdministrationOwnerBoundaryAndLibrarySettingsRoundTrip(t *testing.T) {
 	}
 	// A fresh operation at the now-stale revision is a conflict.
 	stale := `{"expectedRevision":1,"operationId":"films-settings-2","settings":{"allowMediaDeletion":true,"providers":[],"analysis":["probe"],"navigation":{"trickplayIntervalSeconds":10,"trickplayTileWidth":320,"trickplayMaxTiles":400,"chapterThumbnailMode":"embedded","videoPreviewEnabled":false,"videoPreviewSeconds":30}}}`
-	if w = request("PUT", "/v1/admin/libraries/lib/settings", owner.AccessToken, stale); w.Code != 409 {
+	if w = request("PUT", "/v1/admin/libraries/lib/settings", owner.AccessToken, stale); w.Code != 412 || !strings.Contains(w.Body.String(), `"code":"revision_mismatch"`) {
 		t.Fatalf("stale write answered %d: %s", w.Code, w.Body.String())
 	}
 	// A field-level refusal names the field.
@@ -181,15 +187,17 @@ func TestAdministrationOwnerBoundaryAndLibrarySettingsRoundTrip(t *testing.T) {
 	}
 	var failure struct {
 		Error struct {
-			Code   string   `json:"code"`
-			Fields []string `json:"fields"`
+			Code   string `json:"code"`
+			Fields []struct {
+				Path string `json:"path"`
+			} `json:"fields"`
 		} `json:"error"`
 	}
 	if err = json.Unmarshal(w.Body.Bytes(), &failure); err != nil {
 		t.Fatal(err)
 	}
-	if failure.Error.Code != "invalid_administration_input" || len(failure.Error.Fields) != 1 {
-		t.Fatalf("failure %+v", failure.Error)
+	if failure.Error.Code != "invalid_request" || len(failure.Error.Fields) != 1 || !strings.Contains(failure.Error.Fields[0].Path, "chapterThumbnailMode") {
+		t.Fatalf("failure %+v: %s", failure.Error, w.Body.String())
 	}
 	// The delete preview is reachable and reports the library's own policy.
 	if w = request("POST", "/v1/items/missing/delete/preview", owner.AccessToken, ""); w.Code != 404 {

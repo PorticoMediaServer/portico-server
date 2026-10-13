@@ -176,7 +176,7 @@ func TestAdministrationTierBoundaries(t *testing.T) {
 			}
 		}
 	}
-	ownerOnly := []string{"/v1/admin/diagnostics/client-logs", "/v1/admin/access/api-keys", "/v1/admin/connectivity/policy"}
+	ownerOnly := []string{"/v1/admin/diagnostics/client-logs", "/v1/admin/api-keys", "/v1/admin/connectivity/policy"}
 	for _, path := range ownerOnly {
 		if w := f.call("GET", path, f.owner, ""); w.Code != 200 {
 			t.Fatalf("owner refused %s: %d %s", path, w.Code, w.Body)
