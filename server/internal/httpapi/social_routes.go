@@ -647,7 +647,7 @@ func (d Dependencies) receiverRoutes(handle socialHandle, viewer socialViewer, s
 	// here instead: the answer comes as soon as the inbox holds a grant to decide or a
 	// handoff to take, or empty when the wait elapses. The inbox stays the source of
 	// truth; receiver events only decide when it is read again, exactly as on the stream.
-	inboxWaits := &noticeStreamLimiter{held: map[string]int{}}
+	inboxWaits := &receiverStreamLimiter{held: map[string]int{}}
 	handle("GET /v1/receivers/{id}/inbox/wait", func(w http.ResponseWriter, r *http.Request) {
 		p, ok := viewer(w, r)
 		if !ok {

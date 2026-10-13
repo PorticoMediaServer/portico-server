@@ -645,12 +645,13 @@ func FoundationRegistry(d Dependencies) (*apikit.Registry, error) {
 	registerMetadataSettings(registry, d)
 	registerMetadataRefresh(registry, d)
 	registerScreenMetadataReads(registry, d)
+	registerFreshnessRoutes(registry, d)
 	registerCapabilityReport(registry)
 	registerLiveContracts(registry, d)
 	registerIdentityRoutes(registry, d)
 	// Lane C's /v1/events (886f5011) on the shared contextual registry.
 	err = apikit.Register(registry, apikit.Route[struct{}, eventfeed.Page]{Metadata: apikit.Metadata{
-		ID: "get_events", Method: "GET", Path: "/v1/events", Summary: "Read the authorized event ring by long-poll or server-sent stream", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Realtime, Cost: apikit.Constant, Status: 200, SSE: true, Query: []string{"after", "waitSeconds", "topics"}, Errors: []string{"unauthorized", "invalid_request", "invalid_cursor", "event_stream_exists", "stream_unavailable", "internal"},
+		ID: "get_events", Method: "GET", Path: "/v1/events", Summary: "Read the authorized event ring by long-poll or server-sent stream", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Realtime, Cost: apikit.Constant, Status: 200, SSE: true, Query: []string{"after", "waitSeconds"}, Errors: []string{"unauthorized", "invalid_request", "invalid_cursor", "stream_unavailable", "internal"},
 	}, RawHandler: func(w http.ResponseWriter, r *http.Request) {
 		if d.Events == nil {
 			registry.Errors().Write(w, "", &apierror.Error{Code: "internal"})

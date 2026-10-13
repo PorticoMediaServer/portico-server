@@ -8369,6 +8369,61 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "GetCatalogueFailuresRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetCatalogueFailuresResponse": {
+    "properties": {
+      "failures": {
+        "items": {
+          "properties": {
+            "attempts": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "domain": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "entityId": {
+              "type": "string"
+            },
+            "failedAt": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "reason": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "domain",
+            "reason",
+            "attempts",
+            "failedAt"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "more": {
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "failures",
+      "more"
+    ],
+    "type": "object"
+  },
   "GetClientLogRequest": {
     "properties": {},
     "required": [],
@@ -12083,13 +12138,17 @@ export const schemas = {
         },
         "type": "array"
       },
+      "more": {
+        "type": "boolean"
+      },
       "nextAfter": {
         "type": "string"
       }
     },
     "required": [
       "events",
-      "nextAfter"
+      "nextAfter",
+      "more"
     ],
     "type": "object"
   },

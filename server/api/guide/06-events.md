@@ -98,22 +98,21 @@ Mutations go through `POST /v1/notifications/inbox/actions
 }
 ```
 
-Live delivery is `GET /v1/notifications/events (notifications.openapi.yaml,
-operationId streamNotificationEvents)` (SSE: ids are inbox revisions,
-`Last-Event-ID` resumes, deltas carry `resync`) and `GET
-/v1/notifications/wait (notifications.openapi.yaml, operationId
-waitForNotifications)` (long-poll: pass the held `revision` and `waitSeconds`
-≤ 60; immediate when the inbox already moved, otherwise parked; `resync: true`
-means re-read the inbox; omit `revision` to read the current one without
-parking). Both share a four-per-session, 64-per-server budget past which the
-server answers `429`. Administration is `POST
-/v1/admin/notifications/broadcast (notifications.openapi.yaml, operationId
-broadcastNotification)` with settings at `GET
-/v1/admin/notifications/settings (notifications.openapi.yaml, operationId
-getNotificationSettings)`.
+Live delivery shares `GET /v1/events` with library, progress, settings and
+receiver hints. SSE ids are feed positions, separate from inbox revisions;
+`Last-Event-ID` resumes the feed. A `notification.changed` event carries the
+inbox revision and asks the client to quietly reread its inbox and counts.
+`stream.resync` asks for a quiet reread after retained history is unavailable.
+The long-poll fallback is the same endpoint with `after=<event-id>` and
+`waitSeconds=0..25`; consume `{events,nextAfter,more}` and continue immediately
+while `more` is true. One installation shares one feed across features.
 
-Group streams, receiver handoffs, download progress events, capability-change
-push, and a separate admin log tail with resume are **not specified** in this
-section's operations (group SSE lives under social; the admin log tail is
+Administration is `POST /v1/admin/notifications/broadcast
+(notifications.openapi.yaml, operationId broadcastNotification)` with settings
+at `GET /v1/admin/notifications/settings (notifications.openapi.yaml,
+operationId getNotificationSettings)`.
+
+Group streams and the separate admin log tail have their own contracts
+(group SSE lives under social; the admin log tail is
 `GET /v1/admin/logs/events (admin-access.openapi.yaml, operationId
 tailMessageLog)`).

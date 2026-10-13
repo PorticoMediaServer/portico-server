@@ -10,11 +10,16 @@ import (
 	"strconv"
 	"time"
 
+	"portico.local/server/internal/apievents"
+	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/eventfeed"
 	"portico.local/server/internal/identity"
+	"portico.local/server/internal/social"
+	"portico.local/server/internal/supervise"
 )
 
-const eventHeartbeat = 25 * time.Second
+var eventHeartbeat = 25 * time.Second
+
 const eventStreamLife = 30 * time.Minute
 
 func eventFailure(w http.ResponseWriter, status int, code, message string) {
@@ -54,8 +59,8 @@ func (d Dependencies) eventAuthority(r *http.Request) (identity.Principal, bool,
 
 func (d Dependencies) events(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
-	if err := consoleQuery(r, "after", "waitSeconds", "topics"); err != nil || r.URL.Query().Get("topics") != "" {
-		eventFailure(w, 400, "invalid_request", "Only implicit notification and operation topics are available.")
+	if err := consoleQuery(r, "after", "waitSeconds"); err != nil {
+		eventFailure(w, 400, "invalid_request", "This event query cannot be used.")
 		return
 	}
 	longPoll := r.URL.Query().Has("waitSeconds")
@@ -85,7 +90,10 @@ func (d Dependencies) events(w http.ResponseWriter, r *http.Request) {
 		consoleError(w, err)
 		return
 	}
-	wake, release := d.Events.Subscribe()
+	bridgeCtx, stopBridge := context.WithCancel(r.Context())
+	defer stopBridge()
+	d.bridgeReceiverEvents(bridgeCtx, p)
+	wake, release := d.Events.SubscribeFor(p, owner)
 	defer release()
 	page, err := d.Events.Read(r.Context(), p, owner, after, supplied)
 	if err != nil {
@@ -104,12 +112,14 @@ func (d Dependencies) eventLongPoll(w http.ResponseWriter, r *http.Request, p id
 		timer := time.NewTimer(time.Duration(wait) * time.Second)
 		defer timer.Stop()
 		for len(page.Events) == 0 {
-			select {
-			case <-r.Context().Done():
-				return
-			case <-timer.C:
-				goto answer
-			case <-wake:
+			if !page.More {
+				select {
+				case <-r.Context().Done():
+					return
+				case <-timer.C:
+					goto answer
+				case <-wake:
+				}
 			}
 			fresh, owner, err := d.eventAuthority(r)
 			if err != nil {
@@ -166,6 +176,7 @@ func (d Dependencies) eventStream(w http.ResponseWriter, r *http.Request, p iden
 	w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
 	w.Header().Set("X-Accel-Buffering", "no")
 	w.WriteHeader(200)
+	lastSent := ""
 	send := func(e eventfeed.Event) bool {
 		b, err := json.Marshal(e)
 		if err != nil {
@@ -176,6 +187,7 @@ func (d Dependencies) eventStream(w http.ResponseWriter, r *http.Request, p iden
 			return false
 		}
 		flusher.Flush()
+		lastSent = e.ID
 		return true
 	}
 	frameDeadline(w)
@@ -203,7 +215,12 @@ func (d Dependencies) eventStream(w http.ResponseWriter, r *http.Request, p iden
 					return false
 				}
 			}
-			if len(page.Events) < eventfeed.PageLimit {
+			if !page.More {
+				if page.NextAfter != "" && lastSent != page.NextAfter {
+					if !send(eventfeed.Event{ID: page.NextAfter, Type: "stream.position"}) {
+						return false
+					}
+				}
 				return true
 			}
 			page, err = d.Events.Read(ctx, fresh, owner, mustEventID(page.NextAfter), true)
@@ -217,7 +234,18 @@ func (d Dependencies) eventStream(w http.ResponseWriter, r *http.Request, p iden
 	}
 	heartbeat := time.NewTicker(eventHeartbeat)
 	defer heartbeat.Stop()
-	end := time.NewTimer(eventStreamLife)
+	deadline, err := d.Events.TokenDeadline(ctx, p)
+	if err != nil {
+		return
+	}
+	life := time.Until(deadline)
+	if life < 0 {
+		life = 0
+	}
+	if life > eventStreamLife {
+		life = eventStreamLife
+	}
+	end := time.NewTimer(life)
 	defer end.Stop()
 	for {
 		select {
@@ -225,13 +253,10 @@ func (d Dependencies) eventStream(w http.ResponseWriter, r *http.Request, p iden
 			return
 		case <-end.C:
 			frameDeadline(w)
-			fmt.Fprint(w, "event: stream.closed\ndata: {\"reconnectAfterMs\":1000}\n\n")
+			send(eventfeed.Event{ID: page.NextAfter, Type: "stream.closed", Data: json.RawMessage(`{"reconnectAfterMs":1000}`)})
 			flusher.Flush()
 			return
 		case <-heartbeat.C:
-			if _, _, err := d.eventAuthority(r.WithContext(ctx)); err != nil {
-				return
-			}
 			frameDeadline(w)
 			if _, err := fmt.Fprint(w, ": heartbeat\n\n"); err != nil {
 				return
@@ -252,4 +277,32 @@ func (d Dependencies) eventStream(w http.ResponseWriter, r *http.Request, p iden
 			return
 		}
 	}
+}
+
+func (d Dependencies) bridgeReceiverEvents(ctx context.Context, p identity.Principal) {
+	changes, release := social.SubscribeReceiverEvents(d.DB, p)
+	supervise.Go("api.receiver-events", func() {
+		defer release()
+		first := true
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case event := <-changes:
+				if first && event.Kind == "resync" {
+					first = false
+					continue
+				}
+				first = false
+				data, err := json.Marshal(event)
+				if err != nil {
+					continue
+				}
+				_ = dbwork.WithWriteTx(ctx, d.DB, dbwork.ClassInteractive, func(tx *sql.Tx) error {
+					_, err := tx.ExecContext(ctx, `INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision,data) VALUES(?,'receiver.inbox_changed','receiver',?,'',?) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET data=excluded.data`, apievents.ProfileAudience(p.Authority, p.AccountID, p.ProfileID), event.ReceiverID, string(data))
+					return err
+				})
+			}
+		}
+	})
 }

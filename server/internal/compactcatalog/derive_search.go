@@ -13,16 +13,19 @@ import (
 const searchLiveSQL = `e.retired=0 AND EXISTS(SELECT 1 FROM catalog_kinds k WHERE k.id=e.kind AND k.searchable=1)`
 
 func deriveSearch(ctx context.Context, tx *sql.Tx, ids string) error {
+	var slot, rebuilding, first int
+	if err := tx.QueryRowContext(ctx, `SELECT active_slot,rebuilding,first_build FROM catalog_derivations WHERE domain=17`).Scan(&slot, &rebuilding, &first); err != nil && err != sql.ErrNoRows {
+		return err
+	}
+	if rebuilding == 1 && first == 0 {
+		slot = 1 - slot
+	}
 	for _, query := range []string{
-		`INSERT INTO catalog_search_titles(catalog_search_titles,rowid,title,kind)
- SELECT 'delete',d.entity_id,d.title,d.kind FROM catalog_search_documents d WHERE d.entity_id IN(SELECT value FROM json_each(?))`,
 		`DELETE FROM catalog_search_documents WHERE entity_id IN(SELECT value FROM json_each(?))`,
 		`INSERT INTO catalog_search_documents(entity_id,title,kind)
  SELECT e.id,e.title,'k'||e.kind||' l'||e.library_id FROM json_each(?) j JOIN catalog_entities e ON e.id=j.value WHERE ` + searchLiveSQL,
-		`INSERT INTO catalog_search_titles(rowid,title,kind)
- SELECT d.entity_id,d.title,d.kind FROM catalog_search_documents d WHERE d.entity_id IN(SELECT value FROM json_each(?))`,
 	} {
-		if _, err := tx.ExecContext(ctx, query, ids); err != nil {
+		if _, err := tx.ExecContext(ctx, searchTables(query, slot), ids); err != nil {
 			return err
 		}
 	}

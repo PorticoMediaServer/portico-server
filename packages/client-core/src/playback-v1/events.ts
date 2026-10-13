@@ -96,11 +96,11 @@ export class EventsClient {
 
   /** Deliver one envelope (also used by tests and by platforms that receive events elsewhere). */
   deliver(event: ServerEvent): void {
+    if (event.type === 'stream.resync') { this.recent=[]; this.recentSet.clear(); this.setStatus({cursor:event.id}); for(const listener of [...this.resyncListeners]) listener(); return; }
     if (this.recentSet.has(event.id)) return;
     this.recent.push(event.id); this.recentSet.add(event.id);
     if (this.recent.length > 512) this.recentSet.delete(this.recent.shift()!);
     this.setStatus({cursor: event.id});
-    if (event.type === 'stream.resync') { for (const l of [...this.resyncListeners]) l(); return; }
     const exact = this.listeners.get(event.type);
     if (exact) for (const l of [...exact]) l(event);
     for (const [key, set] of this.listeners) {

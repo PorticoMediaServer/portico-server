@@ -585,9 +585,7 @@ func DeleteEntityTx(ctx context.Context, tx *sql.Tx, id int64) error {
 		return err
 	}
 	// The external-content title index needs the old title to remove a row.
-	if _, err := tx.ExecContext(ctx, `INSERT INTO catalog_search_titles(catalog_search_titles,rowid,title,kind) SELECT 'delete',entity_id,title,kind FROM catalog_search_documents WHERE entity_id=?`, id); err != nil {
-		return err
-	}
+
 	if _, err := tx.ExecContext(ctx, `DELETE FROM catalog_search_documents WHERE entity_id=?`, id); err != nil {
 		return err
 	}

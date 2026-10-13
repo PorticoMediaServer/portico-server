@@ -293,6 +293,11 @@ func removeLibraryBatchTx(ctx context.Context, tx *sql.Tx, library string) (bool
 		// Another pass: a show goes once its seasons have, an artist once its albums have.
 		return false, nil
 	}
+	if clear, err := compactcatalog.ClearLibraryTx(ctx, tx, library, 64); err != nil {
+		return false, err
+	} else if !clear {
+		return false, nil
+	}
 	// 5. The library itself. Its folders are freed for another library first,
 	//    so the rows that remain can never get in the way of adding it again.
 	for _, q := range []string{

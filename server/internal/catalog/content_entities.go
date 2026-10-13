@@ -45,7 +45,7 @@ func (s *Service) contentMovieCount(r ContentRequest) (int, error) {
 				return 0, err
 			}
 			if !ready {
-				return 0, ErrVisibilityBuilding
+				return 0, nil
 			}
 			generation = published
 			_, classID, err = s.currentCategoryClass(r.Library, key, generation)
@@ -63,13 +63,6 @@ func (s *Service) contentMovieCount(r ContentRequest) (int, error) {
 				if err = s.compactProjectionReady(18); err != nil {
 					return 0, err
 				}
-				var pending bool
-				if err = s.read().QueryRow(`SELECT (SELECT backfill_done=0 FROM catalog_movie_category_visible_state WHERE id=1)`).Scan(&pending); err != nil {
-					return 0, err
-				}
-				if pending {
-					return 0, ErrVisibilityBuilding
-				}
 				err = s.read().QueryRow(`SELECT COALESCE((SELECT total FROM catalog_movie_category_visible_summaries WHERE class_id=? AND generation=? AND library_id=? AND kind=? AND value=?),0)`, classID, generation, libraryID, kind, value).Scan(&count)
 			} else {
 				err = s.read().QueryRow(`SELECT COALESCE((SELECT total FROM catalog_movie_category_summaries WHERE library_id=? AND kind=? AND value=?),0)`, libraryID, kind, value).Scan(&count)
@@ -79,13 +72,6 @@ func (s *Service) contentMovieCount(r ContentRequest) (int, error) {
 		if classID != 0 {
 			if err := s.compactProjectionReady(18); err != nil {
 				return 0, err
-			}
-			var pending bool
-			if err := s.read().QueryRow(`SELECT (SELECT backfill_done=0 FROM catalog_visibility_sort_state WHERE id=1)`).Scan(&pending); err != nil {
-				return 0, err
-			}
-			if pending {
-				return 0, ErrVisibilityBuilding
 			}
 			err := s.read().QueryRow(`SELECT COALESCE(sum(total),0) FROM catalog_visibility_sort_buckets WHERE class_id=? AND generation=? AND library_id=? AND kind=1 AND axis=0`, classID, generation, libraryID).Scan(&count)
 			return count, err
@@ -127,7 +113,7 @@ func (s *Service) movieContentWhere(r ContentRequest, libraryID int) (string, []
 			return "", nil, err
 		}
 		if !ready {
-			return "", nil, ErrVisibilityBuilding
+			return where + " AND 0", args, nil
 		}
 		_, classID, err := s.currentCategoryClass(r.Library, key, generation)
 		if err != nil {
@@ -458,13 +444,6 @@ func (s *Service) contentEligibleReady(kind string) error {
 	if err := s.compactProjectionReady(18, 19); err != nil {
 		return err
 	}
-	var pending bool
-	if err := s.read().QueryRow(`SELECT (SELECT backfill_done=0 FROM catalog_content_eligible_state WHERE id=1)`).Scan(&pending); err != nil {
-		return err
-	}
-	if pending {
-		return ErrVisibilityBuilding
-	}
 	return nil
 }
 func (s *Service) contentDiscoveryCount(library, profile, section string) (int, error) {
@@ -487,7 +466,7 @@ func (s *Service) contentCategories(r ContentRequest) ([]Category, error) {
 			categories, err := s.compactMovieCategoriesForClass(r.Library, key, generation)
 			return categories, err
 		}
-		return nil, ErrVisibilityBuilding
+		return []Category{}, nil
 	}
 	if r.Q == "" && r.EntityID == "" && !r.Viewer.EffectiveRestrictions().Active() {
 		categories, err := s.Categories(r.Viewer, r.Library)

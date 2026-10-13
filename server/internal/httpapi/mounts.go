@@ -16,7 +16,7 @@ import (
 
 func (d Dependencies) storageOwner(r *http.Request) (identity.Principal, catalog.AdminScope, error) {
 	p, e := d.owner(r)
-	scope := catalog.AdminScope{ServerID: d.Identity.ID(), ViewerFence: fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprintf("%s:%d", p.Hash, p.Epoch))))}
+	scope := catalog.AdminScope{ServerID: d.Identity.ID(), ViewerFence: fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprintf("%s:%d", presentationIdentity(p), p.Epoch))))}
 	if e == nil && d.Mounts == nil {
 		e = errors.New("managed mounts unavailable")
 	}

@@ -2,9 +2,8 @@ package catalog
 
 import "portico.local/server/internal/identity"
 
-// A group count is published only after its restriction generation and both
-// native contribution queues have settled. No group or book membership is
-// counted on the request path.
+// Group counts serve the published restriction generation while contribution
+// queues catch up. No whole group or book membership is counted on request.
 func (s *Service) bookGroupClassReady(library string, r identity.ContentRestrictions) (int64, int64, error) {
 	if err := s.compactProjectionReady(30); err != nil {
 		return 0, 0, err
@@ -22,13 +21,6 @@ func (s *Service) bookGroupClassReady(library string, r identity.ContentRestrict
 		return 0, 0, err
 	}
 	_, _ = built, current // a class one revision behind still serves; rows are rechecked
-	var pending bool
-	err = s.read().QueryRow(`SELECT backfill_done=0 FROM catalog_book_group_visible_state WHERE id=1`).Scan(&pending)
-	if err != nil {
-		return 0, 0, err
-	}
-	if pending {
-		return 0, 0, ErrVisibilityBuilding
-	}
+
 	return class, generation, nil
 }

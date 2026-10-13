@@ -185,6 +185,11 @@ func TestOpenAPICoversRegisteredRoutes(t *testing.T) {
 	for name, source := range packageSources(t) {
 		for _, m := range routeLiteral.FindAllStringSubmatch(source, -1) {
 			route, path := m[1]+" "+m[2], m[2]
+			if path == "/receiver/cast/" {
+				// The credential-scope table also names the static receiver app.
+				// Its HTML/assets are not API operations.
+				continue
+			}
 			if strings.HasSuffix(path, "/") {
 				// A concatenation prefix such as "POST /v1/setup/"; the document
 				// must describe at least one operation underneath it.

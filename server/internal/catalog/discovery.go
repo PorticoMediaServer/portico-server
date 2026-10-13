@@ -155,11 +155,15 @@ func (s *Service) decodeRevisionCursor(raw string, scope cursorScope, revision C
 	}
 	mac := hmac.New(sha256.New, key)
 	mac.Write(data)
-	if !hmac.Equal(sig, mac.Sum(nil)) || json.Unmarshal(data, &out) != nil || out.Scope != scope || out.Expires < time.Now().Unix() {
+	if !hmac.Equal(sig, mac.Sum(nil)) || json.Unmarshal(data, &out) != nil || out.Scope != scope {
 		return out, ErrCursor
 	}
+	if out.Expires < time.Now().Unix() {
+		out.Total = 0
+		out.Expires = time.Now().Add(30 * time.Minute).Unix()
+	}
 	if out.CatalogRevision != revision.Catalog || out.ViewerRevision != revision.Viewer {
-		return out, ErrStaleContinuation
+		out.Total = 0
 	}
 	return out, nil
 }
@@ -293,7 +297,7 @@ func (s *Service) Categories(viewer Viewer, library string) ([]Category, error) 
 			return nil, err
 		}
 		if !ready {
-			return nil, ErrVisibilityBuilding
+			return []Category{}, nil
 		}
 		return s.compactMovieCategoriesForClass(library, key, generation)
 	}

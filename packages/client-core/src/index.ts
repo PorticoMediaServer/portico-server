@@ -1968,4 +1968,6 @@ export * from './client-reports.ts';
 
 export * from './metadata-attention.ts';
 export * from './metadata-settings.ts';
+
+export {parseFreshnessChange, subscribeFreshness, type FreshnessCounters, type FreshnessChange, type CatalogueFailure} from './freshness.ts';
 export * from './scan-issues.ts';

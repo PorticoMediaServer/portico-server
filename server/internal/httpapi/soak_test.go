@@ -1317,11 +1317,11 @@ func soakStream(ctx context.Context, client *http.Client, base, token string, f 
 	}
 }
 
-// soakHoldEvents holds a notification stream open and reads frames from it.
+// soakHoldEvents holds the unified event stream open and reads frames from it.
 func soakHoldEvents(ctx context.Context, client *http.Client, base, token string, o *soakObservations) {
 	life, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	request, err := http.NewRequestWithContext(life, "GET", base+"/v1/notifications/events", nil)
+	request, err := http.NewRequestWithContext(life, "GET", base+"/v1/events", nil)
 	if err != nil {
 		return
 	}
@@ -1476,7 +1476,7 @@ func soakReconnectStorm(ctx context.Context, base string, f *loadFixture, o *soa
 			http := &http.Client{Timeout: 5 * time.Second}
 			for round := 0; round < 4 && ctx.Err() == nil; round++ {
 				life, stop := context.WithTimeout(ctx, time.Duration(20+client)*time.Millisecond)
-				request, err := newRequest(life, base+"/v1/notifications/events", f.owner.AccessToken)
+				request, err := newRequest(life, base+"/v1/events", f.owner.AccessToken)
 				if err == nil {
 					start := time.Now()
 					response, callErr := http.Do(request)

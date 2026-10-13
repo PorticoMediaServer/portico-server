@@ -77,7 +77,7 @@ func (d Dependencies) listeningRoutes(mux *http.ServeMux) {
 				return
 			}
 		}
-		fence := fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprintf("%s:%d:%d:%d", p.Hash, p.Epoch, policy, restriction))))
+		fence := fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprintf("%s:%d:%d:%d", presentationIdentity(p), p.Epoch, policy, restriction))))
 		viewer, e := d.catalogViewer(r, p, []string{target.LibraryID}, fence)
 		if e != nil {
 			failure(w, e)

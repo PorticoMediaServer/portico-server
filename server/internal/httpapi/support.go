@@ -54,7 +54,7 @@ func (d Dependencies) supportHandler(read func(context.Context, *sql.DB, bool) (
 			return
 		}
 		// Scope is transport-only. The downloadable artifact contains report alone.
-		value := map[string]any{"scope": map[string]string{"serverId": d.Identity.ID(), "viewerFence": fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprintf("%s:%d", p.Hash, p.Epoch))))}, "report": report}
+		value := map[string]any{"scope": map[string]string{"serverId": d.Identity.ID(), "viewerFence": fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprintf("%s:%d", presentationIdentity(p), p.Epoch))))}, "report": report}
 		encoded, e := json.Marshal(value)
 		if e != nil || len(encoded) > diagnostics.MaxReportBytes {
 			write(w, 503, map[string]any{"error": map[string]any{"code": "support_unavailable", "message": "The support report could not be prepared.", "retryable": true}})

@@ -230,3 +230,42 @@ func TestSearchHistoryIsBoundedAndPerViewer(t *testing.T) {
 		t.Fatalf("history leaked across viewers: %+v %v", page, e)
 	}
 }
+
+func TestProgressObservationsKeepHomeAndCommandsStable(t *testing.T) {
+	s, db, v := savedFixture(t)
+	item := phase34SavedFixtureItem(t, db)
+	key := identity.PersonalKey(v)
+	if _, err := db.Exec(`INSERT INTO progress(profile_id,item_id,position,unit,completed,playback_id) VALUES(?,?,0,0,0,'play')`, key, item.ID); err != nil {
+		t.Fatal(err)
+	}
+	accept(t, s, db, v, item.Public, 1, 40, 100, "playing")
+	before, err := s.Personal(key, item.Public)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var home, snapshots int64
+	if err = db.QueryRow(`SELECT COALESCE(sum(revision),0) FROM viewer_revisions WHERE profile_id=?`, key).Scan(&home); err != nil {
+		t.Fatal(err)
+	}
+	if err = db.QueryRow(`SELECT count(*) FROM personal_snapshots WHERE profile_id=?`, key).Scan(&snapshots); err != nil {
+		t.Fatal(err)
+	}
+	accept(t, s, db, v, item.Public, 2, 50, 100, "playing")
+	after, err := s.Personal(key, item.Public)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var nextHome, nextSnapshots, observations int64
+	_ = db.QueryRow(`SELECT COALESCE(sum(revision),0),COALESCE(sum(observation_revision),0) FROM viewer_revisions WHERE profile_id=?`, key).Scan(&nextHome, &observations)
+	_ = db.QueryRow(`SELECT count(*) FROM personal_snapshots WHERE profile_id=?`, key).Scan(&nextSnapshots)
+	if before.Revision != after.Revision || home != nextHome || snapshots != nextSnapshots || observations == 0 {
+		t.Fatalf("command %d/%d home %d/%d snapshots %d/%d observations %d", before.Revision, after.Revision, home, nextHome, snapshots, nextSnapshots, observations)
+	}
+	if after.ProgressSeconds != 50 {
+		t.Fatalf("progress lost: %v", after.ProgressSeconds)
+	}
+	yes := true
+	if _, err = s.SetPersonal("local:account", key, item.Public, PersonalMutation{OperationID: "after-tick", ExpectedRevision: before.Revision, Favorite: &yes}, nil); err != nil {
+		t.Fatalf("tick invalidated command: %v", err)
+	}
+}

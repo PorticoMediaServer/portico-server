@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"portico.local/server/internal/compactcatalog"
+	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/identity"
 	"unicode"
 	"unicode/utf8"
@@ -210,6 +211,19 @@ func resolveSearchSort(g searchGroupDefinition, sortID string) string {
 const SearchPreviewLimit = 12
 
 func (s *Service) Search(ctx context.Context, r SearchRequest) (SearchEnvelope, error) {
+	if dbwork.Snapshot(ctx) == nil {
+		if _, err := s.cursorKey(); err != nil {
+			return SearchEnvelope{}, err
+		}
+		var out SearchEnvelope
+		err := dbwork.WithReadSnapshot(ctx, s.db, func(snapshot context.Context) error {
+			var err error
+			out, err = s.WithContext(snapshot).Search(snapshot, r)
+			return err
+		})
+		return out, err
+	}
+
 	if r.Profile != "" && r.Profile != r.Viewer.Profile || r.ViewerFence != "" && r.ViewerFence != r.Viewer.Fence || len(r.Libraries) > 0 && strings.Join(r.Libraries, "\x00") != strings.Join(r.Viewer.Libraries, "\x00") {
 		if r.Cursor != "" {
 			return SearchEnvelope{}, ErrCursor
@@ -559,7 +573,7 @@ func (s *Service) searchCatalogGroup(ctx context.Context, r SearchRequest, g sea
 			return e
 		}
 		if c.Fingerprint != fingerprint {
-			return ErrStaleContinuation
+			c.Total = 0
 		}
 		value, e := cursorOrderValue(c.Value, order.numeric)
 		if e != nil {
@@ -750,7 +764,7 @@ func (s *Service) searchPeopleGroup(ctx context.Context, r SearchRequest, g sear
 			return e
 		}
 		if c.Fingerprint != fingerprint {
-			return ErrStaleContinuation
+			c.Total = 0
 		}
 		if offset, e = strconv.Atoi(c.ID); e != nil || offset < 0 || offset > 100000 {
 			return ErrCursor
@@ -824,7 +838,7 @@ func (s *Service) searchLiveGroup(ctx context.Context, r SearchRequest, g search
 			return e
 		}
 		if c.Fingerprint != fingerprint {
-			return ErrStaleContinuation
+			c.Total = 0
 		}
 		if offset, e = strconv.Atoi(c.ID); e != nil || offset < 0 || offset > 100000 {
 			return ErrCursor

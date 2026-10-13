@@ -29,7 +29,7 @@ import (
 // counted once per revision (a cursor carries it).
 
 // browseRowColumns selects a browseRow over e (catalog_browse_rows) and ce.
-var browseRowColumns = `pid(ce.public_id),e.entity_id,` + compactBrowseKindSQL("e.kind") + `,e.title,e.year,e.added_text,e.sort_key,COALESCE(e.duration_max,0),COALESCE(e.rating_max,0)`
+var browseRowColumns = `pid(ce.public_id),e.entity_id,` + compactBrowseKindSQL("e.kind") + `,e.title,e.year,COALESCE(e.added_text,''),e.sort_key,COALESCE(e.duration_max,0),COALESCE(e.rating_max,0)`
 
 func scanBrowseRows(rows *sql.Rows) ([]browseRow, error) {
 	defer rows.Close()

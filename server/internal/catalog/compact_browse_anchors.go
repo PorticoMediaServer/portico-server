@@ -33,7 +33,7 @@ func (s *Service) compactBrowseSortAnchors(request BrowseRequest, pivot browsePi
 			return nil, err
 		}
 		if !ready {
-			return nil, ErrVisibilityBuilding
+			return []BrowsePositionAnchor{}, nil
 		}
 		generation = published
 		_, classID, err = s.currentCategoryClass(request.Library, key, generation)
@@ -45,7 +45,7 @@ func (s *Service) compactBrowseSortAnchors(request BrowseRequest, pivot browsePi
 			return nil, err
 		}
 		if pending {
-			return nil, ErrVisibilityBuilding
+			return []BrowsePositionAnchor{}, nil
 		}
 	}
 	var libraryID int
@@ -110,7 +110,7 @@ func (s *Service) readCompactPersonalAxis(profile string, libraryID int, kinds [
 		return nil, err
 	}
 	if pending {
-		return nil, ErrVisibilityBuilding
+		return map[string]int{}, nil
 	}
 	base, err := s.readCompactBrowseAxis(libraryID, kinds, classID, generation, 0)
 	if err != nil {
@@ -152,7 +152,7 @@ func (s *Service) readCompactPersonalAxis(profile string, libraryID int, kinds [
 		return nil, err
 	}
 	if personalTotal > baseTotal {
-		return nil, ErrVisibilityBuilding
+		return map[string]int{}, nil
 	}
 	defaultKey := ""
 	if axis == 7 {

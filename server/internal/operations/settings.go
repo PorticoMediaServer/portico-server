@@ -5,7 +5,9 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"path/filepath"
+	"portico.local/server/internal/apievents"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/medialimits"
 	"portico.local/server/internal/networkpolicy"
@@ -659,6 +661,9 @@ func (s *Store) ApplyPreferences(ctx context.Context, p identity.Principal, auth
 		}
 		b, _ := json.Marshal(merged)
 		if _, err = tx.Exec(`INSERT INTO console_documents VALUES(?,?,?,?) ON CONFLICT(scope) DO UPDATE SET revision=excluded.revision,body=excluded.body,updated_ms=excluded.updated_ms`, key, revision+1, string(b), s.now()); err != nil {
+			return err
+		}
+		if err = apievents.Append(tx, apievents.ProfileAudience(p.Authority, p.AccountID, p.ProfileID), "settings.changed", "settings", "preferences", fmt.Sprint(revision+1), map[string]string{"scope": c.Scope, "deviceClass": c.DeviceClass}); err != nil {
 			return err
 		}
 		out, err = readPreferences(tx, p.Viewer, c.DeviceClass, clamped)

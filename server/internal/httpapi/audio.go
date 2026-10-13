@@ -18,7 +18,7 @@ func (d Dependencies) audioRoutes(mux *http.ServeMux) {
 			return
 		}
 		limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-		tag := gridTag(r, p, gridTagBucket)
+		tag := d.gridTag(r, p, gridTagBucket)
 		if gridNotModified(w, r, tag) {
 			return
 		}
@@ -40,7 +40,7 @@ func (d Dependencies) audioRoutes(mux *http.ServeMux) {
 			return
 		}
 		limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-		tag := gridTag(r, p, gridTagBucket)
+		tag := d.gridTag(r, p, gridTagBucket)
 		if gridNotModified(w, r, tag) {
 			return
 		}

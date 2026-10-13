@@ -15,6 +15,7 @@ import (
 	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/identity"
+	"portico.local/server/internal/sorttext"
 )
 
 // ErrBrowsePivot is returned when a caller names a pivot the library kind does
@@ -310,7 +311,7 @@ func compactBrowseKindSQL(column string) string {
 }
 
 func (s *Service) browseRevision(request BrowseRequest, pivot browsePivot, sorts []BrowseSortSelection) (string, error) {
-	revision, err := s.ContentRevision(request.Library, request.Profile)
+	revision, err := s.browseContentRevision(request.Library, request.Profile)
 	if err != nil {
 		return "", err
 	}
@@ -355,6 +356,10 @@ func (s *Service) BrowseEntities(viewer Viewer, request BrowseRequest) (BrowseRe
 		return result, err
 	}
 	out, rows, err := s.browseSelect(request)
+	if errors.Is(err, ErrVisibilityBuilding) {
+		out.Entries = []ContentEntry{}
+		return out, nil
+	}
 	if err != nil {
 		return out, err
 	}
@@ -424,9 +429,7 @@ func (s *Service) browseSelect(request BrowseRequest) (BrowseResult, []browseRow
 		if request.Seek != nil {
 			return out, nil, browseIssue("seek", "seek is unavailable for filtered queries")
 		}
-		if request.Range != nil && request.Range.AnchorID != "" {
-			return out, nil, browseIssue("range.anchorId", "anchors are unavailable for filtered queries")
-		}
+
 	}
 
 	where, args := browseScopeSQL(request.Library, pivot)
@@ -451,9 +454,6 @@ func (s *Service) browseSelect(request BrowseRequest) (BrowseResult, []browseRow
 	}
 	out.PageInfo.Revision = revision
 	stale := request.Range != nil && request.Range.Revision != "" && request.Range.Revision != revision
-	if stale && request.Range.AnchorID == "" {
-		return out, nil, ErrStaleContinuation
-	}
 
 	// The count, the letter index and the anchor rank used to be three passes over
 	// the whole pivot. When the client has posted no expression of its own — which
@@ -553,7 +553,7 @@ func (s *Service) browseSelect(request BrowseRequest) (BrowseResult, []browseRow
 	}
 	if request.Seek != nil {
 		start = total
-		wanted := strings.ToUpper(request.Seek.Prefix[:1])
+		wanted := sorttext.Letter(request.Seek.Prefix)
 		for _, anchor := range out.PositionIndex {
 			if anchor.Key == wanted {
 				start = anchor.Index
@@ -573,23 +573,22 @@ func (s *Service) browseSelect(request BrowseRequest) (BrowseResult, []browseRow
 	// A surviving anchor re-locates the viewport after a publication rather than
 	// throwing the reader back to the top of the library: the anchor's rank in a
 	// counted order is its block's running total plus a count inside the block.
-	// Shapes without blocks answer ErrStaleContinuation without ranking
-	// anything; a current revision ignores the anchor entirely.
+	// Shapes without blocks retain the requested position; a current revision
+	// ignores the anchor entirely.
 	if request.Range != nil && request.Range.AnchorID != "" && stale {
 		primary, _ := shape.primary()
-		if !shape.positional() || primary.Profile || primary.Ordering < 0 {
-			return out, nil, ErrStaleContinuation
+		if shape.positional() && !primary.Profile && primary.Ordering >= 0 {
+			rank, found, err := s.browseAnchorRank(shape, request.Range.AnchorID)
+			if err != nil {
+				return out, nil, err
+			}
+			if found {
+				start = rank
+			}
 		}
-		rank, found, err := s.browseAnchorRank(shape, request.Range.AnchorID)
-		if err != nil {
-			return out, nil, err
-		}
-		if !found {
-			return out, nil, ErrStaleContinuation
-		}
-		start = rank
 	}
-	if request.Query == nil && start > 0 && start >= total {
+
+	if start > 0 && start >= total {
 		start = max(0, total-1)
 	}
 	out.PageInfo.Start = start
@@ -634,7 +633,7 @@ func seekPrefix(seek *BrowseSeek) string {
 	if seek == nil {
 		return ""
 	}
-	return strings.ToUpper(seek.Prefix)
+	return sorttext.Letter(seek.Prefix)
 }
 
 func (s *Service) browsePositionIndex(where, order string, args, orderArgs []any) ([]BrowsePositionAnchor, error) {
@@ -725,7 +724,7 @@ func (s *Service) browseProjection(profile string, rows []browseRow) ([]ContentE
 		if isItemEntity(row.kind) {
 			item, ok := media[row.id]
 			if !ok {
-				return nil, ErrStaleContinuation
+				continue
 			}
 			entry := contentItem(item)
 			if item.Year > 0 {

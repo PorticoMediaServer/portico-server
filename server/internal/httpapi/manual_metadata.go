@@ -86,7 +86,7 @@ func (d Dependencies) manualMetadataHandler(method string, read func(context.Con
 			failure(w, catalog.ErrManualMetadataInput)
 			return
 		}
-		fence := fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprintf("%s:%d", p.Hash, p.Epoch))))
+		fence := fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprintf("%s:%d", presentationIdentity(p), p.Epoch))))
 		authorize := func(tx *sql.Tx) error { return d.manualMetadataAuthorize(ctx, tx, p) }
 		var out catalog.ManualMetadata
 		if method == "GET" {

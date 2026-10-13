@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 
+	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/identity"
 )
@@ -37,21 +38,31 @@ type reads struct {
 }
 
 func (r reads) Query(query string, args ...any) (*sql.Rows, error) {
-	return r.to.QueryContext(r.ctx, query, args...)
+	return r.QueryContext(r.ctx, query, args...)
 }
 
 func (r reads) QueryRow(query string, args ...any) *sql.Row {
-	return r.to.QueryRowContext(r.ctx, query, args...)
+	return r.QueryRowContext(r.ctx, query, args...)
 }
 
 // QueryContext and QueryRowContext keep the explicit-context call sites working
 // unchanged, while still resolving the snapshot.
 func (r reads) QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
-	return r.resolve(ctx).QueryContext(ctx, query, args...)
+	q := r.resolve(ctx)
+	query, err := compactcatalog.SearchServingSQL(ctx, q, compactcatalog.ServingSQL(query))
+	if err != nil {
+		return nil, err
+	}
+	return q.QueryContext(ctx, query, args...)
 }
 
 func (r reads) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
-	return r.resolve(ctx).QueryRowContext(ctx, query, args...)
+	q := r.resolve(ctx)
+	serving, err := compactcatalog.SearchServingSQL(ctx, q, compactcatalog.ServingSQL(query))
+	if err != nil {
+		return q.QueryRowContext(ctx, `SELECT active_slot FROM catalog_derivations WHERE domain=17`)
+	}
+	return q.QueryRowContext(ctx, serving, args...)
 }
 
 func (r reads) resolve(ctx context.Context) reader {

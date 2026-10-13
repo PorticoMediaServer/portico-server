@@ -30,7 +30,7 @@ func (d Dependencies) searchScope(r *http.Request) (identity.Principal, bool, []
 	if e != nil {
 		return p, false, nil, "", e
 	}
-	fence := fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprintf("%s:%d:%d:%d:%t:%s:%s", p.Hash, p.Epoch, policy, restriction, all, raw, contentFence))))
+	fence := fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprintf("%s:%d:%d:%d:%t:%s:%s", presentationIdentity(p), p.Epoch, policy, restriction, all, raw, contentFence))))
 	return p, all, ids, fence, nil
 }
 

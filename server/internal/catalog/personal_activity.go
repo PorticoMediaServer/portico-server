@@ -110,9 +110,7 @@ func acceptPlaybackProgress(tx *sql.Tx, v identity.Viewer, playbackID, item stri
 	if e != nil {
 		return e
 	}
-	if e = snapshotPersonalByID(tx, profile, entityID, out); e != nil {
-		return e
-	}
+	previous := out
 	previousPosition := out.ProgressSeconds
 	previousLastPlayed := out.LastPlayedAt
 	meaningful := personalCounted || counted || completed && (!out.Watched || kind == int64(compactcatalog.Part) && positionMillis(position) != positionMillis(previousPosition)) || !completed && position >= threshold && (positionMillis(position) != positionMillis(previousPosition) || out.LastPlayedAt == "")
@@ -187,11 +185,22 @@ func acceptPlaybackProgress(tx *sql.Tx, v identity.Viewer, playbackID, item stri
 	if !meaningful || blocked != 0 || (!canonical && !completed) {
 		return nil
 	}
-	out.Revision++
+	// Observations retain current resume/recency without changing the command
+	// revision or adding snapshots. New plays and completion remain semantic.
+	changed := out.Watched != previous.Watched || previous.LastPlayedAt == "" || personalCounted || counted
+	if changed {
+		if e = snapshotPersonalByID(tx, profile, entityID, previous); e != nil {
+			return e
+		}
+		out.Revision++
+	}
 	if e = storePersonalByID(tx, profile, entityID, out); e != nil {
 		return e
 	}
-	return snapshotPersonalByID(tx, profile, entityID, out)
+	if changed {
+		return snapshotPersonalByID(tx, profile, entityID, out)
+	}
+	return nil
 }
 
 type HistoryEntry struct {

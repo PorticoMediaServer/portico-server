@@ -774,6 +774,24 @@ export const routes = [
     "status": 200
   },
   {
+    "id": "get_catalogue_failures",
+    "method": "GET",
+    "path": "/v1/admin/catalogue/failures",
+    "summary": "Read titles set aside by catalogue workers",
+    "access": "admin_scope",
+    "adminScope": "library",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
     "id": "get_client_log",
     "method": "GET",
     "path": "/v1/admin/diagnostics/client-logs/{id}",
@@ -1338,14 +1356,12 @@ export const routes = [
     "bodyLimit": 0,
     "query": [
       "after",
-      "waitSeconds",
-      "topics"
+      "waitSeconds"
     ],
     "errors": [
       "unauthorized",
       "invalid_request",
       "invalid_cursor",
-      "event_stream_exists",
       "stream_unavailable",
       "internal"
     ],

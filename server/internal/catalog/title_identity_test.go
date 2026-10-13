@@ -428,6 +428,9 @@ func TestRemovingALibraryTakesItsTitlesAndKeepsState(t *testing.T) {
 	if n := rows(t, c, `SELECT count(*) FROM retained_title_state WHERE profile_id='p' AND watched=1`); n != 1 {
 		t.Fatalf("watch state was not kept: %d", n)
 	}
+	if n := rows(t, c, `SELECT count(*) FROM libraries WHERE id='m'`) + rows(t, c, `SELECT count(*) FROM catalog_libraries WHERE library_id='m'`); n != 0 {
+		t.Fatalf("removed library rows linger: %d", n)
+	}
 	// The same folder can be a library again, and the film gets its state back.
 	c.Library("again", "Movies again", "movie", "/m")
 	a, _ := identityFile(t, c, "again", "/m/Film 00 (2001).mkv", 1080)

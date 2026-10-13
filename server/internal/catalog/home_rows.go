@@ -478,11 +478,12 @@ func (s *Service) decodeHomeCursor(raw string, expected homeCursor, revision Con
 	if !hmac.Equal(sig, mac.Sum(nil)) || json.Unmarshal(data, &out) != nil {
 		return out, ErrCursor
 	}
-	if out.Row != expected.Row || out.Profile != expected.Profile || out.Viewer != expected.Viewer || out.Direction != expected.Direction || out.Limit != expected.Limit || out.Expires < time.Now().Unix() {
+	if out.Row != expected.Row || out.Profile != expected.Profile || out.Viewer != expected.Viewer || out.Direction != expected.Direction || out.Limit != expected.Limit {
 		return out, ErrCursor
 	}
 	if out.Catalog != revision.Catalog || out.Revision != revision.Viewer || out.Fingerprint != expected.Fingerprint {
-		return out, ErrStaleContinuation
+		out.Catalog = revision.Catalog
+		out.Revision = revision.Viewer
 	}
 	return out, nil
 }
@@ -972,9 +973,7 @@ func (s *Service) HomeSingleRow(r HomeRequest, id string, page HomeRowPage) (Hom
 	if e != nil {
 		return HomeRow{}, e
 	}
-	if page.Revision != "" && page.Revision != fmt.Sprintf("%d:%d", before.Catalog, before.Viewer) {
-		return HomeRow{}, ErrStaleContinuation
-	}
+
 	row, e := s.homeRowFor(r, *found, before, page, true)
 	if e != nil {
 		return row, e

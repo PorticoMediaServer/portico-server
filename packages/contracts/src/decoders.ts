@@ -38,6 +38,7 @@ export function decodeGetAuthCapabilitiesResponse(input: unknown): types.GetAuth
 export function decodeGetBootstrapResponse(input: unknown): types.GetBootstrapResponse { return decode("GetBootstrapResponse", input) as types.GetBootstrapResponse; }
 export function decodeGetCapabilitiesResponse(input: unknown): types.GetCapabilitiesResponse { return decode("GetCapabilitiesResponse", input) as types.GetCapabilitiesResponse; }
 export function decodeGetCapabilityReportResponse(input: unknown): types.GetCapabilityReportResponse { return decode("GetCapabilityReportResponse", input) as types.GetCapabilityReportResponse; }
+export function decodeGetCatalogueFailuresResponse(input: unknown): types.GetCatalogueFailuresResponse { return decode("GetCatalogueFailuresResponse", input) as types.GetCatalogueFailuresResponse; }
 export function decodeGetClientLogResponse(input: unknown): types.GetClientLogResponse { return decode("GetClientLogResponse", input) as types.GetClientLogResponse; }
 export function decodeGetClientLogsResponse(input: unknown): types.GetClientLogsResponse { return decode("GetClientLogsResponse", input) as types.GetClientLogsResponse; }
 export function decodeGetConnectionResponse(input: unknown): types.GetConnectionResponse { return decode("GetConnectionResponse", input) as types.GetConnectionResponse; }

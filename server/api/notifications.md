@@ -6,22 +6,16 @@ A guide for third-party client authors. The normative contract is
 Everything needs `Authorization: Bearer <access token>`. Routes under
 `/v1/admin/` need an owner session.
 
-## The one number
+## Revisions and stream positions
 
-Every inbox carries a monotonic `revision`. The same number does three jobs:
+Every inbox carries a monotonic `revision`. Use it as `expectedRevision` when
+changing the inbox. It advances for new notices, read receipts, archives and
+retention prunes. A batch that changes nothing does not advance it.
 
-| Job | Where it goes |
-| --- | --- |
-| Fence a write | `expectedRevision` in the batch body |
-| Resume a stream | `Last-Event-ID` header on `/v1/notifications/events` |
-| Park a long poll | `?revision=` on `/v1/notifications/wait` |
-
-Hold one number and you hold your whole position. It only ever increases, and it
-increases when anything about the inbox changes — a new notice, a read receipt on
-another device, an archive, a retention prune.
-
-A batch that changes nothing does **not** advance it, so a no-op on one device
-does not invalidate another device's fence.
+The shared `/v1/events` feed has a separate decimal event position. Resume SSE
+with `Last-Event-ID`, or use `?after=<event-id>&waitSeconds=25` for the long-poll
+fallback. A `notification.changed` hint carries the inbox revision; quietly
+reread the inbox and counts. Never use the inbox revision as the feed position.
 
 ## Reading the inbox
 
@@ -172,67 +166,17 @@ POST /v1/notifications/inbox/actions
 
 ## Staying live
 
-### Server-sent events (preferred)
+Share the device's authenticated `GET /v1/events` server-sent stream. A
+`notification.changed` event names the inbox and its revision; reread the inbox
+or unread-count document quietly. Event ids belong to the unified feed, and are
+independent of inbox revisions. Resume with `Last-Event-ID`.
 
-```
-GET /v1/notifications/events?audience=all
-```
-
-Every frame carries `id: <revision>`.
-
-```
-id: 41
-event: hello
-data: {"revision":41,"counts":{…},"audience":"all","heartbeatSeconds":20,"serverId":"…"}
-
-id: 43
-event: change
-data: {"revision":43,"since":41,"resync":false,"items":[{…}],"counts":{…}}
-
-id: 43
-event: heartbeat
-data: {"revision":43,"at":1789564860000}
-```
-
-* `hello` arrives immediately on connect.
-* `change` carries the notifications whose revision is above yours, oldest first.
-* `heartbeat` every 20 seconds, so you can tell a live connection from a stalled
-  proxy.
-* `closed` means the server is ending the stream. `reason` is `unauthorized`
-  (stop; re-authenticate), `unavailable` (back off and retry) or
-  `stream-lifetime` (reconnect immediately; a stream is capped at 30 minutes and
-  you lose nothing).
-* `resync: true` on a `change` means more moved than one frame carries: re-read
-  `GET /v1/notifications/inbox` instead of trusting a partial list.
-
-Resume by sending `Last-Event-ID: <revision>` — browsers do this for you. `?revision=`
-is the equivalent hint on a first connection. Resume is exact: you get the records
-that changed, not a "something happened" ping.
-
-Authorization is re-derived every two seconds, so a revoked session stops
-receiving within one tick.
-
-### Long poll (when you cannot hold a stream)
-
-```
-GET /v1/notifications/wait?revision=41&waitSeconds=25
-```
-
-Returns the same `NotificationDelta` payload as a `change` frame. If the inbox
-already moved, it answers immediately. Otherwise it parks until it moves or the
-wait elapses, then returns the current revision with `items: []`.
-
-Omit `revision` to read the current one without parking — that is how you get
-your first position.
-
-### Limits
-
-Four concurrent parked connections per session, 64 per server, counted across
-**both** the stream and the long poll. Exceeding either is 429 with `Retry-After`.
-Do not open a stream per tab; open one and share it.
-
-Do not poll `/v1/notifications/inbox` on a timer. Use the stream, or the long
-poll, or `unread-count` on a slow timer if you must.
+A platform without streaming uses `GET /v1/events?after=<event-id>&waitSeconds=25`.
+Its response contains `events`, `nextAfter` and `more`. `stream.resync` means
+reread the visible documents. Heartbeats are comments every 25 seconds and do
+no database work. Streams end at token expiry or after 30 minutes; revocations
+wake them for a live authorization check. One stream per installation replaces
+an older connection on reconnect.
 
 ## Owner broadcast
 

@@ -10,9 +10,9 @@ const collectionHeadFence = `e.retired=0`
 
 const playlistHeadFence = `p.deleted=0`
 
-// A restricted collection count is readable only after both the policy
-// generation and every derived contribution that can change it are published.
-// Each probe is indexed; no collection membership is counted on request.
+// Restricted counts serve the last published policy generation while its
+// contributions catch up. Each probe is indexed; request paths do not count
+// whole collection memberships.
 func (s *Service) collectionClassReady(library string, r identity.ContentRestrictions) (int64, int64, error) {
 	key, generation, ready, err := s.publishedVisibilityClass(library, r)
 	if err != nil {
@@ -27,13 +27,6 @@ func (s *Service) collectionClassReady(library string, r identity.ContentRestric
 		return 0, 0, err
 	}
 	_, _ = built, current // a class one revision behind still serves; rows are rechecked
-	var pending bool
-	err = s.read().QueryRow(`SELECT (SELECT backfill_done=0 FROM catalog_collection_visible_state WHERE id=1)`).Scan(&pending)
-	if err != nil {
-		return 0, 0, err
-	}
-	if pending {
-		return 0, 0, ErrVisibilityBuilding
-	}
+
 	return class, generation, nil
 }

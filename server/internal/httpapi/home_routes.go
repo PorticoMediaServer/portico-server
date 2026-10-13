@@ -353,7 +353,7 @@ func (d Dependencies) serveHomeRow(w http.ResponseWriter, r *http.Request) {
 	// profiles' privacy on every read, so they carry no validator.
 	tag := ""
 	if !request.CommunityActivity {
-		tag = gridTag(r, p, time.Minute, request.ViewerFence)
+		tag = d.gridTag(r, p, time.Minute, request.ViewerFence)
 		if gridNotModified(w, r, tag) {
 			return
 		}

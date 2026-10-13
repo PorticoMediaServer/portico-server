@@ -45,7 +45,7 @@ func (d Dependencies) detailFenceFor(r *http.Request, p identity.Principal) (str
 	if e != nil {
 		return "", "", e
 	}
-	fence := fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprintf("%s:%d:%d:%d:%s", p.Hash, p.Epoch, policy, restriction, contentFence))))
+	fence := fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprintf("%s:%d:%d:%d:%s", presentationIdentity(p), p.Epoch, policy, restriction, contentFence))))
 	return library, fence, nil
 }
 
