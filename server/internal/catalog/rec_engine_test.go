@@ -344,6 +344,11 @@ func TestDiscoverCarriesPicksForYou(t *testing.T) {
 	for i := 0; i < 40; i++ {
 		f := w.c.Movie(films, fmt.Sprintf("/m/x%02d.mkv", i), fmt.Sprintf("Nebula %02d", i), 1980+i)
 		w.c.Genres(f.ID, "tmdb", "Science Fiction")
+		// Feature length, so these are the genre's own and never short picks.
+		// Rows of equal strength take turns by the day, and a title shows in
+		// one row only: without titles of its own the genre row would be on
+		// Discover some days and not others, and so would this test.
+		w.c.File(f.ID, fmt.Sprintf("/m/x%02d.long.mkv", i), 130*60)
 	}
 	w.c.Drain()
 	for _, f := range w.scifi[:3] {

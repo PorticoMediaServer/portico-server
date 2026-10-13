@@ -441,7 +441,7 @@ func TestShowWorkspaceRejectsCrossedParentsAndCursorFences(t *testing.T) {
 		return compactcatalog.UnlinkAssetTx(ctx, tx, names["ep-185"].ID, names["ep-185"].Asset)
 	})
 	c.Drain()
-	if _, e = s.ShowWorkspace(r); e != nil {
+	if _, e = s.ShowWorkspace(r); !errors.Is(e, ErrStaleContinuation) {
 		t.Fatal("removed target not fenced", e)
 	}
 }

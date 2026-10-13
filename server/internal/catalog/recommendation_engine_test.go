@@ -320,8 +320,9 @@ func TestRecommendationRestrictionSameAvailableChildAndCommunity(t *testing.T) {
 	f.c.Write(func(ctx context.Context, tx *sql.Tx) error {
 		return compactcatalog.SetAssetAvailableTx(ctx, tx, f.items["e201"].Asset, true)
 	})
-	engineExec(t, f, `INSERT INTO accounts VALUES('a','a',x'00','p',1),('b','b',x'00','q',1);UPDATE direct_memberships SET allowed_libraries='["tv"]' WHERE account_id='b'`)
-	for index, key := range []string{persistence.PersonalOwnerKey("local", "a", "p"), persistence.PersonalOwnerKey("local", "b", "q")} {
+	// Popular on this server needs three viewers who share their activity.
+	engineExec(t, f, `INSERT INTO accounts VALUES('a','a',x'00','p',1),('b','b',x'00','q',1),('c','c',x'00','r',1);UPDATE direct_memberships SET allowed_libraries='["tv"]' WHERE account_id IN('b','c')`)
+	for index, key := range []string{persistence.PersonalOwnerKey("local", "a", "p"), persistence.PersonalOwnerKey("local", "b", "q"), persistence.PersonalOwnerKey("local", "c", "r")} {
 		engineExec(t, f, `INSERT INTO personal_history(id,profile_id,item_id,started_at,updated_at,sequence,position,unit,completed) VALUES(?,?,?,?,?,1,300,0,1)`, fmt.Sprint(index), key, f.items["e101"].ID, r.Now.Format(time.RFC3339), r.Now.Format(time.RFC3339))
 	}
 	f.c.Drain()
@@ -491,7 +492,10 @@ func TestRecommendationCommunityPrivacyAndCurrentAccess(t *testing.T) {
 	check(0)
 }
 
-func TestRecommendationCursorRejectsDailyRotationChange(t *testing.T) {
+// A row that is open keeps paging when the daily rotation turns over: the
+// continuation carries on from its place in the list as it now is. A viewer
+// sees a conflict only when the thing they acted on changed.
+func TestRecommendationCursorContinuesAcrossDailyRotation(t *testing.T) {
 	f := recommendationFixtureDB(t)
 	s := New(f.db)
 	r := engineRequest("movies")
@@ -500,9 +504,14 @@ func TestRecommendationCursorRejectsDailyRotationChange(t *testing.T) {
 		t.Fatal(first, err)
 	}
 	r.Now = r.Now.Add(24 * time.Hour)
-	_, err = s.HomeSingleRow(r, "recommended", HomeRowPage{Limit: 1, Cursor: first.NextCursor})
-	if err != ErrStaleContinuation {
+	next, err := s.HomeSingleRow(r, "recommended", HomeRowPage{Limit: 1, Cursor: first.NextCursor})
+	if err != nil {
 		t.Fatal("cursor could not continue after ranking changes", err)
+	}
+	for _, entry := range next.Entries {
+		if len(first.Entries) > 0 && entry.ID == first.Entries[0].ID {
+			t.Fatal("the continuation repeated the entry it started after", entry.ID)
+		}
 	}
 }
 

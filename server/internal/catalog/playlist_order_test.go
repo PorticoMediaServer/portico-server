@@ -79,7 +79,7 @@ func TestPlaylistOrderRightsSnapshotAndCAS(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	if e = s.CheckPlaylistOrder(id, editor, snapshot.Revision); e != nil {
+	if e = s.CheckPlaylistOrder(id, editor, snapshot.Revision); !errors.Is(e, ErrStaleContinuation) {
 		t.Fatal("snapshot fence ignored", e)
 	}
 	if _, e = s.MutatePlaylist(editor, id, "reorder", "", PlaylistMutation{OperationID: "stale", ExpectedRevision: snapshot.Revision, EntryIDs: snapshot.EntryIDs}, nil); !errors.Is(e, ErrPlaylistConflict) {
