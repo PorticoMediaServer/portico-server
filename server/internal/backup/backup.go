@@ -17,10 +17,12 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"log"
 	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -103,12 +105,17 @@ type RunningJob struct {
 
 // RestoreResult is the last restore's recorded outcome.
 type RestoreResult struct {
-	At      string `json:"at"`
-	Outcome string `json:"outcome"`
-	Reason  string `json:"reason,omitempty"`
+	OperationID   string `json:"operationId,omitempty"`
+	SourceDigest  string `json:"sourceDigest,omitempty"`
+	JobID         string `json:"jobId,omitempty"`
+	SchemaVersion int    `json:"schemaVersion,omitempty"`
+	At            string `json:"at"`
+	Outcome       string `json:"outcome"`
+	Reason        string `json:"reason,omitempty"`
 }
 
 var (
+	ErrRestoreLockUnavailable = errors.New("restore needs a filesystem with server locking")
 	// ErrInsufficientDisk refuses a backup (or a staged restore) when free
 	// space is below the estimate. The API reports insufficient_disk.
 	ErrInsufficientDisk = errors.New("backup needs more free disk space than is available")
@@ -125,6 +132,7 @@ var (
 	ErrIntegrity = errors.New("backup files do not match their manifest")
 	// ErrRestorePending: a restore stopped part-way and must finish (the next
 	// start resumes it) before another can be staged.
+	ErrBackupRunning  = errors.New("another backup is running")
 	ErrRestorePending = errors.New("a restore is still finishing; restart the server to complete it first")
 )
 
@@ -203,11 +211,15 @@ func (j *Job) setTotal(total int64) {
 
 func (j *Job) report(phase string, done, total int64) {
 	j.mu.Lock()
-	defer j.mu.Unlock()
+	changed := j.phase != phase
 	j.phase = phase
 	j.bytesDone = done
 	if total > j.bytesTotal {
 		j.bytesTotal = total
+	}
+	j.mu.Unlock()
+	if changed {
+		log.Printf("debug: [server] Backup %s entered %s", j.id, phase)
 	}
 }
 
@@ -222,6 +234,7 @@ func (j *Job) finish(err error) {
 // The zero value is unusable; construct with New.
 type Service struct {
 	state         string
+	directory     string
 	db            *sql.DB
 	serverID      string
 	serverVersion string
@@ -230,7 +243,17 @@ type Service struct {
 	// onStaged runs after a restore is staged and answered, to restart the
 	// server. It is injected by the composition root; nil skips the restart
 	// (tests).
-	onStaged func()
+	onStaged           func()
+	restoreUnavailable bool
+	restoreOperation   string
+	restoreSource      Source
+	restoreJob         *RestoreJob
+
+	// OnFinished is told how each backup went: its kind, its id when it
+	// succeeded, and the error when it did not. It runs on the backup's own
+	// goroutine and must not block for long.
+	OnFinished func(kind Kind, id string, err error)
+
 	// scrubCopy runs on each finished database copy before it becomes a
 	// backup, to end the sessions and remove the live secrets in it. It is
 	// injected by the composition root; nil leaves the copy as it was copied
@@ -263,8 +286,32 @@ func New(state string, db *sql.DB, serverID, serverVersion string, schemaVersion
 	}
 }
 
+func (s *Service) backupRoot() string {
+	if s.directory != "" {
+		return s.directory
+	}
+	return filepath.Join(s.state, BackupsDir)
+}
+
+// SetDirectory is startup-only; an empty path keeps the single-folder default.
+func (s *Service) SetDirectory(directory string) error {
+	if directory == "" {
+		return nil
+	}
+	if !filepath.IsAbs(directory) || filepath.Clean(directory) != directory {
+		return ErrInvalid
+	}
+	if err := os.MkdirAll(directory, 0700); err != nil {
+		return err
+	}
+	s.directory = directory
+	return cleanupPartialsDirectory(directory)
+}
+
 // SetRestartFunc injects the restart that follows a staged restore.
 func (s *Service) SetRestartFunc(fn func()) { s.onStaged = fn }
+
+func (s *Service) SetRestoreAvailable(available bool) { s.restoreUnavailable = !available }
 
 // SetCopyScrubber injects what is done to each finished database copy before
 // it becomes a backup. A backup whose copy could not be scrubbed is not kept.
@@ -304,6 +351,10 @@ func (s *Service) Start(ctx context.Context, kind Kind, operationID string) (str
 		}
 	}
 	if s.running != nil {
+		if kind == KindScheduled && s.running.kind != KindScheduled {
+			s.mu.Unlock()
+			return "", ErrBackupRunning
+		}
 		id := s.running.id
 		s.operations[operationID] = id
 		s.mu.Unlock()
@@ -349,7 +400,7 @@ func (s *Service) databasePath() string { return filepath.Join(s.state, "server.
 
 // backupsDir creates the backups folder if needed and returns it.
 func (s *Service) backupsDir() (string, error) {
-	dir := filepath.Join(s.state, BackupsDir)
+	dir := s.backupRoot()
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return "", err
 	}
@@ -361,7 +412,16 @@ func (s *Service) Create(ctx context.Context, kind Kind) (string, error) {
 	return s.create(ctx, nil, kind)
 }
 
+// create makes one backup and tells OnFinished how it went.
 func (s *Service) create(ctx context.Context, job *Job, kind Kind) (string, error) {
+	id, err := s.createBackup(ctx, job, kind)
+	if s.OnFinished != nil {
+		s.OnFinished(kind, id, err)
+	}
+	return id, err
+}
+
+func (s *Service) createBackup(ctx context.Context, job *Job, kind Kind) (string, error) {
 	if s.db == nil || s.state == "" {
 		return "", ErrInvalid
 	}
@@ -380,7 +440,7 @@ func (s *Service) create(ctx context.Context, job *Job, kind Kind) (string, erro
 		job.setTotal(estimate)
 		job.report("snapshot", 0, estimate)
 	}
-	if err = checkFreeSpace(s.state, estimate); err != nil {
+	if err = checkFreeSpace(dir, estimate); err != nil {
 		return "", err
 	}
 	stamp := s.now().UTC().Format(timestampLayout)
@@ -436,6 +496,9 @@ func (s *Service) create(ctx context.Context, job *Job, kind Kind) (string, erro
 		_ = os.RemoveAll(partial)
 		return "", err
 	}
+	if err = syncDirectory(dir); err != nil {
+		return "", err
+	}
 	return id, nil
 }
 
@@ -448,7 +511,7 @@ func (s *Service) CreateKind(ctx context.Context, kind Kind) (string, error) {
 // List returns every complete backup, newest first. Dot-names (partial or
 // transient folders) are ignored.
 func (s *Service) List() ([]Info, error) {
-	dir := filepath.Join(s.state, BackupsDir)
+	dir := s.backupRoot()
 	names, err := os.ReadDir(dir)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -485,7 +548,7 @@ func (s *Service) Delete(id string) error {
 	if err := checkID(id); err != nil {
 		return err
 	}
-	path := filepath.Join(s.state, BackupsDir, id)
+	path := filepath.Join(s.backupRoot(), id)
 	info, err := os.Lstat(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -518,6 +581,9 @@ func (s *Service) Prune(keep int) error {
 					return err
 				}
 			}
+			continue
+		}
+		if info.Kind != KindScheduled {
 			continue
 		}
 		kept++
@@ -556,7 +622,10 @@ func ReadRestoreResult(state string) (*RestoreResult, error) {
 // CleanupPartials deletes stale .partial-* folders. It runs at startup,
 // before any staged restore is applied.
 func CleanupPartials(state string) error {
-	dir := filepath.Join(state, BackupsDir)
+	return cleanupPartialsDirectory(filepath.Join(state, BackupsDir))
+}
+
+func cleanupPartialsDirectory(dir string) error {
 	names, err := os.ReadDir(dir)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -566,7 +635,7 @@ func CleanupPartials(state string) error {
 	}
 	for _, name := range names {
 		id := name.Name()
-		if len(id) == 0 || id[0] != '.' {
+		if !strings.HasPrefix(id, ".partial-") || checkID(strings.TrimPrefix(id, ".partial-")) != nil {
 			continue
 		}
 		if err = os.RemoveAll(filepath.Join(dir, id)); err != nil {

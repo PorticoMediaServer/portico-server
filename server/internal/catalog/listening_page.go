@@ -35,10 +35,10 @@ func (s *Service) orderedListeningPage(t ListeningTarget, where string, args []a
 	// scan all preceding songs in a large library.
 	anchorFrom := ` FROM catalog_entities i LEFT JOIN catalog_songs s ON s.entity_id=i.id LEFT JOIN catalog_entities a ON a.id=s.album_id LEFT JOIN catalog_browse_rows ar ON ar.entity_id=a.id LEFT JOIN catalog_book_files f ON f.entity_id=i.id WHERE i.library_id=(SELECT id FROM catalog_libraries WHERE library_id=?) AND ` + where
 	anchorParams := append([]any{t.LibraryID}, args...)
-	const key = `COALESCE(ar.sort_key,''),COALESCE(a.id,0),COALESCE(s.disc_number,f.disc_number,0),COALESCE(s.track_number,f.part_number,0),i.id`
+	key := `COALESCE(ar.sort_key,''),COALESCE(a.id,0),COALESCE(s.disc_number,f.disc_number,1),COALESCE(s.track_number,f.part_number,0),i.id`
 	from, params := anchorFrom, append([]any{}, anchorParams...)
-	pageFields := `COALESCE(ar.sort_key,''),COALESCE(a.id,0),COALESCE(s.disc_number,f.disc_number,0),COALESCE(s.track_number,f.part_number,0)`
-	order := `COALESCE(ar.sort_key,'') COLLATE NOCASE,COALESCE(a.id,0),COALESCE(s.disc_number,f.disc_number,0),COALESCE(s.track_number,f.part_number,0),i.id`
+	pageFields := `COALESCE(ar.sort_key,''),COALESCE(a.id,0),COALESCE(s.disc_number,f.disc_number,1),COALESCE(s.track_number,f.part_number,0)`
+	order := `COALESCE(ar.sort_key,'') COLLATE NOCASE,COALESCE(a.id,0),COALESCE(s.disc_number,f.disc_number,1),COALESCE(s.track_number,f.part_number,0),i.id`
 	seek := order
 	seekArgs := func(k listeningOrderKey) []any { return []any{k.Title, k.Album, k.Disc, k.Track, k.ID} }
 	// A row-value seek spanning two tables cannot start an index walk; the
@@ -59,8 +59,8 @@ func (s *Service) orderedListeningPage(t ListeningTarget, where string, args []a
 		params = append([]any{t.LibraryID}, args...)
 		leadBound = ` AND ar.sort_key COLLATE NOCASE>=?`
 		leadArgs = func(k listeningOrderKey) []any { return []any{k.Title} }
-		pageFields = `COALESCE(ar.sort_key,''),ar.entity_id,COALESCE(s.disc_number,0),COALESCE(s.track_number,0)`
-		order = `ar.sort_key COLLATE NOCASE,ar.entity_id,COALESCE(s.disc_number,0),COALESCE(s.track_number,0),s.entity_id`
+		pageFields = `COALESCE(ar.sort_key,''),ar.entity_id,COALESCE(s.disc_number,1),COALESCE(s.track_number,0)`
+		order = `ar.sort_key COLLATE NOCASE,ar.entity_id,COALESCE(s.disc_number,1),COALESCE(s.track_number,0),s.entity_id`
 		seek = order
 	case "album", "disc":
 		album := t.ID
@@ -77,8 +77,8 @@ func (s *Service) orderedListeningPage(t ListeningTarget, where string, args []a
 			LEFT JOIN catalog_browse_rows ar ON ar.entity_id=a.id
 			WHERE s.album_id=(SELECT id FROM catalog_entities WHERE public_id=pid_blob(?) AND kind=6) AND i.library_id=(SELECT id FROM catalog_libraries WHERE library_id=?) AND ` + where
 		params = append([]any{album, t.LibraryID}, args...)
-		pageFields = `COALESCE(ar.sort_key,''),a.id,COALESCE(s.disc_number,0),COALESCE(s.track_number,0)`
-		order = `COALESCE(s.disc_number,0),COALESCE(s.track_number,0),s.entity_id`
+		pageFields = `COALESCE(ar.sort_key,''),a.id,COALESCE(s.disc_number,1),COALESCE(s.track_number,0)`
+		order = `COALESCE(s.disc_number,1),COALESCE(s.track_number,0),s.entity_id`
 		seek = order
 		seekArgs = func(k listeningOrderKey) []any { return []any{k.Disc, k.Track, k.ID} }
 	case "artist":
@@ -93,18 +93,19 @@ func (s *Service) orderedListeningPage(t ListeningTarget, where string, args []a
 			LEFT JOIN catalog_browse_rows ar ON ar.entity_id=a.id
 			WHERE i.library_id=(SELECT id FROM catalog_libraries WHERE library_id=?) AND ` + where
 		params = append([]any{t.ID, t.ID, t.LibraryID}, args...)
-		pageFields = `COALESCE(ar.sort_key,''),a.id,COALESCE(s.disc_number,0),COALESCE(s.track_number,0)`
-		order = `COALESCE(ar.sort_key,'') COLLATE NOCASE,a.id,COALESCE(s.disc_number,0),COALESCE(s.track_number,0),s.entity_id`
+		pageFields = `COALESCE(ar.sort_key,''),a.id,COALESCE(s.disc_number,1),COALESCE(s.track_number,0)`
+		order = `COALESCE(ar.sort_key,'') COLLATE NOCASE,a.id,COALESCE(s.disc_number,1),COALESCE(s.track_number,0),s.entity_id`
 		seek = order
 	case "book":
 		from = ` FROM catalog_book_files f INDEXED BY catalog_book_files_listening_order
 			CROSS JOIN catalog_entities i ON i.id=f.entity_id
 			WHERE f.book_id=(SELECT id FROM catalog_entities WHERE public_id=pid_blob(?) AND kind=8) AND i.library_id=(SELECT id FROM catalog_libraries WHERE library_id=?) AND ` + where
 		params = append([]any{t.ID, t.LibraryID}, args...)
-		pageFields = `'',0,COALESCE(f.disc_number,0),COALESCE(f.part_number,0)`
-		order = `COALESCE(f.disc_number,0),COALESCE(f.part_number,0),f.entity_id`
+		pageFields = `i.sort_key,0,COALESCE(f.disc_number,1),COALESCE(f.part_number,0)`
+		key = `i.sort_key,0,COALESCE(f.disc_number,1),COALESCE(f.part_number,0),i.id`
+		order = `COALESCE(f.disc_number,1),COALESCE(f.part_number,0),i.sort_key,f.entity_id`
 		seek = order
-		seekArgs = func(k listeningOrderKey) []any { return []any{k.Disc, k.Track, k.ID} }
+		seekArgs = func(k listeningOrderKey) []any { return []any{k.Disc, k.Track, k.Title, k.ID} }
 	}
 	const available = `EXISTS(SELECT 1 FROM catalog_item_availability v WHERE v.entity_id=i.id AND v.available=1 AND v.retired=0)`
 	if anchor != "" {

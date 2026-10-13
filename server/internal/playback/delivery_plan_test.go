@@ -178,31 +178,6 @@ func TestDeliveryPolicyResolutionMatrix(t *testing.T) {
 		}
 	})
 
-	t.Run("locality", func(t *testing.T) {
-		cases := []struct {
-			remote, forwarded string
-			trusted           bool
-			want              string
-		}{
-			{"127.0.0.1:5000", "", false, LocalityLocal},
-			{"192.168.1.20:5000", "", false, LocalityLocal},
-			{"[fe80::1]:5000", "", false, LocalityLocal},
-			{"93.184.216.34:5000", "", false, LocalityRemote},
-			{"not-an-address", "", false, LocalityUnknown},
-			// A proxy hop is not LAN evidence.
-			{"10.0.0.2:5000", "", true, LocalityRemote},
-			{"10.0.0.2:5000", "93.184.216.34", true, LocalityRemote},
-			{"10.0.0.2:5000", "10.1.2.3, 10.0.0.2", true, LocalityLocal},
-			// An untrusted peer's forwarded header is ignored entirely.
-			{"192.168.1.20:5000", "93.184.216.34", false, LocalityLocal},
-		}
-		for _, tt := range cases {
-			if got := RequestLocality(tt.remote, tt.forwarded, tt.trusted); got != tt.want {
-				t.Fatalf("%q/%q trusted=%v resolved %s, want %s", tt.remote, tt.forwarded, tt.trusted, got, tt.want)
-			}
-		}
-	})
-
 	t.Run("preferences and clamps", func(t *testing.T) {
 		values := stubPreferences{
 			"delivery.directPlay":                  "never",

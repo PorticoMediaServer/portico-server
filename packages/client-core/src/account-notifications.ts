@@ -1,7 +1,8 @@
 /**
  * The Portico Account's in-app notification feed and data export (BE-hosted, `be/hosted` da0a9db):
  * no push and no alert email any more. Parsers are strict about the shapes and lenient about
- * unknown kinds (a newer Hosted can add one; it shows as a generic row).
+ * unknown kinds (a newer Hosted can add one; it shows as a generic row). One item of a page that
+ * cannot be read is left out and the rest of the page is kept.
  *
  * - `GET /v1/account/notifications[?cursor=]` → `{items, unread, nextCursor?}` (newest first, 50 a page)
  * - `GET /v1/account/notifications/{id}`
@@ -10,6 +11,7 @@
  * - export: `POST /v1/account/export` → `{id, state, expiresAt}`, then `GET /v1/account/exports/{id}`
  *   until `ready` (or the `account_export_ready` item), then `POST /v1/account/exports/{id}/download`.
  */
+import {keepReadable, noteSkipped} from './tolerant.ts';
 
 export type AccountNotificationKind =
   | 'server_offline' | 'storage_nearly_full' | 'invitation_accepted'
@@ -43,13 +45,14 @@ export function parseAccountNotification(v: unknown): AccountNotification {
   if (!obj(v) || !str(v.id, 128) || !str(v.kind, 64) || !instant(v.occurredAt) || typeof v.read !== 'boolean') bad();
   let server: {id: string; name: string} | undefined;
   if (v.server !== undefined && v.server !== null) {
-    if (!obj(v.server) || !str(v.server.id, 128) || typeof v.server.name !== 'string' || v.server.name.length > 200) bad();
-    server = {id: v.server.id, name: v.server.name};
+    // A server reference or detail that cannot be read is left off; the item still says what happened and when.
+    if (!obj(v.server) || !str(v.server.id, 128) || typeof v.server.name !== 'string' || v.server.name.length > 200) noteSkipped('account-notification', 'server');
+    else server = {id: v.server.id, name: v.server.name};
   }
   const detail: Record<string, string> = {};
   if (v.detail !== undefined && v.detail !== null) {
-    if (!obj(v.detail)) bad();
-    for (const [k, val] of Object.entries(v.detail)) if (typeof val === 'string' && k.length <= 64 && val.length <= 500) detail[k] = val;
+    if (!obj(v.detail)) noteSkipped('account-notification', 'detail');
+    else for (const [k, val] of Object.entries(v.detail)) if (typeof val === 'string' && k.length <= 64 && val.length <= 500) detail[k] = val;
   }
   const kind = (ACCOUNT_NOTIFICATION_KINDS as readonly string[]).includes(v.kind) ? v.kind as AccountNotificationKind : 'other';
   return Object.freeze({id: v.id, kind, rawKind: v.kind, occurredAt: v.occurredAt, read: v.read, ...(server ? {server: Object.freeze(server)} : {}), detail: Object.freeze(detail)});
@@ -58,7 +61,7 @@ export function parseAccountNotification(v: unknown): AccountNotification {
 export function parseAccountNotificationPage(v: unknown): AccountNotificationPage {
   if (!obj(v) || !Array.isArray(v.items) || v.items.length > 200 || typeof v.unread !== 'number' || !Number.isInteger(v.unread) || v.unread < 0) bad();
   if (v.nextCursor !== undefined && v.nextCursor !== '' && !str(v.nextCursor, 2048)) bad();
-  const items = v.items.map(parseAccountNotification);
+  const items = keepReadable('account-notifications', 'items', v.items, parseAccountNotification);
   return Object.freeze({items: Object.freeze(items), unread: v.unread, ...(v.nextCursor ? {nextCursor: v.nextCursor as string} : {})});
 }
 

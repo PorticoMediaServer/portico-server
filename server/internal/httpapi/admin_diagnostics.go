@@ -145,64 +145,6 @@ func (d Dependencies) diagnosticsRoutes(mux *http.ServeMux) {
 		}
 		write(w, 200, d.logSettings(document))
 	})
-	mux.HandleFunc("POST /v1/diagnostics/client-logs", func(w http.ResponseWriter, r *http.Request) {
-		if d.Access.ClientLogs == nil {
-			accessFailure(w, servicelog.ErrClientUpload)
-			return
-		}
-		p, e := d.bearerPrincipal(r)
-		if e != nil {
-			accessFailure(w, e)
-			return
-		}
-		// The body is bounded twice: the reader caps the request, and the store
-		// rejects anything over the published per-upload limit.
-		r.Body = http.MaxBytesReader(w, r.Body, servicelog.MaxClientUploadBytes+4<<10)
-		var body servicelog.ClientUploadRequest
-		if e = json.NewDecoder(r.Body).Decode(&body); e != nil {
-			accessFailure(w, servicelog.ErrClientUpload)
-			return
-		}
-		out, e := d.Access.ClientLogs.Store(r.Context(), p.AccountID, p.ProfileID, p.Hash, body)
-		if e != nil {
-			accessFailure(w, e)
-			return
-		}
-		write(w, 201, out)
-	})
-	mux.HandleFunc("GET /v1/admin/diagnostics/client-logs", func(w http.ResponseWriter, r *http.Request) {
-		if _, e := d.administrator(r); e != nil {
-			accessFailure(w, e)
-			return
-		}
-		limit := 0
-		if raw := r.URL.Query().Get("limit"); raw != "" {
-			n, e := strconv.Atoi(raw)
-			if e != nil {
-				accessFailure(w, access.ErrInvalid)
-				return
-			}
-			limit = n
-		}
-		out, e := d.Access.ClientLogs.List(r.Context(), r.URL.Query().Get("cursor"), limit)
-		if e != nil {
-			accessFailure(w, e)
-			return
-		}
-		write(w, 200, out)
-	})
-	mux.HandleFunc("GET /v1/admin/diagnostics/client-logs/{id}", func(w http.ResponseWriter, r *http.Request) {
-		if _, e := d.administrator(r); e != nil {
-			accessFailure(w, e)
-			return
-		}
-		out, e := d.Access.ClientLogs.Read(r.Context(), r.PathValue("id"))
-		if e != nil {
-			accessFailure(w, e)
-			return
-		}
-		write(w, 200, out)
-	})
 	mux.HandleFunc("GET /v1/admin/diagnostics/bundle", func(w http.ResponseWriter, r *http.Request) {
 		if _, e := d.owner(r); e != nil {
 			accessFailure(w, e)
@@ -298,8 +240,8 @@ func (d Dependencies) applySettings(r *http.Request, p identity.Principal, expec
 	values := current.Effective
 	overlay(&values)
 	document, err := d.Console.ApplySettings(r.Context(), p, d.consoleAuthority(p, true), operations.SettingsChange{ExpectedRevision: expected, IdempotencyKey: operation, Values: values})
-	if err == nil && d.securePolicy != nil {
-		d.securePolicy.set(document)
+	if err == nil && d.connectionPolicy != nil {
+		d.connectionPolicy.set(document)
 	}
 	return document, err
 }

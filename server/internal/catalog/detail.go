@@ -69,6 +69,9 @@ func (s *Service) detailOnce(viewer Viewer, server, item string, owner bool) (De
 	if out.Files, e = s.titleFiles(item, owner); e != nil {
 		return out, e
 	}
+	if out.MissingSince, e = s.MissingSince(s.Context(), item); e != nil {
+		return out, e
+	}
 	var known int
 	if e = s.read().QueryRow(`SELECT count(*) FROM metadata_details WHERE item_id=(SELECT id FROM catalog_entities WHERE public_id=pid_blob(?))`, item).Scan(&known); e != nil {
 		return out, e

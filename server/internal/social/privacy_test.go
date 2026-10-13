@@ -10,7 +10,7 @@ import (
 	"testing"
 )
 
-func TestWatchTogetherPrivacyHidesPresenceAndActivityImmediately(t *testing.T) {
+func TestJoinedParticipantsRemainVisibleInsideTheirRoom(t *testing.T) {
 	db, err := persistence.Open(filepath.Join(t.TempDir(), "state.sqlite"))
 	if err != nil {
 		t.Fatal(err)
@@ -48,23 +48,24 @@ func TestWatchTogetherPrivacyHidesPresenceAndActivityImmediately(t *testing.T) {
 	}
 	members, summary, err := s.members(ctx, tx, g)
 	tx.Rollback()
-	if err != nil || len(members) != 0 || summary.MemberCount != 0 {
+	if err != nil || len(members) != 1 || summary.MemberCount != 1 {
 		t.Fatal(members, summary, err)
 	}
-	publish()
-	events, _, err := s.EventsSince(ctx, group, 0)
-	if err != nil || len(events) != 1 {
+	if !members[0].Private||members[0].DisplayName!="Viewer"{t.Fatal("private member was not anonymized",members)}
+ publish()
+	events, _, err := s.EventsSince(ctx, p, group, 0)
+	if err != nil || len(events) != 2 {
 		t.Fatal(events, err)
 	}
-	if strings.Contains(string(events[0].Payload), "500") || strings.Contains(string(events[0].Payload), "mem_seeded") {
-		t.Fatal("historical activity disclosed after opt-out", string(events[0].Payload))
+	if strings.Contains(string(events[0].Payload), "500") || !strings.Contains(string(events[0].Payload), "mem_seeded") {
+		t.Fatal("privacy did not hide personal activity while preserving room occupancy", string(events[0].Payload))
 	}
 	if _, err = db.Exec(`UPDATE console_documents SET body='{"privacy.includeInWatchTogether":true}'`); err != nil {
 		t.Fatal(err)
 	}
 	publish()
-	events, _, err = s.EventsSince(ctx, group, 0)
-	if err != nil || len(events) != 2 {
+	events, _, err = s.EventsSince(ctx, p, group, 0)
+	if err != nil || len(events) != 3 {
 		t.Fatal(events, err)
 	}
 }

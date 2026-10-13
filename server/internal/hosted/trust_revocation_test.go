@@ -177,3 +177,86 @@ func TestLearningASigningKeyWasRevokedEndsTheSessionsItAdmitted(t *testing.T) {
 		t.Fatal("the revoked key's assertion was accepted afterwards")
 	}
 }
+
+// A server nobody signs in to with a Portico Account sees no signed document,
+// so it learns that a key was revoked from the certificate Hosted sends with a
+// check-in. Only a certificate the root really signed, for documents and in
+// date, teaches it anything; none of them can make it forget.
+func TestTheCheckInCertificateTeachesRevocationsAndNothingElseDoes(t *testing.T) {
+	f := newClaimFixture(t)
+	ctx := t.Context()
+	addLinkedMember(t, f, "local-m", "acc_member")
+	who, err := verify(f, freshClaims(f, "acc_member"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	admitted, err := f.id.PorticoSignIn(ctx, who)
+	if err != nil || admitted.Session == nil {
+		t.Fatal(err)
+	}
+	public, _, _ := ed25519.GenerateKey(rand.Reader)
+	_, stranger, _ := ed25519.GenerateKey(rand.Reader)
+	now := time.Now()
+	certify := func(root ed25519.PrivateKey, purpose string, before, after time.Time, revision uint64, revoked []string) *trust.Certificate {
+		t.Helper()
+		c, err := trust.Certify(root, public, "next", purpose, before, after, revision, revoked)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return c
+	}
+	alive := func(why string) {
+		t.Helper()
+		if _, err := f.id.Authenticate(admitted.Session.AccessToken); err != nil {
+			t.Fatalf("%s ended the session: %v", why, err)
+		}
+		var known int
+		if err := f.db.QueryRow(`SELECT count(*) FROM hosted_signing_revocations`).Scan(&known); err != nil || known != 0 {
+			t.Fatalf("%s taught this server %d revocations: %v", why, known, err)
+		}
+	}
+	// Nothing sent (an older Hosted): nothing learned, and no failure.
+	if err = f.service.learnSigningCertificate(ctx, nil); err != nil {
+		t.Fatal(err)
+	}
+	alive("a check-in with no certificate")
+	tampered := certify(f.hostedKey, "documents", now.Add(-time.Minute), now.Add(time.Hour), 5, nil)
+	tampered.Revoked = []string{"pin1"}
+	for why, c := range map[string]*trust.Certificate{
+		"a certificate another root signed":     certify(stranger, "documents", now.Add(-time.Minute), now.Add(time.Hour), 5, []string{"pin1"}),
+		"a certificate for another purpose":     certify(f.hostedKey, "wake", now.Add(-time.Minute), now.Add(time.Hour), 5, []string{"pin1"}),
+		"a certificate that has expired":        certify(f.hostedKey, "documents", now.Add(-2*time.Hour), now.Add(-time.Hour), 5, []string{"pin1"}),
+		"a certificate that is not yet valid":   certify(f.hostedKey, "documents", now.Add(time.Hour), now.Add(2*time.Hour), 5, []string{"pin1"}),
+		"a certificate changed after signing":   tampered,
+		"a certificate that revokes nothing":    certify(f.hostedKey, "documents", now.Add(-time.Minute), now.Add(time.Hour), 2, nil),
+		"a certificate no newer than the known": certify(f.hostedKey, "documents", now.Add(-time.Minute), now.Add(time.Hour), 1, []string{"pin1"}),
+	} {
+		if err = f.service.learnSigningCertificate(ctx, c); err != nil {
+			t.Fatalf("%s: %v", why, err)
+		}
+		alive(why)
+	}
+	// The real one: the key that admitted the session is revoked.
+	if err = f.service.learnSigningCertificate(ctx, certify(f.hostedKey, "documents", now.Add(-time.Minute), now.Add(time.Hour), 3, []string{"pin1"})); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = f.id.Authenticate(admitted.Session.AccessToken); !errors.Is(err, identity.ErrUnauthorized) {
+		t.Fatalf("the session the revoked key admitted is still alive: %v", err)
+	}
+	var reason string
+	if err = f.db.QueryRow(`SELECT revoked_reason FROM authorization_session_families WHERE id=?`, admitted.Session.SessionFamilyID).Scan(&reason); err != nil || reason != string(identity.RevokedSigningKeyRevoked) {
+		t.Fatalf("ended for %q: %v", reason, err)
+	}
+	if _, err = verify(f, freshClaims(f, "acc_member")); err == nil {
+		t.Fatal("the revoked key's assertion was accepted afterwards")
+	}
+	// An older certificate that leaves the key out does not bring it back.
+	if err = f.service.learnSigningCertificate(ctx, certify(f.hostedKey, "documents", now.Add(-time.Minute), now.Add(time.Hour), 2, nil)); err != nil {
+		t.Fatal(err)
+	}
+	var known int
+	var revision uint64
+	if err = f.db.QueryRow(`SELECT (SELECT count(*) FROM hosted_signing_revocations WHERE key_id='pin1'),(SELECT revision FROM hosted_trust_state WHERE singleton=1)`).Scan(&known, &revision); err != nil || known != 1 || revision != 3 {
+		t.Fatalf("after an older certificate: pin1 known=%d revision=%d %v", known, revision, err)
+	}
+}

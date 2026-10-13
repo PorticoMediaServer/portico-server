@@ -44,9 +44,22 @@ type Props<T> = {
   /** Called with the first item index at the top of the viewport. */
   onFirstVisible?: (index: number) => void;
   label?: string;
+  /**
+   * `list` (the default): the grid is a list for assistive technology and each cell says where it
+   * is in the whole collection ("12 of 4,310"), not just among the few cells drawn. `none`: the
+   * caller's rows carry their own semantics (a table's rows, which number themselves).
+   */
+  semantics?: 'list' | 'none';
 };
 
-function WindowedGridInner<T>({collection, renderItem, renderPlaceholder, estimateRowHeight, columnMin, overscanRows = 2, stickyOffset = 0, className, onFirstVisible, label}: Props<T>, ref: React.Ref<WindowedGridHandle>) {
+/** Which item a focused element inside the grid belongs to, or -1. */
+function focusedItem(target: EventTarget | null): number {
+  const cell = target instanceof Element ? target.closest('[data-windowed-index]') : null;
+  const index = cell ? Number(cell.getAttribute('data-windowed-index')) : -1;
+  return Number.isInteger(index) ? index : -1;
+}
+
+function WindowedGridInner<T>({collection, renderItem, renderPlaceholder, estimateRowHeight, columnMin, overscanRows = 2, stickyOffset = 0, className, onFirstVisible, label, semantics = 'list'}: Props<T>, ref: React.Ref<WindowedGridHandle>) {
   const snapshot = useSyncExternalStore(collection.subscribe, collection.getSnapshot);
   const container = useRef<HTMLDivElement>(null);
   const grid = useRef<HTMLDivElement>(null);
@@ -127,6 +140,7 @@ function WindowedGridInner<T>({collection, renderItem, renderPlaceholder, estima
   const measured = useRef<{width: number; pitch: number; columnMin?: string; cardSize: string} | undefined>(undefined);
   // A new card size changes the columns and the row height without changing the grid's width.
   const cardSize = useCardSize();
+  const measureNow = useRef<() => void>(() => {});
   useLayoutEffect(() => {
     const el = grid.current;
     if (!el) return;
@@ -148,11 +162,15 @@ function WindowedGridInner<T>({collection, renderItem, renderPlaceholder, estima
       }
       setLayout(prev => (prev.cols === cols && Math.abs(prev.pitch - pitch) < 0.5 && prev.gap === gap ? prev : {cols, pitch, gap}));
     };
+    measureNow.current = measure;
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(el);
     return () => observer.disconnect();
-  }, [columnMin, estimateRowHeight, first, last, cardSize]);
+  }, [columnMin, estimateRowHeight, cardSize]);
+  // The rows in view changed: measure again with the observer already in place, rather than
+  // tearing it down and building a new one for every row scrolled.
+  useLayoutEffect(() => { measureNow.current(); }, [first, last]);
 
   useImperativeHandle(ref, () => ({
     scrollToIndex(index: number) {
@@ -171,6 +189,17 @@ function WindowedGridInner<T>({collection, renderItem, renderPlaceholder, estima
     },
   }), [layout, stickyOffset, compressed, realHeight, height]);
 
+  // A focused card that scrolls out of the window is removed with its row, and the browser would
+  // drop focus on the page body, far from the list. The list itself takes it instead, so the next
+  // Tab continues from the cards now in view rather than from the top of the page.
+  const focused = useRef(-1);
+  useLayoutEffect(() => {
+    if (focused.current < 0 || (focused.current >= first && focused.current <= last)) return;
+    focused.current = -1;
+    const el = container.current;
+    if (el && (document.activeElement === document.body || document.activeElement === null)) el.focus({preventScroll: true});
+  }, [first, last]);
+
   const pages: {page: number; from: number; to: number}[] = [];
   if (total > 0) {
     for (let page = collection.pageOf(first); page <= collection.pageOf(last); page++) {
@@ -180,21 +209,23 @@ function WindowedGridInner<T>({collection, renderItem, renderPlaceholder, estima
     }
   }
   return (
-    <div ref={container} className={cx(s.window, className)} style={{height}} role={label ? 'region' : undefined} aria-label={label}>
-      <div ref={grid} className={columnMin ? s.grid : s.list} style={{transform: `translateY(${compressed ? rows.offset : rows.first * layout.pitch}px)`, ...(columnMin ? ({'--card-min': columnMin} as React.CSSProperties) : {})}}>
-        {pages.map(p => <PageCells key={`${snapshot.generation}:${p.page}`} collection={collection} page={p.page} from={p.from} to={p.to} renderItem={renderItem} renderPlaceholder={renderPlaceholder} />)}
+    <div ref={container} className={cx(s.window, className)} style={{height}} role={label ? 'region' : undefined} aria-label={label} tabIndex={-1} onFocusCapture={e => { focused.current = focusedItem(e.target); }} onBlurCapture={e => { if (e.relatedTarget) focused.current = focusedItem(e.relatedTarget); }}>
+      <div ref={grid} role={semantics === 'list' ? 'list' : undefined} className={columnMin ? s.grid : s.list} style={{transform: `translateY(${compressed ? rows.offset : rows.first * layout.pitch}px)`, ...(columnMin ? ({'--card-min': columnMin} as React.CSSProperties) : {})}}>
+        {pages.map(p => <PageCells key={`${snapshot.generation}:${p.page}`} collection={collection} page={p.page} from={p.from} to={p.to} renderItem={renderItem} renderPlaceholder={renderPlaceholder} setSize={semantics === 'list' ? (snapshot.total ?? -1) : undefined} />)}
       </div>
     </div>
   );
 }
 
-function PageCellsInner<T>({collection, page, from, to, renderItem, renderPlaceholder}: {collection: WindowedCollection<T>; page: number; from: number; to: number; renderItem: (item: T, index: number) => React.ReactNode; renderPlaceholder: (index: number) => React.ReactNode}) {
+function PageCellsInner<T>({collection, page, from, to, renderItem, renderPlaceholder, setSize}: {collection: WindowedCollection<T>; page: number; from: number; to: number; renderItem: (item: T, index: number) => React.ReactNode; renderPlaceholder: (index: number) => React.ReactNode; /** The whole collection's size when cells are list items (-1 while unknown); undefined when the caller's rows speak for themselves. */ setSize?: number}) {
   // Subscribes to this page only.
   useSyncExternalStore(useCallback((cb: () => void) => collection.subscribePage(page, cb), [collection, page]), () => collection.getPageVersion(page));
   const cells: React.ReactNode[] = [];
   for (let index = from; index <= to; index++) {
     const slot: Slot<T> = collection.slotAt(index);
-    cells.push(<React.Fragment key={slot.key}>{slot.kind === 'item' ? renderItem(slot.item, index) : renderPlaceholder(index)}</React.Fragment>);
+    const cell = slot.kind === 'item' ? renderItem(slot.item, index) : renderPlaceholder(index);
+    // The wrapper has no box of its own (`display: contents`): it only says which item of how many this is, and marks the cell for focus keeping.
+    cells.push(setSize === undefined ? <React.Fragment key={slot.key}>{cell}</React.Fragment> : <div key={slot.key} className={s.item} role="listitem" aria-setsize={setSize} aria-posinset={index + 1} aria-busy={slot.kind === 'item' ? undefined : true} data-windowed-index={index}>{cell}</div>);
   }
   return <>{cells}</>;
 }

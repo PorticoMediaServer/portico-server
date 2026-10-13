@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"portico.local/server/internal/compactcatalog"
 	"time"
 
 	"portico.local/server/internal/dbwork"
@@ -85,12 +86,13 @@ func (c V1Choice) AdminCapped() bool {
 }
 
 // selectAsset picks the version a session plays: the chosen one when it belongs
-// to the item and is available, otherwise the item's first available asset.
+// to the item and is available, otherwise the item's best available version
+// (compactcatalog.BestVersionOrder).
 func (s *Service) selectAsset(ctx context.Context, item string, v1 *V1Choice) *sql.Row {
 	if v1 != nil && v1.AssetID != "" {
 		return dbwork.QueryRow(ctx, s.db, `SELECT a.token FROM catalog_entities e JOIN catalog_asset_links l ON l.entity_id=e.id JOIN catalog_assets a ON a.id=l.asset_id WHERE e.public_id=pid_blob(?) AND a.token=? AND a.available=1`, item, v1.AssetID)
 	}
-	return dbwork.QueryRow(ctx, s.db, `SELECT a.token FROM catalog_entities e JOIN catalog_asset_links l ON l.entity_id=e.id JOIN catalog_assets a ON a.id=l.asset_id WHERE e.public_id=pid_blob(?) AND a.available=1 ORDER BY l.part_index,a.token LIMIT 1`, item)
+	return dbwork.QueryRow(ctx, s.db, `SELECT a.token FROM catalog_entities e JOIN catalog_asset_links l ON l.entity_id=e.id JOIN catalog_assets a ON a.id=l.asset_id WHERE e.public_id=pid_blob(?) AND a.available=1 ORDER BY `+compactcatalog.BestVersionOrder("l", "a")+` LIMIT 1`, item)
 }
 
 // SelectedAsset is the asset a v1 start of item plays (the chosen version, else

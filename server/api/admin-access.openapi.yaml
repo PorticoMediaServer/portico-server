@@ -287,75 +287,6 @@ paths:
         "401": {$ref: "#/components/responses/Unauthorized"}
         "404": {$ref: "#/components/responses/NotFound"}
         "409": {$ref: "#/components/responses/Conflict"}
-  /v1/admin/access/api-keys:
-    get:
-      tags: [access]
-      operationId: listAccessAPIKeys
-      summary: List API keys.
-      description: Owner only. Secrets are never returned; `hint` is the last six characters.
-      parameters:
-        - {name: cursor, in: query, required: false, schema: {type: string}}
-        - {name: limit, in: query, required: false, schema: {type: integer, minimum: 1, maximum: 100}}
-      responses:
-        "200":
-          description: A page of keys.
-          content:
-            application/json:
-              schema: {$ref: "#/components/schemas/APIKeyPage"}
-        "400": {$ref: "#/components/responses/Invalid"}
-        "401": {$ref: "#/components/responses/Unauthorized"}
-    post:
-      tags: [access]
-      operationId: createAccessAPIKey
-      summary: Issue an API key.
-      description: |
-        Owner only. The key is bound to the calling account and never exceeds its
-        tier. `secret` appears only in this response. A key authenticates like a
-        bearer token (`Authorization: Bearer pk_…`) and resolves to the `api-key`
-        authority, which is a distinct principal type from a session.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [operationId, name, scope]
-              properties:
-                operationId: {type: string, minLength: 8, maxLength: 128}
-                name: {type: string, maxLength: 80}
-                scope: {type: string, enum: [read-only, playback, library-management, full]}
-      responses:
-        "201":
-          description: The key, with its secret.
-          content:
-            application/json:
-              schema: {$ref: "#/components/schemas/APIKey"}
-        "400": {$ref: "#/components/responses/Invalid"}
-        "401": {$ref: "#/components/responses/Unauthorized"}
-        "429": {$ref: "#/components/responses/Capacity"}
-  /v1/admin/access/api-keys/{id}/revoke:
-    post:
-      tags: [access]
-      operationId: revokeAccessAPIKey
-      summary: Revoke an API key.
-      description: Owner only. A revoked key stops authenticating immediately.
-      parameters:
-        - {name: id, in: path, required: true, schema: {type: string}}
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: {$ref: "#/components/schemas/RevokeRequest"}
-      responses:
-        "200":
-          description: The key after the change.
-          content:
-            application/json:
-              schema: {$ref: "#/components/schemas/APIKey"}
-        "400": {$ref: "#/components/responses/Invalid"}
-        "401": {$ref: "#/components/responses/Unauthorized"}
-        "404": {$ref: "#/components/responses/NotFound"}
-        "409": {$ref: "#/components/responses/Conflict"}
   /v1/admin/logs:
     get:
       tags: [diagnostics]
@@ -669,69 +600,6 @@ paths:
           content:
             application/json:
               schema: {$ref: "#/components/schemas/Readiness"}
-  /v1/admin/connectivity/policy:
-    get:
-      tags: [connectivity]
-      operationId: getConnectivityPolicy
-      summary: Read the connectivity policy.
-      description: Owner only — this is server security. `revision` is the settings document revision.
-      responses:
-        "200":
-          description: The policy.
-          content:
-            application/json:
-              schema: {$ref: "#/components/schemas/ConnectivityPolicy"}
-        "401": {$ref: "#/components/responses/Unauthorized"}
-    patch:
-      tags: [connectivity]
-      operationId: setConnectivityPolicy
-      summary: Change the connectivity policy.
-      description: |
-        Owner only. Every field is optional; an omitted field is left as it is.
-        `lanNetworks` entries are stored in masked form. `lanDiscoveryEnabled`
-        takes effect immediately, without a restart.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [expectedRevision, operationId]
-              properties:
-                expectedRevision: {type: integer, format: int64}
-                operationId: {type: string, minLength: 8, maxLength: 128}
-                remoteSignInPolicy: {type: string, enum: [allow, owner-only, off]}
-                remoteBitrateLimitKbps: {type: integer, minimum: 0, maximum: 200000}
-                secureConnectionsPolicy: {type: string, enum: [required, preferred, lan-plain-allowed]}
-                lanNetworks: {type: array, items: {type: string}}
-                accessUrls: {type: array, items: {type: string}}
-                lanDiscoveryEnabled: {type: boolean}
-      responses:
-        "200":
-          description: The policy after the change.
-          content:
-            application/json:
-              schema: {$ref: "#/components/schemas/ConnectivityPolicy"}
-        "400": {$ref: "#/components/responses/Invalid"}
-        "401": {$ref: "#/components/responses/Unauthorized"}
-        "409": {$ref: "#/components/responses/Conflict"}
-  /v1/admin/connectivity/status:
-    get:
-      tags: [connectivity]
-      operationId: getConnectivityStatus
-      summary: Report how this server can be reached.
-      description: |
-        Admin tier. Combines the policy with what the host can observe: network
-        interfaces and their addresses, the class of each address, the TLS
-        certificate state, and the LAN discovery advertisement's real state.
-        `warnings` names policy this host cannot satisfy.
-      responses:
-        "200":
-          description: The connectivity report.
-          content:
-            application/json:
-              schema: {$ref: "#/components/schemas/ConnectivityStatus"}
-        "401": {$ref: "#/components/responses/Unauthorized"}
 components:
   securitySchemes:
     bearerAuth:
@@ -1104,27 +972,6 @@ components:
         nextCursor: {type: string}
         approvalRequired: {type: boolean}
         items: {type: array, items: {$ref: "#/components/schemas/Device"}}
-    APIKey:
-      type: object
-      required: [id, name, scope, accountId, hint, createdAt, revoked, revision]
-      properties:
-        id: {type: string}
-        name: {type: string}
-        scope: {type: string, enum: [read-only, playback, library-management, full]}
-        accountId: {type: string}
-        hint: {type: string, description: "The last six characters of the secret."}
-        createdAt: {type: string, format: date-time}
-        lastUsedAt: {type: string, format: date-time}
-        revoked: {type: boolean}
-        revision: {type: integer, format: int64}
-        secret: {type: string, description: "Present only in the response that creates the key."}
-    APIKeyPage:
-      type: object
-      required: [limit, items]
-      properties:
-        limit: {type: integer}
-        nextCursor: {type: string}
-        items: {type: array, items: {$ref: "#/components/schemas/APIKey"}}
     LogRecord:
       type: object
       required: [sequence, at, level, category, message]
@@ -1180,66 +1027,3 @@ components:
         limit: {type: integer}
         nextCursor: {type: string}
         items: {type: array, items: {$ref: "#/components/schemas/ClientUpload"}}
-    ConnectivityPolicy:
-      type: object
-      required: [revision, remoteSignInPolicy, remoteBitrateLimitKbps, secureConnectionsPolicy, lanNetworks, accessUrls, lanDiscoveryEnabled]
-      properties:
-        revision: {type: integer, format: int64}
-        remoteSignInPolicy: {type: string, enum: [allow, owner-only, off]}
-        remoteBitrateLimitKbps: {type: integer, minimum: 0, maximum: 200000}
-        secureConnectionsPolicy: {type: string, enum: [required, preferred, lan-plain-allowed]}
-        lanNetworks: {type: array, items: {type: string}}
-        accessUrls: {type: array, items: {type: string}}
-        lanDiscoveryEnabled: {type: boolean}
-    ConnectivityStatus:
-      type: object
-      required: [observedAt, policy, tls, discovery, addresses, interfaces, warnings]
-      properties:
-        observedAt: {type: string, format: date-time}
-        policy: {$ref: "#/components/schemas/ConnectivityPolicy"}
-        tls:
-          type: object
-          required: [configured, tlsReady, publiclyTrusted, listenerBound, listenPort]
-          properties:
-            configured: {type: boolean}
-            state: {type: string}
-            errorCode: {type: string}
-            dnsName: {type: string}
-            issuer: {type: string}
-            notAfter: {type: string, format: date-time}
-            tlsReady: {type: boolean}
-            publiclyTrusted: {type: boolean}
-            listenerBound: {type: boolean}
-            listenPort: {type: integer}
-            routeUrl: {type: string}
-            reachability: {type: string}
-        discovery:
-          type: object
-          required: [enabled, supported, state]
-          properties:
-            enabled: {type: boolean, description: "What the owner asked for."}
-            supported: {type: boolean, description: "Whether this host can advertise at all."}
-            state: {type: string, enum: [stopped, advertising, announcing, degraded, unavailable]}
-            detail: {type: string}
-            serviceType: {type: string}
-        addresses:
-          type: array
-          items:
-            type: object
-            required: [address, family, class, source]
-            properties:
-              address: {type: string}
-              family: {type: string, enum: [ipv4, ipv6, hostname]}
-              class: {type: string, enum: [public, lan, loopback]}
-              source: {type: string, enum: [interface, accessUrl]}
-        interfaces:
-          type: array
-          items:
-            type: object
-            required: [name, up, loopback, addresses]
-            properties:
-              name: {type: string}
-              up: {type: boolean}
-              loopback: {type: boolean}
-              addresses: {type: array, items: {type: string}}
-        warnings: {type: array, items: {type: string}}

@@ -402,3 +402,10 @@ func returnOrigin(r *http.Request) string {
 	}
 	return "http://" + r.Host
 }
+
+// SetRequestAuthorizer wires the router's single connection policy before serving.
+func (h *ClaimHandler) SetRequestAuthorizer(authorize ClaimRequestAuthorizer) {
+	if authorize != nil {
+		h.authorize = authorize
+	}
+}

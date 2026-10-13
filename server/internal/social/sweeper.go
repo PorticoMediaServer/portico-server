@@ -27,14 +27,13 @@ import (
 // So there is one sweeper for the process, running while any live group exists
 // (state not ended/failed), whether or not a stream is open, and Sweep now
 // decides what is due with a read and writes only for the groups that actually
-// need it. A server where nothing has timed out pays one query every five
-// seconds, no matter how many people are watching, and a server with no live
+// need it. A server where nothing has timed out pays bounded reads every
+// second, no matter how many people are watching, and a server with no live
 // group runs no loop and no query.
 
 // SweepInterval is how often the host timeline advances. It is the resolution of
-// the reconnect grace period, not a polling interval: nothing is discovered by
-// sweeping more often, because the thresholds are tens of seconds.
-var SweepInterval = 5 * time.Second
+// bounded seek/load wait as well as the host-reconnect timeline.
+var SweepInterval = time.Second
 
 type sweeper struct {
 	mu sync.Mutex

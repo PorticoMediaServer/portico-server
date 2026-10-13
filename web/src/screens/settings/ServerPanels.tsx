@@ -14,7 +14,7 @@ import {APIKeysPanel, InvitationsPanel} from '../server/Access';
 import {TranscodeStatusPanel} from '../server/Transcoding';
 import {AddressesRow, CertificateStatusRow, RemoteStatusPanel} from '../server/Network';
 import {AccountConnectionPanel, IdentityRows} from '../server/General';
-import {DeletedTitlesPanel, DiskUsagePanel, UpdatesPanel} from '../server/Maintenance';
+import {DiskUsagePanel, MissingTitlesPanel, UpdatesPanel} from '../server/Maintenance';
 import {RemoteSourcesPanel} from '../server/Storage';
 import {BackupsGroup} from '../server/Backups';
 import {RetentionRows, ScheduledJobsPanel, WindowsPanel} from '../server/MaintenanceWindows';
@@ -55,7 +55,7 @@ export function ServerPanel({id}: {id: SettingsCustomId}) {
     case 'server.retention': return <RetentionRows />;
     case 'server.remoteSources': return <RemoteSourcesPanel />;
     case 'server.backups': return <BackupsGroup />;
-    case 'server.deletedTitles': return <DeletedTitlesPanel />;
+    case 'server.missingTitles': return <MissingTitlesPanel />;
     case 'server.windows': return <WindowsPanel />;
     case 'server.jobs': return <ScheduledJobsPanel />;
     case 'server.detailWindow': return <DetailWindowRow />;

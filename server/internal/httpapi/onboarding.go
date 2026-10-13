@@ -3,104 +3,19 @@ package httpapi
 import (
 	"context"
 	"errors"
-	"net"
 	"net/http"
-	"net/netip"
-	"net/url"
 	"portico.local/server/internal/identity"
+	"portico.local/server/internal/networkpolicy"
 	"strconv"
-	"strings"
 	"time"
 )
 
-// Forwarded addresses are authoritative only behind explicitly configured proxies.
-// A proxy without one unambiguous address cannot establish LAN authority.
-func (d Dependencies) privateSetupPeer(r *http.Request) bool {
-	if len(d.TrustedProxies) == 0 && (r.Header.Get("Forwarded") != "" || r.Header.Get("X-Forwarded-For") != "") {
-		return false
-	}
-	peer, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return false
-	}
-	addr, err := netip.ParseAddr(peer)
-	if err != nil {
-		return false
-	}
-	for _, prefix := range d.TrustedProxies {
-		if prefix.Contains(addr.Unmap()) {
-			values := r.Header.Values("X-Forwarded-For")
-			if len(values) != 1 {
-				return false
-			}
-			forwarded, err := netip.ParseAddr(strings.TrimSpace(values[0]))
-			if err != nil || forwarded.Zone() != "" {
-				return false
-			}
-			addr = forwarded.Unmap()
-			break
-		}
-	}
-	return addr.IsLoopback() || addr.IsPrivate() || addr.IsLinkLocalUnicast()
-}
+// Recovery and sign-in use the same owner-configured home networks as playback.
+func (d Dependencies) privateSetupPeer(r *http.Request) bool { return !d.requestIsRemote(r) }
+func (d Dependencies) signInPeer(r *http.Request) string     { return d.setupPeerSubject(r) }
 
-func (d Dependencies) signInPeer(r *http.Request) string {
-	if d.trustedProxy(r) {
-		values := r.Header.Values("X-Forwarded-For")
-		if len(values) == 1 {
-			if addr, err := netip.ParseAddr(strings.TrimSpace(values[0])); err == nil && addr.Zone() == "" {
-				return addr.String()
-			}
-		}
-	}
-	return r.RemoteAddr
-}
-
-// The unauthenticated token convenience is only for a direct loopback browser.
-// Proxy operators and every other machine must read the local one-time code.
-func (d Dependencies) sameMachineSetup(r *http.Request) bool {
-	if len(d.TrustedProxies) != 0 || r.Header.Get("Forwarded") != "" || r.Header.Get("X-Forwarded-For") != "" {
-		return false
-	}
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	return err == nil && net.ParseIP(host).IsLoopback()
-}
-
-// Networking claim adapters that have no proxy configuration must fail closed.
-func privateSetupPeer(r *http.Request) bool {
-	if r.Header.Get("Forwarded") != "" || r.Header.Get("X-Forwarded-For") != "" {
-		return false
-	}
-	return (Dependencies{}).privateSetupPeer(r)
-}
-
-// Only local browser origins may bootstrap first-run setup. Host validation
-// prevents a public DNS name rebound to a private peer from acquiring the token.
-func localSetupHost(host string) bool {
-	parsed, err := url.Parse("http://" + host)
-	if err != nil || parsed.User != nil {
-		return false
-	}
-	name := strings.ToLower(parsed.Hostname())
-	if name == "localhost" {
-		return true
-	}
-	ip := net.ParseIP(name)
-	return ip != nil && (ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast())
-}
-func sameRequestOrigin(r *http.Request, origin string) bool {
-	scheme := "http"
-	if r.TLS != nil {
-		scheme = "https"
-	}
-	return origin == scheme+"://"+r.Host
-}
-func setupPeerSubject(r *http.Request) string {
-	host, _, e := net.SplitHostPort(r.RemoteAddr)
-	if e != nil {
-		return "unknown"
-	}
-	return host
+func (d Dependencies) setupPeerSubject(r *http.Request) string {
+	return clientAddress(r, d.trustedProxyPrefixes(r.Context()))
 }
 func setupFailure(w http.ResponseWriter, e error) {
 	var protocol *identity.SetupProtocolError
@@ -129,40 +44,6 @@ func fmtSetupInterval(n int) string {
 	return strconv.Itoa(n)
 }
 func (d Dependencies) onboardingRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("POST /v1/setup/browser", func(w http.ResponseWriter, r *http.Request) {
-		origin := r.Header.Get("Origin")
-		parsed, err := url.Parse(origin)
-		allowed := sameRequestOrigin(r, origin)
-		for _, configured := range d.Origins {
-			if origin == configured {
-				allowed = true
-			}
-		}
-		// Any browser may start first-run setup (Justin, 23 Sep: no setup code, even
-		// remotely). The origin check stays: another site can't drive a visitor's
-		// browser through it. The secret only lets this browser resume an
-		// interrupted setup; the first owner created wins.
-		if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || !allowed || !strings.HasPrefix(r.Header.Get("Content-Type"), "application/json") {
-			failure(w, identity.ErrUnauthorized)
-			return
-		}
-		var body struct{}
-		if err := decode(w, r, &body); err != nil {
-			failure(w, err)
-			return
-		}
-		if err := d.Identity.SetupLimit(r.Context(), setupPeerSubject(r), "browser-setup", 10); err != nil {
-			setupFailure(w, err)
-			return
-		}
-		token, err := d.Identity.BrowserSetupToken(r.Context())
-		if err != nil {
-			failure(w, err)
-			return
-		}
-		write(w, 200, map[string]string{"serverId": d.Identity.ID(), "setupToken": token})
-	})
-
 	mux.HandleFunc("POST /v1/setup/resume", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 		var q struct {
@@ -173,7 +54,7 @@ func (d Dependencies) onboardingRoutes(mux *http.ServeMux) {
 			failure(w, e)
 			return
 		}
-		if e := d.Identity.SetupLimit(r.Context(), setupPeerSubject(r), "resume", 20); e != nil {
+		if e := d.Identity.SetupLimit(r.Context(), d.setupPeerSubject(r), "resume", 20); e != nil {
 			setupFailure(w, e)
 			return
 		}
@@ -233,7 +114,7 @@ func (d Dependencies) onboardingRoutes(mux *http.ServeMux) {
 		w.Header().Set("Cache-Control", "no-store")
 		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 		defer cancel()
-		if e := d.Identity.SetupLimit(ctx, setupPeerSubject(r), "quick-create", 10); e != nil {
+		if e := d.Identity.SetupLimit(ctx, d.setupPeerSubject(r), "quick-create", 10); e != nil {
 			setupFailure(w, e)
 			return
 		}
@@ -262,7 +143,7 @@ func (d Dependencies) onboardingRoutes(mux *http.ServeMux) {
 			failure(w, e)
 			return
 		}
-		for _, subject := range []string{"ip:" + setupPeerSubject(r), "account:" + p.AccountID} {
+		for _, subject := range []string{"ip:" + d.setupPeerSubject(r), "account:" + p.AccountID} {
 			if e = d.Identity.SetupLimit(r.Context(), subject, "quick-review", 10); e != nil {
 				setupFailure(w, e)
 				return
@@ -289,7 +170,7 @@ func (d Dependencies) onboardingRoutes(mux *http.ServeMux) {
 			failure(w, e)
 			return
 		}
-		for _, subject := range []string{"ip:" + setupPeerSubject(r), "account:" + p.AccountID} {
+		for _, subject := range []string{"ip:" + d.setupPeerSubject(r), "account:" + p.AccountID} {
 			if e = d.Identity.SetupLimit(r.Context(), subject, "quick-decision", 10); e != nil {
 				setupFailure(w, e)
 				return
@@ -348,12 +229,5 @@ func (d Dependencies) onboardingRoutes(mux *http.ServeMux) {
 // quickApprovalOrigin is the origin the new device reached this server on. The
 // answer goes only to that device, so it cannot redirect anyone else.
 func (d Dependencies) quickApprovalOrigin(r *http.Request) string {
-	host := strings.ToLower(r.Host)
-	if host == "" || len(host) > 255 || strings.ContainsAny(host, "/\\@?#% ") {
-		return ""
-	}
-	if d.secureTransport(r) {
-		return "https://" + host
-	}
-	return "http://" + host
+	return networkpolicy.Origin(r, d.trustedProxyPrefixes(r.Context()))
 }

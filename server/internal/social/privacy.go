@@ -6,37 +6,31 @@ import (
 	"encoding/json"
 )
 
-// The profile-scoped document is the same source used by the typed preferences
-// registry. Reading it in the group snapshot makes privacy changes immediate.
+// Activity privacy anonymizes a participant, rather than hiding room occupancy
+// or removing someone from the readiness barrier.
 func watchTogetherVisible(alias string) string {
 	return `COALESCE((SELECT json_extract(d.body,'$."privacy.includeInWatchTogether"') FROM console_documents d WHERE d.scope='profile:'||json_array(` + alias + `.authority,` + alias + `.account_id,` + alias + `.profile_id)),1)<>0`
 }
-func watchTogetherMember(ctx context.Context, tx *sql.Tx, group, member string) (bool, error) {
-	var visible bool
-	err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM social_group_members m WHERE m.group_id=? AND m.id=? AND `+watchTogetherVisible("m")+`)`, group, member).Scan(&visible)
-	return visible, err
-}
-func privateEventMember(kind string, payload any) string {
-	if kind != EventReadiness {
-		return ""
+func (s *Store) projectActivity(ctx context.Context, tx *sql.Tx, group string, payload json.RawMessage) (json.RawMessage, error) {
+	var body map[string]any
+	if e := json.Unmarshal(payload, &body); e != nil {
+		return nil, e
 	}
-	raw, _ := json.Marshal(payload)
-	var value struct {
-		Member string `json:"memberId"`
+	member, _ := body["memberId"].(string)
+	if member == "" {
+		return payload, nil
 	}
-	_ = json.Unmarshal(raw, &value)
-	return value.Member
-}
-func visibleEvent(ctx context.Context, tx *sql.Tx, group, kind string, payload any) (bool, error) {
-	if kind == EventHost {
-		var host string
-		if err := tx.QueryRowContext(ctx, `SELECT host_member_id FROM social_groups WHERE id=?`, group).Scan(&host); err != nil {
-			return false, err
-		}
-		return watchTogetherMember(ctx, tx, group, host)
+	var public bool
+	var name string
+	if e := tx.QueryRowContext(ctx, `SELECT `+watchTogetherVisible("m")+`,display_name FROM social_group_members m WHERE group_id=? AND id=?`, group, member).Scan(&public, &name); e != nil {
+		return nil, e
 	}
-	if member := privateEventMember(kind, payload); member != "" {
-		return watchTogetherMember(ctx, tx, group, member)
+	body["private"] = !public
+	body["displayName"] = name
+	if !public {
+		body["displayName"] = "Viewer"
+		body["positionUs"] = "0"
+		body["reportedAt"] = nil
 	}
-	return true, nil
+	return json.Marshal(body)
 }

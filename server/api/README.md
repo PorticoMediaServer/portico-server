@@ -8,7 +8,7 @@ This directory is the published contract for everything the Portico media server
 | `playback-v2.openapi.json` | The renderer-independent playback protocol in full, including operations this server build does not yet register. `openapi.yaml` references its schemas by external `$ref` rather than copying them. |
 | `playback-v2-protocol.md` | Normative semantics for that protocol — canonical encoding, receipt dispositions, provenance, lane ordering. |
 | `playback-v2-canonical-fixtures.json`, `playback-v2-source-reference-fixtures.json` | Wire fixtures the protocol tests run against. |
-| `social.openapi.yaml` | Watch Together groups, Portico receiver handoff and Google Cast pairing, including the group SSE stream and its event types. |
+| `portico.openapi.json` | Generated typed contracts, including Watch Together, receiver handoff, Google Cast pairing and group streams. |
 | `social.md` | Normative semantics for that group — the group timeline and correction bands, the host-disconnect timeline, the two-phase handoff state machine, and why DLNA is omitted and AirPlay is client-only. |
 | `playback-admission.md` | Active typed timeline reporting cadence, authenticated device limits, response deadlines and overload recovery. |
 

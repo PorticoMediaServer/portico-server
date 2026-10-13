@@ -390,6 +390,9 @@ func (c *observedConn) QueryContext(ctx context.Context, query string, args []dr
 		observe(ctx, query, time.Since(start), c.inTx)
 		return nil, err
 	}
+	// A write that returns rows (UPDATE … RETURNING) arrives here, not through
+	// ExecContext, and is as much an authority write: ending a session is one.
+	noticeAuthorityWrite(query)
 	c.changes.note(query)
 	return &observedRows{inner: out, ctx: ctx, query: query, start: start, inTx: c.inTx, release: release, reader: lease}, nil
 }
@@ -659,7 +662,7 @@ var authorityTables = []string{
 	"policy", "library_network_policy", "playback_owner_policy",
 	"authorization_session_families", "authorization_family_tokens", "authorization_family_renewals",
 	"dvr_private_libraries", "onboarding_state_v1", "quick_connect_v1",
-	"api_keys", "access_api_keys", "identity_account_factors", "identity_browser_accounts",
+	"api_credentials", "identity_account_factors", "identity_browser_accounts",
 	"hosted_profile_revisions", "hosted_profile_erasure_receipts", "social_group_members",
 }
 

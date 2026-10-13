@@ -120,6 +120,21 @@ func migrateWith(ctx context.Context, db *sql.DB, steps []schemaMigration) error
 			return fmt.Errorf("%w: database has migration %d, binary %d does not; upgrade Portico or restore an earlier backup", ErrSchemaNewer, version, latest)
 		}
 	}
+	pending := false
+	for _, step := range steps {
+		if digest, ok := applied[step.version]; ok {
+			if digest != step.digest {
+				return fmt.Errorf("schema migration %d digest mismatch: applied migrations are immutable", step.version)
+			}
+		} else {
+			pending = true
+		}
+	}
+	if exists != 0 && pending {
+		if err = backupBeforeMigrations(ctx, db); err != nil {
+			return fmt.Errorf("copy database before migration: %w", err)
+		}
+	}
 	for _, step := range steps {
 		if digest, ok := applied[step.version]; ok {
 			if digest != step.digest {

@@ -25,10 +25,16 @@ import (
 //
 // Both are closed the same way, with no step for the owner. Every backup copy
 // has its sessions ended and its live secrets removed as it is written
-// (ScrubBackupCopy), so a backup holds no session at all. And when a restore
+// (ScrubBackupCopy), so a backup holds no sign-in at all. And when a restore
 // has just been applied, everyone is signed out before the server answers a
 // request (SignEveryoneOutAfterRestore), whatever the restored copy held: an
 // older backup, one made by another build, or a copy made by hand.
+//
+// API keys and personal access tokens are the one exception, on purpose: what
+// an owner has connected to the server keeps working across a restore, as it
+// does across a password change. A key that was live when the backup was taken
+// is live again after it is restored, including one revoked in between; the
+// owner sees it in the key list and can revoke it again.
 //
 // People sign in again after a restore. Their accounts, profiles, passwords,
 // second factors, devices and everything they saved are untouched; so is each
@@ -42,7 +48,12 @@ import (
 var sessionScrub = []struct{ table, statement string }{
 	// Every signed-in device, account session and paired screen.
 	{"authorization_session_families", `UPDATE authorization_session_families SET revoked=1,revoked_reason='restored',revoked_at=?1 WHERE revoked=0`},
-	{"authorization_family_tokens", `UPDATE authorization_family_tokens SET retired=1 WHERE retired=0`},
+	// The tokens of every session that is now ended. An API key or personal
+	// access token is not a sign-in and is not ended here: it has a lifetime of
+	// its own (api_credentials.go), the schema keeps its family from being
+	// swept above, and so its one token stays. What a backup holds of it is a
+	// digest of its secret, which is no use to a reader of the file.
+	{"authorization_family_tokens", `UPDATE authorization_family_tokens SET retired=1 WHERE retired=0 AND family_id NOT IN(SELECT id FROM authorization_session_families WHERE revoked=0)`},
 	// Renewal: the credentials themselves, and the stored answers that hold a
 	// session's current tokens in the clear.
 	{"identity_refresh_receipts", `DELETE FROM identity_refresh_receipts`},
@@ -67,6 +78,7 @@ var sessionScrub = []struct{ table, statement string }{
 // ended and how many rows it changed in all.
 func endEverySessionTx(ctx context.Context, tx *sql.Tx, now time.Time) (ended, changed int64, err error) {
 	stamp := now.UTC().Format(time.RFC3339)
+	var live int64
 	for _, step := range sessionScrub {
 		var present bool
 		if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name=?)`, step.table).Scan(&present); err != nil {
@@ -77,6 +89,9 @@ func endEverySessionTx(ctx context.Context, tx *sql.Tx, now time.Time) (ended, c
 		}
 		var result sql.Result
 		if step.table == "authorization_session_families" {
+			if err = tx.QueryRowContext(ctx, `SELECT count(*) FROM authorization_session_families WHERE revoked=0`).Scan(&live); err != nil {
+				return 0, 0, err
+			}
 			result, err = tx.ExecContext(ctx, step.statement, stamp)
 		} else {
 			result, err = tx.ExecContext(ctx, step.statement)
@@ -87,7 +102,13 @@ func endEverySessionTx(ctx context.Context, tx *sql.Tx, now time.Time) (ended, c
 		n, _ := result.RowsAffected()
 		changed += n
 		if step.table == "authorization_session_families" {
-			ended = n
+			// Counted afterwards: the statement also touches the families the
+			// schema keeps, and those did not end.
+			var kept int64
+			if err = tx.QueryRowContext(ctx, `SELECT count(*) FROM authorization_session_families WHERE revoked=0`).Scan(&kept); err != nil {
+				return 0, 0, err
+			}
+			ended = live - kept
 		}
 	}
 	return ended, changed, nil

@@ -1,6 +1,9 @@
 package dbwork
 
-import "testing"
+import (
+	"path/filepath"
+	"testing"
+)
 
 // The authority generation is what fences every cached authorisation answer in
 // the server: the principal cache, the library-grant cache, the restriction
@@ -27,7 +30,7 @@ func TestAuthorityWritesAreRecognisedByTheTableTheyName(t *testing.T) {
 		`UPDATE authorization_family_tokens SET retired=1 WHERE token_hash=?`,
 		`INSERT INTO dvr_private_libraries(library_id) VALUES(?)`,
 		`REPLACE INTO onboarding_state_v1(singleton,auth_mode) VALUES(1,?)`,
-		`DELETE FROM api_keys WHERE id=?`,
+		`DELETE FROM api_credentials WHERE id=?`,
 		`DELETE FROM libraries WHERE id=?`,
 		`DELETE FROM library_sources WHERE id=?`,
 		`UPDATE library_sources SET enabled=0 WHERE id=?`,
@@ -91,5 +94,38 @@ func TestWrittenTableReadsTheHeadOfAWrite(t *testing.T) {
 		if !ok || got != row.table {
 			t.Errorf("%s named %q (%v), expected %q", row.statement, got, ok, row.table)
 		}
+	}
+}
+
+// Ending a session is written as UPDATE … RETURNING, which the database driver
+// is handed as a query, not as an exec. It moves the generation all the same,
+// on whatever lane it runs: a session revoked from an ordinary request must not
+// stay in the principal cache until its entry expires. A plain read through
+// the same path moves nothing.
+func TestAWriteThatReturnsRowsMovesTheAuthorityGeneration(t *testing.T) {
+	db, err := OpenHandle(filepath.Join(t.TempDir(), "authority.db"), DefaultPolicy())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err = db.Exec(`CREATE TABLE authorization_session_families(id TEXT PRIMARY KEY, revoked INTEGER NOT NULL DEFAULT 0)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.Exec(`INSERT INTO authorization_session_families(id) VALUES('family')`); err != nil {
+		t.Fatal(err)
+	}
+	before := AuthorityGeneration()
+	var id string
+	if err = db.QueryRow(`SELECT id FROM authorization_session_families WHERE revoked=0`).Scan(&id); err != nil {
+		t.Fatal(err)
+	}
+	if AuthorityGeneration() != before {
+		t.Fatal("reading sessions moved the authority generation")
+	}
+	if err = db.QueryRow(`UPDATE authorization_session_families SET revoked=1 WHERE id=? AND revoked=0 RETURNING id`, "family").Scan(&id); err != nil || id != "family" {
+		t.Fatalf("%q %v", id, err)
+	}
+	if AuthorityGeneration() == before {
+		t.Fatal("a session was ended by a statement that returns rows and the authority generation did not move")
 	}
 }

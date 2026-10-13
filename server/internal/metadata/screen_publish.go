@@ -86,7 +86,7 @@ func (s *Service) publishScreen(ctx context.Context, p *screenClaim, cs []screen
 			return err
 		}
 	}
-	_, err = tx.ExecContext(ctx, `UPDATE screen_metadata_work SET status=?,error='',attempts=0,next_attempt='',revision=revision+1,lease='',lease_until='' WHERE target_kind=? AND target_id=? AND lease=?`, status, b.TargetKind, b.Entity, p.Token)
+	_, err = tx.ExecContext(ctx, `UPDATE screen_metadata_work SET status=?,force_refresh=0,error='',attempts=0,next_attempt='',revision=revision+1,lease='',lease_until='' WHERE target_kind=? AND target_id=? AND lease=?`, status, b.TargetKind, b.Entity, p.Token)
 	if err != nil {
 		return err
 	}
@@ -236,12 +236,14 @@ func (s *Service) applyScreenRecord(ctx context.Context, tx *sql.Tx, p *screenCl
 	}
 	for field, value := range fields {
 		provider := id.Provider
-		written, err := s.screenField(ctx, tx, b, field, value, provider, c.SourceKind, c.SourceURL, c.Confidence, stamp, selection, publication)
+		fieldBase := b
+		fieldBase.Language = r.FieldLanguages[field]
+		written, err := s.screenField(ctx, tx, fieldBase, field, value, provider, c.SourceKind, c.SourceURL, c.Confidence, stamp, selection, publication)
 		if err != nil {
 			return err
 		}
 		if written {
-			if err = s.screenCatalogField(ctx, tx, b, field, value, provider, c.SourceURL, stamp); err != nil {
+			if err = s.screenCatalogField(ctx, tx, fieldBase, field, value, provider, c.SourceURL, stamp); err != nil {
 				return err
 			}
 		}
@@ -305,6 +307,9 @@ func (s *Service) applyScreenRecord(ctx context.Context, tx *sql.Tx, p *screenCl
 }
 func screenRecordFields(r metadataprovider.ScreenRecord, region string) map[string]any {
 	out := map[string]any{}
+	if len(r.Skipped) > 0 {
+		out["providerIssues"] = r.Skipped
+	}
 	for k, v := range map[string]string{"title": r.Title, "originalTitle": r.OriginalTitle, "overview": r.Overview, "tagline": r.Tagline, "date": r.Date, "language": r.Language, "status": r.Status, "format": r.Format, "sourceMaterial": r.SourceMaterial, "season": r.Season} {
 		if v != "" {
 			out[k] = v
@@ -480,7 +485,8 @@ func (s *Service) screenCatalogField(ctx context.Context, tx *sql.Tx, b screenBa
 	}
 	class := map[string]string{"genres": "genre", "credits": "credit"}[field]
 	if class != "" {
-		locked, err := relationshipClassLocked(ctx, tx, b.TargetID, class)
+		locks, err := relationshipLocks(ctx, tx, RepairTarget{b.TargetKind, b.TargetID})
+		locked := locks[class]
 		if err != nil {
 			return err
 		}
@@ -869,6 +875,25 @@ func (s *Service) applyScreenLocal(ctx context.Context, tx *sql.Tx, b screenBase
 				put(k, v)
 			}
 		}
+		if len(n.Tags) > 0 {
+			tags := []metadataprovider.ScreenName{}
+			for _, tag := range n.Tags {
+				tags = append(tags, metadataprovider.ScreenName{ID: screenDigest(tag), Name: tag})
+			}
+			put("tags", tags)
+		}
+		if n.Rating != nil {
+			put("rating", n.Rating)
+		}
+		if len(n.Countries) > 0 {
+			put("countries", n.Countries)
+		}
+		if n.Status != "" {
+			put("status", n.Status)
+		}
+		if n.Trailer != "" {
+			put("trailer", n.Trailer)
+		}
 		if n.Year > 0 {
 			put("year", n.Year)
 		}
@@ -887,6 +912,56 @@ func (s *Service) applyScreenLocal(ctx context.Context, tx *sql.Tx, b screenBase
 		}
 		if n.AdvisoryRuntimeMinutes != nil {
 			put("advisoryRuntimeMinutes", *n.AdvisoryRuntimeMinutes)
+		}
+	}
+	// Remove only ownership for fields no longer supplied. Last-good display
+	// values survive until the provider can replace them; owner locks still win.
+	rows, err := tx.QueryContext(ctx, `SELECT field FROM screen_metadata_fields WHERE target_kind=? AND target_id=? AND source_kind='nfo'`, b.TargetKind, b.Entity)
+	if err != nil {
+		return err
+	}
+	retired := []string{}
+	for rows.Next() {
+		var field string
+		if err = rows.Scan(&field); err != nil {
+			rows.Close()
+			return err
+		}
+		if _, ok := values[field]; !ok && field != "localConflicts" {
+			retired = append(retired, field)
+		}
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return err
+	}
+	retirementLocks, err := relationshipLocks(ctx, tx, RepairTarget{b.TargetKind, b.TargetID})
+	if err != nil {
+		return err
+	}
+	for _, field := range retired {
+		class := map[string]string{"genres": "genre", "credits": "credit"}[field]
+		if class != "" && retirementLocks[class] {
+			continue
+		}
+		if _, err = tx.ExecContext(ctx, `DELETE FROM screen_metadata_fields WHERE target_kind=? AND target_id=? AND field=? AND source_kind='nfo'`, b.TargetKind, b.Entity, field); err != nil {
+			return err
+		}
+		if field == "credits" {
+			if err = compactcatalog.SetCreditsTx(ctx, tx, b.Entity, "nfo", nil); err != nil {
+				return err
+			}
+		}
+		if field == "genres" {
+			if err = compactcatalog.SetTermsTx(ctx, tx, b.Entity, compactcatalog.VocabGenre, "nfo", nil); err != nil {
+				return err
+			}
+		}
+		if field == "tags" {
+			if _, err = tx.ExecContext(ctx, `DELETE FROM metadata_tags WHERE entity_kind=? AND entity_id=? AND provider='nfo'`, b.TargetKind, b.Entity); err != nil {
+				return err
+			}
 		}
 	}
 	stamp := tvdbStamp(s.publicationTime())
@@ -974,7 +1049,7 @@ func (s *Service) screenEpisodeStep(ctx context.Context, p *screenClaim) error {
 	var err error
 	source, status := "parent_coordinates", "matched"
 	if b.ParentProvider == "tmdb" {
-		if b.Numbering != "seasonal" {
+		if b.Numbering != "seasonal" && b.Numbering != "absolute" {
 			return s.finishScreen(ctx, p, "needs_order", "tmdb_seasonal_coordinates_required")
 		}
 		provider, ok := s.screenProviders["tmdb"].(screenEpisodeProvider)
@@ -1091,7 +1166,7 @@ func screenExplain(status string) string {
 // carries it. The editor, the browse projection and the provider publication
 // then agree on one value per fact instead of three private copies.
 func screenCatalogColumn(targetKind, field string) (string, bool) {
-	shared := map[string]string{"originalTitle": "original_title", "sortTitle": "sort_title", "tagline": "tagline", "certification": "content_rating", "studios": "studio", "network": "network"}
+	shared := map[string]string{"originalTitle": "original_title", "sortTitle": "sort_title", "tagline": "tagline", "certification": "content_rating", "studios": "studio", "network": "network", "countries": "country"}
 	if column, ok := shared[field]; ok {
 		return column, true
 	}

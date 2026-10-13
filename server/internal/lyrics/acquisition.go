@@ -102,9 +102,11 @@ type SearchResult struct {
 	Warnings   []string    `json:"warnings"`
 }
 type acquired struct {
-	doc        Document
-	language   string
-	provenance Provenance
+	doc           Document
+	language      string
+	provenance    Provenance
+	title, artist string
+	duration      float64
 }
 
 func (s *Service) Search(ctx context.Context, a Access, in SearchInput, probe string) (SearchResult, error) {
@@ -171,11 +173,14 @@ func (s *Service) Search(ctx context.Context, a Access, in SearchInput, probe st
 				out.Warnings = append(out.Warnings, "A local lyric was rejected because its text or timing was invalid.")
 				continue
 			}
+			if d.SkippedLines > 0 {
+				out.Warnings = append(out.Warnings, "Some lyric lines could not be read and were skipped.")
+			}
 			label := v.Label
 			if !boundedText(label, 256) {
 				label = "Local lyrics"
 			}
-			found = append(found, acquired{d, lang, Provenance{Origin: v.Origin, Label: label, Rights: "Rights supplied by the media owner; not independently verified."}})
+			found = append(found, acquired{doc: d, language: lang, provenance: Provenance{Origin: v.Origin, Label: label, Rights: "Rights supplied by the media owner; not independently verified."}})
 		}
 	case "lrclib":
 		if !settings.LRCLIB || s.Provider == nil {

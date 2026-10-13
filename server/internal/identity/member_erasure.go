@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"time"
 
 	"portico.local/server/internal/dbwork"
 )
@@ -130,8 +131,15 @@ func (s *Service) EraseMemberTx(ctx context.Context, tx *sql.Tx, account string)
 	if role == TierOwner {
 		return ErrForbidden
 	}
+	// The person's API keys and personal access tokens end first. Each is
+	// marked ended before the sessions are, because a key that is still live
+	// keeps its session through any sweep of the account's sessions
+	// (api_credentials.go); marked, it ends with the rest below.
+	if _, e := tx.ExecContext(ctx, `UPDATE api_credentials SET revoked_ms=?,ended_reason='member_deleted' WHERE account_id=? AND revoked_ms=0`, time.Now().UnixMilli(), account); e != nil {
+		return e
+	}
 	// Sessions end through the family hook, so playback, queues and readers
-	// the person had open are retired with them; API keys end too.
+	// the person had open are retired with them.
 	if e := s.revokeCredentialsWithReasonTx(ctx, tx, account, RevokedMembershipRemoved); e != nil {
 		return e
 	}

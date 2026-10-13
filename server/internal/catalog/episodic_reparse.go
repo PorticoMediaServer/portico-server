@@ -18,7 +18,9 @@ import (
 //	1: the original reader.
 //	2: NEW-26, only a trailing stack suffix ("- pt1", ".part2", "cd1") is a
 //	   stacked part; "Jupiter Jazz (Part 1)" is a title.
-const EpisodeParserVersion = 2
+//
+// 3: shared path evidence, file precedence and flat/translated season layouts.
+const EpisodeParserVersion = 3
 
 const episodeParserVersionKey = "catalog.episode_parser_version"
 

@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 
+	"portico.local/server/internal/audiotags"
 	"portico.local/server/internal/mediaexec"
 	"regexp"
 	"strings"
@@ -131,45 +132,11 @@ func lyricLocalHelper(r request, out io.Writer) error {
 		}
 		result.Candidates = append(result.Candidates, LocalLyric{Format: n.format, Language: n.language, Origin: "sidecar", Label: filepath.Base(n.path), Data: data})
 	}
-	if len(r.LyricsProbeArgv) > 0 {
-		tags, e := probeLyricTags(source, r.LyricsProbeArgv)
-		if e != nil {
-			result.Warnings = append(result.Warnings, "Embedded lyrics could not be read; check ffprobe and the source format.")
-		} else {
-			seen := map[string]bool{}
-			for _, tags := range tags {
-				for key, value := range tags {
-					k := strings.ToLower(key)
-					if k != "lyrics" && k != "unsyncedlyrics" && k != "unsynced lyrics" && k != "syncedlyrics" && !strings.HasPrefix(k, "lyrics-") {
-						continue
-					}
-					if len(value) > 256<<10 {
-						result.Warnings = append(result.Warnings, "An embedded lyric exceeded the text limit.")
-						continue
-					}
-					if seen[value] || strings.TrimSpace(value) == "" {
-						continue
-					}
-					seen[value] = true
-					language := "und"
-					if strings.HasPrefix(k, "lyrics-") && lyricLanguage.MatchString(strings.TrimPrefix(k, "lyrics-")) {
-						language = strings.TrimPrefix(k, "lyrics-")
-					}
-					format := "text"
-					if regexp.MustCompile(`(?m)^\s*\[[0-9]+:[0-9]{2}`).MatchString(value) {
-						format = "lrc"
-					}
-					result.Candidates = append(result.Candidates, LocalLyric{Format: format, Language: language, Origin: "embedded", Label: "Embedded lyrics", Data: []byte(value)})
-					if len(result.Candidates) >= 12 {
-						break
-					}
-				}
-				if len(result.Candidates) >= 12 {
-					break
-				}
-			}
-		}
+	tags := audiotags.Read(source, before.Size())
+	for _, lyric := range tags.Lyrics {
+		result.Candidates = append(result.Candidates, LocalLyric{Format: lyric.Format, Language: lyric.Language, Origin: "embedded", Label: "Embedded lyrics", Data: []byte(lyric.Text)})
 	}
+	result.Warnings = append(result.Warnings, tags.Warnings...)
 	after, e := source.Stat()
 	if e != nil || after.Size() != before.Size() || after.ModTime() != before.ModTime() {
 		return ErrPlaybackSource

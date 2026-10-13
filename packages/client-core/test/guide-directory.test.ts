@@ -43,10 +43,15 @@ test('directory revision conflicts reset the store and recover the current view'
 });
 
 test('directory and summary responses fail closed on foreign membership or unexpected programme data',()=>{
- const s=server();const summary=s.summaries();summary.sources[0].favoriteCount=3000;assert.throws(()=>parseGuideSourceSummaries(summary,'s'));
+ const s=server();const summary=s.summaries();const all=summary.sources.length;summary.sources[0].favoriteCount=3000;
+ // A source whose own counts cannot be true is left out alone; the others keep their own counts.
+ const kept=parseGuideSourceSummaries(summary,'s').sources;assert.equal(kept.length,all-1);assert.ok(kept.every(source=>source.id!==summary.sources[0].id));
+ assert.throws(()=>parseGuideSourceSummaries({...summary,serverId:'other'},'s'));
  const value={protocolVersion:'1.0',serverId:'s',directory:{viewerFence:'f',revision:'r',total:1,offset:0,limit:1,channels:[channel(0)],sources:[sources[0]]}};
- value.directory.channels[0].sourceId='b';assert.throws(()=>parseGuideDirectory(value,'s',0,1));value.directory.channels[0].sourceId='a';
- (value.directory.channels[0].programmes as unknown[]).push({id:'p'});assert.throws(()=>parseGuideDirectory(value,'s',0,1));
+ // A channel of a source the answer does not carry, or one carrying programmes in a rows-only answer, is left out alone.
+ value.directory.channels[0].sourceId='b';assert.deepEqual(parseGuideDirectory(value,'s',0,1).channels,[]);value.directory.channels[0].sourceId='a';
+ (value.directory.channels[0].programmes as unknown[]).push({id:'p'});assert.deepEqual(parseGuideDirectory(value,'s',0,1).channels,[]);
+ assert.throws(()=>parseGuideDirectory({...value,serverId:'other'},'s',0,1));
 });
 
 test('legacy fallback shares a directory walk, and the last viewport abort reaches the server',async()=>{

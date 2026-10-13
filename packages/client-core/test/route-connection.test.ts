@@ -72,6 +72,10 @@ test('a proxy error page for a down server is a lost route; Portico answers are 
   assert.equal(gatewayFailure(res(504, 'text/plain; charset=utf-8')), true);
   // Portico's own 503s (visibility_building, unavailable features) are JSON answers.
   assert.equal(gatewayFailure(res(503, 'application/json')), false);
+  assert.equal(gatewayFailure(res(503, 'application/json; charset=utf-8')), false);
+  // A proxy's own JSON dialect is still the proxy talking, not the server.
+  assert.equal(gatewayFailure(res(503, 'application/problem+json')), true);
+  assert.equal(gatewayFailure(res(502, 'application/vnd.proxy.error+json')), true);
   assert.equal(gatewayFailure(res(500)), false);
   assert.equal(gatewayFailure(res(404, 'text/html')), false);
   assert.equal(gatewayFailure(res(200, 'application/json')), false);

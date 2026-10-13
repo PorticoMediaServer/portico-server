@@ -3,6 +3,8 @@
 /* WEB-SYS-05: hover is a quiet lift and hairline; only keyboard focus draws the focus ring, so two cards never look focused at once. */
 .card:hover .art { box-shadow: 0 0 0 1px var(--line-strong); }
 .card:has(:focus-visible) .art { box-shadow: 0 0 0 2px var(--line-focus); }
+/* A browser without :has() would show no focus ring at all (the card's own outline is off above): there, focus anywhere in the card draws it. */
+@supports not selector(:has(*)) { .card:focus-within .art { box-shadow: 0 0 0 2px var(--line-focus); } }
 .card:hover { transform: translateY(-2px); }
 .art { position: relative; border-radius: var(--radius-artwork); transition: box-shadow var(--motion-standard) var(--ease-out); }
 .artButton { display: block; width: 100%; padding: 0; border-radius: var(--radius-artwork); color: inherit; text-decoration: none; -webkit-touch-callout: none; }

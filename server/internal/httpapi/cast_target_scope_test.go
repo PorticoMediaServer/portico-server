@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"net/http/httptest"
 	"testing"
 
 	"portico.local/server/internal/access"
@@ -76,6 +77,9 @@ func TestACastTargetPairedByTheOwnerCanOnlyPlay(t *testing.T) {
 		{"POST", "/v1/quick-connect/review", map[string]string{"userCode": "2345-6789"}},
 		{"POST", "/v1/quick-connect/decision", map[string]string{"requestId": "x", "userCode": "2345-6789", "decision": "approve"}},
 		{"DELETE", "/v1/direct/members/account2", map[string]any{"expectedRevision": 1}},
+		{"GET", "/v1/me/access-tokens", nil},
+		{"POST", "/v1/me/access-tokens", map[string]any{"name": "from the television", "scopes": []string{"read"}}},
+		{"POST", "/v1/admin/api-keys", map[string]any{"name": "from the television", "scopes": []string{"admin"}}},
 	} {
 		w := f.as(bearer, probe.method, probe.path, probe.body)
 		if w.Code != 403 {
@@ -98,6 +102,58 @@ func TestACastTargetPairedByTheOwnerCanOnlyPlay(t *testing.T) {
 	}
 	if w := f.as(renewed.Session.AccessToken, "GET", "/v1/me", nil); w.Code != 200 {
 		t.Fatalf("a reconnected screen: %d %s", w.Code, w.Body.String())
+	}
+}
+
+// A paired screen can undo its own pairing, at the generation it holds, and
+// nothing else of the profile that paired it: not another of its screens.
+func TestACastTargetUndoesOnlyItsOwnPairing(t *testing.T) {
+	f := socialHTTP(t)
+	first := pairCastTarget(t, f, f.token, "cast-kitchen")
+	second := pairCastTarget(t, f, f.token, "cast-bedroom")
+	undo := func(bearer, device, generation string) int {
+		headers := map[string]string{}
+		if generation != "" {
+			headers["If-Match"] = generation
+		}
+		r := httptest.NewRequest("DELETE", "/v1/cast/devices/"+device, nil)
+		r.Header.Set("Authorization", "Bearer "+bearer)
+		for name, value := range headers {
+			r.Header.Set(name, value)
+		}
+		w := httptest.NewRecorder()
+		f.h.ServeHTTP(w, r)
+		return w.Code
+	}
+	if code := undo(first.Session.AccessToken, second.Device.ID, second.Device.Generation); code != 404 {
+		t.Fatalf("one screen undid another's pairing: %d", code)
+	}
+	if code := undo(first.Session.AccessToken, first.Device.ID, ""); code != 400 {
+		t.Fatalf("a screen undid its pairing without naming its generation: %d", code)
+	}
+	if code := undo(first.Session.AccessToken, first.Device.ID, "999"); code != 409 {
+		t.Fatalf("a screen undid its pairing at a generation it does not hold: %d", code)
+	}
+	for name, bearer := range map[string]string{"first": first.Session.AccessToken, "second": second.Session.AccessToken} {
+		if w := f.as(bearer, "GET", "/v1/me", nil); w.Code != 200 {
+			t.Fatalf("the %s screen lost its session to a refused request: %d", name, w.Code)
+		}
+	}
+	if code := undo(first.Session.AccessToken, first.Device.ID, first.Device.Generation); code != 204 {
+		t.Fatalf("a screen could not undo its own pairing: %d", code)
+	}
+	if w := f.as(first.Session.AccessToken, "GET", "/v1/me", nil); w.Code != 401 {
+		t.Fatalf("an unpaired screen is still signed in: %d", w.Code)
+	}
+	if w := f.as("", "POST", "/v1/cast/reconnect", social.CastReconnectRequest{ProtocolVersion: social.Protocol, DeviceToken: first.DeviceToken, DeviceID: "cast-kitchen"}); w.Code == 200 {
+		t.Fatal("an unpaired screen reconnected")
+	}
+	if w := f.as(second.Session.AccessToken, "GET", "/v1/me", nil); w.Code != 200 {
+		t.Fatalf("the other screen was unpaired too: %d", w.Code)
+	}
+	// The profile that paired them still unpairs any of its screens.
+	if w := f.as(f.token, "DELETE", "/v1/cast/devices/"+second.Device.ID, nil); w.Code != 204 {
+		t.Fatalf("the pairing profile could not unpair its screen: %d %s", w.Code, w.Body.String())
 	}
 }
 
@@ -135,6 +191,12 @@ func TestCastTargetRoutes(t *testing.T) {
 		{"GET", "/v1/libraries", false},
 		{"GET", "/v1/admin/access/members", false},
 		{"POST", "/v1/cast/bootstrap", false},
+		{"DELETE", "/v1/cast/devices/abc", true},
+		{"GET", "/v1/cast/devices/abc", false},
+		{"DELETE", "/v1/cast/devices/abc/anything", false},
+		{"DELETE", "/v1/cast/devices", false},
+		{"POST", "/v1/me/access-tokens", false},
+		{"POST", "/v1/admin/api-keys", false},
 		{"POST", "/v1/quick-connect/decision", false},
 		{"GET", "/v1/direct/me", false},
 	} {

@@ -14,8 +14,8 @@ import (
 	"portico.local/server/internal/metadata"
 )
 
-func TestRetainedArtworkBytesSurviveCleanupAndTrashUntilFinalPurge(t *testing.T) {
-	s, db, root, item, _ := deletionFixture(t, 7)
+func TestArtworkBytesSurviveCleanupUntilTheirLastTitleIsDeleted(t *testing.T) {
+	s, db, root, item, _ := deletionFixture(t)
 	ctx := context.Background()
 	art := metadata.New(db, "") // No provider credentials or network dependency.
 	directory := filepath.Join(root, "artwork")
@@ -84,33 +84,16 @@ func TestRetainedArtworkBytesSurviveCleanupAndTrashUntilFinalPurge(t *testing.T)
 	if _, err := s.Cleanup(ctx, allow, "artwork", CleanupRequest{Confirmation: "artwork", OperationID: "test-policy-key-1"}); err == nil {
 		t.Fatal("generic age-based artwork cleanup accepted")
 	}
-	result, err := deleteItem(t, s, item, "artwork-trash")
-	if err != nil {
+	if _, err := deleteItem(t, s, item, "artwork-delete"); err != nil {
 		t.Fatal(err)
 	}
-	sweep()
-	read(item, "poster", "shared")
-	read(item, "backdrop", "unique")
-	if _, err = s.RestoreFromTrash(ctx, allow, result.Receipts[0].TrashEntryID, "artwork-restore"); err != nil {
-		t.Fatal(err)
-	}
-	sweep()
-	read(item, "poster", "shared")
-	if _, err = deleteItem(t, s, item, "artwork-trash-again"); err != nil {
-		t.Fatal(err)
-	}
-	if _, err = s.EmptyTrash(ctx, allow, EmptyTrashRequest{Confirmation: "1", OperationID: "artwork-empty"}); err != nil {
-		t.Fatal(err)
-	}
+	var err error
 	sweep()
 	read(other, "poster", "shared")
 	if _, err = os.Stat(filepath.Join(directory, digests["unique"]+".img")); !os.IsNotExist(err) {
 		t.Fatalf("purged item's exclusive artwork retained: %v", err)
 	}
-	if _, err = deleteItem(t, s, other, "last-artwork-trash"); err != nil {
-		t.Fatal(err)
-	}
-	if _, err = s.EmptyTrash(ctx, allow, EmptyTrashRequest{Confirmation: "1", OperationID: "last-artwork-empty"}); err != nil {
+	if _, err = deleteItem(t, s, other, "last-artwork-delete"); err != nil {
 		t.Fatal(err)
 	}
 	sweep()

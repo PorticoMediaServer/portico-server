@@ -83,7 +83,7 @@ func (d Dependencies) directIdentityRoutes(mux *http.ServeMux) {
 				failure(w, identity.ErrUnauthorized)
 				return
 			}
-			if e = d.Identity.SetupLimit(r.Context(), setupPeerSubject(r), "portico", 30); e != nil {
+			if e = d.Identity.SetupLimit(r.Context(), d.setupPeerSubject(r), "portico", 30); e != nil {
 				setupFailure(w, e)
 				return
 			}

@@ -2,6 +2,7 @@ import {unreadableServerResponse} from './server-messages.ts';
 /** Canonical person pages. The server owns person identity, credit membership, ordering and
  * paging; this module only rejects a payload that does not match what it asked for. */
 import {validateContentEntry,type ContentEntry,type ContentScope,type LibraryContentApi} from './library-content.ts';
+import {firstOfEach,keepReadable} from './tolerant.ts';
 export type PersonRole='cast'|'crew'|'all';
 export type Person=Readonly<{id:string;name:string;sortName:string;biography:string;birthDate:string;deathDate:string;portraitUrl:string;roles:readonly string[];knownFor:readonly ContentEntry[];providerIds:Readonly<Record<string,string>>;revision:number}>;
 export type PersonCredit=Readonly<{media:ContentEntry;role:string;character:string;department:string;creditKind:'cast'|'crew'}>;
@@ -19,48 +20,60 @@ const count=(v:unknown):v is number=>typeof v==='number'&&Number.isSafeInteger(v
 class Failure extends Error{code:string;constructor(code:string,message:string){super(message);this.code=code;}}
 function invalid():never{throw new Failure('invalid_person',unreadableServerResponse);}
 function array(v:unknown,max:number):unknown[]{if(!Array.isArray(v)||v.length>max)invalid();return v;}
-function labels(v:unknown,max:number):readonly string[]{return Object.freeze(array(v,max).map(x=>{if(!line(x,256)||!x)invalid();return x;}));}
+/** Role labels: the ones that can be read, each once. A list the server leaves out is empty; the bound is exact. */
+function labels(v:unknown,max:number):readonly string[]{return Object.freeze([...new Set(keepReadable('people','roles',array(v??[],max),x=>line(x,256)&&x?x:undefined))]);}
+/** A person's ids at the providers: a pair that cannot be read is left out; the bound of 16 is exact. */
 function providers(v:unknown):Readonly<Record<string,string>>{
+ if(v===undefined||v===null)return Object.freeze({});
  if(!object(v))invalid();
  const out:Record<string,string>={};
  const keys=Object.keys(v);
  if(keys.length>16)invalid();
- for(const key of keys){if(!id(key)||!id(v[key]))invalid();out[key]=v[key] as string;}
+ for(const key of keys){if(id(key)&&id(v[key]))out[key]=v[key] as string;}
  return Object.freeze(out);
 }
+/** Words a person is drawn with: absent reads as empty, and words over their bound refuse what carries them. */
+function words(v:unknown,max:number,body=false):string{if(v===undefined||v===null)return '';if(!(body?text(v,max):line(v,max)))invalid();return v as string;}
+/** The person the page is about. The id, the name and the revision are exact; every other fact is empty when it is not sent, and a known-for title that cannot be read is left out alone. */
 function person(v:unknown):Person{
- if(!object(v)||!id(v.id)||!line(v.name,1024)||!v.name||!line(v.sortName,1024)||!text(v.biography,20000)||!line(v.birthDate,64)||!line(v.deathDate,64)||!line(v.portraitUrl,4096)||!count(v.revision))invalid();
- const knownFor=array(v.knownFor,MAX_KNOWN_FOR).map(validateContentEntry);
- if(new Set(knownFor.map(e=>e.id)).size!==knownFor.length)invalid();
- return Object.freeze({id:v.id,name:v.name,sortName:v.sortName,biography:v.biography,birthDate:v.birthDate,deathDate:v.deathDate,portraitUrl:v.portraitUrl,roles:labels(v.roles,16),knownFor:Object.freeze(knownFor),providerIds:providers(v.providerIds),revision:v.revision});
+ if(!object(v)||!id(v.id)||!line(v.name,1024)||!v.name||!count(v.revision))invalid();
+ const knownFor=firstOfEach('people','knownFor',keepReadable('people','knownFor',array(v.knownFor??[],MAX_KNOWN_FOR),validateContentEntry),e=>e.id);
+ return Object.freeze({id:v.id,name:v.name,sortName:words(v.sortName,1024),biography:words(v.biography,20000,true),birthDate:words(v.birthDate,64),deathDate:words(v.deathDate,64),portraitUrl:words(v.portraitUrl,4096),roles:labels(v.roles,16),knownFor:Object.freeze(knownFor),providerIds:providers(v.providerIds),revision:v.revision});
 }
+/**
+ * One page of a person's credits. The server, the viewer fence, the revisions, the person asked
+ * for, the cursor and the page bound are exact. A credit that cannot be read, is of a kind this
+ * app does not know, or is not of the role asked for is left out alone, and the total is at least
+ * the credits kept.
+ */
 export function parsePersonPage(raw:unknown,scope:ContentScope,request:Readonly<{role?:PersonRole;limit:number;personId:string}>):PersonPage{
  if(!object(raw)||raw.serverId!==scope.serverId||!id(raw.viewerFence)||!object(raw.revision)||!object(raw.pageInfo))invalid();
  if(!count(raw.revision.catalog)||!count(raw.revision.viewer))invalid();
  const subject=person(raw.person);
  if(subject.id!==request.personId)invalid();
- const credits=array(raw.credits,request.limit).map(v=>{
-  if(!object(v)||!line(v.role,512)||!line(v.character,512)||!line(v.department,256)||(v.creditKind!=='cast'&&v.creditKind!=='crew'))invalid();
+ const sent=array(raw.credits,request.limit);
+ const credits=keepReadable('people','credits',sent,v=>{
+  if(!object(v)||(v.creditKind!=='cast'&&v.creditKind!=='crew'))invalid();
   // The server classifies the credit; a client that guessed from department
   // would disagree with the server's own role filter.
   if(request.role==='cast'&&v.creditKind!=='cast'||request.role==='crew'&&v.creditKind!=='crew')invalid();
-  return Object.freeze({media:validateContentEntry(v.media),role:v.role,character:v.character,department:v.department,creditKind:v.creditKind});
+  return Object.freeze({media:validateContentEntry(v.media),role:words(v.role,512),character:words(v.character,512),department:words(v.department,256),creditKind:v.creditKind});
  });
  const info=raw.pageInfo;
- if(!count(info.total)||!line(info.nextCursor,4096)||info.total<credits.length)invalid();
- if(info.nextCursor&&credits.length<request.limit)invalid();
- return Object.freeze({serverId:raw.serverId as string,viewerFence:raw.viewerFence,revision:Object.freeze({catalog:raw.revision.catalog,viewer:raw.revision.viewer}),person:subject,credits:Object.freeze(credits),pageInfo:Object.freeze({total:info.total,nextCursor:info.nextCursor})});
+ if(!line(info.nextCursor??'',4096))invalid();
+ // A cursor only follows a full page, so a server cannot keep a client paging through empty ones.
+ if(info.nextCursor&&sent.length<request.limit)invalid();
+ return Object.freeze({serverId:raw.serverId as string,viewerFence:raw.viewerFence,revision:Object.freeze({catalog:raw.revision.catalog,viewer:raw.revision.viewer}),person:subject,credits:Object.freeze(credits),pageInfo:Object.freeze({total:Math.max(count(info.total)?info.total:0,credits.length),nextCursor:(info.nextCursor??'') as string})});
 }
+/** People matching a name. The server, the viewer fence, the revisions and the page bound are exact; a person who cannot be read is left out alone and a repeated one keeps the first appearance. */
 export function parsePeopleDirectory(raw:unknown,scope:ContentScope,limit:number):PeopleDirectory{
- if(!object(raw)||raw.serverId!==scope.serverId||!id(raw.viewerFence)||!object(raw.revision)||!line(raw.q,512))invalid();
+ if(!object(raw)||raw.serverId!==scope.serverId||!id(raw.viewerFence)||!object(raw.revision))invalid();
  if(!count(raw.revision.catalog)||!count(raw.revision.viewer))invalid();
- const people=array(raw.people,limit).map(v=>{
-  if(!object(v)||!id(v.id)||!line(v.name,1024)||!v.name||!line(v.sortName,1024)||!count(v.creditCount))invalid();
-  if(v.portraitUrl!==undefined&&!line(v.portraitUrl,4096))invalid();
-  return Object.freeze({id:v.id,name:v.name,sortName:v.sortName,portraitUrl:(v.portraitUrl as string)??'',roles:labels(v.roles,16),creditCount:v.creditCount});
- });
- if(new Set(people.map(p=>p.id)).size!==people.length)invalid();
- return Object.freeze({serverId:raw.serverId as string,viewerFence:raw.viewerFence,revision:Object.freeze({catalog:raw.revision.catalog,viewer:raw.revision.viewer}),q:raw.q,people:Object.freeze(people)});
+ const people=firstOfEach('people','people',keepReadable('people','people',array(raw.people,limit),v=>{
+  if(!object(v)||!id(v.id)||!line(v.name,1024)||!v.name)invalid();
+  return Object.freeze({id:v.id,name:v.name,sortName:words(v.sortName,1024),portraitUrl:words(v.portraitUrl,4096),roles:labels(v.roles,16),creditCount:count(v.creditCount)?v.creditCount:0});
+ }),p=>p.id);
+ return Object.freeze({serverId:raw.serverId as string,viewerFence:raw.viewerFence,revision:Object.freeze({catalog:raw.revision.catalog,viewer:raw.revision.viewer}),q:words(raw.q,512),people:Object.freeze(people)});
 }
 export function personPath(personId:string,options:Readonly<{role?:PersonRole;limit?:number;cursor?:string|null}>={}):string{
  if(!id(personId))throw new Error('A person id is required.');

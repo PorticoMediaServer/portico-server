@@ -6,7 +6,6 @@ import (
 	"errors"
 	"path/filepath"
 	"portico.local/server/internal/catalog"
-	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/notify"
 	"portico.local/server/internal/storage"
@@ -28,7 +27,7 @@ func (s *Service) readySource(ctx context.Context, job string, source *catalog.L
 			return err
 		}
 		if source.Kind != "remote" {
-			if _, err = dbwork.ExecWrite(ctx, s.db, dbwork.ClassBackgroundMedia, `UPDATE library_sources SET kind='remote',classification='network',missing_grace_seconds=MAX(missing_grace_seconds,3600) WHERE id=? AND generation=?`, source.ID, source.Generation); err != nil {
+			if _, err = dbwork.ExecWrite(ctx, s.db, dbwork.ClassBackgroundMedia, `UPDATE library_sources SET kind='remote',classification='network' WHERE id=? AND generation=?`, source.ID, source.Generation); err != nil {
 				return err
 			}
 			source.Kind = "remote"
@@ -50,7 +49,14 @@ func (s *Service) readySource(ctx context.Context, job string, source *catalog.L
 		return catalog.ErrSourceChanged
 	}
 	if source.RootIdentity != "" && actual != source.RootIdentity {
-		return catalog.ErrSourceChanged
+		if !storage.SameRoot(source.RootIdentity, actual) {
+			return catalog.ErrSourceChanged
+		}
+		// The same folder under a device number this boot handed out afresh.
+		if err = s.catalog.AdoptRootIdentity(ctx, job, *source, actual); err != nil {
+			return err
+		}
+		source.RootIdentity = actual
 	}
 	if source.RootIdentity == "" {
 		gated, e := dbwork.Begin(ctx, s.db, dbwork.ClassBackgroundMedia)
@@ -107,7 +113,15 @@ func (s *Service) inventoryPage(ctx context.Context, job string, source catalog.
 	if err != nil {
 		return err
 	}
-	return stoppedAt(relative, s.readDirectoryPage(ctx, job, source, relative))
+	err = s.readDirectoryPage(ctx, job, source, relative)
+	if err != nil && ctx.Err() == nil {
+		// A reported folder that cannot be listed has most likely been removed:
+		// look from the folder above it instead, where its absence can be seen.
+		if widened, e := s.widenTarget(ctx, job, relative); e == nil && widened {
+			return nil
+		}
+	}
+	return stoppedAt(relative, err)
 }
 func (s *Service) readDirectoryPage(ctx context.Context, job string, source catalog.LibrarySource, relative string) error {
 	var cursor, revision string
@@ -250,7 +264,14 @@ func (s *Service) verifyPage(ctx context.Context, job string, source catalog.Lib
 	return gated4.Commit()
 }
 func (s *Service) reconcilePage(ctx context.Context, job string, source catalog.LibrarySource) error {
-	rows, err := s.db.QueryContext(ctx, `SELECT o.id,o.asset_id,o.revision,o.missing_since,o.missing_observations,o.last_missing_job,o.relative_path,o.state FROM inventory_objects o JOIN inventory_runs r ON r.source_id=o.source_id WHERE r.job_id=? AND r.authoritative=1 AND o.root_incarnation=r.root_incarnation AND o.id>r.reconcile_cursor AND o.retired=0 AND o.seen_job!=? AND NOT(o.state='available' AND o.missing_observations=0 AND EXISTS(SELECT 1 FROM inventory_directories d WHERE d.job_id=r.job_id AND d.relative_path=o.directory_path AND d.skipped=1 AND d.state='done')) ORDER BY o.id LIMIT ?`, job, job, s.reconciliationBatch(source))
+	// An empty folder where there was media is an unmounted disk, not a list
+	// of deleted files: the scan stops before anything is marked.
+	if unmounted, err := s.catalog.SourceLooksUnmounted(ctx, job, source.ID); err != nil {
+		return err
+	} else if unmounted {
+		return catalog.ErrSourceLooksUnmounted
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT o.id,o.asset_id,o.revision,o.missing_since,o.missing_observations,o.last_missing_job,o.relative_path,o.state FROM inventory_objects o JOIN inventory_runs r ON r.source_id=o.source_id WHERE r.job_id=? AND r.authoritative=1 AND o.root_incarnation=r.root_incarnation AND o.id>r.reconcile_cursor AND o.retired=0 AND o.seen_job!=? AND `+targetScopeSQL+` AND NOT(o.state='available' AND o.missing_observations=0 AND EXISTS(SELECT 1 FROM inventory_directories d WHERE d.job_id=r.job_id AND d.relative_path=o.directory_path AND d.skipped=1 AND d.state='done')) ORDER BY o.id LIMIT ?`, job, job, string(filepath.Separator), s.reconciliationBatch(source))
 	if err != nil {
 		return err
 	}
@@ -295,45 +316,13 @@ func (s *Service) reconcilePage(ctx context.Context, job string, source catalog.
 	if _, err = catalog.InventoryFenceTx(ctx, tx, job); err != nil {
 		return err
 	}
+	// A file a complete, verified listing of its folder did not contain is
+	// missing from now. It stays in the catalogue, out of use, until the
+	// owner's rule for missing titles removes it or the file comes back.
 	now := time.Now().UTC()
 	for _, v := range batch {
-		if v.last != job {
-			v.observations++
-		}
-		if v.since == "" {
-			v.since = now.Format(time.RFC3339Nano)
-		}
-		since, e := time.Parse(time.RFC3339Nano, v.since)
-		if e != nil {
-			return e
-		}
-		// Absence can only reduce availability. In particular legacy unavailable
-		// records and already-missing records are not resurrected by a longer
-		// grace setting; only a fresh object observation can make them available.
-		state := v.state
-		if state != "trashed" && v.observations >= 2 && !now.Before(since.Add(time.Duration(source.MissingGraceSeconds)*time.Second)) {
-			state = "missing"
-		}
-		if _, err = tx.ExecContext(ctx, `UPDATE inventory_objects SET missing_since=?,missing_observations=?,last_missing_job=?,state=? WHERE id=?`, v.since, v.observations, job, state, v.id); err != nil {
+		if err = catalog.MarkInventoryMissingTx(ctx, tx, source.ID, job, v.id, now); err != nil {
 			return err
-		}
-		if state == "missing" && v.state != "missing" {
-			var assetID int64
-			if assetID, err = compactcatalog.AssetByTokenTx(ctx, tx, v.asset); err != nil {
-				return err
-			}
-			if assetID != 0 {
-				var available int64
-				if err = tx.QueryRowContext(ctx, `SELECT COALESCE((SELECT available FROM inventory_asset_availability WHERE asset_id=?),(SELECT available FROM catalog_assets WHERE id=?))`, v.asset, assetID).Scan(&available); err != nil {
-					return err
-				}
-				if err = compactcatalog.SetAssetAvailableTx(ctx, tx, assetID, available != 0); err != nil {
-					return err
-				}
-			}
-			if _, err = tx.ExecContext(ctx, `INSERT OR IGNORE INTO inventory_changes(source_id,job_id,object_id,asset_id,revision,kind,created_at) VALUES(?,?,?,?,?,'missing',?)`, source.ID, job, v.id, v.asset, v.revision, now.Format(time.RFC3339Nano)); err != nil {
-				return err
-			}
 		}
 	}
 	if len(batch) > 0 {
@@ -373,7 +362,7 @@ func (s *Service) fail(ctx context.Context, job, source string, cause error) {
 	} else if errors.Is(cause, storage.ErrRemoteChanged) {
 		code = "scan_remote_configuration_changed"
 		health = "root_changed"
-	} else if errors.Is(cause, storage.ErrRemoteOffline) || errors.Is(cause, storage.ErrRemoteCredentials) || errors.Is(cause, storage.ErrRemoteBinary) || cause.Error() == sourceUnavailable {
+	} else if errors.Is(cause, catalog.ErrSourceLooksUnmounted) || errors.Is(cause, storage.ErrRemoteOffline) || errors.Is(cause, storage.ErrRemoteCredentials) || errors.Is(cause, storage.ErrRemoteBinary) || cause.Error() == sourceUnavailable {
 		code = sourceUnavailable
 		health = "offline"
 	}

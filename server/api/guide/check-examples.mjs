@@ -49,7 +49,6 @@ const YAML_FILES = [
   "metadata-editor.openapi.yaml",
   "notifications.openapi.yaml",
   "search-people.openapi.yaml",
-  "social.openapi.yaml",
   "telemetry.openapi.yaml",
 ];
 

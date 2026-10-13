@@ -17,7 +17,8 @@ function setup() {
   const files: Record<string, Uint8Array> = {'/a': file('album-flac-01.flac'), '/b': file('album-flac-02.flac')};
   (globalThis as any).AudioContext = class { constructor() { Object.assign(this, f.ctx); (this as any).suspend = async () => {}; (this as any).resume = async () => {}; (this as any).close = async () => {}; return f.ctx; } };
   f.ctx.suspend = async () => { f.ctx.state = 'suspended'; }; f.ctx.resume = async () => { f.ctx.state = 'running'; }; f.ctx.close = async () => {};
-  (globalThis as any).document = {addEventListener() {}, removeEventListener() {}};
+  f.ctx.addEventListener = () => {}; f.ctx.removeEventListener = () => {};
+  (globalThis as any).document = {visibilityState: 'visible', addEventListener() {}, removeEventListener() {}};
   (globalThis as any).fetch = async (url: string, init: RequestInit) => {
     requests.push(url);
     const bytes = files[url]!, [a, b] = String((init.headers as Record<string, string>).Range).replace('bytes=', '').split('-').map(Number);

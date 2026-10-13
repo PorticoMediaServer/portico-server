@@ -5,11 +5,11 @@ import {SOCIAL_PROTOCOL} from '../src/social-playback.ts';
 
 const T0=Date.parse('2026-09-16T20:00:00Z');
 const sync={noCorrectionUnderMs:750,rateCorrectionMinimum:'0.90',rateCorrectionMaximum:'1.10',rateCorrectionMaxMs:4000,seekAtOrOverMs:3000};
-const timeline={itemId:'item',currentEntryId:'ent_1',state:'playing',anchorPositionUs:'10000000',anchorAt:'2026-09-16T20:00:00Z',rate:{numerator:'1',denominator:'1'},queuePosition:0};
-const host={id:'mem_1',displayName:'Host',role:'host',state:'joined',readiness:'ready',positionUs:'0',reportedAt:'2026-09-16T20:00:00Z',presence:'connected',joinedAt:'2026-09-16T19:59:00Z'};
+const timeline={itemId:'item',currentEntryId:'ent_1',state:'playing',anchorPositionUs:'10000000',anchorAt:'2026-09-16T20:00:00Z',rate:{numerator:'1',denominator:'1'},queuePosition:0,waitUntil:null};
+const host={id:'mem_1',displayName:'Host',private:false,role:'host',state:'joined',readiness:'ready',positionUs:'0',reportedAt:'2026-09-16T20:00:00Z',presence:'connected',joinedAt:'2026-09-16T19:59:00Z'};
 const guest={...host,id:'mem_2',displayName:'Guest',role:'member'};
 const group=(over:Record<string,unknown>={})=>({
- id:'grp_1',name:'Movie night',state:'playing',hostAuthority:'host-only',hostMemberId:'mem_1',revision:'7',playbackRevision:'3',queueRevision:'2',reconnectGeneration:'1',
+ id:'grp_1',name:'Movie night',state:'playing',hostAuthority:'host-only',hostMemberId:'mem_1',revision:'7',playbackRevision:'3',settingsRevision:'1',governanceRevision:'1',queueRevision:'2',reconnectGeneration:'1',
  lastCommand:'play',lastCommandId:'p',endedReason:'',eventOrdinal:'9',createdAt:'2026-09-16T19:59:00Z',updatedAt:'2026-09-16T20:00:00Z',
  permissions:{isHost:true,canControl:true,canManageQueue:true},authority:{deviceId:'dev_1',playbackId:'pb1',state:'bound'},
  host:{presence:'connected',lastSeenAt:'2026-09-16T20:00:00Z',pauseAt:null,endAt:null},timeline,settings:{shuffleEnabled:false,repeatMode:'none'},sync,
@@ -25,7 +25,7 @@ function server(){
  const api={baseUrl:'https://s',request:async<T,>(path:string,method='GET',body?:unknown):Promise<T>=>{
   calls.push({path,method,body});
   if(refuse&&method==='POST'&&path.endsWith('/transport')){const e=refuse;refuse=undefined;throw e;}
-  if(path.endsWith('/transport'))return {protocolVersion:SOCIAL_PROTOCOL,groupId:'grp_1',idempotencyKey:(body as any).idempotencyKey,disposition:'accepted',command:(body as any).command,revision:'8',queueRevision:'2',serverTime:'2026-09-16T20:00:01Z',recordedAt:'2026-09-16T20:00:01Z',timeline:{...timeline,state:'paused'},settings:{shuffleEnabled:false,repeatMode:'none'},override:null} as T;
+  if(path.endsWith('/transport'))return {protocolVersion:SOCIAL_PROTOCOL,groupId:'grp_1',idempotencyKey:(body as any).idempotencyKey,disposition:'accepted',groupState:'paused',command:(body as any).command,revision:'8',playbackRevision:'4',queueRevision:'2',serverTime:'2026-09-16T20:00:01Z',recordedAt:'2026-09-16T20:00:01Z',timeline:{...timeline,state:'paused'},settings:{shuffleEnabled:false,repeatMode:'none'},override:null} as T;
   if(path.endsWith('/queue'))return {protocolVersion:SOCIAL_PROTOCOL,serverTime:'x',groupId:'grp_1',queue:{revision:'3',position:0,entries:[{entryId:'ent_1',position:0,itemId:'item',unavailable:false,addedBy:'mem_1'}],eligibility:null}} as T;
   if(path.endsWith('/invites'))return {protocolVersion:SOCIAL_PROTOCOL,serverTime:'x',invite:{id:'inv_1',groupId:'grp_1',code:'ABCDEFGH',expiresAt:'2026-09-16T20:15:00Z',maxUses:8,uses:0,recipientProfileId:''}} as T;
   if(path==='/v1/groups'&&method==='GET')return {protocolVersion:SOCIAL_PROTOCOL,serverTime:'x',groups:[current.group]} as T;
@@ -49,7 +49,7 @@ test('joining tidies the code, enters the room and follows the stream', async()=
  assert.equal(service.getSnapshot().phase,'live');
  await settle();assert.equal(s.streams.length,1);
  s.set(snap({state:'paused',revision:'8',timeline:{...timeline,state:'paused',anchorPositionUs:'42000000',anchorAt:'2026-09-16T20:00:30Z'}}));
- s.streams[0].write(frame('group.transport',{command:'pause',state:'paused',itemId:'item',currentEntryId:'ent_1',anchorPositionUs:'42000000',anchorAt:'2026-09-16T20:00:30Z',rate:{numerator:'1',denominator:'1'},queuePosition:0,revision:'8'},'10'));
+ s.streams[0].write(frame('group.transport',{command:'pause',state:'paused',itemId:'item',currentEntryId:'ent_1',anchorPositionUs:'42000000',anchorAt:'2026-09-16T20:00:30Z',rate:{numerator:'1',denominator:'1'},queuePosition:0,revision:'8',playbackRevision:'4'},'10'));
  await settle();
  const g=service.getSnapshot().group!;
  assert.equal(g.timeline.state,'paused');assert.equal(g.timeline.anchorPositionUs,'42000000');
@@ -87,7 +87,7 @@ test('a command carries the revision it saw; a conflict re-reads and is not rese
  s.set(snap({state:'paused',revision:'8',timeline:{...timeline,state:'paused'}}));
  assert.equal(await service.transport('pause'),true);
  const sent=s.calls.find(c=>c.path.endsWith('/transport'))!;
- assert.equal(sent.body.expectedRevision,'7');assert.equal(sent.body.idempotencyKey,'key-1');
+ assert.equal(sent.body.expectedRevision,'3');assert.equal(sent.body.idempotencyKey,'key-1');
  assert.equal(service.getSnapshot().group!.timeline.state,'paused');await settle();
  s.refuseTransport(Object.assign(new Error('The group changed.'),{code:'revision_conflict',status:409}));
  assert.equal(await service.transport('play'),false);
@@ -280,7 +280,7 @@ test('a seek the host makes while this member is still seeking is followed at on
  const slow=slowPlayer(()=>clock.now,{latency:8000,says:'seeking',duration:7200}),f=new GroupFollower(service,slow.p,()=>clock.now);
  for(let second=0;second<40;second++){
   // Four seconds into the first seek the host jumps the group to ten minutes in.
-  if(second===4){s.set(snap({revision:'8',timeline:{...timeline,anchorPositionUs:'600000000',anchorAt:'2026-09-16T20:00:24Z'}},'2026-09-16T20:00:24Z'));s.streams[0].write(frame('group.transport',{command:'seek',state:'playing',itemId:'item',currentEntryId:'ent_1',anchorPositionUs:'600000000',anchorAt:'2026-09-16T20:00:24Z',rate:{numerator:'1',denominator:'1'},queuePosition:0,revision:'8'},'10'));await settle();}
+  if(second===4){s.set(snap({revision:'8',timeline:{...timeline,anchorPositionUs:'600000000',anchorAt:'2026-09-16T20:00:24Z'}},'2026-09-16T20:00:24Z'));s.streams[0].write(frame('group.transport',{command:'seek',state:'playing',itemId:'item',currentEntryId:'ent_1',anchorPositionUs:'600000000',anchorAt:'2026-09-16T20:00:24Z',rate:{numerator:'1',denominator:'1'},queuePosition:0,revision:'8',playbackRevision:'4'},'10'));await settle();}
   f.start();f.stop();clock.now+=1000;
  }
  // The pending seek was for somewhere the group no longer is, so the jump is followed straight
@@ -378,4 +378,41 @@ test('heartbeat retry honours server overload delay while keeping the room visib
  }};
  const service=new GroupSessionService({api,stream:s.stream,now:()=>now,heartbeatMs:5});
  try{await service.open('grp_1');await new Promise(r=>setTimeout(r,25));assert.equal(heartbeats,1);assert.equal(service.getSnapshot().group?.id,'grp_1');now=59999;await settle();assert.equal(heartbeats,1);now=60000;await settle();assert.ok(heartbeats>1,'heartbeats resume after the server delay');}finally{service.dispose();}
+});
+
+test('a hidden current title pauses the old title and reports buffering for the current playback revision',async()=>{
+ const s=server();s.set(snap({timeline:{...timeline,itemId:''}}));const service=make(s);
+ await service.open('grp_1');
+ const local=player({itemId:'previous',positionSeconds:25});const follower=new GroupFollower(service,local.p,()=>T0);
+ follower.start();follower.stop();
+ assert(local.log.includes('pause'));assert(!local.log.some(x=>x.startsWith('load')));
+ const report=s.calls.find(x=>x.path.endsWith('/readiness'))!.body;
+ assert.equal(report.readiness,'buffering');assert.equal(report.playbackRevision,'3');
+ service.dispose();
+});
+
+test('a waiting group pauses and readies at the frozen seek target without starting playback',async()=>{
+ const s=server();s.set(snap({state:'waiting',timeline:{...timeline,state:'paused',anchorPositionUs:'30000000',waitUntil:'2026-09-16T20:00:05Z'}}));const service=make(s);
+ await service.open('grp_1');
+ const local=player({itemId:'item',positionSeconds:30});const follower=new GroupFollower(service,local.p,()=>T0);
+ follower.start();follower.stop();
+ assert(local.log.includes('pause'));assert(!local.log.includes('play'));
+ assert.equal(s.calls.find(x=>x.path.endsWith('/readiness'))?.body.readiness,'ready');
+ assert.equal(follower.target(),30);service.dispose();
+});
+
+test('an older reread cannot overwrite a newer transport event',async()=>{
+ const s=server(),service=make(s);await service.open('grp_1');await settle();
+ s.streams[0].write(frame('group.transport',{command:'seek',groupState:'waiting',state:'paused',itemId:'item',currentEntryId:'ent_1',anchorPositionUs:'60000000',anchorAt:'2026-09-16T20:00:01Z',rate:{numerator:'1',denominator:'1'},queuePosition:0,revision:'9',playbackRevision:'4',waitUntil:'2026-09-16T20:00:06Z'},'10'));
+ await settle();
+ assert.equal(service.getSnapshot().group?.timeline.anchorPositionUs,'60000000');
+ assert.equal(service.getSnapshot().group?.state,'waiting');assert.equal(service.getSnapshot().group?.playbackRevision,'4');service.dispose();
+});
+
+test('a host whose player reaches the end pauses the group once and clamps its target to the local duration',async()=>{
+ const s=server();s.set(snap({},'2026-09-16T20:01:40Z'));const service=make(s,()=>T0+100000);await service.open('grp_1');
+ const local=player({itemId:'item',positionSeconds:60,playing:false});const p={...local.p,state:()=>({...local.p.state(),durationSeconds:60,ready:false})};
+ const follower=new GroupFollower(service,p,()=>T0+100000);follower.start();follower.stop();follower.start();follower.stop();
+ assert.equal(follower.target(),60);assert.equal(s.calls.filter(c=>c.path.endsWith('/readiness')&&c.body.ended).length,1);
+ assert(!local.log.some(x=>x.startsWith('seek')));service.dispose();
 });

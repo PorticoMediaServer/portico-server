@@ -13,7 +13,7 @@ import (
 )
 
 func TestPolicyProjectionFillsEmptyListsAndCarriesTheSettingsRevision(t *testing.T) {
-	document := operations.SettingsDocument{Revision: 7, Effective: operations.Settings{RemoteSignInPolicy: "owner-only", SecureConnectionsPolicy: "required", RemoteBitrateLimitKbps: 6000}}
+	document := operations.SettingsDocument{Revision: 7, Effective: operations.Settings{RemoteSignInPolicy: "owner-only", RemoteBitrateLimitKbps: 6000}}
 	policy := ProjectPolicy(document)
 	if policy.Revision != 7 || policy.RemoteSignIn != "owner-only" || policy.RemoteBitrateLimitKbps != 6000 {
 		t.Fatalf("projection: %+v", policy)
@@ -28,12 +28,12 @@ func TestAddressClassificationPrefersTheConfiguredLANList(t *testing.T) {
 	for _, c := range []struct {
 		address, want string
 	}{
-		{"127.0.0.1", "loopback"},
-		{"192.168.1.20", "lan"},
+		{"127.0.0.1", "public"},
+		{"192.168.1.20", "public"},
 		{"203.0.113.9", "lan"}, // configured, so it is LAN even though it is routable
 		{"198.51.100.7", "public"},
-		{"fe80::1", "lan"},
-		{"100.64.1.1", "lan"},
+		{"fe80::1", "public"},
+		{"100.64.1.1", "public"},
 	} {
 		if got := classify(netip.MustParseAddr(c.address), lan); got != c.want {
 			t.Fatalf("classify(%s)=%s want %s", c.address, got, c.want)
@@ -48,11 +48,8 @@ func TestStatusWarnsWhenPolicyAndHostDisagree(t *testing.T) {
 			return networking.CertificateStatus{Configured: true, State: "pending", TLSReady: false}, nil
 		},
 	}
-	status := reporter.Report(context.Background(), Policy{RemoteSignIn: "allow", SecureConnectionsPolicy: "required", LANDiscoveryEnabled: true})
+	status := reporter.Report(context.Background(), Policy{RemoteSignIn: "allow", LANDiscoveryEnabled: true})
 	joined := strings.Join(status.Warnings, ",")
-	if !strings.Contains(joined, "secure_connections_required_without_tls") {
-		t.Fatalf("a required TLS policy without a ready certificate must warn: %v", status.Warnings)
-	}
 	if !strings.Contains(joined, "lan_discovery_unsupported_on_this_host") {
 		t.Fatalf("discovery asked for but never started must warn: %v", status.Warnings)
 	}
@@ -191,4 +188,17 @@ func TestDiscoveryRunIsSupervisedAndStopsWithoutBlockingStatus(t *testing.T) {
 		case <-time.After(20 * time.Millisecond):
 		}
 	}
+}
+
+func TestIPv6AccessOriginsKeepAddressAndFamily(t *testing.T) {
+	out := Reporter{}.Report(context.Background(), Policy{AdvertiseURL: "http://[2001:db8::9]", LANNetworks: []string{"2001:db8::/64"}})
+	for _, addr := range out.Addresses {
+		if addr.Source == "accessUrl" {
+			if addr.Address != "2001:db8::9" || addr.Family != "ipv6" || addr.Class != "lan" {
+				t.Fatalf("%+v", addr)
+			}
+			return
+		}
+	}
+	t.Fatal("external address absent")
 }

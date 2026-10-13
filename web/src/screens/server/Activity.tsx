@@ -1,14 +1,15 @@
-import {currentI18n} from '../../app/i18n';
 import {useState} from 'react';
 import type {Job} from '@core/console.ts';
 import {jobLabel, jobStateLabel, jobTone, sentence, useAction, useConsole, useRead, when} from '../../admin/console';
 import {Badge, Button, Freshness, Notice, StateView, Surface, Table, tableCell, Text} from '../../ui';
 import s from './Server.module.css';
+import {useI18n} from '../../app/i18n';
 
 /** Background work: scans, analysis and the rest, with progress and what can be done about each. */
 export function JobsPanel({compact}: {compact?: boolean}) {
+  const i18n = useI18n();
+  const {t} = i18n;
   const client = useConsole();
-  const t = currentI18n().t;
   const [cursor, setCursor] = useState('');
   const read = useRead(() => client.jobs(cursor), [client, cursor], {every: 20000});
   const action = useAction();
@@ -26,10 +27,10 @@ export function JobsPanel({compact}: {compact?: boolean}) {
         <Table columns={[{label: t('web.activity.taskColumn')}, {label: t('web.activity.stateColumn')}, {label: t('web.activity.progressColumn'), num: true}, {label: compact ? t('web.activity.whenColumn') : t('web.activity.startedColumn')}, {label: '', actions: true}]} className="" >
           {items.map(job => (
             <tr key={job.id}>
-              <td><Text variant="bodyStrong">{jobLabel(job.kind)}</Text>{job.resource ? <Text as="div" variant="caption" tone="tertiary">{job.resource}</Text> : null}{job.errorCode ? <Text as="div" variant="caption" tone="danger">{currentI18n().t('web.console.jobFailed')}</Text> : null}<details className={s.details}><summary>{currentI18n().t('server.technicalDetails')}</summary><dl><dt>Task</dt><dd>{job.id}</dd><dt>Phase</dt><dd>{job.phase}</dd><dt>Attempt</dt><dd>{job.attempt}</dd><dt>Lane</dt><dd>{job.lane}</dd><dt>Trigger</dt><dd>{job.trigger}</dd></dl></details> {/* lint-strings-allow: technical console readout (job field labels; Lane is the server's term) */}</td>
+              <td><Text variant="bodyStrong">{jobLabel(job.kind)}</Text>{job.resource ? <Text as="div" variant="caption" tone="tertiary">{job.resource}</Text> : null}{job.errorCode ? <Text as="div" variant="caption" tone="danger">{t('web.console.jobFailed')}</Text> : null}<details className={s.details}><summary>{t('server.technicalDetails')}</summary><dl><dt>{t('web.activity.taskColumn')}</dt><dd>{job.id}</dd><dt>{t('web.activity.detail.phase')}</dt><dd>{job.phase}</dd><dt>{t('web.activity.detail.attempt')}</dt><dd>{job.attempt}</dd><dt>{t('web.activity.detail.queue')}</dt><dd>{job.lane}</dd><dt>{t('web.activity.detail.trigger')}</dt><dd>{job.trigger}</dd></dl></details></td>
               <td><Badge tone={jobTone(job.state)} dot={job.state === 'running'} live={job.state === 'running'}>{jobStateLabel[job.state]}</Badge></td>
-              <td className={tableCell.num}>{job.processed != null ? job.processed.toLocaleString() : '—'}</td>
-              <td>{when(job.createdAt)}</td>
+              <td className={tableCell.num}>{job.processed != null ? i18n.number(job.processed) : '—'}</td>
+              <td>{when(i18n, job.createdAt)}</td>
               <td className={tableCell.actions}>
                 {job.actions.includes('pause') ? <Button size="sm" variant="ghost" label={t('action.pause')} disabled={action.busy} onClick={() => command(job, 'pause')} /> : null}
                 {job.actions.includes('resume') ? <Button size="sm" variant="ghost" label={t('entry.resume')} disabled={action.busy} onClick={() => command(job, 'resume')} /> : null}

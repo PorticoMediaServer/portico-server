@@ -10,7 +10,7 @@ import "strings"
 //     saying what the screen itself can play;
 //   - the media a playback session hands it;
 //   - the artwork for the title it is showing;
-//   - reading who it is, and signing itself out.
+//   - reading who it is, signing itself out, and undoing its own pairing.
 //
 // Everything else is refused for such a session (identity.Principal.
 // PermitsRequest), by default: a route added tomorrow is closed to a paired
@@ -37,6 +37,10 @@ func castTargetRoute(method, path string) bool {
 		return read
 	case path == "/v1/sessions/current":
 		return method == "DELETE"
+	case strings.HasPrefix(path, "/v1/cast/devices/"):
+		// Undoing a pairing. The store lets a screen undo its own and no
+		// other (social.RevokeCastDevice).
+		return method == "DELETE" && !strings.Contains(strings.TrimPrefix(path, "/v1/cast/devices/"), "/")
 	}
 	return false
 }

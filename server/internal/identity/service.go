@@ -267,6 +267,11 @@ func (s *Service) AuthenticateContext(ctx context.Context, token string) (Princi
 	if len(token) < 43 || len(token) > 2048 {
 		return Principal{}, ErrUnauthorized
 	}
+	// An API key or personal access token is accepted only for the request the
+	// edge resolved it on and held to its scopes (api_credentials.go).
+	if err := admitBearer(ctx, token); err != nil {
+		return Principal{}, err
+	}
 	gated2, err := dbwork.BeginSnapshot(ctx, s.db)
 	if err != nil {
 		return Principal{}, err

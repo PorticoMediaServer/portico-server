@@ -222,6 +222,7 @@ func (v aniMedia) record(language string) (ScreenRecord, error) {
 	// AniList describes works, not uniquely identified episodes. These are local
 	// coordinate policies; no fake AniList episode IDs or regional certificates.
 	r.Orders = []ScreenOrder{{"absolute", "Absolute episode numbers"}, {"seasonal", "One explicitly selected local season"}}
+	r = BoundScreenRecord(r)
 	return r, ValidateScreenRecord(r)
 }
 func twoDigits(n int) string {
@@ -291,3 +292,5 @@ func (s *AniList) ScreenDetails(ctx context.Context, kind, id, language, region 
 	}
 	return data.Media.record(language)
 }
+
+func (s *AniList) SetBackgroundSpeed(speed string) { s.http.setSpeed(speed) }
