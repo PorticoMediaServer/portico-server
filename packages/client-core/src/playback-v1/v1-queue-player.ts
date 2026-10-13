@@ -34,6 +34,8 @@ import type {PreparedChoice} from '../prepared-media.ts';
 import type {CompletionPolicy, HeldCompletion, QueueController, QueuePlaybackView, QueuePlayerState, QueueWorkspaceService} from '../queue-controller.ts';
 import type {QueueEntry as LegacyEntry, QueueIntent, QueueItemInput, QueueScope, QueueSnapshot, QueueState} from '../queues.ts';
 import {PlaybackApiError, call, idempotencyKey, type V1Http} from './http.ts';
+import type {QualityRequest} from './quality.ts';
+import type {SessionChange} from './sessions.ts';
 import {toPlaybackSession, type V1PlaybackApi} from './legacy-bridge.ts';
 import {QUEUE_WINDOW_MAX, QueueClient, saveQueueAsPlaylist, type CreateResult, type QueueAnchor, type QueuePlaylistSave, type SegmentInput} from './queue.ts';
 import {audioTransitionsEnabled} from '../audio-effects.ts';
@@ -92,6 +94,7 @@ const message = (e: unknown, fallback: string): string => {
       case 'stream_limit_reached': return 'This account is already playing as many streams as it is allowed.';
       case 'transcode_not_allowed': return 'This title needs converting, and converting is turned off for this account.';
       case 'unsupported_media': return 'This title can’t be played on this device.';
+      case 'connection_too_slow': return 'Your connection to this server is too slow for this quality. Choose a lower quality or Automatic.';
     }
   }
   return fallback;
@@ -127,6 +130,7 @@ export class V1QueuePlayer implements QueueController {
   private readonly events?: V1QueuePlayerOptions['events'];
   private unlisten?: () => void;
   private unlistenSessions?: () => void;
+  private unlistenChanged?: () => void;
   private wakePending?: () => void;
   private refreshTimer?: ReturnType<typeof setTimeout>;
   private readonly buildingRetryMs: number;
@@ -154,6 +158,9 @@ export class V1QueuePlayer implements QueueController {
     this.nativeFor = options.nativeFor ?? (() => false);
     this.http = options.http;
     this.api = options.api;
+    // A session re-planned behind the queue (a player failure the service recovered from) is the
+    // same session with a new presentation: keep the copy the queue commands read in step.
+    this.unlistenChanged = this.api.onSessionChanged(session => { if (this.session?.id === session.id) this.session = session; });
     this.playback = options.playback;
     this.key = options.key ?? (() => idempotencyKey());
     this.client = new QueueClient(options.http, this.key);
@@ -275,6 +282,43 @@ export class V1QueuePlayer implements QueueController {
   playItem(itemId: string, startSeconds?: number, _prepared?: PreparedChoice, _quality?: string, _audioStream?: number): Promise<void> {
     return this.playIds([itemId], {startSeconds});
   }
+
+  // ── Changing what is playing ────────────────────────────────────────
+
+  /** The session being played and the quality, engine and tracks in force on it. */
+  currentSession(): Session | undefined { return this.session; }
+
+  /**
+   * Changes the playing session in place: quality, version, audio track, subtitle track. The
+   * server re-plans the same session at the player's position; the queue, its order and the
+   * session's place in it are untouched. When the bytes change the new presentation is handed to
+   * the player (a new URL, possibly the other engine: `session.presentation.engine`).
+   * Rejects with the server's error (`connection_too_slow`, `unsupported_media`,
+   * `transcode_not_allowed`…); the session keeps playing as it was.
+   */
+  async changePlayback(change: SessionChange): Promise<Session | undefined> {
+    const session = this.session;
+    if (!session || this.disposed || this.nativeOwns()) return undefined;
+    const generation = this.generation, intent = this.playback.getSnapshot().intentId;
+    const snapshot = this.playback.getSnapshot();
+    const at = snapshot.pendingSeek?.positionSeconds ?? snapshot.positionSeconds;
+    const r = await this.api.change(session, change.positionMs === undefined && change.seek === undefined && Number.isFinite(at) ? {...change, positionMs: Math.max(0, Math.round(at * 1000))} : change);
+    if (this.disposed || generation !== this.generation || this.session?.id !== session.id) return r.session;
+    const replaced = r.session.presentation.generation !== session.presentation.generation || r.session.presentation.url !== session.presentation.url;
+    this.session = r.session;
+    if (replaced) await this.playback.adoptQueueSession(r.session.itemId ?? session.itemId ?? '', {...r.playback, resumeSeconds: r.session.presentation.startPositionMs / 1000}, intent);
+    this.publish({});
+    return r.session;
+  }
+  /** Choose a quality for this session (`qualityRequest` turns a menu choice or a saved default into one). */
+  setQuality(quality: QualityRequest, throughputKbps?: number) { return this.changePlayback({quality, ...(throughputKbps !== undefined ? {throughputKbps: Math.max(0, Math.round(throughputKbps))} : {})}); }
+  /** Automatic quality: one ladder step down or up from where the session is. */
+  stepQuality(direction: 'down' | 'up') { return this.changePlayback({quality: {mode: 'automatic', step: direction}}); }
+  setVersion(versionId: string) { return this.changePlayback({versionId}); }
+  setAudioTrack(trackId: string) { return this.changePlayback({audio: {trackId}}); }
+  /** `null` turns subtitles off. A text track comes back as a sidecar file; a styled or image
+   * track is drawn by the engine (`presentation.subtitle.delivery === 'device'`) or burned in. */
+  setSubtitleTrack(trackId: string | null) { return this.changePlayback({subtitles: {trackId}}); }
 
   playEntries(entries: readonly QueueItemInput[], options: {shuffle?: boolean; startSeconds?: number} = {}): Promise<void> {
     if (!entries.length) return Promise.reject(new Error('No available items were selected.'));
@@ -618,6 +662,7 @@ export class V1QueuePlayer implements QueueController {
     if (this.disposed) return;
     this.leave();
     this.disposed = true;
+    this.unlistenChanged?.();
     ++this.nativeEpoch;
     this.unsubscribe?.();
     this.unlisten?.();

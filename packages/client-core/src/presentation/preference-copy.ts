@@ -31,7 +31,6 @@ export function preferenceGroupTitle(group: string, platform: CopyPlatform): {ti
 }
 
 export function preferenceLabel(key: string, platform: CopyPlatform): {label: string; help?: string} {
-  if (/^quality\.[a-z]+\.allowHDR$/.test(key)) return {label: text('pref.label.allowHDR')!};
   const label = text(`pref.label.${key}`);
   if (!label) return {label: sentenceFromKey(key.split('.').pop() ?? key)};
   const help = forPlatform(`pref.help.${key}`, platform);
@@ -48,16 +47,15 @@ function catalogueRecord(prefix: string, keys: readonly string[]): Readonly<Reco
   });
 }
 
-/** Quality modes for every network (`quality.<network>.mode`). */
-export const qualityModeLabels: Readonly<Record<string, string>> = catalogueRecord('pref.qualityMode.', ['off', 'automatic', 'original', 'high', 'standard', 'data-saver']);
-
 /** Copy for an enumerated value; falls back to the value in sentence case with units. */
 export function preferenceValueLabel(key: string, value: string | number): string {
   const known = text(`pref.value.${key}.${String(value)}`);
   if (known) return known;
-  if (/^quality\.[a-z]+\.mode$/.test(key) && qualityModeLabels[String(value)]) return qualityModeLabels[String(value)]!;
-  // Heights are labels, not quantities: "1080p", never "1,080p".
-  if (/^quality\.[a-z]+\.maxVideoHeight$/.test(key) && typeof value === 'number') return value >= 4320 ? text('pref.unit.8k')! : value >= 2160 ? text('pref.unit.4k')! : text('pref.unit.height', {value: String(value)})!;
+  // The saved default qualities: the original, automatic, or a step of the ladder ("1080p", never "1,080p").
+  if ((key === 'quality.home' || key === 'quality.remote') && typeof value === 'string') {
+    if (value === 'original' || value === 'automatic') return text(`settings.quality.limit.${value}`)!;
+    return value === '2160p' ? text('pref.unit.4k')! : text('pref.unit.height', {value: value.replace(/p$/, '')})!;
+  }
   if (typeof value === 'number') {
     if (key.endsWith('Seconds')) return text('pref.unit.seconds', {count: value})!;
     if (key.endsWith('Episodes')) return text('pref.unit.episodes', {count: value})!;
@@ -71,8 +69,6 @@ export function preferenceValueLabel(key: string, value: string | number): strin
   return sentenceFromKey(value);
 }
 
-/** Network classes for the per-network quality rows. */
-export const qualityNetworkLabels: Readonly<Record<string, string>> = catalogueRecord('pref.network.', ['local', 'wifi', 'cellular', 'unknown']);
 
 /** The device noun used in copy: "this browser" on web, "this device" elsewhere. */
 export function deviceNoun(platform: CopyPlatform): string {

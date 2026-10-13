@@ -9,7 +9,8 @@
 import type {PlaybackApi, PlaybackSession} from '../index.ts';
 import {idempotencyKey, PlaybackApiError, type V1Http} from './http.ts';
 import {PlaybackOptionsClient} from './options.ts';
-import {SessionsClient, type StartOptions, type StartTarget, type Timers} from './sessions.ts';
+import {SessionsClient, type SessionChange, type StartOptions, type StartTarget, type Timers} from './sessions.ts';
+import type {PlayerFailureCode} from '../client-profile.ts';
 import type {TimelineReport, TimelineState} from './timeline.ts';
 import {parseSessionEnd, type Session, type SessionEnd} from './types.ts';
 
@@ -49,6 +50,7 @@ export class V1PlaybackApi implements PlaybackApi {
   private readonly now: () => number;
   private readonly random: () => number;
   private readonly endedListeners = new Set<(sessionId: string, end: SessionEnd) => void>();
+  private readonly changedListeners = new Set<(session: Session) => void>();
   /** Sessions a committed audio edge ended on the server (§18.3): their last reports and end
    * notices are dropped, since the audio already belongs to the next session. */
   private readonly retired = new Set<string>();
@@ -93,6 +95,49 @@ export class V1PlaybackApi implements PlaybackApi {
     tracked.everyMs = session.lease.reportEveryMs;
     this.tracked.set(session.id, tracked);
     return toPlaybackSession(session, durationSeconds);
+  }
+
+  /**
+   * One re-plan of a playing session (`PATCH`): a quality, version, audio or subtitle change, or a
+   * reported player failure. The session keeps its id, its queue and its place in it; when the
+   * bytes change it comes back as a new generation (a new URL, possibly another engine), which is
+   * tracked from `positionMs` on. A stale revision is re-read and the change sent once more, so
+   * the viewer only ever sees a conflict when the session really ended.
+   */
+  async change(session: Session, change: SessionChange, signal?: AbortSignal): Promise<{session: Session; playback: PlaybackSession}> {
+    const t = this.tracked.get(session.id);
+    const positionMs = change.positionMs ?? change.seek?.positionMs ?? t?.positionMs;
+    const body: SessionChange = positionMs !== undefined && change.positionMs === undefined && change.seek === undefined ? {...change, positionMs: Math.max(0, Math.round(positionMs))} : change;
+    let updated: Session;
+    try {
+      updated = await this.sessions.patch(session.id, session.revision, body, signal);
+    } catch (e) {
+      if (!(e instanceof PlaybackApiError) || e.status !== 412) throw e;
+      const current = (e.current as Session | undefined) ?? await this.sessions.get(session.id, signal);
+      updated = await this.sessions.patch(current.id, current.revision, body, signal);
+    }
+    const duration = await this.duration(updated.itemId ?? '', updated.versionId, signal);
+    return {session: updated, playback: this.adopt(updated, duration)};
+  }
+
+  /** The engine could not play a session's presentation: the server re-plans it another way. */
+  async reportPlayerFailure(sessionId: string, code: PlayerFailureCode, detail: string, positionSeconds: number): Promise<{escalates: boolean; session?: PlaybackSession; v1?: Session} | null> {
+    try {
+      const current = await this.sessions.get(sessionId);
+      const r = await this.change(current, {failure: {code, detail: detail.replace(/[\x00-\x1f\x7f]/g, ' ').slice(0, 500)}, positionMs: Math.max(0, Math.round(positionSeconds * 1000))});
+      for (const listener of this.changedListeners) listener(r.session);
+      return {escalates: true, session: r.playback, v1: r.session};
+    } catch (e) {
+      // unsupported_media: this was the last way to deliver the file.
+      if (e instanceof PlaybackApiError && (e.code === 'unsupported_media' || e.status === 404 || e.status === 410)) return {escalates: false};
+      return null;
+    }
+  }
+
+  /** Tells an owner of v1 sessions (the queue player) that a session was re-planned behind it. */
+  onSessionChanged(listener: (session: Session) => void): () => void {
+    this.changedListeners.add(listener);
+    return () => { this.changedListeners.delete(listener); };
   }
 
   createPlayback(itemId: string, requestId: string, signal?: AbortSignal): Promise<PlaybackSession> {

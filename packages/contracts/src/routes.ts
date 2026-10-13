@@ -50,7 +50,7 @@ export const routes = [
     "id": "change_playback_session",
     "method": "PATCH",
     "path": "/v1/playback/sessions/{id}",
-    "summary": "Change tracks, quality, version or state; a change to the bytes starts a new generation",
+    "summary": "Change tracks, quality, version or state, or report that the player failed; a change to the bytes re-plans the same session as a new generation and keeps its queue",
     "access": "device",
     "lane": "media",
     "cost": "constant",
@@ -64,7 +64,8 @@ export const routes = [
       "revision_mismatch",
       "stream_limit_reached",
       "transcode_not_allowed",
-      "unsupported_media"
+      "unsupported_media",
+      "connection_too_slow"
     ],
     "status": 200
   },
@@ -382,7 +383,7 @@ export const routes = [
     "id": "get_device_capabilities",
     "method": "GET",
     "path": "/v1/me/devices/current/capabilities",
-    "summary": "Read this device's playback capability profile",
+    "summary": "Read this device's capability document",
     "access": "device",
     "lane": "default",
     "cost": "constant",
@@ -631,6 +632,7 @@ export const routes = [
       "audioId",
       "subtitleId",
       "quality",
+      "qualityId",
       "maxVideoBitrateKbps",
       "maxHeight",
       "maxAudioBitrateKbps"
@@ -1049,11 +1051,11 @@ export const routes = [
     "id": "put_device_capabilities",
     "method": "PUT",
     "path": "/v1/me/devices/current/capabilities",
-    "summary": "Replace this device's playback capability profile",
+    "summary": "Replace this device's capability document: what each of its player engines can play, the viewer's player setting and overrides",
     "access": "device",
     "lane": "default",
     "cost": "constant",
-    "bodyLimit": 32768,
+    "bodyLimit": 65536,
     "errors": [
       "invalid_request",
       "unauthorized",
@@ -1224,6 +1226,7 @@ export const routes = [
       "transcode_not_allowed",
       "source_unavailable",
       "unsupported_media",
+      "connection_too_slow",
       "feature_restricted",
       "no_tuner_available",
       "queue_building"

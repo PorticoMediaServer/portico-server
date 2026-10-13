@@ -50,6 +50,12 @@ export type SettingsCapabilities = Readonly<{
   playbackSpeed?: boolean;
   /** This device renders audio itself: gapless, crossfade and volume leveling. Absent: it does (a Roku's player cannot). */
   audioEffects?: boolean;
+  /** This device carries the mpv player beside its own (the capability document has an `mpv` engine). */
+  mpvPlayer?: boolean;
+  /** This device can hand sound to a receiver undecoded (the capability document lists `audioPassthrough`). */
+  audioPassthrough?: boolean;
+  /** This device or its display can show HDR. Absent: it can. */
+  hdr?: boolean;
 }>;
 
 export type SettingsContext = Readonly<{owner: boolean; platform: SettingsPlatform; capabilities: SettingsCapabilities}>;
@@ -64,7 +70,9 @@ export type SettingsControl =
   | Readonly<{type: 'locale'}>;
 
 export type CompositeId =
-  | 'quality.home' | 'quality.away' | 'quality.cellular' | 'playbackMethod' | 'hdr' | 'cardSize'
+  | 'playbackMethod' | 'cardSize'
+  // Kept by the device and published in its capability document (`withViewerSettings`).
+  | 'playerEngine' | 'forceStereo' | 'disablePassthrough' | 'disableHdr'
   | 'libraryView' | 'reduceMotion' | 'textSize' | 'receiveFromDevices';
 export type SettingsActionId = 'signOut' | 'resetRecommendations' | 'linkTV';
 export type SettingsCustomId =
@@ -138,13 +146,12 @@ type AuthoredPage = Readonly<{id: string; title: MessageId; icon: IconId; tabs?:
 const seconds = (...values: number[]): SettingsChoice[] => values.map(value => ({value, label: 'pref.unit.seconds', labelValues: {count: value}}));
 const speeds: SettingsChoice[] = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2].map(value => (value === 1 ? {value, label: 'pref.unit.speedNormal'} : {value, label: 'pref.unit.speed', labelValues: {value}}));
 const skipChoices = (key: string): SettingsChoice[] => (['ask', 'auto', 'off'] as const).map(value => ({value, label: `pref.value.${key}.${value}` as MessageId}));
-const limitChoices: SettingsChoice[] = [
-  {value: 'automatic', label: 'settings.quality.limit.automatic'},
+/** The saved default qualities (`quality.home`, `quality.remote`): the original, automatic, then the server's ladder. */
+const qualityChoices: SettingsChoice[] = [
   {value: 'original', label: 'settings.quality.limit.original'},
-  {value: '2160', label: 'pref.unit.4k'},
-  {value: '1080', label: 'pref.unit.height', labelValues: {value: '1080'}},
-  {value: '720', label: 'pref.unit.height', labelValues: {value: '720'}},
-  {value: '480', label: 'pref.unit.height', labelValues: {value: '480'}},
+  {value: 'automatic', label: 'settings.quality.limit.automatic'},
+  {value: '2160p', label: 'pref.unit.4k'},
+  ...(['1440', '1080', '720', '480', '360'] as const).map(value => ({value: value + 'p', label: 'pref.unit.height' as MessageId, labelValues: {value}})),
 ];
 const pref = (key: string, label: MessageId, control: SettingsControl, more: Partial<RowCopy> & Only = {}): Authored<SettingsRow> => ({kind: 'preference', key, label, control, ...more});
 const toggle = (key: string, label: MessageId, more: Partial<RowCopy> & Only = {}) => pref(key, label, {type: 'switch'}, more);
@@ -212,18 +219,26 @@ const accountPages: readonly AuthoredPage[] = [
   },
   {
     id: 'quality', title: 'settings.page.quality', icon: 'quality', sections: [
-      // One limit per network. The registry's mode and ceiling pairs stay there for API clients.
+      // Two saved defaults: at home and away. The player can still choose another quality for one title.
       {id: 'limits', title: 'settings.section.qualityLimits', rows: [
-        {kind: 'composite', id: 'quality.home', storage: 'registry', label: 'settings.row.qualityHome', help: 'settings.help.qualityHome', scope: 'device', control: {type: 'choice', choices: limitChoices}},
-        {kind: 'composite', id: 'quality.away', storage: 'registry', label: 'settings.row.qualityAway', help: 'settings.help.qualityAway', scope: 'device', control: {type: 'choice', choices: limitChoices}},
-        {kind: 'composite', id: 'quality.cellular', storage: 'registry', label: 'settings.row.qualityCellular', scope: 'device', control: {type: 'choice', choices: limitChoices}, platforms: ['phone']},
+        pref('quality.home', 'settings.row.qualityHome', {type: 'choice', choices: qualityChoices}, {scope: 'device', help: 'settings.help.qualityHome'}),
+        pref('quality.remote', 'settings.row.qualityAway', {type: 'choice', choices: qualityChoices}, {scope: 'device', help: 'settings.help.qualityAway'}),
       ]},
       {id: 'method', rows: [
         // One choice in place of three four-way policies; it writes a combination that makes sense.
         {kind: 'composite', id: 'playbackMethod', storage: 'registry', label: 'settings.row.playbackMethod', help: 'settings.help.playbackMethod', scope: 'device', control: {type: 'choice', choices: [
           {value: 'automatic', label: 'settings.playbackMethod.automatic'}, {value: 'original', label: 'settings.playbackMethod.original'}, {value: 'convert', label: 'settings.playbackMethod.convert'},
         ]}},
-        {kind: 'composite', id: 'hdr', storage: 'registry', label: 'settings.row.hdr', help: 'settings.help.hdr', scope: 'device', control: {type: 'choice', choices: [{value: 'automatic', label: 'settings.hdr.automatic'}, {value: 'off', label: 'settings.hdr.off'}]}},
+        // Only where the app carries a second player.
+        {kind: 'composite', id: 'playerEngine', storage: 'device', label: 'settings.row.playerEngine', help: 'settings.help.playerEngine', scope: 'device', needs: c => c.mpvPlayer === true, control: {type: 'choice', choices: [
+          {value: 'automatic', label: 'settings.playerEngine.automatic'}, {value: 'native', label: 'settings.playerEngine.native'}, {value: 'mpv', label: 'settings.playerEngine.mpv'},
+        ]}},
+      ]},
+      // The short list for when detection is wrong. Each narrows what the server plans this device as.
+      {id: 'fixes', title: 'settings.section.playbackFixes', description: 'settings.section.playbackFixesHelp', rows: [
+        {kind: 'composite', id: 'forceStereo', storage: 'device', label: 'settings.row.forceStereo', help: 'settings.help.forceStereo', scope: 'device', control: {type: 'switch'}},
+        {kind: 'composite', id: 'disablePassthrough', storage: 'device', label: 'settings.row.disablePassthrough', help: 'settings.help.disablePassthrough', scope: 'device', needs: c => c.audioPassthrough === true, control: {type: 'switch'}},
+        {kind: 'composite', id: 'disableHdr', storage: 'device', label: 'settings.row.disableHdr', help: 'settings.help.disableHdr', scope: 'device', needs: c => c.hdr !== false, control: {type: 'switch'}},
       ]},
     ],
   },
@@ -573,9 +588,6 @@ export function searchSettings(structure: SettingsStructure, query: string, t: (
 // ── Composite rows: one decision, several keys ───────────────────────────────
 
 type Read = (key: string) => PreferenceValue | undefined;
-const NETWORKS = ['local', 'wifi', 'cellular', 'unknown'] as const;
-/** The registry networks behind each limit row: "Away from home" is Wi-Fi elsewhere and any network the device cannot name. */
-const LIMIT_NETWORKS: Readonly<Record<string, readonly string[]>> = {'quality.home': ['local'], 'quality.away': ['wifi', 'unknown'], 'quality.cellular': ['cellular']};
 const CARD_SIZE: Readonly<Record<string, number>> = {small: 85, medium: 100, large: 125};
 const METHODS: Readonly<Record<string, Readonly<Record<string, string>>>> = {
   automatic: {'delivery.directPlay': 'prefer', 'delivery.directStream': 'allow', 'delivery.transcode': 'allow'},
@@ -583,19 +595,9 @@ const METHODS: Readonly<Record<string, Readonly<Record<string, string>>>> = {
   convert: {'delivery.directPlay': 'never', 'delivery.directStream': 'never', 'delivery.transcode': 'require'},
 };
 
-/** The tallest picture one network lane allows as the server reads it (`delivery_policy.go`): Infinity for original files. */
-function laneLimit(read: Read, network: string): number {
-  const mode = read(`quality.${network}.mode`);
-  if (mode === 'original') return Infinity;
-  const mbps = Number(read(`quality.${network}.maxVideoBitrateMbps`) ?? 0);
-  const preset = mbps >= 20 ? 2160 : mbps >= 8 ? 1080 : mbps >= 2 ? 720 : mbps >= 1 ? 480 : 4320;
-  const byMode = mode === 'standard' ? 1080 : mode === 'data-saver' || mode === 'off' ? 480 : 4320;
-  return Math.min(Number(read(`quality.${network}.maxVideoHeight`) || 4320), preset, byMode);
-}
-
 /** Composites whose value lives in the registry (the rest are the device's own). */
 export function registryComposite(id: CompositeId): boolean {
-  return id === 'playbackMethod' || id === 'hdr' || id === 'cardSize' || id in LIMIT_NETWORKS;
+  return id === 'playbackMethod' || id === 'cardSize';
 }
 
 /**
@@ -603,21 +605,12 @@ export function registryComposite(id: CompositeId): boolean {
  * could have written reads as the nearest choice a person can make, never as a fourth option.
  */
 export function readComposite(id: CompositeId, read: Read): string | boolean {
-  const networks = LIMIT_NETWORKS[id];
-  if (networks) {
-    // Several networks behind one row read as the strictest of them, so the row never overstates.
-    const limit = Math.min(...networks.map(network => laneLimit(read, network)));
-    if (limit === Infinity) return 'original';
-    if (limit >= 4320) return 'automatic';
-    return limit >= 2160 ? '2160' : limit >= 1080 ? '1080' : limit >= 720 ? '720' : '480';
-  }
   switch (id) {
     case 'playbackMethod': {
       if (read('delivery.directPlay') === 'never') return 'convert';
       if (read('delivery.transcode') === 'never') return 'original';
       return 'automatic';
     }
-    case 'hdr': return NETWORKS.some(n => read(`quality.${n}.allowHDR`) !== false) ? 'automatic' : 'off';
     case 'cardSize': {
       const percent = Number(read('appearance.cardSizePercent') ?? 100);
       return percent < 90 ? 'small' : percent > 115 ? 'large' : 'medium';
@@ -628,21 +621,8 @@ export function readComposite(id: CompositeId, read: Read): string | boolean {
 
 /** The keys a choice writes: one consistent combination, never a contradictory one. */
 export function compositePatch(id: CompositeId, choice: string | boolean): PreferencePatch {
-  const networks = LIMIT_NETWORKS[id];
-  if (networks) {
-    const patch: Record<string, PreferenceValue> = {};
-    for (const network of networks) {
-      patch[`quality.${network}.mode`] = choice === 'original' ? 'original' : 'automatic';
-      patch[`quality.${network}.maxVideoHeight`] = choice === 'automatic' || choice === 'original' ? 4320 : Number(choice);
-      // The height is the limit; a bit rate ceiling left behind would quietly lower it again.
-      patch[`quality.${network}.maxVideoBitrateMbps`] = 0;
-      patch[`quality.${network}.maxAudioBitrateKbps`] = 0;
-    }
-    return patch;
-  }
   switch (id) {
     case 'playbackMethod': return {...(METHODS[String(choice)] ?? METHODS.automatic!)};
-    case 'hdr': return Object.fromEntries(NETWORKS.map(n => [`quality.${n}.allowHDR`, choice !== 'off']));
     case 'cardSize': return {'appearance.cardSizePercent': CARD_SIZE[String(choice)] ?? 100};
     default: return {};
   }

@@ -5,7 +5,7 @@
  */
 export {shapeFor, shapeAspect, personShape, type CardShape, type ShapeContext, type ShapeFamily} from './card-shape.ts';
 export {presentError, errorMessage, type ErrorContext, type ErrorOperation, type ErrorCategory, type ErrorAction, type PresentedError, type PresentOptions} from './errors.ts';
-export {preferenceGroupTitle, preferenceLabel, preferenceValueLabel, qualityNetworkLabels, managedElsewhere, deviceNoun, type CopyPlatform} from './preference-copy.ts';
+export {preferenceGroupTitle, preferenceLabel, preferenceValueLabel, managedElsewhere, deviceNoun, type CopyPlatform} from './preference-copy.ts';
 export {viewerScope, iconFor, captionFor, progressFor, formatDuration, formatClock, formatBytes, friendlyHost, sentence} from './content.ts';
 export {compatContentApi, sanitizeContentProjection, knownContentViews, type ContentRequestApi} from './content-compat.ts';
 export {entryActions, entryActionList, type EntryAction, type EntryActionGroup, type EntryActionGroupId, type EntryActionId, type EntryCapabilities} from './entry-actions.ts';

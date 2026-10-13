@@ -31,6 +31,12 @@ export const errors = [
     "retry": "same_request"
   },
   {
+    "code": "connection_too_slow",
+    "status": 422,
+    "message": "Your connection to this server is too slow for this quality. Choose a lower quality or Automatic.",
+    "retry": "never"
+  },
+  {
     "code": "cursor_expired",
     "status": 409,
     "message": "Refresh the list to continue.",

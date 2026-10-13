@@ -1,4 +1,4 @@
-import {webDeclaredProfile,appleDeclaredProfile,androidDeclaredProfile,fireTvDeclaredProfile,vegaDeclaredProfile,webosDeclaredProfile,tizenDeclaredProfile,castDeclaredProfile,appleProfile,androidProfile,probeWebProfile} from '../src/client-profile.ts';
+import {withMpvEngine,webDeclaredProfile,appleDeclaredProfile,androidDeclaredProfile,fireTvDeclaredProfile,vegaDeclaredProfile,webosDeclaredProfile,tizenDeclaredProfile,castDeclaredProfile,appleProfile,androidProfile,probeWebProfile} from '../src/client-profile.ts';
 
 // Synthetic probe responses exercise the production merge functions. These are
 // acceptance fixtures, not a claim that physical devices were verified here.
@@ -35,4 +35,7 @@ export const declaredProfiles={
   passthrough:[{codec:'ac3',maxChannels:6},{codec:'eac3',maxChannels:8,objectAudio:['atmos']},{codec:'dts',maxChannels:8,objectAudio:['dtsx']},{codec:'truehd',maxChannels:8,objectAudio:['atmos']}],
   audio:{maxOutputChannels:8,route:'hdmi'},
  }),
+ // The same Apple TV and Shield with the mpv engine beside the native one.
+ appletv_mpv:withMpvEngine(appleProfile({television:true},{hardwareDecode:{hevc:true,dolbyVision:true,av1:false},hdrModes:{hdr10:true,hlg:true,dolbyVision:true},eligibleForHDRPlayback:true,screen:{width:3840,height:2160,maxFrameRate:60},audio:{maxOutputChannels:8,route:'hdmi',spatial:true}})),
+ android_mpv:withMpvEngine(androidProfile({},{decoders:[{codec:'h264',maxWidth:1920,maxHeight:1080,maxFrameRate:60},{codec:'hevc',maxWidth:3840,maxHeight:2160,maxFrameRate:60,tenBit:true,hdr:['hdr10']}],audioDecoders:[{codec:'aac',maxChannels:8},{codec:'mp3'},{codec:'opus'},{codec:'flac'}],displayHdr:[],audio:{maxOutputChannels:2,route:'speaker'}})),
 };

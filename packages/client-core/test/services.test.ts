@@ -114,19 +114,15 @@ test("LAN authority survives internet/hosted loss", () => {
   assert.equal(viewer.getSnapshot().phase, "ready");
   assert.equal(viewer.getSnapshot().generation, generation);
 });
-test("single auto quality is sufficient and media URLs stay same origin", async () => {
-  let body = "";
-  const fake = async (_url: any, init: any) => {
-    body = init.body;
-    return new Response(JSON.stringify(session), { status: 201 });
-  };
+test("media URLs stay same origin", async () => {
+  const fake = async () => new Response(JSON.stringify(session), { status: 201 });
   const client = new HttpLocalApi(
     "http://127.0.0.1:19411",
     "token",
     fake as typeof fetch
   );
-  await client.createPlayback("m", "r");
-  assert.equal(JSON.parse(body).quality, "auto");
+  // Playback is started, reported and stopped only through Playback Protocol v1 (V1PlaybackApi).
+  for (const gone of ["createPlayback", "progressPlayback", "stopPlayback", "reportRouteFailure"]) assert.equal(gone in client, false, gone);
   assert.equal(
     client.mediaUrl("/v1/media/opaque"),
     "http://127.0.0.1:19411/v1/media/opaque"
