@@ -46,10 +46,12 @@ const (
 	credentialStreams       = 2
 	credentialStreamsGlobal = 64
 
-	credentialResolveTTL     = 15 * time.Second
-	credentialResolveEntries = 1024
-	credentialBuckets        = 4096
-	credentialUseFlush       = time.Minute
+	credentialResolveConcurrency = 4
+	credentialResolveBudget      = 2 * time.Second
+	credentialResolveTTL         = 15 * time.Second
+	credentialResolveEntries     = 1024
+	credentialBuckets            = 4096
+	credentialUseFlush           = time.Minute
 )
 
 func credentialErrorDefinitions() []apierror.Definition {
@@ -75,20 +77,22 @@ type credentialBucket struct {
 }
 
 type credentialGate struct {
-	mu       sync.Mutex
-	resolved map[string]resolvedEntry
-	buckets  map[string]*credentialBucket
-	inflight map[string]int
-	streams  map[string]int
-	total    int
-	streamed int
-	uses     map[string]access.CredentialUse
-	flushed  time.Time
-	flushing bool
+	mu              sync.Mutex
+	resolved        map[string]resolvedEntry
+	buckets         map[string]*credentialBucket
+	inflight        map[string]int
+	streams         map[string]int
+	total           int
+	streamed        int
+	uses            map[string]access.CredentialUse
+	flushed         time.Time
+	flushing        bool
+	resolving       chan struct{}
+	resolveFailures limiter
 }
 
 func newCredentialGate() *credentialGate {
-	return &credentialGate{resolved: map[string]resolvedEntry{}, buckets: map[string]*credentialBucket{}, inflight: map[string]int{}, streams: map[string]int{}, uses: map[string]access.CredentialUse{}, flushed: time.Now()}
+	return &credentialGate{resolved: map[string]resolvedEntry{}, buckets: map[string]*credentialBucket{}, inflight: map[string]int{}, streams: map[string]int{}, uses: map[string]access.CredentialUse{}, flushed: time.Now(), resolving: make(chan struct{}, credentialResolveConcurrency)}
 }
 
 type credentialNestedKey struct{}
@@ -127,10 +131,52 @@ func (g *credentialGate) lookup(digest string, now time.Time) (access.ResolvedCr
 	defer g.mu.Unlock()
 	entry, ok := g.resolved[digest]
 	if !ok || !now.Before(entry.expires) || entry.authority != dbwork.AuthorityGeneration() {
-		delete(g.resolved, digest)
 		return access.ResolvedCredential{}, false
 	}
 	return entry.credential, true
+}
+
+// resolve bounds the work needed to identify an uncached credential before
+// the request can enter its normal lane. Failed secrets share one budget per
+// client and network across all routes; valid credentials do not spend it.
+func (g *credentialGate) resolve(ctx context.Context, digest, address string, lookup func(context.Context) (access.ResolvedCredential, error)) (access.ResolvedCredential, error) {
+	if err := ctx.Err(); err != nil {
+		return access.ResolvedCredential{}, err
+	}
+	select {
+	case g.resolving <- struct{}{}:
+		defer func() { <-g.resolving }()
+	default:
+		return access.ResolvedCredential{}, &apierror.Error{Code: "credential_busy", RetryAfterSeconds: 1}
+	}
+	g.mu.Lock()
+	_, known := g.resolved[digest]
+	g.mu.Unlock()
+	failures := &g.resolveFailures
+	addressKey, networkKey := address, clientNetwork(address)
+	failures.mu.Lock()
+	if failures.entries == nil {
+		failures.entries, failures.networks = map[string]rateEntry{}, map[string]rateEntry{}
+	}
+	now := time.Now()
+	allowed := known || countable(failures.entries, addressKey, now, rateAttemptsPerAddress) && countable(failures.networks, networkKey, now, rateAttemptsPerNetwork)
+	failures.mu.Unlock()
+	if !allowed {
+		return access.ResolvedCredential{}, &apierror.Error{Code: "rate_limited", RetryAfterSeconds: 60}
+	}
+	bounded, cancel := context.WithTimeout(ctx, credentialResolveBudget)
+	defer cancel()
+	credential, err := lookup(bounded)
+	if err != nil {
+		failures.mu.Lock()
+		charge(failures.entries, addressKey, time.Now(), rateAddressEntries)
+		charge(failures.networks, networkKey, time.Now(), rateNetworkEntries)
+		failures.mu.Unlock()
+		g.mu.Lock()
+		delete(g.resolved, digest)
+		g.mu.Unlock()
+	}
+	return credential, err
 }
 
 // remember takes the authority generation read before the lookup that produced
@@ -346,10 +392,16 @@ func (d Dependencies) admitCredential(w http.ResponseWriter, r *http.Request, mu
 	credential, cached := gate.lookup(digest, now)
 	if !cached {
 		generation := dbwork.AuthorityGeneration()
-		resolved, err := store.ResolveCredential(r.Context(), digest)
+		resolved, err := gate.resolve(r.Context(), digest, clientAddress(r, d.trustedProxyPrefixes(r.Context())), func(ctx context.Context) (access.ResolvedCredential, error) {
+			return store.ResolveCredential(ctx, digest)
+		})
 		if err != nil {
 			if errors.Is(err, identity.ErrUnauthorized) {
 				return refuse(&apierror.Error{Code: "unauthorized"})
+			}
+			var refusal *apierror.Error
+			if errors.As(err, &refusal) {
+				return refuse(refusal)
 			}
 			return refuse(&apierror.Error{Code: "internal", Cause: err})
 		}
