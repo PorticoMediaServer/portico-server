@@ -42,3 +42,22 @@ export const nextCursorOf = (raw: unknown): string => {
   const c = (raw as {nextCursor?: unknown} | null)?.nextCursor;
   return typeof c === 'string' && c.length <= 2048 ? c : '';
 };
+
+/**
+ * One record of a list that is read by cursor, looked for a page at a time (bounded, and never
+ * following a cursor twice). For reading a record again before an action on it is sent again:
+ * `undefined` means it is no longer in the list.
+ */
+export async function findInPages<T>(fetch: (cursor: string) => Promise<{items: readonly T[]; nextCursor: string}>, match: (item: T) => boolean, maxPages = 32): Promise<T | undefined> {
+  const followed = new Set<string>();
+  let cursor = '';
+  for (let page = 0; page < maxPages; page++) {
+    const out = await fetch(cursor);
+    const found = out.items.find(match);
+    if (found) return found;
+    if (!out.nextCursor || followed.has(out.nextCursor)) return undefined;
+    followed.add(out.nextCursor);
+    cursor = out.nextCursor;
+  }
+  return undefined;
+}

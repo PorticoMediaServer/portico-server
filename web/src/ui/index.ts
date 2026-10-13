@@ -17,7 +17,7 @@ export {Input, PasswordInput, TextArea, Select, Switch, Checkbox} from './Field'
 export {PasswordStrength} from './PasswordStrength';
 export {Notice, Skeleton, StateView, Badge, ProgressBar, Spinner, Loading, KeyValue, StatusScreen, type Tone} from './Feedback';
 export {Page, PageHeader, Section, Inset, Stack, Row, Surface, Divider} from './Page';
-export {SettingsPage, SettingsGroup, SettingsRow, SettingsActions, Freshness, PageRefresh, PageRefreshControl, relative, Table, tableCell, Status, Metric, MetricGrid, ConfirmDialog, type StatusTone} from './Settings';
+export {SettingsPage, SettingsGroup, SettingsRow, SettingsActions, SettingsEmpty, SettingsLoading, SettingsNote, SettingsFooter, Freshness, PageRefresh, PageRefreshControl, relative, Table, tableCell, Status, Metric, MetricGrid, ConfirmDialog, type StatusTone} from './Settings';
 export {useCompact, useNarrow, useHoverCapable, usePrefersReducedMotion} from './viewport';
 export {QR} from './QR';
 export {Avatar} from './Avatar';

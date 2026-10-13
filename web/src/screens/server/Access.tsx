@@ -1,17 +1,17 @@
 import {useEffect, useState} from 'react';
 import {parseRatingSystems, type RatingSystem} from '@core/identity-restrictions.ts';
 import {contentRatings, parseAccessDevicePage, parseInvitation, type AccessDevice, type AccessTier, type Invitation, type MemberLimits} from '@core/server-administration.ts';
-import {accessListPath, tierLabels as tierLabel} from '@core/server-admin/panel-logic.ts';
-export {accessListPath, accessLists, tierLabels} from '@core/server-admin/panel-logic.ts';
-import {useAction} from '../../admin/console';
+import {accessListPath} from '@core/server-admin/panel-logic.ts';
+export {accessListPath, accessLists} from '@core/server-admin/panel-logic.ts';
+import {deviceFacts, roleLabel, trustApplies} from '@core/server-admin/people-words.ts';
+import {QUIET_READ_EVERY_MS, sendFresh, useAction} from '../../admin/console';
 import {createOperationIds} from './operation-ids';
-import {nextCursorOf, useCursorList} from '../../admin/cursor-read';
+import {findInPages, nextCursorOf, useCursorList} from '../../admin/cursor-read';
 import {ListPager} from './ListPager';
 import {useSession} from '../../app/session';
-import {Button, Dialog, Input, Notice, Select, SettingsGroup, SettingsRow, Status, Switch, Text, TextArea, relative} from '../../ui';
+import {Button, ConfirmDialog, Dialog, Input, Notice, Select, SettingsEmpty, SettingsGroup, SettingsLoading, SettingsNote, SettingsRow, Status, Switch, Text, TextArea} from '../../ui';
 import {useI18n} from '../../app/i18n';
 
-const since = (iso?: string) => (iso ? relative(Date.now() - Date.parse(iso)) : 'never');
 const items = <T,>(raw: unknown, each: (x: unknown) => T): T[] => {
   const list = (raw as {items?: unknown})?.items;
   if (!Array.isArray(list)) throw new Error('The administration response does not match this server. Refresh before continuing.');
@@ -65,7 +65,9 @@ export function InvitationsPanel() {
   const i18n = useI18n();
   const {t} = i18n;
   const {api} = useSession();
-  const read = useCursorList(async cursor => { const raw = await api.request(accessListPath('invitations', cursor)); return {items: items(raw, parseInvitation), nextCursor: nextCursorOf(raw)}; }, [api]);
+  const page = async (cursor: string) => { const raw = await api.request(accessListPath('invitations', cursor)); return {items: items(raw, parseInvitation), nextCursor: nextCursorOf(raw)}; };
+  // An invitation leaves this list when someone joins with it, and nothing on the feed says so.
+  const read = useCursorList(page, [api], {every: QUIET_READ_EVERY_MS});
   const action = useAction();
   // BE-API-10: one ID per logical write; retries reuse it.
   const [opIds] = useState(createOperationIds);
@@ -74,17 +76,28 @@ export function InvitationsPanel() {
   const [porticoUsername, setPorticoUsername] = useState('');
   const [role, setRole] = useState<AccessTier>('member');
   const [issued, setIssued] = useState<Invitation>();
+  const [revoking, setRevoking] = useState<Invitation>();
   const create = () => void action.run(async () => { const payload = {email: email.trim(), role, allowedLibraries: [], expiresInHours: 168, ...(porticoUsername.trim() ? {porticoUsername: porticoUsername.trim()} : {})}; const key = JSON.stringify(payload); const out = parseInvitation(await api.request('/v1/admin/access/invitations', 'POST', {operationId: opIds.forPayload(key), ...payload})); opIds.release(); setIssued(out); setEmail(''); setPorticoUsername(''); read.reload(); });
+  const revoke = (invitation: Invitation) => action.run(async () => {
+    await sendFresh(invitation,
+      i => api.request(`/v1/admin/access/invitations/${encodeURIComponent(i.id)}/revoke`, 'POST', {expectedRevision: i.revision, operationId: opIds.forPayload(JSON.stringify({id: i.id, revision: i.revision}))}),
+      () => findInPages(page, i => i.id === invitation.id),
+      // Used or already revoked in the meantime: there is nothing left to revoke.
+      now => (now.state === 'pending' ? true : 'done'));
+    opIds.release(); setRevoking(undefined); read.reload();
+  }, t('server.people.invitationRevoked'));
   const pending = read.data?.filter(i => i.state === 'pending') ?? [];
+  const name = (i: Invitation) => i.email || i.porticoUsername || t('web.access.invitationUnlabelled');
   return (
-    <SettingsGroup title={t('web.access.invitations')} description={t('web.access.invitationsLede')}>
-      {read.error ? <div style={{padding: 12}}><Notice tone={read.data ? 'warning' : 'error'} compact action={{label: t('action.tryAgain'), onClick: read.reload}}>{read.error}</Notice></div> : null}
+    <SettingsGroup title={t('web.access.invitations')} description={t('web.access.invitationsLede')} action={<Button size="sm" variant="secondary" icon="plus" label={t('web.access.inviteSomeone')} onClick={() => { setOpen(true); setIssued(undefined); action.clear(); }} />}>
+      {read.error ? <SettingsNote><Notice tone={read.data ? 'warning' : 'error'} compact action={{label: t('action.tryAgain'), onClick: read.reload}}>{read.error}</Notice></SettingsNote> : null}
+      {action.notice ? <SettingsNote><Notice tone="success" compact>{action.notice}</Notice></SettingsNote> : null}
+      {!read.data && read.loading ? <SettingsLoading label={t('web.access.invitations')} /> : null}
       {pending.map(i => (
-        <SettingsRow key={i.id} icon="mail" label={i.email || i.porticoUsername || t('web.access.invitationUnlabelled')} help={[t('web.access.inviteMeta', {role: tierLabel[i.role], date: i18n.date(i.expiresAt)}), i.porticoUsername ? t('server.people.inviteOnlyFor', {username: i.porticoUsername}) : ''].filter(Boolean).join(' · ')}
-          control={<Button size="sm" variant="ghost" label={t('web.access.revoke')} disabled={action.busy} onClick={() => void action.run(async () => { const key = JSON.stringify({id: i.id, revision: i.revision}); await api.request(`/v1/admin/access/invitations/${encodeURIComponent(i.id)}/revoke`, 'POST', {expectedRevision: i.revision, operationId: opIds.forPayload(key)}); opIds.release(); read.reload(); }, 'Invitation revoked.')} />} />
+        <SettingsRow key={i.id} icon="mail" label={name(i)} help={[t('web.access.inviteMeta', {role: roleLabel(t, i.role), date: i18n.date(i.expiresAt)}), i.porticoUsername ? t('server.people.inviteOnlyFor', {username: i.porticoUsername}) : ''].filter(Boolean).join(' · ')}
+          control={<Button size="sm" variant="ghost" label={t('web.access.revoke')} onClick={() => { action.clear(); setRevoking(i); }} />} />
       ))}
-      {read.data && !pending.length ? <div style={{padding: 16}}><Text variant="caption" tone="tertiary">{t('web.access.noInvitations')}</Text></div> : null}
-      <div style={{padding: '8px 16px 16px'}}><Button size="sm" variant="secondary" icon="plus" label={t('web.access.inviteSomeone')} onClick={() => { setOpen(true); setIssued(undefined); action.clear(); }} /></div>
+      {read.data && !pending.length ? <SettingsEmpty title={t('web.access.noInvitations')} /> : null}
       <Dialog open={open} onOpenChange={setOpen} title={issued ? t('web.access.invitationReady') : t('web.access.inviteSomeone')} width={460}
         actions={issued ? <Button variant="primary" label={t('action.done')} onClick={() => setOpen(false)} /> : <><Button variant="ghost" label={t('action.cancel')} onClick={() => setOpen(false)} /><Button variant="primary" label={t('web.access.createInvitation')} disabled={!!email.trim() && !/^\S+@\S+\.\S+$/.test(email.trim())} loading={action.busy} onClick={create} /></>}>
         {issued ? (
@@ -93,7 +106,7 @@ export function InvitationsPanel() {
             {issued.porticoUsername ? <Text as="p" variant="caption" tone="tertiary">{t('server.people.inviteOnlyFor', {username: issued.porticoUsername})}</Text> : null}
             <TextArea label={t('web.access.inviteLink')} readOnly rows={3} value={joinLink(api.baseUrl, issued.code ?? '')} onFocus={e => e.currentTarget.select()} />
             <div><Button size="sm" variant="secondary" icon="copy" label={t('web.access.copyLink')} onClick={() => void navigator.clipboard?.writeText(joinLink(api.baseUrl, issued.code ?? ''))} /></div>
-            <Text as="p" variant="caption" tone="tertiary">Or give them the code on its own: {issued.code}</Text>
+            <Text as="p" variant="caption" tone="tertiary">{t('server.people.inviteCode', {code: issued.code ?? ''})}</Text>
           </div>
         ) : (
           <div style={{display: 'flex', flexDirection: 'column', gap: 12}}>
@@ -104,6 +117,8 @@ export function InvitationsPanel() {
           </div>
         )}
       </Dialog>
+      <ConfirmDialog open={!!revoking} onOpenChange={o => !o && setRevoking(undefined)} title={t('server.people.revokeInvitation', {name: revoking ? name(revoking) : ''})} body={t('server.people.revokeInvitationBody')} confirmLabel={t('web.access.revoke')} busy={action.busy} error={action.error || undefined}
+        onConfirm={() => { if (revoking) void revoke(revoking); }} />
       <ListPager pages={read} />
     </SettingsGroup>
   );
@@ -111,25 +126,39 @@ export function InvitationsPanel() {
 
 /** An account's devices, in the one place they are managed: approve, block, and see when each was last here. */
 export function AccountDevices({accountId}: {/** Absent: everyone's devices, most recently seen first, each with whose it is. */ accountId?: string}) {
-  const {t} = useI18n();
+  const i18n = useI18n();
+  const {t} = i18n;
   const {api} = useSession();
-  const read = useCursorList(async cursor => { const raw = await api.request(accessListPath('devices', cursor) + (accountId ? '&account=' + encodeURIComponent(accountId) : '')); return {items: [...parseAccessDevicePage(raw).items], nextCursor: nextCursorOf(raw)}; }, [api, accountId]);
+  const page = async (cursor: string) => { const raw = await api.request(accessListPath('devices', cursor) + (accountId ? '&account=' + encodeURIComponent(accountId) : '')); return {items: [...parseAccessDevicePage(raw).items], nextCursor: nextCursorOf(raw)}; };
+  // A device that has just signed in and waits for approval appears here by itself.
+  const read = useCursorList(page, [api, accountId], {every: QUIET_READ_EVERY_MS});
   const action = useAction();
   // BE-API-10: one ID per logical write; retries reuse it.
   const [opIds] = useState(createOperationIds);
-  const trust = (d: AccessDevice, next: 'approved' | 'blocked') => void action.run(async () => { const key = JSON.stringify({id: d.id, revision: d.revision, trust: next}); await api.request(`/v1/admin/access/devices/${encodeURIComponent(d.id)}/trust`, 'PUT', {expectedRevision: d.revision, operationId: opIds.forPayload(key), trust: next}); opIds.release(); read.reload(); }, next === 'approved' ? 'Device approved.' : 'Device blocked.');
+  const [blocking, setBlocking] = useState<AccessDevice>();
+  const trust = (device: AccessDevice, next: 'approved' | 'blocked') => action.run(async () => {
+    await sendFresh(device,
+      d => api.request(`/v1/admin/access/devices/${encodeURIComponent(d.id)}/trust`, 'PUT', {expectedRevision: d.revision, operationId: opIds.forPayload(JSON.stringify({id: d.id, revision: d.revision, trust: next})), trust: next}),
+      () => findInPages(page, d => d.id === device.id),
+      now => trustApplies(now, next));
+    opIds.release(); setBlocking(undefined); read.reload();
+  }, t(next === 'approved' ? 'server.people.deviceApproved' : 'server.people.deviceBlocked'));
   const mine = read.data;
   const waiting = mine?.filter(d => d.trust === 'pending').length ?? 0;
   return (
     <SettingsGroup title={t('devices.title')} description={waiting ? t('web.access.devicesWaiting', {count: waiting}) : t('web.access.devicesLede')}>
-      {read.error ? <div style={{padding: 12}}><Notice tone={read.data ? 'warning' : 'error'} compact action={{label: t('action.tryAgain'), onClick: read.reload}}>{read.error}</Notice></div> : null}
-      {action.error ? <div style={{padding: 12}}><Notice tone="error" compact>{action.error}</Notice></div> : null}
+      {read.error ? <SettingsNote><Notice tone={read.data ? 'warning' : 'error'} compact action={{label: t('action.tryAgain'), onClick: read.reload}}>{read.error}</Notice></SettingsNote> : null}
+      {action.error && !blocking ? <SettingsNote><Notice tone="error" compact>{action.error}</Notice></SettingsNote> : null}
+      {action.notice ? <SettingsNote><Notice tone="success" compact>{action.notice}</Notice></SettingsNote> : null}
+      {!mine && read.loading ? <SettingsLoading label={t('devices.title')} /> : null}
       {mine?.map(d => (
-        <SettingsRow key={d.id} icon={d.platform === 'tvos' ? 'cast' : d.platform === 'web' ? 'globe' : 'profile'} label={d.name} help={[accountId ? '' : d.username, t('web.access.deviceMeta', {platform: d.platform, when: since(d.lastSeenAt)})].filter(Boolean).join(' · ')}
+        <SettingsRow key={d.id} icon={d.platform === 'tvos' || d.platform === 'androidtv' ? 'tvDevice' : d.platform === 'web' ? 'browser' : d.platform === 'api' ? 'lock' : 'phone'} label={d.name} help={deviceFacts(t, d, {showOwner: !accountId, relative: iso => i18n.relativeTime(iso)})}
           state={<Status tone={d.trust === 'approved' ? 'healthy' : d.trust === 'blocked' ? 'danger' : 'warning'}>{d.trust === 'approved' ? t('web.access.trustApproved') : d.trust === 'blocked' ? t('web.access.trustBlocked') : t('web.access.trustWaiting')}</Status>}
-          control={<div style={{display: 'flex', gap: 8}}>{d.trust !== 'approved' ? <Button size="sm" variant="secondary" label={t('web.devices.approve')} disabled={action.busy} onClick={() => trust(d, 'approved')} /> : null}{d.trust !== 'blocked' ? <Button size="sm" variant="ghost" label={t('web.access.block')} disabled={action.busy} onClick={() => trust(d, 'blocked')} /> : null}</div>} />
+          control={<div style={{display: 'flex', gap: 8}}>{d.trust !== 'approved' ? <Button size="sm" variant="secondary" label={t('web.devices.approve')} disabled={action.busy} onClick={() => void trust(d, 'approved')} /> : null}{d.trust !== 'blocked' ? <Button size="sm" variant="ghost" label={t('web.access.block')} disabled={action.busy} onClick={() => { action.clear(); setBlocking(d); }} /> : null}</div>} />
       ))}
-      {mine && !mine.length ? <div style={{padding: 16}}><Text variant="caption" tone="tertiary">{t('web.devices.none')}</Text></div> : null}
+      {mine && !mine.length ? <SettingsEmpty title={t('web.devices.none')} /> : null}
+      <ConfirmDialog open={!!blocking} onOpenChange={o => !o && setBlocking(undefined)} title={t('server.people.blockTitle', {name: blocking?.name ?? ''})} body={t('server.people.blockBody')} confirmLabel={t('web.access.block')} busy={action.busy} error={action.error || undefined}
+        onConfirm={() => { if (blocking) void trust(blocking, 'blocked'); }} />
       <ListPager pages={read} />
     </SettingsGroup>
   );

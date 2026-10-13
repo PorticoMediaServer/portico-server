@@ -4,6 +4,7 @@ import type {FreshnessDependency} from '@core/freshness-hub.ts';
 import type {I18n} from '@i18n';
 import {useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore} from 'react';
 import {QuietRead} from '@core/server-admin/quiet-read.ts';
+import {ALREADY_DONE, sendWithFreshRecord} from '@core/freshness-actions.ts';
 export {QUIET_READ_EVERY_MS} from '@core/server-admin/quiet-read.ts';
 import {ConsoleClient} from '@core/console.ts';
 import {presentError} from '@core/presentation/index.ts';
@@ -91,6 +92,18 @@ export function useAction() {
     }
   }, [busy]);
   return {busy, error, notice, run, clear: () => { setError(''); setNotice(''); }};
+}
+
+/**
+ * An owner's action on a record that carries a revision (a role, a device, a source's switch).
+ * When the server says the record moved since it was read, it is read again and the action is
+ * sent again, silently, as long as it still makes sense (`applies`; `'done'` when the record
+ * already is what was asked for). Only a record that is gone, or changed into something the
+ * action no longer fits, reaches the owner as "this changed".
+ */
+export async function sendFresh<R, T>(record: R, send: (record: R) => Promise<T>, reread: () => Promise<R | undefined | null>, applies?: (now: R, was: R) => boolean | 'done'): Promise<T | undefined> {
+  const out = await sendWithFreshRecord(record, send, {reread, applies});
+  return out === ALREADY_DONE ? undefined : out;
 }
 
 /** Console failures in plain words (X-04): copy comes from the shared presenter by code and status, never from `error.message`. */
