@@ -741,7 +741,7 @@ func (d Dependencies) mcpInvoke(r *http.Request) mcpInvoker {
 		}
 		inner.RemoteAddr, inner.Host, inner.TLS, inner.RequestURI = r.RemoteAddr, r.Host, r.TLS, target
 		inner.Header.Set("Authorization", r.Header.Get("Authorization"))
-		for _, name := range []string{"X-Forwarded-For", "X-Forwarded-Proto"} {
+		for _, name := range []string{"X-Forwarded-For", "X-Forwarded-Proto", "X-Forwarded-Host", "Forwarded"} {
 			for _, value := range r.Header.Values(name) {
 				inner.Header.Add(name, value)
 			}

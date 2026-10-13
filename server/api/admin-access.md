@@ -187,9 +187,11 @@ correctly instead of silently overwriting each other.
 | --- | --- |
 | `remoteSignInPolicy` | `allow` / `owner-only` / `off`, applied in `httpapi.admitRemoteSignIn` after a sign-in succeeds. A refused session is revoked before the response. Sessions already signed in are not disturbed. |
 | `remoteBitrateLimitKbps` | Server-wide ceiling, exposed as `playback.DeliveryConfiguration.MaxVideoBitrateBPS` through `RegistryDeliverySettings.Delivery()`. |
-| `secureConnectionsPolicy` | `required` / `preferred` / `lan-plain-allowed`. Reported in the status report; `required` without a ready certificate raises a warning. |
-| `lanNetworks` | CIDR list, stored masked. It decides what "remote" means for the remote sign-in policy and the remote bitrate cap. |
-| `accessUrls` | Extra URLs clients may use, such as a reverse proxy address. |
+| `lanNetworks` | The complete home-network list, stored masked. Defaults include standard local ranges and attached subnets. An empty list means all requests are remote. |
+| `trustedProxies` | Socket addresses or ranges allowed to supply forwarded client address, scheme and host. |
+| `advertiseUrl` | External HTTP or HTTPS origin given to local clients. Only HTTPS is published to Hosted. |
+| `connectionLimit` | Ordinary connection ceiling, 0 for the memory-based default. Restart to apply; console/sign-in connections have a separate reserve. |
+| `accessUrls` | Additional HTTP or HTTPS origins; no paths. Hosted publication filters to HTTPS. |
 | `lanDiscoveryEnabled` | mDNS/Bonjour advertisement, applied immediately on save. |
 
 ### LAN discovery

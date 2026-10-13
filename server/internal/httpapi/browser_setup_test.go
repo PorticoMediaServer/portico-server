@@ -40,11 +40,10 @@ func TestBrowserSetupLocalOriginAndSingleUse(t *testing.T) {
 		return w
 	}
 	// Any peer and host may start setup (no setup code); only the browser origin
-	// must be this server or a configured Portico origin.
+	// must be this server, including when another API origin is configured.
 	for _, tc := range []struct{ name, address, origin, peer string }{
 		{"LAN peer", "http://127.0.0.1:32500", "http://127.0.0.1:32500", "192.168.1.2:5000"},
 		{"public peer", "https://demo.example", "https://demo.example", "198.51.100.8:5000"},
-		{"hosted origin", "http://127.0.0.1:32500", "https://web.getportico.tv", "127.0.0.1:5000"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if w := call(tc.address, tc.origin, tc.peer, "/v1/setup/browser", map[string]any{}); w.Code != http.StatusOK {
@@ -53,6 +52,7 @@ func TestBrowserSetupLocalOriginAndSingleUse(t *testing.T) {
 		})
 	}
 	for _, tc := range []struct{ name, address, origin, peer string }{
+		{"hosted origin", "http://127.0.0.1:32500", "https://web.getportico.tv", "127.0.0.1:5000"},
 		{"cross-site origin", "http://127.0.0.1:32500", "http://evil.example", "127.0.0.1:5000"},
 		{"missing origin", "http://127.0.0.1:32500", "", "127.0.0.1:5000"},
 		{"unconfigured local origin", "http://127.0.0.1:32500", "http://localhost:9999", "127.0.0.1:5000"},
@@ -74,7 +74,7 @@ func TestBrowserSetupLocalOriginAndSingleUse(t *testing.T) {
 	if err = json.Unmarshal(w.Body.Bytes(), &approval); err != nil || approval.ServerID != id.ID() || len(approval.Token) != 43 {
 		t.Fatal("invalid bootstrap")
 	}
-	w = call("http://127.0.0.1:32500", "http://127.0.0.1:19412", "127.0.0.1:5000", "/v1/setup", map[string]any{"requestId": "33333333-3333-4333-8333-333333333333", "setupToken": approval.Token, "username": "owner", "password": "A-long-local-password", "name": "My media", "authMode": "local", "interactive": true})
+	w = call("http://127.0.0.1:32500", "http://127.0.0.1:32500", "127.0.0.1:5000", "/v1/setup", map[string]any{"requestId": "33333333-3333-4333-8333-333333333333", "setupToken": approval.Token, "username": "owner", "password": "A-long-local-password", "name": "My media", "authMode": "local", "interactive": true})
 	if w.Code != 201 {
 		t.Fatalf("setup %d", w.Code)
 	}

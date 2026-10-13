@@ -56,6 +56,20 @@ func AudioTagName(key string) string {
 		return "series_position"
 	case "series_title", "calibre:series", "show":
 		return "series"
+	case "comment", "comments", "synopsis":
+		return "description"
+	case "grouping", "mvnm":
+		return "series"
+	case "mvin":
+		return "series_position"
+	case "artistsort":
+		return "artist_sort"
+	case "albumartistsort":
+		return "album_artist_sort"
+	case "titlesort":
+		return "title_sort"
+	case "albumsort":
+		return "album_sort"
 	case "publisher", "organization":
 		return "publisher"
 	case "language", "language_ietf":
@@ -64,7 +78,7 @@ func AudioTagName(key string) string {
 		return "edition"
 	}
 	switch key {
-	case "replaygain_track_gain", "replaygain_album_gain", "replaygain_track_peak", "replaygain_album_peak", "r128_track_gain", "r128_album_gain", "encoder_delay", "encoder_padding", "itunsmpb", "title", "album", "artist", "album_artist", "artists", "album_artists", "track", "disc", "date", "year", "originaldate", "genre", "composer", "author", "authors", "narrator", "narrators", "compilation", "musicbrainz_trackid", "musicbrainz_albumid", "musicbrainz_releasetrackid", "musicbrainz_releasegroupid", "musicbrainz_artistid", "musicbrainz_albumartistid", "isrc", "barcode", "catalognumber", "label", "release_country", "release_status", "release_type", "media", "total_tracks", "total_discs", "acoustid_fingerprint", "fingerprint_algorithm", "series", "series_position", "series_list", "publisher", "language", "edition", "isbn", "asin", "identifiers", "description":
+	case "replaygain_track_gain", "replaygain_album_gain", "replaygain_track_peak", "replaygain_album_peak", "r128_track_gain", "r128_album_gain", "encoder_delay", "encoder_padding", "itunsmpb", "title", "album", "artist", "album_artist", "artists", "album_artists", "track", "disc", "date", "year", "originaldate", "release_date", "genre", "composer", "author", "authors", "narrator", "narrators", "compilation", "musicbrainz_trackid", "musicbrainz_albumid", "musicbrainz_releasetrackid", "musicbrainz_releasegroupid", "musicbrainz_artistid", "musicbrainz_albumartistid", "isrc", "barcode", "catalognumber", "label", "release_country", "release_status", "release_type", "media", "total_tracks", "total_discs", "acoustid_fingerprint", "fingerprint_algorithm", "series", "series_position", "series_list", "publisher", "language", "edition", "isbn", "asin", "identifiers", "description", "genres", "composers", "musicbrainz_artistids", "musicbrainz_albumartistids", "artist_sort", "album_artist_sort", "title_sort", "album_sort", "disc_subtitle":
 		return key
 	}
 	return ""

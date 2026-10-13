@@ -110,13 +110,13 @@ test('a client log listing carries metadata without bodies', () => {
 
 test('connectivity policy and status parse the whole report', () => {
   const policy = {revision: 7, remoteSignInPolicy: 'owner-only', remoteBitrateLimitKbps: 8000,
-    secureConnectionsPolicy: 'required', lanNetworks: ['192.168.1.0/24'], accessUrls: ['https://media.example.com'], lanDiscoveryEnabled: false};
+    connectionLimit:0,advertiseUrl:'', lanNetworks: ['192.168.1.0/24'], accessUrls: ['https://media.example.com'], lanDiscoveryEnabled: false};
   const parsed = parseConnectivityPolicy(policy);
   assert.equal(parsed.remoteSignInPolicy, 'owner-only');
   assert.equal(parsed.lanDiscoveryEnabled, false);
-  assert.throws(() => parseConnectivityPolicy({...policy, secureConnectionsPolicy: 'whatever'}));
+  assert.throws(() => parseConnectivityPolicy({...policy, connectionLimit: -1}));
   assert.throws(() => parseConnectivityPolicy({...policy, remoteBitrateLimitKbps: -1}));
-  const status = parseConnectivityStatus({observedAt: '2026-09-16T12:00:00Z', policy,
+  const status = parseConnectivityStatus({connection:{secure:false,remote:false,plainHttpOutsideHome:false,clientAddress:'127.0.0.1',accessUrls:[]},observedAt: '2026-09-16T12:00:00Z', policy,
     tls: {configured: true, state: 'active', tlsReady: true, publiclyTrusted: false, listenerBound: true, listenPort: 8443, notAfter: '2026-12-01T00:00:00Z'},
     discovery: {enabled: false, supported: true, state: 'stopped', serviceType: '_portico._tcp.local.'},
     addresses: [{address: '192.168.1.20', family: 'ipv4', class: 'lan', source: 'interface'}],
@@ -126,15 +126,15 @@ test('connectivity policy and status parse the whole report', () => {
   assert.equal(status.discovery.state, 'stopped');
   assert.equal(status.addresses[0].class, 'lan');
   assert.equal(status.warnings.length, 1);
-  assert.throws(() => parseConnectivityStatus({observedAt: '2026-09-16T12:00:00Z', policy,
+  assert.throws(() => parseConnectivityStatus({connection:{secure:false,remote:false,plainHttpOutsideHome:false,clientAddress:'127.0.0.1',accessUrls:[]},observedAt: '2026-09-16T12:00:00Z', policy,
     tls: {configured: true, tlsReady: true, publiclyTrusted: false, listenerBound: true, listenPort: 8443},
     discovery: {enabled: true, supported: true, state: 'humming'}, addresses: [], interfaces: [], warnings: []}));
 });
 
 test('CD-39: a host-sized report renders bounded slices with exact omitted counts', () => {
   const policy = {revision: 7, remoteSignInPolicy: 'allow', remoteBitrateLimitKbps: 0,
-    secureConnectionsPolicy: 'preferred', lanNetworks: [], accessUrls: [], lanDiscoveryEnabled: false};
-  const base = {observedAt: '2026-09-16T12:00:00Z', policy,
+    connectionLimit:0,advertiseUrl:'', lanNetworks: [], accessUrls: [], lanDiscoveryEnabled: false};
+  const base = {connection:{secure:false,remote:false,plainHttpOutsideHome:false,clientAddress:'127.0.0.1',accessUrls:[]},observedAt: '2026-09-16T12:00:00Z', policy,
     tls: {configured: false, tlsReady: false, publiclyTrusted: false, listenerBound: false, listenPort: 0},
     discovery: {enabled: false, supported: false, state: 'unavailable'}, warnings: []};
   const address = (n: number) => ({address: `10.0.0.${n % 256}`, family: 'ipv4', class: 'lan', source: 'interface'});
@@ -166,12 +166,12 @@ test('the tier helpers mirror the server predicate', () => {
 });
 
 test('connectivity policy: network parity rows parse, with shipped defaults for an older server', () => {
-  const base = {revision: 4, remoteSignInPolicy: 'allow', remoteBitrateLimitKbps: 0, secureConnectionsPolicy: 'preferred', lanNetworks: [], accessUrls: ['https://media.example.com'], lanDiscoveryEnabled: true};
+  const base = {revision: 4, remoteSignInPolicy: 'allow', remoteBitrateLimitKbps: 0, connectionLimit:0,advertiseUrl:'', lanNetworks: [], accessUrls: ['https://media.example.com'], lanDiscoveryEnabled: true};
   const older = parseConnectivityPolicy(base);
-  assert.deepEqual([older.trustedProxies, older.treatWanAsLan, older.uploadCapacityKbps, older.pausedSessionTimeoutMinutes, older.advertisedInterface, older.customCertificateDomain], [[], true, 0, 0, '', '']);
-  const newer = parseConnectivityPolicy({...base, trustedProxies: ['127.0.0.1/32'], treatWanAsLan: false, uploadCapacityKbps: 20000, pausedSessionTimeoutMinutes: 60, advertisedInterface: 'br0',
+  assert.deepEqual([older.trustedProxies, older.uploadCapacityKbps, older.pausedSessionTimeoutMinutes, older.advertisedInterface, older.customCertificateDomain], [[], 0, 0, '', '']);
+  const newer = parseConnectivityPolicy({...base, trustedProxies: ['127.0.0.1/32'], uploadCapacityKbps: 20000, pausedSessionTimeoutMinutes: 60, advertisedInterface: 'br0',
     customCertificatePath: '/certs/full.pem', customCertificateKeyPath: '/certs/key.pem', customCertificateDomain: 'media.example.com'});
-  assert.equal(newer.treatWanAsLan, false);
+
   assert.equal(newer.uploadCapacityKbps, 20000);
   assert.equal(newer.advertisedInterface, 'br0');
   assert.equal(newer.customCertificateKeyPath, '/certs/key.pem');

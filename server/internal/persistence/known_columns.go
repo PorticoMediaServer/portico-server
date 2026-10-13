@@ -372,10 +372,15 @@ audio_render_fact_failures.code
 audio_render_fact_failures.failed_ms
 audio_render_fact_failures.modified_ns
 audio_render_fact_failures.size
+audio_render_fact_requests.asset_id
+audio_render_fact_requests.item_id
+audio_render_fact_requests.requested_ms
 audio_render_facts.asset_id
 audio_render_facts.bit_depth
+audio_render_facts.bit_rate
 audio_render_facts.channels
 audio_render_facts.codec
+audio_render_facts.codec_profile
 audio_render_facts.container
 audio_render_facts.decoder_config
 audio_render_facts.duration_frames
@@ -2100,6 +2105,9 @@ lyric_resources.item_id
 lyric_resources.profile_id
 lyric_resources.revision
 lyric_resources.scope
+lyric_resources.source_duration
+lyric_resources.source_end
+lyric_resources.source_start
 lyric_resources.source_version
 lyric_revisions.actor
 lyric_revisions.created_at
@@ -3522,6 +3530,11 @@ queue_v1_create_receipts.device_id
 queue_v1_create_receipts.digest
 queue_v1_create_receipts.queue_id
 queue_v1_create_receipts.response
+queue_v1_play_spans.count
+queue_v1_play_spans.queue_id
+queue_v1_play_spans.rank
+queue_v1_play_spans.source
+queue_v1_play_spans.start
 queue_v1_removals.ordinal
 queue_v1_removals.snapshot_id
 queue_v1_saves.caller

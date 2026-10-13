@@ -149,7 +149,7 @@ func (d Dependencies) accessRoutes(mux *http.ServeMux) {
 		}
 		// The same limiter the sign-in routes use: a code is a secret, and an
 		// unauthenticated route that creates accounts must not be brute-forced.
-		if e := d.Identity.SetupLimit(r.Context(), setupPeerSubject(r), "invitation", 10); e != nil {
+		if e := d.Identity.SetupLimit(r.Context(), d.setupPeerSubject(r), "invitation", 10); e != nil {
 			setupFailure(w, e)
 			return
 		}

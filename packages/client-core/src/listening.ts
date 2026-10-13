@@ -68,6 +68,7 @@ export class ListeningService {
  private state:ListeningSnapshot=Object.freeze({phase:'loading',preferences:null,context:null,rate:1,timer:null,timerLoading:false,stopped:false,message:null,error:null});
  private listeners=new Set<()=>void>();private disposed=false;private connected=false;private abort=new AbortController();private unsubscribe?:()=>void;private interval?:ReturnType<typeof setInterval>;
  private contextGeneration=0;private timerGeneration=0;private prefGeneration=0;private itemId='';private lastRateKey='';private lastActivity:number;private chapters?:PlayerChaptersService;private sessionKey='';
+ private pausedBook?:{session:string;at:number};
  private activityRevision=0;private activityAtMs=Date.now();
  private readonly scope:QueueScope;private readonly request:ListeningRequest;private readonly playback:PlaybackService;private readonly now:()=>number;
  /** PERF-24: whether an item can be a listening item (a song or audiobook file), when the caller
@@ -99,6 +100,10 @@ export class ListeningService {
   // With a kind hook, an item is decided once its session exists (until then it waits).
   if(item&&this.listens&&item!==this.itemId&&!p.session)item=this.itemId;
   const sessionKey=`${p.session?.id??''}:${p.session?.generation??0}`;
+  if(this.state.context?.kind==='audiobook_file'&&p.phase==='ready'&&p.session){
+   if(p.intent==='paused'&&this.pausedBook?.session!==p.session.id)this.pausedBook={session:p.session.id,at:this.now()};
+   else if(p.intent==='playing'&&this.pausedBook){const paused=this.pausedBook;this.pausedBook=undefined;if(paused.session===p.session.id){const rewind=audiobookResumeRewind(this.now()-paused.at);if(rewind>0&&!p.pendingSeek&&!p.failedSeek){this.playback.seek(Math.max(0,p.positionSeconds-rewind));}}}
+  }else this.pausedBook=undefined;
   if(this.sessionKey!==sessionKey){this.sessionKey=sessionKey;const t=this.state.timer;if(t?.sessionId&&(t.sessionId!==p.session?.id||t.generation!==p.session?.generation))this.clearTimer('Chapter timer cleared because the playback source changed.');}
   if(item!==this.itemId){const old=this.state.context;this.itemId=item;const generation=++this.contextGeneration;this.publish({context:null});
    if(!item){this.clearTimer();this.publish({stopped:false,message:null});}
@@ -176,3 +181,5 @@ export async function readListeningContext(request:ListeningRequest,scope:SavedS
  if(!object(raw)||!object(raw.scope)||raw.scope.serverId!==scope.serverId||JSON.stringify([raw.scope.authority,raw.scope.accountId,raw.scope.profileId])!==scope.viewerId)bad();
  return parseItem(raw.data,itemId);
 }
+
+export function audiobookResumeRewind(pauseMs:number):number{return pauseMs>=3600000?30:pauseMs>=300000?15:0;}

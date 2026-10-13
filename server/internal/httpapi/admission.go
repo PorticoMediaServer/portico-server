@@ -35,6 +35,7 @@ const (
 	laneAdmin         = "admin"
 	laneAdminHeavy    = "admin-heavy"
 	laneAdminLong     = "admin-long"
+	laneUpload        = "upload"
 	laneSecurityFence = "security-fence"
 	laneDefault       = "default"
 	// laneTools carries MCP requests. One holds its slot while the API calls
@@ -76,6 +77,7 @@ type laneSpec struct {
 // diagnostics as WaitCount and WaitDuration; if those grow, this is the number
 // to revisit, with evidence.
 var laneSpecs = map[string]laneSpec{
+	laneUpload:        {capacity: 2, queueWait: 0, budget: 60 * time.Second, class: dbwork.ClassInteractive, pressure: false},
 	laneSecurityFence: {capacity: 16, queueWait: 9 * time.Second, budget: 10 * time.Second, class: dbwork.ClassSecurityFence, pressure: true},
 	laneAuth:          {capacity: 64, queueWait: 1500 * time.Millisecond, budget: 5 * time.Second, class: dbwork.ClassSecurityFence, pressure: true},
 	laneBrowsing:      {capacity: 24, queueWait: 3 * time.Second, budget: 5 * time.Second, class: dbwork.ClassInteractive, pressure: true},
@@ -530,6 +532,9 @@ func (a *admission) wrap(mux *http.ServeMux, next http.Handler) http.Handler {
 			compressed := &compressingWriter{ResponseWriter: w}
 			defer compressed.close()
 			w = compressed
+		}
+		if l.name == laneUpload {
+			_ = http.NewResponseController(w).SetReadDeadline(time.Now().Add(60 * time.Second))
 		}
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})

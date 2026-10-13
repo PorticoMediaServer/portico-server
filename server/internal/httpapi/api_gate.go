@@ -114,6 +114,14 @@ func presentedAPICredential(r *http.Request) (secret string, present, ambiguous 
 	return secret, present, present && len(headers) != 1
 }
 
+// CarriesAPICredential reports whether a request presents an API key or
+// personal access token, by shape alone. It is for callers that sort requests
+// before authentication (the console's connection reserve).
+func CarriesAPICredential(r *http.Request) bool {
+	_, present, _ := presentedAPICredential(r)
+	return present
+}
+
 func (g *credentialGate) lookup(digest string, now time.Time) (access.ResolvedCredential, bool) {
 	g.mu.Lock()
 	defer g.mu.Unlock()

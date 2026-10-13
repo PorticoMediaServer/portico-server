@@ -52,7 +52,17 @@ func (s *Service) PrepareKind(ctx context.Context, library, kind, path string, f
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
 	f = s.prepareAudioEvidence(ctx, library, kind, path, f)
-	for _, name := range []string{"cover.jpg", "folder.jpg", "cover.png", "folder.png"} {
+	if s.storage != nil {
+		if raw, e := s.storage.ReadAudioCover(ctx, library, path); e == nil {
+			if key, e := s.store(raw); e == nil {
+				f.ArtworkKey = key
+				return f
+			} else {
+				f.LocalMetadataIssue = "invalid_local_cover"
+			}
+		}
+	}
+	for _, name := range []string{"cover.jpg", "folder.jpg", "front.jpg", "album.jpg", "cover.jpeg", "folder.jpeg", "cover.png", "folder.png", "front.png", "Cover.JPG", "Folder.jpg"} {
 		if unlisted(ctx, filepath.Join(filepath.Dir(path), name)) {
 			continue
 		}
@@ -65,6 +75,20 @@ func (s *Service) PrepareKind(ctx context.Context, library, kind, path string, f
 			return f
 		}
 		f.LocalMetadataIssue = "invalid_local_cover"
+	}
+	if f.EmbeddedAudio != nil {
+		pictures := f.EmbeddedAudio.Pictures
+		for _, kind := range []int{3, -1} {
+			for _, pic := range pictures {
+				if kind != -1 && pic.Type != kind {
+					continue
+				}
+				if key, e := s.store(pic.Data); e == nil {
+					f.ArtworkKey = key
+					return f
+				}
+			}
+		}
 	}
 	if f.AttachedPicture && s.binary != "" {
 		if s.storage.IsRemote(path) {
@@ -125,19 +149,6 @@ func (s *Service) store(raw []byte) (string, error) {
 	target := filepath.Join(s.root, key+".img")
 	if _, err = os.Stat(target); err == nil {
 		return key, nil
-	}
-	entries, err := os.ReadDir(s.root)
-	if err != nil {
-		return "", err
-	}
-	var total int64
-	for _, entry := range entries {
-		if info, e := entry.Info(); e == nil {
-			total += info.Size()
-		}
-	}
-	if total+int64(len(raw)) > 128<<20 {
-		return "", errors.New("local artwork cache full")
 	}
 	file, err := os.CreateTemp(s.root, "art-")
 	if err != nil {

@@ -42,7 +42,7 @@ func NewRouteIdentityHandler(keys *ProtectedKeys, runner *AuthorityRunner) *Rout
 }
 
 // RouteOrigin is shared by owner configuration and the public identity proof.
-// It deliberately accepts private LAN HTTP and never public plaintext.
+// HTTP and HTTPS are accepted from any address. Hosted publication remains TLS.
 func RouteOrigin(raw string) bool {
 	if len(raw) > 300 || strings.ContainsAny(raw, "\\\r\n\t") || strings.ToLower(raw) != raw {
 		return false
@@ -57,12 +57,7 @@ func RouteOrigin(raw string) bool {
 	if u.Scheme != "http" {
 		return false
 	}
-	h := u.Hostname()
-	if h == "localhost" || strings.HasSuffix(h, ".local") {
-		return true
-	}
-	ip, e := netip.ParseAddr(h)
-	return e == nil && !ip.Is4In6() && ip.Zone() == "" && (ip.IsPrivate() || ip.IsLoopback() || ip.IsLinkLocalUnicast())
+	return true
 }
 func (h *RouteIdentityHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
@@ -85,10 +80,6 @@ func (h *RouteIdentityHandler) ServeHTTP(w http.ResponseWriter, r *http.Request)
 	u, _ := url.Parse(q.BaseURL)
 	if e != nil || len(nonce) != 32 || base64.RawURLEncoding.EncodeToString(nonce) != q.Nonce || u.Host != strings.ToLower(r.Host) {
 		writeClaimFailure(w, 400, "invalid_probe", "Invalid connection verification request.", false)
-		return
-	}
-	if u.Scheme == "http" && !localHTTPConnection(rRemoteAddr(r.RemoteAddr)) {
-		writeClaimFailure(w, 403, "tls_required", "Public connections require HTTPS.", false)
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
@@ -136,13 +127,6 @@ func (h *RouteIdentityHandler) ServeHTTP(w http.ResponseWriter, r *http.Request)
 		return
 	}
 }
-func rRemoteAddr(raw string) net.Addr {
-	a, e := net.ResolveTCPAddr("tcp", raw)
-	if e != nil {
-		return &net.TCPAddr{}
-	}
-	return a
-}
 func routeURL(ip netip.Addr, port int, scheme string) string {
 	host := ip.String()
 	if ip.Is6() {
@@ -151,7 +135,7 @@ func routeURL(ip netip.Addr, port int, scheme string) string {
 	if scheme == "https" && port == 443 || scheme == "http" && port == 80 {
 		return scheme + "://" + host
 	}
-	return scheme + "://" + net.JoinHostPort(ip.String(), strconv.Itoa(port))
+	return scheme + "://" + net.JoinHostPort(strings.ReplaceAll(ip.String(), "%", "%25"), strconv.Itoa(port))
 }
 
 // ChallengeProof is this server's signed answer to a Portico challenge

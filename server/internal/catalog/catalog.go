@@ -11,10 +11,10 @@ import (
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/entityid"
 	"portico.local/server/internal/identity"
+	"portico.local/server/internal/naming"
 	"portico.local/server/internal/storage"
 	"portico.local/server/internal/subtitles"
 	"portico.local/server/internal/worker"
-	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -351,42 +351,10 @@ func (s *Service) Delete(id string) error {
 	return gated2.Commit()
 }
 
-var yearPattern = regexp.MustCompile(`(?i)[ ._\[(](19\d{2}|20\d{2})[\]). _-]?`)
-
-var followingYear = regexp.MustCompile(`^(?:[ ._]|[ ._]?[\[(])(19\d{2}|20\d{2})(?:[\]) ._-]|$)`)
-
-// releaseYear finds the release year in a name and where the title before it
-// ends. The first year is the release year unless another year is written
-// directly after it, bare or in brackets: then the later one is the release
-// and the earlier number belongs to the title ("Blade Runner 2049 (2017)",
-// "Blade.Runner.2049.2017"). A year further along, after release tags or other
-// words, is an encode, remaster or group date and changes nothing, and a year
-// in brackets is never displaced.
-func releaseYear(name string) (cut, year int) {
-	loc := yearPattern.FindStringSubmatchIndex(name)
-	if loc == nil {
-		return -1, 0
-	}
-	cut, start, end := loc[0], loc[2], loc[3]
-	for !(strings.ContainsRune("([", rune(name[start-1])) && end < len(name) && strings.ContainsRune(")]", rune(name[end]))) {
-		next := followingYear.FindStringSubmatchIndex(name[end:])
-		if next == nil {
-			break
-		}
-		cut, start, end = end, end+next[2], end+next[3]
-	}
-	year, _ = strconv.Atoi(name[start:end])
-	return cut, year
-}
-
+// FilenameTitle is the display adapter for the shared path evidence reader.
+// Identification callers should pass library-relative paths to naming.Read.
 func FilenameTitle(path string) (string, int) {
-	name := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
-	cut, year := releaseYear(name)
-	if cut >= 0 {
-		name = name[:cut]
-	}
-	name = strings.ReplaceAll(strings.ReplaceAll(name, ".", " "), "_", " ")
-	return strings.TrimSpace(name), year
+	return naming.Read(path, "movie").PreferredTitle()
 }
 func (s *Service) CommitMovie(ctx context.Context, job, library, path string, f assets.Facts) error {
 	return s.CommitMedia(ctx, job, library, path, f)

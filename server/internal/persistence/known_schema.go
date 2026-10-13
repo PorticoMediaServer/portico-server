@@ -50,6 +50,7 @@ index artwork_variants_digest
 index asset_subtitles_asset
 index audio_local_evidence_asset_id_fk
 index audio_local_field
+index audio_render_fact_requests_order
 index audio_source_metadata_asset
 index audio_tag_evidence_asset
 index audio_tag_evidence_genre_value
@@ -474,6 +475,7 @@ table audio_genre_projection
 table audio_local_evidence
 table audio_metadata_policies
 table audio_render_fact_failures
+table audio_render_fact_requests
 table audio_render_facts
 table audio_source_metadata
 table audio_tag_evidence
@@ -944,6 +946,7 @@ table provider_evidence
 table queue_v1_chunks
 table queue_v1_container_counts
 table queue_v1_create_receipts
+table queue_v1_play_spans
 table queue_v1_removals
 table queue_v1_saves
 table queue_v1_segments

@@ -179,7 +179,7 @@ CREATE TABLE catalog_songs(
  provider_title TEXT NOT NULL DEFAULT '',
  provider_artist TEXT NOT NULL DEFAULT '') STRICT;
 CREATE INDEX catalog_songs_album_order ON catalog_songs(album_id,disc_number,track_number,entity_id);
-CREATE INDEX catalog_songs_listening_order ON catalog_songs(album_id,COALESCE(disc_number,0),COALESCE(track_number,0),entity_id);
+CREATE INDEX catalog_songs_listening_order ON catalog_songs(album_id,COALESCE(disc_number,1),COALESCE(track_number,0),entity_id);
 CREATE TABLE catalog_song_artists(
  song_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,
  artist_id INTEGER NOT NULL REFERENCES catalog_entities(id),
@@ -206,7 +206,7 @@ CREATE TABLE catalog_book_files(
  disc_number INTEGER,
  part_number INTEGER) STRICT;
 CREATE INDEX catalog_book_files_order ON catalog_book_files(book_id,disc_number,part_number,entity_id);
-CREATE INDEX catalog_book_files_listening_order ON catalog_book_files(book_id,COALESCE(disc_number,0),COALESCE(part_number,0),entity_id);
+CREATE INDEX catalog_book_files_listening_order ON catalog_book_files(book_id,COALESCE(disc_number,1),COALESCE(part_number,0),entity_id);
 CREATE TABLE catalog_book_chapters(
  id INTEGER PRIMARY KEY,
  file_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,
@@ -2030,6 +2030,7 @@ CREATE TABLE playback_personal_profile_fences(
 CREATE TABLE lyric_resources (
  id TEXT PRIMARY KEY, item_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,
  asset_id TEXT NOT NULL REFERENCES catalog_assets(token), source_version TEXT NOT NULL,
+ source_duration REAL NOT NULL DEFAULT 0,source_start REAL NOT NULL DEFAULT 0,source_end REAL NOT NULL DEFAULT 0,
  scope TEXT NOT NULL CHECK(scope IN ('library','private')),
  authority TEXT NOT NULL, account_id TEXT NOT NULL, profile_id TEXT NOT NULL,
  revision INTEGER NOT NULL CHECK(revision>0), deleted INTEGER NOT NULL DEFAULT 0 CHECK(deleted IN(0,1))
@@ -3138,6 +3139,8 @@ CREATE TABLE audio_render_facts(
  end_frames INTEGER NOT NULL CHECK(end_frames>=0),
  trim_source TEXT NOT NULL,
  decoder_config TEXT NOT NULL DEFAULT '',
+ codec_profile TEXT NOT NULL DEFAULT '',
+ bit_rate INTEGER NOT NULL DEFAULT 0 CHECK(bit_rate>=0),
  measured_ms INTEGER NOT NULL,
  CHECK(start_frames+duration_frames+end_frames=raw_frames)
 ) WITHOUT ROWID, STRICT;
@@ -4180,7 +4183,7 @@ CREATE TRIGGER personal_history_revision_DELETE AFTER DELETE ON personal_history
 CREATE TRIGGER lyric_revision_immutable BEFORE UPDATE ON lyric_revisions
  BEGIN SELECT RAISE(ABORT,'lyric revisions are immutable'); END;
 CREATE TRIGGER lyric_head_monotonic BEFORE UPDATE ON lyric_resources
- WHEN NEW.revision<=OLD.revision OR NEW.item_id<>OLD.item_id OR NEW.asset_id<>OLD.asset_id OR NEW.source_version<>OLD.source_version OR NEW.scope<>OLD.scope OR NEW.authority<>OLD.authority OR NEW.account_id<>OLD.account_id OR NEW.profile_id<>OLD.profile_id
+ WHEN NEW.revision<=OLD.revision OR NEW.item_id<>OLD.item_id OR NEW.asset_id<>OLD.asset_id OR NEW.source_version<>OLD.source_version OR NEW.source_duration<>OLD.source_duration OR NEW.source_start<>OLD.source_start OR NEW.source_end<>OLD.source_end OR NEW.scope<>OLD.scope OR NEW.authority<>OLD.authority OR NEW.account_id<>OLD.account_id OR NEW.profile_id<>OLD.profile_id
  BEGIN SELECT RAISE(ABORT,'invalid lyric resource transition'); END;
 CREATE TRIGGER screen_policy_create AFTER INSERT ON libraries WHEN NEW.kind IN('movie','tv','anime') BEGIN
  INSERT INTO screen_metadata_policies(library_id,providers) VALUES(NEW.id,CASE WHEN NEW.kind='anime' THEN '["anilist"]' ELSE '["tmdb","tvdb"]' END);
@@ -5642,6 +5645,17 @@ CREATE INDEX saved_resource_entries_item_id_fk ON saved_resource_entries(item_id
 CREATE INDEX subtitle_provider_candidates_item_id_fk ON subtitle_provider_candidates(item_id);
 CREATE INDEX subtitle_resources_source_id_fk ON subtitle_resources(source_id);
 CREATE INDEX video_nfo_status_asset_id_fk ON video_nfo_status(asset_id);
+
+CREATE TABLE queue_v1_play_spans(
+ queue_id TEXT NOT NULL REFERENCES queues_v1(id) ON DELETE CASCADE,
+ rank INTEGER NOT NULL,source INTEGER NOT NULL CHECK(source IN(0,1)),
+ start INTEGER NOT NULL CHECK(start>=0),count INTEGER NOT NULL CHECK(count>=0),
+ PRIMARY KEY(queue_id,rank)) STRICT;
+
+CREATE TABLE audio_render_fact_requests(
+ asset_id TEXT PRIMARY KEY REFERENCES catalog_assets(token) ON DELETE CASCADE,
+ item_id TEXT NOT NULL,requested_ms INTEGER NOT NULL) STRICT;
+CREATE INDEX audio_render_fact_requests_order ON audio_render_fact_requests(requested_ms);
 
 -- ===== API keys and personal access tokens
 -- A key or token is a session family that does not rotate (see

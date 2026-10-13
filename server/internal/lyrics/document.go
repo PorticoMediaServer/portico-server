@@ -37,6 +37,7 @@ type Document struct {
 	Text             string `json:"text"`
 	Lines            []Line `json:"lines"`
 	EmbeddedOffsetMS int64  `json:"embeddedOffsetMs"`
+	SkippedLines     int    `json:"-"`
 }
 type Provenance struct {
 	Origin     string `json:"origin"`
@@ -46,7 +47,7 @@ type Provenance struct {
 }
 
 var languagePattern = regexp.MustCompile(`^[A-Za-z]{2,8}(-[A-Za-z0-9]{1,8})*$`)
-var timestampPattern = regexp.MustCompile(`^\[([0-9]{1,4}):([0-9]{2})(?:\.([0-9]{1,3}))?\]`)
+var timestampPattern = regexp.MustCompile(`^\[([0-9]{1,4}):([0-9]{2})(?:[.:]([0-9]{1,3}))?\]`)
 var wordTimestampPattern = regexp.MustCompile(`<\d{1,4}:\d{2}(?:\.\d{1,3})?>`)
 var metaPattern = regexp.MustCompile(`^\[(ar|al|ti|au|lr|by|re|tool|ve|length|la|lang|#):[^\[\]]*\]$`)
 
@@ -115,6 +116,10 @@ func Parse(raw []byte, format string) (Document, error) {
 	d := Document{Format: format, Text: text, Lines: []Line{}}
 	offsetSeen := false
 	hasWords := false
+	if len(strings.Split(text, "\n")) > MaxLines+64 {
+		return Document{}, ErrInput
+	}
+linesLoop:
 	for _, line := range strings.Split(text, "\n") {
 		if len(line) > 8192 {
 			return Document{}, ErrInput
@@ -129,11 +134,13 @@ func Parse(raw []byte, format string) (Document, error) {
 			}
 			if strings.HasPrefix(line, "[offset:") {
 				if offsetSeen || !strings.HasSuffix(line, "]") {
-					return Document{}, ErrInput
+					d.SkippedLines++
+					continue
 				}
 				n, e := strconv.ParseInt(strings.TrimSuffix(strings.TrimPrefix(line, "[offset:"), "]"), 10, 64)
 				if e != nil || n < -MaxOffsetMS || n > MaxOffsetMS {
-					return Document{}, ErrInput
+					d.SkippedLines++
+					continue
 				}
 				// LRC positive offsets advance lyrics. Normalize to Portico
 				// timing intent, where a positive value delays presentation.
@@ -153,7 +160,8 @@ func Parse(raw []byte, format string) (Document, error) {
 				minutes, _ := strconv.ParseInt(m[1], 10, 64)
 				seconds, _ := strconv.ParseInt(m[2], 10, 64)
 				if seconds >= 60 {
-					return Document{}, ErrInput
+					d.SkippedLines++
+					continue linesLoop
 				}
 				fraction := int64(0)
 				if m[3] != "" {
@@ -161,7 +169,8 @@ func Parse(raw []byte, format string) (Document, error) {
 				}
 				n := (minutes*60+seconds)*1000 + fraction
 				if n > MaxTimestampMS {
-					return Document{}, ErrInput
+					d.SkippedLines++
+					continue linesLoop
 				}
 				times = append(times, n)
 				line = line[len(m[0]):]
@@ -172,9 +181,10 @@ func Parse(raw []byte, format string) (Document, error) {
 			// An LRC document cannot mix un-timed prose with timed lines. Markup is
 			// retained as literal text; no client ever interprets it as HTML.
 			if len(times) == 0 {
-				return Document{}, ErrInput
+				d.SkippedLines++
+				continue
 			}
-			line=wordTimestampPattern.ReplaceAllString(line, "")
+			line = wordTimestampPattern.ReplaceAllString(line, "")
 			hasWords = hasWords || strings.TrimSpace(line) != ""
 			for _, n := range times {
 				at := n

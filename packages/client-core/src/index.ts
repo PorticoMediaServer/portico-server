@@ -1,3 +1,4 @@
+import {parseConnectionDocument,type ConnectionDocument} from './server-administration.ts';
 import {trackName} from './presentation/language.ts';
 import {randomId} from './random-id.ts';
 import {routeOrigin} from './route-identity.ts';
@@ -414,6 +415,9 @@ export class HttpLocalApi implements PlaybackApi {
       throw error;
     }
     return response.status === 204 ? (undefined as T) : response.json();
+  }
+  connection(signal?:AbortSignal):Promise<ConnectionDocument> {
+    return this.request<unknown>("/v1/networking/connection","GET",undefined,signal).then(parseConnectionDocument);
   }
   system() {
     return this.request<SystemInfo>("/v1/system");
@@ -903,6 +907,14 @@ export class PlaybackService {
   audioBoundary(token:string,position:number){void this.queue?.audioBoundary(token,position);}
   audioPreparationFailed(message:string){this.queue?.discardAudio(message);}
   audioRenderFailed(message:string){this.queue?.audioRenderFailed(message);}
+  /** A failed optional decoder hands the same session to the platform player. */
+  fallbackAudioRender():boolean {
+    const current=this.snapshot;
+    if(!current.session||!current.audioEffects.rendering||!current.session.streamUrl||this.nativeV1)return false;
+    this.queue?.invalidateAudioPreparation?.();this.bookmarkProtected=true;
+    this.requestSeek(current.pendingSeek?.positionSeconds??current.positionSeconds,{audioEffects:{...current.audioEffects,rendering:false,prepared:undefined,committed:undefined,notice:''}});
+    return true;
+  }
   async commitAudioAuthority(token:string,itemId:string,session:PlaybackSession,expectedIntent:number):Promise<boolean>{
     if(this.snapshot.intentId!==expectedIntent)return false;
     // The server has committed the next session (§18.3); the bridge reports its timeline from the

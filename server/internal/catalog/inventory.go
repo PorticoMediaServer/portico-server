@@ -12,6 +12,7 @@ import (
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/localmetadata"
 	"portico.local/server/internal/mediasource"
+	"portico.local/server/internal/naming"
 	"portico.local/server/internal/storage"
 	"portico.local/server/internal/subtitles"
 	"strings"
@@ -121,6 +122,9 @@ func (s *Service) CommitInventoryPage(ctx context.Context, job, relative, cursor
 		expected := filepath.Join(source.ResolvedPath, child)
 		if v.Path != expected || !filepath.IsLocal(child) || filepath.Base(v.Name) != v.Name || v.Size < 0 {
 			return ErrAdminQuery
+		}
+		if naming.IgnorePath(filepath.ToSlash(child), v.Directory) {
+			continue
 		}
 		if v.Directory {
 			if v.ObjectIdentity == "" {

@@ -16,6 +16,10 @@ import {settingsMessages} from './en-US/settings.ts';
 import {channelBuilderMessages} from './en-US/channel-builder.ts';
 
 export const enUS = {
+  'lyrics.skippedLines': 'Some lyric lines could not be read and were skipped.',
+  'lyrics.localRights': 'Supplied with the media by its owner.',
+  'audio.embeddedMetadataSkipped': 'An embedded metadata entry was skipped.',
+  'audio.cannotMeetBitrate': "The available audio formats cannot meet this device's capabilities and bitrate choice. This track plays without gapless or crossfade.",
   // ── Common actions ────────────────────────────────────────────────
   'action.tryAgain': 'Try again',
   'error.queueTooLarge': 'This queue is too long. Remove some of it or start a new one.',
