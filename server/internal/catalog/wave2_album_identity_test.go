@@ -60,8 +60,8 @@ func TestWave2PhysicalAlbumEnrichesMissingEditionWithoutMergingConflicts(t *test
 			}
 			add("three", "Album", "22222222-2222-2222-2222-222222222222")
 			add("four", "Other", release)
-			if err = db.QueryRow(`SELECT count(*) FROM catalog_albums`).Scan(&n); err != nil || n != 3 {
-				t.Fatal("conflicting edition or independent folder merged", n, err)
+			if err = db.QueryRow(`SELECT count(*) FROM catalog_albums`).Scan(&n); err != nil || n != 2 {
+				t.Fatal("conflicting release IDs merged or the same release split across folders", n, err)
 			}
 		})
 	}

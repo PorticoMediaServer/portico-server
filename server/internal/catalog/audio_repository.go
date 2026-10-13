@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"golang.org/x/text/unicode/norm"
 	"path/filepath"
 	"portico.local/server/internal/assets"
 	"portico.local/server/internal/compactcatalog"
@@ -132,7 +133,9 @@ func firstTag(tags map[string]string, names ...string) string {
 	}
 	return ""
 }
-func localKey(s string) string { return strings.ToLower(strings.Join(strings.Fields(s), " ")) }
+func localKey(s string) string {
+	return strings.ToLower(norm.NFC.String(strings.Join(strings.Fields(s), " ")))
+}
 
 // albumRetireChecks are the personal, owner and provider state that keep an
 // emptied album: with any of it the album is retired (it keeps its identity and
@@ -233,17 +236,36 @@ func settleEmptied(ctx context.Context, tx *sql.Tx, id int64, checks []string) e
 
 // audioTagKey is a track's identity from its own tags, or "" when the tags
 // were not read or do not say which track of which release this is.
-func audioTagKey(f assets.Facts, disc, track any) string {
+func audioTagKey(f assets.Facts, kind string, disc, track any) string {
 	if f.InventoryOnly || firstTag(f.Tags, "title") == "" || firstTag(f.Tags, "album") == "" {
 		return ""
 	}
 	d, _ := disc.(int)
 	t, _ := track.(int)
-	return compactcatalog.TrackKey(firstTag(f.Tags, "album_artist", "albumartist", "artist", "author"), firstTag(f.Tags, "album"), d, t, firstTag(f.Tags, "title"))
+	if d <= 0 {
+		d = 1
+	}
+	artist := firstTag(f.Tags, "album_artist", "albumartist", "artist", "author")
+	album, title := firstTag(f.Tags, "album"), firstTag(f.Tags, "title")
+	if compactcatalog.TrackKey(artist, album, d, t, title) == "" {
+		return ""
+	}
+	year := 0
+	if value := firstTag(f.Tags, "date", "year"); len(value) >= 4 {
+		year, _ = strconv.Atoi(value[:4])
+	}
+	release := albumIdentityKey(f.Tags, artist, album, year)
+	if kind == "audiobook" {
+		book, _ := json.Marshal([]string{localKey(artist), localKey(album), localKey(firstTag(f.Tags, "narrator", "composer")), localKey(f.Tags["edition"]), f.Tags["isbn"], f.Tags["asin"]})
+		release = string(book)
+	}
+	key, _ := json.Marshal([]any{release, d, t, compactcatalog.IdentityText(title)})
+	return kind + ":" + string(key)
 }
 
 // artist finds or creates a library's artist by name.
 func (s *Service) artist(ctx context.Context, tx *sql.Tx, library int64, name string) (int64, error) {
+	name = norm.NFC.String(name)
 	key := localKey(name)
 	id, created, err := compactcatalog.EnsureEntityTx(ctx, tx, compactcatalog.Entity{Library: library, Kind: compactcatalog.Artist, Key: compactcatalog.ArtistKey(key), Title: name})
 	if err != nil || !created {
@@ -301,6 +323,7 @@ func (s *Service) commitAudio(ctx context.Context, tx *sql.Tx, library, kind, ro
 			f.LocalMetadataIssue = "album_or_book_identity_from_local_path"
 		}
 	}
+	albumTitle = norm.NFC.String(albumTitle)
 	track := tagNumber(firstTag(f.Tags, "track"))
 	if track == nil {
 		if match := leadingNumber.FindStringSubmatch(filepath.Base(path)); match != nil {
@@ -319,14 +342,14 @@ func (s *Service) commitAudio(ctx context.Context, tx *sql.Tx, library, kind, ro
 	// The attach point (attach.go). Before tags are read the file is known by
 	// its place; once they are, by what it is, so a second file with the same
 	// tags is another version of the same track rather than a second track.
-	tagKey := audioTagKey(f, disc, track)
+	tagKey := audioTagKey(f, kind, disc, track)
 	if errors.Is(err, sql.ErrNoRows) {
 		if item, err = AttachTrackTx(ctx, tx, TrackFile{Library: handle, Kind: itemKind, Asset: assetID, Path: path, Title: title, TagKey: tagKey}); err != nil {
 			return err
 		}
 	} else if err != nil {
 		return err
-	} else if item, err = IdentifyTrackTx(ctx, tx, item, tagKey); err != nil {
+	} else if item, err = identifyAudioFileTx(ctx, tx, item, tagKey, kind, TrackFile{Library: handle, Kind: itemKind, Asset: assetID, Path: path, Title: title, TagKey: tagKey}, f.Tags); err != nil {
 		return err
 	}
 	// An observed physical asset keeps its existing logical parent when local
@@ -430,24 +453,22 @@ func (s *Service) commitAudio(ctx context.Context, tx *sql.Tx, library, kind, ro
 			// Missing per-track edition tags do not split one physical album.
 			// Require exactly one compatible release in this library. A release ID
 			// upgrades the grouping key when only some files carry that ID.
-			rows, e := tx.Query(`SELECT a.id,d.edition_key,d.local_key FROM catalog_albums d INDEXED BY catalog_albums_artist JOIN catalog_entities a ON a.id=d.entity_id
+			rows, e := tx.Query(`SELECT a.id,d.edition_key FROM catalog_albums d INDEXED BY catalog_albums_artist JOIN catalog_entities a ON a.id=d.entity_id
  WHERE d.artist_id=? AND a.library_id=? AND a.title=? AND a.year=?`, albumArtistID, handle, albumTitle, year)
 			if e != nil {
 				return e
 			}
 			var candidate int64
-			merged := ""
-			chosenKey := ""
 			count := 0
 			for rows.Next() {
 				var id int64
-				var old, oldKey string
-				if e = rows.Scan(&id, &old, &oldKey); e != nil {
+				var old string
+				if e = rows.Scan(&id, &old); e != nil {
 					rows.Close()
 					return e
 				}
-				if edition, ok := mergeLocalEdition(old, audioEdition(f.Tags)); ok {
-					candidate, merged, chosenKey = id, edition, oldKey
+				if _, ok := mergeLocalEdition(old, audioEdition(f.Tags)); ok {
+					candidate = id
 					count++
 				}
 			}
@@ -458,12 +479,6 @@ func (s *Service) commitAudio(ctx context.Context, tx *sql.Tx, library, kind, ro
 			}
 			if count == 1 {
 				album = candidate
-				if strings.HasPrefix(groupKey, "musicbrainz:") {
-					chosenKey = groupKey
-				}
-				if e = compactcatalog.SetFactsTx(ctx, tx, album, map[string]any{"edition_key": merged, "local_key": chosenKey}); e != nil {
-					return e
-				}
 			}
 		}
 		if album == 0 {
@@ -474,6 +489,28 @@ func (s *Service) commitAudio(ctx context.Context, tx *sql.Tx, library, kind, ro
 			}
 			if created {
 				if err = compactcatalog.SetFactsTx(ctx, tx, album, map[string]any{"artist_id": albumArtistID, "local_key": key, "edition_key": audioEdition(f.Tags)}); err != nil {
+					return err
+				}
+			}
+		}
+		var pinned bool
+		if err = tx.QueryRow(`SELECT COALESCE((SELECT manual FROM mb_jobs WHERE kind='album' AND entity_id=?),0)`, album).Scan(&pinned); err != nil {
+			return err
+		}
+		if !pinned {
+			var oldKey, oldEdition string
+			if err = tx.QueryRow(`SELECT local_key,edition_key FROM catalog_albums WHERE entity_id=?`, album).Scan(&oldKey, &oldEdition); err != nil {
+				return err
+			}
+			if merged, compatible := mergeLocalEdition(oldEdition, audioEdition(f.Tags)); compatible {
+				chosen := oldKey
+				if strings.HasPrefix(groupKey, "musicbrainz:") || !strings.HasPrefix(oldKey, "musicbrainz:") && audioEdition(f.Tags) != "|||" {
+					chosen = groupKey
+				}
+				if err = recordAlbumGroupTx(ctx, tx, album, chosen); err != nil {
+					return err
+				}
+				if err = compactcatalog.SetFactsTx(ctx, tx, album, map[string]any{"local_key": chosen, "edition_key": merged}); err != nil {
 					return err
 				}
 			}

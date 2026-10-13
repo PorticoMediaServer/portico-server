@@ -1,10 +1,10 @@
 package catalog
 
 import (
+	"encoding/json"
 	"fmt"
 	"path/filepath"
 	"regexp"
-	"strconv"
 	"strings"
 )
 
@@ -14,7 +14,8 @@ func albumIdentityKey(tags map[string]string, artist, title string, year int) st
 	if id := strings.TrimSpace(tags["musicbrainz_albumid"]); audioReleaseID.MatchString(id) {
 		return "musicbrainz:" + strings.ToLower(id)
 	}
-	return localKey(artist + "|" + title + "|" + strconv.Itoa(year))
+	key, _ := json.Marshal([]any{localKey(artist), localKey(title), year, audioEdition(tags)})
+	return string(key)
 }
 
 // Number runs sort numerically; punctuation and artist names are kept whole.

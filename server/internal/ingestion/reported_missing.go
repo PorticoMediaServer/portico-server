@@ -48,6 +48,12 @@ func (s *Service) removedPathEvidence(ctx context.Context, paths []string) ([]re
 			continue
 		}
 		for _, r := range roots {
+			if ctx.Err() != nil {
+				return nil, ctx.Err()
+			}
+			if proof.Err() != nil {
+				return out, nil
+			}
 			relative, inside := relativeTo(r.path, path)
 			if !inside {
 				relative, inside = relativeTo(r.configured, path)
@@ -56,7 +62,13 @@ func (s *Service) removedPathEvidence(ctx context.Context, paths []string) ([]re
 				continue
 			}
 			var evidence reportedMissing
-			err = s.db.QueryRowContext(ctx, `SELECT id,revision FROM inventory_objects WHERE source_id=? AND relative_path=? AND retired=0 AND root_incarnation=? AND state='available'`, r.id, relative, r.incarnation).Scan(&evidence.object, &evidence.revision)
+			err = s.db.QueryRowContext(proof, `SELECT id,revision FROM inventory_objects WHERE source_id=? AND relative_path=? AND retired=0 AND root_incarnation=? AND state='available'`, r.id, relative, r.incarnation).Scan(&evidence.object, &evidence.revision)
+			if proof.Err() != nil {
+				if ctx.Err() != nil {
+					return nil, ctx.Err()
+				}
+				return out, nil
+			}
 			if errors.Is(err, sql.ErrNoRows) {
 				continue
 			}
@@ -103,6 +115,17 @@ func applyReportedMissingTx(ctx context.Context, tx *sql.Tx, evidence []reported
 		}
 		if err = catalog.MarkInventoryMissingTx(ctx, tx, v.source, "path-report:"+v.revision, v.object, time.Now()); err != nil {
 			return err
+		}
+		var active, relative string
+		err = tx.QueryRowContext(ctx, `SELECT a.job_id,o.relative_path FROM inventory_source_active a JOIN inventory_objects o ON o.source_id=a.source_id WHERE a.source_id=? AND o.id=?`, v.source, v.object).Scan(&active, &relative)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
+		if err == nil {
+			// The run may still hold an older listing page in memory or replay.
+			if err = catalog.InventoryIssueTx(ctx, tx, active, storage.InventoryIssue{Path: relative, Reason: "reported_file_removed", Protect: true}); err != nil {
+				return err
+			}
 		}
 		if _, err = tx.ExecContext(ctx, `UPDATE library_revisions SET revision=revision+1 WHERE library_id=(SELECT library_id FROM library_sources WHERE id=?)`, v.source); err != nil {
 			return err

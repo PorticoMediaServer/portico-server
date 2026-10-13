@@ -547,6 +547,7 @@ export const settingsMessages = {
   'scan.issue.unsupported_disc_layout': 'This disc folder was listed as one title. Playing disc folders is not supported.',
   'scan.issue.unsupported_disc_image': 'This disc image was listed, but playing it is not supported.',
   'scan.issue.source_revision_changed': 'This file changed during analysis. Its title was kept and the file will be checked again.',
+  'scan.issue.reported_file_removed': 'This file was removed during the scan. Its title was kept.',
   'scan.issue.embedded_name_fields_skipped': 'Some embedded title information could not be read. Usable information was kept.',
   'scan.issue.analysis_failed': 'This file could not be analyzed. Its title and usable information were kept.',
   // Server › Integrations: keys, members' tokens, webhooks and assistants.

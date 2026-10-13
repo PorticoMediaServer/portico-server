@@ -59,6 +59,8 @@ func (s *Service) Issues(ctx context.Context, library, job string, after int64, 
 }
 func scanIssueMessageKey(reason string) string {
 	switch reason {
+	case "reported_file_removed":
+		return "scan.issue.reported_file_removed"
 	case "embedded_name_fields_skipped", "directory_changed", "directory_unreadable", "entry_unreadable", "symlink_unreadable", "symlink_disabled", "symlink_outside_root", "directory_alias", "ignored_name", "ignored_rule", "ignore_unreadable", "invalid_ignore_pattern", "ignore_file_budget_exceeded", "ignore_pattern_budget_exceeded", "ignore_pattern_count_exceeded", "path_depth_exceeded", "ignore_diagnostic_budget_exceeded", "unsupported_disc_layout", "unsupported_disc_image", "source_revision_changed":
 		return "scan.issue." + reason
 	}
