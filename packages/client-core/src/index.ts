@@ -1875,6 +1875,7 @@ export * from './group-session.ts';
 export * from './remote-playback.ts';
 export * from './library-pins.ts';
 export * from './subtitles.ts';
+export * from './subtitle-originals.ts';
 export * from "./lyrics.ts";
 
 export {type MusicPolicy,type MusicPolicyInput,type MusicMatchObservation,type MusicEvidenceDetails,type LocalBookMetadata,musicEvidenceLabel,fingerprintStatusLabel} from "./music-metadata.ts";
