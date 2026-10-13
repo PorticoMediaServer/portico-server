@@ -11,7 +11,8 @@ import (
 
 func TestAppAuthorizationQueryStrict(t *testing.T) {
 	b64 := base64.RawURLEncoding.EncodeToString(make([]byte, 32))
-	q := url.Values{"serverId": {"srv_" + b64}, "challenge": {b64}, "redirectUri": {"https://client.example/finish"}, "state": {strings.Repeat("s", 32)}, "appName": {"Unverified App"}, "codeChallenge": {b64}}
+	// The challenge is the size a local server issues (24 bytes).
+	q := url.Values{"serverId": {"srv_" + b64}, "challenge": {base64.RawURLEncoding.EncodeToString(make([]byte, 24))}, "redirectUri": {"https://client.example/finish"}, "state": {strings.Repeat("s", 32)}, "appName": {"Unverified App"}, "codeChallenge": {b64}}
 	r := httptest.NewRequest("GET", "/auth/apps/authorize?"+q.Encode(), nil)
 	if _, e := appAuthorizationQuery(r); e != nil || !appAuthorizationQueryAllowed(r) {
 		t.Fatal(e)

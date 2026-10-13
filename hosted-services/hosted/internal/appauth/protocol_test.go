@@ -54,3 +54,21 @@ func TestPKCEAndExactReturn(t *testing.T) {
 		t.Fatal("plain PKCE")
 	}
 }
+
+// A local server issues 24 random bytes as its sign-in challenge. The request
+// must accept exactly what the assertion issuer and the server's verifier do.
+func TestServerIssuedChallengeSizes(t *testing.T) {
+	q := Request{ServerID: "srv_" + base64.RawURLEncoding.EncodeToString(make([]byte, 32)), RedirectURI: "https://client.example/callback", State: strings.Repeat("state", 5), AppName: "My Player", CodeChallenge: Challenge(strings.Repeat("v", 43))}
+	for _, size := range []int{16, 24, 32, 96} {
+		q.Challenge = base64.RawURLEncoding.EncodeToString(make([]byte, size))
+		if e := q.Validate(); e != nil {
+			t.Errorf("refused a %d-byte challenge", size)
+		}
+	}
+	for _, bad := range []string{"", base64.RawURLEncoding.EncodeToString(make([]byte, 15)), base64.RawURLEncoding.EncodeToString(make([]byte, 97)), base64.URLEncoding.EncodeToString(make([]byte, 16)), strings.Repeat("A", 21) + "B", strings.Repeat("*", 32)} {
+		q.Challenge = bad
+		if q.Validate() == nil {
+			t.Errorf("accepted challenge %q", bad)
+		}
+	}
+}

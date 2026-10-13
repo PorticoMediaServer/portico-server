@@ -21,7 +21,8 @@ import (
 )
 
 func appRequest(server string) appauth.Request {
-	return appauth.Request{ServerID: server, Challenge: base64.RawURLEncoding.EncodeToString(make([]byte, 32)), RedirectURI: "https://outside.example/finish?keep=yes", State: security.RandomID(""), AppName: "Outside Player", CodeChallenge: appauth.Challenge(strings.Repeat("v", 43))}
+	// 24 bytes: the size a local server issues.
+	return appauth.Request{ServerID: server, Challenge: base64.RawURLEncoding.EncodeToString(make([]byte, 24)), RedirectURI: "https://outside.example/finish?keep=yes", State: security.RandomID(""), AppName: "Outside Player", CodeChallenge: appauth.Challenge(strings.Repeat("v", 43))}
 }
 func appBrowser(t *testing.T, f fixture) identity.Session {
 	t.Helper()

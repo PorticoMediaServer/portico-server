@@ -61,7 +61,7 @@ var verifier = regexp.MustCompile(`^[A-Za-z0-9._~-]{43,128}$`)
 var appScheme = regexp.MustCompile(`^[a-z][a-z0-9+.-]{1,63}$`)
 
 func (q Request) Validate() error {
-	if !serverID.MatchString(q.ServerID) || !base64Bytes(q.ServerID[4:], 32) || !base64Bytes(q.Challenge, 32) || !base64Bytes(q.CodeChallenge, 32) || !plain(q.State, 16, 512) || !plain(q.AppName, 1, 100) || strings.TrimSpace(q.AppName) != q.AppName || !ValidRedirect(q.RedirectURI) {
+	if !serverID.MatchString(q.ServerID) || !base64Bytes(q.ServerID[4:], 32) || !serverChallenge(q.Challenge) || !base64Bytes(q.CodeChallenge, 32) || !plain(q.State, 16, 512) || !plain(q.AppName, 1, 100) || strings.TrimSpace(q.AppName) != q.AppName || !ValidRedirect(q.RedirectURI) {
 		return ErrGrant
 	}
 	return nil
@@ -69,6 +69,14 @@ func (q Request) Validate() error {
 func base64Bytes(v string, n int) bool {
 	raw, e := base64.RawURLEncoding.Strict().DecodeString(v)
 	return e == nil && len(raw) == n && base64.RawURLEncoding.EncodeToString(raw) == v
+}
+
+// serverChallenge is the challenge the chosen server issued to the app. Its
+// size is the server's to choose (24 bytes today), so the bound here is the one
+// the assertion issuer and the server's verifier apply: 22 to 128 characters.
+func serverChallenge(v string) bool {
+	raw, e := base64.RawURLEncoding.Strict().DecodeString(v)
+	return e == nil && len(raw) >= 16 && len(raw) <= 96 && base64.RawURLEncoding.EncodeToString(raw) == v
 }
 func plain(v string, min, max int) bool {
 	if len(v) < min || len(v) > max || !utf8.ValidString(v) {
