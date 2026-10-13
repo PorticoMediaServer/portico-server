@@ -471,8 +471,11 @@ func commitMovieItem(ctx context.Context, tx *sql.Tx, library string, asset int6
 	if !errors.Is(err, sql.ErrNoRows) {
 		return item, err
 	}
-	title, year := FilenameTitle(path)
-	return AttachMovieTx(ctx, tx, MovieFile{Library: library, Asset: asset, Path: path, Title: title, Year: year})
+	f, err := movieFileReadingTx(ctx, tx, library, asset, path)
+	if err != nil {
+		return 0, err
+	}
+	return AttachMovieTx(ctx, tx, f)
 }
 
 func projectArtwork(i *Item) {

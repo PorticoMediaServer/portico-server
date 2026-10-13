@@ -79,7 +79,7 @@ func (s *Service) CommitInventoryPage(ctx context.Context, job, relative, cursor
 	if err != nil {
 		return err
 	}
-	if page.RootIdentity != source.RootIdentity || page.DirectoryIdentity == "" || page.DirectoryRevision == "" || len(page.Entries) > 128 || page.Complete && page.NextCursor != "" || !page.Complete && (page.NextCursor == "" || page.NextCursor == cursor && !page.Pending) {
+	if page.RootIdentity != source.RootIdentity || page.DirectoryIdentity == "" || page.DirectoryRevision == "" || len(page.Entries) > 128 || len(page.Issues) > 512 || page.Complete && page.NextCursor != "" || !page.Complete && (page.NextCursor == "" || page.NextCursor == cursor && !page.Pending) {
 		return storage.ErrInventoryChanged
 	}
 	if page.Pending && (page.Remote == nil || len(page.Entries) != 0 || page.Complete) {
@@ -98,6 +98,16 @@ func (s *Service) CommitInventoryPage(ctx context.Context, job, relative, cursor
 	}
 	if page.Remote != nil {
 		if err = subtitles.CommitManagedPage(ctx, tx, source.ID, source.Incarnation, job, filepath.Join(source.ResolvedPath, relative), page.Entries); err != nil {
+			return err
+		}
+	}
+	for _, issue := range page.Issues {
+		if err = InventoryIssueTx(ctx, tx, job, issue); err != nil {
+			return err
+		}
+	}
+	if page.Unstable {
+		if err = InventoryIssueTx(ctx, tx, job, storage.InventoryIssue{Path: relative, Reason: "directory_changed", Protect: true, Warning: true}); err != nil {
 			return err
 		}
 	}
@@ -122,6 +132,20 @@ func (s *Service) CommitInventoryPage(ctx context.Context, job, relative, cursor
 	if policy, err = ScanPolicyTx(ctx, tx, source.LibraryID); err != nil {
 		return err
 	}
+	var alias bool
+	if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM inventory_directories WHERE job_id=? AND identity=? AND relative_path<>?)`, job, page.DirectoryIdentity, relative).Scan(&alias); err != nil {
+		return err
+	}
+	if alias {
+		if err = InventoryIssueTx(ctx, tx, job, storage.InventoryIssue{Path: relative, Reason: "directory_alias", Protect: true}); err != nil {
+			return err
+		}
+		_, err = tx.ExecContext(ctx, `UPDATE inventory_directories SET state='blocked',cursor='' WHERE job_id=? AND relative_path=?`, job, relative)
+		if err != nil {
+			return err
+		}
+		return gated.Commit()
+	}
 	// Register the current directory before its children so a link back to the
 	// root is recognized as an already visited identity rather than a conflict.
 	if _, err = tx.ExecContext(ctx, `UPDATE inventory_directories SET identity=?,revision=? WHERE job_id=? AND relative_path=?`, page.DirectoryIdentity, page.DirectoryRevision, job, relative); err != nil {
@@ -135,9 +159,22 @@ func (s *Service) CommitInventoryPage(ctx context.Context, job, relative, cursor
 			return ErrAdminQuery
 		}
 		if naming.IgnorePath(filepath.ToSlash(child), v.Directory) {
+			if err = InventoryIssueTx(ctx, tx, job, storage.InventoryIssue{Path: child, Reason: "ignored_name"}); err != nil {
+				return err
+			}
 			continue
 		}
 		if v.Directory {
+			if discs := naming.DiscLayout(filepath.ToSlash(child)); len(discs) > 0 {
+				if _, e := s.observeInventoryTx(ctx, tx, job, source, child, v, "unsupported_disc_layout", policy); e != nil {
+					return e
+				}
+				discovered++
+				if err = InventoryIssueTx(ctx, tx, job, storage.InventoryIssue{Path: child, Reason: "unsupported_disc_layout", Warning: true}); err != nil {
+					return err
+				}
+				continue
+			}
 			if v.ObjectIdentity == "" {
 				return storage.ErrInventoryChanged
 			}
@@ -152,6 +189,9 @@ func (s *Service) CommitInventoryPage(ctx context.Context, job, relative, cursor
 				return err
 			}
 			continue
+		}
+		if err = observeSidecarTx(ctx, tx, job, source, child, v); err != nil {
+			return err
 		}
 		supported, reason := InventoryMedia(v.Path, libraryKind)
 		if !supported {
@@ -455,8 +495,24 @@ func (s *Service) reinterpretInventoryTx(ctx context.Context, tx *sql.Tx, source
 		if err != nil || assetID == 0 {
 			return err
 		}
-		title, year := FilenameTitle(path)
-		return reinterpretMovieTx(ctx, tx, source.LibraryID, assetID, asset, path, title, year)
+		f, e := movieFileReadingTx(ctx, tx, source.LibraryID, assetID, path)
+		if e != nil {
+			return e
+		}
+		if e = reinterpretMovieTx(ctx, tx, source.LibraryID, assetID, asset, path, f.Title, f.Year); e != nil {
+			return e
+		}
+		rows, e := tx.QueryContext(ctx, `SELECT l.entity_id FROM catalog_asset_links l JOIN catalog_entities i ON i.id=l.entity_id JOIN catalog_libraries cl ON cl.id=i.library_id WHERE l.asset_id=? AND cl.library_id=?`, assetID, source.LibraryID)
+		ids, e := scanInt64s(rows, e)
+		if e != nil {
+			return e
+		}
+		for _, id := range ids {
+			if e = compactcatalog.LinkAssetTx(ctx, tx, id, assetID, compactcatalog.Link{Part: f.Part, Edition: f.Edition}); e != nil {
+				return e
+			}
+		}
+		return nil
 	}
 	return nil
 }
@@ -602,12 +658,12 @@ func (s *Service) CommitInventoryAnalysis(ctx context.Context, job, object, revi
 	if queueState == "pending" {
 		analysisState = "pending"
 	}
-	if _, err = tx.ExecContext(ctx, `UPDATE inventory_objects SET analysis_revision=?,analysis_policy=?,analysis_operations_json=?,analysis_state=?,analysis_error='' WHERE id=?`, func() string {
+	if _, err = tx.ExecContext(ctx, `UPDATE inventory_objects SET analysis_revision=?,analysis_policy=?,analysis_operations_json=?,analysis_state=?,analysis_error='',analysis_algorithm=?,analysis_generation=? WHERE id=?`, func() string {
 		if f.SubtitleTextPending {
 			return ""
 		}
 		return revision
-	}(), policyRevision, actualScanOperations(policy, f.AnalysisOperations), analysisState, object); err != nil {
+	}(), policyRevision, actualScanOperations(policy, f.AnalysisOperations), analysisState, f.AnalysisAlgorithm, source.Generation, object); err != nil {
 		return err
 	}
 	if _, err = tx.ExecContext(ctx, `UPDATE inventory_analysis_queue SET state=? WHERE job_id=? AND object_id=? AND revision=? AND policy_revision=?`, queueState, job, object, revision, policyRevision); err != nil {

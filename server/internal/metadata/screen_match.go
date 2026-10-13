@@ -2,7 +2,6 @@ package metadata
 
 import (
 	"math"
-	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
@@ -11,14 +10,9 @@ import (
 
 	"golang.org/x/text/unicode/norm"
 	"portico.local/server/internal/metadataprovider"
+	"portico.local/server/internal/naming"
 )
 
-var screenYearPattern = regexp.MustCompile(`(?:^|[ ._\[(])((?:18|19|20)\d{2})(?:[ ._\])]|$)`)
-var screenFollowingYearPattern = regexp.MustCompile(`^(?:[ ._]|[ ._]?[\[(])((?:18|19|20)\d{2})(?:[ ._\])]|$)`)
-var screenReleasePattern = regexp.MustCompile(`(?i)(?:^|[ ._\[(])(?:480p|576p|720p|1080[pi]|2160p|4320p|4k|8k|blu[ ._-]?ray|bdrip|brrip|web[ ._-]?dl|webrip|hdtv|dvdrip|remux|x26[45]|h[ .]?26[45]|hevc|av1|aac|dts|truehd|ddp|hdr10?\+?|dolby[ .]?vision)(?:\b|_)`)
-var screenEpisodePattern = regexp.MustCompile(`(?i)(?:^|[ ._-])(?:s\d{1,2}e\d{1,4}|\d{1,2}x\d{1,4}|-\s*\d{1,4}(?:v\d)?)(?:\b|_)`)
-var screenGroupPattern = regexp.MustCompile(`^\[[^\]]{1,128}\]\s*`)
-var screenEditionPattern = regexp.MustCompile(`(?i)\{edition-([^}]{1,128})\}|\b(director'?s[ ._]cut|extended[ ._](?:cut|edition)|theatrical[ ._](?:cut|edition)|unrated|remastered|special[ ._]edition)\b`)
 var screenIMDbPattern = regexp.MustCompile(`(?i)[\[{]imdb(?:id)?[-=: ](tt[0-9]{7,10})[\]}]`)
 var screenIDPattern = regexp.MustCompile(`(?i)[\[{](tmdb|tvdb|anilist)(?:id)?[-=: ]([1-9][0-9]{0,14})[\]}]`)
 
@@ -69,75 +63,35 @@ var screenTransliteration = map[rune]string{
 	'α': "a", 'β': "v", 'γ': "g", 'δ': "d", 'ε': "e", 'ζ': "z", 'η': "i", 'θ': "th", 'ι': "i", 'κ': "k", 'λ': "l", 'μ': "m", 'ν': "n", 'ξ': "x", 'ο': "o", 'π': "p", 'ρ': "r", 'σ': "s", 'ς': "s", 'τ': "t", 'υ': "y", 'φ': "f", 'χ': "ch", 'ψ': "ps", 'ω': "o",
 }
 
-// screenReleaseYear finds the release year in a name and where the title before
-// it ends. The first year is the release year unless the name says otherwise
-// without ambiguity: a year that opens the name would leave no title at all,
-// so the next year is taken; and a year written directly after another, bare
-// or in brackets, is the release while the earlier number belongs to the
-// title. A year further along, after release tags or other words, changes
-// nothing, a year in brackets is never displaced, and a name whose only year
-// opens it is not guessed at.
-func screenReleaseYear(s string) (cut, year int) {
-	m := screenYearPattern.FindStringSubmatchIndex(s)
-	if len(m) == 0 {
-		return -1, 0
-	}
-	cut, start, end := m[0], m[2], m[3]
-	if start == 0 {
-		if later := screenYearPattern.FindStringSubmatchIndex(s[end:]); len(later) > 0 {
-			cut, start, end = end+later[0], end+later[2], end+later[3]
-		} else {
-			return -1, 0
-		}
-	}
-	for !(start > 0 && strings.ContainsRune("([", rune(s[start-1])) && end < len(s) && strings.ContainsRune(")]", rune(s[end]))) {
-		next := screenFollowingYearPattern.FindStringSubmatchIndex(s[end:])
-		if len(next) == 0 {
-			break
-		}
-		cut, start, end = end, end+next[2], end+next[3]
-	}
-	year, _ = strconv.Atoi(s[start:end])
-	return cut, year
-}
-
-// Cleanup never writes back to the source or collapses editions/physical assets.
+// Search and inventory consume one name reader; no second year grammar.
 func screenFilename(s string) (title string, year int, edition string) {
-	return screenName(s, 0)
+	r := naming.Read(s, "anime")
+	title, year = r.PreferredTitle()
+	if len(r.Editions) > 0 {
+		edition = r.Editions[0].Value
+	}
+	return
 }
-
-// screenName cleans a name for search. released is the release year the
-// catalogue already holds for a title, or zero for a file name: once the
-// release year is known, a different year-like number in the title ("Blade
-// Runner 2049", "1917") is part of the title, not a second release year.
 func screenName(s string, released int) (title string, year int, edition string) {
-	ext := strings.ToLower(filepath.Ext(s))
-	switch ext {
-	case ".mkv", ".mp4", ".m4v", ".avi", ".mov", ".ts", ".m2ts", ".webm", ".strm":
-		s = strings.TrimSuffix(s, filepath.Ext(s))
-	}
-	if m := screenEditionPattern.FindStringSubmatch(s); len(m) > 0 {
-		edition = m[1]
-		if edition == "" {
-			edition = m[2]
+	r := naming.Read(s, "movie")
+	title, year = r.PreferredTitle()
+	if released > 0 {
+		year = released
+		title = s
+		if len(r.Titles) > 0 {
+			title = r.Titles[0].Value
 		}
-		s = screenEditionPattern.ReplaceAllString(s, " ")
+		for _, e := range r.Years {
+			if e.Value != released && e.Path == s {
+				title = s
+				break
+			}
+		}
 	}
-	s = screenIDPattern.ReplaceAllString(s, " ")
-	s = screenIMDbPattern.ReplaceAllString(s, " ")
-	s = screenGroupPattern.ReplaceAllString(s, "")
-	if cut, y := screenReleaseYear(s); cut >= 0 && (released == 0 || y == released) {
-		year = y
-		s = s[:cut]
+	if len(r.Editions) > 0 {
+		edition = r.Editions[0].Value
 	}
-	if pos := screenEpisodePattern.FindStringIndex(s); len(pos) > 0 {
-		s = s[:pos[0]]
-	}
-	if pos := screenReleasePattern.FindStringIndex(s); len(pos) > 0 {
-		s = s[:pos[0]]
-	}
-	s = strings.NewReplacer(".", " ", "_", " ").Replace(s)
-	return strings.Trim(strings.Join(strings.Fields(s), " "), " -[]()"), year, strings.ReplaceAll(edition, "_", " ")
+	return
 }
 func screenQueries(b screenBase) ([]string, int, []metadataprovider.ScreenID) {
 	out := []string{}
@@ -393,11 +347,12 @@ func abs(n int) int {
 // MatchEvidence is the bounded input naming can supply: prefer file/embedded
 // titles, then folder titles. Provider IDs are exact, editions are descriptive.
 type MatchEvidence struct {
-	Title   string                      `json:"title"`
-	Source  string                      `json:"source"`
-	Year    int                         `json:"year,omitempty"`
-	IDs     []metadataprovider.ScreenID `json:"ids,omitempty"`
-	Edition string                      `json:"edition,omitempty"`
+	Confidence float64                     `json:"confidence"`
+	Title      string                      `json:"title"`
+	Source     string                      `json:"source"`
+	Year       int                         `json:"year,omitempty"`
+	IDs        []metadataprovider.ScreenID `json:"ids,omitempty"`
+	Edition    string                      `json:"edition,omitempty"`
 }
 
 func scoreScreenEvidence(r metadataprovider.ScreenRecord, names []string, year int, exact bool, b screenBase) screenCandidate {

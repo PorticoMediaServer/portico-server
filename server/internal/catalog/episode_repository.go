@@ -199,7 +199,7 @@ func (s *Service) commitEpisodes(tx *sql.Tx, library, asset, name string, plan E
 				return err
 			}
 		}
-		if err = compactcatalog.LinkAssetTx(ctx, tx, item, assetID, compactcatalog.Link{}); err != nil {
+		if err = compactcatalog.LinkAssetTx(ctx, tx, item, assetID, compactcatalog.Link{Part: plan.Part, Edition: plan.Edition}); err != nil {
 			return err
 		}
 		if restore {

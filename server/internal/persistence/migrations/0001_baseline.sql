@@ -1904,7 +1904,7 @@ CREATE TABLE library_sources (
  enabled INTEGER NOT NULL DEFAULT 1, follow_symlinks INTEGER NOT NULL DEFAULT 0,
  interval_seconds INTEGER NOT NULL DEFAULT 0 CHECK(interval_seconds=0 OR interval_seconds>=900),
  next_scan_at TEXT NOT NULL DEFAULT '', last_complete_job TEXT NOT NULL DEFAULT '',
- last_complete_at TEXT NOT NULL DEFAULT '', last_progress_at TEXT NOT NULL DEFAULT '',
+ last_complete_at TEXT NOT NULL DEFAULT '', last_integrity_at TEXT NOT NULL DEFAULT '', last_progress_at TEXT NOT NULL DEFAULT '',
  UNIQUE(library_id,root)
 ) STRICT;
 CREATE TABLE library_scan_policies (
@@ -1944,13 +1944,31 @@ CREATE TABLE inventory_objects (
  retired INTEGER NOT NULL DEFAULT 0, missing_since TEXT NOT NULL DEFAULT '', missing_observations INTEGER NOT NULL DEFAULT 0,
  last_missing_job TEXT NOT NULL DEFAULT '', unsupported_reason TEXT NOT NULL DEFAULT '',
  analysis_revision TEXT NOT NULL DEFAULT '', analysis_policy INTEGER NOT NULL DEFAULT 0, analysis_operations_json TEXT NOT NULL DEFAULT '[]',
- analysis_state TEXT NOT NULL DEFAULT 'pending', analysis_error TEXT NOT NULL DEFAULT ''
+ analysis_state TEXT NOT NULL DEFAULT 'pending', analysis_error TEXT NOT NULL DEFAULT '',
+ analysis_algorithm TEXT NOT NULL DEFAULT '', analysis_generation INTEGER NOT NULL DEFAULT 0
 , directory_path TEXT NOT NULL DEFAULT '.') STRICT;
 CREATE TABLE inventory_changes (
  sequence INTEGER PRIMARY KEY AUTOINCREMENT, source_id TEXT NOT NULL, job_id TEXT NOT NULL,
  object_id TEXT NOT NULL DEFAULT '', asset_id TEXT NOT NULL DEFAULT '', revision TEXT NOT NULL DEFAULT '',
  kind TEXT NOT NULL, created_at TEXT NOT NULL,
  UNIQUE(job_id,object_id,revision,kind)
+) STRICT;
+CREATE TABLE inventory_scan_issues (
+ sequence INTEGER PRIMARY KEY AUTOINCREMENT,job_id TEXT NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+ relative_path TEXT NOT NULL,reason TEXT NOT NULL,protect INTEGER NOT NULL DEFAULT 0,warning INTEGER NOT NULL DEFAULT 0,
+ UNIQUE(job_id,relative_path,reason)
+) STRICT;
+CREATE INDEX inventory_scan_issues_job ON inventory_scan_issues(job_id,sequence);
+CREATE INDEX inventory_scan_issues_protected ON inventory_scan_issues(job_id,relative_path) WHERE protect=1;
+CREATE TABLE inventory_sidecars (
+ source_id TEXT NOT NULL REFERENCES library_sources(id) ON DELETE CASCADE,incarnation TEXT NOT NULL,
+ relative_path TEXT NOT NULL,directory_path TEXT NOT NULL,revision TEXT NOT NULL,seen_job TEXT NOT NULL,
+ PRIMARY KEY(source_id,incarnation,relative_path)
+) STRICT;
+CREATE INDEX inventory_sidecars_directory ON inventory_sidecars(source_id,incarnation,directory_path,relative_path);
+CREATE TABLE inventory_sidecar_changes (
+ job_id TEXT NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,relative_path TEXT NOT NULL,
+ cursor TEXT NOT NULL DEFAULT '',PRIMARY KEY(job_id,relative_path)
 ) STRICT;
 CREATE TABLE inventory_operation_jobs (
  operation_id TEXT NOT NULL, job_id TEXT NOT NULL REFERENCES jobs(id),

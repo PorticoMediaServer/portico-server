@@ -230,6 +230,9 @@ index inventory_objects_path
 index inventory_objects_source
 index inventory_runs_source
 index inventory_runs_turn
+index inventory_scan_issues_job
+index inventory_scan_issues_protected
+index inventory_sidecars_directory
 index inventory_version_links_item
 index item_extras_asset
 index item_extras_parent
@@ -708,6 +711,9 @@ table inventory_path_notices
 table inventory_policy_pending
 table inventory_run_targets
 table inventory_runs
+table inventory_scan_issues
+table inventory_sidecar_changes
+table inventory_sidecars
 table inventory_source_active
 table inventory_version_links
 table item_extras

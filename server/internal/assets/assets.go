@@ -26,6 +26,7 @@ type Chapter struct {
 	End   float64 `json:"endSeconds"`
 }
 type Facts struct {
+	AnalysisAlgorithm   string               `json:"-"`
 	SubtitleTextPending bool                 `json:"-"`
 	VideoMetadata       []VideoNFO           `json:"-"`
 	VideoMetadataStatus string               `json:"-"`

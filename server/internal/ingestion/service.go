@@ -346,6 +346,7 @@ func (s *Service) Run(ctx context.Context) {
 	workerloop.RunWith(ctx, "ingestion.scan", advanced, wake, func(ctx context.Context) time.Duration {
 		pending := false
 		{
+			ctx = dbwork.WithBackgroundSpeed(ctx, dbwork.ReadBackgroundSpeed(ctx, s.db))
 			s.recoverPolicyChanges(ctx)
 			s.schedule(ctx)
 			s.startWaitingReports(ctx)
@@ -375,7 +376,7 @@ func (s *Service) Run(ctx context.Context) {
 					}
 				}
 				s.mu.Lock()
-				busy := len(s.active) >= 4 || s.active[c.id] != nil || s.activeSources[c.source]
+				busy := len(s.active) >= dbwork.BackgroundConcurrency(ctx) || s.active[c.id] != nil || s.activeSources[c.source]
 				if !busy {
 					s.activeSources[c.source] = true
 					work, cancel := context.WithCancel(ctx)
@@ -440,13 +441,13 @@ func (s *Service) process(ctx context.Context, id, library string) {
 // scanPosition is where a run durably stands: its phase and cursors, its
 // counters, and the head of its pending directory and analysis queues.
 type scanPosition struct {
-	status, phase, verify, reconcile, directory, cursor, object string
-	processed, analyzed, warnings                               int64
+	status, phase, verify, reconcile, directory, cursor, object, sidecar string
+	processed, analyzed, warnings                                        int64
 }
 
 func (s *Service) scanPosition(ctx context.Context, id string) (scanPosition, error) {
 	var p scanPosition
-	err := s.db.QueryRowContext(ctx, `SELECT j.status,r.phase,r.verify_cursor,r.reconcile_cursor,j.processed,r.analyzed,r.warnings,COALESCE((SELECT d.relative_path FROM inventory_directories d WHERE d.job_id=r.job_id AND d.state='pending' ORDER BY d.relative_path LIMIT 1),''),COALESCE((SELECT d.cursor FROM inventory_directories d WHERE d.job_id=r.job_id AND d.state='pending' ORDER BY d.relative_path LIMIT 1),''),COALESCE((SELECT q.object_id FROM inventory_analysis_queue q WHERE q.job_id=r.job_id AND q.state='pending' ORDER BY q.object_id LIMIT 1),'') FROM inventory_runs r JOIN jobs j ON j.id=r.job_id WHERE r.job_id=?`, id).Scan(&p.status, &p.phase, &p.verify, &p.reconcile, &p.processed, &p.analyzed, &p.warnings, &p.directory, &p.cursor, &p.object)
+	err := s.db.QueryRowContext(ctx, `SELECT j.status,r.phase,r.verify_cursor,r.reconcile_cursor,j.processed,r.analyzed,r.warnings,COALESCE((SELECT d.relative_path FROM inventory_directories d WHERE d.job_id=r.job_id AND d.state='pending' ORDER BY d.relative_path LIMIT 1),''),COALESCE((SELECT d.cursor FROM inventory_directories d WHERE d.job_id=r.job_id AND d.state='pending' ORDER BY d.relative_path LIMIT 1),''),COALESCE((SELECT q.object_id FROM inventory_analysis_queue q WHERE q.job_id=r.job_id AND q.state='pending' ORDER BY q.object_id LIMIT 1),''),COALESCE((SELECT c.relative_path||':'||c.cursor FROM inventory_sidecar_changes c WHERE c.job_id=r.job_id ORDER BY c.relative_path LIMIT 1),'') FROM inventory_runs r JOIN jobs j ON j.id=r.job_id WHERE r.job_id=?`, id).Scan(&p.status, &p.phase, &p.verify, &p.reconcile, &p.processed, &p.analyzed, &p.warnings, &p.directory, &p.cursor, &p.object, &p.sidecar)
 	return p, err
 }
 
@@ -514,6 +515,8 @@ func (s *Service) processQuantum(ctx context.Context, id, library string) bool {
 		err = s.verifyPage(ctx, id, source)
 	case "reconciling":
 		err = s.reconcilePage(ctx, id, source)
+	case "sidecars":
+		err = s.reconcileSidecars(ctx, id, source)
 	case "analysis_enqueue":
 		err = s.enqueueAnalysisPage(ctx, id, source)
 	case "basic_pending", "basic_running":

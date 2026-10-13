@@ -21,7 +21,8 @@ import (
 var ErrInventoryChanged = errors.New("inventory directory or root changed")
 
 // Inventory cursors are adapter-owned and are valid only for one directory
-// observation. No object contents (including sidecars/descriptors) are opened.
+// observation. Only bounded ignore configuration is opened; media and sidecar
+// contents are reserved for analysis.
 type InventoryRequest struct {
 	// Stream is an internal isolated-helper protocol flag, not a catalog cursor.
 	Stream            bool   `json:"stream,omitempty"`
@@ -33,15 +34,24 @@ type InventoryRequest struct {
 	Limit             int    `json:"limit"`
 	FollowSymlinks    bool   `json:"followSymlinks"`
 }
+type InventoryIssue struct {
+	Path    string `json:"path"`
+	Reason  string `json:"reason"`
+	Protect bool   `json:"protect"`
+	Warning bool   `json:"warning"`
+}
+
 type InventoryPage struct {
-	Remote            *RemotePage `json:"-"`
-	Pending           bool        `json:"-"`
-	RootIdentity      string      `json:"rootIdentity"`
-	DirectoryIdentity string      `json:"directoryIdentity"`
-	DirectoryRevision string      `json:"directoryRevision"`
-	Entries           []Snapshot  `json:"entries"`
-	NextCursor        string      `json:"nextCursor"`
-	Complete          bool        `json:"complete"`
+	Issues            []InventoryIssue `json:"issues,omitempty"`
+	Unstable          bool             `json:"unstable,omitempty"`
+	Remote            *RemotePage      `json:"-"`
+	Pending           bool             `json:"-"`
+	RootIdentity      string           `json:"rootIdentity"`
+	DirectoryIdentity string           `json:"directoryIdentity"`
+	DirectoryRevision string           `json:"directoryRevision"`
+	Entries           []Snapshot       `json:"entries"`
+	NextCursor        string           `json:"nextCursor"`
+	Complete          bool             `json:"complete"`
 }
 
 func InventoryRevision(v Snapshot) string {
@@ -150,6 +160,8 @@ func LocalInventoryPage(r InventoryRequest) (InventoryPage, error) {
 		return p, ErrInventoryChanged
 	}
 	p = InventoryPage{RootIdentity: rootID, DirectoryIdentity: before.ObjectIdentity, DirectoryRevision: rev, Entries: []Snapshot{}}
+	rules, issues := inventoryIgnoreRules(retained, r)
+	p.Issues = append(p.Issues, issues...)
 	readNames := inventoryNames
 	if r.Stream || runtime.GOOS != "linux" {
 		// Open by the already resolved absolute path, not os.Root's display name.
@@ -167,13 +179,15 @@ func LocalInventoryPage(r InventoryRequest) (InventoryPage, error) {
 			return p, ErrInventoryChanged
 		}
 		if naming.IgnoreName(name, false) {
+			p.Issues = append(p.Issues, InventoryIssue{Path: filepath.Join(r.RelativePath, name), Reason: "ignored_name"})
 			continue
 		}
 		child := filepath.Join(path, name)
 		bindingPath := child
 		info, e := os.Lstat(child)
 		if e != nil {
-			return p, e
+			p.Issues = append(p.Issues, InventoryIssue{Path: filepath.Join(r.RelativePath, name), Reason: "entry_unreadable", Protect: true, Warning: true})
+			continue
 		}
 		if info.Mode()&os.ModeSymlink != 0 {
 			if !r.FollowSymlinks {
@@ -181,24 +195,33 @@ func LocalInventoryPage(r InventoryRequest) (InventoryPage, error) {
 			}
 			resolved, e := filepath.EvalSymlinks(child)
 			if e != nil {
-				return p, e
+				p.Issues = append(p.Issues, InventoryIssue{Path: filepath.Join(r.RelativePath, name), Reason: "symlink_unreadable", Protect: true, Warning: true})
+				continue
 			}
 			rel, e := filepath.Rel(r.Root, resolved)
 			if e != nil || !filepath.IsLocal(rel) {
-				return p, errors.New("inventory symlink escapes root")
+				p.Issues = append(p.Issues, InventoryIssue{Path: filepath.Join(r.RelativePath, name), Reason: "symlink_outside_root", Protect: true, Warning: true})
+				continue
 			}
 			bindingPath = resolved
 			info, e = retained.Stat(rel)
 			if e != nil {
-				return p, e
+				p.Issues = append(p.Issues, InventoryIssue{Path: filepath.Join(r.RelativePath, name), Reason: "entry_unreadable", Protect: true, Warning: true})
+				continue
 			}
 		} else {
 			info, e = retained.Stat(filepath.Join(anchored, name))
 			if e != nil {
-				return p, e
+				p.Issues = append(p.Issues, InventoryIssue{Path: filepath.Join(r.RelativePath, name), Reason: "entry_unreadable", Protect: true, Warning: true})
+				continue
 			}
 		}
-		if naming.IgnoreName(name, info.IsDir()) {
+		ignored := naming.IgnoreName(name, info.IsDir())
+		for _, rule := range rules {
+			ignored = ignored || rule.Match(filepath.ToSlash(filepath.Join(r.RelativePath, name)), info.IsDir())
+		}
+		if ignored {
+			p.Issues = append(p.Issues, InventoryIssue{Path: filepath.Join(r.RelativePath, name), Reason: "ignored_rule"})
 			continue
 		}
 		if !info.IsDir() && !info.Mode().IsRegular() {
@@ -211,7 +234,7 @@ func LocalInventoryPage(r InventoryRequest) (InventoryPage, error) {
 	}
 	after, err := f.Stat()
 	if err != nil || InventoryRevision(snapshot(path, after)) != rev {
-		return p, ErrInventoryChanged
+		p.Unstable = true
 	}
 	root, err = os.Stat(r.Root)
 	if err != nil || RootIdentity(snapshot(r.Root, root)) != rootID {
@@ -220,9 +243,13 @@ func LocalInventoryPage(r InventoryRequest) (InventoryPage, error) {
 	// Re-resolving catches replaced ancestors and changed symlink targets too.
 	current, err := os.Stat(path)
 	if err != nil || InventoryRevision(snapshot(path, current)) != rev {
-		return p, ErrInventoryChanged
+		p.Unstable = true
 	}
 	p.NextCursor, p.Complete = next, done
+	if p.Unstable {
+		p.Complete = true
+		p.NextCursor = ""
+	}
 	return p, nil
 }
 func inventoryPageHelper(r InventoryRequest, out io.Writer) error {
