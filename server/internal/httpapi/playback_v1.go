@@ -228,7 +228,7 @@ func (d Dependencies) v1Authorize(ctx context.Context, r *http.Request, m apikit
 				return nil, &apierror.Error{Code: "not_permitted"}
 			}
 		}
-	case m.Access == apikit.Admin && m.Scope == "direct_account":
+	case m.Access == apikit.Admin && m.AdminScope == "direct_account":
 		if p, err = d.principal(r); err == nil {
 			if d.Identity == nil {
 				return nil, &apierror.Error{Code: "not_permitted"}

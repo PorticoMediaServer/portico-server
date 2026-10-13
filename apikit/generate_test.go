@@ -81,7 +81,7 @@ func TestSchemaRefusesWhatEncodingJSONWouldDropOrReplace(t *testing.T) {
 }
 
 func TestGenerateWithOptions(t *testing.T) {
-	plain := []Definition{{Metadata: Metadata{ID: "plain", Method: "GET", Path: "/v1/plain", Summary: "Plain.", Access: Public, Lane: Default, Cost: Constant, Status: 200}, Request: reflect.TypeFor[struct{}](), Response: reflect.TypeFor[testResponse]()}}
+	plain := []Definition{{Metadata: Metadata{ID: "plain", Method: "GET", Path: "/v1/plain", Summary: "Plain.", Access: Public, Requires: ScopeOpen, Lane: Default, Cost: Constant, Status: 200}, Request: reflect.TypeFor[struct{}](), Response: reflect.TypeFor[testResponse]()}}
 	server, err := Generate(plain)
 	if err != nil {
 		t.Fatal(err)
@@ -93,7 +93,7 @@ func TestGenerateWithOptions(t *testing.T) {
 	if !bytes.Contains(server.OpenAPI, []byte(`"title": "Portico API"`)) || !bytes.Equal(server.Runtime, runtimeTemplate) {
 		t.Error("server contract changed")
 	}
-	withAny := append(plain, Definition{Metadata: Metadata{ID: "free", Method: "GET", Path: "/v1/free", Summary: "Free.", Access: Public, Lane: Default, Cost: Constant, Status: 200}, Request: reflect.TypeFor[struct{}](), Response: reflect.TypeFor[wireOuter]()})
+	withAny := append(plain, Definition{Metadata: Metadata{ID: "free", Method: "GET", Path: "/v1/free", Summary: "Free.", Access: Public, Requires: ScopeOpen, Lane: Default, Cost: Constant, Status: 200}, Request: reflect.TypeFor[struct{}](), Response: reflect.TypeFor[wireOuter]()})
 	hosted, err := GenerateWith(withAny, Options{Title: "Portico Hosted API", Errors: []apierror.Definition{}})
 	if err != nil {
 		t.Fatal(err)

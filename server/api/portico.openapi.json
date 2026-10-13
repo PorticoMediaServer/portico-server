@@ -68,7 +68,540 @@
         "x-access": "public",
         "x-cost": "constant",
         "x-lane": "security",
-        "x-max-body-bytes": 4096
+        "x-max-body-bytes": 4096,
+        "x-scope": "session"
+      }
+    },
+    "/v1/admin/access-tokens": {
+      "get": {
+        "operationId": "list_member_access_tokens",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "items": {
+                      "items": {
+                        "properties": {
+                          "createdAt": {
+                            "type": "string"
+                          },
+                          "endedReason": {
+                            "type": "string"
+                          },
+                          "expiresAt": {
+                            "type": "string"
+                          },
+                          "hint": {
+                            "type": "string"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string"
+                          },
+                          "lastUsedAt": {
+                            "type": "string"
+                          },
+                          "member": {
+                            "properties": {
+                              "accountId": {
+                                "type": "string"
+                              },
+                              "profile": {
+                                "type": "string"
+                              },
+                              "profileId": {
+                                "type": "string"
+                              },
+                              "username": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "accountId",
+                              "username",
+                              "profileId",
+                              "profile"
+                            ],
+                            "type": "object"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "scopes": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
+                          },
+                          "state": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "kind",
+                          "name",
+                          "scopes",
+                          "hint",
+                          "createdAt",
+                          "state",
+                          "member"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "limit": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "nextCursor": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "limit",
+                    "items"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "List the personal access tokens members have made",
+        "x-access": "owner",
+        "x-cost": "page_sized",
+        "x-lane": "default",
+        "x-scope": "session"
+      }
+    },
+    "/v1/admin/access-tokens/{id}": {
+      "delete": {
+        "operationId": "revoke_member_access_token",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "createdAt": {
+                      "type": "string"
+                    },
+                    "endedReason": {
+                      "type": "string"
+                    },
+                    "expiresAt": {
+                      "type": "string"
+                    },
+                    "hint": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string"
+                    },
+                    "lastUsedAt": {
+                      "type": "string"
+                    },
+                    "member": {
+                      "properties": {
+                        "accountId": {
+                          "type": "string"
+                        },
+                        "profile": {
+                          "type": "string"
+                        },
+                        "profileId": {
+                          "type": "string"
+                        },
+                        "username": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "accountId",
+                        "username",
+                        "profileId",
+                        "profile"
+                      ],
+                      "type": "object"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "scopes": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "state": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "kind",
+                    "name",
+                    "scopes",
+                    "hint",
+                    "createdAt",
+                    "state",
+                    "member"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Revoke a member's personal access token",
+        "x-access": "owner",
+        "x-cost": "constant",
+        "x-lane": "security",
+        "x-scope": "session"
+      }
+    },
+    "/v1/admin/api-keys": {
+      "get": {
+        "operationId": "list_api_keys",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "items": {
+                      "items": {
+                        "properties": {
+                          "createdAt": {
+                            "type": "string"
+                          },
+                          "endedReason": {
+                            "type": "string"
+                          },
+                          "expiresAt": {
+                            "type": "string"
+                          },
+                          "hint": {
+                            "type": "string"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string"
+                          },
+                          "lastUsedAt": {
+                            "type": "string"
+                          },
+                          "member": {
+                            "properties": {
+                              "accountId": {
+                                "type": "string"
+                              },
+                              "profile": {
+                                "type": "string"
+                              },
+                              "profileId": {
+                                "type": "string"
+                              },
+                              "username": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "accountId",
+                              "username",
+                              "profileId",
+                              "profile"
+                            ],
+                            "type": "object"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "scopes": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
+                          },
+                          "state": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "kind",
+                          "name",
+                          "scopes",
+                          "hint",
+                          "createdAt",
+                          "state",
+                          "member"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "limit": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "nextCursor": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "limit",
+                    "items"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "List this server's API keys",
+        "x-access": "owner",
+        "x-cost": "page_sized",
+        "x-lane": "default",
+        "x-scope": "session"
+      },
+      "post": {
+        "operationId": "create_api_key",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "expiresAt": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "operationId": {
+                    "type": "string"
+                  },
+                  "scopes": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "operationId",
+                  "name",
+                  "scopes"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "credential": {
+                      "properties": {
+                        "createdAt": {
+                          "type": "string"
+                        },
+                        "endedReason": {
+                          "type": "string"
+                        },
+                        "expiresAt": {
+                          "type": "string"
+                        },
+                        "hint": {
+                          "type": "string"
+                        },
+                        "id": {
+                          "type": "string"
+                        },
+                        "kind": {
+                          "type": "string"
+                        },
+                        "lastUsedAt": {
+                          "type": "string"
+                        },
+                        "member": {
+                          "properties": {
+                            "accountId": {
+                              "type": "string"
+                            },
+                            "profile": {
+                              "type": "string"
+                            },
+                            "profileId": {
+                              "type": "string"
+                            },
+                            "username": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "accountId",
+                            "username",
+                            "profileId",
+                            "profile"
+                          ],
+                          "type": "object"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "scopes": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "state": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "kind",
+                        "name",
+                        "scopes",
+                        "hint",
+                        "createdAt",
+                        "state",
+                        "member"
+                      ],
+                      "type": "object"
+                    },
+                    "secret": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "credential"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Create an API key; its secret is shown once",
+        "x-access": "owner",
+        "x-cost": "constant",
+        "x-lane": "security",
+        "x-max-body-bytes": 4096,
+        "x-scope": "session"
+      }
+    },
+    "/v1/admin/api-keys/{id}": {
+      "delete": {
+        "operationId": "revoke_api_key",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "createdAt": {
+                      "type": "string"
+                    },
+                    "endedReason": {
+                      "type": "string"
+                    },
+                    "expiresAt": {
+                      "type": "string"
+                    },
+                    "hint": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string"
+                    },
+                    "lastUsedAt": {
+                      "type": "string"
+                    },
+                    "member": {
+                      "properties": {
+                        "accountId": {
+                          "type": "string"
+                        },
+                        "profile": {
+                          "type": "string"
+                        },
+                        "profileId": {
+                          "type": "string"
+                        },
+                        "username": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "accountId",
+                        "username",
+                        "profileId",
+                        "profile"
+                      ],
+                      "type": "object"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "scopes": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "state": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "kind",
+                    "name",
+                    "scopes",
+                    "hint",
+                    "createdAt",
+                    "state",
+                    "member"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Revoke an API key",
+        "x-access": "owner",
+        "x-cost": "constant",
+        "x-lane": "security",
+        "x-scope": "session"
       }
     },
     "/v1/admin/backups": {
@@ -181,7 +714,8 @@
         "summary": "List server backups and restore status",
         "x-access": "owner",
         "x-cost": "constant",
-        "x-lane": "default"
+        "x-lane": "default",
+        "x-scope": "admin"
       },
       "post": {
         "operationId": "post_admin_backups",
@@ -227,7 +761,8 @@
         "x-access": "owner",
         "x-cost": "constant",
         "x-lane": "default",
-        "x-max-body-bytes": 4096
+        "x-max-body-bytes": 4096,
+        "x-scope": "admin"
       }
     },
     "/v1/admin/backups/restore": {
@@ -310,7 +845,8 @@
         "x-access": "owner",
         "x-cost": "constant",
         "x-lane": "default",
-        "x-max-body-bytes": 4096
+        "x-max-body-bytes": 4096,
+        "x-scope": "admin"
       }
     },
     "/v1/admin/backups/{id}": {
@@ -333,7 +869,8 @@
         "summary": "Delete a server backup",
         "x-access": "owner",
         "x-cost": "constant",
-        "x-lane": "default"
+        "x-lane": "default",
+        "x-scope": "admin"
       }
     },
     "/v1/admin/diagnostics/capabilities": {
@@ -387,7 +924,8 @@
         "summary": "Why Live TV, recording, prepared media or hardware encoding is unavailable on this server",
         "x-access": "owner",
         "x-cost": "constant",
-        "x-lane": "default"
+        "x-lane": "default",
+        "x-scope": "admin"
       }
     },
     "/v1/admin/maintenance/settings": {
@@ -601,7 +1139,8 @@
         "summary": "Read owner maintenance settings and choices",
         "x-access": "owner",
         "x-cost": "constant",
-        "x-lane": "default"
+        "x-lane": "default",
+        "x-scope": "admin"
       },
       "put": {
         "operationId": "put_admin_maintenance_settings",
@@ -922,7 +1461,8 @@
         "x-access": "owner",
         "x-cost": "constant",
         "x-lane": "default",
-        "x-max-body-bytes": 65536
+        "x-max-body-bytes": 65536,
+        "x-scope": "admin"
       }
     },
     "/v1/admin/sessions": {
@@ -1179,7 +1719,8 @@
         "summary": "Active playback sessions: who, what, how it's delivered and from where",
         "x-access": "admin_scope",
         "x-cost": "page_sized",
-        "x-lane": "default"
+        "x-lane": "default",
+        "x-scope": "playback"
       }
     },
     "/v1/admin/sessions/{id}:terminate": {
@@ -1219,7 +1760,8 @@
         "x-access": "admin_scope",
         "x-cost": "constant",
         "x-lane": "default",
-        "x-max-body-bytes": 4096
+        "x-max-body-bytes": 4096,
+        "x-scope": "playback"
       }
     },
     "/v1/admin/state-permissions:fix": {
@@ -1261,7 +1803,8 @@
         "x-access": "owner",
         "x-cost": "constant",
         "x-lane": "default",
-        "x-max-body-bytes": 4096
+        "x-max-body-bytes": 4096,
+        "x-scope": "admin"
       }
     },
     "/v1/admin/updates": {
@@ -1387,7 +1930,8 @@
         "summary": "Read the owner's cached release check",
         "x-access": "owner",
         "x-cost": "constant",
-        "x-lane": "default"
+        "x-lane": "default",
+        "x-scope": "admin"
       }
     },
     "/v1/auth/capabilities": {
@@ -1447,7 +1991,8 @@
         "summary": "Read the server's available sign-in methods",
         "x-access": "public",
         "x-cost": "constant",
-        "x-lane": "default"
+        "x-lane": "default",
+        "x-scope": "open"
       }
     },
     "/v1/bootstrap": {
@@ -1817,7 +2362,8 @@
         "summary": "Read this viewer's startup state",
         "x-access": "device",
         "x-cost": "page_sized",
-        "x-lane": "browsing"
+        "x-lane": "browsing",
+        "x-scope": "read"
       }
     },
     "/v1/capabilities": {
@@ -1878,7 +2424,8 @@
         "summary": "Read this viewer's feature states and published limits",
         "x-access": "device",
         "x-cost": "constant",
-        "x-lane": "default"
+        "x-lane": "default",
+        "x-scope": "read"
       }
     },
     "/v1/containers/{kind}/{id}/personal-state": {
@@ -1941,7 +2488,8 @@
         "summary": "Read a container watermark, revision, saved flags and visible-member counts",
         "x-access": "device",
         "x-cost": "page_sized",
-        "x-lane": "browsing"
+        "x-lane": "browsing",
+        "x-scope": "read"
       },
       "put": {
         "operationId": "set_container_personal_state",
@@ -2016,7 +2564,8 @@
         "x-access": "device",
         "x-cost": "constant",
         "x-lane": "default",
-        "x-max-body-bytes": 2048
+        "x-max-body-bytes": 2048,
+        "x-scope": "playback"
       }
     },
     "/v1/devices": {
@@ -2117,7 +2666,8 @@
         "summary": "List this account's devices",
         "x-access": "device",
         "x-cost": "page_sized",
-        "x-lane": "security"
+        "x-lane": "security",
+        "x-scope": "session"
       },
       "post": {
         "operationId": "post_device",
@@ -2240,7 +2790,8 @@
         "x-access": "device",
         "x-cost": "constant",
         "x-lane": "security",
-        "x-max-body-bytes": 4096
+        "x-max-body-bytes": 4096,
+        "x-scope": "session"
       }
     },
     "/v1/devices/{id}": {
@@ -2263,7 +2814,8 @@
         "summary": "Forget a device and sign out its sessions",
         "x-access": "device",
         "x-cost": "constant",
-        "x-lane": "security"
+        "x-lane": "security",
+        "x-scope": "session"
       },
       "patch": {
         "operationId": "patch_device",
@@ -2377,7 +2929,8 @@
         "x-access": "device",
         "x-cost": "constant",
         "x-lane": "security",
-        "x-max-body-bytes": 4096
+        "x-max-body-bytes": 4096,
+        "x-scope": "session"
       }
     },
     "/v1/devices/{id}/approval": {
@@ -2486,7 +3039,8 @@
         "x-access": "device",
         "x-cost": "constant",
         "x-lane": "security",
-        "x-max-body-bytes": 4096
+        "x-max-body-bytes": 4096,
+        "x-scope": "session"
       }
     },
     "/v1/devices/{id}/sessions": {
@@ -2509,7 +3063,8 @@
         "summary": "Sign out every session on this device",
         "x-access": "device",
         "x-cost": "constant",
-        "x-lane": "security"
+        "x-lane": "security",
+        "x-scope": "session"
       }
     },
     "/v1/devices/{id}/sessions/bind": {
@@ -2555,7 +3110,8 @@
         "x-access": "device",
         "x-cost": "constant",
         "x-lane": "security",
-        "x-max-body-bytes": 4096
+        "x-max-body-bytes": 4096,
+        "x-scope": "session"
       }
     },
     "/v1/direct": {
@@ -2695,7 +3251,8 @@
         "summary": "Read the current direct account and its profiles",
         "x-access": "device",
         "x-cost": "constant",
-        "x-lane": "security"
+        "x-lane": "security",
+        "x-scope": "session"
       }
     },
     "/v1/direct/pin-recovery": {
@@ -2732,7 +3289,8 @@
         "summary": "Read available PIN reset confirmations",
         "x-access": "admin_scope",
         "x-cost": "constant",
-        "x-lane": "security"
+        "x-lane": "security",
+        "x-scope": "session"
       }
     },
     "/v1/direct/profiles/avatars": {
@@ -2790,7 +3348,8 @@
         "summary": "List this direct account's profile pictures",
         "x-access": "device",
         "x-cost": "constant",
-        "x-lane": "default"
+        "x-lane": "default",
+        "x-scope": "read"
       }
     },
     "/v1/direct/profiles/{id}/pin-reset": {
@@ -2949,7 +3508,8 @@
         "x-access": "admin_scope",
         "x-cost": "constant",
         "x-lane": "security",
-        "x-max-body-bytes": 4096
+        "x-max-body-bytes": 4096,
+        "x-scope": "session"
       }
     },
     "/v1/direct/profiles/{id}/restrictions": {
@@ -3025,7 +3585,8 @@
         "summary": "Read a direct profile's content and feature restrictions",
         "x-access": "device",
         "x-cost": "constant",
-        "x-lane": "security"
+        "x-lane": "security",
+        "x-scope": "read"
       },
       "put": {
         "operationId": "put_direct_profile_restrictions",
@@ -3155,7 +3716,8 @@
         "x-access": "admin_scope",
         "x-cost": "constant",
         "x-lane": "security",
-        "x-max-body-bytes": 32768
+        "x-max-body-bytes": 32768,
+        "x-scope": "admin"
       }
     },
     "/v1/direct/registration-policy": {
@@ -3188,7 +3750,8 @@
         "summary": "Read owner sign-up and device-approval policy",
         "x-access": "owner",
         "x-cost": "constant",
-        "x-lane": "security"
+        "x-lane": "security",
+        "x-scope": "admin"
       },
       "put": {
         "operationId": "put_direct_registration_policy",
@@ -3242,7 +3805,8 @@
         "x-access": "owner",
         "x-cost": "constant",
         "x-lane": "security",
-        "x-max-body-bytes": 4096
+        "x-max-body-bytes": 4096,
+        "x-scope": "admin"
       }
     },
     "/v1/direct/sessions": {
@@ -3307,7 +3871,8 @@
         "summary": "Read this direct account's active and recently signed-out sessions",
         "x-access": "admin_scope",
         "x-cost": "page_sized",
-        "x-lane": "security"
+        "x-lane": "security",
+        "x-scope": "session"
       }
     },
     "/v1/direct/sessions/sign-out-everywhere": {
@@ -3330,7 +3895,8 @@
         "summary": "Sign this direct account out of every device",
         "x-access": "admin_scope",
         "x-cost": "constant",
-        "x-lane": "security"
+        "x-lane": "security",
+        "x-scope": "session"
       }
     },
     "/v1/direct/sessions/{id}": {
@@ -3353,7 +3919,8 @@
         "summary": "Sign out one direct-account session",
         "x-access": "admin_scope",
         "x-cost": "constant",
-        "x-lane": "security"
+        "x-lane": "security",
+        "x-scope": "session"
       }
     },
     "/v1/downloads/requests": {
@@ -3668,7 +4235,8 @@
         "x-access": "device",
         "x-cost": "selection_sized_async",
         "x-lane": "default",
-        "x-max-body-bytes": 8192
+        "x-max-body-bytes": 8192,
+        "x-scope": "playback"
       }
     },
     "/v1/downloads/requests/{id}": {
@@ -3905,7 +4473,8 @@
         "summary": "Read visible request counts and a window of preparations",
         "x-access": "device",
         "x-cost": "page_sized",
-        "x-lane": "browsing"
+        "x-lane": "browsing",
+        "x-scope": "read"
       }
     },
     "/v1/events": {
@@ -4023,7 +4592,8 @@
         "summary": "Read the authorized event ring by long-poll or server-sent stream",
         "x-access": "device",
         "x-cost": "constant",
-        "x-lane": "realtime"
+        "x-lane": "realtime",
+        "x-scope": "read"
       }
     },
     "/v1/items/{itemId}/playback-options": {
@@ -4453,7 +5023,8 @@
         "summary": "Read what a title offers and what this device would get",
         "x-access": "viewer_item_restrictions",
         "x-cost": "constant",
-        "x-lane": "media"
+        "x-lane": "media",
+        "x-scope": "read"
       }
     },
     "/v1/jobs": {
@@ -5100,7 +5671,8 @@
         "x-access": "device",
         "x-cost": "selection_sized_async",
         "x-lane": "default",
-        "x-max-body-bytes": 65536
+        "x-max-body-bytes": 65536,
+        "x-scope": "playback"
       }
     },
     "/v1/jobs/{id}": {
@@ -5165,7 +5737,8 @@
         "summary": "Read this profile's job progress",
         "x-access": "device",
         "x-cost": "constant",
-        "x-lane": "default"
+        "x-lane": "default",
+        "x-scope": "read"
       }
     },
     "/v1/jobs/{id}/failures": {
@@ -5212,7 +5785,403 @@
         "summary": "Read visible failures from this profile's job",
         "x-access": "device",
         "x-cost": "page_sized",
-        "x-lane": "default"
+        "x-lane": "default",
+        "x-scope": "read"
+      }
+    },
+    "/v1/me/access-tokens": {
+      "get": {
+        "operationId": "list_access_tokens",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "items": {
+                      "items": {
+                        "properties": {
+                          "createdAt": {
+                            "type": "string"
+                          },
+                          "endedReason": {
+                            "type": "string"
+                          },
+                          "expiresAt": {
+                            "type": "string"
+                          },
+                          "hint": {
+                            "type": "string"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string"
+                          },
+                          "lastUsedAt": {
+                            "type": "string"
+                          },
+                          "member": {
+                            "properties": {
+                              "accountId": {
+                                "type": "string"
+                              },
+                              "profile": {
+                                "type": "string"
+                              },
+                              "profileId": {
+                                "type": "string"
+                              },
+                              "username": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "accountId",
+                              "username",
+                              "profileId",
+                              "profile"
+                            ],
+                            "type": "object"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "scopes": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
+                          },
+                          "state": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "kind",
+                          "name",
+                          "scopes",
+                          "hint",
+                          "createdAt",
+                          "state",
+                          "member"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "limit": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "nextCursor": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "limit",
+                    "items"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "List your personal access tokens",
+        "x-access": "device",
+        "x-cost": "page_sized",
+        "x-lane": "default",
+        "x-scope": "session"
+      },
+      "post": {
+        "operationId": "create_access_token",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "expiresAt": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "operationId": {
+                    "type": "string"
+                  },
+                  "scopes": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "operationId",
+                  "name",
+                  "scopes"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "credential": {
+                      "properties": {
+                        "createdAt": {
+                          "type": "string"
+                        },
+                        "endedReason": {
+                          "type": "string"
+                        },
+                        "expiresAt": {
+                          "type": "string"
+                        },
+                        "hint": {
+                          "type": "string"
+                        },
+                        "id": {
+                          "type": "string"
+                        },
+                        "kind": {
+                          "type": "string"
+                        },
+                        "lastUsedAt": {
+                          "type": "string"
+                        },
+                        "member": {
+                          "properties": {
+                            "accountId": {
+                              "type": "string"
+                            },
+                            "profile": {
+                              "type": "string"
+                            },
+                            "profileId": {
+                              "type": "string"
+                            },
+                            "username": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "accountId",
+                            "username",
+                            "profileId",
+                            "profile"
+                          ],
+                          "type": "object"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "scopes": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "state": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "kind",
+                        "name",
+                        "scopes",
+                        "hint",
+                        "createdAt",
+                        "state",
+                        "member"
+                      ],
+                      "type": "object"
+                    },
+                    "secret": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "credential"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Create a personal access token; its secret is shown once",
+        "x-access": "device",
+        "x-cost": "constant",
+        "x-lane": "security",
+        "x-max-body-bytes": 4096,
+        "x-scope": "session"
+      }
+    },
+    "/v1/me/access-tokens/{id}": {
+      "delete": {
+        "operationId": "revoke_access_token",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "createdAt": {
+                      "type": "string"
+                    },
+                    "endedReason": {
+                      "type": "string"
+                    },
+                    "expiresAt": {
+                      "type": "string"
+                    },
+                    "hint": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string"
+                    },
+                    "lastUsedAt": {
+                      "type": "string"
+                    },
+                    "member": {
+                      "properties": {
+                        "accountId": {
+                          "type": "string"
+                        },
+                        "profile": {
+                          "type": "string"
+                        },
+                        "profileId": {
+                          "type": "string"
+                        },
+                        "username": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "accountId",
+                        "username",
+                        "profileId",
+                        "profile"
+                      ],
+                      "type": "object"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "scopes": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "state": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "kind",
+                    "name",
+                    "scopes",
+                    "hint",
+                    "createdAt",
+                    "state",
+                    "member"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Revoke one of your personal access tokens",
+        "x-access": "device",
+        "x-cost": "constant",
+        "x-lane": "security",
+        "x-scope": "session"
+      }
+    },
+    "/v1/me/api-access": {
+      "get": {
+        "operationId": "get_api_access_options",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "maximumKeys": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "maximumTokens": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "requestsPerMinute": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "scopes": {
+                      "items": {
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "tokensAllowed": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "scopes",
+                    "maximumKeys",
+                    "maximumTokens",
+                    "tokensAllowed",
+                    "requestsPerMinute"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Read the scopes and limits for API keys and personal access tokens",
+        "x-access": "device",
+        "x-cost": "constant",
+        "x-lane": "default",
+        "x-scope": "session"
       }
     },
     "/v1/me/devices/current/capabilities": {
@@ -5515,7 +6484,8 @@
         "summary": "Read this device's playback capability profile",
         "x-access": "device",
         "x-cost": "constant",
-        "x-lane": "default"
+        "x-lane": "default",
+        "x-scope": "read"
       },
       "put": {
         "operationId": "put_device_capabilities",
@@ -5815,7 +6785,8 @@
         "x-access": "device",
         "x-cost": "constant",
         "x-lane": "default",
-        "x-max-body-bytes": 32768
+        "x-max-body-bytes": 32768,
+        "x-scope": "playback"
       }
     },
     "/v1/playback/sessions": {
@@ -6435,7 +7406,8 @@
         "x-access": "device",
         "x-cost": "constant",
         "x-lane": "media",
-        "x-max-body-bytes": 8192
+        "x-max-body-bytes": 8192,
+        "x-scope": "playback"
       }
     },
     "/v1/playback/sessions/{id}": {
@@ -6477,7 +7449,8 @@
         "x-access": "device",
         "x-cost": "constant",
         "x-lane": "media",
-        "x-max-body-bytes": 1024
+        "x-max-body-bytes": 1024,
+        "x-scope": "playback"
       },
       "get": {
         "operationId": "get_playback_session",
@@ -6973,7 +7946,8 @@
         "summary": "Read a playback session",
         "x-access": "device",
         "x-cost": "constant",
-        "x-lane": "media"
+        "x-lane": "media",
+        "x-scope": "read"
       },
       "patch": {
         "operationId": "change_playback_session",
@@ -7575,7 +8549,8 @@
         "x-access": "device",
         "x-cost": "constant",
         "x-lane": "media",
-        "x-max-body-bytes": 4096
+        "x-max-body-bytes": 4096,
+        "x-scope": "playback"
       }
     },
     "/v1/playback/sessions/{id}/timeline": {
@@ -7705,7 +8680,8 @@
         "x-access": "device",
         "x-cost": "constant",
         "x-lane": "media",
-        "x-max-body-bytes": 4096
+        "x-max-body-bytes": 4096,
+        "x-scope": "playback"
       }
     },
     "/v1/playlists/{id}/order": {
@@ -7758,7 +8734,8 @@
         "summary": "Read a revision-fenced window of playlist occurrence IDs",
         "x-access": "device",
         "x-cost": "page_sized",
-        "x-lane": "browsing"
+        "x-lane": "browsing",
+        "x-scope": "read"
       },
       "put": {
         "operationId": "reorder_playlist_window",
@@ -7851,7 +8828,8 @@
         "x-access": "device",
         "x-cost": "page_sized",
         "x-lane": "default",
-        "x-max-body-bytes": 65536
+        "x-max-body-bytes": 65536,
+        "x-scope": "playback"
       }
     },
     "/v1/queues": {
@@ -8716,7 +9694,8 @@
         "x-access": "device",
         "x-cost": "selection_sized_async",
         "x-lane": "media",
-        "x-max-body-bytes": 65536
+        "x-max-body-bytes": 65536,
+        "x-scope": "playback"
       }
     },
     "/v1/queues/{id}": {
@@ -8739,7 +9718,8 @@
         "summary": "Clear the queue; idempotent",
         "x-access": "device",
         "x-cost": "constant",
-        "x-lane": "default"
+        "x-lane": "default",
+        "x-scope": "playback"
       },
       "get": {
         "operationId": "get_queue",
@@ -8898,7 +9878,8 @@
         "summary": "Read a queue's header",
         "x-access": "device",
         "x-cost": "constant",
-        "x-lane": "browsing"
+        "x-lane": "browsing",
+        "x-scope": "read"
       },
       "patch": {
         "operationId": "update_queue",
@@ -9630,7 +10611,8 @@
         "x-access": "device",
         "x-cost": "constant",
         "x-lane": "default",
-        "x-max-body-bytes": 1024
+        "x-max-body-bytes": 1024,
+        "x-scope": "playback"
       }
     },
     "/v1/queues/{id}/entries": {
@@ -9743,7 +10725,8 @@
         "summary": "Read a page of entries from a position (at most 200)",
         "x-access": "device",
         "x-cost": "page_sized",
-        "x-lane": "browsing"
+        "x-lane": "browsing",
+        "x-scope": "read"
       }
     },
     "/v1/queues/{id}/entries/{entryId}": {
@@ -10446,7 +11429,8 @@
         "summary": "Remove one entry",
         "x-access": "device",
         "x-cost": "constant",
-        "x-lane": "default"
+        "x-lane": "default",
+        "x-scope": "playback"
       }
     },
     "/v1/queues/{id}/entries/{entryId}:move": {
@@ -11169,7 +12153,8 @@
         "x-access": "device",
         "x-cost": "constant",
         "x-lane": "default",
-        "x-max-body-bytes": 1024
+        "x-max-body-bytes": 1024,
+        "x-scope": "playback"
       }
     },
     "/v1/queues/{id}/segments": {
@@ -11941,7 +12926,8 @@
         "x-access": "device",
         "x-cost": "selection_sized_async",
         "x-lane": "media",
-        "x-max-body-bytes": 32768
+        "x-max-body-bytes": 32768,
+        "x-scope": "playback"
       }
     },
     "/v1/queues/{id}/window": {
@@ -12054,7 +13040,8 @@
         "summary": "Read the entries around the current one (at most 200)",
         "x-access": "device",
         "x-cost": "page_sized",
-        "x-lane": "browsing"
+        "x-lane": "browsing",
+        "x-scope": "read"
       }
     },
     "/v1/queues/{id}:advance": {
@@ -12779,7 +13766,8 @@
         "x-access": "device",
         "x-cost": "constant",
         "x-lane": "media",
-        "x-max-body-bytes": 1024
+        "x-max-body-bytes": 1024,
+        "x-scope": "playback"
       }
     },
     "/v1/queues/{id}:commit-next": {
@@ -13501,7 +14489,8 @@
         "x-access": "device",
         "x-cost": "constant",
         "x-lane": "media",
-        "x-max-body-bytes": 1024
+        "x-max-body-bytes": 1024,
+        "x-scope": "playback"
       }
     },
     "/v1/queues/{id}:prepare-next": {
@@ -13959,7 +14948,8 @@
         "x-access": "device",
         "x-cost": "constant",
         "x-lane": "media",
-        "x-max-body-bytes": 1024
+        "x-max-body-bytes": 1024,
+        "x-scope": "playback"
       }
     },
     "/v1/queues/{id}:save-as-playlist": {
@@ -14032,7 +15022,8 @@
         "x-access": "device",
         "x-cost": "constant",
         "x-lane": "default",
-        "x-max-body-bytes": 8192
+        "x-max-body-bytes": 8192,
+        "x-scope": "playback"
       }
     },
     "/v1/rating-systems": {
@@ -14112,7 +15103,8 @@
         "summary": "List supported content-rating systems",
         "x-access": "device",
         "x-cost": "constant",
-        "x-lane": "default"
+        "x-lane": "default",
+        "x-scope": "read"
       }
     },
     "/v1/server": {
@@ -14169,7 +15161,8 @@
         "summary": "Read server identity and API level",
         "x-access": "public",
         "x-cost": "constant",
-        "x-lane": "default"
+        "x-lane": "default",
+        "x-scope": "open"
       }
     }
   }

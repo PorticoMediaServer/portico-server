@@ -31,6 +31,71 @@ const (
 	Admin         Access = "admin_scope"
 )
 
+// Scope is what an API key or personal access token must have been given to
+// use an operation. A signed-in session is not limited by it: a session is
+// bounded by the member's own role and restrictions, which every credential is
+// bounded by as well.
+//
+//	open     — anyone may call it; a key or token changes nothing.
+//	read     — look at libraries, titles, the guide and the caller's own state.
+//	playback — play, control playback, and change the caller's own watch
+//	           state, lists, preferences and recordings.
+//	library  — scan, match, edit and delete what is in the libraries.
+//	admin    — everything else the member behind the credential may administer.
+//	session  — only a signed-in session may call it. Signing in and out,
+//	           changing passwords, approving devices and creating keys or
+//	           tokens are here: a credential can never mint or widen another.
+type Scope string
+
+const (
+	ScopeOpen     Scope = "open"
+	ScopeRead     Scope = "read"
+	ScopePlayback Scope = "playback"
+	ScopeLibrary  Scope = "library"
+	ScopeAdmin    Scope = "admin"
+	ScopeSession  Scope = "session"
+)
+
+// GrantableScopes are the scopes a key or token can be given, narrowest first.
+var GrantableScopes = []Scope{ScopeRead, ScopePlayback, ScopeLibrary, ScopeAdmin}
+
+// ValidScope reports whether s is a scope an operation may declare.
+func ValidScope(s Scope) bool {
+	switch s {
+	case ScopeOpen, ScopeRead, ScopePlayback, ScopeLibrary, ScopeAdmin, ScopeSession:
+		return true
+	}
+	return false
+}
+
+// Grantable reports whether s is a scope a key or token may hold.
+func Grantable(s Scope) bool {
+	for _, scope := range GrantableScopes {
+		if scope == s {
+			return true
+		}
+	}
+	return false
+}
+
+// ScopeAllows reports whether a credential holding granted may use an operation
+// that declares needed. Admin is every grantable scope; nothing grants session.
+func ScopeAllows(granted []Scope, needed Scope) bool {
+	switch needed {
+	case ScopeOpen:
+		return true
+	case ScopeRead, ScopePlayback, ScopeLibrary, ScopeAdmin:
+	default:
+		return false
+	}
+	for _, scope := range granted {
+		if scope == needed || scope == ScopeAdmin {
+			return true
+		}
+	}
+	return false
+}
+
 type Lane string
 
 const (
@@ -55,7 +120,11 @@ type Metadata struct {
 	Path      string   `json:"path"`
 	Summary   string   `json:"summary"`
 	Access    Access   `json:"access"`
-	Scope     string   `json:"scope,omitempty"`
+	// AdminScope names the administrative area an Admin route belongs to.
+	AdminScope string `json:"adminScope,omitempty"`
+	// Requires is the scope an API key or personal access token needs. It is
+	// mandatory: a route that has not decided cannot be registered.
+	Requires  Scope    `json:"requires"`
 	Lane      Lane     `json:"lane"`
 	Cost      Cost     `json:"cost"`
 	BodyLimit int64    `json:"bodyLimit"`
@@ -84,13 +153,42 @@ type Authorize func(context.Context, *http.Request, Metadata) error
 // AuthorizeContext is an Authorize that also returns the context the handler
 // runs in, so a route can reuse the principal it was admitted with.
 type AuthorizeContext func(context.Context, *http.Request, Metadata) (context.Context, error)
+
+// ScopeGate decides whether the credential a request carries may use an
+// operation that declares need. It returns nil for a request that carries no
+// key or token, and for one whose key or token holds the scope.
+type ScopeGate func(q *http.Request, need Scope) error
+
 type Registry struct {
 	handlers     []http.HandlerFunc
 	errors       *apierror.Registry
 	authorize    Authorize
 	authorizeCtx AuthorizeContext
+	scopes       ScopeGate
 	routes       []Definition
 	frozen       bool
+}
+
+// GateScopes installs the check every route passes before access, body
+// parsing or the handler. Public routes pass it too, so a route that only a
+// signed-in session may call refuses a key however it is reached.
+func (r *Registry) GateScopes(gate ScopeGate) { r.scopes = gate }
+
+// Lookup returns the route that would serve method and escaped path.
+func (r *Registry) Lookup(method, escapedPath string) (Metadata, bool) {
+	best, score := -1, -1
+	for i, route := range r.routes {
+		if route.Method != method {
+			continue
+		}
+		if _, rank, ok := matchRoute(route.Path, escapedPath); ok && rank > score {
+			best, score = i, rank
+		}
+	}
+	if best < 0 {
+		return Metadata{}, false
+	}
+	return r.routes[best].Metadata, true
 }
 
 // RawRoute is for the few routes that write their own response (event
@@ -150,6 +248,13 @@ func (r *Registry) Errors() *apierror.Registry { return r.errors }
 // handler must use, or false after writing the error.
 func (r *Registry) admit(w http.ResponseWriter, q *http.Request, m Metadata) (*http.Request, bool) {
 	fail := func(err error) { r.errors.Write(w, "", err) }
+	// A key or token is held to the route's declared scope before anything else.
+	if r.scopes != nil {
+		if err := r.scopes(q, m.Requires); err != nil {
+			fail(err)
+			return nil, false
+		}
+	}
 	// Access precedes body parsing and conditional responses.
 	if m.Access != Public {
 		if r.authorizeCtx != nil {
@@ -294,11 +399,23 @@ func validate(m Metadata) error {
 	switch m.Access {
 	case Public, Device, ViewerLibrary, ViewerItem, Owner:
 	case Admin:
-		if m.Scope == "" {
+		if m.AdminScope == "" {
 			return errors.New("admin scope required")
 		}
 	default:
 		return errors.New("access rule required")
+	}
+	if !ValidScope(m.Requires) {
+		return errors.New("credential scope required")
+	}
+	// An operation anyone may call is either open or reserved for signing in;
+	// one that needs a caller needs a scope a credential could be given, or is
+	// reserved for sessions.
+	if m.Access == Public && m.Requires != ScopeOpen && m.Requires != ScopeSession {
+		return errors.New("a public route is open or session-only")
+	}
+	if m.Access != Public && m.Requires == ScopeOpen {
+		return errors.New("an authenticated route needs a scope")
 	}
 	switch m.Lane {
 	case Default, Browsing, Realtime, Security, Media:

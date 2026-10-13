@@ -2719,6 +2719,220 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "CreateAccessTokenRequest": {
+    "properties": {
+      "expiresAt": {
+        "type": "string"
+      },
+      "name": {
+        "type": "string"
+      },
+      "operationId": {
+        "type": "string"
+      },
+      "scopes": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      }
+    },
+    "required": [
+      "operationId",
+      "name",
+      "scopes"
+    ],
+    "type": "object"
+  },
+  "CreateAccessTokenResponse": {
+    "properties": {
+      "credential": {
+        "properties": {
+          "createdAt": {
+            "type": "string"
+          },
+          "endedReason": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": "string"
+          },
+          "hint": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "lastUsedAt": {
+            "type": "string"
+          },
+          "member": {
+            "properties": {
+              "accountId": {
+                "type": "string"
+              },
+              "profile": {
+                "type": "string"
+              },
+              "profileId": {
+                "type": "string"
+              },
+              "username": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "accountId",
+              "username",
+              "profileId",
+              "profile"
+            ],
+            "type": "object"
+          },
+          "name": {
+            "type": "string"
+          },
+          "scopes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "state": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "name",
+          "scopes",
+          "hint",
+          "createdAt",
+          "state",
+          "member"
+        ],
+        "type": "object"
+      },
+      "secret": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "credential"
+    ],
+    "type": "object"
+  },
+  "CreateApiKeyRequest": {
+    "properties": {
+      "expiresAt": {
+        "type": "string"
+      },
+      "name": {
+        "type": "string"
+      },
+      "operationId": {
+        "type": "string"
+      },
+      "scopes": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      }
+    },
+    "required": [
+      "operationId",
+      "name",
+      "scopes"
+    ],
+    "type": "object"
+  },
+  "CreateApiKeyResponse": {
+    "properties": {
+      "credential": {
+        "properties": {
+          "createdAt": {
+            "type": "string"
+          },
+          "endedReason": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": "string"
+          },
+          "hint": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "lastUsedAt": {
+            "type": "string"
+          },
+          "member": {
+            "properties": {
+              "accountId": {
+                "type": "string"
+              },
+              "profile": {
+                "type": "string"
+              },
+              "profileId": {
+                "type": "string"
+              },
+              "username": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "accountId",
+              "username",
+              "profileId",
+              "profile"
+            ],
+            "type": "object"
+          },
+          "name": {
+            "type": "string"
+          },
+          "scopes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "state": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "name",
+          "scopes",
+          "hint",
+          "createdAt",
+          "state",
+          "member"
+        ],
+        "type": "object"
+      },
+      "secret": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "credential"
+    ],
+    "type": "object"
+  },
   "CreateDownloadRequestRequest": {
     "additionalProperties": false,
     "properties": {
@@ -4929,6 +5143,55 @@ export const schemas = {
       "checkedAt",
       "status",
       "autoInstall"
+    ],
+    "type": "object"
+  },
+  "GetApiAccessOptionsRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetApiAccessOptionsResponse": {
+    "properties": {
+      "maximumKeys": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "maximumTokens": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "requestsPerMinute": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "scopes": {
+        "items": {
+          "properties": {
+            "id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "tokensAllowed": {
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "scopes",
+      "maximumKeys",
+      "maximumTokens",
+      "tokensAllowed",
+      "requestsPerMinute"
     ],
     "type": "object"
   },
@@ -7855,6 +8118,102 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "ListAccessTokensRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "ListAccessTokensResponse": {
+    "properties": {
+      "items": {
+        "items": {
+          "properties": {
+            "createdAt": {
+              "type": "string"
+            },
+            "endedReason": {
+              "type": "string"
+            },
+            "expiresAt": {
+              "type": "string"
+            },
+            "hint": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string"
+            },
+            "lastUsedAt": {
+              "type": "string"
+            },
+            "member": {
+              "properties": {
+                "accountId": {
+                  "type": "string"
+                },
+                "profile": {
+                  "type": "string"
+                },
+                "profileId": {
+                  "type": "string"
+                },
+                "username": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "accountId",
+                "username",
+                "profileId",
+                "profile"
+              ],
+              "type": "object"
+            },
+            "name": {
+              "type": "string"
+            },
+            "scopes": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "state": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "kind",
+            "name",
+            "scopes",
+            "hint",
+            "createdAt",
+            "state",
+            "member"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "limit": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "nextCursor": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "limit",
+      "items"
+    ],
+    "type": "object"
+  },
   "ListAdminSessionsRequest": {
     "properties": {},
     "required": [],
@@ -8096,6 +8455,198 @@ export const schemas = {
     "required": [
       "items",
       "page"
+    ],
+    "type": "object"
+  },
+  "ListApiKeysRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "ListApiKeysResponse": {
+    "properties": {
+      "items": {
+        "items": {
+          "properties": {
+            "createdAt": {
+              "type": "string"
+            },
+            "endedReason": {
+              "type": "string"
+            },
+            "expiresAt": {
+              "type": "string"
+            },
+            "hint": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string"
+            },
+            "lastUsedAt": {
+              "type": "string"
+            },
+            "member": {
+              "properties": {
+                "accountId": {
+                  "type": "string"
+                },
+                "profile": {
+                  "type": "string"
+                },
+                "profileId": {
+                  "type": "string"
+                },
+                "username": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "accountId",
+                "username",
+                "profileId",
+                "profile"
+              ],
+              "type": "object"
+            },
+            "name": {
+              "type": "string"
+            },
+            "scopes": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "state": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "kind",
+            "name",
+            "scopes",
+            "hint",
+            "createdAt",
+            "state",
+            "member"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "limit": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "nextCursor": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "limit",
+      "items"
+    ],
+    "type": "object"
+  },
+  "ListMemberAccessTokensRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "ListMemberAccessTokensResponse": {
+    "properties": {
+      "items": {
+        "items": {
+          "properties": {
+            "createdAt": {
+              "type": "string"
+            },
+            "endedReason": {
+              "type": "string"
+            },
+            "expiresAt": {
+              "type": "string"
+            },
+            "hint": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string"
+            },
+            "lastUsedAt": {
+              "type": "string"
+            },
+            "member": {
+              "properties": {
+                "accountId": {
+                  "type": "string"
+                },
+                "profile": {
+                  "type": "string"
+                },
+                "profileId": {
+                  "type": "string"
+                },
+                "username": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "accountId",
+                "username",
+                "profileId",
+                "profile"
+              ],
+              "type": "object"
+            },
+            "name": {
+              "type": "string"
+            },
+            "scopes": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "state": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "kind",
+            "name",
+            "scopes",
+            "hint",
+            "createdAt",
+            "state",
+            "member"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "limit": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "nextCursor": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "limit",
+      "items"
     ],
     "type": "object"
   },
@@ -11468,6 +12019,234 @@ export const schemas = {
   "ReportPlaybackTimelineResponse": {
     "properties": {},
     "required": [],
+    "type": "object"
+  },
+  "RevokeAccessTokenRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "RevokeAccessTokenResponse": {
+    "properties": {
+      "createdAt": {
+        "type": "string"
+      },
+      "endedReason": {
+        "type": "string"
+      },
+      "expiresAt": {
+        "type": "string"
+      },
+      "hint": {
+        "type": "string"
+      },
+      "id": {
+        "type": "string"
+      },
+      "kind": {
+        "type": "string"
+      },
+      "lastUsedAt": {
+        "type": "string"
+      },
+      "member": {
+        "properties": {
+          "accountId": {
+            "type": "string"
+          },
+          "profile": {
+            "type": "string"
+          },
+          "profileId": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "accountId",
+          "username",
+          "profileId",
+          "profile"
+        ],
+        "type": "object"
+      },
+      "name": {
+        "type": "string"
+      },
+      "scopes": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "state": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "id",
+      "kind",
+      "name",
+      "scopes",
+      "hint",
+      "createdAt",
+      "state",
+      "member"
+    ],
+    "type": "object"
+  },
+  "RevokeApiKeyRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "RevokeApiKeyResponse": {
+    "properties": {
+      "createdAt": {
+        "type": "string"
+      },
+      "endedReason": {
+        "type": "string"
+      },
+      "expiresAt": {
+        "type": "string"
+      },
+      "hint": {
+        "type": "string"
+      },
+      "id": {
+        "type": "string"
+      },
+      "kind": {
+        "type": "string"
+      },
+      "lastUsedAt": {
+        "type": "string"
+      },
+      "member": {
+        "properties": {
+          "accountId": {
+            "type": "string"
+          },
+          "profile": {
+            "type": "string"
+          },
+          "profileId": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "accountId",
+          "username",
+          "profileId",
+          "profile"
+        ],
+        "type": "object"
+      },
+      "name": {
+        "type": "string"
+      },
+      "scopes": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "state": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "id",
+      "kind",
+      "name",
+      "scopes",
+      "hint",
+      "createdAt",
+      "state",
+      "member"
+    ],
+    "type": "object"
+  },
+  "RevokeMemberAccessTokenRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "RevokeMemberAccessTokenResponse": {
+    "properties": {
+      "createdAt": {
+        "type": "string"
+      },
+      "endedReason": {
+        "type": "string"
+      },
+      "expiresAt": {
+        "type": "string"
+      },
+      "hint": {
+        "type": "string"
+      },
+      "id": {
+        "type": "string"
+      },
+      "kind": {
+        "type": "string"
+      },
+      "lastUsedAt": {
+        "type": "string"
+      },
+      "member": {
+        "properties": {
+          "accountId": {
+            "type": "string"
+          },
+          "profile": {
+            "type": "string"
+          },
+          "profileId": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "accountId",
+          "username",
+          "profileId",
+          "profile"
+        ],
+        "type": "object"
+      },
+      "name": {
+        "type": "string"
+      },
+      "scopes": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "state": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "id",
+      "kind",
+      "name",
+      "scopes",
+      "hint",
+      "createdAt",
+      "state",
+      "member"
+    ],
     "type": "object"
   },
   "SaveQueueAsPlaylistRequest": {
