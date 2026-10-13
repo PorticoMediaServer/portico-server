@@ -3034,6 +3034,8 @@ playback_client_profiles.profile_id
 playback_client_profiles.revision
 playback_client_profiles.session_hash
 playback_client_profiles.updated_at_ms
+playback_conversion_targets.session_id
+playback_conversion_targets.target_json
 playback_copy_timelines.asset_id
 playback_copy_timelines.boundaries
 playback_copy_timelines.created_at_ms

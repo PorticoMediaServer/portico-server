@@ -10,7 +10,7 @@ import (
 	"portico.local/server/internal/subtitles"
 )
 
-func (h *HLS) prepareBurnInput(ctx context.Context, id, dir string, position float64, plan *DeliveryPlan) (*decoder.BurnIn, func(), error) {
+func (h *HLS) prepareBurnInput(ctx context.Context, id, dir string, position float64, plan *DeliveryPlan, input *assets.PlaybackInput, remote subtitles.WindowInput) (*decoder.BurnIn, func(), error) {
 	noop := func() {}
 	if plan == nil || plan.BurnIn == nil {
 		return nil, noop, nil
@@ -48,6 +48,13 @@ func (h *HLS) prepareBurnInput(ctx context.Context, id, dir string, position flo
 	b := &decoder.BurnIn{File: file, Format: asset.Format, PositionUS: int64(position * 1e6), OffsetUS: offset}
 	if plan.Trace != nil && plan.Trace.Video != nil {
 		b.Width, b.Height = plan.Trace.Video.Width, plan.Trace.Video.Height
+	}
+	if asset.Format == "ass" || asset.Format == "ssa" {
+		b.FontsDirectory, e = h.extractBurnFonts(ctx, input, remote, scratch)
+		if e != nil {
+			cleanup()
+			return nil, noop, e
+		}
 	}
 	return b, cleanup, nil
 }

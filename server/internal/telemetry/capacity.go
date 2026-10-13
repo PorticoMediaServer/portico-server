@@ -24,6 +24,7 @@ type TranscodeSettings struct {
 	PlanningPolicy          string
 	ThrottleBufferSeconds   int
 	PlayedRetentionSeconds  int
+	SessionStorageMiB       int
 	TemporaryDirectory      string
 	MaxConcurrentSessions   int
 	MaxHardwareSessions     int

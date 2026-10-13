@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-const RegistryRevision = "p09.2"
+const RegistryRevision = "p09.3"
 
 type Field struct {
 	ID          string   `json:"id"`
@@ -80,6 +80,8 @@ func Registry() []Field {
 		field("planningPolicy", "transcoding", "enumeration", "maximum_fidelity", nil, nil, PlanningPolicies, "next-operation", "delivery planning", "Chooses how the planner trades picture fidelity, client compatibility and server work."),
 		field("throttleBufferSeconds", "transcoding", "integer", 60, bounded(10), bounded(600), nil, "next-operation", "conversion pacing", "How far ahead of the viewer a conversion may run before it pauses."),
 		field("playedRetentionSeconds", "transcoding", "integer", 180, bounded(0), bounded(3600), nil, "next-operation", "conversion segment retention", "How long already played segments stay on disk so a small rewind does not restart the conversion."),
+		field("ffmpegPath", "transcoding", "path", "", nil, nil, nil, "restart", "media tool qualification and conversion launch", "Absolute path to another FFmpeg build. It is checked before use and runs with the same process restrictions."),
+		field("sessionStorageMiB", "transcoding", "integer", 4096, bounded(64), bounded(1048576), nil, "next-operation", "conversion output retention", "Maximum working space for one playback session in MiB. Older played segments are removed first."),
 		field("temporaryDirectory", "transcoding", "path", "", nil, nil, nil, "restart", "conversion working directory", "Absolute path for conversion working files. Empty uses the server state directory. Readiness is reported by the transcode capacity report."),
 		field("maxConcurrentSessions", "transcoding", "integer", 0, bounded(0), bounded(1000), nil, "next-operation", "conversion admission", "Total conversions allowed at once. 0 means unlimited."),
 		field("maxHardwareSessions", "transcoding", "integer", 0, bounded(0), bounded(1000), nil, "next-operation", "conversion admission", "Hardware conversions allowed at once. 0 means unlimited."),
@@ -132,6 +134,8 @@ type Settings struct {
 	ThrottleBufferSeconds   int    `json:"throttleBufferSeconds"`
 	PlayedRetentionSeconds  int    `json:"playedRetentionSeconds"`
 	TemporaryDirectory      string `json:"temporaryDirectory"`
+	FFmpegPath              string `json:"ffmpegPath"`
+	SessionStorageMiB       int    `json:"sessionStorageMiB"`
 	MaxConcurrentSessions   int    `json:"maxConcurrentSessions"`
 	MaxHardwareSessions     int    `json:"maxHardwareSessions"`
 	MaxSoftwareSessions     int    `json:"maxSoftwareSessions"`
@@ -188,7 +192,7 @@ type LogRetention struct {
 // DefaultSettings is the registry's own answer before any owner write, so a
 // fresh database and a document saved before these fields existed agree.
 func DefaultSettings() Settings {
-	return Settings{Name: "Portico", TranscodingEnabled: true, HardwareBackend: "auto", HDRToneMappingAlgorithm: "hable", X264Preset: "veryfast", DirectStreamRemux: true, PlanningPolicy: "maximum_fidelity", ThrottleBufferSeconds: 60, PlayedRetentionSeconds: 180, DiagnosticDays: 30, NotificationDays: 180, JobDays: 30, UpdateChannel: "stable", TrashRetentionDays: bounded(30),
+	return Settings{Name: "Portico", TranscodingEnabled: true, HardwareBackend: "auto", HDRToneMappingAlgorithm: "hable", X264Preset: "veryfast", DirectStreamRemux: true, PlanningPolicy: "maximum_fidelity", ThrottleBufferSeconds: 60, PlayedRetentionSeconds: 180, SessionStorageMiB: 4096, DiagnosticDays: 30, NotificationDays: 180, JobDays: 30, UpdateChannel: "stable", TrashRetentionDays: bounded(30),
 		RemoteSignInPolicy: "allow", SecureConnectionsPolicy: "preferred", LANNetworks: []string{}, AccessURLs: []string{}, LANDiscoveryEnabled: true, TrustedProxies: []string{}, TreatWANAsLAN: true, LogLevel: "info", LogRetention: []LogRetention{}}
 }
 
@@ -234,7 +238,8 @@ func readSettings(tx *sql.Tx) (SettingsDocument, error) {
 		return SettingsDocument{}, e
 	}
 	b, _ := json.Marshal(v)
-	return SettingsDocument{revision, Hash(string(b)), v, v, revision, restartFields(v), RegistryRevision}, nil
+	effective, pending := effectiveMediaSettings(v)
+	return SettingsDocument{revision, Hash(string(b)), v, effective, revision, pending, RegistryRevision}, nil
 }
 
 // restartFields names saved values the running process has not adopted. The
@@ -242,7 +247,7 @@ func readSettings(tx *sql.Tx) (SettingsDocument, error) {
 // needs instead is the registry's applicationMode, which says which fields only
 // take effect after a restart. This stays empty rather than guessing at what
 // the process adopted at startup, which no table records.
-func restartFields(Settings) []string { return []string{} }
+func restartFields(v Settings) []string { _, fields := effectiveMediaSettings(v); return fields }
 func (s *Store) Settings(ctx context.Context, auth Authorize) (out SettingsDocument, e error) {
 	e = s.snapshot(ctx, auth, "", func(tx *sql.Tx) error { var err error; out, err = readSettings(tx); return err })
 	return
@@ -313,6 +318,12 @@ func validateSettings(v *Settings) error {
 	}
 	if !validTemporaryDirectory(v.TemporaryDirectory) {
 		fields = append(fields, "values.temporaryDirectory")
+	}
+	if !validTemporaryDirectory(v.FFmpegPath) {
+		fields = append(fields, "values.ffmpegPath")
+	}
+	if v.SessionStorageMiB < 64 || v.SessionStorageMiB > 1048576 {
+		fields = append(fields, "values.sessionStorageMiB")
 	}
 	// An omitted channel is the default channel rather than a refusal: a client
 	// that does not know this field yet still saves the rest of the document.

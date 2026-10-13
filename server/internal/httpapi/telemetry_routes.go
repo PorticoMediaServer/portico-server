@@ -208,6 +208,7 @@ func transcodeSettings(v operations.Settings) telemetry.TranscodeSettings {
 		PlanningPolicy:          v.PlanningPolicy,
 		ThrottleBufferSeconds:   v.ThrottleBufferSeconds,
 		PlayedRetentionSeconds:  v.PlayedRetentionSeconds,
+		SessionStorageMiB:       v.SessionStorageMiB,
 		TemporaryDirectory:      v.TemporaryDirectory,
 		MaxConcurrentSessions:   v.MaxConcurrentSessions,
 		MaxHardwareSessions:     v.MaxHardwareSessions,

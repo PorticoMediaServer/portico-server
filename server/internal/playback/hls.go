@@ -398,7 +398,7 @@ func (h *HLS) produce(ctx context.Context, id string, from int) {
 		}
 		defer os.RemoveAll(staging)
 	}
-	burn, cleanupBurn, burnErr := h.prepareBurnInput(ctx, id, dir, position, delivery)
+	burn, cleanupBurn, burnErr := h.prepareBurnInput(ctx, id, dir, position, delivery, input, remoteInput)
 	if burnErr != nil {
 		h.failedWith(ctx, id, FailureConverter, "subtitle input unavailable")
 		return

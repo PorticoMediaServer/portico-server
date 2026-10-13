@@ -26,6 +26,7 @@ func (a *RegistryDeliverySettings) Delivery() playback.DeliveryConfiguration {
 	s, bitrate := a.current()
 	return playback.DeliveryConfiguration{
 		MaxVideoBitrateBPS:     bitrate,
+		SessionStorageMiB:      s.SessionStorageMiB,
 		HardwareBackend:        s.HardwareBackend,
 		HardwareDevice:         s.HardwareDevice,
 		ToneMapping:            s.HDRToneMapping,

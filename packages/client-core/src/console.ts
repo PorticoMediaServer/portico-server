@@ -18,7 +18,7 @@ export const PLANNING_POLICIES:PlanningPolicy[]=['maximum_fidelity','maximum_com
 export type TranscodingSettings={
  hardwareBackend:HardwareBackend;hardwareDevice:string;hdrToneMapping:boolean;hdrToneMappingAlgorithm:ToneMappingAlgorithm;
  x264Preset:X264Preset;directStreamRemux:boolean;planningPolicy:PlanningPolicy;
- throttleBufferSeconds:number;playedRetentionSeconds:number;temporaryDirectory:string;
+ throttleBufferSeconds:number;playedRetentionSeconds:number;temporaryDirectory:string;ffmpegPath:string;sessionStorageMiB:number;
  maxConcurrentSessions:number;maxHardwareSessions:number;maxSoftwareSessions:number;maxBackgroundSessions:number};
 export type RuntimeSettings=TranscodingSettings&{name:string;transcodingEnabled:boolean;perAccountCap:number|null;serverCap:number|null;diagnosticDays:number;notificationDays:number;jobDays:number;/** How long the play history is kept; 0 keeps everything. Absent on a server without the setting. */playHistoryDays?:number;'home.communityActivityEnabled'?:boolean};
 export type SettingsDocument={revision:number;digest:string;requested:RuntimeSettings;effective:RuntimeSettings;activeRevision:number;restartFields:string[];registryRevision:string};
@@ -54,7 +54,7 @@ function checkTranscoding(s:Record<string,any>){
  if(!HARDWARE_BACKENDS.includes(s.hardwareBackend)||!TONE_MAPPING_ALGORITHMS.includes(s.hdrToneMappingAlgorithm)||
   !X264_PRESETS.includes(s.x264Preset)||!PLANNING_POLICIES.includes(s.planningPolicy))invalid();
  if(typeof s.hdrToneMapping!=='boolean'||typeof s.directStreamRemux!=='boolean')invalid();
- if(!text(s.hardwareDevice,200)||!text(s.temporaryDirectory,1024))invalid();
+ if(!text(s.hardwareDevice,200)||!text(s.temporaryDirectory,1024)||!text(s.ffmpegPath,1024)||!integer(s.sessionStorageMiB)||s.sessionStorageMiB<64||s.sessionStorageMiB>1048576)invalid();
  if(!integer(s.throttleBufferSeconds)||s.throttleBufferSeconds<10||s.throttleBufferSeconds>600)invalid();
  if(!integer(s.playedRetentionSeconds)||s.playedRetentionSeconds>3600)invalid();
  for(const key of ['maxConcurrentSessions','maxHardwareSessions','maxSoftwareSessions','maxBackgroundSessions'])
