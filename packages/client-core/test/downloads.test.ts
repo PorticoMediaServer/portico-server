@@ -467,6 +467,19 @@ test('a bundle names only files under the grant, never a path out of it', () => 
   }
 });
 
+test('downloaded subtitle originals and fonts retain server bundle paths without live grants', () => {
+  const files = {
+    ass: {path: 'subtitles/track/3.ass', contentType: 'text/x-ssa'},
+    vobsub: {path: 'subtitles/track/3.idx', contentType: 'text/plain'},
+    sub: {path: 'subtitles/track/3.sub', contentType: 'application/octet-stream'},
+    font0: {path: 'subtitles/track/3.font0', contentType: 'font/ttf'},
+  };
+  const subtitle = {id: 'track', revision: 3, language: 'en', title: 'English', default: false, forced: false, files};
+  const parsed = parseDownloadBundle({...bundle(), subtitles: [subtitle]}, 'prep');
+  assert.deepEqual(parsed.subtitles[0].files, files);
+  assert.throws(() => parseDownloadBundle({...bundle(), subtitles: [{...subtitle, files: {...files, ass: {...files.ass, path: '/v1/media/subtitles/live/track/3/original.ass'}}}]}, 'prep'));
+});
+
 test('reason codes render a sentence and sizes render a unit', () => {
   assert.equal(downloadReasonMessage('storage_full'), 'The server has no room left for smaller copies.');
   assert.match(downloadReasonMessage('optimized_version_unavailable'), /original/);

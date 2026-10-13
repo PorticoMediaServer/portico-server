@@ -204,6 +204,8 @@ export function usePlayerSubtitles(api: HttpLocalApi, scope: ContentScope, playb
     void (async () => {
       try {
         let source: DrawnSubtitleSource;
+        // Use the original, companion and font paths supplied by this plan.
+        // Their namespace belongs to the server, not the renderer.
         if (original.format === 'ass') {
           // The fonts attached to the file; a subtitle whose font list cannot be read is still drawn, in the fallback fonts.
           let fonts: string[] = [];

@@ -21,7 +21,7 @@ export const drawnSubtitleFormats: readonly DrawnSubtitleFormat[] = Object.freez
 export type SubtitleOriginal = Readonly<{format: DrawnSubtitleFormat; url: string; companionUrl?: string; fontsUrl?: string}>;
 
 const record = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
-const base = '/v1/media/[A-Za-z0-9_-]{1,256}/subtitles/[A-Za-z0-9_-]{1,128}/[1-9]\\d{0,17}';
+const base = '/v1/media/subtitles/[A-Za-z0-9_-]{1,256}/[A-Za-z0-9_-]{1,128}/[1-9]\\d{0,17}';
 const originalPath = new RegExp('^' + base + '/original\\.(?:ass|ssa|sup|idx|sub|mks)$');
 const fontListPath = new RegExp('^' + base + '/fonts$');
 const suffixes: Record<DrawnSubtitleFormat, readonly string[]> = {ass: ['ass', 'ssa'], pgs: ['sup'], vobsub: ['idx'], dvb: ['mks']};

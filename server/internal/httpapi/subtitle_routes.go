@@ -361,14 +361,14 @@ func (d Dependencies) registerSubtitleRoutes(registry *apikit.Registry) error {
 		}
 		serveSubtitleDocument(w, r, id, revision, reader, check)
 	}
-	if e := registerSubtitleRaw[struct{}, subtitles.Document](registry, "GET /v1/media/{grant}/subtitles/{resource}/{revision}", documentHandler); e != nil {
+	if e := registerSubtitleRaw[struct{}, subtitles.Document](registry, "GET /v1/media/subtitles/{grant}/{resource}/{revision}", documentHandler); e != nil {
 		return e
 	}
-	if e := registerSubtitleRaw[struct{}, SubtitleBytesContract](registry, "GET /v1/media/{grant}/subtitles/{resource}/{revision}.vtt", documentHandler); e != nil {
+	if e := registerSubtitleRaw[struct{}, SubtitleBytesContract](registry, "GET /v1/media/subtitles/{grant}/{resource}/{revision}.vtt", documentHandler); e != nil {
 		return e
 	}
 
-	for _, path := range []string{"/v1/media/{grant}/subtitles/{resource}/{revision}/original.ass", "/v1/media/{grant}/subtitles/{resource}/{revision}/original.ssa", "/v1/media/{grant}/subtitles/{resource}/{revision}/original.sup", "/v1/media/{grant}/subtitles/{resource}/{revision}/original.idx", "/v1/media/{grant}/subtitles/{resource}/{revision}/original.sub", "/v1/media/{grant}/subtitles/{resource}/{revision}/original.mks", "/v1/media/{grant}/subtitles/{resource}/{revision}/fonts/{font}"} {
+	for _, path := range []string{"/v1/media/subtitles/{grant}/{resource}/{revision}/original.ass", "/v1/media/subtitles/{grant}/{resource}/{revision}/original.ssa", "/v1/media/subtitles/{grant}/{resource}/{revision}/original.sup", "/v1/media/subtitles/{grant}/{resource}/{revision}/original.idx", "/v1/media/subtitles/{grant}/{resource}/{revision}/original.sub", "/v1/media/subtitles/{grant}/{resource}/{revision}/original.mks", "/v1/media/subtitles/{grant}/{resource}/{revision}/fonts/{font}"} {
 		if e := registerSubtitleRaw[struct{}, SubtitleBytesContract](registry, "GET "+path, d.originalSubtitleRoute); e != nil {
 			return e
 		}
@@ -376,7 +376,7 @@ func (d Dependencies) registerSubtitleRoutes(registry *apikit.Registry) error {
 			return e
 		}
 	}
-	return registerSubtitleRaw[struct{}, subtitles.FontFiles](registry, "GET /v1/media/{grant}/subtitles/{resource}/{revision}/fonts", d.originalSubtitleRoute)
+	return registerSubtitleRaw[struct{}, subtitles.FontFiles](registry, "GET /v1/media/subtitles/{grant}/{resource}/{revision}/fonts", d.originalSubtitleRoute)
 
 }
 

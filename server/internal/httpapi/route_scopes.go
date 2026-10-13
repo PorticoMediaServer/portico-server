@@ -375,7 +375,7 @@ var routeScopes = map[string]apikit.Scope{
 	"GET /v1/media/{grant}/audio":                                     apikit.ScopePlayback,
 	"HEAD /v1/media/{grant}/audio":                                    apikit.ScopePlayback,
 	"GET /v1/media/{grant}/audio-converted":                           apikit.ScopePlayback,
-	"GET /v1/media/{grant}/subtitles/{resource}/{revision}":           apikit.ScopeOpen,
+	"GET /v1/media/subtitles/{grant}/{resource}/{revision}":           apikit.ScopeOpen,
 	"GET /v1/media/{grant}/{file}":                                    apikit.ScopePlayback,
 	"POST /v1/metadata/bulk":                                          apikit.ScopeLibrary,
 	"GET /v1/metadata/{kind}/{id}":                                    apikit.ScopeLibrary,

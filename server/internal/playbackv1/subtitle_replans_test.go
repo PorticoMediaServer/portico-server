@@ -17,7 +17,7 @@ func TestLeavingASubtitleReplansOnlyWhenItShapedThePlan(t *testing.T) {
 		raw, _ := json.Marshal(storedRequest{Subtitles: &SubtitleRequest{TrackID: "s1", Delivery: delivery}})
 		return string(raw)
 	}
-	original := []SubtitleFile{{TrackID: "s1", Format: "pgs", URL: "/v1/media/g/subtitles/s1/1/original.sup"}}
+	original := []SubtitleFile{{TrackID: "s1", Format: "pgs", URL: "/v1/media/subtitles/g/s1/1/original.sup"}}
 	off := &SubtitleRequest{TrackID: TrackOff}
 	cases := []struct {
 		name    string

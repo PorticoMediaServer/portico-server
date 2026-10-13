@@ -56,7 +56,8 @@ export type DownloadPage = Readonly<{items: readonly DownloadPreparation[]; next
  * this `token`) keeps the same address, so a transfer the device's own downloader is holding
  * carries on under it. */
 export type DownloadGrant = Readonly<{preparationId: string; itemId: string; url: string; token: string; issuedAt: string; expiresAt: string; renewAfterSeconds: number; renewed: boolean; artifact: DownloadArtifact}>;
-/** One file that travels with a download; `path` is relative to the grant's address. */
+/** One file that travels with a download; use the server's relative bundle path
+ * under the download grant, independently of live subtitle media addresses. */
 export type DownloadBundleFile = Readonly<{path: string; contentType: string}>;
 export type DownloadBundleSubtitle = Readonly<{id: string; revision: number; language: string; title: string; default: boolean; forced: boolean; files: Readonly<Record<string, DownloadBundleFile>>}>;
 export type DownloadBundleChapter = Readonly<{index: number; title: string; startSeconds: number; endSeconds: number}>;

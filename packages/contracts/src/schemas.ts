@@ -16299,21 +16299,21 @@ export const schemas = {
     ],
     "type": "object"
   },
-  "GetV1MediaGrantSubtitlesResourceRevisionFontsFontRequest": {
+  "GetV1MediaSubtitlesGrantResourceRevisionFontsFontRequest": {
     "properties": {},
     "required": [],
     "type": "object"
   },
-  "GetV1MediaGrantSubtitlesResourceRevisionFontsFontResponse": {
+  "GetV1MediaSubtitlesGrantResourceRevisionFontsFontResponse": {
     "format": "binary",
     "type": "string"
   },
-  "GetV1MediaGrantSubtitlesResourceRevisionFontsRequest": {
+  "GetV1MediaSubtitlesGrantResourceRevisionFontsRequest": {
     "properties": {},
     "required": [],
     "type": "object"
   },
-  "GetV1MediaGrantSubtitlesResourceRevisionFontsResponse": {
+  "GetV1MediaSubtitlesGrantResourceRevisionFontsResponse": {
     "properties": {
       "fonts": {
         "items": {
@@ -16344,66 +16344,66 @@ export const schemas = {
     ],
     "type": "object"
   },
-  "GetV1MediaGrantSubtitlesResourceRevisionOriginalAssRequest": {
+  "GetV1MediaSubtitlesGrantResourceRevisionOriginalAssRequest": {
     "properties": {},
     "required": [],
     "type": "object"
   },
-  "GetV1MediaGrantSubtitlesResourceRevisionOriginalAssResponse": {
+  "GetV1MediaSubtitlesGrantResourceRevisionOriginalAssResponse": {
     "format": "binary",
     "type": "string"
   },
-  "GetV1MediaGrantSubtitlesResourceRevisionOriginalIdxRequest": {
+  "GetV1MediaSubtitlesGrantResourceRevisionOriginalIdxRequest": {
     "properties": {},
     "required": [],
     "type": "object"
   },
-  "GetV1MediaGrantSubtitlesResourceRevisionOriginalIdxResponse": {
+  "GetV1MediaSubtitlesGrantResourceRevisionOriginalIdxResponse": {
     "format": "binary",
     "type": "string"
   },
-  "GetV1MediaGrantSubtitlesResourceRevisionOriginalMksRequest": {
+  "GetV1MediaSubtitlesGrantResourceRevisionOriginalMksRequest": {
     "properties": {},
     "required": [],
     "type": "object"
   },
-  "GetV1MediaGrantSubtitlesResourceRevisionOriginalMksResponse": {
+  "GetV1MediaSubtitlesGrantResourceRevisionOriginalMksResponse": {
     "format": "binary",
     "type": "string"
   },
-  "GetV1MediaGrantSubtitlesResourceRevisionOriginalSsaRequest": {
+  "GetV1MediaSubtitlesGrantResourceRevisionOriginalSsaRequest": {
     "properties": {},
     "required": [],
     "type": "object"
   },
-  "GetV1MediaGrantSubtitlesResourceRevisionOriginalSsaResponse": {
+  "GetV1MediaSubtitlesGrantResourceRevisionOriginalSsaResponse": {
     "format": "binary",
     "type": "string"
   },
-  "GetV1MediaGrantSubtitlesResourceRevisionOriginalSubRequest": {
+  "GetV1MediaSubtitlesGrantResourceRevisionOriginalSubRequest": {
     "properties": {},
     "required": [],
     "type": "object"
   },
-  "GetV1MediaGrantSubtitlesResourceRevisionOriginalSubResponse": {
+  "GetV1MediaSubtitlesGrantResourceRevisionOriginalSubResponse": {
     "format": "binary",
     "type": "string"
   },
-  "GetV1MediaGrantSubtitlesResourceRevisionOriginalSupRequest": {
+  "GetV1MediaSubtitlesGrantResourceRevisionOriginalSupRequest": {
     "properties": {},
     "required": [],
     "type": "object"
   },
-  "GetV1MediaGrantSubtitlesResourceRevisionOriginalSupResponse": {
+  "GetV1MediaSubtitlesGrantResourceRevisionOriginalSupResponse": {
     "format": "binary",
     "type": "string"
   },
-  "GetV1MediaGrantSubtitlesResourceRevisionRequest": {
+  "GetV1MediaSubtitlesGrantResourceRevisionRequest": {
     "properties": {},
     "required": [],
     "type": "object"
   },
-  "GetV1MediaGrantSubtitlesResourceRevisionResponse": {
+  "GetV1MediaSubtitlesGrantResourceRevisionResponse": {
     "properties": {
       "cues": {
         "items": {
@@ -16454,12 +16454,12 @@ export const schemas = {
     ],
     "type": "object"
   },
-  "GetV1MediaGrantSubtitlesResourceRevisionVttRequest": {
+  "GetV1MediaSubtitlesGrantResourceRevisionVttRequest": {
     "properties": {},
     "required": [],
     "type": "object"
   },
-  "GetV1MediaGrantSubtitlesResourceRevisionVttResponse": {
+  "GetV1MediaSubtitlesGrantResourceRevisionVttResponse": {
     "format": "binary",
     "type": "string"
   },
@@ -16473,66 +16473,66 @@ export const schemas = {
     "required": [],
     "type": "object"
   },
-  "HeadV1MediaGrantSubtitlesResourceRevisionFontsFontRequest": {
+  "HeadV1MediaSubtitlesGrantResourceRevisionFontsFontRequest": {
     "properties": {},
     "required": [],
     "type": "object"
   },
-  "HeadV1MediaGrantSubtitlesResourceRevisionFontsFontResponse": {
+  "HeadV1MediaSubtitlesGrantResourceRevisionFontsFontResponse": {
     "format": "binary",
     "type": "string"
   },
-  "HeadV1MediaGrantSubtitlesResourceRevisionOriginalAssRequest": {
+  "HeadV1MediaSubtitlesGrantResourceRevisionOriginalAssRequest": {
     "properties": {},
     "required": [],
     "type": "object"
   },
-  "HeadV1MediaGrantSubtitlesResourceRevisionOriginalAssResponse": {
+  "HeadV1MediaSubtitlesGrantResourceRevisionOriginalAssResponse": {
     "format": "binary",
     "type": "string"
   },
-  "HeadV1MediaGrantSubtitlesResourceRevisionOriginalIdxRequest": {
+  "HeadV1MediaSubtitlesGrantResourceRevisionOriginalIdxRequest": {
     "properties": {},
     "required": [],
     "type": "object"
   },
-  "HeadV1MediaGrantSubtitlesResourceRevisionOriginalIdxResponse": {
+  "HeadV1MediaSubtitlesGrantResourceRevisionOriginalIdxResponse": {
     "format": "binary",
     "type": "string"
   },
-  "HeadV1MediaGrantSubtitlesResourceRevisionOriginalMksRequest": {
+  "HeadV1MediaSubtitlesGrantResourceRevisionOriginalMksRequest": {
     "properties": {},
     "required": [],
     "type": "object"
   },
-  "HeadV1MediaGrantSubtitlesResourceRevisionOriginalMksResponse": {
+  "HeadV1MediaSubtitlesGrantResourceRevisionOriginalMksResponse": {
     "format": "binary",
     "type": "string"
   },
-  "HeadV1MediaGrantSubtitlesResourceRevisionOriginalSsaRequest": {
+  "HeadV1MediaSubtitlesGrantResourceRevisionOriginalSsaRequest": {
     "properties": {},
     "required": [],
     "type": "object"
   },
-  "HeadV1MediaGrantSubtitlesResourceRevisionOriginalSsaResponse": {
+  "HeadV1MediaSubtitlesGrantResourceRevisionOriginalSsaResponse": {
     "format": "binary",
     "type": "string"
   },
-  "HeadV1MediaGrantSubtitlesResourceRevisionOriginalSubRequest": {
+  "HeadV1MediaSubtitlesGrantResourceRevisionOriginalSubRequest": {
     "properties": {},
     "required": [],
     "type": "object"
   },
-  "HeadV1MediaGrantSubtitlesResourceRevisionOriginalSubResponse": {
+  "HeadV1MediaSubtitlesGrantResourceRevisionOriginalSubResponse": {
     "format": "binary",
     "type": "string"
   },
-  "HeadV1MediaGrantSubtitlesResourceRevisionOriginalSupRequest": {
+  "HeadV1MediaSubtitlesGrantResourceRevisionOriginalSupRequest": {
     "properties": {},
     "required": [],
     "type": "object"
   },
-  "HeadV1MediaGrantSubtitlesResourceRevisionOriginalSupResponse": {
+  "HeadV1MediaSubtitlesGrantResourceRevisionOriginalSupResponse": {
     "format": "binary",
     "type": "string"
   },
