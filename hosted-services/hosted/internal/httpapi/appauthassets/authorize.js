@@ -6,8 +6,13 @@
  history.replaceState(null,'','/auth/apps/authorize');
  const status=document.getElementById('status');
  const buttons=[...document.querySelectorAll('button')];
+ const decisions=[document.getElementById('approve'),document.getElementById('deny')];
  let reviewed=null;
  let notBefore=0;
+ // Continue is pressed before anything about the app is on screen. The answer
+ // is accepted only once the consent has been shown for a moment, so a held
+ // key, a second press or a double-click cannot carry on into a decision.
+ let decideAfter=0;
  const text=(id,value)=>{document.getElementById(id).textContent=value;};
  async function call(path,body){
   if(Date.now()<notBefore)throw new Error(strings.wait);
@@ -27,7 +32,11 @@
  async function work(action){
   buttons.forEach(b=>b.disabled=true);status.textContent='';
   try{await action();}catch(e){status.textContent=e.name==='TimeoutError'?strings.failed:e.message;}
-  finally{buttons.forEach(b=>b.disabled=false);if(reviewed)document.getElementById('approve').focus();}
+  finally{
+   buttons.forEach(b=>b.disabled=false);
+   const wait=decideAfter-Date.now();
+   if(wait>0){decisions.forEach(b=>b.disabled=true);setTimeout(()=>decisions.forEach(b=>b.disabled=false),wait);}
+  }
  }
  document.getElementById('review').addEventListener('click',()=>work(async()=>{
   reviewed=await call('/v1/app-authorizations',request);
@@ -35,8 +44,11 @@
   text('account-name',reviewed.accountName);
   text('return-address',reviewed.redirectUri);
   document.getElementById('signin').hidden=true;document.getElementById('consent').hidden=false;
+  decideAfter=Date.now()+1000;
+  // Focus goes to the question itself, never to an answer.
+  document.getElementById('consent-line').focus();
  }));
- const decide=approve=>work(async()=>{
+ const decide=approve=>Date.now()<decideAfter?undefined:work(async()=>{
   const result=await call('/v1/app-authorizations/'+encodeURIComponent(reviewed.id)+'/decision',{accountId:reviewed.accountId,approve});
   location.assign(result.location);
  });
