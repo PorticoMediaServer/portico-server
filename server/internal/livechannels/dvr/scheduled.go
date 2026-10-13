@@ -10,8 +10,8 @@ import (
 	"time"
 )
 
-// One-time (and explicitly detached) commitments follow exact canonical guide
-// identity, never a title/time guess. The cursor makes every page reachable.
+// Explicit commitments follow reliable guide facts and keep the accepted
+// interval when the guide is temporarily missing. Every cursor page is reachable.
 func (s *Store) ReconcileScheduled(ctx context.Context) error {
 	gated, e := dbwork.Begin(ctx, s.db, dbwork.ClassProtectedCapture)
 	if e != nil {
@@ -61,7 +61,7 @@ func (s *Store) ReconcileScheduled(ctx context.Context) error {
 		if e != nil {
 			return e
 		}
-		p, lookup := s.live.ProgrammeTx(ctx, tx, r.Occurrence.SourceID, r.Occurrence.ChannelID, generation, r.Occurrence.ProgrammeID)
+		p, lookup := s.committedProgrammeTx(ctx, tx, r, generation)
 		state, reason := "scheduled", ""
 		switch {
 		case permission != nil:
@@ -90,7 +90,7 @@ func (s *Store) ReconcileScheduled(ctx context.Context) error {
 			}
 			if changed {
 				body, _ := json.Marshal(p)
-				_, e = tx.ExecContext(ctx, `UPDATE dvr_recordings SET guide_generation=?,programme_json=?,start_ms=?,end_ms=?,state='scheduled',reason='',revision=revision+1,updated_ms=? WHERE id=?`, generation, string(body), start.UnixMilli(), end.UnixMilli(), s.now().UnixMilli(), r.ID)
+				_, e = tx.ExecContext(ctx, `UPDATE dvr_recordings SET programme_id=?,guide_generation=?,programme_json=?,start_ms=?,end_ms=?,state='scheduled',reason='',revision=revision+1,updated_ms=? WHERE id=?`, p.ID, generation, string(body), start.UnixMilli(), end.UnixMilli(), s.now().UnixMilli(), r.ID)
 				if e != nil {
 					return e
 				}

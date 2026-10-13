@@ -326,14 +326,7 @@ func (s *Store) claimNext(ctx context.Context) (*claim, bool, error) {
 		if state != "active" {
 			return later("source-disabled")
 		}
-		// Never retarget a missing airing by title/time. Exact identity survives an
-		// ordinary guide generation; a reused provider ID has a different canonical ID.
-		currentProgramme, lookupError := s.live.ProgrammeTx(ctx, tx, r.Occurrence.SourceID, r.Occurrence.ChannelID, active, r.Occurrence.ProgrammeID)
-		e = lookupError
-		if errors.Is(e, livechannels.ErrConflict) {
-			currentProgramme = r.Programme
-			e = nil
-		}
+		currentProgramme, e := s.committedProgrammeTx(ctx, tx, r, active)
 		if e != nil {
 			return nil, false, e
 		}
@@ -343,7 +336,7 @@ func (s *Store) claimNext(ctx context.Context) (*claim, bool, error) {
 				return nil, false, e
 			}
 			body, _ := json.Marshal(currentProgramme)
-			_, e = tx.ExecContext(ctx, `UPDATE dvr_recordings SET guide_generation=?,programme_json=?,start_ms=?,end_ms=?,revision=revision+1,updated_ms=? WHERE id=?`, active, string(body), start.UnixMilli(), end.UnixMilli(), s.now().UnixMilli(), id)
+			_, e = tx.ExecContext(ctx, `UPDATE dvr_recordings SET programme_id=?,guide_generation=?,programme_json=?,start_ms=?,end_ms=?,revision=revision+1,updated_ms=? WHERE id=?`, currentProgramme.ID, active, string(body), start.UnixMilli(), end.UnixMilli(), s.now().UnixMilli(), id)
 			if e != nil {
 				return nil, false, e
 			}

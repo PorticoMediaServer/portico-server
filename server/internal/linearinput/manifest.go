@@ -8,8 +8,8 @@ import (
 )
 
 // rewrite parses URI-bearing HLS constructs, including alternate audio and
-// encryption keys. Unknown URI constructs and low-latency extensions are rejected
-// rather than letting FFmpeg resolve an unreviewed source path itself.
+// encryption keys. Unsupported optional URI constructs are dropped so FFmpeg
+// cannot resolve an unreviewed source path itself.
 func (g *Gateway) rewrite(data []byte, base string, depth int) ([]byte, error) {
 	if len(data) > maxManifest || !utf8.Valid(data) || bytes.IndexByte(data, 0) >= 0 {
 		return nil, ErrFormat

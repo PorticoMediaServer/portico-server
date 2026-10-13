@@ -159,3 +159,44 @@ func TestLargeProgrammeGuideUsesDiskSpoolAndBoundedPreview(t *testing.T) {
 		t.Fatalf("%d %v", count, e)
 	}
 }
+
+func TestSharedChannelPreemptionNotifiesEveryViewerOnce(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	a := testAuthority("owner", true, true)
+	source, e := s.Save(ctx, a, testInput())
+	if e != nil {
+		t.Fatal(e)
+	}
+	for i := 0; i < 2; i++ {
+		e = s.transaction(ctx, a, true, func(tx *sql.Tx) error {
+			_, err := AcquireTx(ctx, tx, Allocation{SourceID: source.ID, ChannelID: "one", ResourceID: fmt.Sprint(i), Kind: "live", Owner: Owner{"local", "account", fmt.Sprint(i)}}, time.Now())
+			return err
+		})
+		if e != nil {
+			t.Fatal(e)
+		}
+	}
+	for i := 0; i < 2; i++ {
+		e = s.transaction(ctx, a, true, func(tx *sql.Tx) error {
+			_, err := AcquireTx(ctx, tx, Allocation{SourceID: source.ID, ChannelID: "two", ResourceID: "record", Kind: "recording", Owner: Owner{"local", "account", "rec"}}, time.Now())
+			if errors.Is(err, ErrPreemptPending) {
+				return nil
+			}
+			return err
+		})
+		if e != nil {
+			t.Fatal(e)
+		}
+	}
+	var events, deadlines int
+	if e = s.db.QueryRow(`SELECT count(*) FROM api_events WHERE type='channel.reservation-required'`).Scan(&events); e != nil {
+		t.Fatal(e)
+	}
+	if e = s.db.QueryRow(`SELECT count(*) FROM live_allocations WHERE preempt_at_ms>0`).Scan(&deadlines); e != nil {
+		t.Fatal(e)
+	}
+	if events != 2 || deadlines != 2 {
+		t.Fatalf("events=%d deadlines=%d", events, deadlines)
+	}
+}

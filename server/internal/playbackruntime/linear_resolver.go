@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	memberaccess "portico.local/server/internal/access"
 	"portico.local/server/internal/catalog"
 	"strconv"
 	"time"
@@ -136,6 +137,7 @@ func (r *channelResolver) liveSelection(ctx context.Context, tx *sql.Tx, p ident
 	var programme playback.LinearProgramme
 	var programmeFacts string
 	var start, end string
+	rating := ""
 	e = tx.QueryRowContext(ctx, `SELECT p.id,p.title,p.start_utc,p.end_utc,COALESCE(m.facts,'{}') FROM live_programmes p LEFT JOIN live_programme_metadata m ON m.generation_id=p.generation_id AND m.id=p.id WHERE p.generation_id=? AND p.channel_id=? AND p.start_utc<=? AND p.end_utc>? ORDER BY p.start_utc DESC LIMIT 1`, gen, ref.ChannelID, now, now).Scan(&programme.ID, &programme.Title, &start, &end, &programmeFacts)
 	if e == nil {
 		var facts struct {
@@ -144,16 +146,8 @@ func (r *channelResolver) liveSelection(ctx context.Context, tx *sql.Tx, p ident
 		if json.Unmarshal([]byte(programmeFacts), &facts) != nil {
 			return v, channelFault("source_probe_invalid", 422)
 		}
-		restrictions, err := identity.RestrictionsForViewerTx(ctx, tx, p.Viewer)
-		if err != nil {
-			return v, err
-		}
-		rating := ""
 		if facts.Rating != nil {
 			rating = facts.Rating.Value
-		}
-		if !catalog.RatingAllowed(restrictions.Content(), rating) {
-			return v, identity.ErrContentRestricted
 		}
 		a, ae := time.Parse(time.RFC3339Nano, start)
 		b, be := time.Parse(time.RFC3339Nano, end)
@@ -165,6 +159,20 @@ func (r *channelResolver) liveSelection(ctx context.Context, tx *sql.Tx, p ident
 		}
 	}
 	if e != nil && !errors.Is(e, sql.ErrNoRows) {
+		return v, e
+	}
+	restrictions, e := identity.RestrictionsForViewerTx(ctx, tx, p.Viewer)
+	if e != nil {
+		return v, e
+	}
+	if !catalog.RatingAllowed(restrictions.Content(), rating) {
+		return v, identity.ErrContentRestricted
+	}
+	enforcer := memberaccess.Enforcer{Store: &memberaccess.Store{}}
+	if e = enforcer.AdmitProgramme(ctx, tx, p, rating); errors.Is(e, memberaccess.ErrContentRating) {
+		return v, identity.ErrContentRestricted
+	}
+	if e != nil {
 		return v, e
 	}
 	return v, nil

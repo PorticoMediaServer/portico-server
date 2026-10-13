@@ -109,3 +109,34 @@ func TestRecordedEpisodePublishesShowSeasonAndGuideFacts(t *testing.T) {
 		t.Fatalf("%s/%s %d/%d kind %d %s", show, title, season, episode, kind, description)
 	}
 }
+
+func TestOneTimeRecordingFollowsUniqueGuideCorrection(t *testing.T) {
+	s, source, p, a := sharingStore(t)
+	ctx := context.Background()
+	owner := livechannels.Owner{"local", "account", "profile"}
+	r, e := s.Schedule(ctx, a, owner, ScheduleInput{RequestID: strings.Repeat("c", 48), Occurrence: Occurrence{source.ID, p.ChannelID, source.Generation, p.ID}})
+	if e != nil {
+		t.Fatal(e)
+	}
+	oldStart, _ := time.Parse(time.RFC3339Nano, p.Start)
+	oldEnd, _ := time.Parse(time.RFC3339Nano, p.End)
+	in := livechannels.SourceInput{ID: source.ID, ExpectedRevision: source.Revision, RequestID: strings.Repeat("d", 48), Name: source.Name, TunerCount: 1, Playlist: "#EXTM3U\n#EXTINF:-1 tvg-id=\"one\",One\nhttps://provider.invalid/one\n", Guide: fmt.Sprintf(`<tv><programme channel="one" start="%s" stop="%s"><title>Show</title><sub-title>The episode</sub-title><episode-num system="xmltv_ns">1.4.</episode-num><desc>A description.</desc></programme></tv>`, oldStart.Add(5*time.Minute).Format("20060102150405 -0700"), oldEnd.Add(5*time.Minute).Format("20060102150405 -0700"))}
+	if _, e = s.live.Save(ctx, a, in); e != nil {
+		t.Fatal(e)
+	}
+	if e = s.ReconcileScheduled(ctx); e != nil {
+		t.Fatal(e)
+	}
+	tx, e := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer tx.Rollback()
+	updated, e := loadTx(ctx, tx, owner, r.ID)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if updated.State != "scheduled" || updated.Start != oldStart.Add(5*time.Minute).Format(time.RFC3339Nano) {
+		t.Fatalf("%+v", updated)
+	}
+}

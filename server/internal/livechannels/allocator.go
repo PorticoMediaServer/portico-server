@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"portico.local/server/internal/apievents"
 	"sort"
 	"time"
 )
@@ -129,6 +130,15 @@ func AcquireTx(ctx context.Context, tx *sql.Tx, want Allocation, now time.Time) 
 	if e = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM live_allocations WHERE source_id=? AND channel_id=? AND state='active' AND lease_until_ms>?)`, want.SourceID, want.ChannelID, now.UnixMilli()).Scan(&shared); e != nil {
 		return want, ErrUnavailable
 	}
+	if shared && want.Kind == "live" {
+		var deadline int64
+		if e = tx.QueryRowContext(ctx, `SELECT COALESCE(min(NULLIF(preempt_at_ms,0)),0) FROM live_allocations WHERE source_id=? AND channel_id=? AND state='active'`, want.SourceID, want.ChannelID).Scan(&deadline); e != nil {
+			return want, e
+		}
+		if deadline > 0 {
+			want.PreemptAt = time.UnixMilli(deadline)
+		}
+	}
 	existingChannels := map[string]bool{want.ChannelID: true}
 	rows, e := tx.QueryContext(ctx, `SELECT DISTINCT channel_id FROM live_allocations WHERE source_id=? AND state!='released'`, want.SourceID)
 	if e != nil {
@@ -163,9 +173,9 @@ func AcquireTx(ctx context.Context, tx *sql.Tx, want Allocation, now time.Time) 
 				// typed countdown gets ten seconds and the capture reports lateness.
 				boundary := now.Add(RetirementGrace).UnixMilli()
 				var victim string
-				err := tx.QueryRowContext(ctx, `SELECT id FROM live_allocations WHERE source_id=? AND kind='live' AND state='active' ORDER BY created_ms DESC,id DESC LIMIT 1`, want.SourceID).Scan(&victim)
+				err := tx.QueryRowContext(ctx, `SELECT channel_id FROM live_allocations a WHERE source_id=? AND kind='live' AND state='active' AND NOT EXISTS(SELECT 1 FROM live_allocations b WHERE b.source_id=a.source_id AND b.channel_id=a.channel_id AND b.kind='recording' AND b.state!='released') ORDER BY created_ms DESC,id DESC LIMIT 1`, want.SourceID).Scan(&victim)
 				if err == nil {
-					_, err = tx.ExecContext(ctx, `UPDATE live_allocations SET preempt_at_ms=CASE WHEN preempt_at_ms=0 OR preempt_at_ms>? THEN ? ELSE preempt_at_ms END WHERE id=?`, boundary, boundary, victim)
+					err = preemptChannelTx(ctx, tx, want.SourceID, victim, boundary)
 					if err != nil {
 						return want, ErrUnavailable
 					}
@@ -223,7 +233,52 @@ func AcquireTx(ctx context.Context, tx *sql.Tx, want Allocation, now time.Time) 
 	if e != nil {
 		return want, ErrUnavailable
 	}
+	if preempt > 0 {
+		if e = reservationEventTx(tx, want.Owner, want.ResourceID, preempt); e != nil {
+			return want, e
+		}
+	}
 	return want, nil
+}
+
+func reservationEventTx(tx *sql.Tx, owner Owner, session string, deadline int64) error {
+	return apievents.Append(tx, apievents.ProfileAudience(owner.Authority, owner.AccountID, owner.ProfileID), "channel.reservation-required", "session", session, "", struct {
+		ReservationRequiredAtMS int64 `json:"reservationRequiredAtMs"`
+	}{deadline})
+}
+
+func preemptChannelTx(ctx context.Context, tx *sql.Tx, source, channel string, deadline int64) error {
+	rows, e := tx.QueryContext(ctx, `SELECT resource_id,authority,account_id,profile_id FROM live_allocations WHERE source_id=? AND channel_id=? AND kind='live' AND state='active' AND (preempt_at_ms=0 OR preempt_at_ms>?)`, source, channel, deadline)
+	if e != nil {
+		return e
+	}
+	type victim struct {
+		session string
+		owner   Owner
+	}
+	victims := []victim{}
+	for rows.Next() {
+		var v victim
+		if e = rows.Scan(&v.session, &v.owner.Authority, &v.owner.AccountID, &v.owner.ProfileID); e != nil {
+			rows.Close()
+			return e
+		}
+		victims = append(victims, v)
+	}
+	e = rows.Err()
+	rows.Close()
+	if e != nil {
+		return e
+	}
+	if _, e = tx.ExecContext(ctx, `UPDATE live_allocations SET preempt_at_ms=? WHERE source_id=? AND channel_id=? AND kind='live' AND state='active' AND (preempt_at_ms=0 OR preempt_at_ms>?)`, deadline, source, channel, deadline); e != nil {
+		return e
+	}
+	for _, v := range victims {
+		if e = reservationEventTx(tx, v.owner, v.session, deadline); e != nil {
+			return e
+		}
+	}
+	return nil
 }
 func RenewAllocationTx(ctx context.Context, tx *sql.Tx, a Allocation, now time.Time) (time.Time, error) {
 	var deadline int64

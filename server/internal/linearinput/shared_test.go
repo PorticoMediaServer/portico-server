@@ -9,6 +9,7 @@ import (
 	"portico.local/server/internal/linearinput"
 	"portico.local/server/internal/livechannels"
 	"portico.local/server/internal/remotemedia"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -142,5 +143,83 @@ func TestSharedTransportReconnectsGeneratedStreamAndRecordsGap(t *testing.T) {
 	}
 	if requests.Load() < 2 || gateway.Snapshot().Gaps == 0 {
 		t.Fatalf("requests=%d span=%+v", requests.Load(), gateway.Snapshot())
+	}
+}
+
+func TestSharedHLSSelectsBestVariantAndFetchesSegmentOnce(t *testing.T) {
+	var high, low, segments atomic.Int32
+	source := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/master.m3u8":
+			io.WriteString(w, "#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=100000\nlow.m3u8\n#EXT-X-STREAM-INF:BANDWIDTH=500000\nhigh.m3u8\n")
+		case "/low.m3u8":
+			low.Add(1)
+			io.WriteString(w, "#EXTM3U\n#EXTINF:2,\nsegment.ts\n")
+		case "/high.m3u8":
+			high.Add(1)
+			io.WriteString(w, "#EXTM3U\n#EXT-X-TARGETDURATION:2\n#EXT-X-PART:DURATION=0.2,URI=\"https://unreviewed.invalid/partial\"\n#EXT-X-UNKNOWN:URI=\"https://unreviewed.invalid/extra\"\n#EXTINF:2,\nsegment.ts\n")
+		case "/segment.ts":
+			segments.Add(1)
+			w.Write([]byte{0x47, 1, 2, 3})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer source.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	approval, e := (remotemedia.Policy{}).Approve(ctx, source.URL+"/")
+	if e != nil {
+		t.Fatal(e)
+	}
+	in := livechannels.Input{SourceID: source.URL, ChannelID: "hls", Locator: source.URL + "/master.m3u8", Policy: remotemedia.Policy{Approvals: []remotemedia.Approval{approval}}}
+	first, e := linearinput.Open(ctx, in)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer first.Close()
+	second, e := linearinput.Open(ctx, in)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer second.Close()
+	get := func(uri string) string {
+		t.Helper()
+		response, e := http.Get(uri)
+		if e != nil {
+			t.Fatal(e)
+		}
+		defer response.Body.Close()
+		b, e := io.ReadAll(response.Body)
+		if e != nil || response.StatusCode != 200 {
+			t.Fatalf("HTTP %d %v: %s", response.StatusCode, e, b)
+		}
+		return string(b)
+	}
+	uri := func(manifest string) string {
+		t.Helper()
+		for _, line := range strings.Split(manifest, "\n") {
+			if line != "" && !strings.HasPrefix(line, "#") {
+				return line
+			}
+		}
+		t.Fatal("no URI")
+		return ""
+	}
+	for _, g := range []*linearinput.Gateway{first, second} {
+		master := get(g.URL())
+		if strings.Count(master, "#EXT-X-STREAM-INF:") != 1 || !strings.Contains(master, "BANDWIDTH=500000") {
+			t.Fatalf("wrong master: %s", master)
+		}
+		media := get(uri(master))
+		if strings.Contains(media, "unreviewed.invalid") || strings.Contains(media, "#EXT-X-PART:") {
+			t.Fatalf("optional URL escaped: %s", media)
+		}
+		if get(uri(media)) != string([]byte{0x47, 1, 2, 3}) {
+			t.Fatal("wrong media bytes")
+		}
+	}
+	if low.Load() != 0 || high.Load() != 1 || segments.Load() != 1 {
+		t.Fatalf("low=%d high=%d segments=%d", low.Load(), high.Load(), segments.Load())
 	}
 }

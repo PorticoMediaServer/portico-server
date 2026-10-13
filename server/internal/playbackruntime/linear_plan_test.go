@@ -73,3 +73,20 @@ func TestLinearCopiesCompatibleCodecsAndUnknownLiveRates(t *testing.T) {
 		}
 	}
 }
+
+func TestLinearAudioConversionKeepsCopiedHDR(t *testing.T) {
+	p := playback.BaselineClientProfile()
+	p.Video = append(p.Video, playback.ClientVideoCodec{Codec: "hevc", BitDepths: []int{10}, DynamicRanges: []string{"hdr10"}, MaxWidth: 3840, MaxHeight: 2160, MaxFrameRate: 60, Evidence: playback.EvidenceBuiltin})
+	for i := range p.Transports {
+		if p.Transports[i].Transport == playback.TransportHLSTS {
+			p.Transports[i].Video = append(p.Transports[i].Video, "hevc")
+		}
+	}
+	w := playback.LinearWork{ClientProfile: p, TranscodingEnabled: true}
+	w.Selection.Quality.AllowLossy = true
+	raw := []byte(`{"streams":[{"codec_type":"video","codec_name":"hevc","pix_fmt":"yuv420p10le","color_transfer":"smpte2084","width":1920,"height":1080,"avg_frame_rate":"30/1","field_order":"progressive"},{"codec_type":"audio","codec_name":"ac3","channels":6,"sample_rate":"48000"}]}`)
+	plan, e := linearPlan(raw, w)
+	if e != nil || plan.ConvertVideo || !plan.ConvertAudio || plan.HDRToSDR {
+		t.Fatalf("%+v %v", plan, e)
+	}
+}
