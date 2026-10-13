@@ -21,6 +21,7 @@ type connectionPolicyCache struct {
 }
 
 type connectionSettingValue struct {
+	revision          int64
 	locality          localityPolicy
 	accessURLs        []string
 	certificateDomain string
@@ -37,7 +38,18 @@ func (c *connectionPolicyCache) set(document operations.SettingsDocument) {
 		urls = append(urls, document.Effective.AdvertiseURL)
 	}
 	urls = append(urls, document.Effective.AccessURLs...)
-	c.setting.Store(&connectionSettingValue{locality: newLocalityPolicy(document.Effective), accessURLs: urls, certificateDomain: document.Effective.CustomCertificateDomain, apiPerMinute: document.Effective.APIRequestsPerMinute, remoteSignIn: remoteSignInPolicy(document.Effective.RemoteSignInPolicy)})
+	next := &connectionSettingValue{revision: document.Revision, locality: newLocalityPolicy(document.Effective), accessURLs: urls, certificateDomain: document.Effective.CustomCertificateDomain, apiPerMinute: document.Effective.APIRequestsPerMinute, remoteSignIn: remoteSignInPolicy(document.Effective.RemoteSignInPolicy)}
+	// Receipts and concurrent save completions can arrive out of order.
+	// Never replace a newer live policy with a historical document.
+	for {
+		current := c.setting.Load()
+		if current != nil && current.revision >= next.revision {
+			return
+		}
+		if c.setting.CompareAndSwap(current, next) {
+			return
+		}
+	}
 }
 
 // remoteSignInPolicy reads the stored choice. An empty value is the default,

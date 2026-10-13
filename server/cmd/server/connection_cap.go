@@ -123,6 +123,8 @@ type cappedConn struct {
 	mu           sync.Mutex
 	ordinaryHeld bool
 	closed       bool
+	idleTimer    *time.Timer
+	idleEpoch    uint64
 }
 
 func (c *cappedConn) Close() error {
@@ -130,6 +132,11 @@ func (c *cappedConn) Close() error {
 	c.once.Do(func() {
 		c.mu.Lock()
 		c.closed = true
+		c.idleEpoch++
+		if c.idleTimer != nil {
+			c.idleTimer.Stop()
+			c.idleTimer = nil
+		}
 		if c.ordinaryHeld {
 			<-c.listener.ordinary
 		}
@@ -225,20 +232,36 @@ func (c *cappedConn) admitOrdinary() bool {
 	}
 }
 
-// Idle reserve sockets are released promptly, so page loads and sign-in probes
-// cannot occupy all console slots for the normal keep-alive interval.
+// HTTP/2 reports an initial idle state after its preface, before its first
+// request. A short grace period admits that request while still reclaiming
+// genuinely idle reserve sockets well before the ordinary keep-alive timeout.
+const reserveIdleTimeout = 2 * time.Second
+
 func (l *cappedListener) state(conn net.Conn, state http.ConnState) {
-	if state != http.StateIdle {
-		return
-	}
 	c, ok := networking.RawConnection(conn).(*cappedConn)
 	if !ok {
 		return
 	}
 	c.mu.Lock()
-	ordinary := c.ordinaryHeld
-	c.mu.Unlock()
-	if !ordinary {
-		_ = conn.Close()
+	defer c.mu.Unlock()
+	c.idleEpoch++
+	if c.idleTimer != nil {
+		c.idleTimer.Stop()
+		c.idleTimer = nil
 	}
+	if state != http.StateIdle || c.ordinaryHeld || c.closed {
+		return
+	}
+	epoch := c.idleEpoch
+	c.idleTimer = time.AfterFunc(reserveIdleTimeout, func() {
+		c.mu.Lock()
+		expire := c.idleEpoch == epoch && !c.ordinaryHeld && !c.closed
+		if expire {
+			c.closed = true
+		}
+		c.mu.Unlock()
+		if expire {
+			_ = conn.Close()
+		}
+	})
 }
