@@ -97,6 +97,18 @@ export const ownerConsoleMessages = {
   'web.metadata.numberOffsetHelp': 'For files numbered straight through (1, 2, 3 …) instead of by season: a file’s number plus this is its place in the order. Leave at 0 for files numbered by season.',
   'web.metadata.useOrder': 'Use this order',
   'web.metadata.orderWithOffset': '{order}, file numbers plus {offset}',
+  // ── Library Channels list ──
+  'server.channels.logoSaved': 'Logo saved.',
+  'server.channels.logoTooLarge': 'Choose an image smaller than 10 MB.',
+  'server.channels.regenerating': 'Regenerating the schedule.',
+  'server.channels.templates': 'Templates',
+  'server.channels.custom': 'Custom',
+  'server.channels.notEnough': 'Not enough media',
+  'server.channels.state.ready': 'On air',
+  'server.channels.state.generating': 'Building its schedule',
+  'server.channels.state.stale': 'Needs a new schedule',
+  'server.channels.state.disabled': 'Off',
+  'server.channels.state.degraded': 'Needs attention',
   // ── What a console list is loading ("Loading {thing}") ──
   'server.thing.apiKeys': 'API keys',
   'server.thing.tokens': 'access tokens',

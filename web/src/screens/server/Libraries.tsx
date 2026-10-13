@@ -25,6 +25,7 @@ import {dependsOn} from '@core/freshness-hub.ts';
 import {NeedsAttentionPanel, hasAttentionList, useAttentionCounts} from './NeedsAttention';
 import {attentionCountText, type AttentionCount} from '@core/server-admin/attention-words.ts';
 import {removeLibrary} from '@core/title-identity.ts';
+import {isStaleAnswer} from '@core/freshness-actions.ts';
 
 const LIBRARY_LIST_MOVES = [dependsOn.libraries, dependsOn.event('library.scan.updated')];
 const kinds: readonly {value: ManagedLibrary['kind']; label: MessageId; description: MessageId}[] = [{value: 'movie', label: 'web.search.movies', description: 'web.libraries.typeMovies'}, {value: 'tv', label: 'builder.shows', description: 'web.libraries.typeTv'}, {value: 'anime', label: 'web.libraries.kindAnime', description: 'web.libraries.typeAnime'}, {value: 'music', label: 'pref.group.music.title', description: 'web.libraries.typeMusic'}, {value: 'audiobook', label: 'web.libraries.kindAudiobooks', description: 'web.libraries.typeAudiobooks'}];
@@ -341,7 +342,17 @@ function LibraryDetail({service, snapshot, libraryId, onBack, onRemoved}: {servi
       {issuesOpen && library ? <EpisodeIssuesDialog libraryId={library.id} onClose={() => setIssuesOpen(false)} /> : null}
       <ConfirmDialog open={removing && !!library} onOpenChange={o => !o && setRemoving(false)} title={t('server.library.removeTitle', {name: library?.name ?? ''})} typedConfirmation={library?.name} confirmLabel={t('server.library.remove')} cancelLabel={t('action.cancel')} busy={action.busy} error={action.error}
         body={<div style={{display: 'flex', flexDirection: 'column', gap: 8}}><span>{t('server.library.removeGoes')}</span><span>{t('server.library.removeKept')}</span></div>}
-        onConfirm={() => { if (library && config) void action.run(() => removeLibrary(api, library.id, library.name, config.revision)).then(ok => { if (ok) { setRemoving(false); onRemoved(); } }); }} />
+        onConfirm={() => { if (library && config) void action.run(async () => {
+          try { await removeLibrary(api, library.id, library.name, config.revision); }
+          catch (e) {
+            if (!isStaleAnswer(e)) throw e;
+            // A scan or a setting moved the library while its name was being typed: it is still the library that was named, so it is removed as asked.
+            await inventory.service.refresh();
+            const now = inventory.service.getSnapshot().config;
+            if (!now) throw e;
+            await removeLibrary(api, library.id, library.name, now.revision);
+          }
+        }).then(ok => { if (ok) { setRemoving(false); onRemoved(); } }); }} />
       <SourceDialog value={editSource} onClose={() => setEditSource(null)} onSave={(id, settings) => void action.run(() => inventory.service.saveSource(id, settings), 'Saved.').then(ok => { if (ok) setEditSource(null); void inventory.service.refresh(); })} busy={action.busy} error={action.error} />
       <ConfirmDialog open={!!removeSource} onOpenChange={o => !o && setRemoveSource(null)} title={t('web.libraries.removeFolderTitle', {name: removeSource?.name ?? ''})} body={t('web.libraries.removeFolderBody')} confirmLabel={t('web.libraries.removeFolder')} busy={action.busy} onConfirm={() => { if (removeSource) void action.run(() => inventory.service.removeSource(removeSource.id, removeSource.revision)).then(ok => { if (ok) { setRemoveSource(null); void inventory.service.refresh(); } }); }} />
     </>
@@ -390,7 +401,19 @@ function ScanPolicyRow({inventory, snapshot}: {inventory: LibraryInventoryServic
   const inline = useInlineForm('scan-policy', {
     dirty,
     discard: () => { setTier(policy.tier); setOps([...policy.operations]); },
-    save: async () => { await inventory.setPolicy({tier, operations: tier === 'custom' ? (ops as typeof policy.operations) : policy.operations, expectedRevision: snapshot.config!.revision}); void inventory.refresh(); },
+    save: async () => {
+      const operations = tier === 'custom' ? (ops as typeof policy.operations) : policy.operations;
+      try { await inventory.setPolicy({tier, operations, expectedRevision: snapshot.config!.revision}); }
+      catch (e) {
+        if (!isStaleAnswer(e)) throw e;
+        // The library moved (a folder was added, a scan setting saved): the same choice is sent again against it, unless the scan depth itself was changed elsewhere.
+        await inventory.refresh();
+        const now = inventory.getSnapshot().config;
+        if (!now || now.policy.tier !== policy.tier || JSON.stringify([...now.policy.operations].sort()) !== JSON.stringify([...policy.operations].sort())) throw e;
+        await inventory.setPolicy({tier, operations, expectedRevision: now.revision});
+      }
+      void inventory.refresh();
+    },
   });
   return (
     <>
