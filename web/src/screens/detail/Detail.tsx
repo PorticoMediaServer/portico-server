@@ -9,6 +9,9 @@ import {dedupeNames, detailActions, formatDuration, relatedRowsForPage} from '@c
 import {GenreLinks} from './GenreLinks';
 import {PlaybackChoices, type PlaybackChoice} from './PlaybackChoices';
 import {TitleFiles} from './TitleFiles';
+import {SplitVersionDialog} from './SplitVersion';
+import {SPLITTABLE_KINDS} from '@core/title-identity.ts';
+import type {TitleFile} from '@core/detail.ts';
 import {setPendingTrackChoice} from '../../player/pending-choice';
 import {useCreditPages, useDetail, useItemRecommendations} from '../../app/detail';
 import {titleRecommendationRows} from '@core/recommendations.ts';
@@ -160,7 +163,8 @@ export function DetailScreen() {
   const keyCrewList = useMemo(() => keyCrew(crew), [crew]);
   const [allPeople, setAllPeople] = useState(false);
   const [choice, setChoice] = useState<PlaybackChoice>({});
-  useEffect(() => { setAllPeople(false); setChoice({}); }, [itemId]);
+  const [splitting, setSplitting] = useState<{file: TitleFile; summary: string}>();
+  useEffect(() => { setAllPeople(false); setChoice({}); setSplitting(undefined); }, [itemId]);
   // The detail carries the cast's first page and the key crew; the rest of
   // either group pages in as its row scrolls (nothing is cut off).
   const totals = data?.metadata.creditTotals;
@@ -241,7 +245,8 @@ export function DetailScreen() {
           {organiseNotice ? <Inset><Notice tone="info">{organiseNotice}</Notice></Inset> : null}
           {snapshot.mutationError ? <Inset><ErrorNotice error={snapshot.mutationError} context="detail" operation="save" retry={retryMutation} refresh={retry} /></Inset> : null}
           {snapshot.pending.some(p => p.phase === 'conflict') ? <Inset><Notice tone="warning" action={{label: t('title.ok'), onClick: dismissMutation}}>{t('title.changedElsewhere')}</Notice></Inset> : null}
-          {item && !item.available ? <Inset><Notice tone="warning">{t('title.fileUnavailable')}</Notice></Inset> : null}
+          {/* Missing says since when and that the title comes back by itself; anything else unavailable is a file that can't be reached right now. */}
+          {item && data?.missingSince ? <Inset><Notice tone="warning" title={t('title.missing')}>{t('title.missingSince', {when: formatDate(i18n, data.missingSince)})}</Notice></Inset> : item && !item.available ? <Inset><Notice tone="warning">{t('title.fileUnavailable')}</Notice></Inset> : null}
           {/* People: the first twelve of the cast and the key crew on the page; See all opens the whole list, paged. */}
           {shownCast.length ? <Shelf title={t('title.cast')} density="person" count={totals?.cast} action={(totals?.cast ?? cast.length) > CAST_ON_PAGE ? {label: t('title.seeAll'), onClick: () => { setAllPeople(true); castPages.more(); crewPages.more(); }} : undefined}>{shownCast.map(c => <Card key={c.id} title={c.name} caption={c.role} path={c.portraitUrl} shape="circle" icon="person" href={c.personId ? personHref(c.personId) : undefined} onOpen={c.personId ? () => void navigate({to: '/person/$personId', params: {personId: c.personId!}}) : undefined} />)}</Shelf> : null}
           {keyCrewList.length ? <Shelf title={t('title.crew')} density="person" action={(totals?.crew ?? crew.length) > keyCrewList.length ? {label: t('title.allCrew'), onClick: () => { setAllPeople(true); castPages.more(); crewPages.more(); }} : undefined}>{keyCrewList.map(c => <Card key={c.id} title={c.name} caption={c.role || c.department} path={c.portraitUrl} shape="circle" icon="person" href={c.personId ? personHref(c.personId) : undefined} onOpen={c.personId ? () => void navigate({to: '/person/$personId', params: {personId: c.personId!}}) : undefined} />)}</Shelf> : null}
@@ -257,7 +262,7 @@ export function DetailScreen() {
             <Section title={t('title.details')}>
               <div className={s.details}>
                 {detailRows.length ? <KeyValue rows={detailRows} /> : null}
-                {data?.files?.length ? <TitleFiles files={data.files} /> : null}
+                {data?.files?.length ? <TitleFiles files={data.files} onSplit={owner && item && SPLITTABLE_KINDS.includes(item.kind) ? (file, summary) => setSplitting({file, summary}) : undefined} /> : null}
               </div>
             </Section>
           ) : null}
@@ -276,6 +281,7 @@ export function DetailScreen() {
           </div>
         </Dialog>
       ) : null}
+      {splitting && item ? <SplitVersionDialog libraryId={item.libraryId} title={item.title} file={splitting.file} summary={splitting.summary} onClose={() => setSplitting(undefined)} /> : null}
       {ratingOpen && item ? <RatingDialog title={item.title} value={personal?.rating ?? null} onClose={() => setRatingOpen(false)} onRate={value => { mutate({action: 'rating', value}); setRatingOpen(false); }} /> : null}
       <AnchoredMenu open={!!organise} anchor={organise?.anchor} onOpenChange={open => !open && setOrganise(undefined)} label={organise?.mode === 'playlist' ? t('entry.sheet.addToPlaylist') : t('entry.sheet.addToCollection')}>
         {item && organise ? (organise.mode === 'playlist'

@@ -39,6 +39,7 @@
 .fileHead { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; font-size: 14px; color: var(--text-primary); }
 .fileVersion { font-size: 12px; font-weight: 600; color: var(--text-tertiary); }
 .fileMissing { font-size: 12px; color: var(--status-warning); }
+.fileAction { margin-left: auto; }
 .fileFacts { display: flex; flex-wrap: wrap; gap: 2px 12px; font-size: 13px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
 .fileLines { display: flex; flex-direction: column; gap: 2px; }
 .filePath { font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace); font-size: 12.5px; overflow-wrap: anywhere; user-select: all; }
