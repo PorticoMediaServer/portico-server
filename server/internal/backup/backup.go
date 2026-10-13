@@ -74,14 +74,15 @@ type FileEntry struct {
 
 // Manifest is manifest.json: identity plus integrity hashes, not security.
 type Manifest struct {
-	Format        string      `json:"format"`
-	Version       int         `json:"version"`
-	ServerID      string      `json:"serverId"`
-	ServerVersion string      `json:"serverVersion"`
-	SchemaVersion int         `json:"schemaVersion"`
-	CreatedAt     string      `json:"createdAt"`
-	Kind          Kind        `json:"kind"`
-	Files         []FileEntry `json:"files"`
+	SignInsRemoved bool        `json:"signInsRemoved,omitempty"`
+	Format         string      `json:"format"`
+	Version        int         `json:"version"`
+	ServerID       string      `json:"serverId"`
+	ServerVersion  string      `json:"serverVersion"`
+	SchemaVersion  int         `json:"schemaVersion"`
+	CreatedAt      string      `json:"createdAt"`
+	Kind           Kind        `json:"kind"`
+	Files          []FileEntry `json:"files"`
 }
 
 // Info is one listed backup.
@@ -614,7 +615,7 @@ func ReadRestoreResult(state string) (*RestoreResult, error) {
 		return nil, err
 	}
 	if out.Outcome == "" {
-		return nil, nil
+		return nil, ErrInvalid
 	}
 	return &out, nil
 }

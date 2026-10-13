@@ -278,6 +278,14 @@ func (s *Service) directAccountTx(ctx context.Context, tx *sql.Tx, account strin
 // directSignInTx mints one rotating device session. Until profile selection,
 // that family has account scope and cannot authorize media.
 func (s *Service) directSignInTx(ctx context.Context, tx *sql.Tx, c directCaller, private bool) (DirectSignIn, error) {
+	// Waiting for device approval is still sign-in admission. Check before
+	// registering a device or returning a pending response, which commits too.
+	if err := s.admitSignInTx(ctx, tx, c.account.ID); err != nil {
+		return DirectSignIn{}, err
+	}
+	if err := admitAccountTx(ctx, tx, c.account.ID); err != nil {
+		return DirectSignIn{}, err
+	}
 	out := DirectSignIn{}
 	var e error
 	out.DirectSnapshot, e = s.directSnapshotTx(ctx, tx, c)
