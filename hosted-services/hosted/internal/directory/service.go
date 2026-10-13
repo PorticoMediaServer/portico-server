@@ -69,6 +69,7 @@ func CheckIn(wakeable bool) (after, presence time.Duration) {
 type Heartbeat struct {
 	// Root-signed current documents certificate, carried by existing check-ins.
 	// Servers verify and persist its monotonic revocations before admission.
+	// Null while this process's signer is expired or revoked.
 	SigningCertificate    *trust.Certificate `json:"signingCertificate"`
 	HeartbeatAfterSeconds int                `json:"heartbeatAfterSeconds"`
 	PresenceExpiresAt     time.Time          `json:"presenceExpiresAt"`

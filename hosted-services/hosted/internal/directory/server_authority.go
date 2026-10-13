@@ -62,14 +62,16 @@ func (s *Service) ServerHeartbeat(ctx context.Context, a ServerAuthority, q Chec
 	if !ok {
 		return Heartbeat{}, ErrDenied
 	}
-	if e := s.keys.ValidateSigner(time.Now()); e != nil {
-		return Heartbeat{}, e
-	}
 	out, e := repo.ServerHeartbeat(ctx, a, q)
 	if e != nil {
 		return Heartbeat{}, e
 	}
-	out.SigningCertificate = s.keys.Certificate
+	// A check-in is not a signed document, so an expired or revoked signer does
+	// not refuse it: presence and wake acknowledgement carry on. Such a process
+	// only stops handing out its certificate.
+	if s.keys.ValidateSigner(time.Now()) == nil {
+		out.SigningCertificate = s.keys.Certificate
+	}
 	return out, nil
 }
 
