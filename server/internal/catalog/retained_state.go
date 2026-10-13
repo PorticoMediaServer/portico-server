@@ -22,6 +22,12 @@ const RetainedPerProfile = 100000
 
 const retainedIdentityLimit = 12
 
+// RestoreTitleStateTx restores state after a writer establishes additional
+// identity, such as analyzed audio tags or an accepted recording match.
+func RestoreTitleStateTx(ctx context.Context, tx *sql.Tx, entity int64) error {
+	return restoreRetainedTx(ctx, tx, entity)
+}
+
 // retentionIdentitiesTx lists the identities a title is remembered under:
 // provider identities first (they survive a move to another library), then
 // the names it was read as inside its own library.
@@ -175,6 +181,9 @@ func retainStateTx(ctx context.Context, tx *sql.Tx, entity int64) error {
 				return err
 			}
 		}
+		if err = pruneRetainedProfileTx(ctx, tx, profile); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -291,7 +300,7 @@ func restoreIdentityTx(ctx context.Context, tx *sql.Tx, entity int64, identity s
 // PruneRetainedState holds each profile's kept state to RetainedPerProfile
 // rows, oldest first. It is cheap when nothing is over the bound.
 func PruneRetainedStateTx(ctx context.Context, tx *sql.Tx) error {
-	rows, err := tx.QueryContext(ctx, `SELECT profile_id,count(*) FROM retained_title_state GROUP BY profile_id HAVING count(*)>?`, RetainedPerProfile)
+	rows, err := tx.QueryContext(ctx, `SELECT profile_id,title_count FROM retained_title_state_counts WHERE title_count>?`, RetainedPerProfile)
 	if err != nil {
 		return err
 	}
@@ -319,4 +328,17 @@ func PruneRetainedStateTx(ctx context.Context, tx *sql.Tx) error {
 		}
 	}
 	return nil
+}
+
+func pruneRetainedProfileTx(ctx context.Context, tx *sql.Tx, profile string) error {
+	var count int64
+	err := tx.QueryRowContext(ctx, `SELECT title_count FROM retained_title_state_counts WHERE profile_id=?`, profile).Scan(&count)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil || count <= RetainedPerProfile {
+		return err
+	}
+	_, err = tx.ExecContext(ctx, `DELETE FROM retained_title_state WHERE id IN(SELECT id FROM retained_title_state INDEXED BY retained_title_state_profile WHERE profile_id=? ORDER BY retained_ms,id LIMIT ?)`, profile, count-RetainedPerProfile)
+	return err
 }

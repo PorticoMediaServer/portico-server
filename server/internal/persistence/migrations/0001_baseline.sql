@@ -151,6 +151,19 @@ CREATE TABLE retained_title_state(
  progress_at TEXT NOT NULL DEFAULT '',
  retained_ms INTEGER NOT NULL) STRICT;
 CREATE INDEX retained_title_state_profile ON retained_title_state(profile_id,retained_ms,id);
+-- Counts make enforcement proportional to newly retained/evicted titles,
+-- rather than recounting a profile's entire retained history on each delete.
+CREATE TABLE retained_title_state_counts(
+ profile_id TEXT PRIMARY KEY,
+ title_count INTEGER NOT NULL CHECK(title_count>=0)) WITHOUT ROWID, STRICT;
+CREATE TRIGGER retained_title_state_count_insert AFTER INSERT ON retained_title_state BEGIN
+ INSERT INTO retained_title_state_counts(profile_id,title_count) VALUES(NEW.profile_id,1)
+ ON CONFLICT(profile_id) DO UPDATE SET title_count=title_count+1;
+END;
+CREATE TRIGGER retained_title_state_count_delete AFTER DELETE ON retained_title_state BEGIN
+ UPDATE retained_title_state_counts SET title_count=title_count-1 WHERE profile_id=OLD.profile_id;
+ DELETE FROM retained_title_state_counts WHERE profile_id=OLD.profile_id AND title_count=0;
+END;
 CREATE TABLE retained_title_identities(
  identity TEXT NOT NULL,
  profile_id TEXT NOT NULL,

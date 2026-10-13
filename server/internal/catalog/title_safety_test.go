@@ -236,3 +236,108 @@ func TestMergeRejectsConflictingProviderIdentities(t *testing.T) {
 		t.Fatalf("rejected merge changed files: %d", n)
 	}
 }
+
+func TestAnalyzedAudioTagsRestoreRetainedState(t *testing.T) {
+	s, db := openEmptyAlbumDB(t)
+	c := catalogtest.New(t, db)
+	tags := map[string]string{"title": "Song", "artist": "Artist", "album_artist": "Artist", "album": "Album", "track": "1", "disc": "1"}
+	commitAlbumSong(t, s, db, "old", "Album", tags, false)
+	var old int64
+	if err := db.QueryRow(`SELECT entity_id FROM catalog_songs`).Scan(&old); err != nil {
+		t.Fatal(err)
+	}
+	c.Exec(`INSERT INTO personal_watched_intents VALUES('p',?,1,'2026-01-01T00:00:00.000000000Z')`, old)
+	if err := s.RemoveTitle(context.Background(), c.Public(old)); err != nil {
+		t.Fatal(err)
+	}
+	commitAlbumSong(t, s, db, "new", "Album", nil, true)
+	commitAlbumSong(t, s, db, "new", "Album", tags, false)
+	if n := rows(t, c, `SELECT count(*) FROM personal_watched_intents w JOIN catalog_songs s ON s.entity_id=w.item_id WHERE w.profile_id='p' AND w.watched=1`); n != 1 {
+		t.Fatalf("tag analysis did not restore state: %d", n)
+	}
+}
+
+func TestMissingTitlesWaitForSourceRecovery(t *testing.T) {
+	for _, health := range []string{"offline", "root_changed", "inventory_running"} {
+		t.Run(health, func(t *testing.T) {
+			c := catalogtest.Open(t)
+			c.Library("m", "Movies", "movie", "/m")
+			a, token := identityFile(t, c, "m", "/m/Film.mkv", 1080)
+			film := attachMovie(t, c, "m", a, "/m/Film.mkv", "Film", 0)
+			markMissing(t, c, "m", token, time.Now().Add(-time.Hour))
+			c.Exec(`UPDATE library_sources SET health=? WHERE library_id='m'`, health)
+			s := New(c.DB)
+			out, err := s.EmptyMissing(context.Background(), "", time.Now(), nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if out.Titles != 0 || out.Files != 0 {
+				t.Fatalf("unsafe source emptied: %+v", out)
+			}
+			if n := rows(t, c, `SELECT count(*) FROM catalog_entities WHERE id=?`, film); n != 1 {
+				t.Fatal("missing title lost")
+			}
+			c.Exec(`UPDATE library_sources SET health='ready' WHERE library_id='m'`)
+			out, err = s.EmptyMissing(context.Background(), "", time.Now(), nil)
+			if err != nil || out.Titles != 1 {
+				t.Fatalf("recovered source not emptied: %+v %v", out, err)
+			}
+		})
+	}
+}
+
+func TestExplicitDeletionBoundsRetainedState(t *testing.T) {
+	c := catalogtest.Open(t)
+	c.Library("m", "Movies", "movie", "/m")
+	c.Exec(`WITH RECURSIVE n(x) AS(SELECT 1 UNION ALL SELECT x+1 FROM n WHERE x<100000) INSERT INTO retained_title_state(profile_id,kind,title,watched,retained_ms) SELECT 'p',1,CAST(x AS TEXT),1,x FROM n`)
+	a, _ := identityFile(t, c, "m", "/m/Film.mkv", 1080)
+	film := attachMovie(t, c, "m", a, "/m/Film.mkv", "Film", 0)
+	c.Exec(`INSERT INTO personal_watched_intents VALUES('p',?,1,'2026-01-01T00:00:00.000000000Z')`, film)
+	if err := New(c.DB).RemoveTitle(context.Background(), c.Public(film)); err != nil {
+		t.Fatal(err)
+	}
+	if n := rows(t, c, `SELECT count(*) FROM retained_title_state WHERE profile_id='p'`); n != RetainedPerProfile {
+		t.Fatalf("explicit deletion retained %d titles, bound %d", n, RetainedPerProfile)
+	}
+	if n := rows(t, c, `SELECT count(*) FROM retained_title_state WHERE profile_id='p' AND retained_ms=1`); n != 0 {
+		t.Fatal("oldest retained title was not evicted")
+	}
+}
+
+func TestRetainedCountsFollowRestorationAndCascade(t *testing.T) {
+	c := catalogtest.Open(t)
+	c.Library("m", "Movies", "movie", "/m")
+	c.Exec(`INSERT INTO retained_title_state(id,profile_id,kind,title,watched,retained_ms) VALUES(1,'p',1,'Film',1,1),(2,'q',1,'Other',1,2)`)
+	c.Exec(`INSERT INTO retained_title_identities VALUES('local:/m|movie:film:0','p',1)`)
+	a, _ := identityFile(t, c, "m", "/m/Film.mkv", 1080)
+	film := attachMovie(t, c, "m", a, "/m/Film.mkv", "Film", 0)
+	if n := rows(t, c, `SELECT count(*) FROM personal_watched_intents WHERE profile_id='p' AND item_id=? AND watched=1`, film); n != 1 {
+		t.Fatal("state not restored")
+	}
+	if n := rows(t, c, `SELECT count(*) FROM retained_title_state_counts WHERE profile_id='p'`); n != 0 {
+		t.Fatal("restored profile's count row remains")
+	}
+	if n := rows(t, c, `SELECT title_count FROM retained_title_state_counts WHERE profile_id='q'`); n != 1 {
+		t.Fatal("another profile's count changed")
+	}
+	c.Exec(`DELETE FROM retained_title_state WHERE id=2`)
+	if n := rows(t, c, `SELECT count(*) FROM retained_title_state_counts`); n != 0 {
+		t.Fatalf("count rows remain after removal: %d", n)
+	}
+}
+
+func TestNewProviderClaimRestoresStateOnExistingTitle(t *testing.T) {
+	c := catalogtest.Open(t)
+	c.Library("m", "Movies", "movie", "/m")
+	c.Exec(`INSERT INTO retained_title_state(id,profile_id,kind,title,watched,retained_ms) VALUES(1,'p',1,'Old name',1,1)`)
+	c.Exec(`INSERT INTO retained_title_identities VALUES('provider:tmdb:movie:348','p',1)`)
+	a, _ := identityFile(t, c, "m", "/m/Alien.mkv", 1080)
+	film := attachMovie(t, c, "m", a, "/m/Alien.mkv", "Alien", 0)
+	c.Write(func(ctx context.Context, tx *sql.Tx) error {
+		_, err := AttachMovieTx(ctx, tx, MovieFile{Library: "m", Asset: a, Path: "/m/Alien.mkv", Title: "Alien", Provider: []compactcatalog.ProviderIdentity{{Provider: "tmdb", Kind: "movie", ID: "348"}}})
+		return err
+	})
+	if n := rows(t, c, `SELECT count(*) FROM personal_watched_intents WHERE profile_id='p' AND item_id=? AND watched=1`, film); n != 1 {
+		t.Fatal("newly established provider identity did not restore state")
+	}
+}

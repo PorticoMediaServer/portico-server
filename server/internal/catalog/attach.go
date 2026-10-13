@@ -68,7 +68,7 @@ func AttachMovieTx(ctx context.Context, tx *sql.Tx, f MovieFile) (int64, error) 
 	if err != nil {
 		return 0, err
 	}
-	if created {
+	if created || len(f.Provider) > 0 {
 		err = restoreRetainedTx(ctx, tx, item)
 	}
 	return item, err
@@ -104,7 +104,7 @@ func AttachTrackTx(ctx context.Context, tx *sql.Tx, f TrackFile) (int64, error) 
 	if err != nil {
 		return 0, err
 	}
-	if created {
+	if created || len(f.Provider) > 0 {
 		err = restoreRetainedTx(ctx, tx, item)
 	}
 	return item, err
@@ -119,8 +119,11 @@ func IdentifyTrackTx(ctx context.Context, tx *sql.Tx, item int64, tagKey string)
 		return item, nil
 	}
 	held, err := compactcatalog.AddIdentityTx(ctx, tx, item, tagKey)
-	if err != nil || held == 0 {
+	if err != nil {
 		return item, err
+	}
+	if held == 0 {
+		return item, restoreRetainedTx(ctx, tx, item)
 	}
 	var same bool
 	if err = tx.QueryRowContext(ctx, `SELECT a.kind=b.kind AND a.library_id=b.library_id FROM catalog_entities a,catalog_entities b WHERE a.id=? AND b.id=?`, item, held).Scan(&same); err != nil || !same {
@@ -131,7 +134,7 @@ func IdentifyTrackTx(ctx context.Context, tx *sql.Tx, item int64, tagKey string)
 	if err = MergeTitlesTx(ctx, tx, item, held); err != nil {
 		return 0, err
 	}
-	return held, nil
+	return held, restoreRetainedTx(ctx, tx, held)
 }
 
 var seasonLikeFolder = regexp.MustCompile(`(?i)^(?:(?:season|series|staffel|saison|temporada|stagione|sezon|seizoen|s)[ ._-]*\d{1,4}|specials?|extras?|(?:disc|disk|cd|dvd)[ ._-]*\d{1,3})$`)

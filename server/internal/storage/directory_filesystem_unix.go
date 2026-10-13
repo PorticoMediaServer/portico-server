@@ -23,6 +23,10 @@ func directoryFilesystemIdentity(info os.FileInfo, path, object string) (string,
 	if err != nil || !os.SameFile(info, current) {
 		return "", ErrObservedSourceLost
 	}
+	return directoryFilesystemIdentityFromFile(f, object)
+}
+
+func directoryFilesystemIdentityFromFile(f *os.File, object string) (string, error) {
 	var fs, zero syscall.Statfs_t
 	if err := syscall.Fstatfs(int(f.Fd()), &fs); err != nil {
 		return "", err
