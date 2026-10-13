@@ -75,6 +75,7 @@ func TestBrowseEveryOrderPagesMatchTheOrder(t *testing.T) {
 			c.Exec(`INSERT INTO personal_items(profile_id,item_id,rating,revision,last_played_at) VALUES('p',?,?,1,?)`, f.item.ID, rating, f.lastPlayed)
 		}
 	}
+	c.Drain() // Personal sort keys are published by the maintained read model.
 	if err := compactcatalog.CheckBrowseBlocks(context.Background(), c.DB); err != nil {
 		t.Fatal(err)
 	}

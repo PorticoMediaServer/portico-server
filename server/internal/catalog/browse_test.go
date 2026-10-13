@@ -522,7 +522,18 @@ func TestAggregatePivotProjectsFacets(t *testing.T) {
 			t.Fatalf("entry %+v", entry)
 		}
 	}
-	if _, e = s.BrowseEntities(Viewer{Profile: "p", Fence: "f", Libraries: []string{"a"}}, BrowseRequest{Library: "a", Profile: "p", ViewerFence: "f", Pivot: "categories", Query: &BrowseNode{Field: "title", Operator: "equals", Value: "x"}}); e == nil {
-		t.Fatal("aggregate pivot accepted an expression")
+	viewer := Viewer{Profile: "p", Fence: "f", Libraries: []string{"a"}}
+	filtered, err := s.BrowseEntities(viewer, BrowseRequest{Library: "a", Pivot: "categories", Query: &BrowseNode{Field: "title", Operator: "equals", Value: "x"}})
+	if err != nil || len(filtered.Entries) != 0 || filtered.PageInfo.Total != 0 {
+		t.Fatalf("filtered grouping: %+v %v", filtered, err)
+	}
+	for _, field := range []string{"year", "added", "random"} {
+		carried, err := s.BrowseEntities(viewer, BrowseRequest{Library: "a", Pivot: "categories", Sort: []BrowseSortSelection{{Field: field, Direction: "desc", Seed: 123}}, Seek: &BrowseSeek{Prefix: "Z"}})
+		if err != nil || fmt.Sprint(entryIDs(carried.Entries)) != fmt.Sprint(entryIDs(page.Entries)) || canonicalSort(carried.Applied.Sort) != "title:asc" || carried.Applied.Seek != nil {
+			t.Fatalf("carried %s: %+v %v", field, carried, err)
+		}
+	}
+	if _, err := s.BrowseEntities(viewer, BrowseRequest{Library: "a", Pivot: "categories", Sort: []BrowseSortSelection{{Field: "title", Direction: "sideways"}}}); err == nil {
+		t.Fatal("invalid grouping direction accepted")
 	}
 }

@@ -129,9 +129,19 @@ func TestRetainedBrowseRowsKeepIndexedOrder(t *testing.T) {
 		{"e.year", "year"},
 		{"COALESCE(e.duration_max,0)", "duration"},
 		{"COALESCE(e.rating_max,0)", "rating"},
+		{"e.release_key", "release_key"},
+		{"e.latest_aired_key", "latest_aired_key"},
+		{"e.critic_key", "critic_key"},
+		{"e.episode_count", "episode_count"},
+		{"e.album_key", "album_key"},
+		{"e.artist_key", "artist_key"},
+		{"e.track_key", "track_key"},
+		{"e.file_size", "file_size"},
+		{"e.resolution_key", "resolution_key"},
+		{"e.random_key", "random_key"},
 	} {
 		t.Run(order.index, func(t *testing.T) {
-			query := ServingSQL(`SELECT ce.public_id,e.entity_id,e.title,e.year,COALESCE(e.added_text,''),e.sort_key,COALESCE(e.duration_max,0),COALESCE(e.rating_max,0) FROM catalog_browse_rows e JOIN catalog_entities ce ON ce.id=e.entity_id WHERE e.library_id=? AND e.kind=? ORDER BY ` + order.expression + `,e.entity_id LIMIT 20`)
+			query := ServingSQL(`SELECT ce.public_id,e.entity_id,e.title,e.year,COALESCE(e.added_text,''),e.sort_key,COALESCE(e.duration_max,0),COALESCE(e.rating_max,0),` + order.expression + ` FROM catalog_browse_rows e JOIN catalog_entities ce ON ce.id=e.entity_id WHERE e.library_id=? AND e.kind=? ORDER BY ` + order.expression + `,e.entity_id LIMIT 20`)
 			rows, err := db.Query(`EXPLAIN QUERY PLAN `+query, 1, 1)
 			if err != nil {
 				t.Fatal(err)

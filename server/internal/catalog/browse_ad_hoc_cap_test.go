@@ -23,10 +23,10 @@ func TestBrowseAdHocCountsAreExactAndRangesUnbounded(t *testing.T) {
 			t.Fatalf("start %d: %+v %v", start, page.PageInfo, err)
 		}
 	}
-	page, err := s.BrowseEntities(viewer, BrowseRequest{Library: "a", Profile: "p", ViewerFence: "f", Pivot: "movies", Limit: 2, Sort: []BrowseSortSelection{{Field: "year", Direction: "desc"}, {Field: "title", Direction: "asc"}}, Range: &BrowseRange{Start: 20000}})
+	page, err := s.BrowseEntities(viewer, BrowseRequest{Library: "a", Profile: "p", ViewerFence: "f", Pivot: "movies", Limit: 2, Sort: []BrowseSortSelection{{Field: "year", Direction: "desc"}}, Range: &BrowseRange{Start: 20000}})
 	// An unfiltered range past the end clamps to the last row, as it always has.
 	if err != nil || page.PageInfo.Start != 4 || len(page.Entries) != 1 {
-		t.Fatalf("a deep range under two sorts: %+v %v", page.PageInfo, err)
+		t.Fatalf("a deep range under year order: %+v %v", page.PageInfo, err)
 	}
 }
 

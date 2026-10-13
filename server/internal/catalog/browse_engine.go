@@ -26,6 +26,7 @@ var ErrBrowsePivot = requestinput.New("pivot is not published for this library")
 type BrowseSortSelection struct {
 	Field     string `json:"field"`
 	Direction string `json:"direction"`
+	Seed      uint32 `json:"seed,omitempty"`
 }
 type BrowseRange struct {
 	Start    int    `json:"start"`
@@ -88,7 +89,11 @@ type BrowseRequest struct {
 func canonicalSort(selection []BrowseSortSelection) string {
 	parts := make([]string, 0, len(selection))
 	for _, entry := range selection {
-		parts = append(parts, entry.Field+":"+entry.Direction)
+		part := entry.Field + ":" + entry.Direction
+		if entry.Field == "random" {
+			part += fmt.Sprintf(":%d", entry.Seed)
+		}
+		parts = append(parts, part)
 	}
 	return strings.Join(parts, ",")
 }
@@ -143,19 +148,21 @@ func resolveBrowseSorts(pivot browsePivot, selection []BrowseSortSelection) ([]B
 		if !containsString(definition.Directions, direction) {
 			return nil, browseIssue(path+".direction", fmt.Sprintf("sort %q takes direction %s", entry.Field, strings.Join(definition.Directions, " or ")))
 		}
-		out = append(out, BrowseSortSelection{Field: entry.Field, Direction: direction})
+		if entry.Seed != 0 && entry.Field != "random" {
+			return nil, browseIssue(path+".seed", "only random uses a seed")
+		}
+		out = append(out, BrowseSortSelection{Field: entry.Field, Direction: direction, Seed: entry.Seed})
 	}
 	return out, nil
 }
 
 // browseKeyedSorts reports whether every selected sort is a column of
 // `catalog_browse_rows`, which is what lets a page seek to its cursor rather than
-// skip to it. A profile sort is a correlated aggregate over the membership
-// table, and a keyset over one would evaluate it for every row it skipped.
+// skip to it. Profile sorts use their own indexed valued/rest streams.
 func browseKeyedSorts(selection []BrowseSortSelection) bool {
 	for _, entry := range selection {
 		definition, ok := browseSortByID(entry.Field)
-		if !ok || definition.Ordering < 0 || definition.Profile {
+		if !ok || definition.Ordering == -1 || definition.Profile {
 			return false
 		}
 	}
@@ -226,7 +233,7 @@ func browseKeyValues(selection []BrowseSortSelection, keys []string) ([]any, boo
 			}
 			out = append(out, year)
 			continue
-		case "duration", "communityRating":
+		case "duration", "communityRating", "criticRating", "episodeCount", "trackNumber", "fileSize", "resolution", "random":
 			value, err := strconv.ParseFloat(keys[index], 64)
 			if err != nil {
 				return nil, false
@@ -240,6 +247,11 @@ func browseKeyValues(selection []BrowseSortSelection, keys []string) ([]any, boo
 }
 
 func browseSortValue(row browseRow, field string) string {
+	if row.keys != nil {
+		if v, ok := row.keys[field]; ok {
+			return v
+		}
+	}
 	switch field {
 	case "title":
 		return row.sortKey
@@ -329,6 +341,7 @@ func (s *Service) browseRevision(request BrowseRequest, pivot browsePivot, sorts
 }
 
 type browseRow struct {
+	keys            map[string]string
 	id, kind, title string
 	entity          int64
 	sortKey         string
@@ -383,9 +396,8 @@ func (s *Service) BrowseEntities(viewer Viewer, request BrowseRequest) (BrowseRe
 }
 
 // browseSelect resolves the pivot, compiles the expression and returns the
-// selected entity rows. Ranges are absolute (start/limit) and cursors are
-// revision-fenced offsets over the same compiled clause, so a virtualized grid
-// and a paged list can never disagree about membership.
+// selected entity rows. Ranges and keyset continuations share one compiled
+// clause, so a virtualized grid and a paged list agree about membership.
 func (s *Service) browseSelect(request BrowseRequest) (BrowseResult, []browseRow, error) {
 	out := BrowseResult{Entries: []ContentEntry{}, PositionIndex: []BrowsePositionAnchor{}}
 	lib, err := s.library(request.Library)
@@ -434,7 +446,7 @@ func (s *Service) browseSelect(request BrowseRequest) (BrowseResult, []browseRow
 	}
 
 	where, args := browseScopeSQL(request.Library, pivot)
-	compiler := &browseCompiler{profile: request.Profile}
+	compiler := &browseCompiler{profile: request.Profile, restrictions: request.Restrictions}
 	clause, err := compiler.compile(request.Query)
 	if err != nil {
 		return out, nil, err
@@ -533,7 +545,7 @@ func (s *Service) browseSelect(request BrowseRequest) (BrowseResult, []browseRow
 			}
 			out.PositionIndex = anchors
 		}
-	} else if request.Query == nil && request.Cursor == "" && len(sorts) > 0 {
+	} else if request.Query == nil && request.Cursor == "" && len(sorts) > 0 && browseHasPositionAnchors(sorts[0].Field) {
 		// Every other sort publishes anchors too (M10): title descending by
 		// letter, the rest by value buckets.
 		var anchors []BrowsePositionAnchor
@@ -574,12 +586,20 @@ func (s *Service) browseSelect(request BrowseRequest) (BrowseResult, []browseRow
 	// A surviving anchor re-locates the viewport after a publication rather than
 	// throwing the reader back to the top of the library: the anchor's rank in a
 	// counted order is its block's running total plus a count inside the block.
-	// Shapes without blocks retain the requested position; a current revision
+	// Indexed fact orders count the index prefix. Profile orders retain the
+	// requested position; a current revision
 	// ignores the anchor entirely.
 	if request.Range != nil && request.Range.AnchorID != "" && stale {
 		primary, _ := shape.primary()
-		if shape.positional() && !primary.Profile && primary.Ordering >= 0 {
-			rank, found, err := s.browseAnchorRank(shape, request.Range.AnchorID)
+		if shape.positional() && !primary.Profile && (primary.Ordering >= 0 || primary.Ordering == -2) {
+			var rank int
+			var found bool
+			var err error
+			if primary.Ordering == -2 {
+				rank, found, err = s.indexedFactAnchorRank(shape, request.Range.AnchorID)
+			} else {
+				rank, found, err = s.browseAnchorRank(shape, request.Range.AnchorID)
+			}
 			if err != nil {
 				return out, nil, err
 			}
@@ -614,6 +634,9 @@ func (s *Service) browseSelect(request BrowseRequest) (BrowseResult, []browseRow
 		keys := make([]string, 0, len(sorts))
 		for _, entry := range sorts {
 			keys = append(keys, browseSortValue(last, entry.Field))
+			if entry.Field == "personalRating" || entry.Field == "lastPlayed" || entry.Field == "playCount" {
+				keys = append(keys, last.keys["phase"], last.keys["restTitle"])
+			}
 		}
 		// The cursor carries the integer entity id; cursors are opaque and signed.
 		out.PageInfo.NextCursor, err = s.encodeCursor(cursorValue{Scope: scope, Value: strconv.Itoa(start + len(selected)), ID: strconv.FormatInt(last.entity, 10), Keys: keys, Total: total, Expires: expires})
@@ -966,84 +989,7 @@ func containerView(kind string) string {
 	}
 }
 
-// browseAggregate projects a facet as a navigable grid. Decades, genres and
-// series have no entity rows of their own; they are counted groupings that lead
-// back into an entity pivot with a preset predicate.
-func (s *Service) browseAggregate(request BrowseRequest, pivot browsePivot) (BrowseResult, error) {
-	out := BrowseResult{Pivot: pivot.ID, Entries: []ContentEntry{}, PositionIndex: []BrowsePositionAnchor{}, Applied: BrowseApplied{Sort: pivot.DefaultSort}}
-	if request.Query != nil {
-		return out, browseIssue("query", "aggregate pivots do not accept an expression query")
-	}
-	revision, err := s.browseRevision(request, pivot, pivot.DefaultSort)
-	if err != nil {
-		return out, err
-	}
-	out.PageInfo.Revision = revision
-	// A grouping is listed by title, in either direction. The published sorts
-	// are one list for the whole library, so a screen that carries the
-	// viewer's chosen order (year, date added) onto a grouping is not making a
-	// mistake: it gets the grouping in title order, and `applied` says so. A
-	// title sort with a direction that is not one is still refused.
-	sorts := append([]BrowseSortSelection{}, pivot.DefaultSort...)
-	if len(request.Sort) == 1 && request.Sort[0].Field == "title" {
-		switch request.Sort[0].Direction {
-		case "", "asc":
-			sorts = []BrowseSortSelection{{Field: "title", Direction: "asc"}}
-		case "desc":
-			sorts = []BrowseSortSelection{{Field: "title", Direction: "desc"}}
-		default:
-			return out, browseIssue("sort", "this grouping sorts by title")
-		}
-	}
-	request.Sort = sorts
-	out.Applied.Sort = sorts
-	request.Limit = pageLimit(request.Limit)
-	if request.Cursor != "" && request.Range != nil {
-		return out, browseIssue("range", "a direct range cannot include a cursor")
-	}
-	// A grouping has no letter index (its position index is empty), so a
-	// letter jump has nowhere to land: the list is answered from where it
-	// would otherwise start, and `applied` carries no seek.
-	request.Seek = nil
-	revision, err = s.browseRevision(request, pivot, sorts)
-	if err != nil {
-		return out, err
-	}
-	out.PageInfo.Revision = revision
-	scope := cursorScope{Library: request.Library, Viewer: request.ViewerFence, Profile: request.Profile, View: "browse:" + pivot.ID, Sort: canonicalSort(sorts), Limit: request.Limit}
-	start := 0
-	if request.Cursor != "" {
-		cursor, err := s.decodeCursor(request.Cursor, scope)
-		if err != nil {
-			return out, err
-		}
-		// A continuation from before a publication keeps its place in the
-		// list as it is now, as title lists do; it is not a conflict.
-		if start, err = strconv.Atoi(cursor.Value); err != nil || start < 0 {
-			return out, ErrCursor
-		}
-	}
-	if request.Range != nil {
-		if request.Range.Start < 0 || len(request.Range.Revision) > 128 || len(request.Range.AnchorID) > 256 {
-			return out, browseIssue("range", "range identity is invalid")
-		}
-		start = request.Range.Start
-	}
-	values, err := s.Facets(request.viewer, FacetRequest{Library: request.Library, Profile: request.Profile, Field: pivot.Aggregate, Limit: request.Limit, Offset: start, Sort: canonicalSort(sorts)})
-	if err != nil {
-		return out, err
-	}
-	for _, value := range values.Values {
-		count := value.Count
-		out.Entries = append(out.Entries, ContentEntry{ID: pivot.Aggregate + ":" + value.Value, Kind: pivot.EntityKinds[0], Title: value.Label, Count: &count, Navigation: &ContentNavigation{View: "browse", Category: pivot.Aggregate + ":" + value.Value}})
-	}
-	out.PageInfo.Start, out.PageInfo.Total = start, values.Total
-	if start+len(out.Entries) < values.Total {
-		out.PageInfo.HasMore = true
-		out.PageInfo.NextCursor, err = s.encodeCursor(cursorValue{Scope: scope, Value: strconv.Itoa(start + len(out.Entries)), Fingerprint: revision, Expires: time.Now().Add(BrowseCursorTTLSecond * time.Second).Unix()})
-		if err != nil {
-			return out, err
-		}
-	}
-	return out, nil
+func browseHasPositionAnchors(field string) bool {
+	definition, ok := browseSortByID(field)
+	return ok && (definition.Ordering >= 0 || field == "personalRating" || field == "lastPlayed" || field == "forYou")
 }

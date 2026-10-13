@@ -83,6 +83,11 @@ func TestBrowseReanchorNonTitleSortsRelocate(t *testing.T) {
 		}
 		for _, direction := range sc.Directions {
 			sorts = append(sorts, BrowseSortSelection{Field: sc.ID, Direction: direction})
+			if sc.ID == "random" {
+				for _, seed := range []uint32{123, 2000000000, 4294967295} {
+					sorts = append(sorts, BrowseSortSelection{Field: sc.ID, Direction: direction, Seed: seed})
+				}
+			}
 		}
 	}
 	if len(sorts) == 0 {
@@ -105,7 +110,8 @@ func TestBrowseReanchorNonTitleSortsRelocate(t *testing.T) {
 	settleCompact(t, db)
 	for _, o := range olds {
 		page, err := s.BrowseEntities(viewer, BrowseRequest{Library: "a", Profile: "p", ViewerFence: "f", Pivot: "movies", Sort: []BrowseSortSelection{o.sort}, Limit: 2, Range: &BrowseRange{Start: 1, Revision: o.revision, AnchorID: names["m1"].Public}})
-		if o.sort.Field == "personalRating" || o.sort.Field == "lastPlayed" {
+		definition, _ := browseSortByID(o.sort.Field)
+		if definition.Profile {
 			// Profile sorts have no counted order to rank in.
 			if err != nil {
 				t.Fatalf("sort %v could not retain the viewport: %v", o.sort, err)

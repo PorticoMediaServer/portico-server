@@ -125,7 +125,7 @@ func (s *Service) bulkSortKey(ctx context.Context, tx *sql.Tx, v Viewer, selecto
 				return "", e
 			}
 		}
-		compiler := &browseCompiler{profile: v.Profile}
+		compiler := &browseCompiler{profile: v.Profile, restrictions: v.EffectiveRestrictions()}
 		filter, e := compiler.compile(node)
 		if e != nil {
 			return "", e
