@@ -10,6 +10,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"portico.local/server/internal/audiotags"
 	"portico.local/server/internal/mediaexec"
 	"portico.local/server/internal/mediatools"
 	"portico.local/server/internal/storage"
@@ -39,6 +40,7 @@ type Facts struct {
 	TagSources          map[string]string    `json:"-"`
 	Tags                map[string]string    `json:"-"`
 	Chapters            []Chapter            `json:"-"`
+	EmbeddedAudio       *audiotags.Tags      `json:"-"`
 	AttachedPicture     bool                 `json:"-"`
 	ArtworkKey          string               `json:"-"`
 	// ArtworkExtra carries sidecar cache keys (localmetadata.ReadSidecars:
@@ -86,7 +88,7 @@ func (p Probe) Inspect(ctx context.Context, path string) (Facts, error) {
 // InspectScan applies bounded local-media probing and rejects network protocols.
 // File List Only never calls this method; ReadGuard is checked again at launch.
 func (p Probe) InspectScan(ctx context.Context, path string) (Facts, error) {
-	return p.inspect(ctx, path, []string{"-protocol_whitelist", "file,pipe", "-format_whitelist", "mov,matroska,webm,avi,mpegts,mpeg,mpegvideo,mp3,flac,wav,ogg,aac,aiff,asf,ape,wv,tta,amr", "-probesize", "8388608", "-analyzeduration", "5000000"})
+	return p.inspect(ctx, path, []string{"-protocol_whitelist", "file,pipe", "-format_whitelist", "mov,matroska,webm,avi,mpegts,mpeg,mpegvideo,mp3,flac,wav,ogg,aac,aiff,asf,ape,wv,tta,amr,w64,caf,dsf,iff,mpc,mpc8", "-probesize", "8388608", "-analyzeduration", "5000000"})
 }
 func (p Probe) InspectRemoteMP4(ctx context.Context, path string) (Facts, error) {
 	facts, e := p.inspect(ctx, path, []string{"-f", "mov", "-enable_drefs", "0", "-use_absolute_path", "0", "-protocol_whitelist", "http,tcp", "-probesize", "8388608", "-analyzeduration", "5000000"})
@@ -100,7 +102,7 @@ func (p Probe) inspect(ctx context.Context, path string, options []string) (Fact
 	if bin == "" {
 		bin = mediatools.Resolve("ffprobe")
 	}
-	args := append(options, []string{"-v", "error", "-show_format", "-show_streams", "-show_chapters", "-of", "json", path}...)
+	args := append(options, []string{"-v", "error", "-show_format", "-show_streams", "-show_chapters", "-show_entries", "format:stream:chapter:format_tags=:stream_tags=language,title:chapter_tags=title", "-of", "json", path}...)
 	out := &boundedBuffer{limit: 1 << 20}
 	var runErr error
 	if p.ReadGuard != nil {
@@ -193,8 +195,7 @@ func (p Probe) inspect(ctx context.Context, path string, options []string) (Fact
 	}
 	f.Tags = map[string]string{}
 	f.TagSources = map[string]string{}
-	copyTags := func(tags map[string]string) { CopyEmbeddedAudioTags(&f, tags) }
-	copyTags(raw.Format.Tags)
+
 	if len(raw.Streams) > 128 {
 		return Facts{}, errors.New("source stream count exceeds 128")
 	}
@@ -224,7 +225,7 @@ func (p Probe) inspect(ctx context.Context, path string, options []string) (Fact
 		}
 		if s.Type == "audio" && f.AudioCodec == "" {
 			f.AudioCodec = s.Codec
-			copyTags(s.Tags)
+
 		}
 	}
 	if !knownStreams {
@@ -234,22 +235,33 @@ func (p Probe) inspect(ctx context.Context, path string, options []string) (Fact
 	for _, c := range raw.Chapters {
 		start, e1 := strconv.ParseFloat(c.Start, 64)
 		end, e2 := strconv.ParseFloat(c.End, 64)
-		if e1 != nil || e2 != nil || math.IsNaN(start) || math.IsNaN(end) || math.IsInf(start, 0) || math.IsInf(end, 0) || start < 0 || end <= start || end > f.Duration+0.1 || len(f.Chapters) >= 4096 || (len(f.Chapters) > 0 && start < f.Chapters[len(f.Chapters)-1].End) {
-			f.ChapterStatus = "invalid"
+		if e1 != nil || e2 != nil {
 			f.LocalMetadataIssue = "invalid_chapter_timeline"
-			f.Chapters = nil
-			break
+			continue
 		}
-		if end > f.Duration {
-			end = f.Duration
+		f.Chapters = append(f.Chapters, Chapter{streamText(c.Tags["title"], 500), start, end})
+	}
+	if !strings.Contains(path, "://") {
+		tags, err := storage.ReadAudioTags(ctx, path)
+		if err == nil {
+			f.EmbeddedAudio = &tags
+			CopyEmbeddedAudioTags(&f, tags.JSONValues())
+			if len(tags.Chapters) > 0 {
+				f.Chapters = nil
+				for _, c := range tags.Chapters {
+					f.Chapters = append(f.Chapters, Chapter{streamText(c.Title, 500), c.Start, c.End})
+				}
+			}
+			if len(tags.Warnings) > 0 {
+				f.LocalMetadataIssue = "invalid_audio_tags"
+			}
+		} else {
+			f.LocalMetadataIssue = "unreadable_audio_tags"
 		}
-		if end <= start {
-			f.ChapterStatus = "invalid"
-			f.Chapters = nil
-			break
-		}
-		title := streamText(c.Tags["title"], 500)
-		f.Chapters = append(f.Chapters, Chapter{title, start, end})
+	}
+	f.Chapters, f.ChapterStatus = CleanChapters(f.Chapters, f.Duration)
+	if f.ChapterStatus == "partial" {
+		f.LocalMetadataIssue = "invalid_chapter_timeline"
 	}
 	if (f.VideoCodec == "" && f.AudioCodec == "") || (f.Duration <= 0 || math.IsNaN(f.Duration) || math.IsInf(f.Duration, 0)) {
 		return Facts{}, errors.New("file has no timed media stream")
@@ -258,7 +270,7 @@ func (p Probe) inspect(ctx context.Context, path string, options []string) (Fact
 }
 func SupportedPath(path string) bool {
 	switch strings.ToLower(filepath.Ext(path)) {
-	case ".mp4", ".m4v", ".mov", ".mkv", ".webm", ".avi", ".ts", ".m2ts", ".mts", ".vob", ".mpg", ".mpeg", ".strm", ".mp3", ".m4a", ".m4b", ".flac", ".ogg", ".opus", ".wav", ".aac", ".aiff":
+	case ".mp4", ".m4v", ".mov", ".mkv", ".webm", ".avi", ".ts", ".m2ts", ".mts", ".vob", ".mpg", ".mpeg", ".strm", ".mp3", ".m4a", ".m4b", ".flac", ".ogg", ".opus", ".wav", ".aac", ".aiff", ".aif", ".oga", ".mka", ".wma", ".ape", ".wv", ".tta", ".caf", ".w64", ".amr", ".dsf", ".dff", ".mpc":
 		return true
 	}
 	return false
@@ -286,11 +298,11 @@ func SupportedForKind(path, kind string) bool {
 	extension := strings.ToLower(filepath.Ext(path))
 	audio := false
 	switch extension {
-	case ".mp3", ".m4a", ".m4b", ".flac", ".ogg", ".opus", ".wav", ".aac", ".aiff":
+	case ".mp3", ".m4a", ".m4b", ".flac", ".ogg", ".opus", ".wav", ".aac", ".aiff", ".aif", ".oga", ".mka", ".wma", ".ape", ".wv", ".tta", ".caf", ".w64", ".amr", ".dsf", ".dff", ".mpc":
 		audio = true
 	}
 	if kind == "music" || kind == "audiobook" {
-		return audio
+		return audio || extension == ".mp4"
 	}
 	return SupportedPath(path) && !audio
 }

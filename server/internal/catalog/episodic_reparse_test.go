@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"path/filepath"
+	"strconv"
 	"testing"
 
 	"portico.local/server/internal/catalogtest"
@@ -66,7 +67,7 @@ func TestReparseEpisodicIssuesOnceAfterAParserChange(t *testing.T) {
 		t.Fatal("a manual source was read again")
 	}
 	var version string
-	if err = db.QueryRow(`SELECT value FROM configuration WHERE key=?`, episodeParserVersionKey).Scan(&version); err != nil || version != "2" {
+	if err = db.QueryRow(`SELECT value FROM configuration WHERE key=?`, episodeParserVersionKey).Scan(&version); err != nil || version != strconv.Itoa(EpisodeParserVersion) {
 		t.Fatalf("version %q (%v)", version, err)
 	}
 	// Once per version: a source given an issue afterwards is left for scans.

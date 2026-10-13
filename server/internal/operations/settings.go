@@ -7,12 +7,13 @@ import (
 	"errors"
 	"path/filepath"
 	"portico.local/server/internal/identity"
+	"portico.local/server/internal/networkpolicy"
 	"sort"
 	"strings"
 	"time"
 )
 
-const RegistryRevision = "p09.2"
+const RegistryRevision = "p09.3"
 
 type Field struct {
 	ID          string   `json:"id"`
@@ -48,10 +49,9 @@ var (
 	// Administration (workstream G) publishes connectivity and diagnostics
 	// policy through this same registry, so the console has one authority for
 	// every server setting rather than a second document per feature area.
-	RemoteSignInPolicies     = []string{"allow", "owner-only", "off"}
-	SecureConnectionPolicies = []string{"preferred", "required"}
-	LogLevels                = []string{"error", "warn", "info", "debug"}
-	LogCategories            = []string{"server", "playback", "scan", "network", "client"}
+	RemoteSignInPolicies = []string{"allow", "owner-only", "off"}
+	LogLevels            = []string{"error", "warn", "info", "debug"}
+	LogCategories        = []string{"server", "playback", "scan", "network", "client"}
 )
 
 func oneOf(value string, allowed []string) bool {
@@ -95,14 +95,14 @@ func Registry() []Field {
 		field("library.trashRetentionDays", "library", "nullable-integer", 30, bounded(0), bounded(3650), nil, "hot", "administration media deletion", "How long deleted files stay recoverable in the trash by default. 0 removes files immediately; null uses the shipped 30 days. Each library may override this on its own configuration page."),
 		field("remoteSignInPolicy", "connectivity", "enumeration", "allow", nil, nil, RemoteSignInPolicies, "next-operation", "sign-in admission", "Who may sign in from outside this network. Owner-only still allows existing remote sessions to finish."),
 		field("remoteBitrateLimitKbps", "connectivity", "integer", 0, bounded(0), bounded(200000), nil, "next-operation", "playback delivery planning", "Server-wide ceiling on video bitrate for remote playback, in kbps. 0 means no ceiling."),
-		field("secureConnectionsPolicy", "connectivity", "enumeration", "preferred", nil, nil, SecureConnectionPolicies, "hot", "HTTP API admission", "Preferred permits HTTP and HTTPS. Required refuses HTTP API requests on a claimed server."),
-		field("lanNetworks", "connectivity", "string-list", []string{}, nil, nil, nil, "hot", "connectivity status and remote classification", "CIDR networks treated as this server's own LAN."),
+		field("lanNetworks", "connectivity", "string-list", networkpolicy.DefaultHomeNetworks(), nil, nil, nil, "hot", "connectivity status and remote classification", "Home networks. Only these addresses count as local. An empty list makes every connection remote."),
 		field("accessUrls", "connectivity", "string-list", []string{}, nil, nil, nil, "hot", "connectivity status", "HTTPS addresses members' apps may use to reach this server, such as a reverse proxy or VPN name. Published with the server's routes; each app tests them itself."),
+		field("connectionLimit", "connectivity", "integer", 0, bounded(0), bounded(65536), nil, "restart", "listener connection admission", "Maximum ordinary connections. 0 uses a default based on available memory. The owner console has reserved connections."),
+		field("advertiseUrl", "connectivity", "string", "", nil, nil, nil, "hot", "client connection candidates", "External address clients may use to reach this server. Use a hostname with no path. HTTPS addresses can also be listed by Hosted."),
 		field("trustedProxies", "connectivity", "string-list", []string{}, nil, nil, nil, "hot", "request locality and forwarded client address", "Reverse proxies (addresses or CIDR networks) whose forwarded client address this server believes. Other peers are judged by their own address."),
-		field("treatWanAsLan", "connectivity", "boolean", true, nil, nil, nil, "hot", "request locality", "Count requests from this network's own public address as local, for routers that send LAN devices through the public address."),
 		field("uploadCapacityKbps", "connectivity", "integer", 0, bounded(0), bounded(10000000), nil, "next-operation", "remote playback admission", "The home connection's upload speed in kbps. New remote streams share about 80% of it and get a lower quality when it is busy. 0 means unknown: no budget."),
 		field("pausedSessionTimeoutMinutes", "connectivity", "integer", 0, bounded(0), bounded(1440), nil, "hot", "playback session sweeper", "End video sessions paused for longer than this many minutes, freeing their stream slot. Audio and Live are never ended. 0 means never."),
-		field("advertisedInterface", "connectivity", "string", "", nil, nil, nil, "hot", "LAN route publication", "The network interface whose address LAN clients are given. Empty means automatic, which skips container and virtual bridges."),
+		field("advertisedInterface", "connectivity", "string", "", nil, nil, nil, "hot", "LAN route publication", "The network interface whose address LAN clients are given. Empty advertises all available interfaces."),
 		field("customCertificatePath", "connectivity", "string", "", nil, nil, nil, "hot", "TLS listener", "Path to a PEM certificate chain for a custom domain. Reloaded when the file changes."),
 		field("customCertificateKeyPath", "connectivity", "string", "", nil, nil, nil, "hot", "TLS listener", "Path to the PEM private key for the custom certificate."),
 		field("customCertificateDomain", "connectivity", "string", "", nil, nil, nil, "hot", "TLS listener and route publication", "The domain the custom certificate serves. It is published to members as an access URL on the remote access port."),
@@ -155,19 +155,19 @@ type Settings struct {
 	// Connectivity, access and diagnostics policy (workstream G). The console
 	// document is their single authority; the typed /v1/admin/connectivity and
 	// /v1/admin/logs endpoints project these same fields.
-	RemoteSignInPolicy      string   `json:"remoteSignInPolicy"`
-	RemoteBitrateLimitKbps  int      `json:"remoteBitrateLimitKbps"`
-	SecureConnectionsPolicy string   `json:"secureConnectionsPolicy"`
-	LANNetworks             []string `json:"lanNetworks"`
-	AccessURLs              []string `json:"accessUrls"`
-	LANDiscoveryEnabled     bool     `json:"lanDiscoveryEnabled"`
+	RemoteSignInPolicy     string   `json:"remoteSignInPolicy"`
+	RemoteBitrateLimitKbps int      `json:"remoteBitrateLimitKbps"`
+	ConnectionLimit        int      `json:"connectionLimit"`
+	AdvertiseURL           string   `json:"advertiseUrl"`
+	LANNetworks            []string `json:"lanNetworks"`
+	AccessURLs             []string `json:"accessUrls"`
+	LANDiscoveryEnabled    bool     `json:"lanDiscoveryEnabled"`
 	// Network parity with the usual self-hosted servers (25 Sep): proxies that
 	// may speak for the client address, the server's own public address counted
 	// as the LAN, the owner's upload capacity (the remote stream budget), the
 	// paused-session limit, the interface advertised to LAN clients, and an
 	// owner-supplied certificate for a custom domain.
 	TrustedProxies              []string       `json:"trustedProxies"`
-	TreatWANAsLAN               bool           `json:"treatWanAsLan"`
 	UploadCapacityKbps          int            `json:"uploadCapacityKbps"`
 	PausedSessionTimeoutMinutes int            `json:"pausedSessionTimeoutMinutes"`
 	AdvertisedInterface         string         `json:"advertisedInterface"`
@@ -189,7 +189,7 @@ type LogRetention struct {
 // fresh database and a document saved before these fields existed agree.
 func DefaultSettings() Settings {
 	return Settings{Name: "Portico", TranscodingEnabled: true, HardwareBackend: "auto", HDRToneMappingAlgorithm: "hable", X264Preset: "veryfast", DirectStreamRemux: true, PlanningPolicy: "maximum_fidelity", ThrottleBufferSeconds: 60, PlayedRetentionSeconds: 180, DiagnosticDays: 30, NotificationDays: 180, JobDays: 30, UpdateChannel: "stable", TrashRetentionDays: bounded(30),
-		RemoteSignInPolicy: "allow", SecureConnectionsPolicy: "preferred", LANNetworks: []string{}, AccessURLs: []string{}, LANDiscoveryEnabled: true, TrustedProxies: []string{}, TreatWANAsLAN: true, LogLevel: "info", LogRetention: []LogRetention{}}
+		RemoteSignInPolicy: "allow", LANNetworks: networkpolicy.DefaultHomeNetworks(), AccessURLs: []string{}, LANDiscoveryEnabled: true, TrustedProxies: []string{}, LogLevel: "info", LogRetention: []LogRetention{}}
 }
 
 type SettingsDocument struct {

@@ -1,6 +1,7 @@
 package networking
 
 import (
+	"bytes"
 	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
@@ -229,7 +230,72 @@ func TestDirectListenerServesCustomWithoutManager(t *testing.T) {
 	if l.config.MinVersion != tls.VersionTLS12 {
 		t.Fatalf("TLS minimum moved: %v", l.config.MinVersion)
 	}
-	if l.config.VerifyConnection != nil {
-		t.Fatal("no manager means no resumed-session fence")
+	if l.config.VerifyConnection == nil {
+		t.Fatal("custom certificate needs a resumption validity check")
+	}
+	if err := l.config.VerifyConnection(tls.ConnectionState{DidResume: true, ServerName: "media.example.com"}); err != nil {
+		t.Fatal(err)
+	}
+	custom.now = func() time.Time { return got.Leaf.NotAfter.Add(time.Second) }
+	if err := l.config.VerifyConnection(tls.ConnectionState{DidResume: true, ServerName: "media.example.com"}); err == nil {
+		t.Fatal("expired custom certificate resumed")
+	}
+}
+
+func TestCustomCertificateStatusExpiresWithoutFileChange(t *testing.T) {
+	certPath, keyPath := customCertFixture(t, "media.example.com")
+	c := customWithStaticSource(certPath, keyPath, "media.example.com")
+	first, err := c.Get(&tls.ClientHelloInfo{ServerName: "media.example.com"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.now = func() time.Time { return first.Leaf.NotAfter.Add(time.Second) }
+	if status := c.Status(context.Background()); status.State != "error" || status.ErrorCode != "custom_certificate_expired" {
+		t.Fatalf("%+v", status)
+	}
+	if _, err := c.Get(&tls.ClientHelloInfo{ServerName: "media.example.com"}); err == nil {
+		t.Fatal("expired certificate served")
+	}
+}
+
+func TestCustomCertificateDetectsSameSizeAndTimestampReplacement(t *testing.T) {
+	certPath, keyPath := customCertFixture(t, "media.example.com")
+	now := time.Now()
+	c := customWithStaticSource(certPath, keyPath, "media.example.com")
+	c.now = func() time.Time { return now }
+	first, err := c.Get(&tls.ClientHelloInfo{ServerName: "media.example.com"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(certPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(certPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Corrupt PEM while preserving its length and mtime. The last good pair
+	// continues serving, but status must report the replacement failure.
+	for i := range raw {
+		if raw[i] == 'M' {
+			raw[i] = '!'
+			break
+		}
+	}
+	if err = os.WriteFile(certPath, raw, 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.Chtimes(certPath, info.ModTime(), info.ModTime()); err != nil {
+		t.Fatal(err)
+	}
+	now = now.Add(31 * time.Second)
+	status := c.Status(context.Background())
+	if status.State != "error" || !status.Serving {
+		t.Fatalf("replacement not detected: %+v", status)
+	}
+	got, err := c.Get(&tls.ClientHelloInfo{ServerName: "media.example.com"})
+	if err != nil || !bytes.Equal(first.Certificate[0], got.Certificate[0]) {
+		t.Fatal("last valid pair was lost")
 	}
 }

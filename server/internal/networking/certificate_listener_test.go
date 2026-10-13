@@ -13,28 +13,6 @@ import (
 	"time"
 )
 
-func TestDirectListenerLocalPeerPolicy(t *testing.T) {
-	for _, tc := range []struct {
-		ip    string
-		allow bool
-	}{
-		{"127.0.0.1", true}, {"::1", true}, {"10.2.3.4", true}, {"172.16.0.1", true},
-		{"172.31.255.254", true}, {"192.168.1.20", true}, {"169.254.1.2", true},
-		{"fc00::1", true}, {"fd42::1", true}, {"fe80::1234", true}, {"::ffff:192.168.1.20", true},
-		{"172.15.0.1", false}, {"172.32.0.1", false}, {"100.64.0.1", false}, {"8.8.8.8", false},
-		{"2001:4860:4860::8888", false}, {"0.0.0.0", false}, {"::", false}, {"ff02::1", false},
-	} {
-		t.Run(tc.ip, func(t *testing.T) {
-			if got := localHTTPConnection(&net.TCPAddr{IP: net.ParseIP(tc.ip), Port: 1234, Zone: "en0"}); got != tc.allow {
-				t.Fatalf("admitted=%v", got)
-			}
-		})
-	}
-	if localHTTPConnection(nil) || localHTTPConnection(&net.UnixAddr{Name: "127.0.0.1:1234", Net: "unix"}) {
-		t.Fatal("non-TCP peer admitted")
-	}
-}
-
 type listenerPeerConn struct {
 	net.Conn
 	peer net.Addr
@@ -74,7 +52,7 @@ func newListenerPeer(t *testing.T, ip string) (*DirectListener, net.Conn) {
 	return l, client
 }
 func TestDirectListenerLANRecoveryWithoutCertificate(t *testing.T) {
-	for _, ip := range []string{"127.0.0.1", "192.168.1.20", "fe80::1234"} {
+	for _, ip := range []string{"127.0.0.1", "192.168.1.20", "fe80::1234", "100.64.0.1", "203.0.113.12", "2001:db8::1"} {
 		t.Run(ip, func(t *testing.T) {
 			l, client := newListenerPeer(t, ip)
 			// Downstream authorization remains the authority. This response must reach
@@ -100,18 +78,6 @@ func TestDirectListenerLANRecoveryWithoutCertificate(t *testing.T) {
 				t.Fatalf("authorization bypass: %d", response.StatusCode)
 			}
 		})
-	}
-}
-func TestDirectListenerPublicCannotSpoofLAN(t *testing.T) {
-	l, client := newListenerPeer(t, "203.0.113.12")
-	client.SetDeadline(time.Now().Add(2 * time.Second))
-	_, _ = io.WriteString(client, "GET / HTTP/1.1\r\nHost: localhost\r\nX-Forwarded-For: 127.0.0.1\r\nForwarded: for=192.168.1.20\r\n\r\n")
-	var b [1]byte
-	if _, err := client.Read(b[:]); err == nil {
-		t.Fatal("public plaintext accepted")
-	}
-	if len(l.ready) != 0 {
-		t.Fatal("public plaintext reached HTTP")
 	}
 }
 func TestDirectListenerTLSDetectionPreserved(t *testing.T) {

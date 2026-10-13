@@ -192,7 +192,7 @@ export function DetailScreen() {
   const playWithChoice = (startSeconds: number) => {
     if (!item || !play?.playback) return;
     setPendingTrackChoice(choice.audioStreamIndex !== undefined || choice.subtitle !== undefined ? {itemId: play.playback.itemId, audioStreamIndex: choice.audioStreamIndex, subtitle: choice.subtitle} : undefined);
-    player.play(play.playback.itemId, startSeconds, entryOf(item), choice.prepared, choice.quality);
+    player.play(play.playback.itemId, startSeconds, entryOf(item), choice.prepared, choice.quality, choice.choices);
   };
   const titleRowsShown = relatedRowsForPage(titleRows);
   const shownCast = castPages.credits.slice(0, CAST_ON_PAGE);

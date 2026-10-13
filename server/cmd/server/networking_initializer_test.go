@@ -163,3 +163,16 @@ func TestAccessURLsForPublicationComposesDomainRoute(t *testing.T) {
 		t.Fatalf("empty settings must clear, not nil: %v", got)
 	}
 }
+
+func TestPublicationFiltersPlainHTTPAndIncludesExternalAddress(t *testing.T) {
+	v := operations.Settings{AccessURLs: []string{"http://overlay.example:32500", "https://media.example"}, AdvertiseURL: "https://external.example"}
+	got := accessURLsForPublication(v, 32500)
+	if len(got) != 2 || got[1] != "https://media.example" || got[0] != "https://external.example" {
+		t.Fatalf("%v", got)
+	}
+	v.AdvertiseURL = "http://external.example"
+	got = accessURLsForPublication(v, 32500)
+	if len(got) != 1 {
+		t.Fatalf("plaintext was published: %v", got)
+	}
+}

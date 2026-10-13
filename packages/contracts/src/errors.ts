@@ -265,6 +265,12 @@ export const errors = [
     "retry": "never"
   },
   {
+    "code": "setup_already_complete",
+    "status": 409,
+    "message": "This server is already set up.",
+    "retry": "never"
+  },
+  {
     "code": "source_unavailable",
     "status": 503,
     "message": "The file for this title can't be reached right now.",

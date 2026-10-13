@@ -2,6 +2,8 @@
 .stage { position: fixed; inset: 0; z-index: var(--layer-player); background: #000; /* lint-design-allow: player-canvas black per PC-VISUAL 4.3 */ display: flex; align-items: center; justify-content: center; outline: none; overflow: hidden; }
 .stage.audio { background: var(--surface-projector); }
 .video { width: 100%; height: 100%; object-fit: contain; background: transparent; }
+/* Fill the screen: the picture is cropped to cover it (letterboxed films on a wide screen, 4:3 on 16:9). */
+.video.fill { object-fit: cover; }
 .stage.audio .video { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 .tap { position: absolute; inset: 0; cursor: default; }
 .hidden { cursor: none; }
@@ -86,7 +88,8 @@
 .played { position: absolute; left: 0; top: 0; bottom: 0; background: var(--accent); }
 .knob { position: absolute; width: 14px; height: 14px; margin-left: -7px; border-radius: 50%; background: var(--color-text); box-shadow: 0 1px 6px color-mix(in srgb, #000 50%, transparent); /* lint-design-allow */ opacity: 0; transform: scale(0.6); transition: opacity var(--motion-quick) var(--ease-out), transform var(--motion-quick) var(--ease-out); pointer-events: none; }
 .track:hover .knob, .track:focus-within .knob, .track.dragging .knob { opacity: 1; transform: scale(1); }
-.range { position: absolute; inset: 0; width: 100%; opacity: 0; margin: 0; cursor: pointer; }
+/* The range input is the keyboard and screen-reader control only: pointers go to the bar beneath it, so a click is one seek. */
+.range { position: absolute; inset: 0; width: 100%; opacity: 0; margin: 0; pointer-events: none; }
 .hoverTime { position: absolute; bottom: 26px; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; padding: 2px 6px; border-radius: 4px; background: color-mix(in srgb, var(--color-ink) 85%, transparent); color: var(--text-primary); font-size: 11.5px; pointer-events: none; white-space: nowrap; }
 .live { display: inline-flex; align-items: center; gap: 6px; color: var(--status-record); font-weight: 600; font-size: 12px; letter-spacing: 0.06em; }
 .live i { width: 8px; height: 8px; border-radius: 50%; background: currentColor; animation: pulse 1.6s ease-in-out infinite; }
@@ -169,5 +172,7 @@ video::cue {font-size:var(--subtitle-size,100%);background-color:var(--subtitle-
 .infoHead { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
 .infoTitle { font-size: 13px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-tertiary); }
 .infoRows { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 6px 16px; margin: 0; font-size: 13.5px; }
+.infoCopy { margin-left: auto; padding: 4px 10px; border-radius: var(--radius-control); font-size: 12.5px; color: var(--text-secondary); }
+.infoCopy:hover { background: var(--accent-tint); color: var(--text-primary); }
 .infoRows dt { color: var(--text-tertiary); }
 .infoRows dd { margin: 0; color: var(--text-primary); font-variant-numeric: tabular-nums; }

@@ -27,10 +27,23 @@ export function playbackUserMessage(error:unknown):string {
  if(value?.status===403)return messages.forbidden;
  // Do not echo arbitrary server text, URLs, IDs, native exceptions or serialized payloads.
  const message=typeof error==='string'?error:typeof value?.message==='string'?value.message:'';
- const safe=[/^Listening timer paused playback\.$/,/^Playback has ended on the server\.$/,/^Choose Go Live or a position in the retained window before resuming\.$/,/^The channel stream ended\. Retry or choose Go Live\.$/,/^The previous playback could not be stopped\. Retry this channel when the server reconnects\.$/];
+ const safe=[/^This title can’t be played on this device\.$/,/^This title needs converting, and converting is turned off for this account\.$/,/^This item isn’t available\.$/,/^This account is already playing as many streams as it is allowed\.$/,/^This queue is too long\. Remove some of it or start a new one\.$/,/^This part of the queue is still loading\. Try again in a moment\.$/,/^The queue has ended\.$/,/^Listening timer paused playback\.$/,/^Playback has ended on the server\.$/,/^Choose Go Live or a position in the retained window before resuming\.$/,/^The channel stream ended\. Retry or choose Go Live\.$/,/^The previous playback could not be stopped\. Retry this channel when the server reconnects\.$/];
  if(message==='Playback control disconnected. Retrying…')return 'Reconnecting playback controls…';
  if(message==='This media could not be played. Your playback position is retained.')return 'This device could not play the stream. Your position is saved; try again.';
  if(safe.some(pattern=>pattern.test(message)))return message;
  if(error instanceof TypeError||/network|fetch|connection|timed? ?out/i.test(message))return 'The stream could not connect. Check your connection and try again.';
  return 'Playback could not continue. Please try again.';
+}
+
+/**
+ * Whether trying again cannot help: the title cannot be played on this device at all, or this
+ * viewer may not play it. The player then says so plainly instead of offering "Try again" as
+ * the way forward. Everything else (the network, a busy server, a stream that was ended) is
+ * worth another try.
+ */
+export function playbackFailurePermanent(error:unknown):boolean {
+ const value=error&&typeof error==='object'?error as {code?:unknown;message?:unknown}:undefined;
+ const text=typeof error==='string'?error:typeof value?.code==='string'?value.code:typeof value?.message==='string'?value.message:'';
+ return ['cannot_play_here','streaming_unsupported','unsupported_media','unsupported_tuple','unknown_source_facts','transcoding_disabled','transcode_not_allowed','not_found','forbidden','access_revoked','unsupported_version',
+  'This title can’t be played on this device.','This title needs converting, and converting is turned off for this account.','This item isn’t available.'].includes(text);
 }

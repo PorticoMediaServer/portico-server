@@ -143,9 +143,11 @@ type AuthoredPage = Readonly<{id: string; title: MessageId; icon: IconId; tabs?:
 const seconds = (...values: number[]): SettingsChoice[] => values.map(value => ({value, label: 'pref.unit.seconds', labelValues: {count: value}}));
 const speeds: SettingsChoice[] = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2].map(value => (value === 1 ? {value, label: 'pref.unit.speedNormal'} : {value, label: 'pref.unit.speed', labelValues: {value}}));
 const skipChoices = (key: string): SettingsChoice[] => (['ask', 'auto', 'off'] as const).map(value => ({value, label: `pref.value.${key}.${value}` as MessageId}));
+// The saved default for each network, in the player's own order: Original (the default), Automatic
+// (starts at Original and adjusts to the connection), then the fixed qualities.
 const limitChoices: SettingsChoice[] = [
-  {value: 'automatic', label: 'settings.quality.limit.automatic'},
   {value: 'original', label: 'settings.quality.limit.original'},
+  {value: 'automatic', label: 'settings.quality.limit.automatic'},
   {value: '2160', label: 'pref.unit.4k'},
   {value: '1080', label: 'pref.unit.height', labelValues: {value: '1080'}},
   {value: '720', label: 'pref.unit.height', labelValues: {value: '720'}},
@@ -394,12 +396,10 @@ const serverPages: readonly AuthoredPage[] = [
     ]},
     {id: 'outside', title: 'web.connectivity.outside', description: 'web.connectivity.outsideLede', rows: [
       setting('connectivity', 'remoteSignInPolicy', 'web.connectivity.whoMaySignIn', {type: 'choice', choices: choices('settings.server.signIn', ['allow', 'owner-only', 'off'])}),
-      setting('connectivity', 'secureConnectionsPolicy', 'web.connectivity.encrypted', {type: 'choice', choices: choices('settings.server.secure', ['required', 'preferred', 'lan-plain-allowed'])}, {help: 'web.connectivity.encryptedHelp'}),
     ]},
     {id: 'home', title: 'settings.server.homeNetwork', rows: [
       on('connectivity', 'lanDiscoveryEnabled', 'web.connectivity.discovery', 'settings.server.discoveryHelp'),
       setting('connectivity', 'lanNetworks', 'web.connectivity.homeNetworks', {type: 'lines', example: '192.168.2.0/24'}, {help: 'web.connectivity.homeNetworksHelp'}),
-      on('connectivity', 'treatWanAsLan', 'web.connectivity.wanAsLan', 'web.connectivity.wanAsLanHelp'),
       setting('connectivity', 'accessUrls', 'web.connectivity.extraAddresses', {type: 'lines', example: 'https://media.example.com'}, {help: 'web.connectivity.extraAddressesHelp'}),
       custom('server.addresses'),
     ]},

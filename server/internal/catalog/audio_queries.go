@@ -174,16 +174,17 @@ func (s *Service) AudioItems(profile, parent, kind, cursor string, limit int) ([
 	}
 	limit = pageLimit(limit)
 	disc, track := 0, 0
+	afterName := ""
 	var after int64
 	if cursor != "" {
-		if err := s.read().QueryRow(`SELECT COALESCE(d.disc_number,0),COALESCE(d.`+number+`,0),item.id FROM `+table+` d JOIN catalog_entities item ON item.id=d.entity_id JOIN catalog_entities p ON p.id=d.`+parentColumn+` WHERE p.public_id=pid_blob(?) AND item.public_id=pid_blob(?)`, parent, cursor).Scan(&disc, &track, &after); err != nil {
+		if err := s.read().QueryRow(`SELECT COALESCE(d.disc_number,1),COALESCE(d.`+number+`,0),item.sort_key,item.id FROM `+table+` d JOIN catalog_entities item ON item.id=d.entity_id JOIN catalog_entities p ON p.id=d.`+parentColumn+` WHERE p.public_id=pid_blob(?) AND item.public_id=pid_blob(?)`, parent, cursor).Scan(&disc, &track, &afterName, &after); err != nil {
 			return nil, "", errors.New("invalid audio cursor")
 		}
 	}
 	rows, err := s.read().Query(`SELECT pid(item.public_id) FROM `+table+` d JOIN catalog_entities item ON item.id=d.entity_id JOIN catalog_entities p ON p.id=d.`+parentColumn+`
  WHERE p.public_id=pid_blob(?) AND p.retired=0 AND item.retired=0
- AND (COALESCE(d.disc_number,0),COALESCE(d.`+number+`,0),item.id)>(?,?,?)
- ORDER BY COALESCE(d.disc_number,0),COALESCE(d.`+number+`,0),item.id LIMIT ?`, parent, disc, track, after, limit+1)
+ AND (COALESCE(d.disc_number,1),COALESCE(d.`+number+`,0),item.sort_key,item.id)>(?,?,?,?)
+ ORDER BY COALESCE(d.disc_number,1),COALESCE(d.`+number+`,0),item.sort_key,item.id LIMIT ?`, parent, disc, track, afterName, after, limit+1)
 	if err != nil {
 		return nil, "", err
 	}
@@ -221,6 +222,7 @@ func (s *Service) BookChapters(book, cursor string, limit int) ([]BookChapter, s
 	limit = pageLimit(limit)
 	disc, part, index := 0, 0, 0
 	file := ""
+	fileName := ""
 	var fileID int64
 	if cursor != "" {
 		colon := strings.LastIndexByte(cursor, ':')
@@ -232,15 +234,15 @@ func (s *Service) BookChapters(book, cursor string, limit int) ([]BookChapter, s
 			return nil, "", errors.New("invalid chapter cursor")
 		}
 		file, index = cursor[:colon], parsed
-		if err = s.read().QueryRow(`SELECT COALESCE(f.disc_number,0),COALESCE(f.part_number,0),item.id FROM catalog_book_chapters c JOIN catalog_book_files f ON f.entity_id=c.file_id JOIN catalog_entities item ON item.id=f.entity_id JOIN catalog_entities b ON b.id=f.book_id WHERE b.public_id=pid_blob(?) AND item.public_id=pid_blob(?) AND c.chapter_index=?`, book, file, index).Scan(&disc, &part, &fileID); err != nil {
+		if err = s.read().QueryRow(`SELECT COALESCE(f.disc_number,1),COALESCE(f.part_number,0),item.sort_key,item.id FROM catalog_book_chapters c JOIN catalog_book_files f ON f.entity_id=c.file_id JOIN catalog_entities item ON item.id=f.entity_id JOIN catalog_entities b ON b.id=f.book_id WHERE b.public_id=pid_blob(?) AND item.public_id=pid_blob(?) AND c.chapter_index=?`, book, file, index).Scan(&disc, &part, &fileName, &fileID); err != nil {
 			return nil, "", errors.New("invalid chapter cursor")
 		}
 	}
 	rows, err := s.read().Query(`SELECT pid(item.public_id)||':'||CAST(c.chapter_index AS TEXT),pid(item.public_id),c.chapter_index,c.title,c.start_seconds,c.end_seconds
  FROM catalog_book_chapters c JOIN catalog_book_files f ON f.entity_id=c.file_id JOIN catalog_entities item ON item.id=f.entity_id JOIN catalog_entities b ON b.id=f.book_id
  WHERE b.public_id=pid_blob(?) AND b.retired=0 AND item.retired=0
- AND (COALESCE(f.disc_number,0),COALESCE(f.part_number,0),item.id,c.chapter_index)>(?,?,?,?)
- ORDER BY COALESCE(f.disc_number,0),COALESCE(f.part_number,0),item.id,c.chapter_index LIMIT ?`, book, disc, part, fileID, index, limit+1)
+ AND (COALESCE(f.disc_number,1),COALESCE(f.part_number,0),item.sort_key,item.id,c.chapter_index)>(?,?,?,?,?)
+ ORDER BY COALESCE(f.disc_number,1),COALESCE(f.part_number,0),item.sort_key,item.id,c.chapter_index LIMIT ?`, book, disc, part, fileName, fileID, index, limit+1)
 	if err != nil {
 		return nil, "", err
 	}

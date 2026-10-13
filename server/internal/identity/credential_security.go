@@ -10,6 +10,7 @@ import (
 	"errors"
 	"net"
 	"net/netip"
+	"portico.local/server/internal/networkpolicy"
 	"strings"
 	"time"
 
@@ -69,7 +70,7 @@ func credentialSource(ctx context.Context) (string, bool) {
 	if addr.Is4() {
 		bits = 24
 	}
-	return netip.PrefixFrom(addr, bits).Masked().String(), addr.IsLoopback() || addr.IsPrivate()
+	return netip.PrefixFrom(addr, bits).Masked().String(), networkpolicy.Home(ctx)
 }
 
 // A bucket in cool-off is refused before password hashing, with the exact

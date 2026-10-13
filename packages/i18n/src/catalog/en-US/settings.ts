@@ -36,7 +36,7 @@ export const settingsMessages = {
   'settings.section.audio': 'Audio',
   'settings.section.subtitles': 'Subtitles',
   'settings.section.subtitleAppearance': 'Subtitle appearance',
-  'settings.section.qualityLimits': 'Highest quality',
+  'settings.section.qualityLimits': 'Default quality',
   'settings.section.servers': 'Server',
 
   'settings.row.identity': 'Name and picture',
@@ -75,9 +75,9 @@ export const settingsMessages = {
   'settings.subtitlePreview.line': 'This is how subtitles will look.',
 
   'settings.row.qualityHome': 'On this network',
-  'settings.help.qualityHome': 'When this device is on the same network as your server.',
+  'settings.help.qualityHome': 'When this device is on the same network as your server. Original plays the file as it is; Automatic starts there and adjusts to your connection. You can pick another quality for one viewing in the player.',
   'settings.row.qualityAway': 'Away from home',
-  'settings.help.qualityAway': 'On Wi-Fi or a wired connection anywhere else.',
+  'settings.help.qualityAway': 'On Wi-Fi or a wired connection anywhere else. Automatic lowers the quality when the connection can’t keep up, and raises it again when it can.',
   'settings.row.qualityCellular': 'On cellular',
   'settings.quality.limit.automatic': 'Automatic',
   'settings.quality.limit.original': 'Original',

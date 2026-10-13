@@ -58,15 +58,15 @@ func narrowBitrate(a, b int) int {
 // alertUploadBudget raises the owner alert while new remote streams are being
 // held at the floor and clears it once one fits again. It changes state only.
 func (d Dependencies) alertUploadBudget(ctx context.Context, exhausted bool) {
-	if d.securePolicy == nil || d.Console == nil || d.securePolicy.uploadAlert.Load() == exhausted {
+	if d.connectionPolicy == nil || d.Console == nil || d.connectionPolicy.uploadAlert.Load() == exhausted {
 		return
 	}
-	d.securePolicy.mu.Lock()
-	defer d.securePolicy.mu.Unlock()
-	if d.securePolicy.uploadAlert.Load() == exhausted {
+	d.connectionPolicy.mu.Lock()
+	defer d.connectionPolicy.mu.Unlock()
+	if d.connectionPolicy.uploadAlert.Load() == exhausted {
 		return
 	}
 	if err := d.Console.Alert(ctx, "upload-budget-exhausted", "warning", exhausted); err == nil {
-		d.securePolicy.uploadAlert.Store(exhausted)
+		d.connectionPolicy.uploadAlert.Store(exhausted)
 	}
 }

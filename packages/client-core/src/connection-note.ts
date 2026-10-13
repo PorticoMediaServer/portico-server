@@ -1,35 +1,21 @@
 /**
- * What the server says about the connection this app is using to reach it
- * (`GET /v1/networking/connection`, open to anyone who can reach the server). The server alone
- * decides what counts as outside the home: the owner's home networks setting is the one
- * definition, and the app never guesses from an address.
+ * The quiet line a signed-out screen shows when the server says this connection is plain HTTP
+ * from outside the owner's home networks (`GET /v1/networking/connection`, read with
+ * `HttpLocalApi.connection()`; open to anyone who can reach the server). The server alone decides
+ * what counts as outside the home: the owner's home networks setting is the one definition, and
+ * the app never guesses from an address.
  */
-export type ConnectionFacts = Readonly<{
-  /** The request arrived encrypted. */
-  secure: boolean;
-  /** The request came from outside the owner's home networks. */
-  remote: boolean;
-  /** Plain HTTP from outside the home networks: worth one quiet line on the sign-in screen, never a block. */
-  plainHttpOutsideHome: boolean;
-}>;
+import type {ConnectionDocument} from './server-administration.ts';
 
-export interface ConnectionApi { request<T>(path: string, method?: string, body?: unknown, signal?: AbortSignal): Promise<T> }
-
-/** Reads the facts tolerantly: a field that is missing or not a yes/no reads as "nothing to say". */
-export function parseConnectionFacts(value: unknown): ConnectionFacts {
-  const v = typeof value === 'object' && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : {};
-  const secure = v.secure === true;
-  const remote = v.remote === true;
-  return Object.freeze({secure, remote, plainHttpOutsideHome: v.plainHttpOutsideHome === true && !secure});
-}
+export interface ConnectionReader { connection(signal?: AbortSignal): Promise<ConnectionDocument> }
 
 /**
- * Whether to show the quiet plain-HTTP line. It is only ever a note: any failure to find out
- * (an older server, a timeout, an unreadable answer) means no note, and nothing waits on it.
+ * Whether to show the line. It is only ever a note: any failure to find out (an older server, a
+ * timeout, an answer that cannot be read) means no note, and nothing waits on it.
  */
-export async function plainHttpOutsideHome(api: ConnectionApi, signal?: AbortSignal): Promise<boolean> {
+export async function plainHttpOutsideHome(api: ConnectionReader, signal?: AbortSignal): Promise<boolean> {
   try {
-    return parseConnectionFacts(await api.request<unknown>('/v1/networking/connection', 'GET', undefined, signal)).plainHttpOutsideHome;
+    return (await api.connection(signal)).plainHttpOutsideHome === true;
   } catch {
     return false;
   }

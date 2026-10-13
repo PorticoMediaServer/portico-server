@@ -32,7 +32,7 @@ export function PlainHttpNote() {
   if (!show) return null;
   return (
     <p className={s.plainHttp}>
-      {t('signIn.plainHttp.note')}{' '}
+      {t('web.connectivity.httpOutsideHome')}{' '}
       <a href={SECURE_CONNECTION_HELP_URL} target="_blank" rel="noopener noreferrer">{t('signIn.plainHttp.link')}</a>
     </p>
   );

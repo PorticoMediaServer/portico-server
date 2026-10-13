@@ -1,6 +1,7 @@
 import React, {useEffect, useMemo, useState, useSyncExternalStore} from 'react';
 import {PlayerOffersService, type PlayerOffersData, type PlayerOfferedStream} from '@core/player-offers.ts';
 import type {PreparedChoice} from '@core/prepared-media.ts';
+import {fixedQualities, heightClass, qualityRequest, type PlaybackChoices as StartChoices} from '@core/playback-v1/choices.ts';
 import {useSession} from '../../app/session';
 import {useViewerScope} from '../../app/viewer-scope';
 import {Select} from '../../ui';
@@ -18,7 +19,10 @@ import {useI18n, type I18n} from '../../app/i18n';
  * plan inside a session, so before Play there is no plan to list. Untouched, the control reads
  * "Automatic" (the viewer's subtitle preference decides), never a guess at what will show.
  */
-export type PlaybackChoice = Readonly<{prepared?: PreparedChoice; quality?: string; audioStreamIndex?: number; subtitle?: 'off' | {language?: string; resourceId?: string}}>;
+export type PlaybackChoice = Readonly<{prepared?: PreparedChoice; quality?: string; audioStreamIndex?: number; subtitle?: 'off' | {language?: string; resourceId?: string};
+  /** What Play sends with the start: the version and audio track picked here, and for a prepared
+   * copy the quality it was made at (the server then plays that copy). */
+  choices?: StartChoices}>;
 
 export function PlaybackChoices({libraryId, itemId, onChange, compact}: {libraryId: string; itemId: string; onChange: (choice: PlaybackChoice) => void; /** Phones: one row that wraps. */ compact?: boolean}) {
   const {api} = useSession();
@@ -43,6 +47,7 @@ export function PlaybackChoices({libraryId, itemId, onChange, compact}: {library
       ...(version && version.startsWith('prepared:') ? preparedChoice(data, version.slice('prepared:'.length)) : {}),
       ...(audio ? {audioStreamIndex: Number(audio)} : {}),
       ...(subtitle === '' ? {} : subtitle === 'off' ? {subtitle: 'off' as const} : subtitle.startsWith('lang:') ? {subtitle: {language: subtitle.slice(5)}} : {subtitle: {resourceId: subtitle}}),
+      ...startChoices(data, version, audio),
     };
     onChange(choice);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -66,6 +71,18 @@ export function PlaybackChoices({libraryId, itemId, onChange, compact}: {library
       {subtitleTracks.length ? <Select label={t('title.subtitles')} value={subtitle} options={subtitleOptions} onChange={e => setSubtitle(e.target.value)} /> : null}
     </div>
   );
+}
+
+/** The picks as the start request carries them; nothing when everything is left at its default. */
+function startChoices(data: PlayerOffersData, version: string, audio: string): {choices?: StartChoices} {
+  const out: {versionId?: string; audioTrackId?: string; quality?: StartChoices['quality']} = {};
+  if (version.startsWith('prepared:')) {
+    const prepared = data.preparedVersions.find(x => x.id === version.slice('prepared:'.length));
+    const step = prepared?.facts.height ? fixedQualities.find(q => q.height === heightClass(prepared.facts.height)) : undefined;
+    if (step) out.quality = qualityRequest(step.id);
+  } else if (version && version !== data.current?.sourceId && data.sources.length > 1) out.versionId = version;
+  if (audio && /^\d{1,4}$/.test(audio)) out.audioTrackId = 'a' + Number(audio);
+  return Object.keys(out).length ? {choices: out} : {};
 }
 
 function preparedChoice(data: PlayerOffersData, id: string): {prepared?: PreparedChoice} {

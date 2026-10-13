@@ -66,8 +66,9 @@ export function EpisodePanel({libraryId, showId, episodeId, preview, previous, n
     const entry = preview ?? entryOf(item);
     // The panel's pick-before-play travels like the movie page's: tracks through pending-choice, the version with Play.
     setPendingTrackChoice(choice.audioStreamIndex !== undefined || choice.subtitle !== undefined ? {itemId: play.playback.itemId, audioStreamIndex: choice.audioStreamIndex, subtitle: choice.subtitle} : undefined);
-    if (playList && !choice.prepared && !choice.quality) playList(entry, seconds);
-    else player.play(play.playback.itemId, seconds, entry, choice.prepared, choice.quality);
+    // An audio pick alone keeps the season queue: the track is applied to the session once it starts.
+    if (playList && !choice.prepared && !choice.quality && !choice.choices?.versionId && !choice.choices?.quality) playList(entry, seconds);
+    else player.play(play.playback.itemId, seconds, entry, choice.prepared, choice.quality, choice.choices);
     onClose();
   };
   // One entry per person even when the server lists them in two roles (writer and teleplay, say).

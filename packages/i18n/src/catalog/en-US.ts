@@ -16,6 +16,10 @@ import {settingsMessages} from './en-US/settings.ts';
 import {channelBuilderMessages} from './en-US/channel-builder.ts';
 
 export const enUS = {
+  'lyrics.skippedLines': 'Some lyric lines could not be read and were skipped.',
+  'lyrics.localRights': 'Supplied with the media by its owner.',
+  'audio.embeddedMetadataSkipped': 'An embedded metadata entry was skipped.',
+  'audio.cannotMeetBitrate': "The available audio formats cannot meet this device's capabilities and bitrate choice. This track plays without gapless or crossfade.",
   // ── Common actions ────────────────────────────────────────────────
   'action.tryAgain': 'Try again',
   'error.queueTooLarge': 'This queue is too long. Remove some of it or start a new one.',
@@ -43,7 +47,6 @@ export const enUS = {
   'signIn.error.pinInvalid': 'That PIN isn’t right. Try again.',
   'signIn.error.expired': 'That took too long. Start again.',
   'web.signIn.error.clock': 'This device and the server don’t agree on the time. Check the date and time on this device, then try again.',
-  'signIn.plainHttp.note': 'This connection to the server isn’t encrypted.',
   'signIn.plainHttp.link': 'How to turn on a secure connection',
   'link.openFailed': 'That page couldn’t be opened. Open it on another device: {address}',
   'action.save': 'Save',
