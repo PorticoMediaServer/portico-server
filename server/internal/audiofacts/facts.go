@@ -16,6 +16,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"regexp"
 	"strconv"
 	"strings"
@@ -24,6 +25,8 @@ import (
 // Facts are one audio asset's measurement.
 type Facts struct {
 	Container, Codec          string
+	Profile                   string
+	BitRate                   int64
 	SampleRate, Channels      int
 	BitDepth                  int
 	RawFrames, DurationFrames int64
@@ -45,7 +48,7 @@ var (
 )
 
 // Formats FFmpeg may open for a measurement; everything else is refused.
-const formatWhitelist = "mov,mp3,flac,ogg,wav,aac,aiff,matroska,asf,ape,wv,tta,w64,caf"
+const formatWhitelist = "mov,mp3,flac,ogg,wav,aac,aiff,matroska,asf,ape,wv,tta,w64,caf,amr,dsf,iff,mpc,mpc8"
 
 // Args are ffprobe's arguments for input (a private bridge URL). One pass: the
 // audio stream's parameters and extradata, the container name and iTunSMPB, each
@@ -55,7 +58,7 @@ func Args(input string) []string {
 	return []string{"-v", "error", "-threads", "1", "-protocol_whitelist", "http,tcp", "-format_whitelist", formatWhitelist,
 		"-probesize", "8388608", "-analyzeduration", "10000000", "-flags2", "+skip_manual", "-select_streams", "a:0",
 		"-show_data", "-show_streams", "-show_format", "-show_packets", "-show_frames",
-		"-show_entries", "stream=codec_name,sample_rate,channels,bits_per_raw_sample,bits_per_sample,extradata:stream_tags=iTunSMPB:format=format_name:format_tags=iTunSMPB:packet=duration:packet_side_data=skip_samples,discard_padding:frame=nb_samples",
+		"-show_entries", "stream=codec_name,profile,bit_rate,sample_rate,channels,duration_ts,time_base,bits_per_raw_sample,bits_per_sample,extradata:stream_tags=iTunSMPB:format=format_name:format_tags=iTunSMPB:packet=duration,size:packet_side_data=skip_samples,discard_padding:frame=nb_samples",
 		"-of", "compact", input}
 }
 
@@ -66,9 +69,11 @@ const maxLine = 1 << 20
 func Parse(r io.Reader) (Facts, error) {
 	var f Facts
 	var itun string
-	var packets, frames int64
+	var packets, frames, packetBytes int64
 	var firstSkip, lastDiscard int64
 	var sawStream bool
+	var durationTicks int64
+	var streamTimeBase string
 	sc := bufio.NewScanner(r)
 	sc.Buffer(make([]byte, 64<<10), maxLine)
 	for sc.Scan() {
@@ -78,6 +83,9 @@ func Parse(r io.Reader) (Facts, error) {
 		switch kind {
 		case "packet":
 			packets++
+			if n, e := strconv.ParseInt(fields["size"], 10, 64); e == nil && n > 0 && n < 1<<30 {
+				packetBytes += n
+			}
 			discard := int64(0)
 			if v, ok := fields["side_datum/skip_samples:skip_samples"]; ok && packets == 1 {
 				firstSkip, _ = strconv.ParseInt(v, 10, 64)
@@ -85,7 +93,10 @@ func Parse(r io.Reader) (Facts, error) {
 			if v, ok := fields["side_datum/skip_samples:discard_padding"]; ok {
 				discard, _ = strconv.ParseInt(v, 10, 64)
 			}
-			lastDiscard = discard
+			if discard < 0 || discard > 1<<20 {
+				return f, ErrInconsistent
+			}
+			lastDiscard += discard
 		case "frame":
 			n, err := strconv.ParseInt(fields["nb_samples"], 10, 64)
 			if err != nil || n < 0 || n > 1<<20 {
@@ -98,6 +109,10 @@ func Parse(r io.Reader) (Facts, error) {
 			}
 			sawStream = true
 			f.Codec = fields["codec_name"]
+			durationTicks, _ = strconv.ParseInt(fields["duration_ts"], 10, 64)
+			streamTimeBase = fields["time_base"]
+			f.Profile = fields["profile"]
+			f.BitRate, _ = strconv.ParseInt(fields["bit_rate"], 10, 64)
 			f.SampleRate, _ = strconv.Atoi(fields["sample_rate"])
 			f.Channels, _ = strconv.Atoi(fields["channels"])
 			if n, err := strconv.Atoi(fields["bits_per_raw_sample"]); err == nil && n > 0 && n <= 64 {
@@ -137,6 +152,22 @@ func Parse(r io.Reader) (Facts, error) {
 	f.StartFrames, f.EndFrames = firstSkip, lastDiscard
 	f.DurationFrames = frames - firstSkip - lastDiscard
 	f.TrimSource = sourceOf(f)
+	// MP4's sample table describes the audible end even when the final AAC
+	// packet contains unused samples and no iTunSMPB tag was written.
+	if f.Container == "mp4" && f.Codec == "aac" && durationTicks > 0 && durationTicks < 1<<45 {
+		numText, denText, ok := strings.Cut(streamTimeBase, "/")
+		num, e1 := strconv.ParseInt(numText, 10, 64)
+		den, e2 := strconv.ParseInt(denText, 10, 64)
+		if ok && e1 == nil && e2 == nil && num > 0 && den > 0 {
+			duration := int64(math.Round(float64(durationTicks) * float64(num) * float64(f.SampleRate) / float64(den)))
+			padding := frames - firstSkip - duration
+			if duration > 0 && padding >= lastDiscard && padding <= 4096 {
+				f.DurationFrames = duration
+				f.EndFrames = padding
+			}
+		}
+	}
+
 	// iTunSMPB (Apple's encoders, and most AAC/ALAC in MP4): delay, padding and the
 	// exact total. It wins when it fits the decoded stream; FFmpeg applies its
 	// delay (as an edit list) but never its end padding.
@@ -149,6 +180,12 @@ func Parse(r io.Reader) (Facts, error) {
 	}
 	if f.DurationFrames <= 0 || f.StartFrames+f.DurationFrames+f.EndFrames != f.RawFrames {
 		return f, ErrInconsistent
+	}
+	if packetBytes > 0 {
+		f.BitRate = int64(float64(packetBytes) * 8 * float64(f.SampleRate) / float64(f.DurationFrames))
+	}
+	if f.BitRate < 0 || f.BitRate > 1<<40 {
+		f.BitRate = 0
 	}
 	return f, nil
 }

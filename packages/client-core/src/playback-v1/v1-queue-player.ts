@@ -507,7 +507,8 @@ export class V1QueuePlayer implements QueueController {
       this.accept(created.queue, created.window);
       return;
     }
-    for (let i = 0; i < ids.length; i += SEGMENT_ITEMS) {
+    const starts:number[]=[];for(let i=0;i<ids.length;i+=SEGMENT_ITEMS)starts.push(i);if(next)starts.reverse();
+    for (const i of starts) {
       const r = await this.client.addSegment(this.header!.id, this.header!.revision, next ? 'next' : 'end', {source: {items: {ids: ids.slice(i, i + SEGMENT_ITEMS)}}});
       this.header = r.queue;
     }
@@ -724,7 +725,7 @@ export class V1QueuePlayer implements QueueController {
   audioRenderFailed(message: string) {
     const p = this.playback.getSnapshot();
     this.prepared = undefined; this.audioReadyToken = undefined;
-    this.playback.fail(p.intentId, message);
+    if(!this.playback.fallbackAudioRender())this.playback.fail(p.intentId, message);
   }
 }
 

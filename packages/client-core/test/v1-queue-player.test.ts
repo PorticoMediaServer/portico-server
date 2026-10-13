@@ -540,3 +540,7 @@ test('sameAlbum: the next entry follows the current one on its album', async () 
     assert.equal(player.sameAlbum('song-2', 'song-3'), false);
   } finally { stop(); }
 });
+
+test('a failed optional audio renderer hands the same session and position to ordinary playback',async t=>{
+ const f=transitionsSetup();t.after(()=>f.stop());await f.player.playEntries([queueItemInput('song-a','song')]);const p=f.playback.getSnapshot();f.playback.ready(p.intentId);if(p.pendingSeek)f.playback.seekApplied(p.intentId,p.pendingSeek.revision,p.pendingSeek.positionSeconds,'playing');f.playback.fact(p.intentId,30,'playing');const before=f.playback.getSnapshot();f.player.audioRenderFailed('Decoder failed');const after=f.playback.getSnapshot();assert.equal(after.session?.id,before.session?.id);assert.equal(after.audioEffects.rendering,false);assert.notEqual(after.phase,'error');assert.equal(after.pendingSeek?.positionSeconds,30);
+});

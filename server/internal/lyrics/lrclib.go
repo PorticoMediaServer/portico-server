@@ -174,6 +174,7 @@ func (p *LRCLIB) Search(ctx context.Context, query string) ([]acquired, error) {
 		TrackName    string  `json:"trackName"`
 		ArtistName   string  `json:"artistName"`
 		AlbumName    string  `json:"albumName"`
+		Duration     float64 `json:"duration"`
 		Plain        *string `json:"plainLyrics"`
 		Synced       *string `json:"syncedLyrics"`
 		Instrumental bool    `json:"instrumental"`
@@ -204,7 +205,7 @@ func (p *LRCLIB) Search(ctx context.Context, query string) ([]acquired, error) {
 			if e != nil {
 				continue
 			}
-			out = append(out, acquired{doc, "und", Provenance{Origin: "lrclib", ProviderID: strconv.FormatInt(record.ID, 10), Label: label, Rights: "LRCLIB record; rights and language not supplied by the provider."}})
+			out = append(out, acquired{doc: doc, language: "und", title: record.TrackName, artist: record.ArtistName, duration: record.Duration, provenance: Provenance{Origin: "lrclib", ProviderID: strconv.FormatInt(record.ID, 10), Label: label, Rights: "LRCLIB record; rights and language not supplied by the provider."}})
 			if len(out) >= 24 {
 				return out, nil
 			}
