@@ -1,7 +1,7 @@
 import React, {Suspense, lazy, useEffect, useMemo, useRef, useState} from 'react';
 import {Link, Outlet, useLocation, useNavigate} from '@tanstack/react-router';
 import {InboxProvider, useUnreadCount} from '../app/inbox';
-import {useI18n} from '../app/i18n';
+import {I18nProvider, useI18n} from '../app/i18n';
 import {currentAccessToken, sessionIdentity, useSession} from '../app/session';
 import {LibrariesContext, useLibraries, libraryKindLabel} from '../app/libraries';
 import {useViewerScope} from '../app/viewer-scope';
@@ -160,6 +160,7 @@ export function Shell() {
     <InboxProvider>
       <ArtworkContext.Provider value={artwork}>
       <ServerPreferencesProvider>
+      <I18nProvider>
       <AppearanceBridge />
       <PlayerProvider>
       <SelectionProvider>
@@ -199,6 +200,7 @@ export function Shell() {
       </MetadataEditorProvider>
       </SelectionProvider>
       </PlayerProvider>
+      </I18nProvider>
       </ServerPreferencesProvider>
       </ArtworkContext.Provider>
     </InboxProvider>
