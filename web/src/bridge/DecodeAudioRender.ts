@@ -262,7 +262,7 @@ export class DecodeAudioRender {
     void p.deck.pump(AHEAD_SECONDS);
     if (this.incoming && this.incoming.deck.startFrame !== undefined && frame >= this.incoming.edge - AHEAD_SECONDS * this.context.sampleRate) void this.incoming.deck.pump(AHEAD_SECONDS);
     const end = p.deck.endFrame ?? Infinity;
-    if (!this.candidate && !this.incoming && (end - frame) / this.context.sampleRate < COMMIT_BEFORE) p.deck.finishTail();
+    if (!this.incoming && this.context.currentTime >= p.deck.tailDeadlineSeconds) p.deck.finishTail();
     const playing = s.intent === 'playing' && this.context.state === 'running' && p.deck.startFrame !== undefined && frame >= p.deck.startFrame;
     const starving = playing && !p.deck.complete && p.deck.aheadSeconds < 0.05;
     this.service.audioRenderStatus?.(playing && !starving ? s.audioEffects.rate : 0, starving);

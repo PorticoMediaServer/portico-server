@@ -22,6 +22,8 @@ export type TrackConfig = Readonly<{
   sampleRate: number;
   numberOfChannels: number;
   description?: Uint8Array;
+  /** Raw decoded packet length, independent of a trimmed container timestamp. */
+  framesPerPacket?: number;
   /** PCM only: how samples are stored. */
   pcm?: Readonly<{bits: number; float: boolean; bigEndian: boolean}>;
 }>;
@@ -36,6 +38,7 @@ export interface Demuxer {
   /** Packets from the one holding raw frame `target`, `preroll` packets earlier, found without
    * reading what comes before (a container with a sample index). `rawStart` is the raw index
    * of the first packet's first frame. Absent: the caller walks `packets` from the start. */
+  locate?(target: number, preroll: number, signal?: AbortSignal): Promise<{packets: AsyncGenerator<Packet>; rawStart: number}>;
   seek?(target: number, preroll: number, signal?: AbortSignal): {packets: AsyncGenerator<Packet>; rawStart: number};
 }
 

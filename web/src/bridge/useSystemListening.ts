@@ -5,9 +5,10 @@ import {protectedArtwork} from './protectedArtwork';
 import {systemListeningState} from './system-listening-state';
 import {listeningMetadata} from './system-listening-metadata';
 let systemOwner:symbol|undefined;
+const noChapters:readonly {title:string;startSeconds:number;endSeconds:number}[]=Object.freeze([]);
 /** One MediaSession belongs to the persistent player, not expanded/collapsed UI.
  * Browsers without this API retain the existing visible transport controls. */
-export function useSystemListening(service:PlaybackService,state:PlaybackSnapshot,element:RefObject<HTMLVideoElement|null>,item:MediaItem,queue:QueuePlayer|undefined,api:HttpLocalApi,token:()=>string,chapters:readonly {title:string;startSeconds:number;endSeconds:number}[]=[]){
+export function useSystemListening(service:PlaybackService,state:PlaybackSnapshot,element:RefObject<HTMLVideoElement|null>,item:MediaItem,queue:QueuePlayer|undefined,api:HttpLocalApi,token:()=>string,chapters:readonly {title:string;startSeconds:number;endSeconds:number}[]=noChapters){
  const owned=useRef<symbol|undefined>(undefined);
  const chapterTitle=listeningMetadata(item,state.positionSeconds,chapters).title;
  useEffect(()=>{

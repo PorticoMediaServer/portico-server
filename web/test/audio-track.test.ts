@@ -127,3 +127,17 @@ test('resampler carries history and fractional phase across several nonaligned t
     assert.deepEqual(actual,expected,`${from} → ${to}: filtering the album equals filtering its tracks continuously`);
   }
 });
+
+test('a decoder cannot silently discard real leading frames when its intrinsic skip exceeds the plan',async()=>{
+ const {WEBCODECS_SKIP,recordDecoderSkip}=await import('../src/bridge/audio/track.ts');
+ const globals=globalThis as any, original=globals.AudioDecoder, chunk=globals.EncodedAudioChunk, engine=browserEngine();
+ const prior={...WEBCODECS_SKIP[engine]};let closed=0;
+ try {
+  globals.AudioDecoder=class {state='configured';static async isConfigSupported(){return{supported:true};}configure(){}close(){closed++;this.state='closed';}};
+  globals.EncodedAudioChunk=class {};
+  recordDecoderSkip(engine,'mp3',529);
+  const s=sidecars.find(x=>x.codec==='mp3');
+  const stream=await TrackStream.open({...s,trim:{startFrames:0,endFrames:0}},fileReader(new Uint8Array(readFileSync(new URL(s.file,dir)))));
+  assert.equal(stream,undefined);assert.equal(closed,1);
+ }finally{globals.AudioDecoder=original;globals.EncodedAudioChunk=chunk;for(const key of Object.keys(WEBCODECS_SKIP[engine]))delete (WEBCODECS_SKIP[engine] as Record<string,unknown>)[key];Object.assign(WEBCODECS_SKIP[engine],prior);}
+});

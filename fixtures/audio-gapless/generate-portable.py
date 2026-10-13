@@ -54,11 +54,34 @@ def main():
     generate(out,'vorbis','libvorbis','ogg')
     generate(out,'mixed-output-01','flac','flac',frames=10001)
     generate(out,'mixed-output-02','flac','flac',frames=11003,offset=10001)
-    # A source length off the encoder's packet grid yields a substantial LAME remainder.
-    for frames in range(10000,11153,97):
-        d=generate(out,'mp3-long-padding','libmp3lame','mp3',frames=frames)
-        if d['trim']['endFrames']>1152:
-            break
+    d=generate(out,'mp3-long-padding','libmp3lame','mp3')
+    # Crop the declared tail to exercise padding that spans several packets. Keep the
+    # Xing/LAME tag's checksum valid so strict platform readers see the same trim.
+    path=out/'mp3-long-padding.mp3';data=bytearray(path.read_bytes())
+    tag=data.find(b'Lavc',0,4096)
+    if tag<0:
+        tag=data.find(b'LAME',0,4096)
+    if tag<0 or tag+36>len(data):
+        raise RuntimeError('The encoder did not write a bounded gapless tag.')
+    start=10+sum((data[6+i]&127)<<(21-7*i) for i in range(4)) if data[:3]==b'ID3' else 0
+    def crc16(content):
+        value=0
+        for byte in content:
+            value^=byte
+            for _ in range(8):
+                value=(value>>1)^0xa001 if value&1 else value>>1
+        return value
+    crc_at=tag+34
+    if crc16(data[start:crc_at])!=int.from_bytes(data[crc_at:crc_at+2],'big'):
+        raise RuntimeError('The encoder gapless tag checksum is not recognized.')
+    padding=2500;data[tag+22]=(data[tag+22]&240)|(padding>>8);data[tag+23]=padding&255
+    data[crc_at:crc_at+2]=crc16(data[start:crc_at]).to_bytes(2,'big');path.write_bytes(data)
+    facts=json.loads(run('ffprobe','-v','error','-flags2','+skip_manual','-select_streams','a:0','-show_packets','-of','json',str(path)))
+    end=sum(int(sd.get('discard_padding',0)) for pkt in facts['packets'] for sd in pkt.get('side_data_list',[]))
+    if end<=1152:
+        raise RuntimeError('The multi-packet padding fixture was not recognized.')
+    d['trim']['endFrames']=end;d['durationFrames']=d['rawFrames']-d['trim']['startFrames']-end
+    (out/'mp3-long-padding.json').write_text(json.dumps(d,indent=1)+'\n')
     if opts.long_hours:
         # Encode the long source, then obtain packet counts without a multi-hour frame decode.
         # The bounded unit cases above stay separate from this intentionally larger device fixture.

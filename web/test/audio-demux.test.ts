@@ -42,3 +42,30 @@ test('the JavaScript FLAC decoder reproduces every FLAC fixture exactly', async 
     assert.ok(worst <= s.tolerance, `${s.file}: ${worst}`);
   }
 });
+
+test('MP3 synchronization tolerates repeated ID3 and substantial padding but remains bounded', async () => {
+  const {openMp3} = await import('../src/bridge/audio/mp3.ts');
+  const original=new Uint8Array(readFileSync(new URL('single-mp3-lame.mp3',dir)));
+  const tag=new Uint8Array([73,68,51,4,0,0,0,0,0,0]);
+  const prefix=new Uint8Array(140000);prefix.set(tag,0);prefix.set(tag,tag.length);
+  const joined=new Uint8Array(prefix.length+original.length);joined.set(prefix);joined.set(original,prefix.length);
+  const d=await openMp3(fileReader(joined));assert.equal(d.config.sampleRate,44100);
+  assert.ok(!(await d.packets().next()).done);
+  let fetched=0;
+  const junk={size:10<<20,read:async (_o:number,n:number)=>{fetched+=n;return new Uint8Array(n);}};
+  await assert.rejects(()=>openMp3(junk),/No MPEG audio/);
+  assert.ok(fetched<2<<20,'hostile junk cannot cause a whole-file synchronization search');
+});
+
+test('FLAC seek points retain all high bytes of their 64-bit sample index',async()=>{
+ const {openFlac}=await import('../src/bridge/audio/flac.ts');
+ const bytes=new Uint8Array(64),view=new DataView(bytes.buffer);
+ bytes.set([102,76,97,67,0,0,0,34],0);
+ view.setUint16(8,4096);view.setUint16(10,4096);
+ bytes[18]=10;bytes[19]=196;bytes[20]=0x40;bytes[21]=0xf2;view.setUint32(22,410065408);
+ bytes.set([0x83,0,0,18],42);view.setUint32(46,1);view.setUint32(50,17);view.setUint32(58,1234);view.setUint16(62,4096);
+ const reader={read:async(o:number,n:number)=>bytes.slice(o,o+n)};
+ const d=await openFlac(reader);
+ assert.equal(d.info.totalFrames,9000000000);
+ assert.deepEqual(d.seekTable,[{sample:2**32+17,offset:1234,frames:4096}]);
+});

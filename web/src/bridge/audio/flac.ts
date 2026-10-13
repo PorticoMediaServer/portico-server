@@ -94,6 +94,29 @@ export async function openFlac(reader: ByteReader): Promise<Demuxer & {info: Str
   const streamInfo = info;
   return {
     config, info, seekTable, firstFrame,
+    async locate(target, preroll, signal) {
+      const wanted = Math.max(0, target - preroll * streamInfo.maxBlock);
+      let point = [...seekTable].sort((a,b) => a.sample-b.sample).filter(p => p.sample<=wanted).at(-1);
+      if (point) {
+        const verified=await flacPoint(reader,firstFrame+point.offset,streamInfo,signal);
+        point=verified&&verified.sample<=wanted?{...verified,offset:verified.offset-firstFrame}:undefined;
+      }
+      if (!point && wanted>streamInfo.maxBlock && reader.size!==undefined) {
+        let low=firstFrame, high=reader.size;
+        point={sample:0,offset:0,frames:streamInfo.maxBlock};
+        for(let count=0;count<32 && low<high;count++){
+          const mid=Math.floor((low+high)/2);
+          const found=await flacPoint(reader,mid,streamInfo,signal);
+          if(!found){high=mid;continue;}
+          if(found.sample>wanted){high=mid;continue;}
+          point={...found,offset:found.offset-firstFrame};
+          if(wanted<found.sample+found.frames)break;
+          low=Math.max(mid+1,found.offset+1);
+        }
+      }
+      if(wanted-(point?.sample??0)>streamInfo.sampleRate*30)throw new DemuxError('No bounded FLAC seek point was found.');
+      return {packets: flacFrames(reader,firstFrame+(point?.offset??0),streamInfo,signal),rawStart:point?.sample??0};
+    },
     seek(target, preroll, signal) {
       const wanted = Math.max(0, target - preroll * streamInfo.maxBlock);
       const point = [...seekTable].sort((a, b) => a.sample - b.sample).filter(p => p.sample <= wanted).at(-1);
@@ -101,6 +124,27 @@ export async function openFlac(reader: ByteReader): Promise<Demuxer & {info: Str
     },
     packets: (signal?: AbortSignal) => flacFrames(reader, firstFrame, streamInfo, signal),
   };
+}
+
+/** A CRC-confirmed frame near a byte offset. Search and allocations stay bounded. */
+async function flacPoint(reader: ByteReader, offset: number, info: StreamInfo, signal?: AbortSignal): Promise<SeekPoint | undefined> {
+  const reach=Math.min(1<<20,Math.max(1<<17,2*info.maxFrame+64));
+  const data=await reader.read(offset,Math.min(reach,(reader.size??offset+reach)-offset),signal);
+  let candidates=0;
+  for(let at=0;at+8<data.length;at++){
+    const h=flacFrameHeader(data,at,info);if(!h)continue;
+    if(++candidates>64)return undefined;
+    const sample=h.variable?h.number:h.number*info.maxBlock;
+    if(!Number.isSafeInteger(sample)||sample>=info.totalFrames)continue;
+    for(let end=at+h.length+2;end+8<data.length;end++){
+      if(data[end]!==0xff)continue;
+      const next=flacFrameHeader(data,end,info);
+      if(next&&next.variable===h.variable&&next.number===h.number+(h.variable?h.blockSize:1)
+        &&crc16(data,at,end-2)===u16be(data,end-2))return {sample,offset:offset+at,frames:h.blockSize};
+    }
+    if(offset+data.length===reader.size && crc16(data,at,data.length-2)===u16be(data,data.length-2))return {sample,offset:offset+at,frames:h.blockSize};
+  }
+  return undefined;
 }
 
 /** Frames from `from` (which must be a frame start). */

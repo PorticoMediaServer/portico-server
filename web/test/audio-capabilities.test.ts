@@ -23,3 +23,14 @@ test('the client profile carries audioDecode and passes the admission rules', as
   const audioDecode = (await probeAudioDecode(async () => true, 'blink')).map(a => ({...a, containers: [...a.containers]}));
   assert.equal(clientProfileProblem({version: 1, client: {family: 'browser'}, evidence: 'probed', audioDecode}), null);
 });
+
+test('capability discovery waits for runtime alignment evidence before admitting Gecko codecs',async()=>{
+ const {recordDecoderSkip,WEBCODECS_SKIP}=await import('../src/bridge/audio/track.ts');
+ const prior={...WEBCODECS_SKIP.gecko};
+ try {
+  const check=Object.assign(async()=>true,{ready:Promise.resolve().then(()=>recordDecoderSkip('gecko','mp3',0))});
+  const caps=await probeAudioDecode(check,'gecko');assert.ok(caps.some(c=>c.codec==='mp3'));
+  recordDecoderSkip('gecko','opus',312);
+  assert.equal(WEBCODECS_SKIP.gecko.opus,'preskip','each real Opus header supplies its own pre-skip');
+ }finally{for(const key of Object.keys(WEBCODECS_SKIP.gecko))delete (WEBCODECS_SKIP.gecko as Record<string,unknown>)[key];Object.assign(WEBCODECS_SKIP.gecko,prior);}
+});

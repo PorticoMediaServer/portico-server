@@ -96,3 +96,14 @@ test('gapless decks share the resampler grid at a mismatched output rate', async
   assert.deepEqual(actual,expected);
   assert.equal(a.outFrames+b.outFrames,Math.floor(total*output/rate));
 });
+
+test('cancelled resampler preparation retains the current track and a finite tail deadline',async()=>{
+ const f=fakeContext(48000),frames=44100;
+ const a=new Deck(f.ctx,{} as AudioNode,sineSource(frames,44100),{frames,gain:1,holdTail:true});
+ const b=new Deck(f.ctx,{} as AudioNode,sineSource(frames,44100),{frames,gain:1});
+ await a.pump(Infinity);a.start(3840);assert.ok(Number.isFinite(a.tailDeadlineSeconds));
+ assert.ok(b.continueFrom(a));await b.pump(Infinity);b.close();
+ a.finishTail();
+ assert.equal(f.scheduled.reduce((n,s)=>n+s.frames,0),a.outFrames,'cancelled preparation did not consume the outgoing tail');
+ assert.ok(a.complete);
+});

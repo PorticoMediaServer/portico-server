@@ -3,8 +3,12 @@
 export function fakeContext(sampleRate = 48000) {
   const scheduled: {start: number; frames: number; node: any}[] = [];
   const param = (value = 1) => ({value, events: [] as unknown[], setValueAtTime(v: number, t: number) { this.events.push(['set', v, t]); }, linearRampToValueAtTime(v: number, t: number) { this.events.push(['ramp', v, t]); this.value = v; }, cancelScheduledValues() {}, setValueCurveAtTime(c: Float32Array, t: number, d: number) { this.events.push(['curve', c[0], c[c.length - 1], t, d]); }, setTargetAtTime(v: number) { this.value = v; }});
+  const listeners = new Map<string, Set<(event: Event) => void>>();
   const ctx: any = {
     sampleRate, currentTime: 0, state: 'running', destination: {channelCount: 2},
+    addEventListener(type: string, callback: (event: Event) => void) { if (!listeners.has(type)) listeners.set(type, new Set()); listeners.get(type)!.add(callback); },
+    removeEventListener(type: string, callback: (event: Event) => void) { listeners.get(type)?.delete(callback); },
+    dispatchEvent(event: Event) { for (const callback of listeners.get(event.type) ?? []) callback(event); return true; },
     createGain: () => ({gain: param(), connect() {}, disconnect() {}}),
     createBuffer: (channels: number, length: number, rate: number) => ({numberOfChannels: channels, length, sampleRate: rate, data: Array.from({length: channels}, () => new Float32Array(length)), copyToChannel(src: Float32Array, ch: number) { this.data[ch].set(src); }}),
     createBufferSource: () => {

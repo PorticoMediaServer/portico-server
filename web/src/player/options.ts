@@ -229,7 +229,7 @@ export function usePlayerSubtitles(api: HttpLocalApi, scope: ContentScope, playb
 }
 
 /** Chapter list for the active session; seeking stays with the playback service. */
-export function usePlayerChapters(api: HttpLocalApi, scope: ContentScope, item: {id: string; libraryId: string} | undefined, playback: PlaybackService, enabled: boolean) {
+export function usePlayerChapters(api: HttpLocalApi, scope: ContentScope, item: {id: string; libraryId: string} | undefined, playback: PlaybackService, enabled: boolean, bookPosition?: number) {
   const player = useSessionFacts(playback);
   const sessionId = player.sessionId, sessionGeneration = player.generation;
   const active = enabled && !!item && player.itemId === item.id && !!sessionId && !!sessionGeneration && (player.phase === 'starting' || player.phase === 'ready');
@@ -245,6 +245,13 @@ export function usePlayerChapters(api: HttpLocalApi, scope: ContentScope, item: 
   }, [service, active, sessionId, sessionGeneration, item?.libraryId, item?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => () => service.dispose(), [service]);
   const data = active && state.phase === 'ready' && state.data?.scope.sessionId === sessionId && state.data.scope.generation === sessionGeneration ? state.data : null;
+  useEffect(() => {
+    if (bookPosition === undefined || !data || data.status !== 'available') return;
+    const first = data.chapters[0], last = data.chapters.at(-1);
+    // A book's system metadata follows deep seeks through the same bounded, source-fenced pages.
+    if (last && bookPosition >= last.endSeconds && data.nextCursor) void service.next().catch(() => {});
+    else if (first && bookPosition < first.startSeconds && state.pagination.canPrevious) void service.previous().catch(() => {});
+  }, [service, data, bookPosition, state.pagination.canPrevious]);
   return {service, state, data, active};
 }
 

@@ -150,7 +150,7 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
   const trickplay = useTrickplay(api, scope, item, offers.data?.current?.sourceId, !isAudio && !state.channel);
   const subtitles = usePlayerSubtitles(api, scope, service, video, resourceKey, isAudio);
   // Fetched with the session (one small read) so Chapters only appears when the title has them.
-  const chapters = usePlayerChapters(api, scope, item, service, !isAudio || identity.kind === 'audiobook_file');
+  const chapters = usePlayerChapters(api, scope, item, service, !isAudio || identity.kind === 'audiobook_file', identity.kind === 'audiobook_file' ? state.positionSeconds : undefined);
   // FEAT-11: chapter starts and intro/credits on the seek bar.
   const chapterList = chapters.data?.status === 'available' ? chapters.data.chapters : undefined;
   const chapterMarks = useMemo(() => chapterList?.map(c => ({start: c.startSeconds, title: c.title})), [chapterList]);

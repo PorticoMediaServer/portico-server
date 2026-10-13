@@ -35,7 +35,7 @@ export const WEBCODECS_SKIP: Readonly<Record<BrowserEngine, Readonly<Record<stri
 /** Only the runtime probe writes new alignment evidence for the current browser. */
 export function recordDecoderSkip(engine: BrowserEngine, family: string, skip: number) {
   if (!Number.isSafeInteger(skip) || skip < 0 || skip > 4096) return;
-  (WEBCODECS_SKIP[engine] as Record<string, number | 'preskip'>)[family] = skip;
+  (WEBCODECS_SKIP[engine] as Record<string, number | 'preskip'>)[family] = family === 'opus' ? 'preskip' : skip;
 }
 
 /** Packets a decoder must see before the one it should output from, after a seek. */
@@ -91,9 +91,12 @@ export class TrackStream {
     if (demuxer.config.sampleRate !== plan.sampleRate) throw new DemuxError('The file’s sample rate isn’t the plan’s.');
     // Unindexed compressed streams cannot locate an exact deep frame without fetching the
     // prefix. The ordinary player owns those seeks (including its codec preroll and VBR index).
-    if (fromFrame > plan.sampleRate * 30 && !demuxer.seek) return undefined;
+    if (fromFrame > plan.sampleRate * 30 && !demuxer.seek && !demuxer.locate) return undefined;
     const choice = await chooseDecoder(demuxer.config);
     if (!choice) return undefined;
+    // A decoder that has discarded more than the intended leading trim cannot reconstruct
+    // the start (for example a no-LAME MP3 on a decoder with intrinsic delay handling).
+    if (fromFrame === 0 && choice.skip > plan.trim.startFrames) { choice.decoder.close(); return undefined; }
     const target = plan.trim.startFrames + Math.max(0, Math.min(fromFrame, plan.durationFrames));
     let packets: AsyncGenerator<Packet>, rawStart: number;
     try {
@@ -162,6 +165,7 @@ export class TrackStream {
  */
 async function startAt(demuxer: Demuxer, target: number, preroll: number, signal?: AbortSignal): Promise<{packets: AsyncGenerator<Packet>; rawStart: number}> {
   if (target <= 0) return {packets: demuxer.packets(signal), rawStart: 0};
+  if (demuxer.locate) return demuxer.locate(target, preroll, signal);
   if (demuxer.seek) return demuxer.seek(target, preroll, signal);
   const all = demuxer.packets(signal);
   const recent: {packet: Packet; raw: number}[] = [];

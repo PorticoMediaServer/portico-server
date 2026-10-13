@@ -146,6 +146,11 @@ export class Deck {
     this.continuation = undefined;
   }
 
+  /** Last moment to release an unscheduled terminal buffer without starving playback. */
+  get tailDeadlineSeconds() {
+    return this.tailPending && this.startFrame !== undefined ? (this.startFrame + this.decoded) / this.rate - 0.08 : Infinity;
+  }
+
   /** Release a terminal track against silence when no successor arrived before its deadline. */
   finishTail() {
     if (!this.tailPending) return;
@@ -215,6 +220,7 @@ export class Deck {
   close() {
     if (this.closed) return;
     this.closed = true;
+    this.continuation = undefined; this.predecessor = undefined;
     for (const n of this.nodes) { n.onended = null; try { n.stop(); } catch { /* not started */ } n.disconnect(); }
     this.nodes.clear();
     this.held = [];
