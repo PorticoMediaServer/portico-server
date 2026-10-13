@@ -1,7 +1,6 @@
 import {useEffect, useMemo, useState} from 'react';
 import {useNavigate} from '@tanstack/react-router';
 import {artworkLimitBytes as limitBytes, artworkLimitText as limitText, metadataSettingsService, type MetadataSettings} from '@core/metadata-settings.ts';
-import {parseEnvelope, parseStorageReport} from '@core/administration.ts';
 import {problem, useRead} from '../../admin/console';
 import {useInlineForm} from '../settings/ServerForms';
 import {useSession} from '../../app/session';
@@ -23,14 +22,10 @@ const keyChange = (edit: KeyEdit): string | undefined => (edit.remove ? '' : edi
 export function MetadataSettingsPanel() {
   const i18n = useI18n();
   const {t} = i18n;
-  const {api, system, session} = useSession();
+  const {api} = useSession();
   const navigate = useNavigate();
-  const serverId = system?.id ?? session?.viewer.serverId ?? '';
   const service = useMemo(() => metadataSettingsService(<T,>(path: string, method?: string, body?: unknown) => api.request<T>(path, method, body)), [api]);
   const read = useRead(() => service.read(), [service]);
-  // What artwork takes on disk now, from the same measurement Storage & backups shows. It counts
-  // fetched artwork too, which the limit does not, and the row says so.
-  const usage = useRead(async () => parseEnvelope(await api.request<unknown>('/v1/admin/storage-usage'), serverId, parseStorageReport).result.categories.find(c => c.id === 'artwork')?.bytes, [api, serverId]);
   const doc = read.data;
   const [limit, setLimit] = useState('');
   const [adult, setAdult] = useState(false);
@@ -71,7 +66,7 @@ export function MetadataSettingsPanel() {
         <SettingsRow label={t('metadata.settings.includeAdult')} help={t('server.metadata.adultHelp')} control={<Switch checked={adult} onCheckedChange={setAdult} label={t('metadata.settings.includeAdult')} />} />
       </SettingsGroup>
       <SettingsGroup title={t('server.metadata.artwork')}>
-        <SettingsRow label={t('metadata.settings.artworkLimit')} help={t('server.metadata.artworkHelp')} state={usage.data !== undefined ? t('server.metadata.artworkUsage', {size: i18n.bytes(usage.data)}) : undefined}
+        <SettingsRow label={t('metadata.settings.artworkLimit')} help={t('server.metadata.artworkHelp')} state={t('server.metadata.artworkUsed', {used: i18n.bytes(doc.localArtworkUsedBytes), limit: i18n.bytes(doc.localArtworkLimitBytes)})}
           control={<span className={page.numberField}><Input hideLabel label={t('metadata.settings.artworkLimit')} inputMode="decimal" value={limit} onChange={e => setLimit(e.target.value)} error={bytes === undefined ? t('server.metadata.limitProblem') : undefined} /><span className={page.unit}>{t('settings.unit.gb')}</span></span>} />
       </SettingsGroup>
     </>

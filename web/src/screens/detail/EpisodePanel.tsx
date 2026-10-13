@@ -1,3 +1,4 @@
+import React from 'react';
 import {useEffect, useMemo, useState} from 'react';
 import type {ContentEntry} from '@core/library-content.ts';
 import {formatDuration} from '@core/presentation/index.ts';
@@ -7,6 +8,9 @@ import {ErrorNotice} from '../../app/errors';
 import {usePlayerActions} from '../../player/PlayerContext';
 import {Artwork, Button, Dialog, KeyValue, Loading, Notice, Text, anchorOf} from '../../ui';
 import {entryOf} from './Detail';
+import {useSession} from '../../app/session';
+import {DeleteVersionDialog} from './DeleteVersion';
+import type {TitleFile} from '@core/detail.ts';
 import {TitleFiles} from './TitleFiles';
 import {episodeCode, formatAirDate} from './EpisodeCard';
 import {PlaybackChoices, type PlaybackChoice} from './PlaybackChoices';
@@ -42,6 +46,8 @@ export function EpisodePanel({libraryId, showId, episodeId, preview, previous, n
   const {snapshot, mutate, retry} = useDetail(target);
   const data = snapshot.data;
   const item = data?.item;
+  const {owner} = useSession();
+  const [deletingVersion, setDeletingVersion] = React.useState<{file: TitleFile; summary: string}>();
   const title = item?.title ?? preview?.title ?? t('title.episodeFallback');
   const code = item?.episode ? episodeCode(t, {seasonNumber: item.episode.seasonNumber ?? undefined, episodeNumber: item.episode.number}) : preview ? episodeCode(t, preview) : '';
   const actions = data?.actions.filter(a => a.enabled) ?? [];
@@ -97,7 +103,8 @@ export function EpisodePanel({libraryId, showId, episodeId, preview, previous, n
       {rows.length ? <KeyValue rows={rows} /> : null}
       {castTotal > 12 && !(allCast && castPages.done) ? <div><Button variant="link" label={t(allCast ? 'title.moreCast' : 'title.allCast')} onClick={() => { setAllCast(true); castPages.more(); }} /></div> : null}
       {crewLines.map(line => <Text key={line} as="p" variant="caption" tone="secondary">{line}</Text>)}
-      {data?.files?.length ? <TitleFiles files={data.files} /> : null}
+      {data?.files?.length ? <TitleFiles files={data.files} onDelete={owner && item ? (file, summary) => setDeletingVersion({file, summary}) : undefined} /> : null}
+      {deletingVersion && item ? <DeleteVersionDialog itemId={item.id} title={item.title} file={deletingVersion.file} summary={deletingVersion.summary} onClose={() => setDeletingVersion(undefined)} onDeleted={() => { setDeletingVersion(undefined); void retry(); }} /> : null}
       {previous || next ? (
         <div className={s.panelNav}>
           {previous ? <Button variant="ghost" size="sm" icon="back" label={episodeCode(t, previous) || previous.title} aria-label={t('web.episode.previousNamed', {episode: [episodeCode(t, previous), previous.title].filter(Boolean).join(' ')})} onClick={() => onOpenEpisode(previous)} /> : <span />}

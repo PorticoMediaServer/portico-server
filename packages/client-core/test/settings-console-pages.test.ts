@@ -122,3 +122,18 @@ test('privacy opens with what the owner always sees, and the web never offers a 
   const noHdr = settingsStructure({owner: false, platform: 'web', capabilities: {hdr: false}}).headings[0]!.pages.find(p => p.id === 'quality')!.sections.flatMap(s => s.rows).map(r => ('id' in r ? r.id : ''));
   assert.ok(!noHdr.includes('disableHdr'));
 });
+
+test('the third-pass panels sit beside the settings they explain', () => {
+  const web = server('web');
+  const storage = rowIds(page(web, 'storage')!);
+  for (const id of ['server.resourceUsage', 'server.storageStatus', 'server.downloadUsage']) assert.ok(storage.includes(id), id);
+  const schedule = rowIds(page(web, 'schedule')!);
+  assert.ok(schedule.indexOf('server.backgroundPause') === schedule.indexOf('maintenance.backgroundSpeed') + 1, 'the pause follows the speed it interrupts');
+  const playback = rowIds(page(web, 'streaming')!);
+  assert.ok(playback.indexOf('server.ffmpegStatus') === playback.indexOf('runtime.ffmpegPath') + 1, 'the check result follows the path it checked');
+  assert.ok(rowIds(page(web, 'troubleshooting')!).includes('server.setAsideTitles'));
+  // None of the web's panels is offered where nothing draws it.
+  for (const id of ['server.resourceUsage', 'server.storageStatus', 'server.downloadUsage', 'server.setAsideTitles']) for (const p of server('phone')) assert.ok(!rowIds(p).includes(id), id);
+  const device = settingsStructure({owner: false, platform: 'web', capabilities: {}}).headings[0]!.pages.find(p => p.id === 'device')!;
+  assert.ok(rowIds(device).includes('remoteControls'));
+});

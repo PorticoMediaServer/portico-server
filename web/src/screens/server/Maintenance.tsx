@@ -1,6 +1,7 @@
 import {useEffect, useMemo, useRef, useState} from 'react';
 import {getBackups, isAuthenticationFailure, restartServer, waitForServerAnswer} from '@core/backups.ts';
 import {serverChanged} from '../../app/server-changes';
+import {dependsOn} from '@core/freshness-hub.ts';
 import {useServerForm} from '../settings/ServerForms';
 import {parseEnvelope, parseStorageReport, parseUpdateReport, type StorageUsage} from '@core/administration.ts';
 import {emptyMissingTitles, listMissingTitles} from '@core/title-identity.ts';
@@ -12,6 +13,8 @@ import {useSession} from '../../app/session';
 import {useI18n, type I18n} from '../../app/i18n';
 import {Badge, Button, ConfirmDialog, Freshness, Input, Notice, SettingsGroup, SettingsRow, Status, Switch, Text} from '../../ui';
 
+// A scan that finds files gone, or back, moves this list.
+const MISSING_MOVES = [dependsOn.content()];
 const when = (i18n: I18n, iso: string) => (iso ? i18n.dateTime(iso) : '—');
 
 /** Typed calls against the administration envelope: every response names the server it came
@@ -61,7 +64,7 @@ export function MissingTitlesPanel() {
   const {api} = useSession();
   const i18n = useI18n();
   const {t} = i18n;
-  const read = useCursorRead(cursor => listMissingTitles(api, {cursor: cursor || undefined, limit: 100}), [api]);
+  const read = useCursorRead(cursor => listMissingTitles(api, {cursor: cursor || undefined, limit: 100}), [api], {on: MISSING_MOVES});
   const action = useAction();
   const [asking, setAsking] = useState(false);
   const [removed, setRemoved] = useState<number>();
