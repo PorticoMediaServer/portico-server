@@ -54,6 +54,27 @@ func (s *Service) Submit(ctx context.Context, p identity.Principal, r Request, g
 		if e = json.Unmarshal([]byte(raw), &out); e != nil {
 			return out, e
 		}
+		items := out.Items[:0]
+		for _, item := range out.Items {
+			current, err := readPreparation(tx.QueryRowContext(ctx, `SELECT `+preparationColumns+` FROM download_preparations WHERE id=? AND profile_key=?`, item.ID, key))
+			if errors.Is(err, sql.ErrNoRows) {
+				err = identity.ErrContentRestricted
+			} else if err == nil {
+				err = s.visiblePreparation(ctx, tx, p, current)
+			}
+			if errors.Is(err, identity.ErrContentRestricted) {
+				if r.MediaID != "" {
+					return Batch{}, ErrNotFound
+				}
+				out.Rejected = append(out.Rejected, Rejection{item.ItemID, ReasonItemDeleted})
+				continue
+			}
+			if err != nil {
+				return out, err
+			}
+			items = append(items, item)
+		}
+		out.Items = items
 		out.Duplicate = true
 		return out, nil
 	}
@@ -308,9 +329,6 @@ func (s *Service) Act(ctx context.Context, p identity.Principal, id string, c Co
 	if e != nil {
 		return out, e
 	}
-	if raw != "" {
-		return out, json.Unmarshal([]byte(raw), &out)
-	}
 	settings, e := readSettings(tx)
 	if e != nil {
 		return out, e
@@ -321,6 +339,15 @@ func (s *Service) Act(ctx context.Context, p identity.Principal, id string, c Co
 	}
 	if e != nil {
 		return out, e
+	}
+	if e = s.visiblePreparation(ctx, tx, p, current); e != nil {
+		if errors.Is(e, identity.ErrContentRestricted) {
+			return out, ErrNotFound
+		}
+		return out, e
+	}
+	if raw != "" {
+		return out, json.Unmarshal([]byte(raw), &out)
 	}
 	if current.Revision != c.ExpectedRevision {
 		return s.publish(current, settings.RetentionDays), ErrConflict

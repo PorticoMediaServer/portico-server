@@ -772,6 +772,9 @@ func New(d Dependencies) http.Handler {
 	}
 	if d.Downloads != nil {
 		d.Downloads.SetRequestAccess(d.downloadRequestAccess)
+		d.Downloads.SetLibraryAccess(func(ctx context.Context, tx *sql.Tx, p identity.Principal, library string) error {
+			return d.allowedLibraryTx(ctx, p, library, tx)
+		})
 	}
 	d.v1 = newPlaybackV1(d)
 	d.social = d.Social()

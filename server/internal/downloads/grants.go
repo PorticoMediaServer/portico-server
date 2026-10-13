@@ -7,7 +7,6 @@ import (
 	"errors"
 	"io"
 	"path"
-	"portico.local/server/internal/contentaccess"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/entityid"
 	"strconv"
@@ -140,7 +139,7 @@ func (s *Service) IssueGrant(ctx context.Context, p identity.Principal, id strin
 	if !current.Title.OnServer {
 		return out, ErrNotFound
 	}
-	if e = contentaccess.VisibleKnownItemTx(ctx, tx, p, current.ItemID); e != nil {
+	if e = s.visibleItem(ctx, tx, p, current.ItemID); e != nil {
 		if errors.Is(e, identity.ErrContentRestricted) {
 			return out, ErrNotFound
 		}
@@ -307,6 +306,9 @@ func (s *Service) resolveGrant(ctx context.Context, token string, write bool) (G
 	if state != StateReady || !present {
 		return out, ErrUnavailable
 	}
+	if e = tx.QueryRowContext(ctx, `SELECT cl.library_id FROM catalog_entities e JOIN catalog_libraries cl ON cl.id=e.library_id WHERE e.public_id=pid_blob(?)`, out.ItemID).Scan(&out.LibraryID); e != nil {
+		return out, e
+	}
 	out.Viewer = identity.Viewer{AccountID: account, ProfileID: profile, Authority: authority}
 	out.Principal = identity.Principal{Viewer: out.Viewer}
 	// The claim remembers who asked, role included, so a member's library
@@ -317,7 +319,7 @@ func (s *Service) resolveGrant(ctx context.Context, token string, write bool) (G
 			out.Principal = asked
 		}
 	}
-	if e = contentaccess.VisibleItemTx(ctx, tx, out.Principal, out.ItemID); e != nil {
+	if e = s.visibleItem(ctx, tx, out.Principal, out.ItemID); e != nil {
 		return out, ErrGrant
 	}
 	allowed, e := ProfileAllowsDownloads(tx, out.Viewer)

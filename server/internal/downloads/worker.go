@@ -157,6 +157,8 @@ const titleGone = `NOT EXISTS(SELECT 1 FROM catalog_entities e WHERE e.id=downlo
 //
 // The reads come first and use no write transaction, so a pass with nothing to
 // end takes no writer at all.
+type tidyCandidatesObserverKey struct{}
+
 func (s *Service) tidy(ctx context.Context) error {
 	var retentionDays int
 	if e := s.db.QueryRowContext(ctx, `SELECT retention_days FROM download_settings WHERE singleton=1`).Scan(&retentionDays); e != nil {
@@ -165,20 +167,23 @@ func (s *Service) tidy(ctx context.Context) error {
 	now := s.millis()
 	deadline := now - int64(retentionDays)*24*60*60*1000
 	type ending struct {
-		query, state, reason string
-		args                 []any
+		predicate, state, reason string
+		args                     []any
 	}
 	endings := []ending{
-		{`SELECT id FROM download_preparations WHERE state='ready' AND (CASE WHEN used_ms>0 THEN used_ms ELSE ready_ms END)<? ORDER BY updated_ms LIMIT 64`, StateExpired, ReasonRetention, []any{deadline}},
-		{`SELECT id FROM download_preparations WHERE state IN('queued','running','paused','ready','failed') AND ` + titleGone + ` ORDER BY updated_ms LIMIT 64`, StateUnavailable, ReasonItemDeleted, nil},
-		{`SELECT id FROM download_preparations WHERE state='ready' AND artifact_kind='prepared' AND NOT EXISTS(SELECT 1 FROM prepared_media_versions v WHERE v.id=download_preparations.artifact_ref AND v.digest=download_preparations.artifact_digest AND v.state='published') ORDER BY updated_ms LIMIT 64`, StateUnavailable, ReasonNotOptimized, nil},
-		{`SELECT id FROM download_preparations WHERE state='ready' AND artifact_kind='source' AND NOT EXISTS(SELECT 1 FROM catalog_asset_links link JOIN catalog_assets a ON a.id=link.asset_id WHERE link.entity_id=download_preparations.item_id AND a.token=download_preparations.artifact_ref AND a.size=download_preparations.bytes_total AND a.modified_ns=download_preparations.source_modified_ns) ORDER BY updated_ms LIMIT 64`, StateUnavailable, ReasonSourceChanged, nil},
+		{`state='ready' AND (CASE WHEN used_ms>0 THEN used_ms ELSE ready_ms END)<?`, StateExpired, ReasonRetention, []any{deadline}},
+		{`state IN('queued','running','paused','ready','failed') AND ` + titleGone + ``, StateUnavailable, ReasonItemDeleted, nil},
+		{`state='ready' AND artifact_kind='prepared' AND NOT EXISTS(SELECT 1 FROM prepared_media_versions v WHERE v.id=download_preparations.artifact_ref AND v.digest=download_preparations.artifact_digest AND v.state='published')`, StateUnavailable, ReasonNotOptimized, nil},
+		{`state='ready' AND artifact_kind='source' AND NOT EXISTS(SELECT 1 FROM catalog_asset_links link JOIN catalog_assets a ON a.id=link.asset_id WHERE link.entity_id=download_preparations.item_id AND a.token=download_preparations.artifact_ref AND a.size=download_preparations.bytes_total AND a.modified_ns=download_preparations.source_modified_ns)`, StateUnavailable, ReasonSourceChanged, nil},
 	}
-	type ended struct{ id, state, reason string }
+	type ended struct {
+		id        string
+		condition ending
+	}
 	due := []ended{}
 	seen := map[string]bool{}
 	for _, c := range endings {
-		rows, e := s.db.QueryContext(ctx, c.query, c.args...)
+		rows, e := s.db.QueryContext(ctx, `SELECT id FROM download_preparations WHERE `+c.predicate+` ORDER BY updated_ms LIMIT 64`, c.args...)
 		if e != nil {
 			return e
 		}
@@ -189,9 +194,12 @@ func (s *Service) tidy(ctx context.Context) error {
 		for _, id := range ids {
 			if !seen[id] {
 				seen[id] = true
-				due = append(due, ended{id, c.state, c.reason})
+				due = append(due, ended{id, c})
 			}
 		}
+	}
+	if observe, ok := ctx.Value(tidyCandidatesObserverKey{}).(func()); ok {
+		observe()
 	}
 	var spent bool
 	if e := s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM download_grants WHERE expires_ms<? OR (revoked=1 AND expires_ms<?))`, now-int64(spentGrantsKept/time.Millisecond), now).Scan(&spent); e != nil {
@@ -207,13 +215,21 @@ func (s *Service) tidy(ctx context.Context) error {
 	tx := gated.Tx()
 	defer gated.Rollback()
 	for _, d := range due {
-		// The read above was outside this transaction: only a claim still in a
-		// state the reason applies to is ended.
+		// Permission to end a claim comes from this snapshot, not the earlier
+		// candidate read. A grant may have refreshed it in between.
+		var stillDue bool
+		args := append([]any{d.id}, d.condition.args...)
+		if e = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM download_preparations WHERE id=? AND (`+d.condition.predicate+`))`, args...).Scan(&stillDue); e != nil {
+			return e
+		}
+		if !stillDue {
+			continue
+		}
 		live := `('queued','running','paused','ready','failed')`
-		if d.reason != ReasonItemDeleted {
+		if d.condition.reason != ReasonItemDeleted {
 			live = `('ready')`
 		}
-		if e = endClaim(ctx, tx, d.id, d.state, d.reason, now, live); e != nil {
+		if e = endClaim(ctx, tx, d.id, d.condition.state, d.condition.reason, now, live); e != nil {
 			return e
 		}
 	}

@@ -55,22 +55,23 @@ type Options struct {
 }
 
 type Service struct {
-	access       RequestAccess
-	accessMu     sync.RWMutex
-	advanceMu    sync.Mutex
-	tidied       time.Time
-	pruned       time.Time
-	db           *sql.DB
-	now          func() time.Time
-	openOriginal SourceOpener
-	artifacts    ArtifactOpener
-	optimizer    Optimizer
-	notifier     DownloadNotifier
-	plays        playback.OfflineWriter
-	grantPath    string
-	wake         *worker.Signal
-	done         chan struct{}
-	cancel       context.CancelFunc
+	libraryAccess LibraryAccess
+	access        RequestAccess
+	accessMu      sync.RWMutex
+	advanceMu     sync.Mutex
+	tidied        time.Time
+	pruned        time.Time
+	db            *sql.DB
+	now           func() time.Time
+	openOriginal  SourceOpener
+	artifacts     ArtifactOpener
+	optimizer     Optimizer
+	notifier      DownloadNotifier
+	plays         playback.OfflineWriter
+	grantPath     string
+	wake          *worker.Signal
+	done          chan struct{}
+	cancel        context.CancelFunc
 }
 
 func New(o Options) (*Service, error) {
@@ -424,6 +425,12 @@ func (s *Service) Get(ctx context.Context, p identity.Principal, id string) (Pre
 	if e != nil {
 		return out, e
 	}
+	if e = s.visiblePreparation(ctx, tx, p, r); e != nil {
+		if errors.Is(e, identity.ErrContentRestricted) {
+			return out, ErrNotFound
+		}
+		return out, e
+	}
 	return s.publish(r, settings.RetentionDays), gated4.Commit()
 }
 
@@ -514,6 +521,13 @@ func (s *Service) List(ctx context.Context, p identity.Principal, q ListQuery, a
 		collected = collected[:q.Limit]
 	}
 	for _, r := range collected {
+		if !(anyProfile && q.ProfileID != "") {
+			if e = s.visiblePreparation(ctx, tx, p, r); errors.Is(e, identity.ErrContentRestricted) {
+				continue
+			} else if e != nil {
+				return out, e
+			}
+		}
 		out.Items = append(out.Items, s.publish(r, settings.RetentionDays))
 	}
 	return out, gated5.Commit()
