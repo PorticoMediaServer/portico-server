@@ -30,7 +30,7 @@ func TestConversionTargetsDescribeEveryOutput(t *testing.T) {
 		codec, rangeName, pixel, transfer string
 		depth                             int
 		encoder                           string
-	}{{"h264", "sdr", "yuv420p", "bt709", 8, "libx264"}, {"hevc", "sdr", "yuv420p", "bt709", 8, "libx265"}, {"hevc", "hdr10", "yuv420p10le", "smpte2084", 10, "libx265"}, {"hevc", "hlg", "yuv420p10le", "arib-std-b67", 10, "libx265"}, {"av1", "hdr10", "yuv420p10le", "smpte2084", 10, "libaom-av1"}} {
+	}{{"h264", "sdr", "yuv420p", "", 8, "libx264"}, {"hevc", "sdr", "yuv420p", "", 8, "libx265"}, {"hevc", "hdr10", "yuv420p10le", "smpte2084", 10, "libx265"}, {"hevc", "hlg", "yuv420p10le", "arib-std-b67", 10, "libx265"}, {"av1", "hdr10", "yuv420p10le", "smpte2084", 10, "libaom-av1"}} {
 		t.Run(tc.codec+tc.rangeName, func(t *testing.T) {
 			target := ConversionTarget{VideoCodec: tc.codec, BitDepth: tc.depth, DynamicRange: tc.rangeName, RateControl: "quality", Height: 1080}
 			g, err := BuildConversion(ConversionRequest{Target: &target, ConvertVideo: true, Toolchain: targetFacts()})

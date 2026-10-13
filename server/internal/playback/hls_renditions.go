@@ -86,7 +86,7 @@ func planAudioRenditions(p DeliveryPlan, source DeliverySource, client ClientPro
 				r.Downmix = DownmixITULimited
 			}
 		}
-		if r.Channels == a.Channels && (a.Layout == "mono" || a.Layout == "stereo" || a.Layout == "5.1" || a.Layout == "5.1(side)" || a.Layout == "7.1") {
+		if r.Action == "copy" || r.Channels == a.Channels && (a.Layout == "mono" || a.Layout == "stereo" || a.Layout == "5.1" || a.Layout == "5.1(side)" || a.Layout == "7.1") {
 			r.ChannelLayout = a.Layout
 		}
 		if r.Codec == "flac" {

@@ -43,6 +43,7 @@ type ConversionTarget struct {
 
 var masteringDisplayPattern = regexp.MustCompile(`^G\([0-9]{1,5},[0-9]{1,5}\)B\([0-9]{1,5},[0-9]{1,5}\)R\([0-9]{1,5},[0-9]{1,5}\)WP\([0-9]{1,5},[0-9]{1,5}\)L\([0-9]{1,10},[0-9]{1,10}\)$`)
 var maxCLLPattern = regexp.MustCompile(`^[0-9]{1,5},[0-9]{1,5}$`)
+var audioLayoutPattern = regexp.MustCompile(`^[a-zA-Z0-9_.()+ -]{1,64}$`)
 
 func (t ConversionTarget) Normalized() (ConversionTarget, error) {
 	if t.SourceRange == "hdr10plus" {
@@ -90,13 +91,15 @@ func (t ConversionTarget) Normalized() (ConversionTarget, error) {
 	if t.VideoCodec != "h264" && t.VideoCodec != "hevc" && t.VideoCodec != "av1" && t.VideoCodec != "mpeg2video" && t.VideoCodec != "vp9" {
 		return t, ErrInvalidConfiguration
 	}
-	if t.BitDepth != 8 && t.BitDepth != 10 || t.VideoCodec == "h264" && t.BitDepth != 8 {
+	// Targets also describe copied streams. Encoder restrictions are checked
+	// by BuildConversion only for the streams it actually encodes.
+	if t.BitDepth < 8 || t.BitDepth > 16 {
 		return t, ErrInvalidConfiguration
 	}
 	if t.DynamicRange != "sdr" && t.DynamicRange != "hdr10" && t.DynamicRange != "hlg" && !(t.CopyDolbyVision && t.DynamicRange == "dolby_vision") {
 		return t, ErrInvalidConfiguration
 	}
-	if t.DynamicRange != "sdr" && (t.BitDepth != 10 || t.ToneMap || t.VideoCodec == "h264") {
+	if t.DynamicRange != "sdr" && (t.BitDepth < 10 || t.ToneMap) {
 		return t, ErrInvalidConfiguration
 	}
 	if t.SourceRange != "" && t.SourceRange != "sdr" && t.SourceRange != "hdr10" && t.SourceRange != "hdr10_plus" && t.SourceRange != "hlg" && t.SourceRange != "dolby_vision" {
@@ -120,7 +123,7 @@ func (t ConversionTarget) Normalized() (ConversionTarget, error) {
 	if t.Width < 0 || t.Width > 32768 || t.Height < 0 || t.Height > 4320 || t.VideoBitrateBPS < 0 || t.VideoBitrateBPS > 200_000_000 || t.AudioBitrateBPS < 0 || t.AudioBitrateBPS > 4_096_000 || math.IsNaN(t.FrameRate) || math.IsInf(t.FrameRate, 0) || t.FrameRate < 0 || t.FrameRate > 240 {
 		return t, ErrInvalidConfiguration
 	}
-	if t.AudioChannels != 1 && t.AudioChannels != 2 && t.AudioChannels != 6 && t.AudioChannels != 8 {
+	if t.AudioChannels < 1 || t.AudioChannels > 64 {
 		return t, ErrInvalidConfiguration
 	}
 	switch t.AudioCodec {
@@ -134,7 +137,7 @@ func (t ConversionTarget) Normalized() (ConversionTarget, error) {
 	if t.AudioChannelLayout == "" {
 		t.AudioChannelLayout = map[int]string{1: "mono", 2: "stereo", 6: "5.1", 8: "7.1"}[t.AudioChannels]
 	}
-	if t.AudioChannelLayout != map[int]string{1: "mono", 2: "stereo", 6: "5.1", 8: "7.1"}[t.AudioChannels] && !(t.AudioChannels == 6 && t.AudioChannelLayout == "5.1(side)") {
+	if t.AudioChannelLayout != "" && !audioLayoutPattern.MatchString(t.AudioChannelLayout) {
 		return t, ErrInvalidConfiguration
 	}
 	if t.Packaging != "mpegts_hls" && t.Packaging != "fmp4_hls" {
@@ -186,6 +189,11 @@ func softwareVideoEncoder(codec string, f *ToolchainFacts) (string, error) {
 }
 
 func videoColorArgs(t ConversionTarget) []string {
+	// Scaling SDR does not transform its colour space. Inherit the decoder's
+	// description rather than relabelling BT.601 or full-range samples.
+	if t.DynamicRange == "sdr" && !t.ToneMap {
+		return nil
+	}
 	primaries, transfer, matrix := "bt709", "bt709", "bt709"
 	if t.DynamicRange != "sdr" {
 		primaries, matrix = "bt2020", "bt2020nc"
