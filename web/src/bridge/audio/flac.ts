@@ -95,7 +95,62 @@ export async function openFlac(reader: ByteReader): Promise<Demuxer & {info: Str
   return {
     config, info, seekTable, firstFrame,
     packets: (signal?: AbortSignal) => flacFrames(reader, firstFrame, streamInfo, signal),
+    seek: (target: number, preroll: number, signal?: AbortSignal) => flacSeek(reader, firstFrame, streamInfo, seekTable, target, preroll, signal),
   };
+}
+
+/** The raw index of a frame's first sample: its own number, or its frame number in a fixed-block stream. */
+const frameSample = (h: FrameHeader, info: StreamInfo) => (h.variable ? h.number : h.number * info.minBlock);
+
+/**
+ * Starts part-way without reading what comes before. A FLAC frame carries its own position, so
+ * wherever reading begins, the first whole frame found says exactly which sample it is: the seek
+ * table gives a place to begin when the file has one, and otherwise (or when the table is sparse)
+ * the place is found by proportion and corrected from the frames met there, in a bounded number
+ * of small reads. Resuming hours into a single-file audiobook then costs a few reads, not the
+ * whole file before the position. Undefined when no start can be confirmed: the caller walks.
+ */
+export async function flacSeek(reader: ByteReader, firstFrame: number, info: StreamInfo, seekTable: readonly SeekPoint[], target: number, preroll: number, signal?: AbortSignal, /** How close is close enough (tests shrink it for fixtures a few seconds long). */ tuning: {near?: number} = {}): Promise<{packets: AsyncGenerator<Packet>; rawStart: number} | undefined> {
+  type Place = {offset: number; sample: number};
+  const wanted = Math.max(0, target - preroll * (info.maxBlock || 4096));
+  const near = tuning.near ?? info.sampleRate * 15;
+  const probe = async (at: number): Promise<Place | undefined> => {
+    const frames = flacFrames(reader, at, info, signal);
+    try {
+      const first = await frames.next();
+      return first.done ? undefined : {offset: first.value.offset, sample: frameSample(first.value.header, info)};
+    } finally { await frames.return(undefined).catch(() => {}); }
+  };
+  let low: Place = {offset: firstFrame, sample: 0};
+  let high: Place | undefined;
+  // The seek table's last point at or before the position, confirmed by the frame found there.
+  let point: SeekPoint | undefined;
+  for (const p of seekTable) if (p.sample <= wanted && (!point || p.sample > point.sample)) point = p;
+  if (point && point.sample > 0) {
+    const found = await probe(firstFrame + point.offset);
+    if (found && found.sample <= wanted) low = found;
+  }
+  const size = reader.size, total = info.totalFrames, block = info.maxBlock || 4096;
+  if (size && total) {
+    // Bytes to stand back from the proportional place; it grows while reads land past the position.
+    let back = 0;
+    for (let i = 0; i < 10 && wanted - low.sample > near; i++) {
+      const upper = high ?? {offset: size, sample: total};
+      if (upper.sample <= low.sample || upper.offset <= low.offset) break;
+      const perSample = (upper.offset - low.offset) / (upper.sample - low.sample);
+      const frameBytes = Math.max(64, perSample * block);
+      // Two frames short of the proportional place, so that landing before the position is the usual case.
+      const aim = Math.floor(low.offset + (wanted - low.sample) * perSample - 2 * frameBytes - back);
+      if (aim <= low.offset) break;
+      const found = await probe(aim);
+      if (!found) break;
+      if (found.sample <= wanted) { if (found.offset <= low.offset) break; low = found; back = 0; }
+      else { high = found; back = back ? back * 2 : 2 * frameBytes; }
+    }
+  }
+  if (low.offset === firstFrame) return undefined; // nothing better than the start was confirmed
+  const from = low;
+  return {packets: flacFrames(reader, from.offset, info, signal), rawStart: from.sample};
 }
 
 /** Frames from `from` (which must be a frame start). */

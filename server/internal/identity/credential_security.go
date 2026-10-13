@@ -10,6 +10,7 @@ import (
 	"errors"
 	"net"
 	"net/netip"
+	"portico.local/server/internal/networkpolicy"
 	"strings"
 	"time"
 
@@ -69,7 +70,7 @@ func credentialSource(ctx context.Context) (string, bool) {
 	if addr.Is4() {
 		bits = 24
 	}
-	return netip.PrefixFrom(addr, bits).Masked().String(), addr.IsLoopback() || addr.IsPrivate()
+	return netip.PrefixFrom(addr, bits).Masked().String(), networkpolicy.Home(ctx)
 }
 
 // A bucket in cool-off is refused before password hashing, with the exact
@@ -349,11 +350,11 @@ func (s *Service) revokeCredentialsTx(ctx context.Context, tx *sql.Tx, account s
 	return s.revokeCredentialsWithReasonTx(ctx, tx, account, RevokedPasswordChange)
 }
 func (s *Service) revokeCredentialsWithReasonTx(ctx context.Context, tx *sql.Tx, account string, reason RevocationReason) error {
-	if err := s.revokeDirectWithReasonTx(ctx, tx, account, "", "", reason); err != nil {
-		return err
-	}
-	_, err := tx.ExecContext(ctx, `UPDATE access_api_keys SET revoked=1,revision=revision+1 WHERE account_id=? AND revoked=0`, account)
-	return err
+	// API keys and personal access tokens are not ended here: they have a
+	// lifetime of their own (api_credentials.go), so a password change or an
+	// owner's edit does not silently break what a member has connected. A
+	// member who is disabled loses them through the schema's own rule.
+	return s.revokeDirectWithReasonTx(ctx, tx, account, "", "", reason)
 }
 
 func (s *Service) securityNoticeTx(ctx context.Context, tx *sql.Tx, account, kind string) error {

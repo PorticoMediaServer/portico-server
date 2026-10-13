@@ -11,7 +11,6 @@ import (
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/localmetadata"
 	"portico.local/server/internal/mediaanalysis"
-	"portico.local/server/internal/mediasource"
 	"portico.local/server/internal/storage"
 	"portico.local/server/internal/subtitles"
 	"portico.local/server/internal/supervise"
@@ -287,12 +286,7 @@ func (s *Service) analyzeOne(parent context.Context, job string, source catalog.
 		return storage.LocalInventoryStat(r)
 	}
 	matches := func(v storage.Snapshot) bool {
-		objectID := v.ObjectIdentity
-		if objectID == "" {
-			objectID = "path:" + v.Path
-		}
-		e := mediasource.InventoryEvidence{Kind: source.Kind, Scope: source.ID + ":" + source.Incarnation, Object: objectID, Size: v.Size, ModifiedNS: v.ModifiedNS, ChangeToken: v.ChangeToken}
-		r, e2 := e.Revision()
+		r, _, e2 := catalog.ObservationRevision(source, v)
 		return e2 == nil && r == revision
 	}
 	before, err := stat()

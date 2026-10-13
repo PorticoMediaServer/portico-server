@@ -101,29 +101,45 @@ func TestEventsStreamDeliversAfterCommitAndRetiresDuplicate(t *testing.T) {
 	if line, err := reader.ReadString('\n'); err != nil || !strings.HasPrefix(line, "retry:") {
 		t.Fatalf("stream hello: %q %v", line, err)
 	}
+	// A stream that opens with nothing waiting says where it stands, so a
+	// client has a position to resume from before the first real event.
+	next := func() (event, id string) {
+		t.Helper()
+		for {
+			line, err := reader.ReadString('\n')
+			if err != nil {
+				t.Fatal(err)
+			}
+			if strings.HasPrefix(line, "id: ") {
+				id = strings.TrimSpace(strings.TrimPrefix(line, "id: "))
+			}
+			if strings.HasPrefix(line, "event: ") {
+				return strings.TrimSpace(strings.TrimPrefix(line, "event: ")), id
+			}
+		}
+	}
+	if event, id := next(); event != "stream.opened" || id == "" {
+		t.Fatalf("opening position: %q %q", event, id)
+	}
 	raiseNotice(t, d, notify.ProfileScope("local", "member", "member-profile"), "new", "New notice")
 	d.Events.Wake()
+	if event, _ := next(); event != "notification.changed" {
+		t.Fatalf("unexpected event: %q", event)
+	}
+	// A reconnect takes over: it is admitted at once and the stream it
+	// replaces ends, so a device that changed network is not refused.
+	second := open()
+	defer second.Body.Close()
+	if second.StatusCode != 200 {
+		t.Fatalf("a reconnecting stream was refused: %d", second.StatusCode)
+	}
 	for {
-		line, err := reader.ReadString('\n')
-		if err != nil {
-			t.Fatal(err)
-		}
-		if strings.HasPrefix(line, "event: ") {
-			if line != "event: notification.changed\n" {
-				t.Fatalf("unexpected event: %q", line)
-			}
+		if _, err := reader.ReadString('\n'); err != nil {
 			break
 		}
-	}
-	second := open()
-	second.Body.Close()
-	if second.StatusCode != 409 {
-		t.Fatalf("duplicate must retire old stream: %d", second.StatusCode)
-	}
-	third := open()
-	third.Body.Close()
-	if third.StatusCode != 200 {
-		t.Fatalf("replacement stream: %d", third.StatusCode)
+		if ctx.Err() != nil {
+			t.Fatal("the replaced stream stayed open")
+		}
 	}
 }
 

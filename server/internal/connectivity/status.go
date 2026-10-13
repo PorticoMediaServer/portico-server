@@ -7,11 +7,12 @@ import (
 	"context"
 	"net"
 	"net/netip"
+	"net/url"
 	"sort"
-	"strings"
 	"time"
 
 	"portico.local/server/internal/networking"
+	"portico.local/server/internal/networkpolicy"
 	"portico.local/server/internal/operations"
 )
 
@@ -19,15 +20,15 @@ import (
 // registry. Its revision is the settings document revision, so a write here and
 // a write on the settings page cannot silently overwrite each other.
 type Policy struct {
+	ConnectionLimit         int      `json:"connectionLimit"`
+	AdvertiseURL            string   `json:"advertiseUrl"`
 	Revision                int64    `json:"revision"`
 	RemoteSignIn            string   `json:"remoteSignInPolicy"`
 	RemoteBitrateLimitKbps  int      `json:"remoteBitrateLimitKbps"`
-	SecureConnectionsPolicy string   `json:"secureConnectionsPolicy"`
 	LANNetworks             []string `json:"lanNetworks"`
 	AccessURLs              []string `json:"accessUrls"`
 	LANDiscoveryEnabled     bool     `json:"lanDiscoveryEnabled"`
 	TrustedProxies          []string `json:"trustedProxies"`
-	TreatWANAsLAN           bool     `json:"treatWanAsLan"`
 	UploadCapacityKbps      int      `json:"uploadCapacityKbps"`
 	PausedSessionTimeout    int      `json:"pausedSessionTimeoutMinutes"`
 	AdvertisedInterface     string   `json:"advertisedInterface"`
@@ -39,9 +40,9 @@ type Policy struct {
 // ProjectPolicy reads the connectivity rows out of a settings document.
 func ProjectPolicy(document operations.SettingsDocument) Policy {
 	v := document.Effective
-	out := Policy{Revision: document.Revision, RemoteSignIn: v.RemoteSignInPolicy, RemoteBitrateLimitKbps: v.RemoteBitrateLimitKbps,
-		SecureConnectionsPolicy: v.SecureConnectionsPolicy, LANNetworks: v.LANNetworks, AccessURLs: v.AccessURLs, LANDiscoveryEnabled: v.LANDiscoveryEnabled,
-		TrustedProxies: v.TrustedProxies, TreatWANAsLAN: v.TreatWANAsLAN, UploadCapacityKbps: v.UploadCapacityKbps, PausedSessionTimeout: v.PausedSessionTimeoutMinutes,
+	out := Policy{ConnectionLimit: v.ConnectionLimit, AdvertiseURL: v.AdvertiseURL, Revision: document.Revision, RemoteSignIn: v.RemoteSignInPolicy, RemoteBitrateLimitKbps: v.RemoteBitrateLimitKbps,
+		LANNetworks: v.LANNetworks, AccessURLs: v.AccessURLs, LANDiscoveryEnabled: v.LANDiscoveryEnabled,
+		TrustedProxies: v.TrustedProxies, UploadCapacityKbps: v.UploadCapacityKbps, PausedSessionTimeout: v.PausedSessionTimeoutMinutes,
 		AdvertisedInterface: v.AdvertisedInterface, CustomCertificatePath: v.CustomCertificatePath, CustomCertificateKey: v.CustomCertificateKeyPath, CustomCertificateDomain: v.CustomCertificateDomain}
 	if out.TrustedProxies == nil {
 		out.TrustedProxies = []string{}
@@ -94,6 +95,7 @@ type TLS struct {
 
 // CustomCertificate is the owner-supplied certificate side of the report.
 type CustomCertificate struct {
+	Serving   bool   `json:"serving"`
 	State     string `json:"state,omitempty"`
 	ErrorCode string `json:"errorCode,omitempty"`
 	Domain    string `json:"domain,omitempty"`
@@ -157,19 +159,21 @@ func (r Reporter) Report(ctx context.Context, policy Policy) Status {
 			out.Addresses = append(out.Addresses, Address{Address: prefix.Addr().String(), Family: family(prefix.Addr()), Class: classify(prefix.Addr(), lan), Source: "interface"})
 		}
 	}
-	for _, raw := range policy.AccessURLs {
-		host := raw
-		if index := strings.Index(host, "://"); index >= 0 {
-			host = host[index+3:]
+	for _, raw := range append(append([]string{}, policy.AccessURLs...), policy.AdvertiseURL) {
+		if raw == "" {
+			continue
 		}
-		if h, _, err := net.SplitHostPort(host); err == nil {
-			host = h
+		origin, err := url.Parse(raw)
+		if err != nil || origin.Hostname() == "" {
+			continue
 		}
-		class := "public"
+		host := origin.Hostname()
+		class, kind := "public", "hostname"
 		if addr, err := netip.ParseAddr(host); err == nil {
 			class = classify(addr, lan)
+			kind = family(addr)
 		}
-		out.Addresses = append(out.Addresses, Address{Address: host, Family: "hostname", Class: class, Source: "accessUrl"})
+		out.Addresses = append(out.Addresses, Address{Address: host, Family: kind, Class: class, Source: "accessUrl"})
 	}
 	if r.Certificates != nil {
 		if status, err := r.Certificates(ctx); err == nil {
@@ -183,7 +187,7 @@ func (r Reporter) Report(ctx context.Context, policy Policy) Status {
 	}
 	if r.Custom != nil {
 		custom := r.Custom(ctx)
-		entry := CustomCertificate{State: custom.State, ErrorCode: custom.ErrorCode, Domain: custom.Domain, Issuer: custom.Issuer}
+		entry := CustomCertificate{Serving: custom.Serving, State: custom.State, ErrorCode: custom.ErrorCode, Domain: custom.Domain, Issuer: custom.Issuer}
 		if custom.NotAfter != nil {
 			entry.NotAfter = custom.NotAfter.UTC().Format(time.RFC3339)
 		}
@@ -191,11 +195,12 @@ func (r Reporter) Report(ctx context.Context, policy Policy) Status {
 			entry.State = "none"
 		}
 		out.TLS.Custom = &entry
+		if entry.Serving {
+			out.TLS.Configured = true
+			out.TLS.TLSReady = true
+		}
 	}
 	out.Discovery = r.Advertiser.Status(policy.LANDiscoveryEnabled)
-	if policy.SecureConnectionsPolicy == "required" && !out.TLS.TLSReady {
-		out.Warnings = append(out.Warnings, "secure_connections_required_without_tls")
-	}
 	if policy.RemoteSignIn != "off" && !hasClass(out.Addresses, "public") && out.TLS.RouteURL == "" {
 		out.Warnings = append(out.Warnings, "remote_sign_in_without_public_address")
 	}
@@ -235,21 +240,13 @@ func parseNetworks(raw []string) []netip.Prefix {
 // matches; otherwise private and link-local addresses are LAN and globally
 // routable ones are public.
 func classify(addr netip.Addr, lan []netip.Prefix) string {
-	if addr.IsLoopback() {
-		return "loopback"
-	}
-	for _, prefix := range lan {
-		if prefix.Contains(addr) {
-			return "lan"
+	if networkpolicy.Contains(lan, addr) {
+		if addr.IsLoopback() {
+			return "loopback"
 		}
-	}
-	if netip.MustParsePrefix("100.64.0.0/10").Contains(addr) || addr.IsPrivate() || addr.IsLinkLocalUnicast() || addr.IsLinkLocalMulticast() {
 		return "lan"
 	}
-	if addr.IsGlobalUnicast() {
-		return "public"
-	}
-	return "lan"
+	return "public"
 }
 
 // observeInterfaces enumerates interfaces portably. net.Interfaces is available

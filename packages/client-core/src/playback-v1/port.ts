@@ -24,6 +24,13 @@ export type PlayerSource = Readonly<{
   /** The session and item this presentation belongs to (identity for native engines' bindings; web ignores them). */
   sessionId?: string;
   itemId?: string;
+  /** What the stream needs from the connection, when the server said: engines size their buffers by it. */
+  bitrateKbps?: number;
+  /**
+   * A live stream: positions are seconds since this wall-clock instant and are mapped through the
+   * stream's programme dates, never through the element's own clock.
+   */
+  liveOriginMs?: number;
 }>;
 
 /** A point-in-time reading of the player, for timeline reports (spec §6). */

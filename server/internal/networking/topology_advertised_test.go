@@ -90,8 +90,8 @@ func TestAdvertisedInterfaceMissingFallsBack(t *testing.T) {
 	if !got["192.168.1.20"] || !got["192.168.1.21"] {
 		t.Fatalf("a missing interface falls back to automatic: %v", topo.LAN)
 	}
-	if got["172.17.0.1"] {
-		t.Fatalf("automatic still skips virtual interfaces: %v", topo.LAN)
+	if !got["172.17.0.1"] {
+		t.Fatalf("automatic includes attached interfaces: %v", topo.LAN)
 	}
 	if topo.ErrorCode != "advertised_interface_missing" {
 		t.Fatalf("error code: %q", topo.ErrorCode)
@@ -115,8 +115,8 @@ func TestGatewayInterfaceNeverSkipped(t *testing.T) {
 	if !got["192.168.1.20"] {
 		t.Fatalf("a physical interface stays: %v", topo.LAN)
 	}
-	if got["10.5.0.2"] {
-		t.Fatalf("a non-gateway virtual interface is skipped: %v", topo.LAN)
+	if !got["10.5.0.2"] {
+		t.Fatalf("an attached interface was skipped: %v", topo.LAN)
 	}
 	if topo.LocalAddress != "172.17.0.1" {
 		t.Fatalf("local address: %q", topo.LocalAddress)

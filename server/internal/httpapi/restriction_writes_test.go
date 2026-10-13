@@ -407,7 +407,6 @@ func restrictionWriteRoutes() map[string]writeRoute {
 			}
 			return out
 		}),
-		"DELETE /v1/items/{id}":                                           perHidden("DELETE", "/v1/items/ID", "", "item"),
 		"POST /v1/items/{id}/delete":                                      perHidden("POST", "/v1/items/ID/delete", `{"operationId":"OP"}`, "item"),
 		"POST /v1/items/{id}/delete/preview":                              perHidden("POST", "/v1/items/ID/delete/preview", `{}`, "item"),
 		"POST /v1/items/{id}/metadata/refresh":                            perHidden("POST", "/v1/items/ID/metadata/refresh", `{}`, "item"),

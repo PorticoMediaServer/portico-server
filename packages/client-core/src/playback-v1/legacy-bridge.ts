@@ -1,7 +1,8 @@
 /**
- * Plays Playback Protocol v1 sessions through today's `PlaybackService` and its engines (web
- * `<video>` + hls.js, Apple AVPlayer), so the player screens don't change while the apps move to
- * v1 (Plan — Client Playback Migration, core step). `V1PlaybackApi` is the `PlaybackApi` the
+ * Plays Playback Protocol v1 sessions through `PlaybackService` and the native engines (Apple
+ * AVPlayer, Android). The web no longer uses this file: it runs on `PlaybackSessionController`
+ * (see the web app's `playback-v1/web-playback.ts`), and this bridge goes when the native apps
+ * make the same move. `V1PlaybackApi` is the `PlaybackApi` the
  * service calls for a session's progress and stop, spoken as v1: the timeline (with its own
  * monotonic `seq`, generation and a lease keepalive while paused) and `DELETE` with the last
  * position. `toPlaybackSession` turns a v1 session into the service's session shape.
@@ -13,21 +14,9 @@ import {SessionsClient, type SessionChange, type StartOptions, type StartTarget,
 import type {PlayerFailureCode} from '../client-profile.ts';
 import type {TimelineReport, TimelineState} from './timeline.ts';
 import {parseSessionEnd, type Session, type SessionEnd} from './types.ts';
+import {toPlaybackSession} from './session-shape.ts';
 
-/** The service's session for a v1 session: stream mode is HLS, direct stays direct. */
-export function toPlaybackSession(session: Session, durationSeconds: number, resumeSeconds?: number): PlaybackSession {
-  return {
-    id: session.id,
-    generation: session.presentation.generation,
-    streamUrl: session.presentation.url,
-    mode: session.presentation.mode === 'stream' ? 'hls' : 'direct',
-    duration: Math.max(0, durationSeconds),
-    resumeSeconds: resumeSeconds ?? session.presentation.startPositionMs / 1000,
-    protocol: 'v1',
-    // §18.1 version 2: the device decodes the file itself.
-    ...(session.presentation.audio ? {audio: session.presentation.audio} : {}),
-  };
-}
+export {toPlaybackSession};
 
 type PendingReport = {seq?: number; body: Omit<TimelineReport, 'seq'>; at: number; promise: Promise<void>; resolve: () => void; reject: (error: unknown) => void};
 const MAX_PENDING_REPORT_FACTS = 64;
@@ -98,33 +87,36 @@ export class V1PlaybackApi implements PlaybackApi {
   }
 
   /**
-   * One re-plan of a playing session (`PATCH`): a quality, version, audio or subtitle change, or a
-   * reported player failure. The session keeps its id, its queue and its place in it; when the
-   * bytes change it comes back as a new generation (a new URL, possibly another engine), which is
-   * tracked from `positionMs` on. A stale revision is re-read and the change sent once more, so
-   * the viewer only ever sees a conflict when the session really ended.
+   * One re-plan of a playing session (`PATCH`, spec §5.7): a quality, version, audio or subtitle
+   * change, or a reported player failure. The session keeps its id, its queue and its place in
+   * it; when the bytes change it comes back as a new generation (a new URL, possibly another
+   * engine) at the player's position. A revision that moved meanwhile is read again once, so the
+   * viewer only ever sees a conflict when the session really ended.
    */
-  async change(session: Session, change: SessionChange, signal?: AbortSignal): Promise<{session: Session; playback: PlaybackSession}> {
-    const t = this.tracked.get(session.id);
+  async change(id: string, change: SessionChange, durationSeconds?: number): Promise<{session: Session; playback: PlaybackSession}> {
+    const t = this.tracked.get(id);
+    // The new stream starts where this device is: the change says so itself, and the server is
+    // told first as well, so its record of the old presentation ends at the same place.
     const positionMs = change.positionMs ?? change.seek?.positionMs ?? t?.positionMs;
     const body: SessionChange = positionMs !== undefined && change.positionMs === undefined && change.seek === undefined ? {...change, positionMs: Math.max(0, Math.round(positionMs))} : change;
+    if (t && !t.stopping && t.state !== 'ended') await this.report(id, t).catch(() => {});
+    let current = await this.sessions.get(id);
     let updated: Session;
     try {
-      updated = await this.sessions.patch(session.id, session.revision, body, signal);
+      updated = await this.sessions.patch(id, current.revision, body);
     } catch (e) {
       if (!(e instanceof PlaybackApiError) || e.status !== 412) throw e;
-      const current = (e.current as Session | undefined) ?? await this.sessions.get(session.id, signal);
-      updated = await this.sessions.patch(current.id, current.revision, body, signal);
+      current = (e.current as Session | undefined) ?? await this.sessions.get(id);
+      updated = await this.sessions.patch(id, current.revision, body);
     }
-    const duration = await this.duration(updated.itemId ?? '', updated.versionId, signal);
+    const duration = durationSeconds ?? await this.duration(updated.itemId ?? '', updated.versionId);
     return {session: updated, playback: this.adopt(updated, duration)};
   }
 
   /** The engine could not play a session's presentation: the server re-plans it another way. */
   async reportPlayerFailure(sessionId: string, code: PlayerFailureCode, detail: string, positionSeconds: number): Promise<{escalates: boolean; session?: PlaybackSession; v1?: Session} | null> {
     try {
-      const current = await this.sessions.get(sessionId);
-      const r = await this.change(current, {failure: {code, detail: detail.replace(/[\x00-\x1f\x7f]/g, ' ').slice(0, 500)}, positionMs: Math.max(0, Math.round(positionSeconds * 1000))});
+      const r = await this.change(sessionId, {failure: {code, detail: detail.replace(/[\x00-\x1f\x7f]/g, ' ').slice(0, 500)}, positionMs: Math.max(0, Math.round(positionSeconds * 1000))});
       for (const listener of this.changedListeners) listener(r.session);
       return {escalates: true, session: r.playback, v1: r.session};
     } catch (e) {

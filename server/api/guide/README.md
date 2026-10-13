@@ -27,3 +27,7 @@ Sections:
 4. `04-playback-v1.md` — sessions, queues and selectors, timeline, media grants, events.
 5. `05-personal-state-and-jobs.md` — watched, favorites, watchlist, bulk jobs, downloads.
 6. `06-events.md` — the `/v1/events` feed and notifications.
+7. `07-keys-tokens-and-scopes.md` — API keys, personal access tokens, scopes, rate and concurrency limits.
+8. `08-for-tools.md` — the bounded title query and the "these paths changed" report.
+9. `09-webhooks.md` — outbound webhooks: events, payloads, checking the signature, retries.
+10. `10-mcp.md` — the built-in MCP server for AI assistants.

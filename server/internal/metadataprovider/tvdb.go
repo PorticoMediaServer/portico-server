@@ -7,16 +7,20 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
 type TVDB struct {
-	screenCache screenCache
-	http        *transport
-	projectKey  string
-	auth        chan struct{}
-	token       string
-	expires     time.Time
+	screenCache        screenCache
+	http               *transport
+	projectKey         string
+	credentialMu       sync.RWMutex
+	credentialRevision uint64
+	tokenRevision      uint64
+	auth               chan struct{}
+	token              string
+	expires            time.Time
 }
 
 func NewTVDB(projectKey string) (*TVDB, error) {
@@ -38,7 +42,8 @@ func (s *TVDB) access(ctx context.Context, invalid string) (string, error) {
 	if invalid != "" && s.token == invalid {
 		s.token = ""
 	}
-	if s.token != "" && time.Now().Before(s.expires) {
+	key, revision := s.credential()
+	if s.token != "" && s.tokenRevision == revision && time.Now().Before(s.expires) {
 		return s.token, nil
 	}
 	var envelope struct {
@@ -47,7 +52,7 @@ func (s *TVDB) access(ctx context.Context, invalid string) (string, error) {
 			Token string `json:"token"`
 		} `json:"data"`
 	}
-	if err := s.http.request(ctx, "POST", "/login", "", map[string]string{"apikey": s.projectKey}, &envelope); err != nil {
+	if err := s.http.request(ctx, "POST", "/login", "", map[string]string{"apikey": key}, &envelope); err != nil {
 		return "", err
 	}
 	if envelope.Status != "success" || len(envelope.Data.Token) < 8 || len(envelope.Data.Token) > 8192 {
@@ -59,6 +64,7 @@ func (s *TVDB) access(ctx context.Context, invalid string) (string, error) {
 		}
 	}
 	s.token = envelope.Data.Token
+	s.tokenRevision = revision
 	s.expires = time.Now().Add(27 * 24 * time.Hour)
 	return s.token, nil
 }
@@ -262,4 +268,30 @@ func (s *TVDB) Episodes(ctx context.Context, seriesID int64, order EpisodeOrder,
 	}
 	result.Episodes = envelope.Data.Episodes
 	return result, nil
+}
+
+func (s *TVDB) SetBackgroundSpeed(speed string) { s.http.setSpeed(speed) }
+
+// Installing a key does not wait for an in-flight login. access owns tokens
+// under the auth gate and rejects a token from an older credential revision.
+func (s *TVDB) SetCredential(ctx context.Context, key string) error {
+	if e := ctx.Err(); e != nil {
+		return e
+	}
+	s.credentialMu.Lock()
+	changed := s.projectKey != key
+	if changed {
+		s.projectKey = key
+		s.credentialRevision++
+	}
+	s.credentialMu.Unlock()
+	if changed {
+		s.screenCache.invalidate()
+	}
+	return nil
+}
+func (s *TVDB) credential() (string, uint64) {
+	s.credentialMu.RLock()
+	defer s.credentialMu.RUnlock()
+	return s.projectKey, s.credentialRevision
 }

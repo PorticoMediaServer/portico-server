@@ -9,20 +9,21 @@ import {FeedbackDialog} from '../screens/shared/FeedbackDialog';
 import {trackName} from '@core/presentation/index.ts';
 import React, {useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore} from 'react';
 import {playbackUserMessage} from '@core/playback-messages.ts';
+import {playbackFailure} from './failure';
+import {SubtitleSurface} from './subtitle-surface';
+import {webPlaybackResourceKey} from '../playback-v1/web-playback';
+import {fixedQuality, offeredQualities, qualityChoiceOf, qualityRequest, type FixedQuality, type QualityChoice} from '@core/playback-v1/choices.ts';
 import {ownerStopOf} from './owner-stop';
 import {shortcutKey} from './shortcut-key';
-import {preparedChoice, preparedReason} from '@core/prepared-media.ts';
 import {listeningRates, type SleepChoice} from '@core/listening.ts';
 import {subtitleReason} from '@core/subtitles.ts';
-import {useWebPlaybackAdapter} from '../bridge/useWebPlaybackAdapter';
-import {acceptsWebPlaybackEvent, webPlaybackResourceKey} from '../bridge/web-playback-binding';
 import {useSystemListening} from '../bridge/useSystemListening';
 import {formatClock} from '@core/presentation/index.ts';
 import {currentAccessToken, useSession} from '../app/session';
 import {Artwork, Backdrop, Button, ConfirmDialog, Dialog, Icon, IconButton, Menu, Popover, StateView, Text, cx, useCompact, useNarrow, type IconName} from '../ui';
 import {isBitmapResource, textTrackForLanguage, bitmapWarningNeeded, ownerPlaybackSwitches} from '@core/presentation/index.ts';
 import {formatBehindSec, isBehindLive, programmeRangeLabel} from '@core/presentation/index.ts';
-import {dedupQualityRungs, convertQualityRungs, qualityNetworkFooter} from '@core/presentation/index.ts';
+import {qualityNetworkFooter} from '@core/presentation/index.ts';
 import {noteCastMeta} from '@core/presentation/index.ts';
 import {channelTimeline} from '@core/playback/channel-timeline.ts';
 import {defaultRecordingOptions} from '@core/dvr.ts';
@@ -64,18 +65,42 @@ export function PlayerSurface() {
       document.body.style.overflow = '';
     };
   }, [player.active, player.expanded, player.isAudio, compact]);
+  const i18n = useI18n();
   if (!player.active) return null;
   return (
-    <>
+    <PlayerBoundary title={i18n.t('web.player.crashed.title')} body={i18n.t('web.player.crashed.body')} retry={i18n.t('action.tryAgain')} close={i18n.t('action.close')} onClose={player.leave}>
       <FullPlayer engine={player} visible={player.expanded} />
       {!player.expanded && player.isAudio ? <MiniBar engine={player} /> : null}
-    </>
+    </PlayerBoundary>
   );
+}
+
+/**
+ * A fault while drawing the player (a menu, an option panel) stops at the player: the rest of the
+ * app stays up, and Try again mounts the player afresh. The playback path remembers the
+ * presentation and its position, so the title picks up where it was.
+ */
+class PlayerBoundary extends React.Component<{title: string; body: string; retry: string; close: string; onClose: () => void; children: React.ReactNode}, {failed: boolean}> {
+  state = {failed: false};
+  static getDerivedStateFromError() { return {failed: true}; }
+  componentDidCatch(error: unknown) { console.error('[player] render failed', error); }
+  render() {
+    if (!this.state.failed) return this.props.children;
+    return (
+      <div className={s.stage} role="alert">
+        <div className={s.errorState}>
+          <StateView icon="warning" title={this.props.title} body={this.props.body} action={{label: this.props.retry, onClick: () => this.setState({failed: false})}} secondaryAction={{label: this.props.close, onClick: () => { this.setState({failed: false}); this.props.onClose(); }}} />
+        </div>
+      </div>
+    );
+  }
 }
 
 const rates = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
 const noQueue = () => () => {};
-const sleepChoices: {id: SleepChoice; label: string}[] = [{id: 'off', label: 'Off'}, {id: 15, label: '15 minutes'}, {id: 30, label: '30 minutes'}, {id: 45, label: '45 minutes'}, {id: 60, label: '1 hour'}, {id: 90, label: '90 minutes'}, {id: 'item', label: 'End of this item'}];
+const sleepChoices: readonly SleepChoice[] = ['off', 15, 30, 45, 60, 90, 'item'];
+/** One film frame, for stepping while paused (the file's own rate is not known to the page). */
+const FRAME_SECONDS = 1 / 24;
 
 function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean}) {
   const {service, state, identity, isAudio, queue} = engine;
@@ -116,6 +141,20 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
   }, [isAudio]);
   const video = useRef<HTMLVideoElement>(null);
   useEffect(() => { syncRate.attach(video.current); return () => syncRate.attach(null); }, []);
+  /* One element for the life of the player. The playback path mounts its port on it, and the
+     subtitle surface is the one place a subtitle track is attached to it. */
+  /* Fit: the whole picture (the default), or filling the screen with the edges cropped. Kept on this device. */
+  const [fill, setFill] = useState(() => { try { return localStorage.getItem('portico.player.fill.v1') === '1'; } catch { return false; } });
+  const toggleFill = () => setFill(now => { try { localStorage.setItem('portico.player.fill.v1', now ? '0' : '1'); } catch { /* private mode */ } return !now; });
+  const [surface, setSurface] = useState<SubtitleSurface | null>(null);
+  useEffect(() => {
+    const el = video.current;
+    if (!el) return;
+    const made = SubtitleSurface.supported(el) ? new SubtitleSurface(el) : null;
+    setSurface(made);
+    const unmount = engine.playback.mount(el, made ?? undefined, () => (document.pictureInPictureElement === el ? 'pip' : undefined));
+    return () => { unmount(); made?.dispose(); setSurface(null); };
+  }, [engine.playback]);
   const stage = useRef<HTMLDivElement>(null);
   const resourceKey = webPlaybackResourceKey(state);
   const [notice, setNotice] = useState('');
@@ -132,11 +171,8 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
   const [legend, setLegend] = useState(false);
   const [report, setReport] = useState(false);
   const [rate, setRate] = useState(1);
-  const rateRef = useRef(rate);
-  rateRef.current = rate;
   const item = identity.item ? {id: identity.item.id, libraryId: identity.item.libraryId} : identity.itemId && identity.libraryId ? {id: identity.itemId, libraryId: identity.libraryId} : undefined;
-  const notify = useCallback((m: string) => setNotice(m), []);
-  useWebPlaybackAdapter(service, api, video, rateRef, notify, resourceKey);
+  useEffect(() => { engine.playback.setRate(rate); }, [engine.playback, rate]);
   const offers = usePlayerOffers(api, scope, item, state.session?.id, state.session?.generation);
   const refreshAudio = usePlayerAudioPlan(offers, item, service, state.session?.id, state.session?.generation);
   const prefs = useServerPreferences();
@@ -148,7 +184,7 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
   const defaultSpeed = prefs.value<number>('playback.defaultSpeed', 1);
   const skipModes: Record<string, SkipMode> = {intro: prefs.value('playback.introSkip', 'ask'), credits: prefs.value('playback.creditsSkip', 'ask'), recap: prefs.value('playback.recapSkip', 'ask'), outro: prefs.value('playback.creditsSkip', 'ask'), commercial: 'ask'};
   const trickplay = useTrickplay(api, scope, item, offers.data?.current?.sourceId, !isAudio && !state.channel);
-  const subtitles = usePlayerSubtitles(api, scope, service, video, resourceKey, isAudio);
+  const subtitles = usePlayerSubtitles(api, scope, service, surface, resourceKey, isAudio);
   // Fetched with the session (one small read) so Chapters only appears when the title has them.
   const chapters = usePlayerChapters(api, scope, item, service, !isAudio);
   // FEAT-11: chapter starts and intro/credits on the seek bar.
@@ -157,17 +193,17 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
   const markerList = offers.data?.markers?.markers;
   const segmentMarks = useMemo(() => markerList?.filter(m => m.kind === 'intro' || m.kind === 'credits' || m.kind === 'outro' || m.kind === 'recap').map(m => ({start: m.startSeconds, end: m.endSeconds})), [markerList]);
   const listening = useSyncExternalStore(queue?.listening.subscribe ?? (() => () => {}), () => queue?.listening.getSnapshot() ?? null);
-  useSystemListening(service, state, video, identity.item ?? {id: identity.itemId ?? '', libraryId: identity.libraryId ?? '', title: identity.title, kind: identity.kind ?? '', duration: state.duration, progressSeconds: state.positionSeconds, available: true, posterUrl: identity.posterUrl}, queue, api, currentAccessToken);
+  useSystemListening(service, state, video, identity.item ?? {id: identity.itemId ?? '', libraryId: identity.libraryId ?? '', title: identity.title, kind: identity.kind ?? '', duration: state.duration, progressSeconds: state.positionSeconds, available: true, posterUrl: identity.posterUrl}, queue, api, currentAccessToken, identity.subtitle);
   useEffect(() => {
     const el = video.current;
     if (!el) return;
-    el.volume = engine.volume;
+    // Loudness is not linear: squaring the slider's value spreads the audible change along it.
+    el.volume = engine.volume * engine.volume;
     el.muted = engine.muted;
   }, [engine.volume, engine.muted, resourceKey]);
   useEffect(() => {
     if (!isAudio || !listening) return;
     setRate(listening.rate);
-    if (video.current) video.current.playbackRate = listening.rate;
   }, [isAudio, listening?.rate, resourceKey]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     setBuffering(false);
@@ -180,7 +216,6 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
     if (isAudio || !state.session || state.channel) return;
     setRate(defaultSpeed);
     service.setPlaybackRate(defaultSpeed);
-    if (video.current) video.current.playbackRate = defaultSpeed;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.session?.id, isAudio]);
 
@@ -198,50 +233,145 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
     reveal();
     return () => clearTimeout(hideTimer.current);
   }, [canHide, state.intentId, reveal]);
-  const currentResource = (el: HTMLVideoElement | null) => !service.getSnapshot().audioEffects.rendering && (!el?.dataset.porticoRoute || el.dataset.porticoRoute === 'ready') && acceptsWebPlaybackEvent(resourceKey, el, video.current, service.getSnapshot());
-  const fact = (el: HTMLVideoElement | null = video.current) => {
-    const now = service.getSnapshot();
-    if (!now.channel && currentResource(el) && el && el.readyState >= 1 && !el.seeking && !now.pendingSeek) service.fact(now.intentId, el.currentTime, el.ended ? 'ended' : el.paused ? 'paused' : 'playing');
-  };
+  // What the element is doing, for the spinner and for hiding the controls. Facts about playback
+  // itself reach the service through the playback path, never from here.
+  const showsMedia = () => !service.getSnapshot().audioEffects.rendering && !!service.getSnapshot().session && service.getSnapshot().phase !== 'error';
   const updateBuffered = (el: HTMLVideoElement) => {
     try {
       const t = el.currentTime;
       for (let i = 0; i < el.buffered.length; i++) if (el.buffered.start(i) <= t && el.buffered.end(i) >= t) { setBuffered(el.buffered.end(i)); return; }
     } catch {}
   };
-  /* Keyboard: the player owns shortcuts while expanded and no field has focus. */
+  /* Brief feedback for a keyboard or wheel action (volume, speed, subtitle timing): it goes by itself. */
+  const flashTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const flash = useCallback((text: string) => {
+    setNotice(text);
+    clearTimeout(flashTimer.current);
+    flashTimer.current = setTimeout(() => setNotice(now => (now === text ? '' : now)), 1800);
+  }, []);
+  useEffect(() => () => clearTimeout(flashTimer.current), []);
+  const changeVolume = (delta: number) => {
+    const next = Math.max(0, Math.min(1, Math.round(((engine.muted ? 0 : engine.volume) + delta) * 20) / 20));
+    engine.setVolume(next);
+    engine.setMuted(false);
+    flash(i18n.t('web.player.volume.changed', {percent: Math.round(next * 100)}));
+  };
+  const stepSpeed = (direction: 1 | -1) => {
+    const list: readonly number[] = isAudio ? listeningRates : rates;
+    const at = list.indexOf(rate) < 0 ? list.indexOf(1) : list.indexOf(rate);
+    const next = list[Math.max(0, Math.min(list.length - 1, at + direction))]!;
+    if (next === rate) return;
+    setSpeed(next);
+    flash(i18n.t('web.player.speed.changed', {speed: next}));
+  };
+  /** One frame at a time while paused. The element is moved directly: the step is far inside the
+   * tolerance a seek is confirmed with, and the position follows from the element's own report. */
+  const stepFrame = (direction: 1 | -1) => {
+    const el = video.current;
+    if (!el || !el.paused || el.readyState < 2 || service.getSnapshot().audioEffects.rendering) return;
+    el.currentTime = Math.max(0, el.currentTime + direction * FRAME_SECONDS);
+  };
+  const stepChapter = (direction: 1 | -1) => {
+    const list = chapterList;
+    if (!list?.length) return;
+    const now = service.getSnapshot(), at = now.pendingSeek?.positionSeconds ?? now.positionSeconds;
+    // Back goes to the start of this chapter first, then to the one before it.
+    const to = direction > 0 ? list.find(c => c.startSeconds > at + 1) : [...list].reverse().find(c => c.startSeconds < at - 3);
+    if (to) engine.seekTo(to.startSeconds); else if (direction < 0) engine.seekTo(0);
+  };
+  const lastSubtitle = useRef<string | undefined>(undefined);
+  const toggleSubtitles = () => {
+    const plan = subtitles.snapshot.plan;
+    if (!subtitles.service || !plan || subtitles.snapshot.busy) return;
+    if (plan.mode === 'track' && !subtitles.snapshot.suppressed) { lastSubtitle.current = plan.selected?.id; void subtitles.service.choose(null).catch(() => {}); return; }
+    const pick = plan.resources.find(r => r.id === lastSubtitle.current && r.enabled) ?? plan.resources.find(r => r.enabled && !isBitmapResource(r)) ?? plan.resources.find(r => r.enabled);
+    if (pick) chooseSubtitle(pick); else flash(i18n.t('web.player.subtitles.none'));
+  };
+  const nudgeSubtitles = (delta: number) => {
+    const next = subtitles.nudge(delta);
+    if (next !== undefined) flash(i18n.t('web.player.subtitles.timing', {seconds: next.toFixed(1)}));
+  };
+  /* Keyboard: the player owns shortcuts while expanded and no text field, menu or dialog has focus. */
   useEffect(() => {
     if (!visible) return;
     const key = (e: KeyboardEvent) => {
       if (e.defaultPrevented) return;
-      const target = e.target as HTMLElement;
-      if (target?.closest('input,select,textarea,[contenteditable=true],[role="menu"],[role="dialog"]')) return;
+      const target = e.target as HTMLElement | null;
+      const field = (target?.closest?.('input,select,textarea,[contenteditable=true]') ?? null) as HTMLElement | null;
+      // A slider keeps focus after it is clicked. Only the keys that move it are its own; the
+      // rest of the shortcuts go on working.
+      const slider = field instanceof HTMLInputElement && field.type === 'range';
+      if ((field && !slider) || target?.closest?.('[role="menu"],[role="dialog"]')) return;
       const pressed = shortcutKey(e);
       if (pressed === undefined) return;
-      reveal();
+      // Space or Enter on a focused button presses that button; it must not toggle playback as well.
+      if ((pressed === ' ' || pressed === 'Enter') && target?.closest?.('button,a,summary,[role="button"],[role="menuitemradio"]')) return;
+      if (slider && ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown'].includes(pressed)) return;
+      const live = !!state.linear, now = service.getSnapshot();
+      const take = () => { e.preventDefault(); reveal(); };
       switch (pressed) {
-        case ' ': case 'k': e.preventDefault(); engine.toggle(); break;
-        case 'ArrowLeft': case 'j': if (!target?.closest('[type=range]')) { e.preventDefault(); engine.seekBy(-skipBack); } break;
-        case 'ArrowRight': case 'l': if (!target?.closest('[type=range]')) { e.preventDefault(); engine.seekBy(skipForward); } break;
-        case 'ArrowUp': case 'PageUp': if (linear && canSurfChannels()) { e.preventDefault(); surf(-1); } break;
-        case 'ArrowDown': case 'PageDown': if (linear && canSurfChannels()) { e.preventDefault(); surf(1); } break;
-        case 'm': e.preventDefault(); engine.setMuted(!engine.muted); break;
-        case 'f': e.preventDefault(); void toggleFullscreen(); break;
-        case 'g': if (linear) { e.preventDefault(); setMiniGuide(true); } break;
-        case '?': e.preventDefault(); setLegend(v => !v); break;
+        case ' ': case 'k': take(); engine.toggle(); break;
+        case 'ArrowLeft': case 'j': take(); engine.seekBy(-skipBack); break;
+        case 'ArrowRight': case 'l': take(); engine.seekBy(skipForward); break;
+        case 'ArrowUp': case 'ArrowDown':
+          take();
+          if (live && canSurfChannels()) surf(pressed === 'ArrowUp' ? -1 : 1); else changeVolume(pressed === 'ArrowUp' ? 0.05 : -0.05);
+          break;
+        case 'PageUp': case 'PageDown':
+          if (live) { if (canSurfChannels()) { take(); surf(pressed === 'PageUp' ? -1 : 1); } }
+          else if (chapterList?.length) { take(); stepChapter(pressed === 'PageDown' ? 1 : -1); }
+          break;
+        case 'm': take(); engine.setMuted(!engine.muted); break;
+        case 'f': if (!isAudio) { take(); void toggleFullscreen(); } break;
+        case 'i': if (!isAudio && document.pictureInPictureEnabled) { take(); void pip(); } break;
+        case 'c': if (!isAudio && !live) { take(); toggleSubtitles(); } break;
+        case 'z': if (!isAudio) { take(); toggleFill(); } break;
+        case 'g': if (live) { take(); setMiniGuide(true); } else if (!isAudio) { take(); nudgeSubtitles(-0.1); } break;
+        case 'h': if (!isAudio && !live) { take(); nudgeSubtitles(0.1); } break;
+        case ',': case '.': if (!isAudio && !live && now.intent === 'paused') { take(); stepFrame(pressed === '.' ? 1 : -1); } break;
+        case '<': case '>': if (!isMusic && !live) { take(); stepSpeed(pressed === '>' ? 1 : -1); } break;
+        case 'n': case 'p': if (e.shiftKey && !live) { take(); if (pressed === 'n') engine.next(); else engine.previous(); } break;
+        case 'Home': if (!live && now.session) { take(); engine.seekTo(0); } break;
+        case 'End': if (!live && now.duration > 0) { take(); engine.seekTo(Math.max(0, now.duration - 5)); } break;
+        case '0': case '1': case '2': case '3': case '4': case '5': case '6': case '7': case '8': case '9':
+          if (!live && now.duration > 0) { take(); engine.seekTo((now.duration * Number(pressed)) / 10); }
+          break;
+        case '?': take(); setLegend(v => !v); break;
         case 'Escape': if (legend) { setLegend(false); } else if (openBox) { setOpenBox(null); } else if (document.fullscreenElement) { void document.exitFullscreen().catch(() => {}); } else if (isAudio) engine.collapse(); else close(); break;
       }
     };
     document.addEventListener('keydown', key);
     return () => document.removeEventListener('keydown', key);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visible, engine, openBox, isAudio, reveal, legend, skipBack, skipForward, state.linear]);
+  });
+  /* Fullscreen. Where the page cannot make its own player full screen (an iPhone), the system's
+     full-screen video player is used instead: its own controls, with the same subtitle lines. */
+  type AppleVideo = HTMLVideoElement & {webkitEnterFullscreen?: () => void; webkitExitFullscreen?: () => void; webkitDisplayingFullscreen?: boolean};
+  const [fullscreen, setFullscreen] = useState(false);
+  useEffect(() => {
+    const el = video.current as AppleVideo | null;
+    const read = () => {
+      const on = !!document.fullscreenElement || !!el?.webkitDisplayingFullscreen;
+      setFullscreen(on);
+      // A phone or tablet held upright turns to landscape for the film, where the browser allows.
+      const orientation = screen.orientation as (ScreenOrientation & {lock?: (o: string) => Promise<void>}) | undefined;
+      try { if (on && matchMedia('(pointer: coarse)').matches) void orientation?.lock?.('landscape').catch(() => {}); else orientation?.unlock?.(); } catch { /* not lockable here */ }
+    };
+    document.addEventListener('fullscreenchange', read);
+    el?.addEventListener('webkitbeginfullscreen', read);
+    el?.addEventListener('webkitendfullscreen', read);
+    return () => { document.removeEventListener('fullscreenchange', read); el?.removeEventListener('webkitbeginfullscreen', read); el?.removeEventListener('webkitendfullscreen', read); };
+  }, []);
   async function toggleFullscreen() {
+    const el = video.current as AppleVideo | null;
     try {
-      if (document.fullscreenElement === stage.current) await document.exitFullscreen();
+      if (document.fullscreenElement) await document.exitFullscreen();
       else if (stage.current?.requestFullscreen) await stage.current.requestFullscreen();
+      else if (el?.webkitDisplayingFullscreen) el.webkitExitFullscreen?.();
+      else if (el?.webkitEnterFullscreen) el.webkitEnterFullscreen();
+      else setNotice(i18n.t('web.player.fullscreenUnavailable'));
     } catch {
-      setNotice('Fullscreen is unavailable in this browser.');
+      setNotice(i18n.t('web.player.fullscreenUnavailable'));
     }
   }
   async function pip() {
@@ -250,7 +380,7 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
       if (document.pictureInPictureElement) await document.exitPictureInPicture();
       else if (el?.requestPictureInPicture) await el.requestPictureInPicture();
     } catch {
-      setNotice('Picture in Picture could not start.');
+      setNotice(i18n.t('web.player.pipFailed'));
     }
   }
   /** Watch Together from the player: the title goes to the Together page, which plays it once the group has started. */
@@ -261,13 +391,13 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
     void navigate({to: '/together'});
   }
   function close() {
-    fact();
     if (document.fullscreenElement) void document.exitFullscreen().catch(() => {});
     engine.leave();
   }
   // The error state card already says why playback stopped; the toast doesn't repeat it.
-  const message = state.linearStalled ? null : engine.queueNotice || (state.error && state.phase !== 'error' ? playbackUserMessage(state.error) : state.seekError ? playbackUserMessage(state.seekError) : null) || (state.recovering ? 'Reconnecting…' : null) || notice || state.audioEffects.notice || (state.pendingSeek ? 'Seeking…' : state.phase === 'starting' ? 'Preparing playback…' : buffering && state.intent === 'playing' ? 'Buffering…' : isAudio ? listening?.message ?? undefined : undefined);
+  const message = state.linearStalled ? null : engine.queueNotice || (state.error && state.phase !== 'error' ? playbackUserMessage(state.error) : state.seekError ? playbackUserMessage(state.seekError) : null) || (state.recovering ? i18n.t('web.player.reconnecting') : null) || notice || state.audioEffects.notice || (state.pendingSeek ? 'Seeking…' : state.phase === 'starting' ? 'Preparing playback…' : buffering && state.intent === 'playing' ? 'Buffering…' : isAudio ? listening?.message ?? undefined : undefined);
   const linear = state.linear;
+  const failed = playbackFailure(state.error);
   const ownerStop = ownerStopOf(state.ended);
   const ownerStopped = !!ownerStop;
   // FEAT-07: channel up/down from the guide's lineup.
@@ -337,46 +467,79 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
       chooseSubtitle: id => { const resource = id ? subtitlePlan?.resources.find(r => r.id === id) : null; if (resource !== undefined) void subtitles.service?.choose(resource).catch(() => {}); },
     });
   }, [state.session?.id, state.itemId, audioPlan.plan, audioPlan.availability, state.audioTracks, subtitlePlan, subtitles.service, subtitles.snapshot.busy, service]);
-  const currentVersion = offersData?.current?.preparedVersionId ? offersData.preparedVersions.find(v => v.id === offersData.current?.preparedVersionId) : undefined;
-  /* Ladder rungs come from the server's offers; choosing one restarts the session at the same position on that rung. */
-  const [rung, setRung] = useState<string>('auto');
-  useEffect(() => setRung('auto'), [item?.id]);
-  const rungs = dedupQualityRungs(offersData?.sources);
-  /* MU4 CON-26: one Quality model — Automatic first, then the rungs; the footer from the same
-   * delivery policy as Apple ("Home network · up to 1080p" / "Away from home · up to 1080p"). */
-  const convertRungs = convertQualityRungs(rungs);
+  /* Quality. Original is the default; Automatic starts at Original and moves down, and back up,
+     as the connection requires; then the fixed qualities below the source. A choice re-plans the
+     playing session where it is (the queue is untouched) and holds for this viewing; the saved
+     default (Settings › Quality, one for home and one for away) applies to every new play. */
+  const presentation = engine.playback.session(state.session?.id)?.presentation;
+  const converting = [presentation?.decision.video, presentation?.decision.audio, presentation?.decision.subtitles].some(d => d?.action === 'transcode' || d?.action === 'burn');
+  // What the original needs from the connection: known while the original itself is playing.
+  const originalRate = useRef<{itemId?: string; kbps?: number}>({});
+  if (originalRate.current.itemId !== item?.id) originalRate.current = {itemId: item?.id};
+  if (presentation && !converting && presentation.bitrateKbps) originalRate.current.kbps = presentation.bitrateKbps;
+  const originalKbps = originalRate.current.kbps;
+  const offeredSteps = useMemo(() => offeredQualities({height: originalHeight, bitrateKbps: originalKbps}), [originalHeight, originalKbps]);
   const qualityFooter = qualityNetworkFooter(offersData?.deliveryPolicy);
-  const qualityFooterLine = qualityFooter.network && qualityFooter.height ? i18n.t('quality.networkLimit', {network: i18n.t(qualityFooter.network === 'home' ? 'network.home' : qualityFooter.network === 'away' ? 'network.away' : qualityFooter.network === 'wifi' ? 'network.wifi' : 'network.cellular'), height: qualityFooter.height}) : '';
-  const chooseRung = (id: string) => {
-    if (!item) return;
-    setRung(id);
-    engine.play(item.id, service.getSnapshot().pendingSeek?.positionSeconds ?? service.getSnapshot().positionSeconds, undefined, undefined, id === 'auto' ? undefined : id);
+  const qualityFooterLine = qualityFooter.network && qualityFooter.height ? i18n.t('quality.networkLimit', {network: i18n.t(qualityFooter.network === 'home' ? 'network.home' : 'network.away'), height: qualityFooter.height}) : '';
+  // A viewing that named no quality was started by the server with the viewer's saved default for
+  // where this device is (Settings › Quality: one for home, one for away): the quality in force on
+  // the session says which. A saved limit at or above this source does not limit it: that is
+  // Original for this title. Until there is a session, nothing is assumed.
+  const inForce = qualityChoiceOf(presentation?.quality);
+  const savedQuality: QualityChoice = inForce && (!fixedQuality(inForce) || offeredSteps.some(q => q.id === inForce)) ? inForce : 'original';
+  const qualityChoice: QualityChoice = engine.qualityChoice ?? savedQuality;
+  const automaticStep = useSyncExternalStore(engine.playback.subscribeAutomatic, () => engine.playback.automaticAt);
+  const stepLabel = (q: FixedQuality) => (q.id === '2160' ? i18n.t('quality.4k') : i18n.t('quality.height', {height: q.height}));
+  const automaticWanted = qualityChoice === 'automatic' && !isAudio && !state.linear && !!state.session && owner.transcoding;
+  useEffect(() => {
+    engine.playback.setAutomatic(automaticWanted ? {steps: offeredSteps, ...(originalKbps ? {originalKbps} : {})} : null);
+  }, [engine.playback, automaticWanted, offeredSteps, originalKbps, state.itemId]);
+  useEffect(() => () => engine.playback.setAutomatic(null), [engine.playback]);
+  useEffect(() => engine.playback.onNotice(kind => {
+    if (kind === 'autoplayBlocked') { setNotice(i18n.t('web.player.pressPlay')); return; }
+    const at = engine.playback.automaticAt;
+    flash(i18n.t(kind === 'qualityLowered' ? 'web.player.quality.lowered' : 'web.player.quality.raised', {quality: at ? stepLabel(at) : i18n.t('player.quality.original')}));
+  }), [engine.playback, i18n, flash]); // eslint-disable-line react-hooks/exhaustive-deps
+  const chooseQuality = (choice: QualityChoice) => {
     setOpenBox(null);
+    if (choice === qualityChoice) return;
+    engine.setQualityChoice(choice);
+    engine.playback.forgetAutomaticStep();
+    void service.changePlayback({quality: qualityRequest(choice)}).catch(() => setNotice(i18n.t('web.player.quality.changeFailed')));
   };
+  const chosenFixed = fixedQuality(qualityChoice);
   const currentSource = offersData?.sources.find(x => x.id === offersData.current?.sourceId) ?? offersData?.sources[0];
   const infoSource = currentSource ? {container: currentSource.container, videoCodec: currentSource.videoCodec, audioCodec: currentSource.audioCodec, width: currentSource.width, height: currentSource.height} : undefined;
-  const qualityLabelNow = offersData ? (currentVersion ? (currentVersion.facts.height ? `${currentVersion.facts.height}p` : 'Prepared') : rung !== 'auto' ? (rungs.find(q => q.id === rung)?.label ?? rung) : i18n.t('player.quality.automatic')) : '—';
-  const sleepLabel = isAudio ? listening?.timer?.label ?? 'Off' : state.listeningDeadlines?.sleepAtMs ? 'On' : 'Off';
+  const qualityLabelNow = !state.session ? '—' : qualityChoice === 'automatic' ? (automaticStep ? i18n.t('web.player.quality.automaticAt', {quality: stepLabel(automaticStep)}) : i18n.t('player.quality.automatic')) : chosenFixed ? stepLabel(chosenFixed) : i18n.t('player.quality.original');
+  const deliveredAs = chosenFixed ?? (qualityChoice === 'automatic' ? automaticStep : undefined);
+  const qualityContent = () => (
+    <>
+      {optionRow(i18n.t('player.quality.original'), qualityChoice === 'original', () => chooseQuality('original'), qualityChoice === 'original' ? undefined : i18n.t('player.quality.originalHelp'))}
+      {optionRow(i18n.t('player.quality.automatic'), qualityChoice === 'automatic', () => chooseQuality('automatic'), !owner.transcoding ? i18n.t('player.ownerOff') : qualityChoice === 'automatic' ? undefined : i18n.t('web.player.quality.automaticHelp'), !owner.transcoding)}
+      {offeredSteps.map(q => optionRow(stepLabel(q), qualityChoice === q.id, () => chooseQuality(q.id), !owner.transcoding ? i18n.t('player.ownerOff') : qualityChoice === q.id ? undefined : i18n.t('web.player.quality.rate', {mbps: q.videoKbps >= 1000 ? Math.round(q.videoKbps / 100) / 10 : q.videoKbps / 1000}), !owner.transcoding))}
+      {presentation ? <Text variant="caption" tone="tertiary">{[qualityFooterLine, converting ? (deliveredAs ? i18n.t('player.quality.converting', {quality: stepLabel(deliveredAs)}) : i18n.t('web.player.quality.convertingForDevice')) : i18n.t('player.quality.playingOriginal'), offersData && !offersData.transcodingEnabled ? i18n.t('player.quality.conversionOff') : ''].filter(Boolean).join(' · ')}</Text> : null}
+      {state.audioEffects.rendering && state.session?.audio?.downmixed ? <Text variant="caption" tone="secondary">{i18n.t('player.opt.downmixed')}</Text> : null}
+    </>
+  );
+  const [videoSleep, setVideoSleep] = useState<SleepChoice>('off');
+  const sleepAt = state.listeningDeadlines?.sleepAtMs;
+  useEffect(() => { if (!sleepAt) setVideoSleep('off'); }, [sleepAt]);
+  const sleepChoiceLabel = (c: SleepChoice) => (c === 'off' ? i18n.t('player.opt.off') : c === 'item' ? i18n.t('web.player.sleep.endOfItem') : i18n.t('player.opt.minutes', {count: c}));
+  const sleepLabel = isAudio ? listening?.timer?.label ?? i18n.t('player.opt.off') : sleepAt ? i18n.t('player.opt.minutes', {count: Math.max(1, Math.ceil((sleepAt - Date.now()) / 60000))}) : i18n.t('player.opt.off');
   const hidden = chromeHidden && canHide;
-  const chooseVersion = (id: string) => {
-    if (!offersData || !item) return;
-    const version = id ? offersData.preparedVersions.find(v => v.id === id && v.selectable) : undefined;
-    if (id && !version) return;
-    engine.play(item.id, service.getSnapshot().pendingSeek?.positionSeconds ?? service.getSnapshot().positionSeconds, undefined, version ? preparedChoice({preparedOffersRevision: offersData.preparedOffersRevision}, version) : undefined);
-    setOpenBox(null);
-  };
   const setSpeed = (value: number) => {
     setRate(value);
     if (isAudio) void queue?.listening.setRate(value).catch(e => setNotice(errorText(e, 'playback', 'action')));
-    else {
-      service.setPlaybackRate(value);
-      if (video.current) video.current.playbackRate = value;
-    }
+    else service.setPlaybackRate(value);
     setOpenBox(null);
   };
   const setSleep = (choice: SleepChoice) => {
     if (isAudio) void queue?.listening.setTimer(choice).catch(e => setNotice(errorText(e, 'playback', 'action')));
-    else void service.setListeningDeadline('sleep', choice === 'off' ? null : typeof choice === 'number' ? choice : Math.max(1, Math.round((state.duration - state.positionSeconds) / 60))).catch(() => {});
+    else {
+      // "End of this title" is what is left of it at the speed it is playing.
+      setVideoSleep(choice);
+      void service.setListeningDeadline('sleep', choice === 'off' ? null : typeof choice === 'number' ? choice : Math.max(1, Math.round((state.duration - state.positionSeconds) / Math.max(0.25, rate) / 60))).catch(() => setVideoSleep('off'));
+    }
     setOpenBox(null);
   };
   const [sheet, setSheet] = useState(false);
@@ -407,6 +570,36 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
   const [bitmapPending, setBitmapPending] = useState<{id: string} | null>(null);
   const bitmapAcknowledged = useRef(new Set<string>());
   useEffect(() => { bitmapAcknowledged.current.clear(); setBitmapPending(null); }, [resourceKey]);
+  /* The picture. A mouse click plays or pauses, after a moment in which a second click makes it a
+     double-click (fullscreen) instead, so a double-click never blips a pause. A finger does not
+     pause: a tap shows the controls, or hides them when they are showing; a double tap on the left
+     or right third skips back or forward, and in the middle goes fullscreen. */
+  const pointerKind = useRef<string>('mouse');
+  const hiddenAtDown = useRef(false);
+  const clickTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const lastTap = useRef(0);
+  useEffect(() => () => clearTimeout(clickTimer.current), []);
+  const tap = (e: React.MouseEvent<HTMLDivElement>) => {
+    const kind = (e.nativeEvent as PointerEvent).pointerType || pointerKind.current;
+    if (kind === 'mouse') {
+      clearTimeout(clickTimer.current);
+      if (e.detail > 1) return;
+      clickTimer.current = setTimeout(() => engine.toggle(), 220);
+      return;
+    }
+    const now = Date.now(), rect = e.currentTarget.getBoundingClientRect(), x = rect.width > 0 ? (e.clientX - rect.left) / rect.width : 0.5;
+    if (now - lastTap.current < 320) {
+      lastTap.current = 0;
+      if (x < 0.35 && !linear) engine.seekBy(-skipBack);
+      else if (x > 0.65 && !linear) engine.seekBy(skipForward);
+      else void toggleFullscreen();
+      reveal();
+      return;
+    }
+    lastTap.current = now;
+    // The press itself has already brought hidden controls back; a tap while they show puts them away.
+    if (!hiddenAtDown.current && hideAllowed.current) { clearTimeout(hideTimer.current); setChromeHidden(true); }
+  };
   const box = (id: string, icon: IconName, label: string, value: string, content: React.ReactNode, disabled = false) =>
     compact ? (
       <details key={id} className={s.sheetSection} open={openBox === id} onToggle={e => setOpenBox((e.currentTarget as HTMLDetailsElement).open ? id : openBox === id ? null : openBox)}>
@@ -425,24 +618,21 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
     <button key={label + meta} type="button" role="menuitemradio" aria-checked={checked} className={s.option} onClick={onSelect} disabled={disabled}><span>{label}</span>{meta ? <span className={s.optionMeta}>{meta}</span> : checked ? <Icon name="check" size={16} /> : null}</button>
   );
   return (
-    <div ref={stage} className={cx(s.stage, isAudio && s.audio, hidden && s.hidden)} hidden={!visible} aria-label={`Playing ${identity.title}`} role="region" onPointerMove={reveal} onPointerDown={reveal} tabIndex={-1}>
+    <div ref={stage} className={cx(s.stage, isAudio && s.audio, hidden && s.hidden)} hidden={!visible} aria-label={`Playing ${identity.title}`} role="region" onPointerMove={e => { if (e.pointerType === 'mouse') reveal(); }} onPointerDown={e => { pointerKind.current = e.pointerType || 'mouse'; hiddenAtDown.current = chromeHidden && canHide; reveal(); }} tabIndex={-1}>
       {isAudio ? <Backdrop path={identity.backdropUrl ?? identity.posterUrl} height="100%" opacity={0.35} position="center" /> : null}
       <video
-        key={resourceKey}
         ref={video}
-        className={s.video}
+        className={cx(s.video, fill && !isAudio && s.fill)}
         playsInline
         preload="metadata"
-        onTimeUpdate={e => { fact(e.currentTarget); if ((bufferedTick.current = (bufferedTick.current + 1) % 8) === 0) updateBuffered(e.currentTarget); }}
+        onTimeUpdate={e => { if ((bufferedTick.current = (bufferedTick.current + 1) % 8) === 0) updateBuffered(e.currentTarget); }}
         onProgress={e => updateBuffered(e.currentTarget)}
-        onWaiting={e => { if (currentResource(e.currentTarget)) { setBuffering(true); setMediaPlaying(false); } }}
-        onPlaying={e => { if (currentResource(e.currentTarget)) { setBuffering(false); setMediaPlaying(true); } }}
-        onEmptied={e => { if (currentResource(e.currentTarget)) { setBuffering(false); setMediaPlaying(false); } }}
-        onPause={e => { if (currentResource(e.currentTarget)) { setBuffering(false); setMediaPlaying(false); fact(e.currentTarget); } }}
-        onEnded={e => fact(e.currentTarget)}
-        onClick={() => (isAudio ? undefined : engine.toggle())}
+        onWaiting={() => { if (showsMedia()) { setBuffering(true); setMediaPlaying(false); } }}
+        onPlaying={() => { if (showsMedia()) { setBuffering(false); setMediaPlaying(true); } }}
+        onEmptied={() => { setBuffering(false); setMediaPlaying(false); }}
+        onPause={() => { setBuffering(false); setMediaPlaying(false); }}
       />
-      {!isAudio ? <div className={s.tap} onClick={() => engine.toggle()} onDoubleClick={() => void toggleFullscreen()} aria-hidden /> : null}
+      {!isAudio ? <div className={s.tap} onClick={tap} onDoubleClick={() => { if (pointerKind.current === 'mouse') { clearTimeout(clickTimer.current); void toggleFullscreen(); } }} onWheel={e => { if (!openBox && e.deltaY !== 0) changeVolume(e.deltaY < 0 ? 0.05 : -0.05); }} aria-hidden /> : null}
       {(buffering || state.recovering) && state.intent === 'playing' && !state.error ? <div className={s.spinner} aria-hidden /> : null}
       {!isAudio ? <PostPlay engine={engine} onClose={close} /> : null}
       {!isAudio && !linear && state.phase === 'ready' ? <SkipPrompt markers={offers.data?.markers ?? null} position={state.positionSeconds} sessionId={state.session?.id} modes={skipModes} onSeek={engine.seekTo} onSkipped={(id, mode, at) => engine.service.markerSkipped(id, mode, at)} /> : null}
@@ -459,8 +649,11 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
         </div>
       ) : null}
       {state.phase === 'error' && !ownerStopped ? (
-        <div className={s.errorState}>
-          <StateView icon="warning" title="Playback stopped" body={playbackUserMessage(state.error)} action={{label: 'Try again', onClick: engine.retry}} secondaryAction={{label: isAudio ? 'Close' : 'Back', onClick: close}} />
+        // Two honest cases: something another try can fix, and a title that cannot be played here at all.
+        <div className={s.errorState} role="alert">
+          {failed.permanent
+            ? <StateView icon="info" title={i18n.t(failed.title)} body={failed.body ? i18n.t(failed.body) : failed.text} action={{label: i18n.t(isAudio ? 'action.close' : 'action.back'), onClick: close}} secondaryAction={{label: i18n.t('web.player.error.report'), onClick: () => setReport(true)}} />
+            : <StateView icon="warning" title={i18n.t(failed.title)} body={failed.body ? i18n.t(failed.body) : failed.text} action={{label: i18n.t('action.tryAgain'), onClick: engine.retry}} secondaryAction={{label: i18n.t(isAudio ? 'action.close' : 'action.back'), onClick: close}} />}
         </div>
       ) : null}
       {isAudio ? (
@@ -488,11 +681,11 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
             {linear && !isAudio ? <LiveCaptions video={video.current} /> : null}
             {linear && canSurfChannels() ? <><IconButton name="chevronUp" label={i18n.t('web.player.channelUp')} variant="ghost" onClick={() => surf(-1)} /><IconButton name="chevronDown" label={i18n.t('web.player.channelDown')} variant="ghost" onClick={() => surf(1)} /></> : null}
             {!linear && state.itemId ? <PlayOnButton castAvailable={cast.state.available} video={video.current} onCast={() => { const itemId = state.itemId!, live = service.getSnapshot(), at = live.pendingSeek?.positionSeconds ?? live.positionSeconds; const meta = {title: identity.title, subtitle: identity.subtitle, kind: identity.kind ?? identity.item?.kind, artworkPath: identity.posterUrl ?? identity.item?.posterUrl}; noteCastMeta(itemId, meta); void cast.sender?.start(itemId, meta, at).then(ok => { if (ok) engine.leave(); }); }} /> : null}
-            {!isAudio && document.pictureInPictureEnabled ? <IconButton name="pip" label="Picture in Picture" variant="ghost" onClick={() => void pip()} /> : null}
+            {!isAudio && document.pictureInPictureEnabled ? <IconButton name="pip" label={i18n.t('web.player.pip')} variant="ghost" onClick={() => void pip()} /> : null}
             {/* WEB-PLAYER-05: Report a problem is a flag in a More menu, not a warning sign in the bar.
                 MU4 FEAT-07: linear sessions get Guide (mini guide) and Record here, never new top-bar buttons. */}
-            <Menu label={i18n.t('player.more')} trigger={<IconButton name="more" label={i18n.t('player.more')} variant="ghost" />} items={[...(linear ? [{id: 'guide', label: i18n.t('player.live.guide'), icon: 'channels' as IconName}, ...(canRecordLive ? [{id: 'record', label: i18n.t('guide.record'), icon: 'dvr' as IconName}] : [])] : [...(!isAudio && !inRoom && state.itemId ? [{id: 'together', label: i18n.t('player.watchTogether'), icon: 'people' as IconName}] : []), {id: 'info', label: i18n.t('player.opt.info'), icon: 'info' as IconName}, {id: 'report', label: i18n.t('player.reportProblem'), icon: 'flag' as IconName}]), ...(!compact ? [{id: 'shortcuts', label: i18n.t('player.shortcuts'), icon: 'keyboard' as IconName}] : [])]} onSelect={id => (id === 'report' ? setReport(true) : id === 'guide' ? setMiniGuide(true) : id === 'record' ? recordLive() : id === 'info' ? setInfo(v => !v) : id === 'together' ? watchTogether() : setLegend(true))} />
-            {!isAudio ? <IconButton name={document.fullscreenElement ? 'exitFullscreen' : 'fullscreen'} label="Fullscreen" variant="ghost" onClick={() => void toggleFullscreen()} /> : null}
+            <Menu label={i18n.t('player.more')} trigger={<IconButton name="more" label={i18n.t('player.more')} variant="ghost" />} items={[...(linear ? [{id: 'guide', label: i18n.t('player.live.guide'), icon: 'channels' as IconName}, ...(canRecordLive ? [{id: 'record', label: i18n.t('guide.record'), icon: 'dvr' as IconName}] : [])] : [...(!isAudio && !inRoom && state.itemId ? [{id: 'together', label: i18n.t('player.watchTogether'), icon: 'people' as IconName}] : []), ...(!isAudio ? [{id: 'fit', label: i18n.t(fill ? 'web.player.fit.contain' : 'web.player.fit.fill'), icon: 'fullscreen' as IconName}] : []), {id: 'info', label: i18n.t('player.opt.info'), icon: 'info' as IconName}, {id: 'report', label: i18n.t('player.reportProblem'), icon: 'flag' as IconName}]), ...(!compact ? [{id: 'shortcuts', label: i18n.t('player.shortcuts'), icon: 'keyboard' as IconName}] : [])]} onSelect={id => (id === 'report' ? setReport(true) : id === 'guide' ? setMiniGuide(true) : id === 'record' ? recordLive() : id === 'info' ? setInfo(v => !v) : id === 'together' ? watchTogether() : id === 'fit' ? toggleFill() : setLegend(true))} />
+            {!isAudio ? <IconButton name={fullscreen ? 'exitFullscreen' : 'fullscreen'} label={i18n.t(fullscreen ? 'web.player.exitFullscreen' : 'web.player.fullscreen')} variant="ghost" onClick={() => void toggleFullscreen()} /> : null}
             {isAudio ? <IconButton name="chevronDown" label="Minimize player" variant="ghost" onClick={engine.collapse} /> : null}
             <IconButton name="close" label="Close player" variant="ghost" onClick={close} />
           </div>
@@ -532,7 +725,7 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
             <div className={cx(s.options, compact && s.optionsSheet)} hidden={compact && !sheet}>
               {box('audio', 'audio', 'Audio', audioPlan.availability === 'loading' ? '…' : currentAudio?.label ?? (audioPlan.availability === 'available' ? 'Default' : 'Default'), (
                 <>
-                  {(!audioPlan.plan || audioPlan.availability==='unavailable') ? state.audioTracks?.tracks.map(t => optionRow(t.label,t.streamIndex===(state.audioTracks?.pending??state.audioTracks?.selected),()=>{void service.selectAudioTrack(t.streamIndex);setOpenBox(null);},undefined,state.audioTracks?.pending!==undefined)) : null}
+                  {(!audioPlan.plan || audioPlan.availability==='unavailable') ? state.audioTracks?.tracks.map(t => optionRow(t.label,t.streamIndex===(state.audioTracks?.pending??state.audioTracks?.selected),()=>{void service.selectAudioTrack(t.streamIndex).catch(()=>setNotice(i18n.t('web.player.audio.changeFailed')));setOpenBox(null);},undefined,state.audioTracks?.pending!==undefined)) : null}
                   {audioPlan.availability!=='unavailable' && audioPlan.plan?.renditions.map(r => optionRow(r.label, r.id === (audioPlan.pending?.renditionId ?? audioPlan.observedRenditionId), () => { service.selectAudio(r.id); setOpenBox(null); }, (r.unavailable||audioPlan.unavailableRenditionIds?.includes(r.id))?'Unavailable':undefined, !!audioPlan.pending||!!r.unavailable||audioPlan.unavailableRenditionIds?.includes(r.id)))}
                   {!audioPlan.plan?.renditions.length ? <Text variant="caption" tone="tertiary">{audioPlan.reason ?? 'This stream has one audio track.'}</Text> : null}
                   {audioPlan.failed && !audioPlan.failed.unavailable ? <Button size="sm" variant="outline" label="Try again" onClick={() => service.selectAudio(audioPlan.failed!.renditionId)} /> : null}
@@ -553,26 +746,16 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
                             : <Text variant="caption" tone="tertiary">{i18n.t('player.opt.noSubtitlesFound')}</Text>
                         ) : optionRow(i18n.t('player.opt.findSubtitles'), false, () => { setSubtitleSearch(true); void subtitles.service!.search(i18n.locale.split('-')[0] ?? 'en').catch(() => {}); })
                       ) : null}
-                      {subtitlePlan.selected ? <div style={{display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap'}}><Text variant="caption" tone="tertiary">Timing {(Number(subtitlePlan.offsetUs) / 1e6).toFixed(1)} s</Text><Button size="sm" variant="ghost" label="−0.5" onClick={() => void subtitles.service!.choose(subtitlePlan.selected!, String(Number(subtitlePlan.offsetUs) - 500000))} /><Button size="sm" variant="ghost" label="+0.5" onClick={() => void subtitles.service!.choose(subtitlePlan.selected!, String(Number(subtitlePlan.offsetUs) + 500000))} /></div> : null}
+                      {subtitlePlan.selected ? <div style={{display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap'}} title={i18n.t('player.opt.timingHelp')}><Text variant="caption" tone="tertiary">{i18n.t('player.opt.timing')} {i18n.t('player.opt.offsetSeconds', {seconds: subtitles.offsetSeconds.toFixed(1)})}</Text>{[-0.5, -0.1, 0.1, 0.5].map(step => <Button key={step} size="sm" variant="ghost" label={(step > 0 ? '+' : '−') + Math.abs(step)} onClick={() => { subtitles.nudge(step); }} />)}</div> : null}
                     </>
                   ) : <Text variant="caption" tone="tertiary">{subtitles.snapshot.loading ? 'Loading subtitle choices…' : subtitles.snapshot.error ?? subtitles.rendererError ?? 'Subtitles are available once playback starts.'}</Text>}
                 </>
               )) : null}
-              {!isAudio ? box('quality', 'quality', 'Quality', qualityLabelNow, (
-                <>
-                  {/* WEB-PLAYER-03: consumer words; the delivery facts live under Playback info. */}
-                  {optionRow(i18n.t('player.quality.automatic'), !currentVersion && rung === 'auto', () => chooseVersion(''), offersData?.current?.delivery === 'hls' ? i18n.t('player.quality.automaticHelp') : i18n.t('player.quality.originalHelp'))}
-                  {offersData?.preparedVersions.map(v => optionRow(v.facts.height ? `${v.facts.height}p${v.facts.height >= 2100 ? ' · 4K' : ''}` : i18n.t('player.quality.prepared'), currentVersion?.id === v.id, () => chooseVersion(v.id), v.selectable ? undefined : preparedReason(v.reason), !v.selectable))}
-                  {convertRungs.length ? <Text variant="label" tone="tertiary" style={{padding: '8px 12px 2px'}}>{i18n.t('player.quality.convert')}</Text> : null}
-                  {convertRungs.map(q => optionRow(q.targetDisplayHeight ? `${q.targetDisplayHeight}p` : q.label, rung === q.id && !currentVersion, () => chooseRung(q.id), !owner.transcoding ? i18n.t('player.ownerOff') : q.enabled ? undefined : q.reason ?? 'Not available', !q.enabled || !owner.transcoding))}
-                  {offersData?.current ? <Text variant="caption" tone="tertiary">{[qualityFooterLine, `${offersData.current.delivery === 'hls' ? (rung !== 'auto' ? i18n.t('player.quality.converting', {quality: rungs.find(q => q.id === rung)?.label ?? rung}) : i18n.t('player.quality.convertingAuto')) : i18n.t('player.quality.playingOriginal')}${offersData.transcodingEnabled ? '' : ' ' + i18n.t('player.quality.conversionOff')}`].filter(Boolean).join(' · ')}</Text> : null}
-                  {state.audioEffects.rendering&&state.session?.audio?.downmixed?<Text variant="caption" tone="secondary">{i18n.t('player.opt.downmixed')}</Text>:null}
-                </>
-              )) : null}
+              {!isAudio ? box('quality', 'quality', i18n.t('player.opt.quality'), qualityLabelNow, qualityContent()) : null}
               {isMusic ? null : box('speed', 'speed', 'Speed', rate === 1 ? 'Normal' : `${rate}×`, <div className={s.speedGrid}>{(isAudio ? [...listeningRates] : rates).map(v => optionRow(v === 1 ? 'Normal' : `${v}×`, v === rate, () => setSpeed(v)))}</div>)}
-              {box('sleep', 'sleep', 'Sleep', sleepLabel, (
+              {box('sleep', 'sleep', i18n.t('player.opt.sleep'), sleepLabel, (
                 <>
-                  {sleepChoices.map(c => optionRow(c.label, isAudio ? (listening?.timer?.choice ?? 'off') === c.id : c.id === 'off' ? !state.listeningDeadlines?.sleepAtMs : false, () => setSleep(c.id)))}
+                  {sleepChoices.map(c => optionRow(sleepChoiceLabel(c), (isAudio ? listening?.timer?.choice ?? 'off' : sleepAt ? videoSleep : 'off') === c, () => setSleep(c)))}
                 </>
               ))}
               {queueCount > 1 && queue ? box('queue', 'queue', i18n.t('player.queue'), String(queueCount - 1), <QueueList queue={queue} />) : null}
@@ -594,7 +777,7 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
             <div className={s.sheetList}>
               {box('audio', 'audio', 'Audio', currentAudio?.label ?? 'Default', (
                 <>
-                  {(!audioPlan.plan || audioPlan.availability==='unavailable') ? state.audioTracks?.tracks.map(t => optionRow(t.label,t.streamIndex===(state.audioTracks?.pending??state.audioTracks?.selected),()=>{void service.selectAudioTrack(t.streamIndex);setOpenBox(null);},undefined,state.audioTracks?.pending!==undefined)) : null}
+                  {(!audioPlan.plan || audioPlan.availability==='unavailable') ? state.audioTracks?.tracks.map(t => optionRow(t.label,t.streamIndex===(state.audioTracks?.pending??state.audioTracks?.selected),()=>{void service.selectAudioTrack(t.streamIndex).catch(()=>setNotice(i18n.t('web.player.audio.changeFailed')));setOpenBox(null);},undefined,state.audioTracks?.pending!==undefined)) : null}
                   {audioPlan.availability!=='unavailable' && audioPlan.plan?.renditions.map(r => optionRow(r.label, r.id === (audioPlan.pending?.renditionId ?? audioPlan.observedRenditionId), () => { service.selectAudio(r.id); setOpenBox(null); }, (r.unavailable||audioPlan.unavailableRenditionIds?.includes(r.id))?'Unavailable':undefined, !!audioPlan.pending||!!r.unavailable||audioPlan.unavailableRenditionIds?.includes(r.id)))}
                   {!audioPlan.plan?.renditions.length ? <Text variant="caption" tone="tertiary">{audioPlan.reason ?? 'This stream has one audio track.'}</Text> : null}
                 </>
@@ -605,25 +788,19 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
                   {(subtitlePlan.resources ?? []).map(r => optionRow(trackName(r, i18n.locale) || r.title, !subtitles.snapshot.suppressed && subtitlePlan.selected?.id === r.id, () => chooseSubtitle(r), !r.enabled ? subtitleReason(r.reason) : ownerBlocks(r) ? i18n.t('player.ownerOff') : isBitmapResource(r) ? i18n.t('player.subtitles.bitmapNote') : undefined, subtitles.snapshot.busy || !r.enabled || ownerBlocks(r)))}
                 </>
               ) : <Text variant="caption" tone="tertiary">Subtitles are available once playback starts.</Text>) : null}
-              {!isAudio ? box('quality', 'quality', 'Quality', qualityLabelNow, (
-                <>
-                  {optionRow(i18n.t('player.quality.automatic'), !currentVersion, () => chooseVersion(''))}
-                  {offersData?.preparedVersions.map(v => optionRow(v.facts.height ? `${v.facts.height}p` : i18n.t('player.quality.prepared'), currentVersion?.id === v.id, () => chooseVersion(v.id), v.selectable ? undefined : preparedReason(v.reason), !v.selectable))}
-                  {state.audioEffects.rendering&&state.session?.audio?.downmixed?<Text variant="caption" tone="secondary">{i18n.t('player.opt.downmixed')}</Text>:null}
-                </>
-              )) : null}
+              {!isAudio ? box('quality', 'quality', i18n.t('player.opt.quality'), qualityLabelNow, qualityContent()) : null}
               {isMusic ? null : box('speed', 'speed', 'Speed', rate === 1 ? 'Normal' : `${rate}×`, <div className={s.speedGrid}>{(isAudio ? [...listeningRates] : rates).map(v => optionRow(v === 1 ? 'Normal' : `${v}×`, v === rate, () => setSpeed(v)))}</div>)}
-              {box('sleep', 'sleep', 'Sleep', sleepLabel, sleepChoices.map(c => optionRow(c.label, isAudio ? (listening?.timer?.choice ?? 'off') === c.id : c.id === 'off' ? !state.listeningDeadlines?.sleepAtMs : false, () => setSleep(c.id))))}
+              {box('sleep', 'sleep', i18n.t('player.opt.sleep'), sleepLabel, sleepChoices.map(c => optionRow(sleepChoiceLabel(c), (isAudio ? listening?.timer?.choice ?? 'off' : sleepAt ? videoSleep : 'off') === c, () => setSleep(c))))}
               {queueCount > 1 && queue ? box('queue', 'queue', i18n.t('player.queue'), String(queueCount - 1), <QueueList queue={queue} />) : null}
             </div>
           </Dialog>
         ) : null}
-        <Dialog open={legend} onOpenChange={setLegend} title="Keyboard shortcuts" width={420}><ShortcutLegend skipBack={skipBack} skipForward={skipForward} /></Dialog>
+        <Dialog open={legend} onOpenChange={setLegend} title="Keyboard shortcuts" width={420}><ShortcutLegend skipBack={skipBack} skipForward={skipForward} live={!!linear} audio={isAudio} /></Dialog>
         {/* MU4 FEAT-07: the mini guide over the video (previous/current/next, tune on select). */}
         {linear ? <MiniGuide open={miniGuide} onOpenChange={setMiniGuide} onTune={c => engine.tune(c)} /> : null}
         {/* MU4 COMPAT-01: bitmap subtitles on a 4K/HDR source confirm once per play, like Dolby Vision. */}
         <ConfirmDialog open={!!bitmapPending} onOpenChange={o => { if (!o) setBitmapPending(null); }} title={i18n.t('player.subtitles.burnWarning')} confirmLabel={i18n.t('action.continue')} cancelLabel={i18n.t('action.cancel')} destructive={false} onConfirm={confirmBitmap} />
-        {info && visible ? <PlaybackInfoPanel api={api} sessionId={state.session?.id} v1={state.session?.protocol === 'v1'} delivery={offersData?.current?.delivery} chosenQuality={rung !== 'auto' && !currentVersion ? rungs.find(q => q.id === rung)?.label ?? rung : undefined} source={infoSource} video={video.current} audioOnly={isAudio} onClose={() => setInfo(false)} /> : null}
+        {info && visible ? <PlaybackInfoPanel api={api} sessionId={state.session?.id} generation={state.session?.generation} v1={state.session?.protocol === 'v1'} delivery={offersData?.current?.delivery} chosenQuality={deliveredAs ? stepLabel(deliveredAs) : undefined} source={infoSource} video={video.current} audioOnly={isAudio} onClose={() => setInfo(false)} /> : null}
         {report ? <FeedbackDialog open onOpenChange={setReport} itemId={state.itemId} playbackSessionId={state.session?.id} title={identity.title} /> : null}
         {message ? (
           <div className={s.notice} role={state.error || state.seekError ? 'alert' : 'status'}>
@@ -651,7 +828,7 @@ function MiniBar({engine}: {engine: PlayerEngine}) {
       <div className={s.miniArt}><Artwork path={identity.posterUrl} shape="square" icon="music" alt="" /></div>
       <button type="button" className={s.miniCopy} onClick={engine.expand} aria-label="Open now playing">
         <span className={s.miniTitle}>{identity.title}</span>
-        <span className={s.miniSub}>{ownerStopOf(state.ended) ? i18n.t('web.player.ownerStopped.short') : state.phase === 'error' ? 'Playback stopped' : identity.subtitle ?? (state.intent === 'playing' ? 'Playing' : 'Paused')}</span>
+        <span className={s.miniSub}>{ownerStopOf(state.ended) ? i18n.t('web.player.ownerStopped.short') : state.phase === 'error' ? i18n.t(playbackFailure(state.error).title) : identity.subtitle ?? (state.intent === 'playing' ? 'Playing' : 'Paused')}</span>
       </button>
       <div className={s.miniActions}>
         {wide && engine.queue ? <QueuePreference queue={engine.queue} kind="shuffle" onError={() => {}} /> : null}

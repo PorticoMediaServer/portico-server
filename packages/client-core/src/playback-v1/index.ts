@@ -1,12 +1,12 @@
 /**
- * Playback Protocol v1 client core (Plan — Client Playback Migration, phases 0–1). Not wired to
- * any app yet: the `/v2` path stays in use until lane C lands the server side.
+ * Playback Protocol v1 client core: sessions and the controller that plays one on a `MediaPlayer`
+ * port, the timeline reporter, queues, the viewer's playback choices and the device event feed.
  */
 export type {MediaPlayer, PlayerEvent, PlayerObservation, PlayerSource, PlayerState, SidecarSubtitle} from './port.ts';
 export {ServerClock, driftCorrection, timelinePosition, type ClockEstimate, type ClockSample, type DriftCorrection} from './clock.ts';
 export {GenerationGate} from './generation.ts';
 export {TimelineReporter, type FailureKind, type MarkerType, type TimelineReport, type TimelineReporterOptions, type TimelineSend, type TimelineSnapshot, type TimelineState} from './timeline.ts';
-export {AutomaticQuality, qualityLadder, qualityOptionRequest, qualityOptionSelected, qualityRequest, sameQuality, savedQualities, type AutomaticInput, type QualityId, type QualityInForce, type QualityOption, type QualityRequest, type SavedQuality} from './quality.ts';
+export {qualityLadder, qualityOptionRequest, qualityOptionSelected, requestInForce, sameQuality, savedQualities, savedQualityRequest, type QualityId, type QualityInForce, type QualityOption, type QualityRequest, type SavedQuality} from './quality.ts';
 export {PlaybackApiError, call, header, idempotencyKey, type RetryClass, type V1Http, type V1Request, type V1Response} from './http.ts';
 export {ShufflePermutation} from './shuffle.ts';
 export {ContractError, consecutiveOnAlbum, parseAdminSession, parseDevice, parseEntry, parseEvent, parseOptions, parsePage, parseQueue, parseSession, parseSessionEnd, type AdminSession, type AudioStream, type Chapter, type ControllableDevice, type Decision, type Marker, type MediaVersion, type PlanStream, type PlaybackOptions, type PlaybackPlan, type Presentation, type QueueEntry, type QueueHeader, type QueueSegment, type Selector, type ServerEvent, type Session, type SessionEnd, type SessionKind, type StreamAction, type SubtitleStream, type Trickplay, type VersionPart, type VideoStream} from './types.ts';
@@ -19,7 +19,8 @@ export {AdminSessionsClient, NowPlayingStore, type NowPlayingSnapshot} from './a
 export {localV1Http} from './local-http.ts';
 export {AppleMediaPlayer, type AppleFact, type AppleLease, type ApplePlayerOptions, type AppleVideoEngine} from './apple-media-player.ts';
 export {V1PlaybackApi, toPlaybackSession} from './legacy-bridge.ts';
-export {V1QueuePlayer, movedEntry, playbackV1ForKind, serverSupportsPlaybackV1, type V1QueuePlayerOptions, type V1Viewer} from './v1-queue-player.ts';
+export {V1QueuePlayer, movedEntry, playbackV1ForKind, serverSupportsPlaybackV1, type QueueSessionTransport, type V1QueuePlayerOptions, type V1Viewer} from './v1-queue-player.ts';
+export {AutomaticQuality, audioStreamIndex, audioTrackId, fixedQualities, fixedQuality, fixedQualityOf, heightClass, isQualityChoice, offeredQualities, qualityChoiceOf, qualityChoiceOrder, qualityRequest, type AutomaticOptions, type FixedQuality, type FixedQualityId, type PlaybackChoices, type QualityChoice} from './choices.ts';
 export {sessionEndMessage} from '../session-end.ts';
 export {audioGainLinear, audioSeconds, audioTrimWindow, parseAudioRenderV2, playableAudio, type AudioDecodeCapability, type AudioGain, type AudioRenderMode, type AudioRenderV2, type AudioTrim, type Normalization, type PlayableAudioRender} from './audio-render.ts';
 export {V1ChannelControl, serverSupportsV1Channels, channelView, parseChannelSession, v1ChannelId, type ChannelPlayback, type ChannelView, type ChannelViewSink, type V1ChannelOptions} from './channel-control.ts';

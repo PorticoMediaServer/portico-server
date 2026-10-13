@@ -127,6 +127,18 @@ func TestPlaybackV1QualityDefaultsAndAutomaticSteps(t *testing.T) {
 	if up.Presentation.Quality.ID != "" || up.Presentation.Mode != "direct" || up.Presentation.Generation != 5 {
 		t.Fatalf("back up to the original: %+v quality %+v", up.Presentation, up.Presentation.Quality)
 	}
+	// A client that chooses the step itself names it, and names the original
+	// to come back from one.
+	var named, back playbackv1.SessionView
+	f.call("PATCH", path, map[string]string{"If-Match": up.Revision}, map[string]any{"quality": map[string]any{"mode": "automatic", "id": "480p"}}, 200, &named)
+	if q := named.Presentation.Quality; q.Mode != "automatic" || q.ID != "480p" || named.Presentation.Mode != "stream" {
+		t.Fatalf("a named step: %+v", q)
+	}
+	f.call("PATCH", path, map[string]string{"If-Match": named.Revision}, map[string]any{"quality": map[string]any{"mode": "automatic", "id": "original"}}, 200, &back)
+	if q := back.Presentation.Quality; q.Mode != "automatic" || q.ID != "" || back.Presentation.Mode != "direct" {
+		t.Fatalf("back to the original by name: %+v", q)
+	}
+	up = back
 	// A fixed quality is a ceiling: this file is over 720p's, so it converts.
 	var fixed playbackv1.SessionView
 	f.call("PATCH", path, map[string]string{"If-Match": up.Revision}, map[string]any{"quality": map[string]any{"mode": "fixed", "id": "720p"}}, 200, &fixed)

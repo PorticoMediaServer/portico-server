@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"sort"
 	"strconv"
 
 	"portico.local/server/internal/compactcatalog"
@@ -52,8 +53,18 @@ func (s *Service) queueWrite(ctx context.Context, q queueRow, mutate func(ctx co
 				l.q.revision, l.q.current, l.q.repeat, l.q.shuffle, l.q.seed, l.q.lap, l.q.domain, l.q.first, l.q.session, l.q.updated, l.q.id); err != nil {
 				return err
 			}
-			if err = compactQueue(ctx, tx, l.q.id); err != nil {
-				return err
+			if !l.q.shuffle {
+				if err = compactQueue(ctx, tx, l.q.id); err != nil {
+					return err
+				}
+			} else {
+				var segments, removed int
+				if err = tx.QueryRowContext(ctx, `SELECT count(*),COALESCE(sum(removed),0) FROM queue_v1_segments WHERE queue_id=?`, l.q.id).Scan(&segments, &removed); err != nil {
+					return err
+				}
+				if segments > MaxQueueSegments || removed > MaxQueueRemovals {
+					return ErrQueueTooLarge
+				}
 			}
 			// The layout changed underneath: re-read it for the answer and the event.
 			if l, err = s.readLayout(ctx, tx, l.q); err != nil {
@@ -741,9 +752,20 @@ func (s *Service) AddSegment(ctx context.Context, c Caller, id, ifMatch string, 
 		}
 		var key string
 		where := req.Placement.Where
+		var insertion, sourceStart int64
 		if l.q.shuffle {
-			// While shuffled, added entries form the unshuffled tail after the
-			// shuffled body (spec §17.10).
+			l.initOrder()
+			sourceStart = l.sourceTotal()
+			insertion = l.total()
+			if where == "next" {
+				insertion = l.q.current + 1
+			} else if where == "after" {
+				p, ok := l.positionOf(req.Placement.After)
+				if !ok {
+					return false, ErrNotFound
+				}
+				insertion = p + 1
+			}
 			where = "end"
 		}
 		switch where {
@@ -769,6 +791,12 @@ func (s *Service) AddSegment(ctx context.Context, c Caller, id, ifMatch string, 
 		}
 		if _, err = tx.ExecContext(ctx, `INSERT INTO queue_v1_segments(id,queue_id,sort_key,snapshot_id,first_ordinal,count) VALUES(?,?,?,?,0,?)`, newShortID("g"), l.q.id, key, snap.id, snap.count); err != nil {
 			return false, err
+		}
+		if l.q.shuffle {
+			l.insertOrder(insertion, orderSpan{source: true, start: sourceStart, count: snap.count})
+			if err = l.saveOrder(ctx, tx); err != nil {
+				return false, err
+			}
 		}
 		fresh, err := s.readLayout(ctx, tx, l.q)
 		if err != nil {
@@ -822,6 +850,21 @@ func (s *Service) RemoveEntry(ctx context.Context, c Caller, id, ifMatch, entry 
 		src, segIndex, ok := l.sourceIndexOf(entry)
 		if !ok {
 			return false, ErrNotFound
+		}
+		if l.q.shuffle {
+			p, ok := l.positionOf(entry)
+			if !ok {
+				return false, ErrNotFound
+			}
+			l.removeOrder(p)
+			if err := s.tombstone(ctx, tx, l, segIndex, entry); err != nil {
+				return false, err
+			}
+			if p < l.q.current {
+				l.q.current--
+			}
+			l.q.current = min(l.q.current, max(0, l.total()-1))
+			return true, l.saveOrder(ctx, tx)
 		}
 		current, _ := l.currentEntry()
 		if err := s.tombstone(ctx, tx, l, segIndex, entry); err != nil {
@@ -879,6 +922,24 @@ func (s *Service) MoveEntry(ctx context.Context, c Caller, id, ifMatch, entry st
 		_, targetIndex, targetOK := l.sourceIndexOf(target)
 		if !ok || !targetOK || target == entry {
 			return false, ErrNotFound
+		}
+		if l.q.shuffle {
+			from, _ := l.positionOf(entry)
+			to, _ := l.positionOf(target)
+			src := l.orderToSource(from)
+			current, _ := l.currentEntry()
+			l.removeOrder(from)
+			if from < to {
+				to--
+			}
+			if req.After != "" {
+				to++
+			}
+			l.insertOrder(to, orderSpan{source: true, start: src, count: 1})
+			if p, ok := l.positionOf(current); ok {
+				l.q.current = p
+			}
+			return true, l.saveOrder(ctx, tx)
 		}
 		snapID, ordinal, _ := cutEntry(entry)
 		item, err := l.key(snapID, ordinal)
@@ -976,10 +1037,43 @@ func (s *Service) UpdateQueue(ctx context.Context, c Caller, id, ifMatch string,
 				if err != nil {
 					return false, err
 				}
-				l.q.shuffle, l.q.seed, l.q.lap, l.q.domain, l.q.first, l.q.current = true, seed, 0, l.total(), src, 0
+				current, _ := l.currentEntry()
+				l.q.shuffle = true
+				src, _, _ = l.sourceIndexOf(current)
+				l.q.seed, l.q.lap, l.q.domain, l.q.first, l.q.current = seed, 0, l.sourceTotal(), src, 0
+				l.spans = nil
+				l.initOrder()
+				var removedPositions []int64
+				var base int64
+				for _, g := range l.segments {
+					for _, r := range l.removals[g.snapshot] {
+						if r >= g.first && r < g.first+g.count {
+							removedPositions = append(removedPositions, l.baseSourceToOrder(base+r-g.first))
+						}
+					}
+					base += g.count
+				}
+				sort.Slice(removedPositions, func(i, j int) bool { return removedPositions[i] > removedPositions[j] })
+				for _, p := range removedPositions {
+					l.removeOrder(p)
+				}
+				if err := l.saveOrder(ctx, tx); err != nil {
+					return false, err
+				}
 				changed = true
 			case l.q.shuffle:
-				l.q.shuffle, l.q.current = false, src
+				current, _ := l.currentEntry()
+				if _, err := tx.ExecContext(ctx, `DELETE FROM queue_v1_play_spans WHERE queue_id=?`, l.q.id); err != nil {
+					return false, err
+				}
+				l.q.shuffle = false
+				l.spans = nil
+				normal, err := s.readLayout(ctx, tx, l.q)
+				if err != nil {
+					return false, err
+				}
+				src, _, _ = normal.sourceIndexOf(current)
+				l.q.current = src
 				changed = true
 			}
 		}
@@ -1011,16 +1105,18 @@ func (s *Service) Advance(ctx context.Context, c Caller, id, ifMatch string, req
 			}
 			l.q.current = p
 		case req.Reason == "previous":
-			l.q.current = max(0, l.q.current-1)
+			if l.q.current == 0 && l.q.repeat == "all" {
+				l.q.current = max(0, total-1)
+			} else {
+				l.q.current = max(0, l.q.current-1)
+			}
 		case req.Reason == "completion" && l.q.repeat == "one":
 			// The same entry again.
 		case l.q.current+1 < total:
 			l.q.current++
 		case l.q.repeat == "all":
 			l.q.current = 0
-			if l.q.shuffle {
-				l.q.lap++
-			}
+
 		default:
 			return false, ErrQueueEnded
 		}

@@ -5,10 +5,12 @@
  * is replayed with the same `Idempotency-Key` after `retryAfterMs`), `PATCH` with `If-Match`
  * (412 carries the current session), `DELETE`, timeline.
  *
- * `PlaybackSessionController` is what a platform wires (phase 2): it owns the generation gate,
- * the timeline reporter and the player port, serialises changes, recovers from 412 by adopting
- * the server's session and re-applying only the newest intent, and ends cleanly when the server
- * ends the session (stop elsewhere, transfer, admin terminate).
+ * `PlaybackSessionController` is what a platform wires: it owns the generation gate, the timeline
+ * reporter and the player port, serialises changes, recovers from 412 by adopting the server's
+ * session and re-applying only the newest intent, and ends cleanly when the server ends the
+ * session (stop elsewhere, transfer, admin terminate). A session another request made (a queue
+ * create or advance) is handed to it with `attach`; a lapsed lease is given back to the owner
+ * (`onLeaseExpired`) so the title starts again where it was instead of showing an error.
  */
 import {GenerationGate} from './generation.ts';
 import {PlaybackApiError, call, enc, header, idempotencyKey, type V1Http} from './http.ts';
@@ -147,7 +149,22 @@ export type ControllerOptions = Readonly<{
   key?: () => string;
   reporter?: Partial<Omit<TimelineReporterOptions, 'send' | 'onEnded' | 'onLeaseRisk'>>;
   /** Called when the server ended the session (transfer committed, admin terminate, stop elsewhere). */
-  onServerEnded?: (session: Session) => void;
+  onServerEnded?: (session: Session, end: SessionEnd) => void;
+  /**
+   * The lease lapsed while this device could not report (a sleeping laptop, a long outage). The
+   * owner starts the title again at `positionMs` (a queue restarts its entry). Without it the
+   * controller restarts a plain item start by itself; anything else ends.
+   */
+  onLeaseExpired?: (session: Session, positionMs: number) => void;
+  /**
+   * Whether a seek in this session goes through the server. Default `seekNeedsServer`. A platform
+   * whose streams publish the whole timeline (the web: a seek is a request for a later segment and
+   * the server follows) answers false.
+   */
+  serverSeek?: (session: Session) => boolean;
+  /** The viewer's present intent, asked when a presentation loads (a change made while paused
+   * stays paused). Default: the server's session state. */
+  wantsPlaying?: () => boolean;
 }>;
 
 /**
@@ -166,7 +183,10 @@ export class PlaybackSessionController {
   private readonly key: () => string;
   private readonly timers: Timers;
   private readonly reporterOptions: ControllerOptions['reporter'];
-  private readonly onServerEnded?: (session: Session) => void;
+  private readonly onServerEnded?: (session: Session, end: SessionEnd) => void;
+  private readonly onLeaseExpired?: (session: Session, positionMs: number) => void;
+  private readonly serverSeek: (session: Session) => boolean;
+  private readonly wantsPlaying?: () => boolean;
   private reporter?: TimelineReporter;
   private state: ControllerSnapshot = Object.freeze({phase: 'idle', changing: false});
   private listeners = new Set<() => void>();
@@ -185,6 +205,9 @@ export class PlaybackSessionController {
     this.timers = o.timers ?? {};
     this.reporterOptions = o.reporter;
     this.onServerEnded = o.onServerEnded;
+    this.onLeaseExpired = o.onLeaseExpired;
+    this.serverSeek = o.serverSeek ?? seekNeedsServer;
+    this.wantsPlaying = o.wantsPlaying;
     this.offPlayer = o.player.onEvent(e => this.playerEvent(e));
   }
 
@@ -207,6 +230,7 @@ export class PlaybackSessionController {
       const session = await this.client.start(target, body, this.key(), {signal, onPreparing: () => { if (token === this.startToken) this.publish({phase: 'preparing'}); }});
       if (token !== this.startToken) return undefined;
       this.gate.reset();
+      this.leaseAtRisk = false;
       this.adopt(session, options.state !== 'paused');
       return session;
     } catch (e) {
@@ -215,8 +239,40 @@ export class PlaybackSessionController {
     }
   }
 
+  /**
+   * Take over a session another request made: a queue create or advance that started it, a
+   * committed transfer. A different session replaces the current one here (the server already
+   * replaced it); the same session with a newer generation loads that presentation.
+   * `startPositionMs` overrides the presentation's (an explicit position the viewer chose).
+   */
+  attach(session: Session, options: Readonly<{autoplay?: boolean; startPositionMs?: number}> = {}): void {
+    if (this.state.session?.id !== session.id) {
+      this.startToken++;
+      this.retireReporter();
+      this.gate.reset();
+      this.leaseAtRisk = false;
+      this.carriedFor = undefined;
+      this.state = Object.freeze({...this.state, observation: undefined, error: undefined, ended: undefined});
+    }
+    this.adopt(session, options.autoplay ?? this.autoplay(session), options.startPositionMs);
+  }
+
+  /** Let go of the session without ending it on the server (it was replaced or retired there, or
+   * its owner stops it separately). Nothing more is reported for it. */
+  detach(): void {
+    this.startToken++;
+    this.retireReporter();
+    this.gate.reset();
+    this.leaseAtRisk = false;
+    this.publish({phase: 'idle', session: undefined, observation: undefined, error: undefined, ended: undefined, changing: false});
+  }
+
+  private autoplay(session: Session): boolean {
+    return this.wantsPlaying ? this.wantsPlaying() : session.state !== 'paused';
+  }
+
   /** Adopt a server session (start, 412 recovery, `session.updated`): load a new generation's URL. */
-  private adopt(session: Session, autoplay: boolean) {
+  private adopt(session: Session, autoplay: boolean, startPositionMs?: number) {
     const fresh = this.gate.advance(session.presentation.generation);
     if (!this.reporter) this.reporter = this.newReporter(session.id);
     this.publish({session, phase: session.state === 'ended' ? 'ended' : 'active', ended: session.state === 'ended' ? session.end ?? {reason: 'stopped'} : undefined});
@@ -224,8 +280,9 @@ export class PlaybackSessionController {
     this.reporter.setGeneration(session.presentation.generation);
     this.player.load({
       url: session.presentation.url, generation: session.presentation.generation, mode: session.presentation.mode,
-      startPositionMs: session.presentation.startPositionMs, subtitles: session.presentation.subtitles, autoplay,
+      startPositionMs: startPositionMs !== undefined ? Math.max(0, Math.round(startPositionMs)) : session.presentation.startPositionMs, subtitles: session.presentation.subtitles, autoplay,
       sessionId: session.id, ...(session.itemId ? {itemId: session.itemId} : {}),
+      ...(session.presentation.bitrateKbps ? {bitrateKbps: session.presentation.bitrateKbps} : {}),
     });
   }
 
@@ -249,18 +306,59 @@ export class PlaybackSessionController {
     const session = this.state.session;
     this.retireReporter();
     if (!end && session) end = await this.client.get(session.id).then(s => s.end, () => undefined);
-    // Only a lapsed lease is resumed; an administrator's stop or a move elsewhere is final.
-    if (this.leaseAtRisk && this.lastStart && session && 'itemId' in this.lastStart.target && (!end || end.reason === 'lease_expired')) {
-      // The lease lapsed while we couldn't report (offline): start again where we were.
+    if (session && this.state.session?.id !== session.id) return; // replaced while its end was read
+    // Only a lapsed lease is resumed; an administrator's stop or a move elsewhere is final. The
+    // server names a lapse; when the reason can't be read, a lease this device knew was at risk is one.
+    const lapsed = end ? end.reason === 'lease_expired' : this.leaseAtRisk;
+    if (lapsed && session) {
+      const at = this.state.observation?.positionMs ?? session.presentation.startPositionMs;
       this.leaseAtRisk = false;
-      const at = this.state.observation?.positionMs ?? 0;
-      await this.start(this.lastStart.target, {...this.lastStart.options, startPositionMs: at, startFrom: undefined, replacesSessionId: undefined}).catch(() => {});
-      return;
+      if (this.onLeaseExpired) { this.onLeaseExpired(session, at); return; }
+      if (this.lastStart && 'itemId' in this.lastStart.target) {
+        // Start again where we were.
+        await this.start(this.lastStart.target, {...this.lastStart.options, startPositionMs: at, startFrom: undefined, replacesSessionId: undefined}).catch(() => {});
+        return;
+      }
     }
     this.player.pause();
-    this.publish({phase: 'ended', ended: end ?? {reason: 'stopped'}});
-    if (session) this.onServerEnded?.(session);
+    const reason = end ?? {reason: 'stopped'};
+    this.publish({phase: 'ended', ended: reason});
+    if (session) this.onServerEnded?.(session, reason);
   }
+
+  /**
+   * A reading from an engine the port does not carry (the web's own music decoder plays while
+   * the media element is idle). It is tagged with the generation in force and reported like the
+   * port's own readings.
+   */
+  observe(reading: Readonly<{state: PlayerObservation['state']; positionMs: number; rate?: number; volume?: number; muted?: boolean}>, cause: 'time' | 'state' | 'seeked' = 'time'): void {
+    const generation = this.gate.value;
+    if (generation === undefined || !this.state.session || this.state.phase === 'ended') return;
+    const o: PlayerObservation = Object.freeze({generation, state: reading.state, positionMs: Math.max(0, Math.round(reading.positionMs)), rate: reading.rate ?? 1, ...(reading.volume !== undefined ? {volume: reading.volume} : {}), ...(reading.muted !== undefined ? {muted: reading.muted} : {})});
+    this.publish({observation: o});
+    this.reporter?.observe(o, cause);
+  }
+
+  /**
+   * The title played to its end: resolves once the server has that report (the queue advances
+   * only after it), rejects when it could not be delivered. A session the server already ended
+   * counts as delivered.
+   */
+  async confirmEnded(): Promise<void> {
+    const reporter = this.reporter;
+    if (!reporter) return;
+    await reporter.flush();
+    const t = reporter.snapshot();
+    if (t.lastSentState !== 'ended' && !t.stopped) throw new PlaybackApiError(503, 'timeline_unconfirmed', 'same_request');
+  }
+
+  /** A marker skip the caller performed itself (it seeks): evidence for the next report (spec §4.2). */
+  noteSkip(skipped: Readonly<{markerId: string; mode: 'automatic' | 'manual'; positionMs: number}>): void {
+    if (skipped.markerId) this.reporter?.skipped({markerId: skipped.markerId, mode: skipped.mode, positionMs: Math.max(0, Math.round(skipped.positionMs))});
+  }
+
+  /** Send the newest reading now (the page is being hidden or closed). */
+  flush(): Promise<void> { return this.reporter?.flush() ?? Promise.resolve(); }
 
   private playerEvent(e: PlayerEvent) {
     const o = e.observation;
@@ -291,16 +389,24 @@ export class PlaybackSessionController {
       if (!session || this.state.phase === 'ended') return undefined;
       this.publish({changing: true});
       try {
+        // A change that makes new bytes resumes where the server last heard this device was:
+        // tell it now, so the new stream starts at the picture's position, not ten seconds back.
+        if (change.quality || change.audio || change.versionId || change.partIndex !== undefined) await this.reporter?.flush().catch(() => {});
         let updated: Session;
         try {
           updated = await this.client.patch(session.id, session.revision, change);
         } catch (e) {
           if (!(e instanceof PlaybackApiError) || e.status !== 412 || !e.current) throw e;
-          this.adopt(e.current as Session, this.state.observation?.state !== 'paused');
+          this.adopt(e.current as Session, this.wantsPlaying ? this.wantsPlaying() : this.state.observation?.state !== 'paused');
           if (serial !== this.changeSerial) return this.state.session;
           updated = await this.client.patch((e.current as Session).id, (e.current as Session).revision, change);
         }
-        this.adopt(updated, updated.state !== 'paused');
+        if (this.state.session?.id !== session.id) return undefined; // replaced meanwhile
+        // The old stream kept playing while the server prepared the new one: the new one starts
+        // where the picture is now, not where it was when the change was asked for.
+        const now = this.player.observe();
+        const resume = !change.seek && this.gate.accepts(now.generation) && now.state !== 'idle' && now.state !== 'error' ? now.positionMs : undefined;
+        this.adopt(updated, this.autoplay(updated), resume);
         return updated;
       } catch (e) {
         if (e instanceof PlaybackApiError && (e.status === 404 || e.status === 410)) { void this.serverEnded(); return undefined; }
@@ -323,7 +429,7 @@ export class PlaybackSessionController {
   seek(positionMs: number): Promise<unknown> | void {
     const session = this.state.session;
     if (!session) return;
-    if (seekNeedsServer(session)) return this.change({seek: {positionMs: Math.max(0, Math.round(positionMs)), id: this.key()}});
+    if (this.serverSeek(session)) return this.change({seek: {positionMs: Math.max(0, Math.round(positionMs)), id: this.key()}});
     this.player.seek(Math.max(0, positionMs));
   }
 
@@ -374,7 +480,7 @@ export class PlaybackSessionController {
     try {
       const fresh = await this.client.get(sessionId);
       if (fresh.state === 'ended') { void this.serverEnded(fresh.end ?? {reason: 'stopped'}); return; }
-      this.adopt(fresh, fresh.state !== 'paused');
+      this.adopt(fresh, this.autoplay(fresh));
     } catch (e) {
       if (e instanceof PlaybackApiError && (e.status === 404 || e.status === 410)) void this.serverEnded();
     }

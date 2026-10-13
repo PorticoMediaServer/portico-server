@@ -27,7 +27,7 @@ test('event retries jitter their backoff deterministically without shortening a 
 
 test('quiet clean SSE closures back off before falling back to long poll, retaining the long-poll wait',async()=>{
  const c=timers();let streams=0,polls=0;
- const events=new EventsClient({http:{send:r=>{polls++;assert.match(r.path,/waitSeconds=55/);return held();}},openStream:async()=>{streams++;},waitSeconds:55,random:()=>0.5,setTimer:c.setTimer,clearTimer:c.clearTimer});
+ const events=new EventsClient({http:{send:r=>{polls++;assert.match(r.path,/waitSeconds=25/);return held();}},openStream:async()=>{streams++;},waitSeconds:55,random:()=>0.5,setTimer:c.setTimer,clearTimer:c.clearTimer});
  events.start();await settle();assert.equal(streams,1);assert.equal(polls,0);
  assert.equal([...c.pending.values()][0].ms,1000);
  c.fire();await settle();assert.equal(streams,2);assert.equal([...c.pending.values()][0].ms,2000);

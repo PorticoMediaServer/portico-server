@@ -48,8 +48,6 @@ func TestScanMissingSourceAfterInterruptionPreservesCatalogAndRetryHistory(t *te
 		args []any
 	}{
 		{`UPDATE jobs SET status='running',processed=4 WHERE id=?`, []any{job.ID}},
-		// Isolate the two-completed-inventories requirement from elapsed time.
-		{`UPDATE library_sources SET missing_grace_seconds=0 WHERE id=?`, []any{library.ID}},
 	} {
 		if _, err = db.Exec(q.sql, q.args...); err != nil {
 			t.Fatal(err)
@@ -83,6 +81,8 @@ func TestScanMissingSourceAfterInterruptionPreservesCatalogAndRetryHistory(t *te
 	if err = os.Rename(root+"-offline", root); err != nil {
 		t.Fatal(err)
 	}
+	// The folder is back but empty. An empty folder where there was media is
+	// what an unmounted disk looks like: the scan stops and nothing is marked.
 	retry, err := s.Queue(library.ID)
 	if err != nil || retry.ID == job.ID {
 		t.Fatal(retry, err)
@@ -90,7 +90,7 @@ func TestScanMissingSourceAfterInterruptionPreservesCatalogAndRetryHistory(t *te
 	s.process(context.Background(), retry.ID, library.ID)
 	fixtures.Drain()
 	j, err = s.Get(retry.ID)
-	if err != nil || j.Status != "complete" {
+	if err != nil || j.Status != "failed" || j.Error != sourceUnavailable {
 		t.Fatal(j, err)
 	}
 	j, err = s.Get(job.ID)
@@ -98,7 +98,16 @@ func TestScanMissingSourceAfterInterruptionPreservesCatalogAndRetryHistory(t *te
 		t.Fatal("retry overwrote failure history", j, err)
 	}
 	if err = db.QueryRow(`SELECT available FROM catalog_assets WHERE token=?`, old.Token).Scan(&available); err != nil || available != 1 {
-		t.Fatal("one complete inventory must retain the missing candidate", available, err)
+		t.Fatal("an empty folder marked its media missing", available, err)
+	}
+	var missing int
+	if err = db.QueryRow(`SELECT count(*) FROM catalog_missing_titles`).Scan(&missing); err != nil || missing != 0 {
+		t.Fatal("an empty folder marked titles missing", missing, err)
+	}
+	// With another file present the folder is plainly there, and the one
+	// complete listing that does not contain the old file marks it missing.
+	if err = os.WriteFile(filepath.Join(root, "Other.mp4"), []byte("other"), 0600); err != nil {
+		t.Fatal(err)
 	}
 	confirmation, err := s.Queue(library.ID)
 	if err != nil {
@@ -111,7 +120,10 @@ func TestScanMissingSourceAfterInterruptionPreservesCatalogAndRetryHistory(t *te
 		t.Fatal(j, err)
 	}
 	if err = db.QueryRow(`SELECT available FROM catalog_assets WHERE token=?`, old.Token).Scan(&available); err != nil || available != 0 {
-		t.Fatal("two complete inventories after grace did not mark the missing item", available, err)
+		t.Fatal("a complete listing without the file did not mark it missing", available, err)
+	}
+	if err = db.QueryRow(`SELECT count(*) FROM catalog_missing_titles m JOIN catalog_entities e ON e.id=m.entity_id WHERE e.title='Existing movie'`).Scan(&missing); err != nil || missing != 1 {
+		t.Fatal("the title that lost its only file is not marked missing", missing, err)
 	}
 }
 

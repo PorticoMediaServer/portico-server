@@ -30,5 +30,14 @@ test('plain keys reach the player, with letters matched whatever Caps Lock or Sh
 
 test('the player’s key handler decides through it before acting or revealing the controls', () => {
   const player = readFileSync(new URL('../src/player/Player.tsx', import.meta.url), 'utf8');
-  assert.match(player, /const pressed = shortcutKey\(e\);\n\s*if \(pressed === undefined\) return;\n\s*reveal\(\);\n\s*switch \(pressed\) \{/);
+  assert.match(player, /const pressed = shortcutKey\(e\);\n\s*if \(pressed === undefined\) return;/);
+  // Nothing is revealed or swallowed until a case has taken the key.
+  assert.match(player, /const take = \(\) => \{ e\.preventDefault\(\); reveal\(\); \};/);
+});
+
+test('a focused slider keeps only the keys that move it, and Space on a focused button presses that button', () => {
+  const player = readFileSync(new URL('../src/player/Player.tsx', import.meta.url), 'utf8');
+  assert.match(player, /const slider = field instanceof HTMLInputElement && field\.type === 'range';\n\s*if \(\(field && !slider\) \|\|/);
+  assert.match(player, /if \(slider && \['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown'\]\.includes\(pressed\)\) return;/);
+  assert.match(player, /\(pressed === ' ' \|\| pressed === 'Enter'\) && target\?\.closest\?\.\('button,a,summary/);
 });

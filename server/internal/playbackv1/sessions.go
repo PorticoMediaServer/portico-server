@@ -324,6 +324,9 @@ func (r storedRequest) normalized() storedRequest {
 		r.Quality.Mode = QualityOriginal
 	}
 	r.Quality.Step = ""
+	if r.Quality.Mode == QualityAutomatic && r.Quality.ID == QualityOriginal {
+		r.Quality.ID = ""
+	}
 	return r
 }
 
@@ -801,8 +804,10 @@ func (s *Service) adoptReplaced(ctx context.Context, view *Presentation, media s
 // bestVersion picks the version a start that names none plays: the one this
 // device plays with the least done to it (as it is, then repackaged, then with
 // its sound converted, then fully converted) under the quality asked for, and
-// among equals the tallest picture, then the highest bitrate. A title with
-// one version, or one whose versions cannot be compared, returns "".
+// among equals the catalogue's best version (compactcatalog.BestVersionOrder:
+// the taller picture, then the larger file), which is the order the versions
+// are listed in. A title with one version, or one whose versions cannot be
+// compared, returns "", and the catalogue's best version is played.
 func (s *Service) bestVersion(ctx context.Context, p identity.Principal, item string, choice playback.V1Choice) string {
 	tx, done, err := dbwork.BeginRead(ctx, s.DB)
 	if err != nil {
@@ -820,7 +825,7 @@ func (s *Service) bestVersion(ctx context.Context, p identity.Principal, item st
 	if len(groups) > maxComparedVersions {
 		groups = groups[:maxComparedVersions]
 	}
-	best, bestCost, bestHeight, bestRate := "", 1<<30, -1, int64(-1)
+	best, bestCost := "", 1<<30
 	for _, group := range groups {
 		head := group[0]
 		candidate := choice
@@ -839,12 +844,8 @@ func (s *Service) bestVersion(ctx context.Context, p identity.Principal, item st
 		case playback.DeliveryAudioConversion:
 			cost = 2
 		}
-		rate := int64(0)
-		if head.duration > 0 {
-			rate = int64(float64(head.size) * 8 / head.duration)
-		}
-		if cost < bestCost || cost == bestCost && (head.height > bestHeight || head.height == bestHeight && rate > bestRate) {
-			best, bestCost, bestHeight, bestRate = head.id, cost, head.height, rate
+		if cost < bestCost {
+			best, bestCost = head.id, cost
 		}
 	}
 	return best

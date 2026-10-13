@@ -107,8 +107,9 @@ func (s *Service) Patch(ctx context.Context, c Caller, id, ifMatch string, chang
 		wanted := *change.Quality
 		if wanted.Mode == QualityAutomatic {
 			// Automatic is a place on the ladder the session moves along. A step
-			// moves from where it is; naming a step jumps there; naming
-			// neither keeps the place an automatic session already has.
+			// moves from where it is; naming a step jumps there ("original"
+			// is back on no step); naming neither keeps the place an
+			// automatic session already has.
 			here := Quality{Mode: QualityAutomatic}
 			if stored.Quality.Mode == QualityAutomatic {
 				here.ID = stored.Quality.ID
@@ -117,6 +118,8 @@ func (s *Service) Patch(ctx context.Context, c Caller, id, ifMatch string, chang
 			case wanted.Step != "":
 				plan, _ := s.Playback.SessionPlan(ctx, r.media)
 				wanted = stepAutomatic(here, wanted.Step, sourceFactsOf(plan))
+			case wanted.ID == QualityOriginal:
+				wanted.ID = ""
 			case wanted.ID == "":
 				wanted = here
 			}

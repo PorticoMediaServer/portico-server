@@ -370,7 +370,7 @@ func (d *CapabilityDocument) Accept() error {
 func (d CapabilityDocument) DecodeCaps() []AudioDecodeCap {
 	out := make([]AudioDecodeCap, 0, len(d.AudioDecode))
 	for _, a := range d.AudioDecode {
-		out = append(out, AudioDecodeCap{Codec: strings.ToLower(a.Codec), Containers: lowerAll(a.Containers), MaxSampleRate: a.MaxSampleRate, SampleRates: a.SampleRates, MaxChannels: a.MaxChannels, MaxBitDepth: a.MaxBitDepth})
+		out = append(out, AudioDecodeCap{Codec: strings.ToLower(a.Codec), Containers: lowerAll(a.Containers), MaxSampleRate: a.MaxSampleRate, SampleRates: a.SampleRates, MaxChannels: a.MaxChannels, MaxBitDepth: a.MaxBitDepth, Via: a.Via})
 	}
 	return out
 }

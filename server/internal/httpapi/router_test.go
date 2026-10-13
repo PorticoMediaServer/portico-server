@@ -82,6 +82,9 @@ func TestSetupRangePlaybackStopAndOrigin(t *testing.T) {
 			data, _ = json.Marshal(body)
 		}
 		r := httptest.NewRequest(method, path, bytes.NewReader(data))
+		if body != nil {
+			r.Header.Set("Content-Type", "application/json")
+		}
 		if token != "" {
 			r.Header.Set("Authorization", "Bearer "+token)
 		}

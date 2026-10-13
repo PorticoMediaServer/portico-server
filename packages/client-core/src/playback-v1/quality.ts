@@ -9,9 +9,11 @@
  * the server decides it from the owner's home networks. The player can name another quality for
  * one session, at start or with a change.
  *
- * Automatic is driven by the client: it measures its connection and asks the server to step
- * (`{mode: 'automatic', step: 'down' | 'up'}`); each step re-plans the same session at the
- * current position. `AutomaticQuality` below decides when to ask.
+ * Automatic is driven by the client: it measures its connection and names the step the session
+ * should be on (`{mode: 'automatic', id}`; `id: 'original'` is back to the original), or asks the
+ * server for one step from where the session is (`step: 'down' | 'up'`). Each change re-plans the
+ * same session at the current position. The player-facing menu model and the measuring are in
+ * `choices.ts`; this file is the server's vocabulary.
  */
 
 export type QualityId = '2160p' | '1440p' | '1080p' | '720p' | '480p' | '360p';
@@ -24,8 +26,8 @@ export type QualityRequest =
   | Readonly<{mode: 'original'}>
   /** One ladder step, by id. */
   | Readonly<{mode: 'fixed'; id: QualityId}>
-  /** Automatic. `id` jumps to a step; `step` moves one step from where the session is (a change only). */
-  | Readonly<{mode: 'automatic'; id?: QualityId; step?: 'down' | 'up'}>
+  /** Automatic. `id` names the step to be on (`'original'`: none); `step` moves one step from where the session is (a change only). */
+  | Readonly<{mode: 'automatic'; id?: QualityId | 'original'; step?: 'down' | 'up'}>
   /** Ceilings in numbers, for a client that has its own. */
   | Readonly<{mode: 'limit'; maxVideoBitrateKbps?: number; maxHeight?: number; maxAudioBitrateKbps?: number}>;
 
@@ -47,10 +49,18 @@ export const qualityLadder: readonly Readonly<{id: QualityId; height: number; vi
 
 const isQualityId = (v: unknown): v is QualityId => qualityLadder.some(r => r.id === v);
 
-/** The request a saved default (or a menu choice by name) stands for. Anything unknown is the original. */
-export function qualityRequest(saved: string | undefined): QualityRequest {
+/** The request a saved default (`quality.home`, `quality.remote`) stands for. Anything unknown is the original. */
+export function savedQualityRequest(saved: string | undefined): QualityRequest {
   if (saved === 'automatic') return Object.freeze({mode: 'automatic'});
   if (isQualityId(saved)) return Object.freeze({mode: 'fixed', id: saved});
+  return Object.freeze({mode: 'original'});
+}
+
+/** The request that asks again for the quality in force on a presentation (what the next title of a viewing starts with). */
+export function requestInForce(inForce: QualityInForce): QualityRequest {
+  if (inForce.mode === 'fixed' && isQualityId(inForce.id)) return Object.freeze({mode: 'fixed', id: inForce.id});
+  if (inForce.mode === 'automatic') return Object.freeze(isQualityId(inForce.id) ? {mode: 'automatic', id: inForce.id} : {mode: 'automatic'});
+  if (inForce.mode === 'limit') return Object.freeze({mode: 'limit', ...(inForce.maxVideoBitrateKbps ? {maxVideoBitrateKbps: inForce.maxVideoBitrateKbps} : {}), ...(inForce.maxHeight ? {maxHeight: inForce.maxHeight} : {}), ...(inForce.maxAudioBitrateKbps ? {maxAudioBitrateKbps: inForce.maxAudioBitrateKbps} : {})});
   return Object.freeze({mode: 'original'});
 }
 
@@ -70,66 +80,4 @@ export function qualityOptionSelected(option: QualityOption, inForce: QualityInF
 /** Whether two requests are the same request (so a change would do nothing). */
 export function sameQuality(a: QualityRequest, b: QualityRequest): boolean {
   return JSON.stringify(a) === JSON.stringify(b);
-}
-
-/** What the current presentation needs the connection to carry, in kbps; undefined when unknown. */
-export type AutomaticInput = Readonly<{
-  /** The client's estimate of what its connection to this server carries. */
-  throughputKbps: number;
-  /** What the presentation in force delivers (`presentation.bitrateKbps` for a conversion, the file's bitrate for an original). */
-  currentKbps?: number;
-  /** The player ran out of data since the last decision. */
-  stalled?: boolean;
-  /** Milliseconds of media buffered ahead. */
-  bufferedMs?: number;
-}>;
-
-/**
- * Decides when an Automatic session should ask the server to step. A step down is asked for at
- * once when the player stalls, or when the stream needs more than the connection carries (more
- * than four fifths of the estimate). A step up is asked for only after the connection has had a
- * quarter of headroom over the next step for `upAfterMs`, with a healthy buffer, so a noisy
- * estimate does not flap. Each decision is followed by a pause of `settleMs` while the new
- * presentation proves itself.
- */
-export class AutomaticQuality {
-  private readonly now: () => number;
-  private readonly upAfterMs: number;
-  private readonly settleMs: number;
-  private headroomSince?: number;
-  private quietUntil = 0;
-  constructor(options: {now?: () => number; upAfterMs?: number; settleMs?: number} = {}) {
-    this.now = options.now ?? (() => Date.now());
-    this.upAfterMs = options.upAfterMs ?? 30_000;
-    this.settleMs = options.settleMs ?? 10_000;
-  }
-  /** Forget what was observed (a new presentation, a seek). */
-  reset() { this.headroomSince = undefined; this.quietUntil = this.now() + this.settleMs; }
-  /** `'down'` or `'up'` when the session should step now, else undefined. `inForce` is the presentation's quality. */
-  decide(inForce: QualityInForce | undefined, input: AutomaticInput): 'down' | 'up' | undefined {
-    if (inForce?.mode !== 'automatic' || !(input.throughputKbps > 0)) return undefined;
-    const now = this.now();
-    if (now < this.quietUntil) return undefined;
-    const usable = input.throughputKbps * 0.8;
-    const at = qualityLadder.findIndex(r => r.id === inForce.id);
-    const lowest = at === qualityLadder.length - 1;
-    if (!lowest && (input.stalled === true || input.currentKbps !== undefined && input.currentKbps > usable)) {
-      this.headroomSince = undefined;
-      this.quietUntil = now + this.settleMs;
-      return 'down';
-    }
-    if (at < 0) return undefined; // On the original: there is nothing above it.
-    // The step above (or the original, whose need is unknown: twice the current step stands in).
-    const above = at > 0 ? qualityLadder[at - 1]! : undefined;
-    const needKbps = above ? above.videoKbps + above.audioKbps : (qualityLadder[at]!.videoKbps + qualityLadder[at]!.audioKbps) * 2;
-    if (usable >= needKbps * 1.25 && (input.bufferedMs === undefined || input.bufferedMs >= 10_000) && input.stalled !== true) {
-      this.headroomSince ??= now;
-      if (now - this.headroomSince >= this.upAfterMs) {
-        this.headroomSince = undefined;
-        this.quietUntil = now + this.settleMs;
-        return 'up';
-      }
-    } else this.headroomSince = undefined;
-    return undefined;
-  }
 }

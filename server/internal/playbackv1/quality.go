@@ -56,7 +56,8 @@ func (q Quality) Validate(path string) error {
 		if numbers {
 			return &FieldError{Path: path}
 		}
-		if q.ID != "" && !known {
+		// "original" names where Automatic starts: on no step at all.
+		if q.ID != "" && q.ID != QualityOriginal && !known {
 			return &FieldError{Path: path + ".id"}
 		}
 		if q.Step != "" && q.Step != "down" && q.Step != "up" {
