@@ -140,6 +140,7 @@ function WindowedGridInner<T>({collection, renderItem, renderPlaceholder, estima
   const measured = useRef<{width: number; pitch: number; columnMin?: string; cardSize: string} | undefined>(undefined);
   // A new card size changes the columns and the row height without changing the grid's width.
   const cardSize = useCardSize();
+  const measureNow = useRef<() => void>(() => {});
   useLayoutEffect(() => {
     const el = grid.current;
     if (!el) return;
@@ -161,11 +162,15 @@ function WindowedGridInner<T>({collection, renderItem, renderPlaceholder, estima
       }
       setLayout(prev => (prev.cols === cols && Math.abs(prev.pitch - pitch) < 0.5 && prev.gap === gap ? prev : {cols, pitch, gap}));
     };
+    measureNow.current = measure;
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(el);
     return () => observer.disconnect();
-  }, [columnMin, estimateRowHeight, first, last, cardSize]);
+  }, [columnMin, estimateRowHeight, cardSize]);
+  // The rows in view changed: measure again with the observer already in place, rather than
+  // tearing it down and building a new one for every row scrolled.
+  useLayoutEffect(() => { measureNow.current(); }, [first, last]);
 
   useImperativeHandle(ref, () => ({
     scrollToIndex(index: number) {
