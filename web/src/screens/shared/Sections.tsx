@@ -3,7 +3,7 @@ import type {ContentEntry, ContentSection} from '@core/library-content.ts';
 import {captionFor, continueTitle, formatDuration, iconFor, isContinueRow, progressFor, shapeFor} from '@core/presentation/index.ts';
 import {cardCaptionOf, continueCaptionOf} from '../../app/content';
 import {useEntryHref, useOpenEntry} from '../../app/open';
-import {accumulatePage, mergeSectionPages, SECTION_WINDOW_AT, type AppendedSections, type PageStore} from './section-pages';
+import {accumulatePage, SECTION_WINDOW_AT, type PageStore} from './section-pages';
 import {arrivals} from '@core/freshness-actions.ts';
 import {selectableKind, useIsSelected, useSelectionActions, useSelectionActive, useSelectionSection} from '../../app/selection';
 import type {MenuAnchor} from '../../ui';
@@ -46,19 +46,6 @@ export function useAppendedPages<T>(scope: string, cursor: string | null, page: 
   const stableKeyOf = useCallback((item: T) => keyRef.current(item), []);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   return React.useMemo(() => accumulatePage(store.current, scope, cursor, page, stableKeyOf), [scope, cursor, page]);
-}
-
-export type {AppendedSections};
-
-/** PERF-S02: section "More" appends inside its own section; other sections stay. */
-export function useAppendedSections(routeKey: string, pageCursor: string | null, sections: readonly ContentSection[]): readonly ContentSection[] {
-  const previous = React.useRef<AppendedSections | null>(null);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  return React.useMemo(() => {
-    const merged = mergeSectionPages(previous.current, routeKey, pageCursor, sections);
-    previous.current = merged;
-    return merged.sections;
-  }, [routeKey, pageCursor, sections]);
 }
 
 export {SECTION_WINDOW_AT};

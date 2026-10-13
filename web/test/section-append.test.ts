@@ -1,45 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {accumulatePage, mergeSectionPages, SECTION_WINDOW_AT} from '../src/screens/shared/section-pages.ts';
+import {accumulatePage, SECTION_WINDOW_AT} from '../src/screens/shared/section-pages.ts';
 import type {ContentSection} from '@core/library-content.ts';
 
 const entry = (id: string) => ({id, kind: 'movie', title: id} as const);
 const section = (id: string, ids: readonly string[], nextCursor: string, totalCount = 5000): ContentSection => ({
   id, type: 'grid', heading: {key: id, fallback: id}, entries: ids.map(entry) as unknown as ContentSection['entries'], totalCount, nextCursor,
-});
-
-test('PERF-S02: a full projection replaces every section', () => {
-  const previous = {routeKey: 'artist', sections: [section('releases', ['a1'], 'c1', 12), section('songs', ['t0'], 's1', 5000)]};
-  const incoming = [section('releases', ['a1'], '', 12), section('songs', ['t0'], '', 5000)];
-  const merged = mergeSectionPages(previous, 'artist', null, incoming);
-  assert.equal(merged.sections.length, 2);
-  assert.deepEqual(merged.sections.map(s => s.id), ['releases', 'songs']);
-});
-
-test('PERF-S02: three "More" presses append pages 1-4 and keep the other sections', () => {
-  const route = 'artist:1';
-  let state = mergeSectionPages(null, route, null, [section('releases', ['a1', 'a2'], '', 12), section('songs', ['t0', 't1'], 'c1', 5000)]);
-  assert.equal(state.sections.length, 2);
-  const pages = [['t2', 't3'], ['t4', 't5'], ['t6', 't7']];
-  const cursors = ['c2', 'c3', ''];
-  pages.forEach((ids, i) => {
-    state = mergeSectionPages(state, route, ['c1', 'c2', 'c3'][i]!, [section('songs', ids, cursors[i]!, 5000)]);
-  });
-  // The other section is still rendered.
-  assert.deepEqual(state.sections.map(s => s.id), ['releases', 'songs']);
-  assert.deepEqual(state.sections[0]!.entries.map(e => e.id), ['a1', 'a2']);
-  // The section holds pages 1-4 in order.
-  assert.deepEqual(state.sections[1]!.entries.map(e => e.id), ['t0', 't1', 't2', 't3', 't4', 't5', 't6', 't7']);
-  assert.equal(state.sections[1]!.totalCount, 5000);
-  assert.equal(state.sections[1]!.nextCursor, '');
-});
-
-test('PERF-S02: re-sent entries do not duplicate, a new route starts over', () => {
-  let state = mergeSectionPages(null, 'artist:1', null, [section('songs', ['t0'], 'c1', 3)]);
-  state = mergeSectionPages(state, 'artist:1', 'c1', [section('songs', ['t0', 't1'], '', 3)]);
-  assert.deepEqual(state.sections[0]!.entries.map(e => e.id), ['t0', 't1']);
-  state = mergeSectionPages(state, 'artist:2', 'c1', [section('songs', ['u0'], '', 9)]);
-  assert.deepEqual(state.sections[0]!.entries.map(e => e.id), ['u0']);
 });
 
 test('PERF-S02: cursor pages accumulate in order and dedupe (saved-list helper)', () => {
