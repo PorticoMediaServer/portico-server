@@ -32,10 +32,15 @@ func (s *Service) RunRetention(ctx context.Context) {
 		if !dbwork.Yield(ctx) {
 			return 0
 		}
+		ctx = dbwork.WithBackgroundSpeed(ctx, dbwork.ReadBackgroundSpeed(ctx, s.db))
+		started := time.Now()
 		if err := s.Sweep(ctx); err != nil {
 			// A failed sweep is not an emergency — the rows are still there next
 			// time — but it should not wait out the full safety tick either.
 			return 30 * time.Second
+		}
+		if !dbwork.PaceBackground(ctx, started) {
+			return 0
 		}
 		return 0
 	})
@@ -111,6 +116,12 @@ func (s *Service) Sweep(ctx context.Context) error {
 
 	_, e = dbwork.ExecWrite(ctx, s.db, dbwork.ClassBackgroundMedia, `DELETE FROM analysis_marker_receipts WHERE rowid IN(SELECT rowid FROM analysis_marker_receipts WHERE created_ms<? LIMIT 32)`, now.Add(-60*24*time.Hour).UnixMilli())
 	if e != nil {
+		return e
+	}
+	// Artifact custody has already removed expired bytes. Drop their summary
+	// rows only after every head and artifact reference is gone, using the same
+	// owner retention period and a bounded writer quantum.
+	if _, e = s.pruneResultSummaries(ctx, cutoff); e != nil {
 		return e
 	}
 	// This inherited lock is proof that an old decoder physically retired. Time,
@@ -192,4 +203,12 @@ func (s *Service) pruneOrphan(ctx context.Context, object mediaartifact.Object) 
 		return s.artifacts.Remove(object)
 	}
 	return nil
+}
+
+func (s *Service) pruneResultSummaries(ctx context.Context, cutoff int64) (int64, error) {
+	result, err := dbwork.ExecWrite(ctx, s.db, dbwork.ClassMaintenance, `DELETE FROM analysis_results WHERE id IN(SELECT r.id FROM analysis_results r WHERE r.retired_ms>0 AND r.retired_ms<? AND NOT EXISTS(SELECT 1 FROM analysis_heads h WHERE h.result_id=r.id) AND NOT EXISTS(SELECT 1 FROM analysis_artifacts a WHERE a.result_id=r.id) ORDER BY r.retired_ms,r.id LIMIT 32)`, cutoff)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }

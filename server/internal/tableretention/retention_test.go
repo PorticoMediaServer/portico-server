@@ -96,7 +96,7 @@ func TestPermanentBoundKeepsExactReplayAndUpdateAtTheCeiling(t *testing.T) {
 	if _, err = db.Exec(`INSERT INTO saved_operation_fences VALUES('p','personal','three','hash','now')`); err != nil {
 		t.Fatalf("released capacity not usable: %v", err)
 	}
-	for table, maximum := range PermanentBounds {
+	for table, maximum := range ResourceBounds {
 		var got int
 		if err = db.QueryRow(`SELECT maximum FROM maintenance_table_bounds WHERE table_name=?`, table).Scan(&got); err != nil {
 			t.Fatal(err)
@@ -104,5 +104,113 @@ func TestPermanentBoundKeepsExactReplayAndUpdateAtTheCeiling(t *testing.T) {
 		if table != "saved_operation_fences" && got != maximum {
 			t.Fatalf("%s ceiling %d want %d", table, got, maximum)
 		}
+	}
+}
+
+func TestBackgroundSpeedControlsRetentionQuantum(t *testing.T) {
+	db, err := persistence.Open(filepath.Join(t.TempDir(), "state.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	for n := 0; n < 130; n++ {
+		if _, err = db.Exec(`INSERT INTO admin_receipts VALUES('server',?,'digest','{}',0)`, fmt.Sprintf("old%d", n)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err = db.Exec(`UPDATE maintenance_retention_rows SET created_ms=0`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.Exec(`INSERT INTO admin_documents(scope,revision,updated_ms,body) VALUES('maintenance',1,0,'{"backgroundSpeed":"gentle"}') ON CONFLICT(scope) DO UPDATE SET body=excluded.body`); err != nil {
+		t.Fatal(err)
+	}
+	more, err := Sweep(context.Background(), db, time.Now(), 256)
+	if err != nil || !more {
+		t.Fatalf("gentle sweep %v %v", more, err)
+	}
+	var left int
+	if err = db.QueryRow(`SELECT count(*) FROM admin_receipts`).Scan(&left); err != nil || left != 66 {
+		t.Fatalf("gentle quantum: %d remaining: %v", left, err)
+	}
+	if _, err = db.Exec(`UPDATE admin_documents SET body='{"backgroundSpeed":"fast"}' WHERE scope='maintenance'`); err != nil {
+		t.Fatal(err)
+	}
+	_, err = Sweep(context.Background(), db, time.Now(), 256)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = db.QueryRow(`SELECT count(*) FROM admin_receipts`).Scan(&left); err != nil || left != 0 {
+		t.Fatalf("fast quantum: %d remaining: %v", left, err)
+	}
+}
+
+func TestExpiredGroupHistoryIsDismantledBeforeTheParent(t *testing.T) {
+	db, err := persistence.Open(filepath.Join(t.TempDir(), "state.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err = db.Exec(`INSERT INTO social_groups(id,name,authority,account_id,profile_id,host_member_id,host_authority,state,created_at_ms,updated_at_ms) VALUES('old','Old','local','a','p','host','host-only','ended',0,0)`); err != nil {
+		t.Fatal(err)
+	}
+	for n := 0; n < 10; n++ {
+		if _, err = db.Exec(`INSERT INTO social_group_events VALUES('old',?,'ended','{}',0)`, n); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err = db.Exec(`UPDATE maintenance_retention_rows SET created_ms=0 WHERE table_name='social_groups'`); err != nil {
+		t.Fatal(err)
+	}
+	more, err := Sweep(context.Background(), db, time.Now(), 3)
+	if err != nil || !more {
+		t.Fatalf("first quantum %v %v", more, err)
+	}
+	var count int
+	if err = db.QueryRow(`SELECT count(*) FROM social_group_events`).Scan(&count); err != nil || count != 7 {
+		t.Fatalf("unbounded cascade: %d events left: %v", count, err)
+	}
+	if err = db.QueryRow(`SELECT count(*) FROM social_groups`).Scan(&count); err != nil || count != 1 {
+		t.Fatal("parent removed before bounded child cleanup", err)
+	}
+	for more {
+		more, err = Sweep(context.Background(), db, time.Now(), 3)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err = db.QueryRow(`SELECT count(*) FROM social_groups`).Scan(&count); err != nil || count != 0 {
+		t.Fatal("retired parent remained", err)
+	}
+}
+
+func TestBoundAllowsInterningAndIntentReplayThroughNaturalKeys(t *testing.T) {
+	db, err := persistence.Open(filepath.Join(t.TempDir(), "state.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	for _, table := range []string{"catalog_attribute_fields", "playback_personal_intents"} {
+		if _, err = db.Exec(`UPDATE maintenance_table_bounds SET maximum=rows+1 WHERE table_name=?`, table); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err = db.Exec(`INSERT INTO catalog_attribute_fields(field) VALUES('example')`); err != nil {
+		t.Fatal(err)
+	}
+	var id int
+	if err = db.QueryRow(`INSERT INTO catalog_attribute_fields(field) VALUES('example') ON CONFLICT(field) DO UPDATE SET field=excluded.field RETURNING id`).Scan(&id); err != nil {
+		t.Fatalf("existing interned field refused: %v", err)
+	}
+	if _, err = db.Exec(`INSERT INTO catalog_attribute_fields(field) VALUES('another')`); err == nil {
+		t.Fatal("intern bound bypassed")
+	}
+	if _, err = db.Exec(`INSERT INTO playback_personal_intents(request_key) VALUES('same-play')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.Exec(`INSERT OR IGNORE INTO playback_personal_intents(request_key) VALUES('same-play')`); err != nil {
+		t.Fatalf("existing intent refused: %v", err)
+	}
+	if _, err = db.Exec(`INSERT INTO playback_personal_intents(request_key) VALUES('new-play')`); err == nil {
+		t.Fatal("intent bound bypassed")
 	}
 }

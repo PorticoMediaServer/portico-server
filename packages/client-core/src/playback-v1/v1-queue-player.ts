@@ -452,11 +452,11 @@ export class V1QueuePlayer implements QueueController {
 
   /** Play or Shuffle a container (a show, a season, a collection, an album…) as one queue
    * segment: the server snapshots it, however large, and the first entry plays at once. */
-  playSelector(selector: Selector, options: {shuffle?: boolean; anchor?: QueueAnchor; startSeconds?: number} = {}): Promise<void> {
+  playSelector(selector: Selector, options: {shuffle?: boolean; shuffleSeed?: string; anchor?: QueueAnchor; startSeconds?: number} = {}): Promise<void> {
     // A music container played (not shuffled) starts with the viewer's music defaults.
     const defaults = !options.shuffle && 'container' in selector && MUSIC_CONTAINERS.includes(selector.container.kind) ? this.musicDefaults?.() : undefined;
     const shuffle = !!options.shuffle || !!defaults?.shuffle;
-    return this.play([{source: selector, ...(shuffle ? {order: {mode: 'shuffle'}} : {}), ...(options.anchor ? {anchor: options.anchor} : {})}], '', {...options, repeat: defaults?.repeat});
+    return this.play([{source: selector, ...(shuffle ? {order: {mode: 'shuffle', ...(options.shuffleSeed ? {seed: options.shuffleSeed} : {})}} : {}), ...(options.anchor ? {anchor: options.anchor} : {})}], '', {...options, repeat: defaults?.repeat});
   }
 
   /** Whether the next track follows the current one on its album, so the audio engine joins them

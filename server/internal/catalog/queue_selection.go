@@ -45,6 +45,11 @@ func (s *Service) QueueKeysTx(ctx context.Context, tx *sql.Tx, viewer Viewer, ac
 			return QueueSelection{}, err
 		}
 		if kind == "collection" {
+			fence, err := bulkSelectionFence(s.read(), viewer, JobSelector{})
+			if err != nil {
+				return QueueSelection{}, err
+			}
+			prefix += fence + ":"
 			visible, args := viewer.itemVisibilitySQL("i.id")
 			args = append([]any{saved}, args...)
 			return QueueSelection{SQL: `SELECT pid(i.public_id) FROM saved_resource_entries entry JOIN catalog_entities i ON i.id=entry.item_id JOIN catalog_kinds k ON k.id=i.kind AND k.playable=1 WHERE entry.resource_id=? AND ` + visible + recordingsClause("i.id", viewer.Restrictions) + ` ORDER BY entry.id`, Args: args, Revision: prefix + viewer.Fence, Label: label}, nil

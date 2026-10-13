@@ -2,6 +2,7 @@ package catalog
 
 import (
 	"context"
+	"database/sql"
 	"portico.local/server/internal/dbwork"
 	"reflect"
 	"testing"
@@ -58,5 +59,69 @@ func TestQueueKeysMatchEveryBrowseOrder(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func TestQueueKeysResolveSavedViewsAndSharedCollections(t *testing.T) {
+	db, s, names := browseFixture(t)
+	actor := ResourceActor{Authority: "local", AccountID: "account", ProfileID: "profile"}
+	viewer := Viewer{Profile: actorKey(actor), Fence: "f", Libraries: []string{"a"}}
+	name := "Recent films"
+	definition := &SavedViewDefinition{LibraryID: "a", Pivot: "movies", Sort: []BrowseSortSelection{{Field: "year", Direction: "desc"}}, Presentation: "grid", Query: &BrowseNode{Field: "year", Operator: "at-least", Value: 2000}}
+	created, err := s.MutateSavedResource(actor, "", "create", SavedResourceMutation{OperationID: "saved-queue-view-0001", Kind: "view", Name: &name, Definition: definition}, func(*sql.Tx) error { return nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	read := func(a ResourceActor, id string) ([]string, error) {
+		tx, close, err := dbwork.BeginRead(context.Background(), db)
+		if err != nil {
+			return nil, err
+		}
+		defer close()
+		plan, err := s.QueueKeysTx(context.Background(), tx, viewer, a, nil, id)
+		if err != nil {
+			return nil, err
+		}
+		rows, err := tx.QueryContext(context.Background(), plan.SQL, plan.Args...)
+		if err != nil {
+			return nil, err
+		}
+		defer rows.Close()
+		ids := []string{}
+		for rows.Next() {
+			var key string
+			if err = rows.Scan(&key); err != nil {
+				return nil, err
+			}
+			ids = append(ids, key)
+		}
+		return ids, rows.Err()
+	}
+	got, err := read(actor, created.ResourceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got, []string{names["m4"].Public, names["m3"].Public, names["m2"].Public}) {
+		t.Fatalf("saved-view order: %v", got)
+	}
+	other := ResourceActor{Authority: "local", AccountID: "other", ProfileID: "other"}
+	if _, err = read(other, created.ResourceID); err != sql.ErrNoRows {
+		t.Fatalf("private saved view leaked: %v", err)
+	}
+	visibility := "server"
+	collection, err := s.MutateSavedResource(actor, "", "create", SavedResourceMutation{OperationID: "saved-queue-list-0001", Kind: "collection", Name: &name, Visibility: &visibility}, func(*sql.Tx) error { return nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = s.MutateSavedResource(actor, collection.ResourceID, "entries", SavedResourceMutation{OperationID: "saved-queue-entries-01", ExpectedRevision: collection.Revision, AddItemIDs: []string{names["m1"].Public, names["m2"].Public}}, func(*sql.Tx) error { return nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err = read(other, collection.ResourceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("shared collection membership %v", got)
 	}
 }

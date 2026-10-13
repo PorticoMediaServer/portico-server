@@ -201,10 +201,6 @@ func (sc *snapshotScan) writeBatch() error {
 	})
 	if err == nil {
 		snap.stored, snap.pending = true, snap.pending[:0]
-		pace := dbwork.WithBackgroundSpeed(sc.ctx, dbwork.ReadBackgroundSpeed(sc.ctx, sc.s.DB))
-		if !dbwork.PaceBackground(pace, time.Now()) {
-			return pace.Err()
-		}
 	}
 	return err
 }
@@ -371,6 +367,7 @@ func (s *Service) buildSnapshot(ctx context.Context, p identity.Principal, queue
 		snap.label = s.snapshotLabel(ctx, tx, in, snap)
 	}
 	if capture != nil && snap.partial {
+		capture.keys = k // includes the recommendation order and its composition day
 		s.build.mu.Lock()
 		if s.build.captures == nil {
 			s.build.captures = make(map[string]*queryCapture)
@@ -659,7 +656,12 @@ func (s *Service) continueBuild(parent context.Context, id string) error {
 		return err
 	}
 	defer done()
-	k, err := s.keysQuery(ctx, tx, p, in)
+	var k selectorKeys
+	if capture != nil {
+		k = capture.keys
+	} else {
+		k, err = s.keysQuery(ctx, tx, p, in)
+	}
 	if err != nil {
 		return err
 	}

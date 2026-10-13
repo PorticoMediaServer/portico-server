@@ -13,6 +13,7 @@ import (
 	"portico.local/apikit/idempotency"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/persistence"
+	"portico.local/server/internal/supervise"
 	"portico.local/server/internal/tableretention"
 )
 
@@ -76,11 +77,13 @@ func runDatabaseHousekeeping(ctx context.Context, db *sql.DB) {
 			log.Printf("This state directory holds %d schema objects this build does not define; they are left untouched. First: %s", len(unknown), strings.Join(unknown[:min(3, len(unknown))], ", "))
 		}
 	}
+	// Owner-paused retention must never pause WAL pressure monitoring.
+	supervise.Loop(ctx, "cmd.record-retention", func(ctx context.Context) { tableretention.Run(ctx, db) })
 	interval, integrity := integritySchedule()
 	lastIntegrity := time.Time{}
 	lastReceiptSweep := time.Now()
 	lastUnknownSweep := time.Now()
-	lastTableSweep := time.Now()
+
 	receipts := idempotency.Store{SweepBegin: func(ctx context.Context) (idempotency.Transaction, error) {
 		return dbwork.Begin(ctx, db, dbwork.ClassMaintenance)
 	}}
@@ -141,15 +144,6 @@ func runDatabaseHousekeeping(ctx context.Context, db *sql.DB) {
 				lastUnknownSweep = time.Now()
 			} else if count, _ := result.RowsAffected(); count < 100 {
 				lastUnknownSweep = time.Now()
-			}
-		}
-		if time.Since(lastTableSweep) >= 15*time.Minute {
-			more, err := tableretention.Sweep(ctx, db, time.Now(), 128)
-			if err != nil {
-				log.Printf("warn: Record retention: %v", err)
-				lastTableSweep = time.Now()
-			} else if !more {
-				lastTableSweep = time.Now()
 			}
 		}
 		if !integrity || time.Since(lastIntegrity) < interval {
