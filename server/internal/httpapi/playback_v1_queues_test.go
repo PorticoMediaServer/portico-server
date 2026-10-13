@@ -203,8 +203,8 @@ func TestPlaybackV1QueueAuthorization(t *testing.T) {
 	if w := f.raw("GET", "/v1/queues/"+mixed.Queue.ID, f.owner.AccessToken, nil, nil); w.Code != 404 {
 		t.Fatalf("owner read a member's queue: %d", w.Code)
 	}
-	// A query selector is refused, never silently narrowed.
-	if w := f.raw("POST", "/v1/queues", member, map[string]string{"Idempotency-Key": "member-queue-000003"}, map[string]any{"segments": []any{map[string]any{"source": map[string]any{"query": map[string]any{"library": "x"}}}}}); w.Code != 422 || v1Code(w) != "unsupported_selector" {
+	// A supported browse query still refuses an inaccessible library.
+	if w := f.raw("POST", "/v1/queues", member, map[string]string{"Idempotency-Key": "member-queue-000003"}, map[string]any{"segments": []any{map[string]any{"source": querySource(f.library, "asc")}}}); w.Code != 404 || v1Code(w) != "not_found" {
 		t.Fatalf("query selector: %d %s", w.Code, w.Body.String())
 	}
 }

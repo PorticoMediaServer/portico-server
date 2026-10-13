@@ -121,3 +121,49 @@ func TestReauthorizeTxCancellationAndHostedIdentityBoundary(t *testing.T) {
 		t.Fatalf("wrong server accepted: %v", err)
 	}
 }
+
+func TestReauthorizeTxRechecksDeadlineAndNarrowedGrant(t *testing.T) {
+	t.Run("shortened horizon", func(t *testing.T) {
+		db, service, principal := transactionAuthorityFixture(t)
+		tx, err := db.Begin()
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer tx.Rollback()
+		horizon := time.Now().Add(time.Minute).UTC().Truncate(time.Second)
+		if _, err = tx.Exec(`UPDATE authorization_session_families SET authorization_horizon=?`, horizon.Format(time.RFC3339)); err != nil {
+			t.Fatal(err)
+		}
+		current, err := service.ReauthorizeTx(context.Background(), tx, principal)
+		if err != nil || !current.ExpiresAt.Equal(horizon) {
+			t.Fatalf("current deadline %s, want %s: %v", current.ExpiresAt, horizon, err)
+		}
+		if _, err = tx.Exec(`UPDATE authorization_session_families SET authorization_horizon='2000-01-01T00:00:00Z'`); err != nil {
+			t.Fatal(err)
+		}
+		if _, err = service.ReauthorizeTx(context.Background(), tx, principal); !errors.Is(err, ErrUnauthorized) {
+			t.Fatalf("expired family admitted: %v", err)
+		}
+	})
+	t.Run("narrowed grant", func(t *testing.T) {
+		db, service, principal := transactionAuthorityFixture(t)
+		tx, err := db.Begin()
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer tx.Rollback()
+		if _, err = tx.Exec(`INSERT INTO authorization_family_grants(family_id,grant_kind) SELECT family_id,? FROM authorization_family_tokens WHERE token_hash=?`, GrantCastTarget, principal.Hash); err != nil {
+			t.Fatal(err)
+		}
+		principal.Grant = GrantCastTarget
+		current, err := service.ReauthorizeTx(context.Background(), tx, principal)
+		if err != nil || current != principal {
+			t.Fatalf("narrowed principal changed: %+v: %v", current, err)
+		}
+		forged := principal
+		forged.Grant = ""
+		if _, err = service.ReauthorizeTx(context.Background(), tx, forged); !errors.Is(err, ErrUnauthorized) {
+			t.Fatalf("widened principal admitted: %v", err)
+		}
+	})
+}
