@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"os"
 	"path/filepath"
+	"portico.local/server/internal/catalogtest"
 	"portico.local/server/internal/compactcatalog"
 	"testing"
 )
@@ -82,5 +83,114 @@ func TestDeleteDoesNotRemoveNewUnpreviewedVersion(t *testing.T) {
 	db.QueryRow(`SELECT count(*) FROM catalog_assets WHERE path=?`, newPath).Scan(&n)
 	if n != 1 {
 		t.Fatalf("unpreviewed version lost from catalogue while its disk file remains: %+v", out)
+	}
+	if out.Removed != 0 || out.Receipts[0].Code != "file_changed" {
+		t.Fatalf("changed title reported as removed: %+v", out)
+	}
+	if err := db.QueryRow(`SELECT count(*) FROM catalog_assets WHERE path<>? AND available=1`, newPath).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != 0 {
+		t.Fatalf("deleted old versions still offered: %d", n)
+	}
+}
+
+func TestDeleteRejectsNestedSymlinkEscape(t *testing.T) {
+	s, db, root, item, paths := deletionFixture(t)
+	sub := filepath.Join(root, "media", "nested")
+	if err := os.Mkdir(sub, 0700); err != nil {
+		t.Fatal(err)
+	}
+	nested := filepath.Join(sub, filepath.Base(paths[0]))
+	if err := os.Rename(paths[0], nested); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`UPDATE catalog_assets SET path=? WHERE path=?`, nested, paths[0]); err != nil {
+		t.Fatal(err)
+	}
+	outside := filepath.Join(t.TempDir(), "outside")
+	if err := os.Rename(sub, outside); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, sub); err != nil {
+		t.Fatal(err)
+	}
+	out, err := deleteItem(t, s, item, "delete-nested-escape")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.Removed != 0 {
+		t.Fatalf("redirected delete succeeded: %+v", out)
+	}
+	if _, err := os.Stat(filepath.Join(outside, filepath.Base(paths[0]))); err != nil {
+		t.Fatalf("outside file was touched: %v", err)
+	}
+}
+
+func TestDeleteRejectsFinalSymlinkReplacement(t *testing.T) {
+	s, _, _, item, paths := deletionFixture(t)
+	if err := os.Remove(paths[0]); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(paths[1], paths[0]); err != nil {
+		t.Fatal(err)
+	}
+	out, err := deleteItem(t, s, item, "delete-final-symlink")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.Removed != 0 || out.Receipts[0].Code != "file_changed" {
+		t.Fatalf("symlink replacement accepted: %+v", out)
+	}
+	if _, err := os.Stat(paths[1]); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestDeleteDoesNotRemoveNewUnpreviewedEpisode(t *testing.T) {
+	s, db, root, _, _ := deletionFixture(t)
+	c := catalogtest.New(t, db)
+	show := c.Show(c.Handle("lib-1"), "Series", 2001)
+	season := c.Season(show, 1)
+	oldPath := filepath.Join(root, "media", "episode1.mkv")
+	if err := os.WriteFile(oldPath, []byte("first"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	c.Episode(show, season, 1, oldPath)
+	info, err := os.Stat(oldPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.Exec(`UPDATE catalog_assets SET size=?,modified_ns=? WHERE path=?`, info.Size(), info.ModTime().UnixNano(), oldPath)
+	preview, err := s.PreviewDelete(context.Background(), allow, []string{show.Public})
+	if err != nil {
+		t.Fatal(err)
+	}
+	handle := c.Handle("lib-1")
+	calls := 0
+	auth := func(ctx context.Context, tx *sql.Tx) error {
+		calls++
+		if calls != 2 {
+			return nil
+		}
+		episode, _, err := compactcatalog.EnsureEntityTx(ctx, tx, compactcatalog.Entity{Library: handle, Kind: compactcatalog.Episode, Parent: season.ID, Key: "episode:new", Title: "Episode 2"})
+		if err != nil {
+			return err
+		}
+		if err := compactcatalog.SetFactsTx(ctx, tx, episode, map[string]any{"show_id": show.ID, "season_id": season.ID, "numbering": "seasonal", "number": 2}); err != nil {
+			return err
+		}
+		return nil
+	}
+	out, err := s.Delete(context.Background(), auth, "owner", DeleteRequest{ItemIDs: []string{show.Public}, DeleteFiles: true, Confirmation: preview.Confirmation, ExpectedRevision: preview.Revision, OperationID: "delete-new-episode"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var n int
+	if err := db.QueryRow(`SELECT count(*) FROM catalog_episodes WHERE show_id=? AND number=2`, show.ID).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 || out.Removed != 0 {
+		t.Fatalf("new episode or its show removed: episode=%d result=%+v", n, out)
 	}
 }

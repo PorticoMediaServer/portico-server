@@ -12,8 +12,10 @@ import (
 	"path/filepath"
 	"sort"
 	"strconv"
+	"time"
 
 	"portico.local/server/internal/catalog"
+	"portico.local/server/internal/compactcatalog"
 )
 
 // MaxDeleteTargets bounds one bulk delete. A larger sweep is a scan-driven
@@ -34,6 +36,7 @@ type DeleteFile struct {
 	// What the catalogue last saw at this path. A file that no longer matches
 	// is some other file and is never removed.
 	size, modifiedNS int64
+	root             string
 }
 
 // Dependent is something that refers to the item and will change when it goes.
@@ -60,6 +63,8 @@ type DeleteTarget struct {
 	// entityID is the catalogue integer the SQL statements use. It never
 	// leaves the server: public ids stay the API's only identifier.
 	entityID int64
+	members  []catalog.TitleDeletePlan
+	gone     []DeleteFile
 }
 
 // DeletePreview is what the delete dialog renders before anything is touched.
@@ -202,6 +207,11 @@ func targetFor(ctx context.Context, tx *sql.Tx, item string) (DeleteTarget, erro
 	inside := map[int64]bool{t.entityID: true}
 	for _, member := range members {
 		inside[member] = true
+		plan, err := catalog.CaptureTitleDeleteTx(ctx, tx, member)
+		if err != nil {
+			return t, err
+		}
+		t.members = append(t.members, plan)
 	}
 	// Only a file under one of the library's own folders is ever removed.
 	roots := []string{}
@@ -276,7 +286,12 @@ func targetFor(ctx context.Context, tx *sql.Tx, item string) (DeleteTarget, erro
 			if err != nil {
 				return t, err
 			}
-			if underAny(roots, f.Path) {
+			for _, root := range roots {
+				if underAny([]string{root}, f.Path) && len(root) > len(f.root) {
+					f.root = root
+				}
+			}
+			if f.root != "" {
 				if info, statErr := os.Lstat(f.Path); statErr == nil && info.Mode().IsRegular() {
 					f.Present = true
 					f.Bytes = info.Size()
@@ -366,7 +381,45 @@ func (s *Service) PreviewDelete(ctx context.Context, auth Authorize, ids []strin
 // be the one the catalogue saw (same size and modified time): a different
 // file that has taken the path is left alone. A file already gone is done.
 func removeMediaFile(f DeleteFile) (removed bool, code string) {
-	info, err := os.Lstat(f.Path)
+	if f.root == "" {
+		return false, "file_changed"
+	}
+	// The configured root is already canonical. Pin that directory before
+	// resolving any descendants; replacing it or a parent with a symlink
+	// cannot redirect the delete into a different tree.
+	expected, err := os.Lstat(f.root)
+	if err != nil || !expected.IsDir() {
+		return false, "file_not_removed"
+	}
+	canonical, err := filepath.EvalSymlinks(f.root)
+	if err != nil || filepath.Clean(canonical) != filepath.Clean(f.root) {
+		return false, "file_changed"
+	}
+	root, err := os.OpenRoot(f.root)
+	if err != nil {
+		return false, "file_not_removed"
+	}
+	defer root.Close()
+	current, err := root.Stat(".")
+	if err != nil || !os.SameFile(expected, current) {
+		return false, "file_changed"
+	}
+	rel, err := filepath.Rel(f.root, f.Path)
+	if err != nil || !filepath.IsLocal(rel) || rel == "." {
+		return false, "file_changed"
+	}
+	// Pin the parent too, so validation and removal resolve the final name
+	// through the same directory handle even when an ancestor is renamed.
+	parent, err := root.OpenRoot(filepath.Dir(rel))
+	if errors.Is(err, os.ErrNotExist) {
+		return false, ""
+	}
+	if err != nil {
+		return false, "file_not_removed"
+	}
+	defer parent.Close()
+	name := filepath.Base(rel)
+	info, err := parent.Lstat(name)
 	if errors.Is(err, os.ErrNotExist) {
 		return false, ""
 	}
@@ -376,7 +429,7 @@ func removeMediaFile(f DeleteFile) (removed bool, code string) {
 	if !info.Mode().IsRegular() || info.Size() != f.size || info.ModTime().UnixNano() != f.modifiedNS {
 		return false, "file_changed"
 	}
-	if err = os.Remove(f.Path); err != nil && !errors.Is(err, os.ErrNotExist) {
+	if err = parent.Remove(name); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return false, "file_not_removed"
 	}
 	return true, ""
@@ -460,9 +513,6 @@ func (s *Service) Delete(ctx context.Context, auth Authorize, actor string, requ
 				}
 				continue
 			}
-			if !file.Present {
-				continue
-			}
 			if err = ctx.Err(); err != nil {
 				return out, err
 			}
@@ -476,41 +526,63 @@ func (s *Service) Delete(ctx context.Context, auth Authorize, actor string, requ
 				r.FilesDeleted++
 				r.Bytes += file.Bytes
 			}
+			targets[i].gone = append(targets[i].gone, file)
 		}
 		receipts[i] = r
 	}
 	// The files are gone; the catalogue follows. Each title goes in short
 	// transactions, and a title whose file could not be removed stays.
 	for i, target := range targets {
+		for start := 0; start < len(target.gone); start += deleteMemberBatch {
+			end := min(start+deleteMemberBatch, len(target.gone))
+			if err = s.transaction(ctx, auth, func(tx *sql.Tx) error {
+				return markDeletedFilesTx(ctx, tx, target.gone[start:end])
+			}); err != nil {
+				return out, err
+			}
+		}
 		if !receipts[i].Removed {
 			continue
 		}
-		for {
-			remaining := 0
+		for start := 0; start < len(target.members); start += deleteMemberBatch {
+			end := min(start+deleteMemberBatch, len(target.members))
 			err = s.transaction(ctx, auth, func(tx *sql.Tx) error {
-				var e error
-				remaining, e = catalog.DeleteTitleMembersTx(ctx, tx, target.ItemID, deleteMemberBatch)
-				if e != nil {
-					return e
+				for _, plan := range target.members[start:end] {
+					removed, e := catalog.DeleteApprovedTitleTx(ctx, tx, plan)
+					if e != nil {
+						return e
+					}
+					if !removed {
+						receipts[i].Removed, receipts[i].Code = false, "file_changed"
+					}
 				}
-				_, e = tx.ExecContext(ctx, `UPDATE library_revisions SET revision=revision+1 WHERE library_id=?`, target.LibraryID)
+				_, e := tx.ExecContext(ctx, `UPDATE library_revisions SET revision=revision+1 WHERE library_id=?`, target.LibraryID)
 				return e
 			})
 			if err != nil {
 				return out, err
 			}
-			if remaining == 0 {
-				break
+		}
+		// A zero-member pass only removes an empty container. Any new member
+		// keeps its container and is never pulled into this operation.
+		err = s.transaction(ctx, auth, func(tx *sql.Tx) error {
+			remaining, e := catalog.DeleteTitleMembersTx(ctx, tx, target.ItemID, 0)
+			if e == nil && remaining != 0 {
+				receipts[i].Removed, receipts[i].Code = false, "file_changed"
 			}
+			return e
+		})
+		if err != nil {
+			return out, err
 		}
 	}
 	err = s.transaction(ctx, auth, func(tx *sql.Tx) error {
 		out.Receipts, out.Removed, out.Failed, out.BytesDeleted = out.Receipts[:0], 0, 0, 0
 		for _, r := range receipts {
 			out.Receipts = append(out.Receipts, r)
+			out.BytesDeleted += r.Bytes
 			if r.Removed {
 				out.Removed++
-				out.BytesDeleted += r.Bytes
 			} else {
 				out.Failed++
 			}
@@ -523,6 +595,29 @@ func (s *Service) Delete(ctx context.Context, auth Authorize, actor string, requ
 	})
 	_ = actor
 	return out, err
+}
+
+// A title preserved because a new version arrived must stop offering the
+// old files already removed from disk. New observations of replacement bytes
+// at those locators are left alone.
+func markDeletedFilesTx(ctx context.Context, tx *sql.Tx, files []DeleteFile) error {
+	for _, file := range files {
+		var asset int64
+		err := tx.QueryRowContext(ctx, `SELECT id FROM catalog_assets WHERE token=? AND path=? AND size=? AND modified_ns=?`, file.AssetID, file.Path, file.size, file.modifiedNS).Scan(&asset)
+		if errors.Is(err, sql.ErrNoRows) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE inventory_objects SET state='missing',missing_since=CASE WHEN missing_since='' THEN ? ELSE missing_since END WHERE asset_id=? AND size=? AND modified_ns=?`, time.Now().UTC().Format(time.RFC3339Nano), file.AssetID, file.size, file.modifiedNS); err != nil {
+			return err
+		}
+		if err := compactcatalog.SetAssetAvailableTx(ctx, tx, asset, false); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func boolToInt(v bool) int {
