@@ -51,7 +51,12 @@ func TestCheckInDeliversLatestCertificateFromAnOlderReplica(t *testing.T) {
 		t.Fatal(err)
 	}
 	raw, _ := json.Marshal(expired)
-	for _, artifact := range [][]byte{raw, []byte(`{"keyId":"untrusted"}`), []byte(`invalid`)} {
+	oversized, err := trust.Certify(root, second.PrivateKey.Public().(ed25519.PublicKey), second.KeyID, "documents", time.Now().Add(-time.Minute), time.Now().Add(time.Hour), security.MaxSigningRevision+1, []string{first.KeyID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	oversizedRaw, _ := json.Marshal(oversized)
+	for _, artifact := range [][]byte{raw, oversizedRaw, []byte(`{"keyId":"untrusted"}`), []byte(`invalid`)} {
 		if _, err = f.store.DB.Exec(`UPDATE hosted_signing_state SET certificate=$1 WHERE singleton`, artifact); err != nil {
 			t.Fatal(err)
 		}
@@ -214,5 +219,47 @@ func TestMemberConsentRechecksRevocationAfterWaitingForRollout(t *testing.T) {
 		}
 	case <-ctx.Done():
 		t.Fatal("consent mutation did not finish after rollout", ctx.Err())
+	}
+}
+
+func TestRevocationFilteringDoesNotSelectAnUnlockedCustodian(t *testing.T) {
+	f := setup(t)
+	ctx := context.Background()
+	_, root, _ := ed25519.GenerateKey(rand.Reader)
+	first := rolloutKey(t, root, 1, nil)
+	second := rolloutKey(t, root, 2, []string{first.KeyID})
+	old := directory.New(f.store, first)
+	current := directory.New(f.store, second)
+	third, err := f.ids.Register(ctx, "otherowner", "Other owner", "StrongPass9")
+	if err != nil {
+		t.Fatal(err)
+	}
+	consentA, err := old.IssueIdentity(f.member.Account.ID, "member", "Member", f.server, testChallenge, "custody")
+	if err != nil {
+		t.Fatal(err)
+	}
+	consentB, err := current.IssueIdentity(third.Account.ID, "otherowner", "Other owner", f.server, testChallenge, "custody")
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, _ := json.Marshal(consentA)
+	b, _ := json.Marshal(consentB)
+	if err = f.store.RecordSigningCertificate(ctx, first); err != nil {
+		t.Fatal(err)
+	}
+	if err = f.store.RecordSigningCertificate(ctx, second); err != nil {
+		t.Fatal(err)
+	}
+	authority, err := old.CaptureServerAuthority(ctx, f.token)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := old.PushMembers(ctx, authority, directory.MemberPush{Through: 1, Full: true, Members: []directory.MemberStanding{{AccountID: f.owner.Account.ID, Role: "member", Active: true}, {AccountID: f.member.Account.ID, Role: "owner", Active: true, Consent: a}, {AccountID: third.Account.ID, Role: "owner", Active: true, Consent: b}}})
+	if err != nil || !out.Applied || out.Custodian != "" {
+		t.Fatal("ambiguous custody changed after account locks", out, err)
+	}
+	var holder string
+	if err = f.store.DB.QueryRow(`SELECT owner_account_id FROM servers WHERE id=$1`, f.server).Scan(&holder); err != nil || holder != f.owner.Account.ID {
+		t.Fatal("unlocked custody candidate was selected", holder, err)
 	}
 }

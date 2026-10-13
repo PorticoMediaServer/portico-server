@@ -25,6 +25,10 @@ func RandomID(prefix string) string {
 }
 func Hash(value string) []byte { h := sha256.Sum256([]byte(value)); return h[:] }
 
+// MaxSigningRevision fits user servers' signed SQLite integers and remains
+// exact when a public JSON client decodes and forwards an identity envelope.
+const MaxSigningRevision uint64 = 1<<53 - 1
+
 type Keys struct {
 	// Shared across immutable service copies; only learned root revocation sets it.
 	SignerRevoked *atomic.Bool
@@ -88,6 +92,9 @@ func LoadKeysWithRoot(path string, root ed25519.PublicKey) (*Keys, error) {
 	}
 	if err = json.Unmarshal(raw, &cert); err != nil {
 		return nil, err
+	}
+	if cert.Revision > MaxSigningRevision {
+		return nil, trust.ErrTrust
 	}
 	public, err := cert.Verify(root, "documents", time.Now())
 	if err != nil {
@@ -160,7 +167,7 @@ func (k *Keys) Open(value []byte, context string) (string, error) {
 // ValidateSigner applies the offline-root contract at use time, not just at
 // startup. An expired or revoked online certificate must stop issuing claims.
 func (k *Keys) ValidateSigner(now time.Time) error {
-	if k == nil || k.SignerRevoked != nil && k.SignerRevoked.Load() || len(k.PrivateKey) != ed25519.PrivateKeySize || k.Certificate == nil || k.KeyID != k.Certificate.KeyID {
+	if k == nil || k.SignerRevoked != nil && k.SignerRevoked.Load() || len(k.PrivateKey) != ed25519.PrivateKeySize || k.Certificate == nil || k.Certificate.Revision > MaxSigningRevision || k.KeyID != k.Certificate.KeyID {
 		return trust.ErrTrust
 	}
 	public, e := k.Certificate.Verify(k.RootPublicKey, "documents", now)

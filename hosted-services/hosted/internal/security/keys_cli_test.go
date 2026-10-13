@@ -47,3 +47,23 @@ func TestOfflineCeremonyAndRotation(t *testing.T) {
 		t.Fatal("root overwritten")
 	}
 }
+
+func TestCertificationRefusesRevisionBeyondTheLocalServerRange(t *testing.T) {
+	dir := t.TempDir()
+	root := filepath.Join(dir, "root.pem")
+	public := filepath.Join(dir, "root-public.pem")
+	leaf := filepath.Join(dir, "leaf.json")
+	leafPublic := filepath.Join(dir, "leaf-public.pem")
+	for _, args := range [][]string{{"root", "--out", root, "--public-out", public}, {"signing", "--out", leaf, "--public-out", leafPublic}} {
+		if err := KeysCLI(args, &bytes.Buffer{}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	target := leaf + ".certificate.json"
+	if err := KeysCLI([]string{"certify", "--root", root, "--public", leafPublic, "--out", target, "--revision", "9007199254740992"}, &bytes.Buffer{}); err == nil {
+		t.Fatal("certified an unsupported revision")
+	}
+	if _, err := os.Stat(target); !os.IsNotExist(err) {
+		t.Fatal("refused certification wrote an artifact", err)
+	}
+}

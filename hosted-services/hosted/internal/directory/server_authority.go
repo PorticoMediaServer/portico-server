@@ -71,7 +71,7 @@ func (s *Service) ServerHeartbeat(ctx context.Context, a ServerAuthority, q Chec
 	// only stops handing out its own certificate. The repository may supply
 	// a newer root-certified public certificate from another replica.
 	if out.SigningCertificate != nil {
-		if s.keys == nil {
+		if s.keys == nil || out.SigningCertificate.Revision > security.MaxSigningRevision {
 			out.SigningCertificate = nil
 		} else if _, err := out.SigningCertificate.Verify(s.keys.RootPublicKey, "documents", time.Now()); err != nil {
 			out.SigningCertificate = nil

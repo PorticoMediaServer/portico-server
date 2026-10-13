@@ -52,3 +52,23 @@ func TestSignerRechecksCertificateAfterStartup(t *testing.T) {
 		t.Fatal("nil signer")
 	}
 }
+
+func TestSigningRevisionFitsTheLocalServersInteger(t *testing.T) {
+	rootPub, root, _ := ed25519.GenerateKey(rand.Reader)
+	pub, private, _ := ed25519.GenerateKey(rand.Reader)
+	now := time.Now().UTC()
+	for _, revision := range []uint64{MaxSigningRevision, MaxSigningRevision + 1} {
+		cert, err := trust.Certify(root, pub, trust.KeyID(pub), "documents", now.Add(-time.Minute), now.Add(time.Hour), revision, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		keys := &Keys{RootPublicKey: rootPub, PrivateKey: private, Certificate: cert, KeyID: cert.KeyID}
+		err = keys.ValidateSigner(now)
+		if (err == nil) != (revision == MaxSigningRevision) {
+			t.Fatal("revision outside the shared persistence range", revision, err)
+		}
+	}
+	if _, err := writeSigningSet(t.TempDir(), root, nil, 365, MaxSigningRevision+1, nil); err == nil {
+		t.Fatal("generated a certificate user servers cannot persist")
+	}
+}

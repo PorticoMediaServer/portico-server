@@ -168,7 +168,7 @@ func KeysCLI(args []string, out io.Writer) error {
 				return fmt.Errorf("invalid revoked key ID %q", id)
 			}
 		}
-		if *days < 1 || time.Duration(*days)*24*time.Hour > trust.MaximumCertificateLifetime {
+		if *revision == 0 || *revision > MaxSigningRevision || *days < 1 || time.Duration(*days)*24*time.Hour > trust.MaximumCertificateLifetime {
 			return trust.ErrTrust
 		}
 		now := time.Now().UTC().Add(-time.Minute)
@@ -235,6 +235,9 @@ func readRootPrivate(path string) (ed25519.PrivateKey, error) {
 // writeSigningSet writes a new signing key, its sealing file and its
 // certificate into dir as the three files Hosted loads from --key-file.
 func writeSigningSet(dir string, root ed25519.PrivateKey, seal *SealFile, days int, revision uint64, revoked []string) (*trust.Certificate, error) {
+	if revision == 0 || revision > MaxSigningRevision {
+		return nil, trust.ErrTrust
+	}
 	public, private, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
 		return nil, err
@@ -374,6 +377,9 @@ func keysRenew(args []string, out io.Writer) error {
 	// expired; renewal must still work then.
 	if _, err = old.Verify(root.Public().(ed25519.PublicKey), "documents", old.NotBefore.Add(time.Second)); err != nil {
 		return errors.New("the current certificate was not issued by this root")
+	}
+	if old.Revision >= MaxSigningRevision {
+		return trust.ErrTrust
 	}
 	if err = newStagingDir(*staging); err != nil {
 		return err
