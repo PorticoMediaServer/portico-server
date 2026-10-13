@@ -1,5 +1,8 @@
 import {browserConfigCheck, probeAudioDecode} from './audio/capabilities';
-import {ClientProfilePublisher, probeWebProfile, type ClientProfile, type DecodingAnswer, type WebProbeEnvironment} from '@core/client-profile.ts';
+import {probeWebProfile, type CapabilityDocument, type DecodingAnswer, type WebProbeEnvironment} from '@core/client-profile.ts';
+import {CapabilityPublisher} from '@core/playback-v1/options.ts';
+import {localV1Http} from '@core/playback-v1/local-http.ts';
+import type {HttpLocalApi} from '@core/index.ts';
 import {declareSubtitleRendering} from '../player/subtitles/declaration';
 
 /*
@@ -51,26 +54,26 @@ function environment(): WebProbeEnvironment {
   };
 }
 
-let asked: Promise<ClientProfile> | undefined;
-/** The document for this browser. Asked once, and again when the screen or the audio device changes.
+let asked: Promise<CapabilityDocument> | undefined;
+/** The capability document for this browser. Asked once, and again when the screen or the audio device changes.
  * It carries what the music engine decodes on the device (`audioDecode`, §18.1): pairs that passed
  * the §18.8 fixtures on this engine and that `AudioDecoder` confirms here. */
-export function browserClientProfile(fresh = false): Promise<ClientProfile> {
+export function browserClientProfile(fresh = false): Promise<CapabilityDocument> {
   if (fresh || !asked) asked = Promise.all([probeWebProfile(environment()), probeAudioDecode(browserConfigCheck()).catch(() => [])])
     // What the player draws itself (styled and image subtitles) is declared in one place: `player/subtitles/declaration.ts`.
-    .then(([profile, audioDecode]): ClientProfile => declareSubtitleRendering({...profile, audioDecode: audioDecode.map(({sampleRates, containers, ...a}) => ({...a, containers: [...containers], ...(sampleRates ? {sampleRates: [...sampleRates]} : {})}))}));
+    .then(([profile, audioDecode]): CapabilityDocument => declareSubtitleRendering({...profile, audioDecode: audioDecode.map(({sampleRates, containers, ...a}) => ({...a, containers: [...containers], ...(sampleRates ? {sampleRates: [...sampleRates]} : {})}))}));
   return asked;
 }
 
-type Api = {request<T>(path: string, method?: string, body?: unknown): Promise<T>};
+type Api = Pick<HttpLocalApi, 'requestRaw'>;
 
 /**
- * Keeps this sign-in's server told what the browser plays: once after sign-in, and again if the
+ * Keeps the server told what this browser plays (its capability document, kept per device): once after sign-in, and again if the
  * answer changes (a window dragged to an HDR display, headphones swapped for a surround
  * receiver). It never throws and nothing waits for it. Returns a function that stops watching.
  */
 export function keepBrowserProfilePublished(api: Api, signIn: string): () => void {
-  const publisher = new ClientProfilePublisher((path, method, body) => api.request<unknown>(path, method, body), () => signIn);
+  const publisher = new CapabilityPublisher(localV1Http(api), () => signIn);
   let stopped = false;
   const publish = (fresh: boolean) => { void browserClientProfile(fresh).then(profile => { if (!stopped) void publisher.publish(profile); }).catch(() => {}); };
   publish(false);

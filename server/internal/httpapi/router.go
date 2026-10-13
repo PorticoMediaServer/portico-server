@@ -47,11 +47,14 @@ import (
 	"portico.local/server/internal/recordingaccess"
 	"portico.local/server/internal/remotemedia"
 	"portico.local/server/internal/remotesources"
+	"portico.local/server/internal/social"
 	"portico.local/server/internal/storage"
 	"portico.local/server/internal/subtitles"
+	"portico.local/server/internal/webhooks"
 )
 
 type Dependencies struct {
+	Restart       func()
 	ListeningPort int
 	// SettingsApplied runs after an owner saves console settings so snapshot
 	// readers (delivery configuration) refresh off the request path.
@@ -103,6 +106,8 @@ type Dependencies struct {
 	TrustedProxies    []netip.Prefix
 	// Access carries the people, diagnostics and connectivity seams (workstream G2).
 	Access AccessArea
+	// Webhooks is the owner's outbound webhooks; nil answers them as unavailable.
+	Webhooks *webhooks.Store
 	// Watchdog reports database health. Nil leaves the server reporting healthy,
 	// which is the right default for a test that does not run one.
 	Watchdog *dbwork.Watchdog
@@ -120,9 +125,16 @@ type Dependencies struct {
 	// restrictions is the viewer content-restriction cache, kept on the same terms.
 	restrictions     *restrictionCache
 	connectionPolicy *connectionPolicyCache
+	// self is the finished router, for the MCP server's calls to this server's
+	// own API (mcp.go).
+	self *selfHandler
+	// credentials holds API keys and personal access tokens to their scopes and
+	// limits (api_gate.go).
+	credentials *credentialGate
 	// v1 is the Playback Protocol v1 resource service (playback_v1*.go),
 	// installed by New like the caches above.
-	v1 *playbackv1.Service
+	v1     *playbackv1.Service
+	social *social.Store
 	// registry is the typed apikit registry (foundation and playback v1).
 	registry *apikit.Registry
 }
@@ -411,11 +423,8 @@ func failure(w http.ResponseWriter, e error) {
 	if errors.Is(e, playback.ErrTranscodingDisabled) {
 		status, code = 422, "transcoding_disabled"
 	}
-	if errors.Is(e, playback.ErrClientProfile) || errors.Is(e, playback.ErrRouteFailure) {
+	if errors.Is(e, playback.ErrCapabilityDocument) || errors.Is(e, playback.ErrRouteFailure) {
 		status, code = 400, "invalid_playback_report"
-	}
-	if errors.Is(e, playback.ErrClientProfileVersion) {
-		status, code = 422, "unsupported_profile_version"
 	}
 	var refused playback.ErrDeliveryRefused
 	if errors.As(e, &refused) {
@@ -689,7 +698,14 @@ func New(d Dependencies) http.Handler {
 	d.principals = newPrincipalCache()
 	d.access = newAccessCache()
 	d.restrictions = newRestrictionCache()
+	if d.credentials == nil {
+		d.credentials = newCredentialGate()
+	}
 	d.connectionPolicy = &connectionPolicyCache{}
+	if d.self == nil {
+		d.self = &selfHandler{}
+	}
+	d.self.mux = mux
 	// The typed registry captures d, so everything its handlers read must be
 	// installed first.
 	if d.Console == nil && d.DB != nil {
@@ -706,10 +722,13 @@ func New(d Dependencies) http.Handler {
 			if err := d.Scheduler.Register(d.Catalog.BulkAdapter(d.bulkAccess)); err != nil {
 				panic(err)
 			}
-			if err := d.Scheduler.Register(d.Catalog.BulkTrashAdapter(d.bulkAccess)); err != nil {
+			if err := d.Scheduler.Register(d.Catalog.ContainerResetAdapter()); err != nil {
 				panic(err)
 			}
-			if err := d.Scheduler.Register(d.Catalog.ContainerResetAdapter()); err != nil {
+			if err := d.Scheduler.Register(d.Catalog.LibraryRemovalAdapter()); err != nil {
+				panic(err)
+			}
+			if err := d.Scheduler.Register(d.Catalog.FolderRemovalAdapter()); err != nil {
 				panic(err)
 			}
 		}
@@ -738,10 +757,12 @@ func New(d Dependencies) http.Handler {
 		d.Downloads.SetRequestAccess(d.downloadRequestAccess)
 	}
 	d.v1 = newPlaybackV1(d)
+	d.social = d.Social()
 	if registry, err := FoundationRegistry(d); err != nil {
 		panic(err)
 	} else {
 		d.registry = registry
+		d.self.registry = registry
 	}
 	d.installationRoutes(mux)
 	d.foundationRoutes(mux)
@@ -774,7 +795,6 @@ func New(d Dependencies) http.Handler {
 	d.playbackOfferRoutes(mux)
 	d.preparedMediaRoutes(mux)
 	d.audioRoutes(mux)
-	d.subtitleRoutes(mux)
 	d.lyricRoutes(mux)
 	d.analysisRoutes(mux)
 	d.trickplayRoutes(mux)
@@ -810,8 +830,11 @@ func New(d Dependencies) http.Handler {
 	// build can); hostedAttached says this server actually signs people in with Portico Accounts
 	// (it holds Hosted policy). A sign-in page decides by the second: a server set up for direct
 	// sign-in must never be shown the Portico Account hand-off.
+	// Anyone can read this, so it says what a sign-in page needs and no more:
+	// the exact build (its id, source digest and build time) is the owner's to
+	// see, on the administration pages.
 	mux.HandleFunc("GET /v1/system", func(w http.ResponseWriter, r *http.Request) {
-		write(w, 200, map[string]any{"id": d.Identity.ID(), "name": d.Identity.Name(), "setupRequired": d.Identity.SetupRequired(), "hostedConfigured": d.Hosted.Configured(), "hostedAttached": d.Identity.Hosted(), "version": buildinfo.Info()["version"], "buildId": buildinfo.Info()["buildId"], "sourceDigest": buildinfo.Info()["sourceDigest"], "builtAt": buildinfo.Info()["builtAt"]})
+		write(w, 200, map[string]any{"id": d.Identity.ID(), "name": d.Identity.Name(), "setupRequired": d.Identity.SetupRequired(), "hostedConfigured": d.Hosted.Configured(), "hostedAttached": d.Identity.Hosted(), "version": buildinfo.Info()["version"]})
 	})
 	mux.HandleFunc("POST /v1/sessions", func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
@@ -1087,18 +1110,6 @@ func New(d Dependencies) http.Handler {
 		}
 		write(w, 200, item)
 	})
-	mux.HandleFunc("DELETE /v1/items/{id}", func(w http.ResponseWriter, r *http.Request) {
-		if _, e := d.owner(r); e != nil {
-			failure(w, e)
-			return
-		}
-		if e := d.Catalog.Delete(r.PathValue("id")); e != nil {
-			failure(w, e)
-			return
-		}
-		w.WriteHeader(204)
-	})
-	d.playbackSessionRoutes(mux)
 	d.audioDecodeRoutes(mux)
 	mux.HandleFunc("GET /v1/media/{grant}/{file}", func(w http.ResponseWriter, r *http.Request) {
 		grant := r.PathValue("grant")
@@ -1215,7 +1226,7 @@ func New(d Dependencies) http.Handler {
 	routeMuxMu.Lock()
 	routeMux = mux
 	routeMuxMu.Unlock()
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	d.self.h = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		r = detachCanceledConnection(w, r)
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("X-Frame-Options", "DENY")
@@ -1274,7 +1285,12 @@ func New(d Dependencies) http.Handler {
 			}
 			r = r.WithContext(ctx)
 		}
-		if r.Method == "POST" && (strings.HasPrefix(r.URL.Path, "/v1/direct/") || strings.HasPrefix(r.URL.Path, "/v1/auth/") || r.URL.Path == "/v1/sessions" || r.URL.Path == "/v1/setup" || r.URL.Path == "/v1/cast/redeem" || r.URL.Path == "/v1/cast/reconnect") {
+		if r.Method == "POST" && (strings.HasPrefix(r.URL.Path, "/v1/direct/") || strings.HasPrefix(r.URL.Path, "/v1/auth/") || r.URL.Path == "/v1/sessions" || r.URL.Path == "/v1/setup" || r.URL.Path == "/v1/cast/redeem" || r.URL.Path == "/v1/cast/reconnect" ||
+			// Starting, looking up and deciding a TV code, and using an invitation:
+			// refused cheaply here before the database-backed limits are asked.
+			// The TV's own poll for its code is not here: a household of TVs
+			// behind one address polls legitimately.
+			r.URL.Path == "/v1/quick-connect" || r.URL.Path == "/v1/quick-connect/review" || r.URL.Path == "/v1/quick-connect/decision" || strings.HasPrefix(r.URL.Path, "/v1/access/invitations/")) {
 			if !authRate.allow(r) {
 				w.Header().Set("Retry-After", "60")
 				write(w, 429, map[string]any{"error": map[string]any{"code": "rate_limited", "message": "Too many authentication attempts. Try again shortly.", "retryable": true}})
@@ -1292,6 +1308,15 @@ func New(d Dependencies) http.Handler {
 				return
 			}
 		}
+		// An API key or personal access token is resolved, held to the route's
+		// scope and charged to its own limits before anything else sees it.
+		r, release, ok := d.admitCredential(w, r, mux)
+		if !ok {
+			return
+		}
+		if release != nil {
+			defer release()
+		}
 		admitted.ServeHTTP(w, d.withDelivery(r))
 		if d.Hosted != nil && r.Method != "GET" && r.Method != "HEAD" && membershipPath(r.URL.Path) {
 			// The journal triggers already recorded any change in the writer's
@@ -1301,6 +1326,7 @@ func New(d Dependencies) http.Handler {
 			d.Hosted.MembershipChanged()
 		}
 	})
+	return d.self.h
 }
 
 // unmatchedRoute answers a /v1 request no route serves: 405 with Allow when

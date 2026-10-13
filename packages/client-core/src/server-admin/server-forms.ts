@@ -144,7 +144,7 @@ export const recordingForm = (deps: ServerFormDeps) => documentForm<DVRDefaults,
 // ── Maintenance: windows, background priority, what is kept and for how long ────────────────
 
 export type MaintenanceWindow = Readonly<{id: string; name: string; enabled: boolean; cadence: string; days: readonly string[]; startMinute: number; durationMinutes: number; timezone: string; tasks: readonly string[]}>;
-export type MaintenanceSettings = Readonly<{windows: readonly MaintenanceWindow[]; retention: Readonly<Record<string, number>>; backupKeepCount: number; backgroundTaskPriority: 'lower' | 'normal'}>;
+export type MaintenanceSettings = Readonly<{windows: readonly MaintenanceWindow[]; retention: Readonly<Record<string, number>>; backupKeepCount: number; backgroundTaskPriority: 'lower' | 'normal'; backgroundSpeed?: 'gentle' | 'normal' | 'fast'}>;
 export type MaintenanceDocument = Readonly<{revision: number; settings: MaintenanceSettings; cadences: readonly {id: string; name: string; days: readonly string[]; description: string}[]; tasks: readonly string[]; days: readonly string[]; retentionMaxima: Readonly<Record<string, number>>; storageCategories: readonly {id: string; name: string; retentionKey: string}[]}>;
 
 /** The document is owner configuration the server validates in full on save, so it is read structurally. */
@@ -152,7 +152,7 @@ export function parseMaintenanceDocument(raw: unknown): MaintenanceDocument {
   const v = raw as MaintenanceDocument;
   if (!v || typeof v.revision !== 'number' || !v.settings || !Array.isArray(v.settings.windows) || !Array.isArray(v.cadences) || !Array.isArray(v.tasks)) throw new Error('The server returned maintenance settings this version cannot read.');
   // Background work is de-prioritized, never paused: anything else reads as "lower".
-  return {...v, settings: {...v.settings, backgroundTaskPriority: v.settings.backgroundTaskPriority === 'normal' ? 'normal' : 'lower'}};
+  return {...v, settings: {...v.settings, backgroundTaskPriority: v.settings.backgroundTaskPriority === 'normal' ? 'normal' : 'lower',backgroundSpeed:v.settings.backgroundSpeed==='gentle'||v.settings.backgroundSpeed==='fast'?v.settings.backgroundSpeed:'normal'}};
 }
 
 export const maintenanceForm = (deps: ServerFormDeps) => documentForm<MaintenanceSettings, MaintenanceDocument>(deps, '/v1/admin/maintenance/settings', parseMaintenanceDocument);
@@ -215,6 +215,8 @@ export function createServerForm(id: ServerFormId, deps: ServerFormDeps): DraftF
 
 /** Reads a dotted path from a draft (`keepPolicy.mode`). */
 export function formValue(draft: unknown, path: string): unknown {
+  // A setting whose own name has a dot in it ("library.missingTitles") is one key, not a path.
+  if (draft !== null && typeof draft === 'object' && path in (draft as object)) return (draft as Record<string, unknown>)[path];
   let at: unknown = draft;
   for (const part of path.split('.')) {
     if (at === null || typeof at !== 'object') return undefined;
@@ -225,7 +227,14 @@ export function formValue(draft: unknown, path: string): unknown {
 
 /** The draft with a dotted path set, copying only the objects on the way. */
 export function withFormValue<T extends object>(draft: T, path: string, value: unknown): T {
+  if (path in draft) return {...draft, [path]: value};
   const [head, ...rest] = path.split('.');
   const current = (draft as Record<string, unknown>)[head!];
   return {...draft, [head!]: rest.length ? withFormValue((current ?? {}) as object, rest.join('.'), value) : value};
+}
+
+/** A list setting with one entry added: trimmed, never empty, never a repeat. */
+export function withListEntry(list: readonly string[], typed: string): readonly string[] {
+  const entry = typed.trim();
+  return !entry || list.includes(entry) ? list : [...list, entry];
 }

@@ -1,14 +1,13 @@
 import {useEffect, useState} from 'react';
 import {useNavigate} from '@tanstack/react-router';
-import {defaultI18n} from '@i18n';
+import {useI18n, type I18n} from '../../app/i18n';
 import {downloadBytes, type DownloadAction, type DownloadPreparation} from '@core/index.ts';
 import {useDownloads} from '../../app/downloads';
 import {useSession} from '../../app/session';
 import {ErrorNotice, ErrorState, errorText} from '../../app/errors';
 import {Badge, Button, ConfirmDialog, Inset, Loading, Notice, Page, PageHeader, ProgressBar, StateView, Surface, Text} from '../../ui';
 
-const t = defaultI18n.t;
-function stateLabel(state: DownloadPreparation['state']): string {
+function stateLabel(t: I18n['t'], state: DownloadPreparation['state']): string {
   switch (state) {
     case 'queued': return t('web.downloads.state.waiting');
     case 'running': return t('web.downloads.state.preparing');
@@ -20,7 +19,7 @@ function stateLabel(state: DownloadPreparation['state']): string {
     case 'expired': return t('web.downloads.state.expired');
   }
 }
-function actionLabel(action: DownloadAction): string {
+function actionLabel(t: I18n['t'], action: DownloadAction): string {
   switch (action) {
     case 'pause': return t('action.pause');
     case 'resume': return t('web.downloads.resume');
@@ -31,11 +30,13 @@ function actionLabel(action: DownloadAction): string {
 }
 /** WEB-DL-01: the preparation carries no title yet (deferred-to-contract), so the file's name
  * without its extension stands in, and the row links to the title itself. */
-const displayName = (p: DownloadPreparation) => (p.artifact.fileName ? p.artifact.fileName.replace(/\.[a-z0-9]{2,5}$/i, '').replace(/[._]+/g, ' ').trim() : '') || t('web.downloads.untitled');
+const displayName = (t: I18n['t'], p: DownloadPreparation) => (p.artifact.fileName ? p.artifact.fileName.replace(/\.[a-z0-9]{2,5}$/i, '').replace(/[._]+/g, ' ').trim() : '') || t('web.downloads.untitled');
 
 /** Titles the server has prepared for this profile. In a browser a download is a file you
  * save; the apps keep downloads inside Portico and play them without a connection. */
 export function DownloadsScreen() {
+  const i18n = useI18n();
+  const {t} = i18n;
   const {service, state} = useDownloads();
   const {api, owner} = useSession();
   const navigate = useNavigate();
@@ -96,17 +97,17 @@ export function DownloadsScreen() {
                   <div key={p.id} style={{display: 'flex', gap: 16, alignItems: 'center', padding: '16px 16px', borderTop: i ? '1px solid var(--line-soft)' : undefined, flexWrap: 'wrap'}}>
                     <div style={{flex: '1 1 260px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4}}>
                       <div style={{display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap'}}>
-                        <Text variant="bodyStrong" clamp={1}>{displayName(p)}</Text>
-                        <Badge tone={p.state === 'ready' ? 'healthy' : p.state === 'failed' || p.state === 'unavailable' || p.state === 'expired' ? 'warning' : 'neutral'}>{stateLabel(p.state)}</Badge>
+                        <Text variant="bodyStrong" clamp={1}>{displayName(t, p)}</Text>
+                        <Badge tone={p.state === 'ready' ? 'healthy' : p.state === 'failed' || p.state === 'unavailable' || p.state === 'expired' ? 'warning' : 'neutral'}>{stateLabel(t, p.state)}</Badge>
                       </div>
-                      <Text variant="caption" tone="tertiary">{[p.quality === 'original' ? t('web.downloads.original') : p.quality, p.artifact.bytes ? (p.artifact.estimated ? t('web.downloads.about', {size: downloadBytes(p.artifact.bytes)}) : downloadBytes(p.artifact.bytes)) : '', p.state === 'ready' && p.expiresAt ? t('web.downloads.keptUntil', {date: new Date(p.expiresAt).toLocaleDateString(undefined, {month: 'short', day: 'numeric'})}) : '', p.state === 'running' && p.progress.etaSeconds ? t('web.downloads.minutesLeft', {count: Math.max(1, Math.round(p.progress.etaSeconds / 60))}) : ''].filter(Boolean).join(' · ')}</Text>
+                      <Text variant="caption" tone="tertiary">{[p.quality === 'original' ? t('web.downloads.original') : p.quality, p.artifact.bytes ? (p.artifact.estimated ? t('web.downloads.about', {size: downloadBytes(p.artifact.bytes)}) : downloadBytes(p.artifact.bytes)) : '', p.state === 'ready' && p.expiresAt ? t('web.downloads.keptUntil', {date: i18n.date(p.expiresAt, 'dayMonth')}) : '', p.state === 'running' && p.progress.etaSeconds ? t('web.downloads.minutesLeft', {count: Math.max(1, Math.round(p.progress.etaSeconds / 60))}) : ''].filter(Boolean).join(' · ')}</Text>
                       {reason ? <Text variant="caption" tone="warning">{reason}</Text> : null}
                       {p.state === 'running' || p.state === 'paused' ? <ProgressBar value={p.progress.percent / 100} /> : null}
                     </div>
                     <div style={{display: 'flex', gap: 8, flexWrap: 'wrap'}}>
                       {p.state === 'ready' ? <Button size="sm" variant="secondary" icon="download" label={t('web.downloads.save')} onClick={() => void save(p)} /> : null}
                       <Button size="sm" variant="ghost" label={t('web.downloads.goToTitle')} onClick={() => void navigate({to: '/media/$itemId', params: {itemId: p.itemId}, search: {}})} />
-                      {p.actions.map(a => <Button key={a} size="sm" variant="ghost" label={actionLabel(a)} disabled={busy} onClick={() => act(p, a)} />)}
+                      {p.actions.map(a => <Button key={a} size="sm" variant="ghost" label={actionLabel(t, a)} disabled={busy} onClick={() => act(p, a)} />)}
                     </div>
                   </div>
                 );

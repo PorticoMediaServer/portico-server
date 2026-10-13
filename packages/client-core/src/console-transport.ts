@@ -24,7 +24,8 @@ export class ConsoleTransportError extends Error {
    not_found:'This record is no longer available in the selected scope.',
    console_unavailable:'The server could not confirm the result. Retry the same action to reconcile it.',
   };
-  super(messages[code]??messages.console_unavailable);this.status=status;this.code=code;this.currentRevision=currentRevision;this.fields=fields; if(currentRevision!==undefined)this.message+=' Current revision: '+currentRevision+'.';if(fields?.length)this.message+=' Fields: '+fields.join(', ')+'.';
+  const aliases:Record<string,string>={invalid_request:'invalid_console_request',revision_mismatch:'console_conflict',rate_limited:'console_capacity',internal:'console_unavailable'};
+  super(messages[aliases[code]??code]??messages.console_unavailable);this.status=status;this.code=code;this.currentRevision=currentRevision;this.fields=fields; if(currentRevision!==undefined)this.message+=' Current revision: '+currentRevision+'.';if(fields?.length)this.message+=' Fields: '+fields.join(', ')+'.';
  }
 }
 function bad():never{throw new ConsoleTransportError(502,'console_unavailable');}
@@ -55,8 +56,11 @@ export async function readConsoleJson<T>(response:Response,signal:AbortSignal):P
   const e=(value&&typeof value==='object'&&!Array.isArray(value)?(value as {error?:unknown}).error:undefined);
   const data=e&&typeof e==='object'&&!Array.isArray(e)?e as Record<string,unknown>:{};
   const code=response.status===401||response.status===403?'unauthorized':typeof data.code==='string'?data.code:'console_unavailable';
-  const revision=typeof data.currentRevision==='number'&&Number.isSafeInteger(data.currentRevision)&&data.currentRevision>=0?data.currentRevision:undefined;
-  const fields=Array.isArray(data.fields)&&data.fields.length<=20&&data.fields.every(f=>typeof f==='string'&&/^[A-Za-z][A-Za-z0-9.\[\]-]{0,100}$/.test(f))?data.fields as string[]:undefined;
+  const current=data.current&&typeof data.current==='object'&&!Array.isArray(data.current)?data.current as Record<string,unknown>:{};
+  const revisionValue=data.currentRevision??current.revision;
+  const revision=typeof revisionValue==='number'&&Number.isSafeInteger(revisionValue)&&revisionValue>=0?revisionValue:undefined;
+  const fieldPaths=Array.isArray(data.fields)?data.fields.map(f=>typeof f==='string'?f:f&&typeof f==='object'&&!Array.isArray(f)?(f as Record<string,unknown>).path:undefined):undefined;
+  const fields=fieldPaths&&fieldPaths.length<=20&&fieldPaths.every(f=>typeof f==='string'&&/^[A-Za-z][A-Za-z0-9.\[\]-]{0,100}$/.test(f))?fieldPaths as string[]:undefined;
   throw new ConsoleTransportError(response.status,code,revision,fields);
  }
  return value as T;

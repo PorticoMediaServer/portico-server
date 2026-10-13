@@ -89,7 +89,7 @@ test('a busy TV refuses with catalogue copy, never the receiver’s text', async
   assert.equal(s.phase, 'error');
   assert.equal(s.errorId, 'cast.error.tvBusy');
   assert.ok(!/Sam/.test(s.error!));
-  assert.equal(r.ended, true);
+  assert.equal(r.ended, false, 'a refused takeover leaves the current film playing');
 });
 
 test('no answer within the pairing window, and no code from the server, are errors', async () => {
@@ -201,4 +201,16 @@ test('CAST-05: a resumed session is adopted on the TV status; a silent one is le
   const waiting = disposed.controller.adopt(other.transport);
   disposed.controller.dispose();
   assert.equal(await waiting, false);
+});
+
+test('a stored controller token resumes the existing TV session without pairing or loading again',async()=>{
+ const saved=new Map<string,string>();let codes=0;
+ const options={api:{request:async<T,>()=>{codes++;return {bootstrap:{code:'ABC123'}} as T;}},origin:'https://server.test',displayName:'Phone',controllerStorage:{get:(k:string)=>saved.get(k),set:(k:string,v:string)=>{saved.set(k,v);}}};
+ const first=new CastController(options),initial=receiver();const started=first.start(initial.transport,'movie',{title:'Film'},12);
+ await settle();initial.reply({type:'paired',controlToken:'a'.repeat(48)});assert.equal(await started,true);first.dispose();
+ const returning=new CastController(options),transport=receiver();const adopting=returning.adopt(transport.transport);
+ assert.deepEqual(transport.sent[0],{type:'status',controlToken:'a'.repeat(48)});
+ transport.reply({type:'status',itemId:'movie',positionSeconds:80,durationSeconds:600,paused:false,audioTracks:[],textTracks:[]});assert.equal(await adopting,true);
+ assert.equal(codes,1);assert.equal(transport.sent.filter(x=>x.type==='load').length,0);
+ returning.pause();assert.equal(transport.sent.at(-1)?.type,'pause');returning.dispose();
 });

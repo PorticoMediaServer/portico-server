@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"path/filepath"
 	"testing"
-	"time"
 
 	"portico.local/server/internal/administration"
 	"portico.local/server/internal/catalog"
@@ -18,7 +17,7 @@ import (
 )
 
 func TestBulkOwnerMetadataCommandsRestartAndReplay(t *testing.T) {
-	for _, command := range []string{"metadata-edit", "refresh", "trash"} {
+	for _, command := range []string{"metadata-edit", "refresh"} {
 		t.Run(command, func(t *testing.T) {
 			ctx := context.Background()
 			root := t.TempDir()
@@ -58,23 +57,9 @@ func TestBulkOwnerMetadataCommandsRestartAndReplay(t *testing.T) {
 				if e := d.Scheduler.Register(d.Catalog.BulkAdapter(d.bulkAccess)); e != nil {
 					t.Fatal(e)
 				}
-				if e := d.Scheduler.Register(d.Catalog.BulkTrashAdapter(d.bulkAccess)); e != nil {
-					t.Fatal(e)
-				}
 				return d
 			}
 			d := setup()
-			if command == "trash" {
-				doc, e := d.Administration.LibrarySettingsFor(ctx, func(context.Context, *sql.Tx) error { return nil }, "lib")
-				if e != nil {
-					t.Fatal(e)
-				}
-				doc.Settings.AllowMediaDeletion = true
-				doc.Settings.TrashRetentionDays = 0
-				if _, e = d.Administration.SaveLibrarySettings(ctx, func(context.Context, *sql.Tx) error { return nil }, "lib", administration.Change[administration.LibrarySettings]{OperationID: "allow-trash", ExpectedRevision: doc.Revision, Settings: doc.Settings}); e != nil {
-					t.Fatal(e)
-				}
-			}
 			// Creating an item queues its metadata work; the refresh must add exactly one generation per item.
 			var generationsBefore int64
 			db.QueryRow(`SELECT COALESCE(sum(generation),0) FROM screen_metadata_work WHERE target_kind='item'`).Scan(&generationsBefore)
@@ -101,9 +86,6 @@ func TestBulkOwnerMetadataCommandsRestartAndReplay(t *testing.T) {
 			jobID := j.JobID
 			j, e = d.Catalog.AdvanceBulkJob(ctx, j.JobID, d.bulkAccess)
 			firstBatch := int64(20)
-			if command == "trash" {
-				firstBatch = 1
-			}
 			if e != nil || j.Done != firstBatch {
 				failures, _ := d.Catalog.BulkFailures(v.Profile, jobID, "", v)
 				t.Fatalf("first bulk batch for %s: job=%+v error=%v failures=%+v", jobID, j, e, failures)
@@ -118,30 +100,10 @@ func TestBulkOwnerMetadataCommandsRestartAndReplay(t *testing.T) {
 				t.Fatal(e)
 			}
 			d = setup()
-			if command == "trash" {
-				workerCtx, stop := context.WithCancel(ctx)
-				stopped := make(chan struct{})
-				go func() { defer close(stopped); d.Scheduler.Run(workerCtx) }()
-				until := time.Now().Add(5 * time.Second)
-				for time.Now().Before(until) {
-					j, e = d.Catalog.BulkJob(v.Profile, j.JobID)
-					if e != nil || j.State == "complete" || j.State == "failed" {
-						break
-					}
-					time.Sleep(10 * time.Millisecond)
-				}
-				stop()
-				select {
-				case <-stopped:
-				case <-time.After(5 * time.Second):
-					t.Fatal("trash worker did not stop")
-				}
-			} else {
-				for j.State == "queued" || j.State == "running" {
-					j, e = d.Catalog.AdvanceBulkJob(ctx, j.JobID, d.bulkAccess)
-					if e != nil {
-						t.Fatal(e)
-					}
+			for j.State == "queued" || j.State == "running" {
+				j, e = d.Catalog.AdvanceBulkJob(ctx, j.JobID, d.bulkAccess)
+				if e != nil {
+					t.Fatal(e)
 				}
 			}
 			if j.State != "complete" || j.Done != 43 {
@@ -166,15 +128,6 @@ func TestBulkOwnerMetadataCommandsRestartAndReplay(t *testing.T) {
 					}
 				}()
 			}
-			if command == "trash" {
-				var held, receipts int
-				db.QueryRow(`SELECT count(*) FROM admin_trash WHERE state='held' AND expires_ms=0`).Scan(&held)
-				db.QueryRow(`SELECT count(*) FROM admin_receipts`).Scan(&receipts)
-				if held != 43 || receipts != receiptsBefore {
-					t.Fatal("trash effects/receipts", held, receipts, receiptsBefore)
-				}
-			}
-
 			replay, e := d.Catalog.CreateBulkJob(ctx, p, v, in, d.Scheduler, d.bulkAccess)
 			if e != nil || replay.JobID != j.JobID || replay.Done != 43 {
 				t.Fatal(replay, e)

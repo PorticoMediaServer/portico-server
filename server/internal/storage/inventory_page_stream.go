@@ -104,7 +104,7 @@ func (c *Client) retainedInventoryPage(ctx context.Context, key string, r Invent
 		}
 	}
 	mapKey := inventoryStreamKey(c, key, r)
-	inventoryStreams.once.Do(func() { go expireInventoryStreams() })
+	inventoryStreams.once.Do(func() { supervise.Go("storage.inventory-expiry", expireInventoryStreams) })
 	inventoryStreams.Lock()
 	var s *inventoryStream
 	if r.Cursor != "" {
@@ -171,7 +171,7 @@ func (c *Client) retainedInventoryPage(ctx context.Context, key string, r Invent
 	}
 	defer s.call.Unlock()
 	validate := func(p InventoryPage) (InventoryPage, error) {
-		if r.RootIdentity != "" && p.RootIdentity != r.RootIdentity || r.DirectoryRevision != "" && p.DirectoryRevision != r.DirectoryRevision {
+		if r.RootIdentity != "" && !SameRoot(r.RootIdentity, p.RootIdentity) || r.DirectoryRevision != "" && p.DirectoryRevision != r.DirectoryRevision {
 			s.cancel()
 			return empty, ErrInventoryChanged
 		}

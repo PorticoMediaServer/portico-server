@@ -14,7 +14,7 @@ import (
 )
 
 const ScreenDisclosureVersion = "screen-metadata-v1"
-const ScreenDisclosure = "Portico can send cleaned movie or show titles, release years, typed provider identifiers, selected episode numbers and your metadata language/region to the providers you enable. It does not send media files, full source paths, account/profile details or playback history. These requests are made by your server using Portico’s application credentials (AniList public queries need no account). Local NFO reading stays under the library’s scan policy. You can change provider order, pause remote metadata or withdraw confirmation here."
+const ScreenDisclosure = "Portico can send cleaned movie or show titles, release years, typed provider identifiers, selected episode numbers and your metadata language/region to the providers you enable. It does not send media files, full source paths, account/profile details or playback history. These requests are made by your server using Portico’s application credentials (AniList public queries need no account). Local NFO reading stays under the library’s scan policy. You can choose a provider, pause remote metadata or withdraw confirmation here."
 
 type ScreenPolicy struct {
 	LibraryID       string `json:"libraryId"`
@@ -126,7 +126,7 @@ func readScreenPolicy(ctx context.Context, tx *sql.Tx, library string) (ScreenPo
 		return out, err
 	}
 	if out.LibraryKind == "anime" {
-		out.AvailableProviders = []string{"tmdb", "tvdb", "anilist"}
+		out.AvailableProviders = metadataprovider.ProvidersFor(out.LibraryKind)
 	}
 	err = json.Unmarshal([]byte(raw), &out.Providers)
 	return out, err
@@ -330,6 +330,7 @@ func (s *Service) ScreenState(ctx context.Context, kind, id string) (ScreenState
 			return out, err
 		}
 		out.Accepted = &r
+		out.LocalIssues = append(out.LocalIssues, r.Skipped...)
 		out.Attribution = metadataprovider.ScreenAttribution(r.Identity.Provider)
 	}
 	rows, err := tx.QueryContext(ctx, `SELECT candidate_key,provider,provider_type,provider_id,payload,confidence,strong_signals,contradiction,reasons,observed_at,source_kind FROM screen_metadata_candidates WHERE target_kind=? AND target_id=? ORDER BY confidence DESC,candidate_key LIMIT 75`, kind, entity)
@@ -398,7 +399,9 @@ func (s *Service) ScreenState(ctx context.Context, kind, id string) (ScreenState
 			rows.Close()
 			return out, err
 		}
-		out.LocalIssues = append(out.LocalIssues, issue)
+		if len(out.LocalIssues) < 16 {
+			out.LocalIssues = append(out.LocalIssues, issue)
+		}
 	}
 	err = rows.Err()
 	rows.Close()
@@ -565,7 +568,7 @@ func screenSupersedeChildren(ctx context.Context, tx *sql.Tx, show string) error
 	return err
 }
 func (s *Service) SearchScreen(ctx context.Context, kind, id string, body ScreenSearch, authorize func(*sql.Tx) error) error {
-	if body.ExpectedRevision < 1 || len(body.Query) > 512 || !screenQuerySafe(body.Query) || strings.TrimSpace(body.Query) == "" && body.Query != "" {
+	if body.ExpectedRevision < 1 || len(body.Query) > 512 || !screenSearchSafe(body.Query) || strings.TrimSpace(body.Query) == "" && body.Query != "" {
 		return errors.New("invalid provider search")
 	}
 	gated5, err := dbwork.Begin(ctx, s.db, dbwork.ClassBackgroundMedia)

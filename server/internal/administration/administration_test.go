@@ -275,23 +275,6 @@ func contains(haystack, needle string) bool {
 	})()
 }
 
-func TestServerWideTrashRetentionGovernsAFreshLibrary(t *testing.T) {
-	service, db, root := newService(t)
-	library, _, _ := seedLibrary(t, db, root)
-	// The owner settings document is the server-wide authority; a library that has
-	// not been configured inherits it rather than a value hard-coded here.
-	if _, err := db.Exec(`INSERT INTO console_documents VALUES('server',1,'{"library.trashRetentionDays":3}',0)`); err != nil {
-		t.Fatal(err)
-	}
-	document, err := service.LibrarySettingsFor(context.Background(), allow, library)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if document.Settings.TrashRetentionDays != 3 {
-		t.Fatalf("retention %d, want the server-wide 3", document.Settings.TrashRetentionDays)
-	}
-}
-
 func TestLibrarySettingsRefusesUnsatisfiedAnalysisDependency(t *testing.T) {
 	service, db, root := newService(t)
 	library, _, _ := seedLibrary(t, db, root)
@@ -302,122 +285,6 @@ func TestLibrarySettingsRefusesUnsatisfiedAnalysisDependency(t *testing.T) {
 	var validation *ValidationError
 	if !errors.As(err, &validation) || validation.Fields[0] != "settings.analysis" {
 		t.Fatalf("error %v, want a validation failure naming settings.analysis", err)
-	}
-}
-
-func TestDeletePreviewAndDeleteMoveFilesToTrashAndRestore(t *testing.T) {
-	service, db, root := newService(t)
-	library, item, paths := seedLibrary(t, db, root)
-	ctx := context.Background()
-	// Deletion is refused until the library enables it.
-	preview, err := service.PreviewDelete(ctx, allow, []string{item})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(preview.Blocked) != 1 || preview.Confirmation != "The Lighthouse" || preview.ConfirmationKind != "title" {
-		t.Fatalf("preview %+v", preview)
-	}
-	if len(preview.Targets[0].Files) != 2 || !preview.Targets[0].Files[0].Present {
-		t.Fatalf("preview must list both present files: %+v", preview.Targets[0].Files)
-	}
-	request := DeleteRequest{ItemIDs: []string{item}, DeleteFiles: true, Confirmation: "The Lighthouse", ExpectedRevision: preview.Revision, OperationID: "test-policy-key-8"}
-	if _, err = service.Delete(ctx, allow, "local:a:b", request); !errors.Is(err, ErrDenied) {
-		t.Fatalf("delete error %v, want denied while the library forbids it", err)
-	}
-	settings := DefaultLibrarySettings()
-	settings.AllowMediaDeletion = true
-	if _, err = service.SaveLibrarySettings(ctx, allow, library, Change[LibrarySettings]{ExpectedRevision: 1, Settings: settings, OperationID: "test-policy-key-9"}); err != nil {
-		t.Fatal(err)
-	}
-	// A wrong confirmation is refused before anything moves.
-	preview, err = service.PreviewDelete(ctx, allow, []string{item})
-	if err != nil {
-		t.Fatal(err)
-	}
-	wrong := DeleteRequest{ItemIDs: []string{item}, DeleteFiles: true, Confirmation: "the lighthouse", ExpectedRevision: preview.Revision, OperationID: "test-policy-key-10"}
-	if _, err = service.Delete(ctx, allow, "local:a:b", wrong); !errors.Is(err, ErrConfirmation) {
-		t.Fatalf("delete error %v, want a confirmation mismatch", err)
-	}
-	// A stale fence is refused too.
-	stale := DeleteRequest{ItemIDs: []string{item}, DeleteFiles: true, Confirmation: "The Lighthouse", ExpectedRevision: preview.Revision + 99, OperationID: "test-policy-key-11"}
-	if _, err = service.Delete(ctx, allow, "local:a:b", stale); !errors.Is(err, ErrConflict) {
-		t.Fatalf("delete error %v, want a revision conflict", err)
-	}
-	result, err := service.Delete(ctx, allow, "local:a:b", DeleteRequest{ItemIDs: []string{item}, DeleteFiles: true, Confirmation: "The Lighthouse", ExpectedRevision: preview.Revision, OperationID: "delete-one"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if result.Removed != 1 || result.Receipts[0].FilesMoved != 2 || result.Receipts[0].TrashEntryID == "" {
-		t.Fatalf("result %+v", result)
-	}
-	for _, path := range paths {
-		if _, err := os.Stat(path); !os.IsNotExist(err) {
-			t.Fatalf("%s should have been moved into the trash", path)
-		}
-	}
-	var items int
-	if err = db.QueryRow(`SELECT COUNT(*) FROM catalog_entities WHERE public_id=pid_blob(?)`, item).Scan(&items); err != nil || items != 1 {
-		t.Fatalf("catalog identity must remain in Trash: %d %v", items, err)
-	}
-	// Replaying the same operation identifier returns the first outcome.
-	replay, err := service.Delete(ctx, allow, "local:a:b", DeleteRequest{ItemIDs: []string{item}, DeleteFiles: true, Confirmation: "The Lighthouse", ExpectedRevision: preview.Revision, OperationID: "delete-one"})
-	if err != nil || replay.Removed != 1 {
-		t.Fatalf("replay %+v %v", replay, err)
-	}
-	page, err := service.Trash(ctx, allow, "held", "", 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if page.HeldCount != 1 || len(page.Items) != 1 || page.Items[0].FileCount != 2 || page.Items[0].ExpiresAt == "" {
-		t.Fatalf("trash page %+v", page)
-	}
-	restored, err := service.RestoreFromTrash(ctx, allow, page.Items[0].ID, "restore-one")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if restored.Restored != 2 || restored.Skipped != 0 || restored.Reindex {
-		t.Fatalf("restore %+v", restored)
-	}
-	for _, path := range paths {
-		if _, err := os.Stat(path); err != nil {
-			t.Fatalf("%s should be back on disk: %v", path, err)
-		}
-	}
-}
-
-func TestEmptyTrashNeedsTheCountTypedBack(t *testing.T) {
-	service, db, root := newService(t)
-	library, item, _ := seedLibrary(t, db, root)
-	ctx := context.Background()
-	settings := DefaultLibrarySettings()
-	settings.AllowMediaDeletion = true
-	if _, err := service.SaveLibrarySettings(ctx, allow, library, Change[LibrarySettings]{ExpectedRevision: 1, Settings: settings, OperationID: "test-policy-key-12"}); err != nil {
-		t.Fatal(err)
-	}
-	preview, err := service.PreviewDelete(ctx, allow, []string{item})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err = service.Delete(ctx, allow, "local:a:b", DeleteRequest{ItemIDs: []string{item}, DeleteFiles: true, Confirmation: "The Lighthouse", ExpectedRevision: preview.Revision, OperationID: "test-policy-key-13"}); err != nil {
-		t.Fatal(err)
-	}
-	if _, err = service.EmptyTrash(ctx, allow, EmptyTrashRequest{Confirmation: "2", OperationID: "test-policy-key-14"}); !errors.Is(err, ErrConfirmation) {
-		t.Fatalf("error %v, want a confirmation mismatch", err)
-	}
-	// Expired-only keeps an entry whose retention has not run out.
-	expired, err := service.EmptyTrash(ctx, allow, EmptyTrashRequest{ExpiredOnly: true, Confirmation: "0", OperationID: "test-policy-key-15"})
-	if err != nil || expired.Purged != 0 || expired.Remaining != 1 {
-		t.Fatalf("expired sweep %+v %v", expired, err)
-	}
-	result, err := service.EmptyTrash(ctx, allow, EmptyTrashRequest{Confirmation: "1", OperationID: "empty-trash-1"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if result.Purged != 1 || result.Remaining != 0 || result.BytesFreed == 0 {
-		t.Fatalf("empty %+v", result)
-	}
-	if entries, err := os.ReadDir(filepath.Join(root, "trash")); err != nil || len(entries) != 0 {
-		t.Fatalf("the trash tree should be empty: %v %v", entries, err)
 	}
 }
 
@@ -498,10 +365,6 @@ func TestBrowseRootsDirectoryPagingAndRefusals(t *testing.T) {
 			}
 		}
 	}
-	// A cursor from one listing is refused by another.
-	if _, err = service.Trash(ctx, allow, "held", page.NextCursor, 0); !errors.Is(err, ErrCursor) {
-		t.Fatalf("error %v, want a stale cursor refusal", err)
-	}
 }
 
 func TestDVRTemplatesAndTunerConflicts(t *testing.T) {
@@ -532,9 +395,9 @@ func TestDVRTemplatesAndTunerConflicts(t *testing.T) {
 	}
 	// Three overlapping recordings against two tuners is one conflict.
 	list := []TunerAssignment{
-		{StartsAt: "2026-09-16T20:00:00Z", EndsAt: "2026-09-16T21:00:00Z"},
-		{StartsAt: "2026-09-16T20:30:00Z", EndsAt: "2026-09-16T21:30:00Z"},
-		{StartsAt: "2026-09-16T20:45:00Z", EndsAt: "2026-09-16T21:15:00Z"},
+		{ChannelID: "one", StartsAt: "2026-09-16T20:00:00Z", EndsAt: "2026-09-16T21:00:00Z"},
+		{ChannelID: "two", StartsAt: "2026-09-16T20:30:00Z", EndsAt: "2026-09-16T21:30:00Z"},
+		{ChannelID: "three", StartsAt: "2026-09-16T20:45:00Z", EndsAt: "2026-09-16T21:15:00Z"},
 	}
 	if excess := overlapExcess(list, 2); excess != 1 {
 		t.Fatalf("overlap excess %d, want 1", excess)

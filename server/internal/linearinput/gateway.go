@@ -64,40 +64,50 @@ func routeExtension(kind string, u *url.URL) string {
 }
 
 type Span struct {
-	First, Last time.Time
-	Bytes       int64
-	Gaps        int
-	Ended       bool
+	First, Last  time.Time
+	Bytes        int64
+	Gaps         int
+	Reconnecting bool
+	Ended        bool
 }
 
 // Gateway retains the one raw tuner connection for probe and capture readers.
 // For HLS, every nested URI is replaced by an opaque private route and independently
 // passes the same DNS-pinned policy. No source URL escapes in an error/header.
 type Gateway struct {
-	output      *privateoutput.Route
-	closing     bool
-	ctx         context.Context
-	cancel      context.CancelFunc
-	policy      remotemedia.Policy
-	secret      string
-	address     string
-	mu          sync.Mutex
-	resources   map[string]resource
-	reverse     map[string]string
-	hls         bool
-	first       []byte
-	raw         [][]byte
-	base, total int64
-	span        Span
-	failure     error
-	done        bool
-	changed     chan struct{}
-	active      int
-	clients     map[*remotemedia.Client]bool
-	bodies      map[io.ReadCloser]bool
-	http        *http.Server
-	v4, v6      *net.TCPListener
-	wg          sync.WaitGroup
+	rawTimes      []time.Time
+	resourceSlots chan struct{}
+	gapBaseline   int
+	shared        *Gateway
+	release       func()
+	closeOnce     sync.Once
+	input         livechannels.Input
+	cache         map[string]*cachedResource
+	cacheBytes    int64
+	output        *privateoutput.Route
+	closing       bool
+	ctx           context.Context
+	cancel        context.CancelFunc
+	policy        remotemedia.Policy
+	secret        string
+	address       string
+	mu            sync.Mutex
+	resources     map[string]resource
+	reverse       map[string]string
+	hls           bool
+	first         []byte
+	raw           [][]byte
+	base, total   int64
+	span          Span
+	failure       error
+	done          bool
+	changed       chan struct{}
+	active        int
+	clients       map[*remotemedia.Client]bool
+	bodies        map[io.ReadCloser]bool
+	http          *http.Server
+	v4, v6        *net.TCPListener
+	wg            sync.WaitGroup
 }
 
 func token() (string, error) {
@@ -107,9 +117,9 @@ func token() (string, error) {
 	}
 	return hex.EncodeToString(b[:]), nil
 }
-func Open(ctx context.Context, in livechannels.Input) (*Gateway, error) {
+func openInput(ctx context.Context, in livechannels.Input) (*Gateway, error) {
 	child, cancel := context.WithCancel(ctx)
-	g := &Gateway{ctx: child, cancel: cancel, policy: in.Policy, resources: map[string]resource{}, reverse: map[string]string{}, clients: map[*remotemedia.Client]bool{}, bodies: map[io.ReadCloser]bool{}, changed: make(chan struct{})}
+	g := &Gateway{resourceSlots: make(chan struct{}, 4), input: in, cache: map[string]*cachedResource{}, ctx: child, cancel: cancel, policy: in.Policy, resources: map[string]resource{}, reverse: map[string]string{}, clients: map[*remotemedia.Client]bool{}, bodies: map[io.ReadCloser]bool{}, changed: make(chan struct{})}
 	var e error
 	g.secret, e = token()
 	if e != nil {
@@ -129,6 +139,8 @@ func Open(ctx context.Context, in livechannels.Input) (*Gateway, error) {
 		return nil, ErrUnavailable
 	}
 	g.address = "http://127.0.0.1:" + strconv.Itoa(port)
+	acquisitionDeadline := time.AfterFunc(30*time.Second, cancel)
+	defer acquisitionDeadline.Stop()
 	client, response, e := g.fetch(child, in.Locator, "")
 	if e != nil {
 		g.Close()
@@ -167,6 +179,10 @@ func Open(ctx context.Context, in livechannels.Input) (*Gateway, error) {
 			return nil, ErrFormat
 		}
 		g.first = data
+		entry := &cachedResource{ready: make(chan struct{}), data: data, location: finalURL, expires: time.Now().Add(500 * time.Millisecond)}
+		close(entry.ready)
+		g.cache["manifest\n"+finalURL+"\n"] = entry
+		g.cacheBytes = int64(len(data))
 		g.resources[g.secret] = resource{finalURL, 0, "manifest", "m3u8"}
 	} else {
 		// MPEG-TS framing is inspected by the qualified probe; no guessed codec facts.
@@ -179,7 +195,7 @@ func Open(ctx context.Context, in livechannels.Input) (*Gateway, error) {
 			g.pump(reader)
 		})
 	}
-	g.http = &http.Server{Handler: http.HandlerFunc(g.serve), ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 10 * time.Second, MaxHeaderBytes: 8 << 10}
+	g.http = &http.Server{Handler: http.HandlerFunc(g.serve), ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 10 * time.Second, MaxHeaderBytes: 8 << 10, BaseContext: func(net.Listener) context.Context { return child }}
 	g.wg.Add(2)
 	supervise.Go("linearinput.gateway.serve4", func() { defer g.wg.Done(); _ = g.http.Serve(g.v4) })
 	supervise.Go("linearinput.gateway.serve6", func() { defer g.wg.Done(); _ = g.http.Serve(g.v6) })
@@ -203,6 +219,7 @@ func (g *Gateway) pump(r io.Reader) {
 		n, e := r.Read(buf)
 		g.mu.Lock()
 		if n > 0 {
+			g.span.Reconnecting = false
 			now := time.Now()
 			if g.span.First.IsZero() {
 				g.span.First = now
@@ -213,23 +230,72 @@ func (g *Gateway) pump(r io.Reader) {
 			g.span.Last = now
 			g.span.Bytes += int64(n)
 			g.raw = append(g.raw, buf[:n])
+			g.rawTimes = append(g.rawTimes, now)
 			g.total += int64(n)
-			for g.total-g.base > ringBytes && len(g.raw) > 1 {
+			seconds := g.input.StreamBufferSeconds
+			limit := min(int64(128<<20), max(int64(1<<20), int64(seconds)*4<<20))
+			for len(g.raw) > 1 && (g.total-g.base > limit || seconds > 0 && now.Sub(g.rawTimes[0]) > time.Duration(seconds)*time.Second) {
 				g.base += int64(len(g.raw[0]))
 				g.raw = g.raw[1:]
-			}
-		}
-		if e != nil {
-			g.done = true
-			g.span.Ended = true
-			if !errors.Is(e, io.EOF) {
-				g.failure = ErrUnavailable
+				g.rawTimes = g.rawTimes[1:]
 			}
 		}
 		g.signal()
 		g.mu.Unlock()
 		if e != nil {
-			return
+			if g.ctx.Err() != nil {
+				return
+			}
+			g.mu.Lock()
+			for b := range g.bodies {
+				_ = b.Close()
+				delete(g.bodies, b)
+			}
+			for c := range g.clients {
+				c.Close()
+				delete(g.clients, c)
+			}
+			g.span.Gaps++
+			g.span.Reconnecting = true
+			g.mu.Unlock()
+			until := time.Now().Add(time.Duration(g.input.RetryWindowSeconds) * time.Second)
+			if g.input.RetryWindowSeconds <= 0 {
+				until = time.Now().Add(time.Minute)
+			}
+			recovered := false
+			for delay := time.Second; time.Now().Before(until); delay = min(5*time.Second, delay*2) {
+				timer := time.NewTimer(delay)
+				select {
+				case <-g.ctx.Done():
+					timer.Stop()
+					return
+				case <-timer.C:
+				}
+				client, response, err := g.fetch(g.ctx, g.input.Locator, "")
+				if err != nil {
+					continue
+				}
+				next := bufio.NewReaderSize(response.Body, 4096)
+				prefix, err := next.Peek(1)
+				if err != nil || len(prefix) != 1 || prefix[0] != 0x47 {
+					response.Body.Close()
+					client.Close()
+					g.untrack(client, response.Body)
+					continue
+				}
+				r = next
+				recovered = true
+				break
+			}
+			if !recovered {
+				g.mu.Lock()
+				g.done = true
+				g.span.Ended = true
+				g.failure = ErrUnavailable
+				g.signal()
+				g.mu.Unlock()
+				return
+			}
 		}
 	}
 }
@@ -306,7 +372,7 @@ func (g *Gateway) serve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	g.mu.Lock()
-	if g.active >= 4 {
+	if g.active >= 16 {
 		g.mu.Unlock()
 		http.Error(w, "Busy", 503)
 		return
@@ -320,7 +386,11 @@ func (g *Gateway) serve(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		w.Header().Set("Content-Type", "video/mp2t")
-		g.serveRaw(w, r)
+		if g.shared != nil {
+			g.shared.serveRawFor(w, r, g)
+		} else {
+			g.serveRawFor(w, r, g)
+		}
 		return
 	}
 	g.mu.Lock()
@@ -354,32 +424,19 @@ func (g *Gateway) serve(w http.ResponseWriter, r *http.Request) {
 		if res.kind != "media" {
 			rng = ""
 		}
-		client, resp, e := g.fetch(ctx, res.url, rng)
+		owner := g
+		if g.shared != nil {
+			owner = g.shared
+		}
+		fetched, e := owner.resourceBytes(ctx, res, rng)
 		if e != nil {
+			g.mu.Lock()
+			g.span.Gaps++
+			g.mu.Unlock()
 			http.Error(w, "Source unavailable", 502)
 			return
 		}
-		defer client.Close()
-		defer resp.Body.Close()
-		defer g.untrack(client, resp.Body)
-		limit := int64(maxSegment)
-		if res.kind == "manifest" {
-			limit = maxManifest
-		}
-		if res.kind == "key" {
-			limit = 16
-		}
-		data, e = io.ReadAll(io.LimitReader(resp.Body, limit+1))
-		if e != nil || int64(len(data)) > limit {
-			http.Error(w, "Invalid source", 502)
-			return
-		}
-		if resp.Request != nil && resp.Request.URL != nil {
-			location = resp.Request.URL.String()
-		}
-		if resp.StatusCode == 206 && res.kind == "media" {
-			contentRange = resp.Header.Get("Content-Range")
-		}
+		data, location, contentRange = fetched.data, fetched.location, fetched.contentRange
 	}
 	if res.kind == "manifest" {
 		rewritten, e := g.rewrite(data, location, res.depth)
@@ -416,9 +473,14 @@ func (g *Gateway) serve(w http.ResponseWriter, r *http.Request) {
 	}
 	_, _ = w.Write(data)
 }
-func (g *Gateway) serveRaw(w http.ResponseWriter, r *http.Request) {
+func (g *Gateway) serveRawFor(w http.ResponseWriter, r *http.Request, reader *Gateway) {
 	g.mu.Lock()
-	offset := g.base
+	// A newly tuned reader starts at the current stream, rather than replaying
+	// another viewer's retained input history and misreporting capture coverage.
+	offset := g.total
+	if len(g.raw) > 0 {
+		offset -= int64(len(g.raw[len(g.raw)-1]))
+	}
 	g.mu.Unlock()
 	for {
 		g.mu.Lock()
@@ -439,6 +501,16 @@ func (g *Gateway) serveRaw(w http.ResponseWriter, r *http.Request) {
 		g.mu.Unlock()
 		if len(data) > 0 {
 			n, e := w.Write(data)
+			gaps := g.Snapshot().Gaps
+			reader.mu.Lock()
+			now := time.Now()
+			if reader.span.First.IsZero() {
+				reader.span.First = now
+			}
+			reader.span.Last = now
+			reader.span.Bytes += int64(n)
+			reader.span.Gaps = max(0, gaps-reader.gapBaseline)
+			reader.mu.Unlock()
 			offset += int64(n)
 			if f, ok := w.(http.Flusher); ok {
 				f.Flush()
@@ -478,6 +550,10 @@ func (g *Gateway) StopInput() {
 	}
 }
 func (g *Gateway) Close() error {
+	g.closeOnce.Do(g.close)
+	return nil
+}
+func (g *Gateway) close() {
 	g.mu.Lock()
 	g.closing = true
 	g.mu.Unlock()
@@ -501,7 +577,9 @@ func (g *Gateway) Close() error {
 		c.Close()
 	}
 	g.wg.Wait()
-	return nil
+	if g.release != nil {
+		g.release()
+	}
 }
 func (g *Gateway) child(raw, base, kind string, depth int) (string, error) {
 	if depth > 6 || raw == "" || len(raw) > 8192 || strings.ContainsAny(raw, "\x00\r\n") {

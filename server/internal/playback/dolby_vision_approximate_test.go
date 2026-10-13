@@ -22,16 +22,16 @@ func TestDolbyVisionProfile5ConversionSaysWhenColorsAreApproximate(t *testing.T)
 	noDV := appleTVProfile()
 	noDV.Video[1].DolbyVisionProfiles = []int{}
 
-	decoder.ConfigureToolchain(decoder.ToolchainFacts{Filters: filters})
+	decoder.ConfigureToolchain(decoder.ToolchainFacts{Encoders: map[string]bool{"libx264": true}, Filters: filters})
 	p := decide(t, source, noDV, nil)
 	if !p.ToneMap || !contains(p.ReasonCodes, ReasonDolbyVisionApproximate) {
 		t.Fatalf("software tone mapping of Profile 5 must be flagged: %v", p.ReasonCodes)
 	}
-	decoder.ConfigureToolchain(decoder.ToolchainFacts{Filters: filters, VulkanAvailable: true})
+	decoder.ConfigureToolchain(decoder.ToolchainFacts{Encoders: map[string]bool{"libx264": true}, Filters: filters, VulkanAvailable: true})
 	if p = decide(t, source, noDV, nil); !p.ToneMap || contains(p.ReasonCodes, ReasonDolbyVisionApproximate) {
 		t.Fatalf("libplacebo reshapes Profile 5; nothing to warn about: %v", p.ReasonCodes)
 	}
-	decoder.ConfigureToolchain(decoder.ToolchainFacts{Filters: filters})
+	decoder.ConfigureToolchain(decoder.ToolchainFacts{Encoders: map[string]bool{"libx264": true}, Filters: filters})
 	if p = decide(t, source, appleTVProfile(), nil); contains(p.ReasonCodes, ReasonDolbyVisionApproximate) {
 		t.Fatalf("a Dolby Vision screen plays it as it is: %v", p.ReasonCodes)
 	}

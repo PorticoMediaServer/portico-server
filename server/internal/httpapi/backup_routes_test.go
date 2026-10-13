@@ -106,15 +106,28 @@ func TestBackupRoutesOwnerBoundaryAndLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	restored := request("POST", "/v1/admin/backups/restore", owner.AccessToken, `{"operationId":"op-restore-1","source":{"backupId":"`+listed[0].ID+`"}}`)
-	if restored.Code != 200 {
+	if restored.Code != 202 {
 		t.Fatalf("POST restore answered %d: %s", restored.Code, restored.Body.String())
 	}
 	assertSpecResponse(t, "POST", "/v1/admin/backups/restore", restored)
+	for {
+		progress := svc.RestoreProgress()
+		if progress != nil && progress.Phase == "staged" {
+			break
+		}
+		if progress != nil && progress.ErrorCode != "" {
+			t.Fatal(progress)
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("restore never staged")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 	if _, err = os.Stat(filepath.Join(root, "restore-staged", "restore.json")); err != nil {
 		t.Fatal("restore not staged", err)
 	}
 	bad := request("POST", "/v1/admin/backups/restore", owner.AccessToken, `{"operationId":"op-restore-2","source":{"backupId":"2026-01-01T000000Z"}}`)
-	if bad.Code != 400 {
+	if bad.Code != 409 {
 		t.Fatalf("unknown backup staged: %d %s", bad.Code, bad.Body.String())
 	}
 	deleted := request("DELETE", "/v1/admin/backups/"+listed[0].ID, owner.AccessToken, "")

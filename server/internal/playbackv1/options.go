@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"portico.local/server/internal/audiofacts"
+	"portico.local/server/internal/compactcatalog"
 	"strconv"
 	"strings"
 	"time"
@@ -18,14 +19,17 @@ import (
 
 // Options is `GET /v1/items/{itemId}/playback-options` (spec §4.1).
 type Options struct {
-	ItemID    string         `json:"itemId"`
-	Kind      string         `json:"kind"`
-	Resume    *OptionsResume `json:"resume,omitempty"`
-	Versions  []Version      `json:"versions"`
-	Chapters  []Chapter      `json:"chapters"`
-	Markers   []Marker       `json:"markers"`
-	Preferred *Preferred     `json:"preferred,omitempty"`
-	Plan      *Plan          `json:"plan,omitempty"`
+	ItemID   string         `json:"itemId"`
+	Kind     string         `json:"kind"`
+	Resume   *OptionsResume `json:"resume,omitempty"`
+	Versions []Version      `json:"versions"`
+	Chapters []Chapter      `json:"chapters"`
+	Markers  []Marker       `json:"markers"`
+	// Qualities is the quality menu for the preferred (or previewed) version:
+	// the original, automatic, then the ladder steps no taller than its picture.
+	Qualities []QualityOption `json:"qualities"`
+	Preferred *Preferred      `json:"preferred,omitempty"`
+	Plan      *Plan           `json:"plan,omitempty"`
 }
 type OptionsResume struct {
 	PositionMs int64  `json:"positionMs"`
@@ -76,14 +80,15 @@ type AudioStream struct {
 	VisualImpaired bool   `json:"visualImpaired"`
 }
 type SubStream struct {
-	ID       string `json:"id"`
-	Format   string `json:"format"`
-	Source   string `json:"source"`
-	Language string `json:"language,omitempty"`
-	Title    string `json:"title,omitempty"`
-	Forced   bool   `json:"forced"`
-	SDH      bool   `json:"sdh"`
-	Default  bool   `json:"default"`
+	Deliveries []subtitles.Delivery `json:"deliveries"`
+	ID         string               `json:"id"`
+	Format     string               `json:"format"`
+	Source     string               `json:"source"`
+	Language   string               `json:"language,omitempty"`
+	Title      string               `json:"title,omitempty"`
+	Forced     bool                 `json:"forced"`
+	SDH        bool                 `json:"sdh"`
+	Default    bool                 `json:"default"`
 }
 type Chapter struct {
 	StartMs int64  `json:"startMs"`
@@ -101,15 +106,27 @@ type Marker struct {
 	Confidence    string `json:"confidence"`
 	AutomaticSafe bool   `json:"automaticSafe"`
 }
+
+// Preferred is what a start that names nothing would play: the version this
+// device plays best, the audio and subtitle tracks (this profile's last
+// choice for the show or film, else its languages, else the file's default)
+// and the viewer's saved quality for where the request comes from.
 type Preferred struct {
 	VersionID  string `json:"versionId"`
 	AudioID    string `json:"audioId,omitempty"`
 	SubtitleID string `json:"subtitleId,omitempty"`
-	Reason     string `json:"reason"`
+	// SubtitlesOff is true when the profile last turned subtitles off for
+	// this show or film.
+	SubtitlesOff bool `json:"subtitlesOff,omitempty"`
+	// Reason is why the tracks: "last_used", "profile_language" or "default".
+	Reason  string  `json:"reason"`
+	Quality Quality `json:"quality"`
 }
 type Plan struct {
-	VersionID            string       `json:"versionId"`
-	Mode                 string       `json:"mode"`
+	VersionID string `json:"versionId"`
+	Mode      string `json:"mode"`
+	// Engine is the player engine a start would name: "native" or "mpv".
+	Engine               string       `json:"engine"`
 	Streams              []PlanStream `json:"streams"`
 	EstimatedBitrateKbps int          `json:"estimatedBitrateKbps,omitempty"`
 	Quality              Quality      `json:"quality"`
@@ -121,38 +138,14 @@ type PlanStream struct {
 	Reasons []string `json:"reasons"`
 }
 
-// Quality is the client's quality request (spec §5.1).
-type Quality struct {
-	Mode                string `json:"mode"`
-	MaxVideoBitrateKbps int    `json:"maxVideoBitrateKbps,omitempty"`
-	MaxHeight           int    `json:"maxHeight,omitempty"`
-	MaxAudioBitrateKbps int    `json:"maxAudioBitrateKbps,omitempty"`
-}
-
-// Validate bounds a quality request.
-func (q Quality) Validate(path string) error {
-	switch q.Mode {
-	case "original":
-		if q.MaxVideoBitrateKbps != 0 || q.MaxHeight != 0 || q.MaxAudioBitrateKbps != 0 {
-			return &FieldError{Path: path}
-		}
-	case "limit":
-		if q.MaxVideoBitrateKbps < 0 || q.MaxVideoBitrateKbps > 2_000_000 || q.MaxHeight < 0 || q.MaxHeight > 8640 || q.MaxAudioBitrateKbps < 0 || q.MaxAudioBitrateKbps > 10_000 {
-			return &FieldError{Path: path}
-		}
-	default:
-		return &FieldError{Path: path + ".mode"}
-	}
-	return nil
-}
-
 // Preview is what the options query asks "what if" about (plan §7 item 15).
 type Preview struct {
 	VersionID  string
 	PartID     string // one part of a multi-part version (plans that file)
 	AudioID    string
 	SubtitleID string // "none" for off
-	Quality    Quality
+	// Quality with an empty mode is the viewer's saved default for this reach.
+	Quality Quality
 }
 
 // MarkerFunc projects the viewer's segment markers for one source.
@@ -206,7 +199,7 @@ type Service struct {
 	// session being replaced). Nil Channels: channel starts are unavailable.
 	Channels       ChannelEngine
 	ChannelWake    func()
-	TunerAvailable func(ctx context.Context, tx *sql.Tx, sourceID, replacing string) (bool, error)
+	TunerAvailable func(ctx context.Context, tx *sql.Tx, sourceID, channelID, replacing string) (bool, error)
 	// MeasureAudio measures an audio asset's facts (spec §18.7) when a play finds
 	// them missing; nil: plays without facts are unavailable for client decoding.
 	MeasureAudio audiofacts.Measure
@@ -250,9 +243,12 @@ func v1Kind(kind string) string {
 
 type assetRow struct {
 	id, container, videoCodec string
-	size                      int64
-	duration                  float64
-	width, height, part       int
+	// edition is the version's own edition label, when its name or local
+	// metadata gave one.
+	edition             string
+	size                int64
+	duration            float64
+	width, height, part int
 }
 
 func streamID(prefix string, index int) string { return prefix + strconv.Itoa(index) }
@@ -297,12 +293,14 @@ func hdrName(transfer, detail string) string {
 	return ""
 }
 
-// readAssets lists the item's available files in part order.
+// readAssets lists the item's available files, the best version first within
+// each part (compactcatalog.BestVersionOrder), so the first version listed is
+// the one played when none is named.
 func readAssets(ctx context.Context, tx *sql.Tx, item string) ([]assetRow, error) {
-	rows, err := tx.QueryContext(ctx, `SELECT a.token,a.container,a.video_codec,a.size,a.duration,a.width,a.height,link.part_index
+	rows, err := tx.QueryContext(ctx, `SELECT a.token,a.container,a.video_codec,a.size,a.duration,a.width,a.height,link.part_index,link.edition
  FROM catalog_entities item JOIN catalog_asset_links link ON link.entity_id=item.id JOIN catalog_assets a ON a.id=link.asset_id
  WHERE item.public_id=pid_blob(?) AND a.available=1
- ORDER BY link.part_index,a.token`, item)
+ ORDER BY `+compactcatalog.BestVersionOrder("link", "a"), item)
 	if err != nil {
 		return nil, err
 	}
@@ -310,7 +308,7 @@ func readAssets(ctx context.Context, tx *sql.Tx, item string) ([]assetRow, error
 	var out []assetRow
 	for rows.Next() {
 		var a assetRow
-		if err = rows.Scan(&a.id, &a.container, &a.videoCodec, &a.size, &a.duration, &a.width, &a.height, &a.part); err != nil {
+		if err = rows.Scan(&a.id, &a.container, &a.videoCodec, &a.size, &a.duration, &a.width, &a.height, &a.part, &a.edition); err != nil {
 			return nil, err
 		}
 		out = append(out, a)
@@ -453,6 +451,12 @@ func subtitleSource(origin string) string {
 type Reach struct {
 	Remote                  bool
 	AdminMaxVideoBitrateBPS int
+	// SavedQuality is the viewer's saved default quality for this reach
+	// ("original", "automatic" or a ladder id); empty is the original.
+	SavedQuality string
+	// DeviceID is the device asking, whose capability document decides whether
+	// a previewed subtitle would be drawn by the device or burned in.
+	DeviceID string
 }
 
 func (s *Service) Options(ctx context.Context, p identity.Principal, item string, preview Preview, markersFor MarkerFunc, reach Reach) (Options, error) {
@@ -471,7 +475,8 @@ func (s *Service) Options(ctx context.Context, p identity.Principal, item string
 		}
 		return Options{}, err
 	}
-	out := Options{ItemID: item, Kind: v1Kind(kind), Versions: []Version{}, Chapters: []Chapter{}, Markers: []Marker{}}
+	out := Options{ItemID: item, Kind: v1Kind(kind), Versions: []Version{}, Chapters: []Chapter{}, Markers: []Marker{}, Qualities: []QualityOption{}}
+	audioOnly := kind == "song" || kind == "track" || kind == "audiobook_file"
 	assets, err := readAssets(ctx, tx, item)
 	if err != nil {
 		return Options{}, err
@@ -482,10 +487,15 @@ func (s *Service) Options(ctx context.Context, p identity.Principal, item string
 			return Options{}, err
 		}
 	}
-	renderers := map[string]string{}
+	renderers, formats := map[string]string{}, map[string]string{}
 	for _, group := range versionsOf(assets) {
 		first := group[0]
-		v := Version{ID: first.id, Edition: edition, Container: first.container, Parts: []Part{}, Video: []VideoStream{}, Audio: []AudioStream{}, Subtitles: []SubStream{}}
+		// A version's own edition label wins over the title's.
+		versionEdition := first.edition
+		if versionEdition == "" {
+			versionEdition = edition
+		}
+		v := Version{ID: first.id, Edition: versionEdition, Container: first.container, Parts: []Part{}, Video: []VideoStream{}, Audio: []AudioStream{}, Subtitles: []SubStream{}}
 		for _, a := range group {
 			v.Parts = append(v.Parts, Part{ID: a.id, Index: a.part, DurationMs: int64(a.duration * 1000), SizeBytes: a.size})
 			v.SizeBytes += a.size
@@ -498,10 +508,10 @@ func (s *Service) Options(ctx context.Context, p identity.Principal, item string
 			return Options{}, err
 		}
 		for _, r := range catalog.Resources {
-			renderers[r.ID] = r.Renderer
+			renderers[r.ID], formats[r.ID] = r.Renderer, r.Format
 			if r.SourceID == first.id && r.Enabled {
 				lower := strings.ToLower(r.Title)
-				v.Subtitles = append(v.Subtitles, SubStream{ID: r.ID, Format: r.Format, Source: subtitleSource(r.Origin), Language: r.Language, Title: r.Title, Forced: r.Forced, SDH: strings.Contains(lower, "sdh") || strings.Contains(lower, "hearing"), Default: r.Default})
+				v.Subtitles = append(v.Subtitles, SubStream{Deliveries: r.Deliveries, ID: r.ID, Format: r.Format, Source: subtitleSource(r.Origin), Language: r.Language, Title: r.Title, Forced: r.Forced, SDH: r.HearingImpaired || strings.Contains(lower, "sdh") || strings.Contains(lower, "hearing"), Default: r.Default})
 			}
 		}
 		label := []string{}
@@ -530,23 +540,77 @@ func (s *Service) Options(ctx context.Context, p identity.Principal, item string
 	if len(out.Versions) == 0 {
 		return out, nil
 	}
+	if preview.Quality.Mode == "" {
+		preview.Quality = savedQuality(reach.SavedQuality)
+	}
+	preview.Quality.Step = ""
+	if preview.VersionID == "" && !audioOnly && len(out.Versions) > 1 {
+		// Released before planning: each candidate version is planned in a
+		// read of its own.
+		base := playback.V1Choice{Remote: reach.Remote}
+		if reach.Remote {
+			base.AdminMaxVideoBitrateBPS = reach.AdminMaxVideoBitrateBPS
+		}
+		preview.Quality.apply(&base)
+		done()
+		preview.VersionID = s.bestVersion(ctx, p, item, base)
+		if tx, done, err = dbwork.BeginRead(ctx, s.DB); err != nil {
+			return Options{}, err
+		}
+		defer done()
+	}
 	choice, version, err := s.choice(out, preview, reach)
 	if err != nil {
 		return Options{}, err
 	}
+	memory := TrackMemory{}
+	if !audioOnly {
+		memory = s.trackMemory(ctx, p, item)
+	}
+	if choice.AudioStream == nil {
+		choice.RememberedAudioLanguage = memory.AudioLanguage
+	}
 	// The preview's subtitle, when there is one: a known track of this version,
-	// drawn by the device (sidecar) or burned into the video.
-	burn := false
-	if preview.SubtitleID != "" && preview.SubtitleID != "none" {
+	// drawn by the device or burned into the video. Without one, the track
+	// this profile last chose for the show or film is what a start would use.
+	subtitleID, remembered := preview.SubtitleID, false
+	if subtitleID == "" && memory.SubtitleMode != "" {
+		var tracks []subtitles.Resource
+		for _, r := range catalog.Resources {
+			if r.SourceID == version.ID && r.Enabled {
+				tracks = append(tracks, r)
+			}
+		}
+		if r := rememberedSubtitle(memory, subtitles.PlaybackPlan{Resources: tracks}); r != nil {
+			remembered = true
+			subtitleID = "none"
+			if r.TrackID != TrackOff {
+				subtitleID = string(r.TrackID)
+			}
+		}
+	}
+	burnable := false
+	if subtitleID != "" && subtitleID != "none" {
 		known := false
 		for _, sub := range version.Subtitles {
-			known = known || sub.ID == preview.SubtitleID
+			known = known || sub.ID == subtitleID
 		}
 		if !known {
 			return Options{}, &FieldError{Path: "subtitleId"}
 		}
-		burn = renderers[preview.SubtitleID] == "burn_in"
+		burnable = renderers[subtitleID] == "burn_in"
+		if burnable {
+			choice.SubtitleKind = subtitleKindOf(formats[subtitleID])
+			if choice.SubtitleKind == playback.SubtitleText {
+				choice.SubtitleKind = playback.SubtitleBurnAlways
+			}
+		}
 	}
+	facts := SourceFacts{BitrateKbps: version.BitrateKbps}
+	if len(version.Video) > 0 {
+		facts.Height = version.Video[0].Height
+	}
+	out.Qualities = qualityOptions(facts, audioOnly || len(version.Video) == 0)
 	// Chapters and markers are the chosen version's, part after part on one
 	// timeline (each part's starts offset by the parts before it).
 	offset := int64(0)
@@ -583,22 +647,38 @@ func (s *Service) Options(ctx context.Context, p identity.Principal, item string
 		offset += part.DurationMs
 	}
 	done()
-	out.Preferred = &Preferred{VersionID: version.ID, Reason: "default"}
+	out.Preferred = &Preferred{VersionID: version.ID, Reason: "default", Quality: savedQuality(reach.SavedQuality)}
+	if remembered {
+		out.Preferred.Reason = "last_used"
+		if subtitleID == "none" {
+			out.Preferred.SubtitlesOff = true
+		} else {
+			out.Preferred.SubtitleID = subtitleID
+		}
+	}
 	if s.Playback != nil {
 		plan, err := s.Playback.PlanV1(ctx, p, item, choice)
 		switch {
 		case err == nil:
 			view := planView(plan, version, choice)
-			if preview.SubtitleID != "" && preview.SubtitleID != "none" {
-				view.withSubtitle(preview.SubtitleID, burn)
+			if subtitleID != "" && subtitleID != "none" {
+				burn := burnable && playback.SubtitleNeedsBurnIn(s.deviceDocument(ctx, reach.DeviceID).Profile(plan.Engine), choice.SubtitleKind, plan.Mode, choice.SubtitleBesideStream)
+				view.withSubtitle(subtitleID, burn, burnable)
 			}
 			view.Quality = preview.Quality
-			if view.Quality.Mode == "" {
-				view.Quality.Mode = "original"
-			}
 			out.Plan = &view
 			if plan.AudioStream >= 0 {
 				out.Preferred.AudioID = streamID("a", plan.AudioStream)
+			}
+			if plan.Trace != nil && plan.Trace.Audio != nil {
+				switch plan.Trace.Audio.ChosenBy {
+				case "remembered":
+					out.Preferred.Reason = "last_used"
+				case "preferred_language":
+					if !remembered {
+						out.Preferred.Reason = "profile_language"
+					}
+				}
 			}
 		case errors.Is(err, playback.ErrTranscodingDisabled):
 			// Options still describe the title; starting it will be refused.
@@ -660,12 +740,7 @@ func (s *Service) choice(o Options, preview Preview, reach Reach) (playback.V1Ch
 		}
 		c.AudioStream = &index
 	}
-	if preview.Quality.Mode == "limit" {
-		c.Limit = true
-		c.MaxVideoBitrateBPS = preview.Quality.MaxVideoBitrateKbps * 1000
-		c.MaxAudioBitrateBPS = preview.Quality.MaxAudioBitrateKbps * 1000
-		c.MaxVideoHeight = preview.Quality.MaxHeight
-	}
+	preview.Quality.apply(&c)
 	return c, version, nil
 }
 
@@ -772,7 +847,10 @@ func planView(plan playback.DeliveryPlan, version Version, choice playback.V1Cho
 	if plan.Mode == "direct" || plan.Mode == "remote" {
 		mode = "direct"
 	}
-	view := Plan{VersionID: version.ID, Mode: mode, Streams: []PlanStream{}, EstimatedBitrateKbps: (plan.VideoBitrateBPS + plan.AudioBitrateBPS) / 1000}
+	view := Plan{VersionID: version.ID, Mode: mode, Engine: plan.Engine, Streams: []PlanStream{}, EstimatedBitrateKbps: (plan.VideoBitrateBPS + plan.AudioBitrateBPS) / 1000}
+	if view.Engine == "" {
+		view.Engine = playback.EngineNative
+	}
 	d := decisions(plan, choice, len(version.Video) > 0)
 	if d.Video != nil && len(version.Video) > 0 {
 		view.Streams = append(view.Streams, PlanStream{ID: version.Video[0].ID, Action: d.Video.Action, To: d.Video.To, Reasons: d.Video.Reasons})
@@ -791,12 +869,17 @@ func planView(plan playback.DeliveryPlan, version Version, choice playback.V1Cho
 	return view
 }
 
-// withSubtitle adds the preview's subtitle to a plan: drawn by the device
-// (sidecar), or burned in, which converts the video (as a start with it
-// would: decision video "burn").
-func (v *Plan) withSubtitle(id string, burn bool) {
+// withSubtitle adds the preview's subtitle to a plan: a text file beside the
+// stream (sidecar), a styled or image track the engine draws itself (device),
+// or burned in, which converts the video (as a start with it would: decision
+// video "burn").
+func (v *Plan) withSubtitle(id string, burn, styledOrImage bool) {
 	if !burn {
-		v.Streams = append(v.Streams, PlanStream{ID: id, Action: "sidecar", Reasons: []string{}})
+		action := "sidecar"
+		if styledOrImage {
+			action = "device"
+		}
+		v.Streams = append(v.Streams, PlanStream{ID: id, Action: action, Reasons: []string{}})
 		return
 	}
 	v.Mode = "stream"

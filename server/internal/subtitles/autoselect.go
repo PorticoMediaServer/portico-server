@@ -31,13 +31,14 @@ type AutoChoice struct {
 
 // AutoCandidate is one stored track that could be chosen.
 type AutoCandidate struct {
-	ID       string
-	Revision int64
-	Language string
-	Title    string
-	Forced   bool
-	Default  bool
-	OffsetUS int64
+	ID              string
+	Revision        int64
+	Language        string
+	Title           string
+	HearingImpaired bool
+	Forced          bool
+	Default         bool
+	OffsetUS        int64
 }
 
 func subtitleLanguageKey(s string) string {
@@ -116,7 +117,7 @@ func ChooseAutomatic(choice AutoChoice, candidates []AutoCandidate) *AutoCandida
 				if c.Forced || subtitleLanguageKey(c.Language) != key {
 					continue
 				}
-				if !hearingImpairedTitle(c.Title) {
+				if !c.HearingImpaired && !hearingImpairedTitle(c.Title) {
 					return c
 				}
 				if fallback == nil {
@@ -160,7 +161,7 @@ func AutoSelectTx(ctx context.Context, tx *sql.Tx, session string, generation in
 	if !choice.Enabled && !choice.ForeignAudio && choice.AudioLanguage == "" {
 		return nil
 	}
-	rows, err := tx.QueryContext(ctx, `SELECT r.id,v.revision,v.language,v.title,COALESCE(rr.is_forced,0),COALESCE(rr.is_default,0),v.offset_us FROM subtitle_resources r JOIN subtitle_revisions v ON v.resource_id=r.id AND v.revision=r.current_revision LEFT JOIN subtitle_render_revisions rr ON rr.resource_id=r.id AND rr.revision=v.revision JOIN catalog_assets a ON a.token=r.source_id WHERE r.item_id=(SELECT id FROM catalog_entities WHERE public_id=pid_blob(?)) AND r.source_id=? AND r.deleted=0 AND (r.scope='shared' OR r.owner=?) AND COALESCE(rr.renderer,'external_text')='external_text' AND COALESCE(rr.source_evidence,'')='' AND v.source_size=a.size AND v.source_modified_ns=a.modified_ns ORDER BY COALESCE(rr.is_default,0) DESC,r.id LIMIT 64`, item, source, owner)
+	rows, err := tx.QueryContext(ctx, `SELECT r.id,v.revision,v.language,v.title,COALESCE(rr.is_forced,0),COALESCE(rr.is_default,0),v.offset_us,COALESCE(rr.hearing_impaired,0) FROM subtitle_resources r JOIN subtitle_revisions v ON v.resource_id=r.id AND v.revision=r.current_revision LEFT JOIN subtitle_render_revisions rr ON rr.resource_id=r.id AND rr.revision=v.revision JOIN catalog_assets a ON a.token=r.source_id WHERE r.item_id=(SELECT id FROM catalog_entities WHERE public_id=pid_blob(?)) AND r.source_id=? AND r.deleted=0 AND (r.scope='shared' OR r.owner=?) AND COALESCE(rr.renderer,'external_text')='external_text' AND (COALESCE(rr.source_evidence,'')='' OR rr.source_evidence=(SELECT evidence FROM subtitle_remote_sessions WHERE session_id=?)) AND v.source_size=a.size AND v.source_modified_ns=a.modified_ns ORDER BY COALESCE(rr.is_default,0) DESC,r.id LIMIT 64`, item, source, owner, session)
 	if err != nil {
 		// A schema this query does not fit must never stop a title from starting.
 		return nil
@@ -168,7 +169,7 @@ func AutoSelectTx(ctx context.Context, tx *sql.Tx, session string, generation in
 	var candidates []AutoCandidate
 	for rows.Next() {
 		var c AutoCandidate
-		if rows.Scan(&c.ID, &c.Revision, &c.Language, &c.Title, &c.Forced, &c.Default, &c.OffsetUS) != nil {
+		if rows.Scan(&c.ID, &c.Revision, &c.Language, &c.Title, &c.Forced, &c.Default, &c.OffsetUS, &c.HearingImpaired) != nil {
 			break
 		}
 		candidates = append(candidates, c)

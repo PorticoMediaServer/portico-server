@@ -70,32 +70,43 @@ RUN ROOT_KEY=$(go run /identity/inspect-hosted-root.go /identity/root-public-key
 # bundle directly in third_party/ffmpeg/bundle. Either way the final stage
 # verifies what it was given before the image is finished.
 FROM debian:bookworm-slim AS ffmpeg
+RUN apt-get update && apt-get install --yes --no-install-recommends python3 bash && rm -rf /var/lib/apt/lists/*
 ARG TARGETOS
 ARG TARGETARCH
 COPY third_party/ffmpeg/bundle/ /bundle/
 RUN if [ -d "/bundle/${TARGETOS}-${TARGETARCH}" ]; then mv "/bundle/${TARGETOS}-${TARGETARCH}" /ffmpeg; else mv /bundle /ffmpeg; fi
 
+COPY scripts/verify-ffmpeg-manifest.py scripts/verify-ffmpeg-bundle.sh /tmp/
+RUN bash /tmp/verify-ffmpeg-bundle.sh /ffmpeg full
+
 FROM debian:bookworm-slim
+ARG TARGETARCH
 RUN apt-get update \
- && apt-get install --yes --no-install-recommends bubblewrap ca-certificates python3 tini \
+ && apt-get install --yes --no-install-recommends bubblewrap ca-certificates tini tzdata libva2 libva-drm2 mesa-va-drivers \
+ && if [ "$TARGETARCH" = amd64 ]; then apt-get install --yes --no-install-recommends intel-media-va-driver i965-va-driver; fi \
  && rm -rf /var/lib/apt/lists/*
 
 # An unprivileged user, and a state directory it owns. Everything the server
 # writes — the database, converted media, artwork, logs — lives under this one
 # path, so it is the only volume a deployment has to think about.
 RUN useradd --system --create-home --home-dir /var/lib/portico --shell /usr/sbin/nologin portico
+COPY LICENSE THIRD-PARTY-NOTICES.md /usr/share/doc/portico/
+COPY server/internal/imagework/SCALE_LICENSE /usr/share/doc/portico/licenses/image-scaling.txt
+COPY server/internal/thirdparty/sqlite/LICENSE /usr/share/doc/portico/licenses/sqlite-driver.txt
+COPY server/internal/mediaexec/fonts/LICENSE /usr/share/doc/portico/licenses/decoder-fonts.txt
+COPY third_party/hls.js/LICENSE /usr/share/doc/portico/licenses/hls-js.txt
+COPY web/src/ui/fonts/OFL.txt /usr/share/doc/portico/licenses/manrope.txt
+COPY packages/design/LICENSE-LUCIDE /usr/share/doc/portico/licenses/lucide.txt
 COPY --from=build /out/portico-server /usr/local/bin/portico-server
 COPY --from=web /out/web /opt/portico/web
 COPY --from=web /out/release.json /opt/portico/release.json
 # Supply the qualified bundle from the manual toolchain workflow (see the
 # ffmpeg stage above for where it goes).
 COPY --from=ffmpeg /ffmpeg/ /opt/portico/third_party/ffmpeg/
-COPY scripts/verify-ffmpeg-manifest.py scripts/verify-ffmpeg-bundle.sh /tmp/
-RUN bash /tmp/verify-ffmpeg-bundle.sh /opt/portico/third_party/ffmpeg full
 
 ENV PORTICO_WEB_DIR=/opt/portico/web \
     PORTICO_STATE_DIR=/var/lib/portico \
-    PORTICO_BIND=0.0.0.0:32500 \
+    PORTICO_BIND=[::]:32500 \
     PORTICO_FFMPEG=/opt/portico/third_party/ffmpeg/bin/ffmpeg \
     PORTICO_FFPROBE=/opt/portico/third_party/ffmpeg/bin/ffprobe
 VOLUME ["/var/lib/portico"]

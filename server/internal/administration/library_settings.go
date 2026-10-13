@@ -3,8 +3,6 @@ package administration
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
-	"errors"
 	"portico.local/server/internal/catalog"
 	"sort"
 )
@@ -66,7 +64,7 @@ func AnalysisOperations() []AnalysisOperation {
 		{"trickplay", "Trickplay tiles", "decode", "Decodes evenly spaced frames into scrubbing tiles. Storage grows with interval and tile width.", video, false, []string{"probe"}, true, false},
 		{"chapter_images", "Chapter images", "decode", "Decodes one frame per chapter for the chapter list.", video, false, []string{"probe"}, true, false},
 		{"video_preview", "Video preview", "decode", "Encodes a short silent preview clip used when browsing.", video, false, []string{"probe"}, true, false},
-		{"segment_detection", "Intro and recap detection", "decode", "Compares episodes within a season to find repeated openings so they can be skipped.", []string{"show", "episode"}, false, []string{"probe"}, true, false},
+		{"segment_detection", "Intro and recap detection", "decode", "Suggests segments from chapter names and scene changes. Review uncertain suggestions before viewers can skip them.", []string{"show", "episode"}, false, []string{"probe"}, true, false},
 		{"credits_detection", "Credits detection", "decode", "Finds where the end credits begin so playback can offer the next episode.", video, false, []string{"probe"}, true, false},
 		{"subtitle_download", "Subtitle download", "network", "Asks the configured subtitle provider for tracks the file does not carry.", video, false, []string{"subtitle_discovery"}, true, true},
 		{"lyrics", "Lyrics", "network", "Fetches timed lyrics for tracks that have none.", []string{"music"}, false, []string{"probe"}, true, true},
@@ -148,7 +146,6 @@ type GeneratedNavigation struct {
 // LibrarySettings is one library's whole administration document.
 type LibrarySettings struct {
 	AllowMediaDeletion bool                             `json:"allowMediaDeletion"`
-	TrashRetentionDays int                              `json:"trashRetentionDays"`
 	ContinueWatching   catalog.ContinueWatchingSettings `json:"continueWatching"`
 	Providers          []ProviderSelection              `json:"providers"`
 	Analysis           []string                         `json:"analysis"`
@@ -169,7 +166,6 @@ func DefaultLibrarySettings() LibrarySettings {
 	}
 	return LibrarySettings{
 		AllowMediaDeletion: false,
-		TrashRetentionDays: 30,
 		ContinueWatching:   catalog.DefaultContinueWatchingSettings(),
 		Providers:          []ProviderSelection{},
 		Analysis:           enabled,
@@ -218,9 +214,6 @@ func validateLibrarySettings(v *LibrarySettings) error {
 	fields := []string{}
 	if !catalog.ValidContinueWatchingSettings(v.ContinueWatching) {
 		fields = append(fields, "settings.continueWatching")
-	}
-	if v.TrashRetentionDays < 0 || v.TrashRetentionDays > 3650 {
-		fields = append(fields, "settings.trashRetentionDays")
 	}
 	providers, kinds := map[string]MetadataProvider{}, map[string]bool{}
 	for _, p := range MetadataProviders() {
@@ -320,27 +313,9 @@ func librarySources(ctx context.Context, tx *sql.Tx, library string) ([]LibraryS
 
 func libraryScope(id string) string { return scopeFor("library", id) }
 
-// libraryDefaults is what a library holds before its own page is written. The
-// trash retention comes from the owner settings registry's server-wide value, so
-// that setting genuinely governs and this page only overrides it. The settings
-// document is read, never written, from here.
-func libraryDefaults(ctx context.Context, tx *sql.Tx) (LibrarySettings, error) {
-	out := DefaultLibrarySettings()
-	var body string
-	err := tx.QueryRowContext(ctx, `SELECT body FROM console_documents WHERE scope='server'`).Scan(&body)
-	if errors.Is(err, sql.ErrNoRows) {
-		return out, nil
-	}
-	if err != nil {
-		return out, err
-	}
-	var decoded struct {
-		TrashRetentionDays *int `json:"library.trashRetentionDays"`
-	}
-	if json.Unmarshal([]byte(body), &decoded) == nil && decoded.TrashRetentionDays != nil && *decoded.TrashRetentionDays >= 0 && *decoded.TrashRetentionDays <= 3650 {
-		out.TrashRetentionDays = *decoded.TrashRetentionDays
-	}
-	return out, nil
+// libraryDefaults is what a library holds before its own page is written.
+func libraryDefaults(context.Context, *sql.Tx) (LibrarySettings, error) {
+	return DefaultLibrarySettings(), nil
 }
 
 func (s *Service) libraryDocument(ctx context.Context, tx *sql.Tx, id string) (LibraryDocument, error) {
@@ -452,17 +427,17 @@ func (s *Service) SaveLibrarySettings(ctx context.Context, auth Authorize, id st
 	return out, err
 }
 
-// deletionPolicy answers the two questions the delete path asks of a library.
-func deletionPolicy(ctx context.Context, tx *sql.Tx, library string) (bool, int, error) {
+// deletionPolicy answers whether a library allows media to be deleted.
+func deletionPolicy(ctx context.Context, tx *sql.Tx, library string) (bool, error) {
 	defaults, err := libraryDefaults(ctx, tx)
 	if err != nil {
-		return false, 0, err
+		return false, err
 	}
 	settings, _, err := readDocument(ctx, tx, libraryScope(library), defaults)
 	if err != nil {
-		return false, 0, err
+		return false, err
 	}
-	return settings.AllowMediaDeletion, settings.TrashRetentionDays, nil
+	return settings.AllowMediaDeletion, nil
 }
 
 // LibrarySettingsIndex is the libraries listing the administration pages open
@@ -479,7 +454,6 @@ type LibraryIndexEntry struct {
 	Kind               string `json:"kind"`
 	Revision           int64  `json:"revision"`
 	AllowMediaDeletion bool   `json:"allowMediaDeletion"`
-	TrashRetentionDays int    `json:"trashRetentionDays"`
 	AnalysisCount      int    `json:"analysisOperationCount"`
 	SourceCount        int    `json:"sourceCount"`
 }
@@ -496,7 +470,7 @@ func (s *Service) LibraryIndex(ctx context.Context, auth Authorize, token string
 		return out, err
 	}
 	err = s.snapshot(ctx, auth, func(tx *sql.Tx) error {
-		rows, err := tx.QueryContext(ctx, `SELECT l.id,l.name,l.kind,(SELECT COUNT(*) FROM library_sources s WHERE s.library_id=l.id) FROM libraries l WHERE (?='' OR l.id>?) ORDER BY l.id LIMIT ?`, c.ID, c.ID, size+1)
+		rows, err := tx.QueryContext(ctx, `SELECT l.id,l.name,l.kind,(SELECT COUNT(*) FROM library_sources s WHERE s.library_id=l.id) FROM libraries l WHERE NOT EXISTS(SELECT 1 FROM catalog_libraries gone WHERE gone.library_id=l.id AND gone.retired=1) AND (?='' OR l.id>?) ORDER BY l.id LIMIT ?`, c.ID, c.ID, size+1)
 		if err != nil {
 			return err
 		}
@@ -526,7 +500,6 @@ func (s *Service) LibraryIndex(ctx context.Context, auth Authorize, token string
 			}
 			out.Items[i].Revision = revision
 			out.Items[i].AllowMediaDeletion = settings.AllowMediaDeletion
-			out.Items[i].TrashRetentionDays = settings.TrashRetentionDays
 			out.Items[i].AnalysisCount = len(settings.Analysis)
 		}
 		return nil

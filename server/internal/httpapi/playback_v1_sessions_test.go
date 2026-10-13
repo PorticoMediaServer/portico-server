@@ -56,12 +56,21 @@ func TestPlaybackV1SessionLifecycle(t *testing.T) {
 	if w = f.raw("POST", "/v1/playback/sessions", f.owner.AccessToken, key, startBody(f.items[1], nil)); w.Code != 422 || v1Code(w) != "idempotency_key_reused" {
 		t.Fatalf("reused key: %d %s", w.Code, w.Body.String())
 	}
-	// A short key is refused; no key at all is the deprecated legacy route.
+	// A short key is refused, and so is no key at all: there is one way to
+	// start playback, and nothing answers the old request shape.
 	if w = f.raw("POST", "/v1/playback/sessions", f.owner.AccessToken, map[string]string{"Idempotency-Key": "short"}, startBody(f.items[1], nil)); w.Code != 400 {
 		t.Fatalf("short key: %d", w.Code)
 	}
-	if w = f.raw("POST", "/v1/playback/sessions", f.owner.AccessToken, nil, map[string]any{"itemId": f.items[2], "quality": "auto", "requestId": "legacy"}); w.Code != 201 || w.Header().Get("Deprecation") != "true" {
-		t.Fatalf("legacy start: %d %v", w.Code, w.Header())
+	if w = f.raw("POST", "/v1/playback/sessions", f.owner.AccessToken, nil, startBody(f.items[2], nil)); w.Code != 428 || v1Code(w) != "idempotency_key_required" {
+		t.Fatalf("a start with no key: %d %s", w.Code, w.Body.String())
+	}
+	if w = f.raw("POST", "/v1/playback/sessions", f.owner.AccessToken, map[string]string{"Idempotency-Key": "old-shape-start-0001"}, map[string]any{"itemId": f.items[2], "quality": "auto", "requestId": "legacy"}); w.Code != 400 {
+		t.Fatalf("the old start body: %d %s", w.Code, w.Body.String())
+	}
+	for _, gone := range [][2]string{{"POST", "/v1/playback/sessions/" + s.ID + "/progress"}, {"PUT", "/v1/playback/client-profile"}, {"GET", "/v1/playback/client-profile"}, {"POST", "/v1/playback/route-failures"}} {
+		if w = f.raw(gone[0], gone[1], f.owner.AccessToken, nil, map[string]any{}); w.Code != 404 && w.Code != 405 {
+			t.Fatalf("%s %s still answers: %d", gone[0], gone[1], w.Code)
+		}
 	}
 
 	// GET carries the revision ETag; another profile's device can't see it.

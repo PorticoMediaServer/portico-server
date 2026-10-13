@@ -29,14 +29,13 @@ export function TabPanel({id, children, className}: {id: string; children: React
   return <RTabs.Content value={id} className={cx(s.content, className)}>{children}</RTabs.Content>;
 }
 
-export function Segmented<T extends string>({options, value, onChange, label, size}: {options: readonly {id: T; label?: string; icon?: IconName}[]; value: T; onChange: (id: T) => void; label: string; size?: 'sm'}) {
+/** A choice among a few. Every option carries its words: an option drawn as an icon is still named for assistive technology, never by its id. */
+export function Segmented<T extends string>({options, value, onChange, label, size}: {options: readonly {id: T; label: string; icon?: IconName}[]; value: T; onChange: (id: T) => void; label: string; size?: 'sm'}) {
   return (
     <div className={s.segmented} role="group" aria-label={label}>
       {options.map(o => (
-        <button key={o.id} type="button" className={s.segment} aria-pressed={o.id === value} onClick={() => onChange(o.id)} aria-label={o.label ?? o.id} title={o.label}>
-          {o.icon ? <Icon name={o.icon} size={16} /> : null}
-          {o.label && !o.icon ? o.label : null}
-          {o.label && o.icon ? <span className="visually-hidden">{o.label}</span> : null}
+        <button key={o.id} type="button" className={s.segment} aria-pressed={o.id === value} onClick={() => onChange(o.id)} aria-label={o.label} title={o.icon ? o.label : undefined}>
+          {o.icon ? <Icon name={o.icon} size={16} /> : o.label}
         </button>
       ))}
     </div>

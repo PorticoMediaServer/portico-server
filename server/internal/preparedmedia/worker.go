@@ -698,7 +698,7 @@ func acceptOutput(original, output probed, p Profile) error {
 		if output.VideoStreams != 0 {
 			return ErrOutput
 		}
-	} else if output.VideoStreams != 1 || output.VideoCodec != "h264" || output.PixFmt != "yuv420p" || output.Width < 2 || output.Height < 2 || output.Width > p.Width || output.Height > p.Height || output.Width%2 != 0 || output.Height%2 != 0 || (output.VideoProfile != "High" && output.VideoProfile != "Main" && output.VideoProfile != "Constrained Baseline" && output.VideoProfile != "Baseline") || output.VideoLevel < 1 || output.VideoLevel > 40 || output.FrameRate <= 0 || output.FrameRate > 30.1 {
+	} else if output.VideoStreams != 1 || output.VideoCodec != "h264" || output.PixFmt != "yuv420p" || output.Width < 2 || output.Height < 2 || output.Width > p.Width || output.Height > p.Height || output.Width%2 != 0 || output.Height%2 != 0 || (output.VideoProfile != "High" && output.VideoProfile != "Main" && output.VideoProfile != "Constrained Baseline" && output.VideoProfile != "Baseline") || output.VideoLevel < 1 || output.VideoLevel > decoder.H264OutputLevel(p.Width, p.Height, 60) || output.FrameRate <= 0 || output.FrameRate > 60.1 {
 		return ErrOutput
 	}
 	return nil

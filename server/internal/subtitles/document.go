@@ -39,9 +39,10 @@ type TextCue struct {
 	Top    bool `json:"top,omitempty"`
 }
 type Document struct {
-	Version    int       `json:"version"`
-	TimeDomain string    `json:"timeDomain"`
-	Cues       []TextCue `json:"cues"`
+	SkippedCues int       `json:"skippedCues,omitempty"`
+	Version     int       `json:"version"`
+	TimeDomain  string    `json:"timeDomain"`
+	Cues        []TextCue `json:"cues"`
 }
 
 func textField(s string, max int) bool {
@@ -122,7 +123,22 @@ func canonicalPlain(raw []byte, format string, durationUS int64) ([]byte, error)
 	if e != nil {
 		return nil, e
 	}
-	return textDocument(cues)
+	out, e := textDocument(cues)
+	if e != nil {
+		return nil, e
+	}
+	var d Document
+	_ = json.Unmarshal(out, &d)
+	decoded, _ := decodeLoosely(raw)
+	total := strings.Count(string(decoded), "-->")
+	if format == "smi" || format == "sami" {
+		total = len(samiSync.FindAllIndex(decoded, -1))
+	}
+	if format == "ttml" || format == "dfxp" {
+		total = len(ttmlStart.FindAllIndex(decoded, -1))
+	}
+	d.SkippedCues = max(0, total-len(cues))
+	return json.Marshal(d)
 }
 
 // textDocument is the canonical stored form of a text subtitle.
@@ -145,7 +161,7 @@ func Canonical(raw []byte, format string, durationUS int64) ([]byte, error) {
 }
 func validFormat(s string) bool {
 	switch s {
-	case "srt", "vtt", "ass", "ssa", "pgs", "sup", "vobsub", "idx", "dvb":
+	case "srt", "vtt", "ass", "ssa", "pgs", "sup", "vobsub", "idx", "dvb", "smi", "sami", "ttml", "dfxp":
 		return true
 	}
 	return false

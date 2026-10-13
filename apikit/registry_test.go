@@ -20,7 +20,7 @@ type testResponse struct {
 }
 
 func testMetadata() Metadata {
-	return Metadata{ID: "test", Method: "POST", Path: "/v1/test", Summary: "Test route", Access: Device, Lane: Default, Cost: Constant, BodyLimit: 128, Status: 200}
+	return Metadata{ID: "test", Method: "POST", Path: "/v1/test", Summary: "Test route", Access: Device, Requires: ScopeRead, Lane: Default, Cost: Constant, BodyLimit: 128, Status: 200}
 }
 func TestRegistryRequiresAccessAndEnforcesBeforeParsing(t *testing.T) {
 	r := New(nil, nil)
@@ -57,7 +57,7 @@ func TestStreamingRouteKeepsRegistryAccessAndQueryRules(t *testing.T) {
 		}
 		return nil
 	}, nil)
-	m := Metadata{ID: "events", Method: "GET", Path: "/v1/events", Summary: "Stream events", Access: Device, Lane: Realtime, Cost: Constant, Status: 200, SSE: true, Query: []string{"after"}}
+	m := Metadata{ID: "events", Method: "GET", Path: "/v1/events", Summary: "Stream events", Access: Device, Requires: ScopeRead, Lane: Realtime, Cost: Constant, Status: 200, SSE: true, Query: []string{"after"}}
 	if err := Register(r, Route[struct{}, testResponse]{Metadata: m, RawHandler: func(w http.ResponseWriter, _ *http.Request) {
 		served = true
 		w.Header().Set("Content-Type", "text/event-stream")
@@ -184,6 +184,7 @@ func TestNamedCommandPathsAndEncodedSeparators(t *testing.T) {
 		m.ID = verb
 		m.Path = "/v1/items/{id}:" + verb
 		m.Access = Public
+		m.Requires = ScopeOpen
 		m.BodyLimit = 0
 		if err := Register(r, Route[struct{}, testResponse]{Metadata: m, Handler: func(_ context.Context, r *http.Request, _ struct{}) (testResponse, error) {
 			return testResponse{r.PathValue("id"), []string{}}, nil
@@ -202,5 +203,78 @@ func TestNamedCommandPathsAndEncodedSeparators(t *testing.T) {
 	r.ServeHTTP(w, httptest.NewRequest("POST", "/v1/items/a%2Fb:move", nil))
 	if w.Code != 404 {
 		t.Fatal("encoded separator matched", w.Code)
+	}
+}
+
+func TestEveryRouteMustDeclareACredentialScopeAndTheGateRunsFirst(t *testing.T) {
+	r := New(func(context.Context, *http.Request, Metadata) error { return nil }, nil)
+	handler := func(context.Context, *http.Request, testRequest) (testResponse, error) {
+		return testResponse{"ok", []string{}}, nil
+	}
+	missing := testMetadata()
+	missing.Requires = ""
+	if err := Register(r, Route[testRequest, testResponse]{Metadata: missing, Handler: handler}); err == nil {
+		t.Fatal("a route with no credential scope was registered")
+	}
+	open := testMetadata()
+	open.Requires = ScopeOpen
+	if err := Register(r, Route[testRequest, testResponse]{Metadata: open, Handler: handler}); err == nil {
+		t.Fatal("an authenticated route was registered as open")
+	}
+	public := testMetadata()
+	public.Access, public.Requires = Public, ScopeRead
+	if err := Register(r, Route[testRequest, testResponse]{Metadata: public, Handler: handler}); err == nil {
+		t.Fatal("a public route was registered with a grantable scope")
+	}
+	m := testMetadata()
+	m.Requires = ScopeLibrary
+	if err := Register(r, Route[testRequest, testResponse]{Metadata: m, Handler: handler}); err != nil {
+		t.Fatal(err)
+	}
+	var asked []Scope
+	refuse := true
+	r.GateScopes(func(_ *http.Request, need Scope) error {
+		asked = append(asked, need)
+		if refuse {
+			return &apierror.Error{Code: "not_permitted"}
+		}
+		return nil
+	})
+	call := func() int {
+		q := httptest.NewRequest("POST", "/v1/test", strings.NewReader(`{"name":"x"}`))
+		q.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, q)
+		return w.Code
+	}
+	if code := call(); code != 403 || len(asked) != 1 || asked[0] != ScopeLibrary {
+		t.Fatalf("gate refusal: %d %v", code, asked)
+	}
+	refuse = false
+	if code := call(); code != 200 {
+		t.Fatalf("gate pass: %d", code)
+	}
+	if found, ok := r.Lookup("POST", "/v1/test"); !ok || found.Requires != ScopeLibrary {
+		t.Fatalf("lookup: %+v %v", found, ok)
+	}
+	if _, ok := r.Lookup("GET", "/v1/test"); ok {
+		t.Fatal("lookup matched another method")
+	}
+}
+
+func TestAccessLabelsMustNameWhatTheAuthorizerChecks(t *testing.T) {
+	r := New(func(context.Context, *http.Request, Metadata) error { return nil }, nil)
+	handler := func(context.Context, *http.Request, struct{}) (testResponse, error) { return testResponse{"ok", []string{}}, nil }
+	for path, access := range map[string]Access{"/v1/items/{id}/thing": ViewerItem, "/v1/things": ViewerItem, "/v1/libraries/{id}/thing": ViewerLibrary, "/v1/list": ViewerLibrary} {
+		m := Metadata{ID: "labelled", Method: "GET", Path: path, Summary: "Labelled", Access: access, Requires: ScopeRead, Lane: Default, Cost: Constant, Status: 200}
+		if err := Register(r, Route[struct{}, testResponse]{Metadata: m, Handler: handler}); err == nil {
+			t.Fatalf("%s was registered as %s without naming what is checked", path, access)
+		}
+	}
+	for path, access := range map[string]Access{"/v1/items/{itemId}/thing": ViewerItem, "/v1/libraries/{libraryId}/thing": ViewerLibrary} {
+		m := Metadata{ID: "ok_" + string(access), Method: "GET", Path: path, Summary: "Labelled", Access: access, Requires: ScopeRead, Lane: Default, Cost: Constant, Status: 200}
+		if err := Register(r, Route[struct{}, testResponse]{Metadata: m, Handler: handler}); err != nil {
+			t.Fatalf("%s as %s: %v", path, access, err)
+		}
 	}
 }

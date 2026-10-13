@@ -3,7 +3,6 @@ import {ApiError} from '../index.ts';
 import {guideReadCapacityExceeded} from '../server-messages.ts';
 
 /** Guide reads are scoped to the authenticated API object, never to a URL or viewer name. */
-export const GUIDE_REUSE_MS = 10_000;
 export const GUIDE_READ_LIMIT = 64;
 type Subscriber = {resolve: (value: unknown) => void; reject: (error: unknown) => void; removeAbort: () => void};
 type Read = {
@@ -33,17 +32,16 @@ export function forgetGuideReads() {
 /**
  * Concurrent callers share one transport. Each caller owns its subscription: leaving the last
  * subscription aborts server work, while leaving one of several does not interrupt the others.
- * Completed entries keep no subscribers/listeners; TTL and an LRU bound limit retained windows.
+ * Completed results are removed immediately: the next refresh reads the server revision.
  */
-export function dedupedGuideApi(api: ChannelApi, now: () => number = Date.now): ChannelApi {
+export function dedupedGuideApi(api: ChannelApi): ChannelApi {
   return {
     request<T>(path: string, method?: string, body?: unknown, signal?: AbortSignal): Promise<T> {
       if (signal?.aborted) return Promise.reject(reason(signal));
       if ((method ?? 'GET') !== 'GET' || body !== undefined || !path.startsWith('/v1/guide')) return api.request<T>(path, method, body, signal);
       let reads = guideReads.get(api);
       if (!reads) guideReads.set(api, (reads = new Map()));
-      const at = now();
-      for (const [key, read] of reads) if (read.settled && (at - read.at >= GUIDE_REUSE_MS || at < read.at)) reads.delete(key);
+
       let read = reads.get(path);
       if (read) { reads.delete(path); reads.set(path, read); }
       if (read?.settled) return Promise.resolve(read.value as T);
@@ -55,7 +53,7 @@ export function dedupedGuideApi(api: ChannelApi, now: () => number = Date.now): 
           if (reads.size >= GUIDE_READ_LIMIT) return Promise.reject(new ApiError(503, 'server_busy', guideReadCapacityExceeded, true, 1));
         }
         const map = reads;
-        read = {at, controller: new AbortController(), subscribers: new Set(), settled: false, invalidated: false,
+        read = {at:0, controller: new AbortController(), subscribers: new Set(), settled: false, invalidated: false,
           remove: () => { if (map.get(path) === read) map.delete(path); }};
         map.set(path, read);
         const flight = read;
@@ -66,7 +64,7 @@ export function dedupedGuideApi(api: ChannelApi, now: () => number = Date.now): 
           return api.request<unknown>(path, method, body, flight.controller.signal);
         }).then(value => {
           if (flight.invalidated) return;
-          flight.settled = true; flight.value = value; flight.at = now();
+          flight.settled = true; flight.remove();
           activeReads.delete(flight);
           for (const subscriber of flight.subscribers) { subscriber.removeAbort(); subscriber.resolve(value); }
           flight.subscribers.clear();

@@ -57,8 +57,10 @@ func auditAnchor(tx *sql.Tx) (AuditAnchor, error) {
 }
 
 type Store struct {
-	DB  *sql.DB
-	Now func() time.Time
+	// Set once at startup by the conversion consumer. Nil is a store without a running converter.
+	AppliedTemporaryDirectory *string
+	DB                        *sql.DB
+	Now                       func() time.Time
 }
 
 func New(db *sql.DB) *Store { return &Store{DB: db, Now: time.Now} }

@@ -7,55 +7,117 @@
   "response": {
     "revision": 1,
     "capabilities": {
-      "form": "browser",
-      "network": {
-        "class": "local"
+      "version": 2,
+      "client": {
+        "family": "web",
+        "form": "browser"
       },
-      "containers": [
-        {
-          "container": "mp4",
-          "direct": true
-        },
-        {
-          "container": "webm",
-          "direct": true
-        }
-      ],
-      "streaming": {
-        "hls": {
-          "fmp4": true,
-          "ts": true
-        },
-        "progressive": true
+      "engineSetting": "automatic",
+      "overrides": {
+        "forceStereo": false,
+        "disablePassthrough": false,
+        "disableHdr": false
       },
-      "video": [
-        {
-          "codec": "h264",
-          "maxBitDepth": 8,
-          "maxWidth": 3840,
-          "maxHeight": 2160,
-          "maxFps": 60
+      "display": {
+        "width": 0,
+        "height": 0,
+        "dynamicRanges": [
+          "sdr"
+        ],
+        "maxFrameRate": 0
+      },
+      "audioOutput": {
+        "route": "",
+        "maxChannels": 6,
+        "spatial": false
+      },
+      "maxBitrateBps": 0,
+      "engines": {
+        "native": {
+          "name": "hls.js",
+          "evidence": "declared",
+          "video": [
+            {
+              "codec": "h264",
+              "profiles": [],
+              "maxLevel": 0,
+              "bitDepths": [
+                8
+              ],
+              "maxWidth": 3840,
+              "maxHeight": 2160,
+              "maxFrameRate": 60,
+              "maxBitrateBps": 0,
+              "dynamicRanges": [
+                "sdr"
+              ],
+              "dolbyVisionProfiles": [],
+              "interlaced": false
+            }
+          ],
+          "audio": [
+            {
+              "codec": "aac",
+              "maxChannels": 6,
+              "maxSampleRate": 0,
+              "objectAudio": []
+            },
+            {
+              "codec": "mp3",
+              "maxChannels": 2,
+              "maxSampleRate": 0,
+              "objectAudio": []
+            }
+          ],
+          "audioPassthrough": [],
+          "transports": [
+            {
+              "transport": "direct",
+              "containers": [
+                "mp4",
+                "webm"
+              ],
+              "video": [
+                "h264"
+              ],
+              "audio": [
+                "aac",
+                "mp3"
+              ]
+            },
+            {
+              "transport": "hls_ts",
+              "containers": [
+                "mpegts"
+              ],
+              "video": [
+                "h264"
+              ],
+              "audio": [
+                "aac",
+                "mp3"
+              ]
+            },
+            {
+              "transport": "hls_fmp4",
+              "containers": [
+                "fmp4"
+              ],
+              "video": [
+                "h264"
+              ],
+              "audio": [
+                "aac",
+                "mp3"
+              ]
+            }
+          ],
+          "subtitleRendering": [
+            "text"
+          ],
+          "toneMapsHdr": false,
+          "embeddedAudioSwitching": true
         }
-      ],
-      "audio": [
-        {
-          "codec": "aac",
-          "maxChannels": 6
-        },
-        {
-          "codec": "mp3",
-          "maxChannels": 2
-        }
-      ],
-      "subtitles": [
-        {
-          "format": "webvtt",
-          "render": "native"
-        }
-      ],
-      "features": {
-        "chapters": true,
-        "embeddedAudioSwitching": true
       }
     }
   }

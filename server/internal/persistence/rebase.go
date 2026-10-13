@@ -33,7 +33,6 @@ var rebasedColumns = []rebasedColumn{
 	{"playback_artifacts", "directory"},
 	{"playback_preparation_selections", "root_path"},
 	{"playback_preparation_selections", "source_path"},
-	{"playback_subtitle_tracks", "playlist_file"},
 	{"subtitle_sidecars", "path"},
 	{"subtitle_inventory_entries", "directory"},
 	{"subtitle_inventory_entries", "path"},

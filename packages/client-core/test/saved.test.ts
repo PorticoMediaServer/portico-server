@@ -22,8 +22,46 @@ test('server occurrence order preserves duplicate media and opaque hidden rows',
  const s=setup(async p=>isContent(p)?projection('playlist',0,entries):resource(0,3));await s.select({view:'playlist',playlistId:'playlist'});
  assert.equal(s.getSnapshot().phase,'ready');assert.deepEqual(s.getSnapshot().projection!.sections[0].entries,entries);assert(Object.isFrozen(s.getSnapshot().projection!.sections[0].entries));
 });
-test('hidden metadata leakage and duplicate occurrence IDs are rejected',async()=>{
- for(const entries of [[{...occurrence(),hidden:true}],[{id:'e',kind:'playlist_entry',hidden:true,title:'Secret'}],[occurrence(),occurrence()]]){const s=setup(async p=>isContent(p)?projection('playlist',0,entries):resource());await s.select({view:'playlist',playlistId:'playlist'});assert.equal(s.getSnapshot().error!.code,'invalid_saved');}
+test('a hidden occurrence stays opaque whatever else its row carries, and a repeated occurrence ID keeps its first row',async()=>{
+ for(const entries of [[{...occurrence(),hidden:true}],[{id:'entry',kind:'playlist_entry',hidden:true,title:'Secret'}]]){const s=setup(async p=>isContent(p)?projection('playlist',0,entries):resource());await s.select({view:'playlist',playlistId:'playlist'});assert.equal(s.getSnapshot().phase,'ready');assert.deepEqual(s.getSnapshot().projection!.sections[0].entries,[{id:'entry',kind:'playlist_entry',hidden:true}]);}
+ const s=setup(async p=>isContent(p)?projection('playlist',0,[occurrence('one'),{...occurrence('one'),media:media('other')},occurrence('two')]):resource());await s.select({view:'playlist',playlistId:'playlist'});
+ assert.equal(s.getSnapshot().phase,'ready');assert.deepEqual(s.getSnapshot().projection!.sections[0].entries,[occurrence('one'),occurrence('two')]);
+});
+test('one entry this app cannot read is left out and the rest of the page is kept',async()=>{
+ const entries=[media('one'),{id:'pod',libraryId:'library',kind:'podcast',title:'Podcast'},{id:'bad',libraryId:'library',kind:'movie'},'nonsense',{...media('two'),futureField:{deep:[1,2,3]}}];
+ const s=setup(async()=>({...projection('watchlist',0,entries),futureField:true}));await s.select({view:'watchlist'});
+ assert.equal(s.getSnapshot().phase,'ready');assert.deepEqual(s.getSnapshot().projection!.sections[0].entries,[media('one'),media('two')]);
+ assert.equal(s.getSnapshot().projection!.sections[0].totalCount,5);
+});
+test('an unknown layout reads as a grid, an unreadable destination or play action is left off, and a short count is repaired',async()=>{
+ const page=projection('watchlist',0,[{...media('one'),navigation:{view:'hologram',entityId:'one'}},{...media('two'),playback:{startSeconds:-1}},media('three'),media('four')]);
+ page.sections[0]={...page.sections[0],type:'mosaic',totalCount:1};page.navigation[1]={id:'future',labelKey:'saved.future',view:'future'} as any;page.sorts=[{id:'title',labelKey:'sort.title',directions:['asc','sideways']},{id:'title',labelKey:'sort.again',directions:['desc']},{labelKey:'sort.none'}] as any;
+ const s=setup(async()=>page);await s.select({view:'watchlist'});
+ const read=s.getSnapshot().projection!;assert.equal(s.getSnapshot().phase,'ready');
+ assert.equal(read.sections[0].type,'grid');assert.equal(read.sections[0].totalCount,4);
+ const {playback:_,...plain}=media('two');assert.deepEqual(read.sections[0].entries,[media('one'),plain,media('three'),media('four')]);
+ assert.deepEqual(read.navigation.map(n=>n.id),['watchlist','playlists']);assert.deepEqual(read.sorts,[{id:'title',labelKey:'sort.title',directions:['asc']}]);
+});
+test('filters published for a view that has none here are not read, and the page is kept',async()=>{
+ const s=setup(async p=>isContent(p)?{...projection(),filters:savedFilters()}:resource());await s.select({view:'playlist',playlistId:'playlist'});
+ assert.equal(s.getSnapshot().phase,'ready');assert.deepEqual(s.getSnapshot().projection!.filters,[]);
+ const tooMany=setup(async p=>isContent(p)?{...projection(),filters:new Array(5).fill(savedFilters()[0])}:resource());await tooMany.select({view:'playlist',playlistId:'playlist'});assert.equal(tooMany.getSnapshot().error?.code,'invalid_saved');
+});
+test('sizes, cursors, scope and revisions still refuse the whole page',async()=>{
+ const tooMany=projection('watchlist',0,Array.from({length:101},(_,i)=>media('m'+i)));
+ const tooManySections=projection('watchlist');tooManySections.sections=Array.from({length:5},(_,i)=>({...tooManySections.sections[0],id:'s'+i}));
+ const badCursor=projection('watchlist');badCursor.sections[0]={...badCursor.sections[0],nextCursor:7 as any};
+ const otherServer=projection('watchlist');otherServer.scope={...otherServer.scope,serverId:'other'};
+ const noFence=projection('watchlist');noFence.scope={...noFence.scope,viewerFence:''};
+ const badRevision=projection('watchlist');badRevision.revision={catalog:-1,viewer:0};
+ const notAList={...projection('watchlist'),sections:{}};
+ for(const page of [tooMany,tooManySections,badCursor,otherServer,noFence,badRevision,notAList]){const s=setup(async()=>page);await s.select({view:'watchlist'});assert.equal(s.getSnapshot().error?.code,'invalid_saved');assert.equal(s.getSnapshot().projection,null);}
+});
+test('a playlist drops an action it cannot read, lists a share of an unknown role as a viewer, and never guesses its own role or a limit',async()=>{
+ const share={authority:'local',accountId:'account2',profileId:'profile2',role:'viewer',displayName:'Second'};
+ const s=setup(async p=>isContent(p)?projection():{...resource(),actions:[...resource().actions,'teleport'],shares:[share,{...share,profileId:'profile3',role:'curator'},share],futureField:1});await s.select({view:'playlist',playlistId:'playlist'});
+ assert.equal(s.getSnapshot().phase,'ready');assert.deepEqual(s.getSnapshot().playlist!.actions,resource().actions);assert.deepEqual(s.getSnapshot().playlist!.shares,[share,{...share,profileId:'profile3',role:'viewer'}],'someone the playlist is shared with is never hidden');
+ for(const patch of [{role:'curator'},{role:'viewer',shares:undefined},{limits:{maxShares:100}},{limits:{maxShares:101,maxReorderEntries:200}},{revision:'1'},{viewerFence:''},{actions:new Array(17).fill('add')}]){const denied=setup(async p=>isContent(p)?projection():{...resource(),...patch});await denied.select({view:'playlist',playlistId:'playlist'});assert.equal(denied.getSnapshot().error?.code,'invalid_saved',JSON.stringify(patch));assert.equal(denied.getSnapshot().playlist,null);}
 });
 test('global requests consume server order and declared query without local ranking',async()=>{
  let path='';const s=setup(async p=>{path=p;const d=projection('favorites',0,[media('z'),media('a')]);d.query.sort='added';d.query.direction='desc';return d;});await s.select({view:'favorites',sort:'added',direction:'desc'});
@@ -55,6 +93,12 @@ test('editor cannot rename/share/delete and partial-page reorder is rejected bef
 });
 test('deletion clears pending actions and cannot resurrect detail on late read',async()=>{
  let deleted=false;const s=setup(async(p,m,b)=>{if(m==='GET')return isContent(p)?projection():resource();deleted=true;return {...receipt(b),deleted:true};});await s.select({view:'playlist',playlistId:'playlist'});await s.mutate({action:'delete'});await tick();assert(deleted);assert.equal(s.getSnapshot().playlist,null);assert.equal(s.getSnapshot().projection,null);assert(s.getSnapshot().lastReceipt!.deleted);
+});
+test('a share candidate this app cannot read is left out; scope, revision and size still refuse the page',async()=>{
+ const candidate={id:'candidate',authority:'local',accountId:'account2',profileId:'profile2',displayName:'Second'};
+ const page=(patch:any={})=>({serverId:'server',viewerFence:'fence',playlistId:'playlist',revision:0,candidates:[candidate,{...candidate,id:'robot',authority:'galactic'},{...candidate,displayName:'Again'},{id:'nameless'}],nextCursor:'',futureField:1,...patch});
+ const s=setup(async p=>p.includes('share-candidates')?page():isContent(p)?projection():resource());await s.select({view:'playlist',playlistId:'playlist'});await s.loadCandidates();assert.deepEqual(s.getSnapshot().candidates!.candidates,[candidate]);
+ for(const patch of [{serverId:'other'},{viewerFence:'other'},{revision:'0'},{nextCursor:7},{candidates:new Array(41).fill(candidate)},{candidates:{}}]){const denied=setup(async p=>p.includes('share-candidates')?page(patch):isContent(p)?projection():resource());await denied.select({view:'playlist',playlistId:'playlist'});await denied.loadCandidates();assert.equal(denied.getSnapshot().candidates,null);assert(denied.getSnapshot().candidatesError,JSON.stringify(patch));}
 });
 test('candidate page has exact scope, owner rights and bounded entries',async()=>{
  const candidate={id:'candidate',authority:'local',accountId:'account2',profileId:'profile2',displayName:'Profile …profile2'};const s=setup(async p=>p.includes('share-candidates')?{serverId:'server',viewerFence:'fence',playlistId:'playlist',revision:0,candidates:[candidate],nextCursor:''}:isContent(p)?projection():resource());await s.select({view:'playlist',playlistId:'playlist'});await s.loadCandidates();assert.deepEqual(s.getSnapshot().candidates!.candidates,[candidate]);assert.throws(()=>s.mutate({action:'reorder',entryIds:['x','x']}));
@@ -91,9 +135,13 @@ test('order windows page and append; a revision move restarts from the first pag
  await s.loadMoreOrder();assert.equal(s.getSnapshot().order!.entryIds.length,102);
  revision=1;await s.loadOrder();assert.equal(s.getSnapshot().order,null);assert(s.getSnapshot().orderError);
 });
-test('order rejects torn revision, wrong fence, over-page windows, duplicate IDs and media payload',async()=>{
+test('order rejects torn revision, wrong fence, over-page windows and unreadable occurrence IDs',async()=>{
  const full=new Array(101).fill('entry');
- for(const patch of [{revision:1},{viewerFence:'other'},{entryIds:full},{entryIds:['entry','entry']},{media:{title:'Private'}}]){const s=setup(async p=>p.includes('/order')?{serverId:'server',viewerFence:'fence',playlistId:'playlist',revision:0,entryIds:['entry'],nextCursor:'',...patch}:isContent(p)?projection():resource());await s.select({view:'playlist',playlistId:'playlist'});await s.loadOrder();assert.equal(s.getSnapshot().order,null);assert(s.getSnapshot().orderError);assert.equal(s.getSnapshot().orderLoading,false);}
+ for(const patch of [{revision:1},{viewerFence:'other'},{entryIds:full},{entryIds:['entry','']},{entryIds:['entry',7]},{nextCursor:7}]){const s=setup(async p=>p.includes('/order')?{serverId:'server',viewerFence:'fence',playlistId:'playlist',revision:0,entryIds:['entry'],nextCursor:'',...patch}:isContent(p)?projection():resource());await s.select({view:'playlist',playlistId:'playlist'});await s.loadOrder();assert.equal(s.getSnapshot().order,null);assert(s.getSnapshot().orderError);assert.equal(s.getSnapshot().orderLoading,false);}
+});
+test('an order window ignores a field it does not know and keeps the first of a repeated occurrence ID',async()=>{
+ const s=setup(async p=>p.includes('/order')?{serverId:'server',viewerFence:'fence',playlistId:'playlist',revision:0,entryIds:['entry','other','entry'],nextCursor:'',media:{title:'Private'}}:isContent(p)?projection():resource());await s.select({view:'playlist',playlistId:'playlist'});await s.loadOrder();
+ assert.equal(s.getSnapshot().orderError,null);assert.deepEqual(s.getSnapshot().order,{serverId:'server',viewerFence:'fence',playlistId:'playlist',revision:0,entryIds:['entry','other'],nextCursor:''});
 });
 test('late order-window response is fenced after scope change and cancellation',async()=>{
  for(const transition of ['scope','cancel']){const pending=deferred();const s=setup(async p=>p.includes('/order')?pending.promise:isContent(p)?projection():resource());await s.select({view:'playlist',playlistId:'playlist'});const read=s.loadOrder();if(transition==='scope')s.setScope({...scope,viewerId:'other'},{request:async<T>()=>projection('watchlist',0,[]) as T});else s.cancel();await read;pending.resolve({serverId:'server',viewerFence:'fence',playlistId:'playlist',revision:0,entryIds:['entry'],nextCursor:''});await tick();assert.equal(s.getSnapshot().order,null);assert.equal(s.getSnapshot().orderLoading,false);}
@@ -241,11 +289,12 @@ test('CD-23: watchlist/history entries accept extra, author, book_series and dis
   assert.equal((s.getSnapshot().projection!.sections[0].entries[0] as any).kind,kind);
   s.dispose();
  }
- // Unknown kinds still fail closed.
+ // An entry of a kind this app does not know is left out; it is never shown as something else.
  {
   const s=setup(async()=>projection('watchlist',0,[{id:'x',libraryId:'library',kind:'podcast',title:'X'}],'' ,'all'));
   await s.select({view:'watchlist'});
-  assert.equal(s.getSnapshot().phase,'error');
+  assert.equal(s.getSnapshot().phase,'ready');
+  assert.deepEqual(s.getSnapshot().projection!.sections[0].entries,[]);
   s.dispose();
  }
 });

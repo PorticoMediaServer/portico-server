@@ -416,6 +416,13 @@ func (c *ChannelSessions) ReadTx(ctx context.Context, tx *sql.Tx, p identity.Pri
 		out.Programme = &LinearProgramme{ID: selected.EntryID, ItemID: selected.ItemID, Title: selected.Title, StartMS: selected.EntryStartMS, EndMS: selected.EntryEndMS}
 	}
 	out.Media = c.delivery.Snapshot(id)
+	var deadline int64
+	if err = tx.QueryRowContext(ctx, `SELECT COALESCE(min(NULLIF(preempt_at_ms,0)),0) FROM live_allocations WHERE resource_id=? AND kind='live' AND state='active'`, id).Scan(&deadline); err != nil {
+		return out, err
+	}
+	if deadline > 0 {
+		out.Media.ReservationRequiredAtMS = &deadline
+	}
 	if out.ErrorCode != "" {
 		out.Media.ErrorCode, out.Media.State = out.ErrorCode, "recoverable"
 	}

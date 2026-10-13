@@ -188,7 +188,7 @@ func (d Dependencies) inventoryRoutes(mux *http.ServeMux) {
 			failure(w, e)
 			return
 		}
-		if e = d.Catalog.RemoveSource(r.Context(), r.PathValue("id"), r.PathValue("source"), body.ExpectedRevision, func(tx *sql.Tx) error { return d.resourceAuthorize(tx, p, "") }); e != nil {
+		if e = d.Catalog.RemoveSource(r.Context(), r.PathValue("id"), r.PathValue("source"), body.ExpectedRevision, func(tx *sql.Tx) error { return d.resourceAuthorize(tx, p, "") }, d.removalEnqueue(p)); e != nil {
 			failure(w, e)
 			return
 		}
@@ -276,10 +276,19 @@ func (d Dependencies) inventoryRoutes(mux *http.ServeMux) {
 			return
 		}
 		authorize := func(tx *sql.Tx) error { return d.resourceAuthorize(tx, p, "") }
-		if r.PathValue("action") == "associate" {
+		// associate: this file is another version of that title.
+		// separate:  this file is not a version of the title it was grouped with.
+		switch r.PathValue("action") {
+		case "associate":
 			e = d.Catalog.AssociateInventoryVersion(r.Context(), r.PathValue("id"), r.PathValue("object"), body.Revision, body.ItemID, authorize)
-		} else {
-			e = d.Catalog.TrashInventory(r.Context(), r.PathValue("id"), r.PathValue("object"), body.Revision, r.PathValue("action"), authorize)
+		case "separate":
+			var item string
+			if item, e = d.Catalog.SeparateInventoryVersion(r.Context(), r.PathValue("id"), r.PathValue("object"), body.Revision, authorize); e == nil {
+				write(w, 200, map[string]any{"itemId": item})
+				return
+			}
+		default:
+			e = catalog.ErrAdminQuery
 		}
 		if e != nil {
 			failure(w, e)

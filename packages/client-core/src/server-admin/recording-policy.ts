@@ -1,4 +1,5 @@
 import type {ChannelGuide} from '../channel-guide.ts';
+import {keepReadable} from '../tolerant.ts';
 
 export type RecordingOwner = {authority: 'local' | 'hosted'; accountId: string; profileId: string};
 export type RecordingOwnerChoice = {owner: RecordingOwner; accountName: string; profileName: string};
@@ -25,10 +26,9 @@ function owner(v: unknown): RecordingOwner {
 }
 export function parseRecordingOwners(raw: unknown): {items: RecordingOwnerChoice[]; nextCursor: string} {
   if (!object(raw) || !Array.isArray(raw.items) || raw.nextCursor !== undefined && typeof raw.nextCursor !== 'string') throw new Error('Recording profiles could not be read. Refresh and try again.');
-  return {items: raw.items.map(v => {
-    if (!object(v) || typeof v.accountName !== 'string' || typeof v.profileName !== 'string') throw new Error('Recording profiles could not be read. Refresh and try again.');
-    return {owner: owner(v.owner), accountName: v.accountName, profileName: v.profileName};
-  }), nextCursor: String(raw.nextCursor ?? '')};
+  // A profile whose names cannot be read is left out alone; one whose identity cannot be read still refuses the list.
+  const rows = keepReadable('recording-policy', 'owners', raw.items, v => (object(v) && typeof v.accountName === 'string' && typeof v.profileName === 'string' ? v : undefined));
+  return {items: rows.map(v => ({owner: owner(v.owner), accountName: v.accountName as string, profileName: v.profileName as string})), nextCursor: String(raw.nextCursor ?? '')};
 }
 export function parseRecordingGrants(raw: unknown): RecordingGrant[] {
   if (!Array.isArray(raw)) throw new Error('Recording permissions could not be read. Refresh and try again.');

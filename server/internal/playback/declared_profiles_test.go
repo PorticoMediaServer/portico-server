@@ -11,6 +11,70 @@ import (
 	"testing"
 )
 
+// matrixDocuments reads the declared documents that carry an mpv engine.
+func matrixDocuments(t *testing.T) map[string]CapabilityDocument {
+	t.Helper()
+	raw, e := os.ReadFile("testdata/client-profiles.json")
+	if e != nil {
+		t.Fatal(e)
+	}
+	var documents map[string]json.RawMessage
+	if e = json.Unmarshal(raw, &documents); e != nil {
+		t.Fatal(e)
+	}
+	out := map[string]CapabilityDocument{}
+	for name, raw := range documents {
+		d, e := ParseCapabilityDocument(raw)
+		if e != nil {
+			t.Fatalf("%s: %v", name, e)
+		}
+		if d.HasEngine(EngineMPV) {
+			out[name] = d
+		}
+	}
+	return out
+}
+
+// The client's own mpv engine table, beside a real native table, takes exactly
+// the titles the native player would have needed converted.
+func TestDeclaredMpvEnginesTakeWhatTheNativePlayerCannot(t *testing.T) {
+	documents := matrixDocuments(t)
+	if len(documents) < 2 {
+		t.Fatal("the declared tables carry no two-engine document")
+	}
+	vp9 := avcDetail
+	vp9.Profile = "Profile 0"
+	for name, doc := range documents {
+		t.Run(name, func(t *testing.T) {
+			plan := func(source *DeliverySource, mutate func(*DeliveryInput)) DeliveryPlan {
+				policy := openPolicy()
+				in := DeliveryInput{Source: source, Device: &doc, Policy: policy, Target: autoTarget(policy, source.Video.Height), Config: DefaultDeliveryConfiguration(), TranscodingEnabled: true, FMP4Output: true}
+				if mutate != nil {
+					mutate(&in)
+				}
+				p, err := planDelivery(in)
+				if err != nil {
+					t.Fatal(err)
+				}
+				return p
+			}
+			aac := SourceAudio{Codec: "aac", Channels: 2}
+			if p := plan(videoSource("mp4", "h264", avcDetail, aac), nil); p.Engine != EngineNative || p.Strategy != DeliveryOriginal {
+				t.Fatal("an ordinary file left the native player", p.Engine, p.Strategy)
+			}
+			if p := plan(videoSource("mkv", "h264", avcDetail, SourceAudio{Codec: "dts", Channels: 6}), nil); p.Engine != EngineMPV || p.Strategy != DeliveryOriginal {
+				t.Fatal("DTS in Matroska", p.Engine, p.Strategy, p.Trace.Routes)
+			}
+			if p := plan(videoSource("mkv", "mpeg2video", avcDetail, aac), nil); p.Engine != EngineMPV || p.Strategy != DeliveryOriginal {
+				t.Fatal("MPEG-2", p.Engine, p.Strategy, p.Trace.Routes)
+			}
+			if p := plan(videoSource("mp4", "h264", avcDetail, aac), func(in *DeliveryInput) { in.SubtitleKind = SubtitleASS }); p.Engine != EngineMPV || p.Strategy != DeliveryOriginal {
+				t.Fatal("styled subtitles", p.Engine, p.Strategy)
+			}
+		})
+	}
+}
+
 func matrixProfiles(t *testing.T) map[string]ClientProfile {
 	t.Helper()
 	raw, e := os.ReadFile("testdata/client-profiles.json")
@@ -23,11 +87,16 @@ func matrixProfiles(t *testing.T) map[string]ClientProfile {
 	}
 	out := map[string]ClientProfile{"baseline": BaselineClientProfile()}
 	for name, raw := range documents {
-		c, e := ParseClientProfile(raw)
+		d, e := ParseCapabilityDocument(raw)
 		if e != nil {
 			t.Fatalf("%s: %v", name, e)
 		}
-		out[name] = c
+		if d.HasEngine(EngineMPV) {
+			// Two-engine documents are covered by matrixDocuments: the matrix
+			// below is one engine's routes.
+			continue
+		}
+		out[name] = d.Profile(EngineNative)
 	}
 	return out
 }
@@ -119,17 +188,18 @@ func matrixRows() []matrixRow {
 		{source: "01_mp4_h264_aac", build: build("mp4", "h264", avc, aac), want: routes(O), wantAudio: audioCodecs("aac")},
 		{source: "02_mkv_h264_aac", build: build("mkv", "h264", avc, aac), want: routes(R, "original:android androidtv firetv webos tizen shield_avr"), wantAudio: audioCodecs("aac")},
 		// Apple decodes AC3/EAC3 locally even with a stereo sink; passthrough-only
-		// clients require an active multichannel route.
+		// clients require an active multichannel route. Losslessly coded surround
+		// goes to Dolby Digital Plus where the device decodes it to a surround output.
 		{source: "03_mkv_h264_ac3", build: build("mkv", "h264", avc, SourceAudio{Codec: "ac3", Channels: 6}), want: routes(A, "copy_remux:ios tvos safari_hdr appletv_dv", "original:shield_avr"), wantAudio: audioCodecs("aac", "ac3:ios tvos safari_hdr appletv_dv shield_avr")},
-		{source: "04_mkv_h264_dtshd", build: build("mkv", "h264", avc, SourceAudio{Codec: "dts", Channels: 8, StreamDetail: assets.StreamDetail{Profile: "DTS-HD MA"}}), want: routes(A, "original:shield_avr"), wantAudio: audioCodecs("aac", "dts:shield_avr")},
-		{source: "05_mkv_h264_truehd_atmos", build: build("mkv", "h264", avc, surround("truehd")), want: routes(A, "original:shield_avr"), wantAudio: audioCodecs("aac", "truehd:shield_avr")},
+		{source: "04_mkv_h264_dtshd", build: build("mkv", "h264", avc, SourceAudio{Codec: "dts", Channels: 8, StreamDetail: assets.StreamDetail{Profile: "DTS-HD MA"}}), want: routes(A, "original:shield_avr"), wantAudio: audioCodecs("aac", "dts:shield_avr", "eac3:safari_hdr appletv_dv")},
+		{source: "05_mkv_h264_truehd_atmos", build: build("mkv", "h264", avc, surround("truehd")), want: routes(A, "original:shield_avr"), wantAudio: audioCodecs("aac", "truehd:shield_avr", "eac3:safari_hdr appletv_dv")},
 		// Cast declares no EAC3 decoder. HDR-capable video alone cannot make this O/R.
 		{source: "06_mp4_hdr10_eac3", build: build("mp4", "hevc", hdr10Detail, SourceAudio{Codec: "eac3", Channels: 6}), want: routes(V, "original:safari_hdr appletv_dv shield_avr", "audio_conversion:ultra google_tv"), wantAudio: audioCodecs("aac", "eac3:ios tvos safari_hdr appletv_dv shield_avr")},
 		{source: "07_mkv_hdr10_eac3", build: build("mkv", "hevc", hdr10Detail, SourceAudio{Codec: "eac3", Channels: 6}), want: routes(V, "copy_remux:safari_hdr appletv_dv", "original:shield_avr", "audio_conversion:ultra google_tv"), wantAudio: audioCodecs("aac", "eac3:ios tvos safari_hdr appletv_dv shield_avr")},
 		{source: "08_dv_p5_dvh1", build: build("mp4", "hevc", dv(5, 0, "dvh1"), aac), want: routes(V, "original:appletv_dv shield_avr google_tv"), wantAudio: audioCodecs("aac")},
 		{source: "09_dv_p81_hvc1", build: build("mp4", "hevc", dv(8, 1, "hvc1"), aac), want: routes(V, "original:safari_hdr appletv_dv shield_avr ultra google_tv"), wantAudio: audioCodecs("aac")},
 		{source: "10_dv_p81_dvh1_hdr_only", build: build("mp4", "hevc", dv(8, 1, "dvh1"), aac), want: routes(V, "original:appletv_dv shield_avr google_tv", "copy_remux:safari_hdr ultra"), wantAudio: audioCodecs("aac")},
-		{source: "11_mkv_dv_p7_truehd", build: build("mkv", "hevc", dv(7, 1, ""), surround("truehd")), want: routes(V, "audio_conversion:safari_hdr appletv_dv ultra google_tv", "original:shield_avr"), wantAudio: audioCodecs("aac", "truehd:shield_avr")},
+		{source: "11_mkv_dv_p7_truehd", build: build("mkv", "hevc", dv(7, 1, ""), surround("truehd")), want: routes(V, "audio_conversion:safari_hdr appletv_dv ultra google_tv", "original:shield_avr"), wantAudio: audioCodecs("aac", "truehd:shield_avr", "eac3:safari_hdr appletv_dv")},
 		// Google TV advertises AV1 decode but not AV1-in-HLS. Shield here has no AV1 probe.
 		{source: "12_mkv_av1_10_opus", build: build("mkv", "av1", av1, SourceAudio{Codec: "opus", Channels: 2}), want: routes(V, "copy_remux:chromium"), wantAudio: audioCodecs("aac", "opus:chromium")},
 		// Chromecast gen 3 has no VP9 claim; 'Chromecast' is not a shared codec profile.
@@ -266,7 +336,7 @@ func TestClientDeclaredTablesDriveDeliveryMatrix(t *testing.T) {
 func TestDeclaredProfilesNeverPassTrueHDOverBluetooth(t *testing.T) {
 	for name, client := range matrixProfiles(t) {
 		t.Run(name, func(t *testing.T) {
-			client.Audio = append(client.Audio, ClientAudioCodec{Codec: "truehd", MaxChannels: 8, Passthrough: true})
+			client.AudioPassthrough = append(client.AudioPassthrough, ClientAudioPassthrough{Codec: "truehd", MaxChannels: 8})
 			for i := range client.Transports {
 				client.Transports[i].Audio = append(client.Transports[i].Audio, "truehd")
 			}
@@ -322,6 +392,8 @@ func TestChromecastFalseHEVCClaimChangesExactlyAffectedRows(t *testing.T) {
 	ultra := profiles["ultra"]
 	hevc := *ultra.videoCodec("hevc")
 	changed.Video = append(changed.Video, hevc)
+	// A decoder is not enough: the picture also has to be shown.
+	changed.Display = ultra.Display
 	for i := range changed.Transports {
 		if changed.Transports[i].Transport == TransportHLSFMP4 || (changed.Transports[i].Transport == TransportDirect && containsString(changed.Transports[i].Containers, "mp4")) {
 			changed.Transports[i].Video = append(changed.Transports[i].Video, "hevc")

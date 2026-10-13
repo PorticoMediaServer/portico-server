@@ -57,10 +57,19 @@ func (s *Service) ReadSidecars(ctx context.Context, library, kind, root, path st
 	}
 	switch kind {
 	case "movie":
+		stem := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
+		if key := first(dirs, stem+"-fanart.jpg", stem+"-fanart.png", "fanart.jpg", "fanart.png", "backdrop.jpg", "backdrop.png"); key != "" {
+			out["item/backdrop"] = key
+		}
 		if key := first(dirs, "logo.png"); key != "" {
 			out["item/logo"] = key
 		}
 	case "tv", "anime":
+		stem := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
+		if key := first(dirs[:1], stem+"-thumb.jpg", stem+"-thumb.png"); key != "" {
+			out["item/still"] = key
+		}
+
 		// A season folder's own images are that season's, as Kodi and Jellyfin
 		// lay them out; the show's are in the folder above it.
 		show, inSeason := dirs, seasonFolderName.MatchString(filepath.Base(dir))
@@ -151,6 +160,12 @@ func unlisted(ctx context.Context, path string) bool {
 // sidecarKey reads one sidecar file into the local artwork cache, returning
 // its key. Positive hits are cached by path within a bounded map.
 func (s *Service) sidecarKey(ctx context.Context, library, full string) (string, bool) {
+	if unlisted(ctx, full) {
+		s.mu.Lock()
+		delete(s.sidecars, full)
+		s.mu.Unlock()
+		return "", false
+	}
 	s.mu.Lock()
 	if key, ok := s.sidecars[full]; ok {
 		s.mu.Unlock()

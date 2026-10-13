@@ -129,6 +129,15 @@ export class EventsClient {
     return Math.round(base * (0.75 + random * 0.5));
   }
 
+  /**
+   * A wait the server asked for is a floor, and every client was told the same one: each waits
+   * up to a quarter longer, at random, so they do not all reconnect in the same instant.
+   */
+  private spread(floorMs: number): number {
+    const random = Math.max(0, Math.min(1, (this.o.random ?? Math.random)()));
+    return Math.round(floorMs * (1 + random * 0.25));
+  }
+
   private async loop(signal: AbortSignal): Promise<void> {
     let failures = 0;
     const pollOnly = () => !this.o.openStream || this.streamFailures >= (this.o.streamFailuresBeforePoll ?? 3);
@@ -140,7 +149,7 @@ export class EventsClient {
         if (signal.aborted) break;
         failures = 0;
         this.setStatus({failures: 0});
-        if (reconnectAfter) await this.sleep(reconnectAfter, signal);
+        if (reconnectAfter) await this.sleep(this.spread(reconnectAfter), signal);
       } catch (e) {
         if (signal.aborted) break;
         const status = (e as {status?: unknown} | null)?.status;
@@ -150,7 +159,7 @@ export class EventsClient {
         const directed = (e as {retryAfterMs?: unknown} | null)?.retryAfterMs;
         const minimum = typeof directed === 'number' && Number.isFinite(directed) && directed > 0 ? directed : 0;
         if (streaming && pollOnly() && !minimum) continue; // unsupported streams can fall back immediately
-        await this.sleep(Math.max(this.backoff(failures), minimum), signal);
+        await this.sleep(Math.max(this.backoff(failures), minimum ? this.spread(minimum) : 0), signal);
       }
     }
   }
@@ -193,7 +202,7 @@ export class EventsClient {
 
   /** One long-poll round. */
   private async pollOnce(signal: AbortSignal): Promise<number> {
-    const wait = Math.max(1, Math.min(this.o.waitSeconds ?? 25, 55));
+    const wait = Math.max(1, Math.min(this.o.waitSeconds ?? 25, 25));
     const cursor = this.status.cursor;
     const r = await call(this.o.http, {method: 'GET', path: `/v1/events?waitSeconds=${wait}${cursor ? `&after=${encodeURIComponent(cursor)}` : ''}`, signal});
     if (signal.aborted) return 0;

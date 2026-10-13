@@ -231,6 +231,17 @@ func settleEmptied(ctx context.Context, tx *sql.Tx, id int64, checks []string) e
 	return compactcatalog.DeleteEntityTx(ctx, tx, id)
 }
 
+// audioTagKey is a track's identity from its own tags, or "" when the tags
+// were not read or do not say which track of which release this is.
+func audioTagKey(f assets.Facts, disc, track any) string {
+	if f.InventoryOnly || firstTag(f.Tags, "title") == "" || firstTag(f.Tags, "album") == "" {
+		return ""
+	}
+	d, _ := disc.(int)
+	t, _ := track.(int)
+	return compactcatalog.TrackKey(firstTag(f.Tags, "album_artist", "albumartist", "artist", "author"), firstTag(f.Tags, "album"), d, t, firstTag(f.Tags, "title"))
+}
+
 // artist finds or creates a library's artist by name.
 func (s *Service) artist(ctx context.Context, tx *sql.Tx, library int64, name string) (int64, error) {
 	key := localKey(name)
@@ -305,18 +316,17 @@ func (s *Service) commitAudio(ctx context.Context, tx *sql.Tx, library, kind, ro
 	}
 	var item int64
 	err = tx.QueryRow(`SELECT l.entity_id FROM catalog_asset_links l INDEXED BY catalog_asset_links_asset JOIN catalog_entities i ON i.id=l.entity_id WHERE l.asset_id=? AND i.library_id=? AND i.kind=? LIMIT 1`, assetID, handle, itemKind).Scan(&item)
+	// The attach point (attach.go). Before tags are read the file is known by
+	// its place; once they are, by what it is, so a second file with the same
+	// tags is another version of the same track rather than a second track.
+	tagKey := audioTagKey(f, disc, track)
 	if errors.Is(err, sql.ErrNoRows) {
-		identityRoot, err := compactcatalog.LibraryRootTx(ctx, tx, handle)
-		if err != nil {
-			return err
-		}
-		if item, _, err = compactcatalog.EnsureEntityTx(ctx, tx, compactcatalog.Entity{Library: handle, Kind: itemKind, Key: compactcatalog.ItemKey(identityRoot, path, 0), Title: title, Added: catalogedNow()}); err != nil {
-			return err
-		}
-		if err = compactcatalog.LinkAssetTx(ctx, tx, item, assetID, compactcatalog.Link{}); err != nil {
+		if item, err = AttachTrackTx(ctx, tx, TrackFile{Library: handle, Kind: itemKind, Asset: assetID, Path: path, Title: title, TagKey: tagKey}); err != nil {
 			return err
 		}
 	} else if err != nil {
+		return err
+	} else if item, err = IdentifyTrackTx(ctx, tx, item, tagKey); err != nil {
 		return err
 	}
 	// An observed physical asset keeps its existing logical parent when local

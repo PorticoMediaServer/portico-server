@@ -4,7 +4,7 @@ export type ChannelReference = Readonly<{kind:'live-source'|'library-channel'; s
 export type ChannelSeek = Readonly<{seekCommandId:string; bufferGeneration:string; kind:'position'|'live'; positionUs:string|null}>;
 export type ChannelDesired = Readonly<{state:'playing'|'paused'; seek:ChannelSeek|null; retryRequestId:string|null}>;
 export type ChannelProgramme = Readonly<{id:string;itemId:string;title:string;startMs:number;endMs:number}>;
-export type ChannelMedia = Readonly<{streamUrl:string;bufferGeneration:string;presentationGeneration:string;originMs:number;windowRevision:string;windowStartUs:string;windowEndUs:string;liveEdgeUs:string;gaps:readonly {startUs:string;endUs:string}[];state:string;errorCode:string;logoUrl:string}>;
+export type ChannelMedia = Readonly<{reservationRequiredAtMs?:number;streamUrl:string;bufferGeneration:string;presentationGeneration:string;originMs:number;windowRevision:string;windowStartUs:string;windowEndUs:string;liveEdgeUs:string;gaps:readonly {startUs:string;endUs:string}[];state:string;errorCode:string;logoUrl:string}>;
 export type ChannelProjection = Readonly<{channel:ChannelReference;name:string;programme:ChannelProgramme|null;next:ChannelProgramme|null;desired:ChannelDesired;media:ChannelMedia;overlay:{enabled:boolean;corner:string;sizePercent:number;insetPercent:number;treatment:string};confirmedPositionUs:string|null;acknowledgedSeekCommandId:string|null;seekError:string}>;
 export const controlID=(v:unknown):v is string=>typeof v==='string'&&/^[A-Za-z0-9_-]{1,128}$/.test(v);
 export const channelSeconds=(v:string):number=>{if(!/^(?:0|-?[1-9][0-9]{0,18})$/.test(v)||!Number.isSafeInteger(Number(v)))throw new Error('Invalid channel clock.');return Number(v)/1e6;};

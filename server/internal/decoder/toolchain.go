@@ -16,16 +16,17 @@ import (
 )
 
 type ToolchainFacts struct {
-	VulkanAvailable bool            `json:"vulkanAvailable"`
-	OpenCLAvailable bool            `json:"openclAvailable"`
-	Version         string          `json:"version"`
-	Configuration   string          `json:"configuration"`
-	Encoders        map[string]bool `json:"encoders"`
-	Decoders        map[string]bool `json:"decoders"`
-	Filters         map[string]bool `json:"filters"`
-	Muxers          map[string]bool `json:"muxers"`
-	HWAccels        map[string]bool `json:"hwaccels"`
-	Identity        string          `json:"identity"`
+	BitstreamFilters map[string]bool `json:"bitstreamFilters"`
+	VulkanAvailable  bool            `json:"vulkanAvailable"`
+	OpenCLAvailable  bool            `json:"openclAvailable"`
+	Version          string          `json:"version"`
+	Configuration    string          `json:"configuration"`
+	Encoders         map[string]bool `json:"encoders"`
+	Decoders         map[string]bool `json:"decoders"`
+	Filters          map[string]bool `json:"filters"`
+	Muxers           map[string]bool `json:"muxers"`
+	HWAccels         map[string]bool `json:"hwaccels"`
+	Identity         string          `json:"identity"`
 }
 
 var installedToolchain atomic.Pointer[ToolchainFacts]
@@ -37,11 +38,11 @@ func ConfigureToolchain(f ToolchainFacts) {
 	installedToolchain.Store(&f)
 	switch {
 	case f.Filters["libplacebo"] && f.VulkanAvailable:
-		capabilityreport.Report(capabilityreport.DolbyVision, true, "", errors.New("Dolby Vision Profile 5 files are converted with their own color reshaping (libplacebo on Vulkan) for screens without Dolby Vision, unless a hardware tone mapper is in use."))
+		capabilityreport.Report(capabilityreport.DolbyVision, true, "", errors.New("Dolby Vision files without a compatible base layer are converted only with a qualified color reshaping filter."))
 	case !f.Filters["libplacebo"]:
-		capabilityreport.Report(capabilityreport.DolbyVision, false, "dolby_vision_approximate", errors.New("Dolby Vision Profile 5 files are converted for screens without Dolby Vision with approximate colors (a purple or green cast is possible): this FFmpeg has no libplacebo filter. Viewers are warned before such a file plays."))
+		capabilityreport.Report(capabilityreport.DolbyVision, false, "dolby_vision_reshaping_unavailable", errors.New("Dolby Vision files without a compatible base layer need the libplacebo filter for conversion. Use compatible direct playback or another FFmpeg build."))
 	default:
-		capabilityreport.Report(capabilityreport.DolbyVision, false, "dolby_vision_approximate", errors.New("Dolby Vision Profile 5 files are converted for screens without Dolby Vision with approximate colors (a purple or green cast is possible): libplacebo needs a working Vulkan device (a GPU driver with Vulkan, or Mesa's lavapipe). Viewers are warned before such a file plays."))
+		capabilityreport.Report(capabilityreport.DolbyVision, false, "dolby_vision_reshaping_unavailable", errors.New("Dolby Vision files without a compatible base layer need a qualified Vulkan color reshaping filter for conversion. Use compatible direct playback when that filter is unavailable."))
 	}
 }
 func CurrentToolchain() *ToolchainFacts { return installedToolchain.Load() }
@@ -66,7 +67,7 @@ func parseToolList(raw, kind string) map[string]bool {
 	out := map[string]bool{}
 	for _, line := range strings.Split(raw, "\n") {
 		f := strings.Fields(line)
-		if kind == "hwaccels" {
+		if kind == "hwaccels" || kind == "bsfs" {
 			if len(f) == 1 && !strings.ContainsAny(f[0], ":=-") {
 				out[f[0]] = true
 			}
@@ -110,7 +111,7 @@ func ProbeToolchain(ctx context.Context, ffmpeg string) (ToolchainFacts, error) 
 		return cached.(ToolchainFacts), nil
 	}
 	out := ToolchainFacts{Identity: identity}
-	for _, kind := range []string{"version", "encoders", "decoders", "filters", "muxers", "hwaccels"} {
+	for _, kind := range []string{"version", "encoders", "decoders", "filters", "muxers", "hwaccels", "bsfs"} {
 		run, cancel := context.WithTimeout(ctx, 5*time.Second)
 		cmd, err := mediaexec.CommandContext(run, mediaexec.Job{Executable: path, Args: []string{"-hide_banner", "-" + kind}})
 		if err != nil {
@@ -147,6 +148,8 @@ func ProbeToolchain(ctx context.Context, ffmpeg string) (ToolchainFacts, error) 
 			out.Muxers = parseToolList(raw, kind)
 		case "hwaccels":
 			out.HWAccels = parseToolList(raw, kind)
+		case "bsfs":
+			out.BitstreamFilters = parseToolList(raw, kind)
 		}
 	}
 	if out.Version == "" || len(out.Encoders) == 0 || len(out.Muxers) == 0 {

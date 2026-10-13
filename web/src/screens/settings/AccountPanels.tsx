@@ -1,4 +1,4 @@
-import {useState} from 'react';
+import React, {Suspense, useState} from 'react';
 import {useNavigate} from '@tanstack/react-router';
 import {friendlyHost, type SettingsCustomId} from '@core/presentation/index.ts';
 import {useSession} from '../../app/session';
@@ -9,8 +9,11 @@ import {DeviceNameRow, DevicesSection, ProfileRestrictionsDialog, TwoFactorSecti
 import {LocalProfiles, PasswordGroup} from './Profiles';
 import s from './Settings.module.css';
 
+// Few members ever make a token: the list and its dialogs are a chunk of their own, outside the first load of Settings.
+const AccessTokens = React.lazy(() => import('./AccessTokens'));
+
 /** Panels that bring their own group and heading; the rest are rows inside their section's group. */
-const GROUP_PANELS: ReadonlySet<SettingsCustomId> = new Set(['identity', 'profiles', 'password', 'twoStep', 'devices', 'porticoAccount', 'about']);
+const GROUP_PANELS: ReadonlySet<SettingsCustomId> = new Set(['identity', 'profiles', 'password', 'twoStep', 'devices', 'porticoAccount', 'about', 'accessTokens']);
 export const isGroupPanel = (id: SettingsCustomId) => GROUP_PANELS.has(id);
 
 /** The account pages' `custom` rows (settings-structure.ts), drawn with the web's own panels. */
@@ -26,6 +29,7 @@ export function AccountPanel({id}: {id: SettingsCustomId}) {
     case 'subtitlePreview': return <SubtitlePreview />;
     case 'deviceName': return <DeviceNameRow />;
     case 'about': return <About />;
+    case 'accessTokens': return <Suspense fallback={null}><AccessTokens /></Suspense>;
     default: return null;
   }
 }
@@ -49,7 +53,7 @@ function Identity() {
 function Profiles() {
   const session = useSession();
   const {t} = useI18n();
-  const [limits, setLimits] = useState<{id: string; name: string}>();
+  const [limits, setLimits] = useState<{id: string; name: string; readOnly?: boolean}>();
   if (session.session?.viewer.authority === 'local') return <><LocalProfiles onLimits={setLimits} />{limits ? <ProfileRestrictionsDialog profile={limits} onClose={() => setLimits(undefined)} /> : null}</>;
   if (!session.hosted?.profiles.length) return null;
   return (

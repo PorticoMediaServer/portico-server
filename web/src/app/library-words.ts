@@ -3,7 +3,7 @@ import {captionFor, formatDuration} from '@core/presentation/index.ts';
 /**
  * WEB-LIB-03: nouns by library kind — pure words, no React, so unit tests can
  * exercise them under node:test without the session (.tsx) chain. Runtime
- * callers pass `currentI18n().t`; tests pass `defaultI18n.t`.
+ * components pass `useI18n().t`; tests pass `defaultI18n.t`.
  */
 export type T = (id: string, vars?: Record<string, unknown>) => string;
 

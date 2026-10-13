@@ -336,15 +336,30 @@ func v1Code(w *httptest.ResponseRecorder) string {
 }
 
 // webCapabilities is a browser that direct-plays MP4 (H.264/AAC) and plays HLS.
+// webCapabilities is a browser's capability document: one native engine that
+// plays H.264 with AAC or MP3 in MP4 and WebM directly and through HLS.
 func webCapabilities() map[string]any {
 	return map[string]any{
-		"form":       "browser",
-		"network":    map[string]any{"class": "local"},
-		"containers": []map[string]any{{"container": "mp4", "direct": true}, {"container": "webm", "direct": true}},
-		"streaming":  map[string]any{"hls": map[string]any{"fmp4": true, "ts": true}, "progressive": true},
-		"video":      []map[string]any{{"codec": "h264", "maxBitDepth": 8, "maxWidth": 3840, "maxHeight": 2160, "maxFps": 60}},
-		"audio":      []map[string]any{{"codec": "aac", "maxChannels": 6}, {"codec": "mp3", "maxChannels": 2}},
-		"subtitles":  []map[string]any{{"format": "webvtt", "render": "native"}},
-		"features":   map[string]any{"chapters": true, "embeddedAudioSwitching": true},
+		"version":     2,
+		"client":      map[string]any{"family": "web", "form": "browser"},
+		"display":     map[string]any{"dynamicRanges": []string{"sdr"}},
+		"audioOutput": map[string]any{"maxChannels": 6},
+		"engines": map[string]any{"native": map[string]any{
+			"name": "hls.js", "evidence": "declared",
+			"video": []map[string]any{{"codec": "h264", "bitDepths": []int{8}, "maxWidth": 3840, "maxHeight": 2160, "maxFrameRate": 60, "dynamicRanges": []string{"sdr"}}},
+			"audio": []map[string]any{{"codec": "aac", "maxChannels": 6}, {"codec": "mp3", "maxChannels": 2}},
+			"transports": []map[string]any{
+				{"transport": "direct", "containers": []string{"mp4", "webm"}, "video": []string{"h264"}, "audio": []string{"aac", "mp3"}},
+				{"transport": "hls_ts", "containers": []string{"mpegts"}, "video": []string{"h264"}, "audio": []string{"aac", "mp3"}},
+				{"transport": "hls_fmp4", "containers": []string{"fmp4"}, "video": []string{"h264"}, "audio": []string{"aac", "mp3"}},
+			},
+			"subtitleRendering":      []string{"text"},
+			"embeddedAudioSwitching": true,
+		}},
 	}
+}
+
+// nativeEngine is the native engine of a capability document built above.
+func nativeEngine(caps map[string]any) map[string]any {
+	return caps["engines"].(map[string]any)["native"].(map[string]any)
 }

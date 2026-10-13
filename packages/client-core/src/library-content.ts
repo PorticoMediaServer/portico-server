@@ -1,6 +1,7 @@
 import {unreadableServerResponse} from './server-messages.ts';
 import {parseListeningJourney,type ListeningJourney} from './listening.ts';
 import {parseBrowseNode,type BrowseNode,type BrowseSortSelection} from './browse.ts';
+import {firstOfEach,keepReadable,noteSkipped,oneOfOr} from './tolerant.ts';
 /** Transport/state for server-authored semantic projections. No client ranking or grouping. */
 export type ContentView = 'discover' | 'browse' | 'collections' | 'categories' | 'show' | 'season' | 'artist' | 'album' | 'book' | 'collection' | 'releases' | 'songs' | 'authors' | 'series' | 'author' | 'book_series' | 'disc';
 export type ContentSurface = ContentView | 'home';
@@ -79,7 +80,6 @@ const entityViews = new Set(['show','season','artist','album','book','collection
 const entryKinds: readonly string[] = ['movie','show','season','episode','artist','album','song','book','audiobook_file','chapter','collection','category','author','book_series','disc','extra'];
 /** Unknown string kinds are future server cards; only their entries are omitted. */
 export const unknownContentEntryKind = (v: unknown): boolean => record(v) && typeof v.kind === 'string' && !entryKinds.includes(v.kind);
-/** A malformed See all query drops only that destination, never the section. */
 const optional = <K extends string, V>(key: K, value: V | undefined): Partial<Record<K, V>> => (value === undefined ? {} : { [key]: value } as Record<K, V>);
 const record = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 const string = (v: unknown, max = 512): v is string => typeof v === 'string' && v.length <= max && !/[\x00-\x1f\x7f]/.test(v);
@@ -93,56 +93,68 @@ class ContentFailure extends Error {
 }
 function invalid(): never { throw new ContentFailure('invalid_projection', unreadableServerResponse); }
 function boundedArray(v: unknown, max: number): unknown[] { if (!Array.isArray(v) || v.length > max) invalid(); return v; }
-function unique<T>(rows: T[], getID: (row: T) => string): T[] {
-  if (new Set(rows.map(getID)).size !== rows.length) invalid();
-  return rows;
-}
+/** A part of a projection that could not be read was left out; an absent or null value is not counted. */
+function left(part: string, value: unknown): void { if (value !== undefined && value !== null) noteSkipped('content', part); }
+/** A heading keeps its words when its parameters cannot be read; the fallback then names it. */
 function heading(v: unknown): ContentHeading {
   if (!record(v) || !id(v.key) || !string(v.fallback, 512)) invalid();
-  if (v.params === undefined) return Object.freeze({ key: v.key, fallback: v.fallback });
-  if (!record(v.params) || Object.keys(v.params).length > 16) invalid();
+  if (v.params === undefined || v.params === null) return Object.freeze({ key: v.key, fallback: v.fallback });
+  if (!record(v.params) || Object.keys(v.params).length > 16) { left('heading.params', v.params); return Object.freeze({ key: v.key, fallback: v.fallback }); }
   const params: Record<string, string> = {};
   for (const [name, value] of Object.entries(v.params)) {
-    if (!id(name) || !string(value, 1024)) invalid();
+    if (!id(name) || !string(value, 1024)) { left('heading.params', value); continue; }
     params[name] = value as string;
   }
   return Object.freeze({ key: v.key, fallback: v.fallback, params: Object.freeze(params) });
 }
-function seeAll(v: unknown): ContentSeeAll | undefined {
-  if (!record(v) || !id(v.pivot) || !Array.isArray(v.sort) || v.sort.length < 1 || v.sort.length > 3) invalid();
-  const sort = (v.sort as unknown[]).map(s => {
-    if (!record(s) || !id(s.field) || (s.direction !== 'asc' && s.direction !== 'desc')) invalid();
-    return Object.freeze({ field: s.field, direction: s.direction as 'asc' | 'desc' });
-  });
-  let query: BrowseNode | undefined;
-  if (v.query !== undefined && v.query !== null) { try { query = parseBrowseNode(v.query); } catch { return undefined; } }
-  return Object.freeze({ pivot: v.pivot, ...(query ? { query } : {}), sort: Object.freeze(sort) });
+/** A heading that cannot be read is blank under `key`, so its section or page is still shown. */
+function headingOr(v: unknown, key: string): ContentHeading {
+  try { return heading(v); } catch { left('heading', v); return Object.freeze({ key, fallback: '' }); }
 }
+/** A See all destination that cannot be read is left out, never its section or row. */
+function seeAll(v: unknown): ContentSeeAll | undefined {
+  if (v === undefined || v === null) return undefined;
+  try {
+    if (!record(v) || !id(v.pivot) || !Array.isArray(v.sort) || v.sort.length < 1 || v.sort.length > 3) invalid();
+    const sort = (v.sort as unknown[]).map(s => {
+      if (!record(s) || !id(s.field) || (s.direction !== 'asc' && s.direction !== 'desc')) invalid();
+      return Object.freeze({ field: s.field, direction: s.direction as 'asc' | 'desc' });
+    });
+    const query = v.query === undefined || v.query === null ? undefined : parseBrowseNode(v.query);
+    return Object.freeze({ pivot: v.pivot, ...(query ? { query } : {}), sort: Object.freeze(sort) });
+  } catch { noteSkipped('content', 'seeAll'); return undefined; }
+}
+/**
+ * One entry. Its id, kind, library and destination are exact: an entry whose kind or destination
+ * this app does not know is refused, and the caller leaves out that entry alone. Every other
+ * field is optional and is left out when it cannot be read.
+ */
 function entry(v: unknown): ContentEntry {
-  if (!record(v) || !id(v.id) || !entryKinds.includes(v.kind as string) || !string(v.title, 2048)) invalid();
-  const row: { -readonly [K in keyof ContentEntry]: ContentEntry[K] } = { id: v.id, kind: v.kind as ContentEntryKind, title: v.title };
+  if (!record(v) || !id(v.id) || !entryKinds.includes(v.kind as string) || !string(v.title ?? '', 2048)) invalid();
+  const row: { -readonly [K in keyof ContentEntry]: ContentEntry[K] } = { id: v.id, kind: v.kind as ContentEntryKind, title: (v.title ?? '') as string };
   if (v.libraryId !== undefined) { if (!id(v.libraryId)) invalid(); row.libraryId = v.libraryId; }
-  if (v.overview !== undefined) { if (!synopsis(v.overview)) invalid(); row.overview = v.overview; }
+  if (synopsis(v.overview)) row.overview = v.overview; else left('entry.overview', v.overview);
   for (const field of ['subtitle', 'posterUrl', 'backdropUrl', 'stillUrl'] as const) {
-    if (v[field] !== undefined) { if (!string(v[field], 4096)) invalid(); row[field] = v[field] as string; }
+    if (string(v[field], 4096)) row[field] = v[field] as string; else left('entry.' + field, v[field]);
   }
-  if (v.addedAt !== undefined) { if (v.addedAt !== null && !string(v.addedAt, 128)) invalid(); row.addedAt = v.addedAt as string | null; }
-  if (v.count !== undefined) { if (!count(v.count)) invalid(); row.count = v.count; }
-  if(v.watched!==undefined){if(typeof v.watched!=='boolean')invalid();row.watched=v.watched;}
-  for(const field of ['trackNumber','episodeNumber','seasonNumber'] as const){if(v[field]!==undefined){if(!count(v[field]))invalid();row[field]=v[field] as number;}}
-  if (v.available !== undefined) { if (typeof v.available !== 'boolean') invalid(); row.available = v.available; }
+  if (v.addedAt === null || string(v.addedAt, 128)) row.addedAt = v.addedAt as string | null; else left('entry.addedAt', v.addedAt);
+  if (count(v.count)) row.count = v.count; else left('entry.count', v.count);
+  if(typeof v.watched==='boolean')row.watched=v.watched;else left('entry.watched',v.watched);
+  for(const field of ['trackNumber','episodeNumber','seasonNumber'] as const){if(count(v[field]))row[field]=v[field] as number;else left('entry.'+field,v[field]);}
+  if (typeof v.available === 'boolean') row.available = v.available; else left('entry.available', v.available);
   for (const field of ['duration', 'progressSeconds'] as const) {
-    if (v[field] !== undefined) { if (!finite(v[field])) invalid(); row[field] = v[field] as number; }
+    if (finite(v[field])) row[field] = v[field] as number; else left('entry.' + field, v[field]);
   }
-  if (v.year !== undefined) { if (typeof v.year !== 'number' || !Number.isSafeInteger(v.year) || v.year <= 0) invalid(); row.year = v.year as number; }
-  if (v.contentRating !== undefined) { if (!string(v.contentRating, 64)) invalid(); row.contentRating = v.contentRating as string; }
+  // A year of 0 is how a server says it has none.
+  if (typeof v.year === 'number' && Number.isSafeInteger(v.year) && v.year > 0) row.year = v.year; else if (v.year !== 0) left('entry.year', v.year);
+  if (string(v.contentRating, 64)) row.contentRating = v.contentRating as string; else left('entry.contentRating', v.contentRating);
   // Genres degrade (§4a): be/pages sends up to three for artists and more for albums; the
   // readable ones are kept (at most 8), anything else is dropped, never fatal.
   if (Array.isArray(v.genres)) {
     const genres = (v.genres as unknown[]).filter(g => string(g, 128) && (g as string).length > 0) as string[];
     if (genres.length) row.genres = Object.freeze(genres);
   }
-  if (v.watchlisted !== undefined) { if (typeof v.watchlisted !== 'boolean') invalid(); row.watchlisted = v.watchlisted as boolean; }
+  if (typeof v.watchlisted === 'boolean') row.watchlisted = v.watchlisted; else left('entry.watchlisted', v.watchlisted);
   // M24 (behind presence): album artist link, release role and category mosaic
   // paths. All three are optional; malformed or unknown values are dropped,
   // never fatal, so older and newer servers both parse.
@@ -153,7 +165,7 @@ function entry(v: unknown): ContentEntry {
     }
   }
   if (string(v.author, 512) && (v.author as string).length > 0) row.author = v.author as string;
-  if (v.plays !== undefined) { if (typeof v.plays !== 'number' || !Number.isSafeInteger(v.plays) || v.plays < 1) invalid(); row.plays = v.plays; }
+  if (typeof v.plays === 'number' && Number.isSafeInteger(v.plays) && v.plays >= 1) row.plays = v.plays; else if (v.plays !== 0) left('entry.plays', v.plays);
   if (v.album !== undefined) {
     const a = v.album;
     if (record(a) && id(a.id) && string(a.name, 2048) && (a.name as string).length > 0) {
@@ -187,15 +199,18 @@ function entry(v: unknown): ContentEntry {
   if (typeof v.activeEndYear === 'number' && Number.isSafeInteger(v.activeEndYear) && v.activeEndYear > 0) row.activeEndYear = v.activeEndYear;
   if (string(v.label, 256) && (v.label as string).length > 0) row.label = v.label as string;
   if (string(v.albumType, 64) && (v.albumType as string).length > 0) row.albumType = v.albumType as string;
-  if (v.navigation !== undefined) {
+  // Where the entry leads is exact: an entry that cannot say it is not shown.
+  if (v.navigation !== undefined && v.navigation !== null) {
     const n = v.navigation;
     if (!record(n) || !(views.includes(n.view as string) || n.view === 'item') || (n.entityId !== undefined && !string(n.entityId, 256)) || (n.category !== undefined && !string(n.category, 256))) invalid();
     row.navigation = Object.freeze({ view: n.view as ContentView | 'item', ...(n.entityId === undefined ? {} : { entityId: n.entityId as string }), ...(n.category === undefined ? {} : { category: n.category as string }) });
   }
-  if (v.playback !== undefined) {
+  // Playback that cannot be read is left out when the entry still opens something; otherwise the entry is refused.
+  if (v.playback !== undefined && v.playback !== null) {
     const p = v.playback;
-    if (!record(p) || !id(p.itemId) || (p.startSeconds !== undefined && !finite(p.startSeconds))) invalid();
-    row.playback = Object.freeze({ itemId: p.itemId, ...(p.startSeconds === undefined ? {} : { startSeconds: p.startSeconds as number }) });
+    if (record(p) && id(p.itemId)) row.playback = Object.freeze({ itemId: p.itemId, ...(finite(p.startSeconds) ? { startSeconds: p.startSeconds } : {}) });
+    else if (row.navigation) left('entry.playback', p);
+    else invalid();
   }
   return Object.freeze(row);
 }
@@ -218,41 +233,54 @@ function projection(raw: unknown, expected: ContentRoute, bound: ContentScope, p
   const s = raw.scope, r = raw.revision, q = raw.query;
   if (s.serverId !== bound.serverId || s.libraryId !== (expected.libraryId ?? '') || s.view !== expected.view || s.entityId !== (expected.entityId ?? '') || !id(s.viewerFence) || !id(s.libraryKind)) invalid();
   if (!count(r.catalog) || !count(r.viewer)) invalid();
-  if (q.searchMode !== 'none' && q.searchMode !== 'title_prefix') invalid();
+  // A search mode this app does not know reads as no search.
+  const searchMode = oneOfOr('content', 'query.searchMode', q.searchMode, ['none', 'title_prefix'] as const, 'none');
   if (!string(q.sort) || !string(q.direction) || !string(q.category) || !string(q.q) || !count(q.limit) || q.limit < 1 || q.limit > (expected.view === 'home' ? 12 : pageSize)) invalid();
   for (const field of ['sort','direction','category','q'] as const) if (expected[field] !== undefined && expected[field] !== q[field]) invalid();
-  if (expected.view === 'home' && (s.libraryKind !== 'mixed' || q.sort !== 'server' || q.direction !== 'asc' || q.category !== '' || q.q !== '' || q.searchMode !== 'none')) invalid();
-  const navigation = unique(boundedArray(raw.navigation, 16).map(n => {
+  if (expected.view === 'home' && (s.libraryKind !== 'mixed' || q.sort !== 'server' || q.direction !== 'asc' || q.category !== '' || q.q !== '' || searchMode !== 'none')) invalid();
+  // The lists below keep what can be read: a tab, sort, filter, option, section or entry this app
+  // cannot read is left out alone, and a repeated id keeps its first appearance.
+  const navigation = firstOfEach('content', 'navigation', keepReadable('content', 'navigation', boundedArray(raw.navigation ?? [], 16), n => {
     if (!record(n) || !id(n.id) || !id(n.labelKey) || !views.includes(n.view as string)) invalid();
     return Object.freeze({ id: n.id, labelKey: n.labelKey, view: n.view as ContentView });
   }), n => n.id);
-  const sorts = unique(boundedArray(raw.sorts, 32).map(n => {
+  const sorts = firstOfEach('content', 'sorts', keepReadable('content', 'sorts', boundedArray(raw.sorts ?? [], 32), n => {
     if (!record(n) || !id(n.id) || !id(n.labelKey)) invalid();
-    const directions = boundedArray(n.directions, 2);
-    if (!directions.every(v => v === 'asc' || v === 'desc') || new Set(directions).size !== directions.length) invalid();
+    const directions = [...new Set(boundedArray(n.directions, 2).filter(v => v === 'asc' || v === 'desc'))];
     return Object.freeze({ id: n.id, labelKey: n.labelKey, directions: Object.freeze(directions as ('asc' | 'desc')[]) });
   }), n => n.id);
-  const filters = unique(boundedArray(raw.filters, 16).map(n => {
+  const filters = firstOfEach('content', 'filters', keepReadable('content', 'filters', boundedArray(raw.filters ?? [], 16), n => {
     if (!record(n) || !id(n.id) || !id(n.labelKey)) invalid();
-    const options = unique(boundedArray(n.options, 100).map(o => {
-      if (!record(o) || !id(o.id) || !string(o.label) || !count(o.count)) invalid();
-      return Object.freeze({ id: o.id, label: o.label, count: o.count });
+    const options = firstOfEach('content', 'filter.options', keepReadable('content', 'filter.options', boundedArray(n.options, 100), o => {
+      if (!record(o) || !id(o.id) || !string(o.label ?? '')) invalid();
+      return Object.freeze({ id: o.id, label: (o.label ?? '') as string, count: count(o.count) ? o.count : 0 });
     }), o => o.id);
     return Object.freeze({ id: n.id, labelKey: n.labelKey, options: Object.freeze(options) });
   }), n => n.id);
   // Discover carries Continue, Recommended, the personal rows, Trending and Recently added.
-  const sections = unique(boundedArray(raw.sections, 24).map(n => {
-    if (!record(n) || !id(n.id) || !['rail','grid','list'].includes(n.type as string) || !count(n.totalCount) || !string(n.nextCursor, 4096)) invalid();
-    const entries = unique(boundedArray(n.entries, n.type === 'rail' ? 12 : 100).filter(v => !unknownContentEntryKind(v)).map(entry), e => e.id);
-    if (n.totalCount < entries.length) invalid();
-    for (const row of entries) {
+  const sections = firstOfEach('content', 'sections', keepReadable('content', 'sections', boundedArray(raw.sections, 24), n => {
+    if (!record(n) || !id(n.id) || !string(n.nextCursor ?? '', 4096)) invalid();
+    // A layout this app does not know is drawn as a grid, which holds any number of entries.
+    const type = oneOfOr('content', 'section.type', n.type, ['rail', 'grid', 'list'] as const, 'grid');
+    const entries = firstOfEach('content', 'entries', keepReadable('content', 'entries', boundedArray(n.entries, type === 'rail' ? 12 : 100), v => {
+      const row = entry(v);
       if (expected.view === 'home' ? !row.libraryId : row.libraryId !== undefined && row.libraryId !== expected.libraryId) invalid();
-    }
-    return Object.freeze({ id: n.id, type: n.type as ContentSection['type'], heading: heading(n.heading), entries: Object.freeze(entries), totalCount: n.totalCount, nextCursor: n.nextCursor, ...(typeof n.start === 'number' && Number.isSafeInteger(n.start) && (n.start as number) >= 0 ? { start: n.start as number } : {}), ...(n.seeAll === undefined || n.seeAll === null ? {} : optional('seeAll', seeAll(n.seeAll))) });
+      return row;
+    }), e => e.id);
+    // The count is at least the entries kept.
+    return Object.freeze({ id: n.id, type, heading: headingOr(n.heading, n.id), entries: Object.freeze(entries), totalCount: Math.max(count(n.totalCount) ? n.totalCount : 0, entries.length), nextCursor: (n.nextCursor ?? '') as string, ...(typeof n.start === 'number' && Number.isSafeInteger(n.start) && (n.start as number) >= 0 ? { start: n.start as number } : {}), ...optional('seeAll', seeAll(n.seeAll)) });
   }), n => n.id);
+  // A page none of whose sections could be read is refused rather than shown as empty.
+  if (!sections.length && (raw.sections as unknown[]).length) invalid();
   let entity: ContentEntry | undefined;
-  if(raw.entity!==undefined && !unknownContentEntryKind(raw.entity)){entity=entry(raw.entity);if(!['artist','album','book','disc'].includes(expected.view)||entity.kind!==expected.view||entity.id!==expected.entityId||entity.libraryId!==expected.libraryId||entity.playback!==undefined)invalid();}
-  return Object.freeze({ ...(entity?{entity}:{}), ...(raw.listening===undefined?{}:{listening:parseListeningJourney(raw.listening,s.libraryId as string)}), heading: heading(raw.heading), scope: Object.freeze({ serverId: s.serverId as string, libraryId: s.libraryId as string, libraryKind: s.libraryKind as string, view: s.view as ContentSurface, entityId: s.entityId as string, viewerFence: s.viewerFence as string }), revision: Object.freeze({ catalog: r.catalog, viewer: r.viewer }), query: Object.freeze({ sort: q.sort, direction: q.direction, category: q.category, q: q.q, limit: q.limit, searchMode: q.searchMode }), navigation: Object.freeze(navigation), sorts: Object.freeze(sorts), filters: Object.freeze(filters), sections: Object.freeze(sections), ...(raw.empty === undefined ? {} : { empty: heading(raw.empty) }) });
+  // The page's own entity is exact (it is what was asked for); it never plays, so playback on it is ignored.
+  if(raw.entity!==undefined && raw.entity!==null && !unknownContentEntryKind(raw.entity)){entity=entry(raw.entity);if(!['artist','album','book','disc'].includes(expected.view)||entity.kind!==expected.view||entity.id!==expected.entityId||entity.libraryId!==expected.libraryId)invalid();if(entity.playback!==undefined){const{playback:_ignored,...rest}=entity;entity=Object.freeze(rest);}}
+  // The listening actions and the empty-state words are optional: unreadable ones are left out.
+  let listening: ListeningJourney | undefined;
+  if (raw.listening !== undefined && raw.listening !== null) { try { listening = parseListeningJourney(raw.listening, s.libraryId as string); } catch { noteSkipped('content', 'listening'); } }
+  let empty: ContentHeading | undefined;
+  if (raw.empty !== undefined && raw.empty !== null) { try { empty = heading(raw.empty); } catch { noteSkipped('content', 'empty'); } }
+  return Object.freeze({ ...(entity?{entity}:{}), ...(listening?{listening}:{}), heading: headingOr(raw.heading, s.view as string), scope: Object.freeze({ serverId: s.serverId as string, libraryId: s.libraryId as string, libraryKind: s.libraryKind as string, view: s.view as ContentSurface, entityId: s.entityId as string, viewerFence: s.viewerFence as string }), revision: Object.freeze({ catalog: r.catalog, viewer: r.viewer }), query: Object.freeze({ sort: q.sort, direction: q.direction, category: q.category, q: q.q, limit: q.limit, searchMode }), navigation: Object.freeze(navigation), sorts: Object.freeze(sorts), filters: Object.freeze(filters), sections: Object.freeze(sections), ...(empty ? { empty } : {}) });
 }
 type Page = { cursor: string | null; sectionId?: string };
 type Operation = { route: ContentRoute; page: Page; history: Page[]; fence: ContentProjection | null };
@@ -366,5 +394,8 @@ export class LibraryContentService {
 /** Reuse the canonical strict semantic DTO validation in composed server workspaces. */
 export { projection as validateContentProjection };
 
-/** Shared strict media-entry validation for server-authored cross-library search. */
+/** Shared media-entry validation for server-authored cross-library search. It throws for an entry that cannot be shown; callers leave out that entry alone. */
 export { entry as validateContentEntry };
+
+/** A See all destination (`{pivot, query?, sort}`), or undefined when it is absent or cannot be read. Never throws. */
+export { seeAll as parseContentSeeAll };

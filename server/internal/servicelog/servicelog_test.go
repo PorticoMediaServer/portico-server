@@ -222,3 +222,25 @@ func TestBundleCarriesTheDocumentsAndStopsAtItsCap(t *testing.T) {
 		t.Fatal("the cap did not stop an oversized write")
 	}
 }
+
+func TestFileRetentionAndPreviousRunRedaction(t *testing.T) {
+	now := time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)
+	directory := t.TempDir()
+	recorder := New(Options{Directory: directory, Now: func() time.Time { return now }})
+	recorder.Record("info", "scan", "old scan")
+	recorder.Record("info", "server", "Bearer private-secret")
+	now = now.Add(48 * time.Hour)
+	recorder.SetRetention(map[string]int{"scan": 1})
+	recorder.PruneFiles()
+	recorder.Close()
+	raw, err := os.ReadFile(filepath.Join(directory, "messages.log"))
+	if err != nil || strings.Contains(string(raw), "old scan") || strings.Contains(string(raw), "private-secret") {
+		t.Fatal(string(raw), err)
+	}
+	reopened := New(Options{Directory: directory, Now: func() time.Time { return now }})
+	defer reopened.Close()
+	page, err := reopened.Read(Query{})
+	if err != nil || len(page.Items) != 1 || !strings.Contains(page.Items[0].Message, "REDACTED") {
+		t.Fatal(page, err)
+	}
+}

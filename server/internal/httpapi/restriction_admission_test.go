@@ -119,16 +119,8 @@ func (f *tl11AdmissionFixture) request(method, path string, headers map[string]s
 
 func (f *tl11AdmissionFixture) declareAudioDecode() {
 	f.t.Helper()
-	caps := map[string]any{
-		"form": "browser", "network": map[string]any{"class": "local"},
-		"containers":  []map[string]any{{"container": "mp4", "direct": true}, {"container": "webm", "direct": true}},
-		"streaming":   map[string]any{"hls": map[string]any{"fmp4": true, "ts": true}, "progressive": true},
-		"video":       []map[string]any{{"codec": "h264", "maxBitDepth": 8, "maxWidth": 3840, "maxHeight": 2160, "maxFps": 60}},
-		"audio":       []map[string]any{{"codec": "aac", "maxChannels": 6}, {"codec": "mp3", "maxChannels": 2}},
-		"audioDecode": []map[string]any{{"codec": "aac", "containers": []string{"mp4", "adts"}, "maxSampleRate": 96000, "maxChannels": 8}},
-		"subtitles":   []map[string]any{{"format": "webvtt", "render": "native"}},
-		"features":    map[string]any{"chapters": true, "embeddedAudioSwitching": true},
-	}
+	caps := webCapabilities()
+	caps["audioDecode"] = []map[string]any{{"codec": "aac", "containers": []string{"mp4", "adts"}, "maxSampleRate": 96000, "maxChannels": 8}}
 	get := f.request("GET", "/v1/me/devices/current/capabilities", nil, nil)
 	headers := map[string]string{}
 	if get.Code == 200 {

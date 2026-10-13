@@ -16,6 +16,7 @@ import {GenerationGate} from './generation.ts';
 import {PlaybackApiError, call, enc, header, idempotencyKey, type V1Http} from './http.ts';
 import type {MediaPlayer, PlayerEvent, PlayerObservation} from './port.ts';
 import type {QualityRequest} from './quality.ts';
+import type {PlayerFailureCode} from '../client-profile.ts';
 import {TimelineReporter, type TimelineReport, type TimelineReporterOptions} from './timeline.ts';
 import {parseSession, parseSessionEnd, type Session, type SessionEnd} from './types.ts';
 
@@ -36,6 +37,10 @@ export type StartOptions = Readonly<{
   subtitles?: Readonly<{trackId: string | null; delivery?: 'auto' | 'sidecar' | 'embeddedClient' | 'burn'}>;
   network?: 'local' | 'remote' | 'cellular';
   replacesSessionId?: string;
+  /** The client's own estimate of what its connection to this server carries. With Automatic the
+   * start lands on the widest quality that fits; with any other quality a start the connection
+   * plainly cannot carry is refused (`connection_too_slow`, whose `reason` names a quality that fits). */
+  throughputKbps?: number;
 }>;
 
 export type SessionChange = Readonly<{
@@ -47,7 +52,17 @@ export type SessionChange = Readonly<{
   quality?: QualityRequest;
   seek?: Readonly<{positionMs: number; id: string}>;
   subtitleOffsetMs?: number;
+  /** Where the player is now: a change that starts a new presentation starts it there. */
+  positionMs?: number;
+  /** The client's current connection estimate; checked against a quality asked for in the same change. */
+  throughputKbps?: number;
+  /** The player could not play the current presentation. The server remembers that for this file
+   * on this device and re-plans the same session the next way up (`unsupported_media`: there is none). */
+  failure?: Readonly<{code: PlayerFailureCode; detail?: string}>;
 }>;
+
+/** Whether a change makes the server plan the presentation again (so the player's position should travel with it). */
+const replans = (c: SessionChange) => c.versionId !== undefined || c.partIndex !== undefined || c.audio !== undefined || c.quality !== undefined || c.subtitles !== undefined || c.failure !== undefined;
 
 export type Timers = Readonly<{now?: () => number; setTimer?: (fn: () => void, ms: number) => unknown; clearTimer?: (t: unknown) => void}>;
 
@@ -364,6 +379,10 @@ export class PlaybackSessionController {
    * re-applies this change only if no newer change is waiting (newest intent wins, invariant 2).
    */
   change(change: SessionChange): Promise<Session | undefined> {
+    // A change that re-plans carries where the player is, so the new presentation starts there
+    // and not at the last report (which can be a report interval old).
+    const at = this.state.observation?.positionMs;
+    if (replans(change) && change.positionMs === undefined && change.seek === undefined && at !== undefined) change = {...change, positionMs: Math.max(0, Math.round(at))};
     const serial = ++this.changeSerial;
     const run = async (): Promise<Session | undefined> => {
       const session = this.state.session;
@@ -421,7 +440,9 @@ export class PlaybackSessionController {
   setSubtitles(trackId: string | null): Promise<unknown> | void {
     const session = this.state.session;
     if (!session) return;
-    if (trackId === null || session.presentation.subtitles.some(s => s.trackId === trackId)) {
+    // A track drawn by the engine or burned into the picture is the server's to turn off.
+    const serverOwned = session.presentation.subtitle !== undefined && session.presentation.subtitle.delivery !== 'sidecar';
+    if (!serverOwned && (trackId === null || session.presentation.subtitles.some(s => s.trackId === trackId))) {
       this.player.selectSidecarSubtitle(trackId);
       const o = this.player.observe();
       if (this.gate.accepts(o.generation)) { this.publish({observation: o}); this.reporter?.observe(o, 'state'); }
@@ -431,8 +452,15 @@ export class PlaybackSessionController {
   }
 
   setAudio(trackId: string) { return this.change({audio: {trackId}}); }
-  setQuality(quality: QualityRequest) { return this.change({quality}); }
+  /** Choose a quality for this session. `throughputKbps` lets the server refuse one the connection cannot carry. */
+  setQuality(quality: QualityRequest, throughputKbps?: number) { return this.change({quality, ...(throughputKbps !== undefined ? {throughputKbps: Math.max(0, Math.round(throughputKbps))} : {})}); }
+  /** Automatic quality: move one ladder step down or up from where the session is. */
+  stepQuality(direction: 'down' | 'up') { return this.change({quality: {mode: 'automatic', step: direction}}); }
   setVersion(versionId: string) { return this.change({versionId}); }
+  /** The engine could not play this presentation: the server re-plans the same session, at the
+   * current position, another way (possibly with the other engine). Rejects with `unsupported_media`
+   * when there is no other way. */
+  playerFailed(code: PlayerFailureCode, detail = '') { return this.change({failure: {code, detail: detail.replace(/[\x00-\x1f\x7f]/g, ' ').slice(0, 500)}}); }
 
   /** Skips a marker (spec §4.2): a seek to its end plus a `skipped` note in the next timeline
    * report. `automatic` is for the viewer's `auto` preference, and only on a marker the server

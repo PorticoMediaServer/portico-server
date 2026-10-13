@@ -1,5 +1,8 @@
 import {serviceProblem,serviceText} from './presentation/service-text.ts';
 import {SOCIAL_PROTOCOL,parseHandoff,parseReceiver,parseReceiverGrant,parseReceiverList,type Handoff,type Receiver,type ReceiverGrant} from './social-playback.ts';
+import {SessionsClient,type SessionChange} from './playback-v1/sessions.ts';
+import {PlaybackApiError,type V1Request,type V1Response} from './playback-v1/http.ts';
+import type {Session} from './playback-v1/types.ts';
 import {readEventStream} from './sse.ts';
 
 /** Moving playback to a Portico television, and being that television.
@@ -9,20 +12,21 @@ import {readEventStream} from './sse.ts';
  * (declined, timed out, television unreachable) leaves the phone playing exactly where it
  * was. `HandoffController` is the phone's half and `ReceiverHost` the television's. */
 
-export type RemoteApi=Readonly<{request<T>(path:string,method?:string,body?:unknown,signal?:AbortSignal):Promise<T>}>;
+export type RemoteApi=Readonly<{request<T>(path:string,method?:string,body?:unknown,signal?:AbortSignal):Promise<T>;requestRaw?(path:string,method:string,options?:Readonly<{headers?:Readonly<Record<string,string>>;body?:unknown;signal?:AbortSignal}>):Promise<V1Response>}>;
 const status=(e:unknown)=>(e as {status?:number}|null)?.status??0;
 const wait=(ms:number,signal:AbortSignal)=>new Promise<void>(resolve=>{if(signal.aborted){resolve();return;}const t=setTimeout(done,ms);function done(){clearTimeout(t);signal.removeEventListener('abort',done);resolve();}signal.addEventListener('abort',done,{once:true});});
 const us=(seconds:number)=>String(Math.max(0,Math.round(seconds*1e6)));
 
 export type HandoffPhase='idle'|'asking'|'preparing'|'starting'|'done'|'failed';
-export type HandoffSnapshot=Readonly<{receivers:readonly Receiver[];directoryPhase:'idle'|'loading'|'ready'|'error';directoryError?:string;phase:HandoffPhase;target?:Receiver;message?:string}>;
+export type HandoffSnapshot=Readonly<{receivers:readonly Receiver[];directoryPhase:'idle'|'loading'|'ready'|'error';directoryError?:string;phase:HandoffPhase;target?:Receiver;message?:string;receiverPlaybackId?:string;remoteSession?:Session;controlling?:boolean}>;
 export type HandoffSource=Readonly<{playbackId:string;positionSeconds:number}>;
 
 export class HandoffController{
+ private sessions?:Pick<SessionsClient,'get'|'patch'|'stop'>;private controlWork:Promise<boolean>=Promise.resolve(true);
  private api:RemoteApi;private device:{deviceId:string;displayName:string};private requestId:()=>string;private pollMs:number;
  private state:HandoffSnapshot=Object.freeze<HandoffSnapshot>({receivers:[],directoryPhase:'idle',phase:'idle'});
  private listeners=new Set<()=>void>();private run?:AbortController;
- constructor(options:{api:RemoteApi;device:{deviceId:string;displayName:string};requestId:()=>string;pollMs?:number}){this.api=options.api;this.device=options.device;this.requestId=options.requestId;this.pollMs=options.pollMs??1000;}
+ constructor(options:{api:RemoteApi;device:{deviceId:string;displayName:string};requestId:()=>string;pollMs?:number;sessions?:Pick<SessionsClient,'get'|'patch'|'stop'>}){this.api=options.api;this.device=options.device;this.requestId=options.requestId;this.pollMs=options.pollMs??1000;this.sessions=options.sessions??(options.api.requestRaw?new SessionsClient({send:(r:V1Request)=>options.api.requestRaw!(r.path,r.method,{headers:r.headers,body:r.body,signal:r.signal})}):undefined);}
  getSnapshot=()=>this.state;
  subscribe=(fn:()=>void)=>{this.listeners.add(fn);return()=>{this.listeners.delete(fn);};};
  private publish(patch:Partial<HandoffSnapshot>){this.state=Object.freeze({...this.state,...patch});this.listeners.forEach(f=>f());}
@@ -42,8 +46,8 @@ export class HandoffController{
   const fail=(message:string)=>{if(!signal.aborted)this.publish({phase:'failed',message});return false;};
   let handoff:Handoff|undefined;const device={device:target.displayName};
   try{
-   this.publish({phase:'asking',target,message:undefined});
-   let grant=parseReceiverGrant(await this.api.request<unknown>(`/v1/receivers/${encodeURIComponent(target.id)}/grants`,'POST',{protocolVersion:SOCIAL_PROTOCOL,controllerDeviceId:this.device.deviceId,controllerDisplayName:this.device.displayName.slice(0,64)},signal));
+   this.publish({phase:'asking',target,message:undefined,receiverPlaybackId:undefined,remoteSession:undefined});
+   let grant=parseReceiverGrant(await this.api.request<unknown>(`/v1/receivers/${encodeURIComponent(target.id)}/grants`,'POST',{protocolVersion:SOCIAL_PROTOCOL,controllerDisplayName:this.device.displayName.slice(0,64)},signal));
    // A television that has not met this device asks its own viewer first.
    for(let waited=0;grant.state==='pending'&&waited<60000&&!signal.aborted;waited+=this.pollMs){
     this.publish({message:serviceText('playOn.approveOn',device)});
@@ -67,13 +71,47 @@ export class HandoffController{
    if(handoff.state!=='prepared'||handoff.outcome!=='pending')return fail(serviceText(handoff.state==='expired'?'playOn.didNotStartInTime':'playOn.couldNotStart',device));
    handoff=parseHandoff(await this.api.request<unknown>(`/v1/handoffs/${encodeURIComponent(handoff.id)}/commit`,'POST',{protocolVersion:SOCIAL_PROTOCOL,expectedRevision:handoff.revision},signal));
    if(handoff.state!=='committed')return fail(serviceText('playOn.couldNotTakeOver',device));
-   this.publish({phase:'done',message:serviceText('playOn.playingOn',device)});
+   this.publish({phase:'done',receiverPlaybackId:handoff.receiverPlaybackId,message:serviceText('playOn.playingOn',device)});
    return true;
   }catch(e){
    if(signal.aborted){if(handoff)void this.rollback(handoff);return false;}
    if(handoff&&handoff.state==='prepared')void this.rollback(handoff);
    return fail(serviceText('playOn.notReachable',device));
   }
+ }
+ /** Reattach to the destination session of a committed handoff after an app restart. */
+ async reconnect(handoffId:string):Promise<boolean>{
+  try{const h=parseHandoff(await this.api.request<unknown>('/v1/handoffs/'+encodeURIComponent(handoffId)));
+   if(h.state!=='committed')return false;
+   this.publish({phase:'done',receiverPlaybackId:h.receiverPlaybackId});return this.refreshRemote();
+  }catch{return false;}
+ }
+ async refreshRemote():Promise<boolean>{
+  const id=this.state.receiverPlaybackId;if(!id||!this.sessions)return false;
+  try{const session=await this.sessions.get(id);if(this.state.receiverPlaybackId!==id)return false;this.publish({remoteSession:session});return session.state!=='ended';}catch{return false;}
+ }
+ play(){return this.control({state:'playing'});}
+ pause(){return this.control({state:'paused'});}
+ seek(positionSeconds:number){if(!Number.isFinite(positionSeconds)||positionSeconds<0)return Promise.resolve(false);return this.control({seek:{positionMs:Math.round(positionSeconds*1000),id:this.requestId()}});}
+ stop(){return this.control();}
+ private control(change?:SessionChange):Promise<boolean>{
+  const id=this.state.receiverPlaybackId,sessions=this.sessions;if(!id||!sessions)return Promise.resolve(false);
+  return this.controlWork=this.controlWork.catch(()=>false).then(async()=>{
+   if(this.state.receiverPlaybackId!==id)return false;
+   this.publish({controlling:true});
+   try{
+    if(!change){await sessions.stop(id);this.publish({receiverPlaybackId:undefined,remoteSession:undefined,phase:'idle'});return true;}
+    let current=await sessions.get(id),next:Session;
+    try{next=await sessions.patch(id,current.revision,change);}catch(e){
+     if(!(e instanceof PlaybackApiError)||e.status!==412||!e.current)throw e;
+     const fresh=e.current as Session;
+     if(change.seek||fresh.state!==current.state||fresh.presentation.generation!==current.presentation.generation)throw e;
+     next=await sessions.patch(id,fresh.revision,change);
+    }
+    if(this.state.receiverPlaybackId===id)this.publish({remoteSession:next});return true;
+   }catch(e){this.publish({message:serviceProblem(e,'devices','playOn.controlUnavailable','action')});return false;}
+   finally{this.publish({controlling:false});}
+  });
  }
  private async rollback(handoff:Handoff){try{await this.api.request<unknown>(`/v1/handoffs/${encodeURIComponent(handoff.id)}/rollback`,'POST',{protocolVersion:SOCIAL_PROTOCOL,expectedRevision:handoff.revision,reason:'controller-cancelled'});}catch{/* it expires by itself */}}
 }
@@ -121,10 +159,10 @@ export class ReceiverHost{
  private api:RemoteApi;private device:ReceiverDevice;private player:ReceiverPlayer;private pollMs:number;private heartbeatMs:number;private rand:()=>number;private events?:ReceiverEventOpener;
  /** True while the event stream is connected: the inbox poll backs off to the safety interval. */
  private streamConnected=false;private streamFailures=0;
- /** True while the player is in the foreground: the inbox poll pauses, the heartbeat doesn't. */
+ /** Whether playback is in front; approvals and handoffs remain reachable. */
  private playerActive=false;
  private state:ReceiverSnapshot=Object.freeze<ReceiverSnapshot>({phase:'off'});private listeners=new Set<()=>void>();
- private run?:AbortController;private handled=new Set<string>();
+ private run?:AbortController;private handled=new Set<string>();private inboxWork?:Promise<void>;private taking?:string;
   constructor(options:{api:RemoteApi;device:ReceiverDevice;player:ReceiverPlayer;pollMs?:number;heartbeatMs?:number;rand?:()=>number;events?:ReceiverEventOpener}){this.api=options.api;this.device=options.device;this.player=options.player;this.pollMs=options.pollMs??30000;this.heartbeatMs=options.heartbeatMs??45000;this.rand=options.rand??Math.random;this.events=options.events;}
   getSnapshot=()=>this.state;
   subscribe=(fn:()=>void)=>{this.listeners.add(fn);return()=>{this.listeners.delete(fn);};};
@@ -142,8 +180,8 @@ export class ReceiverHost{
   });
  }
   /** The player is in the foreground (something loaded: playing or paused). While set, the inbox
-   * poll pauses; registration and the heartbeat continue so grants arrive on the next idle poll. */
-  setPlayerActive(active:boolean){this.playerActive=active;}
+   * inbox remains live so a new handoff can be accepted while something is playing. */
+  setPlayerActive(active:boolean){if(this.playerActive!==active){this.playerActive=active;this.sleeper?.wake();}}
  stop(){this.run?.abort();this.run=undefined;this.streamConnected=false;this.publish({phase:'off',asking:undefined});}
  dispose(){this.stop();this.listeners.clear();}
 
@@ -159,16 +197,15 @@ export class ReceiverHost{
     try{
      if(!this.state.receiver){
       this.publish({phase:'registering'});
-      this.publish({receiver:parseReceiver((await this.api.request<{receiver?:unknown}>('/v1/receivers','POST',{protocolVersion:SOCIAL_PROTOCOL,deviceId:this.device.deviceId,displayName:this.device.displayName.slice(0,64),platform:this.device.platform,keyFingerprint:this.device.keyFingerprint,supportedCommands:['load','play','pause','seek','stop'],grantPolicy:'per-device'},signal)).receiver),phase:'waiting',error:undefined});
+      this.publish({receiver:parseReceiver((await this.api.request<{receiver?:unknown}>('/v1/receivers','POST',{protocolVersion:SOCIAL_PROTOCOL,displayName:this.device.displayName.slice(0,64),platform:this.device.platform,keyFingerprint:this.device.keyFingerprint,supportedCommands:['load','play','pause','seek','stop'],grantPolicy:'per-device'},signal)).receiver),phase:'waiting',error:undefined});
       lastBeat=Date.now();
      }
       const id=this.state.receiver!.id;
       if(Date.now()-lastBeat>=this.heartbeatMs){await this.api.request<unknown>(`/v1/receivers/${encodeURIComponent(id)}/heartbeat`,'POST',{protocolVersion:SOCIAL_PROTOCOL,keyFingerprint:this.device.keyFingerprint},signal);lastBeat=Date.now();}
-      // PERF-16: no inbox poll while the player is in the foreground. While the event stream is
-      // connected the poll backs off to the safety interval; on a dropped stream the 30 s poll
+      // While the event stream is connected the poll backs off to the safety interval;
+      // on a dropped stream the 30 s poll
       // (with jitter) covers the gap until it reconnects.
-      if(!this.playerActive)await this.refreshInbox(id,signal);
-      else if(signal.aborted)return;
+      await this.refreshInbox(id,signal);
       failures=0;if(this.state.phase==='error')this.publish({phase:'waiting',error:undefined});
     }catch(e){
      if(signal.aborted)return;
@@ -183,13 +220,18 @@ export class ReceiverHost{
  /** Reads one receiver inbox and works it like a poll: a new grant is asked about, a waiting
   * handoff is taken once it is genuinely playing. The event stream calls this too: the hint
   * only decides *when* to read, never what to play. */
- private async refreshInbox(id:string,signal:AbortSignal){
+ private refreshInbox(id:string,signal:AbortSignal):Promise<void>{
+ return this.inboxWork??=this.readInbox(id,signal).finally(()=>{this.inboxWork=undefined;});
+ }
+ private async readInbox(id:string,signal:AbortSignal){
   const inbox=await this.api.request<{grants?:unknown[];handoffs?:unknown[]}>(`/v1/receivers/${encodeURIComponent(id)}/inbox`,'GET',undefined,signal);
   if(signal.aborted)return;
   const asking=(inbox.grants??[]).map(g=>parseReceiverGrant({protocolVersion:SOCIAL_PROTOCOL,serverTime:'',grant:g}))[0];
   if(asking?.id!==this.state.asking?.id)this.publish({asking});
   const handoff=(inbox.handoffs??[]).map(h=>parseHandoff({protocolVersion:SOCIAL_PROTOCOL,serverTime:'',handoff:h})).find(h=>h.outcome==='waiting'&&!this.handled.has(h.id));
-  if(handoff){this.handled.add(handoff.id);void this.take(handoff,signal);}
+  if(handoff&&!this.taking){this.handled.add(handoff.id);if(this.handled.size>64)this.handled.delete(this.handled.values().next().value!);this.taking=handoff.id;
+   void this.take(handoff,signal).catch(()=>{}).finally(()=>{if(this.taking===handoff.id)this.taking=undefined;this.sleeper?.wake();});
+  }
  }
  /** Holds `/v1/notifications/events` open and turns `receiver.inbox_changed` into inbox reads.
   * A dropped stream never empties anything: the poll loop keeps covering until it reconnects. */
@@ -204,11 +246,11 @@ export class ReceiverHost{
      if(event.event!=='receiver.inbox_changed')return;
      let body:unknown;try{body=JSON.parse(event.data);}catch{return;}
      const hint=parseReceiverInboxEvent(body);
-     if(!hint||this.playerActive)return;
+     if(!hint)return;
      // `grant`/`handoff` name their receiver; `resync` (and a hint without one) refreshes this
      // host's own inbox. The server sends `resync` on every connection.
      const id=hint.kind==='resync'?this.state.receiver?.id:(hint.receiverId??this.state.receiver?.id);
-     if(!id)return;
+     if(!id||id!==this.state.receiver?.id)return;
      // A forgotten receiver re-registers on the next poll turn, as after a failed poll.
      void this.refreshInbox(id,signal).catch(e=>{if(status(e)===404)this.publish({receiver:undefined});});
     },signal);

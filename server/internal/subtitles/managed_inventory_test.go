@@ -3,6 +3,7 @@ package subtitles
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"portico.local/server/internal/storage"
 	"testing"
@@ -52,9 +53,19 @@ func TestManagedSidecarsRequireCommittedCompletePhysicalDirectory(t *testing.T) 
 	if e != nil {
 		t.Fatal(e)
 	}
-	if e = CommitManagedPage(context.Background(), tx, "remote", "v1", "scan", "/remote", []storage.Snapshot{origin.snapshot}); e != nil {
-		t.Fatal(e)
+	entries := []storage.Snapshot{origin.snapshot}
+	for i := 0; i < 5000; i++ {
+		name := fmt.Sprintf("unrelated-%05d.nfo", i)
+		entries = append(entries, storage.Snapshot{Path: "/remote/" + name, Name: name})
 	}
+	for len(entries) > 0 {
+		n := min(len(entries), 128)
+		if e = CommitManagedPage(context.Background(), tx, "remote", "v1", "scan", "/remote", entries[:n]); e != nil {
+			t.Fatal(e)
+		}
+		entries = entries[n:]
+	}
+
 	if e = tx.Commit(); e != nil {
 		t.Fatal(e)
 	}

@@ -33,10 +33,11 @@ export function listeningData(raw:unknown,scope:QueueScope):unknown {
  if(!object(raw)||!object(raw.scope)||(['serverId','authority','accountId','profileId'] as const).some(k=>(raw.scope as Record<string,unknown>)[k]!==scope[k]))bad();
  return raw.data;
 }
+/** What can be played from a page. Its target is exact; a way of playing this app does not know is not offered, and the ones it knows still are. */
 export function parseListeningJourney(v:unknown,libraryId:string):ListeningJourney {
- if(!object(v)||!object(v.target)||v.target.libraryId!==libraryId||!['library','song','artist','album','disc','book'].includes(String(v.target.kind))||typeof v.target.id!=='string'||!(/^[A-Za-z0-9_-]{1,128}(?::disc:\d{1,4})?$/.test(v.target.id))||!Array.isArray(v.actions)||v.actions.some(a=>!['play','shuffle','mix','enqueue'].includes(String(a)))||typeof v.resumeUnavailable!=='boolean')bad();
+ if(!object(v)||!object(v.target)||v.target.libraryId!==libraryId||!['library','song','artist','album','disc','book'].includes(String(v.target.kind))||typeof v.target.id!=='string'||!(/^[A-Za-z0-9_-]{1,128}(?::disc:\d{1,4})?$/.test(v.target.id))||!Array.isArray(v.actions)||v.actions.length>16||typeof v.resumeUnavailable!=='boolean')bad();
  let resume:ListeningJourney['resume'];if(v.resume!==undefined){if(!object(v.resume)||!id(v.resume.itemId)||!finite(v.resume.positionSeconds))bad();resume=Object.freeze({itemId:v.resume.itemId,positionSeconds:v.resume.positionSeconds});}
- return Object.freeze({target:Object.freeze({libraryId,kind:v.target.kind as ListeningTarget['kind'],id:v.target.id}),actions:Object.freeze([...v.actions]) as ListeningJourney['actions'],...(resume?{resume}:{}),resumeUnavailable:v.resumeUnavailable});
+ return Object.freeze({target:Object.freeze({libraryId,kind:v.target.kind as ListeningTarget['kind'],id:v.target.id}),actions:Object.freeze([...new Set(v.actions.filter(a=>['play','shuffle','mix','enqueue'].includes(String(a))))]) as ListeningJourney['actions'],...(resume?{resume}:{}),resumeUnavailable:v.resumeUnavailable});
 }
 function parseItem(v:unknown,itemId:string):ListeningItem {
  if(!object(v)||v.itemId!==itemId||!id(v.libraryId)||typeof v.kind!=='string')bad();

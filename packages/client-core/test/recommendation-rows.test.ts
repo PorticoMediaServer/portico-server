@@ -26,10 +26,16 @@ test('a personal row keeps its family and parameterised title', () => {
   assert.equal(serverTextLabel(defaultI18n, parsed.titleText), 'Drama for you');
   assert.deepEqual(homeRowHeading(parsed), {key: 'home.row.genreForYou', fallback: 'Drama for you', params: {genre: 'Drama'}});
   assert.ok(isPersonalRowId(parsed.id) && !isPersonalRowId('for_you') && !isPersonalRowId('recommended'));
-  // Malformed text is refused like any other field.
-  for (const titleText of [{code: 'home.row.genreForYou'}, {code: 1, fallback: 'x'}, {code: 'x', fallback: 'x', params: {genre: 3}}, {code: 'x', fallback: 'x', params: ['Drama']}]) {
-    assert.throws(() => validateHomeRow(row({titleText})), {code: 'invalid_home'});
+  // Title text that cannot be read is left out, and the row's plain title names it.
+  for (const titleText of [{code: 'home.row.genreForYou'}, {code: 1, fallback: 'x'}]) {
+    const loose = validateHomeRow(row({titleText}));
+    assert.equal(loose.titleText, undefined);
+    assert.equal(loose.title, 'Drama for you');
   }
+  // Parameters that cannot be read are left out, so the fallback names the row.
+  assert.deepEqual(validateHomeRow(row({titleText: {code: 'home.row.genreForYou', fallback: 'Drama for you', params: {genre: 3}}})).titleText, {code: 'home.row.genreForYou', params: {}, fallback: 'Drama for you'});
+  assert.deepEqual(validateHomeRow(row({titleText: {code: 'home.row.genreForYou', fallback: 'Drama for you', params: ['Drama']}})).titleText, {code: 'home.row.genreForYou', fallback: 'Drama for you'});
+  assert.equal(serverTextLabel(defaultI18n, validateHomeRow(row({titleText: {code: 'home.row.genreForYou', fallback: 'Drama for you', params: {genre: 3}}})).titleText), 'Drama for you');
 });
 
 test('titles come from the catalogue, with the fallback for an unknown code or missing params', () => {
@@ -92,7 +98,9 @@ test('a show page reads its own rows', async () => {
   assert.equal(paths[0], '/v1/shows/s%201/recommendations?limit=12');
   assert.equal(recs.rows[0]!.relation, 'more_like');
   const echo = {request: async <T>() => ({showId: 's1', revision: {catalog: 1, viewer: 1}, rows: [related('more_like', {entries: [entry('s1')]})]} as T)};
-  await assert.rejects(fetchShowRecommendations(echo, 's1'));
+  // The show itself is never one of its own recommendations: a row left with nothing is not shown.
+  assert.equal((await fetchShowRecommendations(echo, 's1')).rows.length, 0);
+  await assert.rejects(fetchShowRecommendations(echo, 'another'));
 });
 
 test('See all pages the whole row and starts again on a stale cursor', async () => {

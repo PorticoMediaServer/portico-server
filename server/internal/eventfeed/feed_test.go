@@ -111,16 +111,39 @@ func TestStreamReplacementCancelsOldReader(t *testing.T) {
 		t.Fatal("first stream refused")
 	}
 	defer release()
-	if _, ok = h.AdmitStream("installation", func() {}); ok {
-		t.Fatal("duplicate stream admitted")
+	// A reconnect takes over: it is admitted, and the stream it replaces ends.
+	second, cancelSecond := context.WithCancel(context.Background())
+	defer cancelSecond()
+	releaseSecond, ok := h.AdmitStream("installation", cancelSecond)
+	if !ok {
+		t.Fatal("a reconnecting stream was refused")
 	}
 	select {
 	case <-ctx.Done():
 	case <-time.After(time.Second):
 		t.Fatal("old stream stayed live")
 	}
-	if _, ok = h.AdmitStream("installation", func() {}); !ok {
-		t.Fatal("retry after retirement refused")
+	// The retired stream's release must not evict its successor.
+	release()
+	if second.Err() != nil {
+		t.Fatal("the new stream was cancelled")
+	}
+	third, cancelThird := context.WithCancel(context.Background())
+	defer cancelThird()
+	if _, ok = h.AdmitStream("installation", cancelThird); !ok {
+		t.Fatal("a third stream was refused")
+	}
+	select {
+	case <-second.Done():
+	case <-time.After(time.Second):
+		t.Fatal("the second stream was not retired by the third")
+	}
+	releaseSecond()
+	if third.Err() != nil {
+		t.Fatal("releasing a retired stream cancelled the live one")
+	}
+	if _, ok = h.AdmitStream("", cancelThird); ok {
+		t.Fatal("a stream with no installation was admitted")
 	}
 }
 

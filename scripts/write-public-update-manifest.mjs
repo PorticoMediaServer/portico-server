@@ -10,7 +10,8 @@ const assets = {
   windowsArm64: 'Portico-Media-Server-Windows-arm64-Setup.exe',
   windowsX64Portable: 'Portico-Media-Server-Windows-x64-Portable.zip',
   windowsArm64Portable: 'Portico-Media-Server-Windows-arm64-Portable.zip',
-  macosArm64: 'Portico-Media-Server-macOS-arm64.dmg',
+  macosArm64: 'Portico-Media-Server-macOS-arm64.pkg',
+  macosArm64DiskImage: 'Portico-Media-Server-macOS-arm64.dmg',
   linuxX64Archive: 'portico-media-server-linux-x64.tar.gz',
   linuxArm64Archive: 'portico-media-server-linux-arm64.tar.gz',
   linuxX64Deb: 'portico-media-server-linux-x64.deb',
@@ -18,7 +19,7 @@ const assets = {
   linuxX64Rpm: 'portico-media-server-linux-x64.rpm',
   linuxArm64Rpm: 'portico-media-server-linux-arm64.rpm',
 };
-const channel = 'stable';
+const channel = version.includes('-') ? 'beta' : 'stable';
 writeFileSync('dist/portico-update-manifest.json', `${JSON.stringify({
   schemaVersion: 1,
   channel,
