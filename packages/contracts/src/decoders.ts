@@ -52,6 +52,8 @@ export function decodeListMemberAccessTokensResponse(input: unknown): types.List
 export function decodeListQueueEntriesResponse(input: unknown): types.ListQueueEntriesResponse { return decode("ListQueueEntriesResponse", input) as types.ListQueueEntriesResponse; }
 export function decodeListWebhookDeliveriesResponse(input: unknown): types.ListWebhookDeliveriesResponse { return decode("ListWebhookDeliveriesResponse", input) as types.ListWebhookDeliveriesResponse; }
 export function decodeListWebhooksResponse(input: unknown): types.ListWebhooksResponse { return decode("ListWebhooksResponse", input) as types.ListWebhooksResponse; }
+export function decodeMcpResponse(input: unknown): types.McpResponse { return decode("McpResponse", input) as types.McpResponse; }
+export function decodeMcpStreamResponse(input: unknown): types.McpStreamResponse { return decode("McpStreamResponse", input) as types.McpStreamResponse; }
 export function decodeMoveQueueEntryResponse(input: unknown): types.MoveQueueEntryResponse { return decode("MoveQueueEntryResponse", input) as types.MoveQueueEntryResponse; }
 export function decodePatchDeviceResponse(input: unknown): types.PatchDeviceResponse { return decode("PatchDeviceResponse", input) as types.PatchDeviceResponse; }
 export function decodePostAdminBackupsResponse(input: unknown): types.PostAdminBackupsResponse { return decode("PostAdminBackupsResponse", input) as types.PostAdminBackupsResponse; }

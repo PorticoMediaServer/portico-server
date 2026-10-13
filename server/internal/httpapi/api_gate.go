@@ -257,8 +257,14 @@ func (d Dependencies) routeScope(mux *http.ServeMux, r *http.Request) (apikit.Sc
 // needs both to agree, and the stricter reading wins if they ever do not.
 func (d Dependencies) patternScope(pattern, method, escapedPath string) apikit.Scope {
 	legacy, listed := routeScopes[pattern]
-	if d.registry != nil {
-		if m, ok := d.registry.Lookup(method, escapedPath); ok && muxPattern(m.Method, m.Path) == pattern {
+	// A handler on the registry was built before the registry was finished, so
+	// it reaches the finished one through the router's shared reference.
+	registry := d.registry
+	if registry == nil && d.self != nil {
+		registry = d.self.registry
+	}
+	if registry != nil {
+		if m, ok := registry.Lookup(method, escapedPath); ok && muxPattern(m.Method, m.Path) == pattern {
 			if listed && legacy != m.Requires {
 				return apikit.ScopeSession
 			}

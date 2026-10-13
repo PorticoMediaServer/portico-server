@@ -9023,6 +9023,53 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "McpRequest": {
+    "properties": {
+      "jsonrpc": {
+        "type": "string"
+      },
+      "method": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "jsonrpc"
+    ],
+    "type": "object"
+  },
+  "McpResponse": {
+    "properties": {
+      "jsonrpc": {
+        "type": "string"
+      },
+      "method": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "jsonrpc"
+    ],
+    "type": "object"
+  },
+  "McpStreamRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "McpStreamResponse": {
+    "properties": {
+      "jsonrpc": {
+        "type": "string"
+      },
+      "method": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "jsonrpc"
+    ],
+    "type": "object"
+  },
   "MoveQueueEntryRequest": {
     "properties": {
       "after": {

@@ -82,6 +82,7 @@ func administrationFixtureNew(t *testing.T) administrationFixture {
 		Access: AccessArea{Access: access.New(db), Logs: recorder, ClientLogs: servicelog.NewClientLogStore(db), Advertiser: connectivity.NewAdvertiser(connectivity.AdvertiserOptions{})}}
 	deps.credentials = newCredentialGate()
 	deps.Webhooks = webhooks.New(db)
+	deps.self = &selfHandler{}
 	return administrationFixture{handler: New(deps), owner: ownerToken.AccessToken, admin: adminToken.AccessToken, member: memberToken.AccessToken, memberDevice: memberToken.DeviceID, recorder: recorder, deps: deps}
 }
 

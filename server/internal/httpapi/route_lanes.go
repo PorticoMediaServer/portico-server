@@ -9,6 +9,10 @@ package httpapi
 // /v1/downloads/settings is an ordinary read while /v1/downloads/artifacts/{grant}
 // is a byte stream — and a prefix rule cannot tell them apart.
 var routeLanes = map[string]string{
+	// The MCP endpoint (mcp.go). Its tool calls are admitted again, each in
+	// the lane of the API route it uses.
+	"POST /v1/mcp": laneTools,
+	"GET /v1/mcp":  laneDefault,
 	// Outbound webhooks (webhook_routes.go).
 	"GET /v1/admin/webhooks":                 laneAdmin,
 	"POST /v1/admin/webhooks":                laneAdmin,

@@ -123,6 +123,9 @@ type Dependencies struct {
 	access *accessCache
 	// restrictions is the viewer content-restriction cache, kept on the same terms.
 	restrictions *restrictionCache
+	// self is the finished router, for the MCP server's calls to this server's
+	// own API (mcp.go).
+	self *selfHandler
 	// credentials holds API keys and personal access tokens to their scopes and
 	// limits (api_gate.go).
 	credentials *credentialGate
@@ -700,6 +703,10 @@ func New(d Dependencies) http.Handler {
 		d.credentials = newCredentialGate()
 	}
 	d.securePolicy = &securePolicyCache{}
+	if d.self == nil {
+		d.self = &selfHandler{}
+	}
+	d.self.mux = mux
 	// The typed registry captures d, so everything its handlers read must be
 	// installed first.
 	if d.Console == nil && d.DB != nil {
@@ -752,6 +759,7 @@ func New(d Dependencies) http.Handler {
 		panic(err)
 	} else {
 		d.registry = registry
+		d.self.registry = registry
 	}
 	d.installationRoutes(mux)
 	d.foundationRoutes(mux)
@@ -1244,7 +1252,7 @@ func New(d Dependencies) http.Handler {
 	routeMuxMu.Lock()
 	routeMux = mux
 	routeMuxMu.Unlock()
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	d.self.h = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		r = detachCanceledConnection(w, r)
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("X-Frame-Options", "DENY")
@@ -1340,6 +1348,7 @@ func New(d Dependencies) http.Handler {
 			d.Hosted.MembershipChanged()
 		}
 	})
+	return d.self.h
 }
 
 // unmatchedRoute answers a /v1 request no route serves: 405 with Allow when

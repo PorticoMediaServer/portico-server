@@ -1057,6 +1057,40 @@ export const routes = [
     "status": 200
   },
   {
+    "id": "mcp",
+    "method": "POST",
+    "path": "/v1/mcp",
+    "summary": "Model Context Protocol endpoint: JSON-RPC 2.0 over Streamable HTTP, authenticated by an API key or personal access token",
+    "access": "public",
+    "requires": "open",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 1048576,
+    "errors": [
+      "unauthorized",
+      "invalid_request",
+      "body_too_large",
+      "unsupported_media_type",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
+    "id": "mcp_stream",
+    "method": "GET",
+    "path": "/v1/mcp",
+    "summary": "Not offered: this MCP server answers each request directly and opens no stream",
+    "access": "public",
+    "requires": "open",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "method_not_allowed"
+    ],
+    "status": 200
+  },
+  {
     "id": "move_queue_entry",
     "method": "POST",
     "path": "/v1/queues/{id}/entries/{entryId}:move",

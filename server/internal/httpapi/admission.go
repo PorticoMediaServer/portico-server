@@ -37,6 +37,10 @@ const (
 	laneAdminLong     = "admin-long"
 	laneSecurityFence = "security-fence"
 	laneDefault       = "default"
+	// laneTools carries MCP requests. One holds its slot while the API calls
+	// it makes are admitted in their own lanes, so it has a budget long enough
+	// for the slowest of those and is kept apart from the lanes people use.
+	laneTools = "tools"
 )
 
 // laneSpec is everything admission needs to know about a lane.
@@ -90,6 +94,7 @@ var laneSpecs = map[string]laneSpec{
 	// database work ends when the owner's request goes away (a file copy
 	// already under way finishes first).
 	laneAdminLong: {capacity: 2, queueWait: 1500 * time.Millisecond, budget: 0, class: dbwork.ClassMaintenance, pressure: false, endsWithClient: true},
+	laneTools:     {capacity: 16, queueWait: 1500 * time.Millisecond, budget: 30 * time.Second, class: dbwork.ClassInteractive, pressure: false},
 	laneDefault:   {capacity: 100, queueWait: 1500 * time.Millisecond, budget: 5 * time.Second, class: dbwork.ClassInteractive, pressure: true},
 }
 

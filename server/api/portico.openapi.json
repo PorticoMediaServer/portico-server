@@ -6463,6 +6463,92 @@
         "x-scope": "library"
       }
     },
+    "/v1/mcp": {
+      "get": {
+        "operationId": "mcp_stream",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "jsonrpc": {
+                      "type": "string"
+                    },
+                    "method": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "jsonrpc"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Not offered: this MCP server answers each request directly and opens no stream",
+        "x-access": "public",
+        "x-cost": "constant",
+        "x-lane": "default",
+        "x-scope": "open"
+      },
+      "post": {
+        "operationId": "mcp",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "jsonrpc": {
+                    "type": "string"
+                  },
+                  "method": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "jsonrpc"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "jsonrpc": {
+                      "type": "string"
+                    },
+                    "method": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "jsonrpc"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Model Context Protocol endpoint: JSON-RPC 2.0 over Streamable HTTP, authenticated by an API key or personal access token",
+        "x-access": "public",
+        "x-cost": "page_sized",
+        "x-lane": "default",
+        "x-max-body-bytes": 1048576,
+        "x-scope": "open"
+      }
+    },
     "/v1/me/access-tokens": {
       "get": {
         "operationId": "list_access_tokens",
