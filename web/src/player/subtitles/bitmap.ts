@@ -71,3 +71,15 @@ export function cueAt(cues: readonly Readonly<{startMs: number; endMs: number}>[
   }
   return -1;
 }
+
+/** Combined limits apply even when each individual picture is valid. Tests may only lower them. */
+const combinedLimits = Object.freeze({maxStatePixels: 16 * 1024 * 1024, maxFramePixels: 16 * 1024 * 1024, maxRetainedBytes: 96 * 1024 * 1024, maxWorkPixels: 512 * 1024 * 1024});
+export type BitmapDecodeLimits = Partial<typeof combinedLimits>;
+export function bitmapDecodeLimits(lower: BitmapDecodeLimits = {}): typeof combinedLimits {
+  const out = {...combinedLimits};
+  for (const key of Object.keys(out) as (keyof typeof out)[]) {
+    const value = lower[key];
+    if (value !== undefined && Number.isSafeInteger(value) && value >= 0) out[key] = Math.min(out[key], value);
+  }
+  return out;
+}

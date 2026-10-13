@@ -7,7 +7,7 @@
  * moment is the last presentation segment's object list, each object cropped as the segment
  * says, clipped to its window, coloured through the palette the segment names.
  */
-import {bitmapLimits, checkedSize, finishCues, yuvToRgb, type BitmapCue, type BitmapRect, type BitmapTrack} from './bitmap.ts';
+import {bitmapDecodeLimits, type BitmapDecodeLimits, SubtitleDataError, bitmapLimits, checkedSize, finishCues, yuvToRgb, type BitmapCue, type BitmapRect, type BitmapTrack} from './bitmap.ts';
 
 /** `parts` are views of the file itself until the object is complete: nothing is allocated for a size a file merely claims. */
 type PgsObject = {width: number; height: number; expected: number; parts: Uint8Array[]; data: Uint8Array; length: number; complete: boolean};
@@ -20,6 +20,7 @@ const PCS = 0x16, WDS = 0x17, PDS = 0x14, ODS = 0x15, END = 0x80;
 
 /** Run-length data to palette indexes, never writing outside `width × height`. */
 export function decodePgsRuns(data: Uint8Array, width: number, height: number): Uint8Array {
+  if (!checkedSize(width, height)) throw new SubtitleDataError('Subtitle picture is too large.');
   const out = new Uint8Array(width * height);
   let p = 0, x = 0, y = 0;
   while (p < data.length && y < height) {
@@ -39,7 +40,10 @@ export function decodePgsRuns(data: Uint8Array, width: number, height: number): 
   return out;
 }
 
-export function parsePgs(bytes: Uint8Array): BitmapTrack {
+export function parsePgs(bytes: Uint8Array, lower: BitmapDecodeLimits = {}): BitmapTrack {
+  if (bytes.byteLength > bitmapLimits.maxBytes) throw new SubtitleDataError('Subtitle file is too large.');
+  const limits = bitmapDecodeLimits(lower);
+  let retainedBytes = bytes.byteLength;
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const objects = new Map<number, PgsObject>(), palettes = new Map<number, Uint8ClampedArray>(), windows = new Map<number, Window>();
   let canvasWidth = 0, canvasHeight = 0, skipped = 0;
@@ -58,14 +62,19 @@ export function parsePgs(bytes: Uint8Array): BitmapTrack {
     if (set.width * set.height > canvasWidth * canvasHeight) { canvasWidth = set.width; canvasHeight = set.height; }
     const table = palettes.get(set.palette);
     const placed: Placed[] = [];
+    let framePixels = 0;
     for (const entry of set.list) {
       const object = objects.get(entry.id);
       if (!object || !object.complete) { skipped++; continue; }
+      if (framePixels + object.width * object.height > limits.maxFramePixels) { skipped++; continue; }
+      framePixels += object.width * object.height;
       placed.push({object, x: entry.x, y: entry.y, forced: entry.forced, crop: entry.crop, window: windows.get(entry.window)});
     }
     if (!placed.length || !table) return;
     if (cues.length >= bitmapLimits.maxCues) { skipped++; return; }
     // The palette is copied: a later set may redefine it while this cue is still waiting to be painted.
+    if (retainedBytes + table.byteLength > limits.maxRetainedBytes) { skipped++; return; }
+    retainedBytes += table.byteLength;
     const palette = table.slice(), frame = {width: set.width, height: set.height};
     const cue = {startMs: at, endMs: 0, forced: placed.every(p => p.forced), paint: () => placed.map(p => paintObject(p, palette, frame)).filter((r): r is BitmapRect => r !== null)};
     cues.push(cue);
@@ -136,11 +145,11 @@ export function parsePgs(bytes: Uint8Array): BitmapTrack {
       const object = objects.get(id);
       if (!object || object.complete) continue;
       const part = bytes.subarray(from, Math.min(body + size, from + (object.expected - object.length)));
-      object.parts.push(part);
+      if (part.length) object.parts.push(part);
       object.length += part.length;
       if (sequence & 0x40) {
         if (object.parts.length === 1) object.data = object.parts[0]!;
-        else { object.data = new Uint8Array(object.length); let at = 0; for (const piece of object.parts) { object.data.set(piece, at); at += piece.length; } }
+        else { if (retainedBytes + object.length > limits.maxRetainedBytes) { objects.delete(id); skipped++; continue; } retainedBytes += object.length; object.data = new Uint8Array(object.length); let at = 0; for (const piece of object.parts) { object.data.set(piece, at); at += piece.length; } }
         object.parts = [];
         object.complete = true;
       }

@@ -10,6 +10,8 @@ import {parseVobSub} from './vobsub.ts';
 
 const scope = self as unknown as {postMessage(message: ImageWorkerReply, transfer?: Transferable[]): void; onmessage: ((event: {data: ImageWorkerRequest}) => void) | null};
 let track: BitmapTrack | null = null;
+let painting = false;
+const pending: number[] = [];
 let bitmaps = typeof createImageBitmap === 'function' && typeof ImageData === 'function';
 
 async function paint(index: number): Promise<void> {
@@ -31,6 +33,17 @@ async function paint(index: number): Promise<void> {
   scope.postMessage({type: 'frame', index, rects}, transfer);
 }
 
+async function drain(): Promise<void> {
+  if (painting) return;
+  painting = true;
+  try {
+    while (pending.length) {
+      const index = pending.shift()!;
+      await paint(index).catch(() => scope.postMessage({type: 'frame', index, rects: []}));
+    }
+  } finally { painting = false; }
+}
+
 scope.onmessage = event => {
   const message = event.data;
   try {
@@ -40,7 +53,13 @@ scope.onmessage = event => {
       if (!track.cues.length || !track.width || !track.height) { scope.postMessage({type: 'failed', message: 'This subtitle has no pictures that can be shown.'}); return; }
       const starts = Float64Array.from(track.cues, cue => cue.startMs), ends = Float64Array.from(track.cues, cue => cue.endMs);
       scope.postMessage({type: 'ready', width: track.width, height: track.height, starts, ends, skipped: track.skipped}, [starts.buffer, ends.buffer]);
-    } else if (message.type === 'paint') void paint(message.index).catch(() => scope.postMessage({type: 'frame', index: message.index, rects: []}));
+    } else if (message.type === 'paint') {
+      if (!Number.isInteger(message.index) || message.index < 0 || !track || message.index >= track.cues.length) return;
+      // One paint runs at a time; excessive queued seeks are answered without allocating pixels.
+      if (pending.length >= 2) scope.postMessage({type: 'frame', index: pending.shift()!, rects: []});
+      pending.push(message.index);
+      void drain();
+    }
   } catch (error) {
     scope.postMessage({type: 'failed', message: error instanceof Error ? error.message : 'This subtitle could not be read.'});
   }
