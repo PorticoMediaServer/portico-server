@@ -706,10 +706,13 @@ func New(d Dependencies) http.Handler {
 			if err := d.Scheduler.Register(d.Catalog.BulkAdapter(d.bulkAccess)); err != nil {
 				panic(err)
 			}
-			if err := d.Scheduler.Register(d.Catalog.BulkTrashAdapter(d.bulkAccess)); err != nil {
+			if err := d.Scheduler.Register(d.Catalog.ContainerResetAdapter()); err != nil {
 				panic(err)
 			}
-			if err := d.Scheduler.Register(d.Catalog.ContainerResetAdapter()); err != nil {
+			if err := d.Scheduler.Register(d.Catalog.LibraryRemovalAdapter()); err != nil {
+				panic(err)
+			}
+			if err := d.Scheduler.Register(d.Catalog.FolderRemovalAdapter()); err != nil {
 				panic(err)
 			}
 		}
@@ -1086,17 +1089,6 @@ func New(d Dependencies) http.Handler {
 			return
 		}
 		write(w, 200, item)
-	})
-	mux.HandleFunc("DELETE /v1/items/{id}", func(w http.ResponseWriter, r *http.Request) {
-		if _, e := d.owner(r); e != nil {
-			failure(w, e)
-			return
-		}
-		if e := d.Catalog.Delete(r.PathValue("id")); e != nil {
-			failure(w, e)
-			return
-		}
-		w.WriteHeader(204)
 	})
 	d.playbackSessionRoutes(mux)
 	d.audioDecodeRoutes(mux)

@@ -2,6 +2,7 @@ import React, {useState} from 'react';
 import {useSelection} from '../../app/selection';
 import {useSession} from '../../app/session';
 import {repairTargetFor, useMetadataEditor} from '../../app/metadata-editor';
+import {useDeleteMedia} from '../../app/delete-media';
 import {Dialog, Icon, Menu, Spinner, useCompact} from '../../ui';
 import {currentI18n} from '../../app/i18n';
 import {CollectionPicker, PlaylistPicker} from './EntryActions';
@@ -20,6 +21,7 @@ export function SelectionBar() {
   const selection = useSelection();
   const {api, owner, session} = useSession();
   const editor = useMetadataEditor();
+  const deleter = useDeleteMedia();
   const compact = useCompact();
   const [busy, setBusy] = useState<string>();
   const [progress, setProgress] = useState<BulkProgress>();
@@ -49,7 +51,6 @@ export function SelectionBar() {
       setBusy(undefined);
       if (onDone) onDone(outcome.ok, outcome.failed);
       else if (outcome.failed.length) setResult(t('web.selection.partial', {ok: outcome.ok, failed: outcome.failed.length}));
-      else if (command === 'trash') setResult(t('web.selection.trashed', {count: outcome.ok}));
       else if (command === 'refresh') setResult(t('web.selection.refreshed', {count: outcome.ok}));
       else setResult(t('web.selection.updated', {count: outcome.ok}));
       if (outcome.ok && typeof window !== 'undefined' && (command === 'personal-state')) {
@@ -92,8 +93,8 @@ export function SelectionBar() {
         {owner ? <Action icon="collection" label={t('web.selection.collection')} disabled={!count || !!busy} onClick={() => setCollection(true)} compact={compact} /> : null}
         {owner && session?.viewer.authority === 'local' ? <Action icon="edit" label={t('web.selection.edit')} disabled={!count || !!busy || !selection.entries.every(e => repairTargetFor(e))} onClick={() => editor?.open({targets: selection.entries.map(e => repairTargetFor(e)!), titles: selection.entries.map(e => e.title), onSaved: selection.refresh})} compact={compact} /> : null}
         {owner && session?.viewer.authority === 'local' ? <Action icon="refresh" label={t('web.selection.refresh')} busy={busy === 'refresh'} disabled={!count || !!busy} onClick={() => void submit('refresh', 'refresh', {})} compact={compact} /> : null}
-        {/* Justin's decision: trash is single-step with no preview or confirmation. Empty trash keeps its confirmation. */}
-        {owner ? <Action icon="trash" label={t('web.selection.delete')} busy={busy === 'delete'} disabled={!count || !!busy || !selection.entries.every(e => e.playback)} onClick={() => void submit('delete', 'trash', {})} compact={compact} /> : null}
+        {/* Deleting removes the files from disk, so a selection goes through the same preview and typed confirmation as one title, 200 at a time. */}
+        {owner ? <Action icon="trash" label={t('web.selection.delete')} disabled={!count || !!busy || !deleter || !selection.entries.every(e => e.playback) || new Set(ids()).size > 200} onClick={() => deleter?.open({itemIds: ids(), titles: selection.entries.map(e => e.title), onDeleted: selection.refresh})} compact={compact} /> : null}
       </div>
       <span className={s.divider} aria-hidden />
       <button type="button" className={s.done} onClick={selection.exit}>{t('web.selection.done')}</button>

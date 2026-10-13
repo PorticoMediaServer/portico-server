@@ -122,7 +122,9 @@ func LocalInventoryPage(r InventoryRequest) (InventoryPage, error) {
 		return p, ErrInventoryChanged
 	}
 	rootID := RootIdentity(snapshot(r.Root, root))
-	if r.RootIdentity != "" && rootID != r.RootIdentity {
+	// The recorded root is the same folder when only its device number moved
+	// (SameRoot); the page reports the identity observed now.
+	if r.RootIdentity != "" && !SameRoot(r.RootIdentity, rootID) {
 		return p, ErrInventoryChanged
 	}
 	path, err := inventoryPath(r)

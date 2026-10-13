@@ -1,7 +1,6 @@
 import {useMemo, useState} from 'react';
-import {parseEnvelope, parseStorageReport, parseTrashPage, parseUpdateReport, type StorageUsage, type TrashEntry} from '@core/administration.ts';
-import {isFullTrashList} from '@core/server-admin/panel-logic.ts';
-export {isFullTrashList} from '@core/server-admin/panel-logic.ts';
+import {parseEnvelope, parseStorageReport, parseUpdateReport, type StorageUsage} from '@core/administration.ts';
+import {emptyMissingTitles, listMissingTitles} from '@core/title-identity.ts';
 import {useAction, useRead} from '../../admin/console';
 import {createOperationIds} from './operation-ids';
 import {useCursorRead, withCursor} from '../../admin/cursor-read';
@@ -52,64 +51,42 @@ export function DiskUsagePanel() {
   );
 }
 
-/** Storage & backups › Deleted titles: what is held before it is removed for good. */
-export function DeletedTitlesPanel() {
-  const admin = useAdmin();
+/** Storage & backups › Missing titles: titles whose files are no longer on disk. They stay in
+ * the library until the owner's rule (the rows above this list) removes them, and come back on
+ * their own if the files return. "Remove them now" does not wait for the rule. */
+export function MissingTitlesPanel() {
+  const {api} = useSession();
   const {t} = useI18n();
-  const read = useCursorRead(cursor => admin.get(withCursor('/v1/admin/trash?state=held&limit=100', cursor), parseTrashPage), [admin]);
+  const read = useCursorRead(cursor => listMissingTitles(api, {cursor: cursor || undefined, limit: 100}), [api]);
   const action = useAction();
-  // BE-API-10: one ID per logical write; retries reuse it.
-  const [opIds] = useState(createOperationIds);
-  const [emptying, setEmptying] = useState<'all' | 'expired'>();
+  const [asking, setAsking] = useState(false);
+  const [removed, setRemoved] = useState<number>();
   const page = read.data;
-  // CD-42: "due" is safe only when this page is the whole held listing — first page, no next
-  // page, and the loaded count equals the server's held total. A last page without a next
-  // cursor must NOT be assumed complete.
-  const fullList = isFullTrashList(page, read.canPrevious, read.canNext);
-  const dueItems = (page?.items ?? []).filter(item => item.expired);
-  const dueReady = fullList && dueItems.length > 0;
-  // CD-42: confirm with the server's held total, never the visible page's count.
-  const emptyCount = emptying === 'expired' ? dueItems.length : (page?.heldCount ?? 0);
-  const restore = (entry: TrashEntry) => void action.run(async () => {
-    const key = JSON.stringify({id: entry.id});
-    const out = await admin.send<{conflicts: string[]; reindexRequired: boolean}>(`/v1/admin/trash/${encodeURIComponent(entry.id)}/restore`, {operationId: opIds.forPayload(key)});
-    opIds.release();
-    read.reload();
-    if (out.conflicts?.length) throw new Error(`${out.conflicts.length} file${out.conflicts.length === 1 ? '' : 's'} could not be put back because something else is already there.`);
-  }, 'Restored.');
+  const total = page?.total ?? 0;
   return (
-    <SettingsGroup title={t('web.maintenance.trash')} description={t('web.maintenance.trashLede')}>
+    <>
       {read.error ? <div style={{padding: 12}}><Notice tone={page ? 'warning' : 'error'} compact action={{label: t('action.tryAgain'), onClick: read.reload}}>{read.error}</Notice></div> : null}
-      {action.error && !emptying ? <div style={{padding: 12}}><Notice tone="error" compact>{action.error}</Notice></div> : null}
-      {action.notice ? <div style={{padding: 12}}><Notice tone="success" compact>{action.notice}</Notice></div> : null}
+      {action.error && !asking ? <div style={{padding: 12}}><Notice tone="error" compact>{action.error}</Notice></div> : null}
+      {removed !== undefined ? <div style={{padding: 12}}><Notice tone="success" compact>{t('web.missingTitles.removed', {count: removed})}</Notice></div> : null}
       {page?.items.map(entry => (
-        <SettingsRow key={entry.id} icon="trash" label={<>{entry.title} {entry.expired ? <Badge tone="warning">{t('web.maintenance.dueForRemoval')}</Badge> : null}</>} help={t('web.maintenance.trashMeta', {count: entry.fileCount, bytes: formatBytes(entry.bytes), when: when(entry.trashedAt), expires: entry.expiresAt ? when(entry.expiresAt) : 'none'})}
-          control={<Button size="sm" variant="ghost" label={t('web.maintenance.putBack')} disabled={action.busy} onClick={() => restore(entry)} />} />
+        <SettingsRow key={entry.id} icon="film" label={entry.parentTitle ? `${entry.parentTitle} · ${entry.title}` : entry.title}
+          help={entry.removedAt ? t('web.missingTitles.sinceRemoved', {when: when(entry.missingSince), removes: when(entry.removedAt)}) : t('web.missingTitles.since', {when: when(entry.missingSince)})} />
       ))}
-      {page && !page.items.length ? <div style={{padding: 16}}><Text variant="caption" tone="tertiary">{t('web.maintenance.nothingWaiting')}</Text></div> : null}
-      {page?.items.length ? <div style={{padding: '8px 16px 16px', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center'}}>
-        <Button size="sm" variant="outline" label={t('web.maintenance.removeDue')} disabled={!dueReady} onClick={() => { action.clear(); setEmptying('expired'); }} />
-        <Button size="sm" variant="danger" label={t('web.maintenance.removeAll')} onClick={() => { action.clear(); setEmptying('all'); }} />
-        <Status tone="neutral">{`${page.heldCount} held`}</Status>
-        {!fullList ? <Text variant="caption" tone="tertiary">{t('web.trash.dueNeedsFullList')}</Text> : null}
+      {page && !page.items.length ? <div style={{padding: 16}}><Text variant="caption" tone="tertiary">{t('web.missingTitles.none')}</Text></div> : null}
+      {total ? <div style={{padding: '8px 16px 16px', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center'}}>
+        <Button size="sm" variant="danger" label={t('web.missingTitles.removeNow')} onClick={() => { action.clear(); setRemoved(undefined); setAsking(true); }} />
+        <Status tone="neutral">{t('web.missingTitles.count', {count: total})}</Status>
       </div> : null}
-      <ConfirmDialog open={!!emptying} onOpenChange={o => !o && setEmptying(undefined)} title={t('web.maintenance.removeTitle')} typedConfirmation={String(emptyCount)} busy={action.busy} error={action.error}
-        body={t('web.maintenance.removeBody', {count: emptyCount})}
-        confirmLabel={t('web.maintenance.removeConfirm')} onConfirm={() => void action.run(async () => {
-          const total = emptying === 'expired' ? (read.data?.items ?? []).filter(item => item.expired).length : (read.data?.heldCount ?? 0);
-          const payload = {expiredOnly: emptying === 'expired', confirmation: String(total)};
-          const key = JSON.stringify(payload);
-          try {
-            await admin.send('/v1/admin/trash/empty', {...payload, operationId: opIds.forPayload(key)});
-          } catch (e) {
-            // The held total moved under us: refetch and ask to confirm the fresh total.
-            if ((e as {code?: string})?.code === 'confirmation_mismatch' || (e as {status?: number})?.status === 409) { opIds.release(); read.reload(); }
-            throw e;
-          }
-          opIds.release(); setEmptying(undefined); read.reload();
-        }, 'Removed.')} />
+      <ConfirmDialog open={asking} onOpenChange={o => !o && setAsking(false)} title={t('web.missingTitles.removeTitle')} typedConfirmation={String(total)} busy={action.busy} error={action.error}
+        body={t('web.missingTitles.removeBody', {count: total})}
+        confirmLabel={t('web.missingTitles.removeConfirm')} onConfirm={() => void action.run(async () => {
+          const out = await emptyMissingTitles(api);
+          setRemoved(out.titles);
+          setAsking(false);
+          read.reload();
+        })} />
       <ListPager pages={read} />
-    </SettingsGroup>
+    </>
   );
 }
 

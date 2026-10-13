@@ -38,35 +38,6 @@ func initializeConsole(db *sql.DB, scan *ingestion.Service, player *playback.Ser
 	if err != nil {
 		return nil, nil, err
 	}
-	err = scheduler.Register(operations.Adapter{Kind: "catalog-trash-cleanup", Lane: "maintenance", Resource: operations.LaneMaintenance, ResourceRequired: true,
-		ValidateTx: func(ctx context.Context, tx *sql.Tx, resource string) error {
-			var n int
-			return tx.QueryRowContext(ctx, `SELECT 1 FROM libraries WHERE id=?`, resource).Scan(&n)
-		},
-		Maintenance: func(ctx context.Context, operation string) error {
-			var library string
-			if err := db.QueryRowContext(ctx, `SELECT resource FROM console_operations WHERE id=? AND kind='catalog-trash-cleanup' AND state='running'`, operation).Scan(&library); err != nil {
-				return err
-			}
-			return cat.CleanupCatalogTrash(ctx, library, func(tx *sql.Tx) error {
-				result, err := tx.ExecContext(ctx, `UPDATE console_operations SET processed=COALESCE(processed,0)+1 WHERE id=? AND kind='catalog-trash-cleanup' AND resource=? AND state='running'`, operation, library)
-				if err != nil {
-					return err
-				}
-				n, err := result.RowsAffected()
-				if err != nil {
-					return err
-				}
-				if n != 1 {
-					return context.Canceled
-				}
-				return nil
-			})
-		},
-	})
-	if err != nil {
-		return nil, nil, err
-	}
 	noResource := func(ctx context.Context, tx *sql.Tx, resource string) error {
 		if resource != "" {
 			return operations.ErrInvalid
@@ -94,6 +65,12 @@ func initializeConsole(db *sql.DB, scan *ingestion.Service, player *playback.Ser
 				return e
 			}
 			return player.Cleanup()
+		}},
+		// Missing titles past the owner's rule are removed (it also runs on its
+		// own after library changes; this lets an owner schedule or start it).
+		{"missing-titles-cleanup", func(ctx context.Context, id string) error {
+			_, e := cat.EmptyMissingDue(ctx)
+			return e
 		}},
 		{"personal-receipt-cleanup", func(ctx context.Context, id string) error {
 			if e := ctx.Err(); e != nil {

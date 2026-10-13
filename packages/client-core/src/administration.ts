@@ -12,17 +12,16 @@ export type MetadataProvider=Readonly<{id:MetadataProviderId;name:string;mediaKi
 export type ProviderSelection=Readonly<{mediaKind:string;provider:MetadataProviderId;apiKeySet:boolean;language:string;region:string}>;
 export type ChapterThumbnailMode='none'|'embedded'|'generated';
 export type GeneratedNavigation=Readonly<{trickplayIntervalSeconds:number;trickplayTileWidth:number;trickplayMaxTiles:number;chapterThumbnailMode:ChapterThumbnailMode;videoPreviewEnabled:boolean;videoPreviewSeconds:number}>;
-export type LibrarySettings=Readonly<{allowMediaDeletion:boolean;trashRetentionDays:number;providers:readonly ProviderSelection[];analysis:readonly string[];navigation:GeneratedNavigation}>;
+export type LibrarySettings=Readonly<{allowMediaDeletion:boolean;providers:readonly ProviderSelection[];analysis:readonly string[];navigation:GeneratedNavigation}>;
 export type LibrarySource=Readonly<{id:string;name:string;root:string;classification:'local'|'network';enabled:boolean}>;
 export type LibraryAdminDocument=Readonly<{libraryId:string;libraryName:string;libraryKind:string;revision:number;digest:string;settings:LibrarySettings;analysisMatrix:AnalysisMatrix;availableProviders:readonly MetadataProvider[];enumerations:Readonly<Record<string,readonly string[]>>;sources:readonly LibrarySource[]}>;
 export type DeleteFile=Readonly<{assetId:string;path:string;bytes:number;present:boolean;shared:boolean}>;
 export type DeleteDependent=Readonly<{kind:string;count:number;description:string}>;
-export type DeleteTarget=Readonly<{itemId:string;title:string;kind:string;libraryId:string;libraryName:string;allowMediaDeletion:boolean;trashRetentionDays:number;bytes:number;files:readonly DeleteFile[];dependents:readonly DeleteDependent[]}>;
-export type DeletePreview=Readonly<{revision:number;confirmation:string;confirmationKind:'title'|'count';totalBytes:number;totalFiles:number;totalBytesText:string;blocked:readonly string[];trashRetentionDays:number;targets:readonly DeleteTarget[]}>;
-export type DeleteReceipt=Readonly<{itemId:string;title:string;removed:boolean;trashEntryId:string;filesMoved:number;filesKept:number;bytes:number;code:string}>;
-export type DeleteResult=Readonly<{revision:number;removed:number;failed:number;bytesTrashed:number;filesRetained:boolean;receipts:readonly DeleteReceipt[]}>;
-export type TrashEntry=Readonly<{id:string;libraryId:string;itemId:string;title:string;kind:string;fileCount:number;bytes:number;bytesText:string;trashedAt:string;expiresAt:string;state:'held'|'restored'|'purged';expired:boolean;files:readonly Readonly<{originalPath:string;bytes:number}>[]}>;
-export type TrashPage=Readonly<{items:readonly TrashEntry[];nextCursor:string;heldBytes:number;heldCount:number}>;
+export type DeleteTarget=Readonly<{itemId:string;title:string;kind:string;libraryId:string;libraryName:string;allowMediaDeletion:boolean;/** How many playable titles go with this item: 1 for a film, a show's episodes. */titles:number;bytes:number;files:readonly DeleteFile[];dependents:readonly DeleteDependent[]}>;
+export type DeletePreview=Readonly<{revision:number;confirmation:string;confirmationKind:'title'|'count';totalBytes:number;totalFiles:number;totalBytesText:string;blocked:readonly string[];targets:readonly DeleteTarget[]}>;
+/** One item's outcome. `code` says why an item was not removed: `file_changed` (the file at that path is no longer the one in the library) or `file_not_removed` (storage refused). */
+export type DeleteReceipt=Readonly<{itemId:string;title:string;removed:boolean;filesDeleted:number;filesKept:number;bytes:number;code:string}>;
+export type DeleteResult=Readonly<{revision:number;removed:number;failed:number;bytesDeleted:number;filesRetained:boolean;receipts:readonly DeleteReceipt[]}>;
 export type FilesystemRoot=Readonly<{path:string;name:string;kind:string;description:string}>;
 export type FilesystemEntry=Readonly<{name:string;path:string;kind:'directory'|'file'|'unknown';readable:boolean;symlink:boolean;bytes:number}>;
 export type FilesystemPage=Readonly<{path:string;parent:string;separator:string;platform:string;writable:boolean;truncated:boolean;roots:readonly FilesystemRoot[];entries:readonly FilesystemEntry[];nextCursor:string}>;
@@ -41,7 +40,7 @@ export type TunerAssignment=Readonly<{recordingId:string;channelId:string;title:
 export type TunerAllocation=Readonly<{sourceId:string;sourceName:string;tunerCount:number;inUse:number;conflicts:number;active:readonly TunerAssignment[];upcoming:readonly TunerAssignment[]}>;
 export type TunerView=Readonly<{observedAt:string;upcomingWindowHours:number;sources:readonly TunerAllocation[]}>;
 export type StorageCategory=Readonly<{id:string;name:string;description:string;directories:readonly string[];cleanable:boolean;regenerable:boolean;retentionKey:string}>;
-export type StorageUsage=StorageCategory&Readonly<{bytes:number;bytesText:string;fileCount:number;paths:readonly string[];present:boolean;oldestDays:number;entries:number}>;
+export type StorageUsage=StorageCategory&Readonly<{bytes:number;bytesText:string;fileCount:number;paths:readonly string[];present:boolean;oldestDays:number}>;
 export type StorageReport=Readonly<{stateDirectory:string;categories:readonly StorageUsage[];totalBytes:number;totalBytesText:string;observedAt:string;truncated:boolean}>;
 export type UpdateBuild=Readonly<{version:string;buildId:string;sourceDigest:string;builtAt:string;channel:string;notes:string;url:string}>;
 export type UpdateStatus='current'|'update-available'|'no-feed'|'no-release'|'unavailable';
@@ -144,8 +143,8 @@ function parseNavigation(v:unknown):GeneratedNavigation{
  return Object.freeze({trickplayIntervalSeconds:v.trickplayIntervalSeconds,trickplayTileWidth:v.trickplayTileWidth,trickplayMaxTiles:v.trickplayMaxTiles,chapterThumbnailMode:choice(v.chapterThumbnailMode,['none','embedded','generated'] as const,'chapter thumbnail mode'),videoPreviewEnabled:v.videoPreviewEnabled,videoPreviewSeconds:v.videoPreviewSeconds});
 }
 function parseLibrarySettings(v:unknown):LibrarySettings{
- if(!object(v)||!flag(v.allowMediaDeletion)||!count(v.trashRetentionDays))invalid('library settings');
- return Object.freeze({allowMediaDeletion:v.allowMediaDeletion,trashRetentionDays:v.trashRetentionDays,providers:Object.freeze(list(v.providers,16,'library providers').map(parseSelection)),analysis:strings(v.analysis,128,'library analysis'),navigation:parseNavigation(v.navigation)});
+ if(!object(v)||!flag(v.allowMediaDeletion))invalid('library settings');
+ return Object.freeze({allowMediaDeletion:v.allowMediaDeletion,providers:Object.freeze(list(v.providers,16,'library providers').map(parseSelection)),analysis:strings(v.analysis,128,'library analysis'),navigation:parseNavigation(v.navigation)});
 }
 /** parseLibraryDocument reads one library's administration document. */
 export function parseLibraryDocument(v:unknown):LibraryAdminDocument{
@@ -170,19 +169,19 @@ function parseDeleteFile(v:unknown):DeleteFile{
  return Object.freeze({assetId:v.assetId,path:v.path,bytes:v.bytes,present:v.present,shared:v.shared});
 }
 function parseTarget(v:unknown):DeleteTarget{
- if(!object(v)||!filled(v.itemId,256)||!text(v.title,1024)||!filled(v.kind,64)||!filled(v.libraryId,256)||!text(v.libraryName,512)||!flag(v.allowMediaDeletion)||!count(v.trashRetentionDays)||!count(v.bytes))invalid('delete target');
+ if(!object(v)||!filled(v.itemId,256)||!text(v.title,1024)||!filled(v.kind,64)||!filled(v.libraryId,256)||!text(v.libraryName,512)||!flag(v.allowMediaDeletion)||!count(v.titles)||!count(v.bytes))invalid('delete target');
  const dependents=list(v.dependents,32,'delete dependents').map(entry=>{if(!object(entry)||!filled(entry.kind,64)||!count(entry.count)||!text(entry.description,512))invalid('delete dependent');return Object.freeze({kind:entry.kind,count:entry.count,description:entry.description});});
- return Object.freeze({itemId:v.itemId,title:v.title,kind:v.kind,libraryId:v.libraryId,libraryName:v.libraryName,allowMediaDeletion:v.allowMediaDeletion,trashRetentionDays:v.trashRetentionDays,bytes:v.bytes,files:Object.freeze(list(v.files,512,'delete files').map(parseDeleteFile)),dependents:Object.freeze(dependents)});
+ return Object.freeze({itemId:v.itemId,title:v.title,kind:v.kind,libraryId:v.libraryId,libraryName:v.libraryName,allowMediaDeletion:v.allowMediaDeletion,titles:v.titles,bytes:v.bytes,files:Object.freeze(list(v.files,10000,'delete files').map(parseDeleteFile)),dependents:Object.freeze(dependents)});
 }
 /** parseDeletePreview reads a delete preview. The confirmation it carries is the only text the delete will accept. */
 export function parseDeletePreview(v:unknown):DeletePreview{
- if(!object(v)||!count(v.revision)||!text(v.confirmation,1024)||!count(v.totalBytes)||!count(v.totalFiles)||!text(v.totalBytesText,64)||!count(v.trashRetentionDays))invalid('delete preview');
+ if(!object(v)||!count(v.revision)||!text(v.confirmation,1024)||!count(v.totalBytes)||!count(v.totalFiles)||!text(v.totalBytesText,64))invalid('delete preview');
  const targets=list(v.targets,200,'delete targets').map(parseTarget);
  const kind=choice(v.confirmationKind,['title','count'] as const,'confirmation kind');
  // A single-target preview confirms by title and a multi-target one by count;
  // anything else would let a client prompt for the wrong text.
  if(kind==='title'&&targets.length!==1||kind==='count'&&v.confirmation!==String(targets.length))invalid('confirmation');
- return Object.freeze({revision:v.revision,confirmation:v.confirmation,confirmationKind:kind,totalBytes:v.totalBytes,totalFiles:v.totalFiles,totalBytesText:v.totalBytesText,blocked:strings(v.blocked,200,'blocked libraries'),trashRetentionDays:v.trashRetentionDays,targets:Object.freeze(targets)});
+ return Object.freeze({revision:v.revision,confirmation:v.confirmation,confirmationKind:kind,totalBytes:v.totalBytes,totalFiles:v.totalFiles,totalBytesText:v.totalBytesText,blocked:strings(v.blocked,200,'blocked libraries'),targets:Object.freeze(targets)});
 }
 /** deletionAllowed answers whether every target in a preview sits in a library that has enabled deletion. */
 export function deletionAllowed(preview:DeletePreview):boolean{
@@ -190,25 +189,14 @@ export function deletionAllowed(preview:DeletePreview):boolean{
 }
 /** parseDeleteResult reads a delete outcome, one receipt per target. */
 export function parseDeleteResult(v:unknown):DeleteResult{
- if(!object(v)||!count(v.revision)||!count(v.removed)||!count(v.failed)||!count(v.bytesTrashed)||!flag(v.filesRetained))invalid('delete result');
+ if(!object(v)||!count(v.revision)||!count(v.removed)||!count(v.failed)||!count(v.bytesDeleted)||!flag(v.filesRetained))invalid('delete result');
  const receipts=list(v.receipts,200,'delete receipts').map(entry=>{
-  if(!object(entry)||!filled(entry.itemId,256)||!text(entry.title,1024)||!flag(entry.removed)||!count(entry.filesMoved)||!count(entry.filesKept)||!count(entry.bytes))invalid('delete receipt');
-  return Object.freeze({itemId:entry.itemId,title:entry.title,removed:entry.removed,trashEntryId:text(entry.trashEntryId,256)?entry.trashEntryId:'',filesMoved:entry.filesMoved,filesKept:entry.filesKept,bytes:entry.bytes,code:text(entry.code,64)?entry.code:''});
+  if(!object(entry)||!filled(entry.itemId,256)||!text(entry.title,1024)||!flag(entry.removed)||!count(entry.filesDeleted)||!count(entry.filesKept)||!count(entry.bytes))invalid('delete receipt');
+  return Object.freeze({itemId:entry.itemId,title:entry.title,removed:entry.removed,filesDeleted:entry.filesDeleted,filesKept:entry.filesKept,bytes:entry.bytes,code:text(entry.code,64)?entry.code:''});
  });
- if(receipts.filter(receipt=>receipt.removed).length!==v.removed)invalid('delete result counts');
- return Object.freeze({revision:v.revision,removed:v.removed,failed:v.failed,bytesTrashed:v.bytesTrashed,filesRetained:v.filesRetained,receipts:Object.freeze(receipts)});
+ if(receipts.filter(receipt=>receipt.removed).length!==v.removed||receipts.length-v.removed!==v.failed)invalid('delete result counts');
+ return Object.freeze({revision:v.revision,removed:v.removed,failed:v.failed,bytesDeleted:v.bytesDeleted,filesRetained:v.filesRetained,receipts:Object.freeze(receipts)});
 }
-/** parseTrashPage reads one page of held deletions. */
-export function parseTrashPage(v:unknown):TrashPage{
- if(!object(v)||!text(v.nextCursor,1024)||!count(v.heldBytes)||!count(v.heldCount))invalid('trash page');
- const items=list(v.items,200,'trash entries').map(entry=>{
-  if(!object(entry)||!filled(entry.id,256)||!filled(entry.libraryId,256)||!filled(entry.itemId,256)||!text(entry.title,1024)||!filled(entry.kind,64)||!count(entry.fileCount)||!count(entry.bytes)||!text(entry.bytesText,64)||!text(entry.trashedAt,64)||!text(entry.expiresAt,64)||!flag(entry.expired))invalid('trash entry');
-  const files=list(entry.files,512,'trash files').map(file=>{if(!object(file)||!text(file.originalPath,8192)||!count(file.bytes))invalid('trash file');return Object.freeze({originalPath:file.originalPath,bytes:file.bytes});});
-  return Object.freeze({id:entry.id,libraryId:entry.libraryId,itemId:entry.itemId,title:entry.title,kind:entry.kind,fileCount:entry.fileCount,bytes:entry.bytes,bytesText:entry.bytesText,trashedAt:entry.trashedAt,expiresAt:entry.expiresAt,state:choice(entry.state,['held','restored','purged'] as const,'trash entry state'),expired:entry.expired,files:Object.freeze(files)});
- });
- return Object.freeze({items:Object.freeze(items),nextCursor:v.nextCursor,heldBytes:v.heldBytes,heldCount:v.heldCount});
-}
-
 /** parseFilesystemPage reads the folder picker's roots or one directory page. */
 export function parseFilesystemPage(v:unknown):FilesystemPage{
  if(!object(v)||!text(v.path,8192)||!text(v.parent,8192)||!filled(v.separator,4)||!filled(v.platform,32)||!flag(v.writable)||!flag(v.truncated)||!text(v.nextCursor,1024))invalid('filesystem page');

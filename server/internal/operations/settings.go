@@ -46,6 +46,9 @@ var (
 	PlanningPolicies      = []string{"maximum_fidelity", "maximum_compatibility", "minimize_server_work"}
 	// UpdateChannels are the release channels the updates page reports against.
 	UpdateChannels = []string{"stable", "beta"}
+	// MissingTitleRules are the owner's choices for when a title whose files
+	// have gone from disk is removed.
+	MissingTitleRules = []string{"immediately", "after_days", "never"}
 	// Administration (workstream G) publishes connectivity and diagnostics
 	// policy through this same registry, so the console has one authority for
 	// every server setting rather than a second document per feature area.
@@ -92,7 +95,8 @@ func Registry() []Field {
 		field("home.communityActivityEnabled", "home", "boolean", false, nil, nil, nil, "hot", "catalog home trending row", "Publish a server-wide popular-this-week row built from aggregated play counts across profiles. Off by default."),
 		field("updates.releaseChannel", "updates", "enumeration", "stable", nil, nil, UpdateChannels, "hot", "administration updates report", "Which release channel the updates page reports against. Nothing is ever installed automatically."),
 		field("updates.feedUrl", "updates", "string", "", nil, nil, nil, "hot", "administration updates report", "Optional release feed this server may read to report whether a newer build exists. Empty means the server only reports the build it is running."),
-		field("library.trashRetentionDays", "library", "nullable-integer", 30, bounded(0), bounded(3650), nil, "hot", "administration media deletion", "How long deleted files stay recoverable in the trash by default. 0 removes files immediately; null uses the shipped 30 days. Each library may override this on its own configuration page."),
+		field("library.missingTitles", "library", "enumeration", "after_days", nil, nil, MissingTitleRules, "hot", "catalog missing titles", "When a title whose files are no longer on disk is removed from the library: immediately, after a number of days, or never. Until then it stays, marked missing, and a file that comes back restores it. Each profile's watch state is kept either way."),
+		field("library.missingTitlesDays", "library", "integer", 30, bounded(1), bounded(3650), nil, "hot", "catalog missing titles", "How many days a missing title is kept when the rule is after a number of days."),
 		field("remoteSignInPolicy", "connectivity", "enumeration", "allow", nil, nil, RemoteSignInPolicies, "next-operation", "sign-in admission", "Who may sign in from outside this network. Owner-only still allows existing remote sessions to finish."),
 		field("remoteBitrateLimitKbps", "connectivity", "integer", 0, bounded(0), bounded(200000), nil, "next-operation", "playback delivery planning", "Server-wide ceiling on video bitrate for remote playback, in kbps. 0 means no ceiling."),
 		field("lanNetworks", "connectivity", "string-list", networkpolicy.DefaultHomeNetworks(), nil, nil, nil, "hot", "connectivity status and remote classification", "Home networks. Only these addresses count as local. An empty list makes every connection remote."),
@@ -151,7 +155,10 @@ type Settings struct {
 	UpdateFeedURL string `json:"updates.feedUrl"`
 	// Null means the shipped default, so a client that does not send this field
 	// never silently switches the trash off.
-	TrashRetentionDays *int `json:"library.trashRetentionDays"`
+	// MissingTitles and MissingTitlesDays are the owner's rule for titles whose
+	// files are no longer on disk (catalog.MissingRule reads them).
+	MissingTitles     string `json:"library.missingTitles"`
+	MissingTitlesDays int    `json:"library.missingTitlesDays"`
 	// Connectivity, access and diagnostics policy (workstream G). The console
 	// document is their single authority; the typed /v1/admin/connectivity and
 	// /v1/admin/logs endpoints project these same fields.
@@ -188,7 +195,7 @@ type LogRetention struct {
 // DefaultSettings is the registry's own answer before any owner write, so a
 // fresh database and a document saved before these fields existed agree.
 func DefaultSettings() Settings {
-	return Settings{Name: "Portico", TranscodingEnabled: true, HardwareBackend: "auto", HDRToneMappingAlgorithm: "hable", X264Preset: "veryfast", DirectStreamRemux: true, PlanningPolicy: "maximum_fidelity", ThrottleBufferSeconds: 60, PlayedRetentionSeconds: 180, DiagnosticDays: 30, NotificationDays: 180, JobDays: 30, UpdateChannel: "stable", TrashRetentionDays: bounded(30),
+	return Settings{Name: "Portico", TranscodingEnabled: true, HardwareBackend: "auto", HDRToneMappingAlgorithm: "hable", X264Preset: "veryfast", DirectStreamRemux: true, PlanningPolicy: "maximum_fidelity", ThrottleBufferSeconds: 60, PlayedRetentionSeconds: 180, DiagnosticDays: 30, NotificationDays: 180, JobDays: 30, UpdateChannel: "stable", MissingTitles: "after_days", MissingTitlesDays: 30,
 		RemoteSignInPolicy: "allow", LANNetworks: networkpolicy.DefaultHomeNetworks(), AccessURLs: []string{}, LANDiscoveryEnabled: true, TrustedProxies: []string{}, LogLevel: "info", LogRetention: []LogRetention{}}
 }
 
@@ -327,8 +334,18 @@ func validateSettings(v *Settings) error {
 	if v.UpdateFeedURL != "" && (len(v.UpdateFeedURL) > 2048 || !SafeText(v.UpdateFeedURL, 2048) || strings.ContainsAny(v.UpdateFeedURL, " \n\t") || !strings.HasPrefix(v.UpdateFeedURL, "https://") && !strings.HasPrefix(v.UpdateFeedURL, "http://")) {
 		fields = append(fields, "values.updates.feedUrl")
 	}
-	if v.TrashRetentionDays != nil && (*v.TrashRetentionDays < 0 || *v.TrashRetentionDays > 3650) {
-		fields = append(fields, "values.library.trashRetentionDays")
+	// Empty means the shipped rule: kept for thirty days.
+	if v.MissingTitles == "" {
+		v.MissingTitles = "after_days"
+	}
+	if v.MissingTitlesDays == 0 {
+		v.MissingTitlesDays = 30
+	}
+	if !oneOf(v.MissingTitles, MissingTitleRules) {
+		fields = append(fields, "values.library.missingTitles")
+	}
+	if v.MissingTitlesDays < 1 || v.MissingTitlesDays > 3650 {
+		fields = append(fields, "values.library.missingTitlesDays")
 	}
 	fields = append(fields, validateAdministration(v)...)
 	if len(fields) > 0 {

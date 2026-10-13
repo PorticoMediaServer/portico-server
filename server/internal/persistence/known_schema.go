@@ -23,9 +23,6 @@ index access_invitation_pending
 index admin_channel_presets_page
 index admin_dvr_groups_page
 index admin_receipts_age
-index admin_trash_expiry
-index admin_trash_item
-index admin_trash_page
 index analysis_artifact_digest
 index analysis_artifact_result
 index analysis_marker_source
@@ -117,8 +114,10 @@ index catalog_episodes_position
 index catalog_episodes_season
 index catalog_episodes_show
 index catalog_external_ids_lookup
+index catalog_identities_public
 index catalog_item_attribute_edges_first
 index catalog_item_attribute_edges_term
+index catalog_missing_titles_library
 index catalog_movie_category_member_id
 index catalog_movie_category_poster
 index catalog_movie_category_rank
@@ -385,6 +384,8 @@ index rec_profile_signals_recent
 index rec_profile_signals_work
 index remote_inventory_check_job
 index remote_listing_retention
+index retained_title_identities_state
+index retained_title_state_profile
 index saved_pin_order_position
 index saved_resource_entries_item_id_fk
 index saved_resource_owner
@@ -438,7 +439,6 @@ table admin_documents
 table admin_dvr_groups
 table admin_receipts
 table admin_revision
-table admin_trash
 table analysis_artifacts
 table analysis_heads
 table analysis_marker_history
@@ -550,6 +550,7 @@ table catalog_item_availability
 table catalog_item_details
 table catalog_kinds
 table catalog_libraries
+table catalog_missing_titles
 table catalog_movie_category_cursors
 table catalog_movie_category_members
 table catalog_movie_category_summaries
@@ -967,6 +968,8 @@ table remote_source_operations
 table remote_sources
 table restriction_outbox
 table restrictions
+table retained_title_identities
+table retained_title_state
 table saved_operation_fences
 table saved_pin_order
 table saved_pin_order_revisions
@@ -1084,9 +1087,6 @@ trigger catalog_availability_object_update
 trigger catalog_availability_retired_delete
 trigger catalog_availability_retired_insert
 trigger catalog_availability_source_health
-trigger catalog_availability_trash_delete
-trigger catalog_availability_trash_insert
-trigger catalog_availability_trash_update
 trigger catalog_book_context_book_insert
 trigger catalog_book_context_book_update
 trigger catalog_book_context_file_delete

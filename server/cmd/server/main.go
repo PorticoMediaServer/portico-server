@@ -343,9 +343,6 @@ func run() error {
 		return livechannels.ReadSource(ctx, locator, remotemedia.Policy{ReadTimeout: 10 * time.Second}, adminops.LogoUploadBytes)
 	}
 	adminOperations.Fetch = adminops.FetchReleaseFeed
-	if e = adminOperations.RecoverFileOperations(context.Background()); e != nil {
-		return e
-	}
 	// One bounded barrier for every long-lived loop, registered here so it runs
 	// before the database closes and after the HTTP server has stopped accepting.
 	drain := &drainBarrier{}
@@ -805,7 +802,17 @@ func run() error {
 		unregister := dbwork.WakeOnCommit(wake)
 		defer unregister()
 		lastArtwork := time.Time{}
+		lastMissing := time.Time{}
 		worker.Run(ctx, "cmd.minute-cleanup", wake, func(ctx context.Context) time.Duration {
+			// Missing titles follow the owner's rule (immediately, after a number
+			// of days, never). A short, bounded pass; a long list is worked off
+			// over several passes so nothing else waits on it.
+			if time.Since(lastMissing) >= 30*time.Second {
+				lastMissing = time.Now()
+				pass, cancel := context.WithTimeout(dbwork.WithClass(ctx, dbwork.ClassMaintenance), 2*time.Second)
+				_, _ = cat.EmptyMissingDue(pass)
+				cancel()
+			}
 			_ = player.Cleanup()
 			_ = cat.CleanupPersonalReceipts()
 			_ = cat.CleanupBulkJobs(dbwork.WithClass(ctx, dbwork.ClassMaintenance), 250*time.Millisecond)

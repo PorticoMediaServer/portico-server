@@ -31,6 +31,12 @@ export const errors = [
     "retry": "same_request"
   },
   {
+    "code": "confirmation_mismatch",
+    "status": 409,
+    "message": "Type the name exactly as shown to confirm.",
+    "retry": "never"
+  },
+  {
     "code": "cursor_expired",
     "status": 409,
     "message": "Refresh the list to continue.",

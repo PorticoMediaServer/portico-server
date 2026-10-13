@@ -54,8 +54,8 @@ test('selections over 200 items become one job each, and failures aggregate', as
 
 test('a failed job throws its error code instead of counting silently', async () => {
   const failing = fakeApi({});
-  (failing as {request: unknown}).request = async () => ({jobId: 'job-9', command: 'trash', state: 'failed', total: 0, totalKnown: true, done: 0, failed: 0, errorCode: 'selection_changed'});
-  await assert.rejects(runBulkJobs(failing as never, 'trash', {}, ['a'], ['op-1']), (e: unknown) => (e as {code?: string}).code === 'selection_changed');
+  (failing as {request: unknown}).request = async () => ({jobId: 'job-9', command: 'refresh', state: 'failed', total: 0, totalKnown: true, done: 0, failed: 0, errorCode: 'selection_changed'});
+  await assert.rejects(runBulkJobs(failing as never, 'refresh', {}, ['a'], ['op-1']), (e: unknown) => (e as {code?: string}).code === 'selection_changed');
 });
 
 test('explicit container selectors run through the same progress contract', async () => {
