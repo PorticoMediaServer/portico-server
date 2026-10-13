@@ -52,7 +52,7 @@ export function v1ChannelId(ref: ChannelReference): string {
 
 type Programme = Readonly<{id: string; itemId?: string; title: string; startMs: number; endMs: number}>;
 type Linear = Readonly<{
-  name: string; programme?: Programme; next?: Programme; originMs: number; windowStartMs: number; windowEndMs: number; liveEdgeMs: number;
+  reservationRequiredAtMs?:number;name: string; programme?: Programme; next?: Programme; originMs: number; windowStartMs: number; windowEndMs: number; liveEdgeMs: number;
   state: string; errorCode?: string; seek?: Readonly<{id: string; live?: boolean; positionMs?: number; acknowledged: boolean; error?: string}>; confirmedPositionMs?: number;
 }>;
 type Session = Readonly<{id: string; revision: string; state: string; presentation: Readonly<{generation: number; url: string; linear?: Linear}>; end?: Readonly<{reason: string; message?: string}>}>;
@@ -73,6 +73,7 @@ export function parseChannelSession(v: unknown): Session {
   const l = v.presentation.linear;
   if (l !== undefined) {
     if (!obj(l) || typeof l.name !== 'string' || !int(l.originMs) || !int(l.windowStartMs) || !int(l.windowEndMs) || !int(l.liveEdgeMs) || typeof l.state !== 'string') throw new Error('Unreadable channel clock.');
+    if(l.reservationRequiredAtMs!==undefined&&(!int(l.reservationRequiredAtMs)||l.reservationRequiredAtMs<0))throw new Error("Unreadable tuner deadline.");
     parseProgramme(l.programme); parseProgramme(l.next);
     if (l.seek !== undefined && (!obj(l.seek) || typeof l.seek.id !== 'string' || typeof l.seek.acknowledged !== 'boolean' || l.seek.positionMs !== undefined && !int(l.seek.positionMs))) throw new Error('Unreadable channel seek.');
     if (l.confirmedPositionMs !== undefined && !int(l.confirmedPositionMs)) throw new Error('Unreadable channel position.');
@@ -89,7 +90,7 @@ export function channelView(s: Session, channel: ChannelReference): ChannelView 
   const desired: ChannelDesired = Object.freeze({state: s.state === 'paused' ? 'paused' : 'playing', seek, retryRequestId: null});
   const linear: ChannelProjection = Object.freeze({
     channel, name: l?.name ?? '', programme: programme(l?.programme), next: programme(l?.next), desired,
-    media: Object.freeze({streamUrl: s.presentation.url, bufferGeneration: generation, presentationGeneration: generation, originMs: l?.originMs ?? 0, windowRevision: '1',
+    media: Object.freeze({... (l?.reservationRequiredAtMs===undefined?{}:{reservationRequiredAtMs:l.reservationRequiredAtMs}),streamUrl: s.presentation.url, bufferGeneration: generation, presentationGeneration: generation, originMs: l?.originMs ?? 0, windowRevision: '1',
       windowStartUs: us(l?.windowStartMs ?? 0), windowEndUs: us(l?.windowEndMs ?? 0), liveEdgeUs: us(l?.liveEdgeMs ?? 0), gaps: [], state: l?.state ?? 'preparing', errorCode: l?.errorCode ?? '', logoUrl: ''}),
     overlay: {enabled: false, corner: 'top-right', sizePercent: 8, insetPercent: 3, treatment: 'original'},
     confirmedPositionUs: l?.confirmedPositionMs !== undefined ? us(l.confirmedPositionMs) : null,

@@ -6,8 +6,11 @@ const fence='a'.repeat(64);
 const envelope=(data:unknown,serverId='server-one',viewerFence=fence)=>({scope:{serverId,viewerFence},data});
 const values:RuntimeSettings={name:'My server',transcodingEnabled:true,perAccountCap:null,serverCap:null,diagnosticDays:30,notificationDays:180,jobDays:30,
  hardwareBackend:'auto',hardwareDevice:'',hdrToneMapping:false,hdrToneMappingAlgorithm:'hable',x264Preset:'veryfast',directStreamRemux:true,
- planningPolicy:'maximum_fidelity',throttleBufferSeconds:60,playedRetentionSeconds:180,temporaryDirectory:'',
- maxConcurrentSessions:0,maxHardwareSessions:0,maxSoftwareSessions:0,maxBackgroundSessions:0};
+ planningPolicy:'maximum_fidelity',throttleBufferSeconds:60,playedRetentionSeconds:180,temporaryDirectory:'',ffmpegPath:'',sessionStorageMiB:4096,
+ maxConcurrentSessions:0,maxHardwareSessions:0,maxSoftwareSessions:0,maxBackgroundSessions:0,
+ playHistoryDays:0,'home.communityActivityEnabled':false,'updates.releaseChannel':'stable','updates.feedUrl':'','library.missingTitles':'after_days','library.missingTitlesDays':30,
+ remoteSignInPolicy:'allow',remoteBitrateLimitKbps:0,lanNetworks:[],accessUrls:[],lanDiscoveryEnabled:true,
+ trustedProxies:[],uploadCapacityKbps:0,pausedSessionTimeoutMinutes:0,advertisedInterface:'',customCertificatePath:'',customCertificateKeyPath:'',customCertificateDomain:'',deviceApprovalRequired:false,connectionLimit:0,advertiseUrl:'',apiRequestsPerMinute:0,blockMemberAccessTokens:false,logLevel:'info',logRetention:[]};
 const settings=(revision=1)=>({revision,digest:'b'.repeat(64),requested:values,effective:values,activeRevision:revision,restartFields:[],registryRevision:'p08.0'});
 const report={id:'report-one',revision:1,createdAt:100,updatedAt:100,status:'open',category:'playback',message:'Playback stopped.',contextAvailable:true};
 const submission={category:'playback' as const,message:report.message,itemId:''};
@@ -160,4 +163,19 @@ test('list sizes, cursors, revisions and freshness windows still refuse the whol
  const alerts=client(async()=>envelope(new Array(101).fill({id:'a',code:'c',revision:1})));await assert.rejects(()=>alerts.alerts());alerts.dispose();
  const panel=client(async()=>envelope({name:'host',observedAt:1000,freshUntil:90000,facts:{}}));await assert.rejects(()=>panel.measurement('host'));panel.dispose();
  const single=client(async()=>envelope({...job,state:'hibernating'}));await assert.rejects(()=>single.runJob('library-scan','library'));single.dispose();
+});
+
+test('typed owner settings errors retain revision and bounded field paths',async()=>{
+ const response=new Response(JSON.stringify({error:{code:'revision_mismatch',current:{revision:9},fields:[{path:'values.sessionStorageMiB',code:'invalid_value',message:'untrusted text'}]}}),{status:409,headers:{'Content-Type':'application/json'}});
+ await assert.rejects(readConsoleJson(response,new AbortController().signal),e=>{
+  assert.ok(e instanceof ConsoleTransportError);assert.equal(e.currentRevision,9);assert.deepEqual(e.fields,['values.sessionStorageMiB']);assert.doesNotMatch(e.message,/untrusted/);return true;
+ });
+});
+
+test('complete owner settings retain missing-title and API policies after the merge',()=>{
+ const read=parseSettings(settings()).requested;
+ assert.equal(read['library.missingTitles'],'after_days');assert.equal(read['library.missingTitlesDays'],30);
+ assert.equal(read.connectionLimit,0);assert.equal(read.apiRequestsPerMinute,0);assert.equal(read.blockMemberAccessTokens,false);
+ for(const retired of ['library.trashRetentionDays','secureConnectionsPolicy','treatWanAsLan'])assert.equal(retired in read,false);
+ for(const bad of [{'library.missingTitles':'trash'},{'library.missingTitlesDays':0},{connectionLimit:65537},{apiRequestsPerMinute:100001},{blockMemberAccessTokens:'yes'}])assert.throws(()=>parseSettings({...settings(),requested:{...values,...bad}}));
 });

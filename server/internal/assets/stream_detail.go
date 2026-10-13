@@ -26,23 +26,24 @@ const (
 // field is optional: zero means "not observed", and planning treats an unobserved
 // fact conservatively rather than as a match.
 type StreamDetail struct {
-	MaxBitRate int64 `json:"maxBitRate,omitempty"`
-	HDR10Plus bool `json:"hdr10Plus,omitempty"`
-	Profile       string  `json:"profile,omitempty"`
-	Level         int     `json:"level,omitempty"`
-	PixelFormat   string  `json:"pixelFormat,omitempty"`
-	BitDepth      int     `json:"bitDepth,omitempty"`
-	Width         int     `json:"width,omitempty"`
-	Height        int     `json:"height,omitempty"`
-	FrameRate     float64 `json:"frameRate,omitempty"`
-	Interlaced    bool    `json:"interlaced,omitempty"`
-	Rotation      int     `json:"rotation,omitempty"`
-	Anamorphic    bool    `json:"anamorphic,omitempty"`
-	RefFrames     int     `json:"refFrames,omitempty"`
-	CodecTag      string  `json:"codecTag,omitempty"`
-	BitRate       int64   `json:"bitRate,omitempty"`
-	SampleRate    int     `json:"sampleRate,omitempty"`
-	BitsPerSample int     `json:"bitsPerSample,omitempty"`
+	MaxBitRate        int64   `json:"maxBitRate,omitempty"`
+	HDR10Plus         bool    `json:"hdr10Plus,omitempty"`
+	Profile           string  `json:"profile,omitempty"`
+	Level             int     `json:"level,omitempty"`
+	PixelFormat       string  `json:"pixelFormat,omitempty"`
+	BitDepth          int     `json:"bitDepth,omitempty"`
+	Width             int     `json:"width,omitempty"`
+	Height            int     `json:"height,omitempty"`
+	FrameRate         float64 `json:"frameRate,omitempty"`
+	Interlaced        bool    `json:"interlaced,omitempty"`
+	Rotation          int     `json:"rotation,omitempty"`
+	SampleAspectRatio string  `json:"sampleAspectRatio,omitempty"`
+	Anamorphic        bool    `json:"anamorphic,omitempty"`
+	RefFrames         int     `json:"refFrames,omitempty"`
+	CodecTag          string  `json:"codecTag,omitempty"`
+	BitRate           int64   `json:"bitRate,omitempty"`
+	SampleRate        int     `json:"sampleRate,omitempty"`
+	BitsPerSample     int     `json:"bitsPerSample,omitempty"`
 	// DynamicRange is one of the Range constants for video, empty for audio.
 	DynamicRange string `json:"dynamicRange,omitempty"`
 	// Dolby Vision configuration. Compatibility is dv_bl_signal_compatibility_id:
@@ -186,6 +187,9 @@ func streamDetail(kind, codec string, width, height int, s probeStreamDetail) St
 		switch strings.ToLower(s.FieldOrder) {
 		case "tt", "bb", "tb", "bt":
 			d.Interlaced = true
+		}
+		if len(s.SampleAspect) <= 24 {
+			d.SampleAspectRatio = s.SampleAspect
 		}
 		if a, b, ok := strings.Cut(s.SampleAspect, ":"); ok && a != b && a != "0" && b != "0" {
 			d.Anamorphic = true

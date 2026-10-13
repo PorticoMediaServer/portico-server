@@ -26,10 +26,10 @@ export type DeleteResult=Readonly<{revision:number;removed:number;failed:number;
 export type FilesystemRoot=Readonly<{path:string;name:string;kind:string;description:string}>;
 export type FilesystemEntry=Readonly<{name:string;path:string;kind:'directory'|'file'|'unknown';readable:boolean;symlink:boolean;bytes:number}>;
 export type FilesystemPage=Readonly<{path:string;parent:string;separator:string;platform:string;writable:boolean;truncated:boolean;roots:readonly FilesystemRoot[];entries:readonly FilesystemEntry[];nextCursor:string}>;
-export type LiveDefaults=Readonly<{streamBufferSeconds:number;retryWindowSeconds:number;userAgent:string;guideDays:number;logoImport:boolean;discoveryEnabled:boolean}>;
+export type LiveDefaults=Readonly<{importLimits:Readonly<{bytes:number;channels:number;programmes:number}>;streamBufferSeconds:number;retryWindowSeconds:number;userAgent:string;guideDays:number;logoImport:boolean;discoveryEnabled:boolean}>;
 export type FilterRule=Readonly<{mode:'include'|'exclude';values:readonly string[]}>;
 export type LiveSourceKind='playlist'|'xmltv-guide'|'hdhomerun';
-export type LiveSourceSettings=Readonly<{kind:LiveSourceKind;streamBufferSeconds:number|null;retryWindowSeconds:number|null;userAgent:string;guideSourceId:string;filters:Readonly<{categories:FilterRule;countries:FilterRule;keywords:FilterRule}>;logoImport:Readonly<{enabled:boolean;overwriteExisting:boolean}>;channelNumbering:Readonly<{mode:'source'|'sequential';startAt:number;step:number}>}>;
+export type LiveSourceSettings=Readonly<{enabledGroups:readonly string[];enabledChannels:readonly string[];kind:LiveSourceKind;streamBufferSeconds:number|null;retryWindowSeconds:number|null;userAgent:string;guideSourceId:string;filters:Readonly<{categories:FilterRule;countries:FilterRule;keywords:FilterRule}>;logoImport:Readonly<{enabled:boolean;overwriteExisting:boolean}>;channelNumbering:Readonly<{mode:'source'|'sequential';startAt:number;step:number}>}>;
 export type LiveSourceDocument=Readonly<{sourceId:string;sourceName:string;revision:number;digest:string;tunerCount:number;availableKinds:readonly LiveSourceKind[];settings:LiveSourceSettings;effective:LiveDefaults}>;
 export type ChannelMapEntry=Readonly<{channelId:string;name:string;sourceNumber:string;number:string;group:string;guideChannelId:string;hidden:boolean;position:number;overridden:boolean}>;
 export type ChannelMapPage=Readonly<{sourceId:string;generation:string;items:readonly ChannelMapEntry[];nextCursor:string}>;
@@ -37,7 +37,7 @@ export type FolderToken=Readonly<{token:string;description:string;example:string
 export type KeepPolicy=Readonly<{mode:'keep-all'|'keep-count'|'keep-days';keepCount:number;keepDays:number;keepUntilWatched:boolean}>;
 export type DVRDefaults=Readonly<{prePaddingSeconds:number;postPaddingSeconds:number;keepPolicy:KeepPolicy;conversion:Readonly<{mode:'none'|'remux'|'ladder';ladderId:string;deleteOriginal:boolean}>;folderTemplate:string;movieFolderTemplate:string;recordingProfile:string;sidecars:Readonly<{nfo:boolean;poster:boolean;fanart:boolean;thumbnail:boolean}>;tunerPreference:string}>;
 export type DVRDocument=Readonly<{revision:number;digest:string;settings:DVRDefaults;folderTokens:readonly FolderToken[];enumerations:Readonly<Record<string,readonly string[]>>}>;
-export type TunerAssignment=Readonly<{recordingId:string;channelId:string;title:string;state:string;startsAt:string;endsAt:string;allocationId:string}>;
+export type TunerAssignment=Readonly<{kind:string;accountId:string;profileId:string;recordingId:string;channelId:string;title:string;state:string;startsAt:string;endsAt:string;allocationId:string}>;
 export type TunerAllocation=Readonly<{sourceId:string;sourceName:string;tunerCount:number;inUse:number;conflicts:number;active:readonly TunerAssignment[];upcoming:readonly TunerAssignment[]}>;
 export type TunerView=Readonly<{observedAt:string;upcomingWindowHours:number;sources:readonly TunerAllocation[]}>;
 export type StorageCategory=Readonly<{id:string;name:string;description:string;directories:readonly string[];cleanable:boolean;regenerable:boolean;retentionKey:string}>;
@@ -219,7 +219,8 @@ export function parseFilesystemPage(v:unknown):FilesystemPage{
 
 function parseLiveDefaults(v:unknown):LiveDefaults{
  if(!object(v)||!count(v.streamBufferSeconds)||!count(v.retryWindowSeconds)||!text(v.userAgent,200)||!count(v.guideDays)||!flag(v.logoImport)||!flag(v.discoveryEnabled))invalid('live defaults');
- return Object.freeze({streamBufferSeconds:v.streamBufferSeconds,retryWindowSeconds:v.retryWindowSeconds,userAgent:v.userAgent,guideDays:v.guideDays,logoImport:v.logoImport,discoveryEnabled:v.discoveryEnabled});
+ if(!object(v.importLimits)||!count(v.importLimits.bytes)||v.importLimits.bytes>1073741824||!count(v.importLimits.channels)||v.importLimits.channels>100000||!count(v.importLimits.programmes)||v.importLimits.programmes>10000000)invalid('live import limits');
+ return Object.freeze({importLimits:Object.freeze({bytes:v.importLimits.bytes,channels:v.importLimits.channels,programmes:v.importLimits.programmes}),streamBufferSeconds:v.streamBufferSeconds,retryWindowSeconds:v.retryWindowSeconds,userAgent:v.userAgent,guideDays:v.guideDays,logoImport:v.logoImport,discoveryEnabled:v.discoveryEnabled});
 }
 /** parseLiveDefaultsDocument reads the server-wide live source settings. */
 export function parseLiveDefaultsDocument(v:unknown):Readonly<{scope:string;revision:number;digest:string;settings:LiveDefaults}>{
@@ -245,7 +246,7 @@ export function parseLiveSourceDocument(v:unknown):LiveSourceDocument{
  // A guide-only source has nothing to stream, so buffered stream tuning on one
  // would mean the client and the server disagree about what the source is.
  if(kind==='xmltv-guide'&&(buffer!==null||s.guideSourceId!==''))invalid('guide-only source');
- const settings=Object.freeze({kind,streamBufferSeconds:buffer,retryWindowSeconds:nullableCount(s.retryWindowSeconds,'live source retry window'),userAgent:s.userAgent,guideSourceId:s.guideSourceId,filters:Object.freeze({categories:parseFilter(s.filters.categories,'live source category filter'),countries:parseFilter(s.filters.countries,'live source country filter'),keywords:parseFilter(s.filters.keywords,'live source keyword filter')}),logoImport:Object.freeze({enabled:logos.enabled,overwriteExisting:logos.overwriteExisting}),channelNumbering:Object.freeze({mode:choice(numbering.mode,['source','sequential'] as const,'live source numbering mode'),startAt:numbering.startAt,step:numbering.step})});
+ const settings=Object.freeze({enabledGroups:Object.freeze(strings(s.enabledGroups,100000,"enabled groups")),enabledChannels:Object.freeze(strings(s.enabledChannels,100000,"enabled channels")),kind,streamBufferSeconds:buffer,retryWindowSeconds:nullableCount(s.retryWindowSeconds,'live source retry window'),userAgent:s.userAgent,guideSourceId:s.guideSourceId,filters:Object.freeze({categories:parseFilter(s.filters.categories,'live source category filter'),countries:parseFilter(s.filters.countries,'live source country filter'),keywords:parseFilter(s.filters.keywords,'live source keyword filter')}),logoImport:Object.freeze({enabled:logos.enabled,overwriteExisting:logos.overwriteExisting}),channelNumbering:Object.freeze({mode:choice(numbering.mode,['source','sequential'] as const,'live source numbering mode'),startAt:numbering.startAt,step:numbering.step})});
  // A kind of source this app does not know is not offered. The stored settings stay exact.
  const kinds=keepReadable('administration','live source kinds',list(v.availableKinds,8,'live source kinds'),value=>oneOf(value,liveKinds));
  return Object.freeze({sourceId:v.sourceId,sourceName:v.sourceName,revision:v.revision,digest:v.digest,tunerCount:v.tunerCount,availableKinds:Object.freeze(kinds),settings,effective:parseLiveDefaults(v.effective)});
@@ -297,18 +298,19 @@ export function folderTemplateProblems(template:string,tokens:readonly FolderTok
 
 function parseAssignment(v:unknown):TunerAssignment{
  if(!object(v)||!filled(v.recordingId,256)||!text(v.channelId,256)||!text(v.title,1024)||!filled(v.state,64)||!text(v.startsAt,64)||!text(v.endsAt,64))invalid('tuner assignment');
- return Object.freeze({recordingId:v.recordingId,channelId:v.channelId,title:v.title,state:v.state,startsAt:v.startsAt,endsAt:v.endsAt,allocationId:text(v.allocationId,256)?v.allocationId:''});
+ if(!text(v.kind,64)||!text(v.accountId,256)||!text(v.profileId,256))invalid("tuner owner");
+ return Object.freeze({kind:v.kind,accountId:v.accountId,profileId:v.profileId,recordingId:v.recordingId,channelId:v.channelId,title:v.title,state:v.state,startsAt:v.startsAt,endsAt:v.endsAt,allocationId:text(v.allocationId,256)?v.allocationId:''});
 }
 /** parseTunerView reads the allocation page. */
 export function parseTunerView(v:unknown):TunerView{
  if(!object(v)||!text(v.observedAt,64)||!count(v.upcomingWindowHours))invalid('tuner view');
  const sources=firstOfEach('administration','tuner sources',readable(v.sources,64,'tuner sources',entry=>{
   if(!object(entry)||!filled(entry.sourceId,256)||!text(entry.sourceName,512)||!count(entry.tunerCount)||!count(entry.inUse)||!count(entry.conflicts))invalid('tuner allocation');
-  const active=keepReadable('administration','active recordings',list(entry.active,200,'active recordings'),parseAssignment);
-  // The count of tuners in use is the server's own; it is not refused for disagreeing with the recordings listed.
-  if(active.length!==entry.inUse)noteSkipped('administration','tuner allocation counts');
-  return Object.freeze({sourceId:entry.sourceId,sourceName:entry.sourceName,tunerCount:entry.tunerCount,inUse:entry.inUse,conflicts:entry.conflicts,active:Object.freeze(active),upcoming:Object.freeze(keepReadable('administration','upcoming recordings',list(entry.upcoming,200,'upcoming recordings'),parseAssignment))});
- },[['active',200],['upcoming',200]]),entry=>entry.sourceId);
+  const active=keepReadable('administration','active streams',list(entry.active,100000,'active streams'),parseAssignment);
+  // Shared readers consume one tuner per channel. Unreadable rows cannot invalidate the server's count.
+  if(new Set(active.map(v=>v.channelId||v.allocationId||v.recordingId)).size!==entry.inUse)noteSkipped('administration','tuner allocation counts');
+  return Object.freeze({sourceId:entry.sourceId,sourceName:entry.sourceName,tunerCount:entry.tunerCount,inUse:entry.inUse,conflicts:entry.conflicts,active:Object.freeze(active),upcoming:Object.freeze(keepReadable('administration','upcoming recordings',list(entry.upcoming,100000,'upcoming recordings'),parseAssignment))});
+ },[['active',100000],['upcoming',100000]]),entry=>entry.sourceId);
  return Object.freeze({observedAt:v.observedAt,upcomingWindowHours:v.upcomingWindowHours,sources:Object.freeze(sources)});
 }
 

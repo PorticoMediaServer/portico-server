@@ -3,6 +3,7 @@ package httpapi
 import (
 	"encoding/json"
 	"net/http"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -120,5 +121,18 @@ func TestPlaybackHistoryExportIsADownloadableCSV(t *testing.T) {
 	}
 	if !strings.HasPrefix(w.Body.String(), "id,viewer,title") {
 		t.Fatal("the export must carry a header row", w.Body.String())
+	}
+}
+
+func TestCapacityComposerUsesTheAppliedCacheDirectory(t *testing.T) {
+	cache := t.TempDir()
+	t.Setenv("PORTICO_CACHE_DIR", cache)
+	d := Dependencies{}
+	capacity := d.capacityComposer()
+	if capacity.State != cache {
+		t.Fatal(capacity.State)
+	}
+	if got := operations.ConversionDirectory(capacity.State, ""); got != filepath.Join(cache, "hls") {
+		t.Fatal(got)
 	}
 }

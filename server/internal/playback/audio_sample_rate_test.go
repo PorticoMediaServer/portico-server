@@ -38,8 +38,8 @@ func TestConvertedAudioSampleRateIsBounded(t *testing.T) {
 		{"96 kHz lossless", audio("truehd", 6, 96000), chromeProfile(), 48000},
 		{"88.2 kHz lossless", audio("dts", 6, 88200), chromeProfile(), 48000},
 		{"192 kHz lossless", audio("truehd", 2, 192000), chromeProfile(), 48000},
-		{"48 kHz", audio("dts", 6, 48000), chromeProfile(), 0},
-		{"44.1 kHz", audio("dts", 2, 44100), chromeProfile(), 0},
+		{"48 kHz", audio("dts", 6, 48000), chromeProfile(), 48000},
+		{"44.1 kHz", audio("dts", 2, 44100), chromeProfile(), 44100},
 		// A rate that was never observed cannot be kept on trust: the output is
 		// given one the codec and the device both take.
 		{"unknown rate", audio("dts", 2, 0), chromeProfile(), 48000},
@@ -64,7 +64,7 @@ func TestConvertedAudioSampleRateIsBounded(t *testing.T) {
 			if test.rate == 0 && strings.Contains(joined, "-ar ") {
 				t.Fatalf("a rate within bounds was resampled: %s", joined)
 			}
-			if test.rate != 0 && !strings.HasSuffix(joined, " -ar "+itoa(test.rate)) {
+			if test.rate != 0 && !strings.Contains(joined, "-ar "+itoa(test.rate)+" ") {
 				t.Fatalf("arguments do not set the output rate: %s", joined)
 			}
 		})
@@ -105,7 +105,7 @@ func TestConvertedAudioSampleRateIsBounded(t *testing.T) {
 		{"96 kHz to E-AC-3 for a device that takes 44.1 kHz", audio("truehd", 6, 96000), passthrough("eac3", 44100, 0), "eac3", 44100},
 		{"22.05 kHz to E-AC-3, which has no such rate", audio("dts", 6, 22050), passthrough("eac3", 0, 0), "eac3", 32000},
 		{"96 kHz when E-AC-3 has no rate under the device's limit", audio("truehd", 6, 96000), passthrough("eac3", 24000, 0), "aac", 48000},
-		{"48 kHz when E-AC-3 has no rate under the device's limit", audio("dts", 6, 48000), passthrough("eac3", 24000, 0), "aac", 0},
+		{"48 kHz when E-AC-3 has no rate under the device's limit", audio("dts", 6, 48000), passthrough("eac3", 24000, 0), "aac", 48000},
 		{"a rate AAC is not encoded at", audio("dts", 2, 37800), chromeProfile(), "aac", 44100},
 		{"unknown rate to E-AC-3", audio("truehd", 6, 0), passthrough("eac3", 0, 0), "eac3", 48000},
 		{"unknown rate when E-AC-3 has no rate under the device's limit", audio("truehd", 6, 0), passthrough("eac3", 24000, 0), "aac", 48000},
@@ -162,7 +162,7 @@ func TestConvertedAudioSampleRateIsBounded(t *testing.T) {
 	}
 	t.Run("alternate renditions", func(t *testing.T) {
 		p := decide(t, videoSource("mkv", "h264", picture, audio("truehd", 6, 96000), audio("dts", 2, 44100)), chromeProfile(), nil)
-		if len(p.Renditions) != 2 || p.Renditions[0].Action != "convert" || p.Renditions[0].SampleRate != 48000 || p.Renditions[1].SampleRate != 0 {
+		if len(p.Renditions) != 2 || p.Renditions[0].Action != "convert" || p.Renditions[0].SampleRate != 48000 || p.Renditions[1].SampleRate != 44100 {
 			t.Fatalf("renditions %+v", p.Renditions)
 		}
 	})
@@ -202,7 +202,7 @@ func TestConvertedAudioSampleRateIsStoredWithThePlan(t *testing.T) {
 		t.Fatalf("stored plan %+v %v", stored, err)
 	}
 	_, args, _, err := stored.CodecArgs()
-	if err != nil || !strings.HasSuffix(strings.Join(args, " "), " -ar 48000") {
+	if err != nil || !strings.Contains(strings.Join(args, " "), "-ar 48000 ") {
 		t.Fatalf("stored plan arguments %v %v", args, err)
 	}
 }

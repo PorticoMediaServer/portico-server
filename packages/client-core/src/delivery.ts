@@ -64,7 +64,7 @@ export type RouteEvaluation=Readonly<{route:DeliveryStrategy;transport?:string;a
 export type DecisionTrace=Readonly<{
  client:Readonly<{family:string;platform?:string;model?:string;engine?:string;evidence:string;revision:string;published:boolean}>;
  container:string;bitRate?:number;
- video?:Readonly<{codec:string;profile?:string;level?:number;bitDepth?:number;width?:number;height?:number;frameRate?:number;interlaced?:boolean;dynamicRange?:string;dolbyVisionProfile?:number;bitRate?:number}>;
+ video?:Readonly<{rotation?:number;sampleAspectRatio?:string;codec:string;profile?:string;level?:number;bitDepth?:number;width?:number;height?:number;frameRate?:number;interlaced?:boolean;dynamicRange?:string;dolbyVisionProfile?:number;bitRate?:number}>;
  audio?:Readonly<{streamIndex:number;codec:string;channels?:number;language?:string;objectAudio?:string;chosenBy:string;tracks:number}>;
  routes:readonly RouteEvaluation[];notes:readonly string[];
 }>;
@@ -157,8 +157,8 @@ export function parseDecisionTrace(raw:unknown):DecisionTrace|undefined{
   let video:DecisionTrace['video'];
   if(raw.video!==undefined){
    const v=raw.video;
-   if(!obj(v)||!text(v.codec,32)||!optionalText(v.profile)||!optionalCount(v.level,1000)||!optionalCount(v.bitDepth,16)||!optionalCount(v.width,65536)||!optionalCount(v.height,65536)||!optionalNumber(v.frameRate)||!optionalText(v.dynamicRange,16)||!optionalCount(v.dolbyVisionProfile,31)||!optionalCount(v.bitRate))return undefined;
-   video=Object.freeze({codec:v.codec,profile:v.profile as string|undefined,level:v.level as number|undefined,bitDepth:v.bitDepth as number|undefined,width:v.width as number|undefined,height:v.height as number|undefined,frameRate:v.frameRate as number|undefined,interlaced:v.interlaced===true,dynamicRange:v.dynamicRange as string|undefined,dolbyVisionProfile:v.dolbyVisionProfile as number|undefined,bitRate:v.bitRate as number|undefined});
+   if(!obj(v)||!text(v.codec,32)||!optionalCount(v.rotation,360)||!optionalText(v.sampleAspectRatio,24)||!optionalText(v.profile)||!optionalCount(v.level,1000)||!optionalCount(v.bitDepth,16)||!optionalCount(v.width,65536)||!optionalCount(v.height,65536)||!optionalNumber(v.frameRate)||!optionalText(v.dynamicRange,16)||!optionalCount(v.dolbyVisionProfile,31)||!optionalCount(v.bitRate))return undefined;
+   video=Object.freeze({rotation:v.rotation as number|undefined,sampleAspectRatio:v.sampleAspectRatio as string|undefined,codec:v.codec,profile:v.profile as string|undefined,level:v.level as number|undefined,bitDepth:v.bitDepth as number|undefined,width:v.width as number|undefined,height:v.height as number|undefined,frameRate:v.frameRate as number|undefined,interlaced:v.interlaced===true,dynamicRange:v.dynamicRange as string|undefined,dolbyVisionProfile:v.dolbyVisionProfile as number|undefined,bitRate:v.bitRate as number|undefined});
   }
   let audio:DecisionTrace['audio'];
   if(raw.audio!==undefined){

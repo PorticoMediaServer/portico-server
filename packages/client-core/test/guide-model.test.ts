@@ -147,3 +147,10 @@ test('layout of a 12-row × 3-hour screen is fast', () => {
   for (let i = 0; i < 100; i++) for (const r of rows) layoutRow(r, view);
   assert.ok((performance.now() - t0) / 100 < 2, 'under 2 ms per screen');
 });
+
+test('quarter-hour offset zones label local hours and midnight',()=>{
+ const start=Date.parse('2026-10-12T18:00:00Z'),end=start+3*60*60*1000;
+ const ticks=rulerTicks(start,end,pxPerMsFor(240),'Asia/Kathmandu');
+ assert.ok(ticks.some(v=>v.kind==='day'));assert.ok(ticks.some(v=>v.kind==='hour'));
+ assert.ok(ticks.every(v=>new Date(v.atMs).getUTCMinutes()===15||new Date(v.atMs).getUTCMinutes()===45));
+});

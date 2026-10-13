@@ -1,7 +1,7 @@
 package livechannels
 
 // Remote source setup is deliberately two-phase: preview fetches into a private,
-// expiring encrypted snapshot; only SaveRemote publishes configuration and guide.
+// expiring private snapshot; only SaveRemote publishes configuration and guide.
 // No URL or credential is included in a projection, error, receipt, or log.
 import (
 	"context"
@@ -13,6 +13,7 @@ import (
 	"unicode/utf8"
 
 	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/supervise"
 	"portico.local/server/internal/worker"
 
 	"portico.local/server/internal/remotemedia"
@@ -24,14 +25,16 @@ type ChannelMapping struct {
 }
 
 type RemoteDraft struct {
-	ID               string `json:"id"`
-	ExpectedRevision int64  `json:"expectedRevision"`
-	Name             string `json:"name"`
-	Kind             string `json:"kind"`
-	Locator          string `json:"locator"`
-	GuideURL         string `json:"guideUrl"`
-	Username         string `json:"username"`
-	Password         string `json:"password"`
+	EnabledGroups    []string `json:"enabledGroups,omitempty"`
+	EnabledChannels  []string `json:"enabledChannels,omitempty"`
+	ID               string   `json:"id"`
+	ExpectedRevision int64    `json:"expectedRevision"`
+	Name             string   `json:"name"`
+	Kind             string   `json:"kind"`
+	Locator          string   `json:"locator"`
+	GuideURL         string   `json:"guideUrl"`
+	Username         string   `json:"username"`
+	Password         string   `json:"password"`
 	// These exact roots are an explicit owner confirmation, never discovery data.
 	ConfirmedLANRoots     []string         `json:"confirmedLanRoots"`
 	Mappings              []ChannelMapping `json:"mappings"`
@@ -48,8 +51,10 @@ type remoteConfig struct {
 }
 
 type remoteSnapshot struct {
-	Config remoteConfig `json:"config"`
-	Input  SourceInput  `json:"input"`
+	GuideFile   string       `json:"guideFile,omitempty"`
+	GuideDigest string       `json:"guideDigest,omitempty"`
+	Config      remoteConfig `json:"config"`
+	Input       SourceInput  `json:"input"`
 }
 
 type RemotePreview struct {
@@ -75,13 +80,13 @@ type RemoteStatus struct {
 	Failures    int    `json:"failures"`
 }
 
-type SourceFetcher struct{ Resolver remotemedia.Resolver }
+type SourceFetcher struct {
+	Resolver remotemedia.Resolver
+	defaults LiveDefaults
+}
 
-// maxSealed bounds a stored payload the server wrote itself. A remote preview's snapshot holds the
-// fetched playlist and guide (up to MaxUploadBytes together) as JSON, which escapes the guide's
-// XML markup (`<` becomes six bytes), so the bound leaves generous room. It was 128 KiB, left
-// over from encrypted payloads, and refused every real guide: the preview succeeded and the save
-// answered guide_unavailable.
+// maxSealed bounds private source/playlist snapshots. Large guide bodies stay
+// in bounded temporary files and are represented by a private path and digest.
 const maxSealed = 8 * MaxUploadBytes
 
 func (s *Store) unseal(raw []byte, _ string) (string, error) {
@@ -93,6 +98,16 @@ func (s *Store) unseal(raw []byte, _ string) (string, error) {
 
 func (f SourceFetcher) config(ctx context.Context, d RemoteDraft) (remoteConfig, error) {
 	c := remoteConfig{Draft: d, Approvals: []remotemedia.Approval{}}
+	for _, list := range [][]string{d.EnabledGroups, d.EnabledChannels} {
+		if len(list) > 100000 {
+			return c, ErrInvalid
+		}
+		for _, value := range list {
+			if !validText(value, 256) {
+				return c, ErrInvalid
+			}
+		}
+	}
 	if !opaque(d.ID) || d.ExpectedRevision < 0 || !validText(d.Name, 120) || !validLocator(d.Locator) || (d.GuideURL != "" && !validLocator(d.GuideURL)) || d.OwnerLimit < 0 || d.OwnerLimit > 256 || d.RefreshSeconds < 300 || d.RefreshSeconds > 86400 || len(d.ConfirmedLANRoots) > 8 || len(d.Mappings) > MaxChannels || len(d.Username) > 512 || len(d.Password) > 2048 || (d.ViewerAccess != "owner-only" && d.ViewerAccess != "server-members") {
 		return c, ErrInvalid
 	}
@@ -142,17 +157,24 @@ func (s *Store) PreviewRemote(ctx context.Context, a Authority, f SourceFetcher,
 	if e != nil {
 		return out, e
 	}
-	input, physical, e := f.fetch(ctx, c)
+	input, physical, e := s.fetchSource(ctx, f, c)
 	if e != nil {
 		return out, e
 	}
+	keepGuide := false
+	defer func() {
+		if !keepGuide {
+			input.removeGuide()
+		}
+	}()
 	c.PhysicalCount = physical
 	input.TunerCount = effectiveCapacity(physical, d.OwnerLimit, d.UseDiscoveredCapacity)
-	preview, e := PreviewSource(input)
+	parsed, e := parse(input)
 	if e != nil {
 		return out, e
 	}
-	parsed, e := parse(input)
+	defer parsed.close()
+	preview, e := previewParsed(parsed)
 	if e != nil {
 		return out, e
 	}
@@ -163,7 +185,7 @@ func (s *Store) PreviewRemote(ctx context.Context, a Authority, f SourceFetcher,
 	if e != nil {
 		return out, e
 	}
-	payload, e := json.Marshal(remoteSnapshot{Config: c, Input: input})
+	payload, e := json.Marshal(remoteSnapshot{Config: c, Input: input, GuideFile: input.guideFile, GuideDigest: input.guideDigest})
 	if e != nil {
 		return out, ErrInvalid
 	}
@@ -199,8 +221,8 @@ func (s *Store) PreviewRemote(ctx context.Context, a Authority, f SourceFetcher,
 	if e != nil {
 		return out, e
 	}
-	keys := make([]MappingKey, 0, len(parsed.channels))
-	for _, ch := range parsed.channels {
+	keys := make([]MappingKey, 0, min(100, len(parsed.channels)))
+	for _, ch := range parsed.channels[:min(100, len(parsed.channels))] {
 		guide := ch.key
 		for _, m := range input.Mappings {
 			if m.ChannelKey == ch.key {
@@ -217,6 +239,7 @@ func (s *Store) PreviewRemote(ctx context.Context, a Authority, f SourceFetcher,
 	if d.OwnerLimit > 0 {
 		mode = "configured"
 	}
+	keepGuide = true
 	return RemotePreview{ID: token, Preview: preview, DiscoveredCapacity: physical, CapacityMode: mode, MappingKeys: keys, ExpiresAt: expiry.UTC().Format(time.RFC3339)}, nil
 }
 
@@ -315,7 +338,10 @@ func (s *Store) SaveRemote(ctx context.Context, a Authority, previewID, requestI
 	if replay != nil {
 		return *replay, nil
 	}
+	snap.Input.guideFile, snap.Input.guideDigest = snap.GuideFile, snap.GuideDigest
+	snap.Input.parseContext = ctx
 	snap.Input.RequestID = requestID
+	snap.Input.remote = true
 	raw, e := json.Marshal(snap.Config)
 	if e != nil {
 		return Source{}, ErrInvalid
@@ -417,6 +443,35 @@ func (s *Store) RefreshOne(ctx context.Context, f SourceFetcher) (bool, error) {
 	if gated.Commit() != nil {
 		return false, ErrUnavailable
 	}
+	work, cancelWork := context.WithTimeout(ctx, 20*time.Minute)
+	defer cancelWork()
+	renewalDone := make(chan struct{})
+	supervise.Go("livechannels.refresh.renew", func() {
+		defer close(renewalDone)
+		tick := time.NewTicker(20 * time.Second)
+		defer tick.Stop()
+		for {
+			select {
+			case <-work.Done():
+				return
+			case <-tick.C:
+				renew, done := context.WithTimeout(work, 5*time.Second)
+				result, err := dbwork.ExecWrite(renew, s.db, dbwork.ClassBackgroundMedia, `UPDATE live_remote_configs SET lease_until_ms=? WHERE source_id=? AND lease_token=? AND EXISTS(SELECT 1 FROM live_sources s WHERE s.id=? AND s.revision=? AND s.state='active')`, time.Now().Add(2*time.Minute).UnixMilli(), sid, lease, sid, rev)
+				done()
+				if err != nil {
+					cancelWork()
+					return
+				}
+				count, _ := result.RowsAffected()
+				if count != 1 {
+					cancelWork()
+					return
+				}
+			}
+		}
+	})
+	defer func() { cancelWork(); <-renewalDone }()
+	ctx = work
 	var c remoteConfig
 	raw, e := s.unseal(sealed, "remote:"+sid)
 	if e == nil {
@@ -437,7 +492,9 @@ func (s *Store) RefreshOne(ctx context.Context, f SourceFetcher) (bool, error) {
 		var in SourceInput
 		var physical int
 		fetchCtx, cancel := context.WithTimeout(ctx, 75*time.Second)
-		in, physical, e = f.fetch(fetchCtx, c)
+		in, physical, e = s.fetchSource(fetchCtx, f, c)
+		in.parseContext = ctx
+		defer in.removeGuide()
 		cancel()
 		if e == nil {
 			in.ID = sid
@@ -660,5 +717,14 @@ func (s *Store) ConsumerAccessTx(ctx context.Context, tx *sql.Tx, sid string, ow
 
 func sourceHash(in SourceInput) string {
 	b, _ := json.Marshal(in.Mappings)
-	return id(in.ID, fmt.Sprint(in.ExpectedRevision), in.Name, in.Playlist, in.Guide, fmt.Sprint(in.TunerCount), string(b))
+	guide := in.Guide
+	if in.guideFile != "" {
+		guide = in.guideDigest
+	}
+	config, _ := json.Marshal(in.configuration)
+	selection, _ := json.Marshal(struct {
+		Groups, Channels []string
+		Limits           ImportLimits
+	}{in.EnabledGroups, in.EnabledChannels, in.Limits})
+	return id(in.ID, fmt.Sprint(in.ExpectedRevision), in.Name, in.Playlist, guide, fmt.Sprint(in.TunerCount), string(b), string(config), string(selection))
 }

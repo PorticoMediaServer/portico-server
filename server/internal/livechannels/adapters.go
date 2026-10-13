@@ -1,6 +1,7 @@
 package livechannels
 
 import (
+	"bufio"
 	"compress/gzip"
 	"context"
 	"crypto/sha256"
@@ -20,7 +21,7 @@ import (
 // ReadSource bounds compressed and expanded bytes independently. The exact same
 // pinned transport is used later for media and every nested manifest request.
 func ReadSource(ctx context.Context, locator string, policy remotemedia.Policy, limit int64) ([]byte, error) {
-	if limit < 1 || limit > MaxUploadBytes {
+	if limit < 1 || limit > 1<<30 {
 		return nil, ErrInvalid
 	}
 	c, e := remotemedia.New(ctx, locator, policy)
@@ -37,17 +38,20 @@ func ReadSource(ctx context.Context, locator string, policy remotemedia.Policy, 
 		return nil, ErrSourceUnavailable
 	}
 	compressed := &io.LimitedReader{R: resp.Body, N: limit + 1}
-	var reader io.Reader = compressed
+	sniff := bufio.NewReader(compressed)
+	prefix, _ := sniff.Peek(2)
+	var reader io.Reader = sniff
 	encoding := strings.TrimSpace(strings.ToLower(resp.Header.Get("Content-Encoding")))
 	switch encoding {
-	case "", "identity":
-	case "gzip":
-		g, e := gzip.NewReader(compressed)
-		if e != nil {
-			return nil, ErrSourceUnavailable
+	case "", "identity", "gzip":
+		if encoding == "gzip" || len(prefix) == 2 && prefix[0] == 0x1f && prefix[1] == 0x8b {
+			g, e := gzip.NewReader(sniff)
+			if e != nil {
+				return nil, ErrSourceUnavailable
+			}
+			defer g.Close()
+			reader = g
 		}
-		defer g.Close()
-		reader = g
 	default:
 		return nil, ErrSourceUnavailable
 	}
@@ -63,12 +67,13 @@ func ReadSource(ctx context.Context, locator string, policy remotemedia.Policy, 
 
 func (f SourceFetcher) fetch(ctx context.Context, c remoteConfig) (SourceInput, int, error) {
 	d := c.Draft
-	in := SourceInput{ID: d.ID, ExpectedRevision: d.ExpectedRevision, Name: d.Name, Mappings: append([]ChannelMapping{}, d.Mappings...)}
-	p := remotemedia.Policy{Approvals: c.Approvals, Resolver: f.Resolver, ReadTimeout: 15 * time.Second}
+	in := SourceInput{ID: d.ID, ExpectedRevision: d.ExpectedRevision, Name: d.Name, Mappings: append([]ChannelMapping{}, d.Mappings...), EnabledGroups: d.EnabledGroups, EnabledChannels: d.EnabledChannels}
+	limits := f.defaults.ImportLimits.effective()
+	p := remotemedia.Policy{UserAgent: f.defaults.UserAgent, Approvals: c.Approvals, Resolver: f.Resolver, ReadTimeout: 15 * time.Second}
 	physical := 0
 	switch d.Kind {
 	case "m3u":
-		b, e := ReadSource(ctx, d.Locator, p, MaxUploadBytes)
+		b, e := ReadSource(ctx, d.Locator, p, int64(limits.Bytes))
 		if e != nil {
 			return in, 0, e
 		}
@@ -82,7 +87,7 @@ func (f SourceFetcher) fetch(ctx context.Context, c remoteConfig) (SourceInput, 
 		api.Path = strings.TrimSuffix(api.Path, "/") + "/player_api.php"
 		q := url.Values{"username": {d.Username}, "password": {d.Password}, "action": {"get_live_streams"}}
 		api.RawQuery = q.Encode()
-		b, e := ReadSource(ctx, api.String(), p, MaxUploadBytes)
+		b, e := ReadSource(ctx, api.String(), p, int64(limits.Bytes))
 		if e != nil {
 			return in, 0, e
 		}
@@ -95,7 +100,7 @@ func (f SourceFetcher) fetch(ctx context.Context, c remoteConfig) (SourceInput, 
 		}
 		dec := json.NewDecoder(strings.NewReader(string(b)))
 		dec.UseNumber()
-		if dec.Decode(&streams) != nil || len(streams) == 0 || len(streams) > MaxChannels {
+		if dec.Decode(&streams) != nil || len(streams) == 0 || len(streams) > 100000 {
 			return in, 0, ErrInvalid
 		}
 		var text strings.Builder
@@ -103,7 +108,8 @@ func (f SourceFetcher) fetch(ctx context.Context, c remoteConfig) (SourceInput, 
 		for _, s := range streams {
 			sid, e := s.ID.Int64()
 			if e != nil || sid <= 0 {
-				return in, 0, ErrInvalid
+				text.WriteString("#EXTINF:-1,Skipped\nfile:///skipped\n")
+				continue
 			}
 			key := "xtream-" + strconv.FormatInt(sid, 10)
 			stream := *base
@@ -112,8 +118,10 @@ func (f SourceFetcher) fetch(ctx context.Context, c remoteConfig) (SourceInput, 
 			// Path components must not change route structure; URL's RawPath preserves
 			// reserved characters in credentials without exposing them to consumers.
 			stream.RawPath = strings.TrimSuffix(base.EscapedPath(), "/") + "/live/" + url.PathEscape(d.Username) + "/" + url.PathEscape(d.Password) + "/" + strconv.FormatInt(sid, 10) + ".ts"
-			if !validPlaylistText(s.Name) || !validText(s.Name, 256) {
-				return in, 0, ErrInvalid
+			s.Name = strings.ReplaceAll(s.Name, "\"", "'")
+			if !validText(s.Name, 256) {
+				text.WriteString("#EXTINF:-1,Skipped\nfile:///skipped\n")
+				continue
 			}
 			fmt.Fprintf(&text, "#EXTINF:-1 tvg-id=\"%s\" tvg-chno=\"%s\",%s\n%s\n", key, s.Number.String(), s.Name, stream.String())
 			if !hasMapping(in.Mappings, key) && s.EPG != "" {
@@ -148,7 +156,7 @@ func (f SourceFetcher) fetch(ctx context.Context, c remoteConfig) (SourceInput, 
 		physical = info.TunerCount
 		lineup := *base
 		lineup.Path = strings.TrimSuffix(base.Path, "/") + "/lineup.json"
-		b, e = ReadSource(ctx, lineup.String(), p, MaxUploadBytes)
+		b, e = ReadSource(ctx, lineup.String(), p, int64(limits.Bytes))
 		if e != nil {
 			return in, 0, e
 		}
@@ -158,7 +166,7 @@ func (f SourceFetcher) fetch(ctx context.Context, c remoteConfig) (SourceInput, 
 			URL    string `json:"URL"`
 			DRM    int    `json:"DRM"`
 		}
-		if json.Unmarshal(b, &rows) != nil || len(rows) == 0 || len(rows) > MaxChannels {
+		if json.Unmarshal(b, &rows) != nil || len(rows) == 0 || len(rows) > 100000 {
 			return in, 0, ErrInvalid
 		}
 		var text strings.Builder
@@ -168,7 +176,7 @@ func (f SourceFetcher) fetch(ctx context.Context, c remoteConfig) (SourceInput, 
 				continue
 			}
 			if !validText(r.Number, 32) || !validPlaylistText(r.Number) || !validText(r.Name, 256) || !validPlaylistText(r.Name) || !validLocator(r.URL) {
-				return in, 0, ErrInvalid
+				continue
 			}
 			// A lineup URL is not trusted merely because the device returned it. Media
 			// access later passes the same policy and exact confirmed LAN scope again.
@@ -179,20 +187,15 @@ func (f SourceFetcher) fetch(ctx context.Context, c remoteConfig) (SourceInput, 
 		return in, 0, ErrInvalid
 	}
 	if d.GuideURL != "" {
-		remaining := int64(MaxUploadBytes - len(in.Playlist))
+		remaining := int64(limits.Bytes - len(in.Playlist))
 		if remaining <= 0 {
 			return in, 0, ErrInvalid
 		}
-		b, e := ReadSource(ctx, d.GuideURL, p, remaining)
+		file, digest, e := readGuideFile(ctx, d.GuideURL, p, remaining)
+		in.guideFile, in.guideDigest = file, digest
 		if e != nil {
 			return in, 0, e
 		}
-		// A configured XMLTV response must be a document, not an empty success
-		// response that would silently erase the last published guide.
-		if strings.TrimSpace(string(b)) == "" {
-			return in, 0, ErrInvalid
-		}
-		in.Guide = string(b)
 	}
 	return in, physical, nil
 }
@@ -209,10 +212,11 @@ func hasMapping(ms []ChannelMapping, key string) bool {
 // Input is server-private. Callers must acquire a current source allocation and
 // authorize the viewer/job before requesting it. No HTTP DTO embeds this type.
 type Input struct {
-	Locator                         string
-	Policy                          remotemedia.Policy
-	SourceID, ChannelID, Generation string
-	Revision                        int64
+	StreamBufferSeconds, RetryWindowSeconds int
+	Locator                                 string
+	Policy                                  remotemedia.Policy
+	SourceID, ChannelID, Generation         string
+	Revision                                int64
 }
 
 // Fence identifies what a producer reading this input depends on: the
@@ -224,7 +228,8 @@ func (in Input) Fence() string {
 	raw, _ := json.Marshal(struct {
 		Locator   string                 `json:"locator"`
 		Approvals []remotemedia.Approval `json:"approvals"`
-	}{in.Locator, in.Policy.Approvals})
+		UserAgent string                 `json:"userAgent"`
+	}{in.Locator, in.Policy.Approvals, in.Policy.UserAgent})
 	sum := sha256.Sum256(raw)
 	return hex.EncodeToString(sum[:16])
 }
@@ -233,7 +238,7 @@ func (s *Store) InputTx(ctx context.Context, tx *sql.Tx, sourceID, channelID, ge
 	var in Input
 	var sealed []byte
 	var active string
-	e := tx.QueryRowContext(ctx, `SELECT s.revision,s.active_generation,c.locator_sealed FROM live_sources s JOIN live_channel_versions c ON c.generation_id=s.active_generation WHERE s.id=? AND c.channel_id=? AND s.state='active'`, sourceID, channelID).Scan(&in.Revision, &active, &sealed)
+	e := tx.QueryRowContext(ctx, `SELECT s.revision,s.active_generation,c.locator_sealed FROM live_sources s JOIN live_channel_versions c ON c.generation_id=s.active_generation WHERE s.id=? AND c.channel_id=? AND s.state='active' AND NOT EXISTS(SELECT 1 FROM admin_channel_numbers n WHERE n.source_id=s.id AND n.channel_id=c.channel_id AND n.hidden=1)`, sourceID, channelID).Scan(&in.Revision, &active, &sealed)
 	if e != nil || active != generation {
 		return in, ErrConflict
 	}
@@ -258,6 +263,12 @@ func (s *Store) InputTx(ctx context.Context, tx *sql.Tx, sourceID, channelID, ge
 		return in, ErrUnavailable
 	}
 	in.SourceID, in.ChannelID, in.Generation = sourceID, channelID, generation
+	d, _, e := RuntimeConfigurationTx(ctx, tx, sourceID)
+	if e != nil {
+		return in, e
+	}
+	in.StreamBufferSeconds, in.RetryWindowSeconds = d.StreamBufferSeconds, d.RetryWindowSeconds
+	in.Policy.UserAgent = d.UserAgent
 	in.Policy.ReadTimeout = 15 * time.Second
 	return in, nil
 }

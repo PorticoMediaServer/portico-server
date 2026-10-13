@@ -4,6 +4,11 @@
  * Merged into `enUS` statically.
  */
 export const settingsMessages = {
+ 'settings.server.ffmpegPath': 'FFmpeg location',
+ 'settings.server.ffmpegPathHelp': 'Use another FFmpeg build. It is checked before use and takes effect after restarting the server.',
+ 'settings.server.sessionStorageMiB': 'Working space per playback session (MiB)',
+ 'settings.server.sessionStorageMiBHelp': 'Older played segments are removed first when a session reaches this limit.',
+
   'settings.heading.account': 'Account',
   'settings.heading.server': 'Server',
   'settings.search': 'Search settings',

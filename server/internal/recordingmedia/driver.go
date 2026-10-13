@@ -4,8 +4,6 @@ package recordingmedia
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -39,6 +37,8 @@ type Driver struct {
 	supervisor            storage.Supervisor
 	available             bool
 	writeMu               sync.Mutex
+	measureMu             sync.Mutex
+	writtenTotal          int64
 	used                  int64
 	reserved              map[string]int64
 	policySource          func() dvr.StoragePolicy
@@ -171,101 +171,18 @@ func (d *Driver) Capture(ctx context.Context, in dvr.CaptureRequest, checkpoint 
 		return out, e
 	}
 	defer writer.Retain()
-	gateway, e := linearinput.Open(ctx, in.Input)
-	if e != nil {
-		return out, e
-	}
-	defer gateway.Close()
-	reservation, e := gateway.Reserve()
-	if e != nil {
-		return out, e
-	}
-	defer reservation.Close()
 	end, e := time.Parse(time.RFC3339Nano, in.Recording.End)
 	if e != nil {
 		return out, e
 	}
-	// Local scheduled stop closes input normally. Only an unretired child after
-	// the grace interval is killed. A never-ending live source need not reach EOF.
-	process, cancel := context.WithCancel(ctx)
-	defer cancel()
-	timerDone := make(chan struct{})
-	boundary := make(chan struct{})
-	supervise.Go("recording.driver.boundary", func() {
-		defer close(timerDone)
-		timer := time.NewTimer(max(time.Duration(0), time.Until(end)))
-		defer timer.Stop()
-		select {
-		case <-process.Done():
-			return
-		case <-timer.C:
-			close(boundary)
-			gateway.StopInput()
-		}
-		grace := time.NewTimer(10 * time.Second)
-		defer grace.Stop()
-		select {
-		case <-process.Done():
-		case <-grace.C:
-			cancel()
-		}
-	})
-	lastCheckpoint := time.Time{}
-	truncated := false
-	captureErr := decoder.RunLinearCopy(process, &d.supervisor, in.Recording.ID, d.ffmpeg, gateway.URL(), gateway.HLS(), reservation, in.PhysicalLock, func(reader io.Reader) error {
-		buf := make([]byte, 188*1024)
-		for {
-			n, e := io.ReadFull(reader, buf)
-			if n%188 != 0 {
-				truncated = true
-				n -= n % 188
-			}
-			if n > 0 {
-				if _, we := d.writeCapture(in.Recording.ID, writer, buf[:n]); we != nil {
-					return we
-				}
-			}
-			if n > 0 && time.Since(lastCheckpoint) >= time.Second {
-				object, we := writer.Checkpoint()
-				if we != nil {
-					return we
-				}
-				span := gateway.Snapshot()
-				cp := dvr.CaptureCheckpoint{Object: object, First: span.First, Last: span.Last, Gaps: span.Gaps}
-				select {
-				case <-boundary:
-					cp.BoundaryReached = true
-				default:
-				}
-				if checkpoint != nil {
-					if we = checkpoint(cp); we != nil {
-						return we
-					}
-				}
-				lastCheckpoint = time.Now()
-			}
-			if e == io.EOF || e == io.ErrUnexpectedEOF {
-				return nil
-			}
-			if e != nil {
-				return e
-			}
-		}
-	}, d.libraries...)
-	cancel()
-	<-timerDone
-	// Gateway reads and physical decoder ownership must both end before validation.
-	span := gateway.Snapshot()
-	_ = gateway.Close()
+	cp := dvr.CaptureCheckpoint{}
+	captureErr, truncated := d.continueCapture(ctx, in, writer, end, &cp, checkpoint)
 	if in.OnRetired != nil {
 		in.OnRetired()
 	}
-	cp := dvr.CaptureCheckpoint{First: span.First, Last: span.Last, Gaps: span.Gaps, WriterRetired: true, ProducerSucceeded: captureErr == nil && !truncated}
-	select {
-	case <-boundary:
-		cp.BoundaryReached = true
-	default:
-	}
+	cp.WriterRetired = true
+	cp.ProducerSucceeded = captureErr == nil && !truncated
+
 	object, e := writer.Checkpoint()
 	if e != nil {
 		return out, e
@@ -346,6 +263,25 @@ func (d *Driver) Recover(ctx context.Context, in dvr.CaptureRequest, cp dvr.Capt
 		return out, e
 	}
 	defer writer.Retain()
+	end, _ := time.Parse(time.RFC3339Nano, in.Recording.End)
+	if time.Now().Before(end) && in.Input.Locator != "" {
+		if e = d.reserve(in); e != nil {
+			return out, e
+		}
+		defer d.releaseReservation(in.Recording.ID)
+		cp.WriterRetired, cp.ProducerSucceeded, cp.BoundaryReached = false, false, false
+		cp.Gaps++
+		_, _ = d.continueCapture(ctx, in, writer, end, &cp, in.Checkpoint)
+		cp.WriterRetired = true
+		cp.ProducerSucceeded = false
+		cp.Object, e = writer.Checkpoint()
+		if e != nil {
+			return out, e
+		}
+	}
+	if in.OnRetired != nil {
+		in.OnRetired()
+	}
 	out, e = d.validate(ctx, store, writer, root, in, cp)
 	if e == nil {
 		out.Complete = false
@@ -434,11 +370,17 @@ func (d *Driver) result(in dvr.CaptureRequest, cp dvr.CaptureCheckpoint, root, p
 		return out, mediaartifact.ErrIdentity
 	}
 	out.ModifiedNS = st.ModTime().UnixNano()
-	start, e := time.Parse(time.RFC3339Nano, in.Recording.Start)
+	start, e := time.Parse(time.RFC3339Nano, in.Recording.Programme.Start)
+	if e != nil {
+		start, e = time.Parse(time.RFC3339Nano, in.Recording.Start)
+	}
 	if e != nil {
 		return out, e
 	}
-	end, e := time.Parse(time.RFC3339Nano, in.Recording.End)
+	end, e := time.Parse(time.RFC3339Nano, in.Recording.Programme.End)
+	if e != nil {
+		end, e = time.Parse(time.RFC3339Nano, in.Recording.End)
+	}
 	if e != nil {
 		return out, e
 	}
@@ -447,7 +389,7 @@ func (d *Driver) result(in dvr.CaptureRequest, cp dvr.CaptureCheckpoint, root, p
 	// never missing segments, reconnects, revocation or a nonzero producer failure.
 	tolerance := 4 * time.Second
 	expected := end.Sub(start).Seconds()
-	out.Complete = cp.ProducerSucceeded && cp.BoundaryReached && cp.Gaps == 0 && !cp.First.IsZero() && !cp.Last.IsZero() && !cp.First.After(start.Add(tolerance)) && !cp.Last.Before(end.Add(-tolerance)) && out.Duration >= expected-tolerance.Seconds() && out.Duration <= expected+2*tolerance.Seconds()
+	out.Complete = cp.ProducerSucceeded && cp.BoundaryReached && cp.Gaps == 0 && !cp.First.IsZero() && !cp.Last.IsZero() && !cp.First.After(start.Add(tolerance)) && !cp.Last.Before(end.Add(-tolerance)) && out.Duration >= expected-tolerance.Seconds() && out.Duration <= expected+float64(in.Recording.Options.BeforeSeconds+in.Recording.Options.AfterSeconds)+2*tolerance.Seconds()
 	if out.Complete {
 		out.Reason = ""
 	}
@@ -498,7 +440,6 @@ func validateTransport(ctx context.Context, r io.ReaderAt, size int64) error {
 	}
 	b := make([]byte, 188*1024)
 	offset := int64(0)
-	hash := sha256.New()
 	for offset < size {
 		if e := ctx.Err(); e != nil {
 			return e
@@ -521,11 +462,148 @@ func validateTransport(ctx context.Context, r io.ReaderAt, size int64) error {
 				return mediaartifact.ErrIdentity
 			}
 		}
-		hash.Write(b[:got])
 		offset += int64(got)
 	}
 	// Complete-byte traversal is intentional; object sealing separately verifies
 	// the capture writer's SHA-256 rather than trusting decoder-reported filenames.
-	_ = hex.EncodeToString(hash.Sum(nil))
 	return nil
+}
+
+// Each restarted producer appends a separately muxed transport-stream interval.
+// The checkpoint preserves all gaps and cancellation never claims missing bytes.
+func (d *Driver) continueCapture(ctx context.Context, in dvr.CaptureRequest, writer *mediaartifact.Writer, end time.Time, cp *dvr.CaptureCheckpoint, checkpoint func(dvr.CaptureCheckpoint) error) (error, bool) {
+	var last error
+	truncated := false
+	for ctx.Err() == nil && time.Now().Before(end) {
+		span, e, cut, boundary := d.captureAttempt(ctx, in, writer, end, *cp, checkpoint)
+		if cp.First.IsZero() {
+			cp.First = span.First
+		}
+		if !span.Last.IsZero() {
+			cp.Last = span.Last
+		}
+		cp.Gaps += span.Gaps
+		cp.BoundaryReached = boundary
+		truncated = truncated || cut
+		last = e
+		if boundary || errors.Is(e, dvr.ErrStorageFloor) || errors.Is(e, dvr.ErrStorageCap) || errors.Is(e, dvr.ErrStorageUnavailable) {
+			break
+		}
+		if ctx.Err() != nil {
+			return ctx.Err(), truncated
+		}
+		cp.Gaps++
+		timer := time.NewTimer(min(2*time.Second, max(time.Duration(0), time.Until(end))))
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return ctx.Err(), truncated
+		case <-timer.C:
+		}
+	}
+	if ctx.Err() != nil {
+		return ctx.Err(), truncated
+	}
+	return last, truncated
+}
+
+func boundaryReached(ch <-chan struct{}) bool {
+	select {
+	case <-ch:
+		return true
+	default:
+		return false
+	}
+}
+func (d *Driver) captureAttempt(ctx context.Context, in dvr.CaptureRequest, writer *mediaartifact.Writer, end time.Time, prior dvr.CaptureCheckpoint, checkpoint func(dvr.CaptureCheckpoint) error) (linearinput.Span, error, bool, bool) {
+	gateway, e := linearinput.Open(ctx, in.Input)
+	if e != nil {
+		return linearinput.Span{}, e, false, false
+	}
+	defer gateway.Close()
+	reservation, e := gateway.Reserve()
+	if e != nil {
+		return linearinput.Span{}, e, false, false
+	}
+	defer reservation.Close()
+	// Local scheduled stop closes input normally. Only an unretired child after
+	// the grace interval is killed. A never-ending live source need not reach EOF.
+	process, cancel := context.WithCancel(ctx)
+	defer cancel()
+	timerDone := make(chan struct{})
+	boundary := make(chan struct{})
+	supervise.Go("recording.driver.boundary", func() {
+		defer close(timerDone)
+		timer := time.NewTimer(max(time.Duration(0), time.Until(end)))
+		defer timer.Stop()
+		select {
+		case <-process.Done():
+			return
+		case <-timer.C:
+			close(boundary)
+			gateway.StopInput()
+		}
+		grace := time.NewTimer(10 * time.Second)
+		defer grace.Stop()
+		select {
+		case <-process.Done():
+		case <-grace.C:
+			cancel()
+		}
+	})
+	lastCheckpoint := time.Time{}
+	truncated := false
+	captureErr := decoder.RunLinearCopy(process, &d.supervisor, in.Recording.ID, d.ffmpeg, gateway.URL(), gateway.HLS(), reservation, in.PhysicalLock, func(reader io.Reader) error {
+		buf := make([]byte, 188*1024)
+		for {
+			n, e := io.ReadFull(reader, buf)
+			if n%188 != 0 {
+				truncated = true
+				n -= n % 188
+			}
+			if n > 0 {
+				if _, we := d.writeCapture(in.Recording.ID, writer, buf[:n]); we != nil {
+					return we
+				}
+			}
+			if n > 0 && time.Since(lastCheckpoint) >= time.Second {
+				object, we := writer.Checkpoint()
+				if we != nil {
+					return we
+				}
+				span := gateway.Snapshot()
+				cp := prior
+				if cp.First.IsZero() {
+					cp.First = span.First
+				}
+				cp.Last = span.Last
+				cp.Gaps += span.Gaps
+				cp.Object = object
+				select {
+				case <-boundary:
+					cp.BoundaryReached = true
+				default:
+				}
+				if checkpoint != nil {
+					if we = checkpoint(cp); we != nil {
+						return we
+					}
+				}
+				lastCheckpoint = time.Now()
+			}
+			if e == io.EOF || e == io.ErrUnexpectedEOF {
+				return nil
+			}
+			if e != nil {
+				return e
+			}
+		}
+	}, d.libraries...)
+	cancel()
+	<-timerDone
+	// Gateway reads and physical decoder ownership must both end before validation.
+	span := gateway.Snapshot()
+	_ = gateway.Close()
+	return span, captureErr, truncated, boundaryReached(boundary)
+
 }
