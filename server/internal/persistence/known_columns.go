@@ -3843,6 +3843,7 @@ social_cast_bootstraps.device_id
 social_cast_bootstraps.display_name
 social_cast_bootstraps.expires_at_ms
 social_cast_bootstraps.id
+social_cast_bootstraps.pairing_family_id
 social_cast_bootstraps.profile_id
 social_cast_bootstraps.redeemed_at_ms
 social_cast_bootstraps.role

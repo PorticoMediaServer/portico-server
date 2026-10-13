@@ -2445,7 +2445,11 @@ CREATE TABLE social_cast_bootstraps(
   device_id TEXT NOT NULL DEFAULT '',
   created_at_ms INTEGER NOT NULL,
   expires_at_ms INTEGER NOT NULL,
-  redeemed_at_ms INTEGER) STRICT;
+  redeemed_at_ms INTEGER,
+  -- The session that asked for the pairing code. The target's session is
+  -- derived from it: it ends if the signing key that admitted that session is
+  -- revoked.
+  pairing_family_id TEXT NOT NULL DEFAULT '') STRICT;
 CREATE TABLE social_cast_devices(
   id TEXT PRIMARY KEY,
   token_digest TEXT NOT NULL UNIQUE,
@@ -2722,7 +2726,7 @@ CREATE TABLE identity_credential_attempts(
 ) STRICT;
 CREATE TABLE authorization_family_grants(
  family_id TEXT PRIMARY KEY REFERENCES authorization_session_families(id) ON DELETE CASCADE,
- grant_kind TEXT NOT NULL CHECK(grant_kind IN ('viewer_only'))
+ grant_kind TEXT NOT NULL CHECK(grant_kind IN ('viewer_only','cast_target'))
 ) STRICT;
 CREATE TABLE direct_profile_pin_attempts(
  profile_id TEXT NOT NULL REFERENCES direct_profiles(id) ON DELETE CASCADE,

@@ -83,11 +83,11 @@ func TestCastLostReconnectRecovers(t *testing.T) {
 	}
 	// One live session per device: the lost answer's and the pairing's are gone.
 	for name, bearer := range map[string]string{"lost": lost.Session.AccessToken, "paired": paired.Session.AccessToken} {
-		if w = f.as(bearer, "GET", "/v1/receivers", nil); w.Code != 401 {
+		if w = f.as(bearer, "GET", "/v1/me", nil); w.Code != 401 {
 			t.Fatalf("%s session still works: %d", name, w.Code)
 		}
 	}
-	if w = f.as(recovered.Session.AccessToken, "GET", "/v1/receivers", nil); w.Code != 200 {
+	if w = f.as(recovered.Session.AccessToken, "GET", "/v1/me", nil); w.Code != 200 {
 		t.Fatalf("recovered session %d %s", w.Code, w.Body.String())
 	}
 	// The lost token is dead, and using the new token ends the old one's window.

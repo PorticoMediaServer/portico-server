@@ -67,6 +67,10 @@ type Principal struct {
 	Epoch int
 	// DeviceID is verified accounting metadata, never an authorization claim.
 	DeviceID string `json:"-"`
+	// Grant narrows what the session may be used for, whatever its role: empty
+	// for an ordinary session, GrantCastTarget for a screen paired as a Cast
+	// target (playback only), GrantViewerOnly for a viewing-only device.
+	Grant string `json:"-"`
 }
 
 // NativeServerIdentity is a pin delivered only with a successful native session.
@@ -252,6 +256,12 @@ func (s *Service) AuthenticateContext(ctx context.Context, token string) (Princi
 	}
 	if record.principal.Role == "account" {
 		return Principal{}, ErrUnauthorized
+	}
+	// A Cast target's session is good for playback and nothing else. A caller
+	// that has not said the request is a playback one is refused, so a route
+	// nobody thought about is closed to a paired screen rather than open.
+	if err = record.principal.PermitsRequest(ctx); err != nil {
+		return Principal{}, err
 	}
 	record.principal.DeviceID = family.DeviceID
 	return record.principal, nil

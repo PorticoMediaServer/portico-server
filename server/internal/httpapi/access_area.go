@@ -33,9 +33,10 @@ func (d Dependencies) accessAreaRoutes(mux *http.ServeMux) {
 }
 
 // tierAuthorityTx is the administration counterpart of ownerAuthorityTx. It
-// asks identity.Grants — the single tier predicate — against the account's live
-// membership row rather than the role carried on the token, so an account
-// demoted a moment ago cannot use a token minted while it was an administrator.
+// asks identity.Grants, the single tier predicate, of both the session's own
+// tier and the account's live membership row: an account demoted a moment ago
+// cannot use a token minted while it was an administrator, and a session
+// issued narrower than its account never borrows the account's tier.
 func (d Dependencies) tierAuthorityTx(ctx context.Context, tx *sql.Tx, p identity.Principal, needed string) (identity.Principal, error) {
 	if d.Identity == nil || tx == nil {
 		return p, identity.ErrUnauthorized
@@ -48,6 +49,15 @@ func (d Dependencies) tierAuthorityTx(ctx context.Context, tx *sql.Tx, p identit
 		role, err := access.Role(tx, p.AccountID)
 		if err != nil {
 			return p, err
+		}
+		// Both must hold the tier: the account, now, and the session itself.
+		// A session can be narrower than its account on purpose (a second
+		// profile of the owner's account, a viewing-only device, a Cast
+		// target are all members), and the account's tier must not be lent to
+		// it. A session can also be stale the other way, which the live
+		// membership row catches.
+		if !identity.Grants(p.Role, needed) {
+			return p, identity.ErrForbidden
 		}
 		p.Role = role
 	case "hosted":

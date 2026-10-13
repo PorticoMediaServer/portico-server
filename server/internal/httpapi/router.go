@@ -632,6 +632,11 @@ func (d Dependencies) resolvePrincipal(r *http.Request) (identity.Principal, err
 	if !strict && !private {
 		key = identity.Digest(token)
 		if cached, ok := d.principals.lookup(key, time.Now()); ok {
+			// The cache remembers who a token is, not what this request is: a
+			// narrowed session is judged against every request it makes.
+			if e := cached.PermitsRequest(r.Context()); e != nil {
+				return identity.Principal{}, e
+			}
 			d.admission.rememberCredential(token, cached)
 			return cached, nil
 		}
@@ -1263,6 +1268,9 @@ func New(d Dependencies) http.Handler {
 		}
 		r = r.WithContext(identity.WithSignInSource(r.Context(), d.signInPeer(r)))
 		r = r.WithContext(d.withSessionAdmission(r))
+		if castTargetRoute(r.Method, r.URL.Path) {
+			r = r.WithContext(identity.WithPlaybackRequest(r.Context()))
+		}
 		if installation := r.Header.Get("X-Portico-Installation-Id"); installation != "" {
 			claim := identity.DeviceRegistration{
 				InstallationID: installation,

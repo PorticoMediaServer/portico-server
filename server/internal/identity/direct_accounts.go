@@ -326,6 +326,11 @@ func (s *Service) directCallerTx(ctx context.Context, tx *sql.Tx, bearer string,
 	if _, err = s.SessionFamilyTx(ctx, tx, record.principal); err != nil {
 		return c, err
 	}
+	// A screen paired as a Cast target plays and does nothing else: no account
+	// route is open to it, whichever profile paired it.
+	if record.principal.Grant == GrantCastTarget {
+		return c, ErrForbidden
+	}
 	c.account.ID = record.principal.AccountID
 	c.familyID = record.ID
 	c.profileID = record.principal.ProfileID
@@ -339,11 +344,7 @@ func (s *Service) directCallerTx(ctx context.Context, tx *sql.Tx, bearer string,
 	}
 	c.manage = primary == 1
 	sessionRole = record.principal.Role
-	var viewerOnly bool
-	if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM authorization_family_grants WHERE family_id=? AND grant_kind='viewer_only')`, record.ID).Scan(&viewerOnly); err != nil {
-		return c, err
-	}
-	if viewerOnly {
+	if record.principal.Grant == GrantViewerOnly {
 		c.manage = false
 		c.viewerOnly = true
 	}
