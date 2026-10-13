@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"portico.local/server/internal/catalogtest"
 	"portico.local/server/internal/compactcatalog"
+	"portico.local/server/internal/storage"
 	"testing"
 )
 
@@ -192,5 +193,68 @@ func TestDeleteDoesNotRemoveNewUnpreviewedEpisode(t *testing.T) {
 	}
 	if n != 1 || out.Removed != 0 {
 		t.Fatalf("new episode or its show removed: episode=%d result=%+v", n, out)
+	}
+}
+
+func TestDeleteRejectsReplacementRootWithMatchingFiles(t *testing.T) {
+	s, db, root, item, paths := deletionFixture(t)
+	media := filepath.Join(root, "media")
+	observed, err := storage.LocalInventoryDirectory(storage.InventoryRequest{Root: media, RelativePath: "."})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`UPDATE library_sources SET root_identity=? WHERE library_id='lib-1'`, storage.RootIdentity(observed)); err != nil {
+		t.Fatal(err)
+	}
+	old := filepath.Join(root, "old-media")
+	if err := os.Rename(media, old); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(media, 0700); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range paths {
+		original := filepath.Join(old, filepath.Base(path))
+		body, err := os.ReadFile(original)
+		if err != nil {
+			t.Fatal(err)
+		}
+		info, err := os.Stat(original)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, body, 0600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chtimes(path, info.ModTime(), info.ModTime()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	out, err := deleteItem(t, s, item, "delete-replacement-root")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.Removed != 0 {
+		t.Fatalf("replacement root was accepted: %+v", out)
+	}
+	for _, path := range paths {
+		if _, err := os.Stat(path); err != nil {
+			t.Fatalf("replacement file removed: %v", err)
+		}
+	}
+}
+
+func TestDeleteAcceptsUnchangedAdmittedRoot(t *testing.T) {
+	s, db, root, item, _ := deletionFixture(t)
+	observed, err := storage.LocalInventoryDirectory(storage.InventoryRequest{Root: filepath.Join(root, "media"), RelativePath: "."})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`UPDATE library_sources SET root_identity=? WHERE library_id='lib-1'`, storage.RootIdentity(observed)); err != nil {
+		t.Fatal(err)
+	}
+	out, err := deleteItem(t, s, item, "delete-admitted-root")
+	if err != nil || out.Removed != 1 {
+		t.Fatalf("admitted root failed: %+v %v", out, err)
 	}
 }

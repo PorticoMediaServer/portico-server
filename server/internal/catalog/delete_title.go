@@ -27,7 +27,9 @@ type TitleDeletePlan struct {
 
 func CaptureTitleDeleteTx(ctx context.Context, tx *sql.Tx, entity int64) (TitleDeletePlan, error) {
 	var plan TitleDeletePlan
-	if err := tx.QueryRowContext(ctx, `SELECT pid(public_id) FROM catalog_entities WHERE id=?`, entity).Scan(&plan.ItemID); err != nil {
+	var library, kind int64
+	var parent sql.NullInt64
+	if err := tx.QueryRowContext(ctx, `SELECT pid(public_id),library_id,kind,parent_id FROM catalog_entities WHERE id=?`, entity).Scan(&plan.ItemID, &library, &kind, &parent); err != nil {
 		return plan, err
 	}
 	rows, err := tx.QueryContext(ctx, `SELECT a.token,a.path,a.size,a.modified_ns,l.part_index,l.start_seconds,l.end_seconds,l.edition
@@ -38,6 +40,9 @@ func CaptureTitleDeleteTx(ctx context.Context, tx *sql.Tx, entity int64) (TitleD
 	defer rows.Close()
 	h := sha256.New()
 	enc := json.NewEncoder(h)
+	if err := enc.Encode([]any{library, kind, parent}); err != nil {
+		return plan, err
+	}
 	for rows.Next() {
 		var token, path, edition string
 		var size, modified int64

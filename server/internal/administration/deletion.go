@@ -16,6 +16,7 @@ import (
 
 	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/compactcatalog"
+	"portico.local/server/internal/storage"
 )
 
 // MaxDeleteTargets bounds one bulk delete. A larger sweep is a scan-driven
@@ -37,6 +38,7 @@ type DeleteFile struct {
 	// is some other file and is never removed.
 	size, modifiedNS int64
 	root             string
+	rootIdentity     string
 }
 
 // Dependent is something that refers to the item and will change when it goes.
@@ -215,17 +217,19 @@ func targetFor(ctx context.Context, tx *sql.Tx, item string) (DeleteTarget, erro
 	}
 	// Only a file under one of the library's own folders is ever removed.
 	roots := []string{}
-	rows, err := tx.QueryContext(ctx, `SELECT root FROM library_sources WHERE library_id=?`, t.LibraryID)
+	rootIdentities := map[string]string{}
+	rows, err := tx.QueryContext(ctx, `SELECT root,root_identity FROM library_sources WHERE library_id=?`, t.LibraryID)
 	if err != nil {
 		return t, err
 	}
 	for rows.Next() {
-		var root string
-		if err = rows.Scan(&root); err != nil {
+		var root, identity string
+		if err = rows.Scan(&root, &identity); err != nil {
 			rows.Close()
 			return t, err
 		}
 		roots = append(roots, root)
+		rootIdentities[root] = identity
 	}
 	err = rows.Err()
 	rows.Close()
@@ -289,6 +293,7 @@ func targetFor(ctx context.Context, tx *sql.Tx, item string) (DeleteTarget, erro
 			for _, root := range roots {
 				if underAny([]string{root}, f.Path) && len(root) > len(f.root) {
 					f.root = root
+					f.rootIdentity = rootIdentities[root]
 				}
 			}
 			if f.root != "" {
@@ -403,6 +408,17 @@ func removeMediaFile(f DeleteFile) (removed bool, code string) {
 	current, err := root.Stat(".")
 	if err != nil || !os.SameFile(expected, current) {
 		return false, "file_changed"
+	}
+	if f.rootIdentity != "" {
+		file, err := root.Open(".")
+		if err != nil {
+			return false, "file_not_removed"
+		}
+		identity, err := storage.FileObjectIdentity(file)
+		file.Close()
+		if err != nil || !storage.SameRoot(f.rootIdentity, identity) {
+			return false, "file_changed"
+		}
 	}
 	rel, err := filepath.Rel(f.root, f.Path)
 	if err != nil || !filepath.IsLocal(rel) || rel == "." {

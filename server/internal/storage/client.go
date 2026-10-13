@@ -27,6 +27,14 @@ type Snapshot struct {
 	Directory      bool   `json:"directory"`
 	Data           string `json:"data,omitempty"`
 }
+
+// FileObjectIdentity observes an acquired descriptor without resolving its
+// pathname again. It also works for inherited handles with opaque names.
+func FileObjectIdentity(file *os.File) (string, error) {
+	object, _, err := observedFileBinding(file)
+	return object, err
+}
+
 type request struct {
 	RootHandle      uint64 `json:"rootHandle,omitempty"`
 	ManagedArtifact bool   `json:"managedArtifact,omitempty"`
