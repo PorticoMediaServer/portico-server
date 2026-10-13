@@ -421,6 +421,48 @@ export const routes = [
     "status": 204
   },
   {
+    "id": "delete_admin_ingestion_jobs_id",
+    "method": "DELETE",
+    "path": "/v1/admin/ingestion/jobs/{id}",
+    "summary": "Delete id",
+    "access": "owner",
+    "requires": "library",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 204,
+    "http": true,
+    "admission": "default"
+  },
+  {
+    "id": "delete_admin_libraries_id_sources_source",
+    "method": "DELETE",
+    "path": "/v1/admin/libraries/{id}/sources/{source}",
+    "summary": "Delete source",
+    "access": "owner",
+    "requires": "library",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin"
+  },
+  {
     "id": "delete_client_log",
     "method": "DELETE",
     "path": "/v1/admin/diagnostics/client-logs/{id}",
@@ -632,6 +674,48 @@ export const routes = [
       "not_found"
     ],
     "status": 204
+  },
+  {
+    "id": "delete_storage_mounts_id",
+    "method": "DELETE",
+    "path": "/v1/storage/mounts/{id}",
+    "summary": "Delete id",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
+  },
+  {
+    "id": "delete_storage_sources_webdav_id",
+    "method": "DELETE",
+    "path": "/v1/storage/sources/webdav/{id}",
+    "summary": "Delete id",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
   },
   {
     "id": "delete_title_version",
@@ -1013,6 +1097,111 @@ export const routes = [
       "internal"
     ],
     "status": 200
+  },
+  {
+    "id": "get_admin_ingestion_jobs_id",
+    "method": "GET",
+    "path": "/v1/admin/ingestion/jobs/{id}",
+    "summary": "Get id",
+    "access": "owner",
+    "requires": "library",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
+  },
+  {
+    "id": "get_admin_jobs",
+    "method": "GET",
+    "path": "/v1/admin/jobs",
+    "summary": "Get jobs",
+    "access": "owner",
+    "requires": "library",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
+  },
+  {
+    "id": "get_admin_libraries",
+    "method": "GET",
+    "path": "/v1/admin/libraries",
+    "summary": "Get libraries",
+    "access": "owner",
+    "requires": "library",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
+  },
+  {
+    "id": "get_admin_libraries_id",
+    "method": "GET",
+    "path": "/v1/admin/libraries/{id}",
+    "summary": "Get id",
+    "access": "owner",
+    "requires": "library",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
+  },
+  {
+    "id": "get_admin_libraries_id_inventory_config",
+    "method": "GET",
+    "path": "/v1/admin/libraries/{id}/inventory-config",
+    "summary": "Get inventory config",
+    "access": "owner",
+    "requires": "library",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin-heavy"
   },
   {
     "id": "get_admin_maintenance_settings",
@@ -2164,6 +2353,27 @@ export const routes = [
     "status": 200
   },
   {
+    "id": "get_items_id_source_availability",
+    "method": "GET",
+    "path": "/v1/items/{id}/source-availability",
+    "summary": "Get source availability",
+    "access": "owner",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
     "id": "get_items_screen_metadata",
     "method": "GET",
     "path": "/v1/items/{id}/metadata/screen",
@@ -2226,6 +2436,27 @@ export const routes = [
       "invalid_cursor"
     ],
     "status": 200
+  },
+  {
+    "id": "get_libraries",
+    "method": "GET",
+    "path": "/v1/libraries",
+    "summary": "Get libraries",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
   },
   {
     "id": "get_libraries_id_browse",
@@ -2305,6 +2536,27 @@ export const routes = [
     "status": 200
   },
   {
+    "id": "get_libraries_id_inventory_status",
+    "method": "GET",
+    "path": "/v1/libraries/{id}/inventory-status",
+    "summary": "Get inventory status",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
     "id": "get_libraries_id_listening_selection",
     "method": "GET",
     "path": "/v1/libraries/{id}/listening/selection",
@@ -2332,6 +2584,48 @@ export const routes = [
       "internal"
     ],
     "status": 200
+  },
+  {
+    "id": "get_libraries_id_network_roots",
+    "method": "GET",
+    "path": "/v1/libraries/{id}/network-roots",
+    "summary": "Get network roots",
+    "access": "owner",
+    "requires": "library",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "get_libraries_id_strm_analysis_policy",
+    "method": "GET",
+    "path": "/v1/libraries/{id}/strm-analysis-policy",
+    "summary": "Get strm analysis policy",
+    "access": "owner",
+    "requires": "library",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
   },
   {
     "id": "get_library_facets",
@@ -2985,6 +3279,90 @@ export const routes = [
       "internal"
     ],
     "status": 200
+  },
+  {
+    "id": "get_storage_mounts",
+    "method": "GET",
+    "path": "/v1/storage/mounts",
+    "summary": "Get mounts",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
+  },
+  {
+    "id": "get_storage_operations_id",
+    "method": "GET",
+    "path": "/v1/storage/operations/{id}",
+    "summary": "Get id",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
+  },
+  {
+    "id": "get_storage_source_operations_id",
+    "method": "GET",
+    "path": "/v1/storage/source-operations/{id}",
+    "summary": "Get id",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
+  },
+  {
+    "id": "get_storage_sources",
+    "method": "GET",
+    "path": "/v1/storage/sources",
+    "summary": "Get sources",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
   },
   {
     "id": "get_storage_status",
@@ -4188,6 +4566,48 @@ export const routes = [
     "status": 200
   },
   {
+    "id": "patch_admin_libraries_id",
+    "method": "PATCH",
+    "path": "/v1/admin/libraries/{id}",
+    "summary": "Patch id",
+    "access": "owner",
+    "requires": "library",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin"
+  },
+  {
+    "id": "patch_admin_libraries_id_sources_source",
+    "method": "PATCH",
+    "path": "/v1/admin/libraries/{id}/sources/{source}",
+    "summary": "Patch source",
+    "access": "owner",
+    "requires": "library",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
+  },
+  {
     "id": "patch_device",
     "method": "PATCH",
     "path": "/v1/devices/{id}",
@@ -4406,6 +4826,111 @@ export const routes = [
       "internal"
     ],
     "status": 200
+  },
+  {
+    "id": "post_admin_ingestion_jobs_id_action",
+    "method": "POST",
+    "path": "/v1/admin/ingestion/jobs/{id}/{action}",
+    "summary": "Post action",
+    "access": "owner",
+    "requires": "library",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
+  },
+  {
+    "id": "post_admin_libraries_id_inventory_object_action",
+    "method": "POST",
+    "path": "/v1/admin/libraries/{id}/inventory/{object}/{action}",
+    "summary": "Post action",
+    "access": "owner",
+    "requires": "library",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin-heavy"
+  },
+  {
+    "id": "post_admin_libraries_id_sources",
+    "method": "POST",
+    "path": "/v1/admin/libraries/{id}/sources",
+    "summary": "Post sources",
+    "access": "owner",
+    "requires": "library",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
+  },
+  {
+    "id": "post_admin_libraries_id_sources_source_check",
+    "method": "POST",
+    "path": "/v1/admin/libraries/{id}/sources/{source}/check",
+    "summary": "Post check",
+    "access": "owner",
+    "requires": "library",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin"
+  },
+  {
+    "id": "post_admin_libraries_id_sources_source_scans",
+    "method": "POST",
+    "path": "/v1/admin/libraries/{id}/sources/{source}/scans",
+    "summary": "Post scans",
+    "access": "owner",
+    "requires": "library",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin-heavy"
   },
   {
     "id": "post_admin_restart",
@@ -4968,6 +5493,72 @@ export const routes = [
     "status": 200
   },
   {
+    "id": "post_libraries",
+    "method": "POST",
+    "path": "/v1/libraries",
+    "summary": "Post libraries",
+    "access": "owner",
+    "requires": "library",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 201,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "post_libraries_id_network_roots",
+    "method": "POST",
+    "path": "/v1/libraries/{id}/network-roots",
+    "summary": "Post network roots",
+    "access": "owner",
+    "requires": "library",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "post_libraries_id_scans",
+    "method": "POST",
+    "path": "/v1/libraries/{id}/scans",
+    "summary": "Post scans",
+    "access": "owner",
+    "requires": "library",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "query": [
+      "mode"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 202,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
     "id": "post_metadata_attention",
     "method": "POST",
     "path": "/v1/libraries/{id}/metadata/attention",
@@ -4987,6 +5578,69 @@ export const routes = [
       "internal"
     ],
     "status": 202
+  },
+  {
+    "id": "post_storage_mounts",
+    "method": "POST",
+    "path": "/v1/storage/mounts",
+    "summary": "Post mounts",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
+  },
+  {
+    "id": "post_storage_mounts_id_actions",
+    "method": "POST",
+    "path": "/v1/storage/mounts/{id}/actions",
+    "summary": "Post actions",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
+  },
+  {
+    "id": "post_storage_sources_webdav",
+    "method": "POST",
+    "path": "/v1/storage/sources/webdav",
+    "summary": "Post webdav",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
   },
   {
     "id": "post_v1_items_itemId_subtitles",
@@ -5381,6 +6035,69 @@ export const routes = [
     "status": 200
   },
   {
+    "id": "put_admin_libraries_id_scan_policy",
+    "method": "PUT",
+    "path": "/v1/admin/libraries/{id}/scan-policy",
+    "summary": "Put scan policy",
+    "access": "owner",
+    "requires": "library",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin-heavy"
+  },
+  {
+    "id": "put_admin_libraries_id_shows_show_settings",
+    "method": "PUT",
+    "path": "/v1/admin/libraries/{id}/shows/{show}/settings",
+    "summary": "Put settings",
+    "access": "owner",
+    "requires": "library",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin"
+  },
+  {
+    "id": "put_admin_libraries_order",
+    "method": "PUT",
+    "path": "/v1/admin/libraries/order",
+    "summary": "Put order",
+    "access": "owner",
+    "requires": "library",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin"
+  },
+  {
     "id": "put_admin_maintenance_settings",
     "method": "PUT",
     "path": "/v1/admin/maintenance/settings",
@@ -5547,6 +6264,27 @@ export const routes = [
     "status": 200
   },
   {
+    "id": "put_libraries_id_strm_analysis_policy",
+    "method": "PUT",
+    "path": "/v1/libraries/{id}/strm-analysis-policy",
+    "summary": "Put strm analysis policy",
+    "access": "owner",
+    "requires": "library",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
     "id": "put_library_settings",
     "method": "PUT",
     "path": "/v1/admin/libraries/{id}/settings",
@@ -5585,6 +6323,27 @@ export const routes = [
       "internal"
     ],
     "status": 200
+  },
+  {
+    "id": "put_storage_sources_webdav_id",
+    "method": "PUT",
+    "path": "/v1/storage/sources/webdav/{id}",
+    "summary": "Put id",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
   },
   {
     "id": "put_v1_items_itemId_playback_session_subtitles",

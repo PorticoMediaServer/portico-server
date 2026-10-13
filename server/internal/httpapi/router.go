@@ -139,7 +139,8 @@ type Dependencies struct {
 	v1     *playbackv1.Service
 	social *social.Store
 	// registry is the typed apikit registry (foundation and playback v1).
-	registry *apikit.Registry
+	registry             *apikit.Registry
+	httpContractsPrivate bool
 }
 
 func write(w http.ResponseWriter, status int, v any) {
@@ -877,7 +878,7 @@ func New(d Dependencies) http.Handler {
 		}
 		w.WriteHeader(202)
 	})
-	mux.HandleFunc("GET /v1/libraries", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "GET /v1/libraries", func(w http.ResponseWriter, r *http.Request) {
 		p, e := d.principal(r)
 		if e != nil {
 			failure(w, e)
@@ -890,7 +891,7 @@ func New(d Dependencies) http.Handler {
 		}
 		write(w, 200, map[string]any{"items": visible})
 	})
-	mux.HandleFunc("POST /v1/libraries", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "POST /v1/libraries", func(w http.ResponseWriter, r *http.Request) {
 		p, e := d.owner(r)
 		if e != nil {
 			failure(w, e)
@@ -956,7 +957,7 @@ func New(d Dependencies) http.Handler {
 		}
 		write(w, 201, l)
 	})
-	mux.HandleFunc("POST /v1/libraries/{id}/network-roots", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "POST /v1/libraries/{id}/network-roots", func(w http.ResponseWriter, r *http.Request) {
 		p, _, e := d.storageOwner(r)
 		if e != nil {
 			failure(w, e)
@@ -977,7 +978,7 @@ func New(d Dependencies) http.Handler {
 		}
 		write(w, 200, map[string]any{"approvals": approvals})
 	})
-	mux.HandleFunc("POST /v1/libraries/{id}/scans", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "POST /v1/libraries/{id}/scans", func(w http.ResponseWriter, r *http.Request) {
 		p, e := d.owner(r)
 		if e != nil {
 			failure(w, e)
@@ -990,7 +991,7 @@ func New(d Dependencies) http.Handler {
 		}
 		write(w, 202, j)
 	})
-	mux.HandleFunc("GET /v1/admin/ingestion/jobs/{id}", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "GET /v1/admin/ingestion/jobs/{id}", func(w http.ResponseWriter, r *http.Request) {
 		if _, e := d.owner(r); e != nil {
 			failure(w, e)
 			return
@@ -1002,7 +1003,7 @@ func New(d Dependencies) http.Handler {
 		}
 		write(w, 200, j)
 	})
-	mux.HandleFunc("DELETE /v1/admin/ingestion/jobs/{id}", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "DELETE /v1/admin/ingestion/jobs/{id}", func(w http.ResponseWriter, r *http.Request) {
 		p, e := d.owner(r)
 		if e != nil {
 			failure(w, e)

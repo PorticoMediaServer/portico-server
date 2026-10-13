@@ -47,7 +47,7 @@ func (d Dependencies) remoteSourceRoutes(mux *http.ServeMux) {
 	if d.RemoteSources == nil {
 		return
 	}
-	mux.HandleFunc("GET /v1/storage/sources", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "GET /v1/storage/sources", func(w http.ResponseWriter, r *http.Request) {
 		_, scope, err := d.storageOwner(r)
 		if err != nil {
 			remoteSourceFailure(w, err)
@@ -68,7 +68,7 @@ func (d Dependencies) remoteSourceRoutes(mux *http.ServeMux) {
 		}
 		write(w, 200, map[string]any{"scope": scope, "sources": rows, "mountSupported": mounts.MountSupported()})
 	})
-	mux.HandleFunc("GET /v1/storage/source-operations/{id}", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "GET /v1/storage/source-operations/{id}", func(w http.ResponseWriter, r *http.Request) {
 		p, scope, err := d.storageOwner(r)
 		if err != nil {
 			remoteSourceFailure(w, err)
@@ -87,7 +87,7 @@ func (d Dependencies) remoteSourceRoutes(mux *http.ServeMux) {
 		write(w, 200, map[string]any{"scope": scope, "receipt": receipt})
 	})
 	for _, route := range []string{"POST /v1/storage/sources/webdav", "PUT /v1/storage/sources/webdav/{id}", "DELETE /v1/storage/sources/webdav/{id}"} {
-		mux.HandleFunc(route, func(w http.ResponseWriter, r *http.Request) {
+		d.httpHandle(mux, route, func(w http.ResponseWriter, r *http.Request) {
 			p, scope, err := d.storageOwner(r)
 			if err != nil {
 				remoteSourceFailure(w, err)
@@ -125,7 +125,7 @@ func (d Dependencies) remoteSourceRoutes(mux *http.ServeMux) {
 			write(w, 200, map[string]any{"scope": scope, "receipt": receipt})
 		})
 	}
-	mux.HandleFunc("GET /v1/libraries/{id}/network-roots", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "GET /v1/libraries/{id}/network-roots", func(w http.ResponseWriter, r *http.Request) {
 		_, scope, err := d.storageOwner(r)
 		if err != nil {
 			remoteSourceFailure(w, err)
@@ -168,7 +168,7 @@ func (d Dependencies) remoteSourceRoutes(mux *http.ServeMux) {
 		}
 		write(w, 200, map[string]any{"scope": scope, "policy": map[string]any{"libraryId": library, "revision": revision, "origins": origins}})
 	})
-	mux.HandleFunc("GET /v1/libraries/{id}/strm-analysis-policy", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "GET /v1/libraries/{id}/strm-analysis-policy", func(w http.ResponseWriter, r *http.Request) {
 		_, scope, err := d.storageOwner(r)
 		if err != nil {
 			remoteSourceFailure(w, err)
@@ -185,7 +185,7 @@ func (d Dependencies) remoteSourceRoutes(mux *http.ServeMux) {
 		}
 		write(w, 200, map[string]any{"scope": scope, "policy": policy})
 	})
-	mux.HandleFunc("PUT /v1/libraries/{id}/strm-analysis-policy", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "PUT /v1/libraries/{id}/strm-analysis-policy", func(w http.ResponseWriter, r *http.Request) {
 		p, scope, err := d.storageOwner(r)
 		if err != nil {
 			remoteSourceFailure(w, err)
@@ -210,7 +210,7 @@ func (d Dependencies) remoteSourceRoutes(mux *http.ServeMux) {
 		}
 		write(w, 200, map[string]any{"scope": scope, "policy": policy})
 	})
-	mux.HandleFunc("GET /v1/items/{id}/source-availability", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "GET /v1/items/{id}/source-availability", func(w http.ResponseWriter, r *http.Request) {
 		p, err := d.principal(r)
 		if err != nil {
 			failure(w, err)

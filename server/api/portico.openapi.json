@@ -7477,6 +7477,239 @@
         "x-scope": "admin"
       }
     },
+    "/v1/admin/ingestion/jobs/{id}": {
+      "delete": {
+        "operationId": "delete_admin_ingestion_jobs_id",
+        "responses": {
+          "204": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {},
+                  "required": [],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Delete id",
+        "x-access": "owner",
+        "x-cost": "constant",
+        "x-lane": "default",
+        "x-scope": "library"
+      },
+      "get": {
+        "operationId": "get_admin_ingestion_jobs_id",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "analyzed": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "error": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "jobs": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "phase": {
+                      "type": "string"
+                    },
+                    "processed": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "scanMode": {
+                      "type": "string"
+                    },
+                    "sourceId": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "warnings": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "status",
+                    "processed",
+                    "analyzed",
+                    "warnings"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Get id",
+        "x-access": "owner",
+        "x-cost": "constant",
+        "x-lane": "default",
+        "x-scope": "library"
+      }
+    },
+    "/v1/admin/ingestion/jobs/{id}/{action}": {
+      "post": {
+        "operationId": "post_admin_ingestion_jobs_id_action",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "acceptReplacement": {
+                    "type": "boolean"
+                  },
+                  "classification": {
+                    "type": "string"
+                  },
+                  "expectedRevision": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "followSymlinks": {
+                    "type": "boolean"
+                  },
+                  "intervalSeconds": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name",
+                  "path",
+                  "classification",
+                  "followSymlinks",
+                  "intervalSeconds",
+                  "expectedRevision",
+                  "acceptReplacement"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "classification": {
+                      "type": "string"
+                    },
+                    "enabled": {
+                      "type": "boolean"
+                    },
+                    "followSymlinks": {
+                      "type": "boolean"
+                    },
+                    "generation": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "health": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "identityConfirmed": {
+                      "type": "boolean"
+                    },
+                    "intervalSeconds": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "kind": {
+                      "type": "string"
+                    },
+                    "lastCompleteAt": {
+                      "type": "string"
+                    },
+                    "lastProgressAt": {
+                      "type": "string"
+                    },
+                    "libraryId": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "nextScanAt": {
+                      "type": "string"
+                    },
+                    "path": {
+                      "type": "string"
+                    },
+                    "resolvedPath": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "identityConfirmed",
+                    "id",
+                    "libraryId",
+                    "kind",
+                    "name",
+                    "path",
+                    "resolvedPath",
+                    "classification",
+                    "generation",
+                    "health",
+                    "enabled",
+                    "followSymlinks",
+                    "intervalSeconds",
+                    "nextScanAt",
+                    "lastCompleteAt",
+                    "lastProgressAt"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Post action",
+        "x-access": "owner",
+        "x-cost": "constant",
+        "x-lane": "default",
+        "x-max-body-bytes": 65536,
+        "x-scope": "library"
+      }
+    },
     "/v1/admin/items/{id}/files/{fileId}": {
       "delete": {
         "operationId": "delete_title_version",
@@ -7791,6 +8024,417 @@
         "x-scope": "library"
       }
     },
+    "/v1/admin/jobs": {
+      "get": {
+        "operationId": "get_admin_jobs",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "items": {
+                      "items": {
+                        "properties": {
+                          "actions": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
+                          },
+                          "analyzed": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "createdAt": {
+                            "type": "string"
+                          },
+                          "error": {
+                            "type": "string"
+                          },
+                          "errorCode": {
+                            "type": "string"
+                          },
+                          "finishedAt": {
+                            "nullable": true,
+                            "type": "string"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "libraryId": {
+                            "type": "string"
+                          },
+                          "libraryKind": {
+                            "type": "string"
+                          },
+                          "libraryName": {
+                            "type": "string"
+                          },
+                          "pauseReason": {
+                            "type": "string"
+                          },
+                          "phase": {
+                            "type": "string"
+                          },
+                          "processed": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "sourceId": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string"
+                          },
+                          "updatedAt": {
+                            "nullable": true,
+                            "type": "string"
+                          },
+                          "warnings": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "sourceId",
+                          "phase",
+                          "analyzed",
+                          "warnings",
+                          "pauseReason",
+                          "id",
+                          "libraryId",
+                          "libraryName",
+                          "libraryKind",
+                          "status",
+                          "processed",
+                          "createdAt",
+                          "updatedAt",
+                          "finishedAt",
+                          "actions"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "nextCursor": {
+                      "type": "string"
+                    },
+                    "revision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "scope": {
+                      "properties": {
+                        "serverId": {
+                          "type": "string"
+                        },
+                        "viewerFence": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "serverId",
+                        "viewerFence"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "scope",
+                    "revision",
+                    "items",
+                    "nextCursor"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Get jobs",
+        "x-access": "owner",
+        "x-cost": "constant",
+        "x-lane": "default",
+        "x-scope": "library"
+      }
+    },
+    "/v1/admin/libraries": {
+      "get": {
+        "operationId": "get_admin_libraries",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "items": {
+                      "items": {
+                        "properties": {
+                          "actions": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
+                          },
+                          "attention": {
+                            "properties": {
+                              "atLeast": {
+                                "type": "boolean"
+                              },
+                              "files": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "files"
+                            ],
+                            "type": "object"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string"
+                          },
+                          "lastScan": {
+                            "nullable": true,
+                            "properties": {
+                              "actions": {
+                                "items": {
+                                  "type": "string"
+                                },
+                                "type": "array"
+                              },
+                              "analyzed": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "createdAt": {
+                                "type": "string"
+                              },
+                              "error": {
+                                "type": "string"
+                              },
+                              "errorCode": {
+                                "type": "string"
+                              },
+                              "finishedAt": {
+                                "nullable": true,
+                                "type": "string"
+                              },
+                              "id": {
+                                "type": "string"
+                              },
+                              "libraryId": {
+                                "type": "string"
+                              },
+                              "libraryKind": {
+                                "type": "string"
+                              },
+                              "libraryName": {
+                                "type": "string"
+                              },
+                              "pauseReason": {
+                                "type": "string"
+                              },
+                              "phase": {
+                                "type": "string"
+                              },
+                              "processed": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "sourceId": {
+                                "type": "string"
+                              },
+                              "status": {
+                                "type": "string"
+                              },
+                              "updatedAt": {
+                                "nullable": true,
+                                "type": "string"
+                              },
+                              "warnings": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "sourceId",
+                              "phase",
+                              "analyzed",
+                              "warnings",
+                              "pauseReason",
+                              "id",
+                              "libraryId",
+                              "libraryName",
+                              "libraryKind",
+                              "status",
+                              "processed",
+                              "createdAt",
+                              "updatedAt",
+                              "finishedAt",
+                              "actions"
+                            ],
+                            "type": "object"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "revision": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "source": {
+                            "properties": {
+                              "availability": {
+                                "type": "string"
+                              },
+                              "basis": {
+                                "type": "string"
+                              },
+                              "message": {
+                                "type": "string"
+                              },
+                              "observedAt": {
+                                "type": "string"
+                              },
+                              "path": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "path",
+                              "availability",
+                              "basis"
+                            ],
+                            "type": "object"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "name",
+                          "kind",
+                          "revision",
+                          "source",
+                          "lastScan",
+                          "actions"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "nextCursor": {
+                      "type": "string"
+                    },
+                    "revision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "scope": {
+                      "properties": {
+                        "serverId": {
+                          "type": "string"
+                        },
+                        "viewerFence": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "serverId",
+                        "viewerFence"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "scope",
+                    "revision",
+                    "items",
+                    "nextCursor"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Get libraries",
+        "x-access": "owner",
+        "x-cost": "constant",
+        "x-lane": "default",
+        "x-scope": "library"
+      }
+    },
+    "/v1/admin/libraries/order": {
+      "put": {
+        "operationId": "put_admin_libraries_order",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "libraryIds": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "libraryIds"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "libraryIds": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "libraryIds"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Put order",
+        "x-access": "owner",
+        "x-cost": "constant",
+        "x-lane": "default",
+        "x-max-body-bytes": 65536,
+        "x-scope": "library"
+      }
+    },
     "/v1/admin/libraries/{id}": {
       "delete": {
         "operationId": "remove_library",
@@ -7848,6 +8492,433 @@
         "x-lane": "default",
         "x-max-body-bytes": 4096,
         "x-scope": "admin"
+      },
+      "get": {
+        "operationId": "get_admin_libraries_id",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "library": {
+                      "properties": {
+                        "actions": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "attention": {
+                          "properties": {
+                            "atLeast": {
+                              "type": "boolean"
+                            },
+                            "files": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "files"
+                          ],
+                          "type": "object"
+                        },
+                        "id": {
+                          "type": "string"
+                        },
+                        "kind": {
+                          "type": "string"
+                        },
+                        "lastScan": {
+                          "nullable": true,
+                          "properties": {
+                            "actions": {
+                              "items": {
+                                "type": "string"
+                              },
+                              "type": "array"
+                            },
+                            "analyzed": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "createdAt": {
+                              "type": "string"
+                            },
+                            "error": {
+                              "type": "string"
+                            },
+                            "errorCode": {
+                              "type": "string"
+                            },
+                            "finishedAt": {
+                              "nullable": true,
+                              "type": "string"
+                            },
+                            "id": {
+                              "type": "string"
+                            },
+                            "libraryId": {
+                              "type": "string"
+                            },
+                            "libraryKind": {
+                              "type": "string"
+                            },
+                            "libraryName": {
+                              "type": "string"
+                            },
+                            "pauseReason": {
+                              "type": "string"
+                            },
+                            "phase": {
+                              "type": "string"
+                            },
+                            "processed": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "sourceId": {
+                              "type": "string"
+                            },
+                            "status": {
+                              "type": "string"
+                            },
+                            "updatedAt": {
+                              "nullable": true,
+                              "type": "string"
+                            },
+                            "warnings": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "sourceId",
+                            "phase",
+                            "analyzed",
+                            "warnings",
+                            "pauseReason",
+                            "id",
+                            "libraryId",
+                            "libraryName",
+                            "libraryKind",
+                            "status",
+                            "processed",
+                            "createdAt",
+                            "updatedAt",
+                            "finishedAt",
+                            "actions"
+                          ],
+                          "type": "object"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "revision": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "source": {
+                          "properties": {
+                            "availability": {
+                              "type": "string"
+                            },
+                            "basis": {
+                              "type": "string"
+                            },
+                            "message": {
+                              "type": "string"
+                            },
+                            "observedAt": {
+                              "type": "string"
+                            },
+                            "path": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "path",
+                            "availability",
+                            "basis"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name",
+                        "kind",
+                        "revision",
+                        "source",
+                        "lastScan",
+                        "actions"
+                      ],
+                      "type": "object"
+                    },
+                    "scope": {
+                      "properties": {
+                        "serverId": {
+                          "type": "string"
+                        },
+                        "viewerFence": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "serverId",
+                        "viewerFence"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "scope",
+                    "library"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Get id",
+        "x-access": "owner",
+        "x-cost": "constant",
+        "x-lane": "default",
+        "x-scope": "library"
+      },
+      "patch": {
+        "operationId": "patch_admin_libraries_id",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "expectedRevision": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name",
+                  "expectedRevision"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "library": {
+                      "properties": {
+                        "actions": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "attention": {
+                          "properties": {
+                            "atLeast": {
+                              "type": "boolean"
+                            },
+                            "files": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "files"
+                          ],
+                          "type": "object"
+                        },
+                        "id": {
+                          "type": "string"
+                        },
+                        "kind": {
+                          "type": "string"
+                        },
+                        "lastScan": {
+                          "nullable": true,
+                          "properties": {
+                            "actions": {
+                              "items": {
+                                "type": "string"
+                              },
+                              "type": "array"
+                            },
+                            "analyzed": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "createdAt": {
+                              "type": "string"
+                            },
+                            "error": {
+                              "type": "string"
+                            },
+                            "errorCode": {
+                              "type": "string"
+                            },
+                            "finishedAt": {
+                              "nullable": true,
+                              "type": "string"
+                            },
+                            "id": {
+                              "type": "string"
+                            },
+                            "libraryId": {
+                              "type": "string"
+                            },
+                            "libraryKind": {
+                              "type": "string"
+                            },
+                            "libraryName": {
+                              "type": "string"
+                            },
+                            "pauseReason": {
+                              "type": "string"
+                            },
+                            "phase": {
+                              "type": "string"
+                            },
+                            "processed": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "sourceId": {
+                              "type": "string"
+                            },
+                            "status": {
+                              "type": "string"
+                            },
+                            "updatedAt": {
+                              "nullable": true,
+                              "type": "string"
+                            },
+                            "warnings": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "sourceId",
+                            "phase",
+                            "analyzed",
+                            "warnings",
+                            "pauseReason",
+                            "id",
+                            "libraryId",
+                            "libraryName",
+                            "libraryKind",
+                            "status",
+                            "processed",
+                            "createdAt",
+                            "updatedAt",
+                            "finishedAt",
+                            "actions"
+                          ],
+                          "type": "object"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "revision": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "source": {
+                          "properties": {
+                            "availability": {
+                              "type": "string"
+                            },
+                            "basis": {
+                              "type": "string"
+                            },
+                            "message": {
+                              "type": "string"
+                            },
+                            "observedAt": {
+                              "type": "string"
+                            },
+                            "path": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "path",
+                            "availability",
+                            "basis"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name",
+                        "kind",
+                        "revision",
+                        "source",
+                        "lastScan",
+                        "actions"
+                      ],
+                      "type": "object"
+                    },
+                    "scope": {
+                      "properties": {
+                        "serverId": {
+                          "type": "string"
+                        },
+                        "viewerFence": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "serverId",
+                        "viewerFence"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "scope",
+                    "library"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Patch id",
+        "x-access": "owner",
+        "x-cost": "constant",
+        "x-lane": "default",
+        "x-max-body-bytes": 65536,
+        "x-scope": "library"
       }
     },
     "/v1/admin/libraries/{id}/inventory": {
@@ -7978,6 +9049,470 @@
         "x-access": "owner",
         "x-cost": "page_sized",
         "x-lane": "default",
+        "x-scope": "library"
+      }
+    },
+    "/v1/admin/libraries/{id}/inventory-config": {
+      "get": {
+        "operationId": "get_admin_libraries_id_inventory_config",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "libraryId": {
+                      "type": "string"
+                    },
+                    "policy": {
+                      "properties": {
+                        "operations": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "revision": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "tier": {
+                          "type": "string"
+                        },
+                        "trickplay": {
+                          "properties": {
+                            "intervalSeconds": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "maxTiles": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "tileWidth": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "intervalSeconds",
+                            "tileWidth",
+                            "maxTiles"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "tier",
+                        "revision",
+                        "operations",
+                        "trickplay"
+                      ],
+                      "type": "object"
+                    },
+                    "revision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "scope": {
+                      "properties": {
+                        "serverId": {
+                          "type": "string"
+                        },
+                        "viewerFence": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "serverId",
+                        "viewerFence"
+                      ],
+                      "type": "object"
+                    },
+                    "sources": {
+                      "items": {
+                        "properties": {
+                          "classification": {
+                            "type": "string"
+                          },
+                          "enabled": {
+                            "type": "boolean"
+                          },
+                          "followSymlinks": {
+                            "type": "boolean"
+                          },
+                          "generation": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "health": {
+                            "type": "string"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "identityConfirmed": {
+                            "type": "boolean"
+                          },
+                          "intervalSeconds": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "kind": {
+                            "type": "string"
+                          },
+                          "lastCompleteAt": {
+                            "type": "string"
+                          },
+                          "lastProgressAt": {
+                            "type": "string"
+                          },
+                          "libraryId": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "nextScanAt": {
+                            "type": "string"
+                          },
+                          "path": {
+                            "type": "string"
+                          },
+                          "resolvedPath": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "identityConfirmed",
+                          "id",
+                          "libraryId",
+                          "kind",
+                          "name",
+                          "path",
+                          "resolvedPath",
+                          "classification",
+                          "generation",
+                          "health",
+                          "enabled",
+                          "followSymlinks",
+                          "intervalSeconds",
+                          "nextScanAt",
+                          "lastCompleteAt",
+                          "lastProgressAt"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "scope",
+                    "libraryId",
+                    "revision",
+                    "sources",
+                    "policy"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Get inventory config",
+        "x-access": "owner",
+        "x-cost": "constant",
+        "x-lane": "default",
+        "x-scope": "library"
+      }
+    },
+    "/v1/admin/libraries/{id}/inventory/{object}/{action}": {
+      "post": {
+        "operationId": "post_admin_libraries_id_inventory_object_action",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "acceptReplacement": {
+                    "type": "boolean"
+                  },
+                  "classification": {
+                    "type": "string"
+                  },
+                  "expectedRevision": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "followSymlinks": {
+                    "type": "boolean"
+                  },
+                  "intervalSeconds": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name",
+                  "path",
+                  "classification",
+                  "followSymlinks",
+                  "intervalSeconds",
+                  "expectedRevision",
+                  "acceptReplacement"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "classification": {
+                      "type": "string"
+                    },
+                    "enabled": {
+                      "type": "boolean"
+                    },
+                    "followSymlinks": {
+                      "type": "boolean"
+                    },
+                    "generation": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "health": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "identityConfirmed": {
+                      "type": "boolean"
+                    },
+                    "intervalSeconds": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "kind": {
+                      "type": "string"
+                    },
+                    "lastCompleteAt": {
+                      "type": "string"
+                    },
+                    "lastProgressAt": {
+                      "type": "string"
+                    },
+                    "libraryId": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "nextScanAt": {
+                      "type": "string"
+                    },
+                    "path": {
+                      "type": "string"
+                    },
+                    "resolvedPath": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "identityConfirmed",
+                    "id",
+                    "libraryId",
+                    "kind",
+                    "name",
+                    "path",
+                    "resolvedPath",
+                    "classification",
+                    "generation",
+                    "health",
+                    "enabled",
+                    "followSymlinks",
+                    "intervalSeconds",
+                    "nextScanAt",
+                    "lastCompleteAt",
+                    "lastProgressAt"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Post action",
+        "x-access": "owner",
+        "x-cost": "constant",
+        "x-lane": "default",
+        "x-max-body-bytes": 65536,
+        "x-scope": "library"
+      }
+    },
+    "/v1/admin/libraries/{id}/scan-policy": {
+      "put": {
+        "operationId": "put_admin_libraries_id_scan_policy",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "acceptReplacement": {
+                    "type": "boolean"
+                  },
+                  "classification": {
+                    "type": "string"
+                  },
+                  "expectedRevision": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "followSymlinks": {
+                    "type": "boolean"
+                  },
+                  "intervalSeconds": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name",
+                  "path",
+                  "classification",
+                  "followSymlinks",
+                  "intervalSeconds",
+                  "expectedRevision",
+                  "acceptReplacement"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "classification": {
+                      "type": "string"
+                    },
+                    "enabled": {
+                      "type": "boolean"
+                    },
+                    "followSymlinks": {
+                      "type": "boolean"
+                    },
+                    "generation": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "health": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "identityConfirmed": {
+                      "type": "boolean"
+                    },
+                    "intervalSeconds": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "kind": {
+                      "type": "string"
+                    },
+                    "lastCompleteAt": {
+                      "type": "string"
+                    },
+                    "lastProgressAt": {
+                      "type": "string"
+                    },
+                    "libraryId": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "nextScanAt": {
+                      "type": "string"
+                    },
+                    "path": {
+                      "type": "string"
+                    },
+                    "resolvedPath": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "identityConfirmed",
+                    "id",
+                    "libraryId",
+                    "kind",
+                    "name",
+                    "path",
+                    "resolvedPath",
+                    "classification",
+                    "generation",
+                    "health",
+                    "enabled",
+                    "followSymlinks",
+                    "intervalSeconds",
+                    "nextScanAt",
+                    "lastCompleteAt",
+                    "lastProgressAt"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Put scan policy",
+        "x-access": "owner",
+        "x-cost": "constant",
+        "x-lane": "default",
+        "x-max-body-bytes": 65536,
         "x-scope": "library"
       }
     },
@@ -8916,6 +10451,512 @@
         "x-scope": "library"
       }
     },
+    "/v1/admin/libraries/{id}/shows/{show}/settings": {
+      "put": {
+        "operationId": "put_admin_libraries_id_shows_show_settings",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "absoluteNumbering": {
+                    "type": "boolean"
+                  },
+                  "hideSeasons": {
+                    "type": "boolean"
+                  },
+                  "newestFirst": {
+                    "type": "boolean"
+                  },
+                  "ranges": {
+                    "type": "boolean"
+                  },
+                  "revision": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "hideSeasons",
+                  "absoluteNumbering",
+                  "ranges",
+                  "newestFirst",
+                  "revision"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "absoluteNumbering": {
+                      "type": "boolean"
+                    },
+                    "hideSeasons": {
+                      "type": "boolean"
+                    },
+                    "newestFirst": {
+                      "type": "boolean"
+                    },
+                    "ranges": {
+                      "type": "boolean"
+                    },
+                    "revision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "hideSeasons",
+                    "absoluteNumbering",
+                    "ranges",
+                    "newestFirst",
+                    "revision"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Put settings",
+        "x-access": "owner",
+        "x-cost": "constant",
+        "x-lane": "default",
+        "x-max-body-bytes": 65536,
+        "x-scope": "library"
+      }
+    },
+    "/v1/admin/libraries/{id}/sources": {
+      "post": {
+        "operationId": "post_admin_libraries_id_sources",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "acceptReplacement": {
+                    "type": "boolean"
+                  },
+                  "classification": {
+                    "type": "string"
+                  },
+                  "expectedRevision": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "followSymlinks": {
+                    "type": "boolean"
+                  },
+                  "intervalSeconds": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name",
+                  "path",
+                  "classification",
+                  "followSymlinks",
+                  "intervalSeconds",
+                  "expectedRevision",
+                  "acceptReplacement"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "classification": {
+                      "type": "string"
+                    },
+                    "enabled": {
+                      "type": "boolean"
+                    },
+                    "followSymlinks": {
+                      "type": "boolean"
+                    },
+                    "generation": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "health": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "identityConfirmed": {
+                      "type": "boolean"
+                    },
+                    "intervalSeconds": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "kind": {
+                      "type": "string"
+                    },
+                    "lastCompleteAt": {
+                      "type": "string"
+                    },
+                    "lastProgressAt": {
+                      "type": "string"
+                    },
+                    "libraryId": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "nextScanAt": {
+                      "type": "string"
+                    },
+                    "path": {
+                      "type": "string"
+                    },
+                    "resolvedPath": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "identityConfirmed",
+                    "id",
+                    "libraryId",
+                    "kind",
+                    "name",
+                    "path",
+                    "resolvedPath",
+                    "classification",
+                    "generation",
+                    "health",
+                    "enabled",
+                    "followSymlinks",
+                    "intervalSeconds",
+                    "nextScanAt",
+                    "lastCompleteAt",
+                    "lastProgressAt"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Post sources",
+        "x-access": "owner",
+        "x-cost": "constant",
+        "x-lane": "default",
+        "x-max-body-bytes": 65536,
+        "x-scope": "library"
+      }
+    },
+    "/v1/admin/libraries/{id}/sources/{source}": {
+      "delete": {
+        "operationId": "delete_admin_libraries_id_sources_source",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "acceptReplacement": {
+                    "type": "boolean"
+                  },
+                  "classification": {
+                    "type": "string"
+                  },
+                  "expectedRevision": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "followSymlinks": {
+                    "type": "boolean"
+                  },
+                  "intervalSeconds": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name",
+                  "path",
+                  "classification",
+                  "followSymlinks",
+                  "intervalSeconds",
+                  "expectedRevision",
+                  "acceptReplacement"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "classification": {
+                      "type": "string"
+                    },
+                    "enabled": {
+                      "type": "boolean"
+                    },
+                    "followSymlinks": {
+                      "type": "boolean"
+                    },
+                    "generation": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "health": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "identityConfirmed": {
+                      "type": "boolean"
+                    },
+                    "intervalSeconds": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "kind": {
+                      "type": "string"
+                    },
+                    "lastCompleteAt": {
+                      "type": "string"
+                    },
+                    "lastProgressAt": {
+                      "type": "string"
+                    },
+                    "libraryId": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "nextScanAt": {
+                      "type": "string"
+                    },
+                    "path": {
+                      "type": "string"
+                    },
+                    "resolvedPath": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "identityConfirmed",
+                    "id",
+                    "libraryId",
+                    "kind",
+                    "name",
+                    "path",
+                    "resolvedPath",
+                    "classification",
+                    "generation",
+                    "health",
+                    "enabled",
+                    "followSymlinks",
+                    "intervalSeconds",
+                    "nextScanAt",
+                    "lastCompleteAt",
+                    "lastProgressAt"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Delete source",
+        "x-access": "owner",
+        "x-cost": "constant",
+        "x-lane": "default",
+        "x-max-body-bytes": 65536,
+        "x-scope": "library"
+      },
+      "patch": {
+        "operationId": "patch_admin_libraries_id_sources_source",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "acceptReplacement": {
+                    "type": "boolean"
+                  },
+                  "classification": {
+                    "type": "string"
+                  },
+                  "expectedRevision": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "followSymlinks": {
+                    "type": "boolean"
+                  },
+                  "intervalSeconds": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name",
+                  "path",
+                  "classification",
+                  "followSymlinks",
+                  "intervalSeconds",
+                  "expectedRevision",
+                  "acceptReplacement"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "classification": {
+                      "type": "string"
+                    },
+                    "enabled": {
+                      "type": "boolean"
+                    },
+                    "followSymlinks": {
+                      "type": "boolean"
+                    },
+                    "generation": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "health": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "identityConfirmed": {
+                      "type": "boolean"
+                    },
+                    "intervalSeconds": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "kind": {
+                      "type": "string"
+                    },
+                    "lastCompleteAt": {
+                      "type": "string"
+                    },
+                    "lastProgressAt": {
+                      "type": "string"
+                    },
+                    "libraryId": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "nextScanAt": {
+                      "type": "string"
+                    },
+                    "path": {
+                      "type": "string"
+                    },
+                    "resolvedPath": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "identityConfirmed",
+                    "id",
+                    "libraryId",
+                    "kind",
+                    "name",
+                    "path",
+                    "resolvedPath",
+                    "classification",
+                    "generation",
+                    "health",
+                    "enabled",
+                    "followSymlinks",
+                    "intervalSeconds",
+                    "nextScanAt",
+                    "lastCompleteAt",
+                    "lastProgressAt"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Patch source",
+        "x-access": "owner",
+        "x-cost": "constant",
+        "x-lane": "default",
+        "x-max-body-bytes": 65536,
+        "x-scope": "library"
+      }
+    },
     "/v1/admin/libraries/{id}/sources/{source}/changes": {
       "get": {
         "operationId": "get_inventory_changes",
@@ -9008,6 +11049,288 @@
         "x-access": "owner",
         "x-cost": "page_sized",
         "x-lane": "browsing",
+        "x-scope": "library"
+      }
+    },
+    "/v1/admin/libraries/{id}/sources/{source}/check": {
+      "post": {
+        "operationId": "post_admin_libraries_id_sources_source_check",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "acceptReplacement": {
+                    "type": "boolean"
+                  },
+                  "classification": {
+                    "type": "string"
+                  },
+                  "expectedRevision": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "followSymlinks": {
+                    "type": "boolean"
+                  },
+                  "intervalSeconds": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name",
+                  "path",
+                  "classification",
+                  "followSymlinks",
+                  "intervalSeconds",
+                  "expectedRevision",
+                  "acceptReplacement"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "classification": {
+                      "type": "string"
+                    },
+                    "enabled": {
+                      "type": "boolean"
+                    },
+                    "followSymlinks": {
+                      "type": "boolean"
+                    },
+                    "generation": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "health": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "identityConfirmed": {
+                      "type": "boolean"
+                    },
+                    "intervalSeconds": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "kind": {
+                      "type": "string"
+                    },
+                    "lastCompleteAt": {
+                      "type": "string"
+                    },
+                    "lastProgressAt": {
+                      "type": "string"
+                    },
+                    "libraryId": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "nextScanAt": {
+                      "type": "string"
+                    },
+                    "path": {
+                      "type": "string"
+                    },
+                    "resolvedPath": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "identityConfirmed",
+                    "id",
+                    "libraryId",
+                    "kind",
+                    "name",
+                    "path",
+                    "resolvedPath",
+                    "classification",
+                    "generation",
+                    "health",
+                    "enabled",
+                    "followSymlinks",
+                    "intervalSeconds",
+                    "nextScanAt",
+                    "lastCompleteAt",
+                    "lastProgressAt"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Post check",
+        "x-access": "owner",
+        "x-cost": "constant",
+        "x-lane": "default",
+        "x-max-body-bytes": 65536,
+        "x-scope": "library"
+      }
+    },
+    "/v1/admin/libraries/{id}/sources/{source}/scans": {
+      "post": {
+        "operationId": "post_admin_libraries_id_sources_source_scans",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "acceptReplacement": {
+                    "type": "boolean"
+                  },
+                  "classification": {
+                    "type": "string"
+                  },
+                  "expectedRevision": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "followSymlinks": {
+                    "type": "boolean"
+                  },
+                  "intervalSeconds": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name",
+                  "path",
+                  "classification",
+                  "followSymlinks",
+                  "intervalSeconds",
+                  "expectedRevision",
+                  "acceptReplacement"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "classification": {
+                      "type": "string"
+                    },
+                    "enabled": {
+                      "type": "boolean"
+                    },
+                    "followSymlinks": {
+                      "type": "boolean"
+                    },
+                    "generation": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "health": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "identityConfirmed": {
+                      "type": "boolean"
+                    },
+                    "intervalSeconds": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "kind": {
+                      "type": "string"
+                    },
+                    "lastCompleteAt": {
+                      "type": "string"
+                    },
+                    "lastProgressAt": {
+                      "type": "string"
+                    },
+                    "libraryId": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "nextScanAt": {
+                      "type": "string"
+                    },
+                    "path": {
+                      "type": "string"
+                    },
+                    "resolvedPath": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "identityConfirmed",
+                    "id",
+                    "libraryId",
+                    "kind",
+                    "name",
+                    "path",
+                    "resolvedPath",
+                    "classification",
+                    "generation",
+                    "health",
+                    "enabled",
+                    "followSymlinks",
+                    "intervalSeconds",
+                    "nextScanAt",
+                    "lastCompleteAt",
+                    "lastProgressAt"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Post scans",
+        "x-access": "owner",
+        "x-cost": "constant",
+        "x-lane": "default",
+        "x-max-body-bytes": 65536,
         "x-scope": "library"
       }
     },
@@ -40044,6 +42367,123 @@
         "x-scope": "playback"
       }
     },
+    "/v1/items/{id}/source-availability": {
+      "get": {
+        "operationId": "get_items_id_source_availability",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "receipt": {
+                      "properties": {
+                        "accepted": {
+                          "type": "boolean"
+                        },
+                        "operationId": {
+                          "type": "string"
+                        },
+                        "removed": {
+                          "type": "boolean"
+                        },
+                        "source": {
+                          "properties": {
+                            "credentialPresent": {
+                              "type": "boolean"
+                            },
+                            "errorCode": {
+                              "type": "string"
+                            },
+                            "generation": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "id": {
+                              "type": "string"
+                            },
+                            "insecureLocal": {
+                              "type": "boolean"
+                            },
+                            "kind": {
+                              "type": "string"
+                            },
+                            "mountId": {
+                              "type": "string"
+                            },
+                            "name": {
+                              "type": "string"
+                            },
+                            "origin": {
+                              "type": "string"
+                            },
+                            "rangeSupport": {
+                              "type": "string"
+                            },
+                            "rootPath": {
+                              "type": "string"
+                            },
+                            "state": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "kind",
+                            "name",
+                            "rootPath",
+                            "generation",
+                            "state",
+                            "rangeSupport",
+                            "insecureLocal",
+                            "credentialPresent"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "operationId",
+                        "accepted",
+                        "removed",
+                        "source"
+                      ],
+                      "type": "object"
+                    },
+                    "scope": {
+                      "properties": {
+                        "serverId": {
+                          "type": "string"
+                        },
+                        "viewerFence": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "serverId",
+                        "viewerFence"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "scope",
+                    "receipt"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Get source availability",
+        "x-access": "owner",
+        "x-cost": "page_sized",
+        "x-lane": "browsing",
+        "x-scope": "read"
+      }
+    },
     "/v1/items/{id}/trickplay/{set}/tiles/{tile}.jpg": {
       "get": {
         "operationId": "get_v1_items_id_trickplay_set_tiles_tile_jpg",
@@ -43706,6 +46146,140 @@
         "x-scope": "read"
       }
     },
+    "/v1/libraries": {
+      "get": {
+        "operationId": "get_libraries",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "items": {
+                      "items": {
+                        "properties": {
+                          "defaultView": {
+                            "type": "string"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "pinned": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "defaultView",
+                          "id",
+                          "name",
+                          "kind",
+                          "pinned"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "items"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Get libraries",
+        "x-access": "device",
+        "x-cost": "constant",
+        "x-lane": "browsing",
+        "x-scope": "read"
+      },
+      "post": {
+        "operationId": "post_libraries",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "kind": {
+                    "type": "string"
+                  },
+                  "metadataAgent": {
+                    "type": "string"
+                  },
+                  "metadataLanguage": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name",
+                  "kind",
+                  "path"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "defaultView": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "pinned": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "defaultView",
+                    "id",
+                    "name",
+                    "kind",
+                    "pinned"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Post libraries",
+        "x-access": "owner",
+        "x-cost": "constant",
+        "x-lane": "browsing",
+        "x-max-body-bytes": 65536,
+        "x-scope": "library"
+      }
+    },
     "/v1/libraries/paths-changed": {
       "post": {
         "operationId": "report_changed_paths",
@@ -47359,6 +49933,111 @@
         "x-scope": "read"
       }
     },
+    "/v1/libraries/{id}/inventory-status": {
+      "get": {
+        "operationId": "get_libraries_id_inventory_status",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "inventory": {
+                      "properties": {
+                        "libraryId": {
+                          "type": "string"
+                        },
+                        "revision": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "sources": {
+                          "items": {
+                            "properties": {
+                              "analyzed": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "discovered": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "health": {
+                                "type": "string"
+                              },
+                              "id": {
+                                "type": "string"
+                              },
+                              "jobId": {
+                                "type": "string"
+                              },
+                              "lastCompleteAt": {
+                                "type": "string"
+                              },
+                              "pauseReason": {
+                                "type": "string"
+                              },
+                              "phase": {
+                                "type": "string"
+                              },
+                              "status": {
+                                "type": "string"
+                              },
+                              "warnings": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "health",
+                              "lastCompleteAt",
+                              "jobId",
+                              "status",
+                              "phase",
+                              "discovered",
+                              "analyzed",
+                              "warnings",
+                              "pauseReason"
+                            ],
+                            "type": "object"
+                          },
+                          "type": "array"
+                        }
+                      },
+                      "required": [
+                        "libraryId",
+                        "revision",
+                        "sources"
+                      ],
+                      "type": "object"
+                    },
+                    "serverId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "serverId",
+                    "inventory"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Get inventory status",
+        "x-access": "device",
+        "x-cost": "constant",
+        "x-lane": "browsing",
+        "x-scope": "read"
+      }
+    },
     "/v1/libraries/{id}/listening/selection": {
       "get": {
         "operationId": "get_libraries_id_listening_selection",
@@ -47782,6 +50461,548 @@
         "x-cost": "constant",
         "x-lane": "browsing",
         "x-max-body-bytes": 4096,
+        "x-scope": "library"
+      }
+    },
+    "/v1/libraries/{id}/network-roots": {
+      "get": {
+        "operationId": "get_libraries_id_network_roots",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "receipt": {
+                      "properties": {
+                        "accepted": {
+                          "type": "boolean"
+                        },
+                        "operationId": {
+                          "type": "string"
+                        },
+                        "removed": {
+                          "type": "boolean"
+                        },
+                        "source": {
+                          "properties": {
+                            "credentialPresent": {
+                              "type": "boolean"
+                            },
+                            "errorCode": {
+                              "type": "string"
+                            },
+                            "generation": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "id": {
+                              "type": "string"
+                            },
+                            "insecureLocal": {
+                              "type": "boolean"
+                            },
+                            "kind": {
+                              "type": "string"
+                            },
+                            "mountId": {
+                              "type": "string"
+                            },
+                            "name": {
+                              "type": "string"
+                            },
+                            "origin": {
+                              "type": "string"
+                            },
+                            "rangeSupport": {
+                              "type": "string"
+                            },
+                            "rootPath": {
+                              "type": "string"
+                            },
+                            "state": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "kind",
+                            "name",
+                            "rootPath",
+                            "generation",
+                            "state",
+                            "rangeSupport",
+                            "insecureLocal",
+                            "credentialPresent"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "operationId",
+                        "accepted",
+                        "removed",
+                        "source"
+                      ],
+                      "type": "object"
+                    },
+                    "scope": {
+                      "properties": {
+                        "serverId": {
+                          "type": "string"
+                        },
+                        "viewerFence": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "serverId",
+                        "viewerFence"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "scope",
+                    "receipt"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Get network roots",
+        "x-access": "owner",
+        "x-cost": "page_sized",
+        "x-lane": "browsing",
+        "x-scope": "library"
+      },
+      "post": {
+        "operationId": "post_libraries_id_network_roots",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "expectedRevision": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "roots": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "roots"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "approvals": {
+                      "items": {
+                        "properties": {
+                          "addresses": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
+                          },
+                          "root": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "root",
+                          "addresses"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "approvals"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Post network roots",
+        "x-access": "owner",
+        "x-cost": "constant",
+        "x-lane": "browsing",
+        "x-max-body-bytes": 65536,
+        "x-scope": "library"
+      }
+    },
+    "/v1/libraries/{id}/scans": {
+      "post": {
+        "operationId": "post_libraries_id_scans",
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "analyzed": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "error": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "jobs": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "phase": {
+                      "type": "string"
+                    },
+                    "processed": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "scanMode": {
+                      "type": "string"
+                    },
+                    "sourceId": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "warnings": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "status",
+                    "processed",
+                    "analyzed",
+                    "warnings"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Post scans",
+        "x-access": "owner",
+        "x-cost": "constant",
+        "x-lane": "browsing",
+        "x-scope": "library"
+      }
+    },
+    "/v1/libraries/{id}/strm-analysis-policy": {
+      "get": {
+        "operationId": "get_libraries_id_strm_analysis_policy",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "receipt": {
+                      "properties": {
+                        "accepted": {
+                          "type": "boolean"
+                        },
+                        "operationId": {
+                          "type": "string"
+                        },
+                        "removed": {
+                          "type": "boolean"
+                        },
+                        "source": {
+                          "properties": {
+                            "credentialPresent": {
+                              "type": "boolean"
+                            },
+                            "errorCode": {
+                              "type": "string"
+                            },
+                            "generation": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "id": {
+                              "type": "string"
+                            },
+                            "insecureLocal": {
+                              "type": "boolean"
+                            },
+                            "kind": {
+                              "type": "string"
+                            },
+                            "mountId": {
+                              "type": "string"
+                            },
+                            "name": {
+                              "type": "string"
+                            },
+                            "origin": {
+                              "type": "string"
+                            },
+                            "rangeSupport": {
+                              "type": "string"
+                            },
+                            "rootPath": {
+                              "type": "string"
+                            },
+                            "state": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "kind",
+                            "name",
+                            "rootPath",
+                            "generation",
+                            "state",
+                            "rangeSupport",
+                            "insecureLocal",
+                            "credentialPresent"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "operationId",
+                        "accepted",
+                        "removed",
+                        "source"
+                      ],
+                      "type": "object"
+                    },
+                    "scope": {
+                      "properties": {
+                        "serverId": {
+                          "type": "string"
+                        },
+                        "viewerFence": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "serverId",
+                        "viewerFence"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "scope",
+                    "receipt"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Get strm analysis policy",
+        "x-access": "owner",
+        "x-cost": "page_sized",
+        "x-lane": "browsing",
+        "x-scope": "library"
+      },
+      "put": {
+        "operationId": "put_libraries_id_strm_analysis_policy",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "expectedGeneration": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "insecureLocal": {
+                    "type": "boolean"
+                  },
+                  "keepConnection": {
+                    "type": "boolean"
+                  },
+                  "keepPassword": {
+                    "type": "boolean"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "operationId": {
+                    "type": "string"
+                  },
+                  "password": {
+                    "type": "string"
+                  },
+                  "root": {
+                    "type": "string"
+                  },
+                  "username": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "operationId",
+                  "name",
+                  "root",
+                  "username",
+                  "password",
+                  "insecureLocal"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "receipt": {
+                      "properties": {
+                        "accepted": {
+                          "type": "boolean"
+                        },
+                        "operationId": {
+                          "type": "string"
+                        },
+                        "removed": {
+                          "type": "boolean"
+                        },
+                        "source": {
+                          "properties": {
+                            "credentialPresent": {
+                              "type": "boolean"
+                            },
+                            "errorCode": {
+                              "type": "string"
+                            },
+                            "generation": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "id": {
+                              "type": "string"
+                            },
+                            "insecureLocal": {
+                              "type": "boolean"
+                            },
+                            "kind": {
+                              "type": "string"
+                            },
+                            "mountId": {
+                              "type": "string"
+                            },
+                            "name": {
+                              "type": "string"
+                            },
+                            "origin": {
+                              "type": "string"
+                            },
+                            "rangeSupport": {
+                              "type": "string"
+                            },
+                            "rootPath": {
+                              "type": "string"
+                            },
+                            "state": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "kind",
+                            "name",
+                            "rootPath",
+                            "generation",
+                            "state",
+                            "rangeSupport",
+                            "insecureLocal",
+                            "credentialPresent"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "operationId",
+                        "accepted",
+                        "removed",
+                        "source"
+                      ],
+                      "type": "object"
+                    },
+                    "scope": {
+                      "properties": {
+                        "serverId": {
+                          "type": "string"
+                        },
+                        "viewerFence": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "serverId",
+                        "viewerFence"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "scope",
+                    "receipt"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Put strm analysis policy",
+        "x-access": "owner",
+        "x-cost": "constant",
+        "x-lane": "browsing",
+        "x-max-body-bytes": 65536,
         "x-scope": "library"
       }
     },
@@ -66310,6 +69531,1670 @@
         "x-cost": "page_sized",
         "x-lane": "browsing",
         "x-scope": "library"
+      }
+    },
+    "/v1/storage/mounts": {
+      "get": {
+        "operationId": "get_storage_mounts",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "limits": {
+                      "additionalProperties": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "type": "object"
+                    },
+                    "mountSupported": {
+                      "type": "boolean"
+                    },
+                    "mounts": {
+                      "items": {
+                        "properties": {
+                          "actions": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
+                          },
+                          "backendRevision": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "cacheBytes": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "cacheFloor": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "controlRevision": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "desiredState": {
+                            "type": "string"
+                          },
+                          "error": {
+                            "type": "string"
+                          },
+                          "executable": {
+                            "type": "string"
+                          },
+                          "executableDigest": {
+                            "type": "string"
+                          },
+                          "executableVersion": {
+                            "type": "string"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "mountPath": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "observedState": {
+                            "type": "string"
+                          },
+                          "removalPending": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "backendRevision",
+                          "executableVersion",
+                          "cacheBytes",
+                          "cacheFloor",
+                          "controlRevision",
+                          "removalPending",
+                          "actions",
+                          "executable",
+                          "id",
+                          "name",
+                          "mountPath",
+                          "desiredState",
+                          "observedState",
+                          "executableDigest"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "revision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "scope": {
+                      "properties": {
+                        "serverId": {
+                          "type": "string"
+                        },
+                        "viewerFence": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "serverId",
+                        "viewerFence"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "scope",
+                    "revision",
+                    "limits",
+                    "mounts",
+                    "mountSupported"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Get mounts",
+        "x-access": "owner",
+        "x-cost": "page_sized",
+        "x-lane": "default",
+        "x-scope": "admin"
+      },
+      "post": {
+        "operationId": "post_storage_mounts",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "action": {
+                    "type": "string"
+                  },
+                  "cacheBytes": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "cacheFloor": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "config": {
+                    "type": "string"
+                  },
+                  "executable": {
+                    "type": "string"
+                  },
+                  "expectedRevision": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "operationId": {
+                    "type": "string"
+                  },
+                  "remote": {
+                    "type": "string"
+                  },
+                  "setup": {
+                    "properties": {
+                      "accessKey": {
+                        "type": "string"
+                      },
+                      "bucket": {
+                        "type": "string"
+                      },
+                      "endpoint": {
+                        "type": "string"
+                      },
+                      "prefix": {
+                        "type": "string"
+                      },
+                      "region": {
+                        "type": "string"
+                      },
+                      "secretKey": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "endpoint",
+                      "region",
+                      "accessKey",
+                      "secretKey",
+                      "bucket",
+                      "prefix"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "operationId"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "accepted": {
+                      "type": "boolean"
+                    },
+                    "controlRevision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "deleted": {
+                      "type": "boolean"
+                    },
+                    "mount": {
+                      "properties": {
+                        "actions": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "backendRevision": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "cacheBytes": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "cacheFloor": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "controlRevision": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "desiredState": {
+                          "type": "string"
+                        },
+                        "error": {
+                          "type": "string"
+                        },
+                        "executable": {
+                          "type": "string"
+                        },
+                        "executableDigest": {
+                          "type": "string"
+                        },
+                        "executableVersion": {
+                          "type": "string"
+                        },
+                        "id": {
+                          "type": "string"
+                        },
+                        "mountPath": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "observedState": {
+                          "type": "string"
+                        },
+                        "removalPending": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "backendRevision",
+                        "executableVersion",
+                        "cacheBytes",
+                        "cacheFloor",
+                        "controlRevision",
+                        "removalPending",
+                        "actions",
+                        "executable",
+                        "id",
+                        "name",
+                        "mountPath",
+                        "desiredState",
+                        "observedState",
+                        "executableDigest"
+                      ],
+                      "type": "object"
+                    },
+                    "mountId": {
+                      "type": "string"
+                    },
+                    "operationId": {
+                      "type": "string"
+                    },
+                    "scope": {
+                      "properties": {
+                        "serverId": {
+                          "type": "string"
+                        },
+                        "viewerFence": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "serverId",
+                        "viewerFence"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "scope",
+                    "operationId",
+                    "mountId",
+                    "controlRevision",
+                    "accepted",
+                    "deleted"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Post mounts",
+        "x-access": "owner",
+        "x-cost": "constant",
+        "x-lane": "default",
+        "x-max-body-bytes": 65536,
+        "x-scope": "admin"
+      }
+    },
+    "/v1/storage/mounts/{id}": {
+      "delete": {
+        "operationId": "delete_storage_mounts_id",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "action": {
+                    "type": "string"
+                  },
+                  "cacheBytes": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "cacheFloor": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "config": {
+                    "type": "string"
+                  },
+                  "executable": {
+                    "type": "string"
+                  },
+                  "expectedRevision": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "operationId": {
+                    "type": "string"
+                  },
+                  "remote": {
+                    "type": "string"
+                  },
+                  "setup": {
+                    "properties": {
+                      "accessKey": {
+                        "type": "string"
+                      },
+                      "bucket": {
+                        "type": "string"
+                      },
+                      "endpoint": {
+                        "type": "string"
+                      },
+                      "prefix": {
+                        "type": "string"
+                      },
+                      "region": {
+                        "type": "string"
+                      },
+                      "secretKey": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "endpoint",
+                      "region",
+                      "accessKey",
+                      "secretKey",
+                      "bucket",
+                      "prefix"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "operationId"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "accepted": {
+                      "type": "boolean"
+                    },
+                    "controlRevision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "deleted": {
+                      "type": "boolean"
+                    },
+                    "mount": {
+                      "properties": {
+                        "actions": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "backendRevision": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "cacheBytes": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "cacheFloor": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "controlRevision": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "desiredState": {
+                          "type": "string"
+                        },
+                        "error": {
+                          "type": "string"
+                        },
+                        "executable": {
+                          "type": "string"
+                        },
+                        "executableDigest": {
+                          "type": "string"
+                        },
+                        "executableVersion": {
+                          "type": "string"
+                        },
+                        "id": {
+                          "type": "string"
+                        },
+                        "mountPath": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "observedState": {
+                          "type": "string"
+                        },
+                        "removalPending": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "backendRevision",
+                        "executableVersion",
+                        "cacheBytes",
+                        "cacheFloor",
+                        "controlRevision",
+                        "removalPending",
+                        "actions",
+                        "executable",
+                        "id",
+                        "name",
+                        "mountPath",
+                        "desiredState",
+                        "observedState",
+                        "executableDigest"
+                      ],
+                      "type": "object"
+                    },
+                    "mountId": {
+                      "type": "string"
+                    },
+                    "operationId": {
+                      "type": "string"
+                    },
+                    "scope": {
+                      "properties": {
+                        "serverId": {
+                          "type": "string"
+                        },
+                        "viewerFence": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "serverId",
+                        "viewerFence"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "scope",
+                    "operationId",
+                    "mountId",
+                    "controlRevision",
+                    "accepted",
+                    "deleted"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Delete id",
+        "x-access": "owner",
+        "x-cost": "constant",
+        "x-lane": "default",
+        "x-max-body-bytes": 65536,
+        "x-scope": "admin"
+      }
+    },
+    "/v1/storage/mounts/{id}/actions": {
+      "post": {
+        "operationId": "post_storage_mounts_id_actions",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "action": {
+                    "type": "string"
+                  },
+                  "cacheBytes": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "cacheFloor": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "config": {
+                    "type": "string"
+                  },
+                  "executable": {
+                    "type": "string"
+                  },
+                  "expectedRevision": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "operationId": {
+                    "type": "string"
+                  },
+                  "remote": {
+                    "type": "string"
+                  },
+                  "setup": {
+                    "properties": {
+                      "accessKey": {
+                        "type": "string"
+                      },
+                      "bucket": {
+                        "type": "string"
+                      },
+                      "endpoint": {
+                        "type": "string"
+                      },
+                      "prefix": {
+                        "type": "string"
+                      },
+                      "region": {
+                        "type": "string"
+                      },
+                      "secretKey": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "endpoint",
+                      "region",
+                      "accessKey",
+                      "secretKey",
+                      "bucket",
+                      "prefix"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "operationId"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "accepted": {
+                      "type": "boolean"
+                    },
+                    "controlRevision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "deleted": {
+                      "type": "boolean"
+                    },
+                    "mount": {
+                      "properties": {
+                        "actions": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "backendRevision": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "cacheBytes": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "cacheFloor": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "controlRevision": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "desiredState": {
+                          "type": "string"
+                        },
+                        "error": {
+                          "type": "string"
+                        },
+                        "executable": {
+                          "type": "string"
+                        },
+                        "executableDigest": {
+                          "type": "string"
+                        },
+                        "executableVersion": {
+                          "type": "string"
+                        },
+                        "id": {
+                          "type": "string"
+                        },
+                        "mountPath": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "observedState": {
+                          "type": "string"
+                        },
+                        "removalPending": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "backendRevision",
+                        "executableVersion",
+                        "cacheBytes",
+                        "cacheFloor",
+                        "controlRevision",
+                        "removalPending",
+                        "actions",
+                        "executable",
+                        "id",
+                        "name",
+                        "mountPath",
+                        "desiredState",
+                        "observedState",
+                        "executableDigest"
+                      ],
+                      "type": "object"
+                    },
+                    "mountId": {
+                      "type": "string"
+                    },
+                    "operationId": {
+                      "type": "string"
+                    },
+                    "scope": {
+                      "properties": {
+                        "serverId": {
+                          "type": "string"
+                        },
+                        "viewerFence": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "serverId",
+                        "viewerFence"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "scope",
+                    "operationId",
+                    "mountId",
+                    "controlRevision",
+                    "accepted",
+                    "deleted"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Post actions",
+        "x-access": "owner",
+        "x-cost": "constant",
+        "x-lane": "default",
+        "x-max-body-bytes": 65536,
+        "x-scope": "admin"
+      }
+    },
+    "/v1/storage/operations/{id}": {
+      "get": {
+        "operationId": "get_storage_operations_id",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "accepted": {
+                      "type": "boolean"
+                    },
+                    "controlRevision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "deleted": {
+                      "type": "boolean"
+                    },
+                    "mount": {
+                      "properties": {
+                        "actions": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "backendRevision": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "cacheBytes": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "cacheFloor": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "controlRevision": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "desiredState": {
+                          "type": "string"
+                        },
+                        "error": {
+                          "type": "string"
+                        },
+                        "executable": {
+                          "type": "string"
+                        },
+                        "executableDigest": {
+                          "type": "string"
+                        },
+                        "executableVersion": {
+                          "type": "string"
+                        },
+                        "id": {
+                          "type": "string"
+                        },
+                        "mountPath": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "observedState": {
+                          "type": "string"
+                        },
+                        "removalPending": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "backendRevision",
+                        "executableVersion",
+                        "cacheBytes",
+                        "cacheFloor",
+                        "controlRevision",
+                        "removalPending",
+                        "actions",
+                        "executable",
+                        "id",
+                        "name",
+                        "mountPath",
+                        "desiredState",
+                        "observedState",
+                        "executableDigest"
+                      ],
+                      "type": "object"
+                    },
+                    "mountId": {
+                      "type": "string"
+                    },
+                    "operationId": {
+                      "type": "string"
+                    },
+                    "scope": {
+                      "properties": {
+                        "serverId": {
+                          "type": "string"
+                        },
+                        "viewerFence": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "serverId",
+                        "viewerFence"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "scope",
+                    "operationId",
+                    "mountId",
+                    "controlRevision",
+                    "accepted",
+                    "deleted"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Get id",
+        "x-access": "owner",
+        "x-cost": "page_sized",
+        "x-lane": "default",
+        "x-scope": "admin"
+      }
+    },
+    "/v1/storage/source-operations/{id}": {
+      "get": {
+        "operationId": "get_storage_source_operations_id",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "receipt": {
+                      "properties": {
+                        "accepted": {
+                          "type": "boolean"
+                        },
+                        "operationId": {
+                          "type": "string"
+                        },
+                        "removed": {
+                          "type": "boolean"
+                        },
+                        "source": {
+                          "properties": {
+                            "credentialPresent": {
+                              "type": "boolean"
+                            },
+                            "errorCode": {
+                              "type": "string"
+                            },
+                            "generation": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "id": {
+                              "type": "string"
+                            },
+                            "insecureLocal": {
+                              "type": "boolean"
+                            },
+                            "kind": {
+                              "type": "string"
+                            },
+                            "mountId": {
+                              "type": "string"
+                            },
+                            "name": {
+                              "type": "string"
+                            },
+                            "origin": {
+                              "type": "string"
+                            },
+                            "rangeSupport": {
+                              "type": "string"
+                            },
+                            "rootPath": {
+                              "type": "string"
+                            },
+                            "state": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "kind",
+                            "name",
+                            "rootPath",
+                            "generation",
+                            "state",
+                            "rangeSupport",
+                            "insecureLocal",
+                            "credentialPresent"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "operationId",
+                        "accepted",
+                        "removed",
+                        "source"
+                      ],
+                      "type": "object"
+                    },
+                    "scope": {
+                      "properties": {
+                        "serverId": {
+                          "type": "string"
+                        },
+                        "viewerFence": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "serverId",
+                        "viewerFence"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "scope",
+                    "receipt"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Get id",
+        "x-access": "owner",
+        "x-cost": "page_sized",
+        "x-lane": "default",
+        "x-scope": "admin"
+      }
+    },
+    "/v1/storage/sources": {
+      "get": {
+        "operationId": "get_storage_sources",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "mountSupported": {
+                      "type": "boolean"
+                    },
+                    "scope": {
+                      "properties": {
+                        "serverId": {
+                          "type": "string"
+                        },
+                        "viewerFence": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "serverId",
+                        "viewerFence"
+                      ],
+                      "type": "object"
+                    },
+                    "sources": {
+                      "items": {
+                        "properties": {
+                          "credentialPresent": {
+                            "type": "boolean"
+                          },
+                          "errorCode": {
+                            "type": "string"
+                          },
+                          "generation": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "insecureLocal": {
+                            "type": "boolean"
+                          },
+                          "kind": {
+                            "type": "string"
+                          },
+                          "mountId": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "origin": {
+                            "type": "string"
+                          },
+                          "rangeSupport": {
+                            "type": "string"
+                          },
+                          "rootPath": {
+                            "type": "string"
+                          },
+                          "state": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "kind",
+                          "name",
+                          "rootPath",
+                          "generation",
+                          "state",
+                          "rangeSupport",
+                          "insecureLocal",
+                          "credentialPresent"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "scope",
+                    "sources",
+                    "mountSupported"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Get sources",
+        "x-access": "owner",
+        "x-cost": "constant",
+        "x-lane": "default",
+        "x-scope": "admin"
+      }
+    },
+    "/v1/storage/sources/webdav": {
+      "post": {
+        "operationId": "post_storage_sources_webdav",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "expectedGeneration": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "insecureLocal": {
+                    "type": "boolean"
+                  },
+                  "keepConnection": {
+                    "type": "boolean"
+                  },
+                  "keepPassword": {
+                    "type": "boolean"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "operationId": {
+                    "type": "string"
+                  },
+                  "password": {
+                    "type": "string"
+                  },
+                  "root": {
+                    "type": "string"
+                  },
+                  "username": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "operationId",
+                  "name",
+                  "root",
+                  "username",
+                  "password",
+                  "insecureLocal"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "receipt": {
+                      "properties": {
+                        "accepted": {
+                          "type": "boolean"
+                        },
+                        "operationId": {
+                          "type": "string"
+                        },
+                        "removed": {
+                          "type": "boolean"
+                        },
+                        "source": {
+                          "properties": {
+                            "credentialPresent": {
+                              "type": "boolean"
+                            },
+                            "errorCode": {
+                              "type": "string"
+                            },
+                            "generation": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "id": {
+                              "type": "string"
+                            },
+                            "insecureLocal": {
+                              "type": "boolean"
+                            },
+                            "kind": {
+                              "type": "string"
+                            },
+                            "mountId": {
+                              "type": "string"
+                            },
+                            "name": {
+                              "type": "string"
+                            },
+                            "origin": {
+                              "type": "string"
+                            },
+                            "rangeSupport": {
+                              "type": "string"
+                            },
+                            "rootPath": {
+                              "type": "string"
+                            },
+                            "state": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "kind",
+                            "name",
+                            "rootPath",
+                            "generation",
+                            "state",
+                            "rangeSupport",
+                            "insecureLocal",
+                            "credentialPresent"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "operationId",
+                        "accepted",
+                        "removed",
+                        "source"
+                      ],
+                      "type": "object"
+                    },
+                    "scope": {
+                      "properties": {
+                        "serverId": {
+                          "type": "string"
+                        },
+                        "viewerFence": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "serverId",
+                        "viewerFence"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "scope",
+                    "receipt"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Post webdav",
+        "x-access": "owner",
+        "x-cost": "constant",
+        "x-lane": "default",
+        "x-max-body-bytes": 65536,
+        "x-scope": "admin"
+      }
+    },
+    "/v1/storage/sources/webdav/{id}": {
+      "delete": {
+        "operationId": "delete_storage_sources_webdav_id",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "expectedGeneration": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "insecureLocal": {
+                    "type": "boolean"
+                  },
+                  "keepConnection": {
+                    "type": "boolean"
+                  },
+                  "keepPassword": {
+                    "type": "boolean"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "operationId": {
+                    "type": "string"
+                  },
+                  "password": {
+                    "type": "string"
+                  },
+                  "root": {
+                    "type": "string"
+                  },
+                  "username": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "operationId",
+                  "name",
+                  "root",
+                  "username",
+                  "password",
+                  "insecureLocal"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "receipt": {
+                      "properties": {
+                        "accepted": {
+                          "type": "boolean"
+                        },
+                        "operationId": {
+                          "type": "string"
+                        },
+                        "removed": {
+                          "type": "boolean"
+                        },
+                        "source": {
+                          "properties": {
+                            "credentialPresent": {
+                              "type": "boolean"
+                            },
+                            "errorCode": {
+                              "type": "string"
+                            },
+                            "generation": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "id": {
+                              "type": "string"
+                            },
+                            "insecureLocal": {
+                              "type": "boolean"
+                            },
+                            "kind": {
+                              "type": "string"
+                            },
+                            "mountId": {
+                              "type": "string"
+                            },
+                            "name": {
+                              "type": "string"
+                            },
+                            "origin": {
+                              "type": "string"
+                            },
+                            "rangeSupport": {
+                              "type": "string"
+                            },
+                            "rootPath": {
+                              "type": "string"
+                            },
+                            "state": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "kind",
+                            "name",
+                            "rootPath",
+                            "generation",
+                            "state",
+                            "rangeSupport",
+                            "insecureLocal",
+                            "credentialPresent"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "operationId",
+                        "accepted",
+                        "removed",
+                        "source"
+                      ],
+                      "type": "object"
+                    },
+                    "scope": {
+                      "properties": {
+                        "serverId": {
+                          "type": "string"
+                        },
+                        "viewerFence": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "serverId",
+                        "viewerFence"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "scope",
+                    "receipt"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Delete id",
+        "x-access": "owner",
+        "x-cost": "constant",
+        "x-lane": "default",
+        "x-max-body-bytes": 65536,
+        "x-scope": "admin"
+      },
+      "put": {
+        "operationId": "put_storage_sources_webdav_id",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "expectedGeneration": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "insecureLocal": {
+                    "type": "boolean"
+                  },
+                  "keepConnection": {
+                    "type": "boolean"
+                  },
+                  "keepPassword": {
+                    "type": "boolean"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "operationId": {
+                    "type": "string"
+                  },
+                  "password": {
+                    "type": "string"
+                  },
+                  "root": {
+                    "type": "string"
+                  },
+                  "username": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "operationId",
+                  "name",
+                  "root",
+                  "username",
+                  "password",
+                  "insecureLocal"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "receipt": {
+                      "properties": {
+                        "accepted": {
+                          "type": "boolean"
+                        },
+                        "operationId": {
+                          "type": "string"
+                        },
+                        "removed": {
+                          "type": "boolean"
+                        },
+                        "source": {
+                          "properties": {
+                            "credentialPresent": {
+                              "type": "boolean"
+                            },
+                            "errorCode": {
+                              "type": "string"
+                            },
+                            "generation": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "id": {
+                              "type": "string"
+                            },
+                            "insecureLocal": {
+                              "type": "boolean"
+                            },
+                            "kind": {
+                              "type": "string"
+                            },
+                            "mountId": {
+                              "type": "string"
+                            },
+                            "name": {
+                              "type": "string"
+                            },
+                            "origin": {
+                              "type": "string"
+                            },
+                            "rangeSupport": {
+                              "type": "string"
+                            },
+                            "rootPath": {
+                              "type": "string"
+                            },
+                            "state": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "kind",
+                            "name",
+                            "rootPath",
+                            "generation",
+                            "state",
+                            "rangeSupport",
+                            "insecureLocal",
+                            "credentialPresent"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "operationId",
+                        "accepted",
+                        "removed",
+                        "source"
+                      ],
+                      "type": "object"
+                    },
+                    "scope": {
+                      "properties": {
+                        "serverId": {
+                          "type": "string"
+                        },
+                        "viewerFence": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "serverId",
+                        "viewerFence"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "scope",
+                    "receipt"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Put id",
+        "x-access": "owner",
+        "x-cost": "constant",
+        "x-lane": "default",
+        "x-max-body-bytes": 65536,
+        "x-scope": "admin"
       }
     },
     "/v1/titles": {

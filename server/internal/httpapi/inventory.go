@@ -7,7 +7,7 @@ import (
 )
 
 func (d Dependencies) inventoryRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("GET /v1/libraries/{id}/inventory-status", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "GET /v1/libraries/{id}/inventory-status", func(w http.ResponseWriter, r *http.Request) {
 		p, e := d.principal(r)
 		if e != nil {
 			failure(w, e)
@@ -33,7 +33,7 @@ func (d Dependencies) inventoryRoutes(mux *http.ServeMux) {
 		}
 		write(w, 200, map[string]any{"serverId": d.Identity.ID(), "inventory": out})
 	})
-	mux.HandleFunc("GET /v1/admin/libraries/{id}/inventory-config", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "GET /v1/admin/libraries/{id}/inventory-config", func(w http.ResponseWriter, r *http.Request) {
 		q, e := d.adminRequest(r, "resource")
 		if e != nil {
 			failure(w, e)
@@ -71,7 +71,7 @@ func (d Dependencies) inventoryRoutes(mux *http.ServeMux) {
 	})
 
 	for _, pattern := range []string{"POST /v1/admin/libraries/{id}/sources", "PATCH /v1/admin/libraries/{id}/sources/{source}"} {
-		mux.HandleFunc(pattern, func(w http.ResponseWriter, r *http.Request) {
+		d.httpHandle(mux, pattern, func(w http.ResponseWriter, r *http.Request) {
 			p, e := d.owner(r)
 			if e != nil {
 				failure(w, e)
@@ -90,7 +90,7 @@ func (d Dependencies) inventoryRoutes(mux *http.ServeMux) {
 			write(w, 200, out)
 		})
 	}
-	mux.HandleFunc("POST /v1/admin/libraries/{id}/sources/{source}/check", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "POST /v1/admin/libraries/{id}/sources/{source}/check", func(w http.ResponseWriter, r *http.Request) {
 		p, e := d.owner(r)
 		if e != nil {
 			failure(w, e)
@@ -103,7 +103,7 @@ func (d Dependencies) inventoryRoutes(mux *http.ServeMux) {
 		}
 		write(w, 200, out)
 	})
-	mux.HandleFunc("DELETE /v1/admin/libraries/{id}/sources/{source}", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "DELETE /v1/admin/libraries/{id}/sources/{source}", func(w http.ResponseWriter, r *http.Request) {
 		p, e := d.owner(r)
 		if e != nil {
 			failure(w, e)
@@ -123,7 +123,7 @@ func (d Dependencies) inventoryRoutes(mux *http.ServeMux) {
 		d.Ingestion.InterruptSource(r.Context(), r.PathValue("source"))
 		w.WriteHeader(204)
 	})
-	mux.HandleFunc("POST /v1/admin/libraries/{id}/sources/{source}/scans", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "POST /v1/admin/libraries/{id}/sources/{source}/scans", func(w http.ResponseWriter, r *http.Request) {
 		p, e := d.owner(r)
 		if e != nil {
 			failure(w, e)
@@ -136,7 +136,7 @@ func (d Dependencies) inventoryRoutes(mux *http.ServeMux) {
 		}
 		write(w, 202, out)
 	})
-	mux.HandleFunc("PUT /v1/admin/libraries/{id}/scan-policy", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "PUT /v1/admin/libraries/{id}/scan-policy", func(w http.ResponseWriter, r *http.Request) {
 		p, e := d.owner(r)
 		if e != nil {
 			failure(w, e)
@@ -162,7 +162,7 @@ func (d Dependencies) inventoryRoutes(mux *http.ServeMux) {
 		}
 		write(w, 200, out)
 	})
-	mux.HandleFunc("POST /v1/admin/ingestion/jobs/{id}/{action}", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "POST /v1/admin/ingestion/jobs/{id}/{action}", func(w http.ResponseWriter, r *http.Request) {
 		p, e := d.owner(r)
 		if e != nil {
 			failure(w, e)
@@ -189,7 +189,7 @@ func (d Dependencies) inventoryRoutes(mux *http.ServeMux) {
 		}
 		w.WriteHeader(204)
 	})
-	mux.HandleFunc("POST /v1/admin/libraries/{id}/inventory/{object}/{action}", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "POST /v1/admin/libraries/{id}/inventory/{object}/{action}", func(w http.ResponseWriter, r *http.Request) {
 		p, e := d.owner(r)
 		if e != nil {
 			failure(w, e)

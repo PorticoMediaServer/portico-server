@@ -103,6 +103,7 @@ func addProjection[Request, Response any](registry *apikit.Registry, mux *http.S
 func registerUnitProjections(registry *apikit.Registry, d Dependencies) error {
 	private := d
 	private.registry = nil
+	private.httpContractsPrivate = true
 	mux := http.NewServeMux()
 	private.discoveryRoutes(mux)
 	private.playHistoryRoutes(mux)

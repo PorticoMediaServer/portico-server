@@ -7778,6 +7778,130 @@ export const schemas = {
     "required": [],
     "type": "object"
   },
+  "DeleteAdminIngestionJobsIdRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "DeleteAdminIngestionJobsIdResponse": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "DeleteAdminLibrariesIdSourcesSourceRequest": {
+    "properties": {
+      "acceptReplacement": {
+        "type": "boolean"
+      },
+      "classification": {
+        "type": "string"
+      },
+      "expectedRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "followSymlinks": {
+        "type": "boolean"
+      },
+      "intervalSeconds": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "name": {
+        "type": "string"
+      },
+      "path": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "name",
+      "path",
+      "classification",
+      "followSymlinks",
+      "intervalSeconds",
+      "expectedRevision",
+      "acceptReplacement"
+    ],
+    "type": "object"
+  },
+  "DeleteAdminLibrariesIdSourcesSourceResponse": {
+    "properties": {
+      "classification": {
+        "type": "string"
+      },
+      "enabled": {
+        "type": "boolean"
+      },
+      "followSymlinks": {
+        "type": "boolean"
+      },
+      "generation": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "health": {
+        "type": "string"
+      },
+      "id": {
+        "type": "string"
+      },
+      "identityConfirmed": {
+        "type": "boolean"
+      },
+      "intervalSeconds": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "kind": {
+        "type": "string"
+      },
+      "lastCompleteAt": {
+        "type": "string"
+      },
+      "lastProgressAt": {
+        "type": "string"
+      },
+      "libraryId": {
+        "type": "string"
+      },
+      "name": {
+        "type": "string"
+      },
+      "nextScanAt": {
+        "type": "string"
+      },
+      "path": {
+        "type": "string"
+      },
+      "resolvedPath": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "identityConfirmed",
+      "id",
+      "libraryId",
+      "kind",
+      "name",
+      "path",
+      "resolvedPath",
+      "classification",
+      "generation",
+      "health",
+      "enabled",
+      "followSymlinks",
+      "intervalSeconds",
+      "nextScanAt",
+      "lastCompleteAt",
+      "lastProgressAt"
+    ],
+    "type": "object"
+  },
   "DeleteClientLogRequest": {
     "properties": {},
     "required": [],
@@ -7932,6 +8056,340 @@ export const schemas = {
   "DeleteQueueResponse": {
     "properties": {},
     "required": [],
+    "type": "object"
+  },
+  "DeleteStorageMountsIdRequest": {
+    "properties": {
+      "action": {
+        "type": "string"
+      },
+      "cacheBytes": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "cacheFloor": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "config": {
+        "type": "string"
+      },
+      "executable": {
+        "type": "string"
+      },
+      "expectedRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "name": {
+        "type": "string"
+      },
+      "operationId": {
+        "type": "string"
+      },
+      "remote": {
+        "type": "string"
+      },
+      "setup": {
+        "properties": {
+          "accessKey": {
+            "type": "string"
+          },
+          "bucket": {
+            "type": "string"
+          },
+          "endpoint": {
+            "type": "string"
+          },
+          "prefix": {
+            "type": "string"
+          },
+          "region": {
+            "type": "string"
+          },
+          "secretKey": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "endpoint",
+          "region",
+          "accessKey",
+          "secretKey",
+          "bucket",
+          "prefix"
+        ],
+        "type": "object"
+      }
+    },
+    "required": [
+      "operationId"
+    ],
+    "type": "object"
+  },
+  "DeleteStorageMountsIdResponse": {
+    "properties": {
+      "accepted": {
+        "type": "boolean"
+      },
+      "controlRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "deleted": {
+        "type": "boolean"
+      },
+      "mount": {
+        "properties": {
+          "actions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "backendRevision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "cacheBytes": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "cacheFloor": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "controlRevision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "desiredState": {
+            "type": "string"
+          },
+          "error": {
+            "type": "string"
+          },
+          "executable": {
+            "type": "string"
+          },
+          "executableDigest": {
+            "type": "string"
+          },
+          "executableVersion": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "mountPath": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "observedState": {
+            "type": "string"
+          },
+          "removalPending": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "backendRevision",
+          "executableVersion",
+          "cacheBytes",
+          "cacheFloor",
+          "controlRevision",
+          "removalPending",
+          "actions",
+          "executable",
+          "id",
+          "name",
+          "mountPath",
+          "desiredState",
+          "observedState",
+          "executableDigest"
+        ],
+        "type": "object"
+      },
+      "mountId": {
+        "type": "string"
+      },
+      "operationId": {
+        "type": "string"
+      },
+      "scope": {
+        "properties": {
+          "serverId": {
+            "type": "string"
+          },
+          "viewerFence": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "serverId",
+          "viewerFence"
+        ],
+        "type": "object"
+      }
+    },
+    "required": [
+      "scope",
+      "operationId",
+      "mountId",
+      "controlRevision",
+      "accepted",
+      "deleted"
+    ],
+    "type": "object"
+  },
+  "DeleteStorageSourcesWebdavIdRequest": {
+    "properties": {
+      "expectedGeneration": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "insecureLocal": {
+        "type": "boolean"
+      },
+      "keepConnection": {
+        "type": "boolean"
+      },
+      "keepPassword": {
+        "type": "boolean"
+      },
+      "name": {
+        "type": "string"
+      },
+      "operationId": {
+        "type": "string"
+      },
+      "password": {
+        "type": "string"
+      },
+      "root": {
+        "type": "string"
+      },
+      "username": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "operationId",
+      "name",
+      "root",
+      "username",
+      "password",
+      "insecureLocal"
+    ],
+    "type": "object"
+  },
+  "DeleteStorageSourcesWebdavIdResponse": {
+    "properties": {
+      "receipt": {
+        "properties": {
+          "accepted": {
+            "type": "boolean"
+          },
+          "operationId": {
+            "type": "string"
+          },
+          "removed": {
+            "type": "boolean"
+          },
+          "source": {
+            "properties": {
+              "credentialPresent": {
+                "type": "boolean"
+              },
+              "errorCode": {
+                "type": "string"
+              },
+              "generation": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "id": {
+                "type": "string"
+              },
+              "insecureLocal": {
+                "type": "boolean"
+              },
+              "kind": {
+                "type": "string"
+              },
+              "mountId": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "origin": {
+                "type": "string"
+              },
+              "rangeSupport": {
+                "type": "string"
+              },
+              "rootPath": {
+                "type": "string"
+              },
+              "state": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "kind",
+              "name",
+              "rootPath",
+              "generation",
+              "state",
+              "rangeSupport",
+              "insecureLocal",
+              "credentialPresent"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "operationId",
+          "accepted",
+          "removed",
+          "source"
+        ],
+        "type": "object"
+      },
+      "scope": {
+        "properties": {
+          "serverId": {
+            "type": "string"
+          },
+          "viewerFence": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "serverId",
+          "viewerFence"
+        ],
+        "type": "object"
+      }
+    },
+    "required": [
+      "scope",
+      "receipt"
+    ],
     "type": "object"
   },
   "DeleteTitleVersionRequest": {
@@ -10068,6 +10526,747 @@ export const schemas = {
     "required": [
       "scope",
       "data"
+    ],
+    "type": "object"
+  },
+  "GetAdminIngestionJobsIdRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetAdminIngestionJobsIdResponse": {
+    "properties": {
+      "analyzed": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "error": {
+        "type": "string"
+      },
+      "id": {
+        "type": "string"
+      },
+      "jobs": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "phase": {
+        "type": "string"
+      },
+      "processed": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "scanMode": {
+        "type": "string"
+      },
+      "sourceId": {
+        "type": "string"
+      },
+      "status": {
+        "type": "string"
+      },
+      "warnings": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "id",
+      "status",
+      "processed",
+      "analyzed",
+      "warnings"
+    ],
+    "type": "object"
+  },
+  "GetAdminJobsRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetAdminJobsResponse": {
+    "properties": {
+      "items": {
+        "items": {
+          "properties": {
+            "actions": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "analyzed": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "createdAt": {
+              "type": "string"
+            },
+            "error": {
+              "type": "string"
+            },
+            "errorCode": {
+              "type": "string"
+            },
+            "finishedAt": {
+              "nullable": true,
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            },
+            "libraryId": {
+              "type": "string"
+            },
+            "libraryKind": {
+              "type": "string"
+            },
+            "libraryName": {
+              "type": "string"
+            },
+            "pauseReason": {
+              "type": "string"
+            },
+            "phase": {
+              "type": "string"
+            },
+            "processed": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "sourceId": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string"
+            },
+            "updatedAt": {
+              "nullable": true,
+              "type": "string"
+            },
+            "warnings": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "sourceId",
+            "phase",
+            "analyzed",
+            "warnings",
+            "pauseReason",
+            "id",
+            "libraryId",
+            "libraryName",
+            "libraryKind",
+            "status",
+            "processed",
+            "createdAt",
+            "updatedAt",
+            "finishedAt",
+            "actions"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "nextCursor": {
+        "type": "string"
+      },
+      "revision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "scope": {
+        "properties": {
+          "serverId": {
+            "type": "string"
+          },
+          "viewerFence": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "serverId",
+          "viewerFence"
+        ],
+        "type": "object"
+      }
+    },
+    "required": [
+      "scope",
+      "revision",
+      "items",
+      "nextCursor"
+    ],
+    "type": "object"
+  },
+  "GetAdminLibrariesIdInventoryConfigRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetAdminLibrariesIdInventoryConfigResponse": {
+    "properties": {
+      "libraryId": {
+        "type": "string"
+      },
+      "policy": {
+        "properties": {
+          "operations": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "revision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "tier": {
+            "type": "string"
+          },
+          "trickplay": {
+            "properties": {
+              "intervalSeconds": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "maxTiles": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "tileWidth": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "intervalSeconds",
+              "tileWidth",
+              "maxTiles"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "tier",
+          "revision",
+          "operations",
+          "trickplay"
+        ],
+        "type": "object"
+      },
+      "revision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "scope": {
+        "properties": {
+          "serverId": {
+            "type": "string"
+          },
+          "viewerFence": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "serverId",
+          "viewerFence"
+        ],
+        "type": "object"
+      },
+      "sources": {
+        "items": {
+          "properties": {
+            "classification": {
+              "type": "string"
+            },
+            "enabled": {
+              "type": "boolean"
+            },
+            "followSymlinks": {
+              "type": "boolean"
+            },
+            "generation": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "health": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            },
+            "identityConfirmed": {
+              "type": "boolean"
+            },
+            "intervalSeconds": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "kind": {
+              "type": "string"
+            },
+            "lastCompleteAt": {
+              "type": "string"
+            },
+            "lastProgressAt": {
+              "type": "string"
+            },
+            "libraryId": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "nextScanAt": {
+              "type": "string"
+            },
+            "path": {
+              "type": "string"
+            },
+            "resolvedPath": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "identityConfirmed",
+            "id",
+            "libraryId",
+            "kind",
+            "name",
+            "path",
+            "resolvedPath",
+            "classification",
+            "generation",
+            "health",
+            "enabled",
+            "followSymlinks",
+            "intervalSeconds",
+            "nextScanAt",
+            "lastCompleteAt",
+            "lastProgressAt"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      }
+    },
+    "required": [
+      "scope",
+      "libraryId",
+      "revision",
+      "sources",
+      "policy"
+    ],
+    "type": "object"
+  },
+  "GetAdminLibrariesIdRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetAdminLibrariesIdResponse": {
+    "properties": {
+      "library": {
+        "properties": {
+          "actions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "attention": {
+            "properties": {
+              "atLeast": {
+                "type": "boolean"
+              },
+              "files": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "files"
+            ],
+            "type": "object"
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "lastScan": {
+            "nullable": true,
+            "properties": {
+              "actions": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "analyzed": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "createdAt": {
+                "type": "string"
+              },
+              "error": {
+                "type": "string"
+              },
+              "errorCode": {
+                "type": "string"
+              },
+              "finishedAt": {
+                "nullable": true,
+                "type": "string"
+              },
+              "id": {
+                "type": "string"
+              },
+              "libraryId": {
+                "type": "string"
+              },
+              "libraryKind": {
+                "type": "string"
+              },
+              "libraryName": {
+                "type": "string"
+              },
+              "pauseReason": {
+                "type": "string"
+              },
+              "phase": {
+                "type": "string"
+              },
+              "processed": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "sourceId": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string"
+              },
+              "updatedAt": {
+                "nullable": true,
+                "type": "string"
+              },
+              "warnings": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "sourceId",
+              "phase",
+              "analyzed",
+              "warnings",
+              "pauseReason",
+              "id",
+              "libraryId",
+              "libraryName",
+              "libraryKind",
+              "status",
+              "processed",
+              "createdAt",
+              "updatedAt",
+              "finishedAt",
+              "actions"
+            ],
+            "type": "object"
+          },
+          "name": {
+            "type": "string"
+          },
+          "revision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "source": {
+            "properties": {
+              "availability": {
+                "type": "string"
+              },
+              "basis": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "observedAt": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "path",
+              "availability",
+              "basis"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "kind",
+          "revision",
+          "source",
+          "lastScan",
+          "actions"
+        ],
+        "type": "object"
+      },
+      "scope": {
+        "properties": {
+          "serverId": {
+            "type": "string"
+          },
+          "viewerFence": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "serverId",
+          "viewerFence"
+        ],
+        "type": "object"
+      }
+    },
+    "required": [
+      "scope",
+      "library"
+    ],
+    "type": "object"
+  },
+  "GetAdminLibrariesRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetAdminLibrariesResponse": {
+    "properties": {
+      "items": {
+        "items": {
+          "properties": {
+            "actions": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "attention": {
+              "properties": {
+                "atLeast": {
+                  "type": "boolean"
+                },
+                "files": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "files"
+              ],
+              "type": "object"
+            },
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string"
+            },
+            "lastScan": {
+              "nullable": true,
+              "properties": {
+                "actions": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "analyzed": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "createdAt": {
+                  "type": "string"
+                },
+                "error": {
+                  "type": "string"
+                },
+                "errorCode": {
+                  "type": "string"
+                },
+                "finishedAt": {
+                  "nullable": true,
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "libraryId": {
+                  "type": "string"
+                },
+                "libraryKind": {
+                  "type": "string"
+                },
+                "libraryName": {
+                  "type": "string"
+                },
+                "pauseReason": {
+                  "type": "string"
+                },
+                "phase": {
+                  "type": "string"
+                },
+                "processed": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "sourceId": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string"
+                },
+                "updatedAt": {
+                  "nullable": true,
+                  "type": "string"
+                },
+                "warnings": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "sourceId",
+                "phase",
+                "analyzed",
+                "warnings",
+                "pauseReason",
+                "id",
+                "libraryId",
+                "libraryName",
+                "libraryKind",
+                "status",
+                "processed",
+                "createdAt",
+                "updatedAt",
+                "finishedAt",
+                "actions"
+              ],
+              "type": "object"
+            },
+            "name": {
+              "type": "string"
+            },
+            "revision": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "source": {
+              "properties": {
+                "availability": {
+                  "type": "string"
+                },
+                "basis": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                },
+                "observedAt": {
+                  "type": "string"
+                },
+                "path": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "path",
+                "availability",
+                "basis"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "id",
+            "name",
+            "kind",
+            "revision",
+            "source",
+            "lastScan",
+            "actions"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "nextCursor": {
+        "type": "string"
+      },
+      "revision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "scope": {
+        "properties": {
+          "serverId": {
+            "type": "string"
+          },
+          "viewerFence": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "serverId",
+          "viewerFence"
+        ],
+        "type": "object"
+      }
+    },
+    "required": [
+      "scope",
+      "revision",
+      "items",
+      "nextCursor"
     ],
     "type": "object"
   },
@@ -20912,6 +22111,109 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "GetItemsIdSourceAvailabilityRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetItemsIdSourceAvailabilityResponse": {
+    "properties": {
+      "receipt": {
+        "properties": {
+          "accepted": {
+            "type": "boolean"
+          },
+          "operationId": {
+            "type": "string"
+          },
+          "removed": {
+            "type": "boolean"
+          },
+          "source": {
+            "properties": {
+              "credentialPresent": {
+                "type": "boolean"
+              },
+              "errorCode": {
+                "type": "string"
+              },
+              "generation": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "id": {
+                "type": "string"
+              },
+              "insecureLocal": {
+                "type": "boolean"
+              },
+              "kind": {
+                "type": "string"
+              },
+              "mountId": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "origin": {
+                "type": "string"
+              },
+              "rangeSupport": {
+                "type": "string"
+              },
+              "rootPath": {
+                "type": "string"
+              },
+              "state": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "kind",
+              "name",
+              "rootPath",
+              "generation",
+              "state",
+              "rangeSupport",
+              "insecureLocal",
+              "credentialPresent"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "operationId",
+          "accepted",
+          "removed",
+          "source"
+        ],
+        "type": "object"
+      },
+      "scope": {
+        "properties": {
+          "serverId": {
+            "type": "string"
+          },
+          "viewerFence": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "serverId",
+          "viewerFence"
+        ],
+        "type": "object"
+      }
+    },
+    "required": [
+      "scope",
+      "receipt"
+    ],
+    "type": "object"
+  },
   "GetItemsRequest": {
     "properties": {},
     "required": [],
@@ -24675,6 +25977,97 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "GetLibrariesIdInventoryStatusRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetLibrariesIdInventoryStatusResponse": {
+    "properties": {
+      "inventory": {
+        "properties": {
+          "libraryId": {
+            "type": "string"
+          },
+          "revision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "sources": {
+            "items": {
+              "properties": {
+                "analyzed": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "discovered": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "health": {
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "jobId": {
+                  "type": "string"
+                },
+                "lastCompleteAt": {
+                  "type": "string"
+                },
+                "pauseReason": {
+                  "type": "string"
+                },
+                "phase": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string"
+                },
+                "warnings": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "id",
+                "health",
+                "lastCompleteAt",
+                "jobId",
+                "status",
+                "phase",
+                "discovered",
+                "analyzed",
+                "warnings",
+                "pauseReason"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "libraryId",
+          "revision",
+          "sources"
+        ],
+        "type": "object"
+      },
+      "serverId": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "serverId",
+      "inventory"
+    ],
+    "type": "object"
+  },
   "GetLibrariesIdListeningSelectionRequest": {
     "properties": {},
     "required": [],
@@ -24824,6 +26217,255 @@ export const schemas = {
     "required": [
       "scope",
       "data"
+    ],
+    "type": "object"
+  },
+  "GetLibrariesIdNetworkRootsRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetLibrariesIdNetworkRootsResponse": {
+    "properties": {
+      "receipt": {
+        "properties": {
+          "accepted": {
+            "type": "boolean"
+          },
+          "operationId": {
+            "type": "string"
+          },
+          "removed": {
+            "type": "boolean"
+          },
+          "source": {
+            "properties": {
+              "credentialPresent": {
+                "type": "boolean"
+              },
+              "errorCode": {
+                "type": "string"
+              },
+              "generation": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "id": {
+                "type": "string"
+              },
+              "insecureLocal": {
+                "type": "boolean"
+              },
+              "kind": {
+                "type": "string"
+              },
+              "mountId": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "origin": {
+                "type": "string"
+              },
+              "rangeSupport": {
+                "type": "string"
+              },
+              "rootPath": {
+                "type": "string"
+              },
+              "state": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "kind",
+              "name",
+              "rootPath",
+              "generation",
+              "state",
+              "rangeSupport",
+              "insecureLocal",
+              "credentialPresent"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "operationId",
+          "accepted",
+          "removed",
+          "source"
+        ],
+        "type": "object"
+      },
+      "scope": {
+        "properties": {
+          "serverId": {
+            "type": "string"
+          },
+          "viewerFence": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "serverId",
+          "viewerFence"
+        ],
+        "type": "object"
+      }
+    },
+    "required": [
+      "scope",
+      "receipt"
+    ],
+    "type": "object"
+  },
+  "GetLibrariesIdStrmAnalysisPolicyRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetLibrariesIdStrmAnalysisPolicyResponse": {
+    "properties": {
+      "receipt": {
+        "properties": {
+          "accepted": {
+            "type": "boolean"
+          },
+          "operationId": {
+            "type": "string"
+          },
+          "removed": {
+            "type": "boolean"
+          },
+          "source": {
+            "properties": {
+              "credentialPresent": {
+                "type": "boolean"
+              },
+              "errorCode": {
+                "type": "string"
+              },
+              "generation": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "id": {
+                "type": "string"
+              },
+              "insecureLocal": {
+                "type": "boolean"
+              },
+              "kind": {
+                "type": "string"
+              },
+              "mountId": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "origin": {
+                "type": "string"
+              },
+              "rangeSupport": {
+                "type": "string"
+              },
+              "rootPath": {
+                "type": "string"
+              },
+              "state": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "kind",
+              "name",
+              "rootPath",
+              "generation",
+              "state",
+              "rangeSupport",
+              "insecureLocal",
+              "credentialPresent"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "operationId",
+          "accepted",
+          "removed",
+          "source"
+        ],
+        "type": "object"
+      },
+      "scope": {
+        "properties": {
+          "serverId": {
+            "type": "string"
+          },
+          "viewerFence": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "serverId",
+          "viewerFence"
+        ],
+        "type": "object"
+      }
+    },
+    "required": [
+      "scope",
+      "receipt"
+    ],
+    "type": "object"
+  },
+  "GetLibrariesRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetLibrariesResponse": {
+    "properties": {
+      "items": {
+        "items": {
+          "properties": {
+            "defaultView": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "pinned": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "defaultView",
+            "id",
+            "name",
+            "kind",
+            "pinned"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      }
+    },
+    "required": [
+      "items"
     ],
     "type": "object"
   },
@@ -33924,6 +35566,454 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "GetStorageMountsRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetStorageMountsResponse": {
+    "properties": {
+      "limits": {
+        "additionalProperties": {
+          "maximum": 9007199254740991,
+          "minimum": -9007199254740991,
+          "type": "integer"
+        },
+        "type": "object"
+      },
+      "mountSupported": {
+        "type": "boolean"
+      },
+      "mounts": {
+        "items": {
+          "properties": {
+            "actions": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "backendRevision": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "cacheBytes": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "cacheFloor": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "controlRevision": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "desiredState": {
+              "type": "string"
+            },
+            "error": {
+              "type": "string"
+            },
+            "executable": {
+              "type": "string"
+            },
+            "executableDigest": {
+              "type": "string"
+            },
+            "executableVersion": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            },
+            "mountPath": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "observedState": {
+              "type": "string"
+            },
+            "removalPending": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "backendRevision",
+            "executableVersion",
+            "cacheBytes",
+            "cacheFloor",
+            "controlRevision",
+            "removalPending",
+            "actions",
+            "executable",
+            "id",
+            "name",
+            "mountPath",
+            "desiredState",
+            "observedState",
+            "executableDigest"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "revision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "scope": {
+        "properties": {
+          "serverId": {
+            "type": "string"
+          },
+          "viewerFence": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "serverId",
+          "viewerFence"
+        ],
+        "type": "object"
+      }
+    },
+    "required": [
+      "scope",
+      "revision",
+      "limits",
+      "mounts",
+      "mountSupported"
+    ],
+    "type": "object"
+  },
+  "GetStorageOperationsIdRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetStorageOperationsIdResponse": {
+    "properties": {
+      "accepted": {
+        "type": "boolean"
+      },
+      "controlRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "deleted": {
+        "type": "boolean"
+      },
+      "mount": {
+        "properties": {
+          "actions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "backendRevision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "cacheBytes": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "cacheFloor": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "controlRevision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "desiredState": {
+            "type": "string"
+          },
+          "error": {
+            "type": "string"
+          },
+          "executable": {
+            "type": "string"
+          },
+          "executableDigest": {
+            "type": "string"
+          },
+          "executableVersion": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "mountPath": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "observedState": {
+            "type": "string"
+          },
+          "removalPending": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "backendRevision",
+          "executableVersion",
+          "cacheBytes",
+          "cacheFloor",
+          "controlRevision",
+          "removalPending",
+          "actions",
+          "executable",
+          "id",
+          "name",
+          "mountPath",
+          "desiredState",
+          "observedState",
+          "executableDigest"
+        ],
+        "type": "object"
+      },
+      "mountId": {
+        "type": "string"
+      },
+      "operationId": {
+        "type": "string"
+      },
+      "scope": {
+        "properties": {
+          "serverId": {
+            "type": "string"
+          },
+          "viewerFence": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "serverId",
+          "viewerFence"
+        ],
+        "type": "object"
+      }
+    },
+    "required": [
+      "scope",
+      "operationId",
+      "mountId",
+      "controlRevision",
+      "accepted",
+      "deleted"
+    ],
+    "type": "object"
+  },
+  "GetStorageSourceOperationsIdRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetStorageSourceOperationsIdResponse": {
+    "properties": {
+      "receipt": {
+        "properties": {
+          "accepted": {
+            "type": "boolean"
+          },
+          "operationId": {
+            "type": "string"
+          },
+          "removed": {
+            "type": "boolean"
+          },
+          "source": {
+            "properties": {
+              "credentialPresent": {
+                "type": "boolean"
+              },
+              "errorCode": {
+                "type": "string"
+              },
+              "generation": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "id": {
+                "type": "string"
+              },
+              "insecureLocal": {
+                "type": "boolean"
+              },
+              "kind": {
+                "type": "string"
+              },
+              "mountId": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "origin": {
+                "type": "string"
+              },
+              "rangeSupport": {
+                "type": "string"
+              },
+              "rootPath": {
+                "type": "string"
+              },
+              "state": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "kind",
+              "name",
+              "rootPath",
+              "generation",
+              "state",
+              "rangeSupport",
+              "insecureLocal",
+              "credentialPresent"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "operationId",
+          "accepted",
+          "removed",
+          "source"
+        ],
+        "type": "object"
+      },
+      "scope": {
+        "properties": {
+          "serverId": {
+            "type": "string"
+          },
+          "viewerFence": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "serverId",
+          "viewerFence"
+        ],
+        "type": "object"
+      }
+    },
+    "required": [
+      "scope",
+      "receipt"
+    ],
+    "type": "object"
+  },
+  "GetStorageSourcesRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetStorageSourcesResponse": {
+    "properties": {
+      "mountSupported": {
+        "type": "boolean"
+      },
+      "scope": {
+        "properties": {
+          "serverId": {
+            "type": "string"
+          },
+          "viewerFence": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "serverId",
+          "viewerFence"
+        ],
+        "type": "object"
+      },
+      "sources": {
+        "items": {
+          "properties": {
+            "credentialPresent": {
+              "type": "boolean"
+            },
+            "errorCode": {
+              "type": "string"
+            },
+            "generation": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "id": {
+              "type": "string"
+            },
+            "insecureLocal": {
+              "type": "boolean"
+            },
+            "kind": {
+              "type": "string"
+            },
+            "mountId": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "origin": {
+              "type": "string"
+            },
+            "rangeSupport": {
+              "type": "string"
+            },
+            "rootPath": {
+              "type": "string"
+            },
+            "state": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "kind",
+            "name",
+            "rootPath",
+            "generation",
+            "state",
+            "rangeSupport",
+            "insecureLocal",
+            "credentialPresent"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      }
+    },
+    "required": [
+      "scope",
+      "sources",
+      "mountSupported"
+    ],
+    "type": "object"
+  },
   "GetStorageStatusRequest": {
     "properties": {},
     "required": [],
@@ -37658,6 +39748,321 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "PatchAdminLibrariesIdRequest": {
+    "properties": {
+      "expectedRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "name": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "name",
+      "expectedRevision"
+    ],
+    "type": "object"
+  },
+  "PatchAdminLibrariesIdResponse": {
+    "properties": {
+      "library": {
+        "properties": {
+          "actions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "attention": {
+            "properties": {
+              "atLeast": {
+                "type": "boolean"
+              },
+              "files": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "files"
+            ],
+            "type": "object"
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "lastScan": {
+            "nullable": true,
+            "properties": {
+              "actions": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "analyzed": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "createdAt": {
+                "type": "string"
+              },
+              "error": {
+                "type": "string"
+              },
+              "errorCode": {
+                "type": "string"
+              },
+              "finishedAt": {
+                "nullable": true,
+                "type": "string"
+              },
+              "id": {
+                "type": "string"
+              },
+              "libraryId": {
+                "type": "string"
+              },
+              "libraryKind": {
+                "type": "string"
+              },
+              "libraryName": {
+                "type": "string"
+              },
+              "pauseReason": {
+                "type": "string"
+              },
+              "phase": {
+                "type": "string"
+              },
+              "processed": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "sourceId": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string"
+              },
+              "updatedAt": {
+                "nullable": true,
+                "type": "string"
+              },
+              "warnings": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "sourceId",
+              "phase",
+              "analyzed",
+              "warnings",
+              "pauseReason",
+              "id",
+              "libraryId",
+              "libraryName",
+              "libraryKind",
+              "status",
+              "processed",
+              "createdAt",
+              "updatedAt",
+              "finishedAt",
+              "actions"
+            ],
+            "type": "object"
+          },
+          "name": {
+            "type": "string"
+          },
+          "revision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "source": {
+            "properties": {
+              "availability": {
+                "type": "string"
+              },
+              "basis": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "observedAt": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "path",
+              "availability",
+              "basis"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "kind",
+          "revision",
+          "source",
+          "lastScan",
+          "actions"
+        ],
+        "type": "object"
+      },
+      "scope": {
+        "properties": {
+          "serverId": {
+            "type": "string"
+          },
+          "viewerFence": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "serverId",
+          "viewerFence"
+        ],
+        "type": "object"
+      }
+    },
+    "required": [
+      "scope",
+      "library"
+    ],
+    "type": "object"
+  },
+  "PatchAdminLibrariesIdSourcesSourceRequest": {
+    "properties": {
+      "acceptReplacement": {
+        "type": "boolean"
+      },
+      "classification": {
+        "type": "string"
+      },
+      "expectedRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "followSymlinks": {
+        "type": "boolean"
+      },
+      "intervalSeconds": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "name": {
+        "type": "string"
+      },
+      "path": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "name",
+      "path",
+      "classification",
+      "followSymlinks",
+      "intervalSeconds",
+      "expectedRevision",
+      "acceptReplacement"
+    ],
+    "type": "object"
+  },
+  "PatchAdminLibrariesIdSourcesSourceResponse": {
+    "properties": {
+      "classification": {
+        "type": "string"
+      },
+      "enabled": {
+        "type": "boolean"
+      },
+      "followSymlinks": {
+        "type": "boolean"
+      },
+      "generation": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "health": {
+        "type": "string"
+      },
+      "id": {
+        "type": "string"
+      },
+      "identityConfirmed": {
+        "type": "boolean"
+      },
+      "intervalSeconds": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "kind": {
+        "type": "string"
+      },
+      "lastCompleteAt": {
+        "type": "string"
+      },
+      "lastProgressAt": {
+        "type": "string"
+      },
+      "libraryId": {
+        "type": "string"
+      },
+      "name": {
+        "type": "string"
+      },
+      "nextScanAt": {
+        "type": "string"
+      },
+      "path": {
+        "type": "string"
+      },
+      "resolvedPath": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "identityConfirmed",
+      "id",
+      "libraryId",
+      "kind",
+      "name",
+      "path",
+      "resolvedPath",
+      "classification",
+      "generation",
+      "health",
+      "enabled",
+      "followSymlinks",
+      "intervalSeconds",
+      "nextScanAt",
+      "lastCompleteAt",
+      "lastProgressAt"
+    ],
+    "type": "object"
+  },
   "PatchDeviceRequest": {
     "properties": {
       "lastProfileId": {
@@ -39256,6 +41661,576 @@ export const schemas = {
     "required": [
       "scope",
       "data"
+    ],
+    "type": "object"
+  },
+  "PostAdminIngestionJobsIdActionRequest": {
+    "properties": {
+      "acceptReplacement": {
+        "type": "boolean"
+      },
+      "classification": {
+        "type": "string"
+      },
+      "expectedRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "followSymlinks": {
+        "type": "boolean"
+      },
+      "intervalSeconds": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "name": {
+        "type": "string"
+      },
+      "path": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "name",
+      "path",
+      "classification",
+      "followSymlinks",
+      "intervalSeconds",
+      "expectedRevision",
+      "acceptReplacement"
+    ],
+    "type": "object"
+  },
+  "PostAdminIngestionJobsIdActionResponse": {
+    "properties": {
+      "classification": {
+        "type": "string"
+      },
+      "enabled": {
+        "type": "boolean"
+      },
+      "followSymlinks": {
+        "type": "boolean"
+      },
+      "generation": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "health": {
+        "type": "string"
+      },
+      "id": {
+        "type": "string"
+      },
+      "identityConfirmed": {
+        "type": "boolean"
+      },
+      "intervalSeconds": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "kind": {
+        "type": "string"
+      },
+      "lastCompleteAt": {
+        "type": "string"
+      },
+      "lastProgressAt": {
+        "type": "string"
+      },
+      "libraryId": {
+        "type": "string"
+      },
+      "name": {
+        "type": "string"
+      },
+      "nextScanAt": {
+        "type": "string"
+      },
+      "path": {
+        "type": "string"
+      },
+      "resolvedPath": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "identityConfirmed",
+      "id",
+      "libraryId",
+      "kind",
+      "name",
+      "path",
+      "resolvedPath",
+      "classification",
+      "generation",
+      "health",
+      "enabled",
+      "followSymlinks",
+      "intervalSeconds",
+      "nextScanAt",
+      "lastCompleteAt",
+      "lastProgressAt"
+    ],
+    "type": "object"
+  },
+  "PostAdminLibrariesIdInventoryObjectActionRequest": {
+    "properties": {
+      "acceptReplacement": {
+        "type": "boolean"
+      },
+      "classification": {
+        "type": "string"
+      },
+      "expectedRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "followSymlinks": {
+        "type": "boolean"
+      },
+      "intervalSeconds": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "name": {
+        "type": "string"
+      },
+      "path": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "name",
+      "path",
+      "classification",
+      "followSymlinks",
+      "intervalSeconds",
+      "expectedRevision",
+      "acceptReplacement"
+    ],
+    "type": "object"
+  },
+  "PostAdminLibrariesIdInventoryObjectActionResponse": {
+    "properties": {
+      "classification": {
+        "type": "string"
+      },
+      "enabled": {
+        "type": "boolean"
+      },
+      "followSymlinks": {
+        "type": "boolean"
+      },
+      "generation": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "health": {
+        "type": "string"
+      },
+      "id": {
+        "type": "string"
+      },
+      "identityConfirmed": {
+        "type": "boolean"
+      },
+      "intervalSeconds": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "kind": {
+        "type": "string"
+      },
+      "lastCompleteAt": {
+        "type": "string"
+      },
+      "lastProgressAt": {
+        "type": "string"
+      },
+      "libraryId": {
+        "type": "string"
+      },
+      "name": {
+        "type": "string"
+      },
+      "nextScanAt": {
+        "type": "string"
+      },
+      "path": {
+        "type": "string"
+      },
+      "resolvedPath": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "identityConfirmed",
+      "id",
+      "libraryId",
+      "kind",
+      "name",
+      "path",
+      "resolvedPath",
+      "classification",
+      "generation",
+      "health",
+      "enabled",
+      "followSymlinks",
+      "intervalSeconds",
+      "nextScanAt",
+      "lastCompleteAt",
+      "lastProgressAt"
+    ],
+    "type": "object"
+  },
+  "PostAdminLibrariesIdSourcesRequest": {
+    "properties": {
+      "acceptReplacement": {
+        "type": "boolean"
+      },
+      "classification": {
+        "type": "string"
+      },
+      "expectedRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "followSymlinks": {
+        "type": "boolean"
+      },
+      "intervalSeconds": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "name": {
+        "type": "string"
+      },
+      "path": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "name",
+      "path",
+      "classification",
+      "followSymlinks",
+      "intervalSeconds",
+      "expectedRevision",
+      "acceptReplacement"
+    ],
+    "type": "object"
+  },
+  "PostAdminLibrariesIdSourcesResponse": {
+    "properties": {
+      "classification": {
+        "type": "string"
+      },
+      "enabled": {
+        "type": "boolean"
+      },
+      "followSymlinks": {
+        "type": "boolean"
+      },
+      "generation": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "health": {
+        "type": "string"
+      },
+      "id": {
+        "type": "string"
+      },
+      "identityConfirmed": {
+        "type": "boolean"
+      },
+      "intervalSeconds": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "kind": {
+        "type": "string"
+      },
+      "lastCompleteAt": {
+        "type": "string"
+      },
+      "lastProgressAt": {
+        "type": "string"
+      },
+      "libraryId": {
+        "type": "string"
+      },
+      "name": {
+        "type": "string"
+      },
+      "nextScanAt": {
+        "type": "string"
+      },
+      "path": {
+        "type": "string"
+      },
+      "resolvedPath": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "identityConfirmed",
+      "id",
+      "libraryId",
+      "kind",
+      "name",
+      "path",
+      "resolvedPath",
+      "classification",
+      "generation",
+      "health",
+      "enabled",
+      "followSymlinks",
+      "intervalSeconds",
+      "nextScanAt",
+      "lastCompleteAt",
+      "lastProgressAt"
+    ],
+    "type": "object"
+  },
+  "PostAdminLibrariesIdSourcesSourceCheckRequest": {
+    "properties": {
+      "acceptReplacement": {
+        "type": "boolean"
+      },
+      "classification": {
+        "type": "string"
+      },
+      "expectedRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "followSymlinks": {
+        "type": "boolean"
+      },
+      "intervalSeconds": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "name": {
+        "type": "string"
+      },
+      "path": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "name",
+      "path",
+      "classification",
+      "followSymlinks",
+      "intervalSeconds",
+      "expectedRevision",
+      "acceptReplacement"
+    ],
+    "type": "object"
+  },
+  "PostAdminLibrariesIdSourcesSourceCheckResponse": {
+    "properties": {
+      "classification": {
+        "type": "string"
+      },
+      "enabled": {
+        "type": "boolean"
+      },
+      "followSymlinks": {
+        "type": "boolean"
+      },
+      "generation": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "health": {
+        "type": "string"
+      },
+      "id": {
+        "type": "string"
+      },
+      "identityConfirmed": {
+        "type": "boolean"
+      },
+      "intervalSeconds": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "kind": {
+        "type": "string"
+      },
+      "lastCompleteAt": {
+        "type": "string"
+      },
+      "lastProgressAt": {
+        "type": "string"
+      },
+      "libraryId": {
+        "type": "string"
+      },
+      "name": {
+        "type": "string"
+      },
+      "nextScanAt": {
+        "type": "string"
+      },
+      "path": {
+        "type": "string"
+      },
+      "resolvedPath": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "identityConfirmed",
+      "id",
+      "libraryId",
+      "kind",
+      "name",
+      "path",
+      "resolvedPath",
+      "classification",
+      "generation",
+      "health",
+      "enabled",
+      "followSymlinks",
+      "intervalSeconds",
+      "nextScanAt",
+      "lastCompleteAt",
+      "lastProgressAt"
+    ],
+    "type": "object"
+  },
+  "PostAdminLibrariesIdSourcesSourceScansRequest": {
+    "properties": {
+      "acceptReplacement": {
+        "type": "boolean"
+      },
+      "classification": {
+        "type": "string"
+      },
+      "expectedRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "followSymlinks": {
+        "type": "boolean"
+      },
+      "intervalSeconds": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "name": {
+        "type": "string"
+      },
+      "path": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "name",
+      "path",
+      "classification",
+      "followSymlinks",
+      "intervalSeconds",
+      "expectedRevision",
+      "acceptReplacement"
+    ],
+    "type": "object"
+  },
+  "PostAdminLibrariesIdSourcesSourceScansResponse": {
+    "properties": {
+      "classification": {
+        "type": "string"
+      },
+      "enabled": {
+        "type": "boolean"
+      },
+      "followSymlinks": {
+        "type": "boolean"
+      },
+      "generation": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "health": {
+        "type": "string"
+      },
+      "id": {
+        "type": "string"
+      },
+      "identityConfirmed": {
+        "type": "boolean"
+      },
+      "intervalSeconds": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "kind": {
+        "type": "string"
+      },
+      "lastCompleteAt": {
+        "type": "string"
+      },
+      "lastProgressAt": {
+        "type": "string"
+      },
+      "libraryId": {
+        "type": "string"
+      },
+      "name": {
+        "type": "string"
+      },
+      "nextScanAt": {
+        "type": "string"
+      },
+      "path": {
+        "type": "string"
+      },
+      "resolvedPath": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "identityConfirmed",
+      "id",
+      "libraryId",
+      "kind",
+      "name",
+      "path",
+      "resolvedPath",
+      "classification",
+      "generation",
+      "health",
+      "enabled",
+      "followSymlinks",
+      "intervalSeconds",
+      "nextScanAt",
+      "lastCompleteAt",
+      "lastProgressAt"
     ],
     "type": "object"
   },
@@ -41888,6 +44863,162 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "PostLibrariesIdNetworkRootsRequest": {
+    "properties": {
+      "expectedRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "roots": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      }
+    },
+    "required": [
+      "roots"
+    ],
+    "type": "object"
+  },
+  "PostLibrariesIdNetworkRootsResponse": {
+    "properties": {
+      "approvals": {
+        "items": {
+          "properties": {
+            "addresses": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "root": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "root",
+            "addresses"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      }
+    },
+    "required": [
+      "approvals"
+    ],
+    "type": "object"
+  },
+  "PostLibrariesIdScansRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "PostLibrariesIdScansResponse": {
+    "properties": {
+      "analyzed": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "error": {
+        "type": "string"
+      },
+      "id": {
+        "type": "string"
+      },
+      "jobs": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "phase": {
+        "type": "string"
+      },
+      "processed": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "scanMode": {
+        "type": "string"
+      },
+      "sourceId": {
+        "type": "string"
+      },
+      "status": {
+        "type": "string"
+      },
+      "warnings": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "id",
+      "status",
+      "processed",
+      "analyzed",
+      "warnings"
+    ],
+    "type": "object"
+  },
+  "PostLibrariesRequest": {
+    "properties": {
+      "kind": {
+        "type": "string"
+      },
+      "metadataAgent": {
+        "type": "string"
+      },
+      "metadataLanguage": {
+        "type": "string"
+      },
+      "name": {
+        "type": "string"
+      },
+      "path": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "name",
+      "kind",
+      "path"
+    ],
+    "type": "object"
+  },
+  "PostLibrariesResponse": {
+    "properties": {
+      "defaultView": {
+        "type": "string"
+      },
+      "id": {
+        "type": "string"
+      },
+      "kind": {
+        "type": "string"
+      },
+      "name": {
+        "type": "string"
+      },
+      "pinned": {
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "defaultView",
+      "id",
+      "name",
+      "kind",
+      "pinned"
+    ],
+    "type": "object"
+  },
   "PostMetadataAttentionRequest": {
     "properties": {
       "action": {
@@ -41936,6 +45067,534 @@ export const schemas = {
     },
     "required": [
       "status"
+    ],
+    "type": "object"
+  },
+  "PostStorageMountsIdActionsRequest": {
+    "properties": {
+      "action": {
+        "type": "string"
+      },
+      "cacheBytes": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "cacheFloor": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "config": {
+        "type": "string"
+      },
+      "executable": {
+        "type": "string"
+      },
+      "expectedRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "name": {
+        "type": "string"
+      },
+      "operationId": {
+        "type": "string"
+      },
+      "remote": {
+        "type": "string"
+      },
+      "setup": {
+        "properties": {
+          "accessKey": {
+            "type": "string"
+          },
+          "bucket": {
+            "type": "string"
+          },
+          "endpoint": {
+            "type": "string"
+          },
+          "prefix": {
+            "type": "string"
+          },
+          "region": {
+            "type": "string"
+          },
+          "secretKey": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "endpoint",
+          "region",
+          "accessKey",
+          "secretKey",
+          "bucket",
+          "prefix"
+        ],
+        "type": "object"
+      }
+    },
+    "required": [
+      "operationId"
+    ],
+    "type": "object"
+  },
+  "PostStorageMountsIdActionsResponse": {
+    "properties": {
+      "accepted": {
+        "type": "boolean"
+      },
+      "controlRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "deleted": {
+        "type": "boolean"
+      },
+      "mount": {
+        "properties": {
+          "actions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "backendRevision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "cacheBytes": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "cacheFloor": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "controlRevision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "desiredState": {
+            "type": "string"
+          },
+          "error": {
+            "type": "string"
+          },
+          "executable": {
+            "type": "string"
+          },
+          "executableDigest": {
+            "type": "string"
+          },
+          "executableVersion": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "mountPath": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "observedState": {
+            "type": "string"
+          },
+          "removalPending": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "backendRevision",
+          "executableVersion",
+          "cacheBytes",
+          "cacheFloor",
+          "controlRevision",
+          "removalPending",
+          "actions",
+          "executable",
+          "id",
+          "name",
+          "mountPath",
+          "desiredState",
+          "observedState",
+          "executableDigest"
+        ],
+        "type": "object"
+      },
+      "mountId": {
+        "type": "string"
+      },
+      "operationId": {
+        "type": "string"
+      },
+      "scope": {
+        "properties": {
+          "serverId": {
+            "type": "string"
+          },
+          "viewerFence": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "serverId",
+          "viewerFence"
+        ],
+        "type": "object"
+      }
+    },
+    "required": [
+      "scope",
+      "operationId",
+      "mountId",
+      "controlRevision",
+      "accepted",
+      "deleted"
+    ],
+    "type": "object"
+  },
+  "PostStorageMountsRequest": {
+    "properties": {
+      "action": {
+        "type": "string"
+      },
+      "cacheBytes": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "cacheFloor": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "config": {
+        "type": "string"
+      },
+      "executable": {
+        "type": "string"
+      },
+      "expectedRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "name": {
+        "type": "string"
+      },
+      "operationId": {
+        "type": "string"
+      },
+      "remote": {
+        "type": "string"
+      },
+      "setup": {
+        "properties": {
+          "accessKey": {
+            "type": "string"
+          },
+          "bucket": {
+            "type": "string"
+          },
+          "endpoint": {
+            "type": "string"
+          },
+          "prefix": {
+            "type": "string"
+          },
+          "region": {
+            "type": "string"
+          },
+          "secretKey": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "endpoint",
+          "region",
+          "accessKey",
+          "secretKey",
+          "bucket",
+          "prefix"
+        ],
+        "type": "object"
+      }
+    },
+    "required": [
+      "operationId"
+    ],
+    "type": "object"
+  },
+  "PostStorageMountsResponse": {
+    "properties": {
+      "accepted": {
+        "type": "boolean"
+      },
+      "controlRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "deleted": {
+        "type": "boolean"
+      },
+      "mount": {
+        "properties": {
+          "actions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "backendRevision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "cacheBytes": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "cacheFloor": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "controlRevision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "desiredState": {
+            "type": "string"
+          },
+          "error": {
+            "type": "string"
+          },
+          "executable": {
+            "type": "string"
+          },
+          "executableDigest": {
+            "type": "string"
+          },
+          "executableVersion": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "mountPath": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "observedState": {
+            "type": "string"
+          },
+          "removalPending": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "backendRevision",
+          "executableVersion",
+          "cacheBytes",
+          "cacheFloor",
+          "controlRevision",
+          "removalPending",
+          "actions",
+          "executable",
+          "id",
+          "name",
+          "mountPath",
+          "desiredState",
+          "observedState",
+          "executableDigest"
+        ],
+        "type": "object"
+      },
+      "mountId": {
+        "type": "string"
+      },
+      "operationId": {
+        "type": "string"
+      },
+      "scope": {
+        "properties": {
+          "serverId": {
+            "type": "string"
+          },
+          "viewerFence": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "serverId",
+          "viewerFence"
+        ],
+        "type": "object"
+      }
+    },
+    "required": [
+      "scope",
+      "operationId",
+      "mountId",
+      "controlRevision",
+      "accepted",
+      "deleted"
+    ],
+    "type": "object"
+  },
+  "PostStorageSourcesWebdavRequest": {
+    "properties": {
+      "expectedGeneration": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "insecureLocal": {
+        "type": "boolean"
+      },
+      "keepConnection": {
+        "type": "boolean"
+      },
+      "keepPassword": {
+        "type": "boolean"
+      },
+      "name": {
+        "type": "string"
+      },
+      "operationId": {
+        "type": "string"
+      },
+      "password": {
+        "type": "string"
+      },
+      "root": {
+        "type": "string"
+      },
+      "username": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "operationId",
+      "name",
+      "root",
+      "username",
+      "password",
+      "insecureLocal"
+    ],
+    "type": "object"
+  },
+  "PostStorageSourcesWebdavResponse": {
+    "properties": {
+      "receipt": {
+        "properties": {
+          "accepted": {
+            "type": "boolean"
+          },
+          "operationId": {
+            "type": "string"
+          },
+          "removed": {
+            "type": "boolean"
+          },
+          "source": {
+            "properties": {
+              "credentialPresent": {
+                "type": "boolean"
+              },
+              "errorCode": {
+                "type": "string"
+              },
+              "generation": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "id": {
+                "type": "string"
+              },
+              "insecureLocal": {
+                "type": "boolean"
+              },
+              "kind": {
+                "type": "string"
+              },
+              "mountId": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "origin": {
+                "type": "string"
+              },
+              "rangeSupport": {
+                "type": "string"
+              },
+              "rootPath": {
+                "type": "string"
+              },
+              "state": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "kind",
+              "name",
+              "rootPath",
+              "generation",
+              "state",
+              "rangeSupport",
+              "insecureLocal",
+              "credentialPresent"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "operationId",
+          "accepted",
+          "removed",
+          "source"
+        ],
+        "type": "object"
+      },
+      "scope": {
+        "properties": {
+          "serverId": {
+            "type": "string"
+          },
+          "viewerFence": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "serverId",
+          "viewerFence"
+        ],
+        "type": "object"
+      }
+    },
+    "required": [
+      "scope",
+      "receipt"
     ],
     "type": "object"
   },
@@ -44086,6 +47745,206 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "PutAdminLibrariesIdScanPolicyRequest": {
+    "properties": {
+      "acceptReplacement": {
+        "type": "boolean"
+      },
+      "classification": {
+        "type": "string"
+      },
+      "expectedRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "followSymlinks": {
+        "type": "boolean"
+      },
+      "intervalSeconds": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "name": {
+        "type": "string"
+      },
+      "path": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "name",
+      "path",
+      "classification",
+      "followSymlinks",
+      "intervalSeconds",
+      "expectedRevision",
+      "acceptReplacement"
+    ],
+    "type": "object"
+  },
+  "PutAdminLibrariesIdScanPolicyResponse": {
+    "properties": {
+      "classification": {
+        "type": "string"
+      },
+      "enabled": {
+        "type": "boolean"
+      },
+      "followSymlinks": {
+        "type": "boolean"
+      },
+      "generation": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "health": {
+        "type": "string"
+      },
+      "id": {
+        "type": "string"
+      },
+      "identityConfirmed": {
+        "type": "boolean"
+      },
+      "intervalSeconds": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "kind": {
+        "type": "string"
+      },
+      "lastCompleteAt": {
+        "type": "string"
+      },
+      "lastProgressAt": {
+        "type": "string"
+      },
+      "libraryId": {
+        "type": "string"
+      },
+      "name": {
+        "type": "string"
+      },
+      "nextScanAt": {
+        "type": "string"
+      },
+      "path": {
+        "type": "string"
+      },
+      "resolvedPath": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "identityConfirmed",
+      "id",
+      "libraryId",
+      "kind",
+      "name",
+      "path",
+      "resolvedPath",
+      "classification",
+      "generation",
+      "health",
+      "enabled",
+      "followSymlinks",
+      "intervalSeconds",
+      "nextScanAt",
+      "lastCompleteAt",
+      "lastProgressAt"
+    ],
+    "type": "object"
+  },
+  "PutAdminLibrariesIdShowsShowSettingsRequest": {
+    "properties": {
+      "absoluteNumbering": {
+        "type": "boolean"
+      },
+      "hideSeasons": {
+        "type": "boolean"
+      },
+      "newestFirst": {
+        "type": "boolean"
+      },
+      "ranges": {
+        "type": "boolean"
+      },
+      "revision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "hideSeasons",
+      "absoluteNumbering",
+      "ranges",
+      "newestFirst",
+      "revision"
+    ],
+    "type": "object"
+  },
+  "PutAdminLibrariesIdShowsShowSettingsResponse": {
+    "properties": {
+      "absoluteNumbering": {
+        "type": "boolean"
+      },
+      "hideSeasons": {
+        "type": "boolean"
+      },
+      "newestFirst": {
+        "type": "boolean"
+      },
+      "ranges": {
+        "type": "boolean"
+      },
+      "revision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "hideSeasons",
+      "absoluteNumbering",
+      "ranges",
+      "newestFirst",
+      "revision"
+    ],
+    "type": "object"
+  },
+  "PutAdminLibrariesOrderRequest": {
+    "properties": {
+      "libraryIds": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      }
+    },
+    "required": [
+      "libraryIds"
+    ],
+    "type": "object"
+  },
+  "PutAdminLibrariesOrderResponse": {
+    "properties": {
+      "libraryIds": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      }
+    },
+    "required": [
+      "libraryIds"
+    ],
+    "type": "object"
+  },
   "PutAdminMaintenanceSettingsRequest": {
     "properties": {
       "expectedRevision": {
@@ -45955,6 +49814,146 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "PutLibrariesIdStrmAnalysisPolicyRequest": {
+    "properties": {
+      "expectedGeneration": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "insecureLocal": {
+        "type": "boolean"
+      },
+      "keepConnection": {
+        "type": "boolean"
+      },
+      "keepPassword": {
+        "type": "boolean"
+      },
+      "name": {
+        "type": "string"
+      },
+      "operationId": {
+        "type": "string"
+      },
+      "password": {
+        "type": "string"
+      },
+      "root": {
+        "type": "string"
+      },
+      "username": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "operationId",
+      "name",
+      "root",
+      "username",
+      "password",
+      "insecureLocal"
+    ],
+    "type": "object"
+  },
+  "PutLibrariesIdStrmAnalysisPolicyResponse": {
+    "properties": {
+      "receipt": {
+        "properties": {
+          "accepted": {
+            "type": "boolean"
+          },
+          "operationId": {
+            "type": "string"
+          },
+          "removed": {
+            "type": "boolean"
+          },
+          "source": {
+            "properties": {
+              "credentialPresent": {
+                "type": "boolean"
+              },
+              "errorCode": {
+                "type": "string"
+              },
+              "generation": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "id": {
+                "type": "string"
+              },
+              "insecureLocal": {
+                "type": "boolean"
+              },
+              "kind": {
+                "type": "string"
+              },
+              "mountId": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "origin": {
+                "type": "string"
+              },
+              "rangeSupport": {
+                "type": "string"
+              },
+              "rootPath": {
+                "type": "string"
+              },
+              "state": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "kind",
+              "name",
+              "rootPath",
+              "generation",
+              "state",
+              "rangeSupport",
+              "insecureLocal",
+              "credentialPresent"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "operationId",
+          "accepted",
+          "removed",
+          "source"
+        ],
+        "type": "object"
+      },
+      "scope": {
+        "properties": {
+          "serverId": {
+            "type": "string"
+          },
+          "viewerFence": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "serverId",
+          "viewerFence"
+        ],
+        "type": "object"
+      }
+    },
+    "required": [
+      "scope",
+      "receipt"
+    ],
+    "type": "object"
+  },
   "PutLibrarySettingsRequest": {
     "properties": {
       "expectedRevision": {
@@ -46499,6 +50498,146 @@ export const schemas = {
       "includeAdult",
       "tmdbCredentialConfigured",
       "tvdbCredentialConfigured"
+    ],
+    "type": "object"
+  },
+  "PutStorageSourcesWebdavIdRequest": {
+    "properties": {
+      "expectedGeneration": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "insecureLocal": {
+        "type": "boolean"
+      },
+      "keepConnection": {
+        "type": "boolean"
+      },
+      "keepPassword": {
+        "type": "boolean"
+      },
+      "name": {
+        "type": "string"
+      },
+      "operationId": {
+        "type": "string"
+      },
+      "password": {
+        "type": "string"
+      },
+      "root": {
+        "type": "string"
+      },
+      "username": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "operationId",
+      "name",
+      "root",
+      "username",
+      "password",
+      "insecureLocal"
+    ],
+    "type": "object"
+  },
+  "PutStorageSourcesWebdavIdResponse": {
+    "properties": {
+      "receipt": {
+        "properties": {
+          "accepted": {
+            "type": "boolean"
+          },
+          "operationId": {
+            "type": "string"
+          },
+          "removed": {
+            "type": "boolean"
+          },
+          "source": {
+            "properties": {
+              "credentialPresent": {
+                "type": "boolean"
+              },
+              "errorCode": {
+                "type": "string"
+              },
+              "generation": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "id": {
+                "type": "string"
+              },
+              "insecureLocal": {
+                "type": "boolean"
+              },
+              "kind": {
+                "type": "string"
+              },
+              "mountId": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "origin": {
+                "type": "string"
+              },
+              "rangeSupport": {
+                "type": "string"
+              },
+              "rootPath": {
+                "type": "string"
+              },
+              "state": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "kind",
+              "name",
+              "rootPath",
+              "generation",
+              "state",
+              "rangeSupport",
+              "insecureLocal",
+              "credentialPresent"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "operationId",
+          "accepted",
+          "removed",
+          "source"
+        ],
+        "type": "object"
+      },
+      "scope": {
+        "properties": {
+          "serverId": {
+            "type": "string"
+          },
+          "viewerFence": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "serverId",
+          "viewerFence"
+        ],
+        "type": "object"
+      }
+    },
+    "required": [
+      "scope",
+      "receipt"
     ],
     "type": "object"
   },
