@@ -100,6 +100,13 @@ test('formatters: duration, bytes, relative time, clock, list, time zones and ho
   assert.equal(us.duration(0), '');
   assert.equal(us.bytes(1_500_000_000), '1.4 GB');
   assert.equal(us.bytes(undefined), '—');
+  // Sizes step by 1024 and take the locale's own unit and number format; whole bytes are spelled out.
+  assert.equal(us.bytes(512), '512 bytes');
+  assert.equal(us.bytes(1), '1 byte');
+  assert.equal(us.bytes(1536), '1.5 kB');
+  assert.equal(us.bytes(12 * 1024 * 1024), '12 MB');
+  const fr = createI18n(resolveRegion({locale: 'fr-FR'}, {locales: ['en-US'], timeZone: 'UTC'}));
+  assert.equal(fr.bytes(1_500_000_000).replace(/\s/g, ' '), '1,4 Go');
   assert.equal(us.clock(3723), '1:02:03');
   const now = Date.parse('2026-09-22T12:00:00Z');
   assert.equal(us.relativeTime(now - 10_000, now), 'Just now');
@@ -111,6 +118,19 @@ test('formatters: duration, bytes, relative time, clock, list, time zones and ho
   assert.equal(us.time(Date.parse('2026-09-22T15:05:00Z')), '3:05 PM');
   const h23 = createI18n(resolveRegion({locale: 'en-US', hourCycle: 'h23'}, {locales: ['en-US'], timeZone: 'UTC'}));
   assert.equal(h23.time(Date.parse('2026-09-22T15:05:00Z')), '15:05');
+  // Date and time together are one format, so each locale joins them its own way and the clock choice holds.
+  const afternoon = Date.parse('2026-09-22T15:05:00Z');
+  assert.equal(us.dateTime(afternoon).replace(/\s/g, ' '), 'Sep 22, 2026, 3:05 PM');
+  assert.equal(h23.dateTime(afternoon), 'Sep 22, 2026, 15:05');
+  assert.equal(createI18n(resolveRegion({locale: 'ja-JP'}, {locales: ['en-US'], timeZone: 'UTC'})).dateTime(afternoon), '2026/09/22 15:05');
+  assert.equal(us.dateTime('not a date'), '');
+  // Other fields: the profile's locale and clock, the device's zone unless another is asked for.
+  assert.equal(h23.formatDate(afternoon, {weekday: 'short', hour: 'numeric', minute: '2-digit'}), 'Tue 15:05');
+  assert.equal(us.formatDate(afternoon, {hour: 'numeric', minute: '2-digit', timeZone: 'America/Halifax'}).replace(/\s/g, ' '), '12:05 PM');
+  assert.equal(us.formatDate('1961-05-06', {year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC'}), 'May 6, 1961');
+  assert.equal(us.languageName('fr'), 'French');
+  assert.equal(us.languageName('not a language'), 'not a language');
+  assert.equal(us.list(['Apple', 'Google'], 'or'), 'Apple or Google');
   const ca = createI18n(resolveRegion({locale: 'en-CA'}, {locales: ['en-US'], timeZone: 'UTC'}));
   assert.equal(ca.t('saved.tab.favorites'), 'Favourites');
   assert.equal(ca.t('entry.markWatched'), 'Mark as watched'); // falls back to en-US
