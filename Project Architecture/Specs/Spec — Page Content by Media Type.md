@@ -1,5 +1,7 @@
 # Page content by media type (normative)
 
+October scope and evidence: The server continues to decide screen contents. Home rows publish typed See all destinations; clients do not guess from IDs. Every subgroup must offer the main sort/filter vocabulary. Genres/Series paging is implemented; wider grouping parity and client acceptance remain unfinished. Ratings are integer 0–10, displayed as half-stars with unset distinct from zero. Sources: [personal-state](../../../_program/reports/personal-state.md), [search-sort](../../../_program/reports/search-sort.md), [grouping-sorts](../../../_program/reports/grouping-sorts.md). Existing route examples must be checked against generated contracts before use.
+
 This spec says **what every title page shows, where the data comes from, and what happens when data is missing**. It extends `Spec — Title Pages.md` (the shared hero, the show page and the episode view), which stays valid. **The standard is Plex:** a page for anything in the library should feel complete.
 
 ## 0. Rules for every page

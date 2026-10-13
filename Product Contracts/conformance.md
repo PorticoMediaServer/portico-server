@@ -17,7 +17,7 @@ Revision: portico.reconciled.1. These are required implementation outcomes, not 
 | CF11 | General internet flag is false but local server is reachable | Direct server work is attempted under valid local policy; Hosted unavailability does not clear credentials |
 | CF12 | Hosted cold restart with overdue fleet heartbeats and revocations | Bounded indexed queues, jitter and retained desired acknowledgments; no full-fleet synchronous repair storm |
 | CF13 | Same-revision signed policy has different content | Reject collision; retain current safe state; no last-write-wins |
-| CF14 | File List Only includes media, NFO, artwork, subtitles and STRM | Inventory succeeds with zero object-content reads; deferred facts are honestly unavailable |
+| CF14 | File List Only includes media, NFO, artwork, subtitles and STRM | Inventory avoids media/ordinary sidecar content; bounded ignore configuration is allowed; deferred facts are honestly unavailable |
 | CF15 | First file probe hangs/fails, later healthy files exist | Inventory becomes visible independently; per-source/analysis bounds prevent healthy work starvation |
 | CF16 | Network mount disappears, exposing an accessible empty root | Root path accessibility cannot authorize absence/deletion; last catalog retained with source failure |
 | CF17 | One subdirectory/page fails, then terminal loop sees no pending rows | Incomplete coverage cannot publish authoritative absence; failure/partial outcome retained |
@@ -32,7 +32,7 @@ Revision: portico.reconciled.1. These are required implementation outcomes, not 
 | CF26 | Provider unavailable while detail/cards request uncached artwork | Image response uses local retained asset/fallback; no interactive provider fetch; bounded repair independent |
 | CF27 | Selected-art cache pressure or failed replacement staging | Still-selected original retained; prior valid selection preserved; derivative pruning cannot delete it |
 | CF28 | Hierarchy merge with >500 descendants and an unknown reference owner | No truncation/partial visible identity switch; unknown references block; restart resumes bounded staging |
-| CF29 | Catalog/projection changes between pages or permissions narrow | Cursor rejects/restarts safely; no private leak, silent duplicate continuation or client whole-library sorting |
+| CF29 | Catalog/projection changes between pages or permissions narrow | Valid continuations recover quietly where possible; permission/query changes remain safe; no private leak or client whole-library sorting |
 | CF30 | Search/detail return, refresh, large text or locale change | Stable shell/context and accessible focus; scoped in-memory query retained appropriately, no private URL/history serialization |
 | CF31 | Same profile independently plays on two devices | Separate occurrences/queues/history; canonical resume writer follows document 32; no implicit stop/handoff |
 | CF32 | Explicit watched/unwatched competes with old playback/offline event | Old evidence cannot undo newer explicit intent; conflicting explicit branches need resolution |
@@ -74,3 +74,18 @@ Revision: portico.reconciled.1. These are required implementation outcomes, not 
 The reconciliation explicitly walked these combined journeys at the design level: Hosted outage plus profile switch plus offline receipt; interrupted scan plus mount replacement plus existing playback; manual edit plus delayed provider/asset publication; duplicate playlist entries plus permission-narrowed continuation; guide correction plus recording crash/retention; receiver handoff plus account/server switch; and restore rollback plus old credentials/offline state. Result: the new ownership/fencing/publication rules give a defined authoritative outcome at each boundary. These walkthroughs are architectural reasoning, not runtime passes.
 
 The design pass corrected four draft ambiguities: local code uniqueness cannot span disconnected authorities; a policy revision is not a durable owner; offline monotonicity applies to event sequence rather than increasing position; and restoring a DB epoch cannot supply an anti-rollback security boundary. The current corpus also resolves the existing first-playing/readiness handoff conflict in favor of document 32.
+
+## October outcome additions
+
+These are required checks, not executed acceptance:
+
+- Missing-file observation is immediate in healthy coverage; unreachable roots preserve all titles. Replacement reattaches by recognised identity and restores supported state. Confirm one-version physical deletion cannot switch to changed bytes.
+- All subgroup sort/filter controls use the main library vocabulary and complete server paging; no title-only grouping.
+- Native/mpv Automatic chooses native original/remux and uses mpv only to avoid the specified fidelity losses. Quality Original is default; optional Automatic starts Original and adapts in both directions.
+- HTTP from public/overlay/IPv6 addresses is admitted; only home networks define locality. Trusted-proxy forgery is refused; Hosted never publishes HTTP.
+- Same-channel viewers share an input; same-airing profile recordings share bytes without exposing private ownership.
+- Source/title/cache tidying leaves offline receipts usable. Ordinary sign-out retains protected bytes unless explicit removal is selected. Clock rollback remains unqualified.
+- API credential restore can restore a previously revoked key; disclose/review this implemented exception rather than asserting universal credential reset.
+- No email/push/extension/theme/sub-path or old-baseline compatibility becomes a release prerequisite.
+
+The older full staged-merge and restore-incarnation scenarios remain design requirements to review; they are not current implementation guarantees. Follow [architecture amendments](architecture-amendments.md) and source reports for gaps.

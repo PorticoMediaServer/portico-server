@@ -1,14 +1,14 @@
 # Metadata, Matching, Provenance, and Artwork Contract
 
-> Current Portico product contract, reconciled 5 September 2026.
+> Current Portico product contract. October decisions supersede the September reconciliation where noted.
 
 
-Contract ID: `PC-METADATA`  
-Revision: `portico.reconciled.1`  
-Status: **approved**  
-Owners: Product, Server Metadata, Catalog, Security, Client Foundations  
-Imports: `PC-FOUNDATION` permissions and resource lanes; `PC-GOVERNANCE` lifecycle/exception law; `PC-GLOSSARY` vocabulary  
-Coordinates with: `PC-LIBRARY-SCANNING`, `PC-MEDIA-PRESENTATION`, `PC-ACCESSIBILITY-LANGUAGE`, `PC-SETTINGS-OPERATIONS`  
+Contract ID: `PC-METADATA`
+Revision: `portico.october.1`
+Status: **approved**
+Owners: Product, Server Metadata, Catalog, Security, Client Foundations
+Imports: `PC-FOUNDATION` permissions and resource lanes; `PC-GOVERNANCE` lifecycle/exception law; `PC-GLOSSARY` vocabulary
+Coordinates with: `PC-LIBRARY-SCANNING`, `PC-MEDIA-PRESENTATION`, `PC-ACCESSIBILITY-LANGUAGE`, `PC-SETTINGS-OPERATIONS`
 Applies to: Portico Server, bundled Server Web, Client Core, and every first-party client that displays or manages metadata
 
 ## Scope and non-goals
@@ -17,9 +17,9 @@ This contract owns descriptive metadata authority, evidence, matching, accepted 
 
 It does not own technical media facts such as codecs, streams, chapters, bitrate, or seek evidence; scanner identity and playback capability; user watch state; provider commercial licensing decisions; or the visual layout of cards/detail pages. Those facts may be presented beside metadata but remain under their owning contracts.
 
-TMDB is the built-in primary provider for movies and television. TheTVDB is a built-in selectable provider and default fallback for movies and television. Both work without ordinary owner key setup, subject to provider availability and licensing. Portico does not require Hosted Services as a metadata proxy.
+Each library selects one provider. TMDB is the default for movies, television and anime. TheTVDB is an alternative where supported; anime may select AniList. Local metadata only makes no online calls. Built-in credentials and owner overrides remain server-side. There is no fallback chain or Hosted metadata proxy.
 
-Before the first remote metadata request for a new server, setup MUST explain that enabled providers receive bounded title/identity queries directly from that server and present the initial provider policy: TMDB primary, TheTVDB fallback. The owner can disable either provider or choose a different supported order before confirming; confirmation is durable and editable later in Server Console. Dismissing or abandoning the disclosure sends no provider query and setup resumes at the same decision.
+Provider settings explain that the selected provider receives bounded title/identity queries directly from the server. The owner can choose another supported provider or local metadata only per library. Do not present an ordered chain or a second global provider authority. Live provider and first-run disclosure acceptance remain unverified.
 
 There are no unresolved metadata product decisions in this revision. This pre-release contract has one revisioned evidence model; an implementation MUST NOT preserve a weaker legacy overwrite path alongside it.
 
@@ -64,11 +64,11 @@ Technical media facts live in the media-analysis record and are immutable for on
 
 ### 2.1 Built-in provider capabilities
 
-| Media family | Primary | Fallback / selectable | Local evidence |
+| Media family | Default | Selectable / related service | Local evidence |
 | --- | --- | --- | --- |
 | Movies | TMDB | TheTVDB | NFO, embedded where supported, filenames, local artwork |
 | Shows, seasons, episodes, specials | TMDB | TheTVDB | NFO, filenames, local artwork |
-| Anime | AniList | TMDB/TheTVDB only when explicitly selected and supported | NFO, filenames, local artwork |
+| Anime | TMDB | TheTVDB or AniList where supported | NFO, filenames, local artwork |
 | Music artists, albums, tracks | MusicBrainz | AcoustID for opt-in fingerprint-assisted identification; Cover Art Archive for art | Embedded tags, NFO where supported, filenames, local art/lyrics |
 | Audiobooks and books | Local OPF/NFO/embedded evidence | A future provider requires an approved contract update | Filenames, author/series/narrator tags, local artwork |
 | Live channels/programs/recordings | Configured tuner/lineup/guide authority | Explicit owner mappings; descriptive provider enrichment only when separately approved | Channel/guide fields, local logos, recording-derived facts |
@@ -83,7 +83,7 @@ TMDB requests MUST use the item/library language and region policy. Search consi
 
 ### 2.3 TheTVDB
 
-TheTVDB MUST be available out of the box for supported movies/television as an integrated provider, not a required plugin. It is selectable as primary per library/item and is the default fallback when TMDB cannot make a sufficiently confident match or cannot supply required supported fields.
+TheTVDB is an integrated selectable library provider. It is not a plugin and is never an automatic fallback for another library provider. Provider IDs in an explicit owner Identify operation remain typed evidence, not permission for a second online chain.
 
 TheTVDB authentication tokens are server-private, cached for a bounded lifetime, and refreshed without exposing the application key. Provider-specific episode ordering/season types MUST be represented as an explicit selected ordering policy; one provider’s episode order cannot silently renumber an already accepted hierarchy.
 
@@ -112,14 +112,9 @@ Evidence that names the wrong entity kind, conflicts with an accepted hierarchy,
 
 ### 3.2 Candidate decision
 
-All match candidates MUST retain provider, external ID/type, normalized score, evidence reasons, query evidence digest, observed time, and status. Confidence is in `[0,1]` and means Portico’s confidence in identity equivalence, not provider popularity or metadata completeness.
+Matching tolerates missing years, minor spelling errors and normalised title variants when the selected provider's candidates have sufficient confidence. Typed IDs, kind, runtime, title/year and contradictions contribute evidence. Popularity alone is insufficient. There is no mandatory two-independent-signal gate or universal 0.85/0.12 threshold.
 
-Automatic acceptance requires either:
-
-- an exact valid typed provider identity; or
-- confidence at or above `0.85`, at least two independent strong signals, no hard contradiction, and a margin of at least `0.12` over the next incompatible candidate.
-
-Otherwise the item remains unmatched or retains its prior accepted identity and exposes candidates for owner review. An implementation MAY use a more conservative threshold; it MUST NOT use a less conservative one without a contract change or approved exception.
+Uncertain and unmatched video titles enter the owner-only needs-attention queue. It retains candidates and reasons and supports accept, search, provider ID and dismiss. Totals are exact for the existing film/TV/anime queue; music is not included. Current screen matching requires verified details, no contradiction, at least one strong signal, confidence at least 0.78 and a 0.07 margin over incompatible candidates (`metadata/screen_match.go`). This is source behaviour, not a calibrated accuracy guarantee or owner setting.
 
 ### 3.3 Accepted identities
 
@@ -131,9 +126,9 @@ Manual Identify with a specific provider restricts that operation to the chosen 
 
 ### 3.4 Ambiguous items, duplicates, and merge
 
-Ambiguous files remain separate candidates; Portico does not merge solely because normalized titles match. A merge requires accepted identity equivalence, exact content evidence, or explicit owner action.
+A title is separate from its files. Recognised files attach as versions. Accepted provider identity may merge titles within one library; an owner can merge titles or separate a supported file. Ambiguity is not resolved by provider popularity alone. Owner locks and exact source/identity fences remain effective.
 
-Merge is one durable operation over a closed registry of all references. It preserves provider histories, revisions, locks, artwork, versions, people, relationships, Saved state, playback/viewer state, and audit records. Bounded staging may prepare a large merge; one fenced publication boundary switches canonical identity and its validated alias/projection generation. Readers see a coherent generation, not partially rewritten identity. Unknown references or conflicting protected state block publication instead of deleting evidence. See the metadata amendment for reconciliation and undo boundaries.
+The identity implementation preserves supported personal fields. It does not supply aliases for absorbed IDs, restore every per-play history row/playlist position, or merge artists/albums/books by provider identity. Large show merges still use one transaction. Download references have later follow-up wiring; other reference continuity and review findings remain open. These are implementation gaps, not a declaration of a completed closed-reference/undo protocol.
 
 ## 4. Field and relationship decisions
 
@@ -334,7 +329,7 @@ Serialized metadata decisions validate against `metadata-decision.schema.json`. 
 
 A conformant implementation proves:
 
-- built-in TMDB primary and TheTVDB fallback/selectable behavior without ordinary owner keys;
+- one selected provider per library, TMDB default and TheTVDB/AniList alternatives where supported, without ordinary owner key setup;
 - an exact provider ID wins over name popularity while invalid/mismatched IDs fail closed;
 - auto-match threshold, independent-signal, contradiction, and margin rules;
 - manual Identify cannot be overwritten by another provider’s name search;
@@ -371,3 +366,9 @@ The informative comparison behind these decisions is in `plex-jellyfin-precedent
 ## Reconciled architecture boundary
 
 The applicable section of [Domain architecture and failure boundaries](../architecture-amendments.md) completes this contract. It resolves named implementation conflicts; original UX and product choices remain as recorded in [decisions.md](../decisions.md). Old schema/fixture references are historical inputs to be ported, as defined by the current registry, not a second rebuilt API authority.
+
+## October scope and evidence
+
+One provider and tolerant confidence matching govern. The video attention queue has exact totals and later MCP tools. Live-provider and browser acceptance are unverified; music review is outside that queue.
+
+Sources: [providers-matching](../../../_program/reports/providers-matching.md), [scan-loop](../../../_program/reports/scan-loop.md), [console](../../../_program/reports/console.md), [server-followups](../../../_program/reports/server-followups.md). [Owner decisions](../decisions.md) govern. Each existing conformance matrix is required coverage, not proof of execution. Release parity is required for applicable first-party features; truly unsupported platform capabilities are hidden. Roku, CarPlay, Android Auto and light theme are outside this programme. No consumer push or email. No stable API or old-database compatibility is promised before release.

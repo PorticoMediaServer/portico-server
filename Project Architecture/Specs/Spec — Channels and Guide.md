@@ -1,5 +1,7 @@
 # Channels and Guide: Live TV and Library Channels (design spec)
 
+October scope and evidence: Live viewers/DVR now share one upstream source/channel acquisition, with private per-viewer conversion. Same-airing recordings share payload storage while retaining profile-private ownership/deletion. Imports keep valid rows and bounded diagnostics; large guides spool/checkpoint. Current live publishing is MPEG-TS; full two-engine/fMP4 live, reservation delivery and real tuner/device/Windows capture acceptance remain unfinished. Guide layout and reminders below are requirements, not a completed all-client claim. Sources: [livetv](../../../_program/reports/livetv.md), [planner-wiring](../../../_program/reports/planner-wiring.md), [native-sync](../../../_program/reports/native-sync.md). Existing route examples must be checked against generated contracts before use.
+
 Applies to web, iPhone, iPad and TV. The shared model (§9) is in client-core.
 
 Sources:

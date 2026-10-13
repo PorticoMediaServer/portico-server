@@ -1,12 +1,12 @@
 # Foundation: ownership, authorization and resources
 
-Contract ID: PC-FOUNDATION. Revision: portico.reconciled.1. Current intended behavior; implementation evidence remains separate.
+Contract ID: PC-FOUNDATION. Revision: portico.october.1. Current intended behavior; implementation evidence remains separate.
 
 ## Stable owner versus current permission
 
 A durable viewer owner is `(authority, accountId, profileId, serverId)`. Authority is `hosted` or `local`; identical identifier strings under different authorities are distinct. In a database belonging to exactly one server, server ID may be implicit in that database boundary. An internal stable viewer ID is permitted only with a unique, immutable mapping to the full tuple. Raw externally issued profile ID alone is insufficient.
 
-Hosted account-only state is `(hosted, accountId[, profileId])` with no invented server. Authenticated account session review and profile management must work before a viewing profile is selected. Local identity is always server-bound. Account settings/session families are account-owned; media viewing state is profile-owned. Device IDs are metadata or proof-key bindings, never a substitute for an account principal.
+Hosted account-only state is `(hosted, accountId[, profileId])` with no invented server. Authenticated account session review and profile management must work before a viewing profile is selected. Local identity is always server-bound. Account settings/session families are account-owned; media viewing state is profile-owned. Device IDs bind server installation records, never a substitute for an account principal or a proof of device key possession.
 
 Authorization evidence is separate: Hosted policy revision/expiry, server-local restriction revision, profile/PIN revision, credential/security incarnation and client selection generation each fence their relevant work. They are not interchangeable counters or part of durable personal-data identity. An authorization revision change invalidates old requests/grants/cache eligibility and re-evaluates access; it does not erase or fork playlists, recordings, watched state or coherent offline bytes. Actual revocation/erasure follows the owning contract. Cache keys and request envelopes include both the stable owner and relevant version evidence.
 
@@ -50,3 +50,9 @@ No new per-playback Hosted dependency, metadata broker, mandatory managed databa
 ## Cross-domain references
 
 Durable mechanics are in [architecture.md](../architecture.md). PC-PLAYBACK document 32 owns playback identifiers/timelines/leases; other features consume them and do not redefine them. [decisions.md](../decisions.md) records preserved product choices and reconciled implementation assumptions. [conformance.md](../conformance.md) supplies cross-boundary failure scenarios in addition to the preserved domain cases.
+
+## October scope and evidence
+
+Separate progress, personal-command, browse-order and directory counters govern freshness. Scoped keys/tokens and local webhooks/MCP are implemented. Background work has Gentle/Normal/Fast pacing and an explicit one-hour owner pause. Do not equate all changes with one authorisation revision, promise device possession keys or require encryption at rest.
+
+Sources: [freshness-server](../../../_program/reports/freshness-server.md), [api-platform](../../../_program/reports/api-platform.md), [limits-settings](../../../_program/reports/limits-settings.md). [Owner decisions](../decisions.md) govern. Each existing conformance matrix is required coverage, not proof of execution. Release parity is required for applicable first-party features; truly unsupported platform capabilities are hidden. Roku, CarPlay, Android Auto and light theme are outside this programme. No consumer push or email. No stable API or old-database compatibility is promised before release.

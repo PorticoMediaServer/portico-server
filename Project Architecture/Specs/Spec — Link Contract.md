@@ -1,11 +1,13 @@
 # Portico link contract (normative)
 
-One table for every public link Portico emits: emails, QR codes, share sheets, Handoff and universal links. Hosted keeps these paths in one Go constant set, web implements the routes, and Apple maps them to `portico://`. Secrets (tokens, invite codes) always go in the **fragment**, never the query, and the page scrubs them from history after reading them (`history.replaceState`).
+October boundary: plain HTTP is permitted for direct local-server addresses from any network. Hosted links and advertised routes remain TLS. No email or consumer push is sent. The outside-app consent flow is a deliberate exception to the general fragment rule: reviewed callback code/state are query values, bound to exact return address and PKCE. [Hosted review fixes](../../../_program/reports/review-hosted.md) define that behaviour; actual universal/app-scheme handoff remains unverified.
+
+One table for every public link Portico emits: QR codes, share sheets, Handoff and universal links. Hosted keeps these paths in one Go constant set, web implements the routes, and Apple maps them to `portico://`. Secrets (tokens, invite codes) always go in the **fragment**, never the query, and the page scrubs them from history after reading them (`history.replaceState`).
 
 | Purpose | Web URL (`https://web.getportico.tv`) | App link | Universal link |
 |---|---|---|---|
-| Password reset | `/reset#token=<t>` | — (web only) | no |
-| Verify / change email | `/verify-email#token=<t>` | — | no |
+| Password reset / email verification | Historical Hosted paths require no-email reconciliation; no mail is sent | — | no |
+
 | Server or account invitation | `/join#invite=<t>` | `portico://invite#invite=<t>` | yes (`/join`) |
 | Watch Together invite | `/together/join#code=<c>` | `portico://together/join/<c>` | yes (`/together/join`) |
 | Approve a TV sign-in | `/device` (optional `#code=<c>`) | `portico://device` | yes |

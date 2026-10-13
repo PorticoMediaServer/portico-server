@@ -1,54 +1,38 @@
 # Portico: overview
 
-Portico is a personal media server with first-party apps, in the Plex and Jellyfin tradition. It's non-commercial, free, and designed for power users. The owner runs the server on their own hardware; people watch and listen through the web app and the Apple apps. A small hosted service handles only what a home server can't: accounts, sign-in across servers, discovery, and certificates.
+Portico is a free, pre-release self-hosted media server. The owner runs a Go server with SQLite. The web app, React Native apps and Vega app browse and play directly from that server. Hosted owns global account sign-in and coordination; it does not carry ordinary media or metadata.
 
-This folder describes the system as it is. [Product Contracts](../Product%20Contracts/) say what the product must do; these documents say how it's built. [Backlog](Backlog.md) lists known open work.
+This folder describes implementation reported in the October programme. [Product Contracts](../Product%20Contracts/decisions.md) record required behaviour. [Backlog](Backlog.md) records unfinished implementation and acceptance. A source change or cross-compile is not proof of physical-device operation.
 
 ## Repositories
 
-Everything lives under `Codex Projects/Portico/`:
+The active Ubuntu workspace is `/home/justin/projects/Portico`. The implementation programme uses isolated worktrees. Original checkouts are not integration worktrees.
 
-| Repository | Visibility | Contents |
-|---|---|---|
-| `apps/portico-server` | public | The server (Go), the web app, the shared client packages, the Docker image, test fixtures |
-| `apps/portico-react-native` | public | The iPhone, iPad and Apple TV app (React Native, `apps/native`); future Android and TV ports go beside it |
-| `portico-internal` | private | Hosted services (Hosted API, Hosted web host, DNS), deployment and operations, these documents, product contracts, brand assets, deployment information |
-| `getportico-tv` | public | The public website and user documentation |
-| `portico-recommendation-enhancement` | — | The title enrichment dataset build (see [Recommendations](05%20Recommendations.md)) |
+| Repository | Contents |
+|---|---|
+| apps/portico-server | Go server, web app, canonical client-core/design/i18n packages, API toolkit and packaging |
+| apps/portico-react-native | iPhone, iPad, Apple TV, Android, Android TV and Fire TV apps; Vega variant |
+| portico-internal | Hosted API, Hosted web host, DNS, private operations and product documents |
+| getportico-tv | Public website and documentation |
+| portico-recommendation-enhancement | Private title enrichment dataset |
 
-Shared code has exactly one owner. Copies are identical, and a script checks them:
+Shared packages belong to portico-server. Native copies are refreshed by `scripts/shared-packages.mjs`; they are not a second authority. Hosted's apikit copy follows the server toolkit. [Native sync](../../_program/reports/native-sync.md) and [Hosted](../../_program/reports/hosted.md) record the checks and integration boundaries.
 
-- **Client packages** (`packages/client-core`, `design`, `i18n`) belong to portico-server. portico-react-native keeps a copy of the parts its apps use; `node scripts/shared-packages.mjs --check` fails on any difference, and `--write` refreshes the copy.
-- **apikit**, the Go API toolkit the server and Hosted share, belongs to portico-server. portico-internal keeps a copy at `hosted-services/apikit`; `scripts/shared-apikit.sh` checks it.
+## Product boundaries
 
-Scripts that need another repository find it as a sibling (`../apps/portico-server` from portico-internal, `../portico-server` from portico-react-native) or through `PORTICO_SERVER_REPO` / `PORTICO_REACT_NATIVE_REPO`.
+- The local server owns the catalogue, metadata, playback, state, downloads, Live TV, DVR, discovery and screen composition. Clients render server-selected content.
+- Titles are separate from files and versions. Missing files do not erase titles or watch state. Deleting a disk file and emptying retained missing titles are different actions.
+- Intake is tolerant. A bad row, line, file or subfolder cannot discard its healthy neighbours. Bounds, authorisation and storage confinement remain enforced.
+- Platform players remain primary. mpv is an additional engine on Apple and Android/Fire clients. One device capability document drives the planner.
+- Original is the quality default. A viewer may select Automatic, which starts at Original and adapts to the connection. Server load does not silently reduce a fixed choice.
+- Browse and search answer during background rebuilds. Server events drive quiet refresh; the console and sign-in have protected admission capacity.
+- Plain HTTP works from any address. Home networks alone define local and remote. Hosted advertises TLS routes. Own-hostname proxies, overlays and IPv6 are supported designs; sub-path hosting is excluded.
+- Open integration means scoped API credentials, outbound webhooks and a local MCP endpoint. There are no plugins, themes or custom CSS.
+- State and backups are plain files protected by filesystem permissions. Sessions are bearer credentials tied to installation records, not device possession keys.
+- No email or consumer push. Server-to-server signed wakes are coordination messages. Relay is future work. Roku, CarPlay, Android Auto and light theme are outside this programme.
 
-## Components
+## Implementation and acceptance
 
-```
-                         ┌───────────────────────────────┐
-  web browser ──────────►│ Portico server (owner's host)  │◄──── iPhone / iPad / Apple TV
-  (served by the server  │  Go, one SQLite state folder   │      (React Native + native modules)
-   or by web.getportico) │  FFmpeg for analysis/transcode │
-                         └──────────────┬────────────────┘
-                                        │ rare, event-driven
-                         ┌──────────────▼────────────────┐
-                         │ Hosted (api.getportico.tv)     │  accounts, sign-in, server directory,
-                         │ PostgreSQL · web host · DNS    │  claim, certificates (DNS-01), Cast receiver
-                         └────────────────────────────────┘
-```
+[Server](02%20Server.md), [Catalogue](03%20Catalogue%20and%20Metadata.md), [Playback](04%20Playback%20and%20Media.md), [Clients](06%20Clients.md), [Hosted](07%20Hosted%20Services.md) and [Operations](08%20Operations.md) give the reported implementation. Complete first-party delivery remains a release requirement. Platform capabilities that cannot work are hidden. Native engines, packaging, real networks and physical devices still need the acceptance recorded in their reports; no deployment is inferred here.
 
-- **Server** ([Server](02%20Server.md)): scans libraries, keeps the catalogue ([Catalogue and Metadata](03%20Catalogue%20and%20Metadata.md)), serves the API, plays and transcodes media ([Playback and Media](04%20Playback%20and%20Media.md)), records Live TV, and runs recommendations ([Recommendations](05%20Recommendations.md)). One process, one state folder.
-- **Clients** ([Clients](06%20Clients.md)): the web app (served by every server and, in a Hosted-only build, at web.getportico.tv) and the Apple app. Both are thin: the server composes rows, orders and pages; clients render them.
-- **Hosted** ([Hosted Services](07%20Hosted%20Services.md)): identity and discovery. Day to day, clients talk to the user's server directly; Hosted sees sign-in, claim, occasional directory refreshes and certificate issuance.
-- **Operations** ([Operations](08%20Operations.md)): five VPSs (Hosted, two DNS nodes, the demo, test runners), systemd everywhere, no Docker in production.
-
-## Principles that shape the code
-
-- **Scale.** Libraries of 5–10 million items must feel like small ones. A page load does bounded, indexed work; clients hold only what's visible. Library-wide work happens when the library changes, in background batches, never per request.
-- **Fresh.** No time-based caches of derived results. A memo is only ever keyed by the exact revisions it read, so a change shows on the next load.
-- **Open data.** The state folder is plain SQLite and files. It can be copied to another machine and just works. Nothing of the owner's is encrypted at rest; folder permissions protect it.
-- **Owner choice, low ceremony.** Plain HTTP stays first-class. A correct username and password always sign you in. Background work is deprioritized, never paused. Quality changes only when a person asks.
-- **Hosted stays cheap.** No periodic chatter; the server pushes real changes when they happen.
-- **Correctness over limits.** Sorts, filters, search and "See all" are complete and correct; a fast common path sits in front of a correct full path.
-- **Web and Apple first.** Other platforms come later as ports of the tvOS app, which is the reference experience.
+Latest [native follow-ups](../../_program/reports/leftovers-native.md) contain Vega credential redirects by refusing sensitive exchanges before dispatch. Vega sign-in, saved-session restore and authenticated control/streams are unavailable until a redirect-refusing native transport exists. This is an unfinished release feature, even though the earlier Vega player source is implemented. The same follow-up supplies Apple scene/reinstall/admission and inactive-page source fixes; earlier native reports' gap lists must be read with it.

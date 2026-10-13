@@ -1,14 +1,14 @@
 # Account, Server, and Device Onboarding Contract
 
-> Current Portico product contract, reconciled 5 September 2026.
+> Current Portico product contract. October decisions supersede the September reconciliation where noted.
 
 
-Contract ID: `PC-ONBOARDING`  
-Revision: `portico.reconciled.1`  
-Status: **approved**  
-Owners: Product, Hosted Identity, Server Setup, Client Foundations  
-Imports: `PC-FOUNDATION` viewer scope and permissions; `PC-GOVERNANCE` lifecycle/exception law  
-Coordinates with: `PC-IDENTITY`, `PC-NETWORKING`, `PC-VISUAL`, `PC-ACCESSIBILITY-LANGUAGE`  
+Contract ID: `PC-ONBOARDING`
+Revision: `portico.october.1`
+Status: **approved**
+Owners: Product, Hosted Identity, Server Setup, Client Foundations
+Imports: `PC-FOUNDATION` viewer scope and permissions; `PC-GOVERNANCE` lifecycle/exception law
+Coordinates with: `PC-IDENTITY`, `PC-NETWORKING`, `PC-VISUAL`, `PC-ACCESSIBILITY-LANGUAGE`
 Applies to: Hosted Services, Portico Server, Web, Client Core, and every first-party client
 
 ## 1. Purpose
@@ -42,11 +42,11 @@ Non-goals are organization provisioning, enterprise device management, bulk serv
 
 ### 3.1 Password registration
 
-Required input is username, contact email, and password. The username and password rules come from `../identity/contract.md`. The flow verifies email ownership and issues the account credential only after the account is complete. A repeated request with the same idempotency key returns the same account/result or a deterministic conflict.
+Username/password and supported provider onboarding retain exact authority and credential-publication checks. The October no-email decision supersedes mandatory contact verification; existing Hosted mail-dependent onboarding still needs reconciliation. The rules come from `../identity/contract.md`. A repeated request with the same idempotency key returns the same account/result or a deterministic conflict.
 
 States:
 
-`start → editing → validating → email_verification_pending → committing → credentials_persisting → signed_in`
+`start → editing → validating → committing → credentials_persisting → signed_in`
 
 Possible side states are `validation_error`, `retryable_failure`, `expired`, and `cancelled`. Validation errors preserve non-secret input. Passwords and email tokens are never written to ordinary draft storage.
 
@@ -56,13 +56,13 @@ Existing linked identities skip onboarding. New Google or Apple identities must 
 
 States:
 
-`provider_start → provider_authorized → identity_verified → onboarding_required → username_selection → contact_email_verification? → committing → credentials_persisting → signed_in`
+`provider_start → provider_authorized → identity_verified → onboarding_required → username_selection → committing → credentials_persisting → signed_in`
 
 - Refreshing or reopening the canonical onboarding URL resumes while the token is valid.
 - Username collision returns a replacement onboarding token and preserves provider proof.
 - Expiry gives a clear **Start sign-in again** action.
 - Provider cancellation returns to sign-in without an error banner.
-- A new account is not usable until username and verified contact email requirements are satisfied.
+- A new account needs its chosen username and valid sign-in proof; mail delivery is not a release prerequisite. Existing Hosted mail paths remain unfinished reconciliation.
 - Native clients finish through the native account container; they do not display an app-authored imitation of the provider page.
 
 ## 4. First server initialization
@@ -115,13 +115,13 @@ Raw transport strings such as `Load failed`, `Failed to fetch`, `502 Bad Gateway
 Every server initialized with a Portico Account creates a separate Local recovery-owner authority before setup becomes `ready`. It is not another Portico Account and is not used during ordinary Hosted sign-in.
 
 - Setup generates a high-entropy one-time recovery code or accepts a strong recovery password, confirms durable hashed storage, and requires the owner to save/confirm it before completion.
-- Recovery sign-in is accepted only from localhost or a verified private-LAN route by default. Enabling remote recovery requires a separate warned owner setting and does not weaken rate limits or TLS/identity checks.
+- Recovery/sign-in locality uses the owner home-network list, never an independent private-address test. Enabling remote recovery requires a separate warned owner setting and does not weaken rate limits or TLS/identity checks.
 - Successful recovery opens a clearly labeled **This Server · Recovery Owner** session with `server.manage`; it cannot manage the Hosted account, other servers, Hosted profiles, invitations, or Hosted memberships.
 - Recovery can repair networking/certificates, export diagnostics/backups, restore service, transfer/unclaim the server when Hosted returns, or deliberately convert the server to Local authority through a separately confirmed destructive operation.
 - Hosted account deletion may unclaim into this authority only after the owner proves both fresh Hosted account control and the Local recovery credential.
 - Losing this credential does not create a Hosted backdoor. A future physical-console reset requires a separately contracted proof and data-preservation policy.
 
-The credential is server-local, write-only after creation, excluded from backups unless encrypted under an operator-supplied backup key, and never sent to Hosted Services.
+The credential is server-local, write-only after creation, governed by the plain-state backup and session-scrubbing policy, and never sent to Hosted Services.
 
 ## 5. Protocol-v1 human setup code
 
@@ -192,7 +192,7 @@ Nearby TV approval produces two outputs atomically:
 
 The server bootstrap is not required for account authorization. If no server is selected, no server exists, or the chosen server is offline, the TV still becomes account-authenticated and shows the appropriate server chooser/empty state. A bootstrap is exchanged once with the verified server for a server-native family.
 
-The encrypted grant is stored before commit and remains recoverable to the authenticated poller. Credential collision or state conflict rolls back Device, credentials, bootstrap, and grant transition together.
+The grant is stored in plain server state before commit and remains recoverable to the authenticated poller. Credential collision or state conflict rolls back Device, credentials, bootstrap, and grant transition together.
 
 The TV page contains the QR, code, `web.getportico.tv/device`, **Sign in with a Portico Account**, and **Sign in directly to a server**. Legal URLs are printed rather than rendered as misleading focusable links. Tiny hyperlink-style TV actions are prohibited.
 
@@ -236,3 +236,17 @@ The comparative evidence behind device-link and setup decisions is recorded in `
 ## Reconciled architecture boundary
 
 The applicable section of [Domain architecture and failure boundaries](../architecture-amendments.md) completes this contract. It resolves named implementation conflicts; original UX and product choices remain as recorded in [decisions.md](../decisions.md). Old schema/fixture references are historical inputs to be ported, as defined by the current registry, not a second rebuilt API authority.
+
+## October implementation boundary
+
+Direct setup/sign-in is independent of Hosted and accepts HTTP from any address. Setup is deliberately open before an owner exists; same-origin/JSON checks are not a DNS-rebinding guarantee. TV-code sign-in carries the approver's role, with separate device-approval pending/denied states. No device possession key exists.
+
+Outside apps can use direct credentials, device codes or Hosted public-client Sign in with Portico. Hosted consent uses S256 PKCE/state/exact return binding and exchanges a short code for a server/challenge-bound assertion only. Local membership and admission still decide access. Real browser/provider/app-scheme acceptance remains unverified.
+
+Activation retries preserve the current code and must not run before the larger of protocol due time, Retry-After and shared Hosted outage floor. Manual and automatic actions use their respective admission classes. Native/source integration and physical TV flows need the reported acceptance checks.
+
+## October scope and evidence
+
+Hosted app consent/source fixes and shared activation gating are reported, but provider/cookie/OS handoff/TV acceptance remains unverified. The no-email decision still needs residual Hosted reconciliation.
+
+Sources: [hosted](../../../_program/reports/hosted.md), [review-hosted](../../../_program/reports/review-hosted.md), [native-sync](../../../_program/reports/native-sync.md), [accounts-security](../../../_program/reports/accounts-security.md). [Owner decisions](../decisions.md) govern. Each existing conformance matrix is required coverage, not proof of execution. Release parity is required for applicable first-party features; truly unsupported platform capabilities are hidden. Roku, CarPlay, Android Auto and light theme are outside this programme. No consumer push or email. No stable API or old-database compatibility is promised before release.

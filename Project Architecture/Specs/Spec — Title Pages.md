@@ -1,5 +1,7 @@
 # Title pages: shows, seasons, episodes and the shared hero (normative)
 
+October scope and evidence: Titles and files are separate. Missing titles retain identity/state; physical versions have preview/delete actions and last-copy retention. Edition/part evidence exists, but persistent multipart grouping and best-playable selection remain limits. Web later passes expose missing badges/exact attention counts; native pending version/queue/delete actions and device layouts remain incomplete. All genre/series/category/collection/person/tab groupings must offer the main sort/filter vocabulary; grouping implementation is in progress. Sources: [identity](../../../_program/reports/identity.md), [server-followups](../../../_program/reports/server-followups.md), [console](../../../_program/reports/console.md), [native-sync](../../../_program/reports/native-sync.md), [grouping-sorts](../../../_program/reports/grouping-sorts.md). Existing route examples must be checked against generated contracts before use.
+
 Applies to web, iPhone/iPad and TV. Anime uses exactly the same structure as TV shows. The **core player layout is untouched**; this is the detail and browse structure only.
 
 ## 1. The shared hero (every media type)

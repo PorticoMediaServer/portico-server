@@ -1,5 +1,7 @@
 # Spec — Hosted at Scale (identity + discovery; the server owns membership)
 
+October status: the architecture below supplies the server-owned membership/discovery design. The current Hosted baseline is revision 21, fresh-only; older migration/schema numbers are historical implementation notes, not supported adoption. Public-client Sign in with Portico now uses reviewed S256 consent/code exchange returning only a server-bound assertion. Runtime signing and bounded revocation wakes/check-in have source fixes; real browser/provider/OS/fleet acceptance and apikit synchronisation remain open. Sources: [Hosted](../../../_program/reports/hosted.md), [Hosted review fixes](../../../_program/reports/review-hosted.md), [Hosted follow-ups](../../../_program/reports/hosted-followups.md). Capacity arithmetic below remains design evidence, not a measured release guarantee.
+
 Justin's rule (23 Sep): clients reach Hosted only to sign in and for a handful of rare cases; the user's
 server is the authority for who may use it; Hosted must stay economical at hundreds of thousands to a
 few million users on **one** VPS; everything already set up keeps working while Hosted is down.
@@ -26,7 +28,7 @@ Hosted's memory.
 | Membership (is A a member of S, role owner/admin/member, disabled) | **Server** (`account_portico_links` + `direct_memberships`) | Hosted discovery index `server_members` | Server pushes deltas; Hosted never decides access. |
 | Profiles, PINs, profile trust, library allow-lists, parental restrictions, access limits | **Server** | none | Exactly the direct-member tables. Hosted account profiles stop being used for server access. |
 | Server sessions, devices, sign-out, session review | **Server** | none | Direct-member machinery (`authority='local'` families). |
-| Invitations | **Server** (`access_invitations`) | none | Hosted only delivers mail when the owner asks for email delivery (phase 2). |
+| Invitations | **Server** (`access_invitations`) | none | No email delivery; the owner shares the link. |
 | Server list per account | **Hosted discovery index** (a replica of server facts) | device keeps the list + version | Version kept in Hosted memory. |
 | Server identity, claim, routes, DNS, certificates, members-only DNS label | **Hosted** | server caches | Unchanged. |
 
@@ -179,9 +181,7 @@ A 4-core/16 GB VPS has an order of magnitude of headroom; TLS handshakes dominat
 1. Owner/admin creates an invitation on the server (`POST /v1/admin/access/invitations`, existing; role +
    libraries; email optional). The server returns a one-time code and a link
    `https://web.getportico.tv/join#server=<id>&code=<code>` (app link on Apple). The owner shares it.
-2. *(phase 2, only when the owner ticks "email it")* the server asks Hosted
-   `POST /v1/servers/{id}/invitations/deliver {email, link}`; Hosted mails it (rate-limited per server).
-   Hosted stores nothing else about the invitation.
+2. No email is sent. The owner shares the server-created link.
 3. Invitee opens the link. If not signed in to a Portico Account, the app signs in (Hosted). The app asks
    Hosted for an identity assertion for that server and calls the server's accept with
    `{code, porticoIdentity}`. The server checks the code, creates the linked account + primary profile,
@@ -254,7 +254,7 @@ Hosted migration **0017** (`migration_0017.go`):
    discovery index, version map + watch, check-in without policy, deletion via index, migrations.
 2. (this branch, after the API settles) client-core: version-checked list, Refresh Servers, identity
    sign-in, invitation acceptance by identity; with UI on web and Apple.
-3. (later) email delivery through Hosted; leave route; drop legacy Hosted routes and tables.
+3. Reconcile residual mail requirements, leave flow and retired routes/tables; no email delivery is added.
 
 ## 13. As built (23 Sep, be/member)
 

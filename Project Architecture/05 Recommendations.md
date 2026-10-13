@@ -1,5 +1,7 @@
 # Recommendations
 
+October programme status: recommendation design below is retained. Integer 0–10 personal ratings, separate progress counters, readable catalogue generations and privacy-aware shared popularity now govern its inputs. Dataset publication, independent row freshness hints and real-device presentation remain unverified or unfinished in [Backlog](Backlog.md). Sources: [search/sort](../../_program/reports/search-sort.md), [personal state](../../_program/reports/personal-state.md), [freshness clients](../../_program/reports/freshness-clients.md). This is not a new capacity or deployment claim.
+
 Personal Home rows, personal Discover rows in every library, title pages that know what else you'll like, a For you sort in browse, and saved views on Home. The goal is Plex's shape with much better results. A household server has only a handful of viewers, so the engine models each profile's taste carefully and leans on the crowd signal open metadata already carries.
 
 Constraints the design keeps:
