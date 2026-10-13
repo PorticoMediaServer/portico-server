@@ -8,7 +8,7 @@ import {PersonalSavedService, type PersonalSavedSnapshot} from '@core/personal-s
 import {useService} from '../../app/content';
 import {captionFor, formatDuration, iconFor, progressFor, shapeFor} from '@core/presentation/index.ts';
 import {mosaicPaths} from '../../app/title-layout';
-import {useOpenEntry} from '../../app/open';
+import {useEntryHref, useOpenEntry} from '../../app/open';
 import {sequenceContainer} from '../../app/container-play';
 import {usePlayerActions} from '../../player/PlayerContext';
 import {useSession} from '../../app/session';
@@ -33,6 +33,8 @@ export function SavedResourceScreen() {
   const scope = useViewerScope();
   const player = usePlayerActions();
   const open = useOpenEntry();
+  // Cards are links, so they open in a new tab and their address can be copied.
+  const hrefOf = useEntryHref();
   const playlist = kind === 'playlist';
   const route = useMemo<SavedRoute>(() => (playlist ? {view: 'playlist', playlistId: resourceId} : {view: 'resource', resourceId}), [playlist, resourceId]);
   const savedBinding = useService<SavedService, SavedSnapshot>(() => new SavedService({api, scope, requestId}), [api, scope]);
@@ -170,8 +172,8 @@ export function SavedResourceScreen() {
       {snap.loading && !items.length ? <LoadingGrid /> : null}
       {!snap.loading && !items.length && !snap.error ? <StateView icon="collection" title={view ? t('web.saved.viewEmpty') : t('web.saved.collectionEmpty')} /> : null}
       {items.length > SECTION_WINDOW_AT ? (
-        <WindowedRows items={items} estimateRowHeight={300} columnMin="clamp(120px, 11vw, 168px)" label={name} renderItem={e => <Card key={e.id} title={e.media!.title} caption={cardCaptionOf(e.media!)} path={e.media!.posterUrl} shape={shapeFor(e.media!.kind)} icon={iconFor(e.media!.kind)} progress={progressFor(e.media!)} onOpen={() => open(e.media!)} onPlay={e.media!.playback ? () => open(e.media!, 'play') : undefined} onMore={anchor => (can('entries') && !view ? setEntryMenu({id: e.id, anchor}) : open(e.media!, 'more', undefined, anchor))} />} />
-      ) : items.length ? <Grid density="poster">{items.map(e => <Card key={e.id} title={e.media!.title} caption={cardCaptionOf(e.media!)} path={e.media!.posterUrl} shape={shapeFor(e.media!.kind)} icon={iconFor(e.media!.kind)} progress={progressFor(e.media!)} onOpen={() => open(e.media!)} onPlay={e.media!.playback ? () => open(e.media!, 'play') : undefined} onMore={anchor => (can('entries') && !view ? setEntryMenu({id: e.id, anchor}) : open(e.media!, 'more', undefined, anchor))} />)}</Grid> : null}
+        <WindowedRows items={items} estimateRowHeight={300} columnMin="clamp(120px, 11vw, 168px)" label={name} renderItem={e => <Card key={e.id} title={e.media!.title} caption={cardCaptionOf(e.media!)} path={e.media!.posterUrl} shape={shapeFor(e.media!.kind)} icon={iconFor(e.media!.kind)} progress={progressFor(e.media!)} href={hrefOf(e.media!)} onOpen={() => open(e.media!)} onPlay={e.media!.playback ? () => open(e.media!, 'play') : undefined} onMore={anchor => (can('entries') && !view ? setEntryMenu({id: e.id, anchor}) : open(e.media!, 'more', undefined, anchor))} />} />
+      ) : items.length ? <Grid density="poster">{items.map(e => <Card key={e.id} title={e.media!.title} caption={cardCaptionOf(e.media!)} path={e.media!.posterUrl} shape={shapeFor(e.media!.kind)} icon={iconFor(e.media!.kind)} progress={progressFor(e.media!)} href={hrefOf(e.media!)} onOpen={() => open(e.media!)} onPlay={e.media!.playback ? () => open(e.media!, 'play') : undefined} onMore={anchor => (can('entries') && !view ? setEntryMenu({id: e.id, anchor}) : open(e.media!, 'more', undefined, anchor))} />)}</Grid> : null}
       {loadingMore ? <Inset><Skeleton height={48} /></Inset> : null}
       {snap.nextCursor || loadingMore ? <ScrollSentinel cursor={snap.nextCursor} disabled={snap.loading} onMore={() => void service.next().catch(() => {})} /> : null}
       <AnchoredMenu anchor={entryMenu?.anchor} open={!!entryMenu} onOpenChange={o => !o && setEntryMenu(null)} label={t('web.saved.collectionOptions')}>

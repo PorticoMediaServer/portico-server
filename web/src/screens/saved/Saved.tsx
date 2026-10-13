@@ -7,7 +7,7 @@ import {PersonalSavedService, type PersonalSavedSnapshot} from '@core/personal-s
 import {SavedService, historyPeriods, savedListFilters, type HistoryPeriod, type PlaylistCard, type PlaylistOccurrence, type SavedEntry, type SavedListFilter, type SavedRoute, type SavedSnapshot} from '@core/saved.ts';
 import {useService} from '../../app/content';
 import {captionFor, iconFor, progressFor, shapeFor} from '@core/presentation/index.ts';
-import {useOpenEntry} from '../../app/open';
+import {useEntryHref, useOpenEntry} from '../../app/open';
 import {useSession} from '../../app/session';
 import {Button, Card, Chip, Chips, ConfirmDialog, Dialog, Grid, Input, Inset, ListRow, Menu, Notice, Page, PageHeader, Row, StateView, Surface, Switch, Tabs, Text, TextArea, type IconName} from '../../ui';
 import {LoadingGrid} from '../shared/Sections';
@@ -179,6 +179,7 @@ function PersonalView({tab, snapshot, onRefresh, onNext, onPrevious}: {tab: Save
   const {t} = i18n;
   const navigate = useNavigate();
   const open = useOpenEntry();
+  const hrefOf = useEntryHref();
   const loadingFresh = snapshot.loading && !snapshot.entries.length && !snapshot.resources.length;
   const copy = emptyCopy(t, tab);
   const collections = tab === 'collections' || tab === 'views';
@@ -195,7 +196,7 @@ function PersonalView({tab, snapshot, onRefresh, onNext, onPrevious}: {tab: Save
           {snapshot.entries.filter(e => e.media).map(e => {
             const m = e.media!;
             const when = e.updatedAt ? i18n.relativeTime(Date.parse(e.updatedAt)) : undefined;
-            return <Card key={e.id} title={m.title} caption={[e.completed ? t('web.saved.finished') : cardCaptionOf(m), when].filter(Boolean).join(' · ')} path={m.posterUrl ?? m.backdropUrl} shape="poster" fit={shapeFor(m.kind) === 'square' ? 'contain' : undefined} icon={iconFor(m.kind)} progress={e.completed ? 0 : e.positionSeconds && m.duration ? Math.min(1, e.positionSeconds / m.duration) : progressFor(m)} watched={e.completed} onOpen={() => open(m)} onPlay={m.playback ? () => open(m, 'play') : undefined} onMore={anchor => open(m, 'more', undefined, anchor)} />;
+            return <Card key={e.id} title={m.title} caption={[e.completed ? t('web.saved.finished') : cardCaptionOf(m), when].filter(Boolean).join(' · ')} path={m.posterUrl ?? m.backdropUrl} shape="poster" fit={shapeFor(m.kind) === 'square' ? 'contain' : undefined} icon={iconFor(m.kind)} href={hrefOf(m)} progress={e.completed ? 0 : e.positionSeconds && m.duration ? Math.min(1, e.positionSeconds / m.duration) : progressFor(m)} watched={e.completed} onOpen={() => open(m)} onPlay={m.playback ? () => open(m, 'play') : undefined} onMore={anchor => open(m, 'more', undefined, anchor)} />;
           })}
         </Grid>
       )}
@@ -206,10 +207,11 @@ function PersonalView({tab, snapshot, onRefresh, onNext, onPrevious}: {tab: Save
 
 function MediaGrid({entries}: {entries: readonly ContentEntry[]}) {
   const open = useOpenEntry();
+  const hrefOf = useEntryHref();
   if (!entries.length) return null;
   const shapes = new Set(entries.map(e => shapeFor(e.kind)));
   const density = shapes.size === 1 && shapeFor(entries[0]!.kind) === 'square' ? 'square' : 'poster';
-  return <Grid density={density}>{entries.map(e => <Card key={e.id} title={e.title} caption={cardCaptionOf(e)} path={e.posterUrl ?? e.backdropUrl} shape={shapeFor(e.kind)} icon={iconFor(e.kind)} progress={progressFor(e)} watched={e.watched} onOpen={() => open(e)} onPlay={e.playback ? () => open(e, 'play') : undefined} onMore={anchor => open(e, 'more', undefined, anchor)} />)}</Grid>;
+  return <Grid density={density}>{entries.map(e => <Card key={e.id} title={e.title} caption={cardCaptionOf(e)} path={e.posterUrl ?? e.backdropUrl} shape={shapeFor(e.kind)} icon={iconFor(e.kind)} progress={progressFor(e)} watched={e.watched} href={hrefOf(e)} onOpen={() => open(e)} onPlay={e.playback ? () => open(e, 'play') : undefined} onMore={anchor => open(e, 'more', undefined, anchor)} />)}</Grid>;
 }
 function Pager({canPrevious, canNext, busy, onPrevious, onNext}: {canPrevious: boolean; canNext: boolean; busy: boolean; onPrevious: () => void; onNext: () => void}) {
   const {t} = useI18n();
