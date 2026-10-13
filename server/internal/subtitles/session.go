@@ -334,7 +334,10 @@ func (s *Service) selectCommit(ctx context.Context, p identity.Principal, item, 
 // OpenDocument requires the exact CURRENT selection and a live session pin.
 // Keeping old bytes for physical readers never creates a new access grant.
 func (s *Service) OpenDocument(ctx context.Context, p identity.Principal, item, session, id string, revision int64) (*mediaartifact.Reader, error) {
-	gated3, p, e := s.tx(ctx, p, item)
+	if e := s.ensureCached(ctx, p, item, id, revision); e != nil {
+		return nil, e
+	}
+	gated3, p, e := s.readTx(ctx, p, item)
 	if e != nil {
 		return nil, e
 	}

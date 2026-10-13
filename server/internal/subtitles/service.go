@@ -234,7 +234,7 @@ type Catalog struct {
 }
 
 func (s *Service) List(ctx context.Context, p identity.Principal, item string) (Catalog, error) {
-	gated, p, e := s.tx(ctx, p, item)
+	gated, p, e := s.readTx(ctx, p, item)
 	if e != nil {
 		return Catalog{}, e
 	}
@@ -375,6 +375,8 @@ type publication struct {
 	object                                                   mediaartifact.Object
 	origin, provider, attribution, originalDigest, discovery string
 	discoveryRevision                                        int64
+	cacheResource                                            string
+	cacheRevision                                            int64
 	source                                                   Source
 	renderer, evidence                                       string
 	defaultTrack, forcedTrack                                bool
@@ -498,7 +500,7 @@ func (s *Service) Mutate(ctx context.Context, p identity.Principal, item string,
 		if m.Content != nil {
 			input = []byte(*m.Content)
 		}
-		raw, e = CanonicalAsset(input, m.Companion, m.Format, int64(src.duration*1e6))
+		raw, e = CanonicalAssetWithLanguage(input, m.Companion, m.Format, int64(src.duration*1e6), m.Language)
 		if e != nil {
 			return Receipt{}, e
 		}
@@ -567,6 +569,21 @@ func (s *Service) publish(ctx context.Context, p identity.Principal, item string
 	if pub.discovery != "" && src.InventoryRevision != pub.discoveryRevision {
 		return Receipt{}, ErrConflict
 	}
+	if pub.cacheResource != "" {
+		result, err := tx.ExecContext(ctx, `UPDATE subtitle_revisions SET digest=?,size=?,original_digest=? WHERE resource_id=? AND revision=? AND digest='' AND size=0 AND source_size=? AND source_modified_ns=?`, pub.object.Digest, pub.object.Size, pub.originalDigest, pub.cacheResource, pub.cacheRevision, src.size, src.modified)
+		if err != nil {
+			return Receipt{}, err
+		}
+		n, _ := result.RowsAffected()
+		if n != 0 {
+			if _, err = tx.ExecContext(ctx, `UPDATE subtitle_render_revisions SET renderer=?,source_evidence=? WHERE resource_id=? AND revision=?`, pub.renderer, pub.evidence, pub.cacheResource, pub.cacheRevision); err != nil {
+				return Receipt{}, err
+			}
+		}
+		out := Receipt{OperationID: m.OperationID, ResourceID: pub.cacheResource, Revision: pub.cacheRevision}
+		return out, gated3.Commit()
+	}
+
 	if m.Scope == "shared" && !owner(p) {
 		return Receipt{}, identity.ErrUnauthorized
 	}

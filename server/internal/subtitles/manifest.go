@@ -29,7 +29,10 @@ func PinManifestTextTx(ctx context.Context, tx *sql.Tx, session, item, source, v
 }
 
 func (s *Service) OpenManifestDocument(ctx context.Context, p identity.Principal, item, session, id string, revision int64) (*mediaartifact.Reader, int64, error) {
-	gate, p, e := s.tx(ctx, p, item)
+	if e := s.ensureCached(ctx, p, item, id, revision); e != nil {
+		return nil, 0, e
+	}
+	gate, p, e := s.readTx(ctx, p, item)
 	if e != nil {
 		return nil, 0, e
 	}

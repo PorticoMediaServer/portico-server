@@ -19,7 +19,7 @@ const ChunkMS int64 = 240000
 type Track struct {
 	Origin, Locator, Format, Language, Title, Reason string
 	StreamIndex                                      int
-	Default, Forced                                  bool
+	Default, Forced, HearingImpaired                 bool
 	Size, ModifiedNS                                 int64
 	Digest                                           string
 }
@@ -33,25 +33,29 @@ type Inventory struct {
 
 // Discover reads exact-basename associations only. The caller owns the media
 // facts snapshot; this function never changes a catalog or follows a sidecar
-// symlink. A same-basename second media version makes sidecar ownership ambiguous.
+// symlink. Versions with the same basename share their sidecars.
 func Discover(ctx context.Context, c *storage.Client, key, path string, embedded []Track, originUS int64, known bool) (*Inventory, error) {
 	return discover(ctx, c, key, path, embedded, originUS, known, func(visit func(storage.Snapshot) error) error {
-		return c.Inventory(ctx, key, filepath.Dir(path), visit)
+		return c.Inventory(ctx, key, filepath.Dir(path), func(v storage.Snapshot) error {
+			if v.Directory && (strings.EqualFold(v.Name, "Subs") || strings.EqualFold(v.Name, "Subtitles")) {
+				return c.Inventory(ctx, key, v.Path, visit)
+			}
+			return visit(v)
+		})
 	})
 }
 func discover(ctx context.Context, c *storage.Client, key, path string, embedded []Track, originUS int64, known bool, enumerate func(func(storage.Snapshot) error) error) (*Inventory, error) {
 	out := &Inventory{OriginUS: originUS, TimingKnown: known, Status: "known", Tracks: append([]Track{}, embedded...)}
 	if len(out.Tracks) > MaxTracks {
 		out.Status = "capacity"
-		out.Tracks = nil
-		return out, nil
+		out.Tracks = out.Tracks[:MaxTracks]
 	}
 	if c == nil {
 		return out, nil
 	} // Production scanning installs the isolated storage client.
 	stem := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
 	var matches []storage.Snapshot
-	ambiguous := false
+
 	count := 0
 	err := enumerate(func(v storage.Snapshot) error {
 		count++
@@ -64,16 +68,16 @@ func discover(ctx context.Context, c *storage.Client, key, path string, embedded
 		ext := strings.ToLower(filepath.Ext(v.Name))
 		name := strings.TrimSuffix(v.Name, filepath.Ext(v.Name))
 		if strings.EqualFold(name, stem) && filepath.Clean(v.Path) != filepath.Clean(path) && mediaExtension(ext) {
-			ambiguous = true
+			// A matching sidecar applies to each version.
 		}
 		if !(strings.EqualFold(name, stem) || strings.HasPrefix(strings.ToLower(name), strings.ToLower(stem)+".")) {
 			return nil
 		}
 		switch ext {
-		case ".srt", ".vtt", ".ass", ".ssa", ".sub", ".sup", ".idx":
+		case ".srt", ".vtt", ".ass", ".ssa", ".sub", ".sup", ".idx", ".smi", ".sami", ".ttml", ".dfxp":
 			matches = append(matches, v)
 		}
-		if len(matches)+len(embedded) > MaxTracks {
+		if len(matches) > MaxTracks*2 {
 			return ErrCapacity
 		}
 		return nil
@@ -86,7 +90,6 @@ func discover(ctx context.Context, c *storage.Client, key, path string, embedded
 		if errors.Is(err, ErrCapacity) {
 			out.Status = "capacity"
 		}
-		return out, nil
 	}
 	sort.Slice(matches, func(i, j int) bool { return matches[i].Name < matches[j].Name })
 	for _, v := range matches {
@@ -102,22 +105,31 @@ func discover(ctx context.Context, c *storage.Client, key, path string, embedded
 		parts := strings.Split(strings.TrimPrefix(suffix, "."), ".")
 		for _, p := range parts {
 			switch strings.ToLower(p) {
-			case "forced":
+			case "forced", "foreign":
 				t.Forced = true
-			case "sdh", "cc":
-				t.Title = strings.ToUpper(p)
+			case "default":
+				t.Default = true
+			case "sdh", "cc", "hi":
+				t.HearingImpaired = true
 			case "":
 			default:
-				if t.Language == "" {
-					t.Language = p
+				if lang := sidecarLanguage(p); lang != "" && t.Language == "" {
+					t.Language = lang
 				} else {
-					t.Reason = "ambiguous_association"
+					if t.Title != "" {
+						t.Title += " "
+					}
+					t.Title += p
 				}
 			}
 		}
-		if ambiguous {
-			t.Reason = "ambiguous_association"
+		if t.HearingImpaired {
+			if t.Title != "" {
+				t.Title += " "
+			}
+			t.Title += "SDH"
 		}
+
 		if !validFormat(t.Format) {
 			t.Reason = "unsupported_format"
 		}
@@ -148,7 +160,7 @@ func discover(ctx context.Context, c *storage.Client, key, path string, embedded
 				}
 				if e != nil {
 					t.Reason = "source_unavailable"
-				} else if _, e = CanonicalAsset(raw, companion, t.Format, 0); e != nil {
+				} else if _, e = CanonicalAssetWithLanguage(raw, companion, t.Format, 0, t.Language); e != nil {
 					t.Reason = Reason(e)
 				} else {
 					after, e := c.Stat(ctx, key, v.Path)
@@ -162,7 +174,11 @@ func discover(ctx context.Context, c *storage.Client, key, path string, embedded
 				}
 			}
 		}
-		out.Tracks = append(out.Tracks, t)
+		if len(out.Tracks) < MaxTracks {
+			out.Tracks = append(out.Tracks, t)
+		} else {
+			out.Status = "capacity"
+		}
 	}
 	return out, nil
 }

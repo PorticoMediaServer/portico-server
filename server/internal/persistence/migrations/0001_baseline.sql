@@ -1596,7 +1596,7 @@ CREATE TABLE subtitle_resources(
   CHECK((scope='shared' AND owner='') OR (scope='personal' AND owner!=''))) STRICT;
 CREATE TABLE subtitle_revisions(
   resource_id TEXT NOT NULL REFERENCES subtitle_resources(id) ON DELETE CASCADE,
-  revision INTEGER NOT NULL CHECK(revision>0), digest TEXT NOT NULL, size INTEGER NOT NULL CHECK(size>0),
+  revision INTEGER NOT NULL CHECK(revision>0), digest TEXT NOT NULL, size INTEGER NOT NULL CHECK(size>=0),
   format TEXT NOT NULL, language TEXT NOT NULL, title TEXT NOT NULL,
   origin TEXT NOT NULL CHECK(origin IN ('upload','sidecar','embedded','provider')),
   provider TEXT NOT NULL DEFAULT '', attribution TEXT NOT NULL DEFAULT '', rights TEXT NOT NULL,

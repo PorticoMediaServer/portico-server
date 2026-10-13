@@ -52,7 +52,7 @@ func (s *Service) Import(ctx context.Context, p identity.Principal, item string,
 	if old != nil {
 		return *old, nil
 	}
-	if m.Scope == "shared" && !owner(p) {
+	if m.Scope == "shared" && !owner(p) && ctx.Value(lazyCacheKey{}) == nil {
 		return Receipt{}, identity.ErrUnauthorized
 	}
 	catalog, e := s.ListTx(ctx, tx, p, item, m.SourceID)
@@ -145,7 +145,7 @@ func (s *Service) Import(ctx context.Context, p identity.Principal, item string,
 		if SidecarFingerprint(raw.Data, raw.Companion) != track.digest {
 			return Receipt{}, ErrConflict
 		}
-		canonical, e = CanonicalAsset(raw.Data, raw.Companion, track.Format, int64(src.duration*1e6))
+		canonical, e = CanonicalAssetWithLanguage(raw.Data, raw.Companion, track.Format, int64(src.duration*1e6), track.Language)
 		if e != nil {
 			return Receipt{}, e
 		}
@@ -155,6 +155,12 @@ func (s *Service) Import(ctx context.Context, p identity.Principal, item string,
 	format := track.Format
 	mutation := Mutation{OperationID: m.OperationID, SourceID: m.SourceID, Scope: m.Scope, Format: format, Language: track.Language, Title: track.Title, Rights: "Imported from the viewer's authorized media source", OffsetUS: "0"}
 	pub := publication{source: src, origin: track.Origin, originalDigest: original, evidence: evidence, defaultTrack: track.Default, forcedTrack: track.Forced, discovery: track.ID, discoveryRevision: track.Revision}
+	if cache, ok := ctx.Value(lazyCacheKey{}).(lazyCacheTarget); ok {
+		if cache.discovery != track.ID || cache.source != src.ID {
+			return Receipt{}, ErrInput
+		}
+		pub.cacheResource, pub.cacheRevision = cache.resource, cache.revision
+	}
 	return s.publish(ctx, p, item, mutation, digest, pub, canonical)
 }
 

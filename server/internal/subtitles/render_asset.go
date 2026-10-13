@@ -58,6 +58,17 @@ func assetRenderer(raw []byte) string {
 // CanonicalAsset supports text and bitmap uploads. The optional companion is
 // the .sub packet file belonging to a VobSub .idx; neither file names another
 // file. Matroska subtitle-only capsules are accepted only from our extractor.
+func CanonicalAssetWithLanguage(raw, companion []byte, format string, durationUS int64, language string) ([]byte, error) {
+	if textFormat(format) || format == "idx" || format == "vobsub" {
+		decoded, e := DecodeSubtitleText(raw, language)
+		if e != nil {
+			return nil, e
+		}
+		raw = decoded
+	}
+	return CanonicalAsset(raw, companion, format, durationUS)
+}
+
 func CanonicalAsset(raw, companion []byte, format string, durationUS int64) ([]byte, error) {
 	switch format {
 	case "pgs", "sup":
@@ -69,7 +80,7 @@ func CanonicalAsset(raw, companion []byte, format string, durationUS int64) ([]b
 		}
 		return assetJSON("pgs", raw, nil)
 	case "vobsub", "idx":
-		idx, e := DecodeText(raw)
+		idx, e := decodeLoosely(raw)
 		if e != nil {
 			return nil, e
 		}
@@ -103,7 +114,7 @@ func CanonicalAsset(raw, companion []byte, format string, durationUS int64) ([]b
 		if len(companion) != 0 {
 			return nil, ErrInput
 		}
-		text, e := DecodeText(raw)
+		text, e := decodeLoosely(raw)
 		if e != nil {
 			return nil, e
 		}
@@ -111,7 +122,7 @@ func CanonicalAsset(raw, companion []byte, format string, durationUS int64) ([]b
 			return nil, e
 		}
 		return assetJSON(format, text, nil)
-	case "srt", "vtt":
+	case "srt", "vtt", "smi", "sami", "ttml", "dfxp":
 		if len(companion) != 0 {
 			return nil, ErrInput
 		}
@@ -202,22 +213,22 @@ func validateASS(raw []byte, durationUS int64) error {
 				fields[i] = strings.TrimSpace(fields[i])
 			}
 			if len(fields) < 3 || len(fields) > 32 || fields[len(fields)-1] != "text" {
-				return ErrText
+				fields = nil
 			}
 		case "dialogue":
 			if len(fields) == 0 {
-				return ErrText
+				continue
 			}
 			values := strings.SplitN(value, ",", len(fields))
 			if len(values) != len(fields) {
-				return ErrText
+				continue
 			}
 			start, end := int64(-1), int64(-1)
 			for i, f := range fields {
 				if f == "start" || f == "end" {
 					ms, e := assTimestamp(strings.TrimSpace(values[i]))
 					if e != nil {
-						return e
+						continue
 					}
 					if f == "start" {
 						start = ms
@@ -227,7 +238,7 @@ func validateASS(raw []byte, durationUS int64) error {
 				}
 			}
 			if start < 0 || end <= start || end > MaxDurationMS || durationUS > 0 && end*1000 > durationUS+2000000 {
-				return ErrTiming
+				continue
 			}
 			count++
 			if count > MaxCues {
@@ -241,7 +252,7 @@ func validateASS(raw []byte, durationUS int64) error {
 	return nil
 }
 
-var assTimestampPattern = regexp.MustCompile(`^([0-9]{1,2}):([0-9]{2}):([0-9]{2})\.([0-9]{2})$`)
+var assTimestampPattern = regexp.MustCompile(`^([0-9]{1,2}):([0-9]{2}):([0-9]{2})\.([0-9]{1,3})$`)
 
 func assTimestamp(v string) (int64, error) {
 	m := assTimestampPattern.FindStringSubmatch(v)
@@ -251,11 +262,15 @@ func assTimestamp(v string) (int64, error) {
 	h, _ := strconv.ParseInt(m[1], 10, 64)
 	min, _ := strconv.ParseInt(m[2], 10, 64)
 	sec, _ := strconv.ParseInt(m[3], 10, 64)
-	cs, _ := strconv.ParseInt(m[4], 10, 64)
+	fraction := m[4]
+	for len(fraction) < 3 {
+		fraction += "0"
+	}
+	cs, _ := strconv.ParseInt(fraction, 10, 64)
 	if min > 59 || sec > 59 {
 		return 0, ErrTiming
 	}
-	return ((h*60+min)*60+sec)*1000 + cs*10, nil
+	return ((h*60+min)*60+sec)*1000 + cs, nil
 }
 
 var cueTiming = regexp.MustCompile(`^(\S+)\s+-->\s+(\S+)(?:\s+(.*))?$`)

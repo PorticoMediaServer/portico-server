@@ -145,7 +145,7 @@ func Canonical(raw []byte, format string, durationUS int64) ([]byte, error) {
 }
 func validFormat(s string) bool {
 	switch s {
-	case "srt", "vtt", "ass", "ssa", "pgs", "sup", "vobsub", "idx", "dvb":
+	case "srt", "vtt", "ass", "ssa", "pgs", "sup", "vobsub", "idx", "dvb", "smi", "sami", "ttml", "dfxp":
 		return true
 	}
 	return false

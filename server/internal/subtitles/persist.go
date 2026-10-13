@@ -46,6 +46,58 @@ func Persist(tx *sql.Tx, asset string, size, modified int64, f *Inventory) error
 		if _, e = tx.Exec(`INSERT INTO asset_subtitles VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`, id, asset, t.Origin, locator, t.StreamIndex, sidecar, t.Format, t.Language, t.Title, t.Default, t.Forced, t.Reason); e != nil {
 			return e
 		}
+		if t.Reason == "" && validFormat(t.Format) {
+			language, err := Language(t.Language)
+			if err != nil {
+				language = "und"
+			}
+			title := safeTitle(t.Title)
+			if t.HearingImpaired && !hearingImpairedTitle(title) {
+				title += " SDH"
+			}
+			renderer := "external_text"
+			if !textFormat(t.Format) {
+				renderer = "burn_in"
+			}
+			// Discovery is selectable immediately. Empty bytes mean an internal
+			// cache miss, never a viewer-facing preparation state.
+			rows, err := tx.Query(`SELECT link.entity_id,COALESCE(st.revision,0) FROM catalog_asset_links link JOIN catalog_assets a ON a.id=link.asset_id LEFT JOIN asset_stream_facts st ON st.asset_id=a.token AND st.size=a.size AND st.modified_ns=a.modified_ns WHERE a.token=?`, asset)
+			if err != nil {
+				return err
+			}
+			type linked struct{ item, facts int64 }
+			var items []linked
+			for rows.Next() {
+				var v linked
+				if err = rows.Scan(&v.item, &v.facts); err != nil {
+					rows.Close()
+					return err
+				}
+				items = append(items, v)
+			}
+			err = rows.Err()
+			rows.Close()
+			if err != nil {
+				return err
+			}
+			var discoveryRevision int64
+			if err = tx.QueryRow(`SELECT revision FROM asset_subtitle_facts WHERE asset_id=?`, asset).Scan(&discoveryRevision); err != nil {
+				return err
+			}
+			for _, v := range items {
+				resource := stable("discovered:" + strconv.FormatInt(v.item, 10) + ":" + id)
+				if _, err = tx.Exec(`INSERT INTO subtitle_resources(id,item_id,source_id,scope,owner,current_revision,discovery_id,discovery_revision) VALUES(?,?,?,'shared','',1,?,?) ON CONFLICT(id) DO UPDATE SET current_revision=current_revision+CASE WHEN discovery_revision!=excluded.discovery_revision THEN 1 ELSE 0 END,discovery_revision=excluded.discovery_revision,deleted=0`, resource, v.item, asset, id, discoveryRevision); err != nil {
+					return err
+				}
+				if _, err = tx.Exec(`INSERT OR IGNORE INTO subtitle_revisions(resource_id,revision,digest,size,format,language,title,origin,rights,original_digest,source_size,source_modified_ns,source_facts_revision,created_at) SELECT id,current_revision,'',0,?,?,?,?,'', '',?,?,?,strftime('%Y-%m-%dT%H:%M:%SZ','now') FROM subtitle_resources WHERE id=?`, t.Format, language, title, t.Origin, size, modified, v.facts, resource); err != nil {
+					return err
+				}
+				if _, err = tx.Exec(`INSERT OR IGNORE INTO subtitle_render_revisions(resource_id,revision,renderer,is_default,is_forced,source_evidence) SELECT id,current_revision,?,?,?,? FROM subtitle_resources WHERE id=?`, renderer, t.Default, t.Forced, f.SourceEvidence, resource); err != nil {
+					return err
+				}
+			}
+		}
+
 	}
 	return nil
 }

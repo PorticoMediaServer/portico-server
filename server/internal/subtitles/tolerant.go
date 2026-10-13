@@ -1,7 +1,6 @@
 package subtitles
 
 import (
-	"bytes"
 	"html"
 	"regexp"
 	"sort"
@@ -9,8 +8,6 @@ import (
 	"strings"
 	"unicode"
 	"unicode/utf8"
-
-	"golang.org/x/text/encoding/charmap"
 )
 
 // Real subtitle files are not tidy. An SRT from the wild has <i> around a line,
@@ -41,32 +38,13 @@ var (
 	tolerantTiming = regexp.MustCompile(`^\s*((?:\d{1,3}:)?\d{1,2}:\d{1,2}[,.]\d{1,3})\s*-->\s*((?:\d{1,3}:)?\d{1,2}:\d{1,2}[,.]\d{1,3})(.*)$`)
 	tolerantStamp  = regexp.MustCompile(`^(?:(\d{1,3}):)?(\d{1,2}):(\d{1,2})[,.](\d{1,3})$`)
 	markupTag      = regexp.MustCompile(`</?[A-Za-z][^<>]{0,255}>`)
-	assOverride    = regexp.MustCompile(`\{[^{}]{0,512}\}`)
+	assOverride    = regexp.MustCompile(`\{\\[^{}]{0,512}\}`)
 	assAlignment   = regexp.MustCompile(`\\an?([0-9]{1,2})`)
 	vttLine        = regexp.MustCompile(`(?:^|\s)line:(-?\d+(?:\.\d+)?)(%?)`)
 	italicWrapped  = regexp.MustCompile(`(?is)^\s*<i>.*</i>\s*$`)
 )
 
-// decodeLoosely returns UTF-8 text for any plausible subtitle encoding: UTF-8 or
-// UTF-16 with or without a byte-order mark, and Windows-1252 for the legacy files
-// that are neither. Windows-1252 is the fallback because it decodes every byte
-// and is what the overwhelming majority of non-Unicode Western subtitles are.
-func decodeLoosely(raw []byte) ([]byte, error) {
-	if len(raw) == 0 || len(raw) > MaxInputBytes {
-		return nil, ErrCapacity
-	}
-	if decoded, err := DecodeText(raw); err == nil {
-		return decoded, nil
-	}
-	if bytes.HasPrefix(raw, []byte{0xff, 0xfe}) || bytes.HasPrefix(raw, []byte{0xfe, 0xff}) {
-		return nil, ErrText
-	}
-	out, err := charmap.Windows1252.NewDecoder().Bytes(raw)
-	if err != nil || !utf8.Valid(out) || len(out) > MaxInputBytes*2 {
-		return nil, ErrText
-	}
-	return out, nil
-}
+func decodeLoosely(raw []byte) ([]byte, error) { return DecodeSubtitleText(raw, "") }
 
 func tolerantStampMS(s string) (int64, bool) {
 	m := tolerantStamp.FindStringSubmatch(strings.TrimSpace(s))
@@ -143,6 +121,12 @@ func plainCueText(body string) (text string, italic, top bool) {
 // presentation order. It fails only when the file holds no readable cue at all or
 // exceeds the capacity every subtitle is held to.
 func ParseTolerant(raw []byte, format string, durationUS int64) ([]StyledCue, error) {
+	if format == "smi" || format == "sami" {
+		return parseSAMI(raw, durationUS)
+	}
+	if format == "ttml" || format == "dfxp" {
+		return parseTTML(raw, durationUS)
+	}
 	if format != "srt" && format != "vtt" {
 		return nil, ErrText
 	}
@@ -257,7 +241,7 @@ func ParseASSAsText(raw []byte, durationUS int64) ([]StyledCue, error) {
 			continue
 		}
 		fields := strings.SplitN(rest, ",", columns)
-		if len(fields) != columns {
+		if len(fields) != columns || startColumn >= columns || endColumn >= columns || textColumn >= columns {
 			continue
 		}
 		start, e1 := assTimestamp(strings.TrimSpace(fields[startColumn]))

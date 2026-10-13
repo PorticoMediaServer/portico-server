@@ -44,6 +44,11 @@ func (s *Service) Select(ctx context.Context, p identity.Principal, item, sessio
 	if m.Mode == "off" && (m.ResourceID != "" || m.ResourceRevision != 0 || offset != 0) || m.Mode == "track" && (!validID(m.ResourceID) || m.ResourceRevision < 1) {
 		return PlaybackPlan{}, ErrInput
 	}
+	if m.Mode == "track" {
+		if e := s.ensureCached(ctx, p, item, m.ResourceID, m.ResourceRevision); e != nil {
+			return PlaybackPlan{}, e
+		}
+	}
 	gated, p, e := s.tx(ctx, p, item)
 	if e != nil {
 		return PlaybackPlan{}, e
