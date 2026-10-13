@@ -229,7 +229,9 @@ class Exercise:
     def scan(self):
         a=self.api
         self.libs={}
+        self.scan_timings={}
         for name,kind in [('Movies','movie'),('Shows','tv'),('Anime','anime'),('Music','music'),('Books','audiobook')]:
+            started=time.monotonic()
             l=a.post('/v1/libraries',{'name':name,'kind':kind,'path':str(self.directory/'media'/name),'metadataAgent':'local'},(201,))
             self.libs[name]=l['id']
             j=a.post('/v1/libraries/'+l['id']+'/scans',expected=(202,))
@@ -239,6 +241,9 @@ class Exercise:
                     raise AssertionError(f'Scan {name}: {current}')
                 return current if current['status'] in ['complete','complete_with_warnings'] else False
             result=wait(done,120)
+            self.scan_timings[name]=round(time.monotonic()-started,3)
+            issues=a.get('/v1/admin/libraries/'+l['id']+'/scans/'+j['id']+'/issues')
+            (self.directory/(name+'-issues.json')).write_text(json.dumps(issues,indent=2))
             (self.directory/(name+'-scan.json')).write_text(json.dumps(result,indent=2))
         pages={}
         for name,l in self.libs.items():
@@ -247,7 +252,7 @@ class Exercise:
                 return page if len(page['entries'])=={'Movies':11,'Shows':2,'Anime':1,'Music':2,'Books':1}[name] else False
             pages[name]=wait(published)
         (self.directory/'browse.json').write_text(json.dumps(pages,indent=2))
-        return {n:len(p.get('entries',[])) for n,p in pages.items()}
+        return {'titles':{n:len(p.get('entries',[])) for n,p in pages.items()},'secondsByLibrary':self.scan_timings}
     def recognition(self):
         a=self.api
         pages=json.loads((self.directory/'browse.json').read_text())
@@ -303,7 +308,15 @@ class Exercise:
             self.listings.append(('POST','/v1/libraries/'+self.libs['Movies']+'/browse',body))
             output[str(filter)]=result
         pages=json.loads((self.directory/'browse.json').read_text())
+        collection=a.post('/v1/libraries/'+self.libs['Movies']+'/collections',{'name':'Local selection'},(201,))
+        a.post('/v1/collections/'+collection['id']+'/items:batch',{'addItemIds':[self.movies['Arrival'],self.movies['Moon']],'removeItemIds':[]})
+        self.collection=collection['id']
+        people=a.get('/v1/people?q=Example&limit=10')
+        (self.directory/'people.json').write_text(json.dumps(people,indent=2))
         grouped=[('Movies','movies','genre','Science Fiction'),('Shows','episodes','memberOf',pages['Shows']['entries'][0]['id']),('Music','songs','memberOf',next(e['id'] for e in pages['Music']['entries'] if e['title']=='Example Album'))]
+        grouped.append(('Movies','movies','collection',collection['id']))
+        if people['people']:
+            grouped.append(('Movies','movies','person',people['people'][0]['id']))
         for name,pivot,field,value in grouped:
             for sort in ['title','year','duration','fileSize']:
                 body={'pivot':pivot,'query':{'field':field,'operator':'contains' if field=='genre' else 'equals','value':value},'sort':[{'field':sort,'direction':'desc'}],'limit':100}
@@ -402,6 +415,65 @@ class Exercise:
         assert results[2]['video']['action']=='transcode'
         assert results[3]['video']['action']=='burn'
         return results
+
+    def capability_profiles(self):
+        a=self.api
+        caps=capabilities()
+        caps['client']={'family':'native','form':'tv','platform':'android'}
+        mpv=copy.deepcopy(caps['engines']['native'])
+        mpv['name']='mpv'
+        mpv['video'].append({'codec':'hevc','bitDepths':[8,10],'maxWidth':3840,'maxHeight':2160,'maxFrameRate':60,'dynamicRanges':['sdr']})
+        mpv['transports']=[{'transport':'direct','containers':['mp4','mkv'],'video':['h264','hevc'],'audio':['aac','mp3']}]
+        mpv['subtitleRendering']=['text','ass','pgs']
+        caps['engines']['mpv']=mpv
+        caps['engineSetting']='automatic'
+        result=[]
+        try:
+            a.call('PUT','/v1/me/devices/current/capabilities',caps,(204,))
+            session=self.start_session(self.movies['Ten Bit'])
+            try:
+                assert session['presentation']['engine']=='mpv' and session['presentation']['mode']=='direct'
+                self.fetch_presentation(session)
+                result.append('Automatic uses mpv for direct HEVC 10-bit with six-channel audio')
+            finally:
+                a.call('DELETE','/v1/playback/sessions/'+session['id'],expected=(204,))
+            # A native player declaring an MKV/HEVC decoder avoids conversion too.
+            caps['engines']['native']=mpv
+            caps['engines']['native']['name']='native decoder'
+            caps['engineSetting']='native'
+            a.call('PUT','/v1/me/devices/current/capabilities',caps,(204,))
+            session=self.start_session(self.movies['Ten Bit'])
+            try:
+                assert session['presentation']['engine']=='native' and session['presentation']['mode']=='direct'
+                self.fetch_presentation(session)
+                result.append('Native setting honors declared MKV/HEVC support')
+            finally:
+                a.call('DELETE','/v1/playback/sessions/'+session['id'],expected=(204,))
+            caps=capabilities()
+            caps['audioDecode']=[{'codec':'aac','containers':['mp4','m4b','adts'],'maxSampleRate':96000,'maxChannels':8},{'codec':'flac','containers':['flac'],'maxSampleRate':96000,'maxChannels':8,'maxBitDepth':24}]
+            a.call('PUT','/v1/me/devices/current/capabilities',caps,(204,))
+            recognized=json.loads((self.directory/'recognition.json').read_text())
+            for item in [recognized['music']['Example Album']['songs'][0]['id'],recognized['books']['Example Book']['files']['files'][0]['id']]:
+                def measured():
+                    v=self.start_session(item)
+                    if v['presentation']['audioRender']['mode']=='direct':
+                        return v
+                    a.call('DELETE','/v1/playback/sessions/'+v['id'],expected=(204,))
+                    return False
+                session=wait(measured,30)
+                try:
+                    assert session['kind']=='audio' and session['presentation']['audioRender']['mode']=='direct'
+                    audio=session['presentation']['audioRender']
+                    grant=copy.deepcopy(session)
+                    grant['presentation']['url']=audio['url']
+                    self.fetch_presentation(grant)
+                    assert audio['durationFrames']>0 and audio['sampleRate']>0
+                finally:
+                    a.call('DELETE','/v1/playback/sessions/'+session['id'],expected=(204,))
+            result.append('Tagged FLAC and chaptered M4B supply measurable direct audio bytes')
+        finally:
+            a.call('PUT','/v1/me/devices/current/capabilities',capabilities(),(204,))
+        return result
 
     def personal(self):
         a=self.api
@@ -699,6 +771,7 @@ class Exercise:
         self.check('recognition and details',self.recognition)
         self.check('browse and search',self.browse_search)
         self.check('playback bytes, tracks, quality and progress',self.playback)
+        self.check('player engines and listening media',self.capability_profiles)
         self.check('personal watched state and undo',self.personal)
         self.check('member and restricted profile',self.restrictions)
         self.check('API scopes and MCP',self.credentials_mcp)
