@@ -741,5 +741,5 @@ func (s *Service) checkReceiptReplay(ctx context.Context, tx *sql.Tx, p identity
 }
 
 func permissionDenied(err error) bool {
-	return errors.Is(err, identity.ErrContentRestricted) || errors.Is(err, identity.ErrUnauthorized) || errors.Is(err, identity.ErrForbidden)
+	return errors.Is(err, identity.ErrContentRestricted) || errors.Is(err, identity.ErrNotVisible) || errors.Is(err, identity.ErrUnauthorized) || errors.Is(err, identity.ErrForbidden)
 }

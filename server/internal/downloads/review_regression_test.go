@@ -254,3 +254,54 @@ func TestSparsePreparationPageIsBoundedAndViewerScoped(t *testing.T) {
 		t.Fatalf("sparse read disclosed a restricted claim: %+v %v", page, err)
 	}
 }
+
+func TestFilteredBatchReplayKeepsCountsConsistent(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	request := Request{OperationID: "batch", MediaIDs: []string{h.item}, Quality: QualityOriginal}
+	if _, err := h.service.Submit(ctx, h.viewer, request, nil); err != nil {
+		t.Fatal(err)
+	}
+	h.service.SetLibraryAccess(func(context.Context, *sql.Tx, identity.Principal, string) error { return identity.ErrNotVisible })
+	out, err := h.service.Submit(ctx, h.viewer, request, nil)
+	if err != nil || len(out.Items) != 0 || out.Accepted != 0 || len(out.Rejected) != 1 || !out.Duplicate {
+		t.Fatalf("filtered replay has invalid counts: %+v %v", out, err)
+	}
+}
+
+func TestReceiptReplayDistinguishesGuardDenialFromFailure(t *testing.T) {
+	for _, denied := range []bool{false, true} {
+		t.Run(map[bool]string{false: "temporary failure", true: "denied"}[denied], func(t *testing.T) {
+			h := newHarness(t)
+			ctx := context.Background()
+			ready := h.ready(t, "ready")
+			issued, err := h.service.IssueReceipts(ctx, h.viewer, "server", "issue", []string{ready.ID})
+			if err != nil {
+				t.Fatal(err)
+			}
+			id := issued[0].ReceiptID
+			if _, err = h.service.Revalidate(ctx, h.viewer, "server", "renew", []string{id}, nil); err != nil {
+				t.Fatal(err)
+			}
+			failure := errors.New("temporary policy read failure")
+			guard := func(*sql.Tx, string) error {
+				if denied {
+					return identity.ErrNotVisible
+				}
+				return failure
+			}
+			out, err := h.service.Revalidate(ctx, h.viewer, "server", "renew", []string{id}, guard)
+			var revoked int64
+			if e := h.db.QueryRow(`SELECT revoked_ms FROM download_receipts WHERE id=?`, id).Scan(&revoked); e != nil {
+				t.Fatal(e)
+			}
+			if denied {
+				if err != nil || out[0].Outcome != OutcomeRefused || out[0].Receipt != nil || revoked == 0 {
+					t.Fatalf("denied library renewed: %+v %v revoked=%d", out, err, revoked)
+				}
+			} else if !errors.Is(err, failure) || revoked != 0 {
+				t.Fatalf("temporary failure revoked a copy: %+v %v revoked=%d", out, err, revoked)
+			}
+		})
+	}
+}

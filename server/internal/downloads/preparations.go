@@ -75,6 +75,9 @@ func (s *Service) Submit(ctx context.Context, p identity.Principal, r Request, g
 			items = append(items, item)
 		}
 		out.Items = items
+		if out.Accepted > len(items) {
+			out.Accepted = len(items)
+		}
 		out.Duplicate = true
 		return out, nil
 	}
