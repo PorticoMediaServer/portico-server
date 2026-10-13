@@ -7,7 +7,6 @@ import (
 	"portico.local/server/internal/livechannels"
 )
 
-
 type Grant struct {
 	Owner           livechannels.Owner `json:"owner"`
 	Enabled         bool               `json:"enabled"`

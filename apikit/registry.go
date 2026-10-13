@@ -14,8 +14,8 @@ import (
 	"net/http"
 	"net/url"
 	"reflect"
-	"sort"
 	"slices"
+	"sort"
 	"strings"
 
 	"portico.local/apikit/apierror"
@@ -552,6 +552,7 @@ func Register[Request, Response any](r *Registry, route Route[Request, Response]
 	})
 	return nil
 }
+
 // revisionFenced reports whether a body of this type, sent with this method,
 // changes something that already exists at a numbered revision: a PUT, PATCH
 // or DELETE whose body has an integer expectedRevision. A POST shares body
