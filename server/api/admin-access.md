@@ -68,17 +68,26 @@ so a client can write against that revision without a create step.
 | --- | --- |
 | `maxStreams` | `httpapi.admitPlayback`, before a playback lease exists (`POST /v1/playback/sessions` including channel and queue-entry starts, queue transitions, `POST /v2/playback/occurrences`). Counts live legacy sessions and live `playback_v1_sessions` rows; a v1 session's legacy presentation row is excluded, so one stream counts once. |
 | `remoteBitrateKbps` | `httpapi.admitPlayback` returns it as `Decision.MaxVideoBitrateBPS` when the request is remote. Every v1 start path admits through `playbackv1.Caller.Admit` (item, channel, queue-entry starts and queue transitions), and a v1 PATCH that re-plans (quality, version, audio or part change) re-admits the same way, so the cap reaches the transcode decision on each; the playback-options preview reads the same cap through `v1Reach` without admitting. The server-wide ceiling is applied separately through `RegistryDeliverySettings.Delivery()`; the delivery policy clamps against both, so the lower wins. |
-| `maxContentRating` / `allowUnrated` | `httpapi.admitPlayback` per title, and catalog visibility through `access.Enforcer.VisibleItem` (one item) and `access.Enforcer.VisibilityClause` (a SQL predicate for the browse projection). |
-| `tagPolicy.deniedLabels` | Same pair. Matched case-insensitively against the catalog's `label` and `tag` attributes. |
-| `schedule` | `httpapi.admitSession` (every sign-in: `POST /v1/sessions`, `POST /v1/direct/sign-in`, `POST /v1/auth/two-factor/challenge`, `POST /v1/auth/register`, `POST /v1/auth/refresh`), `httpapi.admitPlayback` and `httpapi.admitChannel`, evaluated in the member's own IANA timezone. |
+| `maxContentRating` / `ratingSystem` / `allowUnrated` | Folded into the viewer's content restrictions before any title is judged (`access.Limits.Narrow`, `contentaccess.RestrictionsTx`), then applied by the one catalogue predicate for lists, counts, search, detail and playback alike. |
+| `tagPolicy.deniedLabels` | The same predicate. Matched case-insensitively against the catalog's `label` and `tag` attributes. |
+| `schedule` | Every session created or renewed (`identity.IssueTx` and `identity.RefreshSession`, through the rule the router attaches to each request), `httpapi.admitPlayback` and `httpapi.admitChannel`. Evaluated in the schedule's own IANA time zone, or the server's when it names none. |
 | `channelPolicy` | `httpapi.admitChannel`, on v1 channel starts only (`POST /v1/playback/sessions` with `channelId`, matched against the canonical v1 id `live:<source>:<ch>` / `library:<ch>`). Writes accept canonical ids only. |
-| Device trust | `httpapi.admitPlayback`, when `deviceApprovalRequired` is on. |
 
-The content rating ladder is published: `TV-Y`, `TV-Y7`, `G`, `TV-G`, `PG`,
-`TV-PG`, `PG-13`, `TV-14`, `R`, `TV-MA`, `NC-17`. A rating the server does not
-recognise is **unrated**, and unrated titles pass only when `allowUnrated` is
-true — silently hiding a title whose rating the server cannot read is worse than
-showing it, so that choice is the owner's.
+**One rating rule.** An account's rating limit and a profile's own restriction
+are the same rule on the same scale: the youngest age a rating admits
+(`identity.RatingAge`). The account's limit is one value of one published
+rating system (`GET /v1/rating-systems`, sent as `ratingSystem` +
+`maxContentRating`), or, with no system named, any rating the table knows.
+The document returns what it resolves to as `maximumAge` (`-1` for none). The
+lower of the account's and the profile's ceilings holds; unrated titles are
+hidden when either side hides them; a title carrying several ratings is
+judged by all of them. A PG limit therefore shows TV-PG (both are eight and
+up), and a rating from another country is judged by its age rather than
+passed off as unrated. A rating the table does not know is **unrated**.
+
+**Outside the allowed hours** a sign-in, a profile choice and a renewal are
+refused with `403 outside_allowed_hours`. Nothing is revoked: the device keeps
+its sign-in and is admitted again when the hours return.
 
 An administrator is not exempt by accident. Limits are per account and an owner
 or admin simply has none by default; a stored envelope on an administrative
@@ -86,20 +95,37 @@ account is applied like any other.
 
 ## Devices
 
-Devices are recorded at playback admission from three optional request headers:
-`X-Portico-Device-Id`, `X-Portico-Device-Name`, `X-Portico-Device-Platform`. An
-unknown identifier is recorded as `pending`, so an owner who turns approval on
-sees real devices to approve rather than an empty list. Blocking a device also
-stops its account's live playback leases.
+There is one device record (`identity_devices`): the one a session is bound to
+and every request is checked against. `GET /v1/admin/access/devices` lists
+those records across accounts for the owner and administrators, with each
+device's approval as `trust` (`pending`, `approved`, `blocked`), and
+`PUT /v1/admin/access/devices/{id}/trust` decides it. An administrator who is
+not the owner sees and decides about plain members' devices only.
 
-**Merge note (identity workstream).** This area needs a device inventory in
-order to publish trust and an approval policy, and the identity workstream owns
-the canonical device record. Until that record lands, `access_devices` is the
-minimal inventory. When the identity workstream's `devices` table arrives, keep
-`access_devices`' `trust`, `revision` and first/last-seen columns, read `name`,
-`platform` and ownership from that table instead — replace the `SELECT` in
-`access.Store.Devices` and the upsert in `access.Store.Observe` with a join —
-and drop the duplicated columns. No wire shape has to change.
+`deviceApprovalRequired` is the identity service's own policy value: with it
+on, a member's new device is recorded as `pending` and gets no session until it
+is approved. The owner's own devices are never held. A television signed in by
+code under the policy is recorded and waits; the same code works once the
+device is approved. Turning the policy off admits waiting devices; a blocked
+device stays blocked. Blocking a device ends its sessions at once.
+
+## Deleting a member
+
+`GET /v1/direct/members/{id}/deletion-preview` says what will go;
+`DELETE /v1/direct/members/{id}` with the previewed `expectedRevision` removes
+the account, its profiles and what they saved, its devices and its sessions.
+Libraries and recordings are untouched. The owner's play history keeps the
+plays and blanks the person's name, their profile names and their device
+names. The owner deletes anyone but themselves; an administrator deletes plain
+members.
+
+## Permission changes apply live
+
+Giving or taking a library, changing a profile's restrictions or library list,
+promoting or demoting a member and transferring ownership no longer sign anyone
+out: each applies on the person's next request. A person is signed out when the
+account is turned off or deleted, when their password is replaced, and when a
+profile gets a new PIN.
 
 ## API keys
 

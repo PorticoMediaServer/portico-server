@@ -66,9 +66,9 @@ password, transfer ownership. To actually browse anything you then call
 the PIN next time). That call returns the **viewer session** — `session.accessToken` — used
 everywhere else.
 
-`POST /v1/sessions` is the one-call shortcut: username and password straight to a viewer session.
-Both entry points are rate limited to 20 attempts per minute per peer address, alongside
-`POST /v1/setup` and every `POST /v1/direct/*`.
+Sign-in is rate limited to 20 attempts per minute per peer address, alongside
+`POST /v1/setup` and every `POST /v1/direct/*`. An account with one profile and no PIN gets its
+viewer session straight from `POST /v1/direct/sign-in`, with no second call.
 
 ### Portico Account sign-in
 
