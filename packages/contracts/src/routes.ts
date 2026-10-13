@@ -508,6 +508,28 @@ export const routes = [
     "status": 204
   },
   {
+    "id": "delete_title_version",
+    "method": "DELETE",
+    "path": "/v1/admin/items/{id}/files/{fileId}",
+    "summary": "Delete one file version while keeping its title and personal state",
+    "access": "owner",
+    "requires": "library",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 4096,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "invalid_request",
+      "revision_mismatch",
+      "confirmation_mismatch",
+      "administration_unavailable",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
     "id": "delete_v1_items_itemId_subtitles_resource",
     "method": "DELETE",
     "path": "/v1/items/{itemId}/subtitles/{resource}",
@@ -3256,6 +3278,29 @@ export const routes = [
       "not_implemented"
     ],
     "status": 200
+  },
+  {
+    "id": "preview_delete_title_version",
+    "method": "POST",
+    "path": "/v1/admin/items/{id}/files/{fileId}/delete/preview",
+    "summary": "Delete one file version while keeping its title and personal state",
+    "access": "owner",
+    "requires": "library",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 4096,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "invalid_request",
+      "revision_mismatch",
+      "confirmation_mismatch",
+      "administration_unavailable",
+      "internal"
+    ],
+    "status": 200,
+    "optionalBody": true
   },
   {
     "id": "preview_invitation",

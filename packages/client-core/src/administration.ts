@@ -395,3 +395,17 @@ export function isStatePermissionsAlert(alert:Pick<Alert,'code'|'status'>):boole
 export function providerChoices(available:readonly MetadataProvider[],selection:Readonly<{mediaKind:string;provider:string}>):readonly MetadataProvider[]{
  return available.filter(a=>a.mediaKinds.includes(selection.mediaKind)&&(a.id!=='local'||selection.provider==='local'));
 }
+
+export type VersionDeletePreview=DeletePreview&Readonly<{assetId:string;previewKey:string}>;
+export function parseVersionDeletePreview(raw:unknown):VersionDeletePreview{
+ const preview=parseDeletePreview(raw);
+ if(!object(raw)||!filled(raw.assetId,128)||!text(raw.previewKey,64)||!/^[0-9a-f]{64}$/.test(raw.previewKey)||preview.targets.length!==1||preview.totalFiles!==1||preview.targets[0].files.length!==1||preview.targets[0].files[0].assetId!==raw.assetId)invalid('version delete preview');
+ return Object.freeze({...preview,assetId:raw.assetId,previewKey:raw.previewKey});
+}
+export function versionDeletionService(request:<T>(path:string,method?:string,body?:unknown)=>Promise<T>){
+ const path=(item:string,asset:string)=>`/v1/admin/items/${encodeURIComponent(item)}/files/${encodeURIComponent(asset)}`;
+ return Object.freeze({
+  async preview(item:string,asset:string){return parseVersionDeletePreview(await request<unknown>(path(item,asset)+'/delete/preview','POST'));},
+  async remove(preview:VersionDeletePreview,confirmation:string,operationId:string){return parseDeleteResult(await request<unknown>(path(preview.targets[0].itemId,preview.assetId),'DELETE',{confirmation,operationId,previewKey:preview.previewKey}));},
+ });
+}

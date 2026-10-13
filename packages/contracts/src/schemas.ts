@@ -6913,6 +6913,104 @@ export const schemas = {
     "required": [],
     "type": "object"
   },
+  "DeleteTitleVersionRequest": {
+    "properties": {
+      "confirmation": {
+        "type": "string"
+      },
+      "operationId": {
+        "type": "string"
+      },
+      "previewKey": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "confirmation",
+      "previewKey",
+      "operationId"
+    ],
+    "type": "object"
+  },
+  "DeleteTitleVersionResponse": {
+    "properties": {
+      "bytesDeleted": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "failed": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "filesRetained": {
+        "type": "boolean"
+      },
+      "receipts": {
+        "items": {
+          "properties": {
+            "bytes": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "code": {
+              "type": "string"
+            },
+            "filesDeleted": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "filesKept": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "itemId": {
+              "type": "string"
+            },
+            "removed": {
+              "type": "boolean"
+            },
+            "title": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "itemId",
+            "title",
+            "removed",
+            "filesDeleted",
+            "filesKept",
+            "bytes"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "removed": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "revision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "revision",
+      "receipts",
+      "removed",
+      "failed",
+      "bytesDeleted",
+      "filesRetained"
+    ],
+    "type": "object"
+  },
   "DeleteV1ItemsItemIdSubtitlesResourceRequest": {
     "properties": {
       "expectedRevision": {
@@ -20839,6 +20937,168 @@ export const schemas = {
       "entryId",
       "itemId",
       "presentation"
+    ],
+    "type": "object"
+  },
+  "PreviewDeleteTitleVersionRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "PreviewDeleteTitleVersionResponse": {
+    "properties": {
+      "assetId": {
+        "type": "string"
+      },
+      "blocked": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "confirmation": {
+        "type": "string"
+      },
+      "confirmationKind": {
+        "type": "string"
+      },
+      "previewKey": {
+        "type": "string"
+      },
+      "revision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "targets": {
+        "items": {
+          "properties": {
+            "allowMediaDeletion": {
+              "type": "boolean"
+            },
+            "bytes": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "dependents": {
+              "items": {
+                "properties": {
+                  "count": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "count",
+                  "description"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "files": {
+              "items": {
+                "properties": {
+                  "assetId": {
+                    "type": "string"
+                  },
+                  "bytes": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "path": {
+                    "type": "string"
+                  },
+                  "present": {
+                    "type": "boolean"
+                  },
+                  "shared": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "assetId",
+                  "path",
+                  "bytes",
+                  "present",
+                  "shared"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "itemId": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string"
+            },
+            "libraryId": {
+              "type": "string"
+            },
+            "libraryName": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "titles": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "itemId",
+            "title",
+            "kind",
+            "libraryId",
+            "libraryName",
+            "allowMediaDeletion",
+            "titles",
+            "files",
+            "bytes",
+            "dependents"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "totalBytes": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "totalBytesText": {
+        "type": "string"
+      },
+      "totalFiles": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "revision",
+      "targets",
+      "confirmation",
+      "confirmationKind",
+      "totalBytes",
+      "totalFiles",
+      "totalBytesText",
+      "blocked",
+      "assetId",
+      "previewKey"
     ],
     "type": "object"
   },

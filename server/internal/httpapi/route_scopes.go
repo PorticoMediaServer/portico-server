@@ -44,6 +44,8 @@ var routeScopes = map[string]apikit.Scope{
 	"PUT /v1/admin/access/members/{id}/limits":                        apikit.ScopeAdmin,
 	"PUT /v1/admin/access/members/{id}/role":                          apikit.ScopeAdmin,
 	"GET /v1/admin/analysis-operations":                               apikit.ScopeLibrary,
+	"POST /v1/admin/items/{id}/files/{fileId}/delete/preview":         apikit.ScopeLibrary,
+	"DELETE /v1/admin/items/{id}/files/{fileId}":                      apikit.ScopeLibrary,
 	"GET /v1/admin/attention":                                         apikit.ScopeAdmin,
 	"GET /v1/admin/connectivity/policy":                               apikit.ScopeAdmin,
 	"PATCH /v1/admin/connectivity/policy":                             apikit.ScopeAdmin,

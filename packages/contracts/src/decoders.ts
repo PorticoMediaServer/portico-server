@@ -24,6 +24,7 @@ export function decodeDeleteDirectMemberResponse(input: unknown): types.DeleteDi
 export function decodeDeleteDirectRememberedAccountResponse(input: unknown): types.DeleteDirectRememberedAccountResponse { return decode("DeleteDirectRememberedAccountResponse", input) as types.DeleteDirectRememberedAccountResponse; }
 export function decodeDeleteDirectSessionResponse(input: unknown): types.DeleteDirectSessionResponse { return decode("DeleteDirectSessionResponse", input) as types.DeleteDirectSessionResponse; }
 export function decodeDeleteQueueResponse(input: unknown): types.DeleteQueueResponse { return decode("DeleteQueueResponse", input) as types.DeleteQueueResponse; }
+export function decodeDeleteTitleVersionResponse(input: unknown): types.DeleteTitleVersionResponse { return decode("DeleteTitleVersionResponse", input) as types.DeleteTitleVersionResponse; }
 export function decodeDeleteV1ItemsItemIdSubtitlesResourceResponse(input: unknown): types.DeleteV1ItemsItemIdSubtitlesResourceResponse { return decode("DeleteV1ItemsItemIdSubtitlesResourceResponse", input) as types.DeleteV1ItemsItemIdSubtitlesResourceResponse; }
 export function decodeDeleteWebhookResponse(input: unknown): types.DeleteWebhookResponse { return decode("DeleteWebhookResponse", input) as types.DeleteWebhookResponse; }
 export function decodeDownloadClientLogResponse(input: unknown): types.DownloadClientLogResponse { return decode("DownloadClientLogResponse", input) as types.DownloadClientLogResponse; }
@@ -141,6 +142,7 @@ export function decodePostV1ItemsItemIdSubtitlesRefreshResponse(input: unknown):
 export function decodePostV1ItemsItemIdSubtitlesRemoteResponse(input: unknown): types.PostV1ItemsItemIdSubtitlesRemoteResponse { return decode("PostV1ItemsItemIdSubtitlesRemoteResponse", input) as types.PostV1ItemsItemIdSubtitlesRemoteResponse; }
 export function decodePostV1ItemsItemIdSubtitlesSearchResponse(input: unknown): types.PostV1ItemsItemIdSubtitlesSearchResponse { return decode("PostV1ItemsItemIdSubtitlesSearchResponse", input) as types.PostV1ItemsItemIdSubtitlesSearchResponse; }
 export function decodePrepareQueueNextResponse(input: unknown): types.PrepareQueueNextResponse { return decode("PrepareQueueNextResponse", input) as types.PrepareQueueNextResponse; }
+export function decodePreviewDeleteTitleVersionResponse(input: unknown): types.PreviewDeleteTitleVersionResponse { return decode("PreviewDeleteTitleVersionResponse", input) as types.PreviewDeleteTitleVersionResponse; }
 export function decodePreviewInvitationResponse(input: unknown): types.PreviewInvitationResponse { return decode("PreviewInvitationResponse", input) as types.PreviewInvitationResponse; }
 export function decodePreviewLiveSourceResponse(input: unknown): types.PreviewLiveSourceResponse { return decode("PreviewLiveSourceResponse", input) as types.PreviewLiveSourceResponse; }
 export function decodePreviewRemoteLiveSourceResponse(input: unknown): types.PreviewRemoteLiveSourceResponse { return decode("PreviewRemoteLiveSourceResponse", input) as types.PreviewRemoteLiveSourceResponse; }
