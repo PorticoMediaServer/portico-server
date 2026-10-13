@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {GenerationGate, ServerClock, TimelineReporter, automaticRung, driftCorrection, qualityDecision, qualityLadder, qualityLane, qualityPreferences, sameQuality, timelinePosition, type PlayerObservation} from '../src/playback-v1/index.ts';
+import {GenerationGate, ServerClock, TimelineReporter, driftCorrection, timelinePosition, type PlayerObservation} from '../src/playback-v1/index.ts';
 import {FakePlaybackServer, fakeResponseError} from '../src/playback-v1/testing/fake-server.ts';
 
 const settle = async () => { for (let i = 0; i < 10; i++) await new Promise(setImmediate); };
@@ -170,23 +170,6 @@ test('reporter: skips and errors ride the next report; a session the server ende
   assert.equal(reporter.snapshot().stopped, true);
   assert.equal(c.pending(), 0, 'no timers left behind');
   await reporter.flush();
-});
-
-test('quality: modes map to requests; Automatic follows the estimate with hysteresis and never exceeds preferences', () => {
-  const prefs = (mode: string, extra: Record<string, number> = {}) => qualityPreferences(<T,>(k: string, f: T) => (k.endsWith('.mode') ? mode : k.endsWith('maxVideoHeight') ? (extra.h ?? f) : k.endsWith('maxVideoBitrateMbps') ? (extra.mbps ?? f) : f) as T, 'wifi');
-  assert.deepEqual(qualityDecision(prefs('off'), 'remote'), {allowed: false, reason: 'network_off'});
-  assert.deepEqual(qualityDecision(prefs('original'), 'local'), {allowed: true, quality: {mode: 'original'}, network: 'local'});
-  assert.deepEqual(qualityDecision(prefs('data-saver'), 'cellular'), {allowed: true, quality: {mode: 'limit', maxVideoBitrateKbps: 1500, maxHeight: 480, maxAudioBitrateKbps: 128}, network: 'cellular'});
-  assert.deepEqual(qualityDecision(prefs('standard', {h: 720}), 'remote'), {allowed: true, quality: {mode: 'limit', maxVideoBitrateKbps: 8000, maxHeight: 720}, network: 'remote'}, 'preferences cap the mode');
-  const auto = qualityDecision(prefs('automatic', {h: 1080}), 'remote', 100_000);
-  assert.ok(auto.allowed && auto.quality.mode === 'limit' && auto.quality.maxHeight === 1080, 'a fast link still respects the 1080p preference');
-  const at1080 = qualityLadder.findIndex(r => r.height === 1080);
-  assert.equal(automaticRung(3000, at1080), qualityLadder.findIndex(r => r.height === 480), 'down-switches are immediate');
-  assert.equal(automaticRung(11_000, at1080 + 1), at1080 + 1, 'not enough headroom to climb to 1080p');
-  assert.equal(automaticRung(13_000, at1080 + 1), at1080, 'with 25 % headroom it climbs');
-  assert.equal(qualityLane('remote', true), 'wifi');
-  assert.equal(qualityLane('remote'), 'unknown');
-  assert.ok(sameQuality({mode: 'original'}, {mode: 'original'}));
 });
 
 test('clock: best-RTT offset, server time, group position and drift correction (spec §10)', () => {

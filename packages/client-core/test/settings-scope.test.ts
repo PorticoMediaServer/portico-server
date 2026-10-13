@@ -26,7 +26,8 @@ test('rows stored in the registry are never marked as this one device, and rows 
       if (row.kind === 'composite' && row.storage === 'device') assert.equal(row.scope, 'device', `${row.id} is kept by the device`);
     }
   }
-  const quality = rows('web').find(row => row.kind === 'composite' && row.id === 'quality.away');
+  // The saved quality away from home is the server's `quality.remote`, kept per kind of device.
+  const quality = rows('web').find(row => row.kind === 'preference' && row.key === 'quality.remote');
   assert.equal(quality && 'scope' in quality ? quality.scope : undefined, 'deviceClass');
 });
 

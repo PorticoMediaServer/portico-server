@@ -1,44 +1,83 @@
-/** What this device can decode, display and output — the document a client
- * publishes to `PUT /v1/playback/client-profile` so the server can choose between
- * playing a file as it is, repackaging it and converting it *for this device*.
+/** The capability document: the one description of what this device can play.
+ * A client publishes it with `PUT /v1/me/devices/current/capabilities`; the
+ * server stores it as it is and plans every start and re-plan from it. There is
+ * no second document and no translation.
+ *
+ * A document describes the device (display, audio output, the viewer's player
+ * setting and overrides) and one profile per player engine: `native`, the
+ * platform's own player, always; `mpv` where the app carries it. Each engine
+ * says what it can really do: containers and codecs per transport, video codecs
+ * with profile, level, bit depth and resolution, the dynamic ranges it decodes,
+ * whether it tone-maps HDR itself, the audio it decodes and the audio it can
+ * hand to a receiver undecoded, and the subtitle kinds it draws itself.
  *
  * Two sources of truth meet here. A **declared** table says what a platform's
  * player engine is known to take (AVPlayer has never played a Matroska file, and
  * no probe will change that). A **probed** fact was asked of the actual device at
  * run time (this browser decodes HEVC, this television's HDMI sink takes eight
- * channels, this Apple TV is set to a Dolby Vision display mode). A profile starts
- * from the declared table for its family and is narrowed or widened by what the
- * probe finds; every codec entry records which of the two it rests on, so a wrong
- * decision can be traced to its source.
+ * channels, this Apple TV is set to a Dolby Vision display mode). An engine
+ * profile starts from the declared table for its family and is narrowed or
+ * widened by what the probe finds; every codec entry records which of the two it
+ * rests on, so a wrong decision can be traced to its source.
  *
- * Wire version 1. It grows by addition; the server ignores fields it does not
- * know and refuses a different `version`. Codec names are FFmpeg's. Levels use
- * FFmpeg's numbering (H.264 4.1 is 41, HEVC 5.1 is 153). A zero or an empty list
- * means "not stated", which never rejects a route. */
+ * Wire version 2. Codec names are FFmpeg's (the server folds the common
+ * synonyms). Levels use FFmpeg's numbering (H.264 4.1 is 41, HEVC 5.1 is 153).
+ * A zero or an empty list means "not stated", which never rejects a route. */
 
-export const clientProfileVersion=1 as const;
-export const maxClientProfileBytes=32*1024;
+export const capabilityDocumentVersion=2 as const;
+export const maxCapabilityDocumentBytes=64*1024;
 
 export type ProfileEvidence='declared'|'probed'|'mixed';
 export type DynamicRange='sdr'|'hdr10'|'hdr10plus'|'hlg'|'dolby_vision';
 export type ProfileTransportKind='direct'|'hls_ts'|'hls_fmp4';
+/** The engines a document may describe, and the name a plan uses for the one it chose. */
+export type EngineId='native'|'mpv';
+/** The viewer's player setting on this device. */
+export type EngineSetting='automatic'|'native'|'mpv';
+/** Subtitle kinds an engine draws itself. */
+import type {SubtitleRendering} from './subtitles.ts';
+export const subtitleRenderingKinds:readonly SubtitleRendering[]=['text','ass','pgs','vobsub','dvb'];
 
-export type ClientIdentity={family:string;platform?:string;platformVersion?:string;os?:string;osVersion?:string;model?:string;app?:string;appVersion?:string;engine?:string;engineVersion?:string};
+export type ClientIdentity={family:string;form?:'tv'|'phone'|'tablet'|'desktop'|'browser'|'cast'|'speaker';platform?:string;platformVersion?:string;os?:string;osVersion?:string;model?:string;app?:string;appVersion?:string};
+/** What the panel or HDMI sink shows, as distinct from what an engine decodes. */
 export type ClientDisplay={width?:number;height?:number;dynamicRanges?:DynamicRange[];maxFrameRate?:number};
-export type ClientVideoCodec={codec:string;profiles?:string[];maxLevel?:number;bitDepths?:number[];maxWidth?:number;maxHeight?:number;maxFrameRate?:number;maxBitrateBps?:number;dynamicRanges?:DynamicRange[];dolbyVisionProfiles?:number[];interlaced?:boolean;evidence?:ProfileEvidence};
-export type ClientAudioCodec={codec:string;maxChannels?:number;maxSampleRate?:number;objectAudio?:('atmos'|'dtsx')[];passthrough?:boolean;evidence?:ProfileEvidence};
+export type ClientVideoCodec={codec:string;profiles?:string[];maxLevel?:number;bitDepths?:number[];maxWidth?:number;maxHeight?:number;maxFrameRate?:number;maxBitrateBps?:number;
+ /** What the decoder decodes. Whether it can be shown is the display's list or the engine's `toneMapsHdr`. */
+ dynamicRanges?:DynamicRange[];dolbyVisionProfiles?:number[];interlaced?:boolean;
+ /** The only sample entries the engine plays from an original file (AVFoundation: `hvc1`, not `hev1`). */
+ codecTags?:string[];evidence?:ProfileEvidence};
+/** An audio codec the engine decodes itself. */
+export type ClientAudioCodec={codec:string;maxChannels?:number;maxSampleRate?:number;objectAudio?:('atmos'|'dtsx')[];evidence?:ProfileEvidence};
+/** An audio codec the engine can hand to the audio output undecoded. Used only while
+ * `audioOutput.route` is hdmi, arc, earc, optical or spdif and the viewer has not turned it off. */
+export type ClientAudioPassthrough={codec:string;maxChannels?:number;objectAudio?:('atmos'|'dtsx')[];evidence?:ProfileEvidence};
 export type ClientTransport={transport:ProfileTransportKind;containers?:string[];video?:string[];audio?:string[]};
 export type ClientAudioOutput={route?:string;maxChannels?:number;spatial?:boolean};
-export type ClientSubtitles={text?:string[];styled?:string[];bitmap?:string[]};
-export type ClientProfile={
- version:typeof clientProfileVersion;client:ClientIdentity;evidence:ProfileEvidence;
- display?:ClientDisplay;video?:ClientVideoCodec[];audio?:ClientAudioCodec[];audioOutput?:ClientAudioOutput;
- transports?:ClientTransport[];subtitles?:ClientSubtitles;maxBitrateBps?:number;embeddedAudioSwitching?:boolean;
- /** What the client's own music engine decodes (spec §3/§18.1 `audioDecode`), for a server that reads
-  * it from this document. Grows by addition: servers that don't know it ignore it. */
+/** The viewer's "if something looks or sounds wrong" switches. They only ever narrow. */
+export type CapabilityOverrides={forceStereo?:boolean;disablePassthrough?:boolean;disableHdr?:boolean};
+export type ClientAudioDecode={codec:string;containers:string[];maxSampleRate?:number;sampleRates?:number[];maxChannels?:number;maxBitDepth?:number;via?:string};
+/** What one player engine on the device can really do. */
+export type EngineCapabilities={
+ /** The engine's own name and version: avplayer, exoplayer, hls.js, mpv. */
+ name?:string;version?:string;evidence:ProfileEvidence;
+ video?:ClientVideoCodec[];audio?:ClientAudioCodec[];audioPassthrough?:ClientAudioPassthrough[];transports?:ClientTransport[];
+ subtitleRendering?:SubtitleRendering[];
+ /** The engine shows HDR it decodes acceptably on a display that is not HDR. */
+ toneMapsHdr?:boolean;
+ /** The engine can choose between audio tracks inside an original file. */
+ embeddedAudioSwitching?:boolean;
+};
+export type CapabilityDocument={
+ version:typeof capabilityDocumentVersion;client:ClientIdentity;
+ /** The viewer's player setting. Absent reads as automatic. */
+ engineSetting?:EngineSetting;overrides?:CapabilityOverrides;
+ display?:ClientDisplay;audioOutput?:ClientAudioOutput;maxBitrateBps?:number;
+ engines:{native:EngineCapabilities;mpv?:EngineCapabilities};
+ /** What the client's own music engine decodes (spec §18.1). */
  audioDecode?:ClientAudioDecode[];
 };
-export type ClientAudioDecode={codec:string;containers:string[];maxSampleRate?:number;sampleRates?:number[];maxChannels?:number;maxBitDepth?:number;via?:string};
+/** The stored document with the revision `If-Match` takes (`GET` of the same route). */
+export type StoredCapabilities=Readonly<{revision:number;capabilities:CapabilityDocument}>;
 
 const token=/^[a-z0-9][a-z0-9_.+-]{0,31}$/;
 const ranges:readonly string[]=['sdr','hdr10','hdr10plus','hlg','dolby_vision'];
@@ -48,136 +87,186 @@ const int=(v:unknown,max:number)=>v===undefined||Number.isSafeInteger(v)&&Number
 const num=(v:unknown,max:number)=>v===undefined||typeof v==='number'&&Number.isFinite(v)&&v>=0&&v<=max;
 const tokens=(v:unknown,max:number)=>v===undefined||Array.isArray(v)&&v.length<=max&&v.every(x=>typeof x==='string'&&token.test(x));
 const rangeList=(v:unknown)=>v===undefined||Array.isArray(v)&&v.length<=8&&v.every(x=>ranges.includes(x as string));
+const bool=(v:unknown)=>v===undefined||typeof v==='boolean';
 
-/** Mirrors the server's admission rules, so a profile that passes here is one
- * the server accepts. Returns the first problem found, or null. */
-export function clientProfileProblem(p:ClientProfile):string|null{
- if(!p||p.version!==clientProfileVersion)return 'version';
- if(!p.client||typeof p.client.family!=='string'||!token.test(p.client.family))return 'client.family';
- for(const key of ['platform','platformVersion','os','osVersion','model','app','appVersion','engine','engineVersion'] as const)if(!text(p.client[key],64))return 'client.'+key;
- if(!evidences.includes(p.evidence))return 'evidence';
- const d=p.display??{};
- if(!int(d.width,32768)||!int(d.height,32768)||!num(d.maxFrameRate,1000)||!rangeList(d.dynamicRanges))return 'display';
- if((p.video?.length??0)>32||(p.audio?.length??0)>48||(p.transports?.length??0)>16||!int(p.maxBitrateBps,2_000_000_000))return 'bounds';
- for(const v of p.video??[]){
-  if(typeof v.codec!=='string'||!token.test(v.codec)||(v.profiles??[]).length>32||!(v.profiles??[]).every(x=>typeof x==='string'&&token.test(x.trim().toLowerCase().replace(/ /g,'_')))||!int(v.maxLevel,1000)||!int(v.maxWidth,32768)||!int(v.maxHeight,32768)||!num(v.maxFrameRate,1000)||!int(v.maxBitrateBps,2_000_000_000)||!rangeList(v.dynamicRanges))return 'video.'+v.codec;
-  if((v.bitDepths??[]).length>8||!(v.bitDepths??[]).every(x=>Number.isInteger(x)&&x>=1&&x<=16))return 'video.'+v.codec+'.bitDepths';
-  if((v.dolbyVisionProfiles??[]).length>16||!(v.dolbyVisionProfiles??[]).every(x=>Number.isInteger(x)&&x>=1&&x<=31))return 'video.'+v.codec+'.dolbyVisionProfiles';
-  if(v.evidence!==undefined&&!evidences.includes(v.evidence))return 'video.'+v.codec+'.evidence';
+function engineProblem(e:EngineCapabilities|undefined,path:string):string|null{
+ if(!e||typeof e!=='object')return path;
+ if(!evidences.includes(e.evidence))return path+'.evidence';
+ if(!text(e.name,64)||!text(e.version,64))return path+'.name';
+ if((e.video?.length??0)>32||(e.audio?.length??0)>48||(e.audioPassthrough?.length??0)>24||(e.transports?.length??0)>16)return path+'.bounds';
+ for(const v of e.video??[]){
+  if(typeof v.codec!=='string'||!token.test(v.codec)||(v.profiles??[]).length>32||!(v.profiles??[]).every(x=>typeof x==='string'&&token.test(x.trim().toLowerCase().replace(/ /g,'_')))||!int(v.maxLevel,1000)||!int(v.maxWidth,32768)||!int(v.maxHeight,32768)||!num(v.maxFrameRate,1000)||!int(v.maxBitrateBps,2_000_000_000)||!rangeList(v.dynamicRanges)||!tokens(v.codecTags,8)||!bool(v.interlaced))return path+'.video.'+v.codec;
+  if((v.bitDepths??[]).length>8||!(v.bitDepths??[]).every(x=>Number.isInteger(x)&&x>=1&&x<=16))return path+'.video.'+v.codec+'.bitDepths';
+  if((v.dolbyVisionProfiles??[]).length>16||!(v.dolbyVisionProfiles??[]).every(x=>Number.isInteger(x)&&x>=1&&x<=31))return path+'.video.'+v.codec+'.dolbyVisionProfiles';
+  if(v.evidence!==undefined&&!evidences.includes(v.evidence))return path+'.video.'+v.codec+'.evidence';
  }
- for(const a of p.audio??[]){
-  if(typeof a.codec!=='string'||!token.test(a.codec)||!int(a.maxChannels,64)||!int(a.maxSampleRate,1<<22)||!tokens(a.objectAudio,4))return 'audio.'+a.codec;
-  if(a.evidence!==undefined&&!evidences.includes(a.evidence))return 'audio.'+a.codec+'.evidence';
+ for(const a of e.audio??[]){
+  if(typeof a.codec!=='string'||!token.test(a.codec)||!int(a.maxChannels,64)||!int(a.maxSampleRate,1<<22)||!tokens(a.objectAudio,4))return path+'.audio.'+a.codec;
+  if(a.evidence!==undefined&&!evidences.includes(a.evidence))return path+'.audio.'+a.codec+'.evidence';
  }
- if((p.audioDecode?.length??0)>32)return 'audioDecode';
- for(const a of p.audioDecode??[]){
-  if(typeof a.codec!=='string'||!token.test(a.codec)||!tokens(a.containers,16)||!int(a.maxSampleRate,1<<22)||!int(a.maxChannels,64)||!int(a.maxBitDepth,64)||(a.sampleRates!==undefined&&!(Array.isArray(a.sampleRates)&&a.sampleRates.length<=32&&a.sampleRates.every(r=>Number.isSafeInteger(r)&&r>0&&r<=1<<22)))||!text(a.via,32))return 'audioDecode.'+a.codec;
+ for(const a of e.audioPassthrough??[]){
+  if(typeof a.codec!=='string'||!token.test(a.codec)||!int(a.maxChannels,64)||!tokens(a.objectAudio,4))return path+'.audioPassthrough.'+a.codec;
+  if(a.evidence!==undefined&&!evidences.includes(a.evidence))return path+'.audioPassthrough.'+a.codec+'.evidence';
  }
- for(const t of p.transports??[]){
-  if(!['direct','hls_ts','hls_fmp4'].includes(t.transport)||!tokens(t.containers,32)||!tokens(t.video,32)||!tokens(t.audio,48))return 'transports';
+ for(const t of e.transports??[]){
+  if(!['direct','hls_ts','hls_fmp4'].includes(t.transport)||!tokens(t.containers,32)||!tokens(t.video,32)||!tokens(t.audio,48))return path+'.transports';
  }
- const o=p.audioOutput??{};
- if(o.route!==undefined&&o.route!==''&&!token.test(o.route)||!int(o.maxChannels,64))return 'audioOutput';
- const s=p.subtitles??{};
- if(!tokens(s.text,16)||!tokens(s.styled,16)||!tokens(s.bitmap,16))return 'subtitles';
- if(JSON.stringify(p).length>maxClientProfileBytes)return 'size';
+ if(e.subtitleRendering!==undefined&&!(Array.isArray(e.subtitleRendering)&&e.subtitleRendering.length<=8&&e.subtitleRendering.every(x=>(subtitleRenderingKinds as readonly string[]).includes(x))))return path+'.subtitleRendering';
+ if(!bool(e.toneMapsHdr)||!bool(e.embeddedAudioSwitching))return path+'.flags';
  return null;
+}
+
+/** Mirrors the server's admission rules, so a document that passes here is one
+ * the server accepts. Returns the first problem found, or null. */
+export function capabilityDocumentProblem(d:CapabilityDocument):string|null{
+ if(!d||d.version!==capabilityDocumentVersion)return 'version';
+ if(!d.client||typeof d.client.family!=='string'||!token.test(d.client.family))return 'client.family';
+ if(d.client.form!==undefined&&!token.test(d.client.form))return 'client.form';
+ for(const key of ['platform','platformVersion','os','osVersion','model','app','appVersion'] as const)if(!text(d.client[key],64))return 'client.'+key;
+ if(d.engineSetting!==undefined&&!['automatic','native','mpv'].includes(d.engineSetting))return 'engineSetting';
+ const o=d.overrides??{};
+ if(!bool(o.forceStereo)||!bool(o.disablePassthrough)||!bool(o.disableHdr))return 'overrides';
+ const display=d.display??{};
+ if(!int(display.width,32768)||!int(display.height,32768)||!num(display.maxFrameRate,1000)||!rangeList(display.dynamicRanges))return 'display';
+ const out=d.audioOutput??{};
+ if(out.route!==undefined&&out.route!==''&&!token.test(out.route)||!int(out.maxChannels,64)||!bool(out.spatial))return 'audioOutput';
+ if(!int(d.maxBitrateBps,2_000_000_000))return 'maxBitrateBps';
+ if((d.audioDecode?.length??0)>32)return 'audioDecode';
+ for(const a of d.audioDecode??[]){
+  if(typeof a.codec!=='string'||!token.test(a.codec)||!Array.isArray(a.containers)||!a.containers.length||!tokens(a.containers,16)||!int(a.maxSampleRate,1<<22)||!int(a.maxChannels,64)||!int(a.maxBitDepth,64)||(a.sampleRates!==undefined&&!(Array.isArray(a.sampleRates)&&a.sampleRates.length<=32&&a.sampleRates.every(r=>Number.isSafeInteger(r)&&r>0&&r<=1<<22)))||!text(a.via,32))return 'audioDecode.'+a.codec;
+ }
+ if(!d.engines||typeof d.engines!=='object')return 'engines';
+ const native=engineProblem(d.engines.native,'engines.native');
+ if(native)return native;
+ if(d.engines.mpv!==undefined){const mpv=engineProblem(d.engines.mpv,'engines.mpv');if(mpv)return mpv;}
+ if(JSON.stringify(d).length>maxCapabilityDocumentBytes)return 'size';
+ return null;
+}
+
+/** The document with the viewer's device settings stamped on it: the player
+ * setting and the overrides. A setting the device cannot honour (mpv on a device
+ * without it) reads as automatic. */
+export function withViewerSettings(d:CapabilityDocument,settings:{engine?:EngineSetting;overrides?:CapabilityOverrides}):CapabilityDocument{
+ const engine=settings.engine==='mpv'&&!d.engines.mpv?'automatic':settings.engine??d.engineSetting??'automatic';
+ const o=settings.overrides??d.overrides??{};
+ return {...d,engineSetting:engine,overrides:{forceStereo:o.forceStereo===true,disablePassthrough:o.disablePassthrough===true,disableHdr:o.disableHdr===true}};
+}
+
+/** Whether an engine of the document draws a subtitle kind itself. */
+export function engineRendersSubtitle(d:CapabilityDocument,engine:EngineId,kind:SubtitleRendering):boolean{
+ return (d.engines[engine]??d.engines.native).subtitleRendering?.includes(kind)===true;
 }
 
 const v=(codec:string,more:Partial<ClientVideoCodec>={}):ClientVideoCodec=>({codec,evidence:'declared',...more});
 const a=(codec:string,maxChannels:number,more:Partial<ClientAudioCodec>={}):ClientAudioCodec=>({codec,maxChannels,evidence:'declared',...more});
+const pass=(codec:string,maxChannels:number,more:Partial<ClientAudioPassthrough>={}):ClientAudioPassthrough=>({codec,maxChannels,evidence:'declared',...more});
 const audioFiles=(audio:string[],containers:string[]):ClientTransport=>({transport:'direct',containers,video:[],audio});
-const textSubtitles:ClientSubtitles={text:['srt','vtt'],styled:[],bitmap:[]};
+const textOnly:SubtitleRendering[]=['text'];
+const defined=<T extends Record<string,unknown>>(o:T):T=>Object.fromEntries(Object.entries(o).filter(([,x])=>x!==undefined)) as T;
 
 /* ------------------------------------------------------------------------- */
 /* Declared tables, one per client family.                                     */
 /* ------------------------------------------------------------------------- */
 
+/** Identity plus the engine's own name and version, as the probes report them. */
+export type ProbeIdentity=Partial<ClientIdentity>&{engine?:string;engineVersion?:string};
+const identityOf=(i:ProbeIdentity):Partial<ClientIdentity>=>{const {engine:_e,engineVersion:_v,...rest}=i;return rest;};
+
 /** A browser playing through a `<video>` element and hls.js. This table is the
  * floor every browser meets; `probeWebProfile` is what finds HEVC, AV1, HDR and
- * surround where they exist. */
-export function webDeclaredProfile(identity:Partial<ClientIdentity>={}):ClientProfile{
+ * surround where they exist. The browser draws text subtitles through the app. */
+export function webDeclaredProfile(identity:ProbeIdentity={}):CapabilityDocument{
  return {
-  version:1,evidence:'declared',client:{family:'web',engine:'hls.js',app:'portico-web',...identity},
-  display:{dynamicRanges:['sdr']},
-  video:[v('h264',{bitDepths:[8],maxWidth:4096,maxHeight:2160,maxFrameRate:60,dynamicRanges:['sdr']})],
-  audio:[a('aac',2),a('mp3',2)],
-  audioOutput:{maxChannels:2},
-  transports:[
-   {transport:'direct',containers:['mp4','m4v','mov'],video:['h264'],audio:['aac','mp3']},
-   audioFiles(['aac','mp3'],['mp3','m4a','m4b','aac']),
-   {transport:'hls_ts',containers:['mpegts'],video:['h264'],audio:['aac','mp3']},
-  ],
-  subtitles:textSubtitles,
+  version:2,client:{family:'web',form:'browser',app:'portico-web',...identityOf(identity)},engineSetting:'automatic',
+  display:{dynamicRanges:['sdr']},audioOutput:{maxChannels:2},
+  engines:{native:defined({
+   name:identity.engine??'hls.js',version:identity.engineVersion,evidence:'declared' as const,
+   video:[v('h264',{bitDepths:[8],maxWidth:4096,maxHeight:2160,maxFrameRate:60,dynamicRanges:['sdr']})],
+   audio:[a('aac',2),a('mp3',2)],
+   transports:[
+    {transport:'direct' as const,containers:['mp4','m4v','mov'],video:['h264'],audio:['aac','mp3']},
+    audioFiles(['aac','mp3'],['mp3','m4a','m4b','aac']),
+    {transport:'hls_ts' as const,containers:['mpegts'],video:['h264'],audio:['aac','mp3']},
+   ],
+   subtitleRendering:[...textOnly],
+  })},
  };
 }
 
 /** AVPlayer on iOS, iPadOS and tvOS. AVFoundation plays MP4-family containers and
  * HLS and nothing else: Matroska, AVI and MPEG-TS files are always repackaged.
- * HEVC is universal on supported hardware; AV1, Dolby Vision and the display's
- * HDR modes are per device and come from the native probe. */
-export function appleDeclaredProfile(options:{television:boolean;osVersion?:string;model?:string;appVersion?:string}):ClientProfile{
+ * HEVC is universal on supported hardware, under the `hvc1` sample entry only;
+ * AV1, Dolby Vision and the display's HDR modes are per device and come from the
+ * native probe. AVPlayer selects among a file's audio tracks itself. */
+export function appleDeclaredProfile(options:{television:boolean;osVersion?:string;model?:string;appVersion?:string;phone?:boolean}):CapabilityDocument{
  const mp4Audio=['aac','mp3','ac3','eac3','alac','flac'];
  return {
-  version:1,evidence:'declared',
-  client:{family:'apple',platform:options.television?'tvos':'ios',os:options.television?'tvos':'ios',osVersion:options.osVersion,model:options.model,app:'portico-apple',appVersion:options.appVersion,engine:'avplayer'},
-  display:{dynamicRanges:['sdr']},
-  video:[
-   v('h264',{bitDepths:[8],maxWidth:4096,maxHeight:2304,maxFrameRate:60,dynamicRanges:['sdr']}),
-   v('hevc',{bitDepths:[8,10],maxWidth:4096,maxHeight:2304,maxFrameRate:60,dynamicRanges:['sdr']}),
-  ],
-  audio:[a('aac',8),a('mp3',2),a('ac3',6),a('eac3',8,{objectAudio:['atmos']}),a('alac',8),a('flac',8),a('pcm',8)],
-  audioOutput:{maxChannels:2},
-  transports:[
-   {transport:'direct',containers:['mp4','m4v','mov'],video:['h264','hevc'],audio:mp4Audio},
-   audioFiles(['aac','mp3','alac','flac','pcm'],['mp3','m4a','m4b','aac','flac','wav','aiff']),
-   {transport:'hls_ts',containers:['mpegts'],video:['h264'],audio:['aac','mp3','ac3','eac3']},
-   {transport:'hls_fmp4',containers:['fmp4'],video:['h264','hevc'],audio:mp4Audio},
-  ],
-  subtitles:textSubtitles,
-  // AVPlayer selects among a file's audio tracks through its media selection group.
-  embeddedAudioSwitching:true,
+  version:2,engineSetting:'automatic',
+  client:defined({family:'apple',form:options.television?'tv' as const:options.phone===false?'tablet' as const:'phone' as const,platform:options.television?'tvos':'ios',os:options.television?'tvos':'ios',osVersion:options.osVersion,model:options.model,app:'portico-apple',appVersion:options.appVersion}),
+  display:{dynamicRanges:['sdr']},audioOutput:{maxChannels:2},
+  engines:{native:{
+   name:'avplayer',evidence:'declared',
+   video:[
+    v('h264',{bitDepths:[8],maxWidth:4096,maxHeight:2304,maxFrameRate:60,dynamicRanges:['sdr']}),
+    v('hevc',{bitDepths:[8,10],maxWidth:4096,maxHeight:2304,maxFrameRate:60,dynamicRanges:['sdr'],codecTags:['hvc1','dvh1']}),
+   ],
+   audio:[a('aac',8),a('mp3',2),a('ac3',6),a('eac3',8,{objectAudio:['atmos']}),a('alac',8),a('flac',8),a('pcm',8)],
+   transports:[
+    {transport:'direct',containers:['mp4','m4v','mov'],video:['h264','hevc'],audio:mp4Audio},
+    audioFiles(['aac','mp3','alac','flac','pcm'],['mp3','m4a','m4b','aac','flac','wav','aiff']),
+    {transport:'hls_ts',containers:['mpegts'],video:['h264'],audio:['aac','mp3','ac3','eac3']},
+    {transport:'hls_fmp4',containers:['fmp4'],video:['h264','hevc'],audio:mp4Audio},
+   ],
+   subtitleRendering:[...textOnly],
+   embeddedAudioSwitching:true,
+  }},
  };
 }
 
-/** Media3 / ExoPlayer on Android phones and tablets. The extractor set is wide
- * (Matroska, MP4, TS, WebM, FLAC, Ogg, WAV), so most files play as they are;
- * which *codecs* decode is per device and is what `MediaCodecList` answers. */
-export function androidDeclaredProfile(options:{television?:boolean;family?:'android'|'androidtv'|'firetv';osVersion?:string;model?:string}={}):ClientProfile{
+/** Media3 / ExoPlayer on Android phones, tablets and televisions. The extractor
+ * set is wide (Matroska, MP4, TS, WebM, FLAC, Ogg, WAV), so most files play as
+ * they are; which *codecs* decode is per device and is what `MediaCodecList`
+ * answers. The app draws text subtitles; it declares no styled or image
+ * rendering until it really has one. */
+export function androidDeclaredProfile(options:{television?:boolean;family?:'android'|'androidtv'|'firetv';osVersion?:string;model?:string;tablet?:boolean}={}):CapabilityDocument{
  const family=options.family??(options.television?'androidtv':'android');
  const video=['h264','hevc','vp9','vp8','mpeg4'];
  const audio=['aac','mp3','opus','vorbis','flac','pcm'];
  return {
-  version:1,evidence:'declared',client:{family,platform:'android',os:'android',osVersion:options.osVersion,model:options.model,engine:'exoplayer'},
-  display:{dynamicRanges:['sdr']},
-  video:[v('h264',{bitDepths:[8],maxWidth:1920,maxHeight:1080,maxFrameRate:60,dynamicRanges:['sdr']}),v('hevc',{bitDepths:[8],maxWidth:1920,maxHeight:1080,dynamicRanges:['sdr']}),v('vp9',{bitDepths:[8],maxWidth:1920,maxHeight:1080,dynamicRanges:['sdr']}),v('vp8',{bitDepths:[8]}),v('mpeg4',{bitDepths:[8]})],
-  audio:[a('aac',6),a('mp3',2),a('opus',6),a('vorbis',6),a('flac',8),a('pcm',8)],
-  audioOutput:{maxChannels:2},
-  transports:[
-   {transport:'direct',containers:['mp4','m4v','mov','mkv','webm','ts','m2ts'],video,audio},
-   audioFiles(audio,['mp3','m4a','m4b','aac','flac','ogg','opus','wav']),
-   {transport:'hls_ts',containers:['mpegts'],video:['h264','hevc'],audio:['aac','mp3','ac3','eac3']},
-   {transport:'hls_fmp4',containers:['fmp4'],video:['h264','hevc','vp9','av1'],audio:['aac','mp3','ac3','eac3','flac','opus']},
-  ],
-  // ExoPlayer draws SubRip, WebVTT and SSA/ASS text itself, and PGS through its bitmap decoder.
-  subtitles:{text:['srt','vtt'],styled:['ass','ssa'],bitmap:['pgs']},
-  embeddedAudioSwitching:true,
+  version:2,engineSetting:'automatic',
+  client:defined({family,form:family==='android'?(options.tablet?'tablet' as const:'phone' as const):'tv' as const,platform:'android',os:'android',osVersion:options.osVersion,model:options.model}),
+  display:{dynamicRanges:['sdr']},audioOutput:{maxChannels:2},
+  engines:{native:{
+   name:'exoplayer',evidence:'declared',
+   video:[v('h264',{bitDepths:[8],maxWidth:1920,maxHeight:1080,maxFrameRate:60,dynamicRanges:['sdr']}),v('hevc',{bitDepths:[8],maxWidth:1920,maxHeight:1080,dynamicRanges:['sdr']}),v('vp9',{bitDepths:[8],maxWidth:1920,maxHeight:1080,dynamicRanges:['sdr']}),v('vp8',{bitDepths:[8]}),v('mpeg4',{bitDepths:[8]})],
+   audio:[a('aac',6),a('mp3',2),a('opus',6),a('vorbis',6),a('flac',8),a('pcm',8)],
+   transports:[
+    {transport:'direct',containers:['mp4','m4v','mov','mkv','webm','ts','m2ts'],video,audio},
+    audioFiles(audio,['mp3','m4a','m4b','aac','flac','ogg','opus','wav']),
+    {transport:'hls_ts',containers:['mpegts'],video:['h264','hevc'],audio:['aac','mp3','ac3','eac3']},
+    {transport:'hls_fmp4',containers:['fmp4'],video:['h264','hevc','vp9','av1'],audio:['aac','mp3','ac3','eac3','flac','opus']},
+   ],
+   subtitleRendering:[...textOnly],
+   embeddedAudioSwitching:true,
+  }},
  };
 }
 
-/** Amazon Fire TV (Fire OS, Android-based). As Android TV, with Dolby audio
- * passed to the receiver where the HDMI sink reports it. */
+/** Amazon Fire TV (Fire OS, Android-based). As Android TV; Dolby audio is passed
+ * to the receiver where the HDMI sink reports it (the native probe). */
 export const fireTvDeclaredProfile=(options:{osVersion?:string;model?:string}={})=>androidDeclaredProfile({...options,family:'firetv',television:true});
 
 /** Amazon Vega OS (Fire TV without Android): a React Native app over Amazon's
  * W3C media player, which plays MP4 and HLS/DASH through MSE-like sources. It is
- * planned like a browser with HEVC and Dolby audio until the device is probed. */
-export function vegaDeclaredProfile(options:{osVersion?:string;model?:string}={}):ClientProfile{
+ * planned like a browser with HEVC until the device is probed. Dolby audio is
+ * handed to the HDMI sink, so it is used only once the probe reports the route. */
+export function vegaDeclaredProfile(options:{osVersion?:string;model?:string}={}):CapabilityDocument{
  const base=webDeclaredProfile({platform:'vega',os:'vega',osVersion:options.osVersion,model:options.model,engine:'w3cmedia',app:'portico-vega'});
- base.client.family='vega';
- base.video!.push(v('hevc',{bitDepths:[8,10],maxWidth:3840,maxHeight:2160,maxFrameRate:60,dynamicRanges:['sdr']}));
- base.audio!.push(a('ac3',6,{passthrough:true}),a('eac3',8,{passthrough:true,objectAudio:['atmos']}));
- base.transports=[
+ base.client.family='vega';base.client.form='tv';
+ const e=base.engines.native;
+ e.video!.push(v('hevc',{bitDepths:[8,10],maxWidth:3840,maxHeight:2160,maxFrameRate:60,dynamicRanges:['sdr']}));
+ e.audioPassthrough=[pass('ac3',6),pass('eac3',8,{objectAudio:['atmos']})];
+ e.transports=[
   {transport:'direct',containers:['mp4','m4v','mov'],video:['h264','hevc'],audio:['aac','mp3','ac3','eac3']},
   audioFiles(['aac','mp3'],['mp3','m4a','m4b','aac']),
   {transport:'hls_ts',containers:['mpegts'],video:['h264'],audio:['aac','mp3','ac3','eac3']},
@@ -187,40 +276,45 @@ export function vegaDeclaredProfile(options:{osVersion?:string;model?:string}={}
 }
 
 /** LG webOS: the platform media pipeline behind a `<video>` element. It plays
- * Matroska and TS directly and takes HEVC and Dolby audio on every supported
- * model year; DTS disappeared in 2020–2022 sets and is left to the probe. */
-export function webosDeclaredProfile(options:{osVersion?:string;model?:string}={}):ClientProfile{
+ * Matroska and TS directly and takes HEVC on every supported model year. Dolby
+ * audio is listed for passthrough and used once a probe reports the route; DTS
+ * disappeared in 2020–2022 sets and is left to the probe. */
+export function webosDeclaredProfile(options:{osVersion?:string;model?:string}={}):CapabilityDocument{
  const video=['h264','hevc','vp9','mpeg2video','mpeg4'];
  const audio=['aac','mp3','ac3','eac3','pcm','vorbis','opus','flac'];
  return {
-  version:1,evidence:'declared',client:{family:'webos',platform:'webos',os:'webos',osVersion:options.osVersion,model:options.model,engine:'webos-media'},
-  display:{dynamicRanges:['sdr']},
-  video:[v('h264',{bitDepths:[8],maxWidth:3840,maxHeight:2160,maxFrameRate:60,dynamicRanges:['sdr'],interlaced:true}),v('hevc',{bitDepths:[8,10],maxWidth:3840,maxHeight:2160,maxFrameRate:60,dynamicRanges:['sdr']}),v('vp9',{bitDepths:[8,10],maxWidth:3840,maxHeight:2160,dynamicRanges:['sdr']}),v('mpeg2video',{bitDepths:[8],maxWidth:1920,maxHeight:1080,interlaced:true}),v('mpeg4',{bitDepths:[8],maxWidth:1920,maxHeight:1080})],
-  audio:[a('aac',6),a('mp3',2),a('ac3',6,{passthrough:true}),a('eac3',8,{passthrough:true,objectAudio:['atmos']}),a('pcm',6),a('vorbis',2),a('opus',2),a('flac',2)],
-  audioOutput:{maxChannels:2},
-  transports:[
-   {transport:'direct',containers:['mp4','m4v','mov','mkv','ts','m2ts','webm','avi'],video,audio},
-   audioFiles(['aac','mp3','flac','vorbis','pcm'],['mp3','m4a','aac','flac','ogg','wav']),
-   {transport:'hls_ts',containers:['mpegts'],video:['h264','hevc'],audio:['aac','mp3','ac3','eac3']},
-   {transport:'hls_fmp4',containers:['fmp4'],video:['h264','hevc'],audio:['aac','ac3','eac3']},
-  ],
-  subtitles:textSubtitles,
+  version:2,engineSetting:'automatic',
+  client:defined({family:'webos',form:'tv' as const,platform:'webos',os:'webos',osVersion:options.osVersion,model:options.model}),
+  display:{dynamicRanges:['sdr']},audioOutput:{maxChannels:2},
+  engines:{native:{
+   name:'webos-media',evidence:'declared',
+   video:[v('h264',{bitDepths:[8],maxWidth:3840,maxHeight:2160,maxFrameRate:60,dynamicRanges:['sdr'],interlaced:true}),v('hevc',{bitDepths:[8,10],maxWidth:3840,maxHeight:2160,maxFrameRate:60,dynamicRanges:['sdr']}),v('vp9',{bitDepths:[8,10],maxWidth:3840,maxHeight:2160,dynamicRanges:['sdr']}),v('mpeg2video',{bitDepths:[8],maxWidth:1920,maxHeight:1080,interlaced:true}),v('mpeg4',{bitDepths:[8],maxWidth:1920,maxHeight:1080})],
+   audio:[a('aac',6),a('mp3',2),a('pcm',6),a('vorbis',2),a('opus',2),a('flac',2)],
+   audioPassthrough:[pass('ac3',6),pass('eac3',8,{objectAudio:['atmos']})],
+   transports:[
+    {transport:'direct',containers:['mp4','m4v','mov','mkv','ts','m2ts','webm','avi'],video,audio},
+    audioFiles(['aac','mp3','flac','vorbis','pcm'],['mp3','m4a','aac','flac','ogg','wav']),
+    {transport:'hls_ts',containers:['mpegts'],video:['h264','hevc'],audio:['aac','mp3','ac3','eac3']},
+    {transport:'hls_fmp4',containers:['fmp4'],video:['h264','hevc'],audio:['aac','ac3','eac3']},
+   ],
+   subtitleRendering:[...textOnly],
+  }},
  };
 }
 
 /** Samsung Tizen: AVPlay. Close to webOS; Samsung sets have never decoded DTS
  * since 2018 and never Dolby Vision, and they are the platform that shows HDR10+. */
-export function tizenDeclaredProfile(options:{osVersion?:string;model?:string}={}):ClientProfile{
- const p=webosDeclaredProfile(options);
- p.client={family:'tizen',platform:'tizen',os:'tizen',osVersion:options.osVersion,model:options.model,engine:'avplay'};
- return p;
+export function tizenDeclaredProfile(options:{osVersion?:string;model?:string}={}):CapabilityDocument{
+ const d=webosDeclaredProfile(options);
+ d.client=defined({family:'tizen',form:'tv' as const,platform:'tizen',os:'tizen',osVersion:options.osVersion,model:options.model});
+ d.engines.native.name='avplay';
+ return d;
 }
 
 /** Roku: the SceneGraph Video node. Every current model decodes H.264 at 1080p60;
- * the 4K models add HEVC 10-bit, VP9 and HDR10/HLG, and the Ultra adds Dolby Vision
- * and AV1. Dolby and DTS go to the HDMI sink as passthrough. The channel widens this
- * from roDeviceInfo at run time (model, codec and HDR answers). */
-export function rokuDeclaredProfile(options:{osVersion?:string;model?:string;uhd?:boolean}={}):ClientProfile{
+ * the 4K models add HEVC 10-bit, VP9 and HDR10/HLG. Dolby goes to the HDMI sink
+ * as passthrough. The channel widens this from roDeviceInfo at run time. */
+export function rokuDeclaredProfile(options:{osVersion?:string;model?:string;uhd?:boolean}={}):CapabilityDocument{
  const uhd=options.uhd!==false;
  const width=uhd?3840:1920,height=uhd?2160:1080;
  const hdr:DynamicRange[]=uhd?['sdr','hdr10','hlg']:['sdr'];
@@ -232,18 +326,21 @@ export function rokuDeclaredProfile(options:{osVersion?:string;model?:string;uhd
  const names=video.map(x=>x.codec);
  const audio=['aac','mp3','ac3','eac3','flac','pcm','alac','opus','vorbis'];
  return {
-  version:1,evidence:'declared',client:{family:'roku',platform:'roku',os:'roku',osVersion:options.osVersion,model:options.model,app:'portico-roku',engine:'roku-video'},
-  display:{width,height,dynamicRanges:hdr,maxFrameRate:60},
-  video,
-  audio:[a('aac',6),a('mp3',2),a('ac3',6,{passthrough:true}),a('eac3',8,{passthrough:true,objectAudio:['atmos']}),a('flac',2),a('pcm',2),a('alac',2),a('opus',2),a('vorbis',2)],
-  audioOutput:{maxChannels:2},
-  transports:[
-   {transport:'direct',containers:['mp4','m4v','mov','mkv','ts','m2ts'],video:names,audio},
-   audioFiles(['aac','mp3','flac','pcm','alac','opus','vorbis'],['mp3','m4a','aac','flac','wav','ogg']),
-   {transport:'hls_ts',containers:['mpegts'],video:names,audio:['aac','mp3','ac3','eac3']},
-   {transport:'hls_fmp4',containers:['fmp4'],video:names,audio:['aac','ac3','eac3']},
-  ],
-  subtitles:textSubtitles,
+  version:2,engineSetting:'automatic',
+  client:defined({family:'roku',form:'tv' as const,platform:'roku',os:'roku',osVersion:options.osVersion,model:options.model,app:'portico-roku'}),
+  display:{width,height,dynamicRanges:hdr,maxFrameRate:60},audioOutput:{route:'hdmi',maxChannels:2},
+  engines:{native:{
+   name:'roku-video',evidence:'declared',video,
+   audio:[a('aac',6),a('mp3',2),a('flac',2),a('pcm',2),a('alac',2),a('opus',2),a('vorbis',2)],
+   audioPassthrough:[pass('ac3',6),pass('eac3',8,{objectAudio:['atmos']})],
+   transports:[
+    {transport:'direct',containers:['mp4','m4v','mov','mkv','ts','m2ts'],video:names,audio},
+    audioFiles(['aac','mp3','flac','pcm','alac','opus','vorbis'],['mp3','m4a','aac','flac','wav','ogg']),
+    {transport:'hls_ts',containers:['mpegts'],video:names,audio:['aac','mp3','ac3','eac3']},
+    {transport:'hls_fmp4',containers:['fmp4'],video:names,audio:['aac','ac3','eac3']},
+   ],
+   subtitleRendering:[...textOnly],
+  }},
  };
 }
 
@@ -251,7 +348,7 @@ export function rokuDeclaredProfile(options:{osVersion?:string;model?:string;uhd
  * the first three generations are 1080p H.264 devices; Ultra and Google TV add
  * HEVC, VP9 and HDR. Audio beyond stereo AAC is passed to the HDMI sink, which
  * only the receiver can see, so the receiver widens this at run time. */
-export function castDeclaredProfile(model:'chromecast'|'chromecast_ultra'|'google_tv_4k'|'google_tv_hd'|'nest_hub'|'unknown'):ClientProfile{
+export function castDeclaredProfile(model:'chromecast'|'chromecast_ultra'|'google_tv_4k'|'google_tv_hd'|'nest_hub'|'unknown'):CapabilityDocument{
  const uhd=model==='chromecast_ultra'||model==='google_tv_4k';
  const hevc=uhd||model==='google_tv_hd';
  const height=uhd?2160:model==='nest_hub'?720:1080,width=uhd?3840:model==='nest_hub'?1280:1920;
@@ -262,20 +359,95 @@ export function castDeclaredProfile(model:'chromecast'|'chromecast_ultra'|'googl
  if(model==='google_tv_hd'||model==='google_tv_4k')video.push(v('av1',{bitDepths:[8,10],maxWidth:width,maxHeight:height,dynamicRanges:hdr.filter(r=>r!=='dolby_vision')}));
  const names=video.map(x=>x.codec);
  return {
-  version:1,evidence:'declared',client:{family:'cast',platform:'cast',model,engine:'caf-shaka',app:'portico-cast'},
-  display:{width,height,dynamicRanges:hdr,maxFrameRate:uhd?60:30},
-  video,
-  audio:[a('aac',2),a('mp3',2),a('opus',2),a('vorbis',2),a('flac',2)],
-  audioOutput:{route:model==='nest_hub'?'speaker':'hdmi',maxChannels:2},
-  transports:[
-   {transport:'direct',containers:['mp4','m4v'],video:names.filter(x=>x!=='vp8'&&x!=='vp9'),audio:['aac','mp3']},
-   {transport:'direct',containers:['webm'],video:names.filter(x=>x==='vp8'||x==='vp9'||x==='av1'),audio:['opus','vorbis']},
-   audioFiles(['aac','mp3','opus','vorbis','flac'],['mp3','m4a','aac','flac','ogg','wav']),
-   {transport:'hls_ts',containers:['mpegts'],video:['h264'],audio:['aac','mp3']},
-   {transport:'hls_fmp4',containers:['fmp4'],video:names.filter(x=>x==='h264'||x==='hevc'),audio:['aac','mp3']},
-  ],
-  subtitles:{text:['vtt','srt'],styled:[],bitmap:[]},
+  version:2,engineSetting:'automatic',
+  client:{family:'cast',form:model==='nest_hub'?'speaker':'cast',platform:'cast',model,app:'portico-cast'},
+  display:{width,height,dynamicRanges:hdr,maxFrameRate:uhd?60:30},audioOutput:{route:model==='nest_hub'?'speaker':'hdmi',maxChannels:2},
+  engines:{native:{
+   name:'caf-shaka',evidence:'declared',video,
+   audio:[a('aac',2),a('mp3',2),a('opus',2),a('vorbis',2),a('flac',2)],
+   transports:[
+    {transport:'direct',containers:['mp4','m4v'],video:names.filter(x=>x!=='vp8'&&x!=='vp9'),audio:['aac','mp3']},
+    {transport:'direct',containers:['webm'],video:names.filter(x=>x==='vp8'||x==='vp9'||x==='av1'),audio:['opus','vorbis']},
+    audioFiles(['aac','mp3','opus','vorbis','flac'],['mp3','m4a','aac','flac','ogg','wav']),
+    {transport:'hls_ts',containers:['mpegts'],video:['h264'],audio:['aac','mp3']},
+    {transport:'hls_fmp4',containers:['fmp4'],video:names.filter(x=>x==='h264'||x==='hevc'),audio:['aac','mp3']},
+   ],
+   subtitleRendering:[...textOnly],
+  }},
  };
+}
+
+/* ------------------------------------------------------------------------- */
+/* The mpv engine.                                                             */
+/* ------------------------------------------------------------------------- */
+
+/** What the app's mpv build reports about itself. Every field is optional. */
+export type MpvFacts={
+ version?:string;
+ /** Decoders the build lacks (a trimmed FFmpeg): removed from the tables. */
+ missingVideo?:string[];missingAudio?:string[];
+ /** The build draws styled subtitles (libass) and image subtitles. Absent: it does. */
+ libass?:boolean;imageSubtitles?:boolean;
+ /** The build passes audio through to the receiver (audio-spdif). Absent: it does not. */
+ passthrough?:boolean;
+ /** The build shows Dolby Vision (gpu-next with the reshaping shader); the profiles it takes. */
+ dolbyVisionProfiles?:number[];
+ /** The tallest picture mpv decodes in software smoothly on this device. Absent: 1080. */
+ softwareMaxHeight?:number;
+};
+
+/** The mpv engine for a device, built beside its native engine. mpv reads any
+ * container, decodes almost any codec, switches audio tracks inside a file,
+ * tone-maps HDR itself and draws text, styled and image subtitles itself. What
+ * it cannot change is the device's hardware: heavy codecs (H.264, HEVC, VP9,
+ * AV1) are held to the native engine's hardware-decoder limits where the native
+ * engine has them, and to a software ceiling where it does not. */
+export function mpvEngine(native:EngineCapabilities,facts:MpvFacts={}):EngineCapabilities{
+ const softHeight=facts.softwareMaxHeight??1080,softWidth=Math.round(softHeight*16/9);
+ const hard=new Map((native.video??[]).map(x=>[x.codec,x]));
+ const heavy=(codec:string,tenBit:boolean,hdr:boolean):ClientVideoCodec=>{
+  const hw=hard.get(codec);
+  // Hardware decoding where the platform has it; mpv also takes 10-bit H.264 in software.
+  const width=hw?.maxWidth??softWidth,height=hw?.maxHeight??softHeight;
+  const entry:ClientVideoCodec={codec,bitDepths:tenBit?[8,10]:[8],maxWidth:width,maxHeight:height,maxFrameRate:hw?.maxFrameRate??60,dynamicRanges:hdr&&tenBit?['sdr','hdr10','hlg']:['sdr'],interlaced:true,evidence:hw?.evidence??'declared'};
+  if(hw?.maxLevel)entry.maxLevel=hw.maxLevel;
+  if(codec==='hevc'&&facts.dolbyVisionProfiles?.length){entry.dolbyVisionProfiles=[...facts.dolbyVisionProfiles];entry.dynamicRanges=[...entry.dynamicRanges!,'dolby_vision'];}
+  return entry;
+ };
+ const hevcTen=hard.get('hevc')?.bitDepths?.includes(10)??false;
+ const video:ClientVideoCodec[]=[
+  heavy('h264',true,false),
+  heavy('hevc',hevcTen||!hard.has('hevc'),true),
+  heavy('vp9',hard.get('vp9')?.bitDepths?.includes(10)??false,true),
+  heavy('av1',hard.get('av1')?.bitDepths?.includes(10)??false,true),
+  ...['mpeg2video','mpeg4','vc1','vp8','wmv3','theora','msmpeg4v3'].map(codec=>v(codec,{bitDepths:[8],maxWidth:1920,maxHeight:1080,dynamicRanges:['sdr'],interlaced:true})),
+ ].filter(x=>!(facts.missingVideo??[]).includes(x.codec));
+ // Without a hardware decoder, H.264 10-bit and the heavy codecs stay within the software ceiling.
+ for(const x of video)if(['h264','hevc','vp9','av1'].includes(x.codec)&&!hard.has(x.codec)){x.maxWidth=softWidth;x.maxHeight=softHeight;}
+ const audio:ClientAudioCodec[]=[
+  a('aac',8),a('mp3',2),a('mp2',2),a('ac3',6),a('eac3',8),a('dts',8),a('truehd',8),a('flac',8),a('alac',8),a('opus',8),a('vorbis',8),a('pcm',8),a('wmav2',2),a('wmapro',8),
+ ].filter(x=>!(facts.missingAudio??[]).includes(x.codec));
+ const videoNames=video.map(x=>x.codec),audioNames=audio.map(x=>x.codec);
+ const rendering:SubtitleRendering[]=['text'];
+ if(facts.libass!==false)rendering.push('ass');
+ if(facts.imageSubtitles!==false)rendering.push('pgs','vobsub','dvb');
+ return defined({
+  name:'mpv',version:facts.version,evidence:'declared' as const,video,audio,
+  audioPassthrough:facts.passthrough===true?(native.audioPassthrough??[]).map(x=>({...x})):[],
+  transports:[
+   {transport:'direct' as const,containers:['mkv','mp4','m4v','mov','webm','avi','ts','m2ts','mpg','mpeg','wmv','asf','flv','ogv','3gp'],video:videoNames,audio:audioNames},
+   audioFiles(audioNames,['mp3','m4a','m4b','aac','flac','ogg','opus','wav','aiff','wma','mka']),
+   {transport:'hls_ts' as const,containers:['mpegts'],video:videoNames.filter(x=>['h264','hevc','mpeg2video'].includes(x)),audio:audioNames.filter(x=>['aac','mp3','mp2','ac3','eac3'].includes(x))},
+   {transport:'hls_fmp4' as const,containers:['fmp4'],video:videoNames.filter(x=>['h264','hevc','av1','vp9'].includes(x)),audio:audioNames.filter(x=>['aac','mp3','ac3','eac3','flac','opus','alac'].includes(x))},
+  ],
+  subtitleRendering:rendering,toneMapsHdr:true,embeddedAudioSwitching:true,
+ });
+}
+
+/** The document with an mpv engine added beside its native one. */
+export function withMpvEngine(d:CapabilityDocument,facts:MpvFacts={}):CapabilityDocument{
+ const next={...d,engines:{...d.engines,mpv:mpvEngine(d.engines.native,facts)}};
+ return capabilityDocumentProblem(next)?d:next;
 }
 
 /* ------------------------------------------------------------------------- */
@@ -304,7 +476,7 @@ export type WebProbeEnvironment={
  embeddedAudioTracks?:boolean;
  /** The engine tone-maps HDR well on a standard display (Safari; Chrome on macOS). COMPAT-05. */
  tonemapsHdr?:boolean;
- identity?:Partial<ClientIdentity>;
+ identity?:ProbeIdentity;
 };
 
 const mp4=(codecs:string)=>`video/mp4; codecs="${codecs}"`;
@@ -334,8 +506,8 @@ const plays=(answer:string)=>answer==='probably'||answer==='maybe';
 /** Asks the browser what it can actually play. Every question is guarded: a
  * browser that throws, hangs or lacks an API simply contributes nothing, and the
  * result is never narrower than the declared floor for what the floor covers. */
-export async function probeWebProfile(env:WebProbeEnvironment):Promise<ClientProfile>{
- const profile=webDeclaredProfile(env.identity);
+export async function probeWebProfile(env:WebProbeEnvironment):Promise<CapabilityDocument>{
+ const document=webDeclaredProfile(env.identity);
  const mse=env.mediaSourceSupports;
  const safe=<T>(f:()=>T,fallback:T):T=>{try{return f();}catch{return fallback;}};
  const element=(type:string)=>safe(()=>plays(env.canPlayType(type)),false);
@@ -346,6 +518,7 @@ export async function probeWebProfile(env:WebProbeEnvironment):Promise<ClientPro
  };
  const hdrDisplay=safe(()=>env.matchMedia?.('(dynamic-range: high)')??false,false);
  const nativeHls=element('application/vnd.apple.mpegurl');
+ const toneMaps=env.tonemapsHdr===true;
 
  const video:ClientVideoCodec[]=[];
  const direct:string[]=[],fragmented:string[]=[],webm:string[]=[];
@@ -361,11 +534,12 @@ export async function probeWebProfile(env:WebProbeEnvironment):Promise<ClientPro
   else if(uhd===null&&probe.codec==='h264'){entry.maxWidth=4096;entry.maxHeight=2160;}
   else{entry.maxWidth=1920;entry.maxHeight=1080;}
   if(probe.hdr&&entry.bitDepths!.includes(10)&&probe.tenBit){
-   // COMPAT-05: HDR goes untouched only to an HDR display, or to an engine known to tone-map
-   // it well on a standard one. Elsewhere "supported and smooth" can still mean a flat, grey
-   // picture (Firefox, some Windows GPUs), so the server converts instead.
+   // What the decoder decodes is stated here; whether the result is shown well is the display's
+   // list and the engine's `toneMapsHdr`. A browser that neither has an HDR display nor is known
+   // to tone-map well (Firefox, some Windows GPUs) can still say "supported and smooth" for a
+   // picture it shows flat and grey, so there the range is not claimed and the server converts.
    const pq=await ask({contentType:probe.tenBit,width:entry.maxWidth!>=3840?3840:1920,height:entry.maxHeight!>=2160?2160:1080,bitrate:25_000_000,framerate:30,transferFunction:'pq',colorGamut:'rec2020',hdrMetadataType:'smpteSt2086'});
-   if(pq?.supported&&(hdrDisplay||env.tonemapsHdr===true&&pq.smooth))entry.dynamicRanges=['sdr','hdr10'];
+   if(pq?.supported&&(hdrDisplay||toneMaps&&pq.smooth))entry.dynamicRanges=['sdr','hdr10'];
    const hlg=await ask({contentType:probe.tenBit,width:1920,height:1080,bitrate:15_000_000,framerate:30,transferFunction:'hlg',colorGamut:'rec2020'});
    if(hlg?.supported&&entry.dynamicRanges!.includes('hdr10'))entry.dynamicRanges=[...entry.dynamicRanges!,'hlg'];
   }
@@ -378,7 +552,8 @@ export async function probeWebProfile(env:WebProbeEnvironment):Promise<ClientPro
   else{if(inElement)direct.push(probe.codec);if(inSource||nativeHls&&(probe.codec==='h264'||probe.codec==='hevc'))fragmented.push(probe.codec);}
   if(probe.codec==='av1'&&element('video/webm; codecs="av01.0.08M.08"'))webm.push('av1');
  }
- if(!video.some(x=>x.codec==='h264'))video.unshift(profile.video![0]);
+ const floor=document.engines.native;
+ if(!video.some(x=>x.codec==='h264'))video.unshift(floor.video![0]!);
 
  const outputChannels=Math.max(2,Math.min(8,env.audioOutputChannels??2));
  const audio:ClientAudioCodec[]=[],directAudio:string[]=[],sourceAudio:string[]=[],tsAudio:string[]=[];
@@ -403,17 +578,15 @@ export async function probeWebProfile(env:WebProbeEnvironment):Promise<ClientPro
   const fmp4Audio=nativeHls&&!mse?mp4DirectAudio.filter(x=>x!=='opus'):sourceAudio.filter(x=>x!=='vorbis'&&x!=='pcm');
   transports.push({transport:'hls_fmp4',containers:['fmp4'],video:fragmented.length?fragmented:['h264'],audio:fmp4Audio.length?fmp4Audio:['aac']});
  }
- profile.evidence='probed';
- profile.video=video;
- profile.audio=audio;
- profile.transports=transports;
- profile.audioOutput={maxChannels:outputChannels};
- profile.display={...(env.screen?{width:Math.round(env.screen.width),height:Math.round(env.screen.height)}:{}),dynamicRanges:hdrDisplay?['sdr','hdr10','hlg']:['sdr'],maxFrameRate:60};
- profile.embeddedAudioSwitching=env.embeddedAudioTracks===true;
- const problem=clientProfileProblem(profile);
+ const probed:CapabilityDocument={
+  ...document,
+  display:{...(env.screen?{width:Math.round(env.screen.width),height:Math.round(env.screen.height)}:{}),dynamicRanges:hdrDisplay?['sdr','hdr10','hlg']:['sdr'],maxFrameRate:60},
+  audioOutput:{maxChannels:outputChannels},
+  engines:{native:{...floor,evidence:'probed',video,audio,transports,toneMapsHdr:toneMaps,embeddedAudioSwitching:env.embeddedAudioTracks===true}},
+ };
  // A probe must never produce a document the server refuses: the declared floor
  // is always valid, and is what playback falls back to.
- return problem?webDeclaredProfile(env.identity):profile;
+ return capabilityDocumentProblem(probed)?document:probed;
 }
 
 /* ------------------------------------------------------------------------- */
@@ -434,43 +607,60 @@ export type AppleNativeFacts={
  audio?:{maxOutputChannels?:number;route?:string;spatial?:boolean};
 };
 
-export function appleProfile(options:{television:boolean;osVersion?:string;model?:string;appVersion?:string},facts:AppleNativeFacts|null):ClientProfile{
- const profile=appleDeclaredProfile({...options,model:facts?.model??options.model,osVersion:facts?.osVersion??options.osVersion});
- if(!facts)return profile;
- profile.evidence='mixed';
- const hevc=profile.video!.find(x=>x.codec==='hevc')!;
+/** AVAudioSession port types folded to the route names the server knows. */
+function appleRoute(port:string):string{
+ const p=port.toLowerCase().replace(/[^a-z0-9]/g,'');
+ if(p.includes('hdmi'))return 'hdmi';
+ if(p.includes('airplay'))return 'airplay';
+ if(p.includes('bluetooth'))return 'bluetooth';
+ if(p.includes('headphone')||p.includes('headset'))return 'headphones';
+ if(p.includes('speaker')||p.includes('receiver'))return 'speaker';
+ if(p.includes('usb'))return 'usb';
+ return p.slice(0,32);
+}
+
+export function appleProfile(options:{television:boolean;osVersion?:string;model?:string;appVersion?:string;phone?:boolean},facts:AppleNativeFacts|null):CapabilityDocument{
+ const declared=appleDeclaredProfile({...options,model:facts?.model??options.model,osVersion:facts?.osVersion??options.osVersion});
+ if(!facts)return declared;
+ const document:CapabilityDocument=JSON.parse(JSON.stringify(declared));
+ const engine=document.engines.native;
+ engine.evidence='mixed';
+ const hevc=engine.video!.find(x=>x.codec==='hevc')!;
  if(facts.hardwareDecode?.hevc===false){
   // Software HEVC on an old device stutters at 4K; keep it to 1080p.
   hevc.maxWidth=1920;hevc.maxHeight=1080;hevc.evidence='probed';
  }else if(facts.hardwareDecode?.hevc)hevc.evidence='probed';
+ // What the screen shows right now.
  const display:DynamicRange[]=['sdr'];
  if(facts.eligibleForHDRPlayback!==false){
   if(facts.hdrModes?.hdr10)display.push('hdr10');
   if(facts.hdrModes?.hlg)display.push('hlg');
   if(facts.hdrModes?.dolbyVision)display.push('dolby_vision');
  }
- // COMPAT-02: what the device *decodes* is separate from what the screen *shows*. With hardware
- // HEVC Main10, AVPlayer decodes HDR10 and HLG and tone-maps them for an SDR screen itself, so the
- // server must not convert those titles; `display` still says what the screen shows.
+ // What the device *decodes* is separate from what the screen *shows*. With hardware HEVC Main10,
+ // AVPlayer decodes HDR10 and HLG and tone-maps them for an SDR screen itself, so the server must
+ // not convert those titles: the decoder lists the ranges, the display lists what it shows, and
+ // `toneMapsHdr` says the engine bridges the two.
  const hardwareHevc=facts.hardwareDecode?.hevc===true;
+ engine.toneMapsHdr=hardwareHevc;
  hevc.dynamicRanges=hardwareHevc?[...new Set<DynamicRange>(['sdr','hdr10','hlg',...display])]:[...display];
  // Profile 5 is single-layer Dolby Vision; 8.1 and 8.4 carry an HDR10 or HLG base. With the
  // Dolby Vision decoder in hardware AVPlayer handles both, on an SDR screen too.
  if(facts.hardwareDecode?.dolbyVision===true||(display.includes('dolby_vision')&&facts.hardwareDecode?.dolbyVision!==false)){hevc.dolbyVisionProfiles=[5,8];if(!hevc.dynamicRanges.includes('dolby_vision'))hevc.dynamicRanges=[...hevc.dynamicRanges,'dolby_vision'];}
  else hevc.dynamicRanges=hevc.dynamicRanges.filter(x=>x!=='dolby_vision');
- // COMPAT-06: the Apple TV HD (AppleTV5,x) and devices without hardware HEVC decode H.264 up to
- // 1080p only; the declared 4K floor would send them files they stutter on.
- const h264=profile.video!.find(x=>x.codec==='h264');
+ // The Apple TV HD (AppleTV5,x) and devices without hardware HEVC decode H.264 up to 1080p only;
+ // the declared 4K floor would send them files they stutter on.
+ const h264=engine.video!.find(x=>x.codec==='h264');
  if(h264&&(/^AppleTV5,/.test(facts.model??'')||facts.hardwareDecode?.hevc===false)){h264.maxWidth=1920;h264.maxHeight=1080;h264.evidence='probed';}
  if(facts.hardwareDecode?.av1){
-  profile.video!.push({codec:'av1',bitDepths:[8,10],maxWidth:4096,maxHeight:2304,maxFrameRate:60,dynamicRanges:display.filter(x=>x!=='dolby_vision'),evidence:'probed'});
-  for(const t of profile.transports!)if((t.transport==='direct'&&t.video?.length)||t.transport==='hls_fmp4')t.video=[...t.video!,'av1'];
+  engine.video!.push({codec:'av1',bitDepths:[8,10],maxWidth:4096,maxHeight:2304,maxFrameRate:60,dynamicRanges:hardwareHevc?['sdr','hdr10','hlg']:display.filter(x=>x!=='dolby_vision'),evidence:'probed'});
+  for(const t of engine.transports!)if((t.transport==='direct'&&t.video?.length)||t.transport==='hls_fmp4')t.video=[...t.video!,'av1'];
  }
- profile.display={...(facts.screen?{width:Math.round(facts.screen.width),height:Math.round(facts.screen.height),maxFrameRate:facts.screen.maxFrameRate??60}:{}),dynamicRanges:display};
+ document.display={...(facts.screen?{width:Math.round(facts.screen.width),height:Math.round(facts.screen.height),maxFrameRate:facts.screen.maxFrameRate??60}:{}),dynamicRanges:display};
  const channels=Math.max(2,Math.min(16,facts.audio?.maxOutputChannels??2));
- const route=(facts.audio?.route??'').toLowerCase().replace(/[^a-z0-9_.+-]/g,'').slice(0,32);
- profile.audioOutput={maxChannels:facts.audio?.spatial?Math.max(channels,8):channels,...(route&&token.test(route)?{route}:{}),spatial:facts.audio?.spatial===true};
- return clientProfileProblem(profile)?appleDeclaredProfile(options):profile;
+ const route=appleRoute(facts.audio?.route??'');
+ document.audioOutput={maxChannels:facts.audio?.spatial?Math.max(channels,8):channels,...(route&&token.test(route)?{route}:{}),spatial:facts.audio?.spatial===true};
+ return capabilityDocumentProblem(document)?declared:document;
 }
 
 /** What an Android native module reports from `MediaCodecList`, `Display` and
@@ -478,82 +668,52 @@ export function appleProfile(options:{television:boolean;osVersion?:string;model
 export type AndroidNativeFacts={
  model?:string;osVersion?:string;
  decoders?:{codec:string;hardware?:boolean;maxWidth?:number;maxHeight?:number;maxFrameRate?:number;maxBitrateBps?:number;profiles?:string[];maxLevel?:number;tenBit?:boolean;hdr?:DynamicRange[];dolbyVisionProfiles?:number[]}[];
+ /** `maxChannels` absent or 0 means the decoder states no limit. */
  audioDecoders?:{codec:string;maxChannels?:number}[];
  /** `Display.getHdrCapabilities().getSupportedHdrTypes()`. */
  displayHdr?:DynamicRange[];
  screen?:{width:number;height:number;maxFrameRate?:number};
- /** `AudioManager.getDevices(GET_DEVICES_OUTPUTS)` encodings of the active sink: what the receiver takes as a bitstream. */
+ /** `AudioManager.getDevices(GET_DEVICES_OUTPUTS)` encodings of the *active* sink: what the receiver takes as a bitstream right now. */
  passthrough?:{codec:string;maxChannels?:number;objectAudio?:('atmos'|'dtsx')[]}[];
+ /** The active output: hdmi, arc, earc, optical, speaker, headphones, bluetooth, usb. */
  audio?:{maxOutputChannels?:number;route?:string};
+ /** The app's own renderers beyond text (a real ASS or PGS renderer in the app). */
+ subtitleRendering?:SubtitleRendering[];
 };
 
-export function androidProfile(options:{family?:'android'|'androidtv'|'firetv';television?:boolean;osVersion?:string;model?:string},facts:AndroidNativeFacts|null):ClientProfile{
+export function androidProfile(options:{family?:'android'|'androidtv'|'firetv';television?:boolean;osVersion?:string;model?:string;tablet?:boolean},facts:AndroidNativeFacts|null):CapabilityDocument{
  const declared=androidDeclaredProfile({...options,model:facts?.model??options.model,osVersion:facts?.osVersion??options.osVersion});
  if(!facts?.decoders?.length)return declared;
- const profile:ClientProfile={...declared,evidence:'mixed'};
+ const base=declared.engines.native;
  const display:DynamicRange[]=['sdr',...(facts.displayHdr??[]).filter(x=>x!=='sdr')];
- profile.video=facts.decoders.map(d=>({codec:d.codec,profiles:d.profiles,maxLevel:d.maxLevel,bitDepths:d.tenBit?[8,10]:[8],maxWidth:d.maxWidth,maxHeight:d.maxHeight,maxFrameRate:d.maxFrameRate,maxBitrateBps:d.maxBitrateBps,dynamicRanges:['sdr' as DynamicRange,...(d.hdr??[]).filter(x=>x!=='sdr'&&display.includes(x))],dolbyVisionProfiles:display.includes('dolby_vision')?d.dolbyVisionProfiles:[],evidence:'probed' as const}));
+ // A decoder lists what it decodes. ExoPlayer does not tone-map for an SDR panel, so a range the
+ // display cannot show is simply not presentable: the planner reads that from `display`.
+ // A codec with only a software decoder states that decoder's limits, which say what it can
+ // decode, not what it can decode in real time: it is held to 1080p.
+ const soft=(d:{hardware?:boolean},value:number|undefined,cap:number)=>d.hardware===false?Math.min(value??cap,cap):value;
+ const video:ClientVideoCodec[]=facts.decoders.map(d=>defined({codec:d.codec,profiles:d.profiles,maxLevel:d.maxLevel,bitDepths:d.tenBit?[8,10]:[8],maxWidth:soft(d,d.maxWidth,1920),maxHeight:soft(d,d.maxHeight,1080),maxFrameRate:d.maxFrameRate,maxBitrateBps:d.maxBitrateBps,dynamicRanges:['sdr' as DynamicRange,...(d.hdr??[]).filter(x=>x!=='sdr')],dolbyVisionProfiles:d.dolbyVisionProfiles??[],evidence:'probed' as const}));
  const decoded=new Map((facts.audioDecoders??[]).map(x=>[x.codec,x]));
- const audio:ClientAudioCodec[]=(declared.audio??[]).filter(x=>!facts.audioDecoders||decoded.has(x.codec)).map(x=>({...x,maxChannels:decoded.get(x.codec)?.maxChannels??x.maxChannels,evidence:decoded.has(x.codec)?'probed' as const:'declared' as const}));
- for(const d of facts.audioDecoders??[])if(!audio.some(x=>x.codec===d.codec))audio.push({codec:d.codec,maxChannels:d.maxChannels??2,evidence:'probed'});
- for(const p of facts.passthrough??[]){
-  const existing=audio.find(x=>x.codec===p.codec);
-  const entry:ClientAudioCodec={codec:p.codec,maxChannels:p.maxChannels??8,passthrough:true,objectAudio:p.objectAudio,evidence:'probed'};
-  if(existing)Object.assign(existing,entry);else audio.push(entry);
- }
- profile.audio=audio;
- const videoNames=profile.video.map(x=>x.codec),audioNames=audio.map(x=>x.codec);
- profile.transports=(declared.transports??[]).map(t=>t.transport==='direct'&&t.video?.length?{...t,video:videoNames,audio:audioNames}:{...t,video:(t.video??[]).filter(x=>videoNames.includes(x)),audio:t.transport==='direct'?(t.audio??[]).filter(x=>audioNames.includes(x)):[...new Set([...(t.audio??[]).filter(x=>audioNames.includes(x))])]});
- profile.display={...(facts.screen?{width:Math.round(facts.screen.width),height:Math.round(facts.screen.height),maxFrameRate:facts.screen.maxFrameRate}:{}),dynamicRanges:display};
- const passthroughChannels=Math.max(0,...(facts.passthrough??[]).map(x=>x.maxChannels??8));
- profile.audioOutput={maxChannels:Math.max(2,Math.min(16,Math.max(facts.audio?.maxOutputChannels??2,passthroughChannels))),...(facts.audio?.route&&token.test(facts.audio.route)?{route:facts.audio.route}:{})};
- return clientProfileProblem(profile)?declared:profile;
+ // A decoder that states no channel limit keeps the declared one, or eight: it is not stereo.
+ const channelsOf=(codec:string,fallback:number)=>decoded.get(codec)?.maxChannels||fallback;
+ const audio:ClientAudioCodec[]=(base.audio??[]).filter(x=>!facts.audioDecoders||decoded.has(x.codec)).map(x=>({...x,maxChannels:channelsOf(x.codec,x.maxChannels??8),evidence:decoded.has(x.codec)?'probed' as const:'declared' as const}));
+ for(const d of facts.audioDecoders??[])if(!audio.some(x=>x.codec===d.codec))audio.push({codec:d.codec,maxChannels:d.maxChannels||8,evidence:'probed'});
+ // Passthrough is beside decoding, never instead of it: a codec the device also decodes stays decodable.
+ const audioPassthrough:ClientAudioPassthrough[]=(facts.passthrough??[]).map(p=>defined({codec:p.codec,maxChannels:p.maxChannels??8,objectAudio:p.objectAudio,evidence:'probed' as const}));
+ const videoNames=video.map(x=>x.codec),audioNames=[...new Set([...audio.map(x=>x.codec),...audioPassthrough.map(x=>x.codec)])];
+ const transports=(base.transports??[]).map(t=>t.transport==='direct'&&t.video?.length?{...t,video:videoNames,audio:audioNames}:{...t,video:(t.video??[]).filter(x=>videoNames.includes(x)),audio:(t.audio??[]).filter(x=>audioNames.includes(x))});
+ const passthroughChannels=Math.max(0,...audioPassthrough.map(x=>x.maxChannels??8));
+ const route=(facts.audio?.route??'').toLowerCase();
+ const rendering=[...new Set<SubtitleRendering>(['text',...(facts.subtitleRendering??[]).filter(x=>(subtitleRenderingKinds as readonly string[]).includes(x))])];
+ const document:CapabilityDocument={
+  ...declared,
+  display:{...(facts.screen?defined({width:Math.round(facts.screen.width),height:Math.round(facts.screen.height),maxFrameRate:facts.screen.maxFrameRate}):{}),dynamicRanges:display},
+  audioOutput:{maxChannels:Math.max(2,Math.min(16,Math.max(facts.audio?.maxOutputChannels??2,passthroughChannels))),...(route&&token.test(route)?{route}:{})},
+  engines:{native:{...base,evidence:'mixed',video,audio,audioPassthrough,transports,subtitleRendering:rendering}},
+ };
+ return capabilityDocumentProblem(document)?declared:document;
 }
 
-/* ------------------------------------------------------------------------- */
-/* Publishing and reporting.                                                   */
-/* ------------------------------------------------------------------------- */
-
-export type ClientProfileReceipt=Readonly<{version:number;revision:string;summary:Readonly<{family:string;evidence:string;revision:string;published:boolean}>}>;
-export type ProfileTransport=(path:string,method:'PUT'|'POST',body:unknown)=>Promise<unknown>;
-
-/** Publishes a profile once per distinct document per sign-in. A failure is
- * swallowed by design: a device that could not publish is planned against the
- * server's baseline, which always plays, and publishing is tried again the next
- * time anything calls this. */
-export class ClientProfilePublisher{
- private published='';private inflight?:Promise<ClientProfileReceipt|null>;
- private readonly send:ProfileTransport;private readonly scope:()=>string;
- /** `scope` names the sign-in (for example the access token's hash or the
-  * server and profile ids): a different scope publishes again. */
- constructor(send:ProfileTransport,scope:()=>string){this.send=send;this.scope=scope;}
- publish(profile:ClientProfile):Promise<ClientProfileReceipt|null>{
-  if(clientProfileProblem(profile))return Promise.resolve(null);
-  const key=this.scope()+'\n'+JSON.stringify(profile);
-  if(key===this.published)return Promise.resolve(null);
-  if(this.inflight)return this.inflight;
-  const work=this.send('/v1/playback/client-profile','PUT',profile).then(raw=>{
-   const r=raw as any;
-   if(!r||typeof r.revision!=='string'||!r.summary||typeof r.summary.family!=='string')return null;
-   this.published=key;
-   return Object.freeze({version:Number(r.version)||1,revision:r.revision,summary:Object.freeze({family:r.summary.family,evidence:String(r.summary.evidence??''),revision:String(r.summary.revision??''),published:r.summary.published===true})});
-  }).catch(()=>null).finally(()=>{if(this.inflight===work)this.inflight=undefined;});
-  this.inflight=work;return work;
- }
- /** Forget what was published, so the next call sends again (a new sign-in). */
- reset(){this.published='';}
-}
-
-/** Engine failure classes a player reports. They are recorded, not interpreted:
- * any of them closes the route that was in use for this file on this device. */
-export type RouteFailureCode='decode_error'|'source_not_supported'|'audio_decode_error'|'manifest_incompatible'|'stalled_without_data'|'engine_error';
-export type RouteFailureResult=Readonly<{route:string;escalates:boolean}>;
-
-export async function reportRouteFailure(send:ProfileTransport,sessionId:string,code:RouteFailureCode,detail=''):Promise<RouteFailureResult|null>{
- if(!/^[A-Za-z0-9_-]{1,128}$/.test(sessionId))return null;
- try{
-  const raw=await send('/v1/playback/route-failures','POST',{sessionId,code,detail:detail.replace(/[\x00-\x1f\x7f]/g,' ').slice(0,500)}) as any;
-  if(!raw||typeof raw.escalates!=='boolean')return null;
-  return Object.freeze({route:String(raw.route??''),escalates:raw.escalates});
- }catch{return null;}
-}
+/** Engine failure classes a player reports with `PATCH /v1/playback/sessions/{id}` `failure`
+ * (or a timeline `error`). They are recorded, not interpreted: any of them closes the way the
+ * file was being delivered, for this file on this device and this engine. */
+export type PlayerFailureCode='decode_error'|'source_not_supported'|'audio_decode_error'|'manifest_incompatible'|'stalled_without_data'|'engine_error';

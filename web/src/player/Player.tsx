@@ -12,9 +12,7 @@ import {playbackUserMessage} from '@core/playback-messages.ts';
 import {playbackFailure} from './failure';
 import {SubtitleSurface} from './subtitle-surface';
 import {webPlaybackResourceKey} from '../playback-v1/web-playback';
-import {fixedQuality, isQualityChoice, offeredQualities, qualityRequest, type FixedQuality, type QualityChoice} from '@core/playback-v1/choices.ts';
-import {readComposite, type CompositeId} from '@core/presentation/index.ts';
-import type {PreferenceValue} from '@core/preferences.ts';
+import {fixedQuality, offeredQualities, qualityChoiceOf, qualityRequest, type FixedQuality, type QualityChoice} from '@core/playback-v1/choices.ts';
 import {ownerStopOf} from './owner-stop';
 import {shortcutKey} from './shortcut-key';
 import {listeningRates, type SleepChoice} from '@core/listening.ts';
@@ -482,14 +480,13 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
   const originalKbps = originalRate.current.kbps;
   const offeredSteps = useMemo(() => offeredQualities({height: originalHeight, bitrateKbps: originalKbps}), [originalHeight, originalKbps]);
   const qualityFooter = qualityNetworkFooter(offersData?.deliveryPolicy);
-  const qualityFooterLine = qualityFooter.network && qualityFooter.height ? i18n.t('quality.networkLimit', {network: i18n.t(qualityFooter.network === 'home' ? 'network.home' : qualityFooter.network === 'away' ? 'network.away' : qualityFooter.network === 'wifi' ? 'network.wifi' : 'network.cellular'), height: qualityFooter.height}) : '';
-  const savedRow: CompositeId = qualityFooter.network === 'home' ? 'quality.home' : qualityFooter.network === 'cellular' ? 'quality.cellular' : 'quality.away';
-  const savedValue = String(readComposite(savedRow, key => prefs.value<PreferenceValue>(key, '')));
-  // Until the session says which network it is on, nothing is assumed about the saved default.
-  // A saved limit at or above this source does not limit it: that is Original for this title.
-  // Preferences that have not arrived yet say nothing either: Original until they do.
-  const savedKnown = !!qualityFooter.network && prefs.value<string>('quality.local.mode', '') !== '';
-  const savedQuality: QualityChoice = savedKnown && isQualityChoice(savedValue) && (!fixedQuality(savedValue) || offeredSteps.some(q => q.id === savedValue)) ? savedValue : 'original';
+  const qualityFooterLine = qualityFooter.network && qualityFooter.height ? i18n.t('quality.networkLimit', {network: i18n.t(qualityFooter.network === 'home' ? 'network.home' : 'network.away'), height: qualityFooter.height}) : '';
+  // A viewing that named no quality was started by the server with the viewer's saved default for
+  // where this device is (Settings › Quality: one for home, one for away): the quality in force on
+  // the session says which. A saved limit at or above this source does not limit it: that is
+  // Original for this title. Until there is a session, nothing is assumed.
+  const inForce = qualityChoiceOf(presentation?.quality);
+  const savedQuality: QualityChoice = inForce && (!fixedQuality(inForce) || offeredSteps.some(q => q.id === inForce)) ? inForce : 'original';
   const qualityChoice: QualityChoice = engine.qualityChoice ?? savedQuality;
   const automaticStep = useSyncExternalStore(engine.playback.subscribeAutomatic, () => engine.playback.automaticAt);
   const stepLabel = (q: FixedQuality) => (q.id === '2160' ? i18n.t('quality.4k') : i18n.t('quality.height', {height: q.height}));

@@ -341,7 +341,6 @@ index play_history_library
 index play_history_recent
 index playback_admin_retention
 index playback_channel_sessions_live
-index playback_client_profiles_age
 index playback_origin_associations_asset
 index playback_personal_claim_item
 index playback_personal_fences_item_id_fk
@@ -886,7 +885,6 @@ table playback_admin_operations
 table playback_artifacts
 table playback_audio_plans
 table playback_channel_sessions
-table playback_client_profiles
 table playback_conversion_failures
 table playback_conversion_targets
 table playback_copy_timelines
@@ -928,6 +926,7 @@ table playback_source_versions
 table playback_subtitle_pins
 table playback_subtitle_presentations
 table playback_subtitle_state
+table playback_track_memory
 table playback_v1_prepared
 table playback_v1_sessions
 table playback_vod_intervals

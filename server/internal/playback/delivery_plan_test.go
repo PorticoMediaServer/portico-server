@@ -157,71 +157,66 @@ func contains(values []string, want string) bool {
 // The policy matrix: network class crossed with preference and server clamp.
 func TestDeliveryPolicyResolutionMatrix(t *testing.T) {
 	t.Run("network class", func(t *testing.T) {
-		cases := []struct {
-			locality, transport string
-			want                NetworkClass
-		}{
-			{LocalityLocal, "ethernet", NetworkLocal},
-			{LocalityLocal, "unknown", NetworkLocal},
-			{LocalityLocal, "wifi", NetworkWiFi},
-			{LocalityLocal, "cellular", NetworkCellular},
-			{LocalityRemote, "wifi", NetworkRemote},
-			{LocalityRemote, "ethernet", NetworkRemote},
-			{LocalityRemote, "cellular", NetworkCellular},
-			{LocalityUnknown, "unknown", NetworkUnknown},
-			{LocalityUnknown, "cellular", NetworkCellular},
+		// One rule, decided at the edge, says home or away; nothing here reads
+		// an address, and the client's transport hint changes no decision.
+		if class, locality := NetworkClassOf(false); class != NetworkLocal || locality != LocalityLocal {
+			t.Fatal(class, locality)
 		}
-		for _, tt := range cases {
-			if got := ResolveNetworkClass(tt.locality, tt.transport); got != tt.want {
-				t.Fatalf("%s/%s resolved %s, want %s", tt.locality, tt.transport, got, tt.want)
+		if class, locality := NetworkClassOf(true); class != NetworkRemote || locality != LocalityRemote {
+			t.Fatal(class, locality)
+		}
+		for class, lane := range map[NetworkClass]string{NetworkLocal: QualityHome, NetworkRemote: QualityRemote, NetworkUnknown: QualityRemote} {
+			if got := ResolveDeliveryPolicy(nil, class, LocalityUnknown, "cellular", DefaultDeliveryConfiguration()); got.PreferenceLane != lane || got.TransportClass != "cellular" {
+				t.Fatalf("%s reads the %s default, want %s", class, got.PreferenceLane, lane)
 			}
 		}
 	})
 
 	t.Run("preferences and clamps", func(t *testing.T) {
 		values := stubPreferences{
-			"delivery.directPlay":                  "never",
-			"delivery.directStream":                "prefer",
-			"delivery.transcode":                   "allow",
-			"quality.cellular.mode":                "data-saver",
-			"quality.cellular.maxVideoBitrateMbps": 8,
-			"quality.cellular.maxAudioBitrateKbps": 256,
-			"quality.cellular.maxVideoHeight":      720,
-			"quality.cellular.allowHDR":            false,
+			"delivery.directPlay":   "never",
+			"delivery.directStream": "prefer",
+			"delivery.transcode":    "allow",
+			"quality.home":          "automatic",
+			"quality.remote":        "720p",
 		}
 		cfg := DefaultDeliveryConfiguration()
-		open := ResolveDeliveryPolicy(values, NetworkCellular, LocalityRemote, "cellular", cfg)
-		if open.PreferenceLane != "cellular" || open.DirectPlay != "never" || open.DirectStream != "prefer" {
+		open := ResolveDeliveryPolicy(values, NetworkRemote, LocalityRemote, "cellular", cfg)
+		if open.PreferenceLane != QualityRemote || open.QualityMode != "720p" || open.DirectPlay != "never" || open.DirectStream != "prefer" {
 			t.Fatal(open)
 		}
-		if open.MaxVideoBitrateBPS != 8_000_000 || open.MaxAudioBitrateBPS != 256_000 || open.MaxVideoHeight != 720 || open.AllowHDR {
+		// A saved quality is a default for starts, not a ceiling on the policy.
+		if open.MaxVideoBitrateBPS != 0 || open.MaxAudioBitrateBPS != 0 || open.MaxVideoHeight != 0 || !open.AllowHDR {
 			t.Fatal(open)
 		}
 		if len(open.Clamps) != 0 {
 			t.Fatal("unclamped server recorded clamps", open.Clamps)
 		}
-		// Server clamps only ever narrow, and are reported when they bite.
+		if home := ResolveDeliveryPolicy(values, NetworkLocal, LocalityLocal, "ethernet", cfg); home.PreferenceLane != QualityHome || home.QualityMode != "automatic" {
+			t.Fatal(home)
+		}
+		// Nothing saved, or something that is not a quality: the original.
+		if fallback := ResolveDeliveryPolicy(stubPreferences{"quality.remote": "data-saver"}, NetworkRemote, LocalityRemote, "ethernet", cfg); fallback.QualityMode != QualityOriginal {
+			t.Fatal(fallback.QualityMode)
+		}
+		// The owner's ceilings are the policy's. The video bitrate ceiling is a
+		// limit on connections from outside the home networks only.
 		cfg.MaxVideoBitrateBPS, cfg.MaxVideoHeight, cfg.AllowHDR = 4_000_000, 1080, false
-		clamped := ResolveDeliveryPolicy(values, NetworkCellular, LocalityRemote, "cellular", cfg)
-		if clamped.MaxVideoBitrateBPS != 4_000_000 {
-			t.Fatal("bitrate clamp not applied", clamped)
+		clamped := ResolveDeliveryPolicy(values, NetworkRemote, LocalityRemote, "cellular", cfg)
+		if clamped.MaxVideoBitrateBPS != 4_000_000 || clamped.MaxVideoHeight != 1080 || clamped.AllowHDR {
+			t.Fatal("owner ceilings not applied", clamped)
 		}
-		if clamped.MaxVideoHeight != 720 {
-			t.Fatal("clamp widened a narrower viewer choice", clamped)
+		if len(clamped.Clamps) != 1 || clamped.Clamps[0].Field != "allowHDR" {
+			t.Fatal("the HDR clamp was not reported exactly once", clamped.Clamps)
 		}
-		if len(clamped.Clamps) != 1 || clamped.Clamps[0].Field != "maxVideoBitrateBps" || clamped.Clamps[0].Requested != 8_000_000 || clamped.Clamps[0].Applied != 4_000_000 {
-			t.Fatal("clamp not reported exactly once", clamped.Clamps)
-		}
-		// A remote lane with no stored preferences borrows the unknown lane.
-		fallback := ResolveDeliveryPolicy(nil, NetworkRemote, LocalityRemote, "ethernet", DefaultDeliveryConfiguration())
-		if fallback.PreferenceLane != "unknown" {
-			t.Fatal(fallback.PreferenceLane)
+		if home := ResolveDeliveryPolicy(values, NetworkLocal, LocalityLocal, "ethernet", cfg); home.MaxVideoBitrateBPS != 0 || home.MaxVideoHeight != 1080 {
+			t.Fatal("the remote bitrate limit reached a home viewer", home)
 		}
 	})
 
 	t.Run("refusals", func(t *testing.T) {
 		cfg := DefaultDeliveryConfiguration()
-		never := ResolveDeliveryPolicy(stubPreferences{"delivery.transcode": "never"}, NetworkCellular, LocalityRemote, "cellular", cfg)
+		never := ResolveDeliveryPolicy(stubPreferences{"delivery.transcode": "never"}, NetworkRemote, LocalityRemote, "cellular", cfg)
 		_, err := planDelivery(DeliveryInput{SourceID: "s", Container: "mkv", VideoCodec: "vp9", AudioCodec: "opus", Duration: 10, Policy: never, Target: autoTarget(never, 1080), Config: cfg, TranscodingEnabled: true})
 		var refused ErrDeliveryRefused
 		if !errors.As(err, &refused) || refused.Code != ReasonTranscodeRefused {
@@ -263,7 +258,8 @@ func TestDeliveryPolicyResolutionMatrix(t *testing.T) {
 func TestDeliveryToneMapArguments(t *testing.T) {
 	cfg := DefaultDeliveryConfiguration()
 	cfg.ToneMapAlgorithm = "mobius"
-	sdrLane := ResolveDeliveryPolicy(stubPreferences{"quality.cellular.allowHDR": false, "quality.cellular.maxVideoHeight": 2160}, NetworkCellular, LocalityRemote, "cellular", cfg)
+	cfg.AllowHDR = false
+	sdrLane := ResolveDeliveryPolicy(nil, NetworkRemote, LocalityRemote, "cellular", cfg)
 	in := DeliveryInput{SourceID: "s", Container: "mkv", VideoCodec: "hevc", AudioCodec: "aac", Duration: 10, Height: 2160, ColorTransfer: "smpte2084", ColorPrimaries: "bt2020", Policy: sdrLane, Target: autoTarget(sdrLane, 2160), Config: cfg, TranscodingEnabled: true}
 	p := planFor(t, in)
 	if !p.ToneMap || p.ToneMapAlgorithm != "mobius" {
@@ -347,7 +343,7 @@ func TestDeliverySessionSnapshotRestartPinAndLegacy(t *testing.T) {
 	if plan.SourceSize != 20 || plan.SourceModifiedNS != 30 || plan.SourceID != token || plan.FactsRevision != 0 || plan.Strategy != DeliveryOriginal {
 		t.Fatal(plan)
 	}
-	if plan.QualityID != "auto" || plan.Policy == nil || plan.Policy.NetworkClass != NetworkUnknown {
+	if plan.QualityID != "original" || plan.Engine != EngineNative || plan.Policy == nil || plan.Policy.NetworkClass != NetworkUnknown {
 		t.Fatal("resolved policy not persisted with the plan", plan.QualityID, plan.Policy)
 	}
 	// Later descriptive reprobe cannot rewrite the decision for an existing session.

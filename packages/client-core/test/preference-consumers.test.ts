@@ -17,19 +17,19 @@ var preferenceRegistry = func() []PreferenceField {
     prefBool("appearance.showBackdrops", true, ScopeDeviceClass),
     prefBool("notifications.badges", true, ScopeProfileServer),
     prefText("region.locale", "en-US", 35, ScopeProfileServer),
+    prefEnum("quality.home", "original", SavedQualities, ScopeDeviceClass),
+    prefEnum("quality.remote", "original", SavedQualities, ScopeDeviceClass),
   }
   return out
 }();
 `;
 
-test('X-01: registry keys are extracted, with the quality lanes expanded', () => {
+test('X-01: registry keys are extracted, the two saved qualities among them', () => {
   const keys = extractRegistryKeys(GO);
   assert.ok(keys.includes('appearance.showBackdrops'));
   assert.ok(keys.includes('notifications.badges'));
   assert.ok(keys.includes('region.locale'));
-  assert.ok(keys.includes('quality.local.mode'));
-  assert.ok(keys.includes('quality.cellular.maxVideoHeight'));
-  assert.equal(keys.filter(k => k.startsWith('quality.')).length, 20);
+  assert.deepEqual(keys.filter(k => k.startsWith('quality.')), ['quality.home', 'quality.remote']);
 });
 
 test('X-01: the registry, label files, tests and exclusion lists are not readers', () => {
@@ -77,7 +77,7 @@ test('X-01: the check runs over the real registry, with or without the native ch
   assert.match(result.stdout, /PASS: \d+ keys/);
   assert.equal(result.status, 0, result.stderr);
   // Every registry key was looked up, not an empty list.
-  assert.ok(Number(/PASS: (\d+) keys/.exec(result.stdout)![1]) >= 40);
+  assert.ok(Number(/PASS: (\d+) keys/.exec(result.stdout)![1]) >= 30);
 });
 
 test('X-01: a native checkout that was named but is not there fails the check', () => {

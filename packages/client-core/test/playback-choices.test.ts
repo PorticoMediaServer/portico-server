@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {AutomaticQuality, audioStreamIndex, audioTrackId, fixedQualities, fixedQualityOf, heightClass, isQualityChoice, offeredQualities, qualityChoiceOrder, qualityRequest} from '../src/playback-v1/choices.ts';
+import {AutomaticQuality, audioStreamIndex, audioTrackId, fixedQualities, fixedQualityOf, heightClass, isQualityChoice, offeredQualities, qualityChoiceOf, qualityChoiceOrder, qualityRequest} from '../src/playback-v1/choices.ts';
 
 test('the menu order is Original, Automatic, then the fixed qualities, best first', () => {
-  assert.deepEqual(qualityChoiceOrder, ['original', 'automatic', '2160', '1080', '720', '480', '360']);
+  assert.deepEqual(qualityChoiceOrder, ['original', 'automatic', '2160', '1440', '1080', '720', '480', '360'], 'the server\u2019s ladder, one for one');
   assert.equal(isQualityChoice('automatic'), true);
   assert.equal(isQualityChoice('auto'), false);
 });
@@ -12,29 +12,37 @@ test('only qualities really below the source are offered', () => {
   // A 1920x800 film is 1080p: nothing at or above it, unless its bit rate is far above the step's.
   assert.deepEqual(offeredQualities({height: 800, bitrateKbps: 9000}).map(q => q.id), ['720', '480', '360']);
   assert.deepEqual(offeredQualities({height: 1080, bitrateKbps: 30_000}).map(q => q.id), ['1080', '720', '480', '360'], 'a disc copy has a meaningful 1080p below it');
-  assert.deepEqual(offeredQualities({height: 2160, bitrateKbps: 50_000}).map(q => q.id), ['1080', '720', '480', '360']);
-  assert.deepEqual(offeredQualities({height: 2160, bitrateKbps: 80_000}).map(q => q.id), ['2160', '1080', '720', '480', '360']);
+  assert.deepEqual(offeredQualities({height: 2160, bitrateKbps: 25_000}).map(q => q.id), ['1440', '1080', '720', '480', '360']);
+  assert.deepEqual(offeredQualities({height: 2160, bitrateKbps: 80_000}).map(q => q.id), ['2160', '1440', '1080', '720', '480', '360']);
   assert.deepEqual(offeredQualities({height: 480}).map(q => q.id), ['360']);
   assert.equal(offeredQualities().length, fixedQualities.length, 'with nothing known, all are offered');
   assert.equal(heightClass(1600), 2160);
+  assert.equal(heightClass(1440), 1440);
   assert.equal(heightClass(1036), 1080);
 });
 
-test('a choice becomes the session quality request; Automatic starts at Original', () => {
+test('a choice becomes the session quality request in the server\u2019s own values; Automatic starts at Original', () => {
   assert.deepEqual(qualityRequest('original'), {mode: 'original'});
-  assert.deepEqual(qualityRequest('automatic'), {mode: 'original'});
-  assert.deepEqual(qualityRequest('720'), {mode: 'limit', maxHeight: 720, maxVideoBitrateKbps: 4000});
-  assert.deepEqual(qualityRequest('480'), {mode: 'limit', maxHeight: 480, maxVideoBitrateKbps: 1500, maxAudioBitrateKbps: 128});
-  assert.deepEqual(qualityRequest('automatic', fixedQualities[1]), {mode: 'limit', maxHeight: 1080, maxVideoBitrateKbps: 8000});
+  assert.deepEqual(qualityRequest('automatic'), {mode: 'automatic', id: 'original'}, 'Automatic on no step, said outright so a stepped session comes back');
+  assert.deepEqual(qualityRequest('720'), {mode: 'fixed', id: '720p'});
+  assert.deepEqual(qualityRequest('2160'), {mode: 'fixed', id: '2160p'});
+  assert.deepEqual(qualityRequest('automatic', fixedQualities.find(q => q.id === '1080')), {mode: 'automatic', id: '1080p'});
   assert.equal(fixedQualityOf(qualityRequest('720'))?.id, '720');
   assert.equal(fixedQualityOf({mode: 'original'}), undefined);
+  // The quality in force on a session (what the server started it with) reads back the same way.
+  assert.equal(qualityChoiceOf({mode: 'fixed', id: '1440p'}), '1440');
+  assert.equal(qualityChoiceOf({mode: 'automatic', id: '720p'}), 'automatic');
+  assert.equal(fixedQualityOf({mode: 'automatic', id: '720p'})?.id, '720', 'the step Automatic is on');
+  assert.equal(qualityChoiceOf({mode: 'original'}), 'original');
+  assert.equal(qualityChoiceOf({mode: 'limit', maxHeight: 720}), '720');
+  assert.equal(qualityChoiceOf(undefined), undefined);
   assert.equal(audioTrackId(3), 'a3');
   assert.equal(audioTrackId('a12'), 'a12');
   assert.equal(audioTrackId('3'), undefined);
   assert.equal(audioStreamIndex('a3'), 3);
 });
 
-const steps = fixedQualities.filter(q => q.id !== '2160');
+const steps = fixedQualities.filter(q => q.height <= 1080);
 function automatic(options: {originalKbps?: number; startAt?: (typeof steps)[number]} = {}) {
   let now = 0;
   const auto = new AutomaticQuality({steps, originalKbps: options.originalKbps ?? 20_000, now: () => now, ...(options.startAt ? {startAt: options.startAt} : {})});

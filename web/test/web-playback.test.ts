@@ -25,7 +25,8 @@ function setup(ctx: {after(fn: () => void): void}, options: {escalates?: boolean
   const log: Logged[] = [], farewells: Logged[] = [];
   const http: V1Http = {send: async r => {
     log.push({method: r.method, path: r.path, body: r.body});
-    if (r.path === '/v1/playback/route-failures') return {status: 200, headers: {}, body: {route: 'direct', escalates: options.escalates ?? true}};
+    // A server with no other way to deliver the file refuses the failure report's re-plan.
+    if (r.method === 'PATCH' && (r.body as {failure?: unknown} | undefined)?.failure && options.escalates === false) return {status: 422, headers: {}, body: {error: {code: 'unsupported_media', message: 'This title can\u2019t be played on this device.', retry: 'never'}}};
     return inner.send(r as never) as never;
   }};
   let serial = 0;
@@ -264,14 +265,16 @@ test('an engine failure is reported to the server and the title comes back on an
   const failed = t.playback.getSnapshot().session!.id;
   for (let i = 0; i < 3; i++) hls.error({fatal: true, type: 'mediaError', details: 'bufferAppendError'});
   await settle();
-  const report = t.log.find(r => r.path === '/v1/playback/route-failures');
-  assert.ok(report, 'the server is told which route failed');
-  assert.deepEqual({sessionId: (report!.body as {sessionId: string}).sessionId, code: (report!.body as {code: string}).code}, {sessionId: failed, code: 'decode_error'});
+  const report = t.log.find(r => r.method === 'PATCH' && r.path === `/v1/playback/sessions/${failed}` && !!(r.body as {failure?: unknown}).failure);
+  assert.ok(report, 'the server is told the player failed, on the session itself');
+  assert.equal((report!.body as {failure: {code: string}}).failure.code, 'decode_error');
+  assert.equal((report!.body as {positionMs?: number}).positionMs, 60_000, 'and where the picture was');
   const now = t.playback.getSnapshot();
   assert.notEqual(now.phase, 'error', 'the viewer sees recovery, not an error');
-  assert.notEqual(now.session!.id, failed);
+  assert.equal(now.session!.id, failed, 'the same session, delivered another way');
+  assert.ok(now.session!.generation > 1);
   assert.equal(t.queues().length, 1, 'the queue was not replaced');
-  assert.equal((t.sessions().at(-1)!.body as {startPositionMs?: number}).startPositionMs, 60_000);
+  assert.equal(t.sessions().length, 0, 'and nothing was started again: the queue\u2019s own session was re-planned');
 
   // With no route above it, the viewer is told plainly that it cannot be played here.
   const u = setup(ctx, {escalates: false});
@@ -367,7 +370,7 @@ test('Automatic steps down on a sustained shortfall, says so, and asks the serve
   assert.equal(t.web.automaticAt?.id, '720', 'the best step the connection carries with room to spare');
   assert.deepEqual(t.notices, ['qualityLowered']);
   const patch = t.log.find(r => r.method === 'PATCH');
-  assert.deepEqual((patch!.body as {quality: unknown}).quality, {mode: 'limit', maxHeight: 720, maxVideoBitrateKbps: 4000});
+  assert.deepEqual((patch!.body as {quality: unknown}).quality, {mode: 'automatic', id: '720p'}, 'Automatic, on the step the connection carries');
   assert.equal(t.queues().length, 1);
 });
 

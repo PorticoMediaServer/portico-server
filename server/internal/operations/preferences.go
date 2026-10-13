@@ -4,9 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"golang.org/x/text/language"
-	"sort"
 	"strings"
 	"unicode/utf8"
 
@@ -16,7 +14,7 @@ import (
 // PreferenceRegistryRevision changes whenever a field is added, removed, or its
 // domain moves. Clients render settings from the published registry, so the
 // revision is the only thing they have to compare between releases.
-const PreferenceRegistryRevision = "p39.CD32.B4"
+const PreferenceRegistryRevision = "p40.Q2"
 
 const (
 	HomeLayoutMaxRows        = 64
@@ -115,48 +113,24 @@ func prefList(key string, maxItems, maxLength int, scope string) PreferenceField
 var (
 	skipModes      = []string{"ask", "auto", "off"}
 	deliveryModes  = []string{"allow", "prefer", "never", "require"}
-	qualityModes   = []string{"off", "automatic", "original", "high", "standard", "data-saver"}
-	videoHeights   = []int{360, 480, 720, 1080, 1440, 2160, 4320}
 	playbackSpeeds = []float64{0.5, 0.75, 1, 1.25, 1.5, 1.75, 2}
 )
 
-// qualityDefaults keeps each network lane honest about its own cost. Cellular
-// starts conservative; the local lane starts unrestricted.
-var qualityDefaults = map[string]struct {
-	Mode         string
-	VideoMbps    int
-	AudioKbps    int
-	VideoHeight  int
-	AllowHDR     bool
-	DefaultOrder int
-}{
-	"local":    {"original", 0, 0, 4320, true, 0},
-	"wifi":     {"automatic", 0, 0, 2160, true, 1},
-	"cellular": {"standard", 8, 256, 1080, false, 2},
-	"unknown":  {"automatic", 20, 320, 1080, true, 3},
-}
+// SavedQualities is the domain of the two saved quality defaults: the
+// original file, automatic (starts at the original and moves down and back up
+// as the connection requires), and each step of the server's quality ladder.
+// It mirrors playback.SavedQualities; a test holds the two together.
+var SavedQualities = []string{"original", "automatic", "2160p", "1440p", "1080p", "720p", "480p", "360p"}
 
+// qualityFields are a viewer's saved default qualities, one for the owner's
+// home networks and one for everywhere else. Both default to the original. A
+// start that names no quality gets the one for where it comes from; the
+// player can still choose another for the session.
 func qualityFields() []PreferenceField {
-	networks := make([]string, 0, len(qualityDefaults))
-	for network := range qualityDefaults {
-		networks = append(networks, network)
+	return []PreferenceField{
+		prefEnum("quality.home", "original", SavedQualities, ScopeDeviceClass),
+		prefEnum("quality.remote", "original", SavedQualities, ScopeDeviceClass),
 	}
-	sort.Slice(networks, func(i, j int) bool {
-		return qualityDefaults[networks[i]].DefaultOrder < qualityDefaults[networks[j]].DefaultOrder
-	})
-	out := []PreferenceField{}
-	for _, network := range networks {
-		d := qualityDefaults[network]
-		prefix := "quality." + network + "."
-		out = append(out,
-			prefEnum(prefix+"mode", d.Mode, qualityModes, ScopeDeviceClass),
-			qualityPreset(prefix+"maxVideoBitrateMbps", d.VideoMbps, true),
-			qualityPreset(prefix+"maxAudioBitrateKbps", d.AudioKbps, false),
-			prefIntEnum(prefix+"maxVideoHeight", d.VideoHeight, videoHeights, ScopeDeviceClass),
-			prefBool(prefix+"allowHDR", d.AllowHDR, ScopeDeviceClass),
-		)
-	}
-	return out
 }
 
 var preferenceRegistry = func() []PreferenceField {
@@ -314,9 +288,6 @@ func numberOf(raw any) (float64, bool) {
 
 func allowedNumber(f PreferenceField, n float64) bool {
 	for _, raw := range f.AllowedValues {
-		if option, ok := raw.(PreferenceOption); ok {
-			raw = option.Value
-		}
 		if v, ok := numberOf(raw); ok && v == n {
 			return true
 		}
@@ -523,68 +494,9 @@ func EffectivePreferences(q PreferenceQuery, v identity.Viewer, deviceClass stri
 			values[field], source[field] = value, scope
 		}
 	}
-	clamped := preferencePolicy(values, source, deviceClass)
-	return values, source, clamped, nil
+	return values, source, []string{}, nil
 }
 
-// preferencePolicy applies the server's own limits after the viewer's choices.
-// A cellular ladder only means something on a device class that has cellular.
-// The clamp is reported only when it actually overrode a stored choice; a
-// default the viewer never touched is not something to warn a client about.
-func preferencePolicy(values PreferenceValues, source map[string]string, deviceClass string) []string {
-	clamped := []string{}
-	if deviceClass != "mobile" && values["quality.cellular.mode"] != "off" {
-		if source["quality.cellular.mode"] != "default" {
-			clamped = append(clamped, "quality.cellular.mode")
-		}
-		values["quality.cellular.mode"] = "off"
-		source["quality.cellular.mode"] = "policy"
-	}
-	return clamped
-}
-
-// PreferenceOption carries the presentation label and the policy implied by a
-// selected bitrate. Zero means Original (no bitrate limit), never a zero-rate stream.
-type PreferenceOption struct {
-	Value          int    `json:"value"`
-	Label          string `json:"label"`
-	MaxVideoHeight int    `json:"maxVideoHeight,omitempty"`
-}
-
-func VideoPresetHeight(mbps int) int {
-	switch mbps {
-	case 40, 20:
-		return 2160
-	case 12, 8:
-		return 1080
-	case 4, 2:
-		return 720
-	case 1:
-		return 480
-	}
-	return 0
-}
-func qualityPreset(key string, def int, video bool) PreferenceField {
-	f := field(key, "integer", def, ScopeDeviceClass)
-	f.Step = numeric(1)
-	choices := []int{0, 320, 256, 192, 128, 96}
-	unit := "kbps"
-	if video {
-		choices = []int{0, 40, 20, 12, 8, 4, 2, 1}
-		unit = "Mbps"
-	}
-	for _, value := range choices {
-		option := PreferenceOption{Value: value, Label: fmt.Sprintf("%d %s", value, unit)}
-		if value == 0 {
-			option.Label = "Original"
-		}
-		if video {
-			option.MaxVideoHeight = VideoPresetHeight(value)
-		}
-		f.AllowedValues = append(f.AllowedValues, option)
-	}
-	return f
-}
 func semanticPreference(key, kind string, maxLength int) PreferenceField {
 	f := field(key, kind, "auto", ScopeProfileServer)
 	f.maxLength = maxLength

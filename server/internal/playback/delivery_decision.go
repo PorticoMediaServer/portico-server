@@ -24,6 +24,9 @@ const (
 	RejectDynamicRange        = "dynamic_range_unsupported"
 	RejectDolbyVision         = "dolby_vision_profile_unsupported"
 	RejectDolbyVisionEntry    = "dolby_vision_sample_entry_unsupported"
+	RejectCodecTag            = "video_sample_entry_unsupported"
+	RejectDisplayRange        = "dynamic_range_not_shown_by_display"
+	RejectPassthrough         = "audio_passthrough_unavailable"
 	RejectRotation            = "rotation_requires_conversion"
 	RejectAudioCodec          = "audio_codec_unsupported"
 	RejectAudioChannels       = "audio_channels_exceed_device"
@@ -41,9 +44,18 @@ const (
 	NoteToneMapOwnerOff    = "hdr_tone_mapping_disabled_by_owner"
 	NoteDolbyVisionNoLayer = "dolby_vision_without_fallback_converted_approximately"
 	NoteDeviceBitrate      = "device_bitrate_ceiling_applied"
+	NoteBitrateAssumed     = "source_bitrate_unobserved_assumed_from_picture_size"
 	// NoteFirstAudioTrackPlayed marks a plan that plays the original although the
 	// wanted audio track is not the first, because no other route existed.
 	NoteFirstAudioTrackPlayed = "wanted_audio_track_unreachable_first_track_played"
+	// Notes about the engine and the viewer's overrides behind a plan.
+	NoteEngineAutomatic       = "engine_chosen_automatically"
+	NoteEngineFallback        = "engine_setting_unavailable_other_engine_used"
+	NoteDeviceToneMaps        = "device_tone_maps_hdr"
+	NoteAudioPassthrough      = "audio_passed_through_to_receiver"
+	NoteOverrideStereo        = "viewer_override_force_stereo"
+	NoteOverrideNoPassthrough = "viewer_override_disable_passthrough"
+	NoteOverrideNoHDR         = "viewer_override_disable_hdr"
 )
 
 type RouteRejection struct {
@@ -86,7 +98,7 @@ type TraceAudio struct {
 	Channels    int    `json:"channels,omitempty"`
 	Language    string `json:"language,omitempty"`
 	ObjectAudio string `json:"objectAudio,omitempty"`
-	// Why this track: explicit, preferred_language, default, first.
+	// Why this track: explicit, remembered, preferred_language, default, first.
 	ChosenBy string `json:"chosenBy"`
 	Tracks   int    `json:"tracks"`
 }
@@ -145,16 +157,24 @@ func dolbyVisionFallback(v *SourceVideo) string {
 }
 
 // effectiveRange is the dynamic range the device will actually be shown for this
-// source: Dolby Vision where it has the profile, the fallback layer otherwise.
-func effectiveRange(v *SourceVideo, c *ClientVideoCodec) string {
+// source: Dolby Vision where the engine has the profile and the picture can be
+// presented as Dolby Vision, the fallback layer otherwise.
+func effectiveRange(v *SourceVideo, c *ClientVideoCodec, client ClientProfile) string {
 	r := v.DynamicRange
 	if r == "" {
 		return assets.RangeSDR
 	}
-	if r == assets.RangeDolbyVision && (c == nil || !containsInt(c.DolbyVisionProfiles, v.DolbyVisionProfile)) {
+	if r == assets.RangeDolbyVision && !nativeDolbyVision(v, c, client) {
 		return dolbyVisionFallback(v)
 	}
 	return r
+}
+
+// nativeDolbyVision reports whether the engine plays this picture as Dolby
+// Vision: it decodes the profile, and the display shows Dolby Vision or the
+// engine maps it to what the display shows.
+func nativeDolbyVision(v *SourceVideo, c *ClientVideoCodec, client ClientProfile) bool {
+	return v.DynamicRange == assets.RangeDolbyVision && c != nil && containsInt(c.DolbyVisionProfiles, v.DolbyVisionProfile) && client.presents(assets.RangeDolbyVision)
 }
 
 // videoRejections checks one source video stream against one transport of the
@@ -190,9 +210,14 @@ func videoRejections(v *SourceVideo, client ClientProfile, t ClientTransport, al
 	if copying && v.Rotation != 0 {
 		out = append(out, RouteRejection{RejectRotation, fmt.Sprintf("%d", v.Rotation)})
 	}
+	if !copying && len(c.CodecTags) > 0 && v.CodecTag != "" && !containsString(c.CodecTags, strings.ToLower(v.CodecTag)) {
+		// The engine plays this codec only under other sample entries; the
+		// server writes one it takes when it repackages the stream.
+		out = append(out, RouteRejection{RejectCodecTag, v.CodecTag})
+	}
 	if v.DynamicRange != "" && v.DynamicRange != assets.RangeSDR {
-		native := v.DynamicRange == assets.RangeDolbyVision && containsInt(c.DolbyVisionProfiles, v.DolbyVisionProfile)
-		shown := effectiveRange(v, c)
+		native := nativeDolbyVision(v, c, client)
+		shown := effectiveRange(v, c, client)
 		switch {
 		case !allowHDR && shown != assets.RangeSDR:
 			out = append(out, RouteRejection{ReasonHDRNotAllowed, v.DynamicRange})
@@ -200,6 +225,10 @@ func videoRejections(v *SourceVideo, client ClientProfile, t ClientTransport, al
 			out = append(out, RouteRejection{RejectDolbyVision, fmt.Sprintf("profile %d", v.DolbyVisionProfile)})
 		case shown != assets.RangeSDR && !containsString(c.DynamicRanges, shown):
 			out = append(out, RouteRejection{RejectDynamicRange, shown})
+		case shown != assets.RangeSDR && !client.presents(shown):
+			// The engine decodes the range, but neither the display nor the
+			// engine's own tone mapping can show it.
+			out = append(out, RouteRejection{RejectDisplayRange, shown})
 		case !copying && !native && v.DynamicRange == assets.RangeDolbyVision && (v.CodecTag == "dvh1" || v.CodecTag == "dvhe" || v.CodecTag == "dva1" || v.CodecTag == "dvav"):
 			// A Dolby Vision sample entry is refused outright by decoders that do
 			// not know it, even though the base layer underneath is ordinary HEVC.
@@ -209,15 +238,24 @@ func videoRejections(v *SourceVideo, client ClientProfile, t ClientTransport, al
 	return out
 }
 
+// audioRejections checks one source audio track against one transport of the
+// device. A track is taken when the engine decodes it, or when the engine can
+// hand it undecoded to an output that carries bitstreams.
 func audioRejections(a *SourceAudio, client ClientProfile, t ClientTransport) []RouteRejection {
-	var out []RouteRejection
+	if !containsString(t.Audio, a.Codec) {
+		return []RouteRejection{{RejectAudioCodec, a.Codec}}
+	}
+	if audioPassedThrough(a, client) {
+		return nil
+	}
 	c := client.audioCodec(a.Codec)
-	if c == nil || !containsString(t.Audio, a.Codec) {
-		return append(out, RouteRejection{RejectAudioCodec, a.Codec})
+	if c == nil {
+		if client.passthroughDeclared(a.Codec) {
+			return []RouteRejection{{RejectPassthrough, a.Codec}}
+		}
+		return []RouteRejection{{RejectAudioCodec, a.Codec}}
 	}
-	if c.Passthrough && !passthroughRoute(client.AudioOutput.Route) {
-		out = append(out, RouteRejection{RejectAudioCodec, "passthrough output unavailable"})
-	}
+	var out []RouteRejection
 	if c.MaxChannels > 0 && a.Channels > c.MaxChannels {
 		out = append(out, RouteRejection{RejectAudioChannels, fmt.Sprintf("%d>%d", a.Channels, c.MaxChannels)})
 	}
@@ -227,11 +265,31 @@ func audioRejections(a *SourceAudio, client ClientProfile, t ClientTransport) []
 	return out
 }
 
+// audioPassedThrough reports whether the engine would hand this track to the
+// audio output undecoded: the codec is on its passthrough list, the route
+// carries bitstreams, and the track fits the channels the receiver takes.
+func audioPassedThrough(a *SourceAudio, client ClientProfile) bool {
+	p := client.passthroughCodec(a.Codec)
+	return p != nil && (p.MaxChannels == 0 || a.Channels <= p.MaxChannels)
+}
+
+// passthroughDeclared reports whether the engine lists the codec for
+// passthrough at all, whatever the output route is now.
+func (p ClientProfile) passthroughDeclared(codec string) bool {
+	for _, c := range p.AudioPassthrough {
+		if c.Codec == codec {
+			return true
+		}
+	}
+	return false
+}
+
 // chooseAudio picks the programme audio for a session: the viewer's explicit
-// choice, else the first track in a preferred language, else the container's
-// default, else the first track. A commentary is never chosen automatically
-// while an ordinary track exists.
-func chooseAudio(tracks []SourceAudio, explicit int, preferred []string) (*SourceAudio, string) {
+// choice, else the language this profile last chose for the show or film, else
+// the first track in a preferred language, else the container's default, else
+// the first track. A commentary is never chosen automatically while an
+// ordinary track exists.
+func chooseAudio(tracks []SourceAudio, explicit int, remembered string, preferred []string) (*SourceAudio, string) {
 	if len(tracks) == 0 {
 		return nil, ""
 	}
@@ -239,6 +297,13 @@ func chooseAudio(tracks []SourceAudio, explicit int, preferred []string) (*Sourc
 		for i := range tracks {
 			if tracks[i].Index == explicit {
 				return &tracks[i], "explicit"
+			}
+		}
+	}
+	if want := languageKey(remembered); want != "" {
+		for i := range tracks {
+			if languageKey(tracks[i].Language) == want && !tracks[i].Commentary {
+				return &tracks[i], "remembered"
 			}
 		}
 	}
@@ -295,12 +360,18 @@ var (
 	fmp4CopyAudio = []string{"aac", "mp3", "ac3", "eac3", "flac", "opus", "alac"}
 )
 
-// hlsTransports lists the device's HLS transports this server can produce,
-// MPEG-TS first: it is the older, more forgiving container, and fragmented MP4
-// is reached for when TS cannot carry the stream to this device.
-func hlsTransports(client ClientProfile, fmp4 bool) []ClientTransport {
+// hlsTransports lists the device's HLS transports this server can produce, in
+// the order they are tried. MPEG-TS comes first for H.264 and MPEG-2: it is the
+// older, more forgiving container. Fragmented MP4 comes first for every newer
+// codec and for any HDR picture, because that is the container HLS specifies
+// for them and the only one that carries their colour signalling reliably.
+func hlsTransports(client ClientProfile, fmp4 bool, video *SourceVideo) []ClientTransport {
+	order := []string{TransportHLSTS, TransportHLSFMP4}
+	if video != nil && ((video.Codec != "h264" && video.Codec != "mpeg2video") || (video.DynamicRange != "" && video.DynamicRange != assets.RangeSDR)) {
+		order = []string{TransportHLSFMP4, TransportHLSTS}
+	}
 	var out []ClientTransport
-	for _, kind := range []string{TransportHLSTS, TransportHLSFMP4} {
+	for _, kind := range order {
 		if kind == TransportHLSFMP4 && !fmp4 {
 			continue
 		}
@@ -327,14 +398,14 @@ func serverCopyAudio(transport, codec string) bool {
 	return containsString(tsCopyAudio, codec)
 }
 
-// convertedAudio is the target of an audio conversion for one device: AAC, in
-// 5.1 when the source has it and both the decoder and the output route take it,
-// stereo otherwise.
+// convertedAudio is the target of an audio conversion for one device.
 type convertedAudio struct {
 	Codec    string
 	Channels int
 	Bitrate  int
 	Downmix  bool
+	// Lossless is true when the output keeps every bit of the source.
+	Lossless bool
 	// SampleRate is the rate to resample to; zero keeps the source's.
 	SampleRate int
 	// NoRate means no codec this server converts to is encoded at a rate the
@@ -350,6 +421,8 @@ var convertedAudioRates = map[string][]int{
 	"aac":  {48000, 44100, 32000, 24000, 22050, 16000, 12000, 11025, 8000},
 	"ac3":  {48000, 44100, 32000},
 	"eac3": {48000, 44100, 32000},
+	"flac": {48000, 44100, 32000, 24000, 22050, 16000, 12000, 11025, 8000},
+	"opus": {48000},
 }
 
 // convertedSampleRate is the rate a track converted to codec is resampled to,
@@ -384,42 +457,137 @@ func convertedSampleRate(a *SourceAudio, codec string, output *ClientAudioCodec)
 	return chosen, chosen != 0
 }
 
+// audioConversionTarget is audioOutputFor with no transport to check against,
+// for callers that convert into MPEG-TS HLS as every device can take it.
 func audioConversionTarget(a *SourceAudio, client ClientProfile, target QualityTarget) convertedAudio {
-	out := convertedAudio{Codec: "aac", Channels: 2, Bitrate: audioBudget(target)}
+	return audioOutputFor(a, client, target, nil, currentConversionOutputs())
+}
+
+// audioOutputFor picks what a track is converted to for one device, from what
+// this server can produce and what the device's engine takes on the transport
+// (nil: not checked).
+//
+// The order is the most of the source the device can use. A losslessly coded
+// track goes to a lossless output when one exists, then to Dolby Digital Plus
+// or Dolby Digital at their full rate, and only then to AAC. A lossy surround
+// track goes to AAC in 5.1 first, then to the Dolby codecs for a device that
+// has no multichannel AAC but a receiver. Stereo AAC is the floor: every
+// device this server plans for decodes it.
+func audioOutputFor(a *SourceAudio, client ClientProfile, target QualityTarget, transport *ClientTransport, outputs ConversionOutputs) convertedAudio {
+	floor := convertedAudio{Codec: "aac", Channels: 2, Bitrate: audioBudget(target)}
 	source := 2
 	if a != nil && a.Channels > 0 {
 		source = a.Channels
 	}
-	if source >= 6 {
-		aac := client.audioCodec("aac")
-		if aac != nil && aac.MaxChannels >= 6 && client.AudioOutput.MaxChannels >= 6 && (target.MaxAudioBitrateBPS == 0 || target.MaxAudioBitrateBPS >= 256_000) {
-			out.Channels, out.Bitrate = 6, 384_000
-			if target.MaxAudioBitrateBPS > 0 && target.MaxAudioBitrateBPS < out.Bitrate {
-				out.Bitrate = target.MaxAudioBitrateBPS
-			}
-		}
+	lossless := losslessAudio(a)
+	layouts := []int{}
+	if source >= 8 {
+		layouts = append(layouts, 8)
 	}
-	if source >= 6 && out.Channels < 6 && passthroughRoute(client.AudioOutput.Route) && client.AudioOutput.MaxChannels >= 6 && (target.MaxAudioBitrateBPS == 0 || target.MaxAudioBitrateBPS >= 640000) {
-		for _, codec := range []string{"eac3", "ac3"} {
-			c := client.audioCodec(codec)
-			if c == nil || !c.Passthrough || c.MaxChannels < 6 {
+	if source >= 6 {
+		layouts = append(layouts, 6)
+	}
+	type candidate struct {
+		codec    string
+		channels int
+	}
+	var candidates []candidate
+	if lossless {
+		for _, o := range outputs.Audio {
+			if !o.Lossless {
 				continue
 			}
-			// A passthrough codec with no rate this device takes is passed
-			// over, for the next one and then for AAC.
-			if rate, ok := convertedSampleRate(a, codec, c); ok {
-				return convertedAudio{Codec: codec, Channels: 6, Bitrate: 640000, Downmix: source > 6, SampleRate: rate}
+			for _, n := range append(append([]int{}, layouts...), 2) {
+				candidates = append(candidates, candidate{o.Codec, n})
 			}
 		}
 	}
-	out.Downmix = source > out.Channels
-	rate, ok := convertedSampleRate(a, out.Codec, client.audioCodec(out.Codec))
-	out.SampleRate, out.NoRate = rate, !ok
-	return out
+	dolby := func() {
+		for _, n := range layouts {
+			candidates = append(candidates, candidate{"eac3", n}, candidate{"ac3", n})
+		}
+	}
+	aac := func() {
+		for _, n := range layouts {
+			candidates = append(candidates, candidate{"aac", n})
+		}
+	}
+	if lossless {
+		dolby()
+		aac()
+	} else {
+		aac()
+		dolby()
+	}
+	for _, c := range candidates {
+		output := outputs.audio(c.codec)
+		if output == nil {
+			continue
+		}
+		rate, produced := output.Bitrates[c.channels]
+		if !produced {
+			continue
+		}
+		if transport != nil && (!containsString(transport.Audio, c.codec) || !containsString(output.Transports, transport.Transport)) {
+			continue
+		}
+		// What the device does with it: decodes it to the channels its output
+		// has, or hands it to a receiver.
+		decoder := client.audioCodec(c.codec)
+		decoded := decoder != nil && decoder.MaxChannels >= c.channels && (c.channels <= 2 || client.AudioOutput.MaxChannels >= c.channels)
+		passed := false
+		if p := client.passthroughCodec(c.codec); p != nil && (p.MaxChannels == 0 || p.MaxChannels >= c.channels) {
+			passed = true
+		}
+		if !decoded && !passed {
+			continue
+		}
+		// The viewer's or the owner's audio ceiling.
+		ceiling := target.MaxAudioBitrateBPS
+		switch {
+		case output.Lossless:
+			if ceiling > 0 {
+				continue
+			}
+		case c.codec == "aac":
+			if ceiling > 0 && ceiling < 256_000 {
+				continue
+			}
+			if ceiling > 0 && ceiling < rate {
+				rate = ceiling
+			}
+		default:
+			if ceiling > 0 && ceiling < rate {
+				continue
+			}
+		}
+		out := convertedAudio{Codec: c.codec, Channels: c.channels, Bitrate: rate, Downmix: source > c.channels, Lossless: output.Lossless}
+		resample, ok := convertedSampleRate(a, c.codec, decoder)
+		if !ok {
+			if c.codec != "aac" {
+				// A codec with no rate this device takes is passed over, for
+				// the next one and then for AAC.
+				continue
+			}
+			out.NoRate = true
+		}
+		out.SampleRate = resample
+		return out
+	}
+	floor.Downmix = source > floor.Channels
+	rate, ok := convertedSampleRate(a, floor.Codec, client.audioCodec(floor.Codec))
+	floor.SampleRate, floor.NoRate = rate, !ok
+	return floor
 }
 
+// passthroughRoute reports whether an audio output route carries an undecoded
+// bitstream to something that decodes it.
 func passthroughRoute(route string) bool {
-	return route == "hdmi" || route == "arc" || route == "optical"
+	switch route {
+	case "hdmi", "arc", "earc", "optical", "spdif":
+		return true
+	}
+	return false
 }
 
 // HLSTSRejections shares on-demand codec, range and output-route checks with Live TV.

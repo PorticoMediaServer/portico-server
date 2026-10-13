@@ -7,7 +7,7 @@
  * cannot play it), Automatic (starts at Original and moves down, and back up, as the connection
  * requires; see `AutomaticQuality`), then the fixed qualities below the source.
  */
-import type {QualityRequest} from './quality.ts';
+import {qualityLadder, type QualityId, type QualityInForce, type QualityRequest} from './quality.ts';
 
 /** Choices that travel with a start or a change of the live session. Absent fields are left as they are. */
 export type PlaybackChoices = Readonly<{
@@ -16,22 +16,22 @@ export type PlaybackChoices = Readonly<{
   versionId?: string;
   /** The audio track, by its playback-options id (`a1`, `a2`…). */
   audioTrackId?: string;
+  /** The subtitle track, by its playback-options id; `null` turns subtitles off. Sent with a change only. */
+  subtitleTrackId?: string | null;
+  /** This device's estimate of its connection to the server, sent with a quality change so the server can refuse one the connection cannot carry. */
+  throughputKbps?: number;
 }>;
 
-export type FixedQualityId = '2160' | '1080' | '720' | '480' | '360';
+export type FixedQualityId = '2160' | '1440' | '1080' | '720' | '480' | '360';
 export type QualityChoice = 'original' | 'automatic' | FixedQualityId;
 
 /** A fixed quality: the tallest picture and the video bit rate a stream at that height is given. */
 export type FixedQuality = Readonly<{id: FixedQualityId; height: number; videoKbps: number; audioKbps?: number}>;
 
-/** Fixed qualities, best first. */
-export const fixedQualities: readonly FixedQuality[] = Object.freeze([
-  Object.freeze({id: '2160' as const, height: 2160, videoKbps: 40_000}),
-  Object.freeze({id: '1080' as const, height: 1080, videoKbps: 8000}),
-  Object.freeze({id: '720' as const, height: 720, videoKbps: 4000}),
-  Object.freeze({id: '480' as const, height: 480, videoKbps: 1500, audioKbps: 128}),
-  Object.freeze({id: '360' as const, height: 360, videoKbps: 800, audioKbps: 96}),
-]);
+/** Fixed qualities, best first: the server's ladder (`quality.ts` `qualityLadder`), one for one. */
+export const fixedQualities: readonly FixedQuality[] = Object.freeze(qualityLadder.map(step => Object.freeze({id: String(step.height) as FixedQualityId, height: step.height, videoKbps: step.videoKbps, audioKbps: step.audioKbps})));
+
+const serverId = (fixed: FixedQuality): QualityId => (fixed.id + 'p') as QualityId;
 
 export const qualityChoiceOrder: readonly QualityChoice[] = Object.freeze(['original', 'automatic', ...fixedQualities.map(q => q.id)]);
 
@@ -63,7 +63,8 @@ export function offeredQualities(source: Readonly<{height?: number; bitrateKbps?
 
 /** The fixed-quality class a picture height belongs to (800 lines of a 1920-wide film is 1080). */
 export function heightClass(height: number): number {
-  if (height > 1200) return 2160;
+  if (height > 1500) return 2160;
+  if (height > 1100) return 1440;
   if (height > 780) return 1080;
   if (height > 520) return 720;
   if (height > 400) return 480;
@@ -71,19 +72,30 @@ export function heightClass(height: number): number {
 }
 
 /**
- * The session `quality` for a choice. Automatic starts at Original; `step` is the fixed quality
- * Automatic has moved down to, when it has.
+ * The session `quality` for a choice, in the server's own values: the original, one fixed quality
+ * by id, or Automatic. `step` is the fixed quality Automatic has moved to; without one Automatic
+ * is on the original, and says so (`id: 'original'`) so a change brings a stepped session back.
  */
 export function qualityRequest(choice: QualityChoice, step?: FixedQuality): QualityRequest {
-  const fixed = choice === 'automatic' ? step : fixedQuality(choice);
-  if (!fixed) return Object.freeze({mode: 'original'});
-  return Object.freeze({mode: 'limit', maxHeight: fixed.height, maxVideoBitrateKbps: fixed.videoKbps, ...(fixed.audioKbps ? {maxAudioBitrateKbps: fixed.audioKbps} : {})});
+  if (choice === 'automatic') return Object.freeze({mode: 'automatic', id: step ? serverId(step) : 'original'});
+  const fixed = fixedQuality(choice);
+  return fixed ? Object.freeze({mode: 'fixed', id: serverId(fixed)}) : Object.freeze({mode: 'original'});
 }
 
-/** The fixed quality a session's quality request corresponds to, if any (for the menu's tick). */
-export function fixedQualityOf(request: QualityRequest | undefined): FixedQuality | undefined {
-  if (!request || request.mode !== 'limit' || !request.maxHeight) return undefined;
+/** The fixed quality a quality request or the quality in force corresponds to, if any (the menu's tick, the step Automatic is on). */
+export function fixedQualityOf(request: QualityRequest | QualityInForce | undefined): FixedQuality | undefined {
+  if (!request) return undefined;
+  if ((request.mode === 'fixed' || request.mode === 'automatic') && 'id' in request && request.id) return fixedQualities.find(q => serverId(q) === request.id);
+  if (request.mode !== 'limit' || !request.maxHeight) return undefined;
   return fixedQualities.find(q => q.height === request.maxHeight) ?? fixedQualities.find(q => q.height <= request.maxHeight!);
+}
+
+/** The menu choice a quality request or the quality in force on a session stands for. */
+export function qualityChoiceOf(quality: QualityRequest | QualityInForce | undefined): QualityChoice | undefined {
+  if (!quality) return undefined;
+  if (quality.mode === 'original') return 'original';
+  if (quality.mode === 'automatic') return 'automatic';
+  return fixedQualityOf(quality)?.id;
 }
 
 /** The audio request for a track id, or for a legacy absolute stream index. */
