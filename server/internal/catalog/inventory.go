@@ -46,6 +46,7 @@ func InventoryMedia(path, kind string) (bool, string) {
 	}
 	return assets.SupportedForKind(path, kind), ""
 }
+
 // ObservationRevision is the revision of one observation of a file: what the
 // catalogue compares to tell whether the file it analysed is still the file
 // on disk. The scan and the analysis that follows it both use it, so they

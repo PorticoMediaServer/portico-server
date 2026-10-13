@@ -210,6 +210,20 @@ func RemoveTitleTx(ctx context.Context, tx *sql.Tx, entity int64) error {
 	if _, err = tx.ExecContext(ctx, `DELETE FROM book_resume WHERE item_id=?`, entity); err != nil {
 		return err
 	}
+	if show.Valid {
+		// "Where was I in this show" must not point at an episode that is gone:
+		// it moves to the nearest episode before it, else the nearest after.
+		if _, err = tx.ExecContext(ctx, `UPDATE profile_show_activity SET last_item_id=COALESCE(
+ (SELECT CAST(n.entity_id AS TEXT) FROM catalog_episodes gone JOIN catalog_episodes n INDEXED BY catalog_episodes_show ON n.show_id=gone.show_id AND n.entity_id<>gone.entity_id
+   LEFT JOIN catalog_seasons gs ON gs.entity_id=gone.season_id LEFT JOIN catalog_seasons ns ON ns.entity_id=n.season_id
+   WHERE gone.entity_id=?1 AND (COALESCE(ns.number,0)<COALESCE(gs.number,0) OR COALESCE(ns.number,0)=COALESCE(gs.number,0) AND n.number<gone.number)
+   ORDER BY COALESCE(ns.number,0) DESC,n.number DESC LIMIT 1),
+ (SELECT CAST(n.entity_id AS TEXT) FROM catalog_episodes gone JOIN catalog_episodes n INDEXED BY catalog_episodes_show ON n.show_id=gone.show_id AND n.entity_id<>gone.entity_id
+   LEFT JOIN catalog_seasons ns ON ns.entity_id=n.season_id WHERE gone.entity_id=?1 ORDER BY COALESCE(ns.number,0),n.number LIMIT 1),
+ last_item_id) WHERE show_id=?2 AND last_item_id=CAST(?1 AS TEXT)`, entity, show.Int64); err != nil {
+			return err
+		}
+	}
 	if err = purgeEntityTx(ctx, tx, entity); err != nil {
 		return err
 	}

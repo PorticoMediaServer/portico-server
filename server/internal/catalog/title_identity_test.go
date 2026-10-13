@@ -436,3 +436,82 @@ func TestRemovingALibraryTakesItsTitlesAndKeepsState(t *testing.T) {
 		t.Fatal("the watched mark did not come back with the title")
 	}
 }
+
+func TestDeletingAShowTakesItsEpisodesAndKeepsWhatWasWatched(t *testing.T) {
+	c := catalogtest.Open(t)
+	c.Library("tv", "Shows", "tv", "/tv")
+	s := New(c.DB)
+	for n := 1; n <= 3; n++ {
+		rel := fmt.Sprintf("Severance/Season 1/Severance - S01E%02d.mkv", n)
+		episodeFile(t, c, s, "tv", "/tv/"+rel, rel, "tv")
+	}
+	var show int64
+	if err := c.DB.QueryRow(`SELECT id FROM catalog_entities WHERE kind=2`).Scan(&show); err != nil {
+		t.Fatal(err)
+	}
+	c.Exec(`INSERT INTO catalog_external_ids(entity_id,provider,provider_kind,provider_id) VALUES(?,'tvdb','series','371980')`, show)
+	episodes, err := scanInt64s(c.DB.Query(`SELECT entity_id FROM catalog_episodes WHERE show_id=? ORDER BY number`, show))
+	if err != nil || len(episodes) != 3 {
+		t.Fatal(episodes, err)
+	}
+	c.Exec(`INSERT INTO personal_watched_intents(profile_id,item_id,watched,authored_at) VALUES('p',?,1,'2026-09-01T00:00:00.000000000Z')`, episodes[1])
+	c.Exec(`INSERT INTO profile_show_activity(profile_id,show_id,library_id,last_activity,last_item_id) VALUES('p',?,'tv','2026-09-01T00:00:00Z',CAST(? AS TEXT))`, show, episodes[1])
+	// One episode goes: the show's place marker moves to the episode before it.
+	if err = s.RemoveTitle(context.Background(), c.Public(episodes[1])); err != nil {
+		t.Fatal(err)
+	}
+	var marker string
+	if err = c.DB.QueryRow(`SELECT last_item_id FROM profile_show_activity WHERE profile_id='p' AND show_id=?`, show).Scan(&marker); err != nil || marker != fmt.Sprint(episodes[0]) {
+		t.Fatalf("place marker: %q %v, want episode %d", marker, err, episodes[0])
+	}
+	// The whole show goes: nothing of it is left, and the watched mark is kept
+	// under the series' provider identity and the episode's place in it.
+	if err = s.RemoveTitle(context.Background(), c.Public(show)); err != nil {
+		t.Fatal(err)
+	}
+	if n := rows(t, c, `SELECT count(*) FROM catalog_entities`); n != 0 {
+		t.Fatalf("entities left after deleting the show: %d", n)
+	}
+	if n := rows(t, c, `SELECT count(*) FROM retained_title_identities WHERE identity='provider:tvdb:series:371980#seasonal/1/2' AND profile_id='p'`); n != 1 {
+		t.Fatalf("the watched episode was not kept under the series identity: %d", n)
+	}
+	c.Drain()
+}
+
+func TestTheOwnersRuleDecidesWhenMissingTitlesGo(t *testing.T) {
+	c := catalogtest.Open(t)
+	c.Library("m", "Movies", "movie", "/m")
+	a, token := identityFile(t, c, "m", "/m/Solaris (1972).mkv", 1080)
+	film := attachMovie(t, c, "m", a, "/m/Solaris (1972).mkv", "Solaris", 1972)
+	markMissing(t, c, "m", token, time.Now().Add(-48*time.Hour))
+	c.Exec(`UPDATE catalog_missing_titles SET missing_since_ms=? WHERE entity_id=?`, time.Now().Add(-48*time.Hour).UnixMilli(), film)
+	s := New(c.DB)
+	ctx := context.Background()
+	rule := func(body string) {
+		c.Exec(`DELETE FROM console_documents WHERE scope='server'`)
+		c.Exec(`INSERT INTO console_documents VALUES('server',1,?,0)`, body)
+	}
+	rule(`{"library.missingTitles":"never"}`)
+	if out, err := s.EmptyMissingDue(ctx); err != nil || out.Titles != 0 || out.Files != 0 {
+		t.Fatalf("never: %+v %v", out, err)
+	}
+	rule(`{"library.missingTitles":"after_days","library.missingTitlesDays":7}`)
+	if out, err := s.EmptyMissingDue(ctx); err != nil || out.Titles != 0 {
+		t.Fatalf("two days into seven: %+v %v", out, err)
+	}
+	rule(`{"library.missingTitles":"after_days","library.missingTitlesDays":1}`)
+	if out, err := s.EmptyMissingDue(ctx); err != nil || out.Titles != 1 {
+		t.Fatalf("two days into one: %+v %v", out, err)
+	}
+	if n := rows(t, c, `SELECT count(*) FROM catalog_entities WHERE id=?`, film); n != 0 {
+		t.Fatal("the title is still there after its time ran out")
+	}
+	// Immediately: a title is removed as soon as it is found missing.
+	b, tokenB := identityFile(t, c, "m", "/m/Mirror (1975).mkv", 1080)
+	attachMovie(t, c, "m", b, "/m/Mirror (1975).mkv", "Mirror", 1975)
+	rule(`{"library.missingTitles":"immediately"}`)
+	markMissing(t, c, "m", tokenB, time.Now())
+	if out, err := s.EmptyMissingDue(ctx); err != nil || out.Titles != 1 {
+		t.Fatalf("immediately: %+v %v", out, err)
+	}
+}

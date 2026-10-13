@@ -6601,6 +6601,8 @@ components:
         notificationDays: { type: integer }
         jobDays: { type: integer }
         playHistoryDays: { type: integer, minimum: 0, maximum: 36500, description: "How long the play history is kept. 0, the default, keeps everything." }
+        library.missingTitles: { type: string, enum: [immediately, after_days, never], description: "When a title whose files are no longer on disk is removed from the library. The default, after_days, keeps it for library.missingTitlesDays. Watch state is kept either way." }
+        library.missingTitlesDays: { type: integer, minimum: 1, maximum: 3650, description: "Days a missing title is kept under the after_days rule. Default 30." }
       additionalProperties: false
     ScheduleChange:
       type: object
