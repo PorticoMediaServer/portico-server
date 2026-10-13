@@ -93,11 +93,19 @@ func TestAddingAnEpisodeDoesNotRefetchTheOthers(t *testing.T) {
 	if err := db.QueryRow(`SELECT count(*) FROM screen_metadata_work w JOIN catalog_episodes e ON e.entity_id=w.target_id WHERE w.target_kind='item' AND w.status='matched'`).Scan(&matched); err != nil || matched != 4 {
 		t.Fatal("fixture episodes did not match", matched, err)
 	}
+	var publications int
+	if err := db.QueryRow(`SELECT count(*) FROM screen_metadata_publications WHERE target_kind='item'`).Scan(&publications); err != nil {
+		t.Fatal(err)
+	}
 	*now = now.Add(48 * time.Hour)
 	add(5)
 	settle()
 	if p.total() != 5 || p.episodeCalls["500/1/5/official/en-US"] != 1 {
 		t.Fatalf("one new episode cost %d episode requests: %v", p.total()-4, p.episodeCalls)
+	}
+	var after int
+	if err := db.QueryRow(`SELECT count(*) FROM screen_metadata_publications WHERE target_kind='item'`).Scan(&after); err != nil || after != publications+1 {
+		t.Fatalf("new episode republished old episodes: %d -> %d, %v", publications, after, err)
 	}
 	var title string
 	if err := db.QueryRow(`SELECT e.title FROM catalog_entities e JOIN catalog_episodes c ON c.entity_id=e.id WHERE c.number=1`).Scan(&title); err != nil || title != "Provider episode 1" {
@@ -138,5 +146,31 @@ func TestHeldEpisodeDocumentIsRefetchedWhenItNoLongerAnswers(t *testing.T) {
 	settle()
 	if p.total() != 12 || p.episodeCalls["500/1/1/official/fr-FR"] != 1 {
 		t.Fatalf("a language change reused documents in the old language: %v", p.episodeCalls)
+	}
+}
+
+func TestEpisodeCacheDoesNotReuseAnotherRegion(t *testing.T) {
+	s, db, p, _, _, settle := episodeFreshnessFixture(t)
+	settle()
+	publicationExec(t, db, `UPDATE screen_metadata_candidates SET region='CA' WHERE provider_type='episode'`)
+	publicationExec(t, db, `UPDATE screen_metadata_work SET status='pending' WHERE target_kind='item'`)
+	settle()
+	if p.total() != 8 {
+		t.Fatalf("reused another region's episodes: %d requests", p.total())
+	}
+	_ = s
+}
+
+func TestScreenAbsoluteOrderSelection(t *testing.T) {
+	r := metadataprovider.ScreenRecord{Identity: metadataprovider.ScreenID{"tmdb", "show", "500"}, Orders: []metadataprovider.ScreenOrder{{ID: "official"}, {ID: "tmdb-group:dvd"}}}
+	for _, order := range []string{"official", "tmdb-absolute:official:-12", "tmdb-absolute:tmdb-group:dvd:12"} {
+		if !screenOrderSupported(r, order) {
+			t.Fatal(order)
+		}
+	}
+	for _, order := range []string{"tmdb-absolute:official:-1000001", "tmdb-group:other", "tmdb-absolute:official:1;input"} {
+		if screenOrderSupported(r, order) {
+			t.Fatal(order)
+		}
 	}
 }

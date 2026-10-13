@@ -667,53 +667,6 @@ func (s *TMDB) SetCredential(token string) {
 }
 func (s *TMDB) SetIncludeAdult(include bool) { s.includeAdult.Store(include) }
 
-// ScreenAbsoluteEpisode counts through official non-special seasons. Local
-// numbering is preserved; original coordinates record exactly what was fetched.
-func (s *TMDB) ScreenAbsoluteEpisode(ctx context.Context, show string, absolute int, order, language string) (ScreenRecord, error) {
-	if !ValidScreenID(ScreenID{"tmdb", "show", show}) || absolute < 1 || absolute > 1000000 || order != "official" {
-		return ScreenRecord{}, &Error{Provider: "tmdb", Code: "order_unavailable"}
-	}
-	var series struct {
-		ID      int64 `json:"id"`
-		Seasons []struct {
-			Number int `json:"season_number"`
-			Count  int `json:"episode_count"`
-		} `json:"seasons"`
-	}
-	q := url.Values{"language": {language}}
-	if e := s.get(ctx, "/tv/"+show+"?"+q.Encode(), &series); e != nil {
-		return ScreenRecord{}, e
-	}
-	if numberID(series.ID) != show || len(series.Seasons) > 1000 {
-		return ScreenRecord{}, &Error{Provider: "tmdb", Code: "invalid_episode_order"}
-	}
-	sort.SliceStable(series.Seasons, func(i, j int) bool { return series.Seasons[i].Number < series.Seasons[j].Number })
-	number := absolute
-	last := 0
-	for _, season := range series.Seasons {
-		if season.Number == 0 {
-			continue
-		}
-		if season.Number < 0 || season.Number > 9999 || season.Number <= last || season.Count < 0 || season.Count > 1000000 {
-			return ScreenRecord{}, &Error{Provider: "tmdb", Code: "invalid_episode_order"}
-		}
-		last = season.Number
-		if number > season.Count {
-			number -= season.Count
-			continue
-		}
-		r, e := s.ScreenEpisode(ctx, show, season.Number, number, order, language)
-		if e != nil {
-			return r, e
-		}
-		r.Coordinates.Season = nil
-		r.Coordinates.Episode = absolute
-		r.Coordinates.Absolute = &absolute
-		return r, nil
-	}
-	return ScreenRecord{}, &Error{Provider: "tmdb", Code: "episode_outside_order"}
-}
-
 func (s *TMDB) ScreenEpisodeFresh(ctx context.Context, show string, season, episode int, order, language string) (ScreenRecord, error) {
 	return s.ScreenEpisode(freshRequest(ctx), show, season, episode, order, language)
 }

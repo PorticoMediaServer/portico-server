@@ -537,9 +537,7 @@ func (s *Service) selectScreenTx(ctx context.Context, tx *sql.Tx, kind, id strin
 	order := body.Order
 	if kind == "show" {
 		valid := false
-		for _, o := range screenRecordOrders(r) {
-			valid = valid || o.ID == order
-		}
+		valid = screenOrderSupported(r, order)
 		if !valid {
 			return errors.New("select a supported explicit provider ordering")
 		}
@@ -737,4 +735,21 @@ func screenRecordOrders(r metadataprovider.ScreenRecord) []metadataprovider.Scre
 		out = append(out, metadataprovider.ScreenOrder{ID: "absolute", Name: "Absolute numbering"}, metadataprovider.ScreenOrder{ID: "seasonal", Name: "Local seasonal numbering"})
 	}
 	return out
+}
+
+func screenOrderSupported(r metadataprovider.ScreenRecord, order string) bool {
+	base := order
+	if r.Identity.Provider == "tmdb" {
+		var ok bool
+		base, _, ok = metadataprovider.TMDBAbsoluteOrder(order)
+		if !ok {
+			return false
+		}
+	}
+	for _, o := range screenRecordOrders(r) {
+		if o.ID == base {
+			return true
+		}
+	}
+	return false
 }
