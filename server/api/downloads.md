@@ -34,7 +34,7 @@ POST /v1/downloads/preparations/{id}/grant        get the address of the bytes
 GET  /v1/downloads/artifacts/{grant}              move the bytes  (Range, If-Range, ETag, 206)
 GET  /v1/downloads/preparations/{id}/bundle       everything that travels with the file
 GET  /v1/downloads/artifacts/{grant}/artwork/…    its pictures
-GET  /v1/downloads/artifacts/{grant}/subtitles/…  its subtitle tracks
+GET  /v1/downloads/artifacts/{grant}/subtitles/…  its subtitle tracks, as text and as authored
 ```
 
 Then, whenever the client is back in contact:
@@ -135,7 +135,7 @@ Errors on the address:
 | 401 | `invalid_download_grant` | The address has run out or was withdrawn. Renew it, or take a new one. |
 | 403 | `downloads_not_allowed` | Downloads are off for this profile. |
 | 410 | `download_unavailable` | The claim ended (file replaced, copy deleted). Claim the title again. |
-| 409 | `download_not_ready` | Not ready yet; for a picture, its smaller copy is still being made. Retry. |
+| 409 | `download_not_ready` | Not ready yet; for a picture, its smaller copy is still being made; for a subtitle file or the bundle, the track is still being read out of its file. Retry. |
 | 503 | `download_source_offline` | The library file cannot be read right now. Nothing changed; retry later. |
 
 ## What travels with a download
@@ -149,8 +149,11 @@ needs to list, show and play the title with no server in reach:
 - `chapters` and `markers` (intro, recap, credits and the like; `automatic` says the server would
   skip it unprompted), on the file's own timeline;
 - `audio`: the audio tracks inside the file, in order;
-- `subtitles`: each track with its `files`, keyed by form. `vtt` is always present; a track kept
-  in a styled or picture form the device can draw is listed with that form too.
+- `subtitles`: each track with its `files`, keyed by form. `vtt` is the track as plain text
+  (every text track, and a styled one's plain reading). `ass`, `pgs`, `vobsub` and `dvb` are the
+  track as it was authored, for a device that draws styled or picture subtitles itself; `sub` is
+  the pictures beside a VobSub index; `font0` onward are a styled script's attached fonts. A
+  picture-only track has no `vtt`.
 
 Every `path` is relative to the grant's address: fetch `<grant url>/<path>`. Pictures are sized for
 a phone or tablet (a poster 800 wide, a backdrop 1920). `404` on a picture means the title has no

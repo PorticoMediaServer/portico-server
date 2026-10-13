@@ -1180,6 +1180,29 @@ export const routes = [
     "status": 200
   },
   {
+    "id": "get_download_subtitle_original",
+    "method": "GET",
+    "path": "/v1/downloads/artifacts/{grant}/subtitles/{resource}/{revision}/{file}",
+    "summary": "Fetch one file of a styled or picture subtitle track that travels with a download",
+    "access": "public",
+    "requires": "open",
+    "lane": "media",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "invalid_download_grant",
+      "downloads_not_allowed",
+      "download_unavailable",
+      "download_not_ready",
+      "download_source_offline",
+      "downloads_unavailable",
+      "not_found",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
     "id": "get_download_usage",
     "method": "GET",
     "path": "/v1/downloads/usage",

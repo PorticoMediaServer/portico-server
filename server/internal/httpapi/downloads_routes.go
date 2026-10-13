@@ -4,8 +4,11 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"io"
 	"net/http"
 	"strconv"
+	"strings"
+	"time"
 
 	"portico.local/apikit"
 	"portico.local/apikit/apierror"
@@ -141,7 +144,7 @@ func registerDownloads(r *apikit.Registry, d Dependencies) {
 		"sync_download_progress": apikit.ScopePlayback,
 		// Fetched with no credential at all: the address is the permission, and
 		// taking the address is what needs the playback scope.
-		"get_download_artifact": apikit.ScopeOpen, "head_download_artifact": apikit.ScopeOpen, "get_download_artwork": apikit.ScopeOpen, "get_download_subtitle": apikit.ScopeOpen,
+		"get_download_artifact": apikit.ScopeOpen, "head_download_artifact": apikit.ScopeOpen, "get_download_artwork": apikit.ScopeOpen, "get_download_subtitle": apikit.ScopeOpen, "get_download_subtitle_original": apikit.ScopeOpen,
 		"put_download_settings": apikit.ScopeAdmin,
 	}
 	scope := func(id string) apikit.Scope {
@@ -233,18 +236,21 @@ func registerDownloads(r *apikit.Registry, d Dependencies) {
 			return out, downloadError(e)
 		}
 		if d.Subtitles != nil && out.Media.VideoCodec != "" {
-			tracks, err := d.Subtitles.DownloadTracks(ctx, p, out.ItemID, out.SourceID)
+			// A styled track's fonts are known once the server has read the track
+			// out of its file. That is given a moment here; if it is still going
+			// on, the device is told to ask again shortly rather than handed a
+			// list that is missing the fonts.
+			listing, cancel := context.WithTimeout(ctx, 20*time.Second)
+			tracks, err := d.Subtitles.DownloadTracks(listing, p, out.ItemID, out.SourceID)
+			cancel()
+			if errors.Is(err, subtitles.ErrUnavailable) {
+				return out, &apierror.Error{Code: "download_not_ready", RetryAfterSeconds: 30, Cause: err}
+			}
 			if err != nil {
 				return out, err
 			}
 			for _, track := range tracks {
-				entry := downloads.BundleSubtitle{ID: track.ID, Revision: track.Revision, Language: track.Language, Title: track.Title, Default: track.Default, Forced: track.Forced, Files: map[string]downloads.BundleFile{}}
-				for _, form := range track.Formats {
-					if contentType := subtitleFormContentType(form); contentType != "" {
-						entry.Files[form] = downloads.BundleFile{Path: downloads.SubtitlePath(track.ID, track.Revision, form), ContentType: contentType}
-					}
-				}
-				out.Subtitles = append(out.Subtitles, entry)
+				out.Subtitles = append(out.Subtitles, downloads.BundleSubtitle{ID: track.ID, Revision: track.Revision, Language: track.Language, Title: track.Title, Default: track.Default, Forced: track.Forced, Files: subtitleFiles(track)})
 			}
 		}
 		return out, nil
@@ -326,22 +332,65 @@ func registerDownloads(r *apikit.Registry, d Dependencies) {
 		}
 		document, e := d.Subtitles.DownloadTrackVTT(q.Context(), scope.Principal, scope.ItemID, q.PathValue("resource"), revision)
 		if e != nil {
-			switch {
-			case errors.Is(e, subtitles.ErrInput), errors.Is(e, identity.ErrNotVisible), errors.Is(e, sql.ErrNoRows):
-				e = &apierror.Error{Code: "not_found", Cause: e}
-			case errors.Is(e, identity.ErrUnauthorized), errors.Is(e, identity.ErrForbidden):
-				// The sign-in the address stands for has ended. That is not "this
-				// title has no such track": the device renews the address under
-				// its current sign-in and asks again.
-				e = &apierror.Error{Code: "invalid_download_grant", Cause: e}
-			}
-			r.Errors().Write(w, "", v1Error(e))
+			r.Errors().Write(w, "", v1Error(subtitleDownloadError(e)))
 			return
 		}
 		w.Header().Set("Content-Type", "text/vtt; charset=utf-8")
 		w.Header().Set("Cache-Control", "private, no-store")
 		w.Header().Set("Content-Length", strconv.Itoa(len(document)))
 		_, _ = w.Write(document)
+	})
+
+	// A track as it was authored, for a device that draws styled or picture
+	// subtitles itself: the script or picture stream ("original"), the second
+	// file of a pair ("companion"), and a styled script's fonts ("font-0" …).
+	// The offline player needs these on the device; none of them can be asked
+	// for once the server is out of reach.
+	rawRoute("get_download_subtitle_original", "GET", "/v1/downloads/artifacts/{grant}/subtitles/{resource}/{revision}/{file}", "Fetch one file of a styled or picture subtitle track that travels with a download", apikit.Media, nil, func(w http.ResponseWriter, q *http.Request) {
+		scope, ok := d.downloadExtra(w, q, r)
+		if !ok {
+			return
+		}
+		revision, e := strconv.ParseInt(q.PathValue("revision"), 10, 64)
+		part, font := "", false
+		switch file := q.PathValue("file"); {
+		case file == "original":
+			part = "data"
+		case file == "companion":
+			part = "companion"
+		case strings.HasPrefix(file, "font-"):
+			if n, err := strconv.Atoi(file[len("font-"):]); err == nil && n >= 0 && n < 16 && strconv.Itoa(n) == file[len("font-"):] {
+				part, font = "font:"+strconv.Itoa(n), true
+			}
+		}
+		if e != nil || revision < 1 || part == "" || d.Subtitles == nil {
+			r.Errors().Write(w, "", &apierror.Error{Code: "not_found"})
+			return
+		}
+		reader, size, format, encoding, e := d.Subtitles.OpenDownloadOriginal(q.Context(), scope.Principal, scope.ItemID, q.PathValue("resource"), revision, part)
+		if e != nil {
+			r.Errors().Write(w, "", v1Error(subtitleDownloadError(e)))
+			return
+		}
+		defer reader.Close()
+		contentType := "application/octet-stream"
+		switch {
+		case font:
+			contentType = "font/ttf"
+		case part == "data" && (format == "ass" || format == "ssa"):
+			contentType = "text/x-ssa"
+			if encoding != "" {
+				contentType += "; charset=" + encoding
+			}
+		case part == "data" && format == "vobsub":
+			contentType = "text/plain"
+		}
+		w.Header().Set("Content-Type", contentType)
+		w.Header().Set("Cache-Control", "private, no-store")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		body := withRollingDeadline(w)
+		defer body.release()
+		http.ServeContent(body, q, "", time.Time{}, io.NewSectionReader(reader, 0, size))
 	})
 
 	v1Route(r, route("issue_download_receipts", "POST", "/v1/downloads/receipts", "Take signed offline permission for ready downloads", apikit.Device, apikit.Default, apikit.PageSized, 201, 32768, nil), func(ctx context.Context, q *http.Request, body downloadReceiptsBody) (downloadReceiptResults, error) {
@@ -454,18 +503,50 @@ func (d Dependencies) downloadExtra(w http.ResponseWriter, q *http.Request, r *a
 	return scope, true
 }
 
-func subtitleFormContentType(form string) string {
-	switch form {
-	case "vtt":
-		return "text/vtt"
-	case "ass", "ssa":
-		return "text/x-ssa"
-	case "pgs":
-		return "application/x-pgs"
-	case "vobsub":
-		return "application/x-vobsub"
+// subtitleDownloadError says what a failed read of a download's subtitle file
+// means to the device fetching it.
+func subtitleDownloadError(e error) error {
+	switch {
+	case errors.Is(e, subtitles.ErrInput), errors.Is(e, identity.ErrNotVisible), errors.Is(e, sql.ErrNoRows), errors.Is(e, subtitles.ErrUnsupported):
+		// This title has no such track or file: an ordinary answer.
+		return &apierror.Error{Code: "not_found", Cause: e}
+	case errors.Is(e, identity.ErrUnauthorized), errors.Is(e, identity.ErrForbidden):
+		// The sign-in the address stands for has ended. That is not "no such
+		// track": the device renews the address under its current sign-in and
+		// asks again.
+		return &apierror.Error{Code: "invalid_download_grant", Cause: e}
+	case errors.Is(e, subtitles.ErrUnavailable), errors.Is(e, subtitles.ErrCapacity), errors.Is(e, context.DeadlineExceeded), errors.Is(e, context.Canceled):
+		// The track is still being read out of its file. Ask again shortly.
+		return &apierror.Error{Code: "download_not_ready", RetryAfterSeconds: 30, Cause: e}
 	}
-	return ""
+	return e
+}
+
+// subtitleFiles names what a device fetches for one track, keyed by form. The
+// form a device draws itself keeps its own name ("ass", "pgs", "vobsub",
+// "dvb"); "sub" is the pictures beside a VobSub index; "font0" onward are a
+// styled script's fonts.
+func subtitleFiles(track subtitles.DownloadTrack) map[string]downloads.BundleFile {
+	files := map[string]downloads.BundleFile{}
+	base := "subtitles/" + track.ID + "/" + strconv.FormatInt(track.Revision, 10)
+	if track.Text {
+		files["vtt"] = downloads.BundleFile{Path: downloads.SubtitlePath(track.ID, track.Revision, "vtt"), ContentType: "text/vtt"}
+	}
+	switch track.Original {
+	case "ass":
+		files["ass"] = downloads.BundleFile{Path: base + "/original", ContentType: "text/x-ssa"}
+		for i := 0; i < track.Fonts && i < 16; i++ {
+			files["font"+strconv.Itoa(i)] = downloads.BundleFile{Path: base + "/font-" + strconv.Itoa(i), ContentType: "font/ttf"}
+		}
+	case "pgs", "dvb":
+		files[track.Original] = downloads.BundleFile{Path: base + "/original", ContentType: "application/octet-stream"}
+	case "vobsub":
+		files["vobsub"] = downloads.BundleFile{Path: base + "/original", ContentType: "text/plain"}
+		if track.Companion {
+			files["sub"] = downloads.BundleFile{Path: base + "/companion", ContentType: "application/octet-stream"}
+		}
+	}
+	return files
 }
 
 // contentDisposition names the file for a person saving it. The plain name

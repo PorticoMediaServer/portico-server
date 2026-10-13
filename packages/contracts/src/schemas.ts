@@ -11482,6 +11482,16 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "GetDownloadSubtitleOriginalRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetDownloadSubtitleOriginalResponse": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
   "GetDownloadSubtitleRequest": {
     "properties": {},
     "required": [],

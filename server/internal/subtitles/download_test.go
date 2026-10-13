@@ -26,8 +26,9 @@ func TestDownloadTracksListsTheImportedTextTrack(t *testing.T) {
 	if len(tracks) != 1 {
 		t.Fatalf("downloads carry %d tracks, want 1: %+v", len(tracks), tracks)
 	}
-	if len(tracks[0].Formats) != 1 || tracks[0].Formats[0] != "vtt" {
-		t.Fatalf("formats %v, want [vtt]", tracks[0].Formats)
+	// A plain text track travels as WebVTT and has no authored form to carry.
+	if !tracks[0].Text || tracks[0].Original != "" || tracks[0].Fonts != 0 {
+		t.Fatalf("a text track is carried as %+v", tracks[0])
 	}
 	catalog, e := f.s.List(ctx, f.p, f.item.Public)
 	if e != nil {
@@ -124,5 +125,49 @@ func TestDownloadTracksAndVTTKeepPersonalTracksPrivate(t *testing.T) {
 	}
 	if document != nil {
 		t.Fatalf("another viewer received %d bytes with the refusal", len(document))
+	}
+}
+
+// A styled track travels as it was authored as well as in its plain reading:
+// the script itself is what a device that draws styled subtitles needs, and
+// nothing about it can be asked for once the server is out of reach.
+func TestDownloadCarriesAStyledTrackAsItWasAuthored(t *testing.T) {
+	f := newSubtitleFixture(t)
+	ctx := context.Background()
+	script := assHeader + "Dialogue: 0,0:00:01.00,0:00:03.00,Default,,0,0,0,,{\\i1}Styled line{\\i0}\n"
+	mutation := uploadMutation("download-styled", script, f.item.Token)
+	mutation.Format = "ass"
+	receipt, e := f.s.Mutate(ctx, f.p, f.item.Public, mutation)
+	if e != nil {
+		t.Fatal(e)
+	}
+	tracks, e := f.s.DownloadTracks(ctx, f.p, f.item.Public, f.item.Token)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if len(tracks) != 1 || tracks[0].ID != receipt.ResourceID || tracks[0].Original != "ass" || !tracks[0].Text {
+		t.Fatalf("a styled track is carried as %+v", tracks)
+	}
+	reader, size, format, _, e := f.s.OpenDownloadOriginal(ctx, f.p, f.item.Public, tracks[0].ID, tracks[0].Revision, "data")
+	if e != nil {
+		t.Fatal(e)
+	}
+	authored := make([]byte, size)
+	_, e = reader.ReadAt(authored, 0)
+	reader.Close()
+	if e != nil || format != "ass" || !strings.Contains(string(authored), "{\\i1}Styled line{\\i0}") {
+		t.Fatalf("the authored script did not travel whole: %q %q %v", format, authored, e)
+	}
+	plain, e := f.s.DownloadTrackVTT(ctx, f.p, f.item.Public, tracks[0].ID, tracks[0].Revision)
+	if e != nil || !strings.HasPrefix(string(plain), "WEBVTT") || !strings.Contains(string(plain), "Styled line") {
+		t.Fatalf("the plain reading of a styled track: %q %v", plain, e)
+	}
+	// A file the track does not have, and a track this viewer cannot see, are
+	// both simply not there.
+	if _, _, _, _, e = f.s.OpenDownloadOriginal(ctx, f.p, f.item.Public, tracks[0].ID, tracks[0].Revision, "companion"); !errors.Is(e, identity.ErrNotVisible) {
+		t.Fatalf("a missing companion file: %v", e)
+	}
+	if _, _, _, _, e = f.s.OpenDownloadOriginal(ctx, f.p, f.item.Public, "no-such-track", 1, "data"); !errors.Is(e, identity.ErrNotVisible) {
+		t.Fatalf("an unknown track: %v", e)
 	}
 }

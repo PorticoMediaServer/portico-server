@@ -75,8 +75,11 @@ type BundleSubtitle struct {
 	Title    string `json:"title"`
 	Default  bool   `json:"default"`
 	Forced   bool   `json:"forced"`
-	// Files is keyed by form: "vtt" is always present; "ass", "pgs" and the
-	// like are the track as it was authored, for a device that draws them.
+	// Files is keyed by form. "vtt" is the track as plain text, present for
+	// every text track and for a styled one. "ass", "pgs", "vobsub" and "dvb"
+	// are the track as it was authored, for a device that draws it itself;
+	// "sub" is the pictures beside a VobSub index; "font0" onward are a styled
+	// script's attached fonts.
 	Files map[string]BundleFile `json:"files"`
 }
 

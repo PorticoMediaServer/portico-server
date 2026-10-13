@@ -10600,6 +10600,30 @@
         "x-scope": "open"
       }
     },
+    "/v1/downloads/artifacts/{grant}/subtitles/{resource}/{revision}/{file}": {
+      "get": {
+        "operationId": "get_download_subtitle_original",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {},
+                  "required": [],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Fetch one file of a styled or picture subtitle track that travels with a download",
+        "x-access": "public",
+        "x-cost": "constant",
+        "x-lane": "media",
+        "x-scope": "open"
+      }
+    },
     "/v1/downloads/preparations": {
       "get": {
         "operationId": "list_download_preparations",

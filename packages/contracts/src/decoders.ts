@@ -58,6 +58,7 @@ export function decodeGetDownloadPreparationResponse(input: unknown): types.GetD
 export function decodeGetDownloadRequestResponse(input: unknown): types.GetDownloadRequestResponse { return decode("GetDownloadRequestResponse", input) as types.GetDownloadRequestResponse; }
 export function decodeGetDownloadSettingsResponse(input: unknown): types.GetDownloadSettingsResponse { return decode("GetDownloadSettingsResponse", input) as types.GetDownloadSettingsResponse; }
 export function decodeGetDownloadSubtitleResponse(input: unknown): types.GetDownloadSubtitleResponse { return decode("GetDownloadSubtitleResponse", input) as types.GetDownloadSubtitleResponse; }
+export function decodeGetDownloadSubtitleOriginalResponse(input: unknown): types.GetDownloadSubtitleOriginalResponse { return decode("GetDownloadSubtitleOriginalResponse", input) as types.GetDownloadSubtitleOriginalResponse; }
 export function decodeGetDownloadUsageResponse(input: unknown): types.GetDownloadUsageResponse { return decode("GetDownloadUsageResponse", input) as types.GetDownloadUsageResponse; }
 export function decodeGetEventsResponse(input: unknown): types.GetEventsResponse { return decode("GetEventsResponse", input) as types.GetEventsResponse; }
 export function decodeGetItemsScreenMetadataResponse(input: unknown): types.GetItemsScreenMetadataResponse { return decode("GetItemsScreenMetadataResponse", input) as types.GetItemsScreenMetadataResponse; }

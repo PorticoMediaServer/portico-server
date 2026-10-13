@@ -270,7 +270,8 @@ export function parseDownloadBundle(raw: unknown, preparationId: string): Downlo
     if (!object(v) || !id(v.id) || !count(v.revision) || v.revision < 1 || !text(v.language ?? '', 64) || !text(v.title ?? '', 512) || typeof v.default !== 'boolean' || typeof v.forced !== 'boolean' || !object(v.files)) invalid();
     const files: Record<string, DownloadBundleFile> = {};
     const forms = Object.keys(v.files);
-    if (forms.length > 8) invalid();
+    // A styled track brings its script, its plain-text reading and up to sixteen fonts.
+    if (forms.length > 24) invalid();
     for (const form of forms) { if (!/^[a-z0-9]{1,16}$/.test(form)) invalid(); files[form] = bundleFile(v.files[form]); }
     return Object.freeze({id: v.id, revision: v.revision, language: String(v.language ?? ''), title: String(v.title ?? ''), default: v.default, forced: v.forced, files: Object.freeze(files)});
   });
