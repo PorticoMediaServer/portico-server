@@ -28,8 +28,13 @@ test('browse totals are exact (start/total checks hold)', () => {
   const page = parseBrowseResult(payload({start: 0, total: 9999, hasMore: true, entryCount: 60}));
   assert.equal(page.pageInfo.total, 9999);
   assert.equal(page.pageInfo.hasMore, true);
-  assert.throws(() => parseBrowseResult(payload({start: 10000, total: 9999, hasMore: false, entryCount: 0})), {code: 'invalid_browse'});
-  assert.throws(() => parseBrowseResult(payload({start: 0, total: 9999, hasMore: false, entryCount: 60})), {code: 'invalid_browse'});
+  // A page asked for past the end is an empty page with the server's total, so the list shrinks to it.
+  const past = parseBrowseResult(payload({start: 10000, total: 9999, hasMore: false, entryCount: 0}));
+  assert.deepEqual([past.entries.length, past.pageInfo.total, past.pageInfo.hasMore], [0, 9999, false]);
+  // Whether rows remain follows from where the page starts and the total, whatever the flag says.
+  assert.equal(parseBrowseResult(payload({start: 0, total: 9999, hasMore: false, entryCount: 60})).pageInfo.hasMore, true);
+  assert.throws(() => parseBrowseResult(payload({start: -1, total: 9999, hasMore: true, entryCount: 60})), {code: 'invalid_browse'});
+  assert.throws(() => parseBrowseResult({...payload({start: 0, total: 9999, hasMore: true, entryCount: 60}), pageInfo: {start: 0, total: 'many', revision: 'rev', hasMore: true, nextCursor: ''}}), {code: 'invalid_browse'});
 });
 
 test('exact totals above 10,000 keep paging', () => {
