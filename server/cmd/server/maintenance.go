@@ -13,6 +13,8 @@ import (
 	"portico.local/apikit/idempotency"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/persistence"
+	"portico.local/server/internal/supervise"
+	"portico.local/server/internal/tableretention"
 )
 
 // Two pieces of housekeeping that were missing entirely, and one that is
@@ -75,6 +77,8 @@ func runDatabaseHousekeeping(ctx context.Context, db *sql.DB) {
 			log.Printf("This state directory holds %d schema objects this build does not define; they are left untouched. First: %s", len(unknown), strings.Join(unknown[:min(3, len(unknown))], ", "))
 		}
 	}
+	// Owner-paused retention must never pause WAL pressure monitoring.
+	supervise.Loop(ctx, "cmd.record-retention", func(ctx context.Context) { tableretention.Run(ctx, db) })
 	interval, integrity := integritySchedule()
 	lastIntegrity := time.Time{}
 	lastReceiptSweep := time.Now()

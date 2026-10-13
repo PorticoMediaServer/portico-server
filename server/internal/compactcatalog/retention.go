@@ -13,18 +13,21 @@ func RunRetention(ctx context.Context, db *sql.DB) {
 	for ctx.Err() == nil {
 		more := true
 		for more && ctx.Err() == nil {
-			err := dbwork.WithWriteTx(ctx, db, dbwork.ClassMaintenance, func(tx *sql.Tx) error { var err error; more, err = PruneTx(ctx, tx, 64); return err })
+			if !dbwork.WaitBackground(ctx) {
+				return
+			}
+			ctx = dbwork.WithBackgroundSpeed(ctx, dbwork.ReadBackgroundSpeed(ctx, db))
+			started := time.Now()
+			err := dbwork.WithWriteTx(ctx, db, dbwork.ClassMaintenance, func(tx *sql.Tx) error {
+				var err error
+				more, err = PruneTx(ctx, tx, 32*dbwork.BackgroundConcurrency(ctx))
+				return err
+			})
 			if err != nil {
 				break
 			}
-			if more {
-				timer := time.NewTimer(100 * time.Millisecond)
-				select {
-				case <-ctx.Done():
-					timer.Stop()
-					return
-				case <-timer.C:
-				}
+			if more && !dbwork.PaceBackground(ctx, started) {
+				return
 			}
 		}
 		timer := time.NewTimer(24 * time.Hour)

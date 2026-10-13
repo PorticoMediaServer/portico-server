@@ -2426,6 +2426,12 @@ maintenance_policy.background_priority
 maintenance_policy.paused_until_ms
 maintenance_policy.revision
 maintenance_policy.singleton
+maintenance_retention_rows.created_ms
+maintenance_retention_rows.record_key
+maintenance_retention_rows.table_name
+maintenance_table_bounds.maximum
+maintenance_table_bounds.rows
+maintenance_table_bounds.table_name
 maintenance_window_days.day
 maintenance_window_days.window_id
 maintenance_window_tasks.task
@@ -3871,6 +3877,7 @@ queue_v1_snapshots.label
 queue_v1_snapshots.queue_id
 queue_v1_snapshots.seen
 queue_v1_snapshots.selector
+queue_v1_snapshots.source_revision
 queue_v1_snapshots.start
 queue_v1_snapshots.state
 queue_v1_snapshots.width

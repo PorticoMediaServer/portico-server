@@ -79,6 +79,7 @@ type Service struct {
 	state                 *serviceState
 	// rctx is the request this Service is answering, or nil outside a request.
 	// It carries the deadline and the read snapshot; see reads.go.
+	readTx          *sql.Tx
 	rctx            context.Context
 	recRestrictions identity.ContentRestrictions
 	recSources      map[string]homeSource

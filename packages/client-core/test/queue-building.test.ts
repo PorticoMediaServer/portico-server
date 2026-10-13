@@ -44,3 +44,16 @@ test('awaiting a start stops when the build ends without one, or on abort', asyn
   setTimeout(() => abort.abort(), 10);
   await assert.rejects(waiting.done, (e: Error) => e.name === 'AbortError');
 });
+
+test('a complete browse selector is sent once without client enumeration', async () => {
+ const sent: {body?: unknown}[] = [];
+ const http: V1Http = {send: async request => {
+  sent.push(request);
+  return {status: 201, headers: {}, body: {queue: {id: 'q_1', revision: '1', total: 256, repeat: 'off', segments: [{id: 'g_1', kind: 'selector', count: 256, label: 'Movies', state: 'building', sourceRevision: 'browse_frozen'}], current: {entryId: 's_1-0', position: 0}}, window: []}};
+ }};
+ const source = {query: {libraryId: 'movies', pivot: 'movies', query: {field: 'genre', operator: 'contains-any' as const, value: ['Drama']}, sort: [{field: 'year', direction: 'desc' as const}]}};
+ const result = await new QueueClient(http, () => 'whole-view-00001').createSelector(source, {shuffle: true, shuffleSeed: '42'});
+ assert.equal(sent.length, 1);
+ assert.deepEqual(sent[0].body, {owner: 'device', segments: [{source, order: {mode: 'shuffle', seed: '42'}}]});
+ assert.equal(result.queue.segments[0].sourceRevision, 'browse_frozen');
+});

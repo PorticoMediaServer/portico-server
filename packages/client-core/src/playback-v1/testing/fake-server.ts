@@ -240,7 +240,7 @@ export class FakePlaybackServer {
       ...(s.ended ? {end: {reason: s.endReason ?? 'stopped', ...(s.terminatedMessage ? {message: s.terminatedMessage} : {})}} : {}),
       lease: {expiresAt: new Date(s.lastActivity + this.o.leaseMs).toISOString(), reportEveryMs: this.o.reportEveryMs},
       presentation: {
-        generation: s.generation, mode: 'stream', url: encodedRoutePath('get_media_grant_file',{grant:'grant-'+s.id,file:s.generation+'/master.m3u8'}), startPositionMs: s.positionMs,
+        generation: s.generation, mode: 'stream', url: encodedRoutePath('get_media_grant_file',{grant:'grant-'+s.id,file:String(s.generation)})+'/master.m3u8', startPositionMs: s.positionMs,
         engine: this.o.engine ?? 'native', quality, audioTrackId: (s.audio as {trackId?: string} | undefined)?.trackId ?? 'a1', subtitle: {trackId: 's4', kind: 'text', delivery: 'sidecar'},
         subtitles: [{trackId: 's4', format: 'webvtt', url: encodedRoutePath('get_v1_media_subtitles_grant_resource_revision_vtt',{grant:'grant-'+s.id,resource:'s4',revision:String(s.generation)})}],
         decision: {video: {action: transcoded ? 'transcode' : 'copy', reasons: transcoded ? ['bitrate_above_request'] : []}, audio: {action: 'copy', reasons: []}, subtitles: {action: 'sidecar'}},

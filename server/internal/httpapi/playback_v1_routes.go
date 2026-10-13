@@ -43,6 +43,47 @@ func newPlaybackV1(d Dependencies) *playbackv1.Service {
 	}
 	// Queue sources and windows are authorized like every other catalog read:
 	// library access, then the item's restrictions (SEC-02).
+	s.QueryKeys = func(ctx context.Context, tx *sql.Tx, p identity.Principal, source playbackv1.Selector) (catalog.QueueSelection, error) {
+		if d.Catalog == nil {
+			return catalog.QueueSelection{}, playbackv1.ErrUnsupportedSelector
+		}
+		restrictions, err := contentaccess.RestrictionsTx(ctx, tx, p.Viewer)
+		if err != nil {
+			return catalog.QueueSelection{}, err
+		}
+		rows, err := tx.QueryContext(ctx, `SELECT library_id FROM catalog_libraries WHERE retired=0 ORDER BY library_id`)
+		if err != nil {
+			return catalog.QueueSelection{}, err
+		}
+		var candidates []string
+		for rows.Next() {
+			var id string
+			if err = rows.Scan(&id); err != nil {
+				break
+			}
+			candidates = append(candidates, id)
+		}
+		if err == nil {
+			err = rows.Err()
+		}
+		rows.Close()
+		if err != nil {
+			return catalog.QueueSelection{}, err
+		}
+		libraries := []string{}
+		for _, id := range candidates {
+			if d.allowedLibraryTx(ctx, p, id, tx) == nil {
+				libraries = append(libraries, id)
+			}
+		}
+		scope, _ := json.Marshal(libraries)
+		viewer := catalog.Viewer{Profile: identity.PersonalKey(p.Viewer), Fence: catalog.RestrictionFence(restrictions) + ":" + string(scope), Libraries: libraries, Restrictions: restrictions}
+		saved := ""
+		if source.Saved != nil {
+			saved = source.Saved.ID
+		}
+		return d.Catalog.QueueKeysTx(ctx, tx, viewer, catalog.ResourceActor{Authority: p.Authority, AccountID: p.AccountID, ProfileID: p.ProfileID}, source.Query, saved)
+	}
 	s.LibraryCheck = func(ctx context.Context, tx *sql.Tx, p identity.Principal, library string) error {
 		return d.allowedLibraryTx(ctx, p, library, tx)
 	}
