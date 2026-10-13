@@ -267,6 +267,7 @@ export function DetailScreen() {
           <div className={s.peopleList}>
             {castPages.credits.length ? <Text variant="label" tone="tertiary">{t('title.cast')}</Text> : null}
             {castPages.credits.map(c => <ListRow key={c.id} title={c.name} subtitle={c.role} art={{path: c.portraitUrl, icon: 'person'}} artShape="circle" onClick={c.personId ? () => { setAllPeople(false); void navigate({to: '/person/$personId', params: {personId: c.personId!}}); } : undefined} />)}
+            {castPages.failed || crewPages.failed ? <Notice tone="error" compact action={{label: t('action.tryAgain'), onClick: () => { if (castPages.failed) castPages.more(); if (crewPages.failed) crewPages.more(); }}}>{t('title.peopleFailed')}</Notice> : null}
             {!castPages.done ? <div><Button variant="ghost" size="sm" label={t('title.moreCast')} onClick={castPages.more} /></div> : null}
             {crewPages.credits.length ? <Text variant="label" tone="tertiary" style={{marginTop: 12}}>{t('title.crew')}</Text> : null}
             {crewPages.credits.map(c => <ListRow key={c.id} title={c.name} subtitle={c.role || c.department} art={{path: c.portraitUrl, icon: 'person'}} artShape="circle" onClick={c.personId ? () => { setAllPeople(false); void navigate({to: '/person/$personId', params: {personId: c.personId!}}); } : undefined} />)}

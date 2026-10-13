@@ -1469,6 +1469,7 @@ export const enUS = {
   'title.crew': 'Crew',
   'title.allCrew': 'All crew',
   'title.allCast': 'All cast',
+  'title.peopleFailed': 'The rest of the cast and crew couldn’t be loaded.',
   'title.moreCast': 'More cast',
   'title.moreLikeThis': 'More like this',
   'title.directedBy': 'Directed by {names}',

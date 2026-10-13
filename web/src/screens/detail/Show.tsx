@@ -12,7 +12,7 @@ import {useEpisodes, type EpisodeScope} from '../../app/episodes';
 import {ErrorNotice, ErrorState, changedError, errorText} from '../../app/errors';
 import {useSession} from '../../app/session';
 import {usePlayerActions} from '../../player/PlayerContext';
-import {Button, Card, Dialog, Inset, KeyValue, Menu, Notice, Page, Section, Segmented, Select, SettingsGroup, SettingsRow, Shelf, StateView, Switch, TitleHero, WindowedGrid, anchorOf, type MenuItem} from '../../ui';
+import {Button, Card, Dialog, Inset, KeyValue, ListRow, Menu, Notice, Page, Section, Segmented, Select, SettingsGroup, SettingsRow, Shelf, StateView, Switch, TitleHero, WindowedGrid, anchorOf, type MenuItem} from '../../ui';
 import {SHOW_SETTING_ROWS, dedupeNames, networkName, nextUpPin, originalTitleLine, relatedRowsForPage, seasonProgress, showCreditLines, showPeople} from '@core/presentation/index.ts';
 import {placeholderTint} from '../../app/title-layout';
 import {EpisodeCard, EpisodePlaceholder, EpisodeRow, episodeCode, episodeListKeys} from './EpisodeCard';
@@ -82,6 +82,8 @@ export function ShowScreen() {
   const seasons = useMemo(() => orderSeasons(data?.seasons ?? []), [data?.seasons]);
   // People from the show's own credits (the server sends them with the workspace): cast in billing order, key crew by role.
   const people = useMemo(() => showPeople(show?.credits), [show?.credits]);
+  // The row shows the first twelve; See all lists everyone the show's page carries.
+  const [allCast, setAllCast] = useState(false);
   // The hero's ⋯ is the menu a card of this show opens (playlist, download all, metadata), anchored to the button.
   const showEntry = useMemo<ContentEntry | undefined>(() => (show ? {id: show.id, libraryId: show.libraryId, kind: 'show', title: show.title, posterUrl: show.posterUrl, backdropUrl: show.backdropUrl, navigation: {view: 'show', entityId: show.id}} : undefined), [show]);
   const selected = data?.selected;
@@ -281,7 +283,7 @@ export function ShowScreen() {
               <div className={s.loadingGrid} aria-busy>{Array.from({length: 4}, (_, i) => <EpisodePlaceholder key={i} />)}</div>
             )}
           </Section>
-          {people.cast.length ? <Shelf title={t('title.cast')} density="person">{people.cast.slice(0, 12).map(c => <Card key={c.id ?? c.name} title={c.name} caption={c.role} path={c.portraitUrl} shape="circle" icon="person" href={c.id ? personHref(c.id) : undefined} onOpen={c.id ? () => void navigate({to: '/person/$personId', params: {personId: c.id!}}) : undefined} />)}</Shelf> : null}
+          {people.cast.length ? <Shelf title={t('title.cast')} density="person" count={people.cast.length > 12 ? people.cast.length : undefined} action={people.cast.length > 12 ? {label: t('title.seeAll'), onClick: () => setAllCast(true)} : undefined}>{people.cast.slice(0, 12).map(c => <Card key={c.id ?? c.name} title={c.name} caption={c.role} path={c.portraitUrl} shape="circle" icon="person" href={c.id ? personHref(c.id) : undefined} onOpen={c.id ? () => void navigate({to: '/person/$personId', params: {personId: c.id!}}) : undefined} />)}</Shelf> : null}
           {people.crew.length ? <Shelf title={t('title.crew')} density="person">{people.crew.map(c => <Card key={c.id ?? c.name} title={c.name} caption={c.role || c.department} path={c.portraitUrl} shape="circle" icon="person" href={c.id ? personHref(c.id) : undefined} onOpen={c.id ? () => void navigate({to: '/person/$personId', params: {personId: c.id!}}) : undefined} />)}</Shelf> : null}
           {recommendations.phase === 'loading' ? <LoadingGrid /> : null}
           {recommendations.phase === 'error' ? <Inset><ErrorNotice error={recommendations.error} context="show" retry={recommendations.retry} refresh={recommendations.retry} /></Inset> : null}
@@ -289,6 +291,13 @@ export function ShowScreen() {
           {detailRows.length ? <Section title={t('title.details')}><div className={s.showFacts}><KeyValue rows={detailRows} /></div></Section> : null}
         </div>
       </Page>
+      {allCast ? (
+        <Dialog open onOpenChange={o => !o && setAllCast(false)} title={t('title.allCast')} description={show?.title} width={560}>
+          <div style={{display: 'flex', flexDirection: 'column', gap: 4}}>
+            {people.cast.map(c => <ListRow key={c.id ?? c.name} title={c.name} subtitle={c.role} art={{path: c.portraitUrl, icon: 'person'}} artShape="circle" onClick={c.id ? () => { setAllCast(false); void navigate({to: '/person/$personId', params: {personId: c.id!}}); } : undefined} />)}
+          </div>
+        </Dialog>
+      ) : null}
       {episodeId && show ? (
         <EpisodePanel
           key={episodeId}
