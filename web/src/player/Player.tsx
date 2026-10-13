@@ -123,6 +123,9 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
   useEffect(() => { syncRate.attach(video.current); return () => syncRate.attach(null); }, []);
   /* One element for the life of the player. The playback path mounts its port on it, and the
      subtitle surface is the one place a subtitle track is attached to it. */
+  /* Fit: the whole picture (the default), or filling the screen with the edges cropped. Kept on this device. */
+  const [fill, setFill] = useState(() => { try { return localStorage.getItem('portico.player.fill.v1') === '1'; } catch { return false; } });
+  const toggleFill = () => setFill(now => { try { localStorage.setItem('portico.player.fill.v1', now ? '0' : '1'); } catch { /* private mode */ } return !now; });
   const [surface, setSurface] = useState<SubtitleSurface | null>(null);
   useEffect(() => {
     const el = video.current;
@@ -302,6 +305,7 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
         case 'f': if (!isAudio) { take(); void toggleFullscreen(); } break;
         case 'i': if (!isAudio && document.pictureInPictureEnabled) { take(); void pip(); } break;
         case 'c': if (!isAudio && !live) { take(); toggleSubtitles(); } break;
+        case 'z': if (!isAudio) { take(); toggleFill(); } break;
         case 'g': if (live) { take(); setMiniGuide(true); } else if (!isAudio) { take(); nudgeSubtitles(-0.1); } break;
         case 'h': if (!isAudio && !live) { take(); nudgeSubtitles(0.1); } break;
         case ',': case '.': if (!isAudio && !live && now.intent === 'paused') { take(); stepFrame(pressed === '.' ? 1 : -1); } break;
@@ -460,7 +464,8 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
   const savedRow: CompositeId = qualityFooter.network === 'home' ? 'quality.home' : qualityFooter.network === 'cellular' ? 'quality.cellular' : 'quality.away';
   const savedValue = String(readComposite(savedRow, key => prefs.value<PreferenceValue>(key, '')));
   // Until the session says which network it is on, nothing is assumed about the saved default.
-  const savedQuality: QualityChoice = qualityFooter.network && isQualityChoice(savedValue) ? savedValue : 'original';
+  // A saved limit at or above this source does not limit it: that is Original for this title.
+  const savedQuality: QualityChoice = qualityFooter.network && isQualityChoice(savedValue) && (!fixedQuality(savedValue) || offeredSteps.some(q => q.id === savedValue)) ? savedValue : 'original';
   const qualityChoice: QualityChoice = engine.qualityChoice ?? savedQuality;
   const automaticStep = useSyncExternalStore(engine.playback.subscribeAutomatic, () => engine.playback.automaticAt);
   const stepLabel = (q: FixedQuality) => (q.id === '2160' ? i18n.t('quality.4k') : i18n.t('quality.height', {height: q.height}));
@@ -596,7 +601,7 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
       {isAudio ? <Backdrop path={identity.backdropUrl ?? identity.posterUrl} height="100%" opacity={0.35} position="center" /> : null}
       <video
         ref={video}
-        className={s.video}
+        className={cx(s.video, fill && !isAudio && s.fill)}
         playsInline
         preload="metadata"
         onTimeUpdate={e => { if ((bufferedTick.current = (bufferedTick.current + 1) % 8) === 0) updateBuffered(e.currentTarget); }}
@@ -658,7 +663,7 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
             {!isAudio && document.pictureInPictureEnabled ? <IconButton name="pip" label={i18n.t('web.player.pip')} variant="ghost" onClick={() => void pip()} /> : null}
             {/* WEB-PLAYER-05: Report a problem is a flag in a More menu, not a warning sign in the bar.
                 MU4 FEAT-07: linear sessions get Guide (mini guide) and Record here, never new top-bar buttons. */}
-            <Menu label={i18n.t('player.more')} trigger={<IconButton name="more" label={i18n.t('player.more')} variant="ghost" />} items={[...(linear ? [{id: 'guide', label: i18n.t('player.live.guide'), icon: 'channels' as IconName}, ...(canRecordLive ? [{id: 'record', label: i18n.t('guide.record'), icon: 'dvr' as IconName}] : [])] : [...(!isAudio && !inRoom && state.itemId ? [{id: 'together', label: i18n.t('player.watchTogether'), icon: 'people' as IconName}] : []), {id: 'info', label: i18n.t('player.opt.info'), icon: 'info' as IconName}, {id: 'report', label: i18n.t('player.reportProblem'), icon: 'flag' as IconName}]), ...(!compact ? [{id: 'shortcuts', label: i18n.t('player.shortcuts'), icon: 'keyboard' as IconName}] : [])]} onSelect={id => (id === 'report' ? setReport(true) : id === 'guide' ? setMiniGuide(true) : id === 'record' ? recordLive() : id === 'info' ? setInfo(v => !v) : id === 'together' ? watchTogether() : setLegend(true))} />
+            <Menu label={i18n.t('player.more')} trigger={<IconButton name="more" label={i18n.t('player.more')} variant="ghost" />} items={[...(linear ? [{id: 'guide', label: i18n.t('player.live.guide'), icon: 'channels' as IconName}, ...(canRecordLive ? [{id: 'record', label: i18n.t('guide.record'), icon: 'dvr' as IconName}] : [])] : [...(!isAudio && !inRoom && state.itemId ? [{id: 'together', label: i18n.t('player.watchTogether'), icon: 'people' as IconName}] : []), ...(!isAudio ? [{id: 'fit', label: i18n.t(fill ? 'web.player.fit.contain' : 'web.player.fit.fill'), icon: 'fullscreen' as IconName}] : []), {id: 'info', label: i18n.t('player.opt.info'), icon: 'info' as IconName}, {id: 'report', label: i18n.t('player.reportProblem'), icon: 'flag' as IconName}]), ...(!compact ? [{id: 'shortcuts', label: i18n.t('player.shortcuts'), icon: 'keyboard' as IconName}] : [])]} onSelect={id => (id === 'report' ? setReport(true) : id === 'guide' ? setMiniGuide(true) : id === 'record' ? recordLive() : id === 'info' ? setInfo(v => !v) : id === 'together' ? watchTogether() : id === 'fit' ? toggleFill() : setLegend(true))} />
             {!isAudio ? <IconButton name={fullscreen ? 'exitFullscreen' : 'fullscreen'} label={i18n.t(fullscreen ? 'web.player.exitFullscreen' : 'web.player.fullscreen')} variant="ghost" onClick={() => void toggleFullscreen()} /> : null}
             {isAudio ? <IconButton name="chevronDown" label="Minimize player" variant="ghost" onClick={engine.collapse} /> : null}
             <IconButton name="close" label="Close player" variant="ghost" onClick={close} />
@@ -774,7 +779,7 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
         {linear ? <MiniGuide open={miniGuide} onOpenChange={setMiniGuide} onTune={c => engine.tune(c)} /> : null}
         {/* MU4 COMPAT-01: bitmap subtitles on a 4K/HDR source confirm once per play, like Dolby Vision. */}
         <ConfirmDialog open={!!bitmapPending} onOpenChange={o => { if (!o) setBitmapPending(null); }} title={i18n.t('player.subtitles.burnWarning')} confirmLabel={i18n.t('action.continue')} cancelLabel={i18n.t('action.cancel')} destructive={false} onConfirm={confirmBitmap} />
-        {info && visible ? <PlaybackInfoPanel api={api} sessionId={state.session?.id} v1={state.session?.protocol === 'v1'} delivery={offersData?.current?.delivery} chosenQuality={deliveredAs ? stepLabel(deliveredAs) : undefined} source={infoSource} video={video.current} audioOnly={isAudio} onClose={() => setInfo(false)} /> : null}
+        {info && visible ? <PlaybackInfoPanel api={api} sessionId={state.session?.id} generation={state.session?.generation} v1={state.session?.protocol === 'v1'} delivery={offersData?.current?.delivery} chosenQuality={deliveredAs ? stepLabel(deliveredAs) : undefined} source={infoSource} video={video.current} audioOnly={isAudio} onClose={() => setInfo(false)} /> : null}
         {report ? <FeedbackDialog open onOpenChange={setReport} itemId={state.itemId} playbackSessionId={state.session?.id} title={identity.title} /> : null}
         {message ? (
           <div className={s.notice} role={state.error || state.seekError ? 'alert' : 'status'}>

@@ -210,7 +210,9 @@ export interface PlaybackApi {
 export type SessionEndInfo = Readonly<{ reason: string; message?: string }>;
 /** Match Go's canonical JSON escaping for signed-claim wrapper endpoints. */
 export function transportJSON(value:unknown):string {return JSON.stringify(value).replace(/[<>&\u2028\u2029]/g,c=>'\\u'+c.charCodeAt(0).toString(16).padStart(4,'0'));}
-export class HttpLocalApi implements PlaybackApi {
+/** The selected server's HTTP API. Playback sessions are not started here: they are Playback
+ * Protocol v1 sessions (`playback-v1/sessions.ts`), spoken through `requestRaw`. */
+export class HttpLocalApi {
   readonly baseUrl: string;
   private token: string;
   private certificateSessionEpoch = 0;
@@ -465,37 +467,6 @@ export class HttpLocalApi implements PlaybackApi {
   }
   reportRouteFailure(sessionId: string, code: RouteFailureCode, detail: string) {
     return reportRouteFailure((path, method, body) => this.request<unknown>(path, method, body), sessionId, code, detail);
-  }
-  createPlayback(itemId: string, requestId: string, signal?: AbortSignal) {
-    return this.request<PlaybackSession>(
-      "/v1/playback/sessions",
-      "POST",
-      { itemId, quality: "auto", requestId },
-      signal
-    );
-  }
-  stopPlayback(id: string, signal?: AbortSignal) {
-    return this.request<void>(
-      "/v1/playback/sessions/" + encodeURIComponent(id),
-      "DELETE",
-      undefined,
-      signal
-    );
-  }
-  progressPlayback(
-    id: string,
-    payload: {
-      generation: number;
-      sequence: number;
-      positionSeconds: number;
-      state: "playing" | "paused" | "ended";
-    }
-  ) {
-    return this.request<void>(
-      "/v1/playback/sessions/" + encodeURIComponent(id) + "/progress",
-      "POST",
-      payload
-    );
   }
   mediaUrl(path: string) {
     if (this.routes) return this.routes.mediaURL(path);

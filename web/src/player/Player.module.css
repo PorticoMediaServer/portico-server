@@ -2,6 +2,8 @@
 .stage { position: fixed; inset: 0; z-index: var(--layer-player); background: #000; /* lint-design-allow: player-canvas black per PC-VISUAL 4.3 */ display: flex; align-items: center; justify-content: center; outline: none; overflow: hidden; }
 .stage.audio { background: var(--surface-projector); }
 .video { width: 100%; height: 100%; object-fit: contain; background: transparent; }
+/* Fill the screen: the picture is cropped to cover it (letterboxed films on a wide screen, 4:3 on 16:9). */
+.video.fill { object-fit: cover; }
 .stage.audio .video { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 .tap { position: absolute; inset: 0; cursor: default; }
 .hidden { cursor: none; }
@@ -170,5 +172,7 @@ video::cue {font-size:var(--subtitle-size,100%);background-color:var(--subtitle-
 .infoHead { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
 .infoTitle { font-size: 13px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-tertiary); }
 .infoRows { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 6px 16px; margin: 0; font-size: 13.5px; }
+.infoCopy { margin-left: auto; padding: 4px 10px; border-radius: var(--radius-control); font-size: 12.5px; color: var(--text-secondary); }
+.infoCopy:hover { background: var(--accent-tint); color: var(--text-primary); }
 .infoRows dt { color: var(--text-tertiary); }
 .infoRows dd { margin: 0; color: var(--text-primary); font-variant-numeric: tabular-nums; }

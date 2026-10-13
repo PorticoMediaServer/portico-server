@@ -114,24 +114,31 @@ test("LAN authority survives internet/hosted loss", () => {
   assert.equal(viewer.getSnapshot().phase, "ready");
   assert.equal(viewer.getSnapshot().generation, generation);
 });
-test("single auto quality is sufficient and media URLs stay same origin", async () => {
-  let body = "";
-  const fake = async (_url: any, init: any) => {
-    body = init.body;
-    return new Response(JSON.stringify(session), { status: 201 });
-  };
+test("media URLs stay on the selected server's origin", async () => {
+  const fake = async () => new Response("{}", { status: 200 });
   const client = new HttpLocalApi(
     "http://127.0.0.1:19411",
     "token",
     fake as typeof fetch
   );
-  await client.createPlayback("m", "r");
-  assert.equal(JSON.parse(body).quality, "auto");
   assert.equal(
     client.mediaUrl("/v1/media/opaque"),
     "http://127.0.0.1:19411/v1/media/opaque"
   );
   assert.throws(() => client.mediaUrl("https://other.example/secret"));
+});
+test("a farewell is sent at once with keepalive and the token in hand, and only to the server's own API", async () => {
+  const sent: {url: string; init: RequestInit}[] = [];
+  const fake = async (url: any, init: any) => { sent.push({url: String(url), init}); return new Response(null, { status: 204 }); };
+  const client = new HttpLocalApi("http://127.0.0.1:19411", "token", fake as typeof fetch);
+  client.farewell("/v1/playback/sessions/s1", "DELETE", { positionMs: 1200 });
+  client.farewell("/elsewhere", "DELETE");
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0]!.url, "http://127.0.0.1:19411/v1/playback/sessions/s1");
+  assert.equal(sent[0]!.init.keepalive, true);
+  assert.equal(sent[0]!.init.method, "DELETE");
+  assert.equal((sent[0]!.init.headers as Record<string, string>).Authorization, "Bearer token");
+  assert.equal(JSON.parse(String(sent[0]!.init.body)).positionMs, 1200);
 });
 test("pause and leave checkpoint the final fractional position", async () => {
   const checkpoints: any[] = [];

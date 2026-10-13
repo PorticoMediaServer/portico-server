@@ -143,7 +143,7 @@ export function ShortcutLegend({skipBack = 10, skipForward = 30, live = false, a
     ['→ / L', t('web.player.keys.forward', {seconds: skipForward})],
     ...(live ? [['↑ / ↓', t('web.player.keys.channel')], ['G', t('web.player.keys.guide')]] as [string, string][] : [['↑ / ↓', t('web.player.keys.volume')]] as [string, string][]),
     ['M', t('web.player.keys.mute')],
-    ...(video ? [['F', t('web.player.keys.fullscreen')], ['I', t('web.player.keys.pip')]] as [string, string][] : []),
+    ...(video ? [['F', t('web.player.keys.fullscreen')], ['I', t('web.player.keys.pip')], ['Z', t('web.player.keys.fit')]] as [string, string][] : []),
     ...(video && !live ? [['C', t('web.player.keys.captions')], ['G / H', t('web.player.keys.subtitleTiming')]] as [string, string][] : []),
     ...(!live ? [['0–9', t('web.player.keys.jump')], ['Home', t('web.player.keys.start')], ['End', t('web.player.keys.end')], ['< / >', t('web.player.keys.speed')], [t('web.player.keys.shiftN'), t('web.player.keys.nextPrevious')]] as [string, string][] : []),
     ...(video && !live ? [['Page Up / Page Down', t('web.player.keys.chapter')], [', / .', t('web.player.keys.frame')]] as [string, string][] : []),
