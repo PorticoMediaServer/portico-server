@@ -1,4 +1,6 @@
-import type {BrowseNode} from '@core/browse.ts';
+import type {BrowseNode, BrowseSortSelection} from '@core/browse.ts';
+import type {HomeRow} from '@core/home.ts';
+import {libraryTabForPivot} from '@core/presentation/library-tabs.ts';
 import type {Predicate} from './browse-page-source.ts';
 
 /**
@@ -11,4 +13,26 @@ export function seeAllPredicates(query: BrowseNode | undefined): Predicate[] | u
   if ('field' in query) return [query as Predicate];
   if ('all' in query && query.all.every(n => 'field' in n)) return query.all.map(n => n as Predicate);
   return undefined;
+}
+
+/** Where a Home row's See all leads. */
+export type HomeSeeAllDestination =
+  | Readonly<{to: 'browse'; libraryId: string; tab: string; sort?: BrowseSortSelection; filters: readonly Predicate[]}>
+  | Readonly<{to: 'row'; rowId: string}>
+  | Readonly<{to: 'library'; libraryId: string}>;
+
+/**
+ * Where See all on a Home row goes. The server says: a row that names its own browse (`seeAll`:
+ * the pivot, conditions and sort) opens the library on exactly that. A row that names none opens
+ * as its own page, which lists the row and nothing else, when the row can be paged. Nothing is
+ * guessed from the row's id or kind. Only a row that offers neither falls back to its library.
+ */
+export function homeRowSeeAll(row: Pick<HomeRow, 'id' | 'libraryId' | 'seeAll' | 'cursorCapable'>, libraryKind: string | undefined): HomeSeeAllDestination | undefined {
+  if (row.seeAll && row.libraryId && libraryKind) {
+    const tab = libraryTabForPivot(libraryKind, row.seeAll.pivot);
+    const filters = seeAllPredicates(row.seeAll.query);
+    if (tab && filters) return {to: 'browse', libraryId: row.libraryId, tab: tab.id, ...(row.seeAll.sort[0] ? {sort: row.seeAll.sort[0]} : {}), filters};
+  }
+  if (row.cursorCapable) return {to: 'row', rowId: row.id};
+  return row.libraryId ? {to: 'library', libraryId: row.libraryId} : undefined;
 }

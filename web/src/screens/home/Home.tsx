@@ -20,6 +20,9 @@ import {homeViewResourceId} from '@core/home.ts';
 import {useNotInterested} from '../../app/not-interested-notice';
 import {withoutHidden} from '../../app/not-interested';
 import {useI18n} from '../../app/i18n';
+import {encodePredicates} from '../../app/browse';
+import {homeRowSeeAll} from '../../app/see-all';
+import type {LibraryView} from '../../app/router';
 
 /**
  * Home: what the viewer was last in the middle of as a hero, then every row the
@@ -38,8 +41,14 @@ export function HomeScreen() {
   const [customise, setCustomise] = useState(false);
   const document = state.document;
   const navigate = useNavigate();
-  // WEB-HOME-03: a row from one library continues in that library (recent rows by date added).
-  const seeAll = (row: HomeRow) => void navigate({to: '/library/$libraryId', params: {libraryId: row.libraryId!}, search: /recent|added/i.test(row.kind + row.id) ? {view: 'browse', sort: 'added', direction: 'desc'} : {}});
+  // WEB-HOME-03: a row from one library continues where the server says it does (the library's
+  // browse on the row's own pivot, conditions and sort), or as the row's own page.
+  const seeAll = (row: HomeRow) => {
+    const destination = homeRowSeeAll(row, libraries.items.find(l => l.id === row.libraryId)?.kind);
+    if (destination?.to === 'browse') void navigate({to: '/library/$libraryId', params: {libraryId: destination.libraryId}, search: {view: destination.tab as LibraryView, ...(destination.sort ? {sort: destination.sort.field, direction: destination.sort.direction} : {}), ...(destination.filters.length ? {filters: encodePredicates(destination.filters)} : {})}});
+    else if (destination?.to === 'row') seeAllRow(row);
+    else if (destination) void navigate({to: '/library/$libraryId', params: {libraryId: destination.libraryId}, search: {}});
+  };
   // P7: a recommendation row with no library of its own (Recommended, Trending now, Picks for
   // you) opens as its own paged page.
   const seeAllRow = (row: HomeRow) => void navigate({to: '/home/rows/$rowId', params: {rowId: row.id}});
