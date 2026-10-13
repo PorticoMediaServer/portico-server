@@ -56,6 +56,10 @@ func cleanupTestJob(f *claimFixture) cleanupJob {
 }
 func seedCleanupResources(t *testing.T, f *claimFixture) {
 	t.Helper()
+	// This fixture models custody whose account is linked to another local member.
+	if _, err := f.db.Exec(`DELETE FROM account_portico_links WHERE account_id=?`, f.owner.Viewer.AccountID); err != nil {
+		t.Fatal(err)
+	}
 	for _, account := range []string{"linked-account", "account"} {
 		if _, e := f.db.Exec(`INSERT INTO accounts(id,username,password_hash,profile_id) VALUES(?,?,x'00',?)`, account, account, account+"-primary"); e != nil {
 			t.Fatal(e)

@@ -728,3 +728,54 @@ func verifyNetworkingClaimsForTest(t *testing.T, ctx context.Context, db *sql.DB
 	t.Helper()
 	return persistence.VerifyNetworkingClaims(ctx, db)
 }
+
+func TestClaimInstallationReadinessAndWakeCommitTogether(t *testing.T) {
+	f := fixtureSQL(t)
+	v := f.retrieving(t)
+	failure := errors.New("admission unavailable")
+	wakes := 0
+	if err := f.store.SetInstallationHooks(func(ctx context.Context, tx *sql.Tx, intent Intent) error {
+		if intent.Stage != Installed {
+			t.Fatal("readiness before installation")
+		}
+		_, err := tx.ExecContext(ctx, `UPDATE fixture_owners SET allowed=2`)
+		if err != nil {
+			return err
+		}
+		return failure
+	}, func() { wakes++ }); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.store.Install(fixtureClaimContext(t), v, resultFor(t, v)); !errors.Is(err, failure) {
+		t.Fatal("readiness failure was ignored", err)
+	}
+	var allowed, credentials int
+	if err := f.db.QueryRow(`SELECT allowed,(SELECT count(*) FROM networking_claim_credentials) FROM fixture_owners`).Scan(&allowed, &credentials); err != nil {
+		t.Fatal(err)
+	}
+	if allowed != 1 || credentials != 0 || wakes != 0 {
+		t.Fatal("failed readiness partially committed", allowed, credentials, wakes)
+	}
+	f.store.installed = func(ctx context.Context, tx *sql.Tx, _ Intent) error {
+		_, err := tx.ExecContext(ctx, `UPDATE fixture_owners SET allowed=2`)
+		return err
+	}
+	f.store.claimChanged = func() {
+		var stage Stage
+		if err := f.db.QueryRow(`SELECT stage FROM networking_claim_intents`).Scan(&stage); err != nil || stage != Installed {
+			t.Fatal("wake before commit", stage, err)
+		}
+		wakes++
+	}
+	installed, err := f.store.Install(fixtureClaimContext(t), v, resultFor(t, v))
+	if err != nil {
+		t.Fatal(err)
+	}
+	acknowledged, err := f.store.Acknowledged(fixtureClaimContext(t), installed)
+	if err != nil || wakes != 2 {
+		t.Fatal("install and acknowledgment did not wake control", wakes, err)
+	}
+	if _, err = f.store.Acknowledged(fixtureClaimContext(t), acknowledged); err != nil || wakes != 2 {
+		t.Fatal("idempotent acknowledgment repeated wake", wakes, err)
+	}
+}

@@ -3,6 +3,7 @@ package trust
 import (
 	"crypto/ed25519"
 	"crypto/rand"
+	"encoding/base64"
 	"testing"
 	"time"
 )
@@ -60,5 +61,26 @@ func TestCertificateLifetimeAndRevocation(t *testing.T) {
 	e, _ := Sign(key, c, []byte("fixture"))
 	if _, err = e.Verify(root, "documents", now); err == nil {
 		t.Fatal("revoked key accepted")
+	}
+}
+
+func TestCertificateRevisionStaysWithinSharedIntegerRange(t *testing.T) {
+	root, private, _ := ed25519.GenerateKey(rand.Reader)
+	public, _, _ := ed25519.GenerateKey(rand.Reader)
+	now := time.Now()
+	for _, revision := range []uint64{MaximumCertificateRevision, MaximumCertificateRevision + 1, 1 << 63, ^uint64(0)} {
+		wantValid := revision <= MaximumCertificateRevision
+		cert, err := Certify(private, public, "leaf", "documents", now.Add(-time.Minute), now.Add(time.Hour), revision, nil)
+		if (err == nil) != wantValid {
+			t.Fatalf("issuance revision %d: %v", revision, err)
+		}
+		// Simulate a correctly root-signed artifact from an external ceremony.
+		if cert == nil {
+			cert = &Certificate{KeyID: "leaf", PublicKey: base64.RawURLEncoding.EncodeToString(public), Purpose: "documents", NotBefore: now.Add(-time.Minute), NotAfter: now.Add(time.Hour), Revision: revision, Revoked: []string{}}
+		}
+		cert.Signature = base64.RawURLEncoding.EncodeToString(ed25519.Sign(private, certificateBytes(*cert)))
+		if _, err = cert.Verify(root, "documents", now); (err == nil) != wantValid {
+			t.Fatalf("verification revision %d: %v", revision, err)
+		}
 	}
 }

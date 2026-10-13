@@ -21,6 +21,10 @@ const Origin = "https://web.getportico.tv"
 const DefaultCertificateLifetime = 365 * 24 * time.Hour
 const MaximumCertificateLifetime = 400 * 24 * time.Hour
 
+// MaximumCertificateRevision is the exact JSON integer range shared by clients
+// and also fits the signed integer used by SQLite.
+const MaximumCertificateRevision uint64 = 9007199254740991
+
 // OfficialRoot is populated only by the release build script, from the owner's
 // public PEM file. A release binary with no valid official root refuses to boot.
 var OfficialRoot string
@@ -90,7 +94,7 @@ func certificateBytes(c Certificate) []byte {
 	return append([]byte("portico.hosted.signing-certificate.v1\x00"), raw...)
 }
 func Certify(root ed25519.PrivateKey, public ed25519.PublicKey, id, purpose string, before, after time.Time, revision uint64, revoked []string) (*Certificate, error) {
-	if len(root) != 64 || len(public) != 32 || id == "" || (purpose != "documents" && purpose != "wake") || !after.After(before) || after.Sub(before) > MaximumCertificateLifetime || revision == 0 {
+	if len(root) != 64 || len(public) != 32 || id == "" || (purpose != "documents" && purpose != "wake") || !after.After(before) || after.Sub(before) > MaximumCertificateLifetime || revision == 0 || revision > MaximumCertificateRevision {
 		return nil, ErrTrust
 	}
 	if revoked == nil {
@@ -101,7 +105,7 @@ func Certify(root ed25519.PrivateKey, public ed25519.PublicKey, id, purpose stri
 	return c, nil
 }
 func (c *Certificate) Verify(root ed25519.PublicKey, purpose string, now time.Time) (ed25519.PublicKey, error) {
-	if c == nil || len(root) != 32 || c.KeyID == "" || len(c.KeyID) > 128 || len(c.Revoked) > 4096 || c.Revision == 0 || c.Purpose != purpose || now.Before(c.NotBefore) || !now.Before(c.NotAfter) || !c.NotAfter.After(c.NotBefore) || c.NotAfter.Sub(c.NotBefore) > MaximumCertificateLifetime {
+	if c == nil || len(root) != 32 || c.KeyID == "" || len(c.KeyID) > 128 || len(c.Revoked) > 4096 || c.Revision == 0 || c.Revision > MaximumCertificateRevision || c.Purpose != purpose || now.Before(c.NotBefore) || !now.Before(c.NotAfter) || !c.NotAfter.After(c.NotBefore) || c.NotAfter.Sub(c.NotBefore) > MaximumCertificateLifetime {
 		return nil, ErrTrust
 	}
 	signature, err := base64.RawURLEncoding.Strict().DecodeString(c.Signature)

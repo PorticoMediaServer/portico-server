@@ -37,7 +37,7 @@ type claimFixture struct {
 	owner     identity.Envelope
 }
 
-func newClaimFixture(t *testing.T) *claimFixture {
+func newClaimFixture(t *testing.T, beforeInstall ...func(*claimFixture)) *claimFixture {
 	t.Helper()
 	state := t.TempDir()
 	os.Chmod(state, 0700)
@@ -85,6 +85,10 @@ func newClaimFixture(t *testing.T) *claimFixture {
 	var public []byte
 	db.QueryRow(`SELECT public_key FROM networking_claim_identity`).Scan(&public)
 	var installed networking.Intent
+	f := &claimFixture{db: db, state: state, id: id, service: service, runner: runner, store: store, hostedKey: key, keys: keys, owner: owner}
+	for _, configure := range beforeInstall {
+		configure(f)
+	}
 	e = runner.Do(context.Background(), func(ctx context.Context) error {
 		v, e := store.Prepare(ctx, networking.Binding{OperationID: "operation", ServerID: id.ID(), AccountID: "account", PublicKey: public}, networking.LocalOwner{AccountID: owner.Viewer.AccountID, ProfileID: owner.Viewer.ProfileID, Epoch: 1})
 		if e != nil {
@@ -131,5 +135,6 @@ func newClaimFixture(t *testing.T) *claimFixture {
 	if e != nil {
 		t.Fatal("install", e)
 	}
-	return &claimFixture{db: db, state: state, id: id, service: service, runner: runner, store: store, installed: installed, hostedKey: key, keys: keys, owner: owner}
+	f.installed = installed
+	return f
 }

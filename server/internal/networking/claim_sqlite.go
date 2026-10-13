@@ -41,6 +41,8 @@ type SQLiteStore struct {
 	ownerGuard     OwnerIntentGuard
 	installedGuard InstalledAuthorityGuard
 	denied         TerminalClaimRevoker
+	installed      func(context.Context, *sql.Tx, Intent) error
+	claimChanged   func()
 	verifyApproval ApprovalVerifier
 	audience       string
 	now            func() time.Time
@@ -452,7 +454,16 @@ func (s *SQLiteStore) Install(ctx context.Context, expected Intent, result Resul
 	if e != nil {
 		return Intent{}, e
 	}
-	return s.finish(ctx, gated6, next.Intent, true)
+	if s.installed != nil {
+		if e = s.installed(ctx, tx, next.Intent); e != nil {
+			return Intent{}, e
+		}
+	}
+	resultIntent, e := s.finish(ctx, gated6, next.Intent, true)
+	if e == nil && s.claimChanged != nil {
+		s.claimChanged()
+	}
+	return resultIntent, e
 }
 func (s *SQLiteStore) Acknowledged(ctx context.Context, expected Intent) (Intent, error) {
 	gated7, e := s.tx(ctx)
@@ -486,7 +497,11 @@ func (s *SQLiteStore) Acknowledged(ctx context.Context, expected Intent) (Intent
 	if e != nil {
 		return Intent{}, e
 	}
-	return s.finish(ctx, gated7, next.Intent, false)
+	resultIntent, e := s.finish(ctx, gated7, next.Intent, false)
+	if e == nil && s.claimChanged != nil {
+		s.claimChanged()
+	}
+	return resultIntent, e
 }
 func (s *SQLiteStore) readCredentialTx(ctx context.Context, tx *sql.Tx, v Intent) (*Secret, error) {
 	var server, claim, credential string
@@ -684,5 +699,15 @@ func (s *SQLiteStore) SetTerminalRevoker(revoke TerminalClaimRevoker) error {
 		return ErrInvalid
 	}
 	s.denied = revoke
+	return nil
+}
+
+// SetInstallationHooks is startup-only. Admission readiness commits with the
+// credential; changed runs only after a successful install or acknowledgment.
+func (s *SQLiteStore) SetInstallationHooks(ready func(context.Context, *sql.Tx, Intent) error, changed func()) error {
+	if ready == nil || changed == nil {
+		return ErrInvalid
+	}
+	s.installed, s.claimChanged = ready, changed
 	return nil
 }

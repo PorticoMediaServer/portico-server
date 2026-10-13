@@ -263,3 +263,42 @@ func TestTheCheckInCertificateTeachesRevocationsAndNothingElseDoes(t *testing.T)
 		t.Fatalf("after an older certificate: pin1 known=%d revision=%d %v", known, revision, err)
 	}
 }
+
+func TestOversizedCertificateRevisionNeverReachesPersistence(t *testing.T) {
+	f := newClaimFixture(t)
+	cert := testSigningCertificate(f.hostedKey, "pin1")
+	cert.Revision = 1 << 63
+	cert.Revoked = []string{"other"}
+	if err := f.service.learnRevocations(t.Context(), cert); !errors.Is(err, trust.ErrTrust) {
+		t.Fatal("oversized revision reached SQL", err)
+	}
+	var revision uint64
+	var revoked int
+	if err := f.db.QueryRow(`SELECT revision,(SELECT count(*) FROM hosted_signing_revocations) FROM hosted_trust_state WHERE singleton=1`).Scan(&revision, &revoked); err != nil {
+		t.Fatal(err)
+	}
+	if revision != 0 || revoked != 0 {
+		t.Fatal("oversized certificate changed trust", revision, revoked)
+	}
+}
+
+func TestLargestSharedCertificateRevisionPersists(t *testing.T) {
+	f := newClaimFixture(t)
+	public, key, _ := ed25519.GenerateKey(rand.Reader)
+	now := time.Now()
+	cert, err := trust.Certify(f.hostedKey, public, "last-revision", "documents", now.Add(-time.Minute), now.Add(time.Hour), trust.MaximumCertificateRevision, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	envelope, err := trust.Sign(key, cert, []byte("fixture"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = f.service.verifyEnvelope(t.Context(), envelope); err != nil {
+		t.Fatal("maximum exact revision refused", err)
+	}
+	var revision uint64
+	if err = f.db.QueryRow(`SELECT revision FROM hosted_trust_state WHERE singleton=1`).Scan(&revision); err != nil || revision != trust.MaximumCertificateRevision {
+		t.Fatal("maximum revision not durable", revision, err)
+	}
+}

@@ -1924,7 +1924,7 @@ export {
 
 export { DeviceAuthorizationService, HttpDeviceAuthorizationApi, type DeviceAuthorization, type DeviceAuthorizationApi, type DeviceAuthorizationSnapshot } from "./device-authorization.ts";
 
-export { HostedGate, hostedGate, type HostedGateSnapshot } from "./hosted-gate.ts";
+export { HostedGate, hostedGate, type HostedGateSnapshot, type HostedRequestKind } from "./hosted-gate.ts";
 export { CredentialSessionService,HttpCredentialApi,type CredentialContext,type CredentialRecord,type CredentialStorage,type CredentialApi,type CredentialSnapshot,type CredentialCoordinator } from "./credentials.ts";
 export {LibraryNavigationService,navigationStorageKey,type NavigationScope,type LibraryRoute,type LibraryEntityView,type EntityViewState,type NavigationFocus,type ScrollAnchor,type LibraryNavigationMetadata,type LibraryViewState,type LibraryViewUpdate,type NavigationStorage,type LibraryNavigationSnapshot} from './library-navigation.ts';
 export {LibraryContentService,type ContentView,type ContentSurface,type ContentRoute,type ContentScope,type LibraryContentApi,type ContentEntryKind,type ContentHeading,type ContentEntry,type ContentSection,type ContentProjection,type LibraryContentSnapshot} from './library-content.ts';

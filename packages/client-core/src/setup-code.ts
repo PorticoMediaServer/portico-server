@@ -4,6 +4,7 @@ import {randomId} from './random-id.ts';
 import {ApiError, HttpLocalApi} from './index.ts';
 import type {DeviceAuthorization} from './device-authorization.ts';
 import {routeOrigin} from './route-identity.ts';
+import {hostedGate, type HostedGate, type HostedRequestKind} from './hosted-gate.ts';
 
 export const setupCodeAlphabet = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 export function normalizeSetupCode(value: string): string {
@@ -32,9 +33,10 @@ export interface SetupCodeStorage<T> {
   change(update: (record: SetupCodeJournal<T> | undefined) => SetupCodeJournal<T>): Promise<SetupCodeJournal<T>>;
 }
 export interface SetupCodeApi<T> {
-  create(requestId: string, signal: AbortSignal): Promise<DeviceAuthorization>;
+  readonly gate?: HostedGate;
+  create(requestId: string, signal: AbortSignal, kind?: HostedRequestKind): Promise<DeviceAuthorization>;
   poll(entry: SetupCodeEntry<T>, signal: AbortSignal, checkpoint: (grant:T)=>Promise<void>): Promise<T>;
-  cancel(entry: SetupCodeEntry<T>, signal: AbortSignal): Promise<void>;
+  cancel(entry: SetupCodeEntry<T>, signal: AbortSignal, kind?: HostedRequestKind): Promise<void>;
   forgotten?(entry: SetupCodeEntry<T>): void;
   displayed?(entry: SetupCodeEntry<T> | undefined): void;
 }
@@ -78,13 +80,19 @@ export class SetupCodeService<T> {
   private cleanupAfter = 0;
   private mutations:Promise<unknown> = Promise.resolve();
   private approvedRequestId?:string;
+  private explicitStart = false;
   private readonly authority:string;
   private readonly api:SetupCodeApi<T>;
+  private readonly gate?:HostedGate;
   private readonly storage:SetupCodeStorage<T>;
   private readonly requestId:()=>Promise<string>;
   private readonly options:{requestTimeoutMs:number;tickMs:number;replaceBeforeMs:number;random?:()=>number};
   constructor(authority:string,api:SetupCodeApi<T>,storage:SetupCodeStorage<T>,requestId:()=>Promise<string>=async()=>randomId(),options:{requestTimeoutMs:number;tickMs:number;replaceBeforeMs:number;random?:()=>number}={requestTimeoutMs:15000,tickMs:1000,replaceBeforeMs:60000}) {
     this.authority=authority;this.api=api;this.storage=storage;this.requestId=requestId;this.options=options;
+    // The native TV journal already binds this protocol to its Hosted origin.
+    // Local Quick Connect uses local:<server ID> and never gets an account gate.
+    const tvSuffix = '#tv-x25519-v1';
+    this.gate = api.gate ?? (authority.endsWith(tvSuffix) ? hostedGate(routeOrigin(authority.slice(0, -tvSuffix.length))) : undefined);
   }
   /** The wait before retry number `failures` of a request that got no answer: about 5 s, doubling
    * to a 30 s cap, and spread by up to a fifth at every step so devices that lost the service in
@@ -140,12 +148,22 @@ export class SetupCodeService<T> {
     this.running = true; // Resume the same durable operation; only cancellation changes its generation.
     try {await this.change(record => record); const current = this.journal?.current;
       if (current) validAuthorization(current.authorization, Date.now());
-      this.show(); this.schedule(0);
+      this.explicitStart = true; this.show(); this.schedule(0);
     } catch (error) {this.running = false; this.emit({phase: 'error', message: error instanceof Error ? error.message : 'Activation could not be saved.'});}
   }
   /** Background/unmount is not abandonment. No remote cancellation or key loss. */
   pause() {this.running = false; clearTimeout(this.timer); this.api.displayed?.(undefined);}
-  private schedule(delay = this.options.tickMs) {clearTimeout(this.timer); if (this.running) this.timer = setTimeout(() => {void this.step();}, delay);}
+  private schedule(delay = this.options.tickMs) {
+    clearTimeout(this.timer);
+    const wait = this.gate?.blockedFor() ?? 0;
+    if (wait > 0 && !this.explicitStart) delay = Math.max(delay, wait + Math.floor((this.options.random ?? Math.random)() * 1000));
+    const current = this.journal?.current;
+    const expiry = current?.grant === undefined ? Date.parse(current?.authorization.expiresAt ?? '') : 0;
+    // Expire the visible code locally even while network work is deferred.
+    // Keep its protected receipt so an already consumed grant can be recovered.
+    if (expiry > Date.now()) delay = Math.min(delay, expiry - Date.now());
+    if (this.running) this.timer = setTimeout(() => {void this.step();}, delay);
+  }
   private async step() {
     if (this.operation || !this.running) {this.schedule(); return;}
     const generation = this.generation;
@@ -158,6 +176,8 @@ export class SetupCodeService<T> {
     await this.operation;
   }
   private async cycle(generation: number) {
+    const explicit = this.explicitStart; this.explicitStart = false;
+    if ((this.gate?.blockedFor() ?? 0) > 0 && !explicit) {this.show(); return;}
     if(Date.now()>=this.cleanupAfter)await this.cleanup();
     if(generation!==this.generation||!this.running)return;
     if(this.journal?.creating?.cancelled){this.show('Finishing cancellation of the saved request.');return;}
@@ -167,13 +187,13 @@ export class SetupCodeService<T> {
       // authority decides whether this is expired, pending, or exact replay.
       await this.change(record => ({...record, current: record.current && {...record.current, nextPollAt: Date.now() + record.current.authorization.interval * 1000}}));
       try {
-        const grant = await this.bounded(signal => this.api.poll(current, signal, async grant => {
+        const grant = await this.bounded(signal => this.request('automatic', () => this.api.poll(current, signal, async grant => {
           if (generation !== this.generation || signal.aborted) throw new Error('Activation was cancelled or timed out.');
           await this.change(record => {
             if (generation !== this.generation || signal.aborted || record.current?.requestId !== current.requestId) throw new Error('Activation changed.');
             return {...record,current:{...record.current,grant}};
           });
-        }));
+        }), true));
         if (generation !== this.generation) return;
         this.pollFailures = 0;
         await this.change(record => {
@@ -191,8 +211,9 @@ export class SetupCodeService<T> {
         if (error instanceof ApiError && ['expired_token', 'invalid_grant'].includes(error.code)) {
           await this.retireCurrent(); this.createAfter = 0;
         } else if (error instanceof ApiError && ['authorization_pending', 'slow_down'].includes(error.code)) {
-          const interval = Math.max(current.authorization.interval, error.code === 'slow_down' ? current.authorization.interval + 5 : 5, error.retryAfterSeconds ?? 0);
-          await this.change(record => ({...record, current: record.current && {...record.current, authorization: {...record.current.authorization, interval: Math.min(300, interval)}, nextPollAt: Date.now() + interval * 1000}}));
+          const interval = error.code === 'slow_down' ? Math.max(current.authorization.interval, Math.min(30, current.authorization.interval + 5)) : current.authorization.interval;
+          const wait = Math.max(interval * 1000, (error.retryAfterSeconds ?? 0) * 1000, this.gate?.blockedFor() ?? 0);
+          await this.change(record => ({...record, current: record.current && {...record.current, authorization: {...record.current.authorization, interval}, nextPollAt: Date.now() + wait}}));
         } else {
           // No answer (offline, a timeout, a failing service): the same growing, spread wait as code
           // creation, and never sooner than the service asked for.
@@ -215,7 +236,7 @@ export class SetupCodeService<T> {
       }
       const creating = this.journal!.creating!;
       let authorization: DeviceAuthorization;
-      try {authorization = await this.bounded(signal => this.api.create(creating.requestId, signal));}
+      try {authorization = await this.bounded(signal => this.request(explicit ? 'interactive' : 'automatic', () => this.api.create(creating.requestId, signal, explicit ? 'interactive' : 'automatic')));}
       catch (error) {
         if (generation !== this.generation) return;
         if (error instanceof ApiError && error.code === 'invalid_grant') await this.change(record => ({...record, creating: undefined}));
@@ -239,10 +260,13 @@ export class SetupCodeService<T> {
     if (generation === this.generation && Date.now() >= this.cleanupAfter) await this.cleanup();
   }
   private async retireCurrent() {await this.change(record => ({...record, current: undefined, retired: record.current ? [...record.retired, record.current] : record.retired}));}
-  private async cleanup() {
+  private request<R>(kind: HostedRequestKind, work:()=>Promise<R>, protocol=false):Promise<R> {
+    return this.gate ? this.gate.run(kind, work, undefined, protocol ? ['authorization_pending', 'slow_down', 'access_denied', 'expired_token', 'invalid_grant'] : []) : work();
+  }
+  private async cleanup(kind:HostedRequestKind='automatic') {
     this.cleanupAfter = Date.now() + 30_000;
     const entry = this.journal?.retired[0];
-    if(entry){try {await this.bounded(signal => this.api.cancel(entry, signal));
+    if(entry){try {await this.bounded(signal => this.request(kind, () => this.api.cancel(entry, signal, kind)));
       await this.change(record => ({...record, retired: record.retired.filter(old => old.requestId !== entry.requestId)}));
       this.api.forgotten?.(entry);
     } catch { /* The protected cancellation receipt survives an outage. */ }}
@@ -251,11 +275,11 @@ export class SetupCodeService<T> {
       try{
         // Cancellation cannot discard an idempotency key merely because the
         // create reply was lost. Reconcile that SAME operation, then revoke it.
-        const authorization=await this.bounded(signal=>this.api.create(creating.requestId,signal));
+        const authorization=await this.bounded(signal=>this.request(kind,()=>this.api.create(creating.requestId,signal,kind)));
         validAuthorization(authorization,Date.now());
         const retired:SetupCodeEntry<T>={requestId:creating.requestId,authorization,nextPollAt:0};
         await this.change(record=>record.creating?.requestId===creating.requestId?{...record,creating:undefined,retired:record.retired.some(v=>v.requestId===retired.requestId)?record.retired:[...record.retired,retired]}:record);
-        await this.bounded(signal=>this.api.cancel(retired,signal));
+        await this.bounded(signal=>this.request(kind,()=>this.api.cancel(retired,signal,kind)));
         await this.change(record=>({...record,retired:record.retired.filter(v=>v.requestId!==retired.requestId)}));
         this.api.forgotten?.(retired);
       }catch(error){
@@ -285,7 +309,7 @@ export class SetupCodeService<T> {
     await this.operation; // Bounded; stale results remain durable for cleanup.
     await this.retireCurrent();
     await this.change(record => ({...record, creating:record.creating?{...record.creating,cancelled:true}:undefined}));
-    await this.cleanup();
+    await this.cleanup('interactive');
   }
 }
 
@@ -294,10 +318,12 @@ export type SetupPreview = {clientRequestId?:string;publicKey?:string;protocol?:
  * across servers, no inferred authority from an ambiguous human code. */
 export class SetupCodeApprover {
   private readonly api:HttpLocalApi;readonly authority:'hosted'|'local';
-  constructor(api:HttpLocalApi,authority:'hosted'|'local'){this.api=api;this.authority=authority;}
+  private readonly gate?:HostedGate;
+  constructor(api:HttpLocalApi,authority:'hosted'|'local'){this.api=api;this.authority=authority;this.gate=authority==='hosted'?hostedGate(api.baseUrl):undefined;}
+  private request<T>(work:()=>Promise<T>):Promise<T>{return this.gate?this.gate.run('interactive',work):work();}
   private get path() {return this.authority === 'hosted' ? hostedRoutePath("device_authorization_create") : routePath("post_quick_connect");}
   async review(code: string, signal?: AbortSignal) {
-    const result = await this.api.request<SetupPreview>(this.path + '/review', 'POST', {userCode: normalizeSetupCode(code)}, signal);
+    const result = await this.request(() => this.api.request<SetupPreview>(this.path + '/review', 'POST', {userCode: normalizeSetupCode(code)}, signal));
     if (!result || typeof result.requestId !== 'string' || result.requestId.length > 128 ||
         normalizeSetupCode(result.userCode) !== normalizeSetupCode(code) ||
         !Number.isFinite(Date.parse(result.expiresAt)) || Date.parse(result.expiresAt) <= Date.now() ||
@@ -306,6 +332,6 @@ export class SetupCodeApprover {
     return result;
   }
   decide(preview: SetupPreview, decision: 'approve' | 'deny', signal?: AbortSignal) {
-    return this.api.request<void>(this.path + '/decision', 'POST', {requestId: preview.requestId, userCode: normalizeSetupCode(preview.userCode), decision}, signal);
+    return this.request(() => this.api.request<void>(this.path + '/decision', 'POST', {requestId: preview.requestId, userCode: normalizeSetupCode(preview.userCode), decision}, signal));
   }
 }

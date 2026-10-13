@@ -13,6 +13,7 @@
 import {ApiError} from './index.ts';
 
 export type HostedGateSnapshot=Readonly<{failures:number;notBefore:number}>;
+export type HostedRequestKind='interactive'|'automatic';
 type Clock={now:()=>number;random:()=>number};
 
 const UNIT_MS=5000,MAX_SHIFT=8,MAX_RETRY_AFTER_MS=86400000;
@@ -47,10 +48,15 @@ export class HostedGate{
  }
  /** Runs a request and records its outcome. `automatic` work is refused locally while the
   * circuit is open; a `key` shares one in-flight request between identical callers. */
- async run<T>(kind:'interactive'|'automatic',request:()=>Promise<T>,key?:string):Promise<T>{
+ async run<T>(kind:HostedRequestKind,request:()=>Promise<T>,key?:string,protocolAnswers:readonly string[]=[]):Promise<T>{
   if(kind==='automatic'){const wait=this.blockedFor();if(wait>0)throw new ApiError(503,'account_service_recovering','Your Portico Account service is temporarily unavailable. Portico will try again shortly.',true,Math.ceil(wait/1000));}
   if(key){const existing=this.flights.get(key);if(existing)return existing as Promise<T>;}
-  const flight=(async()=>{try{const value=await request();this.succeeded();return value;}catch(e){this.observe(e);throw e;}})();
+  const flight=(async()=>{try{const value=await request();this.succeeded();return value;}catch(e){
+   // Pending/slowdown answers from activation are protocol progress, even
+   // when slowdown uses 429. They still reach the activation scheduler.
+   if(e instanceof ApiError&&e.status<500&&protocolAnswers.includes(e.code))this.succeeded();else this.observe(e);
+   throw e;
+  }})();
   if(key){this.flights.set(key,flight);void flight.then(()=>{},()=>{}).then(()=>{if(this.flights.get(key)===flight)this.flights.delete(key);});}
   return flight;
  }
