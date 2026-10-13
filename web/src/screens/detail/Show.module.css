@@ -52,7 +52,10 @@
 .showFacts { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; padding: 0 var(--page-gutter); }
 @media (max-width: 720px) { .showFacts { grid-template-columns: 1fr; } }
 .heroActions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-.episodeRowPlaceholderRow { height: 96px; margin: 8px 0; border-radius: var(--radius-control); background: var(--surface-raised); }
+/* The placeholder is a row's own box (no margin): the windowed list holds every row to the height it
+ * measures, and a margin outside that box would be measured in again each time, growing the rows. */
+.episodeRowPlaceholderRow { position: relative; height: 128px; }
+.episodeRowPlaceholderRow::before { content: ''; position: absolute; inset: 8px 0; border-radius: var(--radius-control); background: var(--surface-raised); }
 /* Next up, pinned above the season's list when it is not already the first row. */
 .nextUp { margin: 0 calc(var(--page-gutter) - 12px) 12px; padding: 4px 12px 8px; border-radius: var(--radius-control); background: var(--surface-raised); border: 1px solid var(--line-soft); }
 .nextUp .episodeRow { margin: 0 -12px; }
