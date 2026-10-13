@@ -18,10 +18,9 @@ func (s *Service) homeContinueSource(r HomeRequest, libraries, cutoffs, premiere
 	if maximum < 1 {
 		maximum = 1
 	}
-	movies := `SELECT id,ord,entity FROM (` + homeContinueBase("continue_movies") + `) m
-		WHERE m.ord>=(SELECT value FROM json_each(?) WHERE key=(SELECT cl.library_id FROM catalog_entities e JOIN catalog_libraries cl ON cl.id=e.library_id WHERE e.public_id=pid_blob(m.id)))`
+	movies := homeContinueBase("continue_movies")
 	restriction, bound := ItemRestrictionSQL("m.entity", r.Restrictions)
-	movieArgs := append([]any{r.Profile, libraries, cutoffs}, bound...)
+	movieArgs := append([]any{r.Profile, libraries}, bound...)
 	movieRows, err := s.homeCandidates(`SELECT m.id,m.ord FROM (`+movies+`) m WHERE `+restriction+` ORDER BY m.ord DESC,m.id DESC LIMIT `+strconv.Itoa(maximum), movieArgs...)
 	if err != nil {
 		return homeSource{}, err

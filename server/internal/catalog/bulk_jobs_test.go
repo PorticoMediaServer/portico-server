@@ -75,9 +75,6 @@ func bulkFixture(t *testing.T, n int) (*Service, *operations.Scheduler, identity
 	if e := scheduler.Register(s.BulkAdapter(access)); e != nil {
 		t.Fatal(e)
 	}
-	if e := scheduler.Register(s.ContainerResetAdapter()); e != nil {
-		t.Fatal(e)
-	}
 	return s, scheduler, p, v, access, c, names
 }
 
@@ -156,7 +153,7 @@ func TestContainerWatermarkAndReset(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	for i, want := range []bool{false, true, true} {
+	for i, want := range []bool{true, true, true} {
 		got, e := s.Personal(v.Profile, names[fmt.Sprintf("ep%06d", i)].Public)
 		if e != nil || got.Watched != want {
 			t.Fatal(i, got, e)
@@ -168,11 +165,17 @@ func TestContainerWatermarkAndReset(t *testing.T) {
 	})
 	c.Drain()
 	got, e := s.Personal(v.Profile, names["ep000002"].Public)
-	if e != nil || got.Watched {
+	if e != nil || !got.Watched {
 		t.Fatal(got, e)
 	}
+	newEpisode := c.Episode(names["show"], names["season-001"], 4, "/media/new-after-mark.mkv")
+	c.Fields(newEpisode.ID, map[string]any{"added_text": future})
+	c.Drain()
+	if got, e := s.Personal(v.Profile, newEpisode.Public); e != nil || got.Watched {
+		t.Fatal("a later arrival inherited the mark", got, e)
+	}
 	count, e := s.ContainerPersonalCounts(v, "show", names["show"].Public)
-	if e != nil || count.WatchedCount != 1 || count.UnwatchedCount != 2 {
+	if e != nil || count.WatchedCount != 3 || count.UnwatchedCount != 1 {
 		t.Fatal(count, e)
 	}
 	state, e = s.SetContainerPersonal(context.Background(), p, "show", names["show"].Public, ContainerPersonalMutation{ExpectedRevision: state.Revision, Watched: &no}, scheduler, access)
@@ -183,19 +186,12 @@ func TestContainerWatermarkAndReset(t *testing.T) {
 	if e != nil || got.Watched {
 		t.Fatal(got, e)
 	}
-	var id string
-	if e = s.db.QueryRow(`SELECT id FROM container_personal_resets`).Scan(&id); e != nil {
-		t.Fatal(e)
-	}
-	result, e := s.ContainerResetAdapter().Step(context.Background(), id)
-	if e != nil || result.State != "succeeded" {
-		t.Fatal(result, e)
-	}
 	var intents int
 	s.db.QueryRow(`SELECT count(*) FROM personal_watched_intents`).Scan(&intents)
-	if intents != 0 {
-		t.Fatal(intents)
+	if intents != 4 {
+		t.Fatal("every captured member needs the explicit mark", intents)
 	}
+
 }
 
 func TestBulkJobRevocationConflictAndFailurePaging(t *testing.T) {
@@ -260,18 +256,13 @@ func TestBulkSnapshotDoesNotGrowOrFilterItself(t *testing.T) {
 		t.Fatal(j, got, e)
 	}
 }
-func TestContainerResetPreservesNewExplicitIntent(t *testing.T) {
+func TestContainerMarkPreservesNewExplicitIntent(t *testing.T) {
 	s, scheduler, p, v, access, _, names := bulkFixture(t, 2)
 	no, yes := false, true
 	if _, e := s.SetContainerPersonal(context.Background(), p, "show", names["show"].Public, ContainerPersonalMutation{Watched: &no}, scheduler, access); e != nil {
 		t.Fatal(e)
 	}
-	if _, e := s.SetPersonal("a", v.Profile, names["ep000000"].Public, PersonalMutation{OperationID: "later", Watched: &yes}, nil); e != nil {
-		t.Fatal(e)
-	}
-	var id string
-	s.db.QueryRow(`SELECT id FROM container_personal_resets`).Scan(&id)
-	if _, e := s.ContainerResetAdapter().Step(context.Background(), id); e != nil {
+	if _, e := s.SetPersonal("a", v.Profile, names["ep000000"].Public, PersonalMutation{OperationID: "later", ExpectedRevision: 1, Watched: &yes}, nil); e != nil {
 		t.Fatal(e)
 	}
 	got, e := s.Personal(v.Profile, names["ep000000"].Public)
@@ -581,22 +572,17 @@ func TestBulkEveryTransactionBoundedAcrossRestart(t *testing.T) {
 	if !restarted || j.State != "complete" || j.Done != 650 || phases["capture"] < 7 || phases["apply"] < 7 || touched["capture"] != 650 || touched["apply"] != 650 {
 		t.Fatal(j, phases, touched, restarted)
 	}
-	scheduler = operations.NewScheduler(operations.New(s.db))
-	if e = scheduler.Register(s.ContainerResetAdapter()); e != nil {
-		t.Fatal(e)
-	}
 	no := false
 	if _, e = s.SetContainerPersonal(ctx, p, "show", names["show"].Public, ContainerPersonalMutation{Watched: &no}, scheduler, access); e != nil {
 		t.Fatal(e)
 	}
-	var id string
-	if e = s.db.QueryRow(`SELECT id FROM container_personal_resets`).Scan(&id); e != nil {
-		t.Fatal(e)
+	for _, item := range names {
+		if item.ID == names["show"].ID || item.ID == names["season-001"].ID {
+			continue
+		}
+		if got, e := s.Personal(v.Profile, item.Public); e != nil || got.Watched {
+			t.Fatal(got, e)
+		}
 	}
-	if result, e := s.ContainerResetAdapter().Step(ctx, id); e != nil || result.State != "succeeded" {
-		t.Fatal(result, e)
-	}
-	if phases["reset"] < 7 || touched["reset"] != 650 {
-		t.Fatal(phases, touched)
-	}
+
 }

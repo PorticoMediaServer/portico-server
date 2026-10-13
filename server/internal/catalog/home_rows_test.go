@@ -405,7 +405,14 @@ func TestHomeContinueOwnerWindowAndPremiereChoice(t *testing.T) {
 	}
 	homeWatched(t, db, "p", "2026-01-02T00:00:00.000Z", "e102", "e201", "e202")
 	homeAddSeason(t, db, "show", "s3", 3)
-	homeAddSeasonalEpisode(t, db, "show", "s3", "e301", "Premiere", "/tv/e301.mkv", 1)
+	premiere := homeAddSeasonalEpisode(t, db, "show", "s3", "e301", "Premiere", "/tv/e301.mkv", 1)
+	catalogtest.New(t, db).Fields(premiere.ID, map[string]any{"added_text": "2026-01-03T00:00:00.000Z"})
+	settleCompact(t, db)
+	row, err = s.HomeSingleRow(r, "continue", HomeRowPage{})
+	if err != nil || len(row.Entries) != 0 {
+		t.Fatal("old premiere must expire", row, err)
+	}
+	catalogtest.New(t, db).Fields(premiere.ID, map[string]any{"added_text": r.Now.Add(-24 * time.Hour).Format(time.RFC3339)})
 	settleCompact(t, db)
 	row, err = s.HomeSingleRow(r, "continue", HomeRowPage{})
 	if err != nil || len(row.Entries) != 1 || row.Entries[0].ID != homeItem(t, db, "e301").Public {
@@ -490,18 +497,19 @@ func TestHomeContinueAbsoluteAnimeAdvancesByNumber(t *testing.T) {
 
 // The community row is owner policy, not a viewer preference: it is absent from
 // the document and unreachable by id until an owner turns it on, and it is
-// populated only by meaningful activity from at least two distinct eligible
+// populated only by meaningful activity from at least three distinct eligible
 // sharing profiles.
 func TestHomeTrendingGating(t *testing.T) {
 	db := homeFixture(t)
 	service := New(db)
 	p := persistence.PersonalOwnerKey("local", "a", "p")
 	q := persistence.PersonalOwnerKey("local", "b", "q")
-	homeExec(t, db, `INSERT INTO accounts VALUES('a','user',x'00','p',1),('b','user2',x'00','q',1);UPDATE direct_memberships SET allowed_libraries='["movies"]' WHERE account_id='b'`)
+	homeExec(t, db, `INSERT INTO accounts VALUES('a','user',x'00','p',1),('b','user2',x'00','q',1),('c','user3',x'00','r',1);UPDATE direct_memberships SET allowed_libraries='["movies"]' WHERE account_id IN('b','c')`)
 	item := homeItem(t, db, "m1")
 	homeExec(t, db, `INSERT INTO progress(profile_id,item_id,position,unit,playback_id) VALUES(?,?,10000,0,'play')`, p, item.ID)
 	homeExec(t, db, `INSERT INTO progress(profile_id,item_id,position,unit,playback_id) VALUES(?,?,20000,0,'play')`, q, item.ID)
 	homeExec(t, db, `INSERT INTO personal_history(id,profile_id,item_id,started_at,updated_at,sequence,position,unit,completed) VALUES('h1',?,?,'2026-09-15T00:00:00.000Z','2026-09-15T00:00:00.000Z',1,10000,0,1),('h2',?,?,'2026-09-15T00:00:00.000Z','2026-09-15T00:00:00.000Z',1,20000,0,1)`, p, item.ID, q, item.ID)
+	homeExec(t, db, `INSERT INTO personal_history(id,profile_id,item_id,started_at,updated_at,sequence,position,unit,completed) VALUES('h3',?,?,'2026-09-15T00:00:00.000Z','2026-09-15T00:00:00.000Z',1,30000,0,1)`, persistence.PersonalOwnerKey("local", "c", "r"), item.ID)
 	settleCompact(t, db)
 	if _, e := service.HomeSingleRow(homeRequestFixture(), "community_watching", HomeRowPage{}); !errors.Is(e, ErrHomeRowUnknown) {
 		t.Fatal("gated row reachable", e)

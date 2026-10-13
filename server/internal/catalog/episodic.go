@@ -1,11 +1,16 @@
 package catalog
 
 import (
+	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/naming"
 	"time"
 )
 
 type EpisodeNaming struct {
+	Reading   naming.Reading
+	Part      int
+	Edition   string
+	Provider  []compactcatalog.ProviderIdentity
 	AirDate   string
 	ShowTitle string
 	Year      int
@@ -15,11 +20,20 @@ type EpisodeNaming struct {
 	Issue     string
 }
 
-// ParseEpisode keeps the current catalogue contract while the scanner and
-// matcher adopt the full reading. File evidence wins folder conflicts.
+// ParseEpisode reads the same source-relative evidence used by title attachment
+// and matching. File evidence wins folder conflicts.
 func ParseEpisode(relative, kind string) EpisodeNaming {
-	out := EpisodeNaming{Season: -1, Issue: "unrecognized_episode_name"}
-	r := naming.Read(relative, kind)
+	return EpisodeFromReading(naming.Read(relative, kind))
+}
+
+func EpisodeFromReading(r naming.Reading) EpisodeNaming {
+	out := EpisodeNaming{Reading: r, Season: -1, Issue: "unrecognized_episode_name", Provider: nameProviderIDs(r, "show")}
+	if len(r.Parts) > 0 {
+		out.Part = r.Parts[0].Value
+	}
+	if len(r.Editions) > 0 {
+		out.Edition = r.Editions[0].Value
+	}
 	out.ShowTitle, out.Year = r.PreferredTitle()
 	if len(r.Diagnostics) > 0 {
 		out.Issue = r.Diagnostics[0]
@@ -36,14 +50,8 @@ func ParseEpisode(relative, kind string) EpisodeNaming {
 	} else {
 		return out
 	}
-	// The existing catalogue cannot attach stacked parts or episode zero yet;
-	// keep those restrictions here, while returning their evidence to new users.
-	if len(r.Parts) > 0 {
-		out.Issue = "multipart_episode_requires_assignment"
-		return out
-	}
 	for _, n := range out.Numbers {
-		if n < 1 {
+		if n < 0 || n > 9999 {
 			out.Issue = "episode_number_out_of_range"
 			return out
 		}

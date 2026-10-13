@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"portico.local/server/internal/assets"
 	"portico.local/server/internal/compactcatalog"
+	"portico.local/server/internal/naming"
 	"regexp"
 	"strconv"
 	"strings"
@@ -89,7 +90,6 @@ type BookChapter struct {
 	EndSeconds   float64 `json:"endSeconds"`
 }
 
-var discFolderPattern = regexp.MustCompile(`(?i)^(disc|disk|cd|vol|volume|part|act|digital media)[ ._-]*([0-9]{1,3})(?:$|[ ._()-].*)`)
 var leadingNumber = regexp.MustCompile(`^([0-9]{1,3})[ ._-]`)
 
 // partWordNumber is a number that follows "part", "chapter" or "track" (or
@@ -285,9 +285,9 @@ func (s *Service) commitAudio(ctx context.Context, tx *sql.Tx, library, kind, ro
 	}
 	folder := filepath.Dir(path)
 	disc := tagNumber(firstTag(f.Tags, "disc"))
-	if match := discFolderPattern.FindStringSubmatch(filepath.Base(folder)); match != nil {
+	if number, ok := naming.DiscFolder(filepath.Base(folder)); ok {
 		if disc == nil {
-			disc = tagNumber(match[2])
+			disc = number
 		}
 		folder = filepath.Dir(folder)
 	}

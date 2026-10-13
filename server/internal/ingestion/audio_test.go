@@ -222,12 +222,12 @@ func TestRealLocalAudioScanChaptersArtAndBookResume(t *testing.T) {
 	if err != nil || resumed.ResumeSeconds != 3.9 {
 		t.Fatal("near-end bookmark reset", resumed, err)
 	}
-	nearHome, err := cat.Home(catalog.HomeRequest{Viewer: catalog.Viewer{Profile: identity.PersonalKey(p.Viewer), Fence: "near", Libraries: []string{bookLib.ID}}, Profile: identity.PersonalKey(p.Viewer), ViewerFence: "near", Libraries: []string{bookLib.ID}})
+	nearHome, err := cat.HomeRows(catalog.HomeRequest{Viewer: catalog.Viewer{Profile: identity.PersonalKey(p.Viewer), Fence: "near", Libraries: []string{bookLib.ID}}, Profile: identity.PersonalKey(p.Viewer), ViewerFence: "near", Libraries: []string{bookLib.ID}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	nearFound := false
-	for _, section := range nearHome.Sections {
+	for _, section := range nearHome.Rows {
 		if section.ID == "continue_listening" {
 			for _, entry := range section.Entries {
 				if entry.ID == files[0].ID && *entry.ProgressSeconds == 3.9 {
@@ -264,15 +264,15 @@ func TestRealLocalAudioScanChaptersArtAndBookResume(t *testing.T) {
 	if err = player.Progress(p, songSession.ID, songSession.Generation, 1, 0.5, "paused"); err != nil {
 		t.Fatal(err)
 	}
-	home, err := cat.Home(catalog.HomeRequest{Viewer: catalog.Viewer{Profile: identity.PersonalKey(p.Viewer), Fence: "f", Libraries: []string{musicLib.ID, bookLib.ID}}, ServerID: "fixture", Profile: identity.PersonalKey(p.Viewer), ViewerFence: "f", Libraries: []string{musicLib.ID, bookLib.ID}})
+	home, err := cat.HomeRows(catalog.HomeRequest{Viewer: catalog.Viewer{Profile: identity.PersonalKey(p.Viewer), Fence: "f", Libraries: []string{musicLib.ID, bookLib.ID}}, ServerID: "fixture", Profile: identity.PersonalKey(p.Viewer), ViewerFence: "f", Libraries: []string{musicLib.ID, bookLib.ID}})
 	if err != nil {
 		t.Fatal("audio Home", home, err)
 	}
 	listening := []catalog.ContentEntry{}
-	for _, section := range home.Sections {
+	for _, section := range home.Rows {
 		if section.ID == "continue_listening" {
 			listening = section.Entries
-			if section.TotalCount != 2 {
+			if section.Total != 2 {
 				t.Fatal("listening count", section)
 			}
 		}
@@ -285,12 +285,12 @@ func TestRealLocalAudioScanChaptersArtAndBookResume(t *testing.T) {
 			t.Fatal("old book file or missing library", entry)
 		}
 	}
-	otherHome, err := cat.Home(catalog.HomeRequest{Viewer: catalog.Viewer{Profile: "other-profile", Fence: "other", Libraries: []string{musicLib.ID, bookLib.ID}}, Profile: "other-profile", ViewerFence: "other", Libraries: []string{musicLib.ID, bookLib.ID}})
+	otherHome, err := cat.HomeRows(catalog.HomeRequest{Viewer: catalog.Viewer{Profile: "other-profile", Fence: "other", Libraries: []string{musicLib.ID, bookLib.ID}}, Profile: "other-profile", ViewerFence: "other", Libraries: []string{musicLib.ID, bookLib.ID}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, section := range otherHome.Sections {
-		if section.ID == "continue_listening" {
+	for _, section := range otherHome.Rows {
+		if section.ID == "continue_listening" && len(section.Entries) > 0 {
 			t.Fatal("Home progress leaked", section)
 		}
 	}

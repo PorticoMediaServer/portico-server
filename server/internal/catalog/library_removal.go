@@ -355,7 +355,7 @@ func forceRemoveContainerTx(ctx context.Context, tx *sql.Tx, id int64) error {
 	}
 	for _, q := range []string{
 		`DELETE FROM container_personal_state WHERE container_id=?`,
-		`DELETE FROM container_personal_resets WHERE container_id=?`,
+		`DELETE FROM container_personal_undo WHERE container_id=?`,
 		`DELETE FROM playback_sessions WHERE item_id=?`,
 		`DELETE FROM book_resume WHERE book_id=?`,
 		`DELETE FROM catalog_song_artists WHERE artist_id=?`,

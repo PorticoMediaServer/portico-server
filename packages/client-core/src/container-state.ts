@@ -1,15 +1,16 @@
 import {unreadableServerResponse} from './server-messages.ts';
 import {noteSkipped} from './tolerant.ts';
 /**
- * Container personal state (`server/api/jobs.openapi.yaml`): an O(1) watched default for a show, season, album or book,
+ * Container personal state (`server/api/jobs.openapi.yaml`): an atomic watched mark for a show, season, album or book,
  * and the title's own Watchlist and Favorite flags (a show can be on the Watchlist; a show, album,
  * book or artist can be a Favorite), so a show's action row matches a movie's.
  *
  * `GET /v1/containers/{kind}/{id}/personal-state` reads the revision the
  * approved PUT contract requires, plus the viewer's visible-member counts.
  * `PUT` writes one profile/container watermark with `{expectedRevision,
- * watched}`; a 409 `revision_mismatch` means reread before authoring another
- * intent. Explicit item watched intent overrides the default; the latest
+ * watched}`; a 412 `revision_mismatch` means reread before authoring another
+ * intent. A mark clears member progress and overrides older item intent. Newer
+ * item intent overrides the default; the latest
  * applicable container watermark wins (season wins a timestamp tie); items
  * added after the watermark appear unwatched.
  */
@@ -18,6 +19,7 @@ export type ContainerKind='show'|'season'|'album'|'book'|'artist';
 /** The saved flags a title carries besides watched. */
 export type ContainerFlag='watchlisted'|'favorite';
 export type ContainerState=Readonly<{
+ undoToken?:string;undoUntil?:string;
  revision:number;watched:boolean;watermark:string;watchlisted:boolean;favorite:boolean;
  /** Present on GET: the viewer's visible members only, never library-wide summaries. */
  watchedCount?:number;unwatchedCount?:number;
@@ -33,7 +35,7 @@ export function containerCarries(kind:string|undefined,flag:ContainerFlag|'watch
  if(flag==='watchlisted')return kind==='show'||kind==='book';
  return kind==='show'||kind==='album'||kind==='book'||kind==='artist';
 }
-/** Shared error-code correction: a stale revision is HTTP 409 (see `bulk-jobs.ts`). */
+/** Shared error-code correction: a stale revision is HTTP 412 (see `bulk-jobs.ts`). */
 export const CONTAINER_REVISION_MISMATCH='revision_mismatch';
 
 const object=(v:unknown):v is Record<string,unknown>=>!!v&&typeof v==='object'&&!Array.isArray(v);
@@ -56,14 +58,16 @@ function checkKind(kind:string):ContainerKind{
 function parse(raw:unknown,withCounts:boolean):ContainerState{
  if(!object(raw))invalid();
  if(!count(raw.revision)||typeof raw.watched!=='boolean'||typeof raw.watermark!=='string'||raw.watermark.length>128)invalid();
+ if(raw.undoToken!==undefined&&(!id(raw.undoToken)||!id(raw.undoUntil)))invalid();
+ const undo=raw.undoToken===undefined?{}:{undoToken:raw.undoToken as string,undoUntil:raw.undoUntil as string};
  const flags={watchlisted:raw.watchlisted===true,favorite:raw.favorite===true};
  const shown=(part:string,v:unknown):number|undefined=>{if(count(v))return v;if(v!==undefined&&v!==null)noteSkipped('container-state',part);return undefined;};
  const watchedCount=shown('watchedCount',raw.watchedCount),unwatchedCount=shown('unwatchedCount',raw.unwatchedCount);
  if(withCounts){
-  return Object.freeze({revision:raw.revision as number,watched:raw.watched as boolean,watermark:raw.watermark as string,...flags,watchedCount:watchedCount??0,unwatchedCount:unwatchedCount??0,...(id(raw.libraryId)?{libraryId:raw.libraryId}:{})});
+  return Object.freeze({revision:raw.revision as number,watched:raw.watched as boolean,watermark:raw.watermark as string,...flags,...undo,watchedCount:watchedCount??0,unwatchedCount:unwatchedCount??0,...(id(raw.libraryId)?{libraryId:raw.libraryId}:{})});
  }
  return Object.freeze({
-  revision:raw.revision as number,watched:raw.watched as boolean,watermark:raw.watermark as string,...flags,
+  revision:raw.revision as number,watched:raw.watched as boolean,watermark:raw.watermark as string,...flags,...undo,
   ...(watchedCount===undefined?{}:{watchedCount}),
   ...(unwatchedCount===undefined?{}:{unwatchedCount}),
  });
@@ -77,7 +81,7 @@ export async function getContainerState(api:ContainerStateApi,kind:ContainerKind
 }
 
 /**
- * Writes the container watched default. On a 409 `revision_mismatch`, reread
+ * Writes the container watched default. On a 412 `revision_mismatch`, reread
  * with `getContainerState` before authoring another intent.
  */
 export async function setContainerState(api:ContainerStateApi,kind:ContainerKind,containerId:string,input:Readonly<{expectedRevision:number;watched:boolean}>,signal?:AbortSignal):Promise<ContainerState>{
@@ -90,7 +94,7 @@ export async function setContainerState(api:ContainerStateApi,kind:ContainerKind
    {expectedRevision:input.expectedRevision,watched:input.watched},signal),false);
  }catch(e){
   const v=e as {status?:unknown;code?:unknown};
-  const code=typeof v?.code==='string'&&v.code?v.code:v?.status===409?CONTAINER_REVISION_MISMATCH:'container_state_not_saved';
+  const code=typeof v?.code==='string'&&v.code?v.code:(v?.status===409||v?.status===412)?CONTAINER_REVISION_MISMATCH:'container_state_not_saved';
   throw Object.assign(new Error(e instanceof Error?e.message:'The watched state could not be saved.'),{code});
  }
 }
@@ -112,4 +116,11 @@ export async function setContainerFlag(api:ContainerStateApi,kind:ContainerKind,
 export function containerCountLabel(watchedCount:number,unwatchedCount:number):{watched:number;unwatched:number}{
  if(!count(watchedCount)||!count(unwatchedCount))throw new Error('Invalid container counts.');
  return {watched:watchedCount,unwatched:unwatchedCount};
+}
+
+/** Restore the precise watched/resume mix captured by a mark within 30 seconds. */
+export async function undoContainerState(api:ContainerStateApi,kind:ContainerKind,containerId:string,input:Readonly<{expectedRevision:number;undoToken:string}>,signal?:AbortSignal):Promise<ContainerState>{
+ const checked=checkKind(kind);
+ if(!id(containerId)||!count(input.expectedRevision)||input.expectedRevision<1||!id(input.undoToken))throw new Error('A recent container mark is required.');
+ return parse(await api.request<unknown>('/v1/containers/'+checked+'/'+encodeURIComponent(containerId)+'/personal-state/undo','POST',input,signal),false);
 }

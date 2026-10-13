@@ -830,8 +830,9 @@ func TestOfflinePlaysFollowTheOrderingOfOnlinePlayback(t *testing.T) {
 		t.Fatal("one play became two")
 	}
 	// An older play from another device arrives late: it is recorded, and the
-	// resume point stays where the newer play left it.
-	out, e = h.service.SyncProgress(ctx, h.viewer, "op-p3", []ProgressEntry{{PlayID: "play-0", ItemID: h.item, PositionSeconds: 120, ObservedAt: at(-5 * time.Hour)}})
+	// resume point stays where the newer play left it. This observation clears
+	// the five-percent started threshold for the one-hour film.
+	out, e = h.service.SyncProgress(ctx, h.viewer, "op-p3", []ProgressEntry{{PlayID: "play-0", ItemID: h.item, PositionSeconds: 240, ObservedAt: at(-5 * time.Hour)}})
 	if e != nil || out.Conflicts != 1 || out.Entries[0].Outcome != ProgressStale || out.Entries[0].PositionSeconds != 900 {
 		t.Fatalf("an older play moved the resume point %+v %v", out, e)
 	}

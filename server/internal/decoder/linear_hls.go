@@ -13,6 +13,7 @@ import (
 )
 
 type LinearEncoding struct {
+	Target                               *ConversionTarget
 	Deinterlace                          bool
 	MaxFrameRate                         float64
 	Profile                              string
@@ -88,9 +89,9 @@ func linearHLSArgs(input, output string, p LinearEncoding) ([]string, error) {
 		args = append(args, "-readrate", "1", "-readrate_initial_burst", "12", "-ss", seconds(p.SeekUS))
 	}
 	var graph ConversionGraph
-	if p.ConvertVideo {
+	if p.ConvertVideo || p.ConvertAudio {
 		var err error
-		graph, err = BuildConversion(ConversionRequest{ConvertVideo: true, ToneMap: p.HDRToSDR, Deinterlace: p.Deinterlace, MaxHeight: p.MaxHeight, MaxFrameRate: p.MaxFrameRate, VideoBitrateBPS: p.VideoBitrate, KeyframeSeconds: 4, Toolchain: p.Toolchain})
+		graph, err = BuildConversion(ConversionRequest{Target: p.Target, ConvertVideo: p.ConvertVideo, ConvertAudio: p.ConvertAudio, CopyVideo: p.Video && !p.ConvertVideo, CopyAudio: p.Audio && !p.ConvertAudio, ToneMap: p.HDRToSDR, Deinterlace: p.Deinterlace, MaxHeight: p.MaxHeight, MaxFrameRate: p.MaxFrameRate, VideoBitrateBPS: p.VideoBitrate, KeyframeSeconds: 4, Toolchain: p.Toolchain})
 		if err != nil {
 			return nil, err
 		}
@@ -114,13 +115,13 @@ func linearHLSArgs(input, output string, p LinearEncoding) ([]string, error) {
 		if p.Profile != "" {
 			args = append(args, "-profile:v", p.Profile)
 		}
-		if p.Level > 0 {
+		if p.Target == nil && p.Level > 0 {
 			args = append(args, "-level:v", strconv.FormatFloat(float64(p.Level)/10, 'f', 1, 64))
 		}
 
 	}
 	if p.ConvertAudio {
-		args = append(args, "-c:a", "aac", "-b:a", "192k", "-ac", "2", "-ar", "48000")
+		args = append(args, graph.Audio...)
 	}
 	args = append(args, "-sn", "-dn", "-avoid_negative_ts", "disabled", "-muxdelay", "0", "-f", "hls", "-hls_time", "4", "-hls_list_size", "12", "-hls_flags", "independent_segments+program_date_time", "-hls_segment_options", "mpegts_copyts=1", "-method", "PUT", "-rw_timeout", "15000000", "-hls_segment_filename", output+"segment-%09d.ts", output+"index.m3u8")
 	return args, nil

@@ -115,33 +115,7 @@ func (d Dependencies) inventoryRoutes(mux *http.ServeMux) {
 		}
 		write(w, 200, out)
 	})
-	mux.HandleFunc("GET /v1/admin/libraries/{id}/sources/{source}/changes", func(w http.ResponseWriter, r *http.Request) {
-		if _, e := d.owner(r); e != nil {
-			failure(w, e)
-			return
-		}
-		for k, v := range r.URL.Query() {
-			if k != "after" || len(v) != 1 {
-				failure(w, catalog.ErrAdminQuery)
-				return
-			}
-		}
-		after, e := catalog.ParseInventorySequence(r.URL.Query().Get("after"))
-		if e != nil {
-			failure(w, e)
-			return
-		}
-		out, next, e := d.Catalog.InventoryChanges(r.Context(), r.PathValue("id"), r.PathValue("source"), after)
-		if e != nil {
-			failure(w, e)
-			return
-		}
-		if _, e = d.owner(r); e != nil {
-			failure(w, e)
-			return
-		}
-		write(w, 200, map[string]any{"sourceId": r.PathValue("source"), "items": out, "nextSequence": next, "hasMore": len(out) == 128})
-	})
+
 	for _, pattern := range []string{"POST /v1/admin/libraries/{id}/sources", "PATCH /v1/admin/libraries/{id}/sources/{source}"} {
 		mux.HandleFunc(pattern, func(w http.ResponseWriter, r *http.Request) {
 			p, e := d.owner(r)

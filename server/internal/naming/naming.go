@@ -114,7 +114,7 @@ var bareYear = regexp.MustCompile(`((?:18|19|20)[0-9]{2})`)
 var partToken = regexp.MustCompile(`(?i)(?:^|[ ._-])(?:pt|part|cd|disc|disk)[ ._-]*([0-9]{1,3})$`)
 var genericName = regexp.MustCompile(`(?i)^(?:movie|film|video|title|untitled|file|main[ ._-]?feature|vts[ ._0-9]+|[0-9]+|[a-f0-9]{8,64})$`)
 var seasonToken = regexp.MustCompile(`(?i)^(?:season|series|saison|staffel|temporada|s)[ ._-]*([0-9]{1,4})(?:[ ._-]*\([0-9]{4}\))?$`)
-var discToken = regexp.MustCompile(`(?i)^(?:disc|disk|cd)[ ._-]*([0-9]{1,3})(?:[ ._-]+.*)?$`)
+var discToken = regexp.MustCompile(`(?i)^(?:disc|disk|cd|vol|volume|part|act|digital[ ._-]+media)[ ._-]*([0-9]{1,3})(?:[ ._()-]+.*)?$`)
 
 func SeasonFolder(s string) (int, bool) {
 	if strings.EqualFold(strings.TrimSpace(s), "specials") {
@@ -402,7 +402,7 @@ func (r Reading) PreferredTitle() (string, int) {
 		if e.Confidence < .6 {
 			continue
 		}
-		if e.Source == FileName {
+		if e.Source == title.Source {
 			return title.Value, e.Value
 		}
 		if e.Path == title.Path {

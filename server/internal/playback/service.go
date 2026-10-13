@@ -402,7 +402,7 @@ func (s *Service) create(ctx context.Context, p identity.Principal, item, reques
 		}
 	}
 
-	if mode == "hls" && s.hls.finite != nil {
+	if mode == "hls" && s.hls.finite != nil && delivery.ConversionTarget == nil {
 		delivery.Profile = finiteDeliveryProfile
 		delivery.Strategy = DeliveryVideoConversion
 		delivery.Reason = ReasonFiniteNormalization
@@ -484,7 +484,7 @@ func (s *Service) create(ctx context.Context, p identity.Principal, item, reques
 		_ = tx.QueryRow(`SELECT last_played_at FROM personal_items WHERE profile_id=? AND item_id=(SELECT id FROM catalog_entities WHERE public_id=pid_blob(?))`, identity.PersonalKey(p.Viewer), item).Scan(&lastPlayed)
 		resume = listeningrules.Resume(resume, lastPlayed, time.Now())
 	}
-	if itemKind != "audiobook_file" && resume >= duration-3 {
+	if duration > 0 && itemKind != "audiobook_file" && resume >= duration-3 {
 		resume = 0
 	}
 	if e = claimSessionProgress(tx, p, item, id, resume); e != nil {
@@ -637,7 +637,7 @@ func (s *Service) progressTx(ctx context.Context, tx *sql.Tx, p identity.Princip
 	if n == 0 {
 		return nil
 	}
-	_, e = tx.ExecContext(ctx, `UPDATE playback_observations SET reported_at=?,position=min(?,(SELECT duration FROM playback_sessions WHERE id=?)) WHERE session_id=?`, time.Now().UTC().Format("2006-01-02T15:04:05.000Z"), position, id, id)
+	_, e = tx.ExecContext(ctx, `UPDATE playback_observations SET reported_at=?,position=CASE WHEN (SELECT duration FROM playback_sessions WHERE id=?)>0 THEN min(?,(SELECT duration FROM playback_sessions WHERE id=?)) ELSE ? END WHERE session_id=?`, time.Now().UTC().Format("2006-01-02T15:04:05.000Z"), id, position, id, position, id)
 	if e != nil {
 		return e
 	}

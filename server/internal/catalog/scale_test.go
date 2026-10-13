@@ -131,11 +131,11 @@ func TestContentScale100K(t *testing.T) {
 	}
 	for n := 0; n < 2; n++ {
 		start = time.Now()
-		home, e := s.Home(HomeRequest{Viewer: Viewer{Profile: "viewer", Fence: "home", Libraries: []string{"large", "other"}}, Profile: "viewer", ViewerFence: "home", Libraries: []string{"large", "other"}})
+		home, e := s.HomeRows(HomeRequest{Viewer: Viewer{Profile: "viewer", Fence: "home", Libraries: []string{"large", "other"}}, Profile: "viewer", ViewerFence: "home", Libraries: []string{"large", "other"}})
 		if e != nil {
 			t.Fatal(e)
 		}
-		t.Logf("Home 2 libraries iteration%d=%s sections=%d", n, time.Since(start), len(home.Sections))
+		t.Logf("Home 2 libraries iteration%d=%s sections=%d", n, time.Since(start), len(home.Rows))
 	}
 	librarySQL := `(SELECT id FROM catalog_libraries WHERE library_id='large')`
 	scalePlan(t, db, `SELECT entity_id FROM catalog_browse_rows WHERE library_id=`+librarySQL+` AND item_id IS NOT NULL AND added_text IS NOT NULL ORDER BY COALESCE(added_text,'') DESC,entity_id DESC LIMIT 12`)

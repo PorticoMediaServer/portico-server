@@ -1,6 +1,7 @@
 import {unreadableServerResponse} from './server-messages.ts';
 /** Server-composed home rows. Clients render membership, order and policy as published; they never rank, hide or page a row themselves. */
-import {parseContentSeeAll, validateContentEntry, type ContentEntry, type ContentSeeAll} from './library-content.ts';
+import {validateContentEntry, type ContentEntry} from './library-content.ts';
+import {parseBrowseNode, type BrowseNode, type BrowseSortSelection} from './browse.ts';
 import {firstOfEach, keepReadable, noteSkipped, oneOfOr} from './tolerant.ts';
 
 export type HomeArtworkShape = 'poster' | 'square' | 'landscape';
@@ -8,10 +9,15 @@ export type HomeRevision = Readonly<{catalog: number; viewer: number}>;
 /** A server-authored label (CON-19): a catalogue message id, its parameters, and the US English
  * fallback for a code this client doesn't know. Name rows with `serverTextLabel`. */
 export type ServerText = Readonly<{code: string; params?: Readonly<Record<string, string>>; fallback: string}>;
+export type HomeSeeAll = Readonly<
+ {type:'library';libraryId:string;pivot:string;query?:BrowseNode;sort:readonly BrowseSortSelection[]} |
+ {type:'row';rowId:string} | {type:'saved_view';resourceId:string}
+>;
 export type HomeRow = Readonly<{
   id: string; title: string; titleText?: ServerText; kind: string; artworkShape: HomeArtworkShape; explanation?: string; endpoint: string;
   /** `for_you` on the personal rows: the layout arranges and hides them together as the row `for_you`. */
   family?: string;
+  seeAll?: HomeSeeAll;
   libraryId?: string; privacySensitivity: string; policyState: string;
   relation?: string; provider?: string; evidenceId?: string;
   priority: number;
@@ -20,8 +26,6 @@ export type HomeRow = Readonly<{
   required: boolean; hideable: boolean; reorderable: boolean; critical: boolean; cursorCapable: boolean;
   entries: readonly ContentEntry[]; total: number; start: number; limit: number; hasMore: boolean;
   nextCursor: string; anchorId?: string; revision: HomeRevision;
-  /** Where the row's See all leads, when the server names a browse destination for it. */
-  seeAll?: ContentSeeAll;
 }>;
 export type HomeLayout = Readonly<{revision: number; rowOrder: readonly string[]; hiddenRowIds: readonly string[]}>;
 export type HomeLayoutRowView = Readonly<{id: string; title: string; titleText?: ServerText; kind: string; artworkShape: HomeArtworkShape; libraryId?: string; required: boolean; hideable: boolean; reorderable: boolean; hidden: boolean}>;
@@ -78,6 +82,15 @@ function revision(value: unknown): HomeRevision {
   return Object.freeze({catalog: value.catalog, viewer: value.viewer});
 }
 
+export function validateHomeSeeAll(value:unknown):HomeSeeAll {
+ if(!object(value))invalid();
+ if(value.type==='row' && id(value.rowId))return Object.freeze({type:'row',rowId:value.rowId});
+ if(value.type==='saved_view' && id(value.resourceId))return Object.freeze({type:'saved_view',resourceId:value.resourceId});
+ if(value.type!=='library'||!id(value.libraryId)||!id(value.pivot)||!Array.isArray(value.sort)||value.sort.length<1||value.sort.length>3)invalid();
+ const sort=value.sort.map(s=>{if(!object(s)||!id(s.field)||(s.direction!=='asc'&&s.direction!=='desc'))invalid();return Object.freeze({field:s.field,direction:s.direction}) as BrowseSortSelection;});
+ return Object.freeze({type:'library',libraryId:value.libraryId,pivot:value.pivot,sort:Object.freeze(sort),...(value.query===undefined?{}:{query:parseBrowseNode(value.query)})});
+}
+
 /**
  * One Home row. Its id, cursor, revision and the bound on its entries are exact. Everything it is
  * only drawn with has a neutral reading: an artwork shape this app does not know is a poster, a
@@ -108,8 +121,9 @@ export function validateHomeRow(value: unknown): HomeRow {
     if (text(value[field], 1024)) row[field] = value[field];
     else if (value[field] !== undefined && value[field] !== null) noteSkipped('home', 'row.' + field);
   }
-  const seeAll = parseContentSeeAll(value.seeAll);
-  if (seeAll) row.seeAll = seeAll;
+  if (value.seeAll !== undefined && value.seeAll !== null) {
+    try { row.seeAll = validateHomeSeeAll(value.seeAll); } catch { noteSkipped('home', 'row.seeAll'); }
+  }
   return Object.freeze(row) as HomeRow;
 }
 

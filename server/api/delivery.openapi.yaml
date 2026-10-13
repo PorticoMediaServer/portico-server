@@ -360,10 +360,8 @@ components:
         `video_codec_requires_conversion`, `height_exceeds_policy`,
         `bitrate_exceeds_policy`, `hdr_tone_mapping_required`,
         `quality_rung_selected`, `subtitle_burn_in`,
-        `finite_timeline_normalization`, `alternate_audio_fixed_output_policy`,
-        `dolby_vision_colors_approximate` (a Dolby Vision Profile 5 picture is
-        converted by a tone mapper that can't apply its reshaping: clients warn
-        before play). Preference and owner-policy codes: `direct_play_preferred`,
+        `finite_timeline_normalization`, `alternate_audio_fixed_output_policy`.
+        Preference and owner-policy codes: `direct_play_preferred`,
         `direct_stream_preferred`, `transcode_preferred`,
         `planning_maximum_fidelity`, `planning_maximum_compatibility`,
         `planning_minimize_server_work`, `hardware_backend_selected`,
@@ -388,7 +386,6 @@ components:
         - subtitle_burn_in
         - finite_timeline_normalization
         - alternate_audio_fixed_output_policy
-        - dolby_vision_colors_approximate
         - direct_play_preferred
         - direct_stream_preferred
         - transcode_preferred

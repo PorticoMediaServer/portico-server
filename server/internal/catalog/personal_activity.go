@@ -28,10 +28,12 @@ func (s *Service) AcceptPlaybackProgress(tx *sql.Tx, v identity.Viewer, playback
 	return acceptPlaybackProgress(tx, v, playbackID, item, sequence, position, duration, state, canonical, time.Now().UTC())
 }
 
-// acceptPlaybackProgress is the one writer. clock is when the evidence was
-// recorded: now for a session reporting live, earlier for a play reported
-// after the fact (offline_play.go).
 func acceptPlaybackProgress(tx *sql.Tx, v identity.Viewer, playbackID, item string, sequence int64, position, duration float64, state string, canonical bool, clock time.Time) error {
+	// Match the timeline's millisecond bound even when no runtime is known.
+	const maximumSeconds = float64(int64(1)<<40) / 1000
+	if math.IsNaN(position) || math.IsInf(position, 0) || position < 0 || position > maximumSeconds || math.IsNaN(duration) || math.IsInf(duration, 0) || duration < 0 || duration > maximumSeconds || sequence < 0 || sequence > 9007199254740991 || (state != "playing" && state != "paused" && state != "ended") {
+		return jobInvalid("invalid playback evidence")
+	}
 	preferences, preferenceSources, _, e := operations.EffectivePreferences(tx, v, "")
 	if e != nil {
 		return e
@@ -73,16 +75,16 @@ func acceptPlaybackProgress(tx *sql.Tx, v identity.Viewer, playbackID, item stri
 		creditsHit = creditsStart.Valid && position >= creditsStart.Float64
 	}
 	completed := state == "ended" || ((!video || settings.VideoCompletion != "credits") && thresholdHit) || creditsHit
-	// A play has started once it is past the point where it would resume: thirty
-	// seconds at most, sooner for a short title, at once for an audiobook file.
+	// Known durations honor the viewer percentage; unknown durations start at
+	// thirty seconds. Audiobook parts keep the listening rule of one second.
 	threshold := 30.
 	if duration > 0 {
-		threshold = math.Min(threshold, duration*started/100)
+		threshold = duration * started / 100
 	}
 	if kind == int64(compactcatalog.Part) {
 		threshold = 1
 	}
-	counted, e := recordPlay(tx, v, playbackID, entityID, kind, clock, positionMillis(position), duration, position >= threshold, completed)
+	counted, e := recordPlay(tx, v, playbackID, entityID, kind, clock, positionMillis(position), duration, position >= threshold, completed, !preferences.Bool("privacy.pauseWatchHistory") && preferences.Bool("privacy.showActivityToMembers"))
 	if e != nil {
 		return e
 	}
@@ -91,32 +93,53 @@ func acceptPlaybackProgress(tx *sql.Tx, v identity.Viewer, playbackID, item stri
 	if preferences.Bool("privacy.pauseWatchHistory") {
 		return nil
 	}
-	if counted {
-		if e = countPersonalPlay(tx, profile, entityID); e != nil {
+	personalCounted := false
+	if completed {
+		if personalCounted, e = countPersonalPlay(tx, profile, playbackID, entityID); e != nil {
 			return e
 		}
 	}
 	positionMs := positionMillis(position)
-	_, e = tx.Exec(`INSERT INTO personal_history(id,profile_id,item_id,started_at,updated_at,sequence,position,unit,completed) VALUES(?,?,?,?,?,?,?,0,?) ON CONFLICT(profile_id,id) DO UPDATE SET updated_at=excluded.updated_at,sequence=excluded.sequence,position=excluded.position,completed=excluded.completed WHERE excluded.sequence>personal_history.sequence`, playbackID, profile, entityID, now, now, sequence, positionMs, completed)
-	if e != nil {
-		return e
+	if position >= threshold || completed {
+		_, e = tx.Exec(`INSERT INTO personal_history(id,profile_id,item_id,started_at,updated_at,sequence,position,unit,completed) VALUES(?,?,?,?,?,?,?,0,?) ON CONFLICT(profile_id,id) DO UPDATE SET updated_at=excluded.updated_at,sequence=excluded.sequence,position=excluded.position,completed=max(personal_history.completed,excluded.completed) WHERE excluded.sequence>personal_history.sequence`, playbackID, profile, entityID, now, now, sequence, positionMs, completed)
+		if e != nil {
+			return e
+		}
 	}
 	out, e := readPersonalByID(tx, profile, entityID, personalstate.SQL("?", "?"))
 	if e != nil {
 		return e
 	}
 	previous := out
-	out.LastPlayedAt = now
+	previousPosition := out.ProgressSeconds
+	previousLastPlayed := out.LastPlayedAt
+	meaningful := personalCounted || counted || completed && (!out.Watched || kind == int64(compactcatalog.Part) && positionMillis(position) != positionMillis(previousPosition)) || !completed && position >= threshold && (positionMillis(position) != positionMillis(previousPosition) || out.LastPlayedAt == "")
+	if meaningful {
+		out.LastPlayedAt = now
+	}
 	var blocked int
 	if e = tx.QueryRow(`SELECT (SELECT count(*) FROM personal_evidence_fences WHERE profile_id=? AND item_id=? AND playback_id=?)+(SELECT count(*) FROM playback_personal_fences f WHERE f.profile_key=? AND f.item_id=? AND f.through_ordinal>=COALESCE((SELECT accepted_ordinal FROM playback_personal_claims WHERE playback_id=? AND profile_key=f.profile_key AND item_id=f.item_id),0))+(SELECT count(*) FROM playback_personal_profile_fences f WHERE f.profile_key=? AND f.through_ordinal>=COALESCE((SELECT accepted_ordinal FROM playback_personal_claims WHERE playback_id=? AND profile_key=f.profile_key),0))`, profile, entityID, playbackID, profile, entityID, playbackID, profile, playbackID).Scan(&blocked); e != nil {
 		return e
+	}
+	// Historical observations retain history but never overwrite newer personal
+	// evidence or an explicit container watermark.
+	var latest string
+	if e = tx.QueryRow(`SELECT COALESCE(max(stamp),'') FROM (
+ SELECT authored_at AS stamp FROM personal_watched_intents WHERE profile_id=? AND item_id=?
+ UNION ALL SELECT watermark FROM container_personal_state c WHERE c.profile_id=? AND ((c.kind='show' AND c.container_id=(SELECT show_id FROM catalog_episodes WHERE entity_id=?)) OR (c.kind='season' AND c.container_id=(SELECT season_id FROM catalog_episodes WHERE entity_id=?)) OR (c.kind='album' AND c.container_id=(SELECT album_id FROM catalog_songs WHERE entity_id=?)) OR (c.kind='book' AND c.container_id=(SELECT book_id FROM catalog_book_files WHERE entity_id=?))))`, profile, entityID, profile, entityID, entityID, entityID, entityID).Scan(&latest); e != nil {
+		return e
+	}
+	for _, stamp := range []string{latest, previousLastPlayed} {
+		if at, err := time.Parse(time.RFC3339Nano, stamp); err == nil && at.After(clock) {
+			blocked++
+		}
 	}
 	for _, c := range out.Conflicts {
 		if c.Field == "watched" {
 			blocked++
 		}
 	}
-	if canonical && blocked == 0 {
+	if (canonical || completed) && blocked == 0 {
 		switch {
 		case completed:
 			out.Watched = true
@@ -134,28 +157,37 @@ func acceptPlaybackProgress(tx *sql.Tx, v identity.Viewer, playbackID, item stri
 			out.ProgressSeconds = 0 // a brief replay must not clear prior completion
 		}
 		if completed || position >= threshold {
-			if e = personalstate.Write(tx, profile, entityID, out.Watched); e != nil {
-				return e
+			if meaningful {
+				if e = personalstate.WriteAt(tx, profile, entityID, out.Watched, clock); e != nil {
+					return e
+				}
 			}
 		}
 		if kind == int64(compactcatalog.Track) {
 			out.ProgressSeconds = 0
 		}
-		if _, e = tx.Exec(`UPDATE progress SET position=? WHERE profile_id=? AND item_id=? AND playback_id=?`, positionMillis(out.ProgressSeconds), profile, entityID, playbackID); e != nil {
+		if _, e = tx.Exec(`UPDATE progress SET position=? WHERE profile_id=? AND item_id=? AND (playback_id=? OR ?=1)`, positionMillis(out.ProgressSeconds), profile, entityID, playbackID, completed); e != nil {
 			return e
 		}
 		activityState := state
 		if completed {
 			activityState = "ended"
 		}
-		if _, e = tx.Exec(`INSERT INTO progress_activity(profile_id,library_id,item_id,updated_at,state) SELECT ?,cl.library_id,e.id,?,? FROM catalog_entities e JOIN catalog_libraries cl ON cl.id=e.library_id WHERE e.id=? ON CONFLICT(profile_id,item_id) DO UPDATE SET updated_at=excluded.updated_at,state=excluded.state`, profile, now, activityState, entityID); e != nil {
-			return e
+		if meaningful {
+			if _, e = tx.Exec(`INSERT INTO progress_activity(profile_id,library_id,item_id,updated_at,state) SELECT ?,cl.library_id,e.id,?,? FROM catalog_entities e JOIN catalog_libraries cl ON cl.id=e.library_id WHERE e.id=? ON CONFLICT(profile_id,item_id) DO UPDATE SET updated_at=excluded.updated_at,state=excluded.state`, profile, now, activityState, entityID); e != nil {
+				return e
+			}
 		}
-		if _, e = tx.Exec(`UPDATE book_resume SET position=? WHERE profile_id=? AND item_id=? AND playback_id=?`, positionMillis(out.ProgressSeconds), profile, entityID, playbackID); e != nil {
+		if _, e = tx.Exec(`UPDATE book_resume SET position=? WHERE profile_id=? AND item_id=? AND (playback_id=? OR ?=1)`, positionMillis(out.ProgressSeconds), profile, entityID, playbackID, completed); e != nil {
 			return e
 		}
 	}
-	changed := out.Watched != previous.Watched || previous.LastPlayedAt == ""
+	if !meaningful || blocked != 0 || (!canonical && !completed) {
+		return nil
+	}
+	// Observations retain current resume/recency without changing the command
+	// revision or adding snapshots. New plays and completion remain semantic.
+	changed := out.Watched != previous.Watched || previous.LastPlayedAt == "" || personalCounted || counted
 	if changed {
 		if e = snapshotPersonalByID(tx, profile, entityID, previous); e != nil {
 			return e
@@ -193,12 +225,12 @@ type HistoryPage struct {
 // boundary so every device agrees on what "last 7 days" means.
 var HistoryPeriods = map[string]time.Duration{"24h": 24 * time.Hour, "7d": 7 * 24 * time.Hour, "30d": 30 * 24 * time.Hour, "90d": 90 * 24 * time.Hour, "all": 0}
 
-func (s *Service) History(server, fence, profile, cursor, period, libraryID string, libraries []string, limit int) (HistoryPage, error) {
+func (s *Service) History(server, fence, profile, cursor, period, libraryID string, libraries []string, limit int, viewer Viewer) (HistoryPage, error) {
 	if dbwork.Snapshot(s.Context()) == nil {
 		var out HistoryPage
 		err := dbwork.WithReadSnapshot(s.Context(), s.db, func(ctx context.Context) error {
 			var err error
-			out, err = s.WithContext(ctx).History(server, fence, profile, cursor, period, libraryID, libraries, limit)
+			out, err = s.WithContext(ctx).History(server, fence, profile, cursor, period, libraryID, libraries, limit, viewer)
 			return err
 		})
 		return out, err
@@ -238,7 +270,9 @@ func (s *Service) History(server, fence, profile, cursor, period, libraryID stri
 	scope := cursorScope{Profile: profile, View: "history", Viewer: fence, Limit: limit, Category: period, Library: libraryID}
 	raw, _ := json.Marshal(libraries)
 	where := ` FROM personal_history h CROSS JOIN catalog_entities i ON i.id=h.item_id CROSS JOIN catalog_item_details detail ON detail.entity_id=i.id WHERE h.profile_id=? AND i.retired=0 AND i.library_id IN(SELECT id FROM catalog_libraries WHERE library_id IN(SELECT value FROM json_each(?)) AND retired=0)`
-	args := []any{profile, string(raw)}
+	visibility, visibleArgs := viewer.itemVisibilitySQL("i.id")
+	where += ` AND ` + visibility + recordingsClause("i.id", viewer.EffectiveRestrictions())
+	args := append([]any{profile, string(raw)}, visibleArgs...)
 	if window > 0 {
 		where += ` AND h.updated_at>=?`
 		args = append(args, time.Now().UTC().Add(-window).Format("2006-01-02T15:04:05.000Z"))
@@ -368,7 +402,7 @@ func (s *Service) MutateActivity(profile string, m ActivityMutation, authorize f
 		if _, e = tx.Exec(`INSERT INTO personal_evidence_fences SELECT profile_id,item_id,playback_id FROM progress WHERE profile_id=? ON CONFLICT(profile_id,item_id) DO UPDATE SET playback_id=excluded.playback_id`, profile); e != nil {
 			return out, e
 		}
-		for _, table := range []string{"container_personal_state", "personal_watched_intents", "container_personal_resets", "personal_play_counts"} {
+		for _, table := range []string{"container_personal_state", "personal_watched_intents", "container_personal_undo", "personal_play_counts"} {
 			if _, e = tx.Exec(`DELETE FROM `+table+` WHERE profile_id=?`, profile); e != nil {
 				return out, e
 			}

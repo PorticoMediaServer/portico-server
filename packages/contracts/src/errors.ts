@@ -445,6 +445,12 @@ export const errors = [
     "retry": "never"
   },
   {
+    "code": "operation_expired",
+    "status": 409,
+    "message": "The time to undo this change has passed.",
+    "retry": "never"
+  },
+  {
     "code": "participant_incompatible",
     "status": 409,
     "message": "That member is not ready to host.",
@@ -635,6 +641,12 @@ export const errors = [
     "status": 503,
     "message": "The file for this title can't be reached right now.",
     "retry": "same_request"
+  },
+  {
+    "code": "stale_continuation",
+    "status": 409,
+    "message": "This list changed. Refresh it to continue.",
+    "retry": "after_refresh"
   },
   {
     "code": "storage_full",

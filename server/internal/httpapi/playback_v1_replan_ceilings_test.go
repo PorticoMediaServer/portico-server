@@ -164,7 +164,7 @@ func TestSubtitleReplanRoutesHoldToTheMembersCurrentCeiling(t *testing.T) {
 	held("burn-in after the cap was lowered", 1_000_000, true)
 	setMemberLimits(t, f, `{}`)
 	patch(lan, nil, second)
-	if _, bitrate, action := planned(); action != "convert" || bitrate <= 1_000_000 {
+	if _, bitrate, action := planned(); action != "convert" || bitrate != 0 {
 		t.Fatalf("burn-in after the cap was lifted, back on the LAN: planned %s at %d bit/s", action, bitrate)
 	}
 }

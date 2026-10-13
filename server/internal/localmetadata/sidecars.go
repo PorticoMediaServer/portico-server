@@ -2,6 +2,8 @@ package localmetadata
 
 import (
 	"context"
+	"errors"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -177,10 +179,14 @@ func (s *Service) sidecarKey(ctx context.Context, library, full string) (string,
 	}
 	raw, err := s.readSmall(ctx, library, full, 4<<20)
 	if err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			artworkReadFailed(ctx)
+		}
 		return "", false
 	}
 	key, err := s.store(raw)
 	if err != nil {
+		artworkReadFailed(ctx)
 		return "", false
 	}
 	s.mu.Lock()
@@ -193,4 +199,28 @@ func (s *Service) sidecarKey(ctx context.Context, library, full string) (string,
 	s.sidecars[full] = key
 	s.mu.Unlock()
 	return key, true
+}
+
+// InvalidateSidecars forgets positive cache entries when inventory observes
+// changed or removed sidecars. Content-addressed stored images stay intact.
+func (s *Service) InvalidateSidecars(folder string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for path := range s.sidecars {
+		relative, err := filepath.Rel(folder, path)
+		if err == nil && filepath.IsLocal(relative) {
+			delete(s.sidecars, path)
+		}
+	}
+}
+
+type artworkReadCheckKey struct{}
+
+func WithArtworkReadCheck(ctx context.Context, failed func()) context.Context {
+	return context.WithValue(ctx, artworkReadCheckKey{}, failed)
+}
+func artworkReadFailed(ctx context.Context) {
+	if failed, ok := ctx.Value(artworkReadCheckKey{}).(func()); ok {
+		failed()
+	}
 }

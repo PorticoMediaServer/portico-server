@@ -448,7 +448,7 @@ func restrictionRoutes() map[string]restrictionRoute {
 		"GET /v1/items/{id}/credits":                          perItem("/credits?group=cast"),
 		"GET /v1/items/{id}/art/{kind}":                       perItem("/art/poster"),
 		"GET /v1/items/{id}/chapters/{chapter}/image":         perItem("/chapters/0/image"),
-		"GET /v1/items/{id}/download-options":                 perItem("/download-options"),
+		"GET /v1/items/{itemId}/download-options":             perItem("/download-options"),
 		"GET /v1/items/{id}/listening":                        perItem("/listening"),
 		"GET /v1/items/{id}/playback-offers":                  perItem("/playback-offers"),
 		"GET /v1/items/{id}/recommendations":                  perItem("/recommendations"),

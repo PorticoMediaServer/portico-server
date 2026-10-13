@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-func TestIncrementalScanSkipsUnchangedDirectoriesAndIntegrityFindsReplacements(t *testing.T) {
+func TestIncrementalScanObservesFileFactsAndRetainsIntegrityCadence(t *testing.T) {
 	root, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -68,16 +68,16 @@ func TestIncrementalScanSkipsUnchangedDirectoriesAndIntegrityFindsReplacements(t
 	run("", "first-import")
 	second := run("", "incremental")
 	var pages, skipped int
-	if err = db.QueryRow(`SELECT sum(pages),sum(skipped) FROM inventory_directories WHERE job_id=?`, second).Scan(&pages, &skipped); err != nil || pages != 0 || skipped != 2 {
-		t.Fatal("unchanged folder enumerated", pages, skipped, err)
+	if err = db.QueryRow(`SELECT sum(pages),sum(skipped) FROM inventory_directories WHERE job_id=?`, second).Scan(&pages, &skipped); err != nil || pages != 2 || skipped != 0 {
+		t.Fatal("local folders were not enumerated", pages, skipped, err)
 	}
 	if err = os.WriteFile(filepath.Join(media, "nested/New (2002).mp4"), []byte("new"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	third := run("", "incremental")
 	var rootSkipped int
-	if err = db.QueryRow(`SELECT skipped FROM inventory_directories WHERE job_id=? AND relative_path='.'`, third).Scan(&rootSkipped); err != nil || rootSkipped != 1 {
-		t.Fatal("unchanged root was walked", err)
+	if err = db.QueryRow(`SELECT skipped FROM inventory_directories WHERE job_id=? AND relative_path='.'`, third).Scan(&rootSkipped); err != nil || rootSkipped != 0 {
+		t.Fatal("root enumeration missed", err)
 	}
 	var objects int
 	if err = db.QueryRow(`SELECT count(*) FROM inventory_objects WHERE retired=0 AND state='available'`).Scan(&objects); err != nil || objects != 3 {
@@ -93,8 +93,8 @@ func TestIncrementalScanSkipsUnchangedDirectoriesAndIntegrityFindsReplacements(t
 	}
 	run("", "incremental")
 	var size int
-	if err = db.QueryRow(`SELECT size FROM inventory_objects WHERE relative_path='nested/Film (2001).mp4' AND retired=0`).Scan(&size); err != nil || size != 5 {
-		t.Fatal("incremental unexpectedly re-read unchanged folder", size, err)
+	if err = db.QueryRow(`SELECT size FROM inventory_objects WHERE relative_path='nested/Film (2001).mp4' AND retired=0`).Scan(&size); err != nil || size <= 5 {
+		t.Fatal("incremental missed an in-place file change", size, err)
 	}
 	full := run("full", "full")
 	if err = db.QueryRow(`SELECT size FROM inventory_objects WHERE relative_path='nested/Film (2001).mp4' AND retired=0`).Scan(&size); err != nil || size <= 5 {
@@ -103,7 +103,7 @@ func TestIncrementalScanSkipsUnchangedDirectoriesAndIntegrityFindsReplacements(t
 	if err = db.QueryRow(`SELECT sum(skipped) FROM inventory_directories WHERE job_id=?`, full).Scan(&skipped); err != nil || skipped != 0 {
 		t.Fatal("full scan skipped a directory", err)
 	}
-	if _, err = db.Exec(`UPDATE inventory_runs SET inventory_completed_at=? WHERE scan_mode IN('first-import','full','integrity')`, time.Now().Add(-8*24*time.Hour).UTC().Format(time.RFC3339Nano)); err != nil {
+	if _, err = db.Exec(`UPDATE library_sources SET last_integrity_at=?`, time.Now().Add(-8*24*time.Hour).UTC().Format(time.RFC3339Nano)); err != nil {
 		t.Fatal(err)
 	}
 	run("", "integrity")

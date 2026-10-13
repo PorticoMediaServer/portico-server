@@ -90,9 +90,9 @@ func TestScreenNamesKeepAYearThatBelongsToTheTitle(t *testing.T) {
 		{"2001.A.Space.Odyssey.1968.1080p.BluRay.mkv", "2001 A Space Odyssey", 1968},
 		{"Blade.Runner.2049.2017.1080p.BluRay.mkv", "Blade Runner 2049", 2017},
 		{"1917.2019.1080p.mkv", "1917", 2019},
-		// Unchanged: one year is read as before, and a bare number is not guessed at.
+		// Bare years that belong to a title are preserved; strong release evidence is separate.
 		{"Film.1999.Remastered.2019.mkv", "Film", 1999},
-		{"Blade Runner 2049.mkv", "Blade Runner", 2049},
+		{"Blade Runner 2049.mkv", "Blade Runner 2049", 0},
 		{"1917.mkv", "1917", 0},
 		// A bracketed year after release tags is an encode or group date.
 		{"Movie.2019.1080p.[2020].mkv", "Movie", 2019},

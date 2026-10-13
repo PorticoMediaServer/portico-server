@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"log"
 	"path/filepath"
 	"portico.local/server/internal/assets"
 	"portico.local/server/internal/catalog"
@@ -46,6 +47,7 @@ type Service struct {
 	activeSources map[string]bool
 	listingMu     sync.Mutex
 	listings      map[string]*scanListing
+	ignoreScopes  map[string]map[string]remoteIgnoreScope
 }
 
 func New(db *sql.DB, c *catalog.Service, p assets.Probe) *Service {
@@ -323,6 +325,9 @@ func (s *Service) Run(ctx context.Context) {
 	// Everything this loop writes is bulk catalogue work, so it queues behind
 	// playback, authentication and interactive edits at the write gate.
 	ctx = dbwork.WithClass(ctx, dbwork.ClassBackgroundMedia)
+	monitorDone := make(chan struct{})
+	supervise.Go("ingestion.monitor", func() { defer close(monitorDone); s.runMonitor(ctx) })
+	defer func() { <-monitorDone }()
 	var workers sync.WaitGroup
 	defer workers.Wait()
 	defer func() {
@@ -343,12 +348,29 @@ func (s *Service) Run(ctx context.Context) {
 	// floored, so on its own it paced every source at one bounded step per poll
 	// however idle the machine was.
 	advanced := workerloop.NewSignal()
+	pruneAfter := ""
+	nextPrune := time.Time{}
 	workerloop.RunWith(ctx, "ingestion.scan", advanced, wake, func(ctx context.Context) time.Duration {
 		pending := false
 		{
+			ctx = dbwork.WithBackgroundSpeed(ctx, dbwork.ReadBackgroundSpeed(ctx, s.db))
 			s.recoverPolicyChanges(ctx)
 			s.schedule(ctx)
 			s.startWaitingReports(ctx)
+			if !time.Now().Before(nextPrune) {
+				var source string
+				if e := s.db.QueryRowContext(ctx, `SELECT id FROM library_sources WHERE id>? ORDER BY id LIMIT 1`, pruneAfter).Scan(&source); e == nil {
+					more, _ := s.PruneSource(ctx, source)
+					if more {
+						advanced.Wake()
+					} else {
+						pruneAfter = source
+					}
+				} else {
+					pruneAfter = ""
+					nextPrune = time.Now().Add(time.Minute)
+				}
+			}
 			rows, err := s.db.QueryContext(ctx, `SELECT j.id,j.library_id,r.source_id,r.phase FROM jobs j JOIN inventory_runs r ON r.job_id=j.id WHERE j.status IN('queued','running') ORDER BY r.last_turn,j.created_at,j.id LIMIT 16`)
 			if err != nil {
 				return time.Second
@@ -375,7 +397,7 @@ func (s *Service) Run(ctx context.Context) {
 					}
 				}
 				s.mu.Lock()
-				busy := len(s.active) >= 4 || s.active[c.id] != nil || s.activeSources[c.source]
+				busy := len(s.active) >= dbwork.BackgroundConcurrency(ctx) || s.active[c.id] != nil || s.activeSources[c.source]
 				if !busy {
 					s.activeSources[c.source] = true
 					work, cancel := context.WithCancel(ctx)
@@ -421,7 +443,11 @@ func (s *Service) Run(ctx context.Context) {
 		if pending {
 			return time.Minute
 		}
-		return s.nextScheduledScan(ctx)
+		due := s.nextScheduledScan(ctx)
+		if due == 0 || due > time.Minute {
+			due = time.Minute
+		}
+		return due
 	})
 }
 
@@ -440,13 +466,13 @@ func (s *Service) process(ctx context.Context, id, library string) {
 // scanPosition is where a run durably stands: its phase and cursors, its
 // counters, and the head of its pending directory and analysis queues.
 type scanPosition struct {
-	status, phase, verify, reconcile, directory, cursor, object string
-	processed, analyzed, warnings                               int64
+	status, phase, verify, reconcile, directory, cursor, object, sidecar string
+	processed, analyzed, warnings                                        int64
 }
 
 func (s *Service) scanPosition(ctx context.Context, id string) (scanPosition, error) {
 	var p scanPosition
-	err := s.db.QueryRowContext(ctx, `SELECT j.status,r.phase,r.verify_cursor,r.reconcile_cursor,j.processed,r.analyzed,r.warnings,COALESCE((SELECT d.relative_path FROM inventory_directories d WHERE d.job_id=r.job_id AND d.state='pending' ORDER BY d.relative_path LIMIT 1),''),COALESCE((SELECT d.cursor FROM inventory_directories d WHERE d.job_id=r.job_id AND d.state='pending' ORDER BY d.relative_path LIMIT 1),''),COALESCE((SELECT q.object_id FROM inventory_analysis_queue q WHERE q.job_id=r.job_id AND q.state='pending' ORDER BY q.object_id LIMIT 1),'') FROM inventory_runs r JOIN jobs j ON j.id=r.job_id WHERE r.job_id=?`, id).Scan(&p.status, &p.phase, &p.verify, &p.reconcile, &p.processed, &p.analyzed, &p.warnings, &p.directory, &p.cursor, &p.object)
+	err := s.db.QueryRowContext(ctx, `SELECT j.status,r.phase,r.verify_cursor,r.reconcile_cursor,j.processed,r.analyzed,r.warnings,COALESCE((SELECT d.relative_path FROM inventory_directories d WHERE d.job_id=r.job_id AND d.state='pending' ORDER BY d.relative_path LIMIT 1),''),COALESCE((SELECT d.cursor FROM inventory_directories d WHERE d.job_id=r.job_id AND d.state='pending' ORDER BY d.relative_path LIMIT 1),''),COALESCE((SELECT q.object_id FROM inventory_analysis_queue q WHERE q.job_id=r.job_id AND q.state='pending' ORDER BY q.object_id LIMIT 1),''),COALESCE((SELECT c.relative_path||':'||c.cursor FROM inventory_sidecar_changes c WHERE c.job_id=r.job_id ORDER BY c.relative_path LIMIT 1),'') FROM inventory_runs r JOIN jobs j ON j.id=r.job_id WHERE r.job_id=?`, id).Scan(&p.status, &p.phase, &p.verify, &p.reconcile, &p.processed, &p.analyzed, &p.warnings, &p.directory, &p.cursor, &p.object, &p.sidecar)
 	return p, err
 }
 
@@ -510,10 +536,14 @@ func (s *Service) processQuantum(ctx context.Context, id, library string) bool {
 		err = s.inventoryPage(ctx, id, source)
 	case "legacy_inventory":
 		err = s.adoptLegacyPage(ctx, id, source)
+	case "extras":
+		err = s.attachExtrasPage(ctx, id, source)
 	case "verifying":
 		err = s.verifyPage(ctx, id, source)
 	case "reconciling":
 		err = s.reconcilePage(ctx, id, source)
+	case "sidecars":
+		err = s.reconcileSidecars(ctx, id, source)
 	case "analysis_enqueue":
 		err = s.enqueueAnalysisPage(ctx, id, source)
 	case "basic_pending", "basic_running":
@@ -522,6 +552,7 @@ func (s *Service) processQuantum(ctx context.Context, id, library string) bool {
 		err = catalog.ErrAdminQuery
 	}
 	if err != nil && ctx.Err() == nil && !errors.Is(err, context.Canceled) && !errors.Is(err, storage.ErrBusy) {
+		log.Printf("library scan step %s failed: %v", phase, err)
 		s.fail(ctx, id, sourceID, err)
 	}
 	if err != nil || ctx.Err() != nil {

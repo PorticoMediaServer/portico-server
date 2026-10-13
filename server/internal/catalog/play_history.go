@@ -21,9 +21,8 @@ import (
 // recordPlay writes or updates the history row of one playback, in the playback
 // transaction. A row begins once the play has really started (or finished), so a
 // title opened and closed again leaves nothing behind. counted reports that this
-// report is the one that completed the play: the caller keeps the viewer's own
-// count from it.
-func recordPlay(tx *sql.Tx, v identity.Viewer, playbackID string, entityID, kind int64, now time.Time, positionMs int64, duration float64, started, completed bool) (counted bool, err error) {
+// report is the one that completed the play. Personal counts are independent.
+func recordPlay(tx *sql.Tx, v identity.Viewer, playbackID string, entityID, kind int64, now time.Time, positionMs int64, duration float64, started, completed, share bool) (counted bool, err error) {
 	nowMs := now.UnixMilli()
 	var id int64
 	var was bool
@@ -46,7 +45,10 @@ func recordPlay(tx *sql.Tx, v identity.Viewer, playbackID string, entityID, kind
 	if !completed || was {
 		return false, nil
 	}
-	_, err = tx.Exec(`INSERT INTO play_counts(item_id,plays,last_played_ms) VALUES(?,1,?) ON CONFLICT(item_id) DO UPDATE SET plays=plays+1,last_played_ms=excluded.last_played_ms`, entityID, nowMs)
+	if !share {
+		return true, nil
+	}
+	_, err = tx.Exec(`INSERT INTO play_counts(item_id,plays,last_played_ms) VALUES(?,1,?) ON CONFLICT(item_id) DO UPDATE SET plays=plays+1,last_played_ms=max(last_played_ms,excluded.last_played_ms)`, entityID, nowMs)
 	return err == nil, err
 }
 
@@ -107,10 +109,20 @@ func insertPlay(tx *sql.Tx, v identity.Viewer, playbackID string, entityID, kind
 	return err
 }
 
-// countPersonalPlay adds one to the viewer's own count of a title.
-func countPersonalPlay(tx *sql.Tx, profile string, entityID int64) error {
-	_, err := tx.Exec(`INSERT INTO personal_play_counts(profile_id,item_id,plays) VALUES(?,?,1) ON CONFLICT(profile_id,item_id) DO UPDATE SET plays=plays+1`, profile, entityID)
-	return err
+// countPersonalPlay records one completion per occurrence independently of the
+// owner's count and the clearable History list. Pausing and resuming history
+// during an occurrence can therefore neither lose nor duplicate its count.
+func countPersonalPlay(tx *sql.Tx, profile, playbackID string, entityID int64) (bool, error) {
+	result, err := tx.Exec(`INSERT OR IGNORE INTO personal_completed_plays(profile_id,playback_id,item_id) VALUES(?,?,?)`, profile, playbackID, entityID)
+	if err != nil {
+		return false, err
+	}
+	n, err := result.RowsAffected()
+	if err != nil || n == 0 {
+		return false, err
+	}
+	_, err = tx.Exec(`INSERT INTO personal_play_counts(profile_id,item_id,plays) VALUES(?,?,1) ON CONFLICT(profile_id,item_id) DO UPDATE SET plays=plays+1`, profile, entityID)
+	return err == nil, err
 }
 
 // PlayHistoryEntry is one play, as the owner reads it.

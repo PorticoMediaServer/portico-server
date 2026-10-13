@@ -41,7 +41,6 @@ const REASONS: Readonly<Record<string, MessageId>> = {
   subtitle_burn_in: 'player.info.reason.subtitles',
   stream_normalized: 'player.info.reason.normalized',
   alternate_audio_fixed_output_policy: 'player.info.reason.audioTrack',
-  dolby_vision_colors_approximate: 'player.info.reason.dolbyVision',
 };
 
 const CODECS: Readonly<Record<string, string>> = {h264: 'H.264', avc: 'H.264', hevc: 'HEVC', h265: 'HEVC', av1: 'AV1', vp9: 'VP9', mpeg2video: 'MPEG-2', vc1: 'VC-1', aac: 'AAC', ac3: 'Dolby Digital', eac3: 'Dolby Digital Plus', truehd: 'Dolby TrueHD', dts: 'DTS', flac: 'FLAC', opus: 'Opus', mp3: 'MP3', alac: 'ALAC', vorbis: 'Vorbis', pcm: 'PCM'};

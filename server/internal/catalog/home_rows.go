@@ -32,18 +32,29 @@ const (
 var ErrHomeRowUnknown = errors.New("that home row does not exist for this viewer")
 var ErrHomeLayoutRow = errors.New("home layout refers to a row that does not exist")
 
+type HomeSeeAll struct {
+	Type       string                `json:"type"`
+	LibraryID  string                `json:"libraryId,omitempty"`
+	Pivot      string                `json:"pivot,omitempty"`
+	Query      *BrowseNode           `json:"query,omitempty"`
+	Sort       []BrowseSortSelection `json:"sort,omitempty"`
+	RowID      string                `json:"rowId,omitempty"`
+	ResourceID string                `json:"resourceId,omitempty"`
+}
+
 type HomeRow struct {
-	ID                 string     `json:"id"`
-	Title              string     `json:"title"`
-	TitleText          ServerText `json:"titleText"`
-	Kind               string     `json:"kind"`
-	ArtworkShape       string     `json:"artworkShape"`
-	Explanation        string     `json:"explanation,omitempty"`
-	Endpoint           string     `json:"endpoint"`
-	LibraryID          string     `json:"libraryId,omitempty"`
-	PrivacySensitivity string     `json:"privacySensitivity"`
-	PolicyState        string     `json:"policyState"`
-	Relation           string     `json:"relation,omitempty"`
+	SeeAll             *HomeSeeAll `json:"seeAll,omitempty"`
+	ID                 string      `json:"id"`
+	Title              string      `json:"title"`
+	TitleText          ServerText  `json:"titleText"`
+	Kind               string      `json:"kind"`
+	ArtworkShape       string      `json:"artworkShape"`
+	Explanation        string      `json:"explanation,omitempty"`
+	Endpoint           string      `json:"endpoint"`
+	LibraryID          string      `json:"libraryId,omitempty"`
+	PrivacySensitivity string      `json:"privacySensitivity"`
+	PolicyState        string      `json:"policyState"`
+	Relation           string      `json:"relation,omitempty"`
 	// Family groups rows the layout arranges as one ("for_you": the personal
 	// rows, which vary with the profile and the day).
 	Family          string          `json:"family,omitempty"`
@@ -114,6 +125,7 @@ type homeRowSpec struct {
 	ArtworkShape string
 	Explanation  string
 	LibraryID    string
+	SeeAll       *HomeSeeAll
 	Privacy      string
 	PolicyState  string
 	Direction    string
@@ -173,9 +185,16 @@ type homeSource struct {
 
 func (spec homeRowSpec) descriptor() HomeRow {
 	return HomeRow{ID: spec.ID, Title: spec.Title, TitleText: spec.titleText(), Kind: spec.Kind, ArtworkShape: spec.ArtworkShape, Explanation: spec.Explanation,
-		Endpoint: "/v1/home/rows/" + spec.ID, LibraryID: spec.LibraryID, PrivacySensitivity: spec.Privacy, PolicyState: spec.PolicyState,
+		SeeAll: spec.destination(), Endpoint: "/v1/home/rows/" + spec.ID, LibraryID: spec.LibraryID, PrivacySensitivity: spec.Privacy, PolicyState: spec.PolicyState,
 		Priority: spec.Priority, CacheTTLSeconds: spec.CacheTTL, Required: spec.Required, Hideable: spec.Hideable,
 		Reorderable: spec.Reorderable, Critical: spec.Critical, CursorCapable: spec.Cursors, Family: spec.Family, Entries: []ContentEntry{}}
+}
+
+func (spec homeRowSpec) destination() *HomeSeeAll {
+	if spec.SeeAll != nil {
+		return spec.SeeAll
+	}
+	return &HomeSeeAll{Type: "row", RowID: spec.ID}
 }
 
 // homeRowTitleCodes are the client catalogue ids for the fixed Home rows.
@@ -258,7 +277,7 @@ const homeRetired = `NOT EXISTS(SELECT 1 FROM dvr_catalog_retirements gone WHERE
 // homeVisible requires a live entity and its available, non-DVR-retired item
 // projection.
 func homeVisible(alias string) string {
-	return fmt.Sprintf(`EXISTS(SELECT 1 FROM catalog_entities e JOIN catalog_item_availability v ON v.entity_id=e.id WHERE e.id=%s AND e.retired=0 AND v.available=1 AND v.retired=0)`, alias)
+	return fmt.Sprintf(`EXISTS(SELECT 1 FROM catalog_entities e JOIN catalog_item_availability v ON v.entity_id=e.id WHERE e.id=%s AND e.retired=0 AND v.available=1 AND v.retired=0 AND EXISTS(SELECT 1 FROM catalog_asset_links link JOIN catalog_assets asset ON asset.id=link.asset_id WHERE link.entity_id=e.id AND link.available=1 AND asset.available=1))`, alias)
 }
 
 // continueListeningMaximum bounds Continue Listening the way the owner maximum
@@ -287,8 +306,8 @@ func homeContinueBase(mode string) string {
 	// Progress positions are milliseconds (unit 0); asset durations are seconds.
 	return `SELECT pid(i.public_id) AS id,a.item_id AS entity,a.updated_at AS ord FROM ` + activity + ` CROSS JOIN progress p ON p.profile_id=a.profile_id AND p.item_id=a.item_id JOIN catalog_entities i ON i.id=a.item_id JOIN catalog_kinds k ON k.id=i.kind` +
 		` WHERE a.profile_id=? AND ` + libraries + ` AND i.retired=0 AND EXISTS(SELECT 1 FROM catalog_libraries cl WHERE cl.id=i.library_id AND cl.library_id=a.library_id) AND ` + kind +
-		` AND ` + fmt.Sprintf(homeRetired, "i.id") + ` AND a.state!='ended' AND NOT EXISTS(SELECT 1 FROM continue_dismissals d WHERE d.profile_id=p.profile_id AND d.item_id=p.item_id AND d.playback_id=p.playback_id) AND p.position>0` +
-		` AND p.position<(SELECT max(s.duration)*1000-CASE WHEN i.kind=9 THEN 0 ELSE 3000 END FROM catalog_asset_links l JOIN catalog_assets s ON s.id=l.asset_id WHERE l.entity_id=i.id AND s.available=1 AND l.available=1)`
+		` AND ` + homeVisible("i.id") + ` AND ` + fmt.Sprintf(homeRetired, "i.id") + ` AND a.state!='ended' AND NOT EXISTS(SELECT 1 FROM continue_dismissals d WHERE d.profile_id=p.profile_id AND d.item_id=p.item_id AND d.playback_id=p.playback_id) AND p.position>0` +
+		` AND p.position<(SELECT COALESCE(max(NULLIF(COALESCE(l.end_seconds,s.duration)-l.start_seconds,0))*1000-CASE WHEN i.kind=9 THEN 0 ELSE 3000 END,9223372036854775807) FROM catalog_asset_links l JOIN catalog_assets s ON s.id=l.asset_id WHERE l.entity_id=i.id AND s.available=1 AND l.available=1)`
 }
 
 // homeSource wraps every row's candidate projection in the viewer's content
@@ -374,7 +393,7 @@ func (s *Service) homeSpecs(r HomeRequest) ([]homeRowSpec, error) {
 	for index, library := range libraries {
 		specs = append(specs, homeRowSpec{Direction: "desc", ID: "recent_" + library.ID, Title: "Recently added in " + library.Name, TitleParams: map[string]string{"library": library.Name}, Kind: "recent",
 			// Straight after what the viewer is in the middle of, in the owner's library order.
-			ArtworkShape: homeArtwork(library.Kind), LibraryID: library.ID, Priority: 30, Rank: index, CacheTTL: 120,
+			ArtworkShape: homeArtwork(library.Kind), LibraryID: library.ID, SeeAll: &HomeSeeAll{Type: "library", LibraryID: library.ID, Pivot: map[string]string{"movie": "movies", "tv": "shows", "anime": "shows", "music": "albums", "audiobook": "books"}[library.Kind], Sort: []BrowseSortSelection{{Field: "added", Direction: "desc"}}}, Priority: 30, Rank: index, CacheTTL: 120,
 			Hideable: true, Reorderable: true, Cursors: true, Privacy: "catalog", PolicyState: "available"})
 	}
 	return specs, nil

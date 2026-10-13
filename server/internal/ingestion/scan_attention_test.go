@@ -63,6 +63,7 @@ func TestAScanNeverReadsCleanWhileFilesNeedAttention(t *testing.T) {
 		assetToken = token
 		return err
 	})
+	exec(`INSERT INTO inventory_objects(id,source_id,asset_id,root_incarnation,relative_path,revision,evidence_json,size,modified_ns) SELECT 'attention',id,?,incarnation,'Show/unknown.mkv','r','{}',1,1 FROM library_sources WHERE id=?`, assetToken, source)
 	exec(`INSERT INTO episodic_sources(library_id,asset_id,manual,issue,source_name) VALUES('tv',?,0,'multipart_episode_requires_assignment','Show - S01E05 - pt1.mkv')`, assetToken)
 	if status, health := finish("unassignable"); status != "complete_with_warnings" || health != "degraded" {
 		t.Fatalf("a file needing assignment read as %s %s", status, health)

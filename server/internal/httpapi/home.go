@@ -98,55 +98,13 @@ func (d Dependencies) homeFenceAfter(r *http.Request, p identity.Principal) (str
 	return fence, err
 }
 
-func (d Dependencies) contentHomeRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("GET /v1/content", func(w http.ResponseWriter, r *http.Request) {
-		q := r.URL.Query()
-		if q.Get("view") == "watchlist" || q.Get("view") == "favorites" || q.Get("view") == "playlists" {
-			d.savedContent(w, r)
-			return
-		}
-		if q.Get("view") != "home" {
-			failure(w, errors.New("global content view must be home"))
-			return
-		}
-		for key, values := range q {
-			if len(values) != 1 || (key != "view" && key != "limit") || (key == "limit" && values[0] != "12") {
-				failure(w, errors.New("Home has fixed server-defined sections and limit"))
-				return
-			}
-		}
-		p, libraries, fence, e := d.homeScope(r)
-		if e != nil {
-			failure(w, e)
-			return
-		}
-		restrictions, _, e := d.viewerRestrictions(r, p)
-		if e != nil {
-			failure(w, e)
-			return
-		}
-		var out catalog.ContentEnvelope
-		e = d.compose(r, restrictions, func(cat *catalog.Service) error {
-			var composeErr error
-			viewer := catalog.Viewer{Profile: identity.PersonalKey(p.Viewer), Fence: fence, Libraries: libraries, Restrictions: restrictions}
-			out, composeErr = cat.Home(catalog.HomeRequest{Viewer: viewer, ServerID: d.Identity.ID(), Profile: identity.PersonalKey(p.Viewer), ViewerFence: fence, Libraries: libraries, Restrictions: restrictions})
-			return composeErr
-		})
-		if e != nil {
-			failure(w, e)
-			return
-		}
-		after, e := d.homeFenceAfter(r, p)
-		if e != nil {
-			failure(w, e)
-			return
-		}
-		if after != fence {
-			failure(w, catalog.ErrStaleContinuation)
-			return
-		}
-		write(w, 200, out)
-	})
+func (d Dependencies) serveGlobalSavedContent(w http.ResponseWriter, r *http.Request) {
+	switch r.URL.Query().Get("view") {
+	case "watchlist", "favorites", "playlists":
+		d.savedContent(w, r)
+	default:
+		failure(w, errors.New("choose a saved list or playlist directory"))
+	}
 }
 
 // compose runs a composite handler's body on one read snapshot, and hands the

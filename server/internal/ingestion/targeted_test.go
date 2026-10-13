@@ -58,7 +58,8 @@ func TestReportedPathsScanOnlyTheReportedFolders(t *testing.T) {
 				t.Fatal(state)
 			}
 		}
-		t.Fatal("scan did not finish")
+		state, _ := s.Get(job.ID)
+		t.Fatalf("scan did not finish: %+v", state)
 	}
 	first, err := s.QueueMode(ctx, lib.ID, "", "", nil)
 	if err != nil {
@@ -92,11 +93,11 @@ func TestReportedPathsScanOnlyTheReportedFolders(t *testing.T) {
 	}
 	report, err := s.ReportPaths(ctx, []string{
 		filepath.Join(media, "Beta (2001)", "Beta (2001) - extra.mp4"), // a new file: its known folder
-		filepath.Join(media, "Beta (2001)"),                           // the same folder again
-		filepath.Join(root, "elsewhere", "file.mp4"),                  // outside every library
-		"relative/path.mp4",                                           // not absolute
-		filepath.Join(media, "..", "media", "..", "catalog.sqlite"),   // climbs out of the library
-		strings.Repeat("/x", MaxPathBytes),                            // too long
+		filepath.Join(media, "Beta (2001)"),                            // the same folder again
+		filepath.Join(root, "elsewhere", "file.mp4"),                   // outside every library
+		"relative/path.mp4",                                            // not absolute
+		filepath.Join(media, "..", "media", "..", "catalog.sqlite"),    // climbs out of the library
+		strings.Repeat("/x", MaxPathBytes),                             // too long
 	}, nil)
 	if err != nil {
 		t.Fatal(err)

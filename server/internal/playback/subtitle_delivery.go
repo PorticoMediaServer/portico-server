@@ -81,6 +81,10 @@ func (s *Service) ChangeSubtitleDeliveryTx(ctx context.Context, tx *sql.Tx, p id
 	if err = persistDeliveryPlan(tx, session, &plan); err != nil {
 		return err
 	}
+	// The subtitle transaction publishes its new generation after this callback.
+	if _, err = tx.ExecContext(ctx, `UPDATE playback_conversion_targets SET generation=generation+1 WHERE session_id=?`, session); err != nil {
+		return err
+	}
 	if _, err = tx.ExecContext(ctx, `UPDATE playback_sessions SET mode=? WHERE id=?`, plan.Mode, session); err != nil {
 		return err
 	}

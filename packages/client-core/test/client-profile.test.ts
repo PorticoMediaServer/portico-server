@@ -188,3 +188,11 @@ test('a codec with only a software decoder is held to 1080p',()=>{
  assert.equal(of('av1').maxHeight,1080);assert.equal(of('av1').maxWidth,1920);
  assert.equal(of('vp9').maxHeight,1080,'a software decoder that states no limit still has one');
 });
+
+test('an engine can declare an audio sample-depth ceiling',()=>{
+ const d=appleDeclaredProfile({television:true});
+ d.engines.native.audio!.find(a=>a.codec==='flac')!.maxBitDepth=16;
+ assert.equal(capabilityDocumentProblem(d),null);
+ d.engines.native.audio!.find(a=>a.codec==='flac')!.maxBitDepth=65;
+ assert.equal(capabilityDocumentProblem(d),'engines.native.audio.flac');
+});

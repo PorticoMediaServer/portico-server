@@ -62,7 +62,7 @@ func TestDeclaredMpvEnginesTakeWhatTheNativePlayerCannot(t *testing.T) {
 			if p := plan(videoSource("mp4", "h264", avcDetail, aac), nil); p.Engine != EngineNative || p.Strategy != DeliveryOriginal {
 				t.Fatal("an ordinary file left the native player", p.Engine, p.Strategy)
 			}
-			if p := plan(videoSource("mkv", "h264", avcDetail, SourceAudio{Codec: "dts", Channels: 6}), nil); p.Engine != EngineMPV || p.Strategy != DeliveryOriginal {
+			if p := plan(videoSource("mkv", "h264", avcDetail, SourceAudio{Codec: "dts", Channels: 6}), func(in *DeliveryInput) { outputs := lossyOnlyTestOutputs(); in.Outputs = &outputs }); p.Engine != EngineMPV || p.Strategy != DeliveryOriginal {
 				t.Fatal("DTS in Matroska", p.Engine, p.Strategy, p.Trace.Routes)
 			}
 			if p := plan(videoSource("mkv", "mpeg2video", avcDetail, aac), nil); p.Engine != EngineMPV || p.Strategy != DeliveryOriginal {

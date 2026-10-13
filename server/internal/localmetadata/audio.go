@@ -220,18 +220,9 @@ func (s *Service) MovieArtwork(ctx context.Context, library, path string, f asse
 	defer cancel()
 	stem := strings.TrimSuffix(path, filepath.Ext(path))
 	for _, candidate := range []string{stem + "-poster.jpg", stem + "-poster.png", filepath.Join(filepath.Dir(path), "poster.jpg"), filepath.Join(filepath.Dir(path), "poster.png"), filepath.Join(filepath.Dir(path), "folder.jpg"), filepath.Join(filepath.Dir(path), "folder.png")} {
-		if unlisted(ctx, candidate) {
-			continue
-		}
-		raw, err := s.storage.ReadSmall(ctx, library, candidate, 4<<20)
-		if err != nil {
-			continue
-		}
-		if key, err := s.store(raw); err == nil {
+		if key, ok := s.sidecarKey(ctx, library, candidate); ok {
 			f.ArtworkKey = key
 			return f
-		} else {
-			f.LocalMetadataIssue = "invalid_local_cover"
 		}
 	}
 	return f

@@ -25,6 +25,9 @@ import (
 const analysisEnqueuePageSize = "32"
 
 func (s *Service) enqueueAnalysisPage(ctx context.Context, job string, source catalog.LibrarySource) error {
+	if more, e := s.enqueueSidecarChanges(ctx, job, source); more || e != nil {
+		return e
+	}
 	gated, err := dbwork.Begin(ctx, s.db, dbwork.ClassBackgroundMedia)
 	if err != nil {
 		return err
@@ -47,15 +50,39 @@ func (s *Service) enqueueAnalysisPage(ctx context.Context, job string, source ca
 		}
 		return gated.Commit()
 	}
-	rows, err := tx.QueryContext(ctx, `SELECT o.id,o.revision,o.analysis_revision,o.analysis_operations_json,o.relative_path FROM inventory_objects o JOIN inventory_runs r ON r.source_id=o.source_id WHERE r.job_id=? AND o.id>r.reconcile_cursor AND o.retired=0 AND o.state='available' AND o.root_incarnation=r.root_incarnation AND o.unsupported_reason='' ORDER BY o.id LIMIT `+analysisEnqueuePageSize+``, job)
+	var strmEnabled bool
+	var strmRevision int64
+	err = tx.QueryRowContext(ctx, `SELECT enabled,revision FROM source_strm_analysis WHERE library_id=?`, source.LibraryID).Scan(&strmEnabled, &strmRevision)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+	required := append([]string(nil), policy.Operations...)
+	if policy.Allows("probe") {
+		required = append(required, assets.PlaybackAnalysisRevision)
+	}
+	requiredJSON, _ := json.Marshal(required)
+	// Bound evidence evaluation even when the entire source is already complete.
+	// Unchanged candidates advance the cursor without creating queue rows.
+	rows, err := tx.QueryContext(ctx, `WITH batch AS MATERIALIZED (
+ SELECT o.* FROM inventory_objects o JOIN inventory_runs r ON r.source_id=o.source_id
+ WHERE r.job_id=? AND o.id>r.reconcile_cursor AND o.retired=0 AND o.state='available' AND o.root_incarnation=r.root_incarnation AND o.unsupported_reason=''
+ ORDER BY o.id LIMIT `+analysisEnqueuePageSize+`)
+ SELECT o.id,o.revision,((lower(substr(o.relative_path,-5))<>'.strm' OR ?=1) AND (o.analysis_revision<>o.revision OR o.analysis_policy<>? OR o.analysis_state='pending' OR o.analysis_generation<>r.source_generation OR (o.analysis_algorithm<>? AND EXISTS(SELECT 1 FROM json_each((SELECT operations_json FROM library_scan_policies WHERE library_id=?)) WHERE value IN('checksum','chapter_images','trickplay','waveform','loudness','fingerprint','segment_detection'))) OR
+ (lower(substr(o.relative_path,-5))<>'.strm' AND EXISTS(SELECT 1 FROM json_each(?) wanted WHERE NOT EXISTS(SELECT 1 FROM json_each(o.analysis_operations_json) done WHERE done.value=wanted.value))) OR
+ EXISTS(SELECT 1 FROM json_each(?) wanted WHERE wanted.value IN('checksum','chapter_images','trickplay','waveform','loudness','fingerprint','segment_detection') AND NOT EXISTS(SELECT 1 FROM analysis_heads h JOIN analysis_results a ON a.id=h.result_id WHERE h.object_id=o.id AND h.source_revision=o.revision AND h.stage=wanted.value AND a.algorithm=? AND a.root_incarnation=r.root_incarnation AND a.configuration_generation=r.source_generation AND a.retired_ms=0)) OR
+ (lower(substr(o.relative_path,-5))='.strm' AND NOT EXISTS(SELECT 1 FROM json_each(o.analysis_operations_json) done WHERE done.value=?))))
+ FROM batch o JOIN inventory_runs r ON r.source_id=o.source_id WHERE r.job_id=? ORDER BY o.id`, job, strmEnabled && policy.Allows("probe"), policy.Revision, mediaanalysis.Algorithm, source.LibraryID, string(requiredJSON), string(requiredJSON), mediaanalysis.Algorithm, "strm_target:"+strconv.FormatInt(strmRevision, 10), job)
 	if err != nil {
 		return err
 	}
-	type object struct{ id, revision, analyzed, ops, path string }
+	type object struct {
+		id, revision string
+		needs        bool
+	}
 	batch := []object{}
 	for rows.Next() {
 		var o object
-		if err = rows.Scan(&o.id, &o.revision, &o.analyzed, &o.ops, &o.path); err != nil {
+		if err = rows.Scan(&o.id, &o.revision, &o.needs); err != nil {
 			rows.Close()
 			return err
 		}
@@ -66,61 +93,11 @@ func (s *Service) enqueueAnalysisPage(ctx context.Context, job string, source ca
 	if err != nil {
 		return err
 	}
-	var strmEnabled bool
-	var strmRevision int64
-	err = tx.QueryRowContext(ctx, `SELECT enabled,revision FROM source_strm_analysis WHERE library_id=?`, source.LibraryID).Scan(&strmEnabled, &strmRevision)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return err
-	}
 	for _, o := range batch {
-		descriptor := strings.EqualFold(filepath.Ext(o.path), ".strm")
-		wanted := append([]string(nil), policy.Operations...)
-		if !descriptor && policy.Allows("probe") {
-			wanted = append(wanted, assets.PlaybackAnalysisRevision)
+		if !o.needs {
+			continue
 		}
-		if descriptor {
-			wanted = []string{"probe", "strm_target:" + strconv.FormatInt(strmRevision, 10)}
-			for _, op := range catalog.DeepScanOperations {
-				if policy.Allows(op) {
-					wanted = append(wanted, op)
-				}
-			}
-		}
-		pending := o.analyzed != o.revision
-		var completed []string
-		if json.Unmarshal([]byte(o.ops), &completed) != nil {
-			pending = true
-		}
-		for _, op := range wanted {
-			found := false
-			for _, done := range completed {
-				found = found || done == op
-			}
-			for _, deep := range catalog.DeepScanOperations {
-				if op == deep && found {
-					if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM analysis_heads h JOIN analysis_results r ON r.id=h.result_id WHERE h.object_id=? AND h.source_revision=? AND h.stage=? AND r.algorithm=? AND r.root_incarnation=? AND r.configuration_generation=? AND r.retired_ms=0)`, o.id, o.revision, op, mediaanalysis.Algorithm, source.Incarnation, source.Generation).Scan(&found); err != nil {
-						return err
-					}
-				}
-			}
-			pending = pending || !found
-		}
-		if descriptor {
-			for _, op := range catalog.DeepScanOperations {
-				pending = pending || policy.Allows(op)
-			}
-		}
-		state := "done"
-		if pending {
-			state = "pending"
-		}
-		if descriptor && (!strmEnabled || !policy.Allows("probe")) {
-			state = "skipped"
-			if _, err = tx.ExecContext(ctx, `UPDATE inventory_objects SET analysis_state='deferred' WHERE id=? AND analysis_revision!=revision`, o.id); err != nil {
-				return err
-			}
-		}
-		if _, err = tx.ExecContext(ctx, `INSERT INTO inventory_analysis_queue(job_id,object_id,revision,policy_revision,state) VALUES(?,?,?,?,?) ON CONFLICT(job_id,object_id) DO UPDATE SET revision=excluded.revision,policy_revision=excluded.policy_revision,state=excluded.state`, job, o.id, o.revision, policy.Revision, state); err != nil {
+		if _, err = tx.ExecContext(ctx, `INSERT INTO inventory_analysis_queue(job_id,object_id,revision,policy_revision,state) VALUES(?,?,?,?,'pending') ON CONFLICT(job_id,object_id) DO UPDATE SET revision=excluded.revision,policy_revision=excluded.policy_revision,state=excluded.state`, job, o.id, o.revision, policy.Revision); err != nil {
 			return err
 		}
 	}
@@ -193,8 +170,9 @@ func (s *Service) analyzeOne(parent context.Context, job string, source catalog.
 		return err
 	}
 	if busy {
-		_, err = dbwork.ExecWrite(parent, s.db, dbwork.ClassBackgroundMedia, `UPDATE inventory_runs SET pause_reason='playback' WHERE job_id=? AND pause_reason!='playback'`, job)
-		return err
+		if !waitScanPace(parent, 250*time.Millisecond) {
+			return parent.Err()
+		}
 	}
 	if _, err = dbwork.ExecWrite(parent, s.db, dbwork.ClassBackgroundMedia, `UPDATE inventory_runs SET pause_reason='',phase='basic_running' WHERE job_id=?`, job); err != nil {
 		return err
@@ -267,10 +245,7 @@ func (s *Service) analyzeOne(parent context.Context, job string, source catalog.
 					cancel()
 					return
 				}
-				if b, e := s.playbackBusy(ctx, source.ID); e != nil || b {
-					cancel()
-					return
-				}
+
 			}
 		}
 	})
@@ -301,11 +276,13 @@ func (s *Service) analyzeOne(parent context.Context, job string, source catalog.
 		return s.analysisAllowed(check, job, source.LibraryID, policy.Revision, "probe")
 	}
 	listed := s.scanListed(ctx, job, source)
+	artworkObserved := true
 	readContext := func(operation string) context.Context {
 		rooted := storage.WithScanInput(ctx, s.storage, source.ID, storage.InventoryRequest{Root: source.ResolvedPath, RootIdentity: source.RootIdentity, FollowSymlinks: source.FollowSymlinks})
 		// What this scan saw when it listed the directory spares a helper
 		// process for every sidecar that is not there.
 		rooted = localmetadata.WithListing(rooted, listed)
+		rooted = localmetadata.WithArtworkReadCheck(rooted, func() { artworkObserved = false })
 		return storage.WithScanReadGuard(rooted, func(check context.Context, candidate string) error {
 			if err := s.analysisAllowed(check, job, source.LibraryID, policy.Revision, operation); err != nil {
 				return err
@@ -430,7 +407,9 @@ func (s *Service) analyzeOne(parent context.Context, job string, source catalog.
 		return s.analysisOutcome(parent, job, object, revision, queuedPolicy, true, "source_revision_changed")
 	}
 	f.ObservedSize, f.ObservedModifiedNS, f.ObservedRevision = before.Size, before.ModifiedNS, before.Revision
+	f.ArtworkObserved = policy.Allows("local_metadata") && s.LocalMetadata != nil && artworkObserved && f.LocalMetadataIssue == ""
 	f.AnalysisOperations = completed
+	f.AnalysisAlgorithm = mediaanalysis.Algorithm
 	f.SubtitleTextPending = !descriptor && policy.Allows("subtitles") && s.Subtitles != nil && f.VideoCodec != ""
 	if err = s.catalog.CommitInventoryAnalysis(ctx, job, object, revision, policy.Revision, f); err != nil {
 		if errors.Is(err, context.Canceled) {
@@ -528,6 +507,18 @@ func (s *Service) analysisOutcome(ctx context.Context, job, object, revision str
 	}
 	n, _ := result.RowsAffected()
 	if n > 0 && warning {
+		var relative string
+		if err = tx.QueryRowContext(ctx, `SELECT relative_path FROM inventory_objects WHERE id=?`, object).Scan(&relative); err != nil {
+			return err
+		}
+		if code == "source_revision_changed" {
+			if err = recordNoticeTx(ctx, tx, source.ID, filepath.Dir(relative), time.Now().UnixMilli()); err != nil {
+				return err
+			}
+		}
+		if err = catalog.InventoryIssueTx(ctx, tx, job, storage.InventoryIssue{Path: relative, Reason: code, Warning: false}); err != nil {
+			return err
+		}
 		if _, err = tx.ExecContext(ctx, `UPDATE inventory_objects SET analysis_error=?,analysis_state='warning' WHERE id=? AND revision=?`, code, object, revision); err != nil {
 			return err
 		}
@@ -539,7 +530,7 @@ func (s *Service) analysisOutcome(ctx context.Context, job, object, revision str
 		}
 	}
 	if !warning {
-		if _, err = tx.ExecContext(ctx, `UPDATE inventory_objects SET analysis_state='complete',analysis_error='' WHERE id=? AND revision=?`, object, revision); err != nil {
+		if _, err = tx.ExecContext(ctx, `UPDATE inventory_objects SET analysis_state='complete',analysis_error='',analysis_algorithm=?,analysis_generation=? WHERE id=? AND revision=?`, mediaanalysis.Algorithm, source.Generation, object, revision); err != nil {
 			return err
 		}
 	}
@@ -552,7 +543,7 @@ func finishScanTx(ctx context.Context, tx *sql.Tx, job, source string) error {
 	// looked at it: an incremental scan that skipped its folder still ends
 	// "with warnings" and the source isn't "healthy" while any remain. One
 	// seek on the issues-only index (0223).
-	attention := `EXISTS(SELECT 1 FROM episodic_sources e WHERE e.library_id=(SELECT library_id FROM library_sources WHERE id=?) AND e.issue<>'')`
+	attention := `EXISTS(SELECT 1 FROM episodic_sources e JOIN inventory_objects o ON o.asset_id=e.asset_id JOIN library_sources s ON s.id=o.source_id WHERE s.id=? AND e.library_id=s.library_id AND e.issue<>'' AND o.retired=0 AND o.state='available' AND o.root_incarnation=s.incarnation)`
 	if _, err := tx.ExecContext(ctx, `UPDATE jobs SET status=CASE WHEN (SELECT warnings FROM inventory_runs WHERE job_id=?)>0 OR `+attention+` THEN 'complete_with_warnings' ELSE 'complete' END WHERE id=? AND status='running'`, job, source, job); err != nil {
 		return err
 	}

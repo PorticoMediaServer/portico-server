@@ -55,7 +55,7 @@ export const preferenceMessages = {
   'pref.label.playback.startedThresholdPercent': 'Counts as started',
   'pref.help.playback.startedThresholdPercent': 'How much you watch before a title joins Continue Watching.',
   'pref.label.playback.playedThresholdPercent': 'Counts as watched',
-  'pref.help.playback.playedThresholdPercent': 'How much you watch before a title is marked watched.',
+  'pref.help.playback.playedThresholdPercent': 'Music uses this percentage. Videos use the library’s percentage until you change this value. Audiobooks finish near the end.',
   'pref.label.playback.preferredAudioLanguages': 'Preferred audio languages',
   'pref.help.playback.preferredAudioLanguages': 'In order of preference.',
   'pref.label.playback.preferredSubtitleLanguages': 'Preferred subtitle languages',

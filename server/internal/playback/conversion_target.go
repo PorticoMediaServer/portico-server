@@ -43,7 +43,7 @@ func StoreConversionTarget(ctx context.Context, tx *sql.Tx, session string, targ
 	if err != nil {
 		return err
 	}
-	_, err = tx.ExecContext(ctx, `UPDATE playback_delivery_plans SET output_container=?,output_video=?,output_audio=?,audio_channels=?,target_width=?,target_height=?,max_frame_rate=?,video_bitrate=?,audio_bitrate=?,tone_map=?,hardware_backend=?,hardware_device=?,hardware_native=? WHERE session_id=?`, target.Packaging, target.VideoCodec, target.AudioCodec, target.AudioChannels, target.Width, target.Height, target.FrameRate, target.VideoBitrateBPS, target.AudioBitrateBPS, target.ToneMap, backend, device, native, session)
+	_, err = tx.ExecContext(ctx, `UPDATE playback_delivery_plans SET output_container=?,output_video=CASE WHEN video_action='none' THEN '' ELSE ? END,output_audio=CASE WHEN audio_action='none' THEN '' ELSE ? END,audio_channels=?,target_width=?,target_height=?,max_frame_rate=?,video_bitrate=?,audio_bitrate=?,tone_map=?,hardware_backend=?,hardware_device=?,hardware_native=? WHERE session_id=?`, target.Packaging, target.VideoCodec, target.AudioCodec, target.AudioChannels, target.Width, target.Height, target.FrameRate, target.VideoBitrateBPS, target.AudioBitrateBPS, target.ToneMap, backend, device, native, session)
 	return err
 }
 
@@ -72,7 +72,13 @@ func loadConversionTarget(q audioQuery, session string, p *DeliveryPlan) error {
 		}
 		p.ConversionProbe = &probe
 	}
-	p.OutputVideoCodec, p.OutputAudioCodec, p.OutputContainer = t.VideoCodec, t.AudioCodec, t.Packaging
+	p.OutputContainer = t.Packaging
+	if p.VideoAction != "none" {
+		p.OutputVideoCodec = t.VideoCodec
+	}
+	if p.AudioAction != "none" {
+		p.OutputAudioCodec = t.AudioCodec
+	}
 	p.TargetWidth, p.TargetHeight, p.MaxFrameRate = t.Width, t.Height, t.FrameRate
 	p.VideoBitrateBPS, p.AudioBitrateBPS, p.AudioChannels, p.AudioSampleRate = t.VideoBitrateBPS, t.AudioBitrateBPS, t.AudioChannels, t.AudioSampleRate
 	p.ToneMap = t.ToneMap

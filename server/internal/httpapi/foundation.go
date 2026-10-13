@@ -626,10 +626,14 @@ func FoundationRegistry(d Dependencies) (*apikit.Registry, error) {
 		return nil, err
 	}
 	registerBulkJobs(registry, d)
+	if err := registerPersonalReads(registry, d); err != nil {
+		return nil, err
+	}
 	registerDownloadRequests(registry, d)
 	registerDownloads(registry, d)
 	registerSocial(registry, d)
 	registerPlaylistWindows(registry, d)
+	registerScanLoop(registry, d)
 	registerMetadataAttention(registry, d)
 	registerMetadataSettings(registry, d)
 	registerMetadataRefresh(registry, d)

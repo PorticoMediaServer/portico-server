@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"portico.local/server/internal/personalstate"
 	"time"
 )
 
@@ -79,8 +80,7 @@ func RecSignalFor(ctx context.Context, q Querier, profile string, work int64, no
 	var at sql.NullString
 	err := q.QueryRowContext(ctx, `WITH m(id) AS (`+recWorkMembers+`),
 	 done AS (SELECT m.id FROM m WHERE EXISTS(SELECT 1 FROM personal_history h INDEXED BY personal_history_item_id_fk WHERE h.item_id=m.id AND h.profile_id=?2 AND h.completed=1)
-	  OR EXISTS(SELECT 1 FROM personal_items p WHERE p.profile_id=?2 AND p.item_id=m.id AND p.watched=1)
-	  OR EXISTS(SELECT 1 FROM personal_watched_intents w WHERE w.profile_id=?2 AND w.item_id=m.id AND w.watched=1))
+	  OR `+personalstate.SQL("?2", "m.id")+`=1)
 	 SELECT (SELECT count(*) FROM done),
 	  (SELECT count(*) FROM m CROSS JOIN personal_history h INDEXED BY personal_history_item_id_fk ON h.item_id=m.id WHERE h.profile_id=?2 AND h.completed=1),
 	  COALESCE((SELECT max(p.favorite) FROM m CROSS JOIN personal_items p ON p.profile_id=?2 AND p.item_id=m.id),0),
