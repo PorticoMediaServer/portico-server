@@ -22,6 +22,13 @@ cp "$STAGE/$EXE" "$STAGE/manifest.json" "$STAGE/manifest.sig" "$PAYLOAD/"
 cp -R "$STAGE/third_party" "$PAYLOAD/third_party"
 cp -R "$WEB/." "$PAYLOAD/web/"
 cp "$ROOT/LICENSE" "$ROOT/THIRD-PARTY-NOTICES.md" "$PAYLOAD/"
+mkdir -p "$PAYLOAD/licenses"
+cp "$ROOT/server/internal/imagework/SCALE_LICENSE" "$PAYLOAD/licenses/image-scaling.txt"
+cp "$ROOT/server/internal/thirdparty/sqlite/LICENSE" "$PAYLOAD/licenses/sqlite-driver.txt"
+cp "$ROOT/server/internal/mediaexec/fonts/LICENSE" "$PAYLOAD/licenses/decoder-fonts.txt"
+cp "$ROOT/third_party/hls.js/LICENSE" "$PAYLOAD/licenses/hls-js.txt"
+cp "$ROOT/web/src/ui/fonts/OFL.txt" "$PAYLOAD/licenses/manrope.txt"
+cp "$ROOT/packages/design/LICENSE-LUCIDE" "$PAYLOAD/licenses/lucide.txt"
 find "$PAYLOAD" \( -name '.DS_Store' -o -name '._*' \) -delete
 printf '{"version":"%s","build":"%s"}\n' "$VERSION" "$BUILD_NUMBER" > "$PAYLOAD/web/portico-build.json"
 

@@ -178,6 +178,17 @@ test('the Plex-model backups document parses; an unknown kind or an unreadable b
   assert.throws(()=>parseBackupsDocument({backups:{}}),{code:'invalid_administration_response'});
 });
 
+test('restore progress survives tolerant backup row parsing',()=>{
+ const backup={id:'backup-1',createdAt:'2026-10-13',kind:'manual',schemaVersion:1,serverVersion:'1',bytes:20,path:'/backups/one'};
+ const result={staged:true,restartRequired:true,validation:{schemaVersion:1,integrity:'ok'}};
+ const doc=parseBackupsDocument({backups:[backup,{id:'broken'},{...backup,path:'/duplicate'}],restore:{jobId:'restore-1',phase:'staged',bytesDone:20,bytesTotal:20,result},lastRestore:{at:'2026-10-13',outcome:'restored',jobId:'restore-0',schemaVersion:1}});
+ assert.equal(doc.backups.length,1);
+ assert.equal(doc.backups[0].path,'/backups/one');
+ assert.equal(doc.restore?.jobId,'restore-1');
+ assert.equal(doc.restore?.result?.validation.integrity,'ok');
+ assert.equal(doc.lastRestore?.jobId,'restore-0');
+});
+
 test('the restore receipt is strict and the refusal codes are recognised',()=>{
   const staged=parseRestoreStaged({staged:true,restartRequired:true,validation:{schemaVersion:41,integrity:'ok'}});
   assert.equal(staged.validation.schemaVersion,41);

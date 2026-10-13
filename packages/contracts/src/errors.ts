@@ -37,6 +37,12 @@ export const errors = [
     "retry": "same_request"
   },
   {
+    "code": "client_log_budget",
+    "status": 429,
+    "message": "The daily client log limit has been reached.",
+    "retry": "never"
+  },
+  {
     "code": "confirmation_mismatch",
     "status": 409,
     "message": "Type the name exactly as shown to confirm.",
@@ -82,6 +88,12 @@ export const errors = [
     "code": "device_not_found",
     "status": 404,
     "message": "This device isn't available.",
+    "retry": "never"
+  },
+  {
+    "code": "device_session_required",
+    "status": 403,
+    "message": "Sign in on this device to upload logs.",
     "retry": "never"
   },
   {
@@ -250,6 +262,12 @@ export const errors = [
     "code": "restore_integrity_failed",
     "status": 422,
     "message": "This backup failed its integrity check and can't be restored.",
+    "retry": "never"
+  },
+  {
+    "code": "restore_lock_unavailable",
+    "status": 409,
+    "message": "Portico cannot safely restore data in this folder. Use a folder on a local disk and try again.",
     "retry": "never"
   },
   {

@@ -1091,6 +1091,7 @@ client_log_uploads.account_id
 client_log_uploads.app_version
 client_log_uploads.body
 client_log_uploads.bytes
+client_log_uploads.device_class
 client_log_uploads.device_id
 client_log_uploads.id
 client_log_uploads.platform

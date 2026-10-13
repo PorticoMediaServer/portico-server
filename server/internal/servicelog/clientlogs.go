@@ -52,14 +52,15 @@ func NewClientLogStore(db *sql.DB) *ClientLogStore {
 }
 
 type ClientUpload struct {
-	ID         string `json:"id"`
-	AccountID  string `json:"accountId"`
-	ProfileID  string `json:"profileId"`
-	DeviceID   string `json:"deviceId"`
-	Platform   string `json:"platform"`
-	AppVersion string `json:"appVersion,omitempty"`
-	ReceivedAt string `json:"receivedAt"`
-	Bytes      int64  `json:"bytes"`
+	ID          string `json:"id"`
+	AccountID   string `json:"accountId"`
+	ProfileID   string `json:"profileId"`
+	DeviceID    string `json:"deviceId"`
+	Platform    string `json:"platform"`
+	DeviceClass string `json:"deviceClass"`
+	AppVersion  string `json:"appVersion,omitempty"`
+	ReceivedAt  string `json:"receivedAt"`
+	Bytes       int64  `json:"bytes"`
 	// Body is present only on a single-upload read, never in a list.
 	Body string `json:"body,omitempty"`
 }
@@ -71,10 +72,11 @@ type ClientUploadPage struct {
 }
 
 type ClientUploadRequest struct {
-	DeviceID   string `json:"deviceId"`
-	Platform   string `json:"platform"`
-	AppVersion string `json:"appVersion"`
-	Body       string `json:"body"`
+	DeviceID    string `json:"deviceId"`
+	Platform    string `json:"platform"`
+	DeviceClass string `json:"deviceClass"`
+	AppVersion  string `json:"appVersion"`
+	Body        string `json:"body"`
 }
 
 func bounded(v string, max int) bool { return utf8.ValidString(v) && len(v) <= max }
@@ -86,7 +88,7 @@ func (s *ClientLogStore) Store(ctx context.Context, accountID, profileID, sessio
 	if s == nil || s.DB == nil {
 		return out, ErrClientUpload
 	}
-	if !bounded(q.DeviceID, 128) || !bounded(q.Platform, 60) || !bounded(q.AppVersion, 60) {
+	if !bounded(q.DeviceID, 128) || !bounded(q.Platform, 60) || !bounded(q.AppVersion, 60) || !bounded(q.DeviceClass, 60) {
 		return out, ErrClientUpload
 	}
 	body := strings.TrimSpace(q.Body)
@@ -123,16 +125,25 @@ func (s *ClientLogStore) Store(ctx context.Context, accountID, profileID, sessio
 		return out, err
 	}
 	redacted := redactClientLog(body)
-	if _, err = tx.ExecContext(ctx, `INSERT INTO client_log_uploads(id,account_id,profile_id,device_id,platform,app_version,received_ms,bytes,body) VALUES(?,?,?,?,?,?,?,?,?)`, id, accountID, profileID, deviceID, q.Platform, q.AppVersion, now.UnixMilli(), len(body), redacted); err != nil {
+	if len(redacted) > MaxClientUploadBytes {
+		redacted = strings.ToValidUTF8(redacted[:MaxClientUploadBytes], "")
+	}
+	if _, err = tx.ExecContext(ctx, `INSERT INTO client_log_uploads(id,account_id,profile_id,device_id,platform,app_version,device_class,received_ms,bytes,body) VALUES(?,?,?,?,?,?,?,?,?,?)`, id, accountID, profileID, deviceID, q.Platform, q.AppVersion, q.DeviceClass, now.UnixMilli(), len(redacted), redacted); err != nil {
 		return out, err
 	}
 	if _, err = tx.ExecContext(ctx, `DELETE FROM client_log_uploads WHERE account_id=? AND device_id=? AND id NOT IN(SELECT id FROM client_log_uploads WHERE account_id=? AND device_id=? ORDER BY received_ms DESC,id DESC LIMIT ?)`, accountID, deviceID, accountID, deviceID, ClientUploadsPerDevice); err != nil {
 		return out, err
 	}
+	if _, err = tx.ExecContext(ctx, `DELETE FROM client_log_uploads WHERE id NOT IN (SELECT id FROM client_log_uploads ORDER BY received_ms DESC,id DESC LIMIT 100)`); err != nil {
+		return out, err
+	}
+	if _, err = tx.ExecContext(ctx, `DELETE FROM client_log_daily_usage WHERE day_ms<?`, dayStart-30*24*60*60*1000); err != nil {
+		return out, err
+	}
 	if err = write.Commit(); err != nil {
 		return out, err
 	}
-	return ClientUpload{ID: id, AccountID: accountID, ProfileID: profileID, DeviceID: deviceID, Platform: q.Platform, AppVersion: q.AppVersion, ReceivedAt: now.Format(time.RFC3339), Bytes: int64(len(body))}, nil
+	return ClientUpload{ID: id, AccountID: accountID, ProfileID: profileID, DeviceID: deviceID, Platform: q.Platform, AppVersion: q.AppVersion, DeviceClass: q.DeviceClass, ReceivedAt: now.Format(time.RFC3339), Bytes: int64(len(redacted))}, nil
 }
 
 // List pages uploads newest first.
@@ -146,14 +157,20 @@ func (s *ClientLogStore) List(ctx context.Context, cursor string, limit int) (Cl
 		return out, ErrClientUpload
 	}
 	before := int64(0)
+	beforeID := ""
 	if cursor != "" {
-		n, err := strconv.ParseInt(cursor, 10, 64)
+		stamp, id, ok := strings.Cut(cursor, ".")
+		if !ok || len(id) != 22 {
+			return out, ErrClientUpload
+		}
+		beforeID = id
+		n, err := strconv.ParseInt(stamp, 10, 64)
 		if err != nil {
 			return out, ErrClientUpload
 		}
 		before = n
 	}
-	rows, err := s.DB.QueryContext(ctx, `SELECT id,account_id,profile_id,device_id,platform,app_version,received_ms,bytes FROM client_log_uploads WHERE (?=0 OR received_ms<?) ORDER BY received_ms DESC,id DESC LIMIT ?`, before, before, limit+1)
+	rows, err := s.DB.QueryContext(ctx, `SELECT id,account_id,profile_id,device_id,platform,app_version,device_class,received_ms,bytes FROM client_log_uploads WHERE (?=0 OR received_ms<? OR (received_ms=? AND id<?)) ORDER BY received_ms DESC,id DESC LIMIT ?`, before, before, before, beforeID, limit+1)
 	if err != nil {
 		return out, err
 	}
@@ -162,7 +179,7 @@ func (s *ClientLogStore) List(ctx context.Context, cursor string, limit int) (Cl
 	for rows.Next() {
 		var u ClientUpload
 		var ms int64
-		if err = rows.Scan(&u.ID, &u.AccountID, &u.ProfileID, &u.DeviceID, &u.Platform, &u.AppVersion, &ms, &u.Bytes); err != nil {
+		if err = rows.Scan(&u.ID, &u.AccountID, &u.ProfileID, &u.DeviceID, &u.Platform, &u.AppVersion, &u.DeviceClass, &ms, &u.Bytes); err != nil {
 			return out, err
 		}
 		u.ReceivedAt = time.UnixMilli(ms).UTC().Format(time.RFC3339)
@@ -173,7 +190,7 @@ func (s *ClientLogStore) List(ctx context.Context, cursor string, limit int) (Cl
 	}
 	if len(out.Items) > limit {
 		out.Items = out.Items[:limit]
-		out.NextCursor = strconv.FormatInt(received[limit-1], 10)
+		out.NextCursor = strconv.FormatInt(received[limit-1], 10) + "." + out.Items[limit-1].ID
 	}
 	return out, nil
 }
@@ -182,8 +199,8 @@ func (s *ClientLogStore) List(ctx context.Context, cursor string, limit int) (Cl
 func (s *ClientLogStore) Read(ctx context.Context, id string) (ClientUpload, error) {
 	var u ClientUpload
 	var ms int64
-	err := s.DB.QueryRowContext(ctx, `SELECT id,account_id,profile_id,device_id,platform,app_version,received_ms,bytes,body FROM client_log_uploads WHERE id=?`, id).
-		Scan(&u.ID, &u.AccountID, &u.ProfileID, &u.DeviceID, &u.Platform, &u.AppVersion, &ms, &u.Bytes, &u.Body)
+	err := s.DB.QueryRowContext(ctx, `SELECT id,account_id,profile_id,device_id,platform,app_version,device_class,received_ms,bytes,body FROM client_log_uploads WHERE id=?`, id).
+		Scan(&u.ID, &u.AccountID, &u.ProfileID, &u.DeviceID, &u.Platform, &u.AppVersion, &u.DeviceClass, &ms, &u.Bytes, &u.Body)
 	if err != nil {
 		return u, err
 	}
@@ -204,4 +221,19 @@ func (s *ClientLogStore) Prune(ctx context.Context, days int) error {
 		_, err := tx.ExecContext(ctx, `DELETE FROM client_log_daily_usage WHERE day_ms<?`, s.Now().UTC().Truncate(24*time.Hour).Add(-time.Duration(days)*24*time.Hour).UnixMilli())
 		return err
 	})
+}
+
+func (s *ClientLogStore) Delete(ctx context.Context, id string) error {
+	result, err := dbwork.ExecWrite(ctx, s.DB, dbwork.ClassInteractive, `DELETE FROM client_log_uploads WHERE id=?`, id)
+	if err != nil {
+		return err
+	}
+	n, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
 }

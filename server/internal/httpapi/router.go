@@ -53,6 +53,7 @@ import (
 )
 
 type Dependencies struct {
+	Restart       func()
 	ListeningPort int
 	// SettingsApplied runs after an owner saves console settings so snapshot
 	// readers (delivery configuration) refresh off the request path.

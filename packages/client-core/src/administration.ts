@@ -52,12 +52,13 @@ export type BackupKind='scheduled'|'manual'|'pre-restore';
 export type BackupSummary=Readonly<{id:string;createdAt:string;kind:BackupKind;schemaVersion:number;serverVersion:string;bytes:number;path:string}>;
 export type BackupRunning=Readonly<{jobId:string;phase:string;bytesDone:number;bytesTotal:number}>;
 export type RestoreOutcome='restored'|'rolled_back';
-export type LastRestore=Readonly<{at:string;outcome:RestoreOutcome;reason:string}>;
-export type BackupsDocument=Readonly<{backups:readonly BackupSummary[];running?:BackupRunning;lastRestore?:LastRestore}>;
+export type LastRestore=Readonly<{at:string;outcome:RestoreOutcome;reason:string;jobId?:string;schemaVersion?:number}>;
+export type BackupsDocument=Readonly<{backups:readonly BackupSummary[];running?:BackupRunning;restore?:RestoreProgress;lastRestore?:LastRestore}>;
 export type RestoreSource=Readonly<{backupId:string}|{path:string}>;
+export type RestoreProgress=Readonly<{jobId:string;phase:string;bytesDone:number;bytesTotal:number;result?:RestoreStaged;errorCode?:string}>;
 export type RestoreStaged=Readonly<{staged:true;restartRequired:true;validation:Readonly<{schemaVersion:number;integrity:'ok'}>}>;
 /** The 4xx codes POST /v1/admin/backups/restore answers with (spec §4); `insufficient_disk` is shared with start. */
-export const RESTORE_REFUSAL_CODES=Object.freeze(['restore_source_invalid','restore_schema_newer','restore_pre_release','restore_integrity_failed','restore_not_portico','insufficient_disk'] as const);
+export const RESTORE_REFUSAL_CODES=Object.freeze(['restore_lock_unavailable','restore_source_invalid','restore_schema_newer','restore_pre_release','restore_integrity_failed','restore_not_portico','insufficient_disk'] as const);
 export type RestoreRefusalCode=typeof RESTORE_REFUSAL_CODES[number];
 /** isRestoreRefusalCode answers whether a failure code is one of the catalogue-mapped restore refusals. */
 export function isRestoreRefusalCode(code:string):code is RestoreRefusalCode{
@@ -350,14 +351,18 @@ export function parseBackupsDocument(v:unknown):BackupsDocument{
   if(!count(entry.schemaVersion)||!text(entry.serverVersion,64)||!count(entry.bytes)||!text(entry.path,8192))invalid('backup');
   return Object.freeze({id:entry.id,createdAt:entry.createdAt,kind:entry.kind as BackupKind,schemaVersion:entry.schemaVersion,serverVersion:entry.serverVersion,bytes:entry.bytes,path:entry.path});
  }),entry=>entry.id);
- const doc:{backups:readonly BackupSummary[];running?:BackupRunning;lastRestore?:LastRestore}={backups:Object.freeze(backups)};
+ const doc:{backups:readonly BackupSummary[];running?:BackupRunning;restore?:RestoreProgress;lastRestore?:LastRestore}={backups:Object.freeze(backups)};
  if(v.running!==undefined&&v.running!==null){
   const r=v.running;
   if(object(r)&&filled(r.jobId,128)&&text(r.phase,128)&&count(r.bytesDone)&&count(r.bytesTotal))doc.running=Object.freeze({jobId:r.jobId,phase:r.phase,bytesDone:r.bytesDone,bytesTotal:r.bytesTotal});
  }
+ if(v.restore!==undefined&&v.restore!==null){
+  const r=v.restore;
+  if(object(r)&&filled(r.jobId,128)&&text(r.phase,128)&&count(r.bytesDone)&&count(r.bytesTotal))doc.restore=Object.freeze({jobId:r.jobId,phase:r.phase,bytesDone:r.bytesDone,bytesTotal:r.bytesTotal,...(r.result?{result:parseRestoreStaged(r.result)}:{}),...(text(r.errorCode,128)?{errorCode:r.errorCode as string}:{})});
+ }
  if(v.lastRestore!==undefined&&v.lastRestore!==null){
   const r=v.lastRestore;
-  if(object(r)&&text(r.at,64)&&restoreOutcomes.includes(r.outcome as RestoreOutcome))doc.lastRestore=Object.freeze({at:r.at,outcome:r.outcome as RestoreOutcome,reason:text(r.reason,1024)?r.reason as string:''});
+  if(object(r)&&text(r.at,64)&&restoreOutcomes.includes(r.outcome as RestoreOutcome))doc.lastRestore=Object.freeze({at:r.at,outcome:r.outcome as RestoreOutcome,reason:text(r.reason,1024)?r.reason as string:'',...(filled(r.jobId,128)?{jobId:r.jobId as string}:{}),...(count(r.schemaVersion)?{schemaVersion:r.schemaVersion as number}:{})});
  }
  return Object.freeze(doc);
 }

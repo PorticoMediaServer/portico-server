@@ -34,6 +34,7 @@ jobs:
     runs-on: ubuntu-24.04
     outputs:
       tag: ${{ steps.identity.outputs.tag }}
+      sha: ${{ steps.identity.outputs.sha }}
       version: ${{ steps.identity.outputs.version }}
       toolchain_tag: ${{ steps.identity.outputs.toolchain_tag }}
       built_at: ${{ steps.identity.outputs.built_at }}
@@ -46,12 +47,13 @@ jobs:
           [[ "$REQUESTED_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]]
           {
             echo "tag=$REQUESTED_TAG"
+            echo "sha=$(git rev-parse HEAD)"
             echo "version=${REQUESTED_TAG#v}"
             echo "toolchain_tag=$(python3 -c "import json;print(json.load(open('third_party/ffmpeg/sources.lock.json'))['releaseTag'])")"
             echo "built_at=$(git show -s --format=%cd --date=format-local:%Y-%m-%dT%H:%M:%SZ HEAD)"
           } >> "$GITHUB_OUTPUT"
       - name: The signing key is configured
-        env: {KEY: '${{ secrets.PORTICO_RELEASE_SIGNING_KEY }}'}
+        env: {KEY: '${{ secrets.PORTICO_RELEASE_SIGNING_KEY }}', PUBLIC_KEY: '${{ vars.PORTICO_RELEASE_PUBLIC_KEY }}'}
         run: test -n "$KEY" || { echo "Set the PORTICO_RELEASE_SIGNING_KEY repository secret before releasing." >&2; exit 1; }
 
   tests:
@@ -59,14 +61,41 @@ jobs:
     uses: ./.github/workflows/ci.yml
     # The suite must run on the tag being published, not on the ref a manual
     # dispatch happened to start from.
-    with: {ref: '${{ needs.identity.outputs.tag }}'}
+    with: {ref: '${{ needs.identity.outputs.sha }}'}
+
+  qualification:
+    needs: [identity, tests]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    env:
+      PORTICO_TEST_TIER: all
+      PORTICO_PERFORMANCE_TIER: release
+      PORTICO_REQUIRE_QUALIFIED_FFMPEG: "1"
+      GOFLAGS: -p=2
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with: {ref: '${{ needs.identity.outputs.sha }}'}
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5
+        with: {go-version-file: server/go.mod, cache-dependency-path: server/go.sum}
+      - name: Test the application revision with its qualified media bundle
+        env: {GH_TOKEN: '${{ github.token }}', TOOLCHAIN_TAG: '${{ needs.identity.outputs.toolchain_tag }}'}
+        run: |
+          set -euo pipefail
+          mkdir -p .toolchain third_party/ffmpeg/bundle .scratch
+          gh release download "$TOOLCHAIN_TAG" --pattern "portico-ffmpeg-${TOOLCHAIN_TAG}-linux-x64.tar.xz" --dir .toolchain
+          tar -xJf .toolchain/*.tar.xz -C third_party/ffmpeg/bundle
+          scripts/verify-ffmpeg-bundle.sh third_party/ffmpeg/bundle full
+          cd server
+          go build -o ../.scratch/portico-server ./cmd/server
+          export PORTICO_PLAYBACK_TEST_HELPER="$GITHUB_WORKSPACE/.scratch/portico-server"
+          go test -timeout=120m ./...
 
   web:
     needs: [identity, tests]
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with: {ref: '${{ needs.identity.outputs.tag }}'}
+        with: {ref: '${{ needs.identity.outputs.sha }}'}
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with: {node-version: 24, cache: npm}
       - run: npm ci --no-audit --no-fund
@@ -77,7 +106,7 @@ jobs:
   server:
     # Every target is cross-compiled on Linux (CGO off); the sealing script runs
     # the server suite before each build, so each job needs the test database.
-    needs: [identity, tests, web]
+    needs: [identity, tests, qualification, web]
     runs-on: ubuntu-24.04
     timeout-minutes: 240
     strategy:
@@ -100,7 +129,7 @@ jobs:
         options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with: {ref: '${{ needs.identity.outputs.tag }}'}
+        with: {ref: '${{ needs.identity.outputs.sha }}'}
       - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
         with: {go-version-file: server/go.mod, cache-dependency-path: server/go.sum}
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
@@ -120,12 +149,16 @@ jobs:
           gh release download "$TOOLCHAIN_TAG" --pattern "portico-ffmpeg-${TOOLCHAIN_TAG}-${{ matrix.target }}.tar.xz" --dir .toolchain
           tar -xJf .toolchain/*.tar.xz -C .toolchain/ffmpeg
       - name: Restore the release signing key
-        env: {KEY: '${{ secrets.PORTICO_RELEASE_SIGNING_KEY }}'}
+        env: {KEY: '${{ secrets.PORTICO_RELEASE_SIGNING_KEY }}', PUBLIC_KEY: '${{ vars.PORTICO_RELEASE_PUBLIC_KEY }}'}
         run: |
           install -d -m 700 runtime/release-signing
           umask 077
           printf '%s' "$KEY" | base64 --decode > runtime/release-signing/private-key
           test "$(wc -c < runtime/release-signing/private-key)" -eq 32
+          test -n "$PUBLIC_KEY"
+          printf '%s' "$PUBLIC_KEY" | base64 --decode > runtime/release-signing/pinned-public-key
+          test "$(wc -c < runtime/release-signing/pinned-public-key)" -eq 32
+          echo "PORTICO_RELEASE_PUBLIC_KEY_FILE=$PWD/runtime/release-signing/pinned-public-key" >> "$GITHUB_ENV"
       - name: Build and seal the server
         id: build
         run: |
@@ -147,12 +180,13 @@ jobs:
     needs: [identity, server]
     runs-on: macos-15
     env:
+      PORTICO_MACOS_INSTALLER_IDENTITY: ${{ secrets.PORTICO_MACOS_INSTALLER_IDENTITY }}
       PORTICO_MACOS_SIGNING_IDENTITY: ${{ secrets.PORTICO_MACOS_SIGNING_IDENTITY }}
       PORTICO_RELEASE_SIGNING_KEY_FILE: ${{ github.workspace }}/runtime/release-signing/private-key
-      PORTICO_RELEASE_PUBLIC_KEY_FILE: ${{ github.workspace }}/runtime/release-signing/public-key
+      PORTICO_RELEASE_PUBLIC_KEY_FILE: ${{ github.workspace }}/runtime/release-signing/pinned-public-key
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with: {ref: '${{ needs.identity.outputs.tag }}'}
+        with: {ref: '${{ needs.identity.outputs.sha }}'}
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with: {name: macos-payload, path: .release/macos-payload}
       - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
@@ -166,18 +200,20 @@ jobs:
           echo "$PWD/.release/signing-venv/bin" >> "$GITHUB_PATH"
       - name: Restore the release signing key
         if: env.PORTICO_MACOS_SIGNING_IDENTITY != ''
-        env: {KEY: '${{ secrets.PORTICO_RELEASE_SIGNING_KEY }}'}
+        env: {KEY: '${{ secrets.PORTICO_RELEASE_SIGNING_KEY }}', PUBLIC_KEY: '${{ vars.PORTICO_RELEASE_PUBLIC_KEY }}'}
         run: |
           install -d -m 700 runtime/release-signing
           umask 077
           python3 -c "import base64,os,pathlib; pathlib.Path(os.environ['PORTICO_RELEASE_SIGNING_KEY_FILE']).write_bytes(base64.b64decode(os.environ['KEY'], validate=True))"
           test "$(wc -c < runtime/release-signing/private-key)" -eq 32
+          test -n "$PUBLIC_KEY"
+          printf '%s' "$PUBLIC_KEY" | base64 --decode > runtime/release-signing/pinned-public-key
       - run: ./scripts/package-macos.sh '${{ needs.identity.outputs.version }}' .release/macos-payload dist '${{ github.run_number }}'
       - name: Forget the signing key
         if: always()
         run: rm -rf runtime/release-signing
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with: {name: assets-macos-arm64, path: dist/Portico-Media-Server-macOS-arm64.dmg, if-no-files-found: error}
+        with: {name: assets-macos-arm64, path: dist/Portico-Media-Server-macOS-arm64.*, if-no-files-found: error}
 
   docker:
     # Do not move the public container tags until every native package exists.
@@ -185,7 +221,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with: {ref: '${{ needs.identity.outputs.tag }}'}
+        with: {ref: '${{ needs.identity.outputs.sha }}'}
       - name: Download the qualified FFmpeg toolchain for both image architectures
         # The image build copies third_party/ffmpeg/bundle, which is generated
         # and never committed, and no earlier job's workspace reaches this one.
@@ -230,7 +266,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with: {ref: '${{ needs.identity.outputs.tag }}'}
+        with: {ref: '${{ needs.identity.outputs.sha }}'}
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with: {path: dist/artifacts, pattern: 'assets-*', merge-multiple: true}
       - name: Verify the complete platform payload
@@ -242,6 +278,7 @@ jobs:
             Portico-Media-Server-Windows-arm64-Setup.exe
             Portico-Media-Server-Windows-arm64-Portable.zip
             Portico-Media-Server-macOS-arm64.dmg
+            Portico-Media-Server-macOS-arm64.pkg
             portico-media-server-linux-x64.tar.gz
             portico-media-server-linux-x64.deb
             portico-media-server-linux-x64.rpm
@@ -260,8 +297,28 @@ jobs:
           cp dist/portico-update-manifest.json dist/artifacts/
       - uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
         with: {path: dist/artifacts, format: spdx-json, output-file: dist/artifacts/portico-release.spdx.json}
+      - name: Authenticate the complete release
+        env: {KEY: '${{ secrets.PORTICO_RELEASE_SIGNING_KEY }}', PUBLIC_KEY: '${{ vars.PORTICO_RELEASE_PUBLIC_KEY }}'}
+        run: |
+          set -euo pipefail
+          python3 -m venv .release/sealing-venv
+          .release/sealing-venv/bin/pip install -r scripts/requirements-release.txt
+          install -d -m 700 runtime/release-signing
+          umask 077
+          printf '%s' "$KEY" | base64 --decode > runtime/release-signing/private-key
+          printf '%s' "$PUBLIC_KEY" | base64 --decode > runtime/release-signing/pinned-public-key
+          .release/sealing-venv/bin/python scripts/seal-release-artifacts.py dist/artifacts --key runtime/release-signing/private-key --public-key runtime/release-signing/pinned-public-key --source '${{ needs.identity.outputs.sha }}'
+      - name: Forget final release signing material
+        if: always()
+        run: rm -rf runtime/release-signing
       - uses: actions/attest-build-provenance@96b4a1ef7235a096b17240c259729fdd70c83d45 # v2
         with: {subject-path: 'dist/artifacts/*'}
+      - name: The release tag still names the tested revision
+        env: {TAG: '${{ needs.identity.outputs.tag }}', SOURCE_SHA: '${{ needs.identity.outputs.sha }}'}
+        run: |
+          set -euo pipefail
+          remote_sha=$(git ls-remote origin "refs/tags/$TAG" "refs/tags/$TAG^{}" | awk 'NR==1 { direct=$1 } $2 ~ /\^\{\}$/ { peeled=$1 } END { print peeled ? peeled : direct }')
+          test "$remote_sha" = "$SOURCE_SHA"
       - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           tag_name: '${{ needs.identity.outputs.tag }}'

@@ -14,11 +14,13 @@ export function decodeCreateJobResponse(input: unknown): types.CreateJobResponse
 export function decodeCreateQueueResponse(input: unknown): types.CreateQueueResponse { return decode("CreateQueueResponse", input) as types.CreateQueueResponse; }
 export function decodeCreateWebhookResponse(input: unknown): types.CreateWebhookResponse { return decode("CreateWebhookResponse", input) as types.CreateWebhookResponse; }
 export function decodeDeleteAdminBackupResponse(input: unknown): types.DeleteAdminBackupResponse { return decode("DeleteAdminBackupResponse", input) as types.DeleteAdminBackupResponse; }
+export function decodeDeleteClientLogResponse(input: unknown): types.DeleteClientLogResponse { return decode("DeleteClientLogResponse", input) as types.DeleteClientLogResponse; }
 export function decodeDeleteDeviceResponse(input: unknown): types.DeleteDeviceResponse { return decode("DeleteDeviceResponse", input) as types.DeleteDeviceResponse; }
 export function decodeDeleteDeviceSessionsResponse(input: unknown): types.DeleteDeviceSessionsResponse { return decode("DeleteDeviceSessionsResponse", input) as types.DeleteDeviceSessionsResponse; }
 export function decodeDeleteDirectSessionResponse(input: unknown): types.DeleteDirectSessionResponse { return decode("DeleteDirectSessionResponse", input) as types.DeleteDirectSessionResponse; }
 export function decodeDeleteQueueResponse(input: unknown): types.DeleteQueueResponse { return decode("DeleteQueueResponse", input) as types.DeleteQueueResponse; }
 export function decodeDeleteWebhookResponse(input: unknown): types.DeleteWebhookResponse { return decode("DeleteWebhookResponse", input) as types.DeleteWebhookResponse; }
+export function decodeDownloadClientLogResponse(input: unknown): types.DownloadClientLogResponse { return decode("DownloadClientLogResponse", input) as types.DownloadClientLogResponse; }
 export function decodeEmptyMissingTitlesResponse(input: unknown): types.EmptyMissingTitlesResponse { return decode("EmptyMissingTitlesResponse", input) as types.EmptyMissingTitlesResponse; }
 export function decodeGetAdminBackupsResponse(input: unknown): types.GetAdminBackupsResponse { return decode("GetAdminBackupsResponse", input) as types.GetAdminBackupsResponse; }
 export function decodeGetAdminMaintenanceSettingsResponse(input: unknown): types.GetAdminMaintenanceSettingsResponse { return decode("GetAdminMaintenanceSettingsResponse", input) as types.GetAdminMaintenanceSettingsResponse; }
@@ -28,6 +30,8 @@ export function decodeGetAuthCapabilitiesResponse(input: unknown): types.GetAuth
 export function decodeGetBootstrapResponse(input: unknown): types.GetBootstrapResponse { return decode("GetBootstrapResponse", input) as types.GetBootstrapResponse; }
 export function decodeGetCapabilitiesResponse(input: unknown): types.GetCapabilitiesResponse { return decode("GetCapabilitiesResponse", input) as types.GetCapabilitiesResponse; }
 export function decodeGetCapabilityReportResponse(input: unknown): types.GetCapabilityReportResponse { return decode("GetCapabilityReportResponse", input) as types.GetCapabilityReportResponse; }
+export function decodeGetClientLogResponse(input: unknown): types.GetClientLogResponse { return decode("GetClientLogResponse", input) as types.GetClientLogResponse; }
+export function decodeGetClientLogsResponse(input: unknown): types.GetClientLogsResponse { return decode("GetClientLogsResponse", input) as types.GetClientLogsResponse; }
 export function decodeGetConnectionResponse(input: unknown): types.GetConnectionResponse { return decode("GetConnectionResponse", input) as types.GetConnectionResponse; }
 export function decodeGetConnectivityPolicyResponse(input: unknown): types.GetConnectivityPolicyResponse { return decode("GetConnectivityPolicyResponse", input) as types.GetConnectivityPolicyResponse; }
 export function decodeGetConnectivityStatusResponse(input: unknown): types.GetConnectivityStatusResponse { return decode("GetConnectivityStatusResponse", input) as types.GetConnectivityStatusResponse; }
@@ -71,7 +75,9 @@ export function decodeMoveQueueEntryResponse(input: unknown): types.MoveQueueEnt
 export function decodePatchDeviceResponse(input: unknown): types.PatchDeviceResponse { return decode("PatchDeviceResponse", input) as types.PatchDeviceResponse; }
 export function decodePostAdminBackupsResponse(input: unknown): types.PostAdminBackupsResponse { return decode("PostAdminBackupsResponse", input) as types.PostAdminBackupsResponse; }
 export function decodePostAdminBackupsRestoreResponse(input: unknown): types.PostAdminBackupsRestoreResponse { return decode("PostAdminBackupsRestoreResponse", input) as types.PostAdminBackupsRestoreResponse; }
+export function decodePostAdminRestartResponse(input: unknown): types.PostAdminRestartResponse { return decode("PostAdminRestartResponse", input) as types.PostAdminRestartResponse; }
 export function decodePostAdminStatePermissionsFixResponse(input: unknown): types.PostAdminStatePermissionsFixResponse { return decode("PostAdminStatePermissionsFixResponse", input) as types.PostAdminStatePermissionsFixResponse; }
+export function decodePostClientLogResponse(input: unknown): types.PostClientLogResponse { return decode("PostClientLogResponse", input) as types.PostClientLogResponse; }
 export function decodePostDeviceResponse(input: unknown): types.PostDeviceResponse { return decode("PostDeviceResponse", input) as types.PostDeviceResponse; }
 export function decodePostDeviceApprovalResponse(input: unknown): types.PostDeviceApprovalResponse { return decode("PostDeviceApprovalResponse", input) as types.PostDeviceApprovalResponse; }
 export function decodePostDeviceSessionBindingResponse(input: unknown): types.PostDeviceSessionBindingResponse { return decode("PostDeviceSessionBindingResponse", input) as types.PostDeviceSessionBindingResponse; }
