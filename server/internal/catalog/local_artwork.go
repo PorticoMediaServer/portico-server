@@ -87,6 +87,19 @@ func (s *Service) commitAssetSidecars(ctx context.Context, tx *sql.Tx, library, 
 	}
 	switch kind {
 	case "tv", "anime":
+		if key := extra["item/still"]; key != "" {
+			items, e := scanInt64s(tx.QueryContext(ctx, `SELECT l.entity_id FROM catalog_asset_links l JOIN catalog_assets a ON a.id=l.asset_id WHERE a.token=?`, asset))
+			if e != nil {
+				return e
+			}
+			carriers := []sidecarCarrier{}
+			for _, item := range items {
+				carriers = append(carriers, sidecarCarrier{"item", item, "still", key})
+			}
+			if e = commitSidecars(ctx, tx, library, carriers); e != nil {
+				return e
+			}
+		}
 		shows, err := sidecarShowEntities(tx, asset)
 		if err != nil {
 			return err
@@ -115,17 +128,19 @@ func (s *Service) commitAssetSidecars(ctx context.Context, tx *sql.Tx, library, 
 		}
 		return commitSidecars(ctx, tx, library, carriers)
 	case "movie":
-		if key := extra["item/logo"]; key != "" {
-			items, err := scanInt64s(tx.QueryContext(ctx, `SELECT l.entity_id FROM catalog_assets a JOIN catalog_asset_links l INDEXED BY catalog_asset_links_asset ON l.asset_id=a.id WHERE a.token=?`, asset))
-			if err != nil {
-				return err
-			}
-			carriers := []sidecarCarrier{}
-			for _, item := range items {
-				carriers = append(carriers, sidecarCarrier{"item", item, "logo", key})
-			}
-			return commitSidecars(ctx, tx, library, carriers)
+		items, err := scanInt64s(tx.QueryContext(ctx, `SELECT l.entity_id FROM catalog_assets a JOIN catalog_asset_links l INDEXED BY catalog_asset_links_asset ON l.asset_id=a.id WHERE a.token=?`, asset))
+		if err != nil {
+			return err
 		}
+		carriers := []sidecarCarrier{}
+		for _, item := range items {
+			for _, role := range []string{"logo", "backdrop"} {
+				if key := extra["item/"+role]; key != "" {
+					carriers = append(carriers, sidecarCarrier{"item", item, role, key})
+				}
+			}
+		}
+		return commitSidecars(ctx, tx, library, carriers)
 	}
 	return nil
 }

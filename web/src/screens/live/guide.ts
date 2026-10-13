@@ -1,10 +1,10 @@
 import {useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore} from 'react';
 import {ChannelGuideService, channelOperationId, guideWindow, saveChannelPreference, type ChannelGuide, type ChannelKind, type GuideChannel, type GuideRoute, type GuideSnapshot} from '@core/channel-guide.ts';
 import {DVRClient} from '@core/dvr.ts';
-import {defaultI18n} from '@i18n';
 import {useSession} from '../../app/session';
 import {errorText} from '../../app/errors';
 import {useViewerScope} from '../../app/viewer-scope';
+import {useI18n} from '../../app/i18n';
 
 const HOUR = 3600000;
 
@@ -16,27 +16,27 @@ export function localTimezone(): string {
   }
 }
 
-/** Formatters bound to the guide's timezone so the ruler matches the server viewport. */
+/** Formatters bound to the guide's timezone so the ruler matches the server viewport, in the viewer's language and 12/24-hour clock. */
 export function useGuideFormat(timezone: string) {
+  const i18n = useI18n();
   return useMemo(() => {
-    let time: Intl.DateTimeFormat | null = null, weekday: Intl.DateTimeFormat | null = null, day: Intl.DateTimeFormat | null = null;
+    // A sortable day key, never shown: en-CA writes YYYY-MM-DD.
+    let day: Intl.DateTimeFormat | null = null;
     try {
-      time = new Intl.DateTimeFormat(undefined, {hour: 'numeric', minute: '2-digit', timeZone: timezone});
-      weekday = new Intl.DateTimeFormat(undefined, {weekday: 'long', month: 'short', day: 'numeric', timeZone: timezone});
       day = new Intl.DateTimeFormat('en-CA', {year: 'numeric', month: '2-digit', day: '2-digit', timeZone: timezone});
     } catch {}
-    const clock = (ms: number) => (time ? time.format(new Date(ms)) : new Date(ms).toISOString().slice(11, 16));
+    const clock = (ms: number) => i18n.formatDate(ms, {hour: 'numeric', minute: '2-digit', timeZone: timezone}) || new Date(ms).toISOString().slice(11, 16);
     const dayKey = (ms: number) => (day ? day.format(new Date(ms)) : new Date(ms).toISOString().slice(0, 10));
     const dayLabel = (ms: number) => {
       const key = dayKey(ms), now = Date.now();
-      if (key === dayKey(now)) return defaultI18n.t('web.live.today');
-      if (key === dayKey(now + 24 * HOUR)) return defaultI18n.t('web.live.tomorrow');
-      if (key === dayKey(now - 24 * HOUR)) return defaultI18n.t('relative.yesterday');
-      return weekday ? weekday.format(new Date(ms)) : key;
+      if (key === dayKey(now)) return i18n.t('guide.today');
+      if (key === dayKey(now + 24 * HOUR)) return i18n.t('guide.tomorrow');
+      if (key === dayKey(now - 24 * HOUR)) return i18n.t('guide.yesterday');
+      return i18n.formatDate(ms, {weekday: 'long', month: 'short', day: 'numeric', timeZone: timezone}) || key;
     };
-    const range = (startMs: number, endMs: number) => `${clock(startMs)} – ${clock(endMs)}`;
+    const range = (startMs: number, endMs: number) => i18n.t('guide.range', {start: clock(startMs), end: clock(endMs)});
     return {clock, dayLabel, range};
-  }, [timezone]);
+  }, [i18n, timezone]);
 }
 
 

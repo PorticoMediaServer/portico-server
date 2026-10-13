@@ -3,6 +3,7 @@ import type {AudioEffectsSettings} from './audio-effects.ts';
 import type {ListeningService, ListeningTarget} from './listening.ts';
 import type {QueueAdvanceMode, QueuePostPlay} from './post-play.ts';
 import type {PreparedChoice} from './prepared-media.ts';
+import type {PlaybackChoices} from './playback-v1/choices.ts';
 import type {QueueIntent, QueueItemInput, QueueSnapshot, QueueState} from './queues.ts';
 
 /** The queue as the player shows it: the snapshot, what is playing, what comes next, and the
@@ -26,7 +27,12 @@ export interface QueueController {
   subscribe(fn: () => void): () => void;
   connect(): () => void;
   dispose(): void;
-  playItem(itemId: string, startSeconds?: number, prepared?: PreparedChoice, quality?: string, audioStream?: number): Promise<void>;
+  /** Plays one title. When it is the queue's current entry (Replay, a retry on another route) the
+   * entry starts again in place and the queue is kept; otherwise it becomes a new queue. */
+  playItem(itemId: string, startSeconds?: number, prepared?: PreparedChoice, quality?: string, audioStream?: number, choices?: PlaybackChoices): Promise<void>;
+  /** Re-plans the live session with a new quality, version or audio track: the same session on the
+   * same queue entry. Absent where the queue cannot. */
+  changePlayback?(choices: PlaybackChoices): Promise<void>;
   playEntries(entries: readonly QueueItemInput[], options?: {shuffle?: boolean; startSeconds?: number}): Promise<void>;
   journey(target: ListeningTarget, action: 'play' | 'shuffle' | 'mix' | 'enqueue', resume?: boolean, options?: {signal?: AbortSignal; startItem?: string; startSeconds?: number}): Promise<unknown>;
   enqueue(item: QueueItemInput, next?: boolean): Promise<void>;

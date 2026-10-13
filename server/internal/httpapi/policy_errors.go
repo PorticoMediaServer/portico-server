@@ -18,7 +18,11 @@ func policyErrorDefinitions() []apierror.Definition {
 }
 
 func policyCatalogue() *apierror.Registry {
-	registry, err := apierror.New(append(v1ErrorDefinitions(), policyErrorDefinitions()...)...)
+	definitions := append(v1ErrorDefinitions(), policyErrorDefinitions()...)
+	definitions = append(definitions, connectionErrorDefinitions()...)
+	definitions = append(definitions, credentialErrorDefinitions()...)
+	definitions = append(definitions, webhookErrorDefinitions()...)
+	registry, err := apierror.New(definitions...)
 	if err != nil {
 		panic(err)
 	}

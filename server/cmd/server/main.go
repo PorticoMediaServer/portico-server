@@ -10,6 +10,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/netip"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -158,10 +159,9 @@ func env(k, fallback string) string {
 	return fallback
 }
 
-// defaultBind is the first-run LAN-reachable default (ONB-02 item 2). Setup
-// still accepts only private peers and public traffic still requires TLS, so
-// reachability does not widen trust.
-const defaultBind = "0.0.0.0:32500"
+// defaultBind accepts IPv4 and IPv6 on hosts supporting a dual-stack socket.
+// HTTP and TLS share this listener; route authorization applies to both.
+const defaultBind = ":32500"
 
 // stateDirFreshThisProcess reports whether this process created the state
 // directory's database file. ONB-02 item 4: a foreign-schema warning about a
@@ -268,8 +268,8 @@ func run() (runErr error) {
 		return e
 	}
 	ip := net.ParseIP(host)
-	if ip == nil {
-		return errors.New("server requires an explicit IP bind")
+	if host == "" {
+		ip = net.IPv6unspecified
 	}
 	// The socket is bound before anything expensive happens, so a client that
 	// arrives during startup gets an honest "starting" answer with phase progress
@@ -284,6 +284,7 @@ func run() (runErr error) {
 		return e
 	}
 	reporter.finish("listener", nil)
+	ip = listener.Addr().(*net.TCPAddr).IP
 	defer listener.Close()
 	// One process owns one state directory. The lock is taken now — after the
 	// listener is bound, so a second instance's refusal is visible, and before
@@ -382,9 +383,6 @@ func run() (runErr error) {
 		return livechannels.ReadSource(ctx, locator, remotemedia.Policy{ReadTimeout: 10 * time.Second}, adminops.LogoUploadBytes)
 	}
 	adminOperations.Fetch = adminops.FetchReleaseFeed
-	if e = adminOperations.RecoverFileOperations(context.Background()); e != nil {
-		return e
-	}
 	// One bounded barrier for every long-lived loop, registered here so it runs
 	// before the database closes and after the HTTP server has stopped accepting.
 	drain := &drainBarrier{}
@@ -476,6 +474,7 @@ func run() (runErr error) {
 	if e != nil {
 		return e
 	}
+	localMeta.ArtworkLimit = func(ctx context.Context) int64 { return metadata.LocalArtworkLimit(ctx, db) }
 	scanner.LocalMetadata = localMeta
 	lyricProvider, e := lyrics.NewLRCLIB(env("PORTICO_LYRICS_PROVIDER_ORIGIN", "https://lrclib.net"))
 	if e != nil {
@@ -808,7 +807,7 @@ func run() (runErr error) {
 	// time; a play measures a missing one itself (bounded).
 	supervise.Supervise(ctx, "cmd.audio-facts", func(life context.Context) {
 		wake := worker.NewSignal()
-		unregister := dbwork.WakeOnTables(wake, "assets", "item_assets")
+		unregister := dbwork.WakeOnTables(wake, "catalog_assets", "catalog_asset_links", "audio_render_fact_requests")
 		defer unregister()
 		backfill := &audiofacts.Backfill{DB: db, Measure: subtitleRenderer.MeasureAudio}
 		worker.Run(life, "cmd.audio-facts", wake, backfill.Step)
@@ -850,7 +849,17 @@ func run() (runErr error) {
 		unregister := dbwork.WakeOnCommit(wake)
 		defer unregister()
 		lastArtwork := time.Time{}
+		lastMissing := time.Time{}
 		worker.Run(ctx, "cmd.minute-cleanup", wake, func(ctx context.Context) time.Duration {
+			// Missing titles follow the owner's rule (immediately, after a number
+			// of days, never). A short, bounded pass; a long list is worked off
+			// over several passes so nothing else waits on it.
+			if time.Since(lastMissing) >= 30*time.Second {
+				lastMissing = time.Now()
+				pass, cancel := context.WithTimeout(dbwork.WithClass(ctx, dbwork.ClassMaintenance), 2*time.Second)
+				_, _ = cat.EmptyMissingDue(pass)
+				cancel()
+			}
 			_ = player.Cleanup()
 			_ = cat.CleanupPersonalReceipts()
 			_ = cat.CleanupBulkJobs(dbwork.WithClass(ctx, dbwork.ClassMaintenance), 250*time.Millisecond)
@@ -862,10 +871,6 @@ func run() (runErr error) {
 			return 0
 		})
 	})
-	trustedProxies, e := httpapi.ParseTrustedProxyCIDRs(os.Getenv("PORTICO_TRUSTED_PROXY_CIDRS"))
-	if e != nil {
-		return e
-	}
 	doneConsole := reporter.step("console", "Open the operations console")
 	console, scheduler, e := initializeConsole(db, scanner, player, hls, cat, lyricFetch, state)
 	if console != nil {
@@ -978,6 +983,7 @@ func run() (runErr error) {
 	}
 	backupService.SetRestartFunc(requestRestart)
 	backupService.SetRestoreAvailable(lockErr == nil)
+	outboundWebhooks := startWebhooks(ctx, db, ident, backupService, adminOperations, console)
 	// The backup schedule: every five minutes a window holding the backup
 	// task may start one scheduled backup, then prune to the keep count.
 	backupScheduler := backupService.Schedule(db, func(scheduleCtx context.Context) (int, error) {
@@ -1021,12 +1027,12 @@ func run() (runErr error) {
 	if manager := claimHandler.Remote(); manager != nil {
 		manager.SetAccessURLs(accessURLsProvider(console, manager))
 	}
-	handler := httpapi.New(httpapi.Dependencies{Restart: requestRestart, Events: events, Administration: adminOperations, Backups: backupService, Access: administration, SettingsApplied: func(ctx context.Context) {
+	handler := httpapi.New(httpapi.Dependencies{Restart: requestRestart, ListeningPort: listener.Addr().(*net.TCPAddr).Port, Events: events, Administration: adminOperations, Backups: backupService, Access: administration, Webhooks: outboundWebhooks, SettingsApplied: func(ctx context.Context) {
 		control.NotifySettingsChanged(ctx)
 		supervise.Go("delivery-settings.refresh", func() { deliverySettings.Refresh(ctx) })
 		claimHandler.Remote().Wake()
 		invalidateCustomSource()
-	}, WebDirectory: os.Getenv("PORTICO_WEB_DIR"), Analysis: analysisService, Prepared: preparedVersions, Downloads: offlineDownloads, DVR: recordingStore, Subtitles: subtitleService, Lyrics: lyricService, LyricsBulk: lyricFetch, LyricsProbe: ffprobeTool, LibraryChannels: generatedChannels, Console: console, Scheduler: scheduler, Measurements: measurements, Networking: claimHandler, CustomCertificate: customCertificate, RouteIdentity: networking.NewRouteIdentityHandler(claimKeys, claimRunner), LiveChannels: liveSources, PlaybackRuntime: currentPlayback, AudioMedia: subtitleRenderer, Storage: storeIO, Mounts: managed, RemoteSources: sources, TrustedProxies: trustedProxies, DB: db, Watchdog: watchdog, Identity: ident, Catalog: cat, Ingestion: scanner, Playback: player, Hosted: control, Metadata: meta, Origins: origins})
+	}, WebDirectory: os.Getenv("PORTICO_WEB_DIR"), Analysis: analysisService, Prepared: preparedVersions, Downloads: offlineDownloads, DVR: recordingStore, Subtitles: subtitleService, Lyrics: lyricService, LyricsBulk: lyricFetch, LyricsProbe: ffprobeTool, LibraryChannels: generatedChannels, Console: console, Scheduler: scheduler, Measurements: measurements, Networking: claimHandler, CustomCertificate: customCertificate, RouteIdentity: networking.NewRouteIdentityHandler(claimKeys, claimRunner), LiveChannels: liveSources, PlaybackRuntime: currentPlayback, AudioMedia: subtitleRenderer, Storage: storeIO, Mounts: managed, RemoteSources: sources, DB: db, Watchdog: watchdog, Identity: ident, Catalog: cat, Ingestion: scanner, Playback: player, Hosted: control, Metadata: meta, Origins: origins})
 	// The timeout and 5xx log lines name the registered route pattern, which
 	// only the router can resolve for a request seen outside the mux.
 	measurements.Pattern = httpapi.RoutePattern
@@ -1037,10 +1043,29 @@ func run() (runErr error) {
 	// answered with an honest 500 when nothing has reached the client yet.
 	handlerSwitch.set(supervise.HandlerMiddleware(measurements.Wrap(handler)))
 	serverReadyHook()
+	supervise.Go("cmd.started-notice", func() { announceStarted(ctx, outboundWebhooks) })
 	supervise.Supervise(ctx, "cmd.visibility-rebuilder", cat.RunVisibilityRebuilder)
 	supervise.Supervise(ctx, "cmd.compact-catalogue", compactcatalog.NewWorker(db).Run)
 	server := &http.Server{Addr: bind, Handler: handlerSwitch, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 32 << 10, HTTP2: serverHTTP2Policy()}
 	connectionLimit := connectionBudget(hostlimits.EffectiveMemoryBytes())
+	if console != nil {
+		if document, err := console.Settings(ctx, operations.AllowServerScope); err == nil && document.Effective.ConnectionLimit > 0 {
+			connectionLimit = document.Effective.ConnectionLimit
+		}
+	}
+	transport := consoleConnections(listener, connectionLimit)
+	listener = transport
+	server.ConnContext = transport.context
+	server.ConnState = transport.state
+	transport.ownerRequest = func(r *http.Request) bool {
+		header := r.Header.Get("Authorization")
+		if !strings.HasPrefix(header, "Bearer ") {
+			return false
+		}
+		p, err := ident.Authenticate(strings.TrimPrefix(header, "Bearer "))
+		return err == nil && p.Role == "owner"
+	}
+	server.Handler = transport.protectConsole(handlerSwitch)
 	// The watchdog and the deferred database housekeeping both start only now, so
 	// neither competes with the work of coming up.
 	supervise.Supervise(ctx, "cmd.database-watchdog", watchdog.Run)
@@ -1056,9 +1081,9 @@ func run() (runErr error) {
 		runDatabaseHousekeeping(life, db)
 	})
 	supervise.Go("hosted.storage", func() { control.ObserveStorage(ctx, state) })
-	shutdownDone := make(chan struct{})
+	httpShutdownDone := make(chan struct{})
 	supervise.Go("cmd.http-shutdown", func() {
-		defer close(shutdownDone)
+		defer close(httpShutdownDone)
 		<-ctx.Done()
 		stop, c := context.WithTimeout(context.Background(), 10*time.Second)
 		defer c()
@@ -1072,17 +1097,8 @@ func run() (runErr error) {
 
 	// A custom certificate serves even with no Hosted manager (unclaimed /
 	// Direct Sign-In): the listener exists whenever either source can serve.
-	customConfigured := false
-	if console != nil {
-		if document, err := console.Settings(ctx, operations.AllowServerScope); err == nil {
-			customConfigured = document.Effective.CustomCertificatePath != "" && document.Effective.CustomCertificateKeyPath != "" && document.Effective.CustomCertificateDomain != ""
-		}
-	}
-	usesDirectListener := certificates != nil || !ip.IsLoopback() || customConfigured
-	if usesDirectListener {
-		direct, err := boundedDirectListener(listener, connectionLimit, func(raw net.Listener) (*networking.DirectListener, error) {
-			return networking.NewDirectListenerWithCustom(raw, certificates, customCertificate)
-		})
+	{
+		direct, err := networking.NewDirectListenerWithCustom(listener, certificates, customCertificate)
 		if err != nil {
 			return err
 		}
@@ -1116,7 +1132,21 @@ func run() (runErr error) {
 	}
 	if env("PORTICO_DISCOVERY", "1") != "0" {
 		administration.Advertiser.Bind(ctx, func(life context.Context) {
-			networking.NewDiscovery(claimKeys, claimRunner, ident.Name).Run(life, listener.Addr().String())
+			discovery := networking.NewDiscovery(claimKeys, claimRunner, ident.Name)
+			discovery.SetHomeNetworks(func(ctx context.Context) []netip.Prefix {
+				document, err := console.Settings(ctx, operations.AllowServerScope)
+				if err != nil {
+					return nil
+				}
+				var networks []netip.Prefix
+				for _, raw := range document.Effective.LANNetworks {
+					if p, ok := operations.ParseNetwork(raw); ok {
+						networks = append(networks, p)
+					}
+				}
+				return networks
+			})
+			discovery.Run(life, listener.Addr().String())
 		})
 		discoveryDone := make(chan struct{})
 		drain.add("discovery", func() {
@@ -1124,13 +1154,8 @@ func run() (runErr error) {
 		}, discoveryDone)
 	}
 
-	// The lanes protect handlers; this protects the process. Every accepted
-	// connection is a goroutine and two buffers before any lane is consulted.
-	if !usesDirectListener {
-		listener = capConnections(listener, connectionLimit)
-	}
-	log.Printf("Connection ceiling set to %d (HTTP/2 streams per connection: %d)", connectionLimit, server.HTTP2.MaxConcurrentStreams)
-	log.Printf("Portico server listening on %s", listener.Addr())
+	log.Printf("Ordinary connection ceiling set to %d, plus 32 reserved for the console (HTTP/2 streams per connection: %d)", connectionLimit, server.HTTP2.MaxConcurrentStreams)
+	log.Printf("Portico server listening on %s (HTTP and HTTPS share this port)", listener.Addr())
 	// ONB-02 item 1: while setup is unfinished, every start names the address
 	// to open. The port comes from the bound listener, not the configured
 	// string, so a :0 or overridden bind still prints a reachable URL.
@@ -1143,7 +1168,7 @@ func run() (runErr error) {
 	}
 	e = server.Serve(listener)
 	if errors.Is(e, http.ErrServerClosed) {
-		<-shutdownDone
+		<-httpShutdownDone
 		if restartRequested.Load() {
 			return errRestartRequested
 		}

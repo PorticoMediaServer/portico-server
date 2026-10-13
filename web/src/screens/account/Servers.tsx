@@ -1,11 +1,9 @@
 import {useCallback, useEffect, useMemo, useState} from 'react';
-import {defaultI18n} from '@i18n';
+import {useI18n} from '../../app/i18n';
 import {accountApi, type AccountScope} from '../../bridge/account-api';
 import {useSession} from '../../app/session';
 import {ErrorNotice, errorText} from '../../app/errors';
 import {Button, ConfirmDialog, Loading, Notice, SettingsGroup, SettingsPage, SettingsRow, StateView, relative} from '../../ui';
-
-const t = defaultI18n.t;
 
 export type AccountServer = {id: string; name?: string; ownedByMe?: boolean; online?: boolean; lastSeenAt?: string | null};
 
@@ -54,6 +52,7 @@ export const leaveAccountServer = async (request: AccountRequest, serverId: stri
  * with 409, so none is offered.
  */
 export function Servers({scope}: {scope: AccountScope}) {
+  const {t} = useI18n();
   const session = useSession();
   const api = useMemo(() => accountApi(scope), [scope.accountId, scope.familyId]);
   const [servers, setServers] = useState<AccountServer[]>();

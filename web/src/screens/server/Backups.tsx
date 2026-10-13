@@ -1,7 +1,7 @@
 import {useEffect, useRef, useState} from 'react';
 import {backupProgressFraction, isRestoreRefusalCode, parseEnvelope, parseFilesystemPage, type BackupKind, type BackupSummary, type FilesystemPage, type LastRestore, type RestoreRefusalCode} from '@core/administration.ts';
 import {deleteBackup, getBackups, isAuthenticationFailure, restoreBackup, startBackup, waitForBackupCompletion, waitForServerAnswer} from '@core/backups.ts';
-import {bytes, problem, useAction, useRead} from '../../admin/console';
+import {problem, useAction, useRead} from '../../admin/console';
 import {filesystemPath, mergeFilesystemPages} from './LibrarySettings';
 import {createOperationIds} from './operation-ids';
 import {useSession} from '../../app/session';
@@ -32,7 +32,6 @@ export function isBackupSourceFile(path: string): boolean {
   return path.toLowerCase().endsWith('.db');
 }
 
-const whenBackup = (iso: string) => (iso ? new Date(iso).toLocaleString(undefined, {dateStyle: 'medium', timeStyle: 'short'}) : '—');
 
 type RestoreTarget = {kind: 'backup'; backup: BackupSummary} | {kind: 'path'; path: string};
 
@@ -43,7 +42,8 @@ type RestoreTarget = {kind: 'backup'; backup: BackupSummary} | {kind: 'path'; pa
 export function BackupsGroup() {
   const {api, system, session} = useSession();
   const serverId = system?.id ?? session?.viewer.serverId ?? '';
-  const {t} = useI18n();
+  const i18n = useI18n();
+  const {t} = i18n;
   const read = useRead(() => getBackups(api, serverId), [api, serverId]);
   const action = useAction();
   // M19: one ID per logical write; retries reuse it.
@@ -193,8 +193,8 @@ export function BackupsGroup() {
         </div>
       ) : null}
       {doc?.backups.map(b => (
-        <SettingsRow key={b.id} icon="storage" label={whenBackup(b.createdAt)}
-          help={t('web.maintenance.backupDetails', {kind: t(backupKindMessageId(b.kind)), size: bytes(b.bytes), schema: b.schemaVersion, version: b.serverVersion || '—'})}
+        <SettingsRow key={b.id} icon="storage" label={(b.createdAt ? i18n.dateTime(b.createdAt) : '—')}
+          help={t('web.maintenance.backupDetails', {kind: t(backupKindMessageId(b.kind)), size: i18n.bytes(b.bytes), schema: b.schemaVersion, version: b.serverVersion || '—'})}
           meta={<span style={{display: 'inline-flex', alignItems: 'center', gap: 4, minWidth: 0}}><Text variant="mono" tone="tertiary" style={{fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis'}}>{b.path}</Text><IconButton name="copy" label={t('web.twoStep.copy')} size="sm" variant="ghost" onClick={() => void navigator.clipboard?.writeText(b.path)} /></span>}
           control={<div style={{display: 'flex', gap: 8}}><Button size="sm" variant="secondary" label={t('web.maintenance.restoreBackup')} disabled={starting || !!progress || staging || restarting} onClick={() => { setRestoreError(''); action.clear(); setConfirming({kind: 'backup', backup: b}); }} /><Button size="sm" variant="ghost" icon="trash" label={t('action.delete')} disabled={starting || !!progress || staging || restarting} onClick={() => confirmDelete(b)} /></div>} />
       ))}
@@ -205,7 +205,7 @@ export function BackupsGroup() {
         <Freshness at={read.at} refreshing={read.loading} onRefresh={read.reload} />
       </div>
 
-      <Dialog open={!!confirming} onOpenChange={o => !o && !staging && setConfirming(undefined)} title={t(confirming?.kind === 'path' ? 'web.maintenance.restoreFileTitle' : 'web.maintenance.restoreTitle')} description={confirming?.kind === 'backup' ? whenBackup(confirming.backup.createdAt) : confirming?.path} width={480}
+      <Dialog open={!!confirming} onOpenChange={o => !o && !staging && setConfirming(undefined)} title={t(confirming?.kind === 'path' ? 'web.maintenance.restoreFileTitle' : 'web.maintenance.restoreTitle')} description={confirming?.kind === 'backup' ? (confirming.backup.createdAt ? i18n.dateTime(confirming.backup.createdAt) : '—') : confirming?.path} width={480}
         actions={<><Button variant="ghost" label={t('action.cancel')} disabled={staging} onClick={() => setConfirming(undefined)} /><Button variant="primary" label={t('web.maintenance.restoreConfirm')} loading={staging} onClick={doRestore} /></>}>
         <Text variant="body">{t('web.maintenance.restoreBody')}</Text>
       </Dialog>

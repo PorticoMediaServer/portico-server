@@ -1,9 +1,6 @@
 package playback
 
 import (
-	"net"
-	"net/http"
-	"net/netip"
 	"portico.local/server/internal/operations"
 	"sort"
 	"strings"
@@ -51,34 +48,6 @@ const (
 	LocalityUnknown = "unknown"
 )
 
-// RequestLocality classifies the peer address. Loopback and private/link-local
-// unicast are the LAN; a routable address is remote. A proxied request without a
-// usable forwarded address is remote, because a proxy hop is not LAN evidence.
-func RequestLocality(remoteAddr string, forwarded string, trusted bool) string {
-	candidate := remoteAddr
-	if trusted {
-		first, _, _ := strings.Cut(forwarded, ",")
-		first = strings.TrimSpace(first)
-		if first == "" {
-			return LocalityRemote
-		}
-		candidate = first
-	}
-	if host, _, err := net.SplitHostPort(candidate); err == nil {
-		candidate = host
-	}
-	candidate = strings.Trim(candidate, "[]")
-	address, err := netip.ParseAddr(candidate)
-	if err != nil {
-		return LocalityUnknown
-	}
-	address = address.Unmap()
-	if address.IsLoopback() || address.IsPrivate() || address.IsLinkLocalUnicast() || address.IsUnspecified() {
-		return LocalityLocal
-	}
-	return LocalityRemote
-}
-
 // ResolveNetworkClass combines server locality with the client's declared
 // transport. The LAN wins over an ethernet or unknown declaration; a client that
 // says it is on cellular is believed, because only it can know that.
@@ -97,16 +66,6 @@ func ResolveNetworkClass(locality, transport string) NetworkClass {
 		return NetworkRemote
 	}
 	return NetworkUnknown
-}
-
-// NetworkClassFromRequest is the whole resolution for one HTTP request.
-func NetworkClassFromRequest(r *http.Request, trusted bool) (NetworkClass, string, string) {
-	if r == nil {
-		return NetworkUnknown, LocalityUnknown, "unknown"
-	}
-	transport := NormalizeTransportClass(r.Header.Get(TransportClassHeader))
-	locality := RequestLocality(r.RemoteAddr, r.Header.Get("X-Forwarded-For"), trusted)
-	return ResolveNetworkClass(locality, transport), locality, transport
 }
 
 // preferenceLane maps a network class onto the viewer preference lanes, which

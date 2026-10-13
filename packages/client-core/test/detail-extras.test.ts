@@ -39,25 +39,32 @@ test('detail extras arrive grouped by a published type with playable items', asy
   assert.equal(detailExtraTypes.length, 8);
 });
 
-test('detail without extras stays valid and malformed extras are refused', async () => {
+test('detail without extras stays valid; extras that cannot be read are left out and the page is kept', async () => {
   const plain = service(detail(undefined));
   await plain.select(target);
   assert.equal(plain.getSnapshot().phase, 'ready');
   assert.equal(plain.getSnapshot().data!.extras, undefined);
-  for (const broken of [
-    [{type: 'blooper', label: 'Bloopers', items: [extra('x1', 'One')]}],
-    [{type: 'trailer', label: '', items: [extra('x1', 'One')]}],
-    [{type: 'trailer', label: 'Trailers', items: []}],
-    [{type: 'trailer', label: 'Trailers', items: [extra('x1', 'One'), extra('x1', 'One')]}],
-    [{type: 'trailer', label: 'Trailers', items: [{...extra('x1', 'One'), kind: 'movie'}]}],
-    [{type: 'trailer', label: 'Trailers', items: [extra('item', 'Self')]}],
-    [{type: 'trailer', label: 'Trailers', items: [{...extra('x1', 'One'), playback: {itemId: 'other'}}]}],
-    [{type: 'trailer', label: 'A', items: [extra('x1', 'One')]}, {type: 'trailer', label: 'B', items: [extra('x2', 'Two')]}],
-  ]) {
-    const client = service(detail(broken));
+  const read = async (extras: unknown) => {
+    const client = service(detail(extras));
     await client.select(target);
-    const snapshot = client.getSnapshot();
-    assert.equal(snapshot.phase, 'error', JSON.stringify(broken));
-    assert.equal(snapshot.error!.code, 'invalid_detail');
+    assert.equal(client.getSnapshot().phase, 'ready', JSON.stringify(extras));
+    return client.getSnapshot().data!.extras;
+  };
+  // A group of a type this app does not know, without a label, or with no extra it can play is not shown.
+  for (const broken of [
+    {type: 'blooper', label: 'Bloopers', items: [extra('x1', 'One')]},
+    {type: 'trailer', label: '', items: [extra('x1', 'One')]},
+    {type: 'trailer', label: 'Trailers', items: []},
+    {type: 'trailer', label: 'Trailers', items: [{...extra('x1', 'One'), kind: 'movie'}]},
+    {type: 'trailer', label: 'Trailers', items: [extra('item', 'Self')]},
+    {type: 'trailer', label: 'Trailers', items: [{...extra('x1', 'One'), playback: {itemId: 'other'}}]},
+  ]) {
+    assert.deepEqual((await read([broken, {type: 'featurette', label: 'Featurettes', items: [extra('x2', 'Two')]}]))!.map(group => group.type), ['featurette']);
   }
+  // A repeated extra or group keeps its first appearance.
+  assert.deepEqual((await read([{type: 'trailer', label: 'Trailers', items: [extra('x1', 'One'), extra('x1', 'Again'), {id: 'broken'}, extra('x2', 'Two')]}]))![0].items.map(item => item.title), ['One', 'Two']);
+  assert.deepEqual((await read([{type: 'trailer', label: 'A', items: [extra('x1', 'One')]}, {type: 'trailer', label: 'B', items: [extra('x2', 'Two')]}]))!.map(group => group.label), ['A']);
+  // Extras that are not a list, or more groups than there are types, are left out whole.
+  assert.equal(await read('nope'), undefined);
+  assert.equal(await read(Array.from({length: 9}, () => ({type: 'trailer', label: 'Trailers', items: [extra('x1', 'One')]}))), undefined);
 });

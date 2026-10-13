@@ -133,10 +133,23 @@ function FinishedMore({itemId, libraryId, title, onLeave}: {itemId: string; libr
 }
 
 /** WEB-PLAYER-04: the seek rows say the viewer's own skip lengths. */
-const shortcutRows = (back: number, forward: number): [string, string][] => [['Space or K', 'Play or pause'], ['← or J', `Back ${back} seconds`], ['→ or L', `Forward ${forward} seconds`], ['M', 'Mute'], ['F', 'Fullscreen'], ['Esc', 'Close a menu, leave fullscreen, or close the player'], ['?', 'Show this list']];
-
-export function ShortcutLegend({skipBack = 10, skipForward = 30}: {skipBack?: number; skipForward?: number}) {
-  const shortcuts = shortcutRows(skipBack, skipForward);
+/** Every key the player answers to, for what is playing: a film, a live channel, or music. */
+export function ShortcutLegend({skipBack = 10, skipForward = 30, live = false, audio = false}: {skipBack?: number; skipForward?: number; live?: boolean; audio?: boolean}) {
+  const {t} = useI18n();
+  const video = !audio;
+  const shortcuts: [string, string][] = [
+    [t('web.player.keys.spaceOrK'), t('web.player.keys.playPause')],
+    ['← / J', t('web.player.keys.back', {seconds: skipBack})],
+    ['→ / L', t('web.player.keys.forward', {seconds: skipForward})],
+    ...(live ? [['↑ / ↓', t('web.player.keys.channel')], ['G', t('web.player.keys.guide')]] as [string, string][] : [['↑ / ↓', t('web.player.keys.volume')]] as [string, string][]),
+    ['M', t('web.player.keys.mute')],
+    ...(video ? [['F', t('web.player.keys.fullscreen')], ['I', t('web.player.keys.pip')], ['Z', t('web.player.keys.fit')]] as [string, string][] : []),
+    ...(video && !live ? [['C', t('web.player.keys.captions')], ['G / H', t('web.player.keys.subtitleTiming')]] as [string, string][] : []),
+    ...(!live ? [['0–9', t('web.player.keys.jump')], ['Home', t('web.player.keys.start')], ['End', t('web.player.keys.end')], ['< / >', t('web.player.keys.speed')], [t('web.player.keys.shiftN'), t('web.player.keys.nextPrevious')]] as [string, string][] : []),
+    ...(video && !live ? [['Page Up / Page Down', t('web.player.keys.chapter')], [', / .', t('web.player.keys.frame')]] as [string, string][] : []),
+    ['Esc', t('web.player.keys.escape')],
+    ['?', t('web.player.keys.legend')],
+  ];
   return (
     <dl className={s.shortcuts}>
       {shortcuts.map(([keys, what]) => (

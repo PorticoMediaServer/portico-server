@@ -1,5 +1,6 @@
 import {createContext, useCallback, useContext, useEffect, useMemo, useState} from 'react';
 import {errorText} from './errors';
+import {currentI18n, type I18n} from './i18n';
 import {onServerChanged} from './server-changes';
 import {readRailCache, writeRailCache} from './rail-cache';
 import type {HttpLocalApi, Library} from '@core/index.ts';
@@ -40,14 +41,11 @@ export function useLibraries(api: HttpLocalApi, sessionKey: string | undefined):
 export const LibrariesContext = createContext<LibrariesState>({items: [], loading: false, reload: () => {}});
 export const useLibrariesContext = () => useContext(LibrariesContext);
 
-export function libraryKindLabel(kind: string): string {
-  switch (kind) {
-    case 'movie': return 'Movies';
-    case 'tv': return 'TV Shows';
-    case 'anime': return 'Anime';
-    case 'music': return 'Music';
-    case 'audiobook': return 'Audiobooks';
-    case 'recordings': return 'Recordings';
-    default: return 'Library';
-  }
+const LIBRARY_KINDS = new Set(['movie', 'tv', 'anime', 'music', 'audiobook', 'recordings']);
+/**
+ * The noun for a kind of library ("Movies", "TV Shows"), in the viewer's language. A component
+ * passes the `t` it reads from `useI18n()`; without one the active catalogue is used.
+ */
+export function libraryKindLabel(kind: string, t: I18n['t'] = currentI18n().t): string {
+  return t('web.libraryKind.plural', {kind: LIBRARY_KINDS.has(kind) ? kind : 'other'});
 }

@@ -31,10 +31,11 @@ export function listeningData(raw:unknown,scope:QueueScope):unknown {
  if(!object(raw)||!object(raw.scope)||(['serverId','authority','accountId','profileId'] as const).some(k=>(raw.scope as Record<string,unknown>)[k]!==scope[k]))bad();
  return raw.data;
 }
+/** What can be played from a page. Its target is exact; a way of playing this app does not know is not offered, and the ones it knows still are. */
 export function parseListeningJourney(v:unknown,libraryId:string):ListeningJourney {
- if(!object(v)||!object(v.target)||v.target.libraryId!==libraryId||!['library','song','artist','album','disc','book'].includes(String(v.target.kind))||typeof v.target.id!=='string'||!(/^[A-Za-z0-9_-]{1,128}(?::disc:\d{1,4})?$/.test(v.target.id))||!Array.isArray(v.actions)||v.actions.some(a=>!['play','shuffle','mix','enqueue'].includes(String(a)))||typeof v.resumeUnavailable!=='boolean')bad();
+ if(!object(v)||!object(v.target)||v.target.libraryId!==libraryId||!['library','song','artist','album','disc','book'].includes(String(v.target.kind))||typeof v.target.id!=='string'||!(/^[A-Za-z0-9_-]{1,128}(?::disc:\d{1,4})?$/.test(v.target.id))||!Array.isArray(v.actions)||v.actions.length>16||typeof v.resumeUnavailable!=='boolean')bad();
  let resume:ListeningJourney['resume'];if(v.resume!==undefined){if(!object(v.resume)||!id(v.resume.itemId)||!finite(v.resume.positionSeconds))bad();resume=Object.freeze({itemId:v.resume.itemId,positionSeconds:v.resume.positionSeconds});}
- return Object.freeze({target:Object.freeze({libraryId,kind:v.target.kind as ListeningTarget['kind'],id:v.target.id}),actions:Object.freeze([...v.actions]) as ListeningJourney['actions'],...(resume?{resume}:{}),resumeUnavailable:v.resumeUnavailable});
+ return Object.freeze({target:Object.freeze({libraryId,kind:v.target.kind as ListeningTarget['kind'],id:v.target.id}),actions:Object.freeze([...new Set(v.actions.filter(a=>['play','shuffle','mix','enqueue'].includes(String(a))))]) as ListeningJourney['actions'],...(resume?{resume}:{}),resumeUnavailable:v.resumeUnavailable});
 }
 function parseItem(v:unknown,itemId:string):ListeningItem {
  if(!object(v)||v.itemId!==itemId||!id(v.libraryId)||typeof v.kind!=='string')bad();
@@ -68,6 +69,7 @@ export class ListeningService {
  private state:ListeningSnapshot=Object.freeze({phase:'loading',preferences:null,context:null,rate:1,timer:null,timerLoading:false,stopped:false,message:null,error:null});
  private listeners=new Set<()=>void>();private disposed=false;private connected=false;private abort=new AbortController();private unsubscribe?:()=>void;private interval?:ReturnType<typeof setInterval>;
  private contextGeneration=0;private timerGeneration=0;private prefGeneration=0;private itemId='';private lastRateKey='';private lastActivity:number;private chapters?:PlayerChaptersService;private sessionKey='';
+ private pausedBook?:{session:string;at:number};
  private activityRevision=0;private activityAtMs=Date.now();
  private readonly scope:QueueScope;private readonly request:ListeningRequest;private readonly playback:PlaybackService;private readonly now:()=>number;
  /** PERF-24: whether an item can be a listening item (a song or audiobook file), when the caller
@@ -99,6 +101,10 @@ export class ListeningService {
   // With a kind hook, an item is decided once its session exists (until then it waits).
   if(item&&this.listens&&item!==this.itemId&&!p.session)item=this.itemId;
   const sessionKey=`${p.session?.id??''}:${p.session?.generation??0}`;
+  if(this.state.context?.kind==='audiobook_file'&&p.phase==='ready'&&p.session){
+   if(p.intent==='paused'&&this.pausedBook?.session!==p.session.id)this.pausedBook={session:p.session.id,at:this.now()};
+   else if(p.intent==='playing'&&this.pausedBook){const paused=this.pausedBook;this.pausedBook=undefined;if(paused.session===p.session.id){const rewind=audiobookResumeRewind(this.now()-paused.at);if(rewind>0&&!p.pendingSeek&&!p.failedSeek){this.playback.seek(Math.max(0,p.positionSeconds-rewind));}}}
+  }else this.pausedBook=undefined;
   if(this.sessionKey!==sessionKey){this.sessionKey=sessionKey;const t=this.state.timer;if(t?.sessionId&&(t.sessionId!==p.session?.id||t.generation!==p.session?.generation))this.clearTimer('Chapter timer cleared because the playback source changed.');}
   if(item!==this.itemId){const old=this.state.context;this.itemId=item;const generation=++this.contextGeneration;this.publish({context:null});
    if(!item){this.clearTimer();this.publish({stopped:false,message:null});}
@@ -176,3 +182,5 @@ export async function readListeningContext(request:ListeningRequest,scope:SavedS
  if(!object(raw)||!object(raw.scope)||raw.scope.serverId!==scope.serverId||JSON.stringify([raw.scope.authority,raw.scope.accountId,raw.scope.profileId])!==scope.viewerId)bad();
  return parseItem(raw.data,itemId);
 }
+
+export function audiobookResumeRewind(pauseMs:number):number{return pauseMs>=3600000?30:pauseMs>=300000?15:0;}

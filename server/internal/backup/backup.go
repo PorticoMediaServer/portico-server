@@ -249,6 +249,11 @@ type Service struct {
 	restoreSource      Source
 	restoreJob         *RestoreJob
 
+	// OnFinished is told how each backup went: its kind, its id when it
+	// succeeded, and the error when it did not. It runs on the backup's own
+	// goroutine and must not block for long.
+	OnFinished func(kind Kind, id string, err error)
+
 	// stageMu makes restore staging one at a time: every stage writes the same
 	// restore-staged folder, so overlapping requests (a retry, a second tab)
 	// wait and then supersede in order instead of deleting each other's copy.
@@ -397,7 +402,16 @@ func (s *Service) Create(ctx context.Context, kind Kind) (string, error) {
 	return s.create(ctx, nil, kind)
 }
 
+// create makes one backup and tells OnFinished how it went.
 func (s *Service) create(ctx context.Context, job *Job, kind Kind) (string, error) {
+	id, err := s.createBackup(ctx, job, kind)
+	if s.OnFinished != nil {
+		s.OnFinished(kind, id, err)
+	}
+	return id, err
+}
+
+func (s *Service) createBackup(ctx context.Context, job *Job, kind Kind) (string, error) {
 	if s.db == nil || s.state == "" {
 		return "", ErrInvalid
 	}

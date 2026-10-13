@@ -133,6 +133,31 @@ test('CD-38: current-app taxonomy leaves and admin triage events parse; legacy s
  assert.equal(parsed.events?.[0].actorClass,'admin');
  // The legacy four still parse.
  assert.equal(parseReport(report).category,'playback');
- // Malformed identifiers and unknown actor roles still fail.
- for(const change of [{category:'playback stall!'},{category:''},{id:'../secret'},{events:[{sequence:1,at:200,revision:2,status:'in-progress',reply:'x',actorClass:'moderator'}]},{events:[{sequence:1,at:200,revision:2,status:'in-progress',reply:'x',actorClass:''}]}])assert.throws(()=>parseReport({...leaf,...change}));
+ // Malformed identifiers, an unknown status, a bad revision and an over-long thread still fail.
+ for(const change of [{category:'playback stall!'},{category:''},{id:'../secret'},{status:'escalated'},{revision:0},{events:new Array(201).fill(leaf.events[0])},{events:{}}])assert.throws(()=>parseReport({...leaf,...change}));
+ // A reply from a role this app does not know is left out of the thread; the report and its other replies are kept.
+ const thread=parseReport({...leaf,futureField:1,events:[{...leaf.events[0],actorClass:'moderator'},leaf.events[0],{...leaf.events[0],reply:7}]});
+ assert.deepEqual(thread.events,leaf.events);assert.equal(thread.message,report.message);
+});
+test('a console list keeps its other rows when one row cannot be read, and keeps the first of a repeated id',async()=>{
+ const job={id:'job-one',kind:'library-scan',resource:'library',trigger:'owner',state:'running',phase:'',revision:2,attempt:1,createdAt:1,updatedAt:2,nextAt:3,settingsRevision:1,lane:'background-media',actions:['pause','cancel']};
+ const alert={id:'alert-one',code:'state-permissions',severity:'warning',status:'open',firstAt:1,lastAt:2,occurrences:1,revision:1};
+ const c=client(async path=>envelope(
+  path.includes('/jobs')?{items:[job,{...job,id:'job-two',state:'hibernating'},{...job,id:'job-three',actions:['pause','teleport'],futureField:1},{...job,phase:'again'},{id:'job-four'}],nextCursor:'',futureField:1}:
+  path.includes('/alerts')?[alert,{...alert,id:'alert-two',revision:0},{...alert,severity:'again'},'nonsense']:
+  path.includes('/stream-options')?{libraries:[{id:'films',label:'Films'},{id:'',label:'Nameless'},{id:'films',label:'Again'}],viewers:[{id:'v',label:'Viewer'},null]}:
+  path.includes('/panels/')?{name:'host',observedAt:1000,freshUntil:31000,facts:{cpu:{state:'measured',value:3},gpu:'unknown',disk:{state:7}}}:
+  {items:[{id:'n1',createdAt:1,readAt:null,code:'c',message:'Hello'},{id:'n2',createdAt:1,readAt:'never',code:'c',message:'Broken'}],nextCursor:'',unread:2}));
+ const jobs=await c.jobs();assert.deepEqual(jobs.items.map(row=>[row.id,row.phase,row.actions]),[['job-one','',['pause','cancel']],['job-three','',['pause']]]);
+ assert.deepEqual((await c.alerts()).map(row=>[row.id,row.severity]),[['alert-one','warning']]);
+ assert.deepEqual(await c.streamOptions(),{libraries:[{id:'films',label:'Films'}],viewers:[{id:'v',label:'Viewer'}]});
+ assert.deepEqual(Object.keys((await c.measurement('host')).facts),['cpu']);
+ const inbox=await c.inbox();assert.deepEqual(inbox.items.map(row=>row.id),['n1']);assert.equal(inbox.unread,2);c.dispose();
+});
+test('list sizes, cursors, revisions and freshness windows still refuse the whole console answer',async()=>{
+ const job={id:'job-one',kind:'library-scan',state:'running',revision:2,actions:[]};
+ for(const data of [{items:new Array(41).fill(job),nextCursor:''},{items:[job],nextCursor:'../secret'},{items:{},nextCursor:''}]){const c=client(async()=>envelope(data));await assert.rejects(()=>c.jobs());c.dispose();}
+ const alerts=client(async()=>envelope(new Array(101).fill({id:'a',code:'c',revision:1})));await assert.rejects(()=>alerts.alerts());alerts.dispose();
+ const panel=client(async()=>envelope({name:'host',observedAt:1000,freshUntil:90000,facts:{}}));await assert.rejects(()=>panel.measurement('host'));panel.dispose();
+ const single=client(async()=>envelope({...job,state:'hibernating'}));await assert.rejects(()=>single.runJob('library-scan','library'));single.dispose();
 });

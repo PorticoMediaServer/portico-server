@@ -3,6 +3,7 @@ import {unreadableServerResponse} from './server-messages.ts';
  * Groups are independent: one group may fail while the response as a whole succeeds, and the
  * client renders that group's own failure rather than discarding the results that arrived. */
 import {validateContentEntry,type ContentEntry,type ContentScope,type ContentHeading,type LibraryContentApi} from './library-content.ts';
+import {firstOfEach,keepReadable,noteSkipped,oneOf,oneOfOr} from './tolerant.ts';
 /** How many results each group shows when every group is searched at once (the server's `SearchPreviewLimit`). */
 export const SEARCH_PREVIEW_LIMIT=12;
 export type SearchGroup='movies'|'shows'|'episodes'|'artists'|'albums'|'songs'|'books'|'people'|'live-tv';
@@ -37,6 +38,12 @@ function array(v:unknown,max:number):unknown[]{if(!Array.isArray(v)||v.length>ma
 function heading(v:unknown):ContentHeading{if(!object(v)||!id(v.key)||!text(v.fallback,512))invalid();return Object.freeze({key:v.key,fallback:v.fallback});}
 function bound(s:ContentScope):ContentScope{if(!object(s)||!id(s.serverId)||!text(s.viewerId,1024)||!s.viewerId)throw new Error('Search requires a bound server and viewer.');return Object.freeze({...s});}
 function names(v:unknown,max:number,allowed?:readonly string[]):readonly string[]{return Object.freeze(array(v,max).map(x=>{if(!id(x)||allowed&&!allowed.includes(x))invalid();return x;}));}
+/** How many groups, sorts or directions one answer may name. It leaves room for ones a newer server adds, which are left out one by one, and still refuses an unbounded list. */
+const MAX_PUBLISHED=64;
+/** The names in a published list that this app knows, each once; one it does not know is left out. The list's bound is exact, and a list the server leaves out is empty. */
+function known<T extends string>(part:string,v:unknown,max:number,allowed:readonly T[]):readonly T[]{return Object.freeze([...new Set(keepReadable('search',part,array(v??[],max),x=>oneOf(x,allowed)))]);}
+/** A heading that cannot be read is blank, so the results are still shown. */
+function headingOr(v:unknown,key:string):ContentHeading{try{return heading(v);}catch{if(v!==undefined&&v!==null)noteSkipped('search','heading');return Object.freeze({key,fallback:''});}}
 /** Why a typed query can't be searched (the server's NormalizeSearch rules, CD-30), so a client can
  * say so instead of sending it: `short` (under 2 code points, or no word of 2+ letters or numbers),
  * `words` (more than 8 words), `long` (over 128 code points). Undefined when it can be searched, or
@@ -70,74 +77,88 @@ function query(q:string,options:Omit<SearchQuery,'q'>={}):SearchQuery{
  if(problem)throw new Error('Invalid search query.');
  return Object.freeze({q:normalized,...(group?{group}:{}),...(restrict?{groups:Object.freeze([...restrict])}:{}),...(sort?{sort}:{}),...(direction?{direction}:{}),...(libraryIds?{libraryIds:Object.freeze([...libraryIds])}:{}),...(record?{record:true as const}:{})});
 }
-/** A person or channel is an entity row, not a media item: it carries no library, playback or progress. */
+/** A person or channel is an entity row, not a media item: whatever else the server sends with it, the row carries no library, playback or progress. An optional caption, picture or count that cannot be read is left out. */
 function entityEntry(v:unknown,group:SearchGroup):SearchEntry{
- if(!object(v)||!id(v.id)||v.kind!==kinds[group]||!text(v.title,2048))invalid();
+ if(!object(v)||!id(v.id)||v.kind!==kinds[group]||!text(v.title??'',2048))invalid();
  if(!object(v.navigation)||v.navigation.view!==targets[group]||v.navigation.entityId!==v.id)invalid();
- if(v.playback!==undefined||v.available!==undefined||v.libraryId!==undefined)invalid();
- if(v.subtitle!==undefined&&!text(v.subtitle,4096))invalid();
- if(v.posterUrl!==undefined&&!text(v.posterUrl,4096))invalid();
- if(v.count!==undefined&&!count(v.count))invalid();
- return Object.freeze({id:v.id,kind:kinds[group] as 'person'|'channel',title:v.title,...(v.subtitle===undefined?{}:{subtitle:v.subtitle as string}),...(v.posterUrl===undefined||v.posterUrl===''?{}:{posterUrl:v.posterUrl as string}),...(v.count===undefined?{}:{count:v.count as number}),navigation:Object.freeze({view:targets[group] as 'person'|'channel',entityId:v.id})});
+ return Object.freeze({id:v.id,kind:kinds[group] as 'person'|'channel',title:(v.title??'') as string,...(text(v.subtitle,4096)?{subtitle:v.subtitle}:{}),...(text(v.posterUrl,4096)&&v.posterUrl?{posterUrl:v.posterUrl}:{}),...(count(v.count)?{count:v.count}:{}),navigation:Object.freeze({view:targets[group] as 'person'|'channel',entityId:v.id})});
 }
+/** What search offers. Its limits are exact; a group, sort or direction this app does not know is left out of what it offers. */
 function capabilities(v:unknown):SearchCapabilities{
  if(!object(v)||!count(v.maxLimit)||!count(v.groupBudgetMs)||!v.maxLimit||!v.groupBudgetMs)invalid();
- const published=array(v.groups,groups.length).map(g=>{
-  if(!object(g)||!groups.includes(g.id as SearchGroup)||!text(g.title,512)||!id(g.entityKind)||typeof g.available!=='boolean')invalid();
-  if(g.reason!==undefined&&!text(g.reason,1024))invalid();
-  // An unavailable group must say why; silence would look like an empty result.
-  if(!g.available&&!g.reason)invalid();
-  return Object.freeze({id:g.id as SearchGroup,title:g.title,entityKind:g.entityKind,available:g.available,reason:(g.reason as string)??'',sorts:names(g.sorts,sorts.length,sorts) as readonly SearchSort[]});
- });
- if(new Set(published.map(g=>g.id)).size!==published.length)invalid();
- return Object.freeze({groups:Object.freeze(published),sorts:names(v.sorts,sorts.length,sorts) as readonly SearchSort[],directions:names(v.directions,2,directions) as readonly SearchDirection[],maxLimit:v.maxLimit,groupBudgetMs:v.groupBudgetMs});
+ const published=firstOfEach('search','capabilities.groups',keepReadable('search','capabilities.groups',array(v.groups,MAX_PUBLISHED),g=>{
+  if(!object(g)||!groups.includes(g.id as SearchGroup)||!text(g.title??'',512)||!text(g.reason??'',1024))invalid();
+  // A group that does not say it is available is not; one that does not say why reads without a reason.
+  return Object.freeze({id:g.id as SearchGroup,title:(g.title??'') as string,entityKind:kinds[g.id as SearchGroup] as string,available:g.available===true,reason:(g.reason??'') as string,sorts:known('capabilities.group.sorts',g.sorts,MAX_PUBLISHED,sorts)});
+ }),g=>g.id);
+ return Object.freeze({groups:Object.freeze(published),sorts:known('capabilities.sorts',v.sorts,MAX_PUBLISHED,sorts),directions:known('capabilities.directions',v.directions,MAX_PUBLISHED,directions),maxLimit:v.maxLimit,groupBudgetMs:v.groupBudgetMs});
 }
+/**
+ * One search answer. Its scope, revisions, the query it echoes (text, group, limit, and the sort
+ * and direction the client asked for) and its bounds are exact. A group this app does not know,
+ * did not ask for, or cannot read is left out alone, and so is a result that cannot be read or is
+ * not of its group's kind. A failed group shows only its failure; a status or failure code this
+ * app does not know reads as success or as unavailable.
+ */
 function parse(raw:unknown,op:Operation,s:ContentScope,limit:number):SearchData{
  if(!object(raw)||!object(raw.scope)||!object(raw.revision)||!object(raw.query))invalid();const scope=raw.scope,r=raw.revision,q=raw.query;
  if(scope.serverId!==s.serverId||scope.libraryId!==''||scope.libraryKind!=='mixed'||scope.view!=='search'||scope.entityId!==''||!id(scope.viewerFence)||!count(r.catalog)||!count(r.viewer))invalid();
- if(!text(q.q,512)||!q.q||!sorts.includes(q.sort as SearchSort)||!directions.includes(q.direction as SearchDirection)||q.group!==(op.query.group??'')||q.limit!==limit||q.searchMode!=='token_prefix'||typeof q.recorded!=='boolean')invalid();
+ if(!text(q.q,512)||!q.q||q.group!==(op.query.group??'')||q.limit!==limit)invalid();
  if(q.q!==op.query.q)invalid();
+ // The order the client asked for must be the order answered; an order it left to the server and does not know reads as relevance, best first.
  if(op.query.sort&&q.sort!==op.query.sort||op.query.direction&&q.direction!==op.query.direction)invalid();
- if(q.recorded!==(op.query.record===true))invalid();
- const echoedGroups=names(q.groups,groups.length,groups) as readonly SearchGroup[];
+ // Recording a search in the viewer's history is the viewer's choice: an answer that says it recorded
+ // a search nobody asked it to is refused. One that declined to record (the profile has since turned
+ // history off, perhaps on another device) is an ordinary answer.
+ if(q.recorded===true&&op.query.record!==true)invalid();
+ const sort=oneOfOr('search','query.sort',q.sort,sorts,'relevance'),direction=oneOfOr('search','query.direction',q.direction,directions,'desc');
+ const echoedGroups=known('query.groups',q.groups,MAX_PUBLISHED,groups);
  const requested=op.query.group?[op.query.group]:op.query.groups;
  if(requested&&(echoedGroups.length!==requested.length||requested.some(g=>!echoedGroups.includes(g))))invalid();
- const libraryIds=names(q.libraryIds,64);
+ const libraryIds=names(q.libraryIds??[],64);
  const published=capabilities(raw.capabilities);
- const results=array(raw.groups,groups.length).map(value=>{
-  if(!object(value)||!groups.includes(value.id as SearchGroup)||!text(value.title,512)||!id(value.entityKind)||!count(value.totalCount)||!text(value.nextCursor)||typeof value.hasMore!=='boolean')invalid();
-  if(!statuses.includes(value.status as SearchGroupStatus)||!errorCodes.includes((value.errorCode??'') as SearchGroupErrorCode))invalid();
+ const results=firstOfEach('search','groups',keepReadable('search','groups',array(raw.groups,MAX_PUBLISHED),value=>{
+  if(!object(value)||!groups.includes(value.id as SearchGroup)||!text(value.title??'',512)||!text(value.nextCursor??''))invalid();
   const group=value.id as SearchGroup;
   if(value.entityKind!==kinds[group])invalid();
   if(!echoedGroups.includes(group))invalid();
-  const items=array(value.items,op.query.group?limit:Math.min(limit,SEARCH_PREVIEW_LIMIT)).map(v=>entityGroups.includes(group)?entityEntry(v,group):validateContentEntry(v));
-  if(value.totalCount<items.length||new Set(items.map(e=>e.id)).size!==items.length)invalid();
+  const code=value.errorCode===undefined||value.errorCode===null?'':value.errorCode;
+  const status:SearchGroupStatus=oneOf(value.status,statuses)??(code?'error':'success');
   // A failed group carries no partial page, and a successful one never carries a failure code.
-  if(value.status==='error'&&(items.length||value.totalCount||value.hasMore||value.nextCursor||!value.errorCode))invalid();
-  if(value.status==='success'&&value.errorCode)invalid();
-  if(value.hasMore!==!!value.nextCursor)invalid();
-  for(const entry of items){
-   if(entityGroups.includes(group))continue;
-   const media=entry as ContentEntry;
+  if(status==='error')return Object.freeze({id:group,title:(value.title??'') as string,entityKind:value.entityKind as string,status,errorCode:oneOf(code,errorCodes)||'search_group_unavailable' as const,items:Object.freeze([]),totalCount:0,hasMore:false,nextCursor:''});
+  const items=firstOfEach('search','items',keepReadable('search','items',array(value.items,op.query.group?limit:Math.min(limit,SEARCH_PREVIEW_LIMIT)),v=>{
+   if(entityGroups.includes(group))return entityEntry(v,group);
+   const media=validateContentEntry(v);
    if(!id(media.libraryId)||media.kind!==kinds[group]||media.navigation?.view!==targets[group]||media.navigation.entityId!==media.id)invalid();
    if(media.playback&&(!['movies','episodes','songs'].includes(group)||media.playback.itemId!==media.id||media.available===false))invalid();
-  }
-  return Object.freeze({id:group,title:value.title,entityKind:value.entityKind,status:value.status as SearchGroupStatus,errorCode:((value.errorCode??'') as SearchGroupErrorCode),items:Object.freeze(items),totalCount:value.totalCount,hasMore:value.hasMore,nextCursor:value.nextCursor});
- });
- if(new Set(results.map(g=>g.id)).size!==results.length)invalid();
- if(results.length!==echoedGroups.length)invalid();
- for(const key of ['navigation','sorts','sections','filters'])if(raw[key]!==undefined)invalid();
- return Object.freeze({scope:Object.freeze({serverId:s.serverId,libraryId:'' as const,libraryKind:'mixed' as const,view:'search' as const,entityId:'' as const,viewerFence:scope.viewerFence}),revision:Object.freeze({catalog:r.catalog,viewer:r.viewer}),heading:heading(raw.heading),query:Object.freeze({q:q.q,sort:q.sort as SearchSort,direction:q.direction as SearchDirection,group:q.group as SearchGroup|'',groups:echoedGroups,libraryIds,limit,searchMode:'token_prefix' as const,recorded:q.recorded}),groups:Object.freeze(results),capabilities:published,...(raw.empty===undefined?{}:{empty:heading(raw.empty)})});
+   return media;
+  }),e=>e.id);
+  const nextCursor=(value.nextCursor??'') as string;
+  // The count is at least the results kept, and more are offered exactly when there is a cursor to ask with.
+  return Object.freeze({id:group,title:(value.title??'') as string,entityKind:value.entityKind as string,status,errorCode:'' as const,items:Object.freeze(items),totalCount:Math.max(count(value.totalCount)?value.totalCount:0,items.length),hasMore:!!nextCursor,nextCursor});
+ }),g=>g.id);
+ // An answer none of whose groups could be read is refused rather than shown as no results.
+ if(!results.length&&(raw.groups as unknown[]).length)invalid();
+ let empty:ContentHeading|undefined;if(raw.empty!==undefined&&raw.empty!==null){try{empty=heading(raw.empty);}catch{noteSkipped('search','empty');}}
+ return Object.freeze({scope:Object.freeze({serverId:s.serverId,libraryId:'' as const,libraryKind:'mixed' as const,view:'search' as const,entityId:'' as const,viewerFence:scope.viewerFence}),revision:Object.freeze({catalog:r.catalog,viewer:r.viewer}),heading:headingOr(raw.heading,'search'),query:Object.freeze({q:q.q,sort,direction,group:q.group as SearchGroup|'',groups:echoedGroups,libraryIds,limit,searchMode:'token_prefix' as const,recorded:q.recorded===true}),groups:Object.freeze(results),capabilities:published,...(empty?{empty}:{})});
 }
 /** Recent searches are the viewer's own, bounded and separately erasable. */
 export function parseSearchHistory(raw:unknown,scope:ContentScope):SearchHistoryPage{
  if(!object(raw)||raw.serverId!==scope.serverId||!id(raw.viewerFence)||!count(raw.maxEntries)||!raw.maxEntries)invalid();
- const entries=array(raw.entries,raw.maxEntries).map(v=>{
-  if(!object(v)||!text(v.q,512)||!v.q||!text(v.updatedAt,128)||!v.updatedAt||!count(v.uses)||!v.uses)invalid();
-  return Object.freeze({q:v.q,updatedAt:v.updatedAt,uses:v.uses});
- });
- if(new Set(entries.map(e=>e.q)).size!==entries.length)invalid();
+ // An entry that cannot be read is left out alone; a repeated search keeps its first appearance.
+ const entries=firstOfEach('search-history','entries',keepReadable('search-history','entries',array(raw.entries,raw.maxEntries),v=>{
+  if(!object(v)||!text(v.q,512)||!v.q||!text(v.updatedAt??'',128))invalid();
+  return Object.freeze({q:v.q,updatedAt:(v.updatedAt??'') as string,uses:count(v.uses)&&v.uses?v.uses:1});
+ }),e=>e.q);
  return Object.freeze({serverId:raw.serverId as string,viewerFence:raw.viewerFence,entries:Object.freeze(entries),maxEntries:raw.maxEntries});
+}
+/** The profile's recent searches, newest first, as the server keeps them (it keeps none while the profile has history turned off). */
+export async function readSearchHistory(api:LibraryContentApi,scope:ContentScope,signal?:AbortSignal):Promise<SearchHistoryPage>{
+ return parseSearchHistory(await api.request<unknown>('/v1/search/history','GET',undefined,signal),bound(scope));
+}
+/** Forgets every search the server kept for this profile. */
+export async function clearSearchHistory(api:LibraryContentApi,signal?:AbortSignal):Promise<void>{
+ await api.request<unknown>('/v1/search/history','DELETE',undefined,signal);
 }
 export function searchPath(q:SearchQuery,limit:number,cursor?:string|null):string{
  const params=new URLSearchParams({q:q.q,limit:String(limit)});

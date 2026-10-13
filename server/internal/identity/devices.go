@@ -290,7 +290,7 @@ func (s *Service) Devices(ctx context.Context, bearer, currentInstallation strin
 	if e != nil {
 		return nil, e
 	}
-	rows, e := tx.QueryContext(ctx, `SELECT `+deviceColumns+`,(SELECT count(*) FROM identity_device_families f JOIN authorization_session_families a ON a.id=f.family_id AND a.revoked=0 AND a.authorization_horizon>? WHERE f.device_id=identity_devices.id) FROM identity_devices WHERE authority=? AND account_id=? ORDER BY last_seen DESC,id`, time.Now().UTC().Format(time.RFC3339), c.authority, c.account)
+	rows, e := tx.QueryContext(ctx, `SELECT `+deviceColumns+`,(SELECT count(*) FROM identity_device_families f JOIN authorization_session_families a ON a.id=f.family_id AND a.revoked=0 AND a.authorization_horizon>? WHERE f.device_id=identity_devices.id) FROM identity_devices WHERE authority=? AND account_id=? AND NOT(platform='api' AND approval_state='approved') ORDER BY last_seen DESC,id`, time.Now().UTC().Format(time.RFC3339), c.authority, c.account)
 	if e != nil {
 		return nil, e
 	}

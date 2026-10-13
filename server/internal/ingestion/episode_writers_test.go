@@ -101,7 +101,7 @@ func TestEpisodeWritersImportReassignAndDelete(t *testing.T) {
 	if err = db.QueryRow(`SELECT pid(e.public_id),e.id FROM catalog_episodes ep JOIN catalog_seasons s ON s.entity_id=ep.season_id JOIN catalog_entities e ON e.id=ep.entity_id WHERE s.number=0`).Scan(&episode, &entity); err != nil {
 		t.Fatal(err)
 	}
-	if err = c.Delete(episode); err != nil {
+	if err = c.RemoveTitle(ctx, episode); err != nil {
 		t.Fatal(err)
 	}
 	var left int

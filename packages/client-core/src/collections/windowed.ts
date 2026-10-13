@@ -110,6 +110,15 @@ type Generation<T> = {
 
 const abortError = () => { const e = new Error('Aborted'); e.name = 'AbortError'; return e; };
 
+/** The longest a server's "try again later" is honoured for a list page; beyond it the viewer's own Try again decides. */
+const MAX_SERVER_WAIT_MS = 10 * 60 * 1000;
+/** How long the server asked callers to wait when it refused a page (its `Retry-After`), in milliseconds; 0 when it did not say. */
+function serverWait(error: unknown): number {
+  const e = error as {retryAfterMs?: unknown; retryAfterSeconds?: unknown} | null;
+  const ms = typeof e?.retryAfterMs === 'number' ? e.retryAfterMs : typeof e?.retryAfterSeconds === 'number' ? e.retryAfterSeconds * 1000 : 0;
+  return Number.isFinite(ms) && ms > 0 ? Math.min(ms, MAX_SERVER_WAIT_MS) : 0;
+}
+
 export function createWindowedCollection<T>(options: WindowedCollectionOptions<T>): WindowedCollection<T> {
   const pageSize = Math.max(1, Math.floor(options.pageSize));
   const maxResident = Math.max(1, Math.floor(options.maxResidentPages));
@@ -125,6 +134,9 @@ export function createWindowedCollection<T>(options: WindowedCollectionOptions<T
   let visibleFirst = -1, visibleLast = -1, lastFirst = -1, direction = 0;
   let tick = 0, disposed = false;
   let shownGeneration = 0;
+  // While the server has asked for a pause, scrolling does not start new page requests: the
+  // pause outlives the failed page that reported it (a failure out of view is forgotten).
+  let waitUntil = 0;
   const pageListeners = new Map<number, Set<() => void>>();
   const listeners = new Set<() => void>();
   let snapshot: CollectionSnapshot = Object.freeze({generation: 0, total: undefined, status: 'idle', error: undefined, positionIndex: undefined, refreshing: false});
@@ -197,6 +209,8 @@ export function createWindowedCollection<T>(options: WindowedCollectionOptions<T
     }).catch(error => {
       if (disposed || controller.signal.aborted || g.pages.get(page)?.status !== 'loading') return;
       g.lastError = error;
+      const asked = serverWait(error);
+      if (asked) waitUntil = Math.max(waitUntil, now() + asked);
       g.pages.set(page, {status: 'error', error, at: now(), version: version + 1});
       settled(g, page);
     });
@@ -240,6 +254,7 @@ export function createWindowedCollection<T>(options: WindowedCollectionOptions<T
         if (state?.status === 'ready') { state.used = ++tick; continue; }
         if (state?.status === 'loading') continue;
         if (state?.status === 'error' && now() - state.at < retryAfterMs) continue;
+        if (now() < waitUntil) continue;
         const count = pageCount(g);
         if (count !== undefined && page >= count) continue;
         load(g, page); active++;
@@ -300,6 +315,8 @@ export function createWindowedCollection<T>(options: WindowedCollectionOptions<T
       publish();
     },
     retry() {
+      // The viewer asked: their Try again is not held back by the automatic pause.
+      waitUntil = 0;
       for (const g of pending ? [pending, current] : [current]) for (const [page, p] of g.pages) if (p.status === 'error') g.pages.delete(page);
       pump();
       publish();

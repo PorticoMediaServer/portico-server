@@ -292,7 +292,9 @@ func renewalAAD(family, predecessor string, b RenewalBinding, generation int64, 
 	return []byte(strings.Join([]string{"portico-authorization-renewal-v1", family, predecessor, b.ControllerID, b.ControllerEpoch, b.RenewalRequestID, strconv.FormatInt(generation, 10), expiry, horizon}, "\x00"))
 }
 func (s *Service) RenewAuthorization(ctx context.Context, bearer string, b RenewalBinding, verify RenewalVerifier) (AuthorizationEnvelope, error) {
-	if len(bearer) < 43 || len(bearer) > 2048 || !validFamilyID(b.ControllerID) || !validFamilyID(b.ControllerEpoch) || !validFamilyID(b.RenewalRequestID) || verify == nil {
+	// A key or token never rotates: renewing one would retire the only secret
+	// its maker holds.
+	if len(bearer) < 43 || len(bearer) > 2048 || CredentialShaped(bearer) || !validFamilyID(b.ControllerID) || !validFamilyID(b.ControllerEpoch) || !validFamilyID(b.RenewalRequestID) || verify == nil {
 		return AuthorizationEnvelope{}, ErrUnauthorized
 	}
 	gated, err := dbwork.Begin(ctx, s.db, dbwork.ClassSecurityFence)
@@ -405,7 +407,8 @@ func (s *Service) RenewAuthorization(ctx context.Context, bearer string, b Renew
 // LogoutToken accepts any authentic retained token generation solely to revoke
 // its family. It does not require unexpired/current ordinary authorization.
 func (s *Service) LogoutToken(ctx context.Context, bearer string) error {
-	if len(bearer) < 43 || len(bearer) > 2048 {
+	// A key or token is ended where it is managed, not by signing out with it.
+	if len(bearer) < 43 || len(bearer) > 2048 || CredentialShaped(bearer) {
 		return ErrUnauthorized
 	}
 	return s.logoutFamilyHash(ctx, Digest(bearer))

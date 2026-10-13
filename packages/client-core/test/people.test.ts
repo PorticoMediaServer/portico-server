@@ -13,24 +13,37 @@ test('a person page binds to the requested server, person and role filter',()=>{
  assert.equal(parsed.credits[0].creditKind,'cast');
  assert.equal(parsed.person.providerIds.tmdb,'42');
  assert.throws(()=>{(parsed.credits as any).push({});});
- // A page for another server, another person, or a role the client did not ask
- // for is refused rather than rendered under the wrong heading.
+ // A page for another server or another person is refused; a credit of a role the
+ // client did not ask for is left out rather than rendered under the wrong heading.
  assert.throws(()=>parsePersonPage(page({serverId:'other'}),scope,{limit:40,personId:'person-1'}));
  assert.throws(()=>parsePersonPage(page(),scope,{limit:40,personId:'person-2'}));
- assert.throws(()=>parsePersonPage(page(),scope,{limit:40,personId:'person-1',role:'crew'}));
+ assert.throws(()=>parsePersonPage(page({viewerFence:''}),scope,{limit:40,personId:'person-1'}));
+ assert.throws(()=>parsePersonPage(page({revision:{catalog:1}}),scope,{limit:40,personId:'person-1'}));
+ assert.throws(()=>parsePersonPage(page({person:person({revision:-1})}),scope,{limit:40,personId:'person-1'}));
+ assert.equal(parsePersonPage(page(),scope,{limit:40,personId:'person-1',role:'crew'}).credits.length,0);
+});
+test('one credit that cannot be read is left out, and a person reads neutrally where only drawn',()=>{
+ const credit=(id:string,patch:any={})=>({media:media(id),role:'r',character:'c',department:'Acting',creditKind:'cast',...patch});
+ const parsed=parsePersonPage(page({future:1,person:{id:'person-1',name:'Ada Lovelace',revision:3,roles:['Acting',7,'Acting'],knownFor:[media('a'),media('a'),{id:'broken'}],providerIds:{tmdb:'42',bad:7},future:true},credits:[credit('a'),credit('b',{creditKind:'guest'}),{media:{id:'broken'},creditKind:'cast'},credit('c',{role:undefined,character:undefined,department:undefined,future:1}),'nope'],pageInfo:{total:1,nextCursor:''}}),scope,{limit:40,personId:'person-1'});
+ assert.deepEqual(parsed.credits.map(c=>[c.media.id,c.role,c.character,c.department]),[['a','r','c','Acting'],['c','','','']]);
+ assert.equal(parsed.pageInfo.total,2,'the total is at least the credits kept');
+ assert.deepEqual(parsed.person,{id:'person-1',name:'Ada Lovelace',sortName:'',biography:'',birthDate:'',deathDate:'',portraitUrl:'',roles:['Acting'],knownFor:[media('a')],providerIds:{tmdb:'42'},revision:3});
 });
 test('known-for and credit pages stay bounded and consistent with pageInfo',()=>{
  assert.throws(()=>parsePersonPage(page({person:person({knownFor:Array.from({length:9},(_,i)=>media('k'+i))})}),scope,{limit:40,personId:'person-1'}));
- assert.throws(()=>parsePersonPage(page({pageInfo:{total:0,nextCursor:''}}),scope,{limit:40,personId:'person-1'}));
+ assert.throws(()=>parsePersonPage(page({credits:Array.from({length:41},(_,i)=>({media:media('c'+i),role:'r',character:'c',department:'Acting',creditKind:'cast'}))}),scope,{limit:40,personId:'person-1'}));
+ assert.throws(()=>parsePersonPage(page({pageInfo:{total:1,nextCursor:7}}),scope,{limit:40,personId:'person-1'}));
+ assert.equal(parsePersonPage(page({pageInfo:{total:0,nextCursor:''}}),scope,{limit:40,personId:'person-1'}).pageInfo.total,1);
  // A continuation on a page the server did not fill would skip rows.
  assert.throws(()=>parsePersonPage(page({pageInfo:{total:9,nextCursor:'next'}}),scope,{limit:40,personId:'person-1'}));
  const full=parsePersonPage(page({credits:[{media:media('a'),role:'r',character:'r',department:'Acting',creditKind:'cast'}],pageInfo:{total:9,nextCursor:'next'}}),scope,{limit:1,personId:'person-1'});
  assert.equal(full.pageInfo.nextCursor,'next');
 });
-test('people directory rejects duplicates and foreign servers',()=>{
+test('people directory keeps the people it can read and refuses foreign servers',()=>{
  const directory=parsePeopleDirectory({serverId:'server',viewerFence:'fence',revision:{catalog:1,viewer:0},q:'ada',people:[{id:'p1',name:'Ada',sortName:'ada',roles:[],creditCount:2}]},scope,25);
  assert.equal(directory.people[0].portraitUrl,'');
- assert.throws(()=>parsePeopleDirectory({serverId:'server',viewerFence:'fence',revision:{catalog:1,viewer:0},q:'ada',people:[{id:'p1',name:'A',sortName:'a',roles:[],creditCount:0},{id:'p1',name:'B',sortName:'b',roles:[],creditCount:0}]},scope,25));
+ assert.deepEqual(parsePeopleDirectory({serverId:'server',viewerFence:'fence',revision:{catalog:1,viewer:0},future:1,people:[{id:'p1',name:'A',sortName:'a',roles:[],creditCount:0},{id:'p1',name:'B',sortName:'b',roles:[],creditCount:0},{id:'p2'},'nope',{id:'p3',name:'C',future:true}]},scope,25),{serverId:'server',viewerFence:'fence',revision:{catalog:1,viewer:0},q:'',people:[{id:'p1',name:'A',sortName:'a',portraitUrl:'',roles:[],creditCount:0},{id:'p3',name:'C',sortName:'',portraitUrl:'',roles:[],creditCount:0}]});
+ assert.throws(()=>parsePeopleDirectory({serverId:'server',viewerFence:'fence',revision:{catalog:1,viewer:0},q:'ada',people:Array.from({length:26},(_,i)=>({id:'p'+i,name:'A'}))},scope,25));
  assert.throws(()=>parsePeopleDirectory({serverId:'other',viewerFence:'fence',revision:{catalog:1,viewer:0},q:'ada',people:[]},scope,25));
 });
 test('person paths are server addresses the client only assembles',()=>{

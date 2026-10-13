@@ -5,8 +5,8 @@ import (
 	"database/sql"
 	"path/filepath"
 	"portico.local/server/internal/compactcatalog"
+	"portico.local/server/internal/naming"
 	"sort"
-	"strings"
 )
 
 // Sidecar extras are recognised from the owning media folder, never from
@@ -17,48 +17,6 @@ type ExtraClassification struct {
 	Kind       string
 	Title      string
 	ParentPath string
-}
-
-var extraFolders = map[string]string{
-	"extras":             "other",
-	"featurettes":        "featurette",
-	"trailers":           "trailer",
-	"deleted scenes":     "deleted_scene",
-	"behind the scenes":  "behind_the_scenes",
-	"behind-the-scenes":  "behind_the_scenes",
-	"interviews":         "interview",
-	"scenes":             "scene",
-	"shorts":             "short",
-	"other":              "other",
-	"specials":           "other",
-	"bonus":              "other",
-	"bonus disc":         "other",
-	"deleted":            "deleted_scene",
-	"making of":          "behind_the_scenes",
-	"behind the scene":   "behind_the_scenes",
-	"featurette":         "featurette",
-	"trailer":            "trailer",
-	"interview":          "interview",
-	"short":              "short",
-	"deleted scene":      "deleted_scene",
-	"behind_the_scenes":  "behind_the_scenes",
-	"extra":              "other",
-	"video extras":       "other",
-	"bonus features":     "other",
-	"supplemental":       "other",
-	"supplementals":      "other",
-	"extras and bonuses": "other",
-}
-
-var extraSuffixes = []struct{ suffix, kind string }{
-	{"-trailer", "trailer"},
-	{"-featurette", "featurette"},
-	{"-deleted", "deleted_scene"},
-	{"-behindthescenes", "behind_the_scenes"},
-	{"-interview", "interview"},
-	{"-scene", "scene"},
-	{"-short", "short"},
-	{"-other", "other"},
 }
 
 func ExtraKinds() []string {
@@ -85,74 +43,21 @@ func extraKindLabel(kind string) string {
 	return "Extras"
 }
 
-func extraTitle(name string) string {
-	name = strings.TrimSuffix(name, filepath.Ext(name))
-	lowered := strings.ToLower(name)
-	for _, entry := range extraSuffixes {
-		if strings.HasSuffix(lowered, entry.suffix) {
-			name = name[:len(name)-len(entry.suffix)]
-			break
-		}
-	}
-	name = strings.TrimSpace(strings.NewReplacer("_", " ", ".", " ").Replace(name))
-	if name == "" {
-		return "Extra"
-	}
-	return name
-}
-
-// ClassifyExtra reports whether a media file under root is a sidecar extra, the
-// extra kind, a display title and the media folder that owns it. Folder
-// evidence outranks a filename suffix; the most specific recognised folder wins.
+// ClassifyExtra is the catalogue adapter for pure extras evidence.
 func ClassifyExtra(root, path string) (ExtraClassification, bool) {
-	return classifyExtra(root, path, false)
+	return ClassifyExtraFor("movie", root, path)
 }
-
-// ClassifyExtraFor is ClassifyExtra for a library of this kind. In a TV or
-// anime library a "Specials" folder is Season 0, as Plex and Kodi read it,
-// not an extras folder; everywhere else it stays an extras folder.
 func ClassifyExtraFor(kind, root, path string) (ExtraClassification, bool) {
-	return classifyExtra(root, path, kind == "tv" || kind == "anime")
-}
-
-func classifyExtra(root, path string, episodic bool) (ExtraClassification, bool) {
 	relative, err := filepath.Rel(root, path)
-	if err != nil || strings.HasPrefix(relative, "..") {
+	if err != nil || !filepath.IsLocal(relative) {
 		return ExtraClassification{}, false
 	}
-	segments := strings.Split(filepath.ToSlash(relative), "/")
-	if len(segments) == 0 {
+	extras := naming.ReadExtras(filepath.ToSlash(relative), kind)
+	if len(extras) == 0 {
 		return ExtraClassification{}, false
 	}
-	name := segments[len(segments)-1]
-	directories := segments[:len(segments)-1]
-	kind, firstIndex := "", -1
-	for index, segment := range directories {
-		folder := strings.ToLower(strings.TrimSpace(segment))
-		if episodic && folder == "specials" {
-			continue
-		}
-		if mapped, ok := extraFolders[folder]; ok {
-			if firstIndex < 0 {
-				firstIndex = index
-			}
-			if mapped != "other" || kind == "" {
-				kind = mapped
-			}
-		}
-	}
-	if firstIndex >= 0 {
-		parent := filepath.Join(append([]string{root}, directories[:firstIndex]...)...)
-		return ExtraClassification{Kind: kind, Title: extraTitle(name), ParentPath: parent}, true
-	}
-	lowered := strings.ToLower(strings.TrimSuffix(name, filepath.Ext(name)))
-	for _, entry := range extraSuffixes {
-		if strings.HasSuffix(lowered, entry.suffix) {
-			parent := filepath.Join(append([]string{root}, directories...)...)
-			return ExtraClassification{Kind: entry.kind, Title: extraTitle(name), ParentPath: parent}, true
-		}
-	}
-	return ExtraClassification{}, false
+	e := extras[0].Value
+	return ExtraClassification{Kind: e.Kind, Title: naming.ExtraTitle(path), ParentPath: filepath.Join(root, filepath.FromSlash(e.ParentPath))}, true
 }
 
 // publishExtraTx records an extra as an ordinary item so it plays through the

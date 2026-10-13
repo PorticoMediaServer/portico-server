@@ -9,6 +9,9 @@ import (
 )
 
 func (s *Service) discoverTVDBArtwork(ctx context.Context, id string) ([]discoveredArtwork, error) {
+	return s.discoverTVDBArtworkFor(ctx, id, "show", "en")
+}
+func (s *Service) discoverTVDBArtworkFor(ctx context.Context, id, kind, locale string) ([]discoveredArtwork, error) {
 	p, ok := s.tvdb.(interface {
 		Artwork(context.Context, int64) ([]metadataprovider.ArtworkImage, error)
 	})
@@ -19,7 +22,18 @@ func (s *Service) discoverTVDBArtwork(ctx context.Context, id string) ([]discove
 	if err != nil || n <= 0 {
 		return nil, ErrRepairInput
 	}
-	images, err := p.Artwork(ctx, n)
+	var images []metadataprovider.ArtworkImage
+	if modern, ok := s.tvdb.(interface {
+		ArtworkForKind(context.Context, string, int64, string) ([]metadataprovider.ArtworkImage, error)
+	}); ok {
+		typ := "show"
+		if kind != "show" {
+			typ = "movie"
+		}
+		images, err = modern.ArtworkForKind(ctx, typ, n, locale)
+	} else {
+		images, err = p.Artwork(ctx, n)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -30,5 +44,8 @@ func (s *Service) discoverTVDBArtwork(ctx context.Context, id string) ([]discove
 		}
 	}
 	// Season posters and cast photos (Spec — Page Content §2).
-	return append(out, s.tvdbPageArtwork(ctx, n)...), nil
+	if kind == "show" {
+		out = append(out, s.tvdbPageArtwork(ctx, n)...)
+	}
+	return out, nil
 }

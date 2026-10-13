@@ -13,8 +13,11 @@ func PersistChapters(tx *sql.Tx, asset string, size, modified int64, f Facts) er
 	if f.ChapterStatus == "" {
 		return nil
 	}
-	if f.ChapterStatus != "known" && f.ChapterStatus != "invalid" {
+	if f.ChapterStatus != "known" && f.ChapterStatus != "invalid" && f.ChapterStatus != "partial" {
 		return errors.New("invalid chapter status")
+	}
+	if f.ChapterStatus == "partial" {
+		f.ChapterStatus = "known"
 	}
 	chapters := f.Chapters
 	if f.ChapterStatus == "invalid" {

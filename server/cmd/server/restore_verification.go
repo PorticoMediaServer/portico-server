@@ -6,7 +6,6 @@ import (
 	"errors"
 	"path/filepath"
 
-	"portico.local/server/internal/administration"
 	"portico.local/server/internal/backup"
 	"portico.local/server/internal/livechannels/dvr"
 	"portico.local/server/internal/mediaartifact"
@@ -49,11 +48,6 @@ type restoredRequirement struct {
 //   - Portico's own stored paths, rebased to this folder: the same idempotent
 //     step start-up runs next, and the one step run for real here, because it
 //     only rewrites the restored database and cannot be judged by reading;
-//   - interrupted file operations: a journal left in the state folder is
-//     finished or undone at start-up from the evidence in the database, and a
-//     database that holds a different receipt for the same operation makes
-//     that a conflict on every start. The evidence is read here with the code
-//     recovery uses; no file is touched (administration.CheckFileOperations);
 //   - the networking claim schema, exactly (persistence.VerifyNetworkingClaims);
 //   - the signing key of the identity the database records
 //     (networking.OpenCurrentKeys);
@@ -68,9 +62,6 @@ type restoredRequirement struct {
 //   - what start-up needs of the machine (the media tools, environment
 //     settings, ports, room to create its working folders): that fails the
 //     same way on the previous state;
-//   - what finishing an interrupted file operation needs of the filesystem
-//     (moving files back, removing leftovers), and a journal that is unreadable
-//     or invalid in itself: neither depends on which database is in place;
 //   - the bodies of triggers and views outside the networking claim schema,
 //     which are checked for presence, not compared.
 //
@@ -88,9 +79,6 @@ var restoredStateRequirements = []restoredRequirement{
 		return persistence.VerifySeededRows(ctx, db)
 	}},
 	{"the restored database's stored paths could not be moved to this state folder", persistence.RebaseStatePaths},
-	{"a file operation interrupted before this start disagrees with the restored database; it is finished on the previous database now, and the restore can be staged again afterwards", func(ctx context.Context, db *sql.DB, state string) error {
-		return administration.NewAt(db, state).CheckFileOperations(ctx)
-	}},
 	{"the restored database's server identity tables are not in the shape this version requires", func(ctx context.Context, db *sql.DB, _ string) error {
 		return persistence.VerifyNetworkingClaims(ctx, db)
 	}},

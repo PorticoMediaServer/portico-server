@@ -61,6 +61,7 @@ func v1ErrorDefinitions() []apierror.Definition {
 		{Code: "event_stream_exists", Status: 409, Message: "An existing stream was retired; reconnect using your last event ID.", Retry: apierror.SameRequest},
 		{Code: "stream_unavailable", Status: 503, Message: "This connection cannot stream events.", Retry: apierror.SameRequest},
 		{Code: "administration_unavailable", Status: 503, Message: "Administration is temporarily unavailable.", Retry: apierror.SameRequest},
+		{Code: "confirmation_mismatch", Status: 409, Message: "Type the name exactly as shown to confirm.", Retry: apierror.Never},
 		{Code: "password_change_required", Status: 403, Message: "Change your password before continuing.", Retry: apierror.Never},
 		{Code: "device_approval_pending", Status: 403, Message: "This device is waiting for approval.", Retry: apierror.Never},
 		{Code: "device_denied", Status: 403, Message: "This device is not approved.", Retry: apierror.Never},
@@ -231,7 +232,7 @@ func (d Dependencies) v1Authorize(ctx context.Context, r *http.Request, m apikit
 				return nil, &apierror.Error{Code: "not_permitted"}
 			}
 		}
-	case m.Access == apikit.Admin && m.Scope == "direct_account":
+	case m.Access == apikit.Admin && m.AdminScope == "direct_account":
 		if p, err = d.principal(r); err == nil {
 			if d.Identity == nil {
 				return nil, &apierror.Error{Code: "not_permitted"}
@@ -262,6 +263,17 @@ func (d Dependencies) v1Authorize(ctx context.Context, r *http.Request, m apikit
 			if err = itemAdmission(d.itemAccess(ctx, p, item)); err != nil {
 				return nil, err
 			}
+		}
+	}
+	if m.Access == apikit.ViewerLibrary {
+		// The registry refuses to register this label without {libraryId}, so
+		// the check below always has a library to make.
+		library := r.PathValue("libraryId")
+		if library == "" {
+			return nil, &apierror.Error{Code: "not_found"}
+		}
+		if err = d.allowedLibrary(ctx, p, library); err != nil {
+			return nil, itemAdmission(err)
 		}
 	}
 	ctx = context.WithValue(ctx, foundationPrincipalKey{}, p)

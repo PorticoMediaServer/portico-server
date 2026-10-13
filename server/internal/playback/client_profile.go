@@ -235,7 +235,7 @@ type ClientAudioDecode struct {
 func (p ClientProfile) DecodeCaps() []AudioDecodeCap {
 	out := make([]AudioDecodeCap, 0, len(p.AudioDecode))
 	for _, a := range p.AudioDecode {
-		out = append(out, AudioDecodeCap{Codec: strings.ToLower(a.Codec), Containers: lowerAll(a.Containers), MaxSampleRate: a.MaxSampleRate, SampleRates: a.SampleRates, MaxChannels: a.MaxChannels, MaxBitDepth: a.MaxBitDepth})
+		out = append(out, AudioDecodeCap{Codec: strings.ToLower(a.Codec), Containers: lowerAll(a.Containers), MaxSampleRate: a.MaxSampleRate, SampleRates: a.SampleRates, MaxChannels: a.MaxChannels, MaxBitDepth: a.MaxBitDepth, Via: a.Via})
 	}
 	return out
 }

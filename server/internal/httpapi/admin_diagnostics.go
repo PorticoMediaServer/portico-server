@@ -240,8 +240,8 @@ func (d Dependencies) applySettings(r *http.Request, p identity.Principal, expec
 	values := current.Effective
 	overlay(&values)
 	document, err := d.Console.ApplySettings(r.Context(), p, d.consoleAuthority(p, true), operations.SettingsChange{ExpectedRevision: expected, IdempotencyKey: operation, Values: values})
-	if err == nil && d.securePolicy != nil {
-		d.securePolicy.set(document)
+	if err == nil && d.connectionPolicy != nil {
+		d.connectionPolicy.set(document)
 	}
 	return document, err
 }

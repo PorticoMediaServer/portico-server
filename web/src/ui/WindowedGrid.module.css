@@ -5,3 +5,8 @@
 /* Every row is held to the settled pitch (set from measurement), so mixed row heights can't move the window. */
 .grid { grid-auto-rows: minmax(var(--row-min, auto), auto); }
 .list > * { min-height: var(--row-min, auto); }
+/* A cell's list-item wrapper: no box, so the card or row inside is laid out exactly as if it were the grid's own child. */
+.item { display: contents; }
+.list > .item > * { min-height: var(--row-min, auto); }
+/* The list takes focus only to keep it when a focused card scrolls away; it shows no ring of its own. */
+.window:focus { outline: none; }
