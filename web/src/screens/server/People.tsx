@@ -9,11 +9,11 @@ import {AccountDevices, LimitsFields, accessListPath, tierLabels} from './Access
 import {useInlineForm} from '../settings/ServerForms';
 import {useLibrariesContext} from '../../app/libraries';
 import {useSession} from '../../app/session';
-import {currentI18n} from '../../app/i18n';
 import {useNavigate, useSearch} from '@tanstack/react-router';
 import {Badge, Button, Checkbox, Dialog, Input, Notice, PasswordInput, Select, SettingsGroup, SettingsRow, Text, PasswordStrength} from '../../ui';
 import {passwordStrength} from '@core/password-strength.ts';
 import {SectionHeader} from './Server';
+import {useI18n} from '../../app/i18n';
 
 /**
  * People › Accounts: one list of everyone who can use this server (Portico Account members and
@@ -22,8 +22,8 @@ import {SectionHeader} from './Server';
  * Settings › Profile & account, not here.
  */
 export function AccountsPanel() {
+  const {t} = useI18n();
   const {api} = useSession();
-  const t = currentI18n().t;
   const navigate = useNavigate();
   const search = useSearch({from: '/app/settings/$section'});
   const libraries = useLibrariesContext();
@@ -55,8 +55,8 @@ export function AccountsPanel() {
 
 /** One account: who it is, what it may do, and the devices signed in with it. Limits save with the page. */
 function AccountDetail({member, access, libraries, onBack, onChanged}: {member: DirectMember; access?: AccessMember; libraries: readonly {id: string; name: string}[]; onBack: () => void; onChanged: () => void}) {
+  const {t} = useI18n();
   const {api} = useSession();
-  const t = currentI18n().t;
   const action = useAction();
   const [opIds] = useState(createOperationIds);
   const [editing, setEditing] = useState(false);
@@ -95,7 +95,7 @@ function AccountDetail({member, access, libraries, onBack, onChanged}: {member: 
 }
 
 function LibraryPicker({all, chosen, libraries, onChange}: {all: boolean; chosen: string[]; libraries: readonly {id: string; name: string}[]; onChange: (all: boolean, chosen: string[]) => void}) {
-  const t = currentI18n().t;
+  const {t} = useI18n();
   return (
     <div style={{display: 'flex', flexDirection: 'column', gap: 8}}>
       <Checkbox checked={all} onCheckedChange={v => onChange(v, v ? [] : chosen)} label={t('web.people.allLibrariesLater')} />
@@ -105,7 +105,7 @@ function LibraryPicker({all, chosen, libraries, onChange}: {all: boolean; chosen
 }
 
 function LocalMemberDialog({open, member, libraries, onClose, onSave, busy, error}: {open: boolean; member: DirectMember | null; libraries: readonly {id: string; name: string}[]; onClose: () => void; onSave: (input: {username: string; password: string; name: string; allowedLibraries: string[]; disabled: boolean}) => void; busy: boolean; error: string}) {
-  const t = currentI18n().t;
+  const {t} = useI18n();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
@@ -123,7 +123,7 @@ function LocalMemberDialog({open, member, libraries, onClose, onSave, busy, erro
     }
   }, [open, member]);
   return (
-    <Dialog open={open} onOpenChange={o => !o && onClose()} title={member ? `Edit ${member.username}` : t('web.people.addAccountTitle')} actions={<><Button variant="ghost" label={t('action.cancel')} onClick={onClose} /><Button variant="primary" label={member ? t('action.save') : t('web.people.addAccount')} loading={busy} disabled={!username.trim() || (!member && (!passwordStrength(password).acceptable || !name.trim())) || (!!member && !!password && !passwordStrength(password).acceptable) || (!all && !chosen.length)} onClick={() => onSave({username: username.trim(), password, name: name.trim() || username.trim(), allowedLibraries: all ? [] : chosen, disabled})} /></>}>
+    <Dialog open={open} onOpenChange={o => !o && onClose()} title={member ? t('web.people.editAccountTitle', {name: member.username}) : t('web.people.addAccountTitle')} actions={<><Button variant="ghost" label={t('action.cancel')} onClick={onClose} /><Button variant="primary" label={member ? t('action.save') : t('web.people.addAccount')} loading={busy} disabled={!username.trim() || (!member && (!passwordStrength(password).acceptable || !name.trim())) || (!!member && !!password && !passwordStrength(password).acceptable) || (!all && !chosen.length)} onClick={() => onSave({username: username.trim(), password, name: name.trim() || username.trim(), allowedLibraries: all ? [] : chosen, disabled})} /></>}>
       <Input label={t('web.direct.username')} value={username} onChange={e => setUsername(e.target.value)} autoCapitalize="off" spellCheck={false} disabled={!!member} minLength={3} maxLength={64} autoFocus />
       {!member ? <Input label={t('web.people.profileName')} value={name} onChange={e => setName(e.target.value)} maxLength={120} help={t('web.people.profileNameHelp')} /> : null}
       {member?.hostedAccountId ? <Text variant="caption" tone="secondary">{t('web.people.hostedNote')}</Text> : (

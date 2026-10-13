@@ -7,11 +7,10 @@ import {createOperationIds} from './operation-ids';
 import {useCursorRead, withCursor} from '../../admin/cursor-read';
 import {ListPager} from './ListPager';
 import {useSession} from '../../app/session';
-import {useI18n} from '../../app/i18n';
-import {formatBytes} from '@core/presentation/index.ts';
+import {useI18n, type I18n} from '../../app/i18n';
 import {Badge, Button, ConfirmDialog, Freshness, Input, Notice, SettingsGroup, SettingsRow, Status, Text} from '../../ui';
 
-const when = (iso: string) => (iso ? new Date(iso).toLocaleString(undefined, {dateStyle: 'medium', timeStyle: 'short'}) : '—');
+const when = (i18n: I18n, iso: string) => (iso ? i18n.dateTime(iso) : '—');
 
 /** Typed calls against the administration envelope: every response names the server it came
  * from, and a response from a different server is refused rather than shown. */
@@ -27,7 +26,8 @@ function useAdmin() {
 /** Storage & backups › Disk usage: what the server's own files take, with clean-up. Anything that destroys data asks for a typed confirmation. */
 export function DiskUsagePanel() {
   const admin = useAdmin();
-  const {t} = useI18n();
+  const i18n = useI18n();
+  const {t} = i18n;
   const read = useRead(() => admin.get('/v1/admin/storage-usage', parseStorageReport), [admin]);
   const action = useAction();
   // BE-API-10: one ID per logical write; retries reuse it.
@@ -39,9 +39,9 @@ export function DiskUsagePanel() {
     <SettingsGroup title={t('settings.server.diskUsage')} description={t('web.maintenance.storageLede')}>
       {read.error ? <div style={{padding: 12}}><Notice tone={report ? 'warning' : 'error'} compact action={{label: t('action.tryAgain'), onClick: read.reload}}>{read.error}</Notice></div> : null}
       {action.notice ? <div style={{padding: 12}}><Notice tone="success" compact>{action.notice}</Notice></div> : null}
-      {report ? <SettingsRow label={t('web.maintenance.totalLabel')} meta={formatBytes(report.totalBytes)} help={report.truncated ? t('web.maintenance.truncatedHelp') : undefined} /> : null}
+      {report ? <SettingsRow label={t('web.maintenance.totalLabel')} meta={i18n.bytes(report.totalBytes)} help={report.truncated ? t('web.maintenance.truncatedHelp') : undefined} /> : null}
       {report?.categories.filter(c => c.present).map(c => (
-        <SettingsRow key={c.id} label={c.name} help={c.regenerable ? t('web.maintenance.regenerableHelp', {description: c.description}) : c.description} meta={formatBytes(c.bytes)}
+        <SettingsRow key={c.id} label={c.name} help={c.regenerable ? t('web.maintenance.regenerableHelp', {description: c.description}) : c.description} meta={i18n.bytes(c.bytes)}
           control={c.cleanable && c.bytes > 0 ? <Button size="sm" variant="ghost" label={t('server.cleanUp')} onClick={() => { setChosen(c); setDays(30); action.clear(); }} /> : undefined} />
       ))}
       <div style={{padding: '8px 16px 16px'}}><Freshness at={read.at} refreshing={read.loading} onRefresh={read.reload} /></div>
@@ -55,7 +55,8 @@ export function DiskUsagePanel() {
 /** Storage & backups › Deleted titles: what is held before it is removed for good. */
 export function DeletedTitlesPanel() {
   const admin = useAdmin();
-  const {t} = useI18n();
+  const i18n = useI18n();
+  const {t} = i18n;
   const read = useCursorRead(cursor => admin.get(withCursor('/v1/admin/trash?state=held&limit=100', cursor), parseTrashPage), [admin]);
   const action = useAction();
   // BE-API-10: one ID per logical write; retries reuse it.
@@ -83,7 +84,7 @@ export function DeletedTitlesPanel() {
       {action.error && !emptying ? <div style={{padding: 12}}><Notice tone="error" compact>{action.error}</Notice></div> : null}
       {action.notice ? <div style={{padding: 12}}><Notice tone="success" compact>{action.notice}</Notice></div> : null}
       {page?.items.map(entry => (
-        <SettingsRow key={entry.id} icon="trash" label={<>{entry.title} {entry.expired ? <Badge tone="warning">{t('web.maintenance.dueForRemoval')}</Badge> : null}</>} help={t('web.maintenance.trashMeta', {count: entry.fileCount, bytes: formatBytes(entry.bytes), when: when(entry.trashedAt), expires: entry.expiresAt ? when(entry.expiresAt) : 'none'})}
+        <SettingsRow key={entry.id} icon="trash" label={<>{entry.title} {entry.expired ? <Badge tone="warning">{t('web.maintenance.dueForRemoval')}</Badge> : null}</>} help={t('web.maintenance.trashMeta', {count: entry.fileCount, bytes: i18n.bytes(entry.bytes), when: when(i18n, entry.trashedAt), expires: entry.expiresAt ? when(i18n, entry.expiresAt) : 'none'})}
           control={<Button size="sm" variant="ghost" label={t('web.maintenance.putBack')} disabled={action.busy} onClick={() => restore(entry)} />} />
       ))}
       {page && !page.items.length ? <div style={{padding: 16}}><Text variant="caption" tone="tertiary">{t('web.maintenance.nothingWaiting')}</Text></div> : null}
@@ -116,7 +117,8 @@ export function DeletedTitlesPanel() {
 /** General › Version and updates: the one place that says what is running and what is new. */
 export function UpdatesPanel() {
   const {api} = useSession();
-  const {t} = useI18n();
+  const i18n = useI18n();
+  const {t} = i18n;
   // APL-SYS-12 (parser probe): GET /v1/admin/updates is a registry route that answers the bare
   // report, not the administration envelope, so reading it through the envelope always failed
   // with "couldn't read".
@@ -128,7 +130,7 @@ export function UpdatesPanel() {
       {read.error ? <div style={{padding: 12}}><Notice tone={report ? 'warning' : 'error'} compact action={{label: t('action.tryAgain'), onClick: read.reload}}>{read.error}</Notice></div> : null}
       {report ? (
         <>
-          <SettingsRow label={t('web.maintenance.thisServer')} meta={report.current.version || t('web.maintenance.devBuild')} help={report.current.builtAt ? t('web.maintenance.builtAt', {when: when(report.current.builtAt), channel: report.channel}) : t('web.maintenance.channelOnly', {channel: report.channel})} />
+          <SettingsRow label={t('web.maintenance.thisServer')} meta={report.current.version || t('web.maintenance.devBuild')} help={report.current.builtAt ? t('web.maintenance.builtAt', {when: when(i18n, report.current.builtAt), channel: report.channel}) : t('web.maintenance.channelOnly', {channel: report.channel})} />
           <SettingsRow label={report.status === 'update-available' ? t('web.maintenance.updateAvailable') : report.status === 'current' ? t('web.maintenance.upToDate') : t('web.maintenance.updateCheck')} help={report.message || (report.latest?.notes ?? undefined)}
             state={<Status tone={tone}>{report.status === 'update-available' ? report.latest?.version ?? t('web.maintenance.newVersion') : report.status === 'current' ? t('web.maintenance.currentVersion') : report.status === 'no-feed' ? t('web.maintenance.noFeed') : t('web.maintenance.updateUnavailable')}</Status>}
             control={report.latest?.url ? <Button size="sm" variant="secondary" icon="external" label={t('web.maintenance.releaseNotes')} href={report.latest.url} /> : undefined} />

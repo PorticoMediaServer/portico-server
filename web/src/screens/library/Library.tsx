@@ -16,7 +16,7 @@ import b from './BrowseFilters.module.css';
 import {useNavigate, useParams, useSearch} from '@tanstack/react-router';
 import type {ContentRoute, ContentSeeAll, ContentView} from '@core/library-content.ts';
 import {useContent} from '../../app/content';
-import {browseCountLabel, libraryKindSingular, seeAllTarget} from '../../app/content';
+import {browseCountLabel, seeAllTarget} from '../../app/content';
 import {useLibrariesContext, libraryKindLabel} from '../../app/libraries';
 import {useSession} from '../../app/session';
 import {useViewerScope} from '../../app/viewer-scope';
@@ -195,11 +195,11 @@ export function LibraryScreen() {
   const square = library?.kind === 'music' || library?.kind === 'audiobook';
   // CON-05: the kind only when it says something the name doesn't (two libraries share a kind).
   const sharedKind = (kind: string) => libraries.filter(x => x.kind === kind).length > 1;
-  const libraryItems: MenuItem[] = libraries.map(l => ({id: l.id, label: l.name, icon: iconFor(l.kind), meta: sharedKind(l.kind) && l.name.toLowerCase() !== libraryKindLabel(l.kind).toLowerCase() ? libraryKindLabel(l.kind) : undefined, selected: l.id === libraryId}));
+  const libraryItems: MenuItem[] = libraries.map(l => ({id: l.id, label: l.name, icon: iconFor(l.kind), meta: sharedKind(l.kind) && l.name.toLowerCase() !== libraryKindLabel(l.kind, t).toLowerCase() ? libraryKindLabel(l.kind, t) : undefined, selected: l.id === libraryId}));
   return (
     <Page>
       <PageHeader
-        eyebrow={library ? t('web.library.kind', {kind: libraryKindSingular(library.kind)}) : undefined}
+        eyebrow={library ? t('web.libraryKind.library', {kind: library.kind}) : undefined}
         title={library?.name ?? projection?.heading.fallback ?? t('web.library.titleFallback')}
         provisional={!library?.name && !projection?.heading.fallback}
         subtitle={scan.scanning ? <Badge tone="accent" dot live>{t('web.library.scanning', {count: i18n.number(scan.found)})}</Badge> : undefined}
