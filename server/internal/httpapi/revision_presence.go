@@ -24,7 +24,7 @@ func requireRevisionJSON(raw []byte, value any) error {
 	}
 	var body map[string]json.RawMessage
 	if err := json.Unmarshal(raw, &body); err != nil {
-		return err
+		return errStrictJSON
 	}
 	revision, ok := body["expectedRevision"]
 	if !ok || bytes.Equal(bytes.TrimSpace(revision), []byte("null")) {
@@ -36,12 +36,12 @@ func requireRevisionJSON(raw []byte, value any) error {
 func decodeLegacyRevision(w http.ResponseWriter, r *http.Request, value any) error {
 	var raw json.RawMessage
 	if err := decode(w, r, &raw); err != nil {
-		return err
+		return errStrictJSON
 	}
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(value); err != nil {
-		return err
+		return errStrictJSON
 	}
 	return requireRevisionJSON(raw, value)
 }

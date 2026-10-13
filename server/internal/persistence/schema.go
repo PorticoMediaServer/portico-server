@@ -107,6 +107,9 @@ func migrateWith(ctx context.Context, db *sql.DB, steps []schemaMigration) error
 	if exists != 0 && applied[baselineSchemaVersion] == "" {
 		return ErrSchemaResetRequired
 	}
+	if exists != 0 && applied[baselineSchemaVersion] != steps[0].digest {
+		return fmt.Errorf("schema migration 1 digest mismatch: %w", ErrSchemaResetRequired)
+	}
 	if stored > latest {
 		return fmt.Errorf("%w: database %d, binary %d; upgrade Portico or restore an earlier backup", ErrSchemaNewer, stored, latest)
 	}

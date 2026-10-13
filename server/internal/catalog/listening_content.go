@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"portico.local/server/internal/requestinput"
 	"strconv"
 	"strings"
 	"time"
@@ -62,7 +63,7 @@ func discTarget(id string) (string, int, error) {
 	album, raw, ok := strings.Cut(id, ":disc:")
 	disc, e := strconv.Atoi(raw)
 	if !ok || album == "" || e != nil || disc < 0 || disc > 9999 || strconv.Itoa(disc) != raw {
-		return "", 0, errors.New("invalid disc")
+		return "", 0, requestinput.New("invalid disc")
 	}
 	return album, disc, nil
 }
@@ -73,7 +74,7 @@ func (s *Service) listeningContent(r ContentRequest, lib Library) (ContentEnvelo
 	}
 	r.Limit = pageLimit(r.Limit)
 	if len(r.Q) > 100 {
-		return out, errors.New("search prefix exceeds limit")
+		return out, requestinput.New("search prefix exceeds limit")
 	}
 	ordered := r.View == "album" || r.View == "disc" || r.View == "book" || r.View == "book_series"
 	sortDefault := "title"
@@ -96,7 +97,7 @@ func (s *Service) listeningContent(r ContentRequest, lib Library) (ContentEnvelo
 		r.Direction = "asc"
 	}
 	if r.Sort != sortDefault || r.Direction != "asc" && r.Direction != "desc" || ordered && r.Direction != "asc" || r.Category != "" || (ordered || r.View == "discover") && r.Q != "" {
-		return out, errors.New("unsupported listening query")
+		return out, requestinput.New("unsupported listening query")
 	}
 	if lib.Kind == "music" {
 		out.Navigation = []ContentTab{{"discover", "library.discover", "discover"}, {"browse", "library.music", "browse"}, {"releases", "library.releases", "releases"}, {"songs", "library.songs", "songs"}}
@@ -207,7 +208,7 @@ func (s *Service) listeningContent(r ContentRequest, lib Library) (ContentEnvelo
 			}
 			sections = append(sections, listeningSection{"groups", title, "grid", kind, kind, query, args, false, ""})
 		default:
-			return out, errors.New("view does not belong to this library")
+			return out, requestinput.New("view does not belong to this library")
 		}
 		if lib.Kind == "music" {
 			out.Listening = &ListeningJourney{Target: target, Actions: []string{"play", "shuffle", "mix", "enqueue"}}
@@ -323,7 +324,7 @@ func (s *Service) listeningContent(r ContentRequest, lib Library) (ContentEnvelo
 		sections = append(sections, listeningSection{"files", "Book parts", "list", "audiobook_file", "item", `SELECT pid(file.public_id) id,file.id entity_id,file.title,'' subtitle,printf('%08d:%08d:%020d',COALESCE(f.disc_number,1),COALESCE(f.part_number,0),file.id) ordering,0 n,0 chapter_index FROM catalog_entities book JOIN catalog_book_files f ON f.book_id=book.id JOIN catalog_entities file ON file.id=f.entity_id WHERE book.public_id=pid_blob(?) AND book.retired=0 AND file.retired=0`, []any{r.EntityID}, true, ""})
 		sections = append(sections, listeningSection{"context", "Author & series", "list", "context", "", `SELECT g.token id,g.id entity_id,g.name title,CASE g.kind WHEN 1 THEN 'author' ELSE 'book_series' END subtitle,g.name ordering,0 n,0 chapter_index FROM catalog_entities book JOIN catalog_book_group_members m ON m.book_id=book.id JOIN catalog_book_groups g ON g.id=m.group_id AND g.retired=0 WHERE book.public_id=pid_blob(?)`, []any{r.EntityID}, false, ""})
 	default:
-		return out, errors.New("unknown listening view")
+		return out, requestinput.New("unknown listening view")
 	}
 	out.Entity, e = s.listeningEntity(r, out.Heading.Fallback)
 	if e != nil {

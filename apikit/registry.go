@@ -598,6 +598,9 @@ func marshalResponse(v any) ([]byte, error) {
 	return raw, nil
 }
 func decodeStrict(raw []byte, out any) error {
+	if bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
+		return errors.New("a request document cannot be null")
+	}
 	// A token walk rejects duplicate keys, which encoding/json would otherwise overwrite.
 	tokens := json.NewDecoder(bytes.NewReader(raw))
 	tokens.UseNumber()

@@ -333,3 +333,5 @@ rather than caching an image URL past `expiresAt`.
 | `username_taken` | 409 | Choose another username. |
 | `topshelf_token_expired` | 401 | Mint a new feed token from the app. |
 | `authentication_busy` | 503 | Password-hashing capacity exhausted; retry shortly. |
+
+Sessions are bearer credentials associated with an installation and refresh family. The server does not require proof of a device private key; the installation identifier is not cryptographic sender constraint. Remembered-account lookup sends that identifier in a POST body and returns descriptors only, never credentials.

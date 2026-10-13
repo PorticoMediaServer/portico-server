@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"portico.local/server/internal/requestinput"
 	"regexp"
 	"strings"
 	"unicode"
@@ -16,9 +17,9 @@ import (
 )
 
 var ErrUnavailable = errors.New("managed storage is unavailable; start the mount and retry")
-var ErrInvalid = errors.New("invalid managed mount configuration")
-var ErrConfigInvalid = errors.New("Check the remote name, supported provider type, and rclone configuration format.")
-var ErrExecutableInvalid = errors.New("Choose an available native rclone executable with secure file permissions that passes version validation.")
+var ErrInvalid = requestinput.New("invalid managed mount configuration")
+var ErrConfigInvalid = requestinput.New("Check the remote name, supported provider type, and rclone configuration format.")
+var ErrExecutableInvalid = requestinput.New("Choose an available native rclone executable with secure file permissions that passes version validation.")
 var remotePattern = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}:[^\r\n\x00]*$`)
 
 func validateConfig(config, remote string) error {

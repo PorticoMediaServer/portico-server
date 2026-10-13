@@ -48,6 +48,7 @@ func recoverOwner(args []string, out io.Writer) error {
 		return fmt.Errorf("stop Portico before recovering the owner: %w", err)
 	}
 	defer lock.Close()
+	persistence.SetMigrationCopyScrubber(identity.ScrubBackupCopy)
 	db, err := persistence.Open(dbPath)
 	if err != nil {
 		return err

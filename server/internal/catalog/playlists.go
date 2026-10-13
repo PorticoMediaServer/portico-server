@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/identity"
+	"portico.local/server/internal/requestinput"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -47,7 +48,7 @@ func playlistItemAllowed(q personalReader, item string) error {
 		return e
 	}
 	if !ok {
-		return errors.New("only playable media leaves can be added")
+		return requestinput.New("only playable media leaves can be added")
 	}
 	return nil
 }
@@ -119,25 +120,25 @@ func (s *Service) Playlist(server, fence, id string, a ResourceActor) (Playlist,
 func (s *Service) MutatePlaylist(a ResourceActor, id, action, target string, m PlaylistMutation, authorize func(*sql.Tx) error) (PlaylistReceipt, error) {
 	out := PlaylistReceipt{OperationID: m.OperationID, PlaylistID: id}
 	if a.Authority == "" || a.AccountID == "" || a.ProfileID == "" || !personalOperation.MatchString(m.OperationID) || m.ExpectedRevision < 0 {
-		return out, errors.New("invalid playlist operation")
+		return out, requestinput.New("invalid playlist operation")
 	}
 	if m.Name != nil && !resourceName(*m.Name) {
-		return out, errors.New("playlist name must contain 1–200 characters")
+		return out, requestinput.New("playlist name must contain 1–200 characters")
 	}
 	if m.Summary != nil && (!utf8.ValidString(*m.Summary) || utf8.RuneCountInString(*m.Summary) > 4000 || strings.ContainsRune(*m.Summary, 0)) {
-		return out, errors.New("playlist summary exceeds 4000 characters")
+		return out, requestinput.New("playlist summary exceeds 4000 characters")
 	}
 	if len(m.EntryIDs) > MaxPlaylistEntries || len(m.ItemIDs) > MaxPlaylistEntries {
 		return out, ErrPlaylistCapacity
 	}
 	if m.ItemIDs != nil && action != "create" {
-		return out, errors.New("initial itemIds only apply to creation")
+		return out, requestinput.New("initial itemIds only apply to creation")
 	}
 	if (m.Name != nil || m.Summary != nil) && action != "create" && action != "update" || m.ItemID != "" && action != "add" || m.EntryIDs != nil && action != "reorder" || (m.Authority != "" || m.AccountID != "" || m.ProfileID != "") && action != "share" && action != "unshare" || m.Role != "" && action != "share" || m.AfterEntryID != nil && action != "reorder" {
-		return out, errors.New("fields do not apply to this playlist operation")
+		return out, requestinput.New("fields do not apply to this playlist operation")
 	}
 	if (action == "share" || action == "unshare") && (m.Authority == "" || m.AccountID == "" || m.ProfileID == "") {
-		return out, errors.New("complete share target is required")
+		return out, requestinput.New("complete share target is required")
 	}
 	raw, _ := json.Marshal(struct {
 		ID, Action, Target string
@@ -225,7 +226,7 @@ func (s *Service) MutatePlaylist(a ResourceActor, id, action, target string, m P
 	switch action {
 	case "create":
 		if m.Name == nil || m.ExpectedRevision != 0 {
-			return out, errors.New("name is required for creation")
+			return out, requestinput.New("name is required for creation")
 		}
 		var n int
 		if e = tx.QueryRow(`SELECT count(*) FROM catalog_playlists WHERE owner_authority=? AND owner_account=? AND owner_profile=?`, a.Authority, a.AccountID, a.ProfileID).Scan(&n); e != nil {
@@ -259,7 +260,7 @@ func (s *Service) MutatePlaylist(a ResourceActor, id, action, target string, m P
 		rev = 1
 	case "update":
 		if m.Name == nil && m.Summary == nil {
-			return out, errors.New("set name or summary")
+			return out, requestinput.New("set name or summary")
 		}
 		_, e = tx.Exec(`UPDATE catalog_playlists SET name=COALESCE(?,name),summary=COALESCE(?,summary) WHERE token=?`, m.Name, m.Summary, id)
 	case "delete":
@@ -290,10 +291,10 @@ func (s *Service) MutatePlaylist(a ResourceActor, id, action, target string, m P
 		touchedEntries = append(touchedEntries, m.EntryIDs...)
 	case "share":
 		if m.Role != "viewer" && m.Role != "editor" {
-			return out, errors.New("share role must be viewer or editor")
+			return out, requestinput.New("share role must be viewer or editor")
 		}
 		if (ResourceActor{m.Authority, m.AccountID, m.ProfileID}) == a {
-			return out, errors.New("owner already has access")
+			return out, requestinput.New("owner already has access")
 		}
 		var n, has int
 		if e = tx.QueryRow(`SELECT count(*),COALESCE(sum(authority=? AND account_id=? AND profile_id=?),0) FROM playlist_shares WHERE playlist_id=?`, m.Authority, m.AccountID, m.ProfileID, id).Scan(&n, &has); e != nil {
@@ -315,7 +316,7 @@ func (s *Service) MutatePlaylist(a ResourceActor, id, action, target string, m P
 	case "unshare":
 		_, e = tx.Exec(`DELETE FROM playlist_shares WHERE playlist_id=? AND authority=? AND account_id=? AND profile_id=?`, id, m.Authority, m.AccountID, m.ProfileID)
 	default:
-		return out, errors.New("unsupported playlist operation")
+		return out, requestinput.New("unsupported playlist operation")
 	}
 	if e != nil {
 		return out, e

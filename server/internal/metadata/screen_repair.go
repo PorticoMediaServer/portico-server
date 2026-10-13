@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"portico.local/server/internal/requestinput"
 	"strings"
 	"time"
 
@@ -134,7 +135,7 @@ func queueScreenRepair(ctx context.Context, tx *sql.Tx, t RepairTarget, m Repair
 	}
 	if m.Action == "search" {
 		if b.ItemKind == "episode" {
-			return errors.New("identify the parent show; episode assignment is separate")
+			return requestinput.New("identify the parent show; episode assignment is separate")
 		}
 		provider := m.Provider
 		if provider == "" {
@@ -144,7 +145,7 @@ func queueScreenRepair(ctx context.Context, tx *sql.Tx, t RepairTarget, m Repair
 			provider = b.Providers[0]
 		}
 		if !b.Confirmed || !b.Enabled || !screenProviderEnabled(b, provider) {
-			return errors.New("confirm and enable the selected provider first")
+			return requestinput.New("confirm and enable the selected provider first")
 		}
 		if len(m.Query) > 512 || !screenSearchSafe(m.Query) || m.Query != "" && strings.TrimSpace(m.Query) == "" {
 			return ErrRepairInput

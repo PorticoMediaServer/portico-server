@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"portico.local/server/internal/requestinput"
 	"sort"
 	"strconv"
 	"strings"
@@ -84,7 +85,7 @@ func reorderPlaylistWindow(tx *sql.Tx, playlist string, ids []string, after *str
 	keys := []string{}
 	for _, id := range ids {
 		if id == "" || seen[id] {
-			return errors.New("order must contain distinct occurrences")
+			return requestinput.New("order must contain distinct occurrences")
 		}
 		seen[id] = true
 		var key string
@@ -98,7 +99,7 @@ func reorderPlaylistWindow(tx *sql.Tx, playlist string, ids []string, after *str
 		sort.Strings(keys)
 	} else {
 		if seen[*after] {
-			return errors.New("anchor cannot be one of the moved occurrences")
+			return requestinput.New("anchor cannot be one of the moved occurrences")
 		}
 		lower, upper := "", ""
 		if *after != "" {

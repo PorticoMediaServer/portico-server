@@ -211,6 +211,7 @@ index direct_primary_profile
 index direct_profile_pin_attempts_device
 index direct_profile_trust_account
 index direct_profiles_account
+index direct_profiles_broadcast
 index download_grants_expiry
 index download_grants_item
 index download_grants_preparation
@@ -348,6 +349,7 @@ index mount_operations_retention
 index networking_certificates_scope
 index networking_claim_one_active
 index networking_mappings_expiry
+index notice_broadcast_work_expiry
 index notification_records_expiry
 index notification_records_live
 index notification_records_page
@@ -935,6 +937,7 @@ table networking_remote_state
 table networking_route_names
 table networking_server_identities
 table networking_web_claims
+table notice_broadcast_work
 table notification_inbox
 table notification_records
 table notification_revision

@@ -9,6 +9,7 @@ import (
 	"errors"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/listeningrules"
+	"portico.local/server/internal/requestinput"
 	"sort"
 	"strconv"
 	"strings"
@@ -54,7 +55,7 @@ func (s *Service) listeningWhere(t ListeningTarget) (string, []any, error) {
 			return "", nil, e
 		}
 		if kind != "music" {
-			return "", nil, errors.New("play a book rather than an entire audiobook library")
+			return "", nil, requestinput.New("play a book rather than an entire audiobook library")
 		}
 		return `i.kind=7`, nil, nil
 	case "song":
@@ -99,7 +100,7 @@ func (s *Service) listeningWhere(t ListeningTarget) (string, []any, error) {
 		}
 		return where + `)`, args, nil
 	}
-	return "", nil, errors.New("invalid listening selection")
+	return "", nil, requestinput.New("invalid listening selection")
 }
 func (s *Service) ListeningSelection(r ContentRequest, t ListeningTarget, mode, seed string, resume bool, startItem string) (ListeningSelection, error) {
 	out := ListeningSelection{Target: t, Entries: []ListeningSelectionEntry{}}
@@ -117,16 +118,16 @@ func (s *Service) ListeningSelection(r ContentRequest, t ListeningTarget, mode, 
 		return out, err
 	}
 	if len(startItem) > 128 || strings.ContainsAny(startItem, "\x00\r\n:") || startItem != "" && (mode != "ordered" || resume) {
-		return out, errors.New("invalid listening start")
+		return out, requestinput.New("invalid listening start")
 	}
 	if mode != "ordered" && mode != "mix" {
-		return out, errors.New("invalid listening selection mode")
+		return out, requestinput.New("invalid listening selection mode")
 	}
 	if resume && t.Kind != "book" {
-		return out, errors.New("resume requires a book")
+		return out, requestinput.New("resume requires a book")
 	}
 	if mode == "mix" && t.Kind == "book" {
-		return out, errors.New("instant mix requires music")
+		return out, requestinput.New("instant mix requires music")
 	}
 	if t.Kind == "book" {
 		if err := s.compactProjectionReady(20); err != nil {
@@ -178,7 +179,7 @@ func (s *Service) ListeningSelection(r ContentRequest, t ListeningTarget, mode, 
 			seed = identity.Token()
 		}
 		if len(seed) > 128 || strings.ContainsAny(seed, "\x00\r\n") {
-			return out, errors.New("invalid mix seed")
+			return out, requestinput.New("invalid mix seed")
 		}
 	}
 	out.Seed = seed

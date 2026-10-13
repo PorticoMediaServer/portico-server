@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/requestinput"
 	"strconv"
 	"strings"
 	"time"
@@ -18,7 +19,7 @@ import (
 	"portico.local/server/internal/identity"
 )
 
-var ErrInvalid = errors.New("invalid console request")
+var ErrInvalid = requestinput.New("invalid console request")
 var ErrConflict = errors.New("revision or idempotency conflict; refresh before applying")
 var ErrIdempotencyKeyReused = fmt.Errorf("%w: idempotency key reused", ErrConflict)
 var ErrCapacity = errors.New("local storage quota reached; retry after retention cleanup")

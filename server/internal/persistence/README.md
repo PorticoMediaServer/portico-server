@@ -5,8 +5,10 @@ later change follows.
 
 ## The baseline
 
-`migrations/0001_baseline.sql` is the whole schema a new install gets. It contains every pre-release schema change; no post-baseline development
-migrations ship. A database whose ledger
+`migrations/0001_baseline.sql` is the whole schema a new install gets. It replaced
+the earlier development migration chain. Current pre-release schema changes are
+folded into it; no post-baseline development migrations ship and no historical
+data backfill runs at startup. A database whose ledger
 (`schema_migrations`) does not record migration 1 was written by an earlier
 pre-release Portico; `Open` refuses it, and backup restore refuses it, with one
 plain message:

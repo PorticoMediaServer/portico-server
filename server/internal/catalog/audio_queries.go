@@ -1,7 +1,7 @@
 package catalog
 
 import (
-	"errors"
+	"portico.local/server/internal/requestinput"
 	"strconv"
 	"strings"
 )
@@ -160,7 +160,7 @@ func (s *Service) LibraryForAudioEntity(kind, id string) (string, error) {
 	case "book":
 		query = `catalog_books`
 	default:
-		return "", errors.New("invalid audio entity")
+		return "", requestinput.New("invalid audio entity")
 	}
 	var library string
 	err := s.read().QueryRow(`SELECT l.library_id FROM catalog_entities e JOIN `+query+` d ON d.entity_id=e.id JOIN catalog_libraries l ON l.id=e.library_id WHERE e.public_id=pid_blob(?) AND e.retired=0 AND l.retired=0`, id).Scan(&library)
@@ -178,7 +178,7 @@ func (s *Service) AudioItems(profile, parent, kind, cursor string, limit int) ([
 	var after int64
 	if cursor != "" {
 		if err := s.read().QueryRow(`SELECT COALESCE(d.disc_number,1),COALESCE(d.`+number+`,0),item.sort_key,item.id FROM `+table+` d JOIN catalog_entities item ON item.id=d.entity_id JOIN catalog_entities p ON p.id=d.`+parentColumn+` WHERE p.public_id=pid_blob(?) AND item.public_id=pid_blob(?)`, parent, cursor).Scan(&disc, &track, &afterName, &after); err != nil {
-			return nil, "", errors.New("invalid audio cursor")
+			return nil, "", requestinput.New("invalid audio cursor")
 		}
 	}
 	rows, err := s.read().Query(`SELECT pid(item.public_id) FROM `+table+` d JOIN catalog_entities item ON item.id=d.entity_id JOIN catalog_entities p ON p.id=d.`+parentColumn+`
@@ -227,15 +227,15 @@ func (s *Service) BookChapters(book, cursor string, limit int) ([]BookChapter, s
 	if cursor != "" {
 		colon := strings.LastIndexByte(cursor, ':')
 		if colon <= 0 {
-			return nil, "", errors.New("invalid chapter cursor")
+			return nil, "", requestinput.New("invalid chapter cursor")
 		}
 		parsed, err := strconv.Atoi(cursor[colon+1:])
 		if err != nil || parsed < 0 {
-			return nil, "", errors.New("invalid chapter cursor")
+			return nil, "", requestinput.New("invalid chapter cursor")
 		}
 		file, index = cursor[:colon], parsed
 		if err = s.read().QueryRow(`SELECT COALESCE(f.disc_number,1),COALESCE(f.part_number,0),item.sort_key,item.id FROM catalog_book_chapters c JOIN catalog_book_files f ON f.entity_id=c.file_id JOIN catalog_entities item ON item.id=f.entity_id JOIN catalog_entities b ON b.id=f.book_id WHERE b.public_id=pid_blob(?) AND item.public_id=pid_blob(?) AND c.chapter_index=?`, book, file, index).Scan(&disc, &part, &fileName, &fileID); err != nil {
-			return nil, "", errors.New("invalid chapter cursor")
+			return nil, "", requestinput.New("invalid chapter cursor")
 		}
 	}
 	rows, err := s.read().Query(`SELECT pid(item.public_id)||':'||CAST(c.chapter_index AS TEXT),pid(item.public_id),c.chapter_index,c.title,c.start_seconds,c.end_seconds

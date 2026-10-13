@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"portico.local/server/internal/requestinput"
 	"time"
 
 	"portico.local/server/internal/compactcatalog"
@@ -32,7 +33,7 @@ type RecommendationsResetReceipt struct {
 func (s *Service) ResetRecommendations(profile string, m RecommendationsReset, authorize func(*sql.Tx) error) (RecommendationsResetReceipt, error) {
 	out := RecommendationsResetReceipt{OperationID: m.OperationID}
 	if !personalOperation.MatchString(m.OperationID) || profile == "" {
-		return out, errors.New("invalid operationId")
+		return out, requestinput.New("invalid operationId")
 	}
 	ctx := s.Context()
 	gated, e := dbwork.Begin(ctx, s.db, dbwork.ClassFrom(ctx, dbwork.ClassInteractive))

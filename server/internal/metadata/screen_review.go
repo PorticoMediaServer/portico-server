@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"portico.local/server/internal/requestinput"
 	"strconv"
 	"strings"
 
@@ -192,19 +193,19 @@ func (s *Service) ScreenPolicy(ctx context.Context, library string) (ScreenPolic
 }
 func (s *Service) UpdateScreenPolicy(ctx context.Context, library string, body ScreenPolicyUpdate, authorize func(*sql.Tx) error) error {
 	if body.ExpectedRevision < 1 || body.ExpectedConsentRevision < 1 || len(body.Providers) > 3 || len(body.Language) > 64 || len(body.Region) > 2 {
-		return errors.New("invalid screen metadata policy")
+		return requestinput.New("invalid screen metadata policy")
 	}
 	if body.RefreshMode != "replace_unlocked" && body.RefreshMode != "fill_missing" {
-		return errors.New("invalid metadata refresh mode")
+		return requestinput.New("invalid metadata refresh mode")
 	}
 	if _, err := language.Parse(body.Language); err != nil {
-		return errors.New("invalid metadata language")
+		return requestinput.New("invalid metadata language")
 	}
 	if body.Region != "" && (len(body.Region) != 2 || body.Region[0] < 'A' || body.Region[0] > 'Z' || body.Region[1] < 'A' || body.Region[1] > 'Z') {
-		return errors.New("metadata region must be a two-letter uppercase code")
+		return requestinput.New("metadata region must be a two-letter uppercase code")
 	}
 	if body.ConfirmRemote != nil && *body.ConfirmRemote && body.DisclosureVersion != ScreenDisclosureVersion {
-		return errors.New("review the current provider disclosure before confirming")
+		return requestinput.New("review the current provider disclosure before confirming")
 	}
 	gated2, err := dbwork.Begin(ctx, s.db, dbwork.ClassBackgroundMedia)
 	if err != nil {
@@ -231,12 +232,12 @@ func (s *Service) UpdateScreenPolicy(ctx context.Context, library string, body S
 			allowed = allowed || a == p
 		}
 		if !allowed || seen[p] {
-			return errors.New("choose each available provider at most once")
+			return requestinput.New("choose each available provider at most once")
 		}
 		seen[p] = true
 	}
 	if len(body.Providers) > 1 {
-		return errors.New("choose one metadata provider for a library")
+		return requestinput.New("choose one metadata provider for a library")
 	}
 	if body.Providers == nil {
 		body.Providers = []string{}
@@ -462,7 +463,7 @@ type ScreenSearch struct {
 
 func (s *Service) SelectScreen(ctx context.Context, kind, id string, body ScreenSelection, authorize func(*sql.Tx) error) error {
 	if len(body.CandidateKey) != 64 || len(body.Order) > 160 || body.ExpectedRevision < 1 {
-		return errors.New("select an observed candidate and valid ordering")
+		return requestinput.New("select an observed candidate and valid ordering")
 	}
 	gated4, err := dbwork.Begin(ctx, s.db, dbwork.ClassBackgroundMedia)
 	if err != nil {
@@ -510,10 +511,10 @@ func (s *Service) selectScreenTx(ctx context.Context, tx *sql.Tx, kind, id strin
 		return ErrScreenConflict
 	}
 	if !b.Confirmed || !b.Enabled {
-		return errors.New("confirm and enable remote metadata before identifying")
+		return requestinput.New("confirm and enable remote metadata before identifying")
 	}
 	if b.ItemKind == "episode" {
-		return errors.New("identify the parent show; local episode assignment is separate")
+		return requestinput.New("identify the parent show; local episode assignment is separate")
 	}
 	var payload, digest string
 	entity, err := resolveEntity(ctx, tx, id)
@@ -532,18 +533,18 @@ func (s *Service) selectScreenTx(ctx context.Context, tx *sql.Tx, kind, id strin
 		return err
 	}
 	if !screenProviderEnabled(b, r.Identity.Provider) {
-		return errors.New("the chosen provider is disabled")
+		return requestinput.New("the chosen provider is disabled")
 	}
 	order := body.Order
 	if kind == "show" {
 		valid := false
 		valid = screenOrderSupported(r, order)
 		if !valid {
-			return errors.New("select a supported explicit provider ordering")
+			return requestinput.New("select a supported explicit provider ordering")
 		}
 	} else {
 		if order != "" && order != "official" {
-			return errors.New("movie selection has no episode ordering")
+			return requestinput.New("movie selection has no episode ordering")
 		}
 		order = "official"
 	}
@@ -567,7 +568,7 @@ func screenSupersedeChildren(ctx context.Context, tx *sql.Tx, show string) error
 }
 func (s *Service) SearchScreen(ctx context.Context, kind, id string, body ScreenSearch, authorize func(*sql.Tx) error) error {
 	if body.ExpectedRevision < 1 || len(body.Query) > 512 || !screenSearchSafe(body.Query) || strings.TrimSpace(body.Query) == "" && body.Query != "" {
-		return errors.New("invalid provider search")
+		return requestinput.New("invalid provider search")
 	}
 	gated5, err := dbwork.Begin(ctx, s.db, dbwork.ClassBackgroundMedia)
 	if err != nil {
@@ -594,10 +595,10 @@ func (s *Service) SearchScreen(ctx context.Context, kind, id string, body Screen
 		return ErrLocalMetadataOnly
 	}
 	if !b.Confirmed || !b.Enabled || !screenProviderEnabled(b, body.Provider) {
-		return errors.New("confirm and enable the selected provider first")
+		return requestinput.New("confirm and enable the selected provider first")
 	}
 	if b.ItemKind == "episode" {
-		return errors.New("search for the parent show")
+		return requestinput.New("search for the parent show")
 	}
 	_, err = tx.ExecContext(ctx, `UPDATE screen_metadata_work SET requested_provider=?,query_override=?,status='searching',generation=generation+1,revision=revision+1,lease='',lease_until='',attempts=0,next_attempt='',error='' WHERE target_kind=? AND target_id=?`, body.Provider, strings.TrimSpace(body.Query), kind, b.Entity)
 	if err != nil {
@@ -643,7 +644,7 @@ type ScreenSeasonSelection struct {
 
 func (s *Service) SelectAnimeSeason(ctx context.Context, show string, body ScreenSeasonSelection, authorize func(*sql.Tx) error) error {
 	if body.Season < 0 || body.Season > 99 || !metadataprovider.ValidScreenID(metadataprovider.ScreenID{Provider: "anilist", Type: "anime", ID: body.AniListID}) {
-		return errors.New("invalid AniList season mapping")
+		return requestinput.New("invalid AniList season mapping")
 	}
 	gated7, err := dbwork.Begin(ctx, s.db, dbwork.ClassBackgroundMedia)
 	if err != nil {
@@ -664,7 +665,7 @@ func (s *Service) SelectAnimeSeason(ctx context.Context, show string, body Scree
 		return ErrScreenConflict
 	}
 	if b.Accepted == "" || b.Provider != "anilist" {
-		return errors.New("identify the show with AniList first")
+		return requestinput.New("identify the show with AniList first")
 	}
 	var raw string
 	if err = tx.QueryRowContext(ctx, `SELECT payload FROM screen_metadata_publications WHERE id=?`, b.Accepted).Scan(&raw); err != nil {
@@ -691,7 +692,7 @@ func (s *Service) SelectAnimeSeason(ctx context.Context, show string, body Scree
 		allowed = count > 0
 	}
 	if !allowed {
-		return errors.New("choose an observed AniList work or an attributed related work")
+		return requestinput.New("choose an observed AniList work or an attributed related work")
 	}
 	var count int
 	if err = tx.QueryRowContext(ctx, `SELECT count(*) FROM catalog_seasons WHERE show_id=? AND number=?`, b.Entity, body.Season).Scan(&count); err != nil {

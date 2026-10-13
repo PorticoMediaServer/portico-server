@@ -7,12 +7,13 @@ import (
 	"database/sql"
 	"errors"
 	"portico.local/server/internal/diagnostics"
+	"portico.local/server/internal/requestinput"
 	"runtime/metrics"
 	"time"
 )
 
 var ErrUnavailable = errors.New("operation panel unavailable")
-var ErrPanel = errors.New("unknown operation panel")
+var ErrPanel = requestinput.New("unknown operation panel")
 
 type Memory struct {
 	HeapObjectsBytes     uint64 `json:"heapObjectsBytes"`

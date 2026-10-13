@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"portico.local/server/internal/networkpolicy"
+	"portico.local/server/internal/requestinput"
 	"strconv"
 	"strings"
 	"sync"
@@ -258,7 +259,10 @@ func failure(w http.ResponseWriter, e error) {
 		preparedFailure(w, e)
 		return
 	}
-	status, code := 400, "invalid_request"
+	status, code := 500, "internal"
+	if requestinput.Is(e) {
+		status, code = 400, "invalid_request"
+	}
 	if errors.Is(e, errFeatureRestricted) {
 		status, code = 403, "feature_restricted"
 	}
@@ -592,17 +596,17 @@ func failure(w http.ResponseWriter, e error) {
 func decode(w http.ResponseWriter, r *http.Request, v any) error {
 	r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
 	raw, e := io.ReadAll(r.Body)
-	if e != nil {
-		return errors.New("invalid JSON request")
+	if e != nil || bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
+		return requestinput.New("invalid JSON request")
 	}
 	d := json.NewDecoder(bytes.NewReader(raw))
 	d.DisallowUnknownFields()
 	if e = d.Decode(v); e != nil {
-		return errors.New("invalid JSON request")
+		return requestinput.New("invalid JSON request")
 	}
 	var extra any
 	if d.Decode(&extra) != io.EOF {
-		return errors.New("one JSON object required")
+		return requestinput.New("one JSON object required")
 	}
 	switch r.Method {
 	case http.MethodPut, http.MethodPatch, http.MethodDelete:
