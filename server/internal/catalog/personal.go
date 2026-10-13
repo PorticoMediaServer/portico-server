@@ -271,9 +271,9 @@ func mutationField(m *PersonalMutation) (string, json.RawMessage, error) {
 		if e := json.Unmarshal(m.Rating, &rating); e != nil {
 			return "", nil, errors.New("invalid personal rating")
 		}
-		// Lossless PC-SAVED representation: canonical 0..10 = stars*2; null = 0.
-		if rating != nil && (math.IsNaN(*rating) || math.IsInf(*rating, 0) || *rating < .5 || *rating > 5 || math.Mod(*rating, .5) != 0) {
-			return "", nil, errors.New("personal rating must be 0.5 to 5 in half-star steps, or null")
+		// A null value clears the rating; zero is a rated value.
+		if rating != nil && (math.IsNaN(*rating) || math.IsInf(*rating, 0) || *rating < 0 || *rating > 10 || math.Trunc(*rating) != *rating) {
+			return "", nil, errors.New("personal rating must be an integer from 0 to 10, or null")
 		}
 		value = rating
 		m.Rating, _ = json.Marshal(rating)

@@ -1,3 +1,4 @@
+import {wireDurations} from './wire-units.ts';
 import {unreadableServerResponse} from './server-messages.ts';
 import {parseListeningJourney,type ListeningJourney} from './listening.ts';
 import {parseBrowseNode,type BrowseNode,type BrowseSortSelection} from './browse.ts';
@@ -36,6 +37,7 @@ export type ContentEntry = Readonly<{
   absoluteNumber?: number;
   /** Community rating (0–10) and the best file's picture class; browse pages only (the list view's columns). */
   rating?: number;
+ userRating?: number;
   resolution?: '4k' | '1080p' | '720p' | 'sd';
   /** Where a provider biography came from ("Wikipedia") and its article; artist entities only. */
   overviewSource?: string;
@@ -119,6 +121,7 @@ function seeAll(v: unknown): ContentSeeAll | undefined {
   return Object.freeze({ pivot: v.pivot, ...(query ? { query } : {}), sort: Object.freeze(sort) });
 }
 function entry(v: unknown): ContentEntry {
+ v=wireDurations(v,{duration:"durationMs",progressSeconds:"progressMs"});
   if (!record(v) || !id(v.id) || !entryKinds.includes(v.kind as string) || !string(v.title, 2048)) invalid();
   const row: { -readonly [K in keyof ContentEntry]: ContentEntry[K] } = { id: v.id, kind: v.kind as ContentEntryKind, title: v.title };
   if (v.libraryId !== undefined) { if (!id(v.libraryId)) invalid(); row.libraryId = v.libraryId; }
@@ -134,6 +137,7 @@ function entry(v: unknown): ContentEntry {
   for (const field of ['duration', 'progressSeconds'] as const) {
     if (v[field] !== undefined) { if (!finite(v[field])) invalid(); row[field] = v[field] as number; }
   }
+  if(v.userRating!==undefined){if(typeof v.userRating!=="number"||!Number.isInteger(v.userRating)||v.userRating<0||v.userRating>10)invalid();row.userRating=v.userRating;}
   if (v.year !== undefined) { if (typeof v.year !== 'number' || !Number.isSafeInteger(v.year) || v.year <= 0) invalid(); row.year = v.year as number; }
   if (v.contentRating !== undefined) { if (!string(v.contentRating, 64)) invalid(); row.contentRating = v.contentRating as string; }
   // Genres degrade (§4a): be/pages sends up to three for artists and more for albums; the
@@ -193,7 +197,7 @@ function entry(v: unknown): ContentEntry {
     row.navigation = Object.freeze({ view: n.view as ContentView | 'item', ...(n.entityId === undefined ? {} : { entityId: n.entityId as string }), ...(n.category === undefined ? {} : { category: n.category as string }) });
   }
   if (v.playback !== undefined) {
-    const p = v.playback;
+    const p = wireDurations(v.playback,{startSeconds:"startMs"});
     if (!record(p) || !id(p.itemId) || (p.startSeconds !== undefined && !finite(p.startSeconds))) invalid();
     row.playback = Object.freeze({ itemId: p.itemId, ...(p.startSeconds === undefined ? {} : { startSeconds: p.startSeconds as number }) });
   }

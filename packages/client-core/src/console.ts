@@ -1,3 +1,4 @@
+import {wireInstants} from './wire-units.ts';
 /** Selected-server operations wire contract. No Hosted transport is accepted. */
 import {parsePreferenceSnapshot,type DeviceClass,type PreferencePatch,type PreferenceScope} from './preferences.ts';
 import {parseTelemetryReading,parseTelemetrySample,parseTranscodeCapacity,type TelemetryWindow} from './telemetry.ts';
@@ -62,19 +63,19 @@ function checkTranscoding(s:Record<string,any>){
  for(const key of ['maxConcurrentSessions','maxHardwareSessions','maxSoftwareSessions','maxBackgroundSessions'])
   if(!integer(s[key])||s[key]>1000)invalid();
 }
-export function parseReport(v:unknown):FeedbackReport{const r=base(v);revision(r);if(!id(r.id)||!integer(r.createdAt)||!integer(r.updatedAt)||!['open','in-progress','resolved','closed'].includes(r.status)||!id(r.category)||!text(r.message,4000)||typeof r.contextAvailable!=='boolean'||r.itemId!==undefined&&!id(r.itemId))invalid();if(r.events!==undefined){if(!Array.isArray(r.events)||r.events.length>200)invalid();for(const e of r.events)if(!obj(e)||!integer(e.at)||!text(e.reply,4000)||!['owner','admin','viewer'].includes(e.actorClass))invalid();}return r as FeedbackReport;}
+export function parseReport(v:unknown):FeedbackReport{const r=base(wireInstants(v,["createdAt", "updatedAt"]));revision(r);if(!id(r.id)||!integer(r.createdAt)||!integer(r.updatedAt)||!['open','in-progress','resolved','closed'].includes(r.status)||!id(r.category)||!text(r.message,4000)||typeof r.contextAvailable!=='boolean'||r.itemId!==undefined&&!id(r.itemId))invalid();if(r.events!==undefined){if(!Array.isArray(r.events)||r.events.length>200)invalid();r.events=r.events.map((e:unknown)=>wireInstants(e,["at"]));for(const e of r.events)if(!obj(e)||!integer(e.at)||!text(e.reply,4000)||!['owner','admin','viewer'].includes(e.actorClass))invalid();}return r as FeedbackReport;}
 export function parseEvidenceRecord(value:unknown):EvidenceRecord {
- const record=base(value);
+ const record=base(wireInstants(value,["at"]));
  if(!integer(record.sequence)||!integer(record.at)||record.at>8640000000000000)invalid();
  for(const key of ['lane','severity','component','code','action','target','hash','previousHash'])if(record[key]!==undefined&&!text(record[key],4096))invalid();
  if(record.fields!==undefined){if(!obj(record.fields)||Object.keys(record.fields).length>64)invalid();for(const [key,value] of Object.entries(record.fields))if(!text(key,100)||typeof value!=='number'||!Number.isFinite(value))invalid();}
  return record as EvidenceRecord;
 }
 export function parsePage<T>(v:unknown,parse:(v:unknown)=>T):Page<T>{const p=base(v);if(!Array.isArray(p.items)||p.items.length>40||typeof p.nextCursor!=='string'||p.nextCursor!==''&&!/^\d{1,19}$/.test(p.nextCursor))invalid();return {items:p.items.map(parse),nextCursor:p.nextCursor};}
-function parseInbox(v:unknown):Inbox{const p=base(v);if(!integer(p.unread))invalid();return {...parsePage(v,n=>{const v=base(n);if(!id(v.id)||!integer(v.createdAt)||v.readAt!==null&&!integer(v.readAt)||!text(v.message,300)||v.targetId!==undefined&&!id(v.targetId))invalid();return v as Notice;}),unread:p.unread};}
-function parseJob(v:unknown):Job{const j=base(v);revision(j);if(!id(j.id)||!id(j.kind)||!Array.isArray(j.actions)||!j.actions.every((v:unknown)=>v==='retry'||v==='cancel'||v==='pause'||v==='resume')||!['queued','running','paused','reconciling','cancellation-requested','cancelled','failed','succeeded'].includes(j.state))invalid();return j as Job;}
+function parseInbox(v:unknown):Inbox{const p=base(v);if(!integer(p.unread))invalid();return {...parsePage(v,n=>{const v=base(wireInstants(n,["createdAt","readAt"]));if(!id(v.id)||!integer(v.createdAt)||v.readAt!==null&&!integer(v.readAt)||!text(v.message,300)||v.targetId!==undefined&&!id(v.targetId))invalid();return v as Notice;}),unread:p.unread};}
+function parseJob(v:unknown):Job{const j=base(wireInstants(v,["createdAt", "updatedAt", "nextAt"]));revision(j);if(!id(j.id)||!id(j.kind)||!Array.isArray(j.actions)||!j.actions.every((v:unknown)=>v==='retry'||v==='cancel'||v==='pause'||v==='resume')||!['queued','running','paused','reconciling','cancellation-requested','cancelled','failed','succeeded'].includes(j.state))invalid();return j as Job;}
 function list<T>(v:unknown,parse:(v:unknown)=>T,max=100):T[]{if(!Array.isArray(v)||v.length>max)invalid();return v.map(parse);}
-function parseSchedule(v:unknown):Schedule{const s=base(v);revision(s);if(!id(s.id)||!id(s.kind)||!text(s.timezone,80)||typeof s.enabled!=='boolean'||!integer(s.startMinute)||s.startMinute>=1440||!integer(s.windowMinutes)||s.windowMinutes<1||s.windowMinutes>1440||typeof s.catchUp!=='boolean')invalid();return s as Schedule;}
+function parseSchedule(v:unknown):Schedule{const s=base(wireInstants(v,["createdAt"]));revision(s);if(!id(s.id)||!id(s.kind)||!text(s.timezone,80)||typeof s.enabled!=='boolean'||!integer(s.startMinute)||s.startMinute>=1440||!integer(s.windowMinutes)||s.windowMinutes<1||s.windowMinutes>1440||typeof s.catchUp!=='boolean')invalid();return s as Schedule;}
 let sequence=0;
 /** Operation keys are uniqueness tokens, not credentials or authorization. */
 export function consoleOperationId():string{return globalThis.crypto?.randomUUID?.()??`op-${Date.now().toString(36)}-${(++sequence).toString(36)}-${Math.random().toString(36).slice(2,16)}`;}
@@ -140,11 +141,11 @@ export class ConsoleClient {
  jobCommand(job:Job,action:'cancel'|'retry'|'pause'|'resume'){return this.mutate('/v1/admin/console/jobs/'+encodeURIComponent(job.id)+'/'+action,'POST',{expectedRevision:job.revision},parseJob);}
  schedules(){return this.call('/v1/admin/console/schedules','GET',undefined,v=>list(v,parseSchedule));}
  saveSchedule(value:Schedule,expectedRevision:number){const {revision:_revision,lastSlot:_lastSlot,createdAt:_createdAt,...editable}=value;return this.mutate('/v1/admin/console/schedules','PUT',{expectedRevision,value:editable},parseSchedule);}
- measurement(name:string){return this.call('/v1/admin/console/panels/'+encodeURIComponent(name),'GET',undefined,v=>{const p=base(v);if(p.name!==name||!integer(p.observedAt)||p.freshUntil!==p.observedAt+30000||!obj(p.facts)||Object.keys(p.facts).length>30)invalid();for(const f of Object.values(p.facts))if(!obj(f)||!text(f.state,40))invalid();return p as Measurement;});}
+ measurement(name:string){return this.call('/v1/admin/console/panels/'+encodeURIComponent(name),'GET',undefined,v=>{const p=base(wireInstants(v,["observedAt","freshUntil"]));if(p.name!==name||!integer(p.observedAt)||p.freshUntil!==p.observedAt+30000||!obj(p.facts)||Object.keys(p.facts).length>30)invalid();for(const f of Object.values(p.facts))if(!obj(f)||!text(f.state,40))invalid();return p as Measurement;});}
  alerts(){return this.call('/v1/admin/console/alerts','GET',undefined,v=>list(v,a=>{const p=base(a);revision(p);if(!id(p.id)||!id(p.code))invalid();return p as Alert;}));}
  acknowledge(alert:Alert){return this.mutate('/v1/admin/console/alerts/'+encodeURIComponent(alert.id)+'/acknowledge','POST',{expectedRevision:alert.revision},base);}
  records(lane:'runtime'|'client'|'audit',cursor=''){return this.call('/v1/admin/console/diagnostics/'+lane+'?cursor='+encodeURIComponent(cursor),'GET',undefined,v=>parsePage(v,parseEvidenceRecord));}
- capture(component:string,expiresAt:number){return this.mutate('/v1/admin/console/diagnostics/capture','POST',{component,expiresAt},base);}
+ capture(component:string,expiresAt:number){return this.mutate('/v1/admin/console/diagnostics/capture','POST',{component,expiresAt:new Date(expiresAt).toISOString()},base);}
  createExport(from:number,to:number,components:string[]){return this.mutate('/v1/admin/console/exports','POST',{from,to,components},parseExport);}
  export(id:string){return this.call('/v1/admin/console/exports/'+encodeURIComponent(id),'GET',undefined,parseExport);}
  /** Transcoding capacity, probes and dependencies as this server reports them. */
@@ -159,7 +160,7 @@ export class ConsoleClient {
  /** The export is a download, so its path is handed to the browser, not fetched. */
  playbackHistoryExportPath(period:PlaybackHistoryPeriod='24h'){return '/v1/admin/playback/history.csv?period='+period;}
 }
-function parseExport(v:unknown):SupportExport{const p=base(v);if(!id(p.id)||!integer(p.expiresAt)||!obj(p.manifest)||!Array.isArray(p.manifest.included)||!Array.isArray(p.manifest.excluded)||!text(p.manifest.redaction,500))invalid();return p as SupportExport;}
+function parseExport(v:unknown):SupportExport{const p=base(wireInstants(v,["expiresAt"]));if(!id(p.id)||!integer(p.expiresAt)||!obj(p.manifest)||!Array.isArray(p.manifest.included)||!Array.isArray(p.manifest.excluded)||!text(p.manifest.redaction,500))invalid();return p as SupportExport;}
 
 
 export function parseStreamOptions(value:unknown):StreamOptions{const v=base(value);for(const field of ['libraries','viewers'])if(!Array.isArray(v[field])||v[field].length>500||v[field].some((row:unknown)=>!obj(row)||!text(row.id,300)||!row.id||!text(row.label,4096)))invalid();return v as StreamOptions;}

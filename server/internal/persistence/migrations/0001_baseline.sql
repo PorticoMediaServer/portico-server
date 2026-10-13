@@ -17,8 +17,8 @@ CREATE TABLE catalog_kinds(
 INSERT INTO catalog_kinds VALUES
  (1,'movie',1,0,1,1,0),(2,'show',0,1,1,1,0),(3,'season',0,1,0,1,0),(4,'episode',1,0,1,1,0),
  (5,'artist',0,1,1,1,1),(6,'album',0,1,1,1,1),(7,'song',1,0,1,1,1),(8,'book',0,1,1,1,1),
- (9,'audiobook_file',1,0,0,1,1),(10,'collection',0,1,0,1,0),(11,'extra',1,0,0,1,0),
- (12,'disc',0,1,0,0,1),(13,'author',0,1,0,1,1);
+ (9,'audiobook_file',1,0,0,1,1),(10,'collection',0,1,1,1,0),(11,'extra',1,0,0,1,0),
+ (12,'disc',0,1,0,0,1),(13,'author',0,1,1,1,1);
 
 -- A library's integer handle for catalogue rows; libraries keeps its public TEXT id.
 -- root is the identity root: the folder the library was created from, fixed for
@@ -371,9 +371,11 @@ CREATE INDEX catalog_related_lookup ON catalog_related_facets(library_id,relatio
 CREATE TABLE catalog_search_documents(
  entity_id INTEGER PRIMARY KEY REFERENCES catalog_entities(id) ON DELETE CASCADE,
  title TEXT NOT NULL,
+ search TEXT NOT NULL,
+ normalized TEXT NOT NULL,
  kind TEXT NOT NULL) STRICT;
 CREATE VIRTUAL TABLE catalog_search_titles USING fts5(
- title,kind,content='catalog_search_documents',content_rowid='entity_id',
+ search,kind,content='catalog_search_documents',content_rowid='entity_id',
  tokenize='unicode61 remove_diacritics 2',prefix='2 3 4');
 
 -- The one dirty queue for derived data (Direct Design §6).
@@ -391,7 +393,7 @@ CREATE TABLE catalog_derivations(
 
 -- Personal state per profile and item. not_interested hides a title from
 -- recommendations and counts against similar titles (recommendations plan).
-CREATE TABLE personal_items(profile_id TEXT NOT NULL,item_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,watchlisted INTEGER NOT NULL DEFAULT 0 CHECK(watchlisted IN(0,1)),favorite INTEGER NOT NULL DEFAULT 0 CHECK(favorite IN(0,1)),rating REAL CHECK(rating IS NULL OR (rating>=0.5 AND rating<=5 AND rating*2=CAST(rating*2 AS INTEGER))),revision INTEGER NOT NULL, reaction TEXT NOT NULL DEFAULT 'none' CHECK(reaction IN('none','like','dislike')), watched INTEGER NOT NULL DEFAULT 0 CHECK(watched IN(0,1)), last_played_at TEXT NOT NULL DEFAULT '', not_interested INTEGER NOT NULL DEFAULT 0 CHECK(not_interested IN(0,1)),PRIMARY KEY(profile_id,item_id)) STRICT;
+CREATE TABLE personal_items(profile_id TEXT NOT NULL,item_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,watchlisted INTEGER NOT NULL DEFAULT 0 CHECK(watchlisted IN(0,1)),favorite INTEGER NOT NULL DEFAULT 0 CHECK(favorite IN(0,1)),rating INTEGER CHECK(rating IS NULL OR (rating>=0 AND rating<=10)),revision INTEGER NOT NULL, reaction TEXT NOT NULL DEFAULT 'none' CHECK(reaction IN('none','like','dislike')), watched INTEGER NOT NULL DEFAULT 0 CHECK(watched IN(0,1)), last_played_at TEXT NOT NULL DEFAULT '', not_interested INTEGER NOT NULL DEFAULT 0 CHECK(not_interested IN(0,1)),PRIMARY KEY(profile_id,item_id)) STRICT;
 -- Its indexes, as the 265 schema had them (a core.sql table replaces the old
 -- definition, indexes included).
 CREATE INDEX personal_watchlist ON personal_items(profile_id,watchlisted,item_id);
@@ -4794,11 +4796,11 @@ CREATE INDEX inventory_objects_missing ON inventory_objects(source_id,id) WHERE 
 
 -- The people name index follows catalog_people (rowid = person id).
 CREATE TRIGGER catalog_people_names_insert AFTER INSERT ON catalog_people BEGIN
- INSERT INTO catalog_people_names(rowid,name) VALUES(NEW.id,NEW.name);
+ INSERT INTO catalog_people_names(rowid,name) VALUES(NEW.id,portico_search_text(NEW.name));
 END;
 CREATE TRIGGER catalog_people_names_update AFTER UPDATE OF name ON catalog_people BEGIN
  DELETE FROM catalog_people_names WHERE rowid=OLD.id;
- INSERT INTO catalog_people_names(rowid,name) VALUES(NEW.id,NEW.name);
+ INSERT INTO catalog_people_names(rowid,name) VALUES(NEW.id,portico_search_text(NEW.name));
 END;
 CREATE TRIGGER catalog_people_names_delete AFTER DELETE ON catalog_people BEGIN
  DELETE FROM catalog_people_names WHERE rowid=OLD.id;

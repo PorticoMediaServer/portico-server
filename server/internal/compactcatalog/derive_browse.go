@@ -163,6 +163,9 @@ func readCountedRow(ctx context.Context, tx *sql.Tx, id int64) (browseRow, error
 // deriveBrowseRow brings one entity's browse row, its bucket and Home
 // contributions and its metrics up to date (or removes them).
 func deriveBrowseRow(ctx context.Context, tx *sql.Tx, id int64) error {
+	if _, err := tx.ExecContext(ctx, `UPDATE catalog_entities SET sort_key=portico_sort_title(title,sort_title,metadata_language),sort_head=substr(portico_sort_title(title,sort_title,metadata_language),1,1) WHERE id=? AND sort_key IS NOT portico_sort_title(title,sort_title,metadata_language)`, id); err != nil {
+		return err
+	}
 	old, err := readCountedRow(ctx, tx, id)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return err
@@ -610,7 +613,7 @@ func refreshEntityMetrics(ctx context.Context, tx *sql.Tx, entity int64) error {
 
 func init() {
 	Register(DomainBrowseRows, Derivation{
-		Version: 1,
+		Version: 2,
 		Drain: func(ctx context.Context, tx *sql.Tx, keys []Key, limit int) ([]int64, error) {
 			ids := keyIDs(keys)
 			for _, id := range ids {

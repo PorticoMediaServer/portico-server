@@ -5,7 +5,7 @@ import {unreadableServerResponse} from './server-messages.ts';
 import {validateContentEntry,type ContentEntry,type ContentScope,type ContentHeading,type LibraryContentApi} from './library-content.ts';
 /** How many results each group shows when every group is searched at once (the server's `SearchPreviewLimit`). */
 export const SEARCH_PREVIEW_LIMIT=12;
-export type SearchGroup='movies'|'shows'|'episodes'|'artists'|'albums'|'songs'|'books'|'people'|'live-tv';
+export type SearchGroup='movies'|'shows'|'episodes'|'artists'|'albums'|'songs'|'books'|'collections'|'authors'|'people'|'live-tv';
 export type SearchSort='relevance'|'title'|'releaseYear'|'dateAdded';
 export type SearchDirection='asc'|'desc';
 export type SearchGroupStatus='success'|'error';
@@ -15,17 +15,17 @@ export type SearchEntry=ContentEntry|Readonly<{id:string;kind:'person'|'channel'
 export type SearchGroupResult=Readonly<{id:SearchGroup;title:string;entityKind:string;status:SearchGroupStatus;errorCode:SearchGroupErrorCode;items:readonly SearchEntry[];totalCount:number;hasMore:boolean;nextCursor:string}>;
 export type SearchGroupCapability=Readonly<{id:SearchGroup;title:string;entityKind:string;available:boolean;reason:string;sorts:readonly SearchSort[]}>;
 export type SearchCapabilities=Readonly<{groups:readonly SearchGroupCapability[];sorts:readonly SearchSort[];directions:readonly SearchDirection[];maxLimit:number;groupBudgetMs:number}>;
-export type SearchData=Readonly<{scope:Readonly<{serverId:string;libraryId:'';libraryKind:'mixed';view:'search';entityId:'';viewerFence:string}>;revision:Readonly<{catalog:number;viewer:number}>;heading:ContentHeading;query:Readonly<{q:string;sort:SearchSort;direction:SearchDirection;group:SearchGroup|'';groups:readonly SearchGroup[];libraryIds:readonly string[];limit:number;searchMode:'token_prefix';recorded:boolean}>;groups:readonly SearchGroupResult[];capabilities:SearchCapabilities;empty?:ContentHeading}>;
+export type SearchData=Readonly<{scope:Readonly<{serverId:string;libraryId:'';libraryKind:'mixed';view:'search';entityId:'';viewerFence:string}>;revision:Readonly<{catalog:number;viewer:number}>;heading:ContentHeading;query:Readonly<{q:string;sort:SearchSort;direction:SearchDirection;group:SearchGroup|'';groups:readonly SearchGroup[];libraryIds:readonly string[];limit:number;searchMode:'normalized_prefix';recorded:boolean}>;groups:readonly SearchGroupResult[];capabilities:SearchCapabilities;empty?:ContentHeading}>;
 export type SearchSnapshot=Readonly<{generation:number;scope:ContentScope;query:SearchQuery|null;phase:'idle'|'loading'|'ready'|'error'|'refresh-required';data:SearchData|null;groups:readonly SearchGroupResult[];pagination:Readonly<{cursor:string|null;canPrevious:boolean}>;error:Readonly<{code:string;message:string;retryable:boolean}>|null}>;
 export type SearchHistoryEntry=Readonly<{q:string;updatedAt:string;uses:number}>;
 export type SearchHistoryPage=Readonly<{serverId:string;viewerFence:string;entries:readonly SearchHistoryEntry[];maxEntries:number}>;
-const groups:readonly SearchGroup[]=['movies','shows','episodes','artists','albums','songs','books','people','live-tv'];
+const groups:readonly SearchGroup[]=['movies','shows','episodes','artists','albums','songs','books','collections','authors','people','live-tv'];
 const sorts:readonly SearchSort[]=['relevance','title','releaseYear','dateAdded'];
 const directions:readonly SearchDirection[]=['asc','desc'];
 const statuses:readonly SearchGroupStatus[]=['success','error'];
 const errorCodes:readonly SearchGroupErrorCode[]=['','search_group_timeout','search_group_unavailable'];
-const kinds={movies:'movie',shows:'show',episodes:'episode',artists:'artist',albums:'album',songs:'song',books:'book',people:'person','live-tv':'channel'} as const;
-const targets={movies:'item',shows:'show',episodes:'item',artists:'artist',albums:'album',songs:'item',books:'book',people:'person','live-tv':'channel'} as const;
+const kinds={movies:'movie',shows:'show',episodes:'episode',artists:'artist',albums:'album',songs:'song',books:'book',collections:'collection',authors:'author',people:'person','live-tv':'channel'} as const;
+const targets={movies:'item',shows:'show',episodes:'item',artists:'artist',albums:'album',songs:'item',books:'book',collections:'collection',authors:'author',people:'person','live-tv':'channel'} as const;
 const entityGroups:readonly SearchGroup[]=['people','live-tv'];
 const object=(v:unknown):v is Record<string,unknown>=>typeof v==='object'&&v!==null&&!Array.isArray(v);
 const text=(v:unknown,max=4096):v is string=>typeof v==='string'&&v.length<=max&&!/[\x00-\x1f\x7f]/.test(v);
@@ -46,10 +46,10 @@ export function searchQueryProblem(q:string):'short'|'words'|'long'|undefined{
  if(normalized==='')return undefined;
  const length=[...normalized].length;
  if(length>128)return 'long';
- if(length<2)return 'short';
- const tokens=normalized.split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+ if(length<1)return 'short';
+ const tokens=normalized.replace(/[^\p{L}\p{N}\p{White_Space}]/gu,'').split(/\p{White_Space}+/u).filter(Boolean);
  if(tokens.length>8)return 'words';
- if(!tokens.length||!tokens.some(t=>[...t].length>=2))return 'short';
+ if(!tokens.length)return 'short';
  return undefined;
 }
 function query(q:string,options:Omit<SearchQuery,'q'>={}):SearchQuery{
@@ -95,7 +95,7 @@ function capabilities(v:unknown):SearchCapabilities{
 function parse(raw:unknown,op:Operation,s:ContentScope,limit:number):SearchData{
  if(!object(raw)||!object(raw.scope)||!object(raw.revision)||!object(raw.query))invalid();const scope=raw.scope,r=raw.revision,q=raw.query;
  if(scope.serverId!==s.serverId||scope.libraryId!==''||scope.libraryKind!=='mixed'||scope.view!=='search'||scope.entityId!==''||!id(scope.viewerFence)||!count(r.catalog)||!count(r.viewer))invalid();
- if(!text(q.q,512)||!q.q||!sorts.includes(q.sort as SearchSort)||!directions.includes(q.direction as SearchDirection)||q.group!==(op.query.group??'')||q.limit!==limit||q.searchMode!=='token_prefix'||typeof q.recorded!=='boolean')invalid();
+ if(!text(q.q,512)||!q.q||!sorts.includes(q.sort as SearchSort)||!directions.includes(q.direction as SearchDirection)||q.group!==(op.query.group??'')||q.limit!==limit||q.searchMode!=='normalized_prefix'||typeof q.recorded!=='boolean')invalid();
  if(q.q!==op.query.q)invalid();
  if(op.query.sort&&q.sort!==op.query.sort||op.query.direction&&q.direction!==op.query.direction)invalid();
  if(q.recorded!==(op.query.record===true))invalid();
@@ -127,7 +127,7 @@ function parse(raw:unknown,op:Operation,s:ContentScope,limit:number):SearchData{
  if(new Set(results.map(g=>g.id)).size!==results.length)invalid();
  if(results.length!==echoedGroups.length)invalid();
  for(const key of ['navigation','sorts','sections','filters'])if(raw[key]!==undefined)invalid();
- return Object.freeze({scope:Object.freeze({serverId:s.serverId,libraryId:'' as const,libraryKind:'mixed' as const,view:'search' as const,entityId:'' as const,viewerFence:scope.viewerFence}),revision:Object.freeze({catalog:r.catalog,viewer:r.viewer}),heading:heading(raw.heading),query:Object.freeze({q:q.q,sort:q.sort as SearchSort,direction:q.direction as SearchDirection,group:q.group as SearchGroup|'',groups:echoedGroups,libraryIds,limit,searchMode:'token_prefix' as const,recorded:q.recorded}),groups:Object.freeze(results),capabilities:published,...(raw.empty===undefined?{}:{empty:heading(raw.empty)})});
+ return Object.freeze({scope:Object.freeze({serverId:s.serverId,libraryId:'' as const,libraryKind:'mixed' as const,view:'search' as const,entityId:'' as const,viewerFence:scope.viewerFence}),revision:Object.freeze({catalog:r.catalog,viewer:r.viewer}),heading:heading(raw.heading),query:Object.freeze({q:q.q,sort:q.sort as SearchSort,direction:q.direction as SearchDirection,group:q.group as SearchGroup|'',groups:echoedGroups,libraryIds,limit,searchMode:'normalized_prefix' as const,recorded:q.recorded}),groups:Object.freeze(results),capabilities:published,...(raw.empty===undefined?{}:{empty:heading(raw.empty)})});
 }
 /** Recent searches are the viewer's own, bounded and separately erasable. */
 export function parseSearchHistory(raw:unknown,scope:ContentScope):SearchHistoryPage{

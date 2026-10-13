@@ -1,3 +1,4 @@
+import {wireDurations,durationIntent} from './wire-units.ts';
 import {unreadableServerResponse} from './server-messages.ts';
 import {parseLocalBook,parseLocalAudioPolicy,type LocalAudioPolicy,type LocalBookMetadata} from "./music-metadata.ts";
 /** Server-authored detail and explicit personal-state commands; no playback or ranking owner. */
@@ -77,7 +78,7 @@ const str = (v: unknown, max = 512): v is string => typeof v === 'string' && v.l
 const id = (v: unknown): v is string => str(v, 256) && v.length > 0;
 const integer = (v: unknown): v is number => typeof v === 'number' && Number.isSafeInteger(v) && v >= 0;
 const finite = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v) && v >= 0;
-const rating = (v: unknown): v is number | null => v === null || typeof v === 'number' && Number.isFinite(v) && v >= 0.5 && v <= 5 && Number.isInteger(v * 2);
+const rating = (v: unknown): v is number | null => v === null || typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 10 && Number.isInteger(v);
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 class Failure extends Error { code: string; retryable: boolean; constructor(code: string, message: string, retryable = false) { super(message); this.code = code; this.retryable = retryable; } }
 function invalid(): never { throw new Failure('invalid_detail', unreadableServerResponse); }
@@ -85,6 +86,7 @@ function invalid(): never { throw new Failure('invalid_detail', unreadableServer
 function creditRow(row: unknown, itemId: string): DetailCredit { if (!obj(row) || !id(row.id) || !str(row.name) || !str(row.role) || !str(row.department) || !id(row.provider)||row.personId!==undefined&&!id(row.personId)||row.portraitUrl!==undefined&&(!str(row.portraitUrl)||!row.portraitUrl.startsWith('/v1/metadata/item/'+encodeURIComponent(itemId)+'/art/portrait?')||/[\\\r\n]/.test(row.portraitUrl))) invalid(); return Object.freeze({ id: row.id, name: row.name, role: row.role, department: row.department, provider: row.provider,...(row.portraitUrl?{portraitUrl:row.portraitUrl as string}:{}),...(row.personId?{personId:row.personId as string}:{}) }); }
 function array(value: unknown, max: number): unknown[] { if (!Array.isArray(value) || value.length > max) invalid(); return value; }
 function personal(value: unknown): PersonalState {
+ value=wireDurations(value,{progressSeconds:"progressMs"});
   if (!obj(value) || typeof value.watchlisted !== 'boolean' || typeof value.favorite !== 'boolean' || !rating(value.rating) || !integer(value.revision)) invalid();
   const watched=value.watched??false,progressSeconds=value.progressSeconds??0,lastPlayedAt=value.lastPlayedAt??'',status=value.status??'current';
   if(typeof watched!=='boolean'||!finite(progressSeconds)||!str(lastPlayedAt,128)||!['current','needs-resolution'].includes(status as string))invalid();
@@ -99,6 +101,7 @@ function fileTrack(value: unknown): TitleFileTrack {
   return Object.freeze({ codec: value.codec, ...(language ? { language } : {}), ...(title ? { title } : {}), ...(channels ? { channels } : {}), ...(channelLayout ? { channelLayout } : {}), ...(objectAudio ? { objectAudio } : {}), ...(bitRate ? { bitRate } : {}), ...(value.default === true ? { default: true } : {}), ...(value.forced === true ? { forced: true } : {}), ...(value.external === true ? { external: true } : {}) });
 }
 function titleFile(value: unknown): TitleFile {
+ value=wireDurations(value,{duration:"durationMs"});
   if (!obj(value) || !id(value.id) || !integer(value.size) || !str(value.container, 64) || !finite(value.duration) || typeof value.available !== 'boolean') invalid();
   if (value.path !== undefined && !str(value.path, 4096)) invalid();
   let video: TitleFile['video'];

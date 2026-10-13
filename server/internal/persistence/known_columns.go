@@ -988,11 +988,13 @@ catalog_related_facets.relation
 catalog_related_facets.year
 catalog_search_documents.entity_id
 catalog_search_documents.kind
+catalog_search_documents.normalized
+catalog_search_documents.search
 catalog_search_documents.title
 catalog_search_titles.catalog_search_titles
 catalog_search_titles.kind
 catalog_search_titles.rank
-catalog_search_titles.title
+catalog_search_titles.search
 catalog_search_titles_config.k
 catalog_search_titles_config.v
 catalog_search_titles_data.block

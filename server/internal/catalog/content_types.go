@@ -147,7 +147,7 @@ type ContentEntry struct {
 	ContentRating string   `json:"contentRating,omitempty"`
 	Genres        []string `json:"genres,omitempty"`
 	Watchlisted   *bool    `json:"watchlisted,omitempty"`
-	// UserRating is the viewer's own rating (0.5–5 in half steps) on an item
+	// UserRating is the viewer's own rating (integer 0–10) on an item
 	// row; absent when the viewer has not rated it (NEW-24).
 	UserRating *float64 `json:"userRating,omitempty"`
 	// Plays is how many times the viewer has played a song to the end; absent

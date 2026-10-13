@@ -36,7 +36,7 @@ func TestPersonalSortBucketsAndClassIntersection(t *testing.T) {
 	cc1Drain(t, db)
 	class := cc1Class(t, db, lib, "policy")
 	cc1Visible(t, db, class, movieA, 1)
-	cc1Exec(t, db, `INSERT INTO personal_items(profile_id,item_id,rating,revision,last_played_at) VALUES('profile',?,4.5,1,'2026-09-24T12:34:00Z')`, movieA)
+	cc1Exec(t, db, `INSERT INTO personal_items(profile_id,item_id,rating,revision,last_played_at) VALUES('profile',?,9,1,'2026-09-24T12:34:00Z')`, movieA)
 	drainPersonalSort(t, db, 2)
 	if got := cc1Scalar(t, db, `SELECT total FROM catalog_personal_sort_buckets WHERE axis=7 AND value='4'`); got != 1 {
 		t.Fatalf("personal rating bucket: %d", got)
@@ -47,7 +47,7 @@ func TestPersonalSortBucketsAndClassIntersection(t *testing.T) {
 	if got := cc1Scalar(t, db, `SELECT total FROM catalog_personal_visibility_sort_buckets WHERE axis=7 AND value='4'`); got != 1 {
 		t.Fatalf("class personal rating bucket: %d", got)
 	}
-	cc1Exec(t, db, `UPDATE personal_items SET rating=2.5,last_played_at='2025-01-02T00:00:00Z',revision=2 WHERE profile_id='profile' AND item_id=?`, movieA)
+	cc1Exec(t, db, `UPDATE personal_items SET rating=5,last_played_at='2025-01-02T00:00:00Z',revision=2 WHERE profile_id='profile' AND item_id=?`, movieA)
 	drainPersonalSort(t, db, 2)
 	if got := cc1Scalar(t, db, `SELECT count(*) FROM catalog_personal_sort_buckets WHERE axis=7 AND value='4'`); got != 0 {
 		t.Fatalf("old rating bucket retained: %d", got)

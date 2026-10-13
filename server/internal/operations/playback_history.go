@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"portico.local/server/internal/apiwire"
 	"strconv"
 	"strings"
 )
@@ -18,22 +19,22 @@ import (
 // the quality the viewer asked for. State is the live session's state, or why
 // it ended ("stopped", "transferred", "lease_expired", "terminated", ...).
 type PlaybackHistoryEntry struct {
-	ID              string `json:"id"`
-	Viewer          string `json:"viewer"`
-	Authority       string `json:"authority"`
-	AccountID       string `json:"accountId"`
-	ProfileID       string `json:"profileId"`
-	Title           string `json:"title"`
-	MediaKind       string `json:"mediaKind"`
-	LibraryName     string `json:"libraryName"`
-	ItemID          string `json:"itemId"`
-	StartedAt       int64  `json:"startedAt"`
-	EndedAt         *int64 `json:"endedAt"`
-	DurationSeconds *int64 `json:"durationSeconds"`
-	DeliveryMode    string `json:"deliveryMode"`
-	DeliveryReason  string `json:"deliveryStrategy"`
-	QualityMode     string `json:"qualityMode"`
-	State           string `json:"state"`
+	ID              string           `json:"id"`
+	Viewer          string           `json:"viewer"`
+	Authority       string           `json:"authority"`
+	AccountID       string           `json:"accountId"`
+	ProfileID       string           `json:"profileId"`
+	Title           string           `json:"title"`
+	MediaKind       string           `json:"mediaKind"`
+	LibraryName     string           `json:"libraryName"`
+	ItemID          string           `json:"itemId"`
+	StartedAt       apiwire.Instant  `json:"startedAt"`
+	EndedAt         *apiwire.Instant `json:"endedAt"`
+	DurationSeconds *int64           `json:"durationSeconds"`
+	DeliveryMode    string           `json:"deliveryMode"`
+	DeliveryReason  string           `json:"deliveryStrategy"`
+	QualityMode     string           `json:"qualityMode"`
+	State           string           `json:"state"`
 }
 
 // PlaybackHistoryPeriods are the only accepted windows. Each is a bounded range
@@ -119,9 +120,10 @@ func scanHistory(rows *sql.Rows) (PlaybackHistoryEntry, error) {
 		if v.State == "" {
 			v.State = "stopped"
 		}
-		if ended >= v.StartedAt {
-			seconds := (ended - v.StartedAt) / 1000
-			v.EndedAt, v.DurationSeconds = &ended, &seconds
+		if ended >= int64(v.StartedAt) {
+			seconds := (ended - int64(v.StartedAt)) / 1000
+			instant := apiwire.Instant(ended)
+			v.EndedAt, v.DurationSeconds = &instant, &seconds
 		}
 	}
 	return v, nil
@@ -165,7 +167,7 @@ func (s *Store) PlaybackHistory(ctx context.Context, auth Authorize, period, cur
 		if len(out.Items) > limit {
 			out.Items = out.Items[:limit]
 			last := out.Items[limit-1]
-			out.NextCursor = "t:" + strconv.FormatInt(last.StartedAt, 10) + ":" + last.ID
+			out.NextCursor = "t:" + strconv.FormatInt(int64(last.StartedAt), 10) + ":" + last.ID
 		}
 		return nil
 	})
@@ -191,7 +193,7 @@ func (s *Store) PlaybackHistoryCSV(ctx context.Context, auth Authorize, period s
 		for _, v := range page.Items {
 			out.WriteString(strings.Join([]string{
 				csvCell(v.ID), csvCell(v.Viewer), csvCell(v.Title), csvCell(v.MediaKind), csvCell(v.LibraryName),
-				csvCell(strconv.FormatInt(v.StartedAt, 10)), csvCell(optionalNumber(v.EndedAt)), csvCell(optionalNumber(v.DurationSeconds)),
+				csvCell(time.UnixMilli(int64(v.StartedAt)).UTC().Format(time.RFC3339Nano)), csvCell(optionalInstant(v.EndedAt)), csvCell(optionalNumber(v.DurationSeconds)),
 				csvCell(v.DeliveryMode), csvCell(v.DeliveryReason), csvCell(v.QualityMode), csvCell(v.State),
 			}, ","))
 			out.WriteString("\n")
@@ -219,4 +221,11 @@ func csvCell(v string) string {
 		v = "'" + v
 	}
 	return `"` + strings.ReplaceAll(v, `"`, `""`) + `"`
+}
+
+func optionalInstant(value *apiwire.Instant) string {
+	if value == nil {
+		return ""
+	}
+	return time.UnixMilli(int64(*value)).UTC().Format(time.RFC3339Nano)
 }

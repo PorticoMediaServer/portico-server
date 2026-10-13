@@ -14,8 +14,8 @@ import (
 	"time"
 
 	"portico.local/server/internal/compactcatalog"
+	"portico.local/server/internal/facettext"
 	"portico.local/server/internal/identity"
-	"unicode"
 	"unicode/utf8"
 )
 
@@ -24,7 +24,7 @@ import (
 // slow or missing projection must never take the other groups down with it.
 const SearchGroupBudget = 600 * time.Millisecond
 
-var ErrSearchQuery = errors.New("search requires 2–128 characters and 1–8 title tokens; limit is 1–40")
+var ErrSearchQuery = errors.New("search requires 1–128 characters and 1–8 title tokens; limit is 1–40")
 
 type searchGroupDefinition struct {
 	id, kind, label, view, source string
@@ -42,6 +42,8 @@ var searchGroups = []searchGroupDefinition{
 	{"albums", "album", "Albums", "album", "catalog", catalogSorts},
 	{"songs", "song", "Songs", "item", "catalog", catalogSorts},
 	{"books", "book", "Books", "book", "catalog", catalogSorts},
+	{"collections", "collection", "Collections", "collection", "catalog", nameSorts},
+	{"authors", "author", "Authors", "author", "catalog", nameSorts},
 	{"people", "person", "People", "person", "people", nameSorts},
 	{"live-tv", "channel", "Live TV", "channel", "live", nameSorts},
 }
@@ -113,24 +115,17 @@ var searchGroupProbe func(context.Context, string) error
 
 func NormalizeSearch(q string) (string, string, error) {
 	q = strings.Join(strings.Fields(q), " ")
-	if !utf8.ValidString(q) || utf8.RuneCountInString(q) < 2 || utf8.RuneCountInString(q) > 128 {
+	if !utf8.ValidString(q) || utf8.RuneCountInString(q) < 1 || utf8.RuneCountInString(q) > 128 {
 		return "", "", ErrSearchQuery
 	}
-	tokens := strings.FieldsFunc(q, func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsNumber(r) })
-	if len(tokens) == 0 || len(tokens) > 8 {
+	if len(strings.Fields(facettext.SearchFold(q))) == 0 || len(strings.Fields(facettext.SearchFold(q))) > 8 {
 		return "", "", ErrSearchQuery
 	}
-	long := false
 	terms := []string{}
-	for _, token := range tokens {
-		if utf8.RuneCountInString(token) >= 2 {
-			long = true
-		}
+	for _, token := range facettext.SearchTerms(q) {
 		terms = append(terms, `"`+token+`"*`)
 	}
-	if !long {
-		return "", "", ErrSearchQuery
-	}
+
 	return q, strings.Join(terms, " AND "), nil
 }
 func searchRevision(ctx context.Context, q interface {
@@ -155,12 +150,12 @@ type searchOrder struct {
 // a title-prefix boost. The result is rounded so the value a cursor carries and
 // the comparison that resumes from it are the same double.
 func searchScore(title string) searchOrder {
-	return searchOrder{`round(m.relevance+(CASE WHEN d.title=? COLLATE NOCASE THEN 1000.0 ELSE 0.0 END)+(CASE WHEN d.title LIKE ? ESCAPE '\' THEN 100.0 ELSE 0.0 END),6)`, []any{title, searchPrefix(title)}, true}
+	return searchOrder{`round(m.relevance+(CASE WHEN portico_search_fold(d.title)=? THEN 1000.0 ELSE 0.0 END)+(CASE WHEN portico_search_fold(d.title) LIKE ? ESCAPE '\' THEN 100.0 ELSE 0.0 END),6)`, []any{facettext.SearchFold(title), searchPrefix(facettext.SearchFold(title))}, true}
 }
 func catalogOrder(sortID, kind, q string) searchOrder {
 	switch sortID {
 	case "title":
-		return searchOrder{`lower(d.title)`, nil, false}
+		return searchOrder{`e.sort_key`, nil, false}
 	case "releaseYear":
 		if kind == "show" || kind == "book" {
 			return searchOrder{`CAST(0 AS REAL)`, nil, true}
@@ -279,7 +274,7 @@ func (s *Service) Search(ctx context.Context, r SearchRequest) (SearchEnvelope, 
 		return out, e
 	}
 	out.Revision = rev
-	out.Query = SearchQueryEcho{Q: r.Q, Sort: r.Sort, Direction: r.Direction, Group: r.Group, Groups: groupIDs(selected), LibraryIDs: libraries, Limit: r.Limit, SearchMode: "token_prefix", Recorded: r.Record}
+	out.Query = SearchQueryEcho{Q: r.Q, Sort: r.Sort, Direction: r.Direction, Group: r.Group, Groups: groupIDs(selected), LibraryIDs: libraries, Limit: r.Limit, SearchMode: "normalized_prefix", Recorded: r.Record}
 	out.Capabilities = s.searchCapabilities(ctx, r)
 	pageSize := r.Limit
 	// Every group at once: a row of each, enough to fill a wide screen's width.
@@ -495,6 +490,12 @@ func (s *Service) searchCatalogGroup(ctx context.Context, r SearchRequest, g sea
 	raw, _ := json.Marshal(r.Libraries)
 	where := ` AND e.kind=? AND (? OR l.library_id IN(SELECT value FROM json_each(?))) AND l.retired=0 AND NOT EXISTS(SELECT 1 FROM dvr_catalog_retirements gone WHERE gone.item_id=e.id)`
 	filterArgs := []any{kind, r.AllLibraries, string(raw)}
+	for _, word := range strings.Fields(facettext.SearchFold(r.Q)) {
+		if strings.ContainsFunc(word, facettext.CJK) {
+			where += ` AND instr(d.normalized,?)>0`
+			filterArgs = append(filterArgs, word)
+		}
+	}
 	// A match must have a live container on both sides of the link.
 	switch g.kind {
 	case "episode":
@@ -531,7 +532,7 @@ func (s *Service) searchCatalogGroup(ctx context.Context, r SearchRequest, g sea
 		}
 		libraryScope = ` AND kind : (` + strings.Join(ids, " OR ") + `)`
 	}
-	match = `kind : k` + strconv.Itoa(int(kind)) + libraryScope + ` AND title : (` + match + `)`
+	match = `kind : k` + strconv.Itoa(int(kind)) + libraryScope + ` AND search : (` + match + `)`
 	candidates := `(SELECT rowid AS entity_id,-rank AS relevance FROM catalog_search_titles WHERE catalog_search_titles MATCH ?) m
 	 CROSS JOIN catalog_search_documents d ON d.entity_id=m.entity_id CROSS JOIN catalog_entities e ON e.id=d.entity_id JOIN catalog_libraries l ON l.id=e.library_id`
 	countGroup := func() error {

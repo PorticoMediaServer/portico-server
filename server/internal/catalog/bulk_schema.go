@@ -25,7 +25,7 @@ func (JobPersonalArgs) JSONSchema() map[string]any { return jobArgumentsSchema()
 func personalArgumentsSchema() map[string]any {
 	return map[string]any{"type": "object", "additionalProperties": false, "minProperties": 1, "required": []string{}, "properties": map[string]any{
 		"watched": map[string]any{"type": "boolean"}, "favorite": map[string]any{"type": "boolean"}, "watchlist": map[string]any{"type": "boolean"},
-		"rating": map[string]any{"type": "number", "nullable": true, "minimum": 0.5, "maximum": 5, "multipleOf": 0.5},
+		"rating": map[string]any{"type": "integer", "nullable": true, "minimum": 0, "maximum": 10},
 	}}
 }
 

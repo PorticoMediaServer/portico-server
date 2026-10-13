@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"portico.local/server/internal/apiwire"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/supervise"
 	"portico.local/server/internal/telemetry"
@@ -28,8 +29,8 @@ type Fact struct {
 }
 type Measurement struct {
 	Name       string          `json:"name"`
-	ObservedAt int64           `json:"observedAt"`
-	FreshUntil int64           `json:"freshUntil"`
+	ObservedAt apiwire.Instant `json:"observedAt"`
+	FreshUntil apiwire.Instant `json:"freshUntil"`
 	Facts      map[string]Fact `json:"facts"`
 }
 
@@ -530,7 +531,7 @@ func (m *Measurements) publishTimeoutAlert(sequence uint64, active bool) {
 
 func (m *Measurements) Read(ctx context.Context, name string) (Measurement, error) {
 	now := time.Now().UnixMilli()
-	out := Measurement{Name: name, ObservedAt: now, FreshUntil: now + 30000, Facts: map[string]Fact{}}
+	out := Measurement{Name: name, ObservedAt: apiwire.Instant(now), FreshUntil: apiwire.Instant(now + 30000), Facts: map[string]Fact{}}
 	switch name {
 	case "health":
 		out.Facts["uptime"] = measured(int64(time.Since(m.Started).Seconds()), "seconds")

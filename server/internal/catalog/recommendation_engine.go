@@ -87,9 +87,9 @@ func recBase(r HomeRequest, candidates []string) (string, []any) {
  UNION ALL SELECT w.work,rf.facet FROM works w CROSS JOIN catalog_rec_facets rf ON rf.entity_id=w.id WHERE w.kind IN('show','album','book'))
  ), personal AS MATERIALIZED (
  SELECT m.work,
- max(CASE WHEN p.rating<=2 OR p.not_interested=1 THEN 1 ELSE 0 END) AS negative,
+ max(CASE WHEN p.rating<=4 OR p.not_interested=1 THEN 1 ELSE 0 END) AS negative,
  max(CASE WHEN ` + personalstate.CompactSQL("wp.profile", "m.id") + `=1 OR p.watchlisted=1 OR p.favorite=1 OR p.rating IS NOT NULL OR pg.position>0 THEN 1 ELSE 0 END) AS touched,
- max(CASE WHEN p.favorite=1 THEN 40 ELSE 0 END + CASE WHEN p.rating>=3.5 THEN 35 WHEN p.rating>=2.5 THEN 15 ELSE 0 END + CASE WHEN ` + personalstate.CompactSQL("wp.profile", "m.id") + `=1 THEN 25 ELSE 0 END + CASE WHEN p.watchlisted=1 THEN 12 ELSE 0 END
+ max(CASE WHEN p.favorite=1 THEN 40 ELSE 0 END + CASE WHEN p.rating>=7 THEN 35 WHEN p.rating>=5 THEN 15 ELSE 0 END + CASE WHEN ` + personalstate.CompactSQL("wp.profile", "m.id") + `=1 THEN 25 ELSE 0 END + CASE WHEN p.watchlisted=1 THEN 12 ELSE 0 END
  + CASE WHEN pg.position>=30000 AND pg.position >= COALESCE((SELECT max(a.duration)*50 FROM catalog_asset_links link JOIN catalog_assets a ON a.id=link.asset_id WHERE link.entity_id=m.id AND a.available=1),1e99) THEN 6 ELSE 0 END) AS weight,
  max(COALESCE(p.last_played_at,'')) AS at
  FROM members m CROSS JOIN (SELECT ? AS profile) wp LEFT JOIN personal_items p ON p.item_id=m.id AND p.profile_id=wp.profile LEFT JOIN progress pg ON pg.item_id=m.id AND pg.profile_id=? GROUP BY m.work

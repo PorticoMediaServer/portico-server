@@ -1,3 +1,4 @@
+import {wireDurations} from './wire-units.ts';
 import {unreadableServerResponse} from './server-messages.ts';
 /**
  * Wire shapes for offline downloads (`server/api/downloads.openapi.yaml`).
@@ -187,7 +188,7 @@ function storage(raw: unknown): DownloadStorage {
 
 export function parseDownloadOptions(raw: unknown, itemId: string): DownloadOptionsView {
   if (!object(raw) || raw.itemId !== itemId || !text(raw.kind, 64)) invalid();
-  const source = raw.source;
+  const source = wireDurations(raw.source,{durationSeconds:"durationMs"});
   if (!object(source) || !text(source.container ?? '', 64) || !count(source.bytes) || typeof source.available !== 'boolean') invalid();
   if (typeof source.durationSeconds !== 'number' || !Number.isFinite(source.durationSeconds) || source.durationSeconds < 0) invalid();
   for (const field of ['videoCodec','audioCodec'] as const) if (source[field] !== undefined && !text(source[field], 64)) invalid();
