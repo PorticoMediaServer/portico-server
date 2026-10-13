@@ -15,6 +15,7 @@ import (
 	"portico.local/server/internal/ingestion"
 	"portico.local/server/internal/persistence"
 	"portico.local/server/internal/playback"
+	"portico.local/server/internal/playbackv1"
 	"strings"
 	"testing"
 	"time"
@@ -74,7 +75,7 @@ func TestSetupRangePlaybackStopAndOrigin(t *testing.T) {
 	}
 	player := playback.New(db)
 	scanner := ingestion.New(db, cat, assets.Probe{})
-	handler := New(Dependencies{DB: db, Identity: id, Catalog: cat, Ingestion: scanner, Playback: player, Hosted: host, Origins: []string{"http://127.0.0.1:19412"}})
+	handler := New(Dependencies{DB: db, Identity: id, Catalog: cat, Ingestion: scanner, Playback: player, PlaybackV1: &playbackv1.Service{}, Hosted: host, Origins: []string{"http://127.0.0.1:19412"}})
 	request := func(method, path, token string, body any) *httptest.ResponseRecorder {
 		var data []byte
 		if body != nil {
@@ -123,13 +124,23 @@ func TestSetupRangePlaybackStopAndOrigin(t *testing.T) {
 	if e != nil || len(items) != 1 {
 		t.Fatal(e)
 	}
-	w = request("POST", "/v1/playback/sessions", auth.AccessToken, map[string]string{"itemId": items[0].ID, "quality": "auto", "requestId": "first"})
+	start, _ := json.Marshal(map[string]string{"itemId": items[0].ID})
+	r := httptest.NewRequest("POST", "/v1/playback/sessions", bytes.NewReader(start))
+	r.Header.Set("Authorization", "Bearer "+auth.AccessToken)
+	r.Header.Set("Content-Type", "application/json")
+	r.Header.Set("Idempotency-Key", "router-start-0000001")
+	w = httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
 	if w.Code != 201 {
 		t.Fatalf("playback %d %s", w.Code, w.Body.String())
 	}
-	var session playback.Session
+	var session playbackv1.SessionView
 	_ = json.Unmarshal(w.Body.Bytes(), &session)
-	r := httptest.NewRequest("GET", session.StreamURL, nil)
+	if session.Presentation.Mode != "direct" {
+		t.Fatalf("playback %s", w.Body.String())
+	}
+	streamURL := session.Presentation.URL
+	r = httptest.NewRequest("GET", streamURL, nil)
 	r.Header.Set("Range", "bytes=2-5")
 	w = httptest.NewRecorder()
 	handler.ServeHTTP(w, r)
@@ -140,7 +151,7 @@ func TestSetupRangePlaybackStopAndOrigin(t *testing.T) {
 	if w.Code != 204 {
 		t.Fatal(w.Code)
 	}
-	w = request("GET", session.StreamURL, "", nil)
+	w = request("GET", streamURL, "", nil)
 	// NEW-35: a stopped grant is a hidden 404 presentation_ended, never a 401.
 	if w.Code != 404 || !strings.Contains(w.Body.String(), "presentation_ended") {
 		t.Fatal("stopped grant remained valid", w.Code)

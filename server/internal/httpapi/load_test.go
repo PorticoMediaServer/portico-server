@@ -73,6 +73,10 @@ type performanceTier struct {
 	// is backed by, so a test can stream actual bytes through the media routes
 	// rather than sixteen placeholder ones.
 	mediaPath string
+	// capabilities publishes a device capability document for every viewer, as
+	// a real client does before it plays. It is off where a test measures a
+	// viewer's first authenticated request.
+	capabilities bool
 	// gated turns the audit's budgets into hard gates. The smoke tier reports
 	// them; the tiers that make a capacity claim assert them.
 	gated bool
@@ -257,7 +261,7 @@ func newLoadFixture(t *testing.T, tier performanceTier) *loadFixture {
 			t.Fatal(issueErr)
 		}
 		viewerEnvelopes = append(viewerEnvelopes, envelope)
-		{
+		if tier.capabilities {
 			payload, _ := json.Marshal(webCapabilities())
 			request := httptest.NewRequest("PUT", "/v1/me/devices/current/capabilities", bytes.NewReader(payload))
 			request.Header.Set("Authorization", "Bearer "+envelope.AccessToken)

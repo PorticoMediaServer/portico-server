@@ -267,7 +267,7 @@ func TestSoakUnderFaultsAndRealMediaBytes(t *testing.T) {
 	lockEscapes.Store(0)
 
 	shape := soakShape(settings.catalogue)
-	tier := performanceTier{name: "soak", shape: shape, catalogItems: shape.Items(), concurrentViewers: settings.viewers, iterations: 1, think: 250 * time.Millisecond, mediaPath: media}
+	tier := performanceTier{name: "soak", shape: shape, catalogItems: shape.Items(), concurrentViewers: settings.viewers, iterations: 1, think: 250 * time.Millisecond, mediaPath: media, capabilities: true}
 	f := newLoadFixture(t, tier)
 
 	// Real sockets, not a recorder: a write deadline, a client that stops reading
