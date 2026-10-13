@@ -1,6 +1,7 @@
 package catalog
 
 import (
+	"fmt"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -31,8 +32,7 @@ func naturalAudioName(path string) string {
 				digits = "0"
 			}
 			out.WriteByte('~')
-			out.WriteString(strconv.Itoa(len(digits) / 10))
-			out.WriteString(strconv.Itoa(len(digits) % 10))
+			out.WriteString(fmt.Sprintf("%04d", len(digits)))
 			out.WriteString(digits)
 			i = j
 		} else {

@@ -48,6 +48,9 @@ func (p *reader) atoms(start, end int64, depth int, parent string) {
 		switch {
 		case kind == "moov" || kind == "udta" || kind == "ilst":
 			p.atoms(begin, off+n, depth+1, kind)
+			if kind == "moov" {
+				p.quickTimeChapters(begin, off+n)
+			}
 		case kind == "meta":
 			p.atoms(begin+4, off+n, depth+1, kind)
 		case parent == "ilst":

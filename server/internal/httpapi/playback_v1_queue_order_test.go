@@ -48,3 +48,17 @@ func TestShuffledQueueEditsKeepPlayedOrder(t *testing.T) {
 		t.Fatalf("unshuffle %+v", q.Queue)
 	}
 }
+
+func TestShuffledQueueCanRemoveItsFinalEntry(t *testing.T) {
+	f := newV1Fixture(t, 1)
+	var q playbackv1.QueueReply
+	f.call("POST", "/v1/queues", map[string]string{"Idempotency-Key": "shuffle-remove-last-0001"}, map[string]any{"segments": []any{map[string]any{"source": queueItems(f.items...)}}}, 201, &q)
+	base := "/v1/queues/" + q.Queue.ID
+	f.call("PATCH", base, map[string]string{"If-Match": q.Queue.Revision}, map[string]any{"shuffle": map[string]any{"on": true, "seed": "42"}}, 200, &q)
+	var removed playbackv1.QueueReply
+	f.call("DELETE", base+"/entries/"+q.Queue.Current.EntryID, map[string]string{"If-Match": q.Queue.Revision}, nil, 200, &removed)
+	q = removed
+	if q.Queue.Total != 0 || q.Queue.Current != nil {
+		t.Fatalf("removed entry survived: %+v", q.Queue)
+	}
+}

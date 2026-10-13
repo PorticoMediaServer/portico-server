@@ -3146,6 +3146,8 @@ CREATE TABLE audio_render_facts(
  end_frames INTEGER NOT NULL CHECK(end_frames>=0),
  trim_source TEXT NOT NULL,
  decoder_config TEXT NOT NULL DEFAULT '',
+ codec_profile TEXT NOT NULL DEFAULT '',
+ bit_rate INTEGER NOT NULL DEFAULT 0 CHECK(bit_rate>=0),
  measured_ms INTEGER NOT NULL,
  CHECK(start_frames+duration_frames+end_frames=raw_frames)
 ) WITHOUT ROWID, STRICT;
@@ -5655,7 +5657,7 @@ CREATE INDEX video_nfo_status_asset_id_fk ON video_nfo_status(asset_id);
 CREATE TABLE queue_v1_play_spans(
  queue_id TEXT NOT NULL REFERENCES queues_v1(id) ON DELETE CASCADE,
  rank INTEGER NOT NULL,source INTEGER NOT NULL CHECK(source IN(0,1)),
- start INTEGER NOT NULL CHECK(start>=0),count INTEGER NOT NULL CHECK(count>0),
+ start INTEGER NOT NULL CHECK(start>=0),count INTEGER NOT NULL CHECK(count>=0),
  PRIMARY KEY(queue_id,rank)) STRICT;
 
 CREATE TABLE audio_render_fact_requests(

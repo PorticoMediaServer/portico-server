@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"io"
 	"math"
+	"regexp"
 	"strconv"
 	"strings"
 	"unicode"
@@ -47,6 +48,15 @@ type reader struct {
 func Read(r io.ReaderAt, size int64) Tags {
 	p := &reader{r: r, size: size, out: Tags{Values: map[string][]string{}}}
 	h := p.at(0, 12)
+	if len(h) >= 4 && string(h[:4]) == "DSD " {
+		v := p.at(20, 8)
+		if len(v) == 8 {
+			off := binary.LittleEndian.Uint64(v)
+			if off < uint64(size) {
+				p.id3(int64(off))
+			}
+		}
+	}
 	if len(h) >= 10 && string(h[:3]) == "ID3" {
 		p.id3(0)
 	}
@@ -114,8 +124,10 @@ func canonical(k string) string {
 		return "total_discs"
 	case "originalyear", "original_date":
 		return "originaldate"
-	case "year", "releasedate", "release_date":
+	case "year":
 		return "date"
+	case "releasedate", "release_date":
+		return "release_date"
 	case "artistsort", "artist_sort":
 		return "artist_sort"
 	case "albumartistsort", "album_artist_sort":
@@ -183,13 +195,16 @@ func (p *reader) add(k, v string) {
 		}
 	}
 }
+
+var timedLyric = regexp.MustCompile(`(?m)^\s*\[[0-9]{1,4}:[0-9]{2}`)
+
 func (p *reader) lyric(lang, text string) {
 	text = strings.TrimSpace(text)
 	if len(p.out.Lyrics) >= 12 || len(text) == 0 || len(text) > 256<<10 || !utf8.ValidString(text) {
 		return
 	}
 	format := "text"
-	if strings.Contains(text, "[00:") || strings.Contains(text, "[0:") || strings.Contains(text, "[01:") {
+	if timedLyric.MatchString(text) {
 		format = "lrc"
 	}
 	p.out.Lyrics = append(p.out.Lyrics, Lyric{lang, format, text})
@@ -297,7 +312,7 @@ func (p *reader) id3(off int64) {
 	p.frames(b, ver, 0, h[5]&128 != 0)
 }
 
-var frameNames = map[string]string{"TT2": "title", "TIT2": "title", "TP1": "artist", "TPE1": "artist", "TP2": "album_artist", "TPE2": "album_artist", "TAL": "album", "TALB": "album", "TRK": "track", "TRCK": "track", "TPA": "disc", "TPOS": "disc", "TYE": "date", "TYER": "date", "TDRC": "date", "TOR": "originaldate", "TORY": "originaldate", "TDOR": "originaldate", "TCO": "genre", "TCON": "genre", "TCM": "composer", "TCOM": "composer", "TPB": "publisher", "TPUB": "publisher", "TSOP": "artist_sort", "TSO2": "album_artist_sort", "TSOA": "album_sort", "TSOT": "title_sort", "TCMP": "compilation", "MVNM": "series", "MVIN": "series_position", "TSST": "disc_subtitle", "TSRC": "isrc"}
+var frameNames = map[string]string{"TT2": "title", "TIT2": "title", "TP1": "artist", "TPE1": "artist", "TP2": "album_artist", "TPE2": "album_artist", "TAL": "album", "TALB": "album", "TRK": "track", "TRCK": "track", "TPA": "disc", "TPOS": "disc", "TYE": "date", "TYER": "date", "TDRC": "date", "TDRL": "release_date", "TOR": "originaldate", "TORY": "originaldate", "TDOR": "originaldate", "TCO": "genre", "TCON": "genre", "TCM": "composer", "TCOM": "composer", "TPB": "publisher", "TPUB": "publisher", "TSOP": "artist_sort", "TSO2": "album_artist_sort", "TSOA": "album_sort", "TSOT": "title_sort", "TCMP": "compilation", "MVNM": "series", "MVIN": "series_position", "TSST": "disc_subtitle", "TSRC": "isrc"}
 
 func (p *reader) frames(b []byte, ver byte, depth int, globalUnsync bool) {
 	if depth > 4 {
@@ -738,6 +753,9 @@ func (t Tags) JSONValues() map[string]string {
 		default:
 			out[k] = v[0]
 		}
+	}
+	if dates := t.Values["release_date"]; len(dates) > 0 {
+		out["date"] = dates[0]
 	}
 	return out
 }

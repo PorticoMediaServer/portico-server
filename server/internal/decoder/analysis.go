@@ -52,7 +52,7 @@ func AnalysisArgs(input string, s AnalysisSpec) ([]string, error) {
 		// Every decoded frame, priming included: the facts' trim is relative to it.
 		args = append(args, "-flags2", "+skip_manual")
 	}
-	args = append(args, "-protocol_whitelist", "http,tcp", "-format_whitelist", "mov,matroska,mp3,flac,ogg,wav,aac,mpegts,avi,aiff,asf,ape,wv,tta,amr,mpeg,mpegvideo", "-probesize", "8388608", "-analyzeduration", "10000000", "-i", input, "-map_metadata", "-1", "-map_chapters", "-1", "-threads", "1")
+	args = append(args, "-protocol_whitelist", "http,tcp", "-format_whitelist", "mov,matroska,mp3,flac,ogg,wav,aac,mpegts,avi,aiff,asf,ape,wv,tta,amr,w64,caf,dsf,iff,mpc,mpc8,mpeg,mpegvideo", "-probesize", "8388608", "-analyzeduration", "10000000", "-i", input, "-map_metadata", "-1", "-map_chapters", "-1", "-threads", "1")
 	switch s.Kind {
 	case "pcm":
 		args = append(args, "-map", "0:a:0", "-vn", "-sn", "-dn", "-ac", "1", "-af", "aresample=11025:async=1:first_pts=0", "-ar", "11025", "-c:a", "pcm_s16le", "-f", "s16le", "pipe:1")

@@ -88,7 +88,7 @@ func (p Probe) Inspect(ctx context.Context, path string) (Facts, error) {
 // InspectScan applies bounded local-media probing and rejects network protocols.
 // File List Only never calls this method; ReadGuard is checked again at launch.
 func (p Probe) InspectScan(ctx context.Context, path string) (Facts, error) {
-	return p.inspect(ctx, path, []string{"-protocol_whitelist", "file,pipe", "-format_whitelist", "mov,matroska,webm,avi,mpegts,mpeg,mpegvideo,mp3,flac,wav,ogg,aac,aiff,asf,ape,wv,tta,amr", "-probesize", "8388608", "-analyzeduration", "5000000"})
+	return p.inspect(ctx, path, []string{"-protocol_whitelist", "file,pipe", "-format_whitelist", "mov,matroska,webm,avi,mpegts,mpeg,mpegvideo,mp3,flac,wav,ogg,aac,aiff,asf,ape,wv,tta,amr,w64,caf,dsf,iff,mpc,mpc8", "-probesize", "8388608", "-analyzeduration", "5000000"})
 }
 func (p Probe) InspectRemoteMP4(ctx context.Context, path string) (Facts, error) {
 	facts, e := p.inspect(ctx, path, []string{"-f", "mov", "-enable_drefs", "0", "-use_absolute_path", "0", "-protocol_whitelist", "http,tcp", "-probesize", "8388608", "-analyzeduration", "5000000"})
@@ -271,7 +271,7 @@ func (p Probe) inspect(ctx context.Context, path string, options []string) (Fact
 }
 func SupportedPath(path string) bool {
 	switch strings.ToLower(filepath.Ext(path)) {
-	case ".mp4", ".m4v", ".mov", ".mkv", ".webm", ".avi", ".ts", ".m2ts", ".mts", ".vob", ".mpg", ".mpeg", ".strm", ".mp3", ".m4a", ".m4b", ".flac", ".ogg", ".opus", ".wav", ".aac", ".aiff", ".aif", ".oga", ".mka", ".wma", ".ape", ".wv", ".tta", ".caf", ".w64", ".amr":
+	case ".mp4", ".m4v", ".mov", ".mkv", ".webm", ".avi", ".ts", ".m2ts", ".mts", ".vob", ".mpg", ".mpeg", ".strm", ".mp3", ".m4a", ".m4b", ".flac", ".ogg", ".opus", ".wav", ".aac", ".aiff", ".aif", ".oga", ".mka", ".wma", ".ape", ".wv", ".tta", ".caf", ".w64", ".amr", ".dsf", ".dff", ".mpc":
 		return true
 	}
 	return false
@@ -299,7 +299,7 @@ func SupportedForKind(path, kind string) bool {
 	extension := strings.ToLower(filepath.Ext(path))
 	audio := false
 	switch extension {
-	case ".mp3", ".m4a", ".m4b", ".flac", ".ogg", ".opus", ".wav", ".aac", ".aiff", ".aif", ".oga", ".mka", ".wma", ".ape", ".wv", ".tta", ".caf", ".w64", ".amr":
+	case ".mp3", ".m4a", ".m4b", ".flac", ".ogg", ".opus", ".wav", ".aac", ".aiff", ".aif", ".oga", ".mka", ".wma", ".ape", ".wv", ".tta", ".caf", ".w64", ".amr", ".dsf", ".dff", ".mpc":
 		audio = true
 	}
 	if kind == "music" || kind == "audiobook" {

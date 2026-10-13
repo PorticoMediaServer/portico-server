@@ -241,3 +241,10 @@ func TestAudioGenreConflictingLinkedAssetsStayEvidence(t *testing.T) {
 		t.Fatalf("agreeing sources did not project: %v", genres)
 	}
 }
+
+func TestStructuredLocalGenresPreserveNames(t *testing.T) {
+	got := normalizeAudioGenres(`["Singer/Songwriter","Earth, Wind & Fire"]`)
+	if len(got) != 2 || got[0] != "Singer/Songwriter" || got[1] != "Earth, Wind & Fire" {
+		t.Fatal(got)
+	}
+}

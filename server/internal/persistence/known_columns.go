@@ -368,10 +368,15 @@ audio_render_fact_failures.code
 audio_render_fact_failures.failed_ms
 audio_render_fact_failures.modified_ns
 audio_render_fact_failures.size
+audio_render_fact_requests.asset_id
+audio_render_fact_requests.item_id
+audio_render_fact_requests.requested_ms
 audio_render_facts.asset_id
 audio_render_facts.bit_depth
+audio_render_facts.bit_rate
 audio_render_facts.channels
 audio_render_facts.codec
+audio_render_facts.codec_profile
 audio_render_facts.container
 audio_render_facts.decoder_config
 audio_render_facts.duration_frames

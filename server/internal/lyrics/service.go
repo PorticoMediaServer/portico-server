@@ -152,7 +152,7 @@ func sources(ctx context.Context, tx *sql.Tx, a Access, entity int64) ([]Source,
 		if !finite(v.SourceDuration) || !finite(v.StartSeconds) || !finite(v.Duration) || v.Duration <= 0 || v.SourceDuration <= 0 || v.StartSeconds < 0 || end > v.SourceDuration+.1 {
 			return nil, ErrSource
 		}
-		v.Version = digest([]any{a.ItemID, a.LibraryID, v.ID, v.SourceDuration, v.StartSeconds, end})
+		v.Version = digest([]any{a.ItemID, v.ID, v.SourceDuration, v.StartSeconds, end})
 		out = append(out, v)
 	}
 	if len(out) > 32 {

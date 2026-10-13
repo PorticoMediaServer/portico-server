@@ -3,10 +3,12 @@ package catalog
 import (
 	"crypto/sha256"
 	"database/sql"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"portico.local/server/internal/identity"
+	"portico.local/server/internal/listeningrules"
 	"sort"
 	"strconv"
 	"strings"
@@ -184,9 +186,10 @@ func (s *Service) ListeningSelection(r ContentRequest, t ListeningTarget, mode, 
 		var saved BookResume
 		resumeArgs := append([]any{t.ID, r.Profile}, bound...)
 		var resumeMillis int64
-		e = s.read().QueryRow(`SELECT pid(i.public_id),r.position FROM book_resume r JOIN catalog_entities i ON i.id=r.item_id JOIN catalog_book_files f ON f.entity_id=i.id AND f.book_id=r.book_id JOIN catalog_entities book ON book.id=r.book_id WHERE book.public_id=pid_blob(?) AND r.profile_id=? AND `+restriction, resumeArgs...).Scan(&saved.ItemID, &resumeMillis)
+		var lastPlayed string
+		e = s.read().QueryRow(`SELECT pid(i.public_id),r.position,COALESCE((SELECT last_played_at FROM personal_items WHERE profile_id=r.profile_id AND item_id=r.item_id),'') FROM book_resume r JOIN catalog_entities i ON i.id=r.item_id JOIN catalog_book_files f ON f.entity_id=i.id AND f.book_id=r.book_id JOIN catalog_entities book ON book.id=r.book_id WHERE book.public_id=pid_blob(?) AND r.profile_id=? AND `+restriction, resumeArgs...).Scan(&saved.ItemID, &resumeMillis, &lastPlayed)
 		if e == nil {
-			saved.PositionSeconds = float64(resumeMillis) / 1000
+			saved.PositionSeconds = listeningrules.Resume(float64(resumeMillis)/1000, lastPlayed, time.Now())
 			out.Resume = &saved
 			var available bool
 			if e = s.read().QueryRow(`SELECT EXISTS(SELECT 1 FROM catalog_item_availability v JOIN catalog_entities i ON i.id=v.entity_id WHERE i.public_id=pid_blob(?) AND v.available=1 AND v.retired=0)`, saved.ItemID).Scan(&available); e != nil {
@@ -227,22 +230,34 @@ func (s *Service) ListeningSelection(r ContentRequest, t ListeningTarget, mode, 
 	} else {
 		candidates := []listeningCandidate{}
 		params := append([]any{t.LibraryID}, args...)
+		var upper int64
+		if e = s.read().QueryRow(`SELECT COALESCE(max(id),0) FROM catalog_entities WHERE library_id=(SELECT id FROM catalog_libraries WHERE library_id=?)`, t.LibraryID).Scan(&upper); e != nil {
+			return out, e
+		}
+		hash := sha256.Sum256([]byte(seed))
+		pivot := int64(0)
+		if upper > 0 {
+			pivot = int64(binary.BigEndian.Uint64(hash[:8])%uint64(upper)) + 1
+		}
 		// Score at most 640 candidates gathered by indexed album, artist, and
 		// library membership. A seed makes ordering reproducible across pages.
 		query := `WITH seed_items AS (SELECT i.id FROM catalog_entities i WHERE i.library_id=(SELECT id FROM catalog_libraries WHERE library_id=?) AND ` + where + ` ORDER BY i.id LIMIT 64), mix_ids AS MATERIALIZED (
  SELECT id FROM seed_items
 	 UNION SELECT entity_id FROM (SELECT x.entity_id FROM catalog_songs x WHERE x.album_id IN(SELECT y.album_id FROM catalog_songs y JOIN seed_items z ON z.id=y.entity_id) ORDER BY x.entity_id LIMIT 192)
 	 UNION SELECT song_id FROM (SELECT x.song_id FROM catalog_song_artists x JOIN catalog_entities candidate ON candidate.id=x.song_id WHERE x.artist_id IN(SELECT y.artist_id FROM catalog_song_artists y JOIN seed_items z ON z.id=y.song_id) ORDER BY candidate.id LIMIT 192)
-	 UNION SELECT id FROM (SELECT id FROM catalog_entities WHERE library_id=(SELECT id FROM catalog_libraries WHERE library_id=?) AND kind=7 ORDER BY id LIMIT 192)
+	 UNION SELECT id FROM (
+ SELECT id,0 tier FROM (SELECT id FROM catalog_entities WHERE library_id=(SELECT id FROM catalog_libraries WHERE library_id=?) AND kind=7 AND id>=? ORDER BY id LIMIT 192)
+ UNION ALL SELECT id,1 tier FROM (SELECT id FROM catalog_entities WHERE library_id=(SELECT id FROM catalog_libraries WHERE library_id=?) AND kind=7 AND id<? ORDER BY id LIMIT 192)
+ ORDER BY tier,id LIMIT 192)
 	 ) SELECT pid(i.public_id),EXISTS(SELECT 1 FROM catalog_item_availability v WHERE v.entity_id=i.id AND v.available=1 AND v.retired=0),
    CASE WHEN i.id IN(SELECT id FROM seed_items) THEN 8 ELSE 0 END+
 	   CASE WHEN EXISTS(SELECT 1 FROM catalog_song_artists x JOIN catalog_song_artists y ON y.artist_id=x.artist_id WHERE x.song_id=i.id AND y.song_id IN(SELECT id FROM seed_items)) THEN 4 ELSE 0 END+
 	   CASE WHEN EXISTS(SELECT 1 FROM catalog_songs x JOIN catalog_songs y ON y.album_id=x.album_id WHERE x.entity_id=i.id AND y.entity_id IN(SELECT id FROM seed_items)) THEN 2 ELSE 0 END+
-	   CASE WHEN EXISTS(SELECT 1 FROM catalog_asset_links ia JOIN catalog_assets asset ON asset.id=ia.asset_id JOIN audio_tag_evidence t ON t.asset_id=asset.token AND t.library_id=? AND t.field='genre' JOIN audio_tag_evidence st ON st.library_id=t.library_id AND st.field='genre' AND st.value=t.value COLLATE NOCASE JOIN catalog_assets seed_asset ON seed_asset.token=st.asset_id JOIN catalog_asset_links sia ON sia.asset_id=seed_asset.id WHERE ia.entity_id=i.id AND sia.entity_id IN(SELECT id FROM seed_items)) THEN 1 ELSE 0 END
+	   CASE WHEN EXISTS(SELECT 1 FROM catalog_entity_terms own JOIN catalog_terms term ON term.id=own.term_id JOIN catalog_entity_terms other ON other.term_id=own.term_id WHERE own.entity_id=i.id AND term.vocab=1 AND other.entity_id IN(SELECT id FROM seed_items)) THEN 1 ELSE 0 END
 	   FROM catalog_entities i WHERE i.id IN(SELECT id FROM mix_ids) AND i.library_id=(SELECT id FROM catalog_libraries WHERE library_id=?) AND i.kind=7 AND i.retired=0 AND ` + restriction
 		// After seed_items: the library branch of mix_ids, the genre evidence
 		// (keyed by the public library id) and the outer library filter.
-		params = append(params, t.LibraryID, t.LibraryID, t.LibraryID)
+		params = append(params, t.LibraryID, pivot, t.LibraryID, pivot, t.LibraryID)
 		params = append(params, bound...)
 		rows, e := s.read().Query(query, params...)
 		if e != nil {

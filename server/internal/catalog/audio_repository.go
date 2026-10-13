@@ -669,7 +669,14 @@ func (s *Service) bookFileInfo(item string) (*BookFileInfo, error) {
 func normalizeAudioGenres(raw string) []string {
 	out := []string{}
 	seen := map[string]bool{}
-	for _, part := range strings.FieldsFunc(raw, func(r rune) bool { return r == ',' || r == ';' || r == '/' }) {
+	var parts []string
+	if json.Unmarshal([]byte(raw), &parts) != nil {
+		parts = strings.FieldsFunc(raw, func(r rune) bool { return r == ',' || r == ';' || r == '/' })
+	}
+	if len(parts) > 128 {
+		parts = parts[:128]
+	}
+	for _, part := range parts {
 		name := strings.TrimSpace(part)
 		if name == "" || len(name) > 64 {
 			continue

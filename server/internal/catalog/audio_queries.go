@@ -222,6 +222,7 @@ func (s *Service) BookChapters(book, cursor string, limit int) ([]BookChapter, s
 	limit = pageLimit(limit)
 	disc, part, index := 0, 0, 0
 	file := ""
+	fileName := ""
 	var fileID int64
 	if cursor != "" {
 		colon := strings.LastIndexByte(cursor, ':')
@@ -233,15 +234,15 @@ func (s *Service) BookChapters(book, cursor string, limit int) ([]BookChapter, s
 			return nil, "", errors.New("invalid chapter cursor")
 		}
 		file, index = cursor[:colon], parsed
-		if err = s.read().QueryRow(`SELECT COALESCE(f.disc_number,0),COALESCE(f.part_number,0),item.id FROM catalog_book_chapters c JOIN catalog_book_files f ON f.entity_id=c.file_id JOIN catalog_entities item ON item.id=f.entity_id JOIN catalog_entities b ON b.id=f.book_id WHERE b.public_id=pid_blob(?) AND item.public_id=pid_blob(?) AND c.chapter_index=?`, book, file, index).Scan(&disc, &part, &fileID); err != nil {
+		if err = s.read().QueryRow(`SELECT COALESCE(f.disc_number,1),COALESCE(f.part_number,0),item.sort_key,item.id FROM catalog_book_chapters c JOIN catalog_book_files f ON f.entity_id=c.file_id JOIN catalog_entities item ON item.id=f.entity_id JOIN catalog_entities b ON b.id=f.book_id WHERE b.public_id=pid_blob(?) AND item.public_id=pid_blob(?) AND c.chapter_index=?`, book, file, index).Scan(&disc, &part, &fileName, &fileID); err != nil {
 			return nil, "", errors.New("invalid chapter cursor")
 		}
 	}
 	rows, err := s.read().Query(`SELECT pid(item.public_id)||':'||CAST(c.chapter_index AS TEXT),pid(item.public_id),c.chapter_index,c.title,c.start_seconds,c.end_seconds
  FROM catalog_book_chapters c JOIN catalog_book_files f ON f.entity_id=c.file_id JOIN catalog_entities item ON item.id=f.entity_id JOIN catalog_entities b ON b.id=f.book_id
  WHERE b.public_id=pid_blob(?) AND b.retired=0 AND item.retired=0
- AND (COALESCE(f.disc_number,0),COALESCE(f.part_number,0),item.id,c.chapter_index)>(?,?,?,?)
- ORDER BY COALESCE(f.disc_number,0),COALESCE(f.part_number,0),item.id,c.chapter_index LIMIT ?`, book, disc, part, fileID, index, limit+1)
+ AND (COALESCE(f.disc_number,1),COALESCE(f.part_number,0),item.sort_key,item.id,c.chapter_index)>(?,?,?,?,?)
+ ORDER BY COALESCE(f.disc_number,1),COALESCE(f.part_number,0),item.sort_key,item.id,c.chapter_index LIMIT ?`, book, disc, part, fileName, fileID, index, limit+1)
 	if err != nil {
 		return nil, "", err
 	}
