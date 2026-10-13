@@ -106,11 +106,9 @@ func (s *Service) browsePage(p pageShape) ([]browseRow, error) {
 				if p.positional() && p.summary.classKey != "" {
 					return s.classKeysetPage(p, primary, desc, typed[0], anchor)
 				}
-				keyset, keysetArgs := browseKeysetSQL(p.sorts, typed, anchor)
-				if keyset != "" {
-					args := append(append(append(append([]any{}, p.args...), keysetArgs...), p.orderArgs...), p.limit)
-					return s.queryBrowseRows(`SELECT `+browseRowColumns+` FROM catalog_browse_rows e JOIN catalog_entities ce ON ce.id=e.entity_id WHERE `+p.where+` AND `+keyset+` ORDER BY `+p.order+` LIMIT ?`, args...)
-				}
+				definition, desc := p.primary()
+				query, args := browseBoundedSQL(browseRowColumns, "catalog_browse_rows e JOIN catalog_entities ce ON ce.id=e.entity_id", p.where, p.args, definition.Expression, "e.entity_id", desc, false, typed[0], anchor, p.limit, 0)
+				return s.queryBrowseRows(query, args...)
 			}
 		}
 	}
@@ -173,11 +171,10 @@ func (s *Service) ascendingFrom(p pageShape, ordering, low, count int) ([]browse
 	}
 	definition := sortForOrdering(ordering)
 	if p.summary.classKey != "" {
-		return s.classRows(p, definition, false, browseSeekPredicate(definition.ClassKey, "v.entity_id", ">="), []any{value, entity}, count, low-before)
+		return s.classBoundedRows(p, definition, false, true, value, entity, count, low-before)
 	}
-	args := append(append([]any{}, p.args...), value, entity, count, low-before)
-	return s.queryBrowseRows(`SELECT `+browseRowColumns+` FROM catalog_browse_rows e JOIN catalog_entities ce ON ce.id=e.entity_id WHERE `+p.where+
-		` AND `+browseSeekPredicate(definition.Expression, "e.entity_id", ">=")+` ORDER BY `+definition.Expression+`,e.entity_id LIMIT ? OFFSET ?`, args...)
+	query, args := browseBoundedSQL(browseRowColumns, "catalog_browse_rows e JOIN catalog_entities ce ON ce.id=e.entity_id", p.where, p.args, definition.Expression, "e.entity_id", false, true, value, entity, count, low-before)
+	return s.queryBrowseRows(query, args...)
 }
 
 // blockAt finds the block holding ascending position position: its first
@@ -232,34 +229,19 @@ func sortForOrdering(ordering int) browseSort {
 	return browseSorts[0]
 }
 
-// classRows reads a restricted viewer's rows from its class, in one
-// ordering's key. A class may be one refresh behind a source edit, so every
-// returned row is rechecked against the viewer's current restrictions.
-func (s *Service) classRows(p pageShape, definition browseSort, desc bool, bound string, boundArgs []any, limit, offset int) ([]browseRow, error) {
-	recheck, recheckArgs := EntityRestrictionSQL("e.entity_id", p.request.Restrictions)
-	direction := ""
-	if desc {
-		direction = " DESC"
-	}
-	args := []any{p.summary.classID, p.summary.generation, p.request.Library, p.kind}
-	args = append(append(append(args, boundArgs...), recheckArgs...), limit, offset)
-	return s.queryBrowseRows(`SELECT `+browseRowColumns+`
-		FROM compact_visibility_rows v
-		CROSS JOIN catalog_browse_rows e ON e.entity_id=v.entity_id
-		CROSS JOIN catalog_entities ce ON ce.id=e.entity_id
-		WHERE v.class_id=? AND v.generation=? AND v.library_id=(SELECT id FROM catalog_libraries WHERE library_id=?) AND v.kind=?
-		AND `+bound+` AND `+recheck+`
-		ORDER BY `+definition.ClassKey+direction+`,v.entity_id`+direction+` LIMIT ? OFFSET ?`, args...)
-}
-
 // classKeysetPage continues a restricted viewer's page after its cursor's key.
 func (s *Service) classKeysetPage(p pageShape, definition browseSort, desc bool, key any, anchor int64) ([]browseRow, error) {
-	operator := ">"
-	if desc {
-		operator = "<"
-	}
-	bound := browseSeekPredicate(definition.ClassKey, "v.entity_id", operator)
-	return s.classRows(p, definition, desc, bound, []any{key, anchor}, p.limit, 0)
+	return s.classBoundedRows(p, definition, desc, false, key, anchor, p.limit, 0)
+}
+
+func (s *Service) classBoundedRows(p pageShape, definition browseSort, desc, inclusive bool, key any, anchor int64, limit, offset int) ([]browseRow, error) {
+	restriction, restrictionArgs := EntityRestrictionSQL("e.entity_id", p.request.Restrictions)
+	args := []any{p.summary.classID, p.summary.generation, p.request.Library, p.kind}
+	args = append(args, restrictionArgs...)
+	where := `v.class_id=? AND v.generation=? AND v.library_id=(SELECT id FROM catalog_libraries WHERE library_id=?) AND v.kind=? AND ` + restriction
+	from := `compact_visibility_rows v CROSS JOIN catalog_browse_rows e ON e.entity_id=v.entity_id CROSS JOIN catalog_entities ce ON ce.id=e.entity_id`
+	query, args := browseBoundedSQL(browseRowColumns, from, where, args, definition.ClassKey, "v.entity_id", desc, inclusive, key, anchor, limit, offset)
+	return s.queryBrowseRows(query, args...)
 }
 
 // asciiLower folds ASCII letters only, as SQLite's lower() and NOCASE do, so a

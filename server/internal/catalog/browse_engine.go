@@ -169,30 +169,31 @@ func browseKeyedSorts(selection []BrowseSortSelection) bool {
 	return len(selection) > 0
 }
 
-// browseSeekPredicate keeps the collation on the bound value. Putting COLLATE
-// on the left tuple makes SQLite lose the composite index range constraint.
-func browseSeekPredicate(expression, id, operator string) string {
-	collation := ""
-	if strings.HasSuffix(expression, " COLLATE NOCASE") {
-		expression = strings.TrimSuffix(expression, " COLLATE NOCASE")
-		collation = " COLLATE NOCASE"
+// browseBoundedSQL merges two disjoint, bounded index runs. An expanded OR
+// can scan a library prefix; a tuple over an expression can scan every tie.
+// Each arm here seeks either (key, id) or the next key, even with many ties.
+func browseBoundedSQL(columns, from, where string, args []any, expression, identity string, desc, inclusive bool, key any, anchor int64, limit, offset int) (string, []any) {
+	op, direction := ">", "ASC"
+	if desc {
+		op, direction = "<", "DESC"
 	}
-	return "(" + expression + "," + id + ")" + operator + "(?" + collation + ",?)"
-}
-
-func browseKeysetSQL(selection []BrowseSortSelection, keys []any, anchor int64) (string, []any) {
-	if len(selection) != 1 || len(keys) != 1 {
-		return "", nil
+	tie := op
+	if inclusive {
+		tie += "="
 	}
-	definition, ok := browseSortByID(selection[0].Field)
-	if !ok {
-		return "", nil
-	}
-	operator := ">"
-	if selection[0].Direction == "desc" {
-		operator = "<"
-	}
-	return browseSeekPredicate(definition.Expression, "e.entity_id", operator), []any{keys[0], anchor}
+	order := expression + " " + direction + "," + identity + " " + direction
+	arm := `SELECT ` + identity + ` AS id,` + expression + ` AS order_key FROM ` + from + ` WHERE ` + where
+	query := `WITH candidates AS (
+ SELECT * FROM (` + arm + ` AND ` + expression + `=? AND ` + identity + tie + `? ORDER BY ` + order + ` LIMIT ?)
+ UNION ALL SELECT * FROM (` + arm + ` AND ` + expression + op + `? ORDER BY ` + order + ` LIMIT ?))
+ SELECT ` + columns + ` FROM candidates page CROSS JOIN ` + from + ` WHERE ` + identity + `=page.id AND ` + where + `
+ ORDER BY page.order_key ` + direction + `,page.id ` + direction + ` LIMIT ? OFFSET ?`
+	bound := append(append([]any{}, args...), key, anchor, limit+offset)
+	bound = append(bound, args...)
+	bound = append(bound, key, limit+offset)
+	bound = append(bound, args...)
+	bound = append(bound, limit, offset)
+	return query, bound
 }
 
 // browseKeyValues types the cursor's stored key for comparison. A year is an

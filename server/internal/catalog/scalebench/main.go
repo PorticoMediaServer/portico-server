@@ -44,6 +44,7 @@ type routeResult struct {
 	P95MS         float64 `json:"p95Ms"`
 	MaxStatements uint64  `json:"maxStatements"`
 	Error         string  `json:"error,omitempty"`
+	RSSKB         int64   `json:"rssKb"`
 }
 
 func main() {
@@ -62,6 +63,10 @@ func run() (runErr error) {
 	seedOnly := flag.Bool("seed-only", false, "seed and analyze, leaving reads to the interleaved comparison harness")
 	profile := flag.Bool("profile", false, "print each route's three costliest statement shapes")
 	explain := flag.String("explain", "", "print the scans and sorts in the plans of the routes whose name contains this")
+	scenariosOnly := flag.Bool("scenarios-only", false, "measure search and write/rebuild scenarios without the browse matrix")
+	matrixOnly := flag.Bool("matrix-only", false, "measure browse vocabulary without rebuild/write scenarios")
+	factsOnly := flag.Bool("facts-only", false, "seed facts without deriving; use -reuse -exercise to measure the empty rebuild")
+	exercise := flag.Bool("exercise", false, "measure browse vocabulary and isolated write/rebuild scenarios")
 	flag.Parse()
 	abs, err := filepath.Abs(*dir)
 	if err != nil || *dir == "" || !strings.Contains(abs+string(os.PathSeparator), string(os.PathSeparator)+".scratch"+string(os.PathSeparator)) || *n < 100 || *samples < 1 || *idle <= 0 {
@@ -100,7 +105,7 @@ func run() (runErr error) {
 			r.SeedResumedFrom = startItem
 		}
 		start := time.Now()
-		r.FirstBatchMSPerItem, r.LastBatchMSPerItem, err = seed(db, *n, startItem, *n)
+		r.FirstBatchMSPerItem, r.LastBatchMSPerItem, err = seedReference(db, *n, startItem, *n, 32, !*factsOnly)
 		if err != nil {
 			return err
 		}
@@ -117,7 +122,7 @@ func run() (runErr error) {
 		return err
 	}
 	r.BytesPerItem = float64(pages*size) / float64(*n)
-	if *seedOnly {
+	if *seedOnly || *factsOnly {
 		raw, e := json.MarshalIndent(r, "", "  ")
 		if e != nil {
 			return e
@@ -125,6 +130,19 @@ func run() (runErr error) {
 		return os.WriteFile(filepath.Join(abs, "seed-report.json"), append(raw, '\n'), 0600)
 	}
 	s := catalog.New(db)
+	if *exercise || *matrixOnly || *scenariosOnly {
+		var rows int
+		if err = db.QueryRow(`SELECT count(*) FROM catalog_browse_rows`).Scan(&rows); err != nil {
+			return err
+		}
+		if rows == 0 {
+			rr, err := exerciseDrain(db, s, "derive-empty")
+			if err != nil {
+				return err
+			}
+			r.Routes = append(r.Routes, rr)
+		}
+	}
 	if _, err = s.ClassifyPendingRatings(context.Background()); err != nil {
 		return err
 	}
@@ -143,7 +161,7 @@ func run() (runErr error) {
 		v    catalog.Viewer
 	}{
 		{"open", catalog.Viewer{Profile: "viewer", Fence: "scale-open", Libraries: libraries}},
-		{"pg13", catalog.Viewer{Profile: "viewer", Fence: "scale-pg13", Libraries: libraries, Restrictions: identity.ContentRestrictions{MaximumAge: &pg13, BlockUnrated: true}}},
+		{"pg13", catalog.Viewer{Profile: "viewer-pg13", Fence: "scale-pg13", Libraries: libraries, Restrictions: identity.ContentRestrictions{MaximumAge: &pg13, BlockUnrated: true}}},
 	}
 	buildStart := time.Now()
 	for _, library := range libraries {
@@ -245,6 +263,7 @@ func run() (runErr error) {
 			durations = append(durations, elapsed)
 		}
 		sort.Float64s(durations)
+		rr.RSSKB = processRSSKB()
 		rr.Samples = len(durations)
 		if len(durations) > 0 {
 			rr.P50MS = durations[(len(durations)-1)/2]
@@ -265,6 +284,13 @@ func run() (runErr error) {
 			}
 		}
 	}
+	if *exercise || *matrixOnly || *scenariosOnly {
+		measured, err := exerciseCatalog(db, s, *samples, !*scenariosOnly, !*matrixOnly)
+		r.Routes = append(r.Routes, measured...)
+		if err != nil {
+			return err
+		}
+	}
 	before := dbwork.Reads().Statements
 	time.Sleep(*idle)
 	r.IdleStatementsPerMinute = uint64(float64(dbwork.Reads().Statements-before) * float64(time.Minute) / float64(*idle))
@@ -274,7 +300,7 @@ func run() (runErr error) {
 }
 
 func seed(db *sql.DB, n, startItem, stopItem int) (first, last float64, err error) {
-	return seedReference(db, n, startItem, stopItem, 32)
+	return seedReference(db, n, startItem, stopItem, 32, true)
 }
 
 // explainRoute runs one read of a route under a statement trace and prints

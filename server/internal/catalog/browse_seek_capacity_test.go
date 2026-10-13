@@ -46,12 +46,15 @@ func TestBrowseCompositeSeekCapacity(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			exec(`CREATE TABLE catalog_browse_rows(entity_id INTEGER PRIMARY KEY,library_id INTEGER NOT NULL,kind INTEGER NOT NULL,sort_key TEXT NOT NULL,year INTEGER NOT NULL,release_key TEXT NOT NULL)`)
+			exec(`CREATE TABLE catalog_browse_rows(entity_id INTEGER PRIMARY KEY,library_id INTEGER NOT NULL,kind INTEGER NOT NULL,sort_key TEXT NOT NULL,year INTEGER NOT NULL,release_key TEXT NOT NULL,added_text TEXT,duration_max REAL,rating_max REAL)`)
 			exec(`CREATE INDEX catalog_browse_title ON catalog_browse_rows(library_id,kind,sort_key COLLATE NOCASE,entity_id)`)
 			exec(`CREATE INDEX catalog_browse_year ON catalog_browse_rows(library_id,kind,year,entity_id)`)
 			exec(`CREATE INDEX catalog_browse_release_key ON catalog_browse_rows(library_id,kind,release_key,entity_id)`)
+			exec(`CREATE INDEX catalog_browse_added ON catalog_browse_rows(library_id,kind,COALESCE(added_text,''),entity_id)`)
+			exec(`CREATE INDEX catalog_browse_duration ON catalog_browse_rows(library_id,kind,COALESCE(duration_max,0),entity_id)`)
+			exec(`CREATE INDEX catalog_browse_rating ON catalog_browse_rows(library_id,kind,COALESCE(rating_max,0),entity_id)`)
 			for after := 0; after < n; after += 10000 {
-				exec(`WITH RECURSIVE ids(i) AS(SELECT ? UNION ALL SELECT i+1 FROM ids WHERE i<?) INSERT INTO catalog_browse_rows SELECT i,1,1,printf('Title %09d',i),2000,'2026-01-01' FROM ids`, after+1, min(n, after+10000))
+				exec(`WITH RECURSIVE ids(i) AS(SELECT ? UNION ALL SELECT i+1 FROM ids WHERE i<?) INSERT INTO catalog_browse_rows SELECT i,1,1,printf('Title %09d',i),2000,'2026-01-01'  ,NULL,NULL,NULL FROM ids`, after+1, min(n, after+10000))
 			}
 			exec(`ANALYZE`)
 			cases := []struct {
@@ -61,16 +64,17 @@ func TestBrowseCompositeSeekCapacity(t *testing.T) {
 			}{
 				{"title", fmt.Sprintf("Title %09d", n-100), `(e.sort_key COLLATE NOCASE>? OR e.sort_key COLLATE NOCASE=? AND e.entity_id>?)`},
 				{"year", 2000, `(e.year>? OR e.year=? AND e.entity_id>?)`},
+				{"added", "", `(COALESCE(e.added_text,'')>? OR COALESCE(e.added_text,'')=? AND e.entity_id>?)`},
+				{"duration", 0, `(COALESCE(e.duration_max,0)>? OR COALESCE(e.duration_max,0)=? AND e.entity_id>?)`},
+				{"communityRating", 0, `(COALESCE(e.rating_max,0)>? OR COALESCE(e.rating_max,0)=? AND e.entity_id>?)`},
 				{"releaseDate", "2026-01-01", `(e.release_key>? OR e.release_key=? AND e.entity_id>?)`},
 			}
 			for _, tc := range cases {
 				definition, _ := browseSortByID(tc.field)
-				selected := []BrowseSortSelection{{Field: tc.field, Direction: "asc"}}
-				bound, args := browseKeysetSQL(selected, []any{tc.key}, int64(n-100))
-				query := `SELECT entity_id FROM catalog_browse_rows e WHERE library_id=1 AND kind=1 AND ` + bound + ` ORDER BY ` + definition.Expression + `,entity_id LIMIT 40`
+				query, args := browseBoundedSQL("e.entity_id", "catalog_browse_rows e", "library_id=1 AND kind=1", nil, definition.Expression, "e.entity_id", false, false, tc.key, int64(n-100), 40, 0)
 				plan := seekCapacityPlan(t, db, query, args...)
-				if !strings.Contains(plan, "(sort_key,entity_id)") && !strings.Contains(plan, "(year,entity_id)") && !strings.Contains(plan, "(release_key,entity_id)") {
-					t.Fatalf("%s lacks a composite range seek: %s", tc.field, plan)
+				if !strings.Contains(plan, "sort_key>?") && !strings.Contains(plan, "year>?") && !strings.Contains(plan, "release_key>?") && !strings.Contains(plan, "entity_id)>") && !strings.Contains(plan, "<expr>>?") {
+					t.Fatalf("%s lacks an index range: %s", tc.field, plan)
 				}
 				measure := func(query string, args ...any) time.Duration {
 					t.Helper()
@@ -115,6 +119,16 @@ func TestBrowseCompositeSeekCapacity(t *testing.T) {
 					rss = line
 				}
 			}
+			stats, err := db.Query(`SELECT idx,stat FROM sqlite_stat1 ORDER BY idx`)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for stats.Next() {
+				var idx, stat string
+				stats.Scan(&idx, &stat)
+				t.Logf("rows=%d statistic=%s %s", n, idx, stat)
+			}
+			stats.Close()
 			t.Logf("rows=%d database_bytes=%d process_peak=%s", n, pages*pageSize, rss)
 			exec(`DELETE FROM catalog_browse_rows WHERE entity_id>?`, n/2)
 			db.QueryRow(`PRAGMA freelist_count`).Scan(&free)

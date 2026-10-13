@@ -2,6 +2,7 @@ package metadata
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"portico.local/server/internal/catalogtest"
 	"portico.local/server/internal/dbwork"
@@ -48,11 +49,39 @@ func TestAttentionCountsFollowDismissalRetirementAndRemoval(t *testing.T) {
 }
 
 func TestAttentionPageHasConstantStatementCount(t *testing.T) {
-	s, db, _ := screenFixture(t)
+	s, db, provider := screenFixture(t)
 	c := catalogtest.New(t, db)
 	lib := c.Handle("lib")
 	for i := 0; i < 24; i++ {
 		c.Movie(lib, fmt.Sprintf("/films/scale%d.mkv", i), fmt.Sprintf("Film %d", i), 2000)
+	}
+	rows, err := db.Query(`SELECT id,title FROM catalog_entities WHERE kind=1 ORDER BY id`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	type target struct {
+		id    int64
+		title string
+	}
+	var targets []target
+	for rows.Next() {
+		var target target
+		if err := rows.Scan(&target.id, &target.title); err != nil {
+			t.Fatal(err)
+		}
+		targets = append(targets, target)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	rows.Close()
+	for _, target := range targets {
+		for i := 0; i < 4; i++ {
+			record := provider.record
+			record.Title = target.title
+			payload, _ := json.Marshal(record)
+			c.Exec(`INSERT INTO screen_metadata_candidates(candidate_key,target_kind,target_id,provider,provider_type,provider_id,payload,confidence,reasons,strong_signals,contradiction,input_digest,query_digest,source_kind,observed_at,language,region) VALUES(?,'item',?,'tmdb','movie','42',?,?,'[]',0,0,'','','provider','','en','CA')`, fmt.Sprintf("%d-%d", target.id, i), target.id, string(payload), 1-float64(i)/10)
+		}
 	}
 	ctx, cost := dbwork.Measure(context.Background())
 	page, err := s.Attention(ctx, "lib", "", 25)
@@ -64,6 +93,14 @@ func TestAttentionPageHasConstantStatementCount(t *testing.T) {
 		t.Fatalf("page issued %d statements", got)
 	}
 	for _, entry := range page.Entries {
+		if len(entry.Candidates) != 3 {
+			t.Fatalf("%s has %d candidates", entry.Title, len(entry.Candidates))
+		}
+		for i, candidate := range entry.Candidates {
+			if candidate.Title != entry.Title || candidate.Confidence != 1-float64(i)/10 {
+				t.Fatalf("wrong candidate for %s: %+v", entry.Title, candidate)
+			}
+		}
 		if entry.EntityID == "" {
 			t.Fatal("missing public identity")
 		}
