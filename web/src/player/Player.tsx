@@ -67,13 +67,35 @@ export function PlayerSurface() {
       document.body.style.overflow = '';
     };
   }, [player.active, player.expanded, player.isAudio, compact]);
+  const i18n = useI18n();
   if (!player.active) return null;
   return (
-    <>
+    <PlayerBoundary title={i18n.t('web.player.crashed.title')} body={i18n.t('web.player.crashed.body')} retry={i18n.t('action.tryAgain')} close={i18n.t('action.close')} onClose={player.leave}>
       <FullPlayer engine={player} visible={player.expanded} />
       {!player.expanded && player.isAudio ? <MiniBar engine={player} /> : null}
-    </>
+    </PlayerBoundary>
   );
+}
+
+/**
+ * A fault while drawing the player (a menu, an option panel) stops at the player: the rest of the
+ * app stays up, and Try again mounts the player afresh. The playback path remembers the
+ * presentation and its position, so the title picks up where it was.
+ */
+class PlayerBoundary extends React.Component<{title: string; body: string; retry: string; close: string; onClose: () => void; children: React.ReactNode}, {failed: boolean}> {
+  state = {failed: false};
+  static getDerivedStateFromError() { return {failed: true}; }
+  componentDidCatch(error: unknown) { console.error('[player] render failed', error); }
+  render() {
+    if (!this.state.failed) return this.props.children;
+    return (
+      <div className={s.stage} role="alert">
+        <div className={s.errorState}>
+          <StateView icon="warning" title={this.props.title} body={this.props.body} action={{label: this.props.retry, onClick: () => this.setState({failed: false})}} secondaryAction={{label: this.props.close, onClick: () => { this.setState({failed: false}); this.props.onClose(); }}} />
+        </div>
+      </div>
+    );
+  }
 }
 
 const rates = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
