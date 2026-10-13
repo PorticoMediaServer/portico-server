@@ -72,3 +72,28 @@ func TestServerIssuedChallengeSizes(t *testing.T) {
 		}
 	}
 }
+
+// The person is sent to the address they were shown, with the answer added
+// after it: nothing in the address itself is reordered or rewritten.
+func TestReturnKeepsTheAddressAsShown(t *testing.T) {
+	state := "st&te=1 " + strings.Repeat("s", 16)
+	answer := "code=pac_one&state=st%26te%3D1+" + strings.Repeat("s", 16)
+	for raw, want := range map[string]string{
+		"https://client.example/finish?z=1&a=2&flag":   "https://client.example/finish?z=1&a=2&flag&" + answer,
+		"HTTPS://Client.Example/a%2Fb?x=%7e":           "HTTPS://Client.Example/a%2Fb?x=%7e&" + answer,
+		"http://127.0.0.1:49152/finish":                "http://127.0.0.1:49152/finish?" + answer,
+		"my-player://signin":                           "my-player://signin?" + answer,
+		"tv.example.player:/signin":                    "tv.example.player:/signin?" + answer,
+		"https://client.example/finish?return=a%3Fb=c": "https://client.example/finish?return=a%3Fb=c&" + answer,
+	} {
+		if !ValidRedirect(raw) {
+			t.Fatalf("refused %q", raw)
+		}
+		if got := ReturnLocation(Request{RedirectURI: raw, State: state}, "pac_one"); got != want {
+			t.Errorf("return for %q:\n got %s\nwant %s", raw, got, want)
+		}
+	}
+	if got := ReturnLocation(Request{RedirectURI: "my-player://signin?from=tv", State: "s"}, ""); got != "my-player://signin?from=tv&error=access_denied&state=s" {
+		t.Error("denial", got)
+	}
+}

@@ -168,15 +168,18 @@ func Challenge(verifier string) string {
 	h := sha256.Sum256([]byte(verifier))
 	return base64.RawURLEncoding.EncodeToString(h[:])
 }
+
+// ReturnLocation is the address the person was shown, exactly as the app gave
+// it, with the answer added after it. ValidRedirect has already refused a
+// fragment and a bare trailing "?", so appending is always well formed.
 func ReturnLocation(q Request, code string) string {
-	u, _ := url.Parse(q.RedirectURI)
-	query := u.Query()
-	query.Set("state", q.State)
-	if code == "" {
-		query.Set("error", "access_denied")
-	} else {
-		query.Set("code", code)
+	answer := "error=access_denied"
+	if code != "" {
+		answer = "code=" + url.QueryEscape(code)
 	}
-	u.RawQuery = query.Encode()
-	return u.String()
+	separator := "?"
+	if strings.Contains(q.RedirectURI, "?") {
+		separator = "&"
+	}
+	return q.RedirectURI + separator + answer + "&state=" + url.QueryEscape(q.State)
 }
