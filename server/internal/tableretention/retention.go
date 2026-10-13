@@ -64,6 +64,9 @@ func Sweep(ctx context.Context, db *sql.DB, now time.Time, limit int) (bool, err
 	}
 	more := false
 	for _, p := range Policies {
+		if !dbwork.WaitBackground(ctx) {
+			return more, ctx.Err()
+		}
 		ctx = dbwork.WithBackgroundSpeed(ctx, dbwork.ReadBackgroundSpeed(ctx, db))
 		started := time.Now()
 		batchLimit := min(limit, 32*dbwork.BackgroundConcurrency(ctx))

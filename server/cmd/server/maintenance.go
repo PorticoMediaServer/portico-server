@@ -83,7 +83,6 @@ func runDatabaseHousekeeping(ctx context.Context, db *sql.DB) {
 	lastIntegrity := time.Time{}
 	lastReceiptSweep := time.Now()
 	lastUnknownSweep := time.Now()
-
 	receipts := idempotency.Store{SweepBegin: func(ctx context.Context) (idempotency.Transaction, error) {
 		return dbwork.Begin(ctx, db, dbwork.ClassMaintenance)
 	}}

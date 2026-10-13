@@ -29,7 +29,7 @@ func (s *Service) RunRetention(ctx context.Context) {
 	unregister := dbwork.WakeOnTables(wake, "analysis_*", "inventory_objects", "library_sources")
 	defer unregister()
 	worker.Run(ctx, "mediaanalysis.retention", wake, func(ctx context.Context) time.Duration {
-		if !dbwork.Yield(ctx) {
+		if !dbwork.Yield(ctx) || !dbwork.WaitBackground(ctx) {
 			return 0
 		}
 		ctx = dbwork.WithBackgroundSpeed(ctx, dbwork.ReadBackgroundSpeed(ctx, s.db))

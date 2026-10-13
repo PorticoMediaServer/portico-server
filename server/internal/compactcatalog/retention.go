@@ -13,6 +13,9 @@ func RunRetention(ctx context.Context, db *sql.DB) {
 	for ctx.Err() == nil {
 		more := true
 		for more && ctx.Err() == nil {
+			if !dbwork.WaitBackground(ctx) {
+				return
+			}
 			ctx = dbwork.WithBackgroundSpeed(ctx, dbwork.ReadBackgroundSpeed(ctx, db))
 			started := time.Now()
 			err := dbwork.WithWriteTx(ctx, db, dbwork.ClassMaintenance, func(tx *sql.Tx) error {
