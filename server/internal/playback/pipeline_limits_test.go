@@ -32,6 +32,19 @@ func TestConversionFitsDisplayedPictureWithinDecoderBounds(t *testing.T) {
 	}
 }
 
+func TestConversionKeepsBoundsWhenSourceGeometryIsUnknown(t *testing.T) {
+	client := chromeProfile()
+	client.Video = []ClientVideoCodec{{Codec: "h264", BitDepths: []int{8}, DynamicRanges: []string{"sdr"}, MaxWidth: 1920, MaxHeight: 1080, MaxFrameRate: 30}}
+	source := videoSource("mkv", "vc1", assets.StreamDetail{BitDepth: 8, DynamicRange: "sdr"}, SourceAudio{Index: 1, Codec: "aac", Channels: 2})
+	p := decide(t, source, client, func(in *DeliveryInput) {
+		in.Server = plannerToolchain()
+		in.Target = QualityTarget{RungID: "original", AllowHDR: true}
+	})
+	if p.ConversionTarget.Width != 1920 || p.ConversionTarget.Height != 1080 || p.ConversionTarget.FrameRate != 30 || p.ConversionTarget.VideoLevel < 40 {
+		t.Fatalf("missing source facts removed output bounds or understated the level: %+v", p.ConversionTarget)
+	}
+}
+
 func TestAudioRenditionsUseTheAdmittedTransport(t *testing.T) {
 	client := chromeProfile()
 	client.Transports = []ClientTransport{{Transport: TransportHLSFMP4, Containers: []string{"fmp4"}, Video: []string{"h264"}, Audio: []string{"aac"}}}

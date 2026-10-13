@@ -274,7 +274,7 @@ func TestBitmapBurnPreservesGlyphShapeOnCroppedVideo(t *testing.T) {
 	if err := os.WriteFile(file, pgsFixture(), 0600); err != nil {
 		t.Fatal(err)
 	}
-	graph, err := BuildConversion(ConversionRequest{ConvertVideo: true, BurnIn: &BurnIn{File: file, Format: "pgs", PositionUS: 5000000, Width: 160, Height: 60}})
+	graph, err := BuildConversion(ConversionRequest{ConvertVideo: true, BurnIn: &BurnIn{File: file, Format: "pgs", InputStartUS: 5000000, PositionUS: 5000000, Width: 160, Height: 60}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -367,7 +367,7 @@ func TestHDRBitmapBurnKeepsTenBitPlane(t *testing.T) {
 		t.Fatal(err)
 	}
 	target := ConversionTarget{VideoCodec: "hevc", BitDepth: 10, DynamicRange: "hdr10", Width: 160, Height: 60, FrameRate: 24}
-	graph, err := BuildConversion(ConversionRequest{Target: &target, ConvertVideo: true, SoftwarePreset: "ultrafast", BurnIn: &BurnIn{File: file, Format: "pgs", PositionUS: 5000000, Width: 160, Height: 60}})
+	graph, err := BuildConversion(ConversionRequest{Target: &target, ConvertVideo: true, SoftwarePreset: "ultrafast", BurnIn: &BurnIn{File: file, Format: "pgs", InputStartUS: 5000000, PositionUS: 5000000, Width: 160, Height: 60}})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -159,4 +159,7 @@ test('CD-25: audio rendition labels equal sanitized HLS NAME with exact-match id
  // Sanitized server labels (no quotes/backslashes/C0/DEL) decode; control fails closed.
  assert.equal(parseDeliveryAudioRenditions([{...renditions[0],label:'Bad\x07label'}]),undefined);
  assert.equal(parseDeliveryAudioRenditions([{...renditions[0],label:'Bad\x7flabel'}]),undefined);
+ assert.equal(parseDeliveryAudioRenditions([{...renditions[0],channels:4,channelLayout:'quad'}])?.[0].channelLayout,'quad');
+ assert.equal(parseDeliveryAudioRenditions([{...renditions[0],channelLayout:'stereo,volume=0'}]),undefined);
+ assert.equal(parseDeliveryAudioRenditions([{...renditions[0],action:'convert',channels:4,channelLayout:'quad'}]),undefined);
 });

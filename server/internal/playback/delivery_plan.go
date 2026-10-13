@@ -1138,6 +1138,9 @@ func loadDeliveryPlan(q audioQuery, session string) (*DeliveryPlan, error) {
 	if err = loadConversionTarget(q, session, p); err != nil {
 		return nil, err
 	}
+	for i := range p.Renditions {
+		p.Renditions[i].Packaging = p.OutputContainer
+	}
 	return p, nil
 }
 

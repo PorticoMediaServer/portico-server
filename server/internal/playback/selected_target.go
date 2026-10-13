@@ -141,6 +141,16 @@ func boundConvertedPicture(p *DeliveryPlan, v *SourceVideo, cap *ClientVideoCode
 	if cap == nil {
 		return
 	}
+	// Missing facts cannot justify a level for an arbitrarily large picture.
+	// Use a bounded conversion until a later scan supplies the source geometry.
+	if v.Width <= 0 || v.Height <= 0 {
+		if p.TargetWidth == 0 {
+			p.TargetWidth = 1920
+		}
+		if p.TargetHeight == 0 {
+			p.TargetHeight = 1080
+		}
+	}
 	// Decoder bounds apply after autorotation and square-pixel scaling, just
 	// like the dimensions advertised by the producer's master playlist.
 	width, height := convertedDimensions(DeliveryPlan{Trace: &DecisionTrace{Video: &TraceVideo{Width: v.Width, Height: v.Height, Rotation: v.Rotation, SampleAspectRatio: v.SampleAspectRatio}}})
@@ -163,7 +173,13 @@ func boundConvertedPicture(p *DeliveryPlan, v *SourceVideo, cap *ClientVideoCode
 		}
 	}
 	rate := v.FrameRate
-	if cap.MaxFrameRate > 0 && rate > cap.MaxFrameRate {
+	if rate == 0 {
+		if p.MaxFrameRate == 0 {
+			p.MaxFrameRate = 60
+		}
+		rate = p.MaxFrameRate
+	}
+	if cap.MaxFrameRate > 0 && (rate == 0 || rate > cap.MaxFrameRate) {
 		rate = cap.MaxFrameRate
 		p.MaxFrameRate = rate
 	}
@@ -182,7 +198,7 @@ func boundConvertedPicture(p *DeliveryPlan, v *SourceVideo, cap *ClientVideoCode
 			height -= 2
 		}
 	}
-	if height < displayHeight || p.TargetHeight > 0 {
+	if height < displayHeight || p.TargetHeight > 0 || cap.MaxHeight > 0 {
 		p.TargetHeight = height - height%2
 	}
 }

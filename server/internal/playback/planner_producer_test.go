@@ -39,7 +39,7 @@ func TestPlannerFragmentedConversionsReachTheRealProducer(t *testing.T) {
 			root := t.TempDir()
 			input := filepath.Join(root, "source.mkv")
 			// MPEG-2 obliges both target profiles to convert rather than remux.
-			args := []string{"-v", "error", "-f", "lavfi", "-i", "testsrc2=s=160x90:r=24:d=19", "-f", "lavfi", "-i", "sine=r=48000:d=19", "-c:v", "mpeg2video", "-g", "24", "-c:a", "aac", input}
+			args := []string{"-v", "error", "-f", "lavfi", "-i", "testsrc2=s=160x90:r=24:d=19", "-f", "lavfi", "-i", "sine=r=48000:d=19", "-map", "0:v", "-map", "1:a", "-map", "1:a", "-c:v", "mpeg2video", "-g", "24", "-c:a", "aac", input}
 			if out, err := exec.CommandContext(ctx, binary, args...).CombinedOutput(); err != nil {
 				t.Fatalf("sample: %v %s", err, out)
 			}
@@ -115,6 +115,45 @@ func TestPlannerFragmentedConversionsReachTheRealProducer(t *testing.T) {
 				t.Fatal(err)
 			}
 			initial, _ := os.ReadFile(init)
+			if len(plan.Renditions) != 2 {
+				t.Fatalf("missing alternate audio: %+v", plan.Renditions)
+			}
+			for _, r := range plan.Renditions {
+				if r.Packaging != "fmp4_hls" {
+					t.Fatalf("loaded rendition lost transport: %+v", r)
+				}
+				playlist, err := s.HLSFileContext(ctx, grant, "audio-"+itoa(r.Ordinal)+".m3u8")
+				if err != nil {
+					t.Fatal(err)
+				}
+				body, err := os.ReadFile(playlist)
+				if err != nil || !strings.Contains(string(body), "#EXT-X-MAP") || strings.Contains(string(body), ".ts") {
+					t.Fatalf("audio playlist: %s %v", body, err)
+				}
+				segment, err := s.HLSFileContext(ctx, grant, renditionSegmentFile(r, 0))
+				if err != nil {
+					t.Fatal(err)
+				}
+				audioInit, err := s.HLSFileContext(ctx, grant, renditionInitFile(r.Ordinal))
+				if err != nil {
+					t.Fatal(err)
+				}
+				initBytes, err := os.ReadFile(audioInit)
+				if err != nil {
+					t.Fatal(err)
+				}
+				mediaBytes, err := os.ReadFile(segment)
+				if err != nil {
+					t.Fatal(err)
+				}
+				joined := filepath.Join(root, "audio-"+itoa(r.Ordinal)+".mp4")
+				if err := os.WriteFile(joined, append(initBytes, mediaBytes...), 0600); err != nil {
+					t.Fatal(err)
+				}
+				if out, err := exec.CommandContext(ctx, binary, "-v", "error", "-i", joined, "-f", "null", "-").CombinedOutput(); err != nil {
+					t.Fatalf("audio decode: %s %v", out, err)
+				}
+			}
 			// Demand a later slot, then delete it after the producer exits, forcing an
 			// actual restart at a nonzero source time. Earlier fragments must survive.
 			first, err := s.HLSFileContext(ctx, grant, "segment-000000.m4s")
