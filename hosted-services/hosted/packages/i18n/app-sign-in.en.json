@@ -1,0 +1,15 @@
+{
+ "title": "Sign in with Portico",
+ "signIn": "Sign in to your Portico Account, then return here to continue.",
+ "openAccount": "Open account sign-in",
+ "continue": "Continue",
+ "consent": "Allow {appName} (an unverified app name) to sign you in to {serverName}?",
+ "account": "Account",
+ "returnAddress": "Return address",
+ "allow": "Allow sign-in",
+ "cancel": "Cancel",
+ "wait": "Wait a moment before trying again.",
+ "failed": "Sign-in could not complete. Try again.",
+ "expired": "Sign-in expired or could not be verified. Start again in the app.",
+ "accountPage": "Open the Portico Account page to continue."
+}

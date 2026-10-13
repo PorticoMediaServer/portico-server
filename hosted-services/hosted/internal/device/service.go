@@ -94,7 +94,8 @@ type Repository interface {
 	DeviceLimit(context.Context, []byte, string, int, time.Duration) error
 	StartDevice(context.Context, Creation) (Created, error)
 	ReviewDevice(context.Context, []byte) (Preview, error)
-	DecideDevice(context.Context, string, string, []byte, string) error
+	CaptureClaimAuthority(context.Context, []byte) (identity.CurrentFamilyExpectation, error)
+	DecideDevice(context.Context, identity.CurrentFamilyExpectation, string, []byte, string) error
 	PollDevice(context.Context, []byte, Issue) (Grant, error)
 	CancelDevice(context.Context, []byte) error
 }
@@ -246,18 +247,25 @@ func (s *Service) Review(ctx context.Context, account, ip, code string) (Preview
 	p.UserCode = normalized[:4] + "-" + normalized[4:]
 	return p, e
 }
-func (s *Service) Decide(ctx context.Context, account, ip, id, code, decision string) error {
+func (s *Service) Decide(ctx context.Context, access, ip, id, code, decision string) error {
+	if len(access) < 20 || len(access) > 128 {
+		return identity.ErrCredentials
+	}
 	if e := s.repo.DeviceLimit(ctx, s.hash("ip", ip), "decision", 20, 10*time.Minute); e != nil {
 		return e
 	}
-	if e := s.repo.DeviceLimit(ctx, s.hash("account", account), "decision", 10, 10*time.Minute); e != nil {
+	expected, e := s.repo.CaptureClaimAuthority(ctx, security.Hash(access))
+	if e != nil {
+		return e
+	}
+	if e := s.repo.DeviceLimit(ctx, s.hash("account", expected.AccountID), "decision", 10, 10*time.Minute); e != nil {
 		return e
 	}
 	normalized, e := normalizeCode(code)
 	if e != nil || len(id) > 128 || (decision != "approve" && decision != "deny") {
 		return ErrInvalid
 	}
-	return s.repo.DecideDevice(ctx, account, id, s.hash("user", normalized), decision)
+	return s.repo.DecideDevice(ctx, expected, id, s.hash("user", normalized), decision)
 }
 func (s *Service) Poll(ctx context.Context, secret string) (identity.Session, error) {
 	return s.PollMode(ctx, secret, "native")

@@ -62,7 +62,15 @@ func (s *Service) ServerHeartbeat(ctx context.Context, a ServerAuthority, q Chec
 	if !ok {
 		return Heartbeat{}, ErrDenied
 	}
-	return repo.ServerHeartbeat(ctx, a, q)
+	if e := s.keys.ValidateSigner(time.Now()); e != nil {
+		return Heartbeat{}, e
+	}
+	out, e := repo.ServerHeartbeat(ctx, a, q)
+	if e != nil {
+		return Heartbeat{}, e
+	}
+	out.SigningCertificate = s.keys.Certificate
+	return out, nil
 }
 
 // Push limits. A delta names at most what one server pass sends (2,000 journal

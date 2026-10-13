@@ -48,7 +48,7 @@ func (h *Handler) deviceRoutes(mux *http.ServeMux) {
 		if !decode(w, r, &q) {
 			return
 		}
-		if e := h.Devices.Decide(r.Context(), v.Account.ID, peer(r), q.RequestID, q.UserCode, q.Decision); e != nil {
+		if e := h.Devices.Decide(r.Context(), bearer(r), peer(r), q.RequestID, q.UserCode, q.Decision); e != nil {
 			failure(w, e)
 			return
 		}

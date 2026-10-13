@@ -4436,9 +4436,57 @@ export const schemas = {
       },
       "routeLabel": {
         "type": "string"
+      },
+      "signingCertificate": {
+        "nullable": true,
+        "properties": {
+          "keyId": {
+            "type": "string"
+          },
+          "notAfter": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "notBefore": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "publicKey": {
+            "type": "string"
+          },
+          "purpose": {
+            "type": "string"
+          },
+          "revision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "revoked": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "signature": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "keyId",
+          "publicKey",
+          "purpose",
+          "notBefore",
+          "notAfter",
+          "revision",
+          "revoked",
+          "signature"
+        ],
+        "type": "object"
       }
     },
     "required": [
+      "signingCertificate",
       "heartbeatAfterSeconds",
       "presenceExpiresAt",
       "memberSequence",

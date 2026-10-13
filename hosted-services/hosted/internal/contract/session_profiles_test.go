@@ -95,7 +95,7 @@ func TestActiveSessionProfilesContract(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = devices.Decide(ctx, account.Account.ID, "192.0.2.2", review.RequestID, auth.UserCode, "approve"); err != nil {
+	if err = devices.Decide(ctx, account.AccessToken, "192.0.2.2", review.RequestID, auth.UserCode, "approve"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = store.DB.Exec(`UPDATE device_authorizations SET next_poll_at=now()-interval '1 second'`); err != nil {

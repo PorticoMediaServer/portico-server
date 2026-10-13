@@ -12,6 +12,7 @@ import (
 	"errors"
 	"os"
 	"portico.local/hosted/trust"
+	"sync/atomic"
 	"time"
 )
 
@@ -25,6 +26,8 @@ func RandomID(prefix string) string {
 func Hash(value string) []byte { h := sha256.Sum256([]byte(value)); return h[:] }
 
 type Keys struct {
+	// Shared across immutable service copies; only learned root revocation sets it.
+	SignerRevoked *atomic.Bool
 	RootPublicKey ed25519.PublicKey
 	Certificate   *trust.Certificate
 	PrivateKey    ed25519.PrivateKey
@@ -101,7 +104,7 @@ func LoadKeysWithRoot(path string, root ed25519.PublicKey) (*Keys, error) {
 	if err != nil || len(key) != 32 || seal.Version == 0 {
 		return nil, errors.New("invalid sealing key")
 	}
-	return &Keys{RootPublicKey: root, PrivateKey: private, KeyID: cert.KeyID, SealKey: key, SealVersion: seal.Version, SealLegacy: seal.LegacyUnversioned, Certificate: &cert}, nil
+	return &Keys{SignerRevoked: &atomic.Bool{}, RootPublicKey: root, PrivateKey: private, KeyID: cert.KeyID, SealKey: key, SealVersion: seal.Version, SealLegacy: seal.LegacyUnversioned, Certificate: &cert}, nil
 }
 func (k *Keys) PublicKey() string {
 	return base64.RawURLEncoding.EncodeToString(k.PrivateKey.Public().(ed25519.PublicKey))
@@ -157,7 +160,7 @@ func (k *Keys) Open(value []byte, context string) (string, error) {
 // ValidateSigner applies the offline-root contract at use time, not just at
 // startup. An expired or revoked online certificate must stop issuing claims.
 func (k *Keys) ValidateSigner(now time.Time) error {
-	if k == nil || len(k.PrivateKey) != ed25519.PrivateKeySize || k.Certificate == nil || k.KeyID != k.Certificate.KeyID {
+	if k == nil || k.SignerRevoked != nil && k.SignerRevoked.Load() || len(k.PrivateKey) != ed25519.PrivateKeySize || k.Certificate == nil || k.KeyID != k.Certificate.KeyID {
 		return trust.ErrTrust
 	}
 	public, e := k.Certificate.Verify(k.RootPublicKey, "documents", now)

@@ -88,80 +88,22 @@ UNION ALL SELECT 'function '||p.proname||' '||md5(p.prosrc) FROM pg_proc p JOIN 
 	return strings.Join(out, "\n")
 }
 
-// A45: production Hosted predates numbered migrations (contract version 2, no
-// history). It adopts into the migration chain with its rows intact and ends in
-// exactly the schema a fresh install has.
-func TestLegacyVersion2DatabaseAdoptsIntoMigrations(t *testing.T) {
+// Pre-release databases without the current contract are rejected, unchanged.
+func TestHostedRejectsPrehistorySchemaAndDryRunLeavesItUnchanged(t *testing.T) {
 	ctx := context.Background()
-	legacy := openSchema(t)
-	if _, e := legacy.DB.ExecContext(ctx, legacyV2Schema); e != nil {
+	old := openSchema(t)
+	if _, e := old.DB.ExecContext(ctx, legacyV2Schema); e != nil {
 		t.Fatal(e)
 	}
-	key := strings.Repeat("A", 43)
-	if _, e := legacy.DB.ExecContext(ctx, `
-INSERT INTO accounts(id,username,display_name,password_hash) VALUES('acct_legacy','legacy','Legacy','\x01');
-INSERT INTO profiles(id,account_id,name) VALUES('prof_legacy','acct_legacy','Legacy');
-INSERT INTO servers(id,owner_account_id,name,public_key,token_hash,token_ciphertext,claim_generation,credential_generation) VALUES('srv_`+key+`','acct_legacy','Den','`+key+`','\x`+strings.Repeat("11", 32)+`','\x`+strings.Repeat("22", 32)+`',1,1);
-INSERT INTO memberships(server_id,account_id,profile_id,role) VALUES('srv_`+key+`','acct_legacy','prof_legacy','owner');`); e != nil {
-		t.Fatal(e)
+	before := catalogue(t, old)
+	if e := old.Migrate(ctx); e == nil {
+		t.Fatal("adopted old schema")
 	}
-	if e := legacy.Migrate(ctx); e != nil {
-		t.Fatalf("legacy database refused: %v", e)
+	if _, _, e := old.MigrateDryRun(ctx); e == nil {
+		t.Fatal("adopted old schema in dry run")
 	}
-	if e := legacy.Migrate(ctx); e != nil {
-		t.Fatalf("restart after adoption: %v", e)
-	}
-	var version, history, accounts, memberships int
-	var name string
-	if e := legacy.DB.QueryRow(`SELECT (SELECT version FROM hosted_schema_contract),(SELECT count(*) FROM hosted_schema_migrations),(SELECT count(*) FROM accounts),(SELECT count(*) FROM memberships),(SELECT name FROM servers)`).Scan(&version, &history, &accounts, &memberships, &name); e != nil {
-		t.Fatal(e)
-	}
-	if version != postgres.CurrentHostedSchemaVersion || history != postgres.CurrentHostedSchemaVersion || accounts != 1 || memberships != 1 || name != "Den" {
-		t.Fatalf("version=%d history=%d accounts=%d memberships=%d server=%q", version, history, accounts, memberships, name)
-	}
-	fresh := openSchema(t)
-	if e := fresh.Migrate(ctx); e != nil {
-		t.Fatal(e)
-	}
-	if got, want := catalogue(t, legacy), catalogue(t, fresh); got != want {
-		gotLines, wantLines := strings.Split(got, "\n"), strings.Split(want, "\n")
-		have := map[string]bool{}
-		for _, l := range gotLines {
-			have[l] = true
-		}
-		need := map[string]bool{}
-		for _, l := range wantLines {
-			need[l] = true
-		}
-		for _, l := range wantLines {
-			if !have[l] {
-				t.Errorf("adopted schema lacks: %s", l)
-			}
-		}
-		for _, l := range gotLines {
-			if !need[l] {
-				t.Errorf("adopted schema has extra: %s", l)
-			}
-		}
-	}
-}
-
-// The pre-deploy rehearsal: a dry run on a restored production copy reports the
-// upgrade and leaves the database exactly as it was.
-func TestMigrateDryRunLeavesTheDatabaseUnchanged(t *testing.T) {
-	ctx := context.Background()
-	legacy := openSchema(t)
-	if _, e := legacy.DB.ExecContext(ctx, legacyV2Schema); e != nil {
-		t.Fatal(e)
-	}
-	before, after, e := legacy.MigrateDryRun(ctx)
-	if e != nil || before != 2 || after != postgres.CurrentHostedSchemaVersion {
-		t.Fatal(before, after, e)
-	}
-	var history bool
-	var version int
-	if e = legacy.DB.QueryRow(`SELECT to_regclass(current_schema()||'.hosted_schema_migrations') IS NOT NULL,(SELECT version FROM hosted_schema_contract)`).Scan(&history, &version); e != nil || history || version != 2 {
-		t.Fatal("dry run changed the database", history, version, e)
+	if after := catalogue(t, old); after != before {
+		t.Fatal("rejection changed old schema")
 	}
 }
 

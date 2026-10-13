@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"portico.local/hosted/internal/security"
+	"portico.local/hosted/trust"
 )
 
 type recordingRepo struct {
@@ -50,7 +51,15 @@ func testKeys(t *testing.T) *security.Keys {
 	if e != nil {
 		t.Fatal(e)
 	}
-	return &security.Keys{KeyID: "k1", PrivateKey: private}
+	public, root, e := ed25519.GenerateKey(nil)
+	if e != nil {
+		t.Fatal(e)
+	}
+	cert, e := trust.Certify(root, private.Public().(ed25519.PublicKey), "k1", "documents", time.Now().Add(-time.Hour), time.Now().Add(time.Hour), 1, nil)
+	if e != nil {
+		t.Fatal(e)
+	}
+	return &security.Keys{KeyID: "k1", PrivateKey: private, RootPublicKey: public, Certificate: cert}
 }
 
 // The worker's default egress client is never allowed a loopback destination. The flag that
@@ -177,5 +186,15 @@ func TestABacklogDrainsAtABoundedRate(t *testing.T) {
 	}
 	if delivered := repo.finished.Load(); delivered < wakeBatch {
 		t.Fatal("the backlog did not drain", delivered)
+	}
+}
+
+func TestExpiredSignerDoesNotDeliverAndReleasesWakeLease(t *testing.T) {
+	keys := testKeys(t)
+	keys.Certificate.NotAfter = time.Now().Add(-time.Minute)
+	repo := &recordingRepo{job: Work{ServerID: "srv_1", Kind: "policy", BaseURL: "https://outside.example", Revision: 4}}
+	worked, e := (&Worker{Repo: repo, Keys: keys}).Once(context.Background())
+	if !worked || e == nil || repo.finished.Load() != 1 || repo.status.Load() != 0 {
+		t.Fatal(worked, e, repo.finished.Load())
 	}
 }

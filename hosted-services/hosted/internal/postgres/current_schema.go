@@ -6,12 +6,12 @@ import (
 	"errors"
 )
 
-// Numbered migrations start at 0001 for the pre-release reset. No schema DDL
-// executes on a restart with an up-to-date migration history. Future migrations
-// must append a version and run once under Store.Migrate's advisory lock.
+// Fresh initialization composes the current pre-release baseline in one
+// transaction. Existing schemas must already match; earlier pre-release
+// formats are explicitly reset, never adopted or upgraded in place.
 // CurrentHostedSchemaVersion is the exact format this build provisions and
 // accepts. Tests assert against it so a bump cannot leave a stale expectation.
-const CurrentHostedSchemaVersion = 19
+const CurrentHostedSchemaVersion = 20
 
 func InitializeCurrentHostedSchemaTx(ctx context.Context, tx *sql.Tx) error {
 	var marker bool
@@ -24,7 +24,7 @@ func InitializeCurrentHostedSchemaTx(ctx context.Context, tx *sql.Tx) error {
 		if err := tx.QueryRowContext(ctx, `SELECT kind,version FROM hosted_schema_contract WHERE singleton`).Scan(&kind, &version); err != nil {
 			return err
 		}
-		if kind != "portico-hosted" || version < 1 || version > CurrentHostedSchemaVersion {
+		if kind != "portico-hosted" || version != CurrentHostedSchemaVersion {
 			return errors.New("unsupported Hosted schema; provision the current format")
 		}
 		// A pre-release schema without numbered history is deliberately rejected.
@@ -34,14 +34,7 @@ func InitializeCurrentHostedSchemaTx(ctx context.Context, tx *sql.Tx) error {
 			return err
 		}
 		if !history {
-			if version != 2 {
-				return errors.New("Hosted migration history missing; reset pre-release schema")
-			}
-			// The pre-migration production format: bridge it to 0001, then migrate.
-			if _, err := tx.ExecContext(ctx, legacyV2Bridge); err != nil {
-				return err
-			}
-			return runHostedMigrations(ctx, tx, 1)
+			return errors.New("Hosted migration history missing; reset pre-release schema")
 		}
 		var count, latest int
 		if err := tx.QueryRowContext(ctx, `SELECT count(*),COALESCE(max(version),0) FROM hosted_schema_migrations`).Scan(&count, &latest); err != nil {
@@ -51,13 +44,13 @@ func InitializeCurrentHostedSchemaTx(ctx context.Context, tx *sql.Tx) error {
 			return errors.New("unsupported Hosted migration history")
 		}
 		var apps bool
-		if err := tx.QueryRowContext(ctx, `SELECT to_regclass(current_schema()||'.app_authorizations') IS NOT NULL`).Scan(&apps); err != nil {
+		if err := tx.QueryRowContext(ctx, `SELECT to_regclass(current_schema()||'.app_authorizations') IS NOT NULL AND to_regclass(current_schema()||'.hosted_signing_state') IS NOT NULL`).Scan(&apps); err != nil {
 			return err
 		}
 		if !apps {
 			return errors.New("Hosted sign-in schema missing; reset pre-release schema")
 		}
-		return runHostedMigrations(ctx, tx, version)
+		return nil
 	}
 	var occupied bool
 	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=current_schema() ) OR EXISTS(SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname=current_schema()) OR EXISTS(SELECT 1 FROM pg_type t JOIN pg_namespace n ON n.oid=t.typnamespace WHERE n.nspname=current_schema())`).Scan(&occupied); err != nil {
@@ -74,7 +67,7 @@ func InitializeCurrentHostedSchemaTx(ctx context.Context, tx *sql.Tx) error {
 
 // install0001Tx installs migration 0001 on an empty schema and records it.
 func install0001Tx(ctx context.Context, tx *sql.Tx) error {
-	if _, err := tx.ExecContext(ctx, schema+deletionSchema+sessionReviewSchema+appAuthorizationSchema); err != nil {
+	if _, err := tx.ExecContext(ctx, schema+deletionSchema+sessionReviewSchema+appAuthorizationSchema+signingRolloutSchema); err != nil {
 		return err
 	}
 	if err := InstallIdentitySchemaTx(ctx, tx); err != nil {
@@ -264,6 +257,10 @@ func runHostedMigrations(ctx context.Context, tx *sql.Tx, current int) error {
 			return err
 		}
 	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO hosted_schema_migrations(version,name) VALUES(20,'0020_current_sign_in_and_trust');UPDATE hosted_schema_contract SET version=20 WHERE singleton`); err != nil {
+		return err
+	}
+
 	return nil
 }
 

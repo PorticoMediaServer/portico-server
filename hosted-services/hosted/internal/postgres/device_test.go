@@ -62,7 +62,7 @@ func approveTV(t *testing.T, s *device.Service, a identity.Session, auth device.
 	if e != nil {
 		t.Fatal(e)
 	}
-	if e = s.Decide(ctx, a.Account.ID, "192.0.2.2", p.RequestID, p.UserCode, "approve"); e != nil {
+	if e = s.Decide(ctx, a.AccessToken, "192.0.2.2", p.RequestID, p.UserCode, "approve"); e != nil {
 		t.Fatal(e)
 	}
 	return p
@@ -89,10 +89,10 @@ func TestDeviceApprovalRequiresExplicitAccountAndZeroServers(t *testing.T) {
 	due(t, store)
 	_, e = svc.Poll(ctx, auth.DeviceCode)
 	codeError(t, e, "authorization_pending")
-	if e = svc.Decide(ctx, a.Account.ID, "192.0.2.2", preview.RequestID, "AAAA-AAAA", "approve"); e == nil {
+	if e = svc.Decide(ctx, a.AccessToken, "192.0.2.2", preview.RequestID, "AAAA-AAAA", "approve"); e == nil {
 		t.Fatal("wrong-code approval")
 	}
-	if e = svc.Decide(ctx, a.Account.ID, "192.0.2.2", preview.RequestID, auth.UserCode, "approve"); e != nil {
+	if e = svc.Decide(ctx, a.AccessToken, "192.0.2.2", preview.RequestID, auth.UserCode, "approve"); e != nil {
 		t.Fatal(e)
 	}
 	due(t, store)
@@ -180,12 +180,12 @@ func TestDevicePollingSlowdownExpiryDenialAndPrivateSecret(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	if e = svc.Decide(ctx, a.Account.ID, "192.0.2.2", p.RequestID, p.UserCode, "deny"); e != nil {
+	if e = svc.Decide(ctx, a.AccessToken, "192.0.2.2", p.RequestID, p.UserCode, "deny"); e != nil {
 		t.Fatal(e)
 	}
 	_, e = svc.Poll(ctx, auth.DeviceCode)
 	codeError(t, e, "access_denied")
-	if e = svc.Decide(ctx, a.Account.ID, "192.0.2.2", p.RequestID, p.UserCode, "approve"); !errors.Is(e, device.ErrConflict) {
+	if e = svc.Decide(ctx, a.AccessToken, "192.0.2.2", p.RequestID, p.UserCode, "approve"); !errors.Is(e, device.ErrConflict) {
 		t.Fatal("denial reversed", e)
 	}
 	auth2 := startTV(t, svc, 2)
@@ -313,7 +313,7 @@ func TestDeviceApprovalRaceRecoveryExpiryAndCodeGuessQuota(t *testing.T) {
 		wg.Add(1)
 		go func(account identity.Session) {
 			defer wg.Done()
-			out <- svc.Decide(ctx, account.Account.ID, "192.0.2.2", preview.RequestID, preview.UserCode, "approve")
+			out <- svc.Decide(ctx, account.AccessToken, "192.0.2.2", preview.RequestID, preview.UserCode, "approve")
 		}(account)
 	}
 	wg.Wait()

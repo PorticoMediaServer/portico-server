@@ -3,15 +3,13 @@ package wake
 import (
 	"bytes"
 	"context"
-	"crypto/ed25519"
-	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"io"
 	"math/rand/v2"
 	"net/http"
 	"portico.local/hosted/internal/egress"
 	"portico.local/hosted/internal/security"
-	"portico.local/hosted/trust"
 	"strconv"
 	"strings"
 	"sync"
@@ -147,7 +145,12 @@ func (w *Worker) deliver(ctx context.Context, job Work) (bool, error) {
 	if e != nil {
 		return true, e
 	}
-	body, _ := json.Marshal(trust.Envelope{Payload: base64.RawURLEncoding.EncodeToString(raw), Signature: base64.RawURLEncoding.EncodeToString(ed25519.Sign(w.Keys.PrivateKey, raw)), KeyID: w.Keys.KeyID, Certificate: w.Keys.Certificate})
+	signed, e := w.Keys.Sign(raw)
+	if e != nil {
+		finish := w.Repo.Finish(ctx, job, 0, now.Add(RetryDelay(0, job.Attempts, "", now)))
+		return true, errors.Join(e, finish)
+	}
+	body, _ := json.Marshal(signed)
 	request, e := http.NewRequestWithContext(ctx, http.MethodPost, job.BaseURL+"/v1/hosted/wake", bytes.NewReader(body))
 	if e != nil {
 		return true, e

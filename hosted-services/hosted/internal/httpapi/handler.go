@@ -17,6 +17,7 @@ import (
 	"portico.local/hosted/internal/identity"
 	"portico.local/hosted/internal/postgres"
 	"portico.local/hosted/internal/sessions"
+	"portico.local/hosted/packages/i18n"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -354,7 +355,7 @@ func fail(w http.ResponseWriter, status int, code, message string, retry bool) {
 }
 func failure(w http.ResponseWriter, e error) {
 	if appGrantError(e) {
-		fail(w, 400, "invalid_grant", "Sign-in expired or could not be verified. Start again in the app.", false)
+		fail(w, 400, "invalid_grant", i18n.AppSignIn["expired"], false)
 		return
 	}
 	if errors.Is(e, postgres.ErrPreferenceInput) {

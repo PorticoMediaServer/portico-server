@@ -14,6 +14,7 @@ import (
 	"portico.local/hosted/internal/identity"
 	"portico.local/hosted/internal/postgres"
 	"portico.local/hosted/internal/security"
+	"portico.local/hosted/packages/i18n"
 )
 
 //go:embed appauthassets/*
@@ -72,7 +73,7 @@ func (h *Handler) appAuthorizationCookie(w http.ResponseWriter, r *http.Request)
 		canonical = "https://web.getportico.tv"
 	}
 	if r.Header.Get("Origin") != canonical || bearer(r) != "" {
-		fail(w, 403, "origin_denied", "Open the Portico Account page to continue.", false)
+		fail(w, 403, "origin_denied", i18n.AppSignIn["accountPage"], false)
 		return nil, false
 	}
 	token, mode, ok := h.refreshInput(w, r, "")
@@ -106,7 +107,10 @@ func (h *Handler) appAuthorizationRoutes(mux *http.ServeMux) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.Header().Set("Content-Security-Policy", "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'")
 		w.Header().Set("X-Frame-Options", "DENY")
-		_ = appAuthorizationPage.Execute(w, string(raw))
+		_ = appAuthorizationPage.Execute(w, struct {
+			Request, Strings string
+			Text             map[string]string
+		}{string(raw), i18n.AppSignInJSON(), i18n.AppSignIn})
 	})
 	mux.HandleFunc("GET /auth/apps/authorize.js", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
@@ -192,7 +196,7 @@ func appExchange(r *http.Request) bool {
 	return r.URL.Path == "/v1/app-authorizations/token" && (r.Method == http.MethodPost || r.Method == http.MethodOptions)
 }
 
-const appPageHTML = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sign in with Portico</title><link rel="stylesheet" href="/auth/apps/authorize.css"><script src="/auth/apps/authorize.js" defer></script></head><body><main><a class="brand" href="/account">Portico</a><h1>Sign in with Portico</h1><section id="signin"><p>Sign in to your Portico Account, then return here to continue.</p><a class="button" href="/account" target="_blank" rel="noopener noreferrer">Open account sign-in</a><button id="review">Continue</button></section><section id="consent" hidden><p id="consent-line"></p><dl><dt>Account</dt><dd id="account-name"></dd><dt>Return address</dt><dd id="return-address"></dd></dl><button id="approve">Allow sign-in</button><button id="deny" class="secondary">Cancel</button></section><p id="status" role="status" aria-live="polite"></p><p id="request" hidden>{{.}}</p></main></body></html>`
+const appPageHTML = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{{index .Text "title"}}</title><link rel="stylesheet" href="/auth/apps/authorize.css"><script src="/auth/apps/authorize.js" defer></script></head><body><main><a class="brand" href="/account">Portico</a><h1>{{index .Text "title"}}</h1><section id="signin"><p>{{index .Text "signIn"}}</p><a class="button" href="/account" target="_blank" rel="noopener noreferrer">{{index .Text "openAccount"}}</a><button id="review">{{index .Text "continue"}}</button></section><section id="consent" hidden><p id="consent-line"></p><dl><dt>{{index .Text "account"}}</dt><dd id="account-name"></dd><dt>{{index .Text "returnAddress"}}</dt><dd id="return-address"></dd></dl><button id="approve">{{index .Text "allow"}}</button><button id="deny" class="secondary">{{index .Text "cancel"}}</button></section><p id="status" role="status" aria-live="polite"></p><p id="request" hidden>{{.Request}}</p><p id="strings" hidden>{{.Strings}}</p></main></body></html>`
 
 // appGrantError is separate from account authentication: an expired, spent,
 // mistargeted or PKCE-mismatched code has one non-enumerating refusal.

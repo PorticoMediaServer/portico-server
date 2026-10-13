@@ -243,20 +243,17 @@ func securityActionLastChallenge(t *testing.T, s *postgres.AccountSecurity, a id
 	return id
 }
 
-func TestHostedMigration0003UpgradesVersion2Once(t *testing.T) {
+func TestHostedRejectsEarlierPreReleaseSchema(t *testing.T) {
 	store := database(t)
 	ctx := context.Background()
-	if _, err := store.DB.Exec(`ALTER TABLE account_exports DROP COLUMN lease_id, DROP COLUMN lease_until; ALTER TABLE account_exports DROP CONSTRAINT account_exports_state_check; ALTER TABLE account_exports ADD CONSTRAINT account_exports_state_check CHECK(state IN('pending','ready')); ALTER TABLE account_erasure_jobs ALTER COLUMN deletion_id SET NOT NULL; DROP FUNCTION portico_notify_queue CASCADE; ALTER TABLE servers DROP COLUMN offline_notified_for; CREATE INDEX server_offline_detection ON servers(presence_expires_at) WHERE revoked_at IS NULL; CREATE TABLE cgnat_aggregate(singleton boolean PRIMARY KEY CHECK(singleton),reports bigint NOT NULL DEFAULT 0,cgnat_reports bigint NOT NULL DEFAULT 0); ALTER TABLE account_password_backoff ADD COLUMN trusted_until timestamptz; DROP INDEX claim_web_pending_server; ALTER TABLE claim_web_pending DROP COLUMN server_id; DROP INDEX account_notification_feed; DROP INDEX account_notification_unread; DROP INDEX account_notification_age; ALTER TABLE account_notification_events DROP COLUMN read_at, DROP COLUMN detail, ADD COLUMN processed_at timestamptz; CREATE INDEX notification_pending ON account_notification_events(created_at) WHERE processed_at IS NULL; CREATE INDEX notification_processed ON account_notification_events(processed_at) WHERE processed_at IS NOT NULL; ALTER TABLE identity_transactions DROP COLUMN native_completion; DROP TABLE member_label_rotations; ALTER TABLE certificate_namespaces DROP COLUMN previous_member_label, DROP COLUMN previous_label_until; DROP FUNCTION rotate_member_label_on_membership CASCADE; DROP FUNCTION rotate_member_label_on_restriction CASCADE; DROP FUNCTION rotate_member_label(text); DROP TABLE server_member_sync; DROP TABLE server_member_full_prior; DROP TABLE server_member_departures; DROP TABLE server_members; DROP INDEX servers_owner_account; ALTER TABLE servers DROP COLUMN custody_released; ALTER TABLE accounts DROP COLUMN server_list_version; DROP SEQUENCE server_list_versions; DELETE FROM hosted_schema_migrations WHERE version>=3; UPDATE hosted_schema_contract SET version=2 WHERE singleton`); err != nil {
-		t.Fatal(err)
+	if _, e := store.DB.Exec(`DELETE FROM hosted_schema_migrations WHERE version>2;UPDATE hosted_schema_contract SET version=2 WHERE singleton`); e != nil {
+		t.Fatal(e)
 	}
-	if err := store.Migrate(ctx); err != nil {
-		t.Fatal(err)
+	before := catalogue(t, store)
+	if e := store.Migrate(ctx); e == nil {
+		t.Fatal("upgraded unsupported pre-release format")
 	}
-	if err := store.Migrate(ctx); err != nil {
-		t.Fatal("restart migration", err)
-	}
-	var version, count int
-	if err := store.DB.QueryRow(`SELECT version,(SELECT count(*) FROM hosted_schema_migrations) FROM hosted_schema_contract WHERE singleton`).Scan(&version, &count); err != nil || version != postgres.CurrentHostedSchemaVersion || count != postgres.CurrentHostedSchemaVersion {
-		t.Fatal(version, count, err)
+	if after := catalogue(t, store); after != before {
+		t.Fatal("modified old schema")
 	}
 }

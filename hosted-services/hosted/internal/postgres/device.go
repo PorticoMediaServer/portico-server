@@ -68,12 +68,20 @@ func (s *Store) ReviewDevice(ctx context.Context, hash []byte) (device.Preview, 
 	}
 	return p, e
 }
-func (s *Store) DecideDevice(ctx context.Context, account, id string, hash []byte, decision string) error {
+func (s *Store) DecideDevice(ctx context.Context, expected identity.CurrentFamilyExpectation, id string, hash []byte, decision string) error {
+	if decision != "approve" && decision != "deny" {
+		return device.ErrInvalid
+	}
 	tx, e := s.DB.BeginTx(ctx, nil)
 	if e != nil {
 		return e
 	}
 	defer tx.Rollback()
+	facts, e := AuthorizeCurrentFamilyTx(ctx, tx, expected)
+	if e != nil {
+		return e
+	}
+	account := facts.AccountID
 	var status string
 	var owner sql.NullString
 	var expiry time.Time
@@ -84,7 +92,14 @@ func (s *Store) DecideDevice(ctx context.Context, account, id string, hash []byt
 	if e != nil {
 		return e
 	}
-	if !expiry.After(time.Now()) {
+	var now time.Time
+	if e = tx.QueryRowContext(ctx, `SELECT clock_timestamp()`).Scan(&now); e != nil {
+		return e
+	}
+	if !facts.UnexpiredAt(now) {
+		return identity.ErrCredentials
+	}
+	if !expiry.After(now) {
 		return &device.ProtocolError{Code: "expired_token"}
 	}
 	next := "approved"
@@ -97,24 +112,46 @@ func (s *Store) DecideDevice(ctx context.Context, account, id string, hash []byt
 	if status != "pending" {
 		return device.ErrConflict
 	}
-	var epoch int64
-	if e = tx.QueryRowContext(ctx, `SELECT auth_epoch FROM accounts WHERE id=$1 FOR SHARE`, account).Scan(&epoch); e != nil {
-		return e
-	}
+	epoch := facts.AuthEpoch
 	if _, e = tx.ExecContext(ctx, `UPDATE device_authorizations SET status=$2,approved_account_id=$3,approved_epoch=$4,decided_at=now() WHERE id=$1`, id, next, account, epoch); e != nil {
 		return e
+	}
+	if e = tx.QueryRowContext(ctx, `SELECT clock_timestamp()`).Scan(&now); e != nil {
+		return e
+	}
+	if !facts.UnexpiredAt(now) || !expiry.After(now) {
+		return identity.ErrCredentials
 	}
 	if e = audit(ctx, tx, account, "device."+decision, id, 0); e != nil {
 		return e
 	}
 	return tx.Commit()
 }
+
+var errDeviceAccountChanged = errors.New("device approval changed while locking")
+
 func (s *Store) PollDevice(ctx context.Context, hash []byte, issue device.Issue) (device.Grant, error) {
+	for range 2 {
+		out, e := s.pollDevice(ctx, hash, issue)
+		if !errors.Is(e, errDeviceAccountChanged) {
+			return out, e
+		}
+	}
+	return device.Grant{}, device.ErrConflict
+}
+func (s *Store) pollDevice(ctx context.Context, hash []byte, issue device.Issue) (device.Grant, error) {
 	tx, e := s.DB.BeginTx(ctx, nil)
 	if e != nil {
 		return device.Grant{}, e
 	}
 	defer tx.Rollback()
+	preliminary, e := lockDeviceAccountTx(ctx, tx, hash)
+	if errors.Is(e, sql.ErrNoRows) {
+		return device.Grant{}, &device.ProtocolError{Code: "invalid_grant"}
+	}
+	if e != nil {
+		return device.Grant{}, e
+	}
 	var id, status, sessionMode, protocol, publicKey, requestID string
 	var protected []byte
 	var account sql.NullString
@@ -130,13 +167,19 @@ func (s *Store) PollDevice(ctx context.Context, hash []byte, issue device.Issue)
 	if e != nil {
 		return device.Grant{}, e
 	}
+	if account != preliminary {
+		return device.Grant{}, errDeviceAccountChanged
+	}
 	if sessionMode != issue.Family.Mode || protocol != issue.Protocol || (protocol == device.TVProtocol && issue.SealGrant == nil) {
 		return device.Grant{}, &device.ProtocolError{Code: "invalid_grant"}
 	}
 	if status == "denied" || status == "cancelled" {
 		return device.Grant{}, &device.ProtocolError{Code: "access_denied"}
 	}
-	now := time.Now()
+	var now time.Time
+	if e = tx.QueryRowContext(ctx, `SELECT clock_timestamp()`).Scan(&now); e != nil {
+		return device.Grant{}, e
+	}
 	if status == "consumed" {
 		if !recovery.Valid || !recovery.Time.After(now) {
 			return device.Grant{}, &device.ProtocolError{Code: "invalid_grant"}
@@ -145,7 +188,7 @@ func (s *Store) PollDevice(ctx context.Context, hash []byte, issue device.Issue)
 		return device.Grant{}, &device.ProtocolError{Code: "expired_token"}
 	}
 	if next.After(now) {
-		interval += 5
+		interval = min(30, interval+5)
 		if _, e = tx.ExecContext(ctx, `UPDATE device_authorizations SET interval_seconds=$2,next_poll_at=now()+make_interval(secs=>$2::integer) WHERE id=$1`, id, interval); e != nil {
 			return device.Grant{}, e
 		}
@@ -232,11 +275,27 @@ func (s *Store) PollDevice(ctx context.Context, hash []byte, issue device.Issue)
 	return device.Grant{Cipher: cipher, Protected: protected, ExpiresAt: sessionExpiry.Time, Viewer: v}, tx.Commit()
 }
 func (s *Store) CancelDevice(ctx context.Context, hash []byte) error {
+	for range 2 {
+		e := s.cancelDevice(ctx, hash)
+		if !errors.Is(e, errDeviceAccountChanged) {
+			return e
+		}
+	}
+	return device.ErrConflict
+}
+func (s *Store) cancelDevice(ctx context.Context, hash []byte) error {
 	tx, e := s.DB.BeginTx(ctx, nil)
 	if e != nil {
 		return e
 	}
 	defer tx.Rollback()
+	preliminary, e := lockDeviceAccountTx(ctx, tx, hash)
+	if errors.Is(e, sql.ErrNoRows) {
+		return nil
+	}
+	if e != nil {
+		return e
+	}
 	var id string
 	var session []byte
 	var account sql.NullString
@@ -246,6 +305,9 @@ func (s *Store) CancelDevice(ctx context.Context, hash []byte) error {
 	}
 	if e != nil {
 		return e
+	}
+	if account != preliminary {
+		return errDeviceAccountChanged
 	}
 	var family sql.NullString
 	if e = tx.QueryRowContext(ctx, `SELECT family_id FROM hosted_devices WHERE id=$1`, id).Scan(&family); e != nil && !errors.Is(e, sql.ErrNoRows) {
@@ -272,4 +334,19 @@ func (s *Store) CancelDevice(ctx context.Context, hash []byte) error {
 		return e
 	}
 	return tx.Commit()
+}
+
+// No operation holding a device row may wait for an account lock: deletion
+// takes account first and later deletes that same device row.
+func lockDeviceAccountTx(ctx context.Context, tx *sql.Tx, hash []byte) (sql.NullString, error) {
+	var account sql.NullString
+	e := tx.QueryRowContext(ctx, `SELECT approved_account_id FROM device_authorizations WHERE device_hash=$1`, hash).Scan(&account)
+	if e != nil {
+		return account, e
+	}
+	if account.Valid {
+		var id string
+		e = tx.QueryRowContext(ctx, `SELECT id FROM accounts WHERE id=$1 FOR SHARE`, account.String).Scan(&id)
+	}
+	return account, e
 }

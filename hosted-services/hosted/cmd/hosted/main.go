@@ -154,6 +154,11 @@ func run() error {
 	if e = store.Migrate(ctx); e != nil {
 		return fmt.Errorf("database migration failed: %w", e)
 	}
+	if !*restoreDrill {
+		if e = store.RecordSigningCertificate(ctx, keys); e != nil {
+			return fmt.Errorf("signing certificate rollout refused: %w", e)
+		}
+	}
 	certificateService, e := certificates.New(store, acmeConfig)
 	if e != nil {
 		return fmt.Errorf("ACME account custody configuration failed")
@@ -326,8 +331,8 @@ func run() error {
 	// document signed with an expired certificate.
 	keyExpired := func() bool { return !time.Now().Before(keys.Certificate.NotAfter) }
 	ready := func(ctx context.Context) error {
-		if keyExpired() {
-			return fmt.Errorf("signing certificate expired at %s", keys.Certificate.NotAfter.Format(time.RFC3339))
+		if e := keys.ValidateSigner(time.Now()); e != nil {
+			return fmt.Errorf("signing authority unavailable: %w", e)
 		}
 		return store.Ready(ctx)
 	}
@@ -375,6 +380,8 @@ func run() error {
 		startWorker(func(ctx context.Context) { store.RunClaimNotifications(ctx, claimNotify) })
 		worker := &wake.Worker{Repo: store, Keys: keys, Notify: wakeNotify}
 		startWorker(worker.Run)
+		startWorker(func(ctx context.Context) { store.RunSigningRollout(ctx, keys.Certificate.Revision) })
+		startWorker(func(ctx context.Context) { store.RunSignerRevocationFence(ctx, keys) })
 		certificateService.Announce(certificateNotify)
 		startWorker(certificateService.Run)
 		for _, retired := range retiredServices {

@@ -67,8 +67,11 @@ func CheckIn(wakeable bool) (after, presence time.Duration) {
 // Heartbeat answers a check-in. There is no policy in it: membership is the
 // server's own (Spec — Hosted at Scale).
 type Heartbeat struct {
-	HeartbeatAfterSeconds int       `json:"heartbeatAfterSeconds"`
-	PresenceExpiresAt     time.Time `json:"presenceExpiresAt"`
+	// Root-signed current documents certificate, carried by existing check-ins.
+	// Servers verify and persist its monotonic revocations before admission.
+	SigningCertificate    *trust.Certificate `json:"signingCertificate"`
+	HeartbeatAfterSeconds int                `json:"heartbeatAfterSeconds"`
+	PresenceExpiresAt     time.Time          `json:"presenceExpiresAt"`
 	// RouteLabel is the server's current members-only label (A86). A member
 	// removal rotates it, and the rotation wakes the server, whose check-in
 	// then picks it up; there is no periodic contact.

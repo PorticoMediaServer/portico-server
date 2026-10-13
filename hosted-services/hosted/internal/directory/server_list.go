@@ -336,6 +336,15 @@ func (s *Service) verifyConsent(m MemberStanding, server string) (time.Time, str
 	if json.Unmarshal(m.Consent, &envelope) != nil {
 		return time.Time{}, ""
 	}
+	// A historical certificate proves the signature at issue time, but the
+	// current root certificate's revocations are terminal for new consent.
+	if s.keys.Certificate != nil {
+		for _, id := range s.keys.Certificate.Revoked {
+			if id == envelope.KeyID {
+				return time.Time{}, ""
+			}
+		}
+	}
 	head, e := base64.RawURLEncoding.Strict().DecodeString(envelope.Payload)
 	if e != nil {
 		return time.Time{}, ""
@@ -344,18 +353,10 @@ func (s *Service) verifyConsent(m MemberStanding, server string) (time.Time, str
 	if json.Unmarshal(head, &c) != nil || (c.Kind != IdentityKind && c.Kind != CustodyKind) || c.AccountID != m.AccountID || c.ServerID != server || c.IssuedAt.After(time.Now().Add(5*time.Minute)) {
 		return time.Time{}, ""
 	}
-	if len(s.keys.RootPublicKey) == ed25519.PublicKeySize {
-		if envelope.Certificate == nil {
-			return time.Time{}, ""
-		}
-		if _, e = envelope.Verify(s.keys.RootPublicKey, "documents", c.IssuedAt); e != nil {
-			return time.Time{}, ""
-		}
-		return c.IssuedAt, c.Kind
+	if len(s.keys.RootPublicKey) != ed25519.PublicKeySize || envelope.Certificate == nil {
+		return time.Time{}, ""
 	}
-	// A Hosted without its root (tests, a development key): its own key only.
-	signature, e := base64.RawURLEncoding.Strict().DecodeString(envelope.Signature)
-	if e != nil || envelope.KeyID != s.keys.KeyID || !ed25519.Verify(s.keys.PrivateKey.Public().(ed25519.PublicKey), head, signature) {
+	if _, e = envelope.Verify(s.keys.RootPublicKey, "documents", c.IssuedAt); e != nil {
 		return time.Time{}, ""
 	}
 	return c.IssuedAt, c.Kind
