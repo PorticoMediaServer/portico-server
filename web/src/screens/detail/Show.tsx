@@ -81,6 +81,15 @@ export function ShowScreen() {
   const show = data?.show;
   const seasons = useMemo(() => orderSeasons(data?.seasons ?? []), [data?.seasons]);
   // People from the show's own credits (the server sends them with the workspace): cast in billing order, key crew by role.
+  // A season card's address names the season and stands "season" in for the show. Once the page
+  // knows which show it is, the address is corrected to the show's own, so choosing another
+  // season, reloading or sharing the address keeps working.
+  const knownShowId = show?.id;
+  useEffect(() => {
+    if (showId !== 'season' || !knownShowId || knownShowId === 'season') return;
+    void navigate({to: params.episodeId ? '/show/$showId/episode/$episodeId' : '/show/$showId', params: {showId: knownShowId, ...(params.episodeId ? {episodeId: params.episodeId} : {})}, search, replace: true});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showId, knownShowId]);
   const people = useMemo(() => showPeople(show?.credits), [show?.credits]);
   // The row shows the first twelve; See all lists everyone the show's page carries.
   const [allCast, setAllCast] = useState(false);
