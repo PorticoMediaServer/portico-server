@@ -515,3 +515,93 @@ func TestTheOwnersRuleDecidesWhenMissingTitlesGo(t *testing.T) {
 		t.Fatalf("immediately: %+v %v", out, err)
 	}
 }
+
+func TestARenamedFilmKeepsItsTitleOrMovesToTheOneItNames(t *testing.T) {
+	c := catalogtest.Open(t)
+	c.Library("m", "Movies", "movie", "/m")
+	// A film with one file: the rename is a correction, and the title keeps
+	// its id and everyone's state.
+	a, aToken := identityFile(t, c, "m", "/m/Alien.mkv", 1080)
+	film := attachMovie(t, c, "m", a, "/m/Alien.mkv", "Alien", 0)
+	c.Exec(`INSERT INTO personal_items(profile_id,item_id,watchlisted,favorite,rating,revision,watched,last_played_at,not_interested) VALUES('p',?,0,1,NULL,1,0,'',0)`, film)
+	c.Write(func(ctx context.Context, tx *sql.Tx) error {
+		return reinterpretMovieTx(ctx, tx, "m", a, aToken, "/m/Alien (1979).mkv", "Alien", 1979)
+	})
+	var year int
+	if err := c.DB.QueryRow(`SELECT year FROM catalog_entities WHERE id=?`, film).Scan(&year); err != nil || year != 1979 {
+		t.Fatalf("the corrected year was not taken: %d %v", year, err)
+	}
+	if n := rows(t, c, `SELECT count(*) FROM catalog_asset_links WHERE entity_id=? AND asset_id=?`, film, a); n != 1 {
+		t.Fatal("the renamed file left its title")
+	}
+	if n := rows(t, c, `SELECT count(*) FROM personal_items WHERE profile_id='p' AND item_id=? AND favorite=1`, film); n != 1 {
+		t.Fatal("state did not stay with the renamed title")
+	}
+	// The new name is the film's name now: another file read that way joins it.
+	b, bToken := identityFile(t, c, "m", "/m/Alien 1979 4K.mkv", 2160)
+	if again := attachMovie(t, c, "m", b, "/m/Alien 1979 4K.mkv", "Alien", 1979); again != film {
+		t.Fatal("the corrected name does not find the title")
+	}
+	// A file leaving a film that has other files moves to the title it names.
+	c.Write(func(ctx context.Context, tx *sql.Tx) error {
+		return reinterpretMovieTx(ctx, tx, "m", b, bToken, "/m/Aliens (1986).mkv", "Aliens", 1986)
+	})
+	if n := rows(t, c, `SELECT count(*) FROM catalog_asset_links WHERE entity_id=?`, film); n != 1 {
+		t.Fatalf("files left on the first film: %d", n)
+	}
+	var other int64
+	if err := c.DB.QueryRow(`SELECT entity_id FROM catalog_asset_links WHERE asset_id=?`, b).Scan(&other); err != nil || other == film {
+		t.Fatalf("the renamed file did not move to its own title: %d %v", other, err)
+	}
+}
+
+func TestRemovingAFolderMarksItsFilesMissing(t *testing.T) {
+	c := catalogtest.Open(t)
+	c.Library("m", "Movies", "movie", "/m")
+	a, _ := identityFile(t, c, "m", "/m/Ikiru (1952).mkv", 1080)
+	film := attachMovie(t, c, "m", a, "/m/Ikiru (1952).mkv", "Ikiru", 1952)
+	var source string
+	if err := c.DB.QueryRow(`SELECT id FROM library_sources WHERE library_id='m'`).Scan(&source); err != nil {
+		t.Fatal(err)
+	}
+	c.Exec(`UPDATE library_sources SET enabled=0,health='removing' WHERE id=?`, source)
+	done := false
+	c.Write(func(ctx context.Context, tx *sql.Tx) error {
+		var err error
+		done, err = removeFolderBatchTx(ctx, tx, source)
+		return err
+	})
+	if !done || rows(t, c, `SELECT count(*) FROM catalog_missing_titles WHERE entity_id=?`, film) != 1 {
+		t.Fatalf("the removed folder's title is not missing (done=%v)", done)
+	}
+	if n := rows(t, c, `SELECT count(*) FROM catalog_entities WHERE id=?`, film); n != 1 {
+		t.Fatal("removing a folder removed a title outright")
+	}
+}
+
+func TestAFileCanBeSplitOffATitleItWasWronglyGroupedWith(t *testing.T) {
+	c := catalogtest.Open(t)
+	c.Library("m", "Movies", "movie", "/m")
+	a, _ := identityFile(t, c, "m", "/m/Dune (1984).mkv", 1080)
+	b, bToken := identityFile(t, c, "m", "/m/Dune 1984 fan edit.mkv", 720)
+	film := attachMovie(t, c, "m", a, "/m/Dune (1984).mkv", "Dune", 1984)
+	attachMovie(t, c, "m", b, "/m/Dune 1984 fan edit.mkv", "Dune", 1984)
+	s := New(c.DB)
+	separate, err := s.SeparateInventoryVersion(context.Background(), "m", "object:"+bToken, "r", func(*sql.Tx) error { return nil })
+	if err != nil || separate == "" || separate == c.Public(film) {
+		t.Fatalf("separate: %q %v", separate, err)
+	}
+	if n := rows(t, c, `SELECT count(*) FROM catalog_asset_links WHERE entity_id=?`, film); n != 1 {
+		t.Fatalf("files left on the title: %d", n)
+	}
+	if n := rows(t, c, `SELECT count(*) FROM catalog_asset_links WHERE entity_id=? AND asset_id=?`, c.ID(separate), b); n != 1 {
+		t.Fatal("the split file is not on its own title")
+	}
+	// The decision is remembered: reading the name again does not regroup it.
+	c.Write(func(ctx context.Context, tx *sql.Tx) error {
+		return reinterpretMovieTx(ctx, tx, "m", b, bToken, "/m/Dune 1984 fan edit.mkv", "Dune", 1984)
+	})
+	if n := rows(t, c, `SELECT count(*) FROM catalog_asset_links WHERE entity_id=?`, film); n != 1 {
+		t.Fatal("a later reading regrouped the file the owner split off")
+	}
+}
