@@ -1,6 +1,7 @@
 import {useMemo, useState} from 'react';
-import {contentRatings, keyScopes, parseAccessAPIKey, parseAccessDevicePage, parseInvitation, type AccessAPIKey, type AccessDevice, type AccessTier, type Invitation, type KeyScope, type MemberLimits} from '@core/server-administration.ts';
-import {accessListPath, scopeHelp, scopeLabels as scopeLabel, tierLabels as tierLabel} from '@core/server-admin/panel-logic.ts';
+import {contentRatings, parseAccessDevicePage, parseInvitation, type AccessDevice, type AccessTier, type Invitation, type MemberLimits} from '@core/server-administration.ts';
+import {apiScopePresetIds, apiScopePresets, createApiKey, listApiKeys, revokeApiKey, type ApiCredential, type ApiScopePreset, type IssuedApiCredential} from '@core/api-access.ts';
+import {accessListPath, scopeHelp, scopeLabels as scopeLabel, scopesLabel, tierLabels as tierLabel} from '@core/server-admin/panel-logic.ts';
 export {accessListPath, accessLists, tierLabels} from '@core/server-admin/panel-logic.ts';
 import {useAction} from '../../admin/console';
 import {createOperationIds} from './operation-ids';
@@ -115,26 +116,26 @@ export function AccountDevices({accountId}: {accountId: string}) {
 export function APIKeysPanel() {
   const {api} = useSession();
   const t = currentI18n().t;
-  const read = useCursorList(async cursor => { const raw = await api.request(accessListPath('apiKeys', cursor)); return {items: items(raw, parseAccessAPIKey), nextCursor: nextCursorOf(raw)}; }, [api]);
+  const read = useCursorList(async cursor => { const page = await listApiKeys(api, cursor); return {items: [...page.items], nextCursor: page.nextCursor ?? ''}; }, [api]);
   const action = useAction();
   // BE-API-10: one ID per logical write; retries reuse it.
   const [opIds] = useState(createOperationIds);
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
-  const [scope, setScope] = useState<KeyScope>('read-only');
-  const [issued, setIssued] = useState<AccessAPIKey>();
-  const [revoking, setRevoking] = useState<AccessAPIKey>();
-  const active = useMemo(() => read.data?.filter(k => !k.revoked) ?? [], [read.data]);
+  const [scope, setScope] = useState<ApiScopePreset>('read');
+  const [issued, setIssued] = useState<IssuedApiCredential>();
+  const [revoking, setRevoking] = useState<ApiCredential>();
+  const active = useMemo(() => read.data?.filter(k => k.state === 'active' || k.state === 'awaiting_approval') ?? [], [read.data]);
   return (
     <SettingsGroup title={t('web.access.apiKeys')} description={t('server.access.keyLede')}>
       {read.error ? <div style={{padding: 12}}><Notice tone={read.data ? 'warning' : 'error'} compact action={{label: t('action.tryAgain'), onClick: read.reload}}>{read.error}</Notice></div> : null}
       {active.map(k => (
-        <SettingsRow key={k.id} icon="lock" label={k.name} help={t('web.access.keyMeta', {access: scopeLabel[k.scope], hint: k.hint, when: since(k.lastUsedAt)})} control={<Button size="sm" variant="ghost" label={t('web.access.revoke')} onClick={() => { action.clear(); setRevoking(k); }} />} />
+        <SettingsRow key={k.id} icon="lock" label={k.name} help={t('web.access.keyMeta', {access: scopesLabel(k.scopes), hint: k.hint, when: since(k.lastUsedAt)})} control={<Button size="sm" variant="ghost" label={t('web.access.revoke')} onClick={() => { action.clear(); setRevoking(k); }} />} />
       ))}
       {read.data && !active.length ? <div style={{padding: 16}}><Text variant="caption" tone="tertiary">{t('web.access.noApiKeys')}</Text></div> : null}
       <div style={{padding: '8px 16px 16px'}}><Button size="sm" variant="secondary" icon="plus" label={t('web.access.createKey')} onClick={() => { setOpen(true); setIssued(undefined); setName(''); action.clear(); }} /></div>
       <Dialog open={open} onOpenChange={setOpen} dismissable={!issued} title={issued ? t('web.access.copyKeyTitle') : t('web.access.createKeyTitle')} width={480}
-        actions={issued ? <Button variant="primary" label={t('web.access.copiedIt')} onClick={() => setOpen(false)} /> : <><Button variant="ghost" label={t('action.cancel')} onClick={() => setOpen(false)} /><Button variant="primary" label={t('web.saved.create')} disabled={!name.trim()} loading={action.busy} onClick={() => void action.run(async () => { const payload = {name: name.trim(), scope}; const key = JSON.stringify(payload); setIssued(parseAccessAPIKey(await api.request('/v1/admin/access/api-keys', 'POST', {operationId: opIds.forPayload(key), ...payload}))); opIds.release(); read.reload(); })} /></>}>
+        actions={issued ? <Button variant="primary" label={t('web.access.copiedIt')} onClick={() => setOpen(false)} /> : <><Button variant="ghost" label={t('action.cancel')} onClick={() => setOpen(false)} /><Button variant="primary" label={t('web.saved.create')} disabled={!name.trim()} loading={action.busy} onClick={() => void action.run(async () => { const payload = {name: name.trim(), scopes: apiScopePresets[scope]}; const key = JSON.stringify(payload); setIssued(await createApiKey(api, {operationId: opIds.forPayload(key), ...payload})); opIds.release(); read.reload(); })} /></>}>
         {issued ? (
           <div style={{display: 'flex', flexDirection: 'column', gap: 12}}>
             <Notice tone="warning" compact>{t('web.access.keyShownOnce')}</Notice>
@@ -145,13 +146,13 @@ export function APIKeysPanel() {
           <div style={{display: 'flex', flexDirection: 'column', gap: 12}}>
             {action.error ? <Notice tone="error" compact>{action.error}</Notice> : null}
             <Input label={t('profile.name')} help={t('web.access.keyNameHelp')} autoFocus maxLength={80} value={name} onChange={e => setName(e.target.value)} placeholder="Home Assistant" /> {/* lint-strings-allow: an example name, not copy */}
-            <Select label={t('web.access.scopeLabel')} value={scope} onChange={e => setScope(e.target.value as KeyScope)} options={keyScopes.map(s => ({value: s, label: scopeLabel[s]}))} />
+            <Select label={t('web.access.scopeLabel')} value={scope} onChange={e => setScope(e.target.value as ApiScopePreset)} options={apiScopePresetIds.map(s => ({value: s, label: scopeLabel[s]}))} />
             <Text variant="caption" tone="tertiary">{scopeHelp[scope]}</Text>
           </div>
         )}
       </Dialog>
       <ConfirmDialog open={!!revoking} onOpenChange={o => !o && setRevoking(undefined)} title={t('web.access.revokeTitle', {name: revoking?.name ?? ''})} body={t('web.access.revokeBody')} confirmLabel={t('web.access.revoke')} busy={action.busy} error={action.error}
-        onConfirm={() => void action.run(async () => { if (!revoking) return; const key = JSON.stringify({id: revoking.id, revision: revoking.revision}); await api.request(`/v1/admin/access/api-keys/${encodeURIComponent(revoking.id)}/revoke`, 'POST', {expectedRevision: revoking.revision, operationId: opIds.forPayload(key)}); opIds.release(); setRevoking(undefined); read.reload(); }, 'Key revoked.')} />
+        onConfirm={() => void action.run(async () => { if (!revoking) return; await revokeApiKey(api, revoking.id); setRevoking(undefined); read.reload(); }, 'Key revoked.')} />
       <ListPager pages={read} />
     </SettingsGroup>
   );

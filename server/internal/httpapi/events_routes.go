@@ -183,6 +183,15 @@ func (d Dependencies) eventStream(w http.ResponseWriter, r *http.Request, p iden
 		return
 	}
 	flusher.Flush()
+	// A stream that opens with nothing waiting says where it stands. Without
+	// this a client learns its position only from the first real event, and a
+	// connection that drops before one arrives would resume from "now" and miss
+	// whatever happened in between.
+	if len(page.Events) == 0 && page.NextAfter != "" {
+		if !send(eventfeed.Event{ID: page.NextAfter, Type: "stream.opened", At: time.Now().UTC().Format(time.RFC3339)}) {
+			return
+		}
+	}
 	flushPending := func() bool {
 		for {
 			fresh, owner, err := d.eventAuthority(r.WithContext(ctx))

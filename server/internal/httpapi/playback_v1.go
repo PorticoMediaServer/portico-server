@@ -229,7 +229,7 @@ func (d Dependencies) v1Authorize(ctx context.Context, r *http.Request, m apikit
 				return nil, &apierror.Error{Code: "not_permitted"}
 			}
 		}
-	case m.Access == apikit.Admin && m.Scope == "direct_account":
+	case m.Access == apikit.Admin && m.AdminScope == "direct_account":
 		if p, err = d.principal(r); err == nil {
 			if d.Identity == nil {
 				return nil, &apierror.Error{Code: "not_permitted"}
@@ -260,6 +260,17 @@ func (d Dependencies) v1Authorize(ctx context.Context, r *http.Request, m apikit
 			if err = itemAdmission(d.itemAccess(ctx, p, item)); err != nil {
 				return nil, err
 			}
+		}
+	}
+	if m.Access == apikit.ViewerLibrary {
+		// The registry refuses to register this label without {libraryId}, so
+		// the check below always has a library to make.
+		library := r.PathValue("libraryId")
+		if library == "" {
+			return nil, &apierror.Error{Code: "not_found"}
+		}
+		if err = d.allowedLibrary(ctx, p, library); err != nil {
+			return nil, itemAdmission(err)
 		}
 	}
 	ctx = context.WithValue(ctx, foundationPrincipalKey{}, p)

@@ -57,6 +57,10 @@ var (
 	LogCategories        = []string{"server", "playback", "scan", "network", "client"}
 )
 
+// DefaultAPIRequestsPerMinute is what one API key or personal access token may
+// ask for each minute when the owner has not chosen a number.
+const DefaultAPIRequestsPerMinute = 600
+
 func oneOf(value string, allowed []string) bool {
 	for _, v := range allowed {
 		if v == value {
@@ -112,6 +116,8 @@ func Registry() []Field {
 		field("customCertificateDomain", "connectivity", "string", "", nil, nil, nil, "hot", "TLS listener and route publication", "The domain the custom certificate serves. It is published to members as an access URL on the remote access port."),
 		field("lanDiscoveryEnabled", "connectivity", "boolean", true, nil, nil, nil, "hot", "LAN discovery advertisement", "Advertise this server on the local network with mDNS/Bonjour. The connectivity status report says whether this host can."),
 		field("deviceApprovalRequired", "access", "boolean", false, nil, nil, nil, "next-operation", "playback admission", "Require an administrator to approve a device before it can play anything."),
+		field("apiRequestsPerMinute", "access", "integer", 0, bounded(0), bounded(100000), nil, "hot", "API key and access token admission", "How many requests one API key or personal access token may make each minute. 0 uses the default of 600."),
+		field("blockMemberAccessTokens", "access", "boolean", false, nil, nil, nil, "next-operation", "personal access token creation", "Stop members creating personal access tokens. Tokens that already exist keep working until they are revoked."),
 		field("logLevel", "diagnostics", "enumeration", "info", nil, nil, LogLevels, "hot", "servicelog.Recorder", "How much detail the message log keeps. A debug window raises this temporarily without changing the saved value."),
 		field("logRetention", "diagnostics", "log-retention-list", []LogRetention{}, nil, nil, LogCategories, "hot", "servicelog.Recorder prune", "Days of message log history to keep per category. A category with no entry keeps whatever the bounded ring holds."),
 	}
@@ -147,6 +153,13 @@ type Settings struct {
 	// default, keeps all of it. A document saved before the field existed reads
 	// as 0, which is the default.
 	PlayHistoryDays int `json:"playHistoryDays"`
+	// APIRequestsPerMinute is the rate one API key or personal access token is
+	// held to; 0, the value a document saved before the field existed reads as,
+	// is the default (DefaultAPIRequestsPerMinute).
+	APIRequestsPerMinute int `json:"apiRequestsPerMinute"`
+	// BlockMemberAccessTokens stops members making personal access tokens. It is
+	// phrased as the exception so that the zero value is the default: allowed.
+	BlockMemberAccessTokens bool `json:"blockMemberAccessTokens"`
 	// Aggregated server-wide play counts stay off until an owner opts in.
 	CommunityActivityEnabled bool `json:"home.communityActivityEnabled"`
 	// Update reporting and the default trash retention are owner administration
@@ -299,6 +312,9 @@ func validateSettings(v *Settings) error {
 	}
 	if v.JobDays < 1 || v.JobDays > 30 {
 		fields = append(fields, "values.jobDays")
+	}
+	if v.APIRequestsPerMinute < 0 || v.APIRequestsPerMinute > 100000 {
+		fields = append(fields, "values.apiRequestsPerMinute")
 	}
 	if v.PlayHistoryDays < 0 || v.PlayHistoryDays > 36500 {
 		fields = append(fields, "values.playHistoryDays")

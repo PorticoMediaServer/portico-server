@@ -23,6 +23,8 @@ type connectionSettingValue struct {
 	locality          localityPolicy
 	accessURLs        []string
 	certificateDomain string
+	// apiPerMinute is the owner's rate for one API key or access token.
+	apiPerMinute int
 }
 
 func (c *connectionPolicyCache) set(document operations.SettingsDocument) {
@@ -31,7 +33,7 @@ func (c *connectionPolicyCache) set(document operations.SettingsDocument) {
 		urls = append(urls, document.Effective.AdvertiseURL)
 	}
 	urls = append(urls, document.Effective.AccessURLs...)
-	c.setting.Store(&connectionSettingValue{locality: newLocalityPolicy(document.Effective), accessURLs: urls, certificateDomain: document.Effective.CustomCertificateDomain})
+	c.setting.Store(&connectionSettingValue{locality: newLocalityPolicy(document.Effective), accessURLs: urls, certificateDomain: document.Effective.CustomCertificateDomain, apiPerMinute: document.Effective.APIRequestsPerMinute})
 }
 
 // connectionSetting is the cached projection of the connection rows (secure

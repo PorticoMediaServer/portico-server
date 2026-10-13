@@ -348,6 +348,7 @@ func (s *Service) Run(ctx context.Context) {
 		{
 			s.recoverPolicyChanges(ctx)
 			s.schedule(ctx)
+			s.startWaitingReports(ctx)
 			rows, err := s.db.QueryContext(ctx, `SELECT j.id,j.library_id,r.source_id,r.phase FROM jobs j JOIN inventory_runs r ON r.job_id=j.id WHERE j.status IN('queued','running') ORDER BY r.last_turn,j.created_at,j.id LIMIT 16`)
 			if err != nil {
 				return time.Second

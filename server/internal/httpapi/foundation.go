@@ -152,7 +152,7 @@ func (d Dependencies) viewerCapabilities(r *http.Request) (CapabilitiesDocument,
 		return CapabilitiesDocument{}, foundationAuthError(err)
 	}
 	out := CapabilitiesDocument{API: APIVersion{Major: 1, Level: 1}, Features: map[string]string{}, Limits: map[string]int{
-		"pageSizeMax": catalog.BrowseMaximumLimit, "selectorIdsMax": 500, "longPollSecondsMax": 55,
+		"pageSizeMax": catalog.BrowseMaximumLimit, "selectorIdsMax": 500, "longPollSecondsMax": 25,
 		"queueKeysMax": playbackv1.MaxQueueKeys, "playlistWriteMax": catalog.MaxPlaylistEntries,
 		"bulkJobsActiveMax": catalog.MaxActiveBulkJobs, "downloadBatchMax": downloads.MaxBatchTargets,
 	}}
@@ -295,8 +295,9 @@ func FoundationRegistry(d Dependencies) (*apikit.Registry, error) {
 	// Integration merge: BE-playback's contextual v1 authorizer and error
 	// catalogue (bf54a83) plus lane C's /v1/capabilities route (2a92fa3).
 	registry := apikit.NewContextual(d.v1Authorize, policyCatalogue())
+	registry.GateScopes(registryScopeGate)
 	err := apikit.Register(registry, apikit.Route[struct{}, ServerDocument]{Metadata: apikit.Metadata{
-		ID: "get_server", Method: "GET", Path: "/v1/server", Summary: "Read server identity and API level", Access: apikit.Public, Lane: apikit.Default, Cost: apikit.Constant, Status: 200, Errors: []string{"internal"},
+		ID: "get_server", Method: "GET", Path: "/v1/server", Summary: "Read server identity and API level", Access: apikit.Public, Requires: apikit.ScopeOpen, Lane: apikit.Default, Cost: apikit.Constant, Status: 200, Errors: []string{"internal"},
 	}, Handler: func(context.Context, *http.Request, struct{}) (ServerDocument, error) {
 		return ServerDocument{d.Identity.ID(), d.Identity.Name(), APIVersion{Major: 1, Level: 1}, d.Identity.SetupRequired()}, nil
 	}})
@@ -304,7 +305,7 @@ func FoundationRegistry(d Dependencies) (*apikit.Registry, error) {
 		return nil, err
 	}
 	err = apikit.Register(registry, apikit.Route[access.InvitationPreviewRequest, access.InvitationPreview]{Metadata: apikit.Metadata{
-		ID: "preview_invitation", Method: "POST", Path: "/v1/access/invitations/preview", Summary: "Preview an invitation without consuming its code", Access: apikit.Public, Lane: apikit.Security, Cost: apikit.Constant, BodyLimit: 4096, Status: 200, Errors: []string{"invitation_not_found", "rate_limited", "invalid_request", "internal"},
+		ID: "preview_invitation", Method: "POST", Path: "/v1/access/invitations/preview", Summary: "Preview an invitation without consuming its code", Access: apikit.Public, Requires: apikit.ScopeSession, Lane: apikit.Security, Cost: apikit.Constant, BodyLimit: 4096, Status: 200, Errors: []string{"invitation_not_found", "rate_limited", "invalid_request", "internal"},
 	}, Handler: func(ctx context.Context, r *http.Request, body access.InvitationPreviewRequest) (access.InvitationPreview, error) {
 		var empty access.InvitationPreview
 		if d.Identity == nil || d.Access.Access == nil {
@@ -331,7 +332,7 @@ func FoundationRegistry(d Dependencies) (*apikit.Registry, error) {
 		return nil, err
 	}
 	err = apikit.Register(registry, apikit.Route[struct{}, administration.MaintenanceDocument]{Metadata: apikit.Metadata{
-		ID: "get_admin_maintenance_settings", Method: "GET", Path: "/v1/admin/maintenance/settings", Summary: "Read owner maintenance settings and choices", Access: apikit.Owner, Lane: apikit.Default, Cost: apikit.Constant, Status: 200, Errors: []string{"unauthorized", "administration_unavailable", "internal"},
+		ID: "get_admin_maintenance_settings", Method: "GET", Path: "/v1/admin/maintenance/settings", Summary: "Read owner maintenance settings and choices", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Cost: apikit.Constant, Status: 200, Errors: []string{"unauthorized", "administration_unavailable", "internal"},
 	}, Handler: func(ctx context.Context, r *http.Request, _ struct{}) (administration.MaintenanceDocument, error) {
 		if d.Administration == nil {
 			return administration.MaintenanceDocument{}, &apierror.Error{Code: "internal"}
@@ -350,7 +351,7 @@ func FoundationRegistry(d Dependencies) (*apikit.Registry, error) {
 		return nil, err
 	}
 	err = apikit.Register(registry, apikit.Route[administration.Change[administration.MaintenanceSettingsDocument], administration.MaintenanceDocument]{Metadata: apikit.Metadata{
-		ID: "put_admin_maintenance_settings", Method: "PUT", Path: "/v1/admin/maintenance/settings", Summary: "Save owner maintenance settings", Access: apikit.Owner, Lane: apikit.Default, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"unauthorized", "invalid_request", "revision_mismatch", "not_permitted", "not_found", "request_in_progress", "administration_unavailable", "internal"},
+		ID: "put_admin_maintenance_settings", Method: "PUT", Path: "/v1/admin/maintenance/settings", Summary: "Save owner maintenance settings", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"unauthorized", "invalid_request", "revision_mismatch", "not_permitted", "not_found", "request_in_progress", "administration_unavailable", "internal"},
 	}, Handler: func(ctx context.Context, r *http.Request, body administration.Change[administration.MaintenanceSettingsDocument]) (administration.MaintenanceDocument, error) {
 		if d.Administration == nil {
 			return administration.MaintenanceDocument{}, &apierror.Error{Code: "internal"}
@@ -376,7 +377,7 @@ func FoundationRegistry(d Dependencies) (*apikit.Registry, error) {
 		return nil, err
 	}
 	err = apikit.Register(registry, apikit.Route[struct{}, administration.UpdateReport]{Metadata: apikit.Metadata{
-		ID: "get_admin_updates", Method: "GET", Path: "/v1/admin/updates", Summary: "Read the owner's cached release check", Access: apikit.Owner, Lane: apikit.Default, Cost: apikit.Constant, Status: 200, Errors: []string{"unauthorized", "internal"},
+		ID: "get_admin_updates", Method: "GET", Path: "/v1/admin/updates", Summary: "Read the owner's cached release check", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Cost: apikit.Constant, Status: 200, Errors: []string{"unauthorized", "internal"},
 	}, Handler: func(ctx context.Context, r *http.Request, _ struct{}) (administration.UpdateReport, error) {
 		if d.Administration == nil {
 			return administration.UpdateReport{}, &apierror.Error{Code: "internal"}
@@ -395,7 +396,7 @@ func FoundationRegistry(d Dependencies) (*apikit.Registry, error) {
 		return nil, err
 	}
 	err = apikit.Register(registry, apikit.Route[struct{}, RatingSystemsDocument]{Metadata: apikit.Metadata{
-		ID: "get_rating_systems", Method: "GET", Path: "/v1/rating-systems", Summary: "List supported content-rating systems", Access: apikit.Device, Lane: apikit.Default, Cost: apikit.Constant, Status: 200, Errors: []string{"unauthorized", "internal"},
+		ID: "get_rating_systems", Method: "GET", Path: "/v1/rating-systems", Summary: "List supported content-rating systems", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Default, Cost: apikit.Constant, Status: 200, Errors: []string{"unauthorized", "internal"},
 	}, Handler: func(context.Context, *http.Request, struct{}) (RatingSystemsDocument, error) {
 		return RatingSystemsDocument{Items: identity.RatingSystems()}, nil
 	}})
@@ -403,7 +404,7 @@ func FoundationRegistry(d Dependencies) (*apikit.Registry, error) {
 		return nil, err
 	}
 	err = apikit.Register(registry, apikit.Route[struct{}, identity.ProfileRestrictions]{Metadata: apikit.Metadata{
-		ID: "get_direct_profile_restrictions", Method: "GET", Path: "/v1/direct/profiles/{id}/restrictions", Summary: "Read a direct profile's content and feature restrictions", Access: apikit.Device, Lane: apikit.Security, Cost: apikit.Constant, Status: 200, Errors: []string{"unauthorized", "password_change_required", "device_approval_pending", "device_denied", "invalid_request", "internal"},
+		ID: "get_direct_profile_restrictions", Method: "GET", Path: "/v1/direct/profiles/{id}/restrictions", Summary: "Read a direct profile's content and feature restrictions", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Security, Cost: apikit.Constant, Status: 200, Errors: []string{"unauthorized", "password_change_required", "device_approval_pending", "device_denied", "invalid_request", "internal"},
 	}, Handler: func(ctx context.Context, r *http.Request, _ struct{}) (identity.ProfileRestrictions, error) {
 		if d.Identity == nil {
 			return identity.ProfileRestrictions{}, &apierror.Error{Code: "internal"}
@@ -418,7 +419,7 @@ func FoundationRegistry(d Dependencies) (*apikit.Registry, error) {
 		return nil, err
 	}
 	err = apikit.Register(registry, apikit.Route[identity.ProfileRestrictionEdit, identity.ProfileRestrictions]{Metadata: apikit.Metadata{
-		ID: "put_direct_profile_restrictions", Method: "PUT", Path: "/v1/direct/profiles/{id}/restrictions", Summary: "Replace a direct profile's restrictions", Access: apikit.Admin, Scope: "direct_account", Lane: apikit.Security, Cost: apikit.Constant, BodyLimit: 32768, Status: 200, Errors: []string{"unauthorized", "password_change_required", "device_approval_pending", "device_denied", "not_permitted", "invalid_request", "revision_mismatch", "internal"},
+		ID: "put_direct_profile_restrictions", Method: "PUT", Path: "/v1/direct/profiles/{id}/restrictions", Summary: "Replace a direct profile's restrictions", Access: apikit.Admin, Requires: apikit.ScopeAdmin, AdminScope: "direct_account", Lane: apikit.Security, Cost: apikit.Constant, BodyLimit: 32768, Status: 200, Errors: []string{"unauthorized", "password_change_required", "device_approval_pending", "device_denied", "not_permitted", "invalid_request", "revision_mismatch", "internal"},
 	}, Handler: func(ctx context.Context, r *http.Request, edit identity.ProfileRestrictionEdit) (identity.ProfileRestrictions, error) {
 		if d.Identity == nil {
 			return identity.ProfileRestrictions{}, &apierror.Error{Code: "internal"}
@@ -433,7 +434,7 @@ func FoundationRegistry(d Dependencies) (*apikit.Registry, error) {
 		return nil, err
 	}
 	err = apikit.Register(registry, apikit.Route[struct{}, identity.PINRecoveryMethods]{Metadata: apikit.Metadata{
-		ID: "get_direct_pin_recovery", Method: "GET", Path: "/v1/direct/pin-recovery", Summary: "Read available PIN reset confirmations", Access: apikit.Admin, Scope: "direct_account", Lane: apikit.Security, Cost: apikit.Constant, Status: 200, Errors: []string{"unauthorized", "password_change_required", "device_approval_pending", "device_denied", "not_permitted", "internal"},
+		ID: "get_direct_pin_recovery", Method: "GET", Path: "/v1/direct/pin-recovery", Summary: "Read available PIN reset confirmations", Access: apikit.Admin, Requires: apikit.ScopeSession, AdminScope: "direct_account", Lane: apikit.Security, Cost: apikit.Constant, Status: 200, Errors: []string{"unauthorized", "password_change_required", "device_approval_pending", "device_denied", "not_permitted", "internal"},
 	}, Handler: func(ctx context.Context, r *http.Request, _ struct{}) (identity.PINRecoveryMethods, error) {
 		if d.Identity == nil {
 			return identity.PINRecoveryMethods{}, &apierror.Error{Code: "internal"}
@@ -448,7 +449,7 @@ func FoundationRegistry(d Dependencies) (*apikit.Registry, error) {
 		return nil, err
 	}
 	err = apikit.Register(registry, apikit.Route[struct{}, ProfileAvatarsDocument]{Metadata: apikit.Metadata{
-		ID: "get_direct_profile_avatars", Method: "GET", Path: "/v1/direct/profiles/avatars", Summary: "List this direct account's profile pictures", Access: apikit.Device, Lane: apikit.Default, Cost: apikit.Constant, Status: 200, Errors: []string{"unauthorized", "password_change_required", "device_approval_pending", "device_denied", "internal"},
+		ID: "get_direct_profile_avatars", Method: "GET", Path: "/v1/direct/profiles/avatars", Summary: "List this direct account's profile pictures", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Default, Cost: apikit.Constant, Status: 200, Errors: []string{"unauthorized", "password_change_required", "device_approval_pending", "device_denied", "internal"},
 	}, Handler: func(ctx context.Context, r *http.Request, _ struct{}) (ProfileAvatarsDocument, error) {
 		if d.Identity == nil {
 			return ProfileAvatarsDocument{}, &apierror.Error{Code: "internal"}
@@ -468,7 +469,7 @@ func FoundationRegistry(d Dependencies) (*apikit.Registry, error) {
 		return nil, err
 	}
 	err = apikit.Register(registry, apikit.Route[DirectPINResetRequest, identity.DirectSnapshot]{Metadata: apikit.Metadata{
-		ID: "post_direct_profile_pin_reset", Method: "POST", Path: "/v1/direct/profiles/{id}/pin-reset", Summary: "Clear or replace a direct profile PIN", Access: apikit.Admin, Scope: "direct_account", Lane: apikit.Security, Cost: apikit.Constant, BodyLimit: 4096, Status: 200, Errors: []string{"unauthorized", "password_change_required", "device_approval_pending", "device_denied", "not_permitted", "invalid_request", "request_in_progress", "internal"},
+		ID: "post_direct_profile_pin_reset", Method: "POST", Path: "/v1/direct/profiles/{id}/pin-reset", Summary: "Clear or replace a direct profile PIN", Access: apikit.Admin, Requires: apikit.ScopeSession, AdminScope: "direct_account", Lane: apikit.Security, Cost: apikit.Constant, BodyLimit: 4096, Status: 200, Errors: []string{"unauthorized", "password_change_required", "device_approval_pending", "device_denied", "not_permitted", "invalid_request", "request_in_progress", "internal"},
 	}, Handler: func(ctx context.Context, r *http.Request, body DirectPINResetRequest) (identity.DirectSnapshot, error) {
 		if d.Identity == nil {
 			return identity.DirectSnapshot{}, &apierror.Error{Code: "internal"}
@@ -483,7 +484,7 @@ func FoundationRegistry(d Dependencies) (*apikit.Registry, error) {
 		return nil, err
 	}
 	err = apikit.Register(registry, apikit.Route[struct{}, DirectSessionsDocument]{Metadata: apikit.Metadata{
-		ID: "get_direct_sessions", Method: "GET", Path: "/v1/direct/sessions", Summary: "Read this direct account's active and recently signed-out sessions", Access: apikit.Admin, Scope: "direct_account", Lane: apikit.Security, Cost: apikit.PageSized, Status: 200, Errors: []string{"unauthorized", "password_change_required", "device_approval_pending", "device_denied", "not_permitted", "internal"},
+		ID: "get_direct_sessions", Method: "GET", Path: "/v1/direct/sessions", Summary: "Read this direct account's active and recently signed-out sessions", Access: apikit.Admin, Requires: apikit.ScopeSession, AdminScope: "direct_account", Lane: apikit.Security, Cost: apikit.PageSized, Status: 200, Errors: []string{"unauthorized", "password_change_required", "device_approval_pending", "device_denied", "not_permitted", "internal"},
 	}, Handler: func(ctx context.Context, r *http.Request, _ struct{}) (DirectSessionsDocument, error) {
 		if d.Identity == nil {
 			return DirectSessionsDocument{}, &apierror.Error{Code: "internal"}
@@ -498,7 +499,7 @@ func FoundationRegistry(d Dependencies) (*apikit.Registry, error) {
 		return nil, err
 	}
 	err = apikit.Register(registry, apikit.Route[struct{}, struct{}]{Metadata: apikit.Metadata{
-		ID: "delete_direct_session", Method: "DELETE", Path: "/v1/direct/sessions/{id}", Summary: "Sign out one direct-account session", Access: apikit.Admin, Scope: "direct_account", Lane: apikit.Security, Cost: apikit.Constant, Status: 204, Errors: []string{"unauthorized", "password_change_required", "device_approval_pending", "device_denied", "not_permitted", "invalid_request", "internal"},
+		ID: "delete_direct_session", Method: "DELETE", Path: "/v1/direct/sessions/{id}", Summary: "Sign out one direct-account session", Access: apikit.Admin, Requires: apikit.ScopeSession, AdminScope: "direct_account", Lane: apikit.Security, Cost: apikit.Constant, Status: 204, Errors: []string{"unauthorized", "password_change_required", "device_approval_pending", "device_denied", "not_permitted", "invalid_request", "internal"},
 	}, Handler: func(ctx context.Context, r *http.Request, _ struct{}) (struct{}, error) {
 		if d.Identity == nil {
 			return struct{}{}, &apierror.Error{Code: "internal"}
@@ -516,7 +517,7 @@ func FoundationRegistry(d Dependencies) (*apikit.Registry, error) {
 		return nil, err
 	}
 	err = apikit.Register(registry, apikit.Route[struct{}, struct{}]{Metadata: apikit.Metadata{
-		ID: "post_direct_sign_out_everywhere", Method: "POST", Path: "/v1/direct/sessions/sign-out-everywhere", Summary: "Sign this direct account out of every device", Access: apikit.Admin, Scope: "direct_account", Lane: apikit.Security, Cost: apikit.Constant, Status: 204, Errors: []string{"unauthorized", "password_change_required", "device_approval_pending", "device_denied", "not_permitted", "internal"},
+		ID: "post_direct_sign_out_everywhere", Method: "POST", Path: "/v1/direct/sessions/sign-out-everywhere", Summary: "Sign this direct account out of every device", Access: apikit.Admin, Requires: apikit.ScopeSession, AdminScope: "direct_account", Lane: apikit.Security, Cost: apikit.Constant, Status: 204, Errors: []string{"unauthorized", "password_change_required", "device_approval_pending", "device_denied", "not_permitted", "internal"},
 	}, Handler: func(ctx context.Context, r *http.Request, _ struct{}) (struct{}, error) {
 		if d.Identity == nil {
 			return struct{}{}, &apierror.Error{Code: "internal"}
@@ -530,7 +531,7 @@ func FoundationRegistry(d Dependencies) (*apikit.Registry, error) {
 		return nil, err
 	}
 	err = apikit.Register(registry, apikit.Route[struct{}, identity.DirectSnapshot]{Metadata: apikit.Metadata{
-		ID: "get_direct_account", Method: "GET", Path: "/v1/direct", Summary: "Read the current direct account and its profiles", Access: apikit.Device, Lane: apikit.Security, Cost: apikit.Constant, Status: 200, Errors: []string{"unauthorized", "password_change_required", "device_approval_pending", "device_denied", "internal"},
+		ID: "get_direct_account", Method: "GET", Path: "/v1/direct", Summary: "Read the current direct account and its profiles", Access: apikit.Device, Requires: apikit.ScopeSession, Lane: apikit.Security, Cost: apikit.Constant, Status: 200, Errors: []string{"unauthorized", "password_change_required", "device_approval_pending", "device_denied", "internal"},
 	}, Handler: func(ctx context.Context, r *http.Request, _ struct{}) (identity.DirectSnapshot, error) {
 		if d.Identity == nil {
 			return identity.DirectSnapshot{}, &apierror.Error{Code: "internal"}
@@ -545,7 +546,7 @@ func FoundationRegistry(d Dependencies) (*apikit.Registry, error) {
 		return nil, err
 	}
 	err = apikit.Register(registry, apikit.Route[struct{}, identity.RegistrationPolicy]{Metadata: apikit.Metadata{
-		ID: "get_direct_registration_policy", Method: "GET", Path: "/v1/direct/registration-policy", Summary: "Read owner sign-up and device-approval policy", Access: apikit.Owner, Lane: apikit.Security, Cost: apikit.Constant, Status: 200, Errors: []string{"unauthorized", "not_permitted", "internal"},
+		ID: "get_direct_registration_policy", Method: "GET", Path: "/v1/direct/registration-policy", Summary: "Read owner sign-up and device-approval policy", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Security, Cost: apikit.Constant, Status: 200, Errors: []string{"unauthorized", "not_permitted", "internal"},
 	}, Handler: func(ctx context.Context, _ *http.Request, _ struct{}) (identity.RegistrationPolicy, error) {
 		if d.Identity == nil {
 			return identity.RegistrationPolicy{}, &apierror.Error{Code: "internal"}
@@ -560,7 +561,7 @@ func FoundationRegistry(d Dependencies) (*apikit.Registry, error) {
 		return nil, err
 	}
 	err = apikit.Register(registry, apikit.Route[identity.RegistrationPolicy, identity.RegistrationPolicy]{Metadata: apikit.Metadata{
-		ID: "put_direct_registration_policy", Method: "PUT", Path: "/v1/direct/registration-policy", Summary: "Save owner sign-up and device-approval policy", Access: apikit.Owner, Lane: apikit.Security, Cost: apikit.Constant, BodyLimit: 4096, Status: 200, Errors: []string{"unauthorized", "not_permitted", "invalid_request", "internal"},
+		ID: "put_direct_registration_policy", Method: "PUT", Path: "/v1/direct/registration-policy", Summary: "Save owner sign-up and device-approval policy", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Security, Cost: apikit.Constant, BodyLimit: 4096, Status: 200, Errors: []string{"unauthorized", "not_permitted", "invalid_request", "internal"},
 	}, Handler: func(ctx context.Context, _ *http.Request, body identity.RegistrationPolicy) (identity.RegistrationPolicy, error) {
 		if d.Identity == nil {
 			return identity.RegistrationPolicy{}, &apierror.Error{Code: "internal"}
@@ -575,7 +576,7 @@ func FoundationRegistry(d Dependencies) (*apikit.Registry, error) {
 		return nil, err
 	}
 	err = apikit.Register(registry, apikit.Route[struct{}, identity.AuthCapabilities]{Metadata: apikit.Metadata{
-		ID: "get_auth_capabilities", Method: "GET", Path: "/v1/auth/capabilities", Summary: "Read the server's available sign-in methods", Access: apikit.Public, Lane: apikit.Default, Cost: apikit.Constant, Status: 200, Errors: []string{"internal"},
+		ID: "get_auth_capabilities", Method: "GET", Path: "/v1/auth/capabilities", Summary: "Read the server's available sign-in methods", Access: apikit.Public, Requires: apikit.ScopeOpen, Lane: apikit.Default, Cost: apikit.Constant, Status: 200, Errors: []string{"internal"},
 	}, Handler: func(ctx context.Context, _ *http.Request, _ struct{}) (identity.AuthCapabilities, error) {
 		if d.Identity == nil {
 			return identity.AuthCapabilities{}, &apierror.Error{Code: "internal"}
@@ -590,7 +591,7 @@ func FoundationRegistry(d Dependencies) (*apikit.Registry, error) {
 		return nil, err
 	}
 	err = apikit.Register(registry, apikit.Route[struct{}, CapabilitiesDocument]{Metadata: apikit.Metadata{
-		ID: "get_capabilities", Method: "GET", Path: "/v1/capabilities", Summary: "Read this viewer's feature states and published limits", Access: apikit.Device, Lane: apikit.Default, Cost: apikit.Constant, Status: 200, Errors: []string{"unauthorized", "internal"},
+		ID: "get_capabilities", Method: "GET", Path: "/v1/capabilities", Summary: "Read this viewer's feature states and published limits", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Default, Cost: apikit.Constant, Status: 200, Errors: []string{"unauthorized", "internal"},
 	}, Handler: func(_ context.Context, r *http.Request, _ struct{}) (CapabilitiesDocument, error) {
 		return d.viewerCapabilities(r)
 	}})
@@ -598,7 +599,7 @@ func FoundationRegistry(d Dependencies) (*apikit.Registry, error) {
 		return nil, err
 	}
 	err = apikit.Register(registry, apikit.Route[struct{}, BootstrapDocument]{Metadata: apikit.Metadata{
-		ID: "get_bootstrap", Method: "GET", Path: "/v1/bootstrap", Summary: "Read this viewer's startup state", Access: apikit.Device, Lane: apikit.Browsing, Cost: apikit.PageSized, Status: 200, Query: []string{"deviceClass"}, Errors: []string{"unauthorized", "not_permitted", "invalid_request", "internal"},
+		ID: "get_bootstrap", Method: "GET", Path: "/v1/bootstrap", Summary: "Read this viewer's startup state", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Cost: apikit.PageSized, Status: 200, Query: []string{"deviceClass"}, Errors: []string{"unauthorized", "not_permitted", "invalid_request", "internal"},
 	}, Handler: func(_ context.Context, r *http.Request, _ struct{}) (BootstrapDocument, error) {
 		return d.bootstrap(r)
 	}})
@@ -632,7 +633,7 @@ func FoundationRegistry(d Dependencies) (*apikit.Registry, error) {
 	registerIdentityRoutes(registry, d)
 	// Lane C's /v1/events (886f5011) on the shared contextual registry.
 	err = apikit.Register(registry, apikit.Route[struct{}, eventfeed.Page]{Metadata: apikit.Metadata{
-		ID: "get_events", Method: "GET", Path: "/v1/events", Summary: "Read the authorized event ring by long-poll or server-sent stream", Access: apikit.Device, Lane: apikit.Realtime, Cost: apikit.Constant, Status: 200, SSE: true, Query: []string{"after", "waitSeconds", "topics"}, Errors: []string{"unauthorized", "invalid_request", "invalid_cursor", "event_stream_exists", "stream_unavailable", "internal"},
+		ID: "get_events", Method: "GET", Path: "/v1/events", Summary: "Read the authorized event ring by long-poll or server-sent stream", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Realtime, Cost: apikit.Constant, Status: 200, SSE: true, Query: []string{"after", "waitSeconds", "topics"}, Errors: []string{"unauthorized", "invalid_request", "invalid_cursor", "event_stream_exists", "stream_unavailable", "internal"},
 	}, RawHandler: func(w http.ResponseWriter, r *http.Request) {
 		if d.Events == nil {
 			registry.Errors().Write(w, "", &apierror.Error{Code: "internal"})
@@ -644,6 +645,18 @@ func FoundationRegistry(d Dependencies) (*apikit.Registry, error) {
 		return nil, err
 	}
 	if err := registerDeviceRoutes(registry, d); err != nil {
+		return nil, err
+	}
+	if err := registerCredentialRoutes(registry, d); err != nil {
+		return nil, err
+	}
+	if err := registerPlatformRoutes(registry, d); err != nil {
+		return nil, err
+	}
+	if err := registerWebhookRoutes(registry, d); err != nil {
+		return nil, err
+	}
+	if err := registerMCP(registry, d); err != nil {
 		return nil, err
 	}
 	registry.Freeze()

@@ -1631,6 +1631,14 @@ export const schemas = {
           "advertisedInterface": {
             "type": "string"
           },
+          "apiRequestsPerMinute": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "blockMemberAccessTokens": {
+            "type": "boolean"
+          },
           "connectionLimit": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
@@ -1685,12 +1693,10 @@ export const schemas = {
             },
             "type": "array"
           },
-          "library.missingTitles": {
-            "type": "string"
-          },
-          "library.missingTitlesDays": {
+          "library.trashRetentionDays": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
+            "nullable": true,
             "type": "integer"
           },
           "logLevel": {
@@ -1837,11 +1843,12 @@ export const schemas = {
           "notificationDays",
           "jobDays",
           "playHistoryDays",
+          "apiRequestsPerMinute",
+          "blockMemberAccessTokens",
           "home.communityActivityEnabled",
           "updates.releaseChannel",
           "updates.feedUrl",
-          "library.missingTitles",
-          "library.missingTitlesDays",
+          "library.trashRetentionDays",
           "remoteSignInPolicy",
           "remoteBitrateLimitKbps",
           "connectionLimit",
@@ -1896,6 +1903,14 @@ export const schemas = {
               "advertisedInterface": {
                 "type": "string"
               },
+              "apiRequestsPerMinute": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "blockMemberAccessTokens": {
+                "type": "boolean"
+              },
               "connectionLimit": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
@@ -1950,12 +1965,10 @@ export const schemas = {
                 },
                 "type": "array"
               },
-              "library.missingTitles": {
-                "type": "string"
-              },
-              "library.missingTitlesDays": {
+              "library.trashRetentionDays": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
+                "nullable": true,
                 "type": "integer"
               },
               "logLevel": {
@@ -2102,11 +2115,12 @@ export const schemas = {
               "notificationDays",
               "jobDays",
               "playHistoryDays",
+              "apiRequestsPerMinute",
+              "blockMemberAccessTokens",
               "home.communityActivityEnabled",
               "updates.releaseChannel",
               "updates.feedUrl",
-              "library.missingTitles",
-              "library.missingTitlesDays",
+              "library.trashRetentionDays",
               "remoteSignInPolicy",
               "remoteBitrateLimitKbps",
               "connectionLimit",
@@ -2144,6 +2158,14 @@ export const schemas = {
               "advertisedInterface": {
                 "type": "string"
               },
+              "apiRequestsPerMinute": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "blockMemberAccessTokens": {
+                "type": "boolean"
+              },
               "connectionLimit": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
@@ -2198,12 +2220,10 @@ export const schemas = {
                 },
                 "type": "array"
               },
-              "library.missingTitles": {
-                "type": "string"
-              },
-              "library.missingTitlesDays": {
+              "library.trashRetentionDays": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
+                "nullable": true,
                 "type": "integer"
               },
               "logLevel": {
@@ -2350,11 +2370,12 @@ export const schemas = {
               "notificationDays",
               "jobDays",
               "playHistoryDays",
+              "apiRequestsPerMinute",
+              "blockMemberAccessTokens",
               "home.communityActivityEnabled",
               "updates.releaseChannel",
               "updates.feedUrl",
-              "library.missingTitles",
-              "library.missingTitlesDays",
+              "library.trashRetentionDays",
               "remoteSignInPolicy",
               "remoteBitrateLimitKbps",
               "connectionLimit",
@@ -3694,6 +3715,220 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "CreateAccessTokenRequest": {
+    "properties": {
+      "expiresAt": {
+        "type": "string"
+      },
+      "name": {
+        "type": "string"
+      },
+      "operationId": {
+        "type": "string"
+      },
+      "scopes": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      }
+    },
+    "required": [
+      "operationId",
+      "name",
+      "scopes"
+    ],
+    "type": "object"
+  },
+  "CreateAccessTokenResponse": {
+    "properties": {
+      "credential": {
+        "properties": {
+          "createdAt": {
+            "type": "string"
+          },
+          "endedReason": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": "string"
+          },
+          "hint": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "lastUsedAt": {
+            "type": "string"
+          },
+          "member": {
+            "properties": {
+              "accountId": {
+                "type": "string"
+              },
+              "profile": {
+                "type": "string"
+              },
+              "profileId": {
+                "type": "string"
+              },
+              "username": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "accountId",
+              "username",
+              "profileId",
+              "profile"
+            ],
+            "type": "object"
+          },
+          "name": {
+            "type": "string"
+          },
+          "scopes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "state": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "name",
+          "scopes",
+          "hint",
+          "createdAt",
+          "state",
+          "member"
+        ],
+        "type": "object"
+      },
+      "secret": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "credential"
+    ],
+    "type": "object"
+  },
+  "CreateApiKeyRequest": {
+    "properties": {
+      "expiresAt": {
+        "type": "string"
+      },
+      "name": {
+        "type": "string"
+      },
+      "operationId": {
+        "type": "string"
+      },
+      "scopes": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      }
+    },
+    "required": [
+      "operationId",
+      "name",
+      "scopes"
+    ],
+    "type": "object"
+  },
+  "CreateApiKeyResponse": {
+    "properties": {
+      "credential": {
+        "properties": {
+          "createdAt": {
+            "type": "string"
+          },
+          "endedReason": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": "string"
+          },
+          "hint": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "lastUsedAt": {
+            "type": "string"
+          },
+          "member": {
+            "properties": {
+              "accountId": {
+                "type": "string"
+              },
+              "profile": {
+                "type": "string"
+              },
+              "profileId": {
+                "type": "string"
+              },
+              "username": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "accountId",
+              "username",
+              "profileId",
+              "profile"
+            ],
+            "type": "object"
+          },
+          "name": {
+            "type": "string"
+          },
+          "scopes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "state": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "name",
+          "scopes",
+          "hint",
+          "createdAt",
+          "state",
+          "member"
+        ],
+        "type": "object"
+      },
+      "secret": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "credential"
+    ],
+    "type": "object"
+  },
   "CreateDownloadRequestRequest": {
     "additionalProperties": false,
     "properties": {
@@ -4299,7 +4534,8 @@ export const schemas = {
           "playlist-add",
           "collection-add",
           "metadata-edit",
-          "refresh"
+          "refresh",
+          "trash"
         ],
         "type": "string"
       },
@@ -5442,6 +5678,105 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "CreateWebhookRequest": {
+    "properties": {
+      "enabled": {
+        "type": "boolean"
+      },
+      "events": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "name": {
+        "type": "string"
+      },
+      "secret": {
+        "type": "string"
+      },
+      "url": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "name",
+      "url",
+      "events"
+    ],
+    "type": "object"
+  },
+  "CreateWebhookResponse": {
+    "properties": {
+      "secret": {
+        "type": "string"
+      },
+      "webhook": {
+        "properties": {
+          "createdAt": {
+            "type": "string"
+          },
+          "dropped": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "events": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "failing": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "secretHint": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "waiting": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "url",
+          "events",
+          "enabled",
+          "secretHint",
+          "createdAt",
+          "updatedAt",
+          "waiting",
+          "failing",
+          "dropped"
+        ],
+        "type": "object"
+      }
+    },
+    "required": [
+      "webhook"
+    ],
+    "type": "object"
+  },
   "DeleteAdminBackupRequest": {
     "properties": {},
     "required": [],
@@ -5492,36 +5827,14 @@ export const schemas = {
     "required": [],
     "type": "object"
   },
-  "EmptyMissingTitlesRequest": {
-    "properties": {
-      "libraryId": {
-        "type": "string"
-      }
-    },
+  "DeleteWebhookRequest": {
+    "properties": {},
     "required": [],
     "type": "object"
   },
-  "EmptyMissingTitlesResponse": {
-    "properties": {
-      "files": {
-        "maximum": 9007199254740991,
-        "minimum": -9007199254740991,
-        "type": "integer"
-      },
-      "more": {
-        "type": "boolean"
-      },
-      "titles": {
-        "maximum": 9007199254740991,
-        "minimum": -9007199254740991,
-        "type": "integer"
-      }
-    },
-    "required": [
-      "titles",
-      "files",
-      "more"
-    ],
+  "DeleteWebhookResponse": {
+    "properties": {},
+    "required": [],
     "type": "object"
   },
   "GetAdminBackupsRequest": {
@@ -5684,9 +5997,6 @@ export const schemas = {
       },
       "settings": {
         "properties": {
-          "backgroundSpeed": {
-            "type": "string"
-          },
           "backgroundTaskPriority": {
             "type": "string"
           },
@@ -5764,8 +6074,7 @@ export const schemas = {
           "windows",
           "retention",
           "backupKeepCount",
-          "backgroundTaskPriority",
-          "backgroundSpeed"
+          "backgroundTaskPriority"
         ],
         "type": "object"
       },
@@ -5939,6 +6248,55 @@ export const schemas = {
       "checkedAt",
       "status",
       "autoInstall"
+    ],
+    "type": "object"
+  },
+  "GetApiAccessOptionsRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetApiAccessOptionsResponse": {
+    "properties": {
+      "maximumKeys": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "maximumTokens": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "requestsPerMinute": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "scopes": {
+        "items": {
+          "properties": {
+            "id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "tokensAllowed": {
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "scopes",
+      "maximumKeys",
+      "maximumTokens",
+      "tokensAllowed",
+      "requestsPerMinute"
     ],
     "type": "object"
   },
@@ -6897,6 +7255,14 @@ export const schemas = {
               "advertisedInterface": {
                 "type": "string"
               },
+              "apiRequestsPerMinute": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "blockMemberAccessTokens": {
+                "type": "boolean"
+              },
               "connectionLimit": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
@@ -6951,12 +7317,10 @@ export const schemas = {
                 },
                 "type": "array"
               },
-              "library.missingTitles": {
-                "type": "string"
-              },
-              "library.missingTitlesDays": {
+              "library.trashRetentionDays": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
+                "nullable": true,
                 "type": "integer"
               },
               "logLevel": {
@@ -7103,11 +7467,12 @@ export const schemas = {
               "notificationDays",
               "jobDays",
               "playHistoryDays",
+              "apiRequestsPerMinute",
+              "blockMemberAccessTokens",
               "home.communityActivityEnabled",
               "updates.releaseChannel",
               "updates.feedUrl",
-              "library.missingTitles",
-              "library.missingTitlesDays",
+              "library.trashRetentionDays",
               "remoteSignInPolicy",
               "remoteBitrateLimitKbps",
               "connectionLimit",
@@ -7145,6 +7510,14 @@ export const schemas = {
               "advertisedInterface": {
                 "type": "string"
               },
+              "apiRequestsPerMinute": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "blockMemberAccessTokens": {
+                "type": "boolean"
+              },
               "connectionLimit": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
@@ -7199,12 +7572,10 @@ export const schemas = {
                 },
                 "type": "array"
               },
-              "library.missingTitles": {
-                "type": "string"
-              },
-              "library.missingTitlesDays": {
+              "library.trashRetentionDays": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
+                "nullable": true,
                 "type": "integer"
               },
               "logLevel": {
@@ -7351,11 +7722,12 @@ export const schemas = {
               "notificationDays",
               "jobDays",
               "playHistoryDays",
+              "apiRequestsPerMinute",
+              "blockMemberAccessTokens",
               "home.communityActivityEnabled",
               "updates.releaseChannel",
               "updates.feedUrl",
-              "library.missingTitles",
-              "library.missingTitlesDays",
+              "library.trashRetentionDays",
               "remoteSignInPolicy",
               "remoteBitrateLimitKbps",
               "connectionLimit",
@@ -8464,743 +8836,6 @@ export const schemas = {
     ],
     "type": "object"
   },
-  "GetItemsScreenMetadataRequest": {
-    "properties": {},
-    "required": [],
-    "type": "object"
-  },
-  "GetItemsScreenMetadataResponse": {
-    "properties": {
-      "accepted": {
-        "properties": {
-          "adult": {
-            "type": "boolean"
-          },
-          "advisoryRuntimeMinutes": {
-            "maximum": 9007199254740991,
-            "minimum": -9007199254740991,
-            "type": "integer"
-          },
-          "aliases": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
-          "backdropPath": {
-            "type": "string"
-          },
-          "certifications": {
-            "items": {
-              "properties": {
-                "rating": {
-                  "type": "string"
-                },
-                "region": {
-                  "type": "string"
-                }
-              },
-              "required": [
-                "region",
-                "rating"
-              ],
-              "type": "object"
-            },
-            "type": "array"
-          },
-          "coordinates": {
-            "properties": {
-              "absolute": {
-                "maximum": 9007199254740991,
-                "minimum": -9007199254740991,
-                "type": "integer"
-              },
-              "episode": {
-                "maximum": 9007199254740991,
-                "minimum": -9007199254740991,
-                "type": "integer"
-              },
-              "order": {
-                "type": "string"
-              },
-              "originalEpisode": {
-                "maximum": 9007199254740991,
-                "minimum": -9007199254740991,
-                "type": "integer"
-              },
-              "originalSeason": {
-                "maximum": 9007199254740991,
-                "minimum": -9007199254740991,
-                "type": "integer"
-              },
-              "season": {
-                "maximum": 9007199254740991,
-                "minimum": -9007199254740991,
-                "type": "integer"
-              },
-              "showId": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "showId",
-              "episode",
-              "order"
-            ],
-            "type": "object"
-          },
-          "credits": {
-            "items": {
-              "properties": {
-                "department": {
-                  "type": "string"
-                },
-                "id": {
-                  "type": "string"
-                },
-                "name": {
-                  "type": "string"
-                },
-                "ordinal": {
-                  "maximum": 9007199254740991,
-                  "minimum": -9007199254740991,
-                  "type": "integer"
-                },
-                "role": {
-                  "type": "string"
-                }
-              },
-              "required": [
-                "id",
-                "name",
-                "role",
-                "department",
-                "ordinal"
-              ],
-              "type": "object"
-            },
-            "type": "array"
-          },
-          "crosswalk": {
-            "items": {
-              "properties": {
-                "id": {
-                  "type": "string"
-                },
-                "provider": {
-                  "type": "string"
-                },
-                "type": {
-                  "type": "string"
-                }
-              },
-              "required": [
-                "provider",
-                "type",
-                "id"
-              ],
-              "type": "object"
-            },
-            "type": "array"
-          },
-          "date": {
-            "type": "string"
-          },
-          "episodeCount": {
-            "maximum": 9007199254740991,
-            "minimum": -9007199254740991,
-            "type": "integer"
-          },
-          "fieldLanguages": {
-            "additionalProperties": {
-              "type": "string"
-            },
-            "type": "object"
-          },
-          "format": {
-            "type": "string"
-          },
-          "genres": {
-            "items": {
-              "properties": {
-                "id": {
-                  "type": "string"
-                },
-                "name": {
-                  "type": "string"
-                }
-              },
-              "required": [
-                "id",
-                "name"
-              ],
-              "type": "object"
-            },
-            "type": "array"
-          },
-          "identity": {
-            "properties": {
-              "id": {
-                "type": "string"
-              },
-              "provider": {
-                "type": "string"
-              },
-              "type": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "provider",
-              "type",
-              "id"
-            ],
-            "type": "object"
-          },
-          "language": {
-            "type": "string"
-          },
-          "orders": {
-            "items": {
-              "properties": {
-                "id": {
-                  "type": "string"
-                },
-                "name": {
-                  "type": "string"
-                }
-              },
-              "required": [
-                "id",
-                "name"
-              ],
-              "type": "object"
-            },
-            "type": "array"
-          },
-          "originalTitle": {
-            "type": "string"
-          },
-          "overview": {
-            "type": "string"
-          },
-          "posterPath": {
-            "type": "string"
-          },
-          "rating": {
-            "properties": {
-              "scale": {
-                "maximum": 9007199254740991,
-                "minimum": -9007199254740991,
-                "type": "integer"
-              },
-              "value": {
-                "type": "number"
-              },
-              "votes": {
-                "maximum": 9007199254740991,
-                "minimum": -9007199254740991,
-                "type": "integer"
-              }
-            },
-            "required": [
-              "value",
-              "scale",
-              "votes"
-            ],
-            "type": "object"
-          },
-          "relations": {
-            "items": {
-              "properties": {
-                "kind": {
-                  "type": "string"
-                },
-                "name": {
-                  "type": "string"
-                },
-                "target": {
-                  "properties": {
-                    "id": {
-                      "type": "string"
-                    },
-                    "provider": {
-                      "type": "string"
-                    },
-                    "type": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "provider",
-                    "type",
-                    "id"
-                  ],
-                  "type": "object"
-                }
-              },
-              "required": [
-                "kind",
-                "target"
-              ],
-              "type": "object"
-            },
-            "type": "array"
-          },
-          "season": {
-            "type": "string"
-          },
-          "similar": {
-            "items": {
-              "properties": {
-                "id": {
-                  "type": "string"
-                },
-                "provider": {
-                  "type": "string"
-                },
-                "type": {
-                  "type": "string"
-                }
-              },
-              "required": [
-                "provider",
-                "type",
-                "id"
-              ],
-              "type": "object"
-            },
-            "type": "array"
-          },
-          "skipped": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
-          "sourceMaterial": {
-            "type": "string"
-          },
-          "status": {
-            "type": "string"
-          },
-          "stillPath": {
-            "type": "string"
-          },
-          "tagline": {
-            "type": "string"
-          },
-          "tags": {
-            "items": {
-              "properties": {
-                "id": {
-                  "type": "string"
-                },
-                "name": {
-                  "type": "string"
-                }
-              },
-              "required": [
-                "id",
-                "name"
-              ],
-              "type": "object"
-            },
-            "type": "array"
-          },
-          "title": {
-            "type": "string"
-          },
-          "year": {
-            "maximum": 9007199254740991,
-            "minimum": -9007199254740991,
-            "type": "integer"
-          }
-        },
-        "required": [
-          "identity",
-          "title"
-        ],
-        "type": "object"
-      },
-      "acceptedAt": {
-        "type": "string"
-      },
-      "acceptedConfidence": {
-        "type": "number"
-      },
-      "actions": {
-        "items": {
-          "type": "string"
-        },
-        "type": "array"
-      },
-      "attempts": {
-        "maximum": 9007199254740991,
-        "minimum": -9007199254740991,
-        "type": "integer"
-      },
-      "attribution": {
-        "type": "string"
-      },
-      "candidates": {
-        "items": {
-          "properties": {
-            "attribution": {
-              "type": "string"
-            },
-            "confidence": {
-              "type": "number"
-            },
-            "contradiction": {
-              "type": "boolean"
-            },
-            "format": {
-              "type": "string"
-            },
-            "key": {
-              "type": "string"
-            },
-            "observedAt": {
-              "type": "string"
-            },
-            "orders": {
-              "items": {
-                "properties": {
-                  "id": {
-                    "type": "string"
-                  },
-                  "name": {
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "id",
-                  "name"
-                ],
-                "type": "object"
-              },
-              "type": "array"
-            },
-            "overview": {
-              "type": "string"
-            },
-            "provider": {
-              "type": "string"
-            },
-            "providerId": {
-              "type": "string"
-            },
-            "reasons": {
-              "items": {
-                "type": "string"
-              },
-              "type": "array"
-            },
-            "sourceKind": {
-              "type": "string"
-            },
-            "sourceUrl": {
-              "type": "string"
-            },
-            "strongSignals": {
-              "maximum": 9007199254740991,
-              "minimum": -9007199254740991,
-              "type": "integer"
-            },
-            "title": {
-              "type": "string"
-            },
-            "type": {
-              "type": "string"
-            },
-            "year": {
-              "maximum": 9007199254740991,
-              "minimum": -9007199254740991,
-              "type": "integer"
-            }
-          },
-          "required": [
-            "key",
-            "provider",
-            "type",
-            "providerId",
-            "title",
-            "year",
-            "overview",
-            "format",
-            "confidence",
-            "strongSignals",
-            "contradiction",
-            "reasons",
-            "observedAt",
-            "sourceKind",
-            "sourceUrl",
-            "attribution",
-            "orders"
-          ],
-          "type": "object"
-        },
-        "type": "array"
-      },
-      "entityId": {
-        "type": "string"
-      },
-      "episodeStatus": {
-        "type": "string"
-      },
-      "error": {
-        "type": "string"
-      },
-      "explanation": {
-        "type": "string"
-      },
-      "fields": {
-        "items": {
-          "properties": {
-            "confidence": {
-              "type": "number"
-            },
-            "language": {
-              "type": "string"
-            },
-            "name": {
-              "type": "string"
-            },
-            "observedAt": {
-              "type": "string"
-            },
-            "provider": {
-              "type": "string"
-            },
-            "region": {
-              "type": "string"
-            },
-            "selectionRevision": {
-              "maximum": 9007199254740991,
-              "minimum": -9007199254740991,
-              "type": "integer"
-            },
-            "sourceKind": {
-              "type": "string"
-            },
-            "sourceUrl": {
-              "type": "string"
-            },
-            "value": {}
-          },
-          "required": [
-            "name",
-            "value",
-            "provider",
-            "sourceKind",
-            "sourceUrl",
-            "confidence",
-            "observedAt",
-            "language",
-            "region",
-            "selectionRevision"
-          ],
-          "type": "object"
-        },
-        "type": "array"
-      },
-      "kind": {
-        "type": "string"
-      },
-      "libraryId": {
-        "type": "string"
-      },
-      "localIssues": {
-        "items": {
-          "type": "string"
-        },
-        "type": "array"
-      },
-      "nextAttempt": {
-        "type": "string"
-      },
-      "order": {
-        "type": "string"
-      },
-      "parentId": {
-        "type": "string"
-      },
-      "policy": {
-        "properties": {
-          "agent": {
-            "type": "string"
-          },
-          "availableProviders": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
-          "confirmed": {
-            "type": "boolean"
-          },
-          "consentRevision": {
-            "maximum": 9007199254740991,
-            "minimum": -9007199254740991,
-            "type": "integer"
-          },
-          "disclosure": {
-            "type": "string"
-          },
-          "disclosureVersion": {
-            "type": "string"
-          },
-          "enabled": {
-            "type": "boolean"
-          },
-          "language": {
-            "type": "string"
-          },
-          "libraryId": {
-            "type": "string"
-          },
-          "libraryKind": {
-            "type": "string"
-          },
-          "providers": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
-          "refreshMode": {
-            "type": "string"
-          },
-          "region": {
-            "type": "string"
-          },
-          "revision": {
-            "maximum": 9007199254740991,
-            "minimum": -9007199254740991,
-            "type": "integer"
-          },
-          "status": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "libraryId",
-          "libraryKind",
-          "revision",
-          "consentRevision",
-          "confirmed",
-          "status",
-          "agent",
-          "enabled",
-          "providers",
-          "availableProviders",
-          "language",
-          "region",
-          "refreshMode",
-          "disclosure",
-          "disclosureVersion"
-        ],
-        "type": "object"
-      },
-      "revision": {
-        "maximum": 9007199254740991,
-        "minimum": -9007199254740991,
-        "type": "integer"
-      },
-      "seasons": {
-        "items": {
-          "properties": {
-            "anilistId": {
-              "type": "string"
-            },
-            "number": {
-              "maximum": 9007199254740991,
-              "minimum": -9007199254740991,
-              "type": "integer"
-            },
-            "revision": {
-              "maximum": 9007199254740991,
-              "minimum": -9007199254740991,
-              "type": "integer"
-            }
-          },
-          "required": [
-            "number",
-            "anilistId",
-            "revision"
-          ],
-          "type": "object"
-        },
-        "type": "array"
-      },
-      "selected": {
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "provider": {
-            "type": "string"
-          },
-          "type": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "provider",
-          "type",
-          "id"
-        ],
-        "type": "object"
-      },
-      "selectionMode": {
-        "type": "string"
-      },
-      "selectionRevision": {
-        "maximum": 9007199254740991,
-        "minimum": -9007199254740991,
-        "type": "integer"
-      },
-      "serverId": {
-        "type": "string"
-      },
-      "status": {
-        "type": "string"
-      },
-      "viewerFence": {
-        "type": "string"
-      }
-    },
-    "required": [
-      "serverId",
-      "viewerFence",
-      "libraryId",
-      "entityId",
-      "kind",
-      "revision",
-      "selectionRevision",
-      "status",
-      "explanation",
-      "selected",
-      "selectionMode",
-      "order",
-      "acceptedAt",
-      "acceptedConfidence",
-      "candidates",
-      "actions",
-      "attempts",
-      "nextAttempt",
-      "error",
-      "attribution",
-      "policy",
-      "fields",
-      "localIssues",
-      "seasons",
-      "parentId",
-      "episodeStatus"
-    ],
-    "type": "object"
-  },
   "GetJobFailuresRequest": {
     "properties": {},
     "required": [],
@@ -9284,189 +8919,6 @@ export const schemas = {
       "done",
       "failed",
       "totalKnown"
-    ],
-    "type": "object"
-  },
-  "GetMetadataAttentionRequest": {
-    "properties": {},
-    "required": [],
-    "type": "object"
-  },
-  "GetMetadataAttentionResponse": {
-    "properties": {
-      "entries": {
-        "items": {
-          "properties": {
-            "actions": {
-              "items": {
-                "type": "string"
-              },
-              "type": "array"
-            },
-            "candidates": {
-              "items": {
-                "properties": {
-                  "confidence": {
-                    "type": "number"
-                  },
-                  "identity": {
-                    "properties": {
-                      "id": {
-                        "type": "string"
-                      },
-                      "provider": {
-                        "type": "string"
-                      },
-                      "type": {
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "provider",
-                      "type",
-                      "id"
-                    ],
-                    "type": "object"
-                  },
-                  "key": {
-                    "type": "string"
-                  },
-                  "orders": {
-                    "items": {
-                      "properties": {
-                        "id": {
-                          "type": "string"
-                        },
-                        "name": {
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "id",
-                        "name"
-                      ],
-                      "type": "object"
-                    },
-                    "type": "array"
-                  },
-                  "reasons": {
-                    "items": {
-                      "type": "string"
-                    },
-                    "type": "array"
-                  },
-                  "title": {
-                    "type": "string"
-                  },
-                  "year": {
-                    "maximum": 9007199254740991,
-                    "minimum": -9007199254740991,
-                    "type": "integer"
-                  }
-                },
-                "required": [
-                  "key",
-                  "identity",
-                  "title",
-                  "year",
-                  "confidence",
-                  "reasons",
-                  "orders"
-                ],
-                "type": "object"
-              },
-              "type": "array"
-            },
-            "confidence": {
-              "type": "number"
-            },
-            "entityId": {
-              "type": "string"
-            },
-            "itemKind": {
-              "type": "string"
-            },
-            "kind": {
-              "type": "string"
-            },
-            "parentId": {
-              "type": "string"
-            },
-            "reason": {
-              "type": "string"
-            },
-            "revision": {
-              "maximum": 9007199254740991,
-              "minimum": -9007199254740991,
-              "type": "integer"
-            },
-            "title": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "itemKind",
-            "parentId",
-            "actions",
-            "entityId",
-            "kind",
-            "title",
-            "revision",
-            "reason",
-            "confidence",
-            "candidates"
-          ],
-          "type": "object"
-        },
-        "type": "array"
-      },
-      "libraryId": {
-        "type": "string"
-      },
-      "nextCursor": {
-        "type": "string"
-      }
-    },
-    "required": [
-      "libraryId",
-      "entries",
-      "nextCursor"
-    ],
-    "type": "object"
-  },
-  "GetMetadataSettingsRequest": {
-    "properties": {},
-    "required": [],
-    "type": "object"
-  },
-  "GetMetadataSettingsResponse": {
-    "properties": {
-      "includeAdult": {
-        "type": "boolean"
-      },
-      "localArtworkLimitBytes": {
-        "maximum": 9007199254740991,
-        "minimum": -9007199254740991,
-        "type": "integer"
-      },
-      "revision": {
-        "maximum": 9007199254740991,
-        "minimum": -9007199254740991,
-        "type": "integer"
-      },
-      "tmdbCredentialConfigured": {
-        "type": "boolean"
-      },
-      "tvdbCredentialConfigured": {
-        "type": "boolean"
-      }
-    },
-    "required": [
-      "revision",
-      "localArtworkLimitBytes",
-      "includeAdult",
-      "tmdbCredentialConfigured",
-      "tvdbCredentialConfigured"
     ],
     "type": "object"
   },
@@ -10771,740 +10223,99 @@ export const schemas = {
     ],
     "type": "object"
   },
-  "GetShowsScreenMetadataRequest": {
+  "ListAccessTokensRequest": {
     "properties": {},
     "required": [],
     "type": "object"
   },
-  "GetShowsScreenMetadataResponse": {
+  "ListAccessTokensResponse": {
     "properties": {
-      "accepted": {
-        "properties": {
-          "adult": {
-            "type": "boolean"
-          },
-          "advisoryRuntimeMinutes": {
-            "maximum": 9007199254740991,
-            "minimum": -9007199254740991,
-            "type": "integer"
-          },
-          "aliases": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
-          "backdropPath": {
-            "type": "string"
-          },
-          "certifications": {
-            "items": {
-              "properties": {
-                "rating": {
-                  "type": "string"
-                },
-                "region": {
-                  "type": "string"
-                }
-              },
-              "required": [
-                "region",
-                "rating"
-              ],
-              "type": "object"
-            },
-            "type": "array"
-          },
-          "coordinates": {
-            "properties": {
-              "absolute": {
-                "maximum": 9007199254740991,
-                "minimum": -9007199254740991,
-                "type": "integer"
-              },
-              "episode": {
-                "maximum": 9007199254740991,
-                "minimum": -9007199254740991,
-                "type": "integer"
-              },
-              "order": {
-                "type": "string"
-              },
-              "originalEpisode": {
-                "maximum": 9007199254740991,
-                "minimum": -9007199254740991,
-                "type": "integer"
-              },
-              "originalSeason": {
-                "maximum": 9007199254740991,
-                "minimum": -9007199254740991,
-                "type": "integer"
-              },
-              "season": {
-                "maximum": 9007199254740991,
-                "minimum": -9007199254740991,
-                "type": "integer"
-              },
-              "showId": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "showId",
-              "episode",
-              "order"
-            ],
-            "type": "object"
-          },
-          "credits": {
-            "items": {
-              "properties": {
-                "department": {
-                  "type": "string"
-                },
-                "id": {
-                  "type": "string"
-                },
-                "name": {
-                  "type": "string"
-                },
-                "ordinal": {
-                  "maximum": 9007199254740991,
-                  "minimum": -9007199254740991,
-                  "type": "integer"
-                },
-                "role": {
-                  "type": "string"
-                }
-              },
-              "required": [
-                "id",
-                "name",
-                "role",
-                "department",
-                "ordinal"
-              ],
-              "type": "object"
-            },
-            "type": "array"
-          },
-          "crosswalk": {
-            "items": {
-              "properties": {
-                "id": {
-                  "type": "string"
-                },
-                "provider": {
-                  "type": "string"
-                },
-                "type": {
-                  "type": "string"
-                }
-              },
-              "required": [
-                "provider",
-                "type",
-                "id"
-              ],
-              "type": "object"
-            },
-            "type": "array"
-          },
-          "date": {
-            "type": "string"
-          },
-          "episodeCount": {
-            "maximum": 9007199254740991,
-            "minimum": -9007199254740991,
-            "type": "integer"
-          },
-          "fieldLanguages": {
-            "additionalProperties": {
-              "type": "string"
-            },
-            "type": "object"
-          },
-          "format": {
-            "type": "string"
-          },
-          "genres": {
-            "items": {
-              "properties": {
-                "id": {
-                  "type": "string"
-                },
-                "name": {
-                  "type": "string"
-                }
-              },
-              "required": [
-                "id",
-                "name"
-              ],
-              "type": "object"
-            },
-            "type": "array"
-          },
-          "identity": {
-            "properties": {
-              "id": {
-                "type": "string"
-              },
-              "provider": {
-                "type": "string"
-              },
-              "type": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "provider",
-              "type",
-              "id"
-            ],
-            "type": "object"
-          },
-          "language": {
-            "type": "string"
-          },
-          "orders": {
-            "items": {
-              "properties": {
-                "id": {
-                  "type": "string"
-                },
-                "name": {
-                  "type": "string"
-                }
-              },
-              "required": [
-                "id",
-                "name"
-              ],
-              "type": "object"
-            },
-            "type": "array"
-          },
-          "originalTitle": {
-            "type": "string"
-          },
-          "overview": {
-            "type": "string"
-          },
-          "posterPath": {
-            "type": "string"
-          },
-          "rating": {
-            "properties": {
-              "scale": {
-                "maximum": 9007199254740991,
-                "minimum": -9007199254740991,
-                "type": "integer"
-              },
-              "value": {
-                "type": "number"
-              },
-              "votes": {
-                "maximum": 9007199254740991,
-                "minimum": -9007199254740991,
-                "type": "integer"
-              }
-            },
-            "required": [
-              "value",
-              "scale",
-              "votes"
-            ],
-            "type": "object"
-          },
-          "relations": {
-            "items": {
-              "properties": {
-                "kind": {
-                  "type": "string"
-                },
-                "name": {
-                  "type": "string"
-                },
-                "target": {
-                  "properties": {
-                    "id": {
-                      "type": "string"
-                    },
-                    "provider": {
-                      "type": "string"
-                    },
-                    "type": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "provider",
-                    "type",
-                    "id"
-                  ],
-                  "type": "object"
-                }
-              },
-              "required": [
-                "kind",
-                "target"
-              ],
-              "type": "object"
-            },
-            "type": "array"
-          },
-          "season": {
-            "type": "string"
-          },
-          "similar": {
-            "items": {
-              "properties": {
-                "id": {
-                  "type": "string"
-                },
-                "provider": {
-                  "type": "string"
-                },
-                "type": {
-                  "type": "string"
-                }
-              },
-              "required": [
-                "provider",
-                "type",
-                "id"
-              ],
-              "type": "object"
-            },
-            "type": "array"
-          },
-          "skipped": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
-          "sourceMaterial": {
-            "type": "string"
-          },
-          "status": {
-            "type": "string"
-          },
-          "stillPath": {
-            "type": "string"
-          },
-          "tagline": {
-            "type": "string"
-          },
-          "tags": {
-            "items": {
-              "properties": {
-                "id": {
-                  "type": "string"
-                },
-                "name": {
-                  "type": "string"
-                }
-              },
-              "required": [
-                "id",
-                "name"
-              ],
-              "type": "object"
-            },
-            "type": "array"
-          },
-          "title": {
-            "type": "string"
-          },
-          "year": {
-            "maximum": 9007199254740991,
-            "minimum": -9007199254740991,
-            "type": "integer"
-          }
-        },
-        "required": [
-          "identity",
-          "title"
-        ],
-        "type": "object"
-      },
-      "acceptedAt": {
-        "type": "string"
-      },
-      "acceptedConfidence": {
-        "type": "number"
-      },
-      "actions": {
-        "items": {
-          "type": "string"
-        },
-        "type": "array"
-      },
-      "attempts": {
-        "maximum": 9007199254740991,
-        "minimum": -9007199254740991,
-        "type": "integer"
-      },
-      "attribution": {
-        "type": "string"
-      },
-      "candidates": {
+      "items": {
         "items": {
           "properties": {
-            "attribution": {
+            "createdAt": {
               "type": "string"
             },
-            "confidence": {
-              "type": "number"
-            },
-            "contradiction": {
-              "type": "boolean"
-            },
-            "format": {
+            "endedReason": {
               "type": "string"
             },
-            "key": {
+            "expiresAt": {
               "type": "string"
             },
-            "observedAt": {
+            "hint": {
               "type": "string"
             },
-            "orders": {
-              "items": {
-                "properties": {
-                  "id": {
-                    "type": "string"
-                  },
-                  "name": {
-                    "type": "string"
-                  }
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string"
+            },
+            "lastUsedAt": {
+              "type": "string"
+            },
+            "member": {
+              "properties": {
+                "accountId": {
+                  "type": "string"
                 },
-                "required": [
-                  "id",
-                  "name"
-                ],
-                "type": "object"
+                "profile": {
+                  "type": "string"
+                },
+                "profileId": {
+                  "type": "string"
+                },
+                "username": {
+                  "type": "string"
+                }
               },
-              "type": "array"
-            },
-            "overview": {
-              "type": "string"
-            },
-            "provider": {
-              "type": "string"
-            },
-            "providerId": {
-              "type": "string"
-            },
-            "reasons": {
-              "items": {
-                "type": "string"
-              },
-              "type": "array"
-            },
-            "sourceKind": {
-              "type": "string"
-            },
-            "sourceUrl": {
-              "type": "string"
-            },
-            "strongSignals": {
-              "maximum": 9007199254740991,
-              "minimum": -9007199254740991,
-              "type": "integer"
-            },
-            "title": {
-              "type": "string"
-            },
-            "type": {
-              "type": "string"
-            },
-            "year": {
-              "maximum": 9007199254740991,
-              "minimum": -9007199254740991,
-              "type": "integer"
-            }
-          },
-          "required": [
-            "key",
-            "provider",
-            "type",
-            "providerId",
-            "title",
-            "year",
-            "overview",
-            "format",
-            "confidence",
-            "strongSignals",
-            "contradiction",
-            "reasons",
-            "observedAt",
-            "sourceKind",
-            "sourceUrl",
-            "attribution",
-            "orders"
-          ],
-          "type": "object"
-        },
-        "type": "array"
-      },
-      "entityId": {
-        "type": "string"
-      },
-      "episodeStatus": {
-        "type": "string"
-      },
-      "error": {
-        "type": "string"
-      },
-      "explanation": {
-        "type": "string"
-      },
-      "fields": {
-        "items": {
-          "properties": {
-            "confidence": {
-              "type": "number"
-            },
-            "language": {
-              "type": "string"
+              "required": [
+                "accountId",
+                "username",
+                "profileId",
+                "profile"
+              ],
+              "type": "object"
             },
             "name": {
               "type": "string"
             },
-            "observedAt": {
+            "scopes": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "state": {
               "type": "string"
-            },
-            "provider": {
-              "type": "string"
-            },
-            "region": {
-              "type": "string"
-            },
-            "selectionRevision": {
-              "maximum": 9007199254740991,
-              "minimum": -9007199254740991,
-              "type": "integer"
-            },
-            "sourceKind": {
-              "type": "string"
-            },
-            "sourceUrl": {
-              "type": "string"
-            },
-            "value": {}
-          },
-          "required": [
-            "name",
-            "value",
-            "provider",
-            "sourceKind",
-            "sourceUrl",
-            "confidence",
-            "observedAt",
-            "language",
-            "region",
-            "selectionRevision"
-          ],
-          "type": "object"
-        },
-        "type": "array"
-      },
-      "kind": {
-        "type": "string"
-      },
-      "libraryId": {
-        "type": "string"
-      },
-      "localIssues": {
-        "items": {
-          "type": "string"
-        },
-        "type": "array"
-      },
-      "nextAttempt": {
-        "type": "string"
-      },
-      "order": {
-        "type": "string"
-      },
-      "parentId": {
-        "type": "string"
-      },
-      "policy": {
-        "properties": {
-          "agent": {
-            "type": "string"
-          },
-          "availableProviders": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
-          "confirmed": {
-            "type": "boolean"
-          },
-          "consentRevision": {
-            "maximum": 9007199254740991,
-            "minimum": -9007199254740991,
-            "type": "integer"
-          },
-          "disclosure": {
-            "type": "string"
-          },
-          "disclosureVersion": {
-            "type": "string"
-          },
-          "enabled": {
-            "type": "boolean"
-          },
-          "language": {
-            "type": "string"
-          },
-          "libraryId": {
-            "type": "string"
-          },
-          "libraryKind": {
-            "type": "string"
-          },
-          "providers": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
-          "refreshMode": {
-            "type": "string"
-          },
-          "region": {
-            "type": "string"
-          },
-          "revision": {
-            "maximum": 9007199254740991,
-            "minimum": -9007199254740991,
-            "type": "integer"
-          },
-          "status": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "libraryId",
-          "libraryKind",
-          "revision",
-          "consentRevision",
-          "confirmed",
-          "status",
-          "agent",
-          "enabled",
-          "providers",
-          "availableProviders",
-          "language",
-          "region",
-          "refreshMode",
-          "disclosure",
-          "disclosureVersion"
-        ],
-        "type": "object"
-      },
-      "revision": {
-        "maximum": 9007199254740991,
-        "minimum": -9007199254740991,
-        "type": "integer"
-      },
-      "seasons": {
-        "items": {
-          "properties": {
-            "anilistId": {
-              "type": "string"
-            },
-            "number": {
-              "maximum": 9007199254740991,
-              "minimum": -9007199254740991,
-              "type": "integer"
-            },
-            "revision": {
-              "maximum": 9007199254740991,
-              "minimum": -9007199254740991,
-              "type": "integer"
             }
           },
           "required": [
-            "number",
-            "anilistId",
-            "revision"
+            "id",
+            "kind",
+            "name",
+            "scopes",
+            "hint",
+            "createdAt",
+            "state",
+            "member"
           ],
           "type": "object"
         },
         "type": "array"
       },
-      "selected": {
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "provider": {
-            "type": "string"
-          },
-          "type": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "provider",
-          "type",
-          "id"
-        ],
-        "type": "object"
-      },
-      "selectionMode": {
-        "type": "string"
-      },
-      "selectionRevision": {
+      "limit": {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
         "type": "integer"
       },
-      "serverId": {
-        "type": "string"
-      },
-      "status": {
-        "type": "string"
-      },
-      "viewerFence": {
+      "nextCursor": {
         "type": "string"
       }
     },
     "required": [
-      "serverId",
-      "viewerFence",
-      "libraryId",
-      "entityId",
-      "kind",
-      "revision",
-      "selectionRevision",
-      "status",
-      "explanation",
-      "selected",
-      "selectionMode",
-      "order",
-      "acceptedAt",
-      "acceptedConfidence",
-      "candidates",
-      "actions",
-      "attempts",
-      "nextAttempt",
-      "error",
-      "attribution",
-      "policy",
-      "fields",
-      "localIssues",
-      "seasons",
-      "parentId",
-      "episodeStatus"
+      "limit",
+      "items"
     ],
     "type": "object"
   },
@@ -11752,76 +10563,195 @@ export const schemas = {
     ],
     "type": "object"
   },
-  "ListMissingTitlesRequest": {
+  "ListApiKeysRequest": {
     "properties": {},
     "required": [],
     "type": "object"
   },
-  "ListMissingTitlesResponse": {
+  "ListApiKeysResponse": {
     "properties": {
-      "days": {
-        "maximum": 9007199254740991,
-        "minimum": -9007199254740991,
-        "type": "integer"
-      },
       "items": {
         "items": {
           "properties": {
+            "createdAt": {
+              "type": "string"
+            },
+            "endedReason": {
+              "type": "string"
+            },
+            "expiresAt": {
+              "type": "string"
+            },
+            "hint": {
+              "type": "string"
+            },
             "id": {
               "type": "string"
             },
             "kind": {
               "type": "string"
             },
-            "libraryId": {
+            "lastUsedAt": {
               "type": "string"
             },
-            "missingSince": {
+            "member": {
+              "properties": {
+                "accountId": {
+                  "type": "string"
+                },
+                "profile": {
+                  "type": "string"
+                },
+                "profileId": {
+                  "type": "string"
+                },
+                "username": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "accountId",
+                "username",
+                "profileId",
+                "profile"
+              ],
+              "type": "object"
+            },
+            "name": {
               "type": "string"
             },
-            "parentTitle": {
-              "type": "string"
+            "scopes": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
             },
-            "removedAt": {
+            "state": {
               "type": "string"
-            },
-            "title": {
-              "type": "string"
-            },
-            "year": {
-              "maximum": 9007199254740991,
-              "minimum": -9007199254740991,
-              "type": "integer"
             }
           },
           "required": [
             "id",
-            "libraryId",
             "kind",
-            "title",
-            "missingSince"
+            "name",
+            "scopes",
+            "hint",
+            "createdAt",
+            "state",
+            "member"
           ],
           "type": "object"
         },
         "type": "array"
       },
-      "nextCursor": {
-        "type": "string"
-      },
-      "rule": {
-        "type": "string"
-      },
-      "total": {
+      "limit": {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
         "type": "integer"
+      },
+      "nextCursor": {
+        "type": "string"
       }
     },
     "required": [
-      "items",
-      "total",
-      "rule",
-      "days"
+      "limit",
+      "items"
+    ],
+    "type": "object"
+  },
+  "ListMemberAccessTokensRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "ListMemberAccessTokensResponse": {
+    "properties": {
+      "items": {
+        "items": {
+          "properties": {
+            "createdAt": {
+              "type": "string"
+            },
+            "endedReason": {
+              "type": "string"
+            },
+            "expiresAt": {
+              "type": "string"
+            },
+            "hint": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string"
+            },
+            "lastUsedAt": {
+              "type": "string"
+            },
+            "member": {
+              "properties": {
+                "accountId": {
+                  "type": "string"
+                },
+                "profile": {
+                  "type": "string"
+                },
+                "profileId": {
+                  "type": "string"
+                },
+                "username": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "accountId",
+                "username",
+                "profileId",
+                "profile"
+              ],
+              "type": "object"
+            },
+            "name": {
+              "type": "string"
+            },
+            "scopes": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "state": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "kind",
+            "name",
+            "scopes",
+            "hint",
+            "createdAt",
+            "state",
+            "member"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "limit": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "nextCursor": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "limit",
+      "items"
     ],
     "type": "object"
   },
@@ -11925,29 +10855,214 @@ export const schemas = {
     ],
     "type": "object"
   },
-  "MergeTitlesRequest": {
+  "ListWebhookDeliveriesRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "ListWebhookDeliveriesResponse": {
     "properties": {
-      "fromId": {
-        "type": "string"
+      "items": {
+        "items": {
+          "properties": {
+            "attempts": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "createdAt": {
+              "type": "string"
+            },
+            "durationMs": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "error": {
+              "type": "string"
+            },
+            "event": {
+              "type": "string"
+            },
+            "finishedAt": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            },
+            "nextAttemptAt": {
+              "type": "string"
+            },
+            "state": {
+              "type": "string"
+            },
+            "status": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id",
+            "event",
+            "state",
+            "attempts",
+            "createdAt",
+            "status",
+            "durationMs"
+          ],
+          "type": "object"
+        },
+        "type": "array"
       },
-      "intoId": {
+      "limit": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "nextCursor": {
         "type": "string"
       }
     },
     "required": [
-      "fromId",
-      "intoId"
+      "items",
+      "limit"
     ],
     "type": "object"
   },
-  "MergeTitlesResponse": {
+  "ListWebhooksRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "ListWebhooksResponse": {
     "properties": {
-      "itemId": {
+      "events": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "items": {
+        "items": {
+          "properties": {
+            "createdAt": {
+              "type": "string"
+            },
+            "dropped": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "enabled": {
+              "type": "boolean"
+            },
+            "events": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "failing": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "id": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "secretHint": {
+              "type": "string"
+            },
+            "updatedAt": {
+              "type": "string"
+            },
+            "url": {
+              "type": "string"
+            },
+            "waiting": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id",
+            "name",
+            "url",
+            "events",
+            "enabled",
+            "secretHint",
+            "createdAt",
+            "updatedAt",
+            "waiting",
+            "failing",
+            "dropped"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "maximum": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "items",
+      "events",
+      "maximum"
+    ],
+    "type": "object"
+  },
+  "McpRequest": {
+    "properties": {
+      "jsonrpc": {
+        "type": "string"
+      },
+      "method": {
         "type": "string"
       }
     },
     "required": [
-      "itemId"
+      "jsonrpc"
+    ],
+    "type": "object"
+  },
+  "McpResponse": {
+    "properties": {
+      "jsonrpc": {
+        "type": "string"
+      },
+      "method": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "jsonrpc"
+    ],
+    "type": "object"
+  },
+  "McpStreamRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "McpStreamResponse": {
+    "properties": {
+      "jsonrpc": {
+        "type": "string"
+      },
+      "method": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "jsonrpc"
     ],
     "type": "object"
   },
@@ -13178,57 +12293,6 @@ export const schemas = {
     "required": [],
     "type": "object"
   },
-  "PostMetadataAttentionRequest": {
-    "properties": {
-      "action": {
-        "type": "string"
-      },
-      "candidateKey": {
-        "type": "string"
-      },
-      "entityId": {
-        "type": "string"
-      },
-      "expectedRevision": {
-        "maximum": 9007199254740991,
-        "minimum": -9007199254740991,
-        "type": "integer"
-      },
-      "kind": {
-        "type": "string"
-      },
-      "order": {
-        "type": "string"
-      },
-      "provider": {
-        "type": "string"
-      },
-      "providerId": {
-        "type": "string"
-      },
-      "query": {
-        "type": "string"
-      }
-    },
-    "required": [
-      "kind",
-      "entityId",
-      "expectedRevision",
-      "action"
-    ],
-    "type": "object"
-  },
-  "PostMetadataAttentionResponse": {
-    "properties": {
-      "status": {
-        "type": "string"
-      }
-    },
-    "required": [
-      "status"
-    ],
-    "type": "object"
-  },
   "PrepareQueueNextRequest": {
     "properties": {
       "sessionGeneration": {
@@ -13743,9 +12807,6 @@ export const schemas = {
       },
       "settings": {
         "properties": {
-          "backgroundSpeed": {
-            "type": "string"
-          },
           "backgroundTaskPriority": {
             "type": "string"
           },
@@ -13823,8 +12884,7 @@ export const schemas = {
           "windows",
           "retention",
           "backupKeepCount",
-          "backgroundTaskPriority",
-          "backgroundSpeed"
+          "backgroundTaskPriority"
         ],
         "type": "object"
       }
@@ -13891,9 +12951,6 @@ export const schemas = {
       },
       "settings": {
         "properties": {
-          "backgroundSpeed": {
-            "type": "string"
-          },
           "backgroundTaskPriority": {
             "type": "string"
           },
@@ -13971,8 +13028,7 @@ export const schemas = {
           "windows",
           "retention",
           "backupKeepCount",
-          "backgroundTaskPriority",
-          "backgroundSpeed"
+          "backgroundTaskPriority"
         ],
         "type": "object"
       },
@@ -14448,135 +13504,79 @@ export const schemas = {
     ],
     "type": "object"
   },
-  "PutMetadataSettingsRequest": {
-    "properties": {
-      "expectedRevision": {
-        "maximum": 9007199254740991,
-        "minimum": -9007199254740991,
-        "type": "integer"
-      },
-      "includeAdult": {
-        "type": "boolean"
-      },
-      "localArtworkLimitBytes": {
-        "maximum": 9007199254740991,
-        "minimum": -9007199254740991,
-        "type": "integer"
-      },
-      "tmdbReadToken": {
-        "type": "string"
-      },
-      "tvdbProjectKey": {
-        "type": "string"
-      }
-    },
-    "required": [
-      "expectedRevision",
-      "localArtworkLimitBytes",
-      "includeAdult"
-    ],
-    "type": "object"
-  },
-  "PutMetadataSettingsResponse": {
-    "properties": {
-      "includeAdult": {
-        "type": "boolean"
-      },
-      "localArtworkLimitBytes": {
-        "maximum": 9007199254740991,
-        "minimum": -9007199254740991,
-        "type": "integer"
-      },
-      "revision": {
-        "maximum": 9007199254740991,
-        "minimum": -9007199254740991,
-        "type": "integer"
-      },
-      "tmdbCredentialConfigured": {
-        "type": "boolean"
-      },
-      "tvdbCredentialConfigured": {
-        "type": "boolean"
-      }
-    },
-    "required": [
-      "revision",
-      "localArtworkLimitBytes",
-      "includeAdult",
-      "tmdbCredentialConfigured",
-      "tvdbCredentialConfigured"
-    ],
-    "type": "object"
-  },
-  "RefreshItemsMetadataRequest": {
+  "QueryTitlesRequest": {
     "properties": {},
     "required": [],
     "type": "object"
   },
-  "RefreshItemsMetadataResponse": {
+  "QueryTitlesResponse": {
     "properties": {
-      "itemId": {
-        "type": "string"
+      "items": {
+        "items": {
+          "properties": {
+            "addedAt": {
+              "type": "string"
+            },
+            "available": {
+              "type": "boolean"
+            },
+            "durationSeconds": {
+              "type": "number"
+            },
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string"
+            },
+            "libraryId": {
+              "type": "string"
+            },
+            "posterUrl": {
+              "type": "string"
+            },
+            "providerIds": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "rating": {
+              "type": "number"
+            },
+            "title": {
+              "type": "string"
+            },
+            "year": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id",
+            "kind",
+            "title",
+            "libraryId",
+            "available",
+            "providerIds"
+          ],
+          "type": "object"
+        },
+        "type": "array"
       },
-      "status": {
-        "type": "string"
-      }
-    },
-    "required": [
-      "itemId",
-      "status"
-    ],
-    "type": "object"
-  },
-  "RefreshShowsMetadataRequest": {
-    "properties": {},
-    "required": [],
-    "type": "object"
-  },
-  "RefreshShowsMetadataResponse": {
-    "properties": {
-      "itemId": {
-        "type": "string"
-      },
-      "status": {
-        "type": "string"
-      }
-    },
-    "required": [
-      "itemId",
-      "status"
-    ],
-    "type": "object"
-  },
-  "RemoveLibraryRequest": {
-    "properties": {
-      "confirmation": {
-        "type": "string"
-      },
-      "expectedRevision": {
+      "limit": {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
         "type": "integer"
-      }
-    },
-    "required": [
-      "confirmation",
-      "expectedRevision"
-    ],
-    "type": "object"
-  },
-  "RemoveLibraryResponse": {
-    "properties": {
-      "libraryId": {
-        "type": "string"
       },
-      "removing": {
-        "type": "boolean"
+      "nextCursor": {
+        "type": "string"
       }
     },
     "required": [
-      "libraryId",
-      "removing"
+      "items",
+      "limit"
     ],
     "type": "object"
   },
@@ -15339,6 +14339,121 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "ReportChangedPathsRequest": {
+    "properties": {
+      "paths": {
+        "items": {
+          "properties": {
+            "change": {
+              "type": "string"
+            },
+            "path": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "path"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      }
+    },
+    "required": [
+      "paths"
+    ],
+    "type": "object"
+  },
+  "ReportChangedPathsResponse": {
+    "properties": {
+      "jobs": {
+        "items": {
+          "properties": {
+            "analyzed": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "error": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            },
+            "jobs": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "phase": {
+              "type": "string"
+            },
+            "processed": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "scanMode": {
+              "type": "string"
+            },
+            "sourceId": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string"
+            },
+            "warnings": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id",
+            "status",
+            "processed",
+            "analyzed",
+            "warnings"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "paths": {
+        "items": {
+          "properties": {
+            "folder": {
+              "type": "string"
+            },
+            "libraryId": {
+              "type": "string"
+            },
+            "path": {
+              "type": "string"
+            },
+            "sourceId": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "path",
+            "status"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      }
+    },
+    "required": [
+      "paths",
+      "jobs"
+    ],
+    "type": "object"
+  },
   "ReportPlaybackTimelineRequest": {
     "properties": {
       "audioTrackId": {
@@ -15441,6 +14556,234 @@ export const schemas = {
   "ReportPlaybackTimelineResponse": {
     "properties": {},
     "required": [],
+    "type": "object"
+  },
+  "RevokeAccessTokenRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "RevokeAccessTokenResponse": {
+    "properties": {
+      "createdAt": {
+        "type": "string"
+      },
+      "endedReason": {
+        "type": "string"
+      },
+      "expiresAt": {
+        "type": "string"
+      },
+      "hint": {
+        "type": "string"
+      },
+      "id": {
+        "type": "string"
+      },
+      "kind": {
+        "type": "string"
+      },
+      "lastUsedAt": {
+        "type": "string"
+      },
+      "member": {
+        "properties": {
+          "accountId": {
+            "type": "string"
+          },
+          "profile": {
+            "type": "string"
+          },
+          "profileId": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "accountId",
+          "username",
+          "profileId",
+          "profile"
+        ],
+        "type": "object"
+      },
+      "name": {
+        "type": "string"
+      },
+      "scopes": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "state": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "id",
+      "kind",
+      "name",
+      "scopes",
+      "hint",
+      "createdAt",
+      "state",
+      "member"
+    ],
+    "type": "object"
+  },
+  "RevokeApiKeyRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "RevokeApiKeyResponse": {
+    "properties": {
+      "createdAt": {
+        "type": "string"
+      },
+      "endedReason": {
+        "type": "string"
+      },
+      "expiresAt": {
+        "type": "string"
+      },
+      "hint": {
+        "type": "string"
+      },
+      "id": {
+        "type": "string"
+      },
+      "kind": {
+        "type": "string"
+      },
+      "lastUsedAt": {
+        "type": "string"
+      },
+      "member": {
+        "properties": {
+          "accountId": {
+            "type": "string"
+          },
+          "profile": {
+            "type": "string"
+          },
+          "profileId": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "accountId",
+          "username",
+          "profileId",
+          "profile"
+        ],
+        "type": "object"
+      },
+      "name": {
+        "type": "string"
+      },
+      "scopes": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "state": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "id",
+      "kind",
+      "name",
+      "scopes",
+      "hint",
+      "createdAt",
+      "state",
+      "member"
+    ],
+    "type": "object"
+  },
+  "RevokeMemberAccessTokenRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "RevokeMemberAccessTokenResponse": {
+    "properties": {
+      "createdAt": {
+        "type": "string"
+      },
+      "endedReason": {
+        "type": "string"
+      },
+      "expiresAt": {
+        "type": "string"
+      },
+      "hint": {
+        "type": "string"
+      },
+      "id": {
+        "type": "string"
+      },
+      "kind": {
+        "type": "string"
+      },
+      "lastUsedAt": {
+        "type": "string"
+      },
+      "member": {
+        "properties": {
+          "accountId": {
+            "type": "string"
+          },
+          "profile": {
+            "type": "string"
+          },
+          "profileId": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "accountId",
+          "username",
+          "profileId",
+          "profile"
+        ],
+        "type": "object"
+      },
+      "name": {
+        "type": "string"
+      },
+      "scopes": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "state": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "id",
+      "kind",
+      "name",
+      "scopes",
+      "hint",
+      "createdAt",
+      "state",
+      "member"
+    ],
     "type": "object"
   },
   "SaveQueueAsPlaylistRequest": {
@@ -16301,6 +15644,61 @@ export const schemas = {
     "required": [],
     "type": "object"
   },
+  "TestWebhookRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "TestWebhookResponse": {
+    "properties": {
+      "attempts": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "createdAt": {
+        "type": "string"
+      },
+      "durationMs": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "error": {
+        "type": "string"
+      },
+      "event": {
+        "type": "string"
+      },
+      "finishedAt": {
+        "type": "string"
+      },
+      "id": {
+        "type": "string"
+      },
+      "nextAttemptAt": {
+        "type": "string"
+      },
+      "state": {
+        "type": "string"
+      },
+      "status": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "id",
+      "event",
+      "state",
+      "attempts",
+      "createdAt",
+      "status",
+      "durationMs"
+    ],
+    "type": "object"
+  },
   "UpdateQueueRequest": {
     "properties": {
       "repeat": {
@@ -17006,6 +16404,104 @@ export const schemas = {
     },
     "required": [
       "queue"
+    ],
+    "type": "object"
+  },
+  "UpdateWebhookRequest": {
+    "properties": {
+      "enabled": {
+        "type": "boolean"
+      },
+      "events": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "name": {
+        "type": "string"
+      },
+      "rotateSecret": {
+        "type": "boolean"
+      },
+      "secret": {
+        "type": "string"
+      },
+      "url": {
+        "type": "string"
+      }
+    },
+    "required": [],
+    "type": "object"
+  },
+  "UpdateWebhookResponse": {
+    "properties": {
+      "secret": {
+        "type": "string"
+      },
+      "webhook": {
+        "properties": {
+          "createdAt": {
+            "type": "string"
+          },
+          "dropped": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "events": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "failing": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "secretHint": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "waiting": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "url",
+          "events",
+          "enabled",
+          "secretHint",
+          "createdAt",
+          "updatedAt",
+          "waiting",
+          "failing",
+          "dropped"
+        ],
+        "type": "object"
+      }
+    },
+    "required": [
+      "webhook"
     ],
     "type": "object"
   }

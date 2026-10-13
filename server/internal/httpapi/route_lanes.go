@@ -9,6 +9,30 @@ package httpapi
 // /v1/downloads/settings is an ordinary read while /v1/downloads/artifacts/{grant}
 // is a byte stream — and a prefix rule cannot tell them apart.
 var routeLanes = map[string]string{
+	// The MCP endpoint (mcp.go). Its tool calls are admitted again, each in
+	// the lane of the API route it uses.
+	"POST /v1/mcp": laneTools,
+	"GET /v1/mcp":  laneDefault,
+	// Outbound webhooks (webhook_routes.go).
+	"GET /v1/admin/webhooks":                 laneAdmin,
+	"POST /v1/admin/webhooks":                laneAdmin,
+	"PATCH /v1/admin/webhooks/{id}":          laneAdmin,
+	"DELETE /v1/admin/webhooks/{id}":         laneAdmin,
+	"GET /v1/admin/webhooks/{id}/deliveries": laneAdmin,
+	"POST /v1/admin/webhooks/{id}/test":      laneAdmin,
+	// Routes for outside tools (platform_routes.go).
+	"GET /v1/titles":                   laneBrowsing,
+	"POST /v1/libraries/paths-changed": laneDefault,
+	// API keys and personal access tokens (api_credentials_routes.go).
+	"GET /v1/me/api-access":                         laneDefault,
+	"GET /v1/admin/api-keys":                        laneAdmin,
+	"POST /v1/admin/api-keys":                       laneSecurityFence,
+	"DELETE /v1/admin/api-keys/{id}":                laneSecurityFence,
+	"GET /v1/admin/access-tokens":                   laneAdmin,
+	"DELETE /v1/admin/access-tokens/{id}":           laneSecurityFence,
+	"GET /v1/me/access-tokens":                      laneDefault,
+	"POST /v1/me/access-tokens":                     laneSecurityFence,
+	"DELETE /v1/me/access-tokens/{id}":              laneSecurityFence,
 	"GET /v1/admin/console/settings":                laneAdmin,
 	"PATCH /v1/admin/console/settings":              laneAdmin,
 	"PUT /v1/playlists/{id}/order":                  laneDefault,
@@ -111,7 +135,6 @@ var routeLanes = map[string]string{
 	"GET /health/live":                                                laneDefault,
 	"GET /health/ready":                                               laneDefault,
 	"GET /receiver/cast/":                                             laneMedia,
-	"GET /v1/admin/access/api-keys":                                   laneAdmin,
 	"GET /v1/admin/access/devices":                                    laneAdmin,
 	"GET /v1/admin/access/invitations":                                laneAdmin,
 	"GET /v1/admin/access/members":                                    laneAdmin,
@@ -302,8 +325,6 @@ var routeLanes = map[string]string{
 	"POST ":                                                           laneDefault,
 	"POST /v1/access/invitations/accept":                              laneDefault,
 	"POST /v1/access/invitations/preview":                             laneDefault,
-	"POST /v1/admin/access/api-keys":                                  laneAdmin,
-	"POST /v1/admin/access/api-keys/{id}/revoke":                      laneSecurityFence,
 	"POST /v1/admin/access/invitations":                               laneAdmin,
 	"POST /v1/admin/access/invitations/{id}/revoke":                   laneSecurityFence,
 	"POST /v1/admin/backups":                                          laneAdminHeavy,

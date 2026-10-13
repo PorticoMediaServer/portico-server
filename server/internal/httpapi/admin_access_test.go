@@ -27,6 +27,7 @@ import (
 	"portico.local/server/internal/operations"
 	"portico.local/server/internal/persistence"
 	"portico.local/server/internal/servicelog"
+	"portico.local/server/internal/webhooks"
 )
 
 type administrationFixture struct {
@@ -77,6 +78,9 @@ func administrationFixtureNew(t *testing.T) administrationFixture {
 	recorder.SetLevel("debug")
 	deps := Dependencies{DB: db, Identity: ident, Catalog: catalog.New(db), Hosted: control, Console: operations.New(db),
 		Access: AccessArea{Access: access.New(db), Logs: recorder, ClientLogs: servicelog.NewClientLogStore(db), Advertiser: connectivity.NewAdvertiser(connectivity.AdvertiserOptions{})}}
+	deps.credentials = newCredentialGate()
+	deps.Webhooks = webhooks.New(db)
+	deps.self = &selfHandler{}
 	return administrationFixture{handler: New(deps), owner: ownerToken.AccessToken, admin: adminToken.AccessToken, member: memberToken.AccessToken, memberDevice: memberToken.DeviceID, recorder: recorder, deps: deps}
 }
 
@@ -320,36 +324,6 @@ func TestInvitationPreviewIsOpaqueAndSharesAcceptBudget(t *testing.T) {
 	w = f.call("POST", "/v1/access/invitations/accept", "", `{"code":"`+invite.Code+`","username":"guest","password":"Correct-Horse-9"}`)
 	if w.Code != 429 || errorCode(t, w) != "rate_limited" {
 		t.Fatalf("preview did not spend accept budget: %d %s", w.Code, w.Body)
-	}
-}
-
-func TestAPIKeyCreationDisabled(t *testing.T) {
-	f := administrationFixtureNew(t)
-	w := f.call("POST", "/v1/admin/access/api-keys", f.owner, `{"operationId":"key-route-1","name":"Automation","scope":"playback"}`)
-	if w.Code != 403 || errorCode(t, w) != "api_keys_disabled" {
-		t.Fatalf("creation: %d %s", w.Code, w.Body)
-	}
-	w = f.call("GET", "/v1/admin/access/api-keys", f.owner, "")
-	if w.Code != 200 || strings.Contains(w.Body.String(), "Automation") {
-		t.Fatalf("disabled creation wrote a key: %d %s", w.Code, w.Body)
-	}
-}
-
-func TestLegacyAPIKeyCannotAuthenticateHTTP(t *testing.T) {
-	f := administrationFixtureNew(t)
-	p, err := f.deps.Identity.Authenticate(f.owner)
-	if err != nil {
-		t.Fatal(err)
-	}
-	key, err := f.deps.Access.Access.CreateAPIKey(context.Background(), nil, p, access.APIKeyRequest{OperationID: "legacy-key-1", Name: "Old automation", Scope: "full"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, path := range []string{"/v1/me", "/v1/admin/access/members", "/v1/admin/logs"} {
-		w := f.call("GET", path, key.Secret, "")
-		if w.Code != 401 {
-			t.Fatalf("legacy key authenticated %s: %d %s", path, w.Code, w.Body)
-		}
 	}
 }
 

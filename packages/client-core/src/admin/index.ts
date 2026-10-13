@@ -7,6 +7,7 @@
 export * from '../console.ts';
 export * from '../server-administration.ts';
 export * from '../backups.ts';
+export * from '../api-access.ts';
 export * from '../telemetry.ts';
 export * from '../attention.ts';
 export * from '../playback-history.ts';

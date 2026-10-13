@@ -113,7 +113,15 @@ func (s *Service) inventoryPage(ctx context.Context, job string, source catalog.
 	if err != nil {
 		return err
 	}
-	return stoppedAt(relative, s.readDirectoryPage(ctx, job, source, relative))
+	err = s.readDirectoryPage(ctx, job, source, relative)
+	if err != nil && ctx.Err() == nil {
+		// A reported folder that cannot be listed has most likely been removed:
+		// look from the folder above it instead, where its absence can be seen.
+		if widened, e := s.widenTarget(ctx, job, relative); e == nil && widened {
+			return nil
+		}
+	}
+	return stoppedAt(relative, err)
 }
 func (s *Service) readDirectoryPage(ctx context.Context, job string, source catalog.LibrarySource, relative string) error {
 	var cursor, revision string
@@ -263,7 +271,7 @@ func (s *Service) reconcilePage(ctx context.Context, job string, source catalog.
 	} else if unmounted {
 		return catalog.ErrSourceLooksUnmounted
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT o.id,o.asset_id,o.revision,o.missing_since,o.missing_observations,o.last_missing_job,o.relative_path,o.state FROM inventory_objects o JOIN inventory_runs r ON r.source_id=o.source_id WHERE r.job_id=? AND r.authoritative=1 AND o.root_incarnation=r.root_incarnation AND o.id>r.reconcile_cursor AND o.retired=0 AND o.seen_job!=? AND NOT(o.state='available' AND o.missing_observations=0 AND EXISTS(SELECT 1 FROM inventory_directories d WHERE d.job_id=r.job_id AND d.relative_path=o.directory_path AND d.skipped=1 AND d.state='done')) ORDER BY o.id LIMIT ?`, job, job, s.reconciliationBatch(source))
+	rows, err := s.db.QueryContext(ctx, `SELECT o.id,o.asset_id,o.revision,o.missing_since,o.missing_observations,o.last_missing_job,o.relative_path,o.state FROM inventory_objects o JOIN inventory_runs r ON r.source_id=o.source_id WHERE r.job_id=? AND r.authoritative=1 AND o.root_incarnation=r.root_incarnation AND o.id>r.reconcile_cursor AND o.retired=0 AND o.seen_job!=? AND `+targetScopeSQL+` AND NOT(o.state='available' AND o.missing_observations=0 AND EXISTS(SELECT 1 FROM inventory_directories d WHERE d.job_id=r.job_id AND d.relative_path=o.directory_path AND d.skipped=1 AND d.state='done')) ORDER BY o.id LIMIT ?`, job, job, string(filepath.Separator), s.reconciliationBatch(source))
 	if err != nil {
 		return err
 	}
