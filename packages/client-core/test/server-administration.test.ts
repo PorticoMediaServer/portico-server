@@ -4,27 +4,36 @@ import {
  parseAccessMember,parseAccessMemberPage,parseLimitsDocument,parseMemberLimits,parseInvitation,parseInvitationPage,
  parseAccessDevicePage,parseLogPage,parseLogSettings,parseLogEvent,parseClientLogUploadPage,
  parseConnectivityPolicy,parseConnectivityStatus,grantsTier,managesTier,
+ parseMemberDeletionPreview,previewMemberDeletion,deleteMember,
 } from '../src/server-administration.ts';
 
 const limits={maxStreams:1,remoteBitrateKbps:4000,maxContentRating:'PG-13',allowUnrated:true,
  schedule:{timezone:'UTC',windows:[{days:[1,3],startMinute:600,endMinute:780}]},
  channelPolicy:{mode:'deny',channels:['news']},tagPolicy:{deniedLabels:['Spoilers']}};
 
-test('member limits round-trip and reject a rating this client does not know', () => {
+test('member limits round-trip, with the rating kept as the server stored it', () => {
  const parsed = parseMemberLimits(limits);
  assert.equal(parsed.maxContentRating, 'PG-13');
+ assert.equal(parsed.ratingSystem, '');
+ assert.equal(parsed.maximumAge, -1, 'an older document without the resolved age reads as no limit');
+ // A limit set from a published rating system comes back with its system and the age it stands for.
+ const british = parseMemberLimits({...limits, ratingSystem: 'bbfc', maxContentRating: '15', maximumAge: 15});
+ assert.deepEqual([british.ratingSystem, british.maxContentRating, british.maximumAge], ['bbfc', '15', 15]);
+ assert.throws(() => parseMemberLimits({...limits, maximumAge: 40}));
+ assert.throws(() => parseMemberLimits({...limits, ratingSystem: 7}));
  // The retired maxSessions field is never sent: it is absent from the parsed
  // document, so a limits save cannot carry it back to a server that rejects it.
  assert.equal('maxSessions' in parsed, false);
   assert.equal(parsed.channelPolicy.mode, 'deny');
   assert.deepEqual([...parsed.tagPolicy.deniedLabels], ['Spoilers']);
   assert.deepEqual([...parsed.schedule.windows[0].days], [1, 3]);
-  assert.throws(() => parseMemberLimits({...limits, maxContentRating: 'XX'}));
+  assert.throws(() => parseMemberLimits({...limits, maxContentRating: 'X'.repeat(40)}));
   assert.throws(() => parseMemberLimits({...limits, maxStreams: 100000}));
   assert.throws(() => parseMemberLimits({...limits, schedule: {timezone: 'UTC', windows: [{days: [], startMinute: 0, endMinute: 10}]}}));
   // An absent envelope is an unrestricted one, not a parse failure.
   const empty = parseMemberLimits({});
   assert.equal(empty.maxContentRating, '');
+  assert.equal(empty.maximumAge, -1);
   assert.equal(empty.allowUnrated, true);
   assert.deepEqual([...empty.tagPolicy.deniedLabels], []);
 });
@@ -57,7 +66,7 @@ test('a member page is refused whole when one member cannot be read, so nobody w
   assert.deepEqual(page.items.map(row => [row.accountId, row.username]), [['a', 'ada'], ['f', 'fay']]);
   assert.equal('futureField' in page.items[1], false);
   // A role, a limit or a revision this app cannot read is never guessed and never hidden.
-  for (const unreadable of [{...member, accountId: 'b', role: 'root'}, {...member, accountId: 'c', limits: {...limits, maxContentRating: 'XX'}},
+  for (const unreadable of [{...member, accountId: 'b', role: 'root'}, {...member, accountId: 'c', limits: {...limits, maximumAge: 99}},
     {...member, accountId: 'd', limits: {...limits, channelPolicy: {mode: 'sometimes', channels: []}}}, {...member, accountId: 'e', revision: 0}, null])
     assert.throws(() => parseAccessMemberPage({limit: 25, items: [member, unreadable]}));
   // The page size, its cursor and its outer shape still refuse the whole page.
@@ -215,4 +224,22 @@ test('connectivity policy: network parity rows parse, with shipped defaults for 
   assert.equal(newer.advertisedInterface, 'br0');
   assert.equal(newer.customCertificateKeyPath, '/certs/key.pem');
   assert.throws(() => parseConnectivityPolicy({...base, pausedSessionTimeoutMinutes: 5000}));
+});
+
+test('member deletion: the preview is read, checked and confirmed with its revision', async () => {
+ const doc={accountId:'acct_1',username:'sam',role:'member',revision:4,porticoAccount:false,profiles:2,devices:3,playlists:1,savedResources:0,playsKept:57};
+ assert.equal(parseMemberDeletionPreview(doc).playsKept, 57);
+ assert.throws(() => parseMemberDeletionPreview({...doc, role: 'superuser'}));
+ assert.throws(() => parseMemberDeletionPreview({...doc, revision: 0}));
+ assert.throws(() => parseMemberDeletionPreview({...doc, profiles: -1}));
+ const calls: {path: string; method?: string; body?: unknown}[] = [];
+ const api={request:async <T,>(path:string,method?:string,body?:unknown):Promise<T>=>{calls.push({path,method,body});return (method==='GET'?doc:undefined) as T;}};
+ const preview=await previewMemberDeletion(api,'acct_1');
+ await deleteMember(api,preview);
+ assert.deepEqual(calls,[
+  {path:'/v1/direct/members/acct_1/deletion-preview',method:'GET',body:undefined},
+  {path:'/v1/direct/members/acct_1',method:'DELETE',body:{expectedRevision:4}},
+ ]);
+ // A preview that answers for a different member is refused rather than confirmed.
+ await assert.rejects(previewMemberDeletion(api,'acct_2'));
 });

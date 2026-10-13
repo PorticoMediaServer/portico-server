@@ -241,7 +241,7 @@ export class FakePlaybackServer {
       presentation: {
         generation: s.generation, mode: 'stream', url: `/v1/media/grant-${s.id}/${s.generation}/master.m3u8`, startPositionMs: s.positionMs,
         engine: this.o.engine ?? 'native', quality, audioTrackId: (s.audio as {trackId?: string} | undefined)?.trackId ?? 'a1', subtitle: {trackId: 's4', kind: 'text', delivery: 'sidecar'},
-        subtitles: [{trackId: 's4', format: 'webvtt', url: `/v1/media/grant-${s.id}/${s.generation}/subs/s4.vtt`}],
+        subtitles: [{trackId: 's4', format: 'webvtt', url: `/v1/media/subtitles/grant-${s.id}/s4/${s.generation}.vtt`}],
         decision: {video: {action: transcoded ? 'transcode' : 'copy', reasons: transcoded ? ['bitrate_above_request'] : []}, audio: {action: 'copy', reasons: []}, subtitles: {action: 'sidecar'}},
         ...(s.kind === 'audio' ? {audioRender: this.renderPlan(s.id, s.generation, s.itemId)} : {}),
       },

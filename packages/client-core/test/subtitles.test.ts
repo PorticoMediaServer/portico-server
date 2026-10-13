@@ -7,7 +7,7 @@ import type {LibraryContentApi} from '../src/library-content.ts';
 
 const resource:SubtitleResource={id:'sub',sourceId:'source',revision:1,scope:'personal',language:'en',title:'English',format:'vtt',origin:'upload',rights:'Own transcript',offsetUs:'0',canManage:true,enabled:true};
 test('original delivery contracts retain grant paths, companion files and skipped cue facts',()=>{
- const base='/v1/media/grant/subtitles/sub/1';
+ const base='/v1/media/subtitles/grant/sub/1';
  assert.equal(validateSubtitleDelivery({format:'ass',url:base+'/original.ssa',fontsUrl:base+'/fonts'}).fontsUrl,base+'/fonts');
  assert.equal(validateSubtitleDelivery({format:'vobsub',url:base+'/original.idx',companionUrl:base+'/original.sub'}).companionUrl,base+'/original.sub');
  for(const url of ['https://origin.invalid/sub.ass',base+'/../../private',base+'/original.exe'])assert.throws(()=>validateSubtitleDelivery({format:'ass',url}));
@@ -16,7 +16,7 @@ test('original delivery contracts retain grant paths, companion files and skippe
  assert.throws(()=>validateSubtitleDocument({...envelope,skippedCues:-1}));
 });
 const target={itemId:'item',sessionId:'session',generation:1};
-function plan(revision=1,selected:SubtitleResource|null=null):SubtitlePlan{return {version:1,sessionId:'session',generation:1,sourceId:'source',revision,catalogRevision:1,renderer:'external_text',mode:selected?'track':'off',offAvailable:true,offsetUs:'0',selected:selected?{...selected,pinned:true}:null,...(selected?{documentUrl:`/v1/media/grant/subtitles/${selected.id}/${selected.revision}`} :{}),resources:[resource],discovered:[]};}
+function plan(revision=1,selected:SubtitleResource|null=null):SubtitlePlan{return {version:1,sessionId:'session',generation:1,sourceId:'source',revision,catalogRevision:1,renderer:'external_text',mode:selected?'track':'off',offAvailable:true,offsetUs:'0',selected:selected?{...selected,pinned:true}:null,...(selected?{documentUrl:`/v1/media/subtitles/grant/${selected.id}/${selected.revision}`} :{}),resources:[resource],discovered:[]};}
 function catalog(){return {version:1,itemId:'item',revision:1,canShare:false,sources:[{id:'source',durationUs:'100000000',inventoryRevision:1,available:true,timingKnown:true}],resources:[resource],discovered:[],provider:{id:'opensubtitles',enabled:false,reason:'provider_not_configured'}};}
 function deferred<T>(){let resolve!:(v:T)=>void,reject!:(e:unknown)=>void;const promise=new Promise<T>((a,b)=>{resolve=a;reject=b;});return {promise,resolve,reject};}
 const flush=()=>new Promise<void>(resolve=>setImmediate(resolve));
@@ -26,8 +26,8 @@ function api(fn:(path:string,method:string,body:unknown,signal?:AbortSignal)=>Pr
  test('authoritative track pin and Off plan validate with exact child URL and source binding',()=>{
  const track=validateSubtitlePlan(plan(2,resource));assert.equal(track.selected?.pinned,true);assert(Object.isFrozen(track.resources));
  assert.equal(validateSubtitlePlan(plan()).mode,'off');assert.equal(validateSubtitleCatalog(catalog()).resources[0].id,'sub');
- for(const change of [(p:any)=>p.generation=0,(p:any)=>p.selected.sourceId='other',(p:any)=>p.selected.pinned=false,(p:any)=>p.documentUrl='/v1/media/grant/subtitles/sub/2',(p:any)=>p.documentUrl='https://foreign.invalid/x',(p:any)=>p.offsetUs='-0',(p:any)=>p.offsetUs='600000001',(p:any)=>p.revision=true,(p:any)=>p.resources.push(resource)]){const p=structuredClone(plan(2,resource));change(p);assert.throws(()=>validateSubtitlePlan(p));}
- const off:any=plan();off.documentUrl='/v1/media/grant/subtitles/sub/1';assert.throws(()=>validateSubtitlePlan(off));
+ for(const change of [(p:any)=>p.generation=0,(p:any)=>p.selected.sourceId='other',(p:any)=>p.selected.pinned=false,(p:any)=>p.documentUrl='/v1/media/subtitles/grant/sub/2',(p:any)=>p.documentUrl='https://foreign.invalid/x',(p:any)=>p.offsetUs='-0',(p:any)=>p.offsetUs='600000001',(p:any)=>p.revision=true,(p:any)=>p.resources.push(resource)]){const p=structuredClone(plan(2,resource));change(p);assert.throws(()=>validateSubtitlePlan(p));}
+ const off:any=plan();off.documentUrl='/v1/media/subtitles/grant/sub/1';assert.throws(()=>validateSubtitlePlan(off));
  });
  test('cue documents retain decoded literal text, overlaps and exact microsecond integers',()=>{
  const d=validateSubtitleDocument({version:1,timeDomain:'source-relative',cues:[{startUs:'1000000',endUs:'3000000',text:'2 < 3 & <b>literal</b>'},{startUs:'2000000',endUs:'2500000',text:'Overlapping\ncaption'}]});assert.equal(d.cues[0].text,'2 < 3 & <b>literal</b>');

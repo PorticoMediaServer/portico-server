@@ -84,20 +84,20 @@ export type CompositeId =
 export type SettingsActionId = 'signOut' | 'resetRecommendations' | 'linkTV';
 export type SettingsCustomId =
   | 'identity' | 'profiles' | 'password' | 'twoStep' | 'devices' | 'porticoAccount' | 'servers'
-  | 'subtitlePreview' | 'deviceName' | 'downloadsStorage' | 'about' | 'accessTokens'
+  | 'subtitlePreview' | 'deviceName' | 'downloadsStorage' | 'about' | 'accessTokens' | 'privacyNote'
   // The Server heading's panels: each is drawn natively by the client.
   | 'server.nowPlaying' | 'server.alerts' | 'server.health' | 'server.activity' | 'server.statistics'
   | 'server.playHistory'
   | 'server.libraries'
   | 'server.liveSources' | 'server.tuners' | 'server.recordingRules' | 'server.recordingStorage' | 'server.channels'
-  | 'server.accounts' | 'server.invitations' | 'server.apiKeys' | 'server.memberTokens' | 'server.webhooks' | 'server.assistants'
+  | 'server.accounts' | 'server.invitations' | 'server.devices' | 'server.apiKeys' | 'server.memberTokens' | 'server.webhooks' | 'server.assistants'
   | 'server.metadataSettings'
   | 'server.transcodeStatus'
   | 'server.remoteStatus' | 'server.accountConnection' | 'server.certificateStatus' | 'server.addresses' | 'server.connection' | 'server.ownCertificateStatus'
   | 'server.diskUsage' | 'server.retention' | 'server.remoteSources' | 'server.backups' | 'server.missingTitles'
   | 'server.windows' | 'server.jobs'
   | 'server.logs' | 'server.detailWindow' | 'server.records' | 'server.capabilities' | 'server.supportExport' | 'server.feedback' | 'server.stateFolder'
-  | 'server.identity' | 'server.updates';
+  | 'server.identity' | 'server.updates' | 'server.restart' | 'server.clientReports';
 
 type RowCopy = Readonly<{
   label: MessageId;
@@ -159,7 +159,9 @@ type AuthoredSection = Readonly<{id: string; title?: MessageId; description?: Me
 type AuthoredPage = Readonly<{id: string; title: MessageId; icon: IconId; tabs?: readonly SettingsTab[]; sections: readonly AuthoredSection[]}> & Only;
 
 const seconds = (...values: number[]): SettingsChoice[] => values.map(value => ({value, label: 'pref.unit.seconds', labelValues: {count: value}}));
-const speeds: SettingsChoice[] = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2].map(value => (value === 1 ? {value, label: 'pref.unit.speedNormal'} : {value, label: 'pref.unit.speed', labelValues: {value}}));
+const speedChoice = (value: number): SettingsChoice => (value === 1 ? {value, label: 'pref.unit.speedNormal'} : {value, label: 'pref.unit.speed', labelValues: {value}});
+const speeds: SettingsChoice[] = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2].map(speedChoice);
+const audiobookSpeeds: SettingsChoice[] = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.5, 3].map(speedChoice);
 const skipChoices = (key: string): SettingsChoice[] => (['ask', 'auto', 'off'] as const).map(value => ({value, label: `pref.value.${key}.${value}` as MessageId}));
 /** The saved default qualities (`quality.home`, `quality.remote`): the original, automatic, then the server's ladder. */
 const qualityChoices: SettingsChoice[] = [
@@ -208,7 +210,7 @@ const accountPages: readonly AuthoredPage[] = [
       // No music speed: a song plays at the speed it was recorded.
       {id: 'speed', title: 'settings.section.speed', needs: c => c.playbackSpeed !== false, rows: [
         pref('playback.defaultSpeed', 'settings.row.videoSpeed', {type: 'choice', choices: speeds}),
-        pref('audiobooks.defaultSpeed', 'settings.row.audiobookSpeed', {type: 'choice', choices: speeds}),
+        pref('audiobooks.defaultSpeed', 'settings.row.audiobookSpeed', {type: 'choice', choices: audiobookSpeeds}),
       ]},
       {id: 'advanced', title: 'settings.section.advanced', advanced: true, rows: [
         pref('playback.playedThresholdPercent', 'settings.row.watchedThreshold', {type: 'choice', choices: [80, 85, 90, 95, 100].map(value => ({value, label: 'pref.unit.percent' as MessageId, labelValues: {value}}))}, {help: 'pref.help.playback.playedThresholdPercent'}),
@@ -295,6 +297,8 @@ const accountPages: readonly AuthoredPage[] = [
   },
   {
     id: 'privacy', title: 'settings.page.privacy', icon: 'shield', sections: [
+      // What pausing and clearing do not change, said before the switches that might suggest otherwise.
+      {id: 'note', rows: [custom('privacyNote')]},
       {id: 'history', rows: [
         toggle('privacy.pauseWatchHistory', 'pref.label.privacy.pauseWatchHistory', {help: 'pref.help.privacy.pauseWatchHistory'}),
         toggle('privacy.showActivityToMembers', 'settings.row.showActivity', {help: 'settings.help.showActivity'}),
@@ -358,6 +362,12 @@ const serverPages: readonly AuthoredPage[] = [
         on('liveDefaults', 'logoImport', 'web.dvrSettings.logoImport'),
         on('liveDefaults', 'discoveryEnabled', 'web.dvrSettings.discovery', 'web.dvrSettings.discoveryHelp'),
       ]},
+      // The most one playlist or guide may bring in: plain numbers the owner can raise or lower.
+      {id: 'liveLimits', tab: 'sources', title: 'server.live.limits', description: 'server.live.limitsLede', rows: [
+        setting('liveDefaults', 'importLimits.channels', 'server.live.limitChannels', {type: 'number', min: 1, max: 100000}),
+        setting('liveDefaults', 'importLimits.programmes', 'server.live.limitProgrammes', {type: 'number', min: 1, max: 10000000}),
+        setting('liveDefaults', 'importLimits.bytes', 'server.live.limitSize', {type: 'number', min: 1, max: 1024, unit: 'settings.unit.mb', scale: 1048576}),
+      ]},
       panel('tuners', 'server.tuners', undefined, {tab: 'recording'}),
       // Who may record, and the standing rules.
       panel('recordingRules', 'server.recordingRules', undefined, {tab: 'recording'}),
@@ -377,10 +387,13 @@ const serverPages: readonly AuthoredPage[] = [
       panel('channels', 'server.channels', undefined, {tab: 'channels'}),
     ]},
   {id: 'people', title: 'settings.server.people', icon: 'people',
-    tabs: [{id: 'accounts', title: 'settings.server.accounts'}, {id: 'invitations', title: 'settings.server.invitations'}, {id: 'keys', title: 'settings.server.apiKeys'}],
+    tabs: [{id: 'accounts', title: 'settings.server.accounts'}, {id: 'invitations', title: 'settings.server.invitations'}, {id: 'devices', title: 'settings.section.devices'}, {id: 'keys', title: 'settings.server.apiKeys'}],
     sections: [
       panel('accounts', 'server.accounts', undefined, {tab: 'accounts'}),
       panel('invitations', 'server.invitations', undefined, {tab: 'invitations'}),
+      // Holding new devices until the owner approves them, and every device that has signed in, newest first.
+      {id: 'deviceApproval', tab: 'devices', rows: [on('runtime', 'deviceApprovalRequired', 'server.people.deviceApproval', 'server.people.deviceApprovalHelp')]},
+      panel('devices', 'server.devices', 'settings.section.devices', {tab: 'devices', platforms: ['web']}),
       // The web has a page for keys, tokens, webhooks and assistants; the phone keeps its keys list here.
       panel('apiKeys', 'server.apiKeys', undefined, {tab: 'keys', platforms: ['phone']}),
     ]},
@@ -413,6 +426,9 @@ const serverPages: readonly AuthoredPage[] = [
       on('runtime', 'directStreamRemux', 'settings.server.repackage', 'settings.server.repackageHelp'),
       setting('runtime', 'planningPolicy', 'settings.server.planning', {type: 'choice', choices: choices('settings.server.planning', ['maximum_fidelity', 'maximum_compatibility', 'minimize_server_work'])}, {help: 'settings.server.planningHelp'}),
       setting('runtime', 'temporaryDirectory', 'settings.server.tempFolder', {type: 'text', mono: true}, {help: 'settings.server.tempFolderHelp'}),
+      // Shown in GB; stored in MiB.
+      setting('runtime', 'sessionStorageMiB', 'settings.server.sessionSpace', {type: 'number', min: 1, max: 1024, unit: 'settings.unit.gb', scale: 1024}, {help: 'settings.server.sessionSpaceHelp'}),
+      setting('runtime', 'ffmpegPath', 'settings.server.ffmpegPath', {type: 'text', mono: true, example: '/usr/local/bin/ffmpeg'}, {help: 'settings.server.ffmpegOwnHelp'}),
     ]},
     {id: 'capacity', title: 'web.transcoding.capacity', description: 'web.transcoding.capacityLede', rows: [
       setting('runtime', 'serverCap', 'web.transcoding.serverCap', {type: 'number', min: 1, max: 1000000, empty: unlimited}, {help: 'web.transcoding.serverCapHelp'}),
@@ -508,6 +524,8 @@ const serverPages: readonly AuthoredPage[] = [
     panel('logs', 'server.logs', 'settings.server.logs'),
     panel('records', 'server.records', 'settings.server.records'),
     panel('capabilities', 'server.capabilities', 'settings.server.capabilities'),
+    // Logs an app sent after something went wrong: to read, download and delete.
+    panel('clientReports', 'server.clientReports', 'web.diagnostics.clientReports', {platforms: ['web']}),
     panel('export', 'server.supportExport', 'settings.server.supportExport'),
     panel('feedback', 'server.feedback', 'settings.server.feedback'),
     panel('state', 'server.stateFolder'),
@@ -518,6 +536,7 @@ const serverPages: readonly AuthoredPage[] = [
       custom('server.identity'),
     ]},
     panel('updates', 'server.updates', 'settings.server.updates'),
+    panel('restart', 'server.restart', 'web.maintenance.serverRestart', {platforms: ['web']}),
     {id: 'alerts', title: 'settings.server.alertThresholds', description: 'web.alerts.lede', rows: [
       setting('alerts', 'storageWarningPercent', 'web.alerts.storageWarning', {type: 'number', min: 1, max: 50, unit: 'settings.unit.percent'}, {help: 'web.alerts.storageWarningHelp'}),
       setting('alerts', 'storageCriticalPercent', 'web.alerts.storageCritical', {type: 'number', min: 1, max: 50, unit: 'settings.unit.percent'}, {help: 'web.alerts.storageCriticalHelp'}),

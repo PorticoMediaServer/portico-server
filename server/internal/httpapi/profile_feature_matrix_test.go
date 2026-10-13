@@ -61,7 +61,10 @@ func TestProfileFeatureSwitchMatrix(t *testing.T) {
 				// Transfers recheck the grant's profile. Receipt keys are public
 				// verification material. Owner-only server settings/storage manage
 				// policy rather than consuming the profile feature.
-				if strings.Contains(path, "/artifacts/") || path == "/v1/downloads/receipt-keys" || pattern == "PUT /v1/downloads/settings" || strings.HasSuffix(path, "/dvr/storage") {
+				// Renewal is how a profile that has lost downloads has its copies
+				// withdrawn, and the plays it made while allowed still count, so
+				// neither is shut by the switch; neither hands anything out.
+				if strings.Contains(path, "/artifacts/") || path == "/v1/downloads/receipt-keys" || pattern == "PUT /v1/downloads/settings" || strings.HasSuffix(path, "/dvr/storage") || path == "/v1/downloads/receipts/revalidate" || path == "/v1/downloads/progress" {
 					continue
 				}
 				count++

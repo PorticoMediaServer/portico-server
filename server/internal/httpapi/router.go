@@ -300,7 +300,7 @@ func failure(w http.ResponseWriter, e error) {
 	if errors.Is(e, identity.ErrRestrictionChanged) {
 		status, code = 409, "restrictions_changed"
 	}
-	if errors.Is(e, identity.ErrContentRestricted) || errors.Is(e, access.ErrContentRating) || errors.Is(e, access.ErrLabelDenied) {
+	if errors.Is(e, identity.ErrContentRestricted) {
 		status, code = 404, "not_found"
 	}
 	if errors.Is(e, identity.ErrAvatarUpload) {
@@ -411,6 +411,15 @@ func failure(w http.ResponseWriter, e error) {
 	if errors.Is(e, identity.ErrConflict) {
 		status, code = 409, "conflict"
 	}
+	// The owner's remote sign-in choice and a member's allowed hours. Both are
+	// refusals of someone whose credentials are fine, so neither is a 401, and
+	// neither ends a sign-in a device already holds.
+	if errors.Is(e, identity.ErrRemoteSignIn) {
+		status, code = 403, "remote_sign_in_not_allowed"
+	}
+	if errors.Is(e, access.ErrSchedule) {
+		status, code = 403, "outside_allowed_hours"
+	}
 	if errors.Is(e, playback.ErrIncompatible) {
 		status, code = 422, "unsupported_source"
 	}
@@ -440,6 +449,9 @@ func failure(w http.ResponseWriter, e error) {
 		message = publicErrorMessage("unauthorized")
 	} else if status == 403 && errors.Is(e, identity.ErrForbidden) {
 		message = identity.ErrForbidden.Error()
+	}
+	if code == "remote_sign_in_not_allowed" || code == "outside_allowed_hours" {
+		message = publicErrorMessage(code)
 	}
 	retryable := false
 	if errors.Is(e, playback.ErrSegmentPreparing) {
@@ -628,6 +640,11 @@ func (d Dependencies) resolvePrincipal(r *http.Request) (identity.Principal, err
 	if !strict && !private {
 		key = identity.Digest(token)
 		if cached, ok := d.principals.lookup(key, time.Now()); ok {
+			// The cache remembers who a token is, not what this request is: a
+			// narrowed session is judged against every request it makes.
+			if e := cached.PermitsRequest(r.Context()); e != nil {
+				return identity.Principal{}, e
+			}
 			d.admission.rememberCredential(token, cached)
 			return cached, nil
 		}
@@ -821,50 +838,21 @@ func New(d Dependencies) http.Handler {
 	d.contentHomeRoutes(mux)
 	d.browseRoutes(mux)
 	d.notificationRoutes(mux)
-	d.downloadRoutes(mux)
 	d.socialRoutes(mux)
 	mux.HandleFunc("GET /v1/attribution", func(w http.ResponseWriter, r *http.Request) {
 		write(w, 200, map[string]any{"providers": []map[string]string{{"name": "TMDB", "notice": metadata.Attribution, "url": "https://www.themoviedb.org"}, {"name": "TheTVDB", "notice": "Metadata provided by TheTVDB.", "url": "https://thetvdb.com"}, {"name": "MusicBrainz", "notice": "Music metadata provided by MusicBrainz.", "url": "https://musicbrainz.org"}, {"name": "Cover Art Archive", "notice": "Cover art provided by Cover Art Archive / MusicBrainz and Internet Archive. Images copyright their respective owners.", "url": "https://coverartarchive.org"}}})
 	})
 	// hostedConfigured says this build can reach the Portico Account service at all (every release
-	// build can); hostedAttached says this server actually signs people in with Portico Accounts
-	// (it holds Hosted policy). A sign-in page decides by the second: a server set up for direct
-	// sign-in must never be shown the Portico Account hand-off.
-	// Anyone can read this, so it says what a sign-in page needs and no more:
-	// the exact build (its id, source digest and build time) is the owner's to
-	// see, on the administration pages.
+	// build can); hostedAttached says this server actually signs people in with Portico Accounts,
+	// which is whether its claim is installed. A sign-in page decides by the second: a server set
+	// up for direct sign-in and never claimed must never be shown the Portico Account hand-off.
+	// This answers anyone, before sign-in, so it says only what a client needs
+	// to decide how to sign in and whether it is new enough. The exact build
+	// (id, source digest, build time) is for the owner, who reads it from the
+	// maintenance document; published here it tells a scanner which servers
+	// carry a known flaw.
 	mux.HandleFunc("GET /v1/system", func(w http.ResponseWriter, r *http.Request) {
 		write(w, 200, map[string]any{"id": d.Identity.ID(), "name": d.Identity.Name(), "setupRequired": d.Identity.SetupRequired(), "hostedConfigured": d.Hosted.Configured(), "hostedAttached": d.Identity.Hosted(), "version": buildinfo.Info()["version"]})
-	})
-	mux.HandleFunc("POST /v1/sessions", func(w http.ResponseWriter, r *http.Request) {
-		var body struct {
-			Username string `json:"username"`
-			Password string `json:"password"`
-		}
-		if e := decode(w, r, &body); e != nil {
-			failure(w, e)
-			return
-		}
-		if e := d.Identity.SetupLimit(r.Context(), d.setupPeerSubject(r), "login", 20); e != nil {
-			setupFailure(w, e)
-			return
-		}
-		result, e := d.Identity.LoginFrom(r.Context(), body.Username, body.Password, d.privateSetupPeer(r))
-		if e != nil {
-			failure(w, e)
-			return
-		}
-		// Remote sign-in policy and per-member session limits. See
-		// access_admission.go; a denied session is revoked before it is returned.
-		if e = d.admitRemoteSignIn(r, result); e != nil {
-			accessFailure(w, e)
-			return
-		}
-		if e = d.admitSession(r, result); e != nil {
-			accessFailure(w, e)
-			return
-		}
-		writeAuth(w, r, 200, result)
 	})
 	mux.HandleFunc("GET /v1/me", func(w http.ResponseWriter, r *http.Request) {
 		p, e := d.principal(r)
@@ -887,14 +875,6 @@ func New(d Dependencies) http.Handler {
 		}
 		w.WriteHeader(202)
 	})
-	// Membership is this server's own (migration 0120): Hosted tickets, policy
-	// restrictions and offline profile proofs are gone. A Portico Account signs
-	// in with an identity assertion at POST /v1/direct/sign-in.
-	for _, route := range []string{"POST /v1/hosted/attach", "POST /v1/hosted/restrictions", "POST /v1/hosted/profiles/offline-select"} {
-		mux.HandleFunc(route, func(w http.ResponseWriter, r *http.Request) {
-			write(w, 410, map[string]any{"error": map[string]any{"code": "moved", "message": "Sign in with the Portico Account at /v1/direct/sign-in.", "retryable": false}})
-		})
-	}
 	mux.HandleFunc("GET /v1/libraries", func(w http.ResponseWriter, r *http.Request) {
 		p, e := d.principal(r)
 		if e != nil {
@@ -1230,7 +1210,9 @@ func New(d Dependencies) http.Handler {
 		r = detachCanceledConnection(w, r)
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("X-Frame-Options", "DENY")
-		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self' https://www.gstatic.com; style-src 'self'; connect-src 'self' https://*.direct.getportico.tv https://web.getportico.tv; img-src 'self' blob: data: https://*.direct.getportico.tv; media-src 'self' blob:; worker-src 'self' blob:; frame-ancestors 'none'; base-uri 'none'; object-src 'none'")
+		// 'wasm-unsafe-eval' lets the page compile WebAssembly (the subtitle renderer the web player
+		// loads from this origin). It does not allow eval or any other way of running text as script.
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self' 'wasm-unsafe-eval' https://www.gstatic.com/cv/js/sender/ https://www.gstatic.com/eureka/clank/ https://www.gstatic.com/cast/sdk/libs/sender/; style-src 'self'; connect-src 'self' https://*.direct.getportico.tv https://web.getportico.tv; img-src 'self' blob: data: https://*.direct.getportico.tv; media-src 'self' blob:; worker-src 'self' blob:; frame-ancestors 'none'; base-uri 'none'; object-src 'none'; form-action 'self'")
 		if r.TLS != nil {
 			w.Header().Set("Strict-Transport-Security", "max-age=31536000")
 		}
@@ -1268,6 +1250,10 @@ func New(d Dependencies) http.Handler {
 			return
 		}
 		r = r.WithContext(identity.WithSignInSource(networkpolicy.WithHome(r.Context(), !d.requestIsRemote(r)), d.signInPeer(r)))
+		r = r.WithContext(d.withSessionAdmission(r))
+		if castTargetRoute(r.Method, r.URL.Path) {
+			r = r.WithContext(identity.WithPlaybackRequest(r.Context()))
+		}
 		if installation := r.Header.Get("X-Portico-Installation-Id"); installation != "" {
 			claim := identity.DeviceRegistration{
 				InstallationID: installation,
@@ -1283,7 +1269,7 @@ func New(d Dependencies) http.Handler {
 			}
 			r = r.WithContext(ctx)
 		}
-		if r.Method == "POST" && (strings.HasPrefix(r.URL.Path, "/v1/direct/") || strings.HasPrefix(r.URL.Path, "/v1/auth/") || r.URL.Path == "/v1/sessions" || r.URL.Path == "/v1/setup" || r.URL.Path == "/v1/cast/redeem" || r.URL.Path == "/v1/cast/reconnect" ||
+		if r.Method == "POST" && (strings.HasPrefix(r.URL.Path, "/v1/direct/") || strings.HasPrefix(r.URL.Path, "/v1/auth/") || r.URL.Path == "/v1/setup" || r.URL.Path == "/v1/cast/redeem" || r.URL.Path == "/v1/cast/reconnect" ||
 			// Starting, looking up and deciding a TV code, and using an invitation:
 			// refused cheaply here before the database-backed limits are asked.
 			// The TV's own poll for its code is not here: a household of TVs
@@ -1324,7 +1310,7 @@ func New(d Dependencies) http.Handler {
 			d.Hosted.MembershipChanged()
 		}
 	})
-	return d.self.h
+	return &credentialUsageHandler{Handler: d.self.h, gate: d.credentials, store: d.Access.Access}
 }
 
 // unmatchedRoute answers a /v1 request no route serves: 405 with Allow when

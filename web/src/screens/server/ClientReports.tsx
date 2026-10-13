@@ -1,0 +1,62 @@
+import {useState} from 'react';
+import {deleteClientReport, listClientReports, readClientReport, type ClientReport} from '@core/client-reports.ts';
+import {problem, useAction} from '../../admin/console';
+import {useCursorList} from '../../admin/cursor-read';
+import {ListPager} from './ListPager';
+import {useSession} from '../../app/session';
+import {useI18n} from '../../app/i18n';
+import {Button, ConfirmDialog, Dialog, Loading, Menu, Notice, SettingsGroup, SettingsRow, Text} from '../../ui';
+
+/** "iPhone · phone · 1.4.2": what sent a report, in the words the report carries. */
+export const reportSender = (report: Pick<ClientReport, 'platform' | 'deviceClass' | 'appVersion'>): string => [report.platform, report.deviceClass, report.appVersion].filter(Boolean).join(' · ');
+
+/** Saves a report the way the server's own download does: one JSON file with what sent it and the log. */
+function save(report: ClientReport) {
+  const url = URL.createObjectURL(new Blob([JSON.stringify(report, null, 2)], {type: 'application/json'}));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `portico-client-report-${report.receivedAt.slice(0, 19).replace(/[:T]/g, '-')}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+/**
+ * Troubleshooting › Client reports: the logs an app sent after something went wrong, newest
+ * first. Each can be read here, downloaded, or deleted. Nothing is sent anywhere else.
+ */
+export function ClientReportsPanel() {
+  const i18n = useI18n();
+  const {t} = i18n;
+  const {api, system, session} = useSession();
+  const serverId = system?.id ?? session?.viewer.serverId ?? '';
+  const read = useCursorList(async cursor => { const page = await listClientReports(api, serverId, cursor); return {items: [...page.items], nextCursor: page.nextCursor ?? ''}; }, [api, serverId]);
+  const action = useAction();
+  const [open, setOpen] = useState<{report: ClientReport; body?: string; error?: string}>();
+  const [removing, setRemoving] = useState<ClientReport>();
+  const load = (report: ClientReport, then: (full: ClientReport) => void) => readClientReport(api, serverId, report.id).then(then);
+  const show = (report: ClientReport) => { setOpen({report}); load(report, full => setOpen(o => (o?.report.id === report.id ? {report: full, body: full.body ?? ''} : o))).catch(e => setOpen(o => (o?.report.id === report.id ? {report, error: problem(e)} : o))); };
+  return (
+    <SettingsGroup title={t('web.diagnostics.clientReports')} description={t('server.reports.lede')}>
+      {read.error ? <div style={{padding: 12}}><Notice tone={read.data ? 'warning' : 'error'} compact action={{label: t('action.tryAgain'), onClick: read.reload}}>{read.error}</Notice></div> : null}
+      {action.error && !removing ? <div style={{padding: 12}}><Notice tone="error" compact>{action.error}</Notice></div> : null}
+      {read.data?.map(report => (
+        <SettingsRow key={report.id} icon="logs" label={reportSender(report) || t('server.reports.unknownSender')} help={`${i18n.dateTime(report.receivedAt)} · ${i18n.bytes(report.bytes)}`}
+          control={<div style={{display: 'flex', gap: 8, alignItems: 'center'}}>
+            <Button size="sm" variant="secondary" label={t('server.reports.read')} onClick={() => show(report)} />
+            <Menu label={reportSender(report)} trigger={<Button size="sm" variant="ghost" icon="more" aria-label={t('server.reports.actions')} />} items={[{id: 'download', label: t('web.diagnostics.clientReportDownload'), icon: 'download'}, {id: 'delete', label: t('web.diagnostics.clientReportDelete'), icon: 'trash', destructive: true, separatorBefore: true}]}
+              onSelect={id => { action.clear(); if (id === 'delete') setRemoving(report); else void action.run(() => load(report, save)); }} />
+          </div>} />
+      ))}
+      {read.data && !read.data.length ? <div style={{padding: 16}}><Text variant="caption" tone="tertiary">{t('server.reports.none')}</Text></div> : null}
+      <ListPager pages={read} />
+      <Dialog open={!!open} onOpenChange={o => !o && setOpen(undefined)} title={t('server.reports.title')} description={open ? `${reportSender(open.report)} · ${i18n.dateTime(open.report.receivedAt)}` : undefined} width={720}
+        actions={<><Button variant="ghost" icon="download" label={t('web.diagnostics.clientReportDownload')} disabled={open?.body === undefined} onClick={() => open && save(open.report)} /><Button variant="primary" label={t('action.done')} onClick={() => setOpen(undefined)} /></>}>
+        {open?.error ? <Notice tone="error" compact>{open.error}</Notice> : null}
+        {open && open.body === undefined && !open.error ? <Loading label={t('server.reports.title')} /> : null}
+        {open?.body !== undefined ? <pre style={{margin: 0, maxHeight: 440, overflow: 'auto', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', fontFamily: 'var(--font-mono)', fontSize: 12, lineHeight: 1.5}}>{open.body || t('server.reports.empty')}</pre> : null}
+      </Dialog>
+      <ConfirmDialog open={!!removing} onOpenChange={o => !o && setRemoving(undefined)} title={t('server.reports.deleteTitle')} body={t('server.reports.deleteBody')} confirmLabel={t('action.delete')} cancelLabel={t('action.cancel')} busy={action.busy} error={action.error}
+        onConfirm={() => void action.run(async () => { if (!removing) return; await deleteClientReport(api, removing.id); setRemoving(undefined); read.reload(); })} />
+    </SettingsGroup>
+  );
+}

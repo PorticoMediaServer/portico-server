@@ -484,12 +484,6 @@ export class HttpLocalApi {
   system() {
     return this.request<SystemInfo>("/v1/system");
   }
-  login(username: string, password: string) {
-    return this.request<unknown>("/v1/sessions", "POST", {
-      username,
-      password,
-    }).then(value=>parseLocalSession(value,{authority:'local'}));
-  }
   setup(setupToken: string, username: string, password: string, name: string) {
     return this.request<unknown>("/v1/setup", "POST", {
       setupToken,
@@ -944,6 +938,11 @@ export class PlaybackService {
    * the server and stays the same session on the same queue entry, so Up next is untouched. The
    * choices are remembered for a replay or an automatic retry of this title.
    */
+  /** Whether a change of quality, version or track can be made on the playing session itself
+   * (`changePlayback` does nothing otherwise: a channel, a downloaded file, nothing playing). */
+  changesInPlace():boolean{
+    return !!this.snapshot.itemId&&!!this.snapshot.session&&!this.snapshot.channel&&!this.lastPlay?.local&&!!this.queue?.changePlayback;
+  }
   changePlayback(choices:PlaybackChoices):Promise<void>{
     const itemId=this.snapshot.itemId,session=this.snapshot.session;
     if(!itemId||!session||this.snapshot.channel||this.lastPlay?.local||!this.queue?.changePlayback)return Promise.resolve();
@@ -1931,6 +1930,7 @@ export * from './group-session.ts';
 export * from './remote-playback.ts';
 export * from './library-pins.ts';
 export * from './subtitles.ts';
+export * from './subtitle-originals.ts';
 export * from "./lyrics.ts";
 
 export {type MusicPolicy,type MusicPolicyInput,type MusicMatchObservation,type MusicEvidenceDetails,type LocalBookMetadata,musicEvidenceLabel,fingerprintStatusLabel} from "./music-metadata.ts";

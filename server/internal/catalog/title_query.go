@@ -239,8 +239,10 @@ func (s *Service) QueryTitles(viewer Viewer, q TitleQuery) (TitlePage, error) {
 			if descending {
 				comparison = "<"
 			}
-			where += ` AND (` + sortExpression + comparison + `? OR (` + sortExpression + `=? AND e.entity_id` + comparison + `?))`
-			args = append(args, key, key, entity)
+			// The leading range makes SQLite seek into the ordered index rather
+			// than filter the whole library prefix for the disjunctive tie-break.
+			where += ` AND ` + sortExpression + comparison + `=? AND (` + sortExpression + comparison + `? OR (` + sortExpression + `=? AND e.entity_id` + comparison + `?))`
+			args = append(args, key, key, key, entity)
 		}
 		direction := "ASC"
 		if descending {

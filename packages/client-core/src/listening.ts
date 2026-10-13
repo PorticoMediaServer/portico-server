@@ -9,6 +9,8 @@ import {parseQueueItem} from './queues.ts';
 import {PlayerChaptersService} from './player-chapters.ts';
 
 export const listeningRates=[.5,.75,1,1.25,1.5,1.75,2] as const;
+/** Audiobooks go faster than music: speech stays clear up to three times its speed. */
+export const audiobookRates=[...listeningRates,2.5,3] as const;
 export const passoutChoices=[0,30,60,90,120] as const;
 export type ListeningPreferences=Readonly<{revision:number;musicRate:number;bookRate:number;autoplayNext:boolean;passoutMinutes:number}>;
 export type ListeningTarget=Readonly<{libraryId:string;kind:'library'|'song'|'artist'|'album'|'disc'|'book';id:string}>;
@@ -24,7 +26,7 @@ const finite=(v:unknown):v is number=>typeof v==='number'&&Number.isFinite(v)&&v
 const counter=(v:unknown):v is number=>Number.isSafeInteger(v)&&Number(v)>=0;
 function bad():never{throw new Error(unreadableServerResponse);}
 export function parseListeningPreferences(v:unknown):ListeningPreferences {
- if(!object(v)||!counter(v.revision)||!listeningRates.includes(v.musicRate as never)||!listeningRates.includes(v.bookRate as never)||typeof v.autoplayNext!=='boolean'||!passoutChoices.includes(v.passoutMinutes as never))bad();
+ if(!object(v)||!counter(v.revision)||!listeningRates.includes(v.musicRate as never)||!audiobookRates.includes(v.bookRate as never)||typeof v.autoplayNext!=='boolean'||!passoutChoices.includes(v.passoutMinutes as never))bad();
  return Object.freeze({revision:v.revision,musicRate:v.musicRate as number,bookRate:v.bookRate as number,autoplayNext:v.autoplayNext,passoutMinutes:v.passoutMinutes as number});
 }
 export function listeningData(raw:unknown,scope:QueueScope):unknown {

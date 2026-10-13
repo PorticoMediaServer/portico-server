@@ -254,6 +254,12 @@ type Service struct {
 	// goroutine and must not block for long.
 	OnFinished func(kind Kind, id string, err error)
 
+	// scrubCopy runs on each finished database copy before it becomes a
+	// backup, to end the sessions and remove the live secrets in it. It is
+	// injected by the composition root; nil leaves the copy as it was copied
+	// (tests of the copy itself).
+	scrubCopy func(ctx context.Context, path string) error
+
 	// stageMu makes restore staging one at a time: every stage writes the same
 	// restore-staged folder, so overlapping requests (a retry, a second tab)
 	// wait and then supersede in order instead of deleting each other's copy.
@@ -306,6 +312,10 @@ func (s *Service) SetDirectory(directory string) error {
 func (s *Service) SetRestartFunc(fn func()) { s.onStaged = fn }
 
 func (s *Service) SetRestoreAvailable(available bool) { s.restoreUnavailable = !available }
+
+// SetCopyScrubber injects what is done to each finished database copy before
+// it becomes a backup. A backup whose copy could not be scrubbed is not kept.
+func (s *Service) SetCopyScrubber(fn func(ctx context.Context, path string) error) { s.scrubCopy = fn }
 
 // Start begins an asynchronous backup. It is idempotent per operationID: the
 // same id twice returns the same job. Only one backup runs at a time; a new
@@ -458,6 +468,12 @@ func (s *Service) createBackup(ctx context.Context, job *Job, kind Kind) (string
 		_ = os.RemoveAll(partial)
 		return "", err
 	}
+	if s.scrubCopy != nil {
+		if err = s.scrubCopy(ctx, filepath.Join(partial, DatabaseName)); err != nil {
+			_ = os.RemoveAll(partial)
+			return "", err
+		}
+	}
 	if job != nil {
 		job.report("files", estimate, estimate)
 	}
@@ -581,8 +597,12 @@ func (s *Service) Prune(keep int) error {
 }
 
 // LastRestore reads the recorded outcome of the last restore, if any.
-func (s *Service) LastRestore() (*RestoreResult, error) {
-	raw, err := os.ReadFile(filepath.Join(s.state, RestoreResultFile))
+func (s *Service) LastRestore() (*RestoreResult, error) { return ReadRestoreResult(s.state) }
+
+// ReadRestoreResult is LastRestore for a caller that has only the state
+// folder: start-up reads it before the backup service exists.
+func ReadRestoreResult(state string) (*RestoreResult, error) {
+	raw, err := os.ReadFile(filepath.Join(state, RestoreResultFile))
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil

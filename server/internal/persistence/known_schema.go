@@ -15,9 +15,7 @@ import (
 // for, and a count of foreign objects is how an owner finds out that is what
 // they have. Nothing is ever dropped automatically: a build that does not define
 // a table cannot know what removing it would cost.
-const knownSchemaObjects = `index access_devices_account
-index access_devices_page
-index access_invitation_page
+const knownSchemaObjects = `index access_invitation_page
 index access_invitation_pending
 index admin_channel_presets_page
 index admin_dvr_groups_page
@@ -210,6 +208,7 @@ index hosted_identity_nonces_expiry
 index identity_browser_accounts_recent
 index identity_device_families_device
 index identity_devices_account
+index identity_devices_recent
 index identity_factor_challenge_expiry
 index identity_refresh_device
 index identity_refresh_predecessors_family
@@ -362,6 +361,7 @@ index playback_vod_pending
 index playlist_receipts_expiry
 index playlist_shared_viewer
 index ported_artwork_jobs_entity
+index portico_admitted_signer
 index prepared_media_item_jobs
 index prepared_media_item_versions
 index prepared_media_object_refs
@@ -431,7 +431,6 @@ index webhook_deliveries_coalesce
 index webhook_deliveries_due
 index webhook_deliveries_log
 index webhook_deliveries_queue
-table access_devices
 table access_invitations
 table access_limits
 table access_receipts
@@ -653,6 +652,7 @@ table download_receipts
 table download_request_items
 table download_requests
 table download_settings
+table download_source_digests
 table dvr_catalog_provenance
 table dvr_catalog_retirements
 table dvr_cleanup_work
@@ -981,6 +981,7 @@ table restriction_outbox
 table restrictions
 table retained_title_identities
 table retained_title_state
+table retained_title_state_counts
 table saved_operation_fences
 table saved_pin_order
 table saved_pin_order_revisions
@@ -1323,6 +1324,7 @@ trigger continue_show_dismiss_insert
 trigger continue_show_dismiss_update
 trigger direct_account_created
 trigger direct_account_epoch
+trigger direct_membership_disabled
 trigger direct_profile_capacity
 trigger dvr_managed_inventory_reject
 trigger dvr_managed_library_delete
@@ -1585,6 +1587,8 @@ trigger related_genres_termsource_insert
 trigger related_genres_termsource_update
 trigger related_item_update
 trigger repair_delete_entity
+trigger retained_title_state_count_delete
+trigger retained_title_state_count_insert
 trigger rev_listening_audio_evidence_delete
 trigger rev_listening_audio_evidence_insert
 trigger rev_listening_audio_evidence_update

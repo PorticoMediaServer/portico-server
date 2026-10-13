@@ -24,7 +24,7 @@ export type PlaybackChoice = Readonly<{prepared?: PreparedChoice; quality?: stri
    * copy the quality it was made at (the server then plays that copy). */
   choices?: StartChoices}>;
 
-export function PlaybackChoices({libraryId, itemId, onChange, compact}: {libraryId: string; itemId: string; onChange: (choice: PlaybackChoice) => void; /** Phones: one row that wraps. */ compact?: boolean}) {
+export function PlaybackChoices({libraryId, itemId, onChange, compact, editions}: {libraryId: string; itemId: string; onChange: (choice: PlaybackChoice) => void; /** Phones: one row that wraps. */ compact?: boolean; /** A version's edition by its file id (the title's Files list), so two versions that differ only by edition read differently. */ editions?: Readonly<Record<string, string>>}) {
   const {api} = useSession();
   const scope = useViewerScope();
   const service = useMemo(() => new PlayerOffersService({api, scope: {serverId: scope.serverId, viewerId: scope.viewerId}}), [api, scope.serverId, scope.viewerId]);
@@ -54,7 +54,7 @@ export function PlaybackChoices({libraryId, itemId, onChange, compact}: {library
   }, [data, version, audio, subtitle]);
   if (!data) return null;
   const versions = [
-    ...data.sources.map(x => ({value: x.id, label: sourceLabel(i18n, x.height, x.videoCodec, x.container)})),
+    ...data.sources.map(x => ({value: x.id, label: [sourceLabel(i18n, x.height, x.videoCodec, x.container), editions?.[x.id]].filter(Boolean).join(' · ')})),
     ...data.preparedVersions.filter(v => v.selectable && v.state === 'published').map(v => ({value: `prepared:${v.id}`, label: `${sourceLabel(i18n, v.facts.height, v.facts.videoCodec, v.facts.container)} · ${t('title.preparedVersion')}`})),
   ];
   const audioOptions = audioStreams.map((x, i) => ({value: String(x.index), label: audioLabel(i18n, x, i + 1)}));

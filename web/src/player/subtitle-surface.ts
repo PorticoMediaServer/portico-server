@@ -9,6 +9,9 @@
  * `timeline` comes from the media player port: hls.js may place a stream's first frame at a time
  * other than its playlist time, so cue times (title time) are shifted by that offset; `null`
  * means "not known yet" and nothing is shown.
+ *
+ * Styled and image subtitles are drawn on a canvas by `subtitles/overlay.ts`. The surface passes
+ * the same `timeline` facts on to it (`companion`), so the port still tells one object.
  */
 import type {SubtitleTimeline} from '../playback-v1/web-media-player';
 
@@ -43,8 +46,11 @@ export class SubtitleSurface implements SubtitleTimeline {
     for (let i = 0; i < list.length; i++) { const t = list[i]!; if ((t as unknown) !== this.track && (t.kind === 'subtitles' || t.kind === 'captions') && t.mode !== 'disabled') t.mode = 'disabled'; }
   };
 
-  constructor(host: SubtitleHost, options: {cue?: CueFactory; lift?: boolean} = {}) {
+  private readonly companion?: SubtitleTimeline;
+
+  constructor(host: SubtitleHost, options: {cue?: CueFactory; lift?: boolean; companion?: SubtitleTimeline} = {}) {
     this.host = host;
+    this.companion = options.companion;
     this.makeCue = options.cue ?? ((start, end, text) => new VTTCue(start, end, text) as unknown as CueLike);
     this.lift = options.lift ?? !cssLiftsCues();
   }
@@ -75,8 +81,9 @@ export class SubtitleSurface implements SubtitleTimeline {
   }
 
   // SubtitleTimeline (the media player port)
-  reset(): void { this.offset = null; this.render(); }
+  reset(): void { this.companion?.reset(); this.offset = null; this.render(); }
   timeline(offsetSeconds: number | null): void {
+    this.companion?.timeline(offsetSeconds);
     if (this.offset === offsetSeconds) return;
     this.offset = offsetSeconds;
     this.render();

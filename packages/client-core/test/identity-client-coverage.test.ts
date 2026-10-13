@@ -22,6 +22,8 @@ function client(responses: Record<string, unknown>, calls: {path: string; method
   const api = {
     request: async <T,>(path: string, method = 'GET', body?: unknown): Promise<T> => {
       calls.push({path, method, body});
+      // A response may be keyed by method and path where one path answers two methods.
+      if (method + ' ' + path in responses) return responses[method + ' ' + path] as T;
       if (path in responses) return responses[path] as T;
       throw new Error('unexpected ' + path);
     },
@@ -90,10 +92,10 @@ test('avatar lists are bounded at 64; an empty picture never sends', async () =>
 test('remembered accounts are asked before sign-in and forgotten by id', async () => {
   const inst = 'i'.repeat(32);
   const calls: {path: string; method: string; body: unknown}[] = [];
-  const forgetPath = '/v1/direct/remembered-accounts/a%2Fb?installationId=' + inst;
+  const forgetPath = '/v1/direct/remembered-accounts/a%2Fb';
   const {client: c} = client(
     {
-      ['/v1/auth/remembered-accounts?installationId=' + inst]: {items: remembered},
+      '/v1/auth/remembered-accounts': {items: remembered},
       '/v1/direct/remembered-accounts': {items: remembered},
       [forgetPath]: undefined,
     },
@@ -103,14 +105,14 @@ test('remembered accounts are asked before sign-in and forgotten by id', async (
   assert.equal((await c.rememberAccount(inst, true)).length, 1);
   assert.deepEqual(calls[1], {path: '/v1/direct/remembered-accounts', method: 'POST', body: {installationId: inst, automaticSignIn: true}});
   await c.forgetAccount('a/b', inst);
-  assert.equal(calls[2].path, '/v1/direct/remembered-accounts/a%2Fb?installationId=' + inst);
+  assert.deepEqual(calls[2], {path: '/v1/direct/remembered-accounts/a%2Fb', method: 'DELETE', body: {installationId: inst}});
 });
 
 test('device edits go to the documented routes with exactly the documented bodies', async () => {
   const calls: {path: string; method: string; body: unknown}[] = [];
   const {client: c} = client(
     {
-      ['/v1/devices?installationId=' + 'i'.repeat(32)]: {items: [device]},
+      'GET /v1/devices': {items: [device, {...device, id: 'd2', installationId: '', current: false}]},
       '/v1/devices': device,
       '/v1/devices/d1': device,
       '/v1/devices/d1/approval': device,
@@ -119,7 +121,11 @@ test('device edits go to the documented routes with exactly the documented bodie
     },
     calls,
   );
-  assert.equal((await c.devices('i'.repeat(32))).length, 1);
+  // The list is asked for with no installation id in the address; another device's id comes back empty.
+  const listed = await c.devices('i'.repeat(32));
+  assert.equal(listed.length, 2);
+  assert.deepEqual(calls[0], {path: '/v1/devices', method: 'GET', body: undefined});
+  assert.equal(listed[1].installationId, '');
   assert.equal((await c.registerDevice({installationId: 'i'.repeat(32), name: 'TV', platform: 'tvos', app: 'Portico', appVersion: '1'})).id, 'd1');
   await c.bindDevice('d1', 'i'.repeat(32), 'fam-1');
   assert.deepEqual(calls[2], {path: '/v1/devices/d1/sessions/bind', method: 'POST', body: {installationId: 'i'.repeat(32), sessionFamilyId: 'fam-1'}});

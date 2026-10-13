@@ -35,6 +35,9 @@ COPY packages/client-core ./packages/client-core
 COPY packages/design ./packages/design
 COPY packages/i18n ./packages/i18n
 COPY third_party/hls.js ./third_party/hls.js
+# The subtitle renderer and its fonts: the web build copies them, unchanged, into the application.
+COPY third_party/libass-wasm ./third_party/libass-wasm
+COPY third_party/subtitle-fonts ./third_party/subtitle-fonts
 COPY server ./server
 COPY apikit ./apikit
 COPY scripts/container-release.mjs ./scripts/container-release.mjs

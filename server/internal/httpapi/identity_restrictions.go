@@ -46,6 +46,8 @@ func (d Dependencies) viewerRestrictions(r *http.Request, p identity.Principal) 
 		}
 	}
 	if d.Access.Access != nil && p.AccountID != "" {
+		// The account's limits narrow the profile's restrictions on the same
+		// rating scale (access.Limits.Narrow): one ceiling, one unrated rule.
 		var revision int64
 		var body string
 		e := d.DB.QueryRowContext(r.Context(), `SELECT revision,body FROM access_limits WHERE account_id=?`, p.AccountID).Scan(&revision, &body)
@@ -53,14 +55,11 @@ func (d Dependencies) viewerRestrictions(r *http.Request, p identity.Principal) 
 			return identity.ContentRestrictions{}, "", e
 		}
 		if e == nil {
-			var limits access.Limits
+			limits := access.DefaultLimits()
 			if e = json.Unmarshal([]byte(body), &limits); e != nil {
 				return identity.ContentRestrictions{}, "", e
 			}
-			restrictions.MemberMaxRating = limits.MaxContentRating
-			restrictions.MemberAllowUnrated = limits.AllowUnrated
-			restrictions.MemberDeniedLabels = limits.Tags.DeniedLabels
-			restrictions.MemberRevision = revision
+			restrictions = limits.Narrow(restrictions, revision)
 		}
 	}
 	return restrictions, catalog.RestrictionFence(restrictions), nil
@@ -71,15 +70,15 @@ func (d Dependencies) catalogViewer(r *http.Request, p identity.Principal, libra
 	if err != nil {
 		return catalog.Viewer{}, err
 	}
-	return catalog.Viewer{Profile: identity.PersonalKey(p.Viewer), Fence: fence, Libraries: libraries, Restrictions: restrictions, MemberMaxRating: restrictions.MemberMaxRating, MemberAllowUnrated: restrictions.MemberAllowUnrated, MemberDeniedLabels: restrictions.MemberDeniedLabels}, nil
+	return catalog.Viewer{Profile: identity.PersonalKey(p.Viewer), Fence: fence, Libraries: libraries, Restrictions: restrictions}, nil
 }
 
 // restrictedItem refuses a single-item read whose title the profile may not see, so
 // knowing an id is not a way around a list that filtered it out.
 func (d Dependencies) restrictedItem(r *http.Request, p identity.Principal, item string) error {
-	// Integration merge: lane B's viewer-scoped catalogue check (profile and,
-	// since 5f0be04, member limits), then lane C's member enforcer (labels and
-	// the access ladder), with C's snapshot fallback when no catalogue is wired.
+	// One check: the catalogue predicate over the viewer's whole policy (the
+	// profile's restrictions narrowed by its account's limits). Without a
+	// catalogue service the same predicate runs through contentaccess.
 	if d.Catalog == nil {
 		gate, err := dbwork.BeginSnapshot(r.Context(), d.DB)
 		if err != nil {
@@ -88,9 +87,9 @@ func (d Dependencies) restrictedItem(r *http.Request, p identity.Principal, item
 		defer gate.Rollback()
 		return d.itemRestrictionsTx(r.Context(), gate.Tx(), p, item)
 	}
-	// Lane B's catalogue answers a restricted title exactly as an absent one
-	// (sql.ErrNoRows); lane C's admission callers expect ErrContentRestricted,
-	// which every writer maps to the same 404.
+	// The catalogue answers a restricted title exactly as an absent one
+	// (sql.ErrNoRows); admission callers expect ErrContentRestricted, which
+	// every writer maps to the same 404.
 	library, e := d.Catalog.WithContext(r.Context()).LibraryForItem(item)
 	if errors.Is(e, sql.ErrNoRows) {
 		return identity.ErrContentRestricted
@@ -104,16 +103,6 @@ func (d Dependencies) restrictedItem(r *http.Request, p identity.Principal, item
 	}
 	if e = d.Catalog.VisibleItem(r.Context(), viewer, item); errors.Is(e, sql.ErrNoRows) {
 		return identity.ErrContentRestricted
-	} else if e != nil {
-		return e
 	}
-	if d.Access.Access != nil {
-		gate, err := dbwork.BeginSnapshot(r.Context(), d.DB)
-		if err != nil {
-			return err
-		}
-		defer gate.Rollback()
-		return d.enforcer(false).VisibleItem(r.Context(), gate.Tx(), p, item)
-	}
-	return nil
+	return e
 }

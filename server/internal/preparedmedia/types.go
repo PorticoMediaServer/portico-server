@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"regexp"
+	"strings"
 
 	"portico.local/server/internal/decoder"
 	"portico.local/server/internal/identity"
@@ -70,17 +71,30 @@ var legacyProfiles = []Profile{
 	{"audio-aac-v1", "Audio · AAC", "audio", 0, 0, 0, 192, "AAC stereo in M4A for music and audiobook files. Keeps the original."},
 }
 
+// Profiles lists the recipes this server can actually make. The table above
+// names every recipe that has an identity; the conversion code decides which
+// of them it can build, and only those are offered.
 func Profiles() []Profile {
 	out := []Profile{}
 	for _, p := range profiles {
-		if ProfileProducible(p) {
+		if decoder.PreparedProducible(recipeFor(p)) {
 			out = append(out, p)
 		}
 	}
 	return out
 }
-func ProfileProducible(p Profile) bool {
-	return decoder.CanPrepare(decoder.PreparedRecipe{AudioOnly: p.Kind == "audio", Width: p.Width, Height: p.Height, VideoKbps: p.VideoKbps, AudioKbps: p.AudioKbps})
+
+// Producible reports whether the conversion code can make this recipe today.
+// A recipe that exists only as a row in the table is not something to offer.
+func Producible(id string) bool {
+	p, err := profile(id)
+	return err == nil && decoder.PreparedProducible(recipeFor(p))
+}
+
+// recipeFor is the one translation from a recipe's identity to what the
+// encoder is asked for, shared by the encode and by the question above.
+func recipeFor(p Profile) decoder.PreparedRecipe {
+	return decoder.PreparedRecipe{DropChapters: !strings.HasSuffix(p.ID, "-v1"), BoundedFragments: strings.HasSuffix(p.ID, "-v3"), AudioOnly: p.Kind == "audio", Width: p.Width, Height: p.Height, VideoKbps: p.VideoKbps, AudioKbps: p.AudioKbps}
 }
 
 // ProfileByID exposes the immutable recipe to size estimators.

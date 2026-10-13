@@ -135,16 +135,3 @@ func validPreparedVideo(r PreparedRecipe) bool {
 	}
 	return false
 }
-
-// CanPrepare uses the ordinary converter inventory and this recipe's own
-// bounded argument builder. A menu cannot advertise a recipe neither accepts.
-func CanPrepare(r PreparedRecipe) bool {
-	if _, err := preparedArgs("input", r, false); err != nil {
-		return false
-	}
-	video := "h264"
-	if r.AudioOnly {
-		video = ""
-	}
-	return AvailableConversionOutputs(CurrentToolchain()).SupportsConversion(video, 8, "aac", 2)
-}

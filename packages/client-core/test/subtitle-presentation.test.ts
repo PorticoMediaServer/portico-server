@@ -19,7 +19,7 @@ test('subtitle rendition handoff preserves occurrence, pause, pending seek and e
 });
 test('burn-in wire plans never expose private assets as text documents or origin URLs',()=>{
  const valid=plan(2,true);assert.equal(validateSubtitlePlan(valid).renderer,'burn_in');
- for(const change of [(p:any)=>p.documentUrl='/v1/media/grant/subtitles/sub/1',(p:any)=>p.presentation.streamUrl='https://origin.invalid/private',(p:any)=>p.presentation.generation=3,(p:any)=>p.selected.renderer='external_text']){const p=structuredClone(valid);change(p);assert.throws(()=>validateSubtitlePlan(p));}
+ for(const change of [(p:any)=>p.documentUrl='/v1/media/subtitles/grant/sub/1',(p:any)=>p.presentation.streamUrl='https://origin.invalid/private',(p:any)=>p.presentation.generation=3,(p:any)=>p.selected.renderer='external_text']){const p=structuredClone(valid);change(p);assert.throws(()=>validateSubtitlePlan(p));}
 });
 test('lost burn-in acknowledgement replays the same CAS operation and installs only committed generations',async()=>{
  let current=plan(),failed=false;const writes:any[]=[];const installs:any[]=[];

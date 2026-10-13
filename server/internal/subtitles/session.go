@@ -141,12 +141,12 @@ func (s *Service) PlanTx(ctx context.Context, tx *sql.Tx, p identity.Principal, 
 				return out, err
 			}
 		}
-		r.Deliveries = deliveries("/v1/media/"+scope.grant+"/subtitles/"+r.ID+"/"+strconv.FormatInt(r.Revision, 10), r.Format)
+		r.Deliveries = deliveries(MediaBaseURL(scope.grant, r.ID, r.Revision), r.Format)
 		out.Selected = &r
 		out.Mode = "track"
 		out.Renderer = r.Renderer
 		if r.Enabled && r.Renderer == "external_text" {
-			out.DocumentURL = "/v1/media/" + scope.grant + "/subtitles/" + r.ID + "/" + strconv.FormatInt(r.Revision, 10)
+			out.DocumentURL = MediaBaseURL(scope.grant, r.ID, r.Revision)
 		}
 	}
 	var renderID string

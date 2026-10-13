@@ -26,6 +26,7 @@ import {musicAudioEffects, musicQueueDefaults} from '@core/music-preferences.ts'
 import {noteTunedChannel} from './live';
 import {useServerPreferences} from '../app/server-preferences';
 import type {SequenceContainer} from '../app/container-play';
+import {browserNativeHlsPolicy} from '../playback-v1/native-hls';
 export type {SequenceContainer};
 
 /**
@@ -139,6 +140,7 @@ export function PlayerProvider({children}: {children: React.ReactNode}) {
       createRender: (service, video) => new DecodeAudioRender(service, path => api.mediaUrl(path), video as unknown as HTMLVideoElement, (current, next) => !!current && !!next && (service.getQueueController()?.sameAlbum?.(current, next) ?? false)),
       farewell: (path, method, body) => api.farewell(path, method, body),
       deviceMemory: (navigator as Navigator & {deviceMemory?: number}).deviceMemory,
+      nativeHls: browserNativeHlsPolicy(),
     });
     // A start or a seek may take as long as media keeps arriving; these are the windows of
     // silence after which it is given up.

@@ -30,7 +30,7 @@ func TestWrappedDomainErrorsNeverExposeCauses(t *testing.T) {
 		{"administration", administrationFailure, administration.ErrInput, "invalid_administration_input"},
 		{"activity", activityFailure, playback.ErrActivityConflict, "playback_command_conflict"},
 		{"console", consoleError, operations.ErrConflict, "console_conflict"},
-		{"download", downloadFailure, downloads.ErrConflict, "download_conflict"},
+		{"download", func(w http.ResponseWriter, e error) { policyErrors.Write(w, "", downloadError(e)) }, downloads.ErrConflict, "download_conflict"},
 		{"library", libraryFailure, librarychannels.ErrConflict, "library_channel_changed"},
 		{"live", liveFailure, livechannels.ErrCapacity, "source_capacity_unavailable"},
 		{"lyrics", lyricFailure, lyrics.ErrInput, "invalid_lyrics"},

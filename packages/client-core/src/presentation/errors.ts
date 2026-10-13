@@ -114,7 +114,7 @@ const exact: Record<string, ErrorCategory> = {
   network: 'unreachable', request_failed: 'unreachable', server_unavailable: 'unreachable', route_unavailable: 'unreachable', console_unavailable: 'unreachable', delivery_http_failure: 'unreachable', remote_unavailable: 'unreachable',
   timeout: 'timeout', remote_stalled: 'timeout',
   unauthorized: 'authentication', authentication_required: 'authentication', session_expired: 'authentication', invalid_token: 'authentication', unauthenticated: 'authentication',
-  forbidden: 'permission', permission_changed: 'permission', access_revoked: 'permission', owner_required: 'permission', remote_denied: 'permission', remote_sign_in_not_allowed: 'permission',
+  forbidden: 'permission', permission_changed: 'permission', access_revoked: 'permission', owner_required: 'permission', remote_denied: 'permission', remote_sign_in_not_allowed: 'permission', outside_allowed_hours: 'permission',
   not_found: 'not-found', gone: 'not-found',
   rate_limited: 'rate-limited', too_many_requests: 'rate-limited',
   unsupported_version: 'unsupported-version', client_too_old: 'unsupported-version',

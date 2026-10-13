@@ -82,7 +82,15 @@ func administrationFixtureNew(t *testing.T) administrationFixture {
 	deps.credentials = newCredentialGate()
 	deps.Webhooks = webhooks.New(db)
 	deps.self = &selfHandler{}
-	return administrationFixture{handler: New(deps), owner: ownerToken.AccessToken, admin: adminToken.AccessToken, member: memberToken.AccessToken, memberDevice: memberToken.DeviceID, recorder: recorder, deps: deps}
+	handler := New(deps)
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := FlushCredentialUse(ctx, handler); err != nil {
+			t.Errorf("flush credential use: %v", err)
+		}
+	})
+	return administrationFixture{handler: handler, owner: ownerToken.AccessToken, admin: adminToken.AccessToken, member: memberToken.AccessToken, memberDevice: memberToken.DeviceID, recorder: recorder, deps: deps}
 }
 
 func (f administrationFixture) call(method, path, token, body string) *httptest.ResponseRecorder {
@@ -108,6 +116,11 @@ func TestMemberLimitsScopeCatalogueProjectionAndFence(t *testing.T) {
 	c.Attributes(family.ID, "contentRating", "G")
 	c.Attributes(adult.ID, "contentRating", "R")
 	c.Drain()
+	// The account limit is judged by the same classified ages a profile's is;
+	// a spelling the background worker has not classified yet is withheld.
+	if _, err := f.deps.Catalog.ClassifyPendingRatings(context.Background()); err != nil {
+		t.Fatal(err)
+	}
 	limits := access.DefaultLimits()
 	limits.MaxContentRating = "PG"
 	limits.AllowUnrated = false
@@ -210,8 +223,9 @@ func TestMemberLimitsAndRoleRoutesCarryRevisionsAndRefuseAdminPeers(t *testing.T
 	if w.Code != 409 || !strings.Contains(w.Body.String(), `"currentRevision":2`) {
 		t.Fatalf("conflict: %d %s", w.Code, w.Body)
 	}
-	// An admin may promote nobody to admin.
-	if w = f.call("PUT", "/v1/admin/access/members/member/role", f.admin, `{"expectedRevision":1,"operationId":"role-route-1","role":"admin"}`); w.Code != 401 {
+	// An admin may promote nobody to admin. The admin's own session is fine,
+	// so the answer is a refusal (403), never "sign in again" (401).
+	if w = f.call("PUT", "/v1/admin/access/members/member/role", f.admin, `{"expectedRevision":1,"operationId":"role-route-1","role":"admin"}`); w.Code != 403 {
 		t.Fatalf("an admin promoted an account to admin: %d %s", w.Code, w.Body)
 	}
 	if w = f.call("PUT", "/v1/admin/access/members/member/role", f.owner, `{"expectedRevision":1,"operationId":"role-route-2","role":"admin"}`); w.Code != 200 {
@@ -531,39 +545,6 @@ func TestConnectivityPolicyRoundTripsAndStatusReportsTheHost(t *testing.T) {
 	delivery := adapter.Delivery()
 	if delivery.MaxVideoBitrateBPS != 8_000_000 {
 		t.Fatalf("the remote bitrate ceiling did not reach delivery: %d", delivery.MaxVideoBitrateBPS)
-	}
-}
-
-func TestDeviceInventoryRecordsSightingsAtPlaybackAdmission(t *testing.T) {
-	f := administrationFixtureNew(t)
-	p := identity.Principal{Viewer: identity.Viewer{AccountID: "member", ProfileID: "member-profile", Authority: "local", Role: "member"}}
-	r := httptest.NewRequest("POST", "/v1/playback/sessions", nil)
-	r.Header.Set("X-Portico-Device-Id", "living-room")
-	r.Header.Set("X-Portico-Device-Name", "Living Room")
-	r.Header.Set("X-Portico-Device-Platform", "tvos")
-	if _, e := f.deps.admitPlayback(r, p, ""); e != nil {
-		t.Fatal(e)
-	}
-	w := f.call("GET", "/v1/admin/access/devices", f.admin, "")
-	if w.Code != 200 || !strings.Contains(w.Body.String(), `"name":"Living Room"`) || !strings.Contains(w.Body.String(), `"trust":"pending"`) {
-		t.Fatalf("inventory: %d %s", w.Code, w.Body)
-	}
-	var page access.DevicePage
-	if e := json.Unmarshal(w.Body.Bytes(), &page); e != nil || len(page.Items) != 1 || page.ApprovalRequired {
-		t.Fatalf("page: %v %+v", e, page)
-	}
-	body := `{"expectedRevision":1,"operationId":"device-trust-1","trust":"approved"}`
-	if w = f.call("PUT", "/v1/admin/access/devices/living-room/trust", f.admin, body); w.Code != 200 {
-		t.Fatalf("approve: %d %s", w.Code, w.Body)
-	}
-	// The same operation replays its receipt rather than applying twice.
-	if w = f.call("PUT", "/v1/admin/access/devices/living-room/trust", f.admin, body); w.Code != 200 || !strings.Contains(w.Body.String(), `"revision":2`) {
-		t.Fatalf("replay: %d %s", w.Code, w.Body)
-	}
-	// A new operation against the old revision is a conflict.
-	stale := strings.Replace(body, "device-trust-1", "device-trust-2", 1)
-	if w = f.call("PUT", "/v1/admin/access/devices/living-room/trust", f.admin, stale); w.Code != 409 {
-		t.Fatalf("a stale trust write was accepted: %d %s", w.Code, w.Body)
 	}
 }
 

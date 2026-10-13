@@ -688,14 +688,10 @@ func (s *Service) present(ctx context.Context, c Caller, t presentationTarget) (
 		chosen = resourceByID(resources, string(subtitle.TrackID))
 	}
 	choice.SubtitleKind = subtitleWeight(chosen, subtitle)
-	choice.SubtitleBesideStream = false
-	if chosen != nil {
-		for _, delivery := range chosen.Deliveries {
-			if subtitleKindOf(delivery.Format) == choice.SubtitleKind {
-				choice.SubtitleBesideStream = true
-			}
-		}
-	}
+	// A styled or image track has an original the server hands over as it is
+	// (the .ass with its fonts, the .sup, the .idx and .sub, the DVB packets),
+	// so an engine that draws the kind needs no burn-in beside a stream either.
+	choice.SubtitleBesideStream = chosen != nil && subtitles.RenderingFormat(chosen.Format) != "text"
 
 	// Quality against the connection the client measured.
 	if t.throughputKbps > 0 && video && asset != "" {

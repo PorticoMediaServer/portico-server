@@ -65,6 +65,8 @@ export type WebPlaybackHost = Readonly<{
   /** A request that outlives the page (`HttpLocalApi.farewell`). */
   farewell?(path: string, method: string, body?: unknown): void;
   deviceMemory?: number;
+  /** When the browser's own HLS player is used instead of hls.js (`native-hls.ts`). */
+  nativeHls?: 'first' | 'fallback' | 'never';
   timers?: Timers;
   /** The media element port's clock and timers (tests drive them by hand). */
   playerTimers?: WebPlayerTimers;
@@ -237,7 +239,7 @@ export class WebPlayback implements PlaybackAdapter {
   /** The player screen's element is in the page. Returns the undo for when it leaves. */
   mount(video: VideoLike, subtitles?: SubtitleTimeline, externalRoute?: () => PlayerObservation['externalRoute']): () => void {
     const player = new WebMediaPlayer(video, {
-      loadHls: this.host.loadHls, resolveUrl: path => this.host.mediaUrl(path), subtitles, deviceMemory: this.host.deviceMemory, externalRoute, timers: this.host.playerTimers,
+      loadHls: this.host.loadHls, resolveUrl: path => this.host.mediaUrl(path), subtitles, deviceMemory: this.host.deviceMemory, nativeHls: this.host.nativeHls, externalRoute, timers: this.host.playerTimers,
     });
     this.video = video;
     this.slot.mount(player);
