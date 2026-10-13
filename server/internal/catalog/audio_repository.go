@@ -490,7 +490,7 @@ func (s *Service) commitAudio(ctx context.Context, tx *sql.Tx, library, kind, ro
 		return nil
 	}
 	author := firstTag(f.Tags, "author", "artist")
-	narrator := firstTag(f.Tags, "narrator")
+	narrator := firstTag(f.Tags, "narrator", "composer")
 	var previousBook int64
 	if e := tx.QueryRow(`SELECT book_id FROM catalog_book_files WHERE entity_id=?`, item).Scan(&previousBook); e != nil && !errors.Is(e, sql.ErrNoRows) {
 		return e

@@ -177,6 +177,8 @@ func Helper(in io.Reader, out io.Writer) (result error) {
 			return e
 		}
 		return encoder.Encode(v)
+	case "inventory-audio-tags":
+		return inventoryAudioTagsHelper(r, out)
 	case "lyrics-local":
 		return lyricLocalHelper(r, out)
 	case "mount-identity":

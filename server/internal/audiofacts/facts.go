@@ -85,7 +85,10 @@ func Parse(r io.Reader) (Facts, error) {
 			if v, ok := fields["side_datum/skip_samples:discard_padding"]; ok {
 				discard, _ = strconv.ParseInt(v, 10, 64)
 			}
-			lastDiscard = discard
+			if discard < 0 || discard > 1<<20 {
+				return f, ErrInconsistent
+			}
+			lastDiscard += discard
 		case "frame":
 			n, err := strconv.ParseInt(fields["nb_samples"], 10, 64)
 			if err != nil || n < 0 || n > 1<<20 {
