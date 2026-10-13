@@ -1,4 +1,5 @@
 import {cardCaptionOf} from '../../app/content';
+import {useBack} from '../../app/back';
 import {useEffect, useMemo, useRef, useState} from 'react';
 import React from 'react';
 import {useNavigate, useParams, useSearch} from '@tanstack/react-router';
@@ -52,7 +53,7 @@ export function SavedResourceScreen() {
     } catch {}
   }, [route, playlist, savedBinding.service, personalBinding.service]);
   const directory = () => void navigate({to: '/saved', search: {view: playlist ? 'playlists' : 'collections'}});
-  const back = () => (history.length > 1 ? history.back() : directory());
+  const back = useBack(directory);
   const context = playlist ? 'playlist' : 'collection';
   /** Every change goes through the service's intents; a failure is presented, never thrown at the page. */
   const change = async (work: () => Promise<unknown>, after?: () => void) => {

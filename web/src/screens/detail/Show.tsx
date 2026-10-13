@@ -1,4 +1,5 @@
 import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
+import {useBack} from '../../app/back';
 import {personHref} from '../../app/open';
 import {useNavigate, useParams, useSearch} from '@tanstack/react-router';
 import type {ContentEntry} from '@core/library-content.ts';
@@ -141,7 +142,8 @@ export function ShowScreen() {
     void navigate({to: '/show/$showId/episode/$episodeId', params: {showId, episodeId: episode.id}, search: showSearch(), replace: !!params.episodeId, resetScroll: false});
   }, [navigate, showId, showSearch, params.episodeId]);
   const closeEpisode = useCallback(() => {
-    if (openedHere.current && history.length > 1) { openedHere.current = false; history.back(); return; }
+    // Opened from this page, so the entry before it is this show: going back closes the panel and never leaves Portico.
+    if (openedHere.current) { openedHere.current = false; window.history.back(); return; }
     void navigate({to: '/show/$showId', params: {showId}, search: showSearch({episode: undefined}), replace: true});
   }, [navigate, showId, showSearch]);
   const chooseSeason = (season: WorkspaceSeason) => {
@@ -159,7 +161,7 @@ export function ShowScreen() {
     const loaded = firstPage.entries;
     pinnedNextUp.current = {showId: show.id, entry: loaded.find(e => e.playback && (e.progressSeconds ?? 0) > 0 && !e.watched) ?? loaded.find(e => e.playback && !e.watched) ?? loaded.find(e => e.playback)};
   }
-  const back = () => (history.length > 1 ? history.back() : void navigate({to: '/'}));
+  const back = useBack(() => void navigate({to: '/'}));
   // Show and season watched go through the container personal-state
   // route (O(1)) — never one write per episode. Every hook stays above the
   // error return below; the hook idles until the show has loaded.

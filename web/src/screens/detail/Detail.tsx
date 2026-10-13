@@ -1,4 +1,5 @@
 import {originalTitleLine} from '@core/presentation/index.ts';
+import {useBack} from '../../app/back';
 import {personHref} from '../../app/open';
 import React, {useEffect, useMemo, useRef, useState} from 'react';
 import {useNavigate, useParams, useSearch} from '@tanstack/react-router';
@@ -142,7 +143,7 @@ export function DetailScreen() {
       case 'delete': if (play?.playback) deleter?.open({itemIds: [play.playback.itemId], titles: [item.title]}); break;
     }
   }
-  const back = () => (history.length > 1 ? history.back() : void navigate({to: '/'}));
+  const back = useBack(() => void navigate({to: '/'}));
   // Spec — Title Pages §3: an episode isn't a destination of its own; it opens as the panel over its show.
   useEffect(() => {
     const episode = data?.item.episode;

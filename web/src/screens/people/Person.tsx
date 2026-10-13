@@ -1,7 +1,8 @@
 import {cardCaptionOf} from '../../app/content';
+import {useBack} from '../../app/back';
 import type {MenuAnchor} from '../../ui';
 import {useCallback, useEffect, useMemo, useState, useSyncExternalStore} from 'react';
-import {useParams} from '@tanstack/react-router';
+import {useNavigate, useParams} from '@tanstack/react-router';
 import type {ContentEntry} from '@core/library-content.ts';
 import {readPerson, type PersonCredit, type PersonPage, type PersonRole} from '@core/people.ts';
 import type {CollectionStatus, WindowedCollection} from '@core/collections/index.ts';
@@ -57,6 +58,8 @@ export function PersonScreen() {
   useEffect(() => () => credits.dispose(), [credits]);
   const creditsSnapshot = useSyncExternalStore(credits.subscribe, credits.getSnapshot);
   const open = useOpenEntry();
+  const homeward = useNavigate();
+  const back = useBack(() => void homeward({to: '/'}));
   const person = state.page?.person;
   const dates = person ? (person.deathDate ? t('web.person.lived', {born: lifeDate(i18n, person.birthDate) || '?', died: lifeDate(i18n, person.deathDate)}) : person.birthDate ? t('web.person.born', {date: lifeDate(i18n, person.birthDate)}) : '') : '';
   const total = state.page?.pageInfo.total ?? 0;
@@ -66,7 +69,7 @@ export function PersonScreen() {
   const knownFor = person && role === 'all' && total > person.knownFor.length ? person.knownFor : [];
   return (
     <Page>
-      <PageHeader onBack={() => window.history.back()} title={person?.name ?? (state.phase === 'loading' ? <Skeleton style={{width: 220, height: 32}} /> : t('web.person.fallback'))} eyebrow={person?.roles.join(' · ')} subtitle={dates || undefined} />
+      <PageHeader onBack={back} title={person?.name ?? (state.phase === 'loading' ? <Skeleton style={{width: 220, height: 32}} /> : t('web.person.fallback'))} eyebrow={person?.roles.join(' · ')} subtitle={dates || undefined} />
       {state.phase === 'error' && !person ? <ErrorState error={state.error} context="person" retry={() => void load()} /> : null}
       {person ? (
         <Inset>

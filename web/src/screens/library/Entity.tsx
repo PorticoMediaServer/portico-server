@@ -1,4 +1,5 @@
 import {useSelectionRefresh} from '../../app/selection';
+import {useBack} from '../../app/back';
 import React, {useMemo} from 'react';
 import {useNavigate, useParams, useSearch} from '@tanstack/react-router';
 import type {ContentEntry, ContentRoute, ContentView} from '@core/library-content.ts';
@@ -68,7 +69,7 @@ export function EntityScreen() {
     if (!loaded.length) return;
     player.playSequence(loaded, 0, 0, containerOf(true));
   };
-  const back = () => (history.length > 1 ? history.back() : void navigate({to: '/library/$libraryId', params: {libraryId}, search: {}}));
+  const back = useBack(() => void navigate({to: '/library/$libraryId', params: {libraryId}, search: {}}));
   const heroShape = entity ? shapeFor(entity.kind, 'hero') : 'square';
   // M26 item 5: a collection without custom art shows a 2×2 mosaic of the
   // first 4 item posters or covers in the hero (undefined = custom art wins).
