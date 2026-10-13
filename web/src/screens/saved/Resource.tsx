@@ -17,6 +17,9 @@ import {LoadingGrid, SECTION_WINDOW_AT, useAppendedPages} from '../shared/Sectio
 import {ErrorNotice, errorText} from '../../app/errors';
 import {NameDialog} from './Saved';
 import {useViewerScope} from '../../app/viewer-scope';
+import {useFreshDocument} from '../../app/freshness';
+import {titlesWithPersonalState} from '@core/freshness-hub.ts';
+
 import {useI18n} from '../../app/i18n';
 
 const requestId = () => Promise.resolve(crypto.randomUUID());
@@ -24,6 +27,8 @@ type Visible = Extract<PlaylistOccurrence, {hidden: false}>;
 
 /** One playlist or personal collection: identity, Play, then its ordered entries, and (WEB-SAVED-02)
  * the management the server offers for it: rename, reorder, remove and delete. */
+const resourceDependencies = Object.freeze([...titlesWithPersonalState()]);
+
 export function SavedResourceScreen() {
   const {t} = useI18n();
   const {kind, resourceId} = useParams({from: '/app/saved/$kind/$resourceId'});
@@ -39,6 +44,9 @@ export function SavedResourceScreen() {
   const route = useMemo<SavedRoute>(() => (playlist ? {view: 'playlist', playlistId: resourceId} : {view: 'resource', resourceId}), [playlist, resourceId]);
   const savedBinding = useService<SavedService, SavedSnapshot>(() => new SavedService({api, scope, requestId}), [api, scope]);
   const personalBinding = useService<PersonalSavedService, PersonalSavedSnapshot>(() => new PersonalSavedService(api, scope, requestId), [api, scope]);
+  // A playlist, collection or saved view open on screen follows changes made elsewhere, in place.
+  useFreshDocument(resourceDependencies, context => savedBinding.service.revalidate(context), () => savedBinding.service.getSnapshot().phase === 'ready');
+  useFreshDocument(resourceDependencies, context => personalBinding.service.revalidate(context), () => !!personalBinding.service.getSnapshot().viewerFence);
   const [renaming, setRenaming] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [busy, setBusy] = useState(false);

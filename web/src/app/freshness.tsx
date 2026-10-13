@@ -79,7 +79,7 @@ export function useReachability(): Reachability {
   return useSyncExternalStore(hub.subscribeReachability, hub.getReachability);
 }
 
-type Made<S> = {service: S; document: FreshDocumentOptions; watch?(document: FreshDocument): () => void};
+type MakeDocument<S> = () => {service: S; document: FreshDocumentOptions; watch?(document: FreshDocument): () => void};
 type Store<T> = {getSnapshot(): T; subscribe(listener: () => void): () => void; dispose?(): void};
 
 /**
@@ -87,7 +87,7 @@ type Store<T> = {getSnapshot(): T; subscribe(listener: () => void): () => void; 
  * every time the same thing is opened. `make` runs only when the pool has nothing under `key`.
  * The document counts as open while this component is mounted.
  */
-export function usePooled<S extends Store<T>, T>(key: string, make: () => Made<S>): {service: S; snapshot: T; document: FreshDocument; memo: Record<string, unknown>} {
+export function usePooled<S extends Store<T>, T>(key: string, make: MakeDocument<S>): {service: S; snapshot: T; document: FreshDocument; memo: Record<string, unknown>} {
   const {pool} = useFreshness();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const entry = useMemo(() => pool.peek<S>(key, make), [pool, key]);
@@ -101,9 +101,25 @@ export function usePooled<S extends Store<T>, T>(key: string, make: () => Made<S
   return {service: entry.service, snapshot, document: entry.document, memo: entry.memo};
 }
 
+/**
+ * A failure is not shown at once. While a first load that failed is being tried again by itself
+ * (the first couple of attempts, a few seconds), the screen goes on showing that it is loading;
+ * after that its own error state shows, with Try again, and the attempts continue behind it.
+ */
+export function useRecovering(document: FreshDocument): boolean {
+  const state = useSyncExternalStore(document.subscribe, document.getState);
+  return (state.stale || state.revalidating) && state.failures < 2;
+}
+
 /** `usePooled` for a client-core service that reads itself again with `revalidate()`. */
 export function usePooledService<S extends QuietService & Store<T>, T>(key: string, create: () => S, dependencies: readonly FreshnessDependency[] | (() => readonly FreshnessDependency[]), options?: {hasContent?(service: S): boolean}) {
-  return usePooled<S, T>(key, () => serviceDocument(create(), dependencies, options));
+  const held = usePooled<S, T>(key, () => serviceDocument(create(), dependencies, options));
+  const recovering = useRecovering(held.document);
+  const shown = held.snapshot as T & {phase?: string; error?: unknown};
+  // An error in its first moments, while the load is being tried again: still loading as far as the person is concerned.
+  const quiet = recovering && shown.phase === 'error';
+  const snapshot = useMemo(() => (quiet ? {...shown, phase: 'loading', error: null} as T : held.snapshot), [quiet, shown, held.snapshot]);
+  return {...held, snapshot};
 }
 
 /**

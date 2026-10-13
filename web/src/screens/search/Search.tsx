@@ -14,6 +14,9 @@ import s from './Search.module.css';
 import {useServerPreferences} from '../../app/server-preferences';
 import {ErrorNotice, ErrorState, changedError} from '../../app/errors';
 import {useViewerScope} from '../../app/viewer-scope';
+import {useFreshDocument} from '../../app/freshness';
+import {dependsOn, titlesWithPersonalState} from '@core/freshness-hub.ts';
+
 import {useI18n, type I18n} from '../../app/i18n';
 
 type ChipId = SearchGroup | 'all';
@@ -37,6 +40,8 @@ const RECENT_LIMIT = 8;
  */
 type Kept = {key: string; api: unknown; service: SearchService; text: string; chip: ChipId; recent: string[]};
 let kept: Kept | null = null;
+/** Search reaches every library this viewer may see, with this profile's marks on the results. */
+const searchDependencies = Object.freeze([dependsOn.libraries, ...titlesWithPersonalState()]);
 function useSearchSession(api: ConstructorParameters<typeof SearchService>[0]['api'], scope: {viewerId: string; serverId: string}): Kept {
   const key = `${scope.serverId}\n${scope.viewerId}`;
   const session = useMemo(() => {
@@ -61,6 +66,8 @@ export function SearchScreen() {
   const libraries = useLibrariesContext();
   const scope = useViewerScope();
   const mem = useSearchSession(api, scope);
+  // Results on screen follow the libraries: a title that arrives, changes or goes updates its card in place.
+  useFreshDocument(searchDependencies, context => mem.service.revalidate(context), () => mem.service.getSnapshot().phase === 'ready');
   const service = mem.service;
   const snapshot: SearchSnapshot = useSyncExternalStore(service.subscribe, service.getSnapshot);
   const address = useSearch({from: '/app/search'});

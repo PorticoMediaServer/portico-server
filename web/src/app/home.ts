@@ -5,7 +5,7 @@ import {dependsOn, titlesWithPersonalState} from '@core/freshness-hub.ts';
 import {serviceDocument} from '@core/freshness-pool.ts';
 import {useSession} from './session';
 import {useViewerScope} from './viewer-scope';
-import {usePooled} from './freshness';
+import {usePooled, useRecovering} from './freshness';
 import {RECOMMENDATIONS_RESET, recommendationViewer} from './not-interested';
 import {currentI18n} from './i18n';
 import type {MessageId} from '@i18n';
@@ -53,7 +53,12 @@ export function useHome() {
   const saveLayout = useCallback((rowOrder: readonly string[], hiddenRowIds: readonly string[], expectedRevision?: number): Promise<HomeLayout> => service.saveLayout(rowOrder, hiddenRowIds, operationKey, expectedRevision), [service]);
   const resetLayout = useCallback(() => service.resetLayout(operationKey), [service]);
   const loadLayout = useCallback((signal?: AbortSignal): Promise<HomeLayoutView> => service.loadLayout(signal), [service]);
-  const state = useMemo<HomeState>(() => ({phase: snapshot.phase === 'idle' ? 'loading' : snapshot.phase, document: snapshot.document, error: snapshot.error, paging: snapshot.paging}), [snapshot]);
+  // A first load that failed is tried again by itself; for its first moments Home goes on showing that it is loading.
+  const recovering = useRecovering(document);
+  const state = useMemo<HomeState>(() => {
+    const quiet = recovering && snapshot.phase === 'error' && !snapshot.document;
+    return {phase: snapshot.phase === 'idle' || quiet ? 'loading' : snapshot.phase, document: snapshot.document, error: quiet ? undefined : snapshot.error, paging: snapshot.paging};
+  }, [snapshot, recovering]);
   return {state, refresh: load, more, saveLayout, resetLayout, loadLayout};
 }
 
