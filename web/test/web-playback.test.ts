@@ -337,6 +337,16 @@ test('closing the tab ends the session with its position; hiding it only reports
   assert.deepEqual(t.farewells, [{path: `/v1/playback/sessions/${id}`, method: 'DELETE', body: {positionMs: 77_000}}]);
 });
 
+test('closing the tab on a live channel ends the channel\'s session too; hiding it does not', ctx => {
+  const t = setup(ctx);
+  // A channel's session is the channel control's, so the controller holds none: the playback service says what is tuned.
+  (t.web as unknown as {service: {getSnapshot(): unknown}}).service = {getSnapshot: () => ({channel: {channelId: 'ch1'}, session: {id: 'live session/1'}, positionSeconds: 0, audioEffects: {rendering: false}})};
+  t.web.pageHidden(false);
+  assert.equal(t.farewells.length, 0, 'a hidden tab keeps watching');
+  t.web.pageHidden(true);
+  assert.deepEqual(t.farewells, [{path: '/v1/playback/sessions/live%20session%2F1', method: 'DELETE', body: undefined}]);
+});
+
 test('leaving stops the session at the last position', async ctx => {
   const t = setup(ctx);
   await t.player.playItem('movie', 0);
