@@ -286,9 +286,9 @@ func requestSelection(t ContainerTarget) (string, []any) {
 		}
 		return `SELECT pid(i.public_id) id,printf('%020d:%020d:',COALESCE(s.number,0),CASE WHEN e.numbering='date' THEN e.air_date ELSE e.number END)||pid(i.public_id) AS position FROM catalog_episodes e JOIN catalog_entities show ON show.id=e.show_id LEFT JOIN catalog_entities season ON season.id=e.season_id LEFT JOIN catalog_seasons s ON s.entity_id=season.id JOIN catalog_entities i ON i.id=e.entity_id WHERE ` + field, []any{t.ID}
 	case "album":
-		return `SELECT pid(i.public_id) id,printf('%020d:%020d:',COALESCE(s.disc_number,0),COALESCE(s.track_number,0))||pid(i.public_id) AS position FROM catalog_entities album JOIN catalog_songs s ON s.album_id=album.id JOIN catalog_entities i ON i.id=s.entity_id WHERE album.public_id=pid_blob(?)`, []any{t.ID}
+		return `SELECT pid(i.public_id) id,printf('%020d:%020d:',COALESCE(s.disc_number,1),COALESCE(s.track_number,0))||pid(i.public_id) AS position FROM catalog_entities album JOIN catalog_songs s ON s.album_id=album.id JOIN catalog_entities i ON i.id=s.entity_id WHERE album.public_id=pid_blob(?)`, []any{t.ID}
 	case "book":
-		return `SELECT pid(i.public_id) id,printf('%020d:%020d:',COALESCE(b.disc_number,0),COALESCE(b.part_number,0))||pid(i.public_id) AS position FROM catalog_entities book JOIN catalog_book_files b ON b.book_id=book.id JOIN catalog_entities i ON i.id=b.entity_id WHERE book.public_id=pid_blob(?)`, []any{t.ID}
+		return `SELECT pid(i.public_id) id,printf('%020d:%020d:',COALESCE(b.disc_number,1),COALESCE(b.part_number,0))||pid(i.public_id) AS position FROM catalog_entities book JOIN catalog_book_files b ON b.book_id=book.id JOIN catalog_entities i ON i.id=b.entity_id WHERE book.public_id=pid_blob(?)`, []any{t.ID}
 	default:
 		return `SELECT pid(i.public_id) id,p.order_key||'!'||p.token AS position FROM catalog_playlists playlist JOIN catalog_playlist_entries p ON p.playlist_id=playlist.id JOIN catalog_entities i ON i.id=p.item_id WHERE playlist.token=? AND p.id=(SELECT first.id FROM catalog_playlist_entries first WHERE first.playlist_id=p.playlist_id AND first.item_id=p.item_id ORDER BY first.order_key,first.token LIMIT 1)`, []any{t.ID}
 	}
