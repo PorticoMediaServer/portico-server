@@ -153,7 +153,8 @@ func deriveFacetCounts(ctx context.Context, tx *sql.Tx, id int64) error {
 			return err
 		}
 	}
-	return nil
+	_, err = tx.ExecContext(ctx, `UPDATE catalog_facet_members SET recent_key=COALESCE((SELECT COALESCE(recent_text,added_text) FROM catalog_browse_rows WHERE entity_id=?1),'') WHERE entity_id=?1`, id)
+	return err
 }
 
 func adjustFacetCount(ctx context.Context, tx *sql.Tx, at facetPlace, k facetKey, delta int) error {
@@ -173,7 +174,7 @@ func adjustFacetCount(ctx context.Context, tx *sql.Tx, at facetPlace, k facetKey
 
 func init() {
 	Register(DomainFacetCounts, Derivation{
-		Version: 3,
+		Version: 4,
 		Drain: func(ctx context.Context, tx *sql.Tx, keys []Key, limit int) ([]int64, error) {
 			done := make([]int64, 0, len(keys))
 			derived := make(map[int64]bool, len(keys))

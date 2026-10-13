@@ -20,7 +20,7 @@ const (
 	BrowseDefaultLimit    = 40
 	BrowseMaximumLimit    = 100
 	BrowseCursorTTLSecond = 1800
-	BrowseMaximumSorts    = 3
+	BrowseMaximumSorts    = 1
 	BrowseMaximumValues   = 100
 	browseFacetLimit      = 200
 )
@@ -98,9 +98,10 @@ var browseFields = []browseField{
 	// lists those albums. Clients do not offer it as a filter to members.
 	{ID: "match", LabelKey: "browse.field.match", Type: valueEnum, Operators: enumOperators, ControlHint: "select", Complexity: "standard", Cost: "indexed-join", ApplicableKinds: kinds("album"), AllowedValues: []string{"matched", "unmatched"},
 		Entity: `CASE WHEN EXISTS(SELECT 1 FROM catalog_albums al JOIN catalog_entities ar ON ar.id=al.artist_id WHERE al.entity_id=e.entity_id AND ar.title='Unknown artist') THEN 'unmatched' ELSE 'matched' END`},
+	{ID: "search", LabelKey: "browse.field.search", Type: valueString, Operators: []string{"contains"}, ControlHint: "text", Complexity: "quick", Cost: "indexed-join", ApplicableKinds: kinds(commonKinds), Entity: "e.title"},
 	{ID: "title", LabelKey: "browse.field.title", Type: valueString, Operators: stringOperators(false), ControlHint: "text", Complexity: "quick", Cost: "indexed", ApplicableKinds: kinds(commonKinds), Entity: "e.title"},
-	{ID: "year", LabelKey: "browse.field.year", Type: valueNumber, Operators: numberOperators, ControlHint: "number-range", Complexity: "quick", Cost: "indexed", ApplicableKinds: kinds("movie,episode,show,season,album"), Facet: "year", Entity: "NULLIF(e.year,0)"},
-	{ID: "decade", LabelKey: "browse.field.decade", Type: valueNumber, Operators: []string{"equals", "not-equals", "in", "not-in", "between"}, ControlHint: "facet-multi-select", Complexity: "quick", Cost: "indexed", ApplicableKinds: kinds("movie,episode,show,season,album"), Facet: "decade", Entity: "CASE WHEN e.year BETWEEN 1800 AND 2199 THEN (e.year/10)*10 END"},
+	{ID: "year", LabelKey: "browse.field.year", Type: valueNumber, Operators: numberOperators, ControlHint: "number-range", Complexity: "quick", Cost: "indexed", ApplicableKinds: kinds("movie,episode,show,season,album,song,book,audiobook_file"), Facet: "year", Entity: "NULLIF(e.year,0)"},
+	{ID: "decade", LabelKey: "browse.field.decade", Type: valueNumber, Operators: []string{"equals", "not-equals", "in", "not-in", "between"}, ControlHint: "facet-multi-select", Complexity: "quick", Cost: "indexed", ApplicableKinds: kinds("movie,episode,show,season,album,song,book,audiobook_file"), Facet: "decade", Entity: "CASE WHEN e.year BETWEEN 1800 AND 2199 THEN (e.year/10)*10 END"},
 	{ID: "releaseDate", LabelKey: "browse.field.releaseDate", Type: valueDate, Operators: dateOperators, ControlHint: "date-range", Complexity: "standard", Cost: "indexed-join", ApplicableKinds: kinds(videoKinds), Join: attributeJoin("releaseDate"), Value: "ca.source_value"},
 	{ID: "dateAdded", LabelKey: "browse.field.dateAdded", Type: valueDate, Operators: dateOperators, ControlHint: "date-range", Complexity: "quick", Cost: "indexed", ApplicableKinds: kinds(commonKinds), Entity: "NULLIF(e.added_text,'')"},
 	{ID: "playState", LabelKey: "browse.field.playState", Type: valueEnum, Operators: enumOperators, ControlHint: "select", Complexity: "quick", Cost: "indexed-join", ApplicableKinds: kinds(playedKinds), AllowedValues: []string{"unplayed", "in-progress", "played"},
@@ -160,6 +161,12 @@ var browseFields = []browseField{
 		Join: `JOIN catalog_book_files bfl ON bfl.entity_id=bei.item_id JOIN catalog_books bok ON bok.entity_id=bfl.book_id`, Value: "NULLIF(bok.narrator,'')"},
 	{ID: "series", LabelKey: "browse.field.series", Type: valueSet, Operators: stringOperators(true), ControlHint: "facet-multi-select", Complexity: "standard", Cost: "indexed-join", ApplicableKinds: kinds(bookKinds), Facet: "series",
 		Join: attributeJoin("series"), Value: "ca.source_value"},
+	{ID: "subtitleLanguage", LabelKey: "browse.field.subtitleLanguage", Type: valueSet, Operators: stringOperators(true), ControlHint: "facet-multi-select", Complexity: "standard", Cost: "indexed-join", ApplicableKinds: kinds(videoKinds), Join: attributeJoin("subtitleLanguage"), Value: "ca.source_value"},
+	{ID: "versions", LabelKey: "browse.field.versions", Type: valueNumber, Operators: numberOperators, ControlHint: "number-range", Complexity: "standard", Cost: "indexed-join", ApplicableKinds: kinds(assetedKinds), Join: `JOIN (SELECT 1) version_scope`, Value: `(SELECT count(*) FROM catalog_asset_links l WHERE l.entity_id=bei.item_id AND l.part_index=0)`},
+	{ID: "memberOf", LabelKey: "browse.field.memberOf", Type: valueSet, Operators: []string{"equals", "in", "not-in"}, ControlHint: "text", Complexity: "standard", Cost: "indexed-join", ApplicableKinds: kinds(commonKinds), Join: `JOIN catalog_browse_memberships parent ON parent.item_id=bei.item_id JOIN catalog_entities container ON container.id=parent.entity_id`, Value: "pid(container.public_id)"},
+	{ID: "person", LabelKey: "browse.field.person", Type: valueSet, Operators: []string{"equals", "in", "not-in"}, ControlHint: "text", Complexity: "standard", Cost: "indexed-join", ApplicableKinds: kinds(videoKinds), Join: `JOIN catalog_credits credit ON credit.entity_id IN(bei.item_id,bei.entity_id) JOIN catalog_people person ON person.id=credit.person_id`, Value: "person.token"},
+	{ID: "list", LabelKey: "browse.field.list", Type: valueSet, Operators: []string{"equals", "in", "not-in"}, ControlHint: "text", Complexity: "standard", Cost: "indexed-join", ApplicableKinds: kinds(playedKinds),
+		Join: `JOIN catalog_playlist_entries entry ON entry.item_id=bei.item_id JOIN catalog_playlists list ON list.id=entry.playlist_id AND list.deleted=0 AND (list.owner_authority=? AND list.owner_account=? AND list.owner_profile=? OR EXISTS(SELECT 1 FROM playlist_shares share WHERE share.playlist_id=list.token AND share.authority=? AND share.account_id=? AND share.profile_id=?))`, Value: "list.token", Profile: 6},
 }
 
 func browseFieldByID(id string) (browseField, bool) {
@@ -191,7 +198,7 @@ type browseSort struct {
 var browseSorts = []browseSort{
 	{ID: "title", LabelKey: "sort.title", Directions: []string{"asc", "desc"}, DefaultDirection: "asc", ApplicableKinds: kinds(commonKinds), Expression: "e.sort_key COLLATE NOCASE", Ordering: compactcatalog.OrderTitle, ClassKey: "v.sort_key COLLATE NOCASE"},
 	{ID: "added", LabelKey: "sort.added", Directions: []string{"asc", "desc"}, DefaultDirection: "desc", ApplicableKinds: kinds(commonKinds), Expression: "COALESCE(e.added_text,'')", Ordering: compactcatalog.OrderAdded, ClassKey: "v.added"},
-	{ID: "year", LabelKey: "sort.year", Directions: []string{"asc", "desc"}, DefaultDirection: "desc", ApplicableKinds: kinds("movie,episode,show,season,album"), Expression: "e.year", Ordering: compactcatalog.OrderYear, ClassKey: "v.year"},
+	{ID: "year", LabelKey: "sort.year", Directions: []string{"asc", "desc"}, DefaultDirection: "desc", ApplicableKinds: kinds("movie,episode,show,season,album,song,book,audiobook_file"), Expression: "e.year", Ordering: compactcatalog.OrderYear, ClassKey: "v.year"},
 	{ID: "duration", LabelKey: "sort.duration", Directions: []string{"asc", "desc"}, DefaultDirection: "desc", ApplicableKinds: kinds(assetedKinds), Expression: "COALESCE(e.duration_max,0)", Ordering: compactcatalog.OrderDuration, ClassKey: "v.duration"},
 	{ID: "communityRating", LabelKey: "sort.communityRating", Directions: []string{"asc", "desc"}, DefaultDirection: "desc", ApplicableKinds: kinds(commonKinds), Expression: "COALESCE(e.rating_max,0)", Ordering: compactcatalog.OrderRating, ClassKey: "v.rating"},
 	{ID: "personalRating", LabelKey: "sort.personalRating", Directions: []string{"asc", "desc"}, DefaultDirection: "desc", ApplicableKinds: kinds(playedKinds), Profile: true, Ordering: -1,
@@ -200,18 +207,20 @@ var browseSorts = []browseSort{
 	// then the rest in title order. It orders on its own (no second sort).
 	{ID: "forYou", LabelKey: "sort.forYou", Directions: []string{"desc"}, DefaultDirection: "desc", ApplicableKinds: kinds("movie,show,album,book"), Profile: true, Ordering: -1,
 		Expression: "(SELECT 0 WHERE ? IS NOT NULL)"},
-	// Aired: an episode's air date (the item's release date), for "Recently aired". It is an
-	// expression over the item's details, not a column of the browse rows: it has no counted
-	// ordering, so a page is ordered by a pass over the library's episodes (Backlog: give it one).
-	{ID: "aired", LabelKey: "sort.aired", Directions: []string{"asc", "desc"}, DefaultDirection: "desc", ApplicableKinds: kinds("episode"), Ordering: -1,
-		Expression: "COALESCE((SELECT d.release_date FROM catalog_item_details d WHERE d.entity_id=e.entity_id),'')"},
-	// Latest aired: a show by its most recently aired episode, for "Recently aired": one card
-	// per show, however many of its episodes are new (Justin, 2 Oct 2026). Like `aired` it is an
-	// expression with no counted ordering; a page is ordered by a pass over the library's episodes.
-	{ID: "latestAired", LabelKey: "sort.aired", Directions: []string{"asc", "desc"}, DefaultDirection: "desc", ApplicableKinds: kinds("show"), Ordering: -1,
-		Expression: "COALESCE((SELECT max(d.release_date) FROM catalog_episodes ep JOIN catalog_item_details d ON d.entity_id=ep.entity_id WHERE ep.show_id=e.entity_id),'')"},
+	{ID: "aired", LabelKey: "sort.aired", Directions: []string{"asc", "desc"}, DefaultDirection: "desc", ApplicableKinds: kinds("episode"), Ordering: -2, Expression: "e.release_key"},
+	{ID: "latestAired", LabelKey: "sort.aired", Directions: []string{"asc", "desc"}, DefaultDirection: "desc", ApplicableKinds: kinds("show"), Ordering: -2, Expression: "e.latest_aired_key"},
 	{ID: "lastPlayed", LabelKey: "sort.lastPlayed", Directions: []string{"asc", "desc"}, DefaultDirection: "desc", ApplicableKinds: kinds(playedKinds), Profile: true, Ordering: -1,
 		Expression: "(SELECT COALESCE(max(pi.last_played_at),'') FROM catalog_browse_memberships bei JOIN personal_items pi ON pi.item_id=bei.item_id AND pi.profile_id=? WHERE bei.entity_id=e.entity_id)"},
+	{ID: "releaseDate", LabelKey: "sort.releaseDate", Directions: []string{"asc", "desc"}, DefaultDirection: "desc", ApplicableKinds: kinds("movie,episode,show,season,album,book"), Ordering: -2, Expression: "e.release_key"},
+	{ID: "criticRating", LabelKey: "sort.criticRating", Directions: []string{"asc", "desc"}, DefaultDirection: "desc", ApplicableKinds: kinds("movie,episode,show,season,collection"), Ordering: -2, Expression: "e.critic_key"},
+	{ID: "episodeCount", LabelKey: "sort.episodeCount", Directions: []string{"asc", "desc"}, DefaultDirection: "desc", ApplicableKinds: kinds("show,season"), Ordering: -2, Expression: "e.episode_count"},
+	{ID: "album", LabelKey: "sort.album", Directions: []string{"asc", "desc"}, DefaultDirection: "asc", ApplicableKinds: kinds("song"), Ordering: -2, Expression: "e.album_key"},
+	{ID: "artist", LabelKey: "sort.artist", Directions: []string{"asc", "desc"}, DefaultDirection: "asc", ApplicableKinds: kinds("song,album"), Ordering: -2, Expression: "e.artist_key"},
+	{ID: "trackNumber", LabelKey: "sort.trackNumber", Directions: []string{"asc", "desc"}, DefaultDirection: "asc", ApplicableKinds: kinds("song"), Ordering: -2, Expression: "e.track_key"},
+	{ID: "fileSize", LabelKey: "sort.fileSize", Directions: []string{"asc", "desc"}, DefaultDirection: "desc", ApplicableKinds: kinds("movie,episode,show,season,collection,song,album,artist,audiobook_file,book"), Ordering: -2, Expression: "e.file_size"},
+	{ID: "resolution", LabelKey: "sort.resolution", Directions: []string{"asc", "desc"}, DefaultDirection: "desc", ApplicableKinds: kinds("movie,episode,show,season,collection"), Ordering: -2, Expression: "e.resolution_key"},
+	{ID: "random", LabelKey: "sort.random", Directions: []string{"asc", "desc"}, DefaultDirection: "asc", ApplicableKinds: kinds("movie,episode,show,season,collection,song,album,artist,audiobook_file,book,author"), Ordering: -2, Expression: "e.random_key"},
+	{ID: "playCount", LabelKey: "sort.playCount", Directions: []string{"asc", "desc"}, DefaultDirection: "desc", ApplicableKinds: kinds(playedKinds), Profile: true, Ordering: -1, Expression: "(SELECT COALESCE(play_count,0) FROM catalog_personal_sort_rows p WHERE p.profile_id=? AND p.entity_id=e.entity_id)"},
 }
 
 func browseSortByID(id string) (browseSort, bool) {
@@ -337,6 +346,7 @@ type BrowseSortCapability struct {
 	Directions       []string `json:"directions"`
 	DefaultDirection string   `json:"defaultDirection"`
 	Expensive        bool     `json:"expensive"`
+	Seeded           bool     `json:"seeded"`
 	ApplicableKinds  []string `json:"applicableKinds"`
 }
 type BrowsePivotCapability struct {
@@ -347,6 +357,9 @@ type BrowsePivotCapability struct {
 	SupportedViews []string              `json:"supportedViews"`
 	Browsable      bool                  `json:"browsable"`
 	Aggregate      string                `json:"aggregate,omitempty"`
+	Sorts          []string              `json:"sorts"`
+	Filters        []string              `json:"filters"`
+	Paging         string                `json:"paging"`
 }
 type BrowseQuickFilter struct {
 	ID       string      `json:"id"`
@@ -362,14 +375,23 @@ type BrowseQueryLimits struct {
 	MaximumLimit     int `json:"maximumLimit"`
 	CursorTTLSeconds int `json:"cursorTtlSeconds"`
 }
+type BrowseSurfaceCapability struct {
+	ID              string   `json:"id"`
+	Endpoint        string   `json:"endpoint"`
+	MembershipField string   `json:"membershipField,omitempty"`
+	Sorts           []string `json:"sorts"`
+	Filters         []string `json:"filters"`
+	Paging          string   `json:"paging"`
+}
 type BrowseCapabilities struct {
-	Library       Library                 `json:"library"`
-	Pivots        []BrowsePivotCapability `json:"pivots"`
-	ResolvedPivot *BrowsePivotCapability  `json:"resolvedPivot,omitempty"`
-	Fields        []BrowseFieldCapability `json:"fields"`
-	Sorts         []BrowseSortCapability  `json:"sorts"`
-	QuickFilters  []BrowseQuickFilter     `json:"quickFilters"`
-	QueryLimits   BrowseQueryLimits       `json:"queryLimits"`
+	Surfaces      []BrowseSurfaceCapability `json:"surfaces"`
+	Library       Library                   `json:"library"`
+	Pivots        []BrowsePivotCapability   `json:"pivots"`
+	ResolvedPivot *BrowsePivotCapability    `json:"resolvedPivot,omitempty"`
+	Fields        []BrowseFieldCapability   `json:"fields"`
+	Sorts         []BrowseSortCapability    `json:"sorts"`
+	QuickFilters  []BrowseQuickFilter       `json:"quickFilters"`
+	QueryLimits   BrowseQueryLimits         `json:"queryLimits"`
 }
 
 func quickFilter(id, key, field, operator string, value any) BrowseQuickFilter {
@@ -408,7 +430,7 @@ func (s *Service) BrowseCapabilitiesFor(library, pivot string) (BrowseCapabiliti
 		return out, errors.New("this library kind publishes no browse pivots")
 	}
 	for _, entry := range available {
-		out.Pivots = append(out.Pivots, BrowsePivotCapability{ID: entry.ID, LabelKey: entry.LabelKey, EntityKinds: entry.EntityKinds, DefaultSort: entry.DefaultSort, SupportedViews: entry.SupportedViews, Browsable: entry.Browsable, Aggregate: entry.Aggregate})
+		out.Pivots = append(out.Pivots, BrowsePivotCapability{ID: entry.ID, LabelKey: entry.LabelKey, EntityKinds: entry.EntityKinds, DefaultSort: entry.DefaultSort, SupportedViews: entry.SupportedViews, Browsable: entry.Browsable || entry.Aggregate != "", Aggregate: entry.Aggregate, Sorts: pivotSortIDs(lib.Kind, entry), Filters: pivotFieldIDs(lib.Kind, entry), Paging: "keyset"})
 	}
 	kindFilter := map[string]bool{}
 	if pivot != "" {
@@ -422,7 +444,7 @@ func (s *Service) BrowseCapabilitiesFor(library, pivot string) (BrowseCapabiliti
 				out.ResolvedPivot = &copied
 			}
 		}
-		for _, kind := range entityKindMembers(resolved) {
+		for _, kind := range pivotFilterKinds(lib.Kind, resolved) {
 			kindFilter[kind] = true
 		}
 	}
@@ -437,12 +459,84 @@ func (s *Service) BrowseCapabilitiesFor(library, pivot string) (BrowseCapabiliti
 		out.Fields = append(out.Fields, capability)
 	}
 	for _, entry := range browseSorts {
+		if out.ResolvedPivot != nil && out.ResolvedPivot.Aggregate != "" {
+			continue
+		}
 		if len(kindFilter) > 0 && !anyKind(entry.ApplicableKinds, kindFilter) {
 			continue
 		}
-		out.Sorts = append(out.Sorts, BrowseSortCapability{ID: entry.ID, LabelKey: entry.LabelKey, Directions: entry.Directions, DefaultDirection: entry.DefaultDirection, Expensive: entry.Profile, ApplicableKinds: entry.ApplicableKinds})
+		out.Sorts = append(out.Sorts, BrowseSortCapability{ID: entry.ID, LabelKey: entry.LabelKey, Directions: entry.Directions, DefaultDirection: entry.DefaultDirection, Expensive: entry.ID == "forYou", Seeded: entry.ID == "random", ApplicableKinds: entry.ApplicableKinds})
+	}
+	if out.ResolvedPivot != nil && out.ResolvedPivot.Aggregate != "" {
+		for _, id := range []string{"title", "count", "recentActivity"} {
+			out.Sorts = append(out.Sorts, BrowseSortCapability{ID: id, LabelKey: "sort." + id, Directions: []string{"asc", "desc"}, DefaultDirection: map[string]string{"title": "asc", "count": "desc", "recentActivity": "desc"}[id], ApplicableKinds: out.ResolvedPivot.EntityKinds})
+		}
+	}
+	availableFields := map[string]bool{}
+	for _, f := range out.Fields {
+		availableFields[f.ID] = true
+	}
+	quick := []BrowseQuickFilter{}
+	for _, f := range out.QuickFilters {
+		if availableFields[f.Query.Field] {
+			quick = append(quick, f)
+		}
+	}
+	out.QuickFilters = quick
+	ids, filters := []string{}, []string{}
+	for _, sort := range out.Sorts {
+		ids = append(ids, sort.ID)
+	}
+	for _, field := range out.Fields {
+		filters = append(filters, field.ID)
+	}
+	for _, surface := range []struct{ id, field string }{{"library", ""}, {"group-titles", ""}, {"collection-titles", "collection"}, {"container-titles", "memberOf"}, {"person-titles", "person"}, {"list-titles", "list"}, {"search-results", "search"}, {"saved-view", ""}} {
+		if out.ResolvedPivot != nil && out.ResolvedPivot.Aggregate != "" && surface.id != "library" {
+			continue
+		}
+		if surface.field != "" && !availableFields[surface.field] {
+			continue
+		}
+		out.Surfaces = append(out.Surfaces, BrowseSurfaceCapability{ID: surface.id, Endpoint: "/v1/libraries/{id}/browse", MembershipField: surface.field, Sorts: ids, Filters: filters, Paging: "keyset"})
 	}
 	return out, nil
+}
+
+func pivotFilterKinds(libraryKind string, pivot browsePivot) []string {
+	if pivot.Aggregate != "" {
+		p, _ := pivotForKind(libraryKind, defaultPivot(libraryKind))
+		return entityKindMembers(p)
+	}
+	return entityKindMembers(pivot)
+}
+func pivotFieldIDs(libraryKind string, pivot browsePivot) []string {
+	allowed := map[string]bool{}
+	for _, k := range pivotFilterKinds(libraryKind, pivot) {
+		allowed[k] = true
+	}
+	out := []string{}
+	for _, f := range browseFields {
+		if anyKind(f.ApplicableKinds, allowed) {
+			out = append(out, f.ID)
+		}
+	}
+	return out
+}
+func pivotSortIDs(libraryKind string, pivot browsePivot) []string {
+	if pivot.Aggregate != "" {
+		return []string{"title", "count", "recentActivity"}
+	}
+	allowed := map[string]bool{}
+	for _, k := range entityKindMembers(pivot) {
+		allowed[k] = true
+	}
+	out := []string{}
+	for _, f := range browseSorts {
+		if anyKind(f.ApplicableKinds, allowed) {
+			out = append(out, f.ID)
+		}
+	}
+	return out
 }
 
 func anyKind(list []string, allowed map[string]bool) bool {

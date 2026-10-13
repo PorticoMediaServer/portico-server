@@ -94,6 +94,12 @@ func (p pageShape) positional() bool {
 // browsePage selects the page's rows.
 func (s *Service) browsePage(p pageShape) ([]browseRow, error) {
 	primary, desc := p.primary()
+	if primary.Ordering == -2 {
+		return s.indexedFactPage(p, primary, desc)
+	}
+	if primary.Profile && primary.ID != "forYou" {
+		return s.indexedPersonalPage(p, primary, desc)
+	}
 	if len(p.seekKeys) > 0 && browseKeyedSorts(p.sorts) {
 		if typed, ok := browseKeyValues(p.sorts, p.seekKeys); ok {
 			if anchor, err := strconv.ParseInt(p.seekAnchor, 10, 64); err == nil {
@@ -118,8 +124,11 @@ func (s *Service) browsePage(p pageShape) ([]browseRow, error) {
 	if primary.Profile && len(p.sorts) == 1 {
 		return s.personalPage(p, primary, desc)
 	}
-	args := append(append(append([]any{}, p.args...), p.orderArgs...), p.limit, p.start)
-	return s.queryBrowseRows(`SELECT `+browseRowColumns+` FROM catalog_browse_rows e JOIN catalog_entities ce ON ce.id=e.entity_id WHERE `+p.where+` ORDER BY `+p.order+` LIMIT ? OFFSET ?`, args...)
+	if p.start > 0 && len(p.seekKeys) == 0 {
+		return s.walkIndexedRange(p, func(p pageShape) ([]browseRow, error) { return s.browsePage(p) })
+	}
+	args := append(append(append([]any{}, p.args...), p.orderArgs...), p.limit)
+	return s.queryBrowseRows(`SELECT `+browseRowColumns+` FROM catalog_browse_rows e JOIN catalog_entities ce ON ce.id=e.entity_id WHERE `+p.where+` ORDER BY `+p.order+` LIMIT ?`, args...)
 }
 
 func (s *Service) queryBrowseRows(query string, args ...any) ([]browseRow, error) {

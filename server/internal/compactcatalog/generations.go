@@ -14,6 +14,7 @@ var ServingTables = []string{
 	"catalog_browse_counted_rows", "catalog_browse_memberships", "catalog_browse_member_metrics",
 	"catalog_movie_category_members", "catalog_movie_category_summaries",
 	"catalog_home_buckets", "catalog_item_availability", "catalog_facet_counts", "catalog_related_facets",
+	"catalog_browse_groups", "catalog_facet_members",
 }
 
 var servingNames = func() *strings.Replacer {

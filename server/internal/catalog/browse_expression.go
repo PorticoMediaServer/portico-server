@@ -2,6 +2,7 @@ package catalog
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -9,6 +10,8 @@ import (
 	"strconv"
 	"strings"
 
+	"portico.local/server/internal/facettext"
+	"portico.local/server/internal/identity"
 	"time"
 )
 
@@ -292,8 +295,9 @@ func containsString(values []string, target string) bool {
 // the entity row or an EXISTS over the entity's member items, so the join
 // surface stays bounded no matter how deep the expression is.
 type browseCompiler struct {
-	profile string
-	args    []any
+	restrictions identity.ContentRestrictions
+	profile      string
+	args         []any
 }
 
 func (c *browseCompiler) compile(node *BrowseNode) (string, error) {
@@ -542,6 +546,26 @@ func (c *browseCompiler) comparison(field browseField, expression, operator stri
 }
 
 func (c *browseCompiler) entityPredicate(field browseField, node BrowseNode) (string, error) {
+	if field.ID == "search" {
+		q, ok := node.Value.(string)
+		if !ok {
+			return "", browseIssue("query.value", "search requires text")
+		}
+		normalized, match, err := NormalizeSearch(q)
+		if err != nil {
+			return "", browseIssue("query.value", "search requires between 1 and 128 characters")
+		}
+		c.args = append(c.args, match)
+		clause := `e.entity_id IN(SELECT d.entity_id FROM catalog_search_titles JOIN catalog_search_documents d ON d.entity_id=catalog_search_titles.rowid WHERE catalog_search_titles MATCH ?`
+		for _, word := range strings.Fields(normalized) {
+			if strings.ContainsFunc(word, facettext.CJK) {
+				clause += ` AND instr(d.normalized,?)>0`
+				c.args = append(c.args, word)
+			}
+		}
+		return clause + ")", nil
+	}
+
 	return c.comparison(field, field.Entity, node.Operator, node.Value)
 }
 
@@ -549,9 +573,25 @@ func (c *browseCompiler) entityPredicate(field browseField, node BrowseNode) (st
 // bound before the condition's own arguments so ordinal positions line up.
 func (c *browseCompiler) exists(field browseField, condition func() (string, error)) (string, error) {
 	prefix := "EXISTS(SELECT 1 FROM catalog_browse_memberships bei " + field.Join + " WHERE bei.entity_id=e.entity_id AND "
-	for i := 0; i < field.Profile; i++ {
-		c.args = append(c.args, c.profile)
+	if field.ID == "list" {
+		raw, err := base64.RawURLEncoding.DecodeString(strings.TrimPrefix(c.profile, "viewer:"))
+		var owner []string
+		if err != nil || !strings.HasPrefix(c.profile, "viewer:") || json.Unmarshal(raw, &owner) != nil || len(owner) != 3 {
+			return "0", nil
+		}
+		for i := 0; i < 2; i++ {
+			for _, part := range owner {
+				c.args = append(c.args, part)
+			}
+		}
+	} else {
+		for i := 0; i < field.Profile; i++ {
+			c.args = append(c.args, c.profile)
+		}
 	}
+	restriction, args := ItemRestrictionSQL("bei.item_id", c.restrictions)
+	prefix += "(" + restriction + ") AND "
+	c.args = append(c.args, args...)
 	body, err := condition()
 	if err != nil {
 		return "", err

@@ -42,12 +42,7 @@ CREATE TABLE play_counts(
  item_id INTEGER PRIMARY KEY REFERENCES catalog_entities(id) ON DELETE CASCADE,
  plays INTEGER NOT NULL,
  last_played_ms INTEGER NOT NULL) STRICT;
-CREATE TABLE personal_play_counts(
- profile_id TEXT NOT NULL,
- item_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,
- plays INTEGER NOT NULL,
- PRIMARY KEY(profile_id,item_id)) STRICT, WITHOUT ROWID;
-CREATE INDEX personal_play_counts_item ON personal_play_counts(item_id);
+
 
 -- Seed the counts from the history viewers already have, so "Plays" and "Popular" do not start
 -- from nothing. The server-wide log itself starts now: the older rows never recorded a device.
