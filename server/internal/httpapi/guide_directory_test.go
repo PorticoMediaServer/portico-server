@@ -70,7 +70,13 @@ func newGuideDirectoryHTTPFixture(t *testing.T) guideDirectoryHTTPFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
+	d.LiveChannels = store
 	f := guideDirectoryHTTPFixture{d: d, store: store, mux: http.NewServeMux(), owner: owner, member: member}
+	registry, err := FoundationRegistry(d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d.mountRegistry(f.mux, registry)
 	d.liveChannelRoutes(f.mux, store)
 	var playlist, guide strings.Builder
 	playlist.WriteString("#EXTM3U\n")
@@ -111,6 +117,9 @@ func (f guideDirectoryHTTPFixture) call(t *testing.T, method, path, token string
 		}
 	}
 	r := httptest.NewRequest(method, path, bytes.NewReader(raw))
+	if body != nil {
+		r.Header.Set("Content-Type", "application/json")
+	}
 	if token != "" {
 		r.Header.Set("Authorization", "Bearer "+token)
 	}
