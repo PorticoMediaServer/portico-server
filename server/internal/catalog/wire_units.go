@@ -16,9 +16,6 @@ func (Item) JSONSchema() map[string]any {
 
 type contentEntryWire ContentEntry
 
-func (v ContentEntry) MarshalJSON() ([]byte, error) {
-	return apiwire.MarshalDurations(contentEntryWire(v), map[string]string{"duration": "durationMs", "progressSeconds": "progressMs"})
-}
 func (ContentEntry) JSONSchema() map[string]any {
 	return apiwire.DurationSchema(reflect.TypeFor[contentEntryWire](), map[string]string{"duration": "durationMs", "progressSeconds": "progressMs"})
 }

@@ -1,3 +1,4 @@
+import {wireDurations} from './wire-units.ts';
 import {unreadableServerResponse} from './server-messages.ts';
 import type {I18n, MessageId} from '../../i18n/src/index.ts';
 
@@ -52,6 +53,7 @@ export function parsePlayHistory(value: unknown): PlayHistoryPage {
   if (!object(value) || !Array.isArray(value.entries) || value.entries.length > 200 || !text(value.nextCursor, 256)) invalid();
   if (value.total !== undefined && !whole(value.total)) invalid();
   const entries = value.entries.map(raw => {
+ raw=wireDurations(raw,{positionSeconds:"positionMs",durationSeconds:"durationMs"});
     if (!object(raw) || !text(raw.id, 64) || !raw.id || !text(raw.user) || !text(raw.accountId, 256) || !text(raw.kind, 64) || !text(raw.title) || !text(raw.libraryId, 256)) invalid();
     if (!text(raw.startedAt, 64) || !Number.isFinite(Date.parse(raw.startedAt)) || !amount(raw.positionSeconds) || !amount(raw.durationSeconds) || typeof raw.completed !== 'boolean') invalid();
     const entry: {-readonly [K in keyof PlayHistoryEntry]: PlayHistoryEntry[K]} = {
@@ -100,6 +102,7 @@ export type ViewingPeriod = (typeof VIEWING_PERIODS)[number];
 export const viewingPeriodLabel = (period: ViewingPeriod): MessageId => (period === '24h' ? 'server.viewing.today' : period === 'all' ? 'server.plays.allTime' : `server.viewing.period.${period}`);
 
 export function parsePlaySummary(value: unknown): PlaySummary {
+ value=wireDurations(value,{watchedSeconds:"watchedMs"});
   if (!object(value) || !whole(value.plays) || !whole(value.people) || !whole(value.watchedSeconds) || !whole(value.converted)) invalid();
   const counts = (raw: unknown): readonly PlayCount[] => {
     if (!Array.isArray(raw) || raw.length > 50) invalid();

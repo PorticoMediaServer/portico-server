@@ -285,7 +285,7 @@ export function parseFeedbackReport(value:unknown):FeedbackItem{
  if(diagnostics.detail!==undefined&&!text(diagnostics.detail,400))invalid();
  if(!Array.isArray(value.thread)||value.thread.length>200)invalid();
  value={...value,thread:value.thread.map(e=>wireInstants(e,["at"]))};
- if(!Array.isArray(value.thread))invalid();
+ if(!obj(value)||!Array.isArray(value.thread))invalid();
  for(const event of value.thread){
   if(!obj(event)||!whole(event.sequence)||!whole(event.at)||!whole(event.revision))invalid();
   if(!text(event.status,40)||!text(event.reply,4000)||!text(event.actorClass,40))invalid();

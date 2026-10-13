@@ -2,6 +2,7 @@ package catalog
 
 import (
 	"encoding/json"
+	"portico.local/server/internal/apiwire"
 	"time"
 
 	"portico.local/server/internal/identity"
@@ -231,7 +232,7 @@ func (e ContentEntry) MarshalJSON() ([]byte, error) {
 		}{e.ID, e.Kind, e.Hidden, e.Media})
 	}
 	type plain ContentEntry
-	return json.Marshal(plain(e))
+	return apiwire.MarshalDurations(plain(e), map[string]string{"duration": "durationMs", "progressSeconds": "progressMs"})
 }
 
 // LatestEpisode names the newest of a show's aired episodes and how many aired

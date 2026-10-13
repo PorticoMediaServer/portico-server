@@ -160,7 +160,7 @@ export class ConsoleClient {
  /** The export is a download, so its path is handed to the browser, not fetched. */
  playbackHistoryExportPath(period:PlaybackHistoryPeriod='24h'){return '/v1/admin/playback/history.csv?period='+period;}
 }
-function parseExport(v:unknown):SupportExport{const p=base(wireInstants(v,["expiresAt"]));if(!id(p.id)||!integer(p.expiresAt)||!obj(p.manifest)||!Array.isArray(p.manifest.included)||!Array.isArray(p.manifest.excluded)||!text(p.manifest.redaction,500))invalid();return p as SupportExport;}
+function parseExport(v:unknown):SupportExport{const p=base(wireInstants(v,["expiresAt"]));if(obj(p.manifest))p.manifest=wireInstants(p.manifest,["from","to"]);if(!id(p.id)||!integer(p.expiresAt)||!obj(p.manifest)||!Array.isArray(p.manifest.included)||!Array.isArray(p.manifest.excluded)||!text(p.manifest.redaction,500))invalid();return p as SupportExport;}
 
 
 export function parseStreamOptions(value:unknown):StreamOptions{const v=base(value);for(const field of ['libraries','viewers'])if(!Array.isArray(v[field])||v[field].length>500||v[field].some((row:unknown)=>!obj(row)||!text(row.id,300)||!row.id||!text(row.label,4096)))invalid();return v as StreamOptions;}

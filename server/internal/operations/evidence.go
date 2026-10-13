@@ -227,10 +227,10 @@ func (s *Store) Capture(ctx context.Context, p identity.Principal, auth Authoriz
 }
 
 type ExportRequest struct {
-	IdempotencyKey string   `json:"idempotencyKey"`
-	From           int64    `json:"from"`
-	To             int64    `json:"to"`
-	Components     []string `json:"components"`
+	IdempotencyKey string          `json:"idempotencyKey"`
+	From           apiwire.Instant `json:"from"`
+	To             apiwire.Instant `json:"to"`
+	Components     []string        `json:"components"`
 }
 type Export struct {
 	ID          string              `json:"id"`
@@ -243,17 +243,17 @@ type Export struct {
 	AuditAnchor *AuditAnchor        `json:"auditAnchor,omitempty"`
 }
 type ExportManifest struct {
-	Version   string   `json:"version"`
-	From      int64    `json:"from"`
-	To        int64    `json:"to"`
-	Included  []string `json:"included"`
-	Excluded  []string `json:"excluded"`
-	Redaction string   `json:"redaction"`
-	MaxBytes  int      `json:"maxBytes"`
+	Version   string          `json:"version"`
+	From      apiwire.Instant `json:"from"`
+	To        apiwire.Instant `json:"to"`
+	Included  []string        `json:"included"`
+	Excluded  []string        `json:"excluded"`
+	Redaction string          `json:"redaction"`
+	MaxBytes  int             `json:"maxBytes"`
 }
 
 func (s *Store) CreateExport(ctx context.Context, p identity.Principal, auth Authorize, hosted bool, c ExportRequest) (out Export, e error) {
-	if c.From < 0 || c.To < c.From || c.To > s.now()+60000 || c.To-c.From > days(7) || len(c.Components) == 0 || len(c.Components) > 4 {
+	if c.From < 0 || c.To < c.From || int64(c.To) > s.now()+60000 || int64(c.To-c.From) > days(7) || len(c.Components) == 0 || len(c.Components) > 4 {
 		return out, ErrInvalid
 	}
 	seen := map[string]bool{}
@@ -300,21 +300,21 @@ func (s *Store) CreateExport(ctx context.Context, p identity.Principal, auth Aut
 		}
 		out = Export{ID: identity.Token(), ExpiresAt: apiwire.Instant(s.now() + int64(time.Hour/time.Millisecond)), Manifest: ExportManifest{RegistryRevision, c.From, c.To, c.Components, []string{"secrets", "raw logs", "media", "databases", "feedback text", "routes and paths"}, "Typed allowlist before persistence and projection; no automatic upload", 1 << 20}, Snapshot: snapshot}
 		if seen["runtime"] {
-			v, err := readRecords(tx, "runtime", 9223372036854775807, c.From, c.To, 1000)
+			v, err := readRecords(tx, "runtime", 9223372036854775807, int64(c.From), int64(c.To), 1000)
 			if err != nil {
 				return err
 			}
 			out.Runtime = &v
 		}
 		if seen["client"] {
-			v, err := readRecords(tx, "client", 9223372036854775807, c.From, c.To, 1000)
+			v, err := readRecords(tx, "client", 9223372036854775807, int64(c.From), int64(c.To), 1000)
 			if err != nil {
 				return err
 			}
 			out.Client = &v
 		}
 		if seen["audit"] {
-			v, err := readAudit(tx, 9223372036854775807, c.From, c.To, 1000)
+			v, err := readAudit(tx, 9223372036854775807, int64(c.From), int64(c.To), 1000)
 			if err != nil {
 				return err
 			}

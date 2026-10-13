@@ -26,7 +26,7 @@ func TestSearchNormalizedScope(t *testing.T) {
 	})
 	c.Drain()
 	s := New(c.DB)
-	for _, term := range []string{"spiderman", "wall e", "mash", "M*A*S*H", "X", "神隠し", "生", "eclair", "lumiere", "beac"} {
+	for _, term := range []string{"spiderman", "wall e", "mash", "M*A*S*H", "X", "神隠し", "생", "eclair", "lumiere", "beac"} {
 		t.Run(term, func(t *testing.T) {
 			out, err := s.Search(context.Background(), SearchRequest{Viewer: Viewer{Profile: "p", Fence: "f", Libraries: []string{"films"}}, Q: term, Group: "movies", Limit: 10})
 			if err != nil || len(out.Groups) != 1 || out.Groups[0].Status != "success" || len(out.Groups[0].Items) == 0 {

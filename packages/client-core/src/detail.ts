@@ -151,7 +151,8 @@ function extras(value: unknown, target: DetailTarget): readonly DetailExtra[] {
 }
 function projection(raw: unknown, scope: DetailScope, target: DetailTarget): DetailProjection {
   if (!obj(raw) || !obj(raw.scope) || !obj(raw.revision) || !obj(raw.item) || !obj(raw.metadata)) invalid();
-  const s = raw.scope, r = raw.revision, item = raw.item, m = raw.metadata;
+  const s = raw.scope, r = raw.revision, item = wireDurations(raw.item,{duration:"durationMs",progressSeconds:"progressMs"}), m = raw.metadata;
+ if(!obj(item))invalid();
   if (s.serverId !== scope.serverId || s.libraryId !== target.libraryId || s.itemId !== target.itemId || !id(s.viewerFence) || !integer(r.catalog) || !integer(r.viewer)) invalid();
   if (item.id !== target.itemId || item.libraryId !== target.libraryId || !str(item.title, 2048) || !id(item.kind) || !finite(item.duration) || !finite(item.progressSeconds) || typeof item.available !== 'boolean') invalid();
   const media: DetailItem = { id: target.itemId, libraryId: target.libraryId, title: item.title, kind: item.kind, duration: item.duration, progressSeconds: item.progressSeconds, available: item.available };
@@ -182,7 +183,7 @@ function projection(raw: unknown, scope: DetailScope, target: DetailTarget): Det
     const result: { -readonly [K in keyof DetailAction]: DetailAction[K] } = { id: action.id, labelKey: action.labelKey, enabled: action.enabled };
     for (const field of ['min','max','step'] as const) if (action[field] !== undefined) { if (!finite(action[field])) invalid(); result[field] = action[field] as number; }
     if (action.playback !== undefined) {
-      const p = action.playback;
+      const p = wireDurations(action.playback,{startSeconds:"startMs"});
       if (!obj(p) || p.itemId !== target.itemId || !finite(p.startSeconds) || p.startSeconds > media.duration) invalid();
       result.playback = Object.freeze({ itemId: target.itemId, startSeconds: p.startSeconds });
     }
@@ -302,7 +303,7 @@ export class DetailService {
       }
       const field = command.intent.action === 'watchlist' ? 'watchlisted' : command.intent.action;
       const body = { operationId: command.operationId, expectedRevision: command.expectedRevision, [field]: command.intent.value, ...(command.offline?{offline:command.offline}:{}) };
-      const raw = await this.deadline(api.request<unknown>('/v1/items/' + encodeURIComponent(data.scope.itemId) + '/personal-state', 'PUT', body, controller.signal), controller);
+      const raw = await this.deadline(api.request<unknown>('/v1/items/' + encodeURIComponent(data.scope.itemId) + '/personal-state', 'PUT', durationIntent(body,{progressSeconds:'progressMs'}), controller.signal), controller);
       if (this.disposed || generation !== this.generation) return;
       const applied = receipt(raw, command.operationId, data);
       if (this.state.data && applied.personal.revision >= this.state.data.personal.revision) this.publish({ data: Object.freeze({ ...this.state.data, item:Object.freeze({...this.state.data.item,progressSeconds:applied.personal.progressSeconds}), personal: applied.personal }) });
