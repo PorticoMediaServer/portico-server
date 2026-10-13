@@ -94,6 +94,7 @@ func Open(ctx context.Context, in livechannels.Input) (*Gateway, error) {
 			close(entry.idleDone)
 		}
 		entry.idle = nil
+		entry.idleDone = nil
 	}
 	entry.readers++
 	inputs.Unlock()
@@ -155,7 +156,7 @@ func releaseInput(key string, entry *sharedInput) {
 	entry.idleDone = done
 	entry.idle = time.AfterFunc(inputGrace, func() {
 		inputs.Lock()
-		if entry.readers != 0 {
+		if entry.readers != 0 || entry.idleDone != done {
 			inputs.Unlock()
 			close(done)
 			return

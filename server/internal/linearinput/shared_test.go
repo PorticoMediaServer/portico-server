@@ -223,3 +223,41 @@ func TestSharedHLSSelectsBestVariantAndFetchesSegmentOnce(t *testing.T) {
 		t.Fatalf("low=%d high=%d segments=%d", low.Load(), high.Load(), segments.Load())
 	}
 }
+
+func TestSharedChannelRejoinDuringGraceRetainsUpstream(t *testing.T) {
+	in, count, source := sharedFixture(t)
+	defer source.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	first, e := linearinput.Open(ctx, in)
+	if e != nil {
+		t.Fatal(e)
+	}
+	closing := make(chan error, 1)
+	go func() { closing <- first.Close() }()
+	time.Sleep(100 * time.Millisecond)
+	second, e := linearinput.Open(ctx, in)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer second.Close()
+	select {
+	case e = <-closing:
+		if e != nil {
+			t.Fatal(e)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("reader did not release its lease on rejoin")
+	}
+	if count.Load() != 1 {
+		t.Fatalf("grace rejoin reopened input: %d", count.Load())
+	}
+	response, e := http.Get(second.URL())
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer response.Body.Close()
+	if _, e = io.ReadFull(response.Body, make([]byte, 188)); e != nil {
+		t.Fatal(e)
+	}
+}

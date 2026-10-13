@@ -1163,7 +1163,7 @@ export const routes = [
     "scope": "playback",
     "lane": "default",
     "cost": "page_sized",
-    "bodyLimit": 1048576,
+    "bodyLimit": 8388608,
     "errors": [
       "unauthorized",
       "not_permitted",

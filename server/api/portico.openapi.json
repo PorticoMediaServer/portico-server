@@ -1203,6 +1203,18 @@
                     },
                     "type": "array"
                   },
+                  "enabledChannels": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "enabledGroups": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
                   "expectedRevision": {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
@@ -1431,7 +1443,7 @@
         "x-access": "admin_scope",
         "x-cost": "page_sized",
         "x-lane": "default",
-        "x-max-body-bytes": 1048576
+        "x-max-body-bytes": 8388608
       }
     },
     "/v1/admin/live-sources/remote/save": {

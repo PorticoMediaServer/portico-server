@@ -67,7 +67,7 @@ func ReadSource(ctx context.Context, locator string, policy remotemedia.Policy, 
 
 func (f SourceFetcher) fetch(ctx context.Context, c remoteConfig) (SourceInput, int, error) {
 	d := c.Draft
-	in := SourceInput{ID: d.ID, ExpectedRevision: d.ExpectedRevision, Name: d.Name, Mappings: append([]ChannelMapping{}, d.Mappings...)}
+	in := SourceInput{ID: d.ID, ExpectedRevision: d.ExpectedRevision, Name: d.Name, Mappings: append([]ChannelMapping{}, d.Mappings...), EnabledGroups: d.EnabledGroups, EnabledChannels: d.EnabledChannels}
 	limits := f.defaults.ImportLimits.effective()
 	p := remotemedia.Policy{UserAgent: f.defaults.UserAgent, Approvals: c.Approvals, Resolver: f.Resolver, ReadTimeout: 15 * time.Second}
 	physical := 0

@@ -687,9 +687,6 @@ func (l *LinearRuntime) produceLive(ctx context.Context, w playback.LinearWork, 
 	if e != nil {
 		return e
 	}
-	if e = entry.buffer.SetLiveDelay(input.StreamBufferSeconds); e != nil {
-		return e
-	}
 	// Allocation is committed before physical acquisition; every exit closes the
 	// decoder and gateway before releasing its exact token/generation.
 	defer func() {
@@ -707,6 +704,9 @@ func (l *LinearRuntime) produceLive(ctx context.Context, w playback.LinearWork, 
 		}
 		result = errors.Join(result, e)
 	}()
+	if e = entry.buffer.SetLiveDelay(input.StreamBufferSeconds); e != nil {
+		return e
+	}
 	lock, e := l.locks.Lock(allocation)
 	if e != nil {
 		return e

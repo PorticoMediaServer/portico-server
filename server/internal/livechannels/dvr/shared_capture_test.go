@@ -113,7 +113,7 @@ func TestRecordedEpisodePublishesShowSeasonAndGuideFacts(t *testing.T) {
 func TestOneTimeRecordingFollowsUniqueGuideCorrection(t *testing.T) {
 	s, source, p, a := sharingStore(t)
 	ctx := context.Background()
-	owner := livechannels.Owner{"local", "account", "profile"}
+	owner := livechannels.Owner{Authority: "local", AccountID: "account", ProfileID: "profile"}
 	r, e := s.Schedule(ctx, a, owner, ScheduleInput{RequestID: strings.Repeat("c", 48), Occurrence: Occurrence{source.ID, p.ChannelID, source.Generation, p.ID}})
 	if e != nil {
 		t.Fatal(e)

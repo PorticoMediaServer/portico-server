@@ -191,7 +191,7 @@ func (s *Service) startChannel(ctx context.Context, c Caller, key, startDigest s
 	}
 	err = dbwork.WithWriteTxContext(ctx, s.DB, dbwork.ClassPlaybackStart, func(ctx context.Context, tx *sql.Tx) error {
 		if ref.Kind == "live-source" && s.TunerAvailable != nil {
-			ok, err := s.TunerAvailable(ctx, tx, ref.SourceID, old.id)
+			ok, err := s.TunerAvailable(ctx, tx, ref.SourceID, ref.ChannelID, old.id)
 			if err != nil {
 				return err
 			}

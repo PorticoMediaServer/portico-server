@@ -126,7 +126,7 @@ type Programme struct {
 	Title          string `json:"title"`
 	Start          string `json:"start"`
 	End            string `json:"end"`
-	// A future recording adapter must not infer correction lineage from title/time.
+	// Lineage retains provider correction identity when one is supplied.
 	Lineage     string `json:"lineage"`
 	SeriesID    string `json:"seriesId,omitempty"`
 	EpisodeID   string `json:"episodeId,omitempty"`

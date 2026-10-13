@@ -475,7 +475,12 @@ func (g *Gateway) serve(w http.ResponseWriter, r *http.Request) {
 }
 func (g *Gateway) serveRawFor(w http.ResponseWriter, r *http.Request, reader *Gateway) {
 	g.mu.Lock()
-	offset := g.base
+	// A newly tuned reader starts at the current stream, rather than replaying
+	// another viewer's retained input history and misreporting capture coverage.
+	offset := g.total
+	if len(g.raw) > 0 {
+		offset -= int64(len(g.raw[len(g.raw)-1]))
+	}
 	g.mu.Unlock()
 	for {
 		g.mu.Lock()

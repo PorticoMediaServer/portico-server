@@ -118,7 +118,7 @@ func registerLiveContracts(r *apikit.Registry, d Dependencies) {
 		value, e := d.LiveChannels.Save(ctx, d.liveAuthority(p), in)
 		return LiveSourceDocument{"1.0", d.Identity.ID(), value}, e
 	})
-	liveContract(r, d, "POST", "/v1/admin/live-sources/remote/preview", "preview_remote_live_source", 1<<20, func(ctx context.Context, q *http.Request, p identity.Principal, in livechannels.RemoteDraft) (LiveRemotePreviewDocument, error) {
+	liveContract(r, d, "POST", "/v1/admin/live-sources/remote/preview", "preview_remote_live_source", 8<<20, func(ctx context.Context, q *http.Request, p identity.Principal, in livechannels.RemoteDraft) (LiveRemotePreviewDocument, error) {
 		if d.LiveChannels == nil {
 			return LiveRemotePreviewDocument{}, livechannels.ErrUnavailable
 		}

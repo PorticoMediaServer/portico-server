@@ -51,10 +51,16 @@ func TestTolerantPlaylistFallbackIdentityAndChannelSelection(t *testing.T) {
 		t.Fatalf("%+v", data)
 	}
 	key := data.channels[0].key
+	selected := []string{data.channels[0].key, data.channels[2].key}
 	in.Playlist = strings.Replace(in.Playlist, "token=old", "token=new", 1)
 	data, e = parse(in)
 	if e != nil || data.channels[0].key != key {
 		t.Fatal("rotating query token changed fallback identity")
+	}
+	in.EnabledChannels = selected
+	data, e = parse(in)
+	if e != nil || len(data.channels) != 2 || data.channels[0].key != selected[0] || data.channels[1].key != selected[1] {
+		t.Fatalf("selected fallback/variant: %+v %v", data.channels, e)
 	}
 }
 func TestLargeLineupAndOwnerLimitsKeepGoodChannels(t *testing.T) {

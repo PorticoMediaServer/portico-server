@@ -10839,6 +10839,18 @@ export const schemas = {
         },
         "type": "array"
       },
+      "enabledChannels": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "enabledGroups": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
       "expectedRevision": {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,

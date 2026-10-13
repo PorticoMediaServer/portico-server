@@ -136,12 +136,15 @@ func parse(in SourceInput) (out parsedSource, result error) {
 					if in.configuration != nil && (!filterMatch(ch.group, in.configuration.Filters.Categories) || !filterMatch(ch.country, in.configuration.Filters.Countries) || !filterMatch(ch.name, in.configuration.Filters.Keywords)) {
 						continue
 					}
-					if len(groups) > 0 && !groups[ch.group] || len(enabled) > 0 && !enabled[ch.key] {
-						continue
-					}
 					if ch.key == "" {
 						u, _ := url.Parse(line)
 						ch.key = "fallback-" + id(ch.name, u.Hostname(), u.Path)
+					}
+					// A selected duplicate variant retains its identity even when
+					// the first provider row with that ID was not selected.
+					variant := "variant-" + id(ch.key, ch.name, ch.number, ch.group)
+					if len(enabled) > 0 && !enabled[ch.key] && enabled[variant] {
+						ch.key = variant
 					}
 					if old, ok := byKey[ch.key]; ok {
 						if old == ch {
@@ -152,6 +155,9 @@ func parse(in SourceInput) (out parsedSource, result error) {
 							skip("live.import.channelRepeated")
 							continue
 						}
+					}
+					if len(groups) > 0 && !groups[ch.group] || len(enabled) > 0 && !enabled[ch.key] {
+						continue
 					}
 					if len(out.channels) >= limits.Channels {
 						skip("live.import.channelLimit")

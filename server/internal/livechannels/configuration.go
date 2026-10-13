@@ -41,6 +41,7 @@ type ChannelNumbering struct {
 	Step    int    `json:"step"`
 }
 type LiveSourceSettings struct {
+	configured      bool
 	EnabledGroups   []string `json:"enabledGroups"`
 	EnabledChannels []string `json:"enabledChannels"`
 	Kind            string   `json:"kind"`
@@ -67,6 +68,9 @@ func RuntimeConfigurationTx(ctx context.Context, tx *sql.Tx, sid string) (LiveDe
 		var raw string
 		e := tx.QueryRowContext(ctx, `SELECT body FROM admin_documents WHERE scope=?`, entry.scope).Scan(&raw)
 		if e == nil {
+			if entry.scope == "live-source:"+sid {
+				v.configured = true
+			}
 			if json.Unmarshal([]byte(raw), entry.target) != nil {
 				return d, v, ErrInvalid
 			}
@@ -113,11 +117,21 @@ func (s *Store) configureInput(ctx context.Context, in *SourceInput) error {
 	if e != nil {
 		return e
 	}
+	requested := in.Limits
 	in.Limits = d.ImportLimits
-	if len(v.EnabledGroups) > 0 || in.EnabledGroups == nil {
+	if requested.Bytes > 0 {
+		in.Limits.Bytes = min(in.Limits.Bytes, requested.Bytes)
+	}
+	if requested.Channels > 0 {
+		in.Limits.Channels = min(in.Limits.Channels, requested.Channels)
+	}
+	if requested.Programmes > 0 {
+		in.Limits.Programmes = min(in.Limits.Programmes, requested.Programmes)
+	}
+	if v.configured || in.EnabledGroups == nil {
 		in.EnabledGroups = v.EnabledGroups
 	}
-	if len(v.EnabledChannels) > 0 || in.EnabledChannels == nil {
+	if v.configured || in.EnabledChannels == nil {
 		in.EnabledChannels = v.EnabledChannels
 	}
 	if in.remote {

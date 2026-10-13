@@ -25,14 +25,16 @@ type ChannelMapping struct {
 }
 
 type RemoteDraft struct {
-	ID               string `json:"id"`
-	ExpectedRevision int64  `json:"expectedRevision"`
-	Name             string `json:"name"`
-	Kind             string `json:"kind"`
-	Locator          string `json:"locator"`
-	GuideURL         string `json:"guideUrl"`
-	Username         string `json:"username"`
-	Password         string `json:"password"`
+	EnabledGroups    []string `json:"enabledGroups,omitempty"`
+	EnabledChannels  []string `json:"enabledChannels,omitempty"`
+	ID               string   `json:"id"`
+	ExpectedRevision int64    `json:"expectedRevision"`
+	Name             string   `json:"name"`
+	Kind             string   `json:"kind"`
+	Locator          string   `json:"locator"`
+	GuideURL         string   `json:"guideUrl"`
+	Username         string   `json:"username"`
+	Password         string   `json:"password"`
 	// These exact roots are an explicit owner confirmation, never discovery data.
 	ConfirmedLANRoots     []string         `json:"confirmedLanRoots"`
 	Mappings              []ChannelMapping `json:"mappings"`
@@ -96,6 +98,16 @@ func (s *Store) unseal(raw []byte, _ string) (string, error) {
 
 func (f SourceFetcher) config(ctx context.Context, d RemoteDraft) (remoteConfig, error) {
 	c := remoteConfig{Draft: d, Approvals: []remotemedia.Approval{}}
+	for _, list := range [][]string{d.EnabledGroups, d.EnabledChannels} {
+		if len(list) > 100000 {
+			return c, ErrInvalid
+		}
+		for _, value := range list {
+			if !validText(value, 256) {
+				return c, ErrInvalid
+			}
+		}
+	}
 	if !opaque(d.ID) || d.ExpectedRevision < 0 || !validText(d.Name, 120) || !validLocator(d.Locator) || (d.GuideURL != "" && !validLocator(d.GuideURL)) || d.OwnerLimit < 0 || d.OwnerLimit > 256 || d.RefreshSeconds < 300 || d.RefreshSeconds > 86400 || len(d.ConfirmedLANRoots) > 8 || len(d.Mappings) > MaxChannels || len(d.Username) > 512 || len(d.Password) > 2048 || (d.ViewerAccess != "owner-only" && d.ViewerAccess != "server-members") {
 		return c, ErrInvalid
 	}

@@ -269,6 +269,7 @@ func (d *Driver) Recover(ctx context.Context, in dvr.CaptureRequest, cp dvr.Capt
 			return out, e
 		}
 		defer d.releaseReservation(in.Recording.ID)
+		cp.WriterRetired, cp.ProducerSucceeded, cp.BoundaryReached = false, false, false
 		cp.Gaps++
 		_, _ = d.continueCapture(ctx, in, writer, end, &cp, in.Checkpoint)
 		cp.WriterRetired = true

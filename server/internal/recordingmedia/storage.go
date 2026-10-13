@@ -66,6 +66,9 @@ func (d *Driver) Measure(ctx context.Context) (dvr.StorageMeasurement, error) {
 		if !entry.IsDir() {
 			info, e := entry.Info()
 			if e != nil {
+				if os.IsNotExist(e) {
+					return nil
+				}
 				return e
 			}
 			if !info.Mode().IsRegular() {
