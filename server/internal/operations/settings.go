@@ -91,7 +91,7 @@ func Registry() []Field {
 		field("playHistoryDays", "retention", "integer", 0, bounded(0), bounded(36500), nil, "hot", "operations.Prune", "How long the server's play history is kept. 0 keeps every play since the server was set up. Play counts are kept either way."),
 		field("home.communityActivityEnabled", "home", "boolean", false, nil, nil, nil, "hot", "catalog home trending row", "Publish a server-wide popular-this-week row built from aggregated play counts across profiles. Off by default."),
 		field("updates.releaseChannel", "updates", "enumeration", "stable", nil, nil, UpdateChannels, "hot", "administration updates report", "Which release channel the updates page reports against. Nothing is ever installed automatically."),
-		field("updates.feedUrl", "updates", "string", "", nil, nil, nil, "hot", "administration updates report", "Optional release feed this server may read to report whether a newer build exists. Empty means the server only reports the build it is running."),
+		field("updates.feedUrl", "updates", "string", DefaultUpdateFeedURL, nil, nil, nil, "hot", "administration updates report", "Release feed checked for newer versions. Clear the address to turn update checks off."),
 		field("library.trashRetentionDays", "library", "nullable-integer", 30, bounded(0), bounded(3650), nil, "hot", "administration media deletion", "How long deleted files stay recoverable in the trash by default. 0 removes files immediately; null uses the shipped 30 days. Each library may override this on its own configuration page."),
 		field("remoteSignInPolicy", "connectivity", "enumeration", "allow", nil, nil, RemoteSignInPolicies, "next-operation", "sign-in admission", "Who may sign in from outside this network. Owner-only still allows existing remote sessions to finish."),
 		field("remoteBitrateLimitKbps", "connectivity", "integer", 0, bounded(0), bounded(200000), nil, "next-operation", "playback delivery planning", "Server-wide ceiling on video bitrate for remote playback, in kbps. 0 means no ceiling."),
@@ -114,6 +114,8 @@ func Registry() []Field {
 	// Viewer preferences are published by their own registry on GET /v1/preferences.
 	// Listing them here too would give clients two disagreeing authorities.
 }
+
+const DefaultUpdateFeedURL = "https://github.com/PorticoMediaServer/portico-server/releases/latest/download/portico-update-manifest.json"
 
 type Settings struct {
 	Name               string `json:"name"`
@@ -188,7 +190,7 @@ type LogRetention struct {
 // DefaultSettings is the registry's own answer before any owner write, so a
 // fresh database and a document saved before these fields existed agree.
 func DefaultSettings() Settings {
-	return Settings{Name: "Portico", TranscodingEnabled: true, HardwareBackend: "auto", HDRToneMappingAlgorithm: "hable", X264Preset: "veryfast", DirectStreamRemux: true, PlanningPolicy: "maximum_fidelity", ThrottleBufferSeconds: 60, PlayedRetentionSeconds: 180, DiagnosticDays: 30, NotificationDays: 180, JobDays: 30, UpdateChannel: "stable", TrashRetentionDays: bounded(30),
+	return Settings{Name: "Portico", TranscodingEnabled: true, HardwareBackend: "auto", HDRToneMappingAlgorithm: "hable", X264Preset: "veryfast", DirectStreamRemux: true, PlanningPolicy: "maximum_fidelity", ThrottleBufferSeconds: 60, PlayedRetentionSeconds: 180, DiagnosticDays: 30, NotificationDays: 180, JobDays: 30, UpdateChannel: "stable", UpdateFeedURL: DefaultUpdateFeedURL, TrashRetentionDays: bounded(30),
 		RemoteSignInPolicy: "allow", SecureConnectionsPolicy: "preferred", LANNetworks: []string{}, AccessURLs: []string{}, LANDiscoveryEnabled: true, TrustedProxies: []string{}, TreatWANAsLAN: true, LogLevel: "info", LogRetention: []LogRetention{}}
 }
 

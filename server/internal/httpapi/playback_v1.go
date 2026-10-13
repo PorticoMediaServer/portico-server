@@ -73,6 +73,8 @@ func v1ErrorDefinitions() []apierror.Definition {
 		{Code: "rate_limited", Status: 429, Message: "Too many attempts. Try again later.", Retry: apierror.SameRequest},
 		// Plex-model server backups (spec §4): owner-only, published with the
 		// API registry.
+		{Code: "client_log_budget", Status: 429, Message: "The daily client log limit has been reached.", Retry: apierror.Never},
+		{Code: "device_session_required", Status: 403, Message: "Sign in on this device to upload logs.", Retry: apierror.Never},
 		{Code: "restore_source_invalid", Status: 400, Message: "This restore source can't be used. Pick one of the listed backups or a Portico database file on the server.", Retry: apierror.Never},
 		{Code: "restore_schema_newer", Status: 409, Message: "This backup was written by a newer Portico. Update this server before restoring it.", Retry: apierror.Never},
 		{Code: "restore_pre_release", Status: 409, Message: "This backup was created by an earlier pre-release Portico and can't be restored.", Retry: apierror.Never},

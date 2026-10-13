@@ -64,6 +64,9 @@ if '--force' in sys.argv:
         hdiutil = self.tools / "hdiutil"
         hdiutil.write_text('#!/usr/bin/env python3\nimport pathlib,sys\npathlib.Path(sys.argv[-1]).touch()\n')
         hdiutil.chmod(0o700)
+        pkgbuild = self.tools / "pkgbuild"
+        pkgbuild.write_text('#!/usr/bin/env python3\nimport pathlib,sys\npathlib.Path(sys.argv[-1]).touch()\n')
+        pkgbuild.chmod(0o700)
         prefix = "portico.local/server/internal/buildinfo."
         symbols = {prefix + "SourceDigest": "a" * 64, prefix + "BuildID": "fixture",
                    prefix + "Version": "0.1.0", "portico.local/server/internal/hostedtrust.OfficialRoot": "fixture-root"}

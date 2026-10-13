@@ -178,6 +178,22 @@ export const routes = [
     "status": 204
   },
   {
+    "id": "delete_client_log",
+    "method": "DELETE",
+    "path": "/v1/admin/diagnostics/client-logs/{id}",
+    "summary": "Delete a client report",
+    "access": "owner",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "unauthorized",
+      "not_found",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
     "id": "delete_device",
     "method": "DELETE",
     "path": "/v1/devices/{id}",
@@ -246,6 +262,22 @@ export const routes = [
       "not_found"
     ],
     "status": 204
+  },
+  {
+    "id": "download_client_log",
+    "method": "GET",
+    "path": "/v1/admin/diagnostics/client-logs/{id}/download",
+    "summary": "Download a client report",
+    "access": "owner",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "unauthorized",
+      "not_found",
+      "internal"
+    ],
+    "status": 200
   },
   {
     "id": "get_admin_backups",
@@ -355,6 +387,42 @@ export const routes = [
     "errors": [
       "unauthorized",
       "not_permitted"
+    ],
+    "status": 200
+  },
+  {
+    "id": "get_client_log",
+    "method": "GET",
+    "path": "/v1/admin/diagnostics/client-logs/{id}",
+    "summary": "Read a client report",
+    "access": "owner",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "unauthorized",
+      "not_found",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
+    "id": "get_client_logs",
+    "method": "GET",
+    "path": "/v1/admin/diagnostics/client-logs",
+    "summary": "List client reports",
+    "access": "owner",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "cursor",
+      "limit"
+    ],
+    "errors": [
+      "unauthorized",
+      "invalid_request",
+      "internal"
     ],
     "status": 200
   },
@@ -849,7 +917,7 @@ export const routes = [
     "id": "post_admin_backups_restore",
     "method": "POST",
     "path": "/v1/admin/backups/restore",
-    "summary": "Stage a backup for restore on restart",
+    "summary": "Start restoring a backup",
     "access": "owner",
     "lane": "default",
     "cost": "constant",
@@ -857,6 +925,7 @@ export const routes = [
     "errors": [
       "unauthorized",
       "invalid_request",
+      "request_in_progress",
       "restore_source_invalid",
       "restore_schema_newer",
       "restore_pre_release",
@@ -866,7 +935,23 @@ export const routes = [
       "administration_unavailable",
       "internal"
     ],
-    "status": 200
+    "status": 202
+  },
+  {
+    "id": "post_admin_restart",
+    "method": "POST",
+    "path": "/v1/admin/restart",
+    "summary": "Restart the server",
+    "access": "owner",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 4096,
+    "errors": [
+      "unauthorized",
+      "administration_unavailable"
+    ],
+    "status": 202,
+    "optionalBody": true
   },
   {
     "id": "post_admin_state_permissions_fix",
@@ -884,6 +969,24 @@ export const routes = [
     ],
     "status": 200,
     "optionalBody": true
+  },
+  {
+    "id": "post_client_log",
+    "method": "POST",
+    "path": "/v1/diagnostics/client-logs",
+    "summary": "Send a client report to this server",
+    "access": "device",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 1576960,
+    "errors": [
+      "unauthorized",
+      "invalid_request",
+      "device_session_required",
+      "client_log_budget",
+      "internal"
+    ],
+    "status": 201
   },
   {
     "id": "post_device",

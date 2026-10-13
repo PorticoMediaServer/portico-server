@@ -31,6 +31,12 @@ export const errors = [
     "retry": "same_request"
   },
   {
+    "code": "client_log_budget",
+    "status": 429,
+    "message": "The daily client log limit has been reached.",
+    "retry": "never"
+  },
+  {
     "code": "cursor_expired",
     "status": 409,
     "message": "Refresh the list to continue.",
@@ -52,6 +58,12 @@ export const errors = [
     "code": "device_not_found",
     "status": 404,
     "message": "This device isn't available.",
+    "retry": "never"
+  },
+  {
+    "code": "device_session_required",
+    "status": 403,
+    "message": "Sign in on this device to upload logs.",
     "retry": "never"
   },
   {

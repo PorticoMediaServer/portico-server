@@ -4478,6 +4478,16 @@ export const schemas = {
     "required": [],
     "type": "object"
   },
+  "DeleteClientLogRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "DeleteClientLogResponse": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
   "DeleteDeviceRequest": {
     "properties": {},
     "required": [],
@@ -4516,6 +4526,58 @@ export const schemas = {
   "DeleteQueueResponse": {
     "properties": {},
     "required": [],
+    "type": "object"
+  },
+  "DownloadClientLogRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "DownloadClientLogResponse": {
+    "properties": {
+      "accountId": {
+        "type": "string"
+      },
+      "appVersion": {
+        "type": "string"
+      },
+      "body": {
+        "type": "string"
+      },
+      "bytes": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "deviceClass": {
+        "type": "string"
+      },
+      "deviceId": {
+        "type": "string"
+      },
+      "id": {
+        "type": "string"
+      },
+      "platform": {
+        "type": "string"
+      },
+      "profileId": {
+        "type": "string"
+      },
+      "receivedAt": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "id",
+      "accountId",
+      "profileId",
+      "deviceId",
+      "platform",
+      "deviceClass",
+      "receivedAt",
+      "bytes"
+    ],
     "type": "object"
   },
   "GetAdminBackupsRequest": {
@@ -4582,6 +4644,69 @@ export const schemas = {
         "required": [
           "at",
           "outcome"
+        ],
+        "type": "object"
+      },
+      "restore": {
+        "properties": {
+          "bytesDone": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "bytesTotal": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "errorCode": {
+            "type": "string"
+          },
+          "jobId": {
+            "type": "string"
+          },
+          "phase": {
+            "type": "string"
+          },
+          "result": {
+            "properties": {
+              "restartRequired": {
+                "type": "boolean"
+              },
+              "staged": {
+                "type": "boolean"
+              },
+              "validation": {
+                "properties": {
+                  "integrity": {
+                    "type": "string"
+                  },
+                  "schemaVersion": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "schemaVersion",
+                  "integrity"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "staged",
+              "restartRequired",
+              "validation"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "jobId",
+          "phase",
+          "bytesDone",
+          "bytesTotal"
         ],
         "type": "object"
       },
@@ -5421,6 +5546,130 @@ export const schemas = {
       }
     },
     "required": [
+      "items"
+    ],
+    "type": "object"
+  },
+  "GetClientLogRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetClientLogResponse": {
+    "properties": {
+      "accountId": {
+        "type": "string"
+      },
+      "appVersion": {
+        "type": "string"
+      },
+      "body": {
+        "type": "string"
+      },
+      "bytes": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "deviceClass": {
+        "type": "string"
+      },
+      "deviceId": {
+        "type": "string"
+      },
+      "id": {
+        "type": "string"
+      },
+      "platform": {
+        "type": "string"
+      },
+      "profileId": {
+        "type": "string"
+      },
+      "receivedAt": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "id",
+      "accountId",
+      "profileId",
+      "deviceId",
+      "platform",
+      "deviceClass",
+      "receivedAt",
+      "bytes"
+    ],
+    "type": "object"
+  },
+  "GetClientLogsRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetClientLogsResponse": {
+    "properties": {
+      "items": {
+        "items": {
+          "properties": {
+            "accountId": {
+              "type": "string"
+            },
+            "appVersion": {
+              "type": "string"
+            },
+            "body": {
+              "type": "string"
+            },
+            "bytes": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "deviceClass": {
+              "type": "string"
+            },
+            "deviceId": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            },
+            "platform": {
+              "type": "string"
+            },
+            "profileId": {
+              "type": "string"
+            },
+            "receivedAt": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "accountId",
+            "profileId",
+            "deviceId",
+            "platform",
+            "deviceClass",
+            "receivedAt",
+            "bytes"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "limit": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "nextCursor": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "limit",
       "items"
     ],
     "type": "object"
@@ -9034,35 +9283,23 @@ export const schemas = {
   },
   "PostAdminBackupsRestoreResponse": {
     "properties": {
-      "restartRequired": {
-        "type": "boolean"
-      },
-      "staged": {
-        "type": "boolean"
-      },
-      "validation": {
-        "properties": {
-          "integrity": {
-            "type": "string"
-          },
-          "schemaVersion": {
-            "maximum": 9007199254740991,
-            "minimum": -9007199254740991,
-            "type": "integer"
-          }
-        },
-        "required": [
-          "schemaVersion",
-          "integrity"
-        ],
-        "type": "object"
+      "jobId": {
+        "type": "string"
       }
     },
     "required": [
-      "staged",
-      "restartRequired",
-      "validation"
+      "jobId"
     ],
+    "type": "object"
+  },
+  "PostAdminRestartRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "PostAdminRestartResponse": {
+    "properties": {},
+    "required": [],
     "type": "object"
   },
   "PostAdminStatePermissionsFixRequest": {
@@ -9078,6 +9315,80 @@ export const schemas = {
     },
     "required": [
       "exposed"
+    ],
+    "type": "object"
+  },
+  "PostClientLogRequest": {
+    "properties": {
+      "appVersion": {
+        "type": "string"
+      },
+      "body": {
+        "type": "string"
+      },
+      "deviceClass": {
+        "type": "string"
+      },
+      "deviceId": {
+        "type": "string"
+      },
+      "platform": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "deviceId",
+      "platform",
+      "deviceClass",
+      "appVersion",
+      "body"
+    ],
+    "type": "object"
+  },
+  "PostClientLogResponse": {
+    "properties": {
+      "accountId": {
+        "type": "string"
+      },
+      "appVersion": {
+        "type": "string"
+      },
+      "body": {
+        "type": "string"
+      },
+      "bytes": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "deviceClass": {
+        "type": "string"
+      },
+      "deviceId": {
+        "type": "string"
+      },
+      "id": {
+        "type": "string"
+      },
+      "platform": {
+        "type": "string"
+      },
+      "profileId": {
+        "type": "string"
+      },
+      "receivedAt": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "id",
+      "accountId",
+      "profileId",
+      "deviceId",
+      "platform",
+      "deviceClass",
+      "receivedAt",
+      "bytes"
     ],
     "type": "object"
   },

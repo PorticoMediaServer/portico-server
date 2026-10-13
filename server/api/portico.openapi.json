@@ -140,6 +140,69 @@
                       ],
                       "type": "object"
                     },
+                    "restore": {
+                      "properties": {
+                        "bytesDone": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "bytesTotal": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "errorCode": {
+                          "type": "string"
+                        },
+                        "jobId": {
+                          "type": "string"
+                        },
+                        "phase": {
+                          "type": "string"
+                        },
+                        "result": {
+                          "properties": {
+                            "restartRequired": {
+                              "type": "boolean"
+                            },
+                            "staged": {
+                              "type": "boolean"
+                            },
+                            "validation": {
+                              "properties": {
+                                "integrity": {
+                                  "type": "string"
+                                },
+                                "schemaVersion": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "schemaVersion",
+                                "integrity"
+                              ],
+                              "type": "object"
+                            }
+                          },
+                          "required": [
+                            "staged",
+                            "restartRequired",
+                            "validation"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "jobId",
+                        "phase",
+                        "bytesDone",
+                        "bytesTotal"
+                      ],
+                      "type": "object"
+                    },
                     "running": {
                       "properties": {
                         "bytesDone": {
@@ -265,39 +328,17 @@
           "required": true
         },
         "responses": {
-          "200": {
+          "202": {
             "content": {
               "application/json": {
                 "schema": {
                   "properties": {
-                    "restartRequired": {
-                      "type": "boolean"
-                    },
-                    "staged": {
-                      "type": "boolean"
-                    },
-                    "validation": {
-                      "properties": {
-                        "integrity": {
-                          "type": "string"
-                        },
-                        "schemaVersion": {
-                          "maximum": 9007199254740991,
-                          "minimum": -9007199254740991,
-                          "type": "integer"
-                        }
-                      },
-                      "required": [
-                        "schemaVersion",
-                        "integrity"
-                      ],
-                      "type": "object"
+                    "jobId": {
+                      "type": "string"
                     }
                   },
                   "required": [
-                    "staged",
-                    "restartRequired",
-                    "validation"
+                    "jobId"
                   ],
                   "type": "object"
                 }
@@ -306,7 +347,7 @@
             "description": "Success"
           }
         },
-        "summary": "Stage a backup for restore on restart",
+        "summary": "Start restoring a backup",
         "x-access": "owner",
         "x-cost": "constant",
         "x-lane": "default",
@@ -385,6 +426,242 @@
           }
         },
         "summary": "Why Live TV, recording, prepared media or hardware encoding is unavailable on this server",
+        "x-access": "owner",
+        "x-cost": "constant",
+        "x-lane": "default"
+      }
+    },
+    "/v1/admin/diagnostics/client-logs": {
+      "get": {
+        "operationId": "get_client_logs",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "items": {
+                      "items": {
+                        "properties": {
+                          "accountId": {
+                            "type": "string"
+                          },
+                          "appVersion": {
+                            "type": "string"
+                          },
+                          "body": {
+                            "type": "string"
+                          },
+                          "bytes": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "deviceClass": {
+                            "type": "string"
+                          },
+                          "deviceId": {
+                            "type": "string"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "platform": {
+                            "type": "string"
+                          },
+                          "profileId": {
+                            "type": "string"
+                          },
+                          "receivedAt": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "accountId",
+                          "profileId",
+                          "deviceId",
+                          "platform",
+                          "deviceClass",
+                          "receivedAt",
+                          "bytes"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "limit": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "nextCursor": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "limit",
+                    "items"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "List client reports",
+        "x-access": "owner",
+        "x-cost": "page_sized",
+        "x-lane": "default"
+      }
+    },
+    "/v1/admin/diagnostics/client-logs/{id}": {
+      "delete": {
+        "operationId": "delete_client_log",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {},
+                  "required": [],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Delete a client report",
+        "x-access": "owner",
+        "x-cost": "constant",
+        "x-lane": "default"
+      },
+      "get": {
+        "operationId": "get_client_log",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "accountId": {
+                      "type": "string"
+                    },
+                    "appVersion": {
+                      "type": "string"
+                    },
+                    "body": {
+                      "type": "string"
+                    },
+                    "bytes": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "deviceClass": {
+                      "type": "string"
+                    },
+                    "deviceId": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "platform": {
+                      "type": "string"
+                    },
+                    "profileId": {
+                      "type": "string"
+                    },
+                    "receivedAt": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "accountId",
+                    "profileId",
+                    "deviceId",
+                    "platform",
+                    "deviceClass",
+                    "receivedAt",
+                    "bytes"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Read a client report",
+        "x-access": "owner",
+        "x-cost": "constant",
+        "x-lane": "default"
+      }
+    },
+    "/v1/admin/diagnostics/client-logs/{id}/download": {
+      "get": {
+        "operationId": "download_client_log",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "accountId": {
+                      "type": "string"
+                    },
+                    "appVersion": {
+                      "type": "string"
+                    },
+                    "body": {
+                      "type": "string"
+                    },
+                    "bytes": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "deviceClass": {
+                      "type": "string"
+                    },
+                    "deviceId": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "platform": {
+                      "type": "string"
+                    },
+                    "profileId": {
+                      "type": "string"
+                    },
+                    "receivedAt": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "accountId",
+                    "profileId",
+                    "deviceId",
+                    "platform",
+                    "deviceClass",
+                    "receivedAt",
+                    "bytes"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Download a client report",
         "x-access": "owner",
         "x-cost": "constant",
         "x-lane": "default"
@@ -923,6 +1200,42 @@
         "x-cost": "constant",
         "x-lane": "default",
         "x-max-body-bytes": 65536
+      }
+    },
+    "/v1/admin/restart": {
+      "post": {
+        "operationId": "post_admin_restart",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {},
+                "required": [],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {},
+                  "required": [],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Restart the server",
+        "x-access": "owner",
+        "x-cost": "constant",
+        "x-lane": "default",
+        "x-max-body-bytes": 4096
       }
     },
     "/v1/admin/sessions": {
@@ -2556,6 +2869,106 @@
         "x-cost": "constant",
         "x-lane": "security",
         "x-max-body-bytes": 4096
+      }
+    },
+    "/v1/diagnostics/client-logs": {
+      "post": {
+        "operationId": "post_client_log",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "appVersion": {
+                    "type": "string"
+                  },
+                  "body": {
+                    "type": "string"
+                  },
+                  "deviceClass": {
+                    "type": "string"
+                  },
+                  "deviceId": {
+                    "type": "string"
+                  },
+                  "platform": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "deviceId",
+                  "platform",
+                  "deviceClass",
+                  "appVersion",
+                  "body"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "accountId": {
+                      "type": "string"
+                    },
+                    "appVersion": {
+                      "type": "string"
+                    },
+                    "body": {
+                      "type": "string"
+                    },
+                    "bytes": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "deviceClass": {
+                      "type": "string"
+                    },
+                    "deviceId": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "platform": {
+                      "type": "string"
+                    },
+                    "profileId": {
+                      "type": "string"
+                    },
+                    "receivedAt": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "accountId",
+                    "profileId",
+                    "deviceId",
+                    "platform",
+                    "deviceClass",
+                    "receivedAt",
+                    "bytes"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Send a client report to this server",
+        "x-access": "device",
+        "x-cost": "constant",
+        "x-lane": "default",
+        "x-max-body-bytes": 1576960
       }
     },
     "/v1/direct": {

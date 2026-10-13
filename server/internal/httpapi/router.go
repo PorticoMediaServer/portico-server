@@ -51,6 +51,7 @@ import (
 )
 
 type Dependencies struct {
+	Restart func()
 	// HTTPSRoute may attest an externally terminated HTTPS route. The default
 	// uses the installed certificate manager; an access URL alone is not proof.
 	HTTPSRoute func(context.Context) (string, bool, error)

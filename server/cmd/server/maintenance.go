@@ -115,6 +115,9 @@ func runDatabaseHousekeeping(ctx context.Context, db *sql.DB) {
 		if !ancillary.due(time.Now()) {
 			continue
 		}
+		if err := persistence.ReclaimSpace(ctx, db); err != nil {
+			log.Printf("Database space reclamation: %v", err)
+		}
 		if time.Since(lastReceiptSweep) >= 15*time.Minute {
 			// Check the indexed expiry on a read connection first. Backlog is
 			// drained in short gated transactions rather than one long writer.

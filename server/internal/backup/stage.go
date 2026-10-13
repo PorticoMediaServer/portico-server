@@ -60,6 +60,9 @@ func (s *Service) Stage(ctx context.Context, source Source) (StageResult, error)
 	if (source.BackupID == "") == (source.Path == "") {
 		return out, ErrSourceInvalid
 	}
+	if s.restoreUnavailable {
+		return out, ErrRestorePending
+	}
 	s.stageMu.Lock()
 	defer s.stageMu.Unlock()
 	// Staging replaces restore-staged; never while it holds a restore that has
@@ -67,6 +70,7 @@ func (s *Service) Stage(ctx context.Context, source Source) (StageResult, error)
 	if RestoreUnresolved(s.state) {
 		return out, ErrRestorePending
 	}
+	s.restoreProgress("verify-files", 0, 0)
 	srcDB, srcDir, files, err := s.resolveSource(source)
 	if err != nil {
 		return out, err
@@ -107,7 +111,7 @@ func (s *Service) Stage(ctx context.Context, source Source) (StageResult, error)
 			_ = os.RemoveAll(incoming)
 		}
 	}()
-	if _, err = copyOneFile(srcDB, filepath.Join(incoming, DatabaseName), DatabaseName); err != nil {
+	if _, err = copyOneFileContext(ctx, srcDB, filepath.Join(incoming, DatabaseName), DatabaseName, func(done, total int64) { s.restoreProgress("copy", done, total) }); err != nil {
 		return out, ErrSourceInvalid
 	}
 	if _, err = os.Stat(srcDB + "-wal"); err == nil {
@@ -118,6 +122,7 @@ func (s *Service) Stage(ctx context.Context, source Source) (StageResult, error)
 			return out, ErrSourceInvalid
 		}
 	}
+	s.restoreProgress("integrity", estimate, estimate)
 	schemaVersion, err := persistence.InspectCandidate(ctx, filepath.Join(incoming, DatabaseName))
 	if err != nil {
 		return out, err
@@ -179,7 +184,7 @@ func (s *Service) resolveSource(source Source) (db, dir string, files []string, 
 		if err = checkID(source.BackupID); err != nil {
 			return "", "", nil, ErrSourceInvalid
 		}
-		folder := filepath.Join(s.state, BackupsDir, source.BackupID)
+		folder := filepath.Join(s.backupRoot(), source.BackupID)
 		manifest, err := readManifest(folder)
 		if err != nil {
 			return "", "", nil, ErrSourceInvalid

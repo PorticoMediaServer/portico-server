@@ -130,6 +130,7 @@ func New(o Options) *Recorder {
 			}
 		}
 	}
+	r.loadHistory()
 	return r
 }
 
@@ -273,6 +274,7 @@ func stripStandardPrefix(line string) string {
 // a slow live-tail subscriber: a subscriber that cannot keep up drops records
 // rather than stalling the server.
 func (r *Recorder) Record(level, category, message string) {
+	message = redactClientLog(message)
 	if !ValidLevel(level) {
 		level = "info"
 	}
@@ -561,4 +563,45 @@ func (r *Recorder) Tail(n int) []string {
 		}
 	}
 	return lines
+}
+
+// loadHistory restores a bounded tail, assigning new sequence IDs for this run.
+func (r *Recorder) loadHistory() {
+	if r.options.Directory == "" {
+		return
+	}
+	for index := r.options.FileCount; index >= 0; index-- {
+		file, err := os.Open(r.path(index))
+		if err != nil {
+			continue
+		}
+		info, err := file.Stat()
+		if err != nil {
+			file.Close()
+			continue
+		}
+		if info.Size() > r.options.FileBytes {
+			file.Seek(info.Size()-r.options.FileBytes, io.SeekStart)
+		}
+		scanner := bufio.NewScanner(io.LimitReader(file, r.options.FileBytes))
+		scanner.Buffer(make([]byte, 4096), 64<<10)
+		for scanner.Scan() {
+			fields := strings.SplitN(scanner.Text(), "\t", 4)
+			if len(fields) != 4 || !ValidLevel(fields[1]) || !ValidCategory(fields[2]) {
+				continue
+			}
+			if _, err := time.Parse(time.RFC3339Nano, fields[0]); err != nil {
+				continue
+			}
+			r.next++
+			record := Record{Sequence: r.next, At: fields[0], Level: fields[1], Category: fields[2], Message: redactClientLog(fields[3])}
+			if len(r.ring) == r.options.Capacity {
+				copy(r.ring, r.ring[1:])
+				r.ring[len(r.ring)-1] = record
+			} else {
+				r.ring = append(r.ring, record)
+			}
+		}
+		file.Close()
+	}
 }

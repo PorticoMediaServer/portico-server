@@ -29,18 +29,18 @@ def snapshot_digest(source):
 def controlled_env():
     env=os.environ.copy()
     for key in ('GOOS','GOARCH','GOEXPERIMENT','GOROOT','GOTOOLDIR','GOTMPDIR','CC','CXX','CGO_CFLAGS','CGO_CPPFLAGS','CGO_CXXFLAGS','CGO_LDFLAGS'):env.pop(key,None)
-    env.update({'GOFLAGS':'','GOWORK':'off','GOENV':'off','GOTOOLCHAIN':'local','GOPROXY':'https://proxy.golang.org','GOSUMDB':'sum.golang.org','GOPRIVATE':'','GONOSUMDB':'','GONOPROXY':''})
+    env.update({'GOFLAGS':'-p=2','GOWORK':'off','GOENV':'off','GOTOOLCHAIN':'local','GOPROXY':'https://proxy.golang.org','GOSUMDB':'sum.golang.org','GOPRIVATE':'','GONOSUMDB':'','GONOPROXY':''})
     return env
 
 def signing_key():
-    directory=ROOT/'runtime'/'release-signing';directory.mkdir(mode=0o700,parents=True,exist_ok=True);directory.chmod(0o700);path=directory/'private-key'
-    if not path.exists():
-        key=Ed25519PrivateKey.generate()
-        try:
-            with os.fdopen(os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600),'wb') as output:output.write(key.private_bytes_raw());output.flush();os.fsync(output.fileno())
-        except FileExistsError:pass
+    path=pathlib.Path(os.environ.get('PORTICO_RELEASE_SIGNING_KEY_FILE',str(ROOT/'runtime/release-signing/private-key')))
+    if not path.is_file():raise ValueError('Provide the approved release signing key; release builds never create one')
     if path.is_symlink() or path.stat().st_mode&0o077:raise ValueError('Release signing key permissions are unsafe')
-    key=Ed25519PrivateKey.from_private_bytes(path.read_bytes());(directory/'public-key').write_bytes(key.public_key().public_bytes_raw());return key
+    key=Ed25519PrivateKey.from_private_bytes(path.read_bytes())
+    expected=os.environ.get('PORTICO_RELEASE_PUBLIC_KEY_FILE')
+    if not expected:raise ValueError('Provide the pinned release public key for independent verification')
+    if pathlib.Path(expected).read_bytes()!=key.public_key().public_bytes_raw():raise ValueError('Release signer differs from the pinned public key')
+    return key
 
 def source_files(source):
     # The whole module tree: Go source, embedded files (migrations, fonts, the
@@ -104,6 +104,7 @@ def release_version(value):
 
 def main():
     parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--version',required=True,type=release_version);parser.add_argument('--os',choices=['linux','darwin','windows'],default='linux');parser.add_argument('--arch',choices=['amd64','arm64'],default='amd64');parser.add_argument('--component',choices=['server'],default='server');parser.add_argument('--ffmpeg-bundle',type=pathlib.Path,default=ROOT/'third_party/ffmpeg/bundle');parser.add_argument('--source-dir',type=pathlib.Path);args=parser.parse_args()
+    key=signing_key()
     root_key,root_pem=official_root()
     if args.component=='server':
         bundle=args.ffmpeg_bundle.resolve()
@@ -146,7 +147,7 @@ def main():
     # The 20,000-row metadata boundary test is deliberately exhaustive. Race
     # instrumentation of pure-Go SQLite exceeds Go's default ten-minute limit.
     subprocess.run([str(ROOT/'scripts/env.sh'),'go','test','-race','-timeout=30m','./...'],cwd=source,env=checked_env,check=True)
-    subprocess.run([str(ROOT/'scripts/env.sh'),'go','vet','./...'],cwd=source,env=checked_env,check=True)
+    subprocess.run([str(ROOT/'scripts/env.sh'),'sh',str(ROOT/'scripts/vet-go.sh')],cwd=source,env=checked_env,check=True)
     built_at=datetime.datetime.now(datetime.timezone.utc).isoformat()
     prefix='portico.local/'+args.component+'/internal/buildinfo.'
     flags=' '.join(f'-X {prefix}{key}={value}' for key,value in {'SourceDigest':snapshot,'BuildID':build_id,'Version':args.version,'BuiltAt':built_at,'Proof':f'PORTICO_SOURCE_V1:{snapshot}:{build_id}:END'}.items())
@@ -164,6 +165,6 @@ def main():
         if toolchain['target']!=target:raise SystemExit('FFmpeg bundle target does not match server')
         shutil.copytree(bundle,stage/'third_party/ffmpeg')
         manifest['toolchainManifestSha256']=hashlib.sha256((bundle/'toolchain-manifest.json').read_bytes()).hexdigest()
-    (stage/'manifest.json').write_text(json.dumps(manifest,indent=2)+'\n');key=signing_key();(stage/'manifest.sig').write_bytes(key.sign((stage/'manifest.json').read_bytes()));verify_manifest(stage,snapshot,key.public_key().public_bytes_raw())
+    (stage/'manifest.json').write_text(json.dumps(manifest,indent=2)+'\n');(stage/'manifest.sig').write_bytes(key.sign((stage/'manifest.json').read_bytes()));verify_manifest(stage,snapshot,key.public_key().public_bytes_raw())
     print(json.dumps({'directory':str(stage),'sourceDigest':snapshot,'artifactSha256':manifest['artifact']['sha256'],'buildId':build_id}))
 if __name__=='__main__':main()

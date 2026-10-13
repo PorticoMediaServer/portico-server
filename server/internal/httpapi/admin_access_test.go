@@ -432,7 +432,7 @@ func TestClientLogUploadsAreBoundedStoredPerDeviceAndListedForAdmins(t *testing.
 	if w = f.call("POST", "/v1/diagnostics/client-logs", "", `{"body":"anonymous"}`); w.Code != 401 {
 		t.Fatalf("an unauthenticated upload was accepted: %d", w.Code)
 	}
-	w = f.call("GET", "/v1/admin/diagnostics/client-logs", f.admin, "")
+	w = f.call("GET", "/v1/admin/diagnostics/client-logs", f.owner, "")
 	if w.Code != 200 || !strings.Contains(w.Body.String(), `"deviceId":"`+f.memberDevice+`"`) || strings.Contains(w.Body.String(), "a client trace") {
 		t.Fatalf("a list must carry metadata but not bodies: %d %s", w.Code, w.Body)
 	}
@@ -440,7 +440,7 @@ func TestClientLogUploadsAreBoundedStoredPerDeviceAndListedForAdmins(t *testing.
 	if e := json.Unmarshal(w.Body.Bytes(), &page); e != nil || len(page.Items) != 1 {
 		t.Fatalf("page: %v %+v", e, page)
 	}
-	w = f.call("GET", "/v1/admin/diagnostics/client-logs/"+page.Items[0].ID, f.admin, "")
+	w = f.call("GET", "/v1/admin/diagnostics/client-logs/"+page.Items[0].ID, f.owner, "")
 	if w.Code != 200 || !strings.Contains(w.Body.String(), "a client trace") {
 		t.Fatalf("single read: %d %s", w.Code, w.Body)
 	}
@@ -461,7 +461,7 @@ func TestClientLogUploadsRedactAndEnforceAccountBudget(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &uploaded); err != nil {
 		t.Fatal(err)
 	}
-	w = f.call("GET", "/v1/admin/diagnostics/client-logs/"+uploaded.ID, f.admin, "")
+	w = f.call("GET", "/v1/admin/diagnostics/client-logs/"+uploaded.ID, f.owner, "")
 	if w.Code != 200 || strings.Contains(w.Body.String(), secret) || !strings.Contains(w.Body.String(), "[REDACTED]") {
 		t.Fatalf("unredacted body: %d %s", w.Code, w.Body)
 	}
@@ -485,7 +485,7 @@ func TestClientLogRetentionIsPerAuthenticatedDevice(t *testing.T) {
 			t.Fatalf("upload %d: %d %s", i, w.Code, w.Body)
 		}
 	}
-	w := f.call("GET", "/v1/admin/diagnostics/client-logs", f.admin, "")
+	w := f.call("GET", "/v1/admin/diagnostics/client-logs", f.owner, "")
 	var page servicelog.ClientUploadPage
 	if err := json.Unmarshal(w.Body.Bytes(), &page); err != nil || w.Code != 200 || len(page.Items) != servicelog.ClientUploadsPerDevice {
 		t.Fatalf("device retention: %d %v %+v", w.Code, err, page)

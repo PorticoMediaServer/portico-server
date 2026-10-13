@@ -12,7 +12,7 @@ APP="$DMG_ROOT/Portico Media Server.app"
 rm -rf "${DMG_ROOT:?}"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources/server" "$APP/Contents/Resources/launchd"
 cp -R "$PAYLOAD/." "$APP/Contents/Resources/server/"
-cp "$ROOT/packaging/macos/tv.getportico.server.service.plist" "$ROOT/packaging/macos/server-launcher.sh" "$APP/Contents/Resources/launchd/"
+cp "$ROOT/packaging/macos/tv.getportico.server.service.plist" "$ROOT/packaging/macos/uninstall.sh" "$APP/Contents/Resources/launchd/"
 sed -e "s/__PORTICO_VERSION__/$VERSION/g" -e "s/__PORTICO_BUILD__/$BUILD_NUMBER/g" "$ROOT/packaging/macos/Info.plist" > "$APP/Contents/Info.plist"
 cp "$ROOT/packaging/macos/launcher.sh" "$APP/Contents/MacOS/Portico Media Server"
 chmod +x "$APP/Contents/MacOS/Portico Media Server" "$APP/Contents/Resources/server/portico-server" "$APP/Contents/Resources/server/third_party/ffmpeg/bin/"*
@@ -34,6 +34,18 @@ if [[ -n "${PORTICO_MACOS_SIGNING_IDENTITY:-}" ]]; then
   codesign --verify --deep --strict "$APP"
   python3 "$ROOT/scripts/seal-macos-payload.py" "$APP/Contents/Resources/server" --public-key "$PUBLIC_KEY_FILE" --verify
 fi
-ln -s /Applications "$DMG_ROOT/Applications"
 if find "$DMG_ROOT" -type f \( -name '._*' -o -name '.DS_Store' \) | grep -q .; then echo "macOS package contains Finder metadata" >&2; exit 1; fi
+
+PKG_ROOT="$OUT/pkg-root"
+rm -rf "${PKG_ROOT:?}"
+mkdir -p "$PKG_ROOT/Applications"
+cp -R "$APP" "$PKG_ROOT/Applications/"
+chmod +x "$ROOT/packaging/macos/package-scripts/"* "$PKG_ROOT/Applications/Portico Media Server.app/Contents/Resources/launchd/uninstall.sh"
+sign=()
+if [[ -n "${PORTICO_MACOS_INSTALLER_IDENTITY:-}" ]]; then sign=(--sign "$PORTICO_MACOS_INSTALLER_IDENTITY"); fi
+pkgbuild --root "$PKG_ROOT" --identifier tv.getportico.server --version "$VERSION" --install-location / --scripts "$ROOT/packaging/macos/package-scripts" "${sign[@]}" "$OUT/Portico-Media-Server-macOS-arm64.pkg"
+
+rm -rf "${DMG_ROOT:?}"
+mkdir -p "$DMG_ROOT"
+cp "$OUT/Portico-Media-Server-macOS-arm64.pkg" "$DMG_ROOT/"
 hdiutil create -quiet -volname "Portico Media Server" -srcfolder "$DMG_ROOT" -ov -format UDZO "$OUT/Portico-Media-Server-macOS-arm64.dmg"

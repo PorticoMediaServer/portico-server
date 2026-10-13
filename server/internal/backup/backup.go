@@ -222,6 +222,7 @@ func (j *Job) finish(err error) {
 // The zero value is unusable; construct with New.
 type Service struct {
 	state         string
+	directory     string
 	db            *sql.DB
 	serverID      string
 	serverVersion string
@@ -230,7 +231,10 @@ type Service struct {
 	// onStaged runs after a restore is staged and answered, to restart the
 	// server. It is injected by the composition root; nil skips the restart
 	// (tests).
-	onStaged func()
+	onStaged           func()
+	restoreUnavailable bool
+	restoreOperation   string
+	restoreJob         *RestoreJob
 
 	// stageMu makes restore staging one at a time: every stage writes the same
 	// restore-staged folder, so overlapping requests (a retry, a second tab)
@@ -258,8 +262,32 @@ func New(state string, db *sql.DB, serverID, serverVersion string, schemaVersion
 	}
 }
 
+func (s *Service) backupRoot() string {
+	if s.directory != "" {
+		return s.directory
+	}
+	return filepath.Join(s.state, BackupsDir)
+}
+
+// SetDirectory is startup-only; an empty path keeps the single-folder default.
+func (s *Service) SetDirectory(directory string) error {
+	if directory == "" {
+		return nil
+	}
+	if !filepath.IsAbs(directory) || filepath.Clean(directory) != directory {
+		return ErrInvalid
+	}
+	if err := os.MkdirAll(directory, 0700); err != nil {
+		return err
+	}
+	s.directory = directory
+	return nil
+}
+
 // SetRestartFunc injects the restart that follows a staged restore.
 func (s *Service) SetRestartFunc(fn func()) { s.onStaged = fn }
+
+func (s *Service) SetRestoreAvailable(available bool) { s.restoreUnavailable = !available }
 
 // Start begins an asynchronous backup. It is idempotent per operationID: the
 // same id twice returns the same job. Only one backup runs at a time; a new
@@ -340,7 +368,7 @@ func (s *Service) databasePath() string { return filepath.Join(s.state, "server.
 
 // backupsDir creates the backups folder if needed and returns it.
 func (s *Service) backupsDir() (string, error) {
-	dir := filepath.Join(s.state, BackupsDir)
+	dir := s.backupRoot()
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return "", err
 	}
@@ -371,7 +399,7 @@ func (s *Service) create(ctx context.Context, job *Job, kind Kind) (string, erro
 		job.setTotal(estimate)
 		job.report("snapshot", 0, estimate)
 	}
-	if err = checkFreeSpace(s.state, estimate); err != nil {
+	if err = checkFreeSpace(dir, estimate); err != nil {
 		return "", err
 	}
 	stamp := s.now().UTC().Format(timestampLayout)
@@ -433,7 +461,7 @@ func (s *Service) CreateKind(ctx context.Context, kind Kind) (string, error) {
 // List returns every complete backup, newest first. Dot-names (partial or
 // transient folders) are ignored.
 func (s *Service) List() ([]Info, error) {
-	dir := filepath.Join(s.state, BackupsDir)
+	dir := s.backupRoot()
 	names, err := os.ReadDir(dir)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -470,7 +498,7 @@ func (s *Service) Delete(id string) error {
 	if err := checkID(id); err != nil {
 		return err
 	}
-	path := filepath.Join(s.state, BackupsDir, id)
+	path := filepath.Join(s.backupRoot(), id)
 	info, err := os.Lstat(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -503,6 +531,9 @@ func (s *Service) Prune(keep int) error {
 					return err
 				}
 			}
+			continue
+		}
+		if info.Kind != KindScheduled {
 			continue
 		}
 		kept++

@@ -53,6 +53,7 @@ import (
 	"portico.local/server/internal/remotemedia"
 	"portico.local/server/internal/remotesources"
 	"portico.local/server/internal/scanevents"
+	"portico.local/server/internal/servicelog"
 	"portico.local/server/internal/sourceaccess"
 	"portico.local/server/internal/storage"
 	"portico.local/server/internal/subtitles"
@@ -121,10 +122,30 @@ func main() {
 		}
 		return
 	}
+	if handled, err := serviceCommand(); handled {
+		if err != nil {
+			log.Print(err)
+			os.Exit(1)
+		}
+		return
+	}
+	if os.Getenv(supervise.WorkerEnvironment) != "1" {
+		ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+		defer cancel()
+		executable, err := os.Executable()
+		if err == nil {
+			err = supervise.Process(ctx, executable, os.Args[1:])
+		}
+		if err != nil {
+			log.Print(err)
+			os.Exit(1)
+		}
+		return
+	}
 	if e := run(); e != nil {
 		if errors.Is(e, errRestartRequested) {
-			log.Print("Restarting to apply the staged restore")
-			os.Exit(75)
+			log.Print("Restart requested")
+			os.Exit(supervise.RestartExitCode)
 		}
 		log.Fatal(e)
 	}
@@ -147,8 +168,7 @@ const defaultBind = "0.0.0.0:32500"
 // build installed, so housekeeping downgrades it.
 var stateDirFreshThisProcess bool
 
-// errRestartRequested ends the process with status 75 so the service manager
-// restarts it: a staged restore applies on the next start.
+// errRestartRequested asks the supervising parent to start a fresh worker.
 var errRestartRequested = errors.New("restart requested: staged restore applies on next start")
 
 // restartRequested is set when a restore is staged and answered, and read when
@@ -217,6 +237,13 @@ func run() error {
 		return e
 	}
 	if e = os.MkdirAll(state, 0700); e != nil {
+		return e
+	}
+	startupLog := servicelog.New(servicelog.Options{Directory: filepath.Join(state, "logs")})
+	installMessageLogOutput(startupLog)
+	defer startupLog.Close()
+	cache, e := startupDirectory("PORTICO_CACHE_DIR", state)
+	if e != nil {
 		return e
 	}
 	// New state folders start private. An existing folder is never
@@ -502,7 +529,7 @@ func run() error {
 	defer subtitleService.Close()
 	doneSubtitles(nil)
 	player.Subtitles = subtitleService
-	subtitleRenderer, e := subtitlevideo.New(subtitlevideo.Options{DB: db, Storage: storeIO, Mounts: managed, Directory: filepath.Join(state, "subtitle-video"), FFmpeg: ffmpegTool, FFprobe: ffprobeTool, Libraries: filepath.SplitList(os.Getenv("PORTICO_DECODER_LIBRARIES"))})
+	subtitleRenderer, e := subtitlevideo.New(subtitlevideo.Options{DB: db, Storage: storeIO, Mounts: managed, Directory: filepath.Join(cache, "subtitle-video"), FFmpeg: ffmpegTool, FFprobe: ffprobeTool, Libraries: filepath.SplitList(os.Getenv("PORTICO_DECODER_LIBRARIES"))})
 	if e != nil {
 		return e
 	}
@@ -520,7 +547,7 @@ func run() error {
 	analysisService.Admission = workAdmission.Admit
 	scanner.DeepAnalysis = analysisService
 	donePrepared := reporter.step("prepared-media", "Open prepared media storage")
-	preparedVersions, e := preparedmedia.New(preparedmedia.Options{Sandbox: env("PORTICO_PREPARED_SANDBOX", "bwrap"), DB: db, Directory: filepath.Join(state, "prepared-media"), FFmpeg: ffmpegTool, FFprobe: ffprobeTool, Libraries: filepath.SplitList(os.Getenv("PORTICO_DECODER_LIBRARIES")), Supervisor: storeIO.Supervisor, OpenInput: subtitleRenderer.OpenMediaInput, Authorize: subtitleAuthority.AuthorizePreparedMedia, Continue: subtitleAuthority.ContinuePreparedMedia})
+	preparedVersions, e := preparedmedia.New(preparedmedia.Options{Sandbox: env("PORTICO_PREPARED_SANDBOX", "bwrap"), DB: db, Directory: filepath.Join(cache, "prepared-media"), FFmpeg: ffmpegTool, FFprobe: ffprobeTool, Libraries: filepath.SplitList(os.Getenv("PORTICO_DECODER_LIBRARIES")), Supervisor: storeIO.Supervisor, OpenInput: subtitleRenderer.OpenMediaInput, Authorize: subtitleAuthority.AuthorizePreparedMedia, Continue: subtitleAuthority.ContinuePreparedMedia})
 	if e != nil {
 		return e
 	}
@@ -617,7 +644,7 @@ func run() error {
 	if e != nil {
 		return e
 	}
-	if e = currentPlayback.ConfigureChannels(playbackruntime.LinearConfig{DB: db, Live: liveSources, Library: generatedChannels, Policy: recordingaccess.Policy{Cached: control}, CacheDirectory: filepath.Join(state, "linear-media"), LockDirectory: filepath.Join(state, "live-source-locks"), FFmpeg: ffmpegTool, FFprobe: ffprobeTool, DecoderLibraries: filepath.SplitList(os.Getenv("PORTICO_LINEAR_DECODER_LIBRARIES"))}); e != nil {
+	if e = currentPlayback.ConfigureChannels(playbackruntime.LinearConfig{DB: db, Live: liveSources, Library: generatedChannels, Policy: recordingaccess.Policy{Cached: control}, CacheDirectory: filepath.Join(cache, "linear-media"), LockDirectory: filepath.Join(state, "live-source-locks"), FFmpeg: ffmpegTool, FFprobe: ffprobeTool, DecoderLibraries: filepath.SplitList(os.Getenv("PORTICO_LINEAR_DECODER_LIBRARIES"))}); e != nil {
 		return e
 	}
 	// Channels on v1 sessions open a Library Channels title the way every v1
@@ -661,7 +688,11 @@ func run() error {
 	// never waits on ffmpeg. Sessions that arrive earlier take software until then.
 	player.ConfigureProbe(assets.Probe{Binary: ffprobeTool, Supervisor: storeIO.Supervisor})
 	supervise.Go("cmd.hardware-report", func() { player.HardwareReport(context.Background()) })
-	hls, e := playback.NewHLS(ctx, db, filepath.Join(state, "hls"), ffmpegTool)
+	conversionDirectory := filepath.Join(cache, "hls")
+	if document, err := operations.New(db).Settings(ctx, operations.AllowServerScope); err == nil && document.Effective.TemporaryDirectory != "" {
+		conversionDirectory = document.Effective.TemporaryDirectory
+	}
+	hls, e := playback.NewHLS(ctx, db, conversionDirectory, ffmpegTool)
 	if e == nil {
 		hls.SourceStorage = storeIO
 		hls.WindowInputs = subtitleRenderer
@@ -860,7 +891,7 @@ func run() error {
 	_, bindPort, _ := net.SplitHostPort(bind)
 	bindPortNumber, _ := strconv.Atoi(bindPort)
 	doneAdministration := reporter.step("administration", "Open administration and access")
-	administration, closeAdministration := initializeAdministration(ctx, db, console, ident, state, bindPortNumber)
+	administration, closeAdministration := initializeAdministration(ctx, db, console, ident, state, bindPortNumber, startupLog)
 	doneAdministration(nil)
 	defer closeAdministration()
 	// The owner's preferred LAN interface is read from the console once per
@@ -915,20 +946,41 @@ func run() error {
 	adminOperations.DVR = recordingStore
 	events := eventfeed.New(db)
 	backupService := backup.New(state, db, ident.ID(), buildinfo.Info()["version"], persistence.SchemaVersion())
-	backupService.SetRestartFunc(func() {
+	requestRestart := func() {
 		restartRequested.Store(true)
 		// The staged reply must flush before leaving the way SIGTERM does.
 		supervise.Go("cmd.restore-restart", func() {
 			time.Sleep(2 * time.Second)
 			cancel()
 		})
-	})
+	}
+	if e = backupService.SetDirectory(os.Getenv("PORTICO_BACKUP_DIR")); e != nil {
+		return e
+	}
+	backupService.SetRestartFunc(requestRestart)
+	backupService.SetRestoreAvailable(lockErr == nil)
 	// The backup schedule: every five minutes a window holding the backup
 	// task may start one scheduled backup, then prune to the keep count.
 	backupScheduler := backupService.Schedule(db, func(scheduleCtx context.Context) (int, error) {
 		return adminOperations.BackupKeepCount(scheduleCtx), nil
 	})
+	backupScheduler.ReportFailure = func(ctx context.Context, failed bool) { _ = console.Alert(ctx, "backup-failed", "warning", failed) }
 	supervise.Supervise(ctx, "cmd.backup-schedule", backupScheduler.Run)
+	supervise.Supervise(ctx, "cmd.owner-notices", func(ctx context.Context) {
+		ticker := time.NewTicker(5 * time.Minute)
+		defer ticker.Stop()
+		for {
+			free, total, _ := telemetry.VolumeUsage(state)
+			if err := console.NotificationMaintenance(ctx, free, total); err != nil && ctx.Err() == nil {
+				log.Printf("Owner notices: %v", err)
+			}
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+			}
+		}
+	})
 	events.LibraryVisible = func(tx *sql.Tx, p identity.Principal, library string) bool {
 		return control.AllowedTx(p, library, tx) == nil
 	}
@@ -939,7 +991,7 @@ func run() error {
 	if manager := claimHandler.Remote(); manager != nil {
 		manager.SetAccessURLs(accessURLsProvider(console, manager))
 	}
-	handler := httpapi.New(httpapi.Dependencies{Events: events, Administration: adminOperations, Backups: backupService, Access: administration, SettingsApplied: func(ctx context.Context) {
+	handler := httpapi.New(httpapi.Dependencies{Restart: requestRestart, Events: events, Administration: adminOperations, Backups: backupService, Access: administration, SettingsApplied: func(ctx context.Context) {
 		control.NotifySettingsChanged(ctx)
 		supervise.Go("delivery-settings.refresh", func() { deliverySettings.Refresh(ctx) })
 		claimHandler.Remote().Wake()

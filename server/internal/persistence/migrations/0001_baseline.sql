@@ -2625,6 +2625,7 @@ CREATE TABLE access_receipts(
 CREATE TABLE client_log_uploads(
  id TEXT PRIMARY KEY, account_id TEXT NOT NULL, profile_id TEXT NOT NULL,
  device_id TEXT NOT NULL, platform TEXT NOT NULL, app_version TEXT NOT NULL DEFAULT '',
+ device_class TEXT NOT NULL DEFAULT '',
  received_ms INTEGER NOT NULL, bytes INTEGER NOT NULL, body TEXT NOT NULL) STRICT;
 CREATE TABLE diagnostics_debug_window(
  singleton INTEGER PRIMARY KEY CHECK(singleton=1), expires_ms INTEGER NOT NULL, opened_by TEXT NOT NULL DEFAULT '') STRICT;

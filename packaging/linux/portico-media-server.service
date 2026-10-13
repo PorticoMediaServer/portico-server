@@ -9,7 +9,7 @@ StartLimitBurst=5
 Type=simple
 User=portico
 Group=portico
-Environment=PORTICO_BIND=0.0.0.0:32500
+Environment=PORTICO_BIND=[::]:32500
 Environment=PORTICO_STATE_DIR=/var/lib/portico-media-server
 Environment=PORTICO_WEB_DIR=/usr/lib/portico-media-server/web
 # Optional owner configuration; external writes also need ReadWritePaths in a
@@ -21,6 +21,13 @@ Restart=on-failure
 RestartSec=5
 NoNewPrivileges=true
 PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictRealtime=true
+LockPersonality=true
+UMask=0077
+TimeoutStopSec=45
 ProtectSystem=strict
 ProtectHome=read-only
 # Keep the strict sandbox. Owners grant only their selected writable library
