@@ -188,7 +188,9 @@ func (b *Backfill) Step(ctx context.Context) time.Duration {
 				return 0
 			}
 			if err == nil {
-				err = Save(ctx, b.DB, requestedAsset, f)
+				if err = Save(ctx, b.DB, requestedAsset, f); err != nil {
+					return time.Second
+				}
 			} else if !errors.Is(err, context.DeadlineExceeded) {
 				_ = Fail(ctx, b.DB, requestedAsset, code(err))
 			}

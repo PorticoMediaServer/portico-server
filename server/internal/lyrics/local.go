@@ -57,7 +57,15 @@ func (s *Service) discoverLocal(ctx context.Context, a Access, t Target) error {
 			continue
 		}
 		best = rank
-		chosen = &acquired{doc: d, language: lang, provenance: Provenance{Origin: v.Origin, Label: v.Label, Rights: "Supplied with the media by its owner."}}
+		rights := "Supplied with the media by its owner."
+		if d.SkippedLines > 0 {
+			rights += " Some lyric lines could not be read and were skipped."
+		}
+		label := v.Label
+		if !boundedText(label, 256) {
+			label = "Local lyrics"
+		}
+		chosen = &acquired{doc: d, language: lang, provenance: Provenance{Origin: v.Origin, Label: label, Rights: rights}}
 	}
 	if chosen == nil {
 		return nil
@@ -86,9 +94,10 @@ func (s *Service) discoverLocal(ctx context.Context, a Access, t Target) error {
 		return e
 	}
 	id := identity.Token()
-	if _, e = tx.ExecContext(ctx, `INSERT INTO lyric_resources(id,item_id,asset_id,source_version,scope,authority,account_id,profile_id,revision)VALUES(?,?,?,?,'library','local','','',1)`, id, entity, src.ID, src.Version); e != nil {
+	if _, e = tx.ExecContext(ctx, `INSERT INTO lyric_resources(id,item_id,asset_id,source_version,scope,authority,account_id,profile_id,revision,source_duration,source_start,source_end)VALUES(?,?,?,?,'library','local','','',1,?,?,?)`, id, entity, src.ID, src.Version, src.SourceDuration, src.StartSeconds, src.StartSeconds+src.Duration); e != nil {
 		return e
 	}
+
 	raw, _ := json.Marshal(chosen.doc)
 	prov, _ := json.Marshal(chosen.provenance)
 	if _, e = tx.ExecContext(ctx, `INSERT INTO lyric_revisions(resource_id,revision,document,digest,language,offset_ms,provenance,actor,created_at,deleted)VALUES(?,1,?,?,?,?,?,?,?,0)`, id, string(raw), digest(chosen.doc), chosen.language, chosen.doc.EmbeddedOffsetMS, string(prov), "local", time.Now().UTC().Format(time.RFC3339Nano)); e != nil {

@@ -2030,6 +2030,7 @@ CREATE TABLE playback_personal_profile_fences(
 CREATE TABLE lyric_resources (
  id TEXT PRIMARY KEY, item_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,
  asset_id TEXT NOT NULL REFERENCES catalog_assets(token), source_version TEXT NOT NULL,
+ source_duration REAL NOT NULL DEFAULT 0,source_start REAL NOT NULL DEFAULT 0,source_end REAL NOT NULL DEFAULT 0,
  scope TEXT NOT NULL CHECK(scope IN ('library','private')),
  authority TEXT NOT NULL, account_id TEXT NOT NULL, profile_id TEXT NOT NULL,
  revision INTEGER NOT NULL CHECK(revision>0), deleted INTEGER NOT NULL DEFAULT 0 CHECK(deleted IN(0,1))
@@ -4191,7 +4192,7 @@ CREATE TRIGGER personal_history_revision_DELETE AFTER DELETE ON personal_history
 CREATE TRIGGER lyric_revision_immutable BEFORE UPDATE ON lyric_revisions
  BEGIN SELECT RAISE(ABORT,'lyric revisions are immutable'); END;
 CREATE TRIGGER lyric_head_monotonic BEFORE UPDATE ON lyric_resources
- WHEN NEW.revision<=OLD.revision OR NEW.item_id<>OLD.item_id OR NEW.asset_id<>OLD.asset_id OR NEW.source_version<>OLD.source_version OR NEW.scope<>OLD.scope OR NEW.authority<>OLD.authority OR NEW.account_id<>OLD.account_id OR NEW.profile_id<>OLD.profile_id
+ WHEN NEW.revision<=OLD.revision OR NEW.item_id<>OLD.item_id OR NEW.asset_id<>OLD.asset_id OR NEW.source_version<>OLD.source_version OR NEW.source_duration<>OLD.source_duration OR NEW.source_start<>OLD.source_start OR NEW.source_end<>OLD.source_end OR NEW.scope<>OLD.scope OR NEW.authority<>OLD.authority OR NEW.account_id<>OLD.account_id OR NEW.profile_id<>OLD.profile_id
  BEGIN SELECT RAISE(ABORT,'invalid lyric resource transition'); END;
 CREATE TRIGGER screen_policy_create AFTER INSERT ON libraries WHEN NEW.kind IN('movie','tv','anime') BEGIN
  INSERT INTO screen_metadata_policies(library_id,providers) VALUES(NEW.id,CASE WHEN NEW.kind='anime' THEN '["anilist"]' ELSE '["tmdb","tvdb"]' END);

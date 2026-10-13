@@ -2096,6 +2096,9 @@ lyric_resources.item_id
 lyric_resources.profile_id
 lyric_resources.revision
 lyric_resources.scope
+lyric_resources.source_duration
+lyric_resources.source_end
+lyric_resources.source_start
 lyric_resources.source_version
 lyric_revisions.actor
 lyric_revisions.created_at

@@ -567,7 +567,7 @@ func (s *Service) Publish(ctx context.Context, a Access, in Mutation, operation 
 	rev := in.ExpectedRevision + 1
 	deleted := operation == "delete"
 	if in.ResourceID == "" {
-		_, e = tx.ExecContext(ctx, `INSERT INTO lyric_resources(id,item_id,asset_id,source_version,scope,authority,account_id,profile_id,revision) VALUES(?,?,?,?,?,?,?,?,?)`, id, entity, src.ID, src.Version, scope, a.Actor.Authority, a.Actor.AccountID, a.Actor.ProfileID, rev)
+		_, e = tx.ExecContext(ctx, `INSERT INTO lyric_resources(id,item_id,asset_id,source_version,scope,authority,account_id,profile_id,revision,source_duration,source_start,source_end) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`, id, entity, src.ID, src.Version, scope, a.Actor.Authority, a.Actor.AccountID, a.Actor.ProfileID, rev, src.SourceDuration, src.StartSeconds, src.StartSeconds+src.Duration)
 	} else {
 		var result sql.Result
 		result, e = tx.ExecContext(ctx, `UPDATE lyric_resources SET revision=?,deleted=? WHERE id=? AND revision=? AND deleted=0`, rev, deleted, id, in.ExpectedRevision)
@@ -581,6 +581,7 @@ func (s *Service) Publish(ctx context.Context, a Access, in Mutation, operation 
 	if e != nil {
 		return Revision{}, e
 	}
+
 	raw, _ := json.Marshal(doc)
 	prov, _ := json.Marshal(provenance)
 	_, e = tx.ExecContext(ctx, `INSERT INTO lyric_revisions(resource_id,revision,document,digest,language,offset_ms,provenance,actor,created_at,deleted) VALUES(?,?,?,?,?,?,?,?,?,?)`, id, rev, string(raw), digest(doc), language, offset, string(prov), a.Actor.key(), time.Now().UTC().Format(time.RFC3339Nano), deleted)

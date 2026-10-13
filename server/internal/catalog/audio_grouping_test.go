@@ -27,3 +27,20 @@ func TestNaturalAudioNameAndAlbumFallback(t *testing.T) {
 		t.Fatal("unstable grouping")
 	}
 }
+
+func TestReleaseIDOnOnlySomeTracksKeepsOneAlbum(t *testing.T) {
+	s, db := openEmptyAlbumDB(t)
+	for i := 0; i < 3; i++ {
+		tags := map[string]string{"album": "Release", "album_artist": "Artist", "artist": "Artist", "date": "2020"}
+		if i > 0 {
+			tags["musicbrainz_albumid"] = "22222222-2222-2222-2222-222222222222"
+		}
+		if i == 2 {
+			tags["date"] = "2022"
+		}
+		commitAlbumSong(t, s, db, []string{"one", "two", "three"}[i], []string{"Release/CD1", "Release/Disc 2 - Bonus", "Copy"}[i], tags, false)
+	}
+	if got := albumCount(t, db); got != 1 {
+		t.Fatalf("partly tagged release became %d albums", got)
+	}
+}

@@ -85,3 +85,32 @@ func TestPicturesKeepCoverTypeAndTimedLyrics(t *testing.T) {
 		t.Fatal(got)
 	}
 }
+
+func words(values ...uint32) []byte {
+	b := make([]byte, len(values)*4)
+	for i, v := range values {
+		binary.BigEndian.PutUint32(b[i*4:], v)
+	}
+	return b
+}
+func TestQuickTimeChapterTextTrack(t *testing.T) {
+	ftyp := box("ftyp", []byte("M4A \x00\x00\x00\x00"))
+	makeMoov := func(offset uint32) []byte {
+		audio := box("trak", append(box("tkhd", words(0, 0, 0, 1)), box("tref", box("chap", words(2)))...))
+		tables := append(box("stts", words(0, 1, 2, 48000)), box("stsz", words(0, 0, 2, 9, 9))...)
+		tables = append(tables, box("stco", words(0, 1, offset))...)
+		tables = append(tables, box("stsc", words(0, 1, 1, 2, 1))...)
+		mdia := append(box("mdhd", words(0, 0, 0, 48000, 96000)), box("hdlr", append(words(0, 0), []byte("text")...))...)
+		mdia = append(mdia, box("minf", box("stbl", tables))...)
+		chapter := box("trak", append(box("tkhd", words(0, 0, 0, 2)), box("mdia", mdia)...))
+		return box("moov", append(audio, chapter...))
+	}
+	moov := makeMoov(0)
+	moov = makeMoov(uint32(len(ftyp) + len(moov) + 8))
+	payload := []byte("\x00\x07Opening\x00\x07Closing")
+	b := append(append(ftyp, moov...), box("mdat", payload)...)
+	got := Read(bytes.NewReader(b), int64(len(b)))
+	if len(got.Chapters) != 2 || got.Chapters[1].Start != 1 || got.Chapters[1].Title != "Closing" {
+		t.Fatal(got)
+	}
+}

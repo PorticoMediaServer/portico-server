@@ -110,8 +110,14 @@ func canonical(k string) string {
 	k = strings.ToLower(strings.TrimSpace(k))
 	k = strings.ReplaceAll(k, " ", "_")
 	switch k {
-	case "albumartist", "album_artists":
+	case "albumartist", "album_artists", "albumartists":
 		return "album_artist"
+	case "narrators":
+		return "narrator"
+	case "authors":
+		return "author"
+	case "composers":
+		return "composer"
 	case "artists":
 		return "artist"
 	case "tracknumber", "track_number":
@@ -781,7 +787,7 @@ func (p *reader) relativeVolume(v []byte) {
 				for _, b := range rest[4 : 4+n] {
 					peak = peak<<8 | uint64(b)
 				}
-				p.add("replaygain_"+scope+"_peak", strconv.FormatFloat(float64(peak)/float64(uint64(1)<<bits), 'f', 9, 64))
+				p.add("replaygain_"+scope+"_peak", strconv.FormatFloat(float64(peak)/float64(uint64(1)<<(bits-1)), 'f', 9, 64))
 			}
 			return
 		}

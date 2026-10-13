@@ -102,7 +102,7 @@ func (p Probe) inspect(ctx context.Context, path string, options []string) (Fact
 	if bin == "" {
 		bin = mediatools.Resolve("ffprobe")
 	}
-	args := append(options, []string{"-v", "error", "-show_format", "-show_streams", "-show_chapters", "-of", "json", path}...)
+	args := append(options, []string{"-v", "error", "-show_format", "-show_streams", "-show_chapters", "-show_entries", "format:stream:chapter:format_tags=:stream_tags=language,title:chapter_tags=title", "-of", "json", path}...)
 	out := &boundedBuffer{limit: 1 << 20}
 	var runErr error
 	if p.ReadGuard != nil {
@@ -195,8 +195,7 @@ func (p Probe) inspect(ctx context.Context, path string, options []string) (Fact
 	}
 	f.Tags = map[string]string{}
 	f.TagSources = map[string]string{}
-	copyTags := func(tags map[string]string) { CopyEmbeddedAudioTags(&f, tags) }
-	_ = copyTags
+
 	if len(raw.Streams) > 128 {
 		return Facts{}, errors.New("source stream count exceeds 128")
 	}

@@ -93,3 +93,11 @@ func FuzzRead(f *testing.F) {
 		}
 	})
 }
+
+func TestRelativeVolumeGainAndPeak(t *testing.T) {
+	b := tag(frame("RVA2", append([]byte("track\x00"), []byte{1, 0xfc, 0, 16, 0x40, 0}...), 4), 4)
+	got := Read(bytes.NewReader(b), int64(len(b)))
+	if got.Values["replaygain_track_gain"][0] != "-2.000000 dB" || got.Values["replaygain_track_peak"][0] != "0.500000000" {
+		t.Fatal(got)
+	}
+}
