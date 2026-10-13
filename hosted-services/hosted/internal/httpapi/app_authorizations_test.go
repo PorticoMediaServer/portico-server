@@ -116,3 +116,49 @@ func TestAppAuthorizationAdmissionCannotResetWithRequestID(t *testing.T) {
 		t.Fatal("request ID reset rate", w.Code, w.Header())
 	}
 }
+
+// The exchange is open to any origin, so it must act on its body alone. A
+// request that carries a Hosted credential of any kind is refused outright,
+// before the store is consulted, and the answer never grants credentialed
+// cross-origin access or sets a cookie.
+func TestAppExchangeRefusesEveryAmbientCredential(t *testing.T) {
+	handler := (&Handler{AppAuthorizations: &AppAuthorizations{}, Origins: map[string]bool{"https://web.getportico.tv": true}}).Routes()
+	body := `{"code":"pac_` + base64.RawURLEncoding.EncodeToString(make([]byte, 32)) + `","verifier":"` + strings.Repeat("v", 43) + `","redirectUri":"https://client.example/finish"}`
+	for name, prepare := range map[string]func(*http.Request){
+		"bearer":         func(r *http.Request) { r.Header.Set("Authorization", "Bearer hat_"+strings.Repeat("a", 43)) },
+		"account cookie": func(r *http.Request) { r.AddCookie(&http.Cookie{Name: "__Host-portico_refresh", Value: "hrt_x"}) },
+		"media cookie": func(r *http.Request) {
+			r.AddCookie(&http.Cookie{Name: "__Host-portico_refresh_0123abcd", Value: "hrt_x"})
+		},
+		"dev cookie": func(r *http.Request) { r.AddCookie(&http.Cookie{Name: "portico_refresh_dev", Value: "hrt_x"}) },
+		"form post":  func(r *http.Request) { r.Header.Set("Content-Type", "text/plain") },
+	} {
+		for _, origin := range []string{"https://outside.example", "https://web.getportico.tv", ""} {
+			r := httptest.NewRequest("POST", "/v1/app-authorizations/token", strings.NewReader(body))
+			r.Header.Set("Content-Type", "application/json")
+			if origin != "" {
+				r.Header.Set("Origin", origin)
+			}
+			prepare(r)
+			w := httptest.NewRecorder()
+			handler.ServeHTTP(w, r)
+			if w.Code < 400 || w.Code >= 500 || strings.Contains(w.Body.String(), "assertion") {
+				t.Fatalf("%s from %q: %d %s", name, origin, w.Code, w.Body.String())
+			}
+			if w.Header().Get("Access-Control-Allow-Origin") != "*" || w.Header().Get("Access-Control-Allow-Credentials") != "" || len(w.Header().Values("Set-Cookie")) != 0 {
+				t.Fatalf("%s from %q: %v", name, origin, w.Header())
+			}
+		}
+	}
+	// Only this exact path and method are open; its neighbours keep the origin rule.
+	for _, path := range []string{"/v1/app-authorizations", "/v1/app-authorizations/token/decision", "/v1/app-authorizations/token/"} {
+		r := httptest.NewRequest("POST", path, strings.NewReader(body))
+		r.Header.Set("Content-Type", "application/json")
+		r.Header.Set("Origin", "https://outside.example")
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, r)
+		if w.Code != 403 || w.Header().Get("Access-Control-Allow-Origin") != "" {
+			t.Fatalf("%s answered an outside origin: %d %v", path, w.Code, w.Header())
+		}
+	}
+}

@@ -65,6 +65,13 @@ func TestSigningRolloutCheckpointsOnceAndRejectsRollback(t *testing.T) {
 	if e = f.store.RecordSigningCertificate(ctx, first); !errors.Is(e, trust.ErrTrust) {
 		t.Fatal("rollback", e)
 	}
+	// A different certificate claiming the revision already recorded.
+	if e = f.store.RecordSigningCertificate(ctx, rolloutKey(t, root, 2, []string{first.KeyID})); !errors.Is(e, trust.ErrTrust) {
+		t.Fatal("conflicting certificate at the same revision", e)
+	}
+	if e = f.store.RecordSigningCertificate(ctx, second); e != nil {
+		t.Fatal("the recorded certificate was refused on restart", e)
+	}
 	bad := rolloutKey(t, root, 3, nil)
 	if e = f.store.RecordSigningCertificate(ctx, bad); !errors.Is(e, trust.ErrTrust) {
 		t.Fatal("forgot root revocation", e)
