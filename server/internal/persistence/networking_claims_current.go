@@ -43,7 +43,7 @@ func VerifyNetworkingClaims(ctx context.Context, db *sql.DB) error {
 
 // networkingClaimsSQL is the claim-owned statements of the baseline, the one
 // declaration of the shape: the claim tables, their index and triggers, and the
-// server identity table with its immutability triggers.
+// server identity table with its immutability and storage-bound triggers.
 func networkingClaimsSQL() string {
 	baseline, err := MigrationSQL(baselineSchemaVersion)
 	if err != nil {
@@ -53,7 +53,7 @@ func networkingClaimsSQL() string {
 	var out strings.Builder
 	for _, m := range re.FindAllStringSubmatchIndex(baseline, -1) {
 		name := baseline[m[2]:m[3]]
-		if !strings.HasPrefix(name, "networking_claim_") && name != "networking_server_identities" && !strings.HasPrefix(name, "networking_identity_no_") {
+		if !strings.HasPrefix(name, "networking_claim_") && name != "networking_server_identities" && !strings.HasPrefix(name, "networking_server_identities_") && !strings.HasPrefix(name, "networking_identity_no_") {
 			continue
 		}
 		statement := baseline[m[0]:]
