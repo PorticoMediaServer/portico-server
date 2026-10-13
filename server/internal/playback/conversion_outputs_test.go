@@ -271,6 +271,28 @@ func TestMPEGTSSeekRestartsOnIndexedPacket(t *testing.T) {
 		if err != nil || math.Abs(pts-position) > 0.05 || !strings.HasPrefix(flags, "K") {
 			t.Fatalf("window %d expected keyframe at %.6f, got %q", from, position, out)
 		}
+		frameHash := func(path string, seek float64) string {
+			args := []string{"-v", "error", "-i", path}
+			if seek > 0 {
+				args = append(args, "-ss", strconv.FormatFloat(seek, 'f', 6, 64))
+			}
+			args = append(args, "-map", "0:v:0", "-frames:v", "1", "-threads", "2", "-f", "framemd5", "-")
+			cmd, err := mediaexec.CommandContext(ctx, mediaexec.Job{Executable: binary, Args: args, ReadPaths: []string{path}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			raw, err := cmd.Output()
+			if err != nil {
+				t.Fatal(err)
+			}
+			rows := strings.Split(strings.TrimSpace(string(raw)), "\n")
+			parts := strings.Split(rows[len(rows)-1], ",")
+			return strings.TrimSpace(parts[len(parts)-1])
+		}
+		if frameHash(source, position) != frameHash(filepath.Join(staging, hlsSegmentFile(from)), 0) {
+			t.Fatalf("window %d copied the wrong source picture", from)
+		}
+
 	}
 }
 

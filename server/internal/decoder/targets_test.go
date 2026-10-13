@@ -137,7 +137,7 @@ func TestSoftwareTargetsEncodeTinySamples(t *testing.T) {
 				t.Skip(err)
 			}
 			dir := t.TempDir()
-			target := ConversionTarget{VideoCodec: tc.codec, BitDepth: tc.depth, DynamicRange: tc.rangeName, Width: 160, Height: 90, FrameRate: 24, RateControl: "quality"}
+			target := ConversionTarget{VideoCodec: tc.codec, BitDepth: tc.depth, DynamicRange: tc.rangeName, Width: 160, Height: 90, FrameRate: 60, RateControl: "quality"}
 			g, err := BuildConversion(ConversionRequest{Target: &target, ConvertVideo: true, SoftwarePreset: "ultrafast", Toolchain: &facts})
 			if err != nil {
 				t.Fatal(err)
@@ -147,7 +147,7 @@ func TestSoftwareTargetsEncodeTinySamples(t *testing.T) {
 			args = append(args, g.Video...)
 			args = append(args, "-an", "-f", "mp4", path)
 			runTinyMedia(t, ctx, binary, args, dir)
-			cmd, err := mediaexec.CommandContext(ctx, mediaexec.Job{Executable: probe, Args: []string{"-v", "error", "-show_entries", "stream=codec_name,pix_fmt,color_transfer,color_primaries,color_space,width,height", "-of", "json", path}, ReadPaths: []string{path}})
+			cmd, err := mediaexec.CommandContext(ctx, mediaexec.Job{Executable: probe, Args: []string{"-v", "error", "-show_entries", "stream=codec_name,pix_fmt,color_transfer,color_primaries,color_space,width,height,avg_frame_rate", "-of", "json", path}, ReadPaths: []string{path}})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -160,9 +160,10 @@ func TestSoftwareTargetsEncodeTinySamples(t *testing.T) {
 					Codec    string `json:"codec_name"`
 					Pixel    string `json:"pix_fmt"`
 					Transfer string `json:"color_transfer"`
+					Rate     string `json:"avg_frame_rate"`
 				}
 			}
-			if json.Unmarshal(raw, &got) != nil || len(got.Streams) != 1 || got.Streams[0].Codec != tc.codec {
+			if json.Unmarshal(raw, &got) != nil || len(got.Streams) != 1 || got.Streams[0].Codec != tc.codec || got.Streams[0].Rate != "24/1" {
 				t.Fatalf("wrong output %s", raw)
 			}
 			if tc.depth == 10 && !strings.Contains(got.Streams[0].Pixel, "10") {

@@ -820,7 +820,7 @@ func BuildConversion(r ConversionRequest) (ConversionGraph, error) {
 			filters = append(filters, filter+"=mode=send_frame:parity=auto:deint=interlaced")
 		}
 		if r.MaxFrameRate > 0 {
-			filters = append(filters, "fps=fps="+strconv.FormatFloat(r.MaxFrameRate, 'f', -1, 64))
+			filters = append(filters, "fps=fps='min(source_fps,"+strconv.FormatFloat(r.MaxFrameRate, 'f', -1, 64)+")'")
 		}
 		pre := len(filters)
 		toneExecution, scaleExecution := ExecutionSoftware, ExecutionSoftware

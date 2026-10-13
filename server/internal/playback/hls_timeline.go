@@ -152,21 +152,6 @@ func fragmentedManifest(media []byte) []byte {
 	s := strings.ReplaceAll(string(media), "#EXT-X-VERSION:3", "#EXT-X-VERSION:7\n#EXT-X-MAP:URI=\"init.mp4\"")
 	return []byte(strings.ReplaceAll(s, ".ts\n", ".m4s\n"))
 }
-func promoteConvertedInit(dir string, from int) error {
-	data, err := readConversionInit(filepath.Join(dir, "init-"+strconv.Itoa(from)+".mp4"))
-	if err != nil {
-		return err
-	}
-	return publishMP4Init(dir, data)
-}
-
-func promoteRenditionInit(dir, window string, ordinal int) error {
-	data, err := readConversionInit(filepath.Join(dir, window))
-	if err != nil {
-		return err
-	}
-	return publishRenditionInit(dir, ordinal, data)
-}
 func publishRenditionInit(dir string, ordinal int, data []byte) error {
 	target := filepath.Join(dir, renditionInitFile(ordinal))
 	if old, err := readConversionInit(target); err == nil {

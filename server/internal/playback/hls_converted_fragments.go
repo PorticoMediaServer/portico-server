@@ -12,6 +12,7 @@ import (
 type convertedFragmentClock struct {
 	ready bool
 	shift float64
+	next  int
 }
 
 // HLS's MP4 muxer rebases each run even when output_ts_offset is set. Shift
@@ -118,7 +119,7 @@ func (c *convertedFragmentClock) restore(init, media []byte, position float64) e
 }
 
 func promoteConvertedFragments(staging, dir, initWindow string, from int, rendition *AudioRenditionPlan, clock *convertedFragmentClock) (int, error) {
-	highest := from - 1
+	highest := max(from, clock.next) - 1
 	if !clock.ready {
 		first := fmt.Sprintf("segment-%06d.m4s", from)
 		if rendition != nil {
@@ -141,12 +142,13 @@ func promoteConvertedFragments(staging, dir, initWindow string, from int, rendit
 		}
 		return fmt.Sprintf("segment-%06d.m4s", i)
 	}
-	for i := from; i < HLSMaxSegments; i++ {
+	for i := max(from, clock.next); i < HLSMaxSegments; i++ {
 		name := nameAt(i)
 		source := filepath.Join(staging, name)
 		if !segmentReady(source) {
 			if segmentReady(filepath.Join(dir, name)) {
 				highest = i
+				clock.next = i + 1
 				continue
 			}
 			break
@@ -181,6 +183,7 @@ func promoteConvertedFragments(staging, dir, initWindow string, from int, rendit
 		}
 		_ = os.Remove(source)
 		highest = i
+		clock.next = i + 1
 	}
 	return highest, nil
 }
