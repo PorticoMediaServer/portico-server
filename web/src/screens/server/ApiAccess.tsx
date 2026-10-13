@@ -17,13 +17,13 @@ export function useApiAccessOptions(): Read<ApiAccessOptions> {
 }
 
 /** The words a list uses for one kind of credential, so keys and tokens read as themselves. */
-type Words = Readonly<{none: string; create: string; createTitle: string; copyTitle: string; shownOnce: string; secretLabel: string; revokeTitle: (name: string) => string; revokeBody: string; revoked: string}>;
+type Words = Readonly<{nameHelp: string; none: string; create: string; createTitle: string; copyTitle: string; shownOnce: string; secretLabel: string; revokeTitle: (name: string) => string; revokeBody: string; revoked: string}>;
 
 function useWords(kind: 'key' | 'token'): Words {
   const {t} = useI18n();
   return useMemo(() => (kind === 'key'
-    ? {none: t('web.access.noApiKeys'), create: t('web.access.createKey'), createTitle: t('web.access.createKeyTitle'), copyTitle: t('web.access.copyKeyTitle'), shownOnce: t('web.access.keyShownOnce'), secretLabel: t('web.access.apiKey'), revokeTitle: name => t('web.access.revokeTitle', {name}), revokeBody: t('web.access.revokeBody'), revoked: t('api.credential.keyRevoked')}
-    : {none: t('api.tokens.none'), create: t('api.tokens.create'), createTitle: t('api.tokens.createTitle'), copyTitle: t('api.tokens.copyTitle'), shownOnce: t('api.tokens.shownOnce'), secretLabel: t('api.tokens.token'), revokeTitle: name => t('web.access.revokeTitle', {name}), revokeBody: t('api.tokens.revokeBody'), revoked: t('api.credential.tokenRevoked')}), [kind, t]);
+    ? {nameHelp: t('web.access.keyNameHelp'), none: t('web.access.noApiKeys'), create: t('web.access.createKey'), createTitle: t('web.access.createKeyTitle'), copyTitle: t('web.access.copyKeyTitle'), shownOnce: t('web.access.keyShownOnce'), secretLabel: t('web.access.apiKey'), revokeTitle: name => t('web.access.revokeTitle', {name}), revokeBody: t('web.access.revokeBody'), revoked: t('api.credential.keyRevoked')}
+    : {nameHelp: t('api.tokens.nameHelp'), none: t('api.tokens.none'), create: t('api.tokens.create'), createTitle: t('api.tokens.createTitle'), copyTitle: t('api.tokens.copyTitle'), shownOnce: t('api.tokens.shownOnce'), secretLabel: t('api.tokens.token'), revokeTitle: name => t('web.access.revokeTitle', {name}), revokeBody: t('api.tokens.revokeBody'), revoked: t('api.credential.tokenRevoked')}), [kind, t]);
 }
 
 /**
@@ -132,7 +132,7 @@ function CreateCredentialDialog({open, onClose, words, scopes, create, onCreated
       ) : (
         <div style={{display: 'flex', flexDirection: 'column', gap: 16}}>
           {action.error ? <Notice tone="error" compact>{action.error}</Notice> : null}
-          <Input label={t('profile.name')} help={t('web.access.keyNameHelp')} autoFocus maxLength={80} value={name} onChange={e => setName(e.target.value)} placeholder="Home Assistant" /> {/* lint-strings-allow: an example name, not copy */}
+          <Input label={t('profile.name')} help={words.nameHelp} autoFocus maxLength={80} value={name} onChange={e => setName(e.target.value)} placeholder="Home Assistant" /> {/* lint-strings-allow: an example name, not copy */}
           <div role="group" aria-label={t('web.access.scopeLabel')} style={{display: 'flex', flexDirection: 'column', gap: 8}}>
             <Text as="span" variant="label" tone="secondary">{t('web.access.scopeLabel')}</Text>
             {scopes.map(scope => <Checkbox key={scope} checked={scopeTicked(ticked, scope)} disabled={scope !== 'admin' && ticked.has('admin')} onCheckedChange={on => setTicked(prev => { const next = new Set(prev); if (on) next.add(scope); else next.delete(scope); return next; })} label={t(`api.scope.${scope}`)} help={t(`api.scope.${scope}.help`)} />)}

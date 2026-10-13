@@ -2250,6 +2250,7 @@ export const webMessages = {
   'api.tokens.createTitle': 'Create a personal access token',
   'api.tokens.copyTitle': 'Copy your token now',
   'api.tokens.token': 'Token',
+  'api.tokens.nameHelp': 'What will use this token.',
   'api.tokens.revokeBody': 'Anything using this token stops working at once. This cannot be undone.',
   'api.webhooks.editTitle': 'Edit webhook',
   'api.webhooks.eventCount': '{count, plural, one {# event} other {# events}}',

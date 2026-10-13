@@ -83,9 +83,9 @@ export async function removeLibrary(api:TitleIdentityApi,libraryId:string,confir
 
 /** The kinds of title two of which the server will make one: a show takes the other's seasons and episodes; the rest take the other's files as versions. */
 export const MERGEABLE_KINDS:readonly string[]=Object.freeze(['movie','show','episode','song','audiobook_file','extra']);
-/** Whether two titles can be merged: different titles of one kind in one library. */
+/** Whether two titles can be offered for merging: different titles of one kind, and not known to be in different libraries (a list inside one library need not name it on every entry; the server refuses a pair that is not in one library). */
 export function canMergeTitles(a:Readonly<{id:string;kind:string;libraryId?:string}>,b:Readonly<{id:string;kind:string;libraryId?:string}>):boolean{
- return a.id!==b.id&&a.kind===b.kind&&MERGEABLE_KINDS.includes(a.kind)&&!!a.libraryId&&a.libraryId===b.libraryId;
+ return a.id!==b.id&&a.kind===b.kind&&MERGEABLE_KINDS.includes(a.kind)&&(!a.libraryId||!b.libraryId||a.libraryId===b.libraryId);
 }
 /** The kinds of title a file can be split off: a film, a track or a book's file. An episode is placed by show, season and number instead. */
 export const SPLITTABLE_KINDS:readonly string[]=Object.freeze(['movie','song','audiobook_file']);

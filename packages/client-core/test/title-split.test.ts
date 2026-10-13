@@ -5,14 +5,15 @@ import {canMergeTitles, findLibraryFile, folderOfPath, libraryFolders, separateL
 const row = (n: number, assetId = `asset-${n}`) => ({id: `object-${n}`, assetId, revision: `rev-${n}`, itemId: 'item-1'});
 const api = (answer: (path: string, method: string, body: unknown) => unknown, calls: string[] = []): TitleIdentityApi => ({request: async <T,>(path: string, method = 'GET', body?: unknown) => { calls.push(`${method} ${path}`); return answer(path, method, body) as T; }});
 
-test('two titles merge only when they are different titles of one kind in one library', () => {
+test('two titles are offered for merging when they are different titles of one kind, not known to be in different libraries', () => {
   const a = {id: 'a', kind: 'movie', libraryId: 'films'};
   assert.equal(canMergeTitles(a, {id: 'b', kind: 'movie', libraryId: 'films'}), true);
   assert.equal(canMergeTitles(a, a), false);
   assert.equal(canMergeTitles(a, {id: 'b', kind: 'show', libraryId: 'films'}), false);
   assert.equal(canMergeTitles(a, {id: 'b', kind: 'movie', libraryId: 'more-films'}), false);
   assert.equal(canMergeTitles({id: 'a', kind: 'season', libraryId: 'tv'}, {id: 'b', kind: 'season', libraryId: 'tv'}), false);
-  assert.equal(canMergeTitles({id: 'a', kind: 'movie'}, {id: 'b', kind: 'movie'}), false);
+  assert.equal(canMergeTitles({id: 'a', kind: 'movie'}, {id: 'b', kind: 'movie'}), true);
+  assert.equal(canMergeTitles({id: 'a', kind: 'movie'}, {id: 'b', kind: 'movie', libraryId: 'films'}), true);
 });
 
 test('a file\'s folder is the library folder with the longest path that leads to it', () => {
