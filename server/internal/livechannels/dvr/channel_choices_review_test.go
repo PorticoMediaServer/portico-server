@@ -3,6 +3,7 @@ package dvr
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -47,6 +48,14 @@ func TestChannelChoicesPagePastRestrictedPrefix(t *testing.T) {
 			}
 			owner := livechannels.Owner{Authority: "local", AccountID: "account", ProfileID: "profile"}
 			s := &Store{db: db}
+			for _, invalid := range []string{"-1", "00", "x", strings.Repeat("a", 64), strings.Repeat("1", 200)} {
+				if _, err := s.ChannelChoices(context.Background(), auth, owner, src, "", gen+"."+invalid); !errors.Is(err, ErrInvalid) {
+					t.Fatalf("accepted malformed position %q: %v", invalid, err)
+				}
+			}
+			if _, err := s.ChannelChoices(context.Background(), auth, owner, src, "", strings.Repeat("c", 48)+".0"); !errors.Is(err, ErrConflict) {
+				t.Fatalf("accepted changed generation: %v", err)
+			}
 			cursor := ""
 			seen := map[string]bool{}
 			for pages := 0; pages < 20; pages++ {
@@ -62,6 +71,13 @@ func TestChannelChoicesPagePastRestrictedPrefix(t *testing.T) {
 						t.Fatalf("excluded or duplicated channel %s", ch.ID)
 					}
 					seen[ch.ID] = true
+				}
+				if first > 1 && page.NextCursor != "" {
+					for i := 1; i < first; i++ {
+						if strings.Contains(page.NextCursor, fmt.Sprintf("%064x", i)) {
+							t.Fatalf("cursor reveals excluded channel %d", i)
+						}
+					}
 				}
 				if page.NextCursor == "" {
 					break
