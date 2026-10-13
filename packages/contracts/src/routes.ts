@@ -432,6 +432,44 @@ export const routes = [
     "status": 204
   },
   {
+    "id": "delete_direct_member",
+    "method": "DELETE",
+    "path": "/v1/direct/members/{id}",
+    "summary": "Delete a member, their profiles, devices and saved data",
+    "access": "device",
+    "requires": "session",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 4096,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "invalid_request",
+      "not_found",
+      "revision_mismatch",
+      "internal"
+    ],
+    "status": 204
+  },
+  {
+    "id": "delete_direct_remembered_account",
+    "method": "DELETE",
+    "path": "/v1/direct/remembered-accounts/{accountId}",
+    "summary": "Forget one account remembered on this installation",
+    "access": "device",
+    "requires": "session",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 4096,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "invalid_request",
+      "internal"
+    ],
+    "status": 204
+  },
+  {
     "id": "delete_direct_session",
     "method": "DELETE",
     "path": "/v1/direct/sessions/{id}",
@@ -557,6 +595,31 @@ export const routes = [
     ],
     "status": 200,
     "optionalBody": true
+  },
+  {
+    "id": "get_admin_access_devices",
+    "method": "GET",
+    "path": "/v1/admin/access/devices",
+    "summary": "List members' devices and whether each is approved",
+    "access": "admin_scope",
+    "adminScope": "members",
+    "requires": "admin",
+    "lane": "security",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "cursor",
+      "limit",
+      "trust",
+      "account"
+    ],
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "invalid_request",
+      "internal"
+    ],
+    "status": 200
   },
   {
     "id": "get_admin_backups",
@@ -895,6 +958,25 @@ export const routes = [
       "password_change_required",
       "device_approval_pending",
       "device_denied",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
+    "id": "get_direct_member_deletion_preview",
+    "method": "GET",
+    "path": "/v1/direct/members/{id}/deletion-preview",
+    "summary": "Read what deleting a member will remove",
+    "access": "device",
+    "requires": "session",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "invalid_request",
+      "not_found",
       "internal"
     ],
     "status": 200
@@ -2806,6 +2888,22 @@ export const routes = [
     "optionalBody": true
   },
   {
+    "id": "post_auth_remembered_accounts",
+    "method": "POST",
+    "path": "/v1/auth/remembered-accounts",
+    "summary": "List the accounts remembered on this installation",
+    "access": "public",
+    "requires": "session",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 4096,
+    "errors": [
+      "invalid_request",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
     "id": "post_client_log",
     "method": "POST",
     "path": "/v1/diagnostics/client-logs",
@@ -3271,6 +3369,27 @@ export const routes = [
       "source_network_policy",
       "source_credentials_required",
       "source_unavailable",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
+    "id": "put_admin_access_device_trust",
+    "method": "PUT",
+    "path": "/v1/admin/access/devices/{id}/trust",
+    "summary": "Approve a member's device, block it, or put it back to waiting",
+    "access": "admin_scope",
+    "adminScope": "members",
+    "requires": "session",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 4096,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "invalid_request",
+      "not_found",
+      "revision_mismatch",
       "internal"
     ],
     "status": 200

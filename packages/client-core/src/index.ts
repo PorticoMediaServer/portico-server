@@ -484,12 +484,6 @@ export class HttpLocalApi {
   system() {
     return this.request<SystemInfo>("/v1/system");
   }
-  login(username: string, password: string) {
-    return this.request<unknown>("/v1/sessions", "POST", {
-      username,
-      password,
-    }).then(value=>parseLocalSession(value,{authority:'local'}));
-  }
   setup(setupToken: string, username: string, password: string, name: string) {
     return this.request<unknown>("/v1/setup", "POST", {
       setupToken,

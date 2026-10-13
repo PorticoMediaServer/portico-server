@@ -154,19 +154,22 @@ func (s *Service) applyCleanupJob(ctx context.Context, tx *sql.Tx, v networking.
 			return e
 		}
 	}
-	if e = eraseLinkedAccountTx(ctx, tx, j.AccountID); e != nil {
+	if e = s.eraseLinkedAccountTx(ctx, tx, j.AccountID); e != nil {
 		return e
 	}
 	_, e = tx.ExecContext(ctx, `INSERT INTO hosted_claim_cleanup_receipts(operation_id,job_id,revision,target_digest) VALUES(?,?,?,?)`, v.OperationID, j.ID, j.Revision, digest)
 	return e
 }
 
-// eraseLinkedAccountTx removes the account a deleted Portico Account had here
-// (migration 0120): its profiles' saved data, its sessions and the account.
-// The owner's account is only unlinked, because it is also this server's
-// recovery account; Hosted retires the claim of an owner that deletes itself.
-// The journal trigger then tells Hosted's index, which already forgot it.
-func eraseLinkedAccountTx(ctx context.Context, tx *sql.Tx, hostedAccount string) error {
+// eraseLinkedAccountTx removes the account a deleted Portico Account had here:
+// its profiles' saved data, its sessions, its devices and the account, through
+// the same erasure an owner's "delete member" uses (identity.EraseMemberTx),
+// so the two cannot drift apart. The owner's play history keeps the plays and
+// loses the names. The owner's account is only unlinked, because it is also
+// this server's recovery account; Hosted retires the claim of an owner that
+// deletes itself. The journal trigger then tells Hosted's index, which
+// already forgot it.
+func (s *Service) eraseLinkedAccountTx(ctx context.Context, tx *sql.Tx, hostedAccount string) error {
 	var account, role string
 	e := tx.QueryRowContext(ctx, `SELECT l.account_id,m.role FROM account_portico_links l JOIN direct_memberships m ON m.account_id=l.account_id WHERE l.hosted_account_id=?`, hostedAccount).Scan(&account, &role)
 	if errors.Is(e, sql.ErrNoRows) {
@@ -179,36 +182,7 @@ func eraseLinkedAccountTx(ctx context.Context, tx *sql.Tx, hostedAccount string)
 		_, e = tx.ExecContext(ctx, `DELETE FROM account_portico_links WHERE account_id=?`, account)
 		return e
 	}
-	if e = identity.RevokeFamiliesMatchingTx(ctx, tx, identity.RevokedMembershipRemoved, `authority='local' AND account_id=?`, account); e != nil {
-		return e
-	}
-	if _, e = tx.ExecContext(ctx, `UPDATE playback_sessions SET state='stopped' WHERE account_id=? AND state<>'stopped'`, account); e != nil {
-		return e
-	}
-	rows, e := tx.QueryContext(ctx, `SELECT id FROM direct_profiles WHERE account_id=?`, account)
-	if e != nil {
-		return e
-	}
-	var profiles []string
-	for rows.Next() {
-		var id string
-		if e = rows.Scan(&id); e != nil {
-			rows.Close()
-			return e
-		}
-		profiles = append(profiles, id)
-	}
-	rows.Close()
-	if e = rows.Err(); e != nil {
-		return e
-	}
-	for _, profile := range profiles {
-		if e = identity.EraseProfileSavedDataTx(ctx, tx, identity.Viewer{Authority: "local", AccountID: account, ProfileID: profile}); e != nil {
-			return e
-		}
-	}
-	_, e = tx.ExecContext(ctx, `DELETE FROM accounts WHERE id=?`, account)
-	return e
+	return s.identity.EraseMemberTx(ctx, tx, account)
 }
 
 // One exchange per pass bounds work. Applied jobs are acknowledged on the next

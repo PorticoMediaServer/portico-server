@@ -46,6 +46,8 @@ func initializeAdministration(ctx context.Context, db *sql.DB, console *operatio
 	advertiser := connectivity.NewAdvertiser(connectivity.AdvertiserOptions{Instance: ident.Name(), Host: ident.Name(), Port: port,
 		TXT: []string{"serverId=" + ident.ID(), "product=portico"}})
 	out := httpapi.AccessArea{Access: access.New(db), Logs: recorder, ClientLogs: servicelog.NewClientLogStore(db), Advertiser: advertiser}
+	// Invite-only sign-up spends its invitation through the invitation store.
+	ident.RedeemInvitation = out.Access.RegistrationRedeemer()
 	if console != nil {
 		if document, err := console.Settings(ctx, operations.AllowServerScope); err == nil {
 			recorder.SetLevel(document.Effective.LogLevel)

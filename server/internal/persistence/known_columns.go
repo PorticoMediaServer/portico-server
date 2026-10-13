@@ -8,18 +8,10 @@ package persistence
 // build's statements name, without anything to compare it against but the
 // build itself.
 const knownSchemaColumns = `
-access_devices.account_id
-access_devices.first_seen_ms
-access_devices.id
-access_devices.last_seen_ms
-access_devices.name
-access_devices.platform
-access_devices.profile_id
-access_devices.revision
-access_devices.trust
 access_invitations.accepted_ms
 access_invitations.account_id
 access_invitations.allowed_libraries
+access_invitations.bound_username
 access_invitations.code_hash
 access_invitations.created_by
 access_invitations.created_ms
@@ -1283,6 +1275,8 @@ diagnostics_debug_window.singleton
 direct_memberships.account_id
 direct_memberships.allowed_libraries
 direct_memberships.disabled
+direct_memberships.disabled_ms
+direct_memberships.disabled_reason
 direct_memberships.revision
 direct_memberships.role
 direct_profile_pin_attempts.device_id
@@ -1651,6 +1645,7 @@ identity_devices.last_seen
 identity_devices.name
 identity_devices.platform
 identity_devices.remember_account
+identity_devices.revision
 identity_devices.trusted
 identity_factor_challenges.account_id
 identity_factor_challenges.attempts
@@ -3432,6 +3427,8 @@ policy.payload
 policy.revision
 policy.server_id
 portico_admitted_families.family_id
+portico_admitted_families.signer_key_id
+portico_factor_challenges.signer_key_id
 portico_factor_challenges.token_hash
 prepared_media_jobs.asset_id
 prepared_media_jobs.bytes
@@ -3896,6 +3893,7 @@ social_cast_bootstraps.device_id
 social_cast_bootstraps.display_name
 social_cast_bootstraps.expires_at_ms
 social_cast_bootstraps.id
+social_cast_bootstraps.pairing_family_id
 social_cast_bootstraps.profile_id
 social_cast_bootstraps.redeemed_at_ms
 social_cast_bootstraps.role

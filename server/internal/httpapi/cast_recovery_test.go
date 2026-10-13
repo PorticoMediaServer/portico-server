@@ -83,11 +83,11 @@ func TestCastLostReconnectRecovers(t *testing.T) {
 	}
 	// One live session per device: the lost answer's and the pairing's are gone.
 	for name, bearer := range map[string]string{"lost": lost.Session.AccessToken, "paired": paired.Session.AccessToken} {
-		if w = f.as(bearer, "GET", "/v1/receivers", nil); w.Code != 401 {
+		if w = f.as(bearer, "GET", "/v1/me", nil); w.Code != 401 {
 			t.Fatalf("%s session still works: %d", name, w.Code)
 		}
 	}
-	if w = f.as(recovered.Session.AccessToken, "GET", "/v1/receivers", nil); w.Code != 200 {
+	if w = f.as(recovered.Session.AccessToken, "GET", "/v1/me", nil); w.Code != 200 {
 		t.Fatalf("recovered session %d %s", w.Code, w.Body.String())
 	}
 	// The lost token is dead, and using the new token ends the old one's window.
@@ -170,6 +170,8 @@ func TestCastReceiverCallsRegisteredRoutes(t *testing.T) {
 		"/v1/me/devices/current/capabilities": {"PUT"},
 		"/v1/playback/sessions":               {"POST"},
 		"/v1/playback/sessions/":              {"PATCH", "DELETE"},
+		// A pairing the television took and then could not use: it undoes its own.
+		"/v1/cast/devices/": {"DELETE"},
 	}
 	suffixed := map[string]string{"/v1/playback/sessions/": "/timeline"}
 	for _, m := range regexp.MustCompile(`'(/v\d+/[^'?]*)`).FindAllStringSubmatch(source, -1) {
@@ -189,6 +191,21 @@ func TestCastReceiverCallsRegisteredRoutes(t *testing.T) {
 			t.Errorf("receiver.js no longer calls %s", path)
 		}
 		for _, method := range methods {
+			// Pairing and re-pairing carry no session. Everything else the
+			// receiver sends, it sends with a paired screen's session, which
+			// may make only the requests castTargetRoute lists.
+			if path != "/v1/cast/redeem" && path != "/v1/cast/reconnect" {
+				target := path
+				if strings.HasSuffix(path, "/") {
+					target += "ps_probe"
+				}
+				if !castTargetRoute(method, target) {
+					t.Errorf("receiver.js sends %s %s, which a paired screen's session may not", method, target)
+				}
+				if suffix := suffixed[path]; suffix != "" && !castTargetRoute("POST", target+suffix) {
+					t.Errorf("receiver.js sends POST %s, which a paired screen's session may not", target+suffix)
+				}
+			}
 			if strings.HasSuffix(path, "/") {
 				probe(method, path+"ps_probe")
 				if suffix := suffixed[path]; suffix != "" {

@@ -20,12 +20,15 @@ export function decodeDeleteAdminBackupResponse(input: unknown): types.DeleteAdm
 export function decodeDeleteClientLogResponse(input: unknown): types.DeleteClientLogResponse { return decode("DeleteClientLogResponse", input) as types.DeleteClientLogResponse; }
 export function decodeDeleteDeviceResponse(input: unknown): types.DeleteDeviceResponse { return decode("DeleteDeviceResponse", input) as types.DeleteDeviceResponse; }
 export function decodeDeleteDeviceSessionsResponse(input: unknown): types.DeleteDeviceSessionsResponse { return decode("DeleteDeviceSessionsResponse", input) as types.DeleteDeviceSessionsResponse; }
+export function decodeDeleteDirectMemberResponse(input: unknown): types.DeleteDirectMemberResponse { return decode("DeleteDirectMemberResponse", input) as types.DeleteDirectMemberResponse; }
+export function decodeDeleteDirectRememberedAccountResponse(input: unknown): types.DeleteDirectRememberedAccountResponse { return decode("DeleteDirectRememberedAccountResponse", input) as types.DeleteDirectRememberedAccountResponse; }
 export function decodeDeleteDirectSessionResponse(input: unknown): types.DeleteDirectSessionResponse { return decode("DeleteDirectSessionResponse", input) as types.DeleteDirectSessionResponse; }
 export function decodeDeleteQueueResponse(input: unknown): types.DeleteQueueResponse { return decode("DeleteQueueResponse", input) as types.DeleteQueueResponse; }
 export function decodeDeleteV1ItemsItemIdSubtitlesResourceResponse(input: unknown): types.DeleteV1ItemsItemIdSubtitlesResourceResponse { return decode("DeleteV1ItemsItemIdSubtitlesResourceResponse", input) as types.DeleteV1ItemsItemIdSubtitlesResourceResponse; }
 export function decodeDeleteWebhookResponse(input: unknown): types.DeleteWebhookResponse { return decode("DeleteWebhookResponse", input) as types.DeleteWebhookResponse; }
 export function decodeDownloadClientLogResponse(input: unknown): types.DownloadClientLogResponse { return decode("DownloadClientLogResponse", input) as types.DownloadClientLogResponse; }
 export function decodeEmptyMissingTitlesResponse(input: unknown): types.EmptyMissingTitlesResponse { return decode("EmptyMissingTitlesResponse", input) as types.EmptyMissingTitlesResponse; }
+export function decodeGetAdminAccessDevicesResponse(input: unknown): types.GetAdminAccessDevicesResponse { return decode("GetAdminAccessDevicesResponse", input) as types.GetAdminAccessDevicesResponse; }
 export function decodeGetAdminBackupsResponse(input: unknown): types.GetAdminBackupsResponse { return decode("GetAdminBackupsResponse", input) as types.GetAdminBackupsResponse; }
 export function decodeGetAdminMaintenanceSettingsResponse(input: unknown): types.GetAdminMaintenanceSettingsResponse { return decode("GetAdminMaintenanceSettingsResponse", input) as types.GetAdminMaintenanceSettingsResponse; }
 export function decodeGetAdminUpdatesResponse(input: unknown): types.GetAdminUpdatesResponse { return decode("GetAdminUpdatesResponse", input) as types.GetAdminUpdatesResponse; }
@@ -45,6 +48,7 @@ export function decodeGetContainerPersonalStateResponse(input: unknown): types.G
 export function decodeGetDeviceCapabilitiesResponse(input: unknown): types.GetDeviceCapabilitiesResponse { return decode("GetDeviceCapabilitiesResponse", input) as types.GetDeviceCapabilitiesResponse; }
 export function decodeGetDevicesResponse(input: unknown): types.GetDevicesResponse { return decode("GetDevicesResponse", input) as types.GetDevicesResponse; }
 export function decodeGetDirectAccountResponse(input: unknown): types.GetDirectAccountResponse { return decode("GetDirectAccountResponse", input) as types.GetDirectAccountResponse; }
+export function decodeGetDirectMemberDeletionPreviewResponse(input: unknown): types.GetDirectMemberDeletionPreviewResponse { return decode("GetDirectMemberDeletionPreviewResponse", input) as types.GetDirectMemberDeletionPreviewResponse; }
 export function decodeGetDirectPinRecoveryResponse(input: unknown): types.GetDirectPinRecoveryResponse { return decode("GetDirectPinRecoveryResponse", input) as types.GetDirectPinRecoveryResponse; }
 export function decodeGetDirectProfileAvatarsResponse(input: unknown): types.GetDirectProfileAvatarsResponse { return decode("GetDirectProfileAvatarsResponse", input) as types.GetDirectProfileAvatarsResponse; }
 export function decodeGetDirectProfileRestrictionsResponse(input: unknown): types.GetDirectProfileRestrictionsResponse { return decode("GetDirectProfileRestrictionsResponse", input) as types.GetDirectProfileRestrictionsResponse; }
@@ -122,6 +126,7 @@ export function decodePostAdminBackupsResponse(input: unknown): types.PostAdminB
 export function decodePostAdminBackupsRestoreResponse(input: unknown): types.PostAdminBackupsRestoreResponse { return decode("PostAdminBackupsRestoreResponse", input) as types.PostAdminBackupsRestoreResponse; }
 export function decodePostAdminRestartResponse(input: unknown): types.PostAdminRestartResponse { return decode("PostAdminRestartResponse", input) as types.PostAdminRestartResponse; }
 export function decodePostAdminStatePermissionsFixResponse(input: unknown): types.PostAdminStatePermissionsFixResponse { return decode("PostAdminStatePermissionsFixResponse", input) as types.PostAdminStatePermissionsFixResponse; }
+export function decodePostAuthRememberedAccountsResponse(input: unknown): types.PostAuthRememberedAccountsResponse { return decode("PostAuthRememberedAccountsResponse", input) as types.PostAuthRememberedAccountsResponse; }
 export function decodePostClientLogResponse(input: unknown): types.PostClientLogResponse { return decode("PostClientLogResponse", input) as types.PostClientLogResponse; }
 export function decodePostDeviceResponse(input: unknown): types.PostDeviceResponse { return decode("PostDeviceResponse", input) as types.PostDeviceResponse; }
 export function decodePostDeviceApprovalResponse(input: unknown): types.PostDeviceApprovalResponse { return decode("PostDeviceApprovalResponse", input) as types.PostDeviceApprovalResponse; }
@@ -141,6 +146,7 @@ export function decodePreviewLiveSourceResponse(input: unknown): types.PreviewLi
 export function decodePreviewRemoteLiveSourceResponse(input: unknown): types.PreviewRemoteLiveSourceResponse { return decode("PreviewRemoteLiveSourceResponse", input) as types.PreviewRemoteLiveSourceResponse; }
 export function decodeProveNetworkIdentityResponse(input: unknown): types.ProveNetworkIdentityResponse { return decode("ProveNetworkIdentityResponse", input) as types.ProveNetworkIdentityResponse; }
 export function decodePublishRemoteLiveSourceResponse(input: unknown): types.PublishRemoteLiveSourceResponse { return decode("PublishRemoteLiveSourceResponse", input) as types.PublishRemoteLiveSourceResponse; }
+export function decodePutAdminAccessDeviceTrustResponse(input: unknown): types.PutAdminAccessDeviceTrustResponse { return decode("PutAdminAccessDeviceTrustResponse", input) as types.PutAdminAccessDeviceTrustResponse; }
 export function decodePutAdminMaintenanceSettingsResponse(input: unknown): types.PutAdminMaintenanceSettingsResponse { return decode("PutAdminMaintenanceSettingsResponse", input) as types.PutAdminMaintenanceSettingsResponse; }
 export function decodePutDeviceCapabilitiesResponse(input: unknown): types.PutDeviceCapabilitiesResponse { return decode("PutDeviceCapabilitiesResponse", input) as types.PutDeviceCapabilitiesResponse; }
 export function decodePutDirectProfileRestrictionsResponse(input: unknown): types.PutDirectProfileRestrictionsResponse { return decode("PutDirectProfileRestrictionsResponse", input) as types.PutDirectProfileRestrictionsResponse; }

@@ -1141,12 +1141,15 @@ func TestSocialCastBootstrapRedeemReconnectAndScoping(t *testing.T) {
 	if redeemed.DeviceToken == "" || redeemed.Session.AccessToken == "" || redeemed.DeviceToken == redeemed.Session.AccessToken {
 		t.Fatal("redeem did not issue two distinct credentials")
 	}
-	// The issued session is an ordinary bearer: it plays through the ordinary API.
-	if w = f.as(redeemed.Session.AccessToken, "GET", "/v1/receivers", nil); w.Code != 200 {
-		t.Fatalf("redeemed session cannot use the ordinary API %d %s", w.Code, w.Body.String())
+	// The issued session is a bearer for the playback API and nothing else.
+	if w = f.as(redeemed.Session.AccessToken, "GET", "/v1/me", nil); w.Code != 200 {
+		t.Fatalf("redeemed session is not usable %d %s", w.Code, w.Body.String())
+	}
+	if w = f.as(redeemed.Session.AccessToken, "GET", "/v1/receivers", nil); w.Code != 403 {
+		t.Fatalf("a paired screen reached beyond playback %d %s", w.Code, w.Body.String())
 	}
 	// The device token is not a bearer.
-	if w = f.as(redeemed.DeviceToken, "GET", "/v1/receivers", nil); w.Code != 401 {
+	if w = f.as(redeemed.DeviceToken, "GET", "/v1/me", nil); w.Code != 401 {
 		t.Fatalf("device token accepted as a bearer %d %s", w.Code, w.Body.String())
 	}
 	// The code is single use.

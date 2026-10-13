@@ -250,7 +250,7 @@ func (d Dependencies) replanCeilings(q *http.Request, p identity.Principal, sess
 		return out, err
 	}
 	defer done()
-	if out.MaxVideoBitrateBPS, err = d.enforcer(false).RemoteBitrateCap(q.Context(), tx, p); err != nil {
+	if out.MaxVideoBitrateBPS, err = d.enforcer().RemoteBitrateCap(q.Context(), tx, p); err != nil {
 		return out, err
 	}
 	if document.Effective.UploadCapacityKbps > 0 {
@@ -285,7 +285,7 @@ func (d Dependencies) v1Reach(q *http.Request, p identity.Principal) playbackv1.
 		return reach
 	}
 	defer done()
-	if limit, err := d.enforcer(false).RemoteBitrateCap(q.Context(), tx, p); err == nil {
+	if limit, err := d.enforcer().RemoteBitrateCap(q.Context(), tx, p); err == nil {
 		reach.AdminMaxVideoBitrateBPS = limit
 	}
 	return reach

@@ -31,7 +31,7 @@ func TestRestrictedMovieClassTracksCountsAndDecades(t *testing.T) {
 	if _, err := s.ClassifyPendingRatings(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	viewer := Viewer{Profile: "p", Libraries: []string{"a"}, Restrictions: restrictionOf(ceiling(13), true), MemberMaxRating: "PG-13", MemberDeniedLabels: []string{"violence"}}
+	viewer := Viewer{Profile: "p", Libraries: []string{"a"}, Restrictions: restrictionOf(ceiling(13), true).Narrow(13, true, []string{"violence"}, 0)}
 	rq := ContentRequest{Viewer: viewer, Library: "a"}
 	check := func(wantTotal int, wantCategories map[string]int) {
 		t.Helper()

@@ -6859,6 +6859,40 @@ export const schemas = {
     "required": [],
     "type": "object"
   },
+  "DeleteDirectMemberRequest": {
+    "properties": {
+      "expectedRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "expectedRevision"
+    ],
+    "type": "object"
+  },
+  "DeleteDirectMemberResponse": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "DeleteDirectRememberedAccountRequest": {
+    "properties": {
+      "installationId": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "installationId"
+    ],
+    "type": "object"
+  },
+  "DeleteDirectRememberedAccountResponse": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
   "DeleteDirectSessionRequest": {
     "properties": {},
     "required": [],
@@ -7018,6 +7052,91 @@ export const schemas = {
       "titles",
       "files",
       "more"
+    ],
+    "type": "object"
+  },
+  "GetAdminAccessDevicesRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetAdminAccessDevicesResponse": {
+    "properties": {
+      "approvalRequired": {
+        "type": "boolean"
+      },
+      "items": {
+        "items": {
+          "properties": {
+            "accountId": {
+              "type": "string"
+            },
+            "app": {
+              "type": "string"
+            },
+            "appVersion": {
+              "type": "string"
+            },
+            "firstSeenAt": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            },
+            "lastSeenAt": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "platform": {
+              "type": "string"
+            },
+            "profileId": {
+              "type": "string"
+            },
+            "revision": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "trust": {
+              "type": "string"
+            },
+            "username": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "accountId",
+            "username",
+            "name",
+            "platform",
+            "app",
+            "appVersion",
+            "trust",
+            "firstSeenAt",
+            "lastSeenAt",
+            "revision"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "limit": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "nextCursor": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "limit",
+      "approvalRequired",
+      "items"
     ],
     "type": "object"
   },
@@ -10153,6 +10272,12 @@ export const schemas = {
           "disabled": {
             "type": "boolean"
           },
+          "disabledAt": {
+            "type": "string"
+          },
+          "disabledReason": {
+            "type": "string"
+          },
           "hostedAccountId": {
             "type": "string"
           },
@@ -10259,6 +10384,70 @@ export const schemas = {
       "account",
       "profiles",
       "canManage"
+    ],
+    "type": "object"
+  },
+  "GetDirectMemberDeletionPreviewRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetDirectMemberDeletionPreviewResponse": {
+    "properties": {
+      "accountId": {
+        "type": "string"
+      },
+      "devices": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "playlists": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "playsKept": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "porticoAccount": {
+        "type": "boolean"
+      },
+      "profiles": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "revision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "role": {
+        "type": "string"
+      },
+      "savedResources": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "username": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "accountId",
+      "username",
+      "role",
+      "revision",
+      "porticoAccount",
+      "profiles",
+      "devices",
+      "playlists",
+      "savedResources",
+      "playsKept"
     ],
     "type": "object"
   },
@@ -18983,6 +19172,64 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "PostAuthRememberedAccountsRequest": {
+    "properties": {
+      "installationId": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "installationId"
+    ],
+    "type": "object"
+  },
+  "PostAuthRememberedAccountsResponse": {
+    "properties": {
+      "items": {
+        "items": {
+          "properties": {
+            "accountId": {
+              "type": "string"
+            },
+            "automaticSignIn": {
+              "type": "boolean"
+            },
+            "avatarUrl": {
+              "type": "string"
+            },
+            "avatarVersion": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "displayName": {
+              "type": "string"
+            },
+            "lastUsed": {
+              "type": "string"
+            },
+            "username": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "accountId",
+            "username",
+            "displayName",
+            "avatarVersion",
+            "automaticSignIn",
+            "lastUsed"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      }
+    },
+    "required": [
+      "items"
+    ],
+    "type": "object"
+  },
   "PostClientLogRequest": {
     "properties": {
       "appVersion": {
@@ -19282,6 +19529,12 @@ export const schemas = {
           },
           "disabled": {
             "type": "boolean"
+          },
+          "disabledAt": {
+            "type": "string"
+          },
+          "disabledReason": {
+            "type": "string"
           },
           "hostedAccountId": {
             "type": "string"
@@ -20608,6 +20861,9 @@ export const schemas = {
       "expiresAt": {
         "type": "string"
       },
+      "forPorticoAccount": {
+        "type": "boolean"
+      },
       "libraryCount": {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
@@ -21197,6 +21453,83 @@ export const schemas = {
       "protocolVersion",
       "serverId",
       "source"
+    ],
+    "type": "object"
+  },
+  "PutAdminAccessDeviceTrustRequest": {
+    "properties": {
+      "expectedRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "operationId": {
+        "type": "string"
+      },
+      "trust": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "expectedRevision",
+      "operationId",
+      "trust"
+    ],
+    "type": "object"
+  },
+  "PutAdminAccessDeviceTrustResponse": {
+    "properties": {
+      "accountId": {
+        "type": "string"
+      },
+      "app": {
+        "type": "string"
+      },
+      "appVersion": {
+        "type": "string"
+      },
+      "firstSeenAt": {
+        "type": "string"
+      },
+      "id": {
+        "type": "string"
+      },
+      "lastSeenAt": {
+        "type": "string"
+      },
+      "name": {
+        "type": "string"
+      },
+      "platform": {
+        "type": "string"
+      },
+      "profileId": {
+        "type": "string"
+      },
+      "revision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "trust": {
+        "type": "string"
+      },
+      "username": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "id",
+      "accountId",
+      "username",
+      "name",
+      "platform",
+      "app",
+      "appVersion",
+      "trust",
+      "firstSeenAt",
+      "lastSeenAt",
+      "revision"
     ],
     "type": "object"
   },

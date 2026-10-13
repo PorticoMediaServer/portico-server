@@ -287,17 +287,17 @@ func restrictionRoutes() map[string]restrictionRoute {
 		"GET /v1/jobs/{id}/failures":                                         static("/v1/jobs/unknown/failures"),
 		"GET /v1/containers/{kind}/{id}/personal-state":                      perEntity("/v1/containers/show/", "show", "/personal-state"),
 		// Health, identity, device and server description.
-		"GET ":                                          exempt("the web app shell and first-run setup page (installation.go); static, no catalogue data"),
-		"GET /health/live":                              exempt(reasonNoTitles),
-		"GET /health/ready":                             exempt(reasonNoTitles),
-		"GET /receiver/cast/":                           exempt("static Cast receiver page"),
-		"GET /v1/attribution":                           exempt(reasonNoTitles),
-		"GET /v1/auth/capabilities":                     exempt(reasonNoTitles),
-		"GET /v1/auth/remembered-accounts":              exempt(reasonNoTitles),
-		"GET /v1/capabilities":                          exempt(reasonNoTitles),
-		"GET /v1/devices":                               exempt(reasonNoTitles),
-		"GET /v1/direct":                                exempt(reasonNoTitles),
-		"GET /v1/direct/members":                        exempt(reasonAdmin),
+		"GET ":                      exempt("the web app shell and first-run setup page (installation.go); static, no catalogue data"),
+		"GET /health/live":          exempt(reasonNoTitles),
+		"GET /health/ready":         exempt(reasonNoTitles),
+		"GET /receiver/cast/":       exempt("static Cast receiver page"),
+		"GET /v1/attribution":       exempt(reasonNoTitles),
+		"GET /v1/auth/capabilities": exempt(reasonNoTitles),
+		"GET /v1/capabilities":      exempt(reasonNoTitles),
+		"GET /v1/devices":           exempt(reasonNoTitles),
+		"GET /v1/direct":            exempt(reasonNoTitles),
+		"GET /v1/direct/members":    exempt(reasonAdmin),
+		"GET /v1/direct/members/{id}/deletion-preview":  exempt(reasonAdmin),
 		"GET /v1/direct/pin-recovery":                   exempt(reasonNoTitles),
 		"GET /v1/direct/profiles/avatars":               exempt(reasonNoTitles),
 		"GET /v1/direct/profiles/{id}/deletion-preview": exempt(reasonNoTitles),
@@ -992,7 +992,7 @@ func buildRestrictionMatrix(t *testing.T) *restrictionEnv {
 	// background rebuilder after first use; the matrix probes a server whose
 	// classes serve, not the build window (which answers "building" for every
 	// id alike). Build them here, then publish them.
-	effective := catalog.Viewer{Restrictions: restrictions, MemberMaxRating: restrictions.MemberMaxRating, MemberAllowUnrated: restrictions.MemberAllowUnrated, MemberDeniedLabels: restrictions.MemberDeniedLabels}.EffectiveRestrictions()
+	effective := catalog.Viewer{Restrictions: restrictions}.EffectiveRestrictions()
 	for _, library := range m.libraries {
 		if err := cat.RebuildVisibilityClass(ctx, library, effective); err != nil {
 			t.Fatal(err)

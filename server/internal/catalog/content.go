@@ -211,7 +211,7 @@ func (s *Service) contentOnce(request ContentRequest) (ContentEnvelope, error) {
 		switch request.View {
 		case "collection":
 			// Readiness before existence (SEC-02: hidden answers as absent).
-			if e = s.CollectionClassesReady(Viewer{Libraries: []string{lib.ID}, Restrictions: request.Viewer.Restrictions, MemberMaxRating: request.Viewer.MemberMaxRating, MemberAllowUnrated: request.Viewer.MemberAllowUnrated, MemberDeniedLabels: request.Viewer.MemberDeniedLabels}); e != nil {
+			if e = s.CollectionClassesReady(Viewer{Libraries: []string{lib.ID}, Restrictions: request.Viewer.Restrictions}); e != nil {
 				return out, e
 			}
 			var c Collection

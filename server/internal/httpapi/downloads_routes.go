@@ -551,10 +551,25 @@ func subtitleFiles(track subtitles.DownloadTrack) map[string]downloads.BundleFil
 
 // contentDisposition names the file for a person saving it. The plain name
 // keeps to what every browser reads; the readable one travels in the encoded
-// form beside it.
+// form beside it (RFC 6266). A name is title text, so it may hold a quote, a
+// backslash, a line break or characters outside ASCII: the quoted form carries
+// a safe ASCII rendering of the plain name, never the text as it came, and
+// the encoded form carries the name exactly.
 func contentDisposition(readable, plain string) string {
-	out := "attachment; filename=\"" + plain + "\""
-	if readable == "" || readable == plain {
+	safe := strings.Map(func(r rune) rune {
+		if r < 0x20 || r > 0x7e || r == '"' || r == '\\' || r == '/' {
+			return '_'
+		}
+		return r
+	}, plain)
+	if readable == "" {
+		readable = plain
+	}
+	if safe == "" {
+		safe = "download"
+	}
+	out := "attachment; filename=\"" + safe + "\""
+	if readable == "" || readable == safe {
 		return out
 	}
 	encoded := make([]byte, 0, len(readable)*3)

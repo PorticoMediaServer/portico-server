@@ -104,7 +104,7 @@ func foundationAuthError(err error) error {
 	if errors.Is(err, identity.ErrRestrictionInput) {
 		return &apierror.Error{Code: "invalid_request"}
 	}
-	if errors.Is(err, identity.ErrRestrictionChanged) {
+	if errors.Is(err, identity.ErrRestrictionChanged) || errors.Is(err, identity.ErrProfileChanged) {
 		return &apierror.Error{Code: "revision_mismatch"}
 	}
 	if errors.Is(err, identity.ErrBusy) {
@@ -666,6 +666,12 @@ func FoundationRegistry(d Dependencies) (*apikit.Registry, error) {
 		return nil, err
 	}
 	if err := registerWebhookRoutes(registry, d); err != nil {
+		return nil, err
+	}
+	if err := registerMemberRoutes(registry, d); err != nil {
+		return nil, err
+	}
+	if err := registerRememberedAccountRoutes(registry, d); err != nil {
 		return nil, err
 	}
 	if err := registerMCP(registry, d); err != nil {

@@ -32,9 +32,10 @@ func (d Dependencies) accessAreaRoutes(mux *http.ServeMux) {
 }
 
 // tierAuthorityTx is the administration counterpart of ownerAuthorityTx. It
-// asks identity.Grants — the single tier predicate — against the account's live
-// membership row rather than the role carried on the token, so an account
-// demoted a moment ago cannot use a token minted while it was an administrator.
+// asks identity.Grants, the single tier predicate, of both the session's own
+// tier and the account's live membership row: an account demoted a moment ago
+// cannot use a token minted while it was an administrator, and a session
+// issued narrower than its account never borrows the account's tier.
 func (d Dependencies) tierAuthorityTx(ctx context.Context, tx *sql.Tx, p identity.Principal, needed string) (identity.Principal, error) {
 	if d.Identity == nil || tx == nil {
 		return p, identity.ErrUnauthorized
@@ -47,6 +48,15 @@ func (d Dependencies) tierAuthorityTx(ctx context.Context, tx *sql.Tx, p identit
 		role, err := access.Role(tx, p.AccountID)
 		if err != nil {
 			return p, err
+		}
+		// Both must hold the tier: the account, now, and the session itself.
+		// A session can be narrower than its account on purpose (a second
+		// profile of the owner's account, a viewing-only device, a Cast
+		// target are all members), and the account's tier must not be lent to
+		// it. A session can also be stale the other way, which the live
+		// membership row catches.
+		if !identity.Grants(p.Role, needed) {
+			return p, identity.ErrForbidden
 		}
 		p.Role = role
 	case "hosted":
@@ -127,7 +137,7 @@ func accessFailure(w http.ResponseWriter, e error) {
 		status, code, message = 403, "forbidden", identity.ErrForbidden.Error()
 	case errors.Is(e, identity.ErrUnauthorized):
 		status, code, message = 401, "unauthorized", "Authentication is required."
-	case errors.Is(e, identity.ErrContentRestricted), errors.Is(e, access.ErrContentRating), errors.Is(e, access.ErrLabelDenied), errors.Is(e, access.ErrChannelDenied):
+	case errors.Is(e, identity.ErrContentRestricted), errors.Is(e, access.ErrChannelDenied):
 		status, code, message = 404, "not_found", publicErrorMessage("not_found")
 	case errors.Is(e, errFeatureRestricted):
 		status, code, message = 403, "feature_restricted", publicErrorMessage("feature_restricted")
@@ -139,14 +149,17 @@ func accessFailure(w http.ResponseWriter, e error) {
 		status, code, message = 409, "administration_conflict", publicErrorMessage("administration_conflict")
 	case errors.Is(e, access.ErrExpired):
 		status, code, message = 410, "invitation_expired", publicErrorMessage("invitation_expired")
+	case errors.Is(e, access.ErrInvitationRecipient):
+		status, code, message = 403, "invitation_for_another_account", publicErrorMessage("invitation_for_another_account")
 	case errors.Is(e, access.ErrCapacity):
 		status, code, message = 429, "administration_capacity", publicErrorMessage("administration_capacity")
 	case errors.Is(e, servicelog.ErrClientLogBudget):
 		status, code, message = 429, "client_log_budget", "The daily client log limit has been reached."
 	case errors.Is(e, servicelog.ErrClientUploadDevice):
 		status, code, message = 403, "device_session_required", "Sign in on this device to upload logs."
-	case errors.Is(e, access.ErrStreamLimit), errors.Is(e, access.ErrSchedule),
-		errors.Is(e, access.ErrDeviceTrust):
+	case errors.Is(e, access.ErrSchedule):
+		status, code, message = 403, "outside_allowed_hours", publicErrorMessage("outside_allowed_hours")
+	case errors.Is(e, access.ErrStreamLimit):
 		status, code, message = 403, "access_limit", publicErrorMessage("access_limit")
 	case errors.Is(e, ErrRemoteSignIn):
 		status, code, message = 403, "remote_sign_in_not_allowed", publicErrorMessage("remote_sign_in_not_allowed")
@@ -193,10 +206,7 @@ func (d Dependencies) settingsDocument(ctx context.Context) (operations.Settings
 	return d.Console.Settings(ctx, operations.AllowServerScope)
 }
 
-// enforcer builds the admission enforcer. The device approval policy is read
-// before the admission transaction opens and passed in as a value: the server
-// runs SQLite on a single connection, so a settings read inside the admission
-// transaction would deadlock against it.
-func (d Dependencies) enforcer(approvalRequired bool) *access.Enforcer {
-	return &access.Enforcer{Store: d.Access.Access, ApprovalRequired: approvalRequired}
+// enforcer builds the admission enforcer over the member limits store.
+func (d Dependencies) enforcer() *access.Enforcer {
+	return &access.Enforcer{Store: d.Access.Access}
 }

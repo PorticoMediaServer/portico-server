@@ -1781,7 +1781,7 @@ CREATE TABLE authorization_session_families(
  current_generation INTEGER NOT NULL CHECK(current_generation>0),
  revoked INTEGER NOT NULL DEFAULT 0 CHECK(revoked IN (0,1))
 , revoked_reason TEXT NOT NULL DEFAULT ''
- CHECK(revoked_reason IN ('','refresh_reuse','explicit_signout','admin_revoke','membership_removed','device_disapproved','password_change')), revoked_at TEXT NOT NULL DEFAULT '') STRICT;
+ CHECK(revoked_reason IN ('','refresh_reuse','explicit_signout','admin_revoke','membership_removed','device_disapproved','password_change','signing_key_revoked','restored')), revoked_at TEXT NOT NULL DEFAULT '') STRICT;
 CREATE TABLE authorization_family_tokens(
  token_hash TEXT PRIMARY KEY,
  family_id TEXT NOT NULL REFERENCES authorization_session_families(id),
@@ -2333,6 +2333,7 @@ CREATE TABLE identity_devices(
  approval_state TEXT NOT NULL DEFAULT 'approved' CHECK(approval_state IN('approved','pending','denied')),
  last_profile_id TEXT NOT NULL DEFAULT '',
  remember_account INTEGER NOT NULL DEFAULT 1 CHECK(remember_account IN(0,1)),
+ revision INTEGER NOT NULL DEFAULT 1 CHECK(revision>0),
  UNIQUE(authority,account_id,installation_id)
 ) STRICT;
 CREATE TABLE identity_device_families(
@@ -2552,7 +2553,11 @@ CREATE TABLE social_cast_bootstraps(
   device_id TEXT NOT NULL DEFAULT '',
   created_at_ms INTEGER NOT NULL,
   expires_at_ms INTEGER NOT NULL,
-  redeemed_at_ms INTEGER) STRICT;
+  redeemed_at_ms INTEGER,
+  -- The session that asked for the pairing code. The target's session is
+  -- derived from it: it ends if the signing key that admitted that session is
+  -- revoked.
+  pairing_family_id TEXT NOT NULL DEFAULT '') STRICT;
 CREATE TABLE social_cast_devices(
   id TEXT PRIMARY KEY,
   token_digest TEXT NOT NULL UNIQUE,
@@ -2704,7 +2709,13 @@ CREATE TABLE direct_memberships(
  account_id TEXT PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
  role TEXT NOT NULL CHECK(role IN('owner','admin','member')),
  allowed_libraries TEXT NOT NULL DEFAULT '[]' CHECK(json_valid(allowed_libraries)),
- revision INTEGER NOT NULL DEFAULT 1 CHECK(revision>0), disabled INTEGER NOT NULL DEFAULT 0 CHECK(disabled IN(0,1))
+ revision INTEGER NOT NULL DEFAULT 1 CHECK(revision>0), disabled INTEGER NOT NULL DEFAULT 0 CHECK(disabled IN(0,1)),
+ -- When and why the account was turned off: 'owner' (an owner or administrator
+ -- did it) or 'left' (the person left at the Portico Account service). Both are
+ -- empty while the account is on; the direct_membership_disabled trigger keeps
+ -- them so whichever statement flips "disabled".
+ disabled_ms INTEGER NOT NULL DEFAULT 0 CHECK(disabled_ms>=0),
+ disabled_reason TEXT NOT NULL DEFAULT '' CHECK(disabled_reason IN('','owner','left'))
 ) STRICT;
 CREATE TABLE access_invitations(
  id TEXT PRIMARY KEY, email TEXT NOT NULL, code_hash TEXT NOT NULL UNIQUE,
@@ -2712,17 +2723,13 @@ CREATE TABLE access_invitations(
  allowed_libraries TEXT NOT NULL DEFAULT '[]' CHECK(json_valid(allowed_libraries)),
  state TEXT NOT NULL DEFAULT 'pending' CHECK(state IN('pending','accepted','revoked')),
  created_ms INTEGER NOT NULL, expires_ms INTEGER NOT NULL, accepted_ms INTEGER,
- created_by TEXT NOT NULL, account_id TEXT, revision INTEGER NOT NULL DEFAULT 1 CHECK(revision>0)) STRICT;
+ created_by TEXT NOT NULL, account_id TEXT, revision INTEGER NOT NULL DEFAULT 1 CHECK(revision>0),
+ -- A Portico Account username this invitation is for. Empty means whoever holds the code.
+ bound_username TEXT NOT NULL DEFAULT '') STRICT;
 CREATE TABLE access_limits(
  account_id TEXT PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
  revision INTEGER NOT NULL DEFAULT 1 CHECK(revision>0), updated_ms INTEGER NOT NULL,
  body TEXT NOT NULL CHECK(json_valid(body))) STRICT;
-CREATE TABLE access_devices(
- id TEXT PRIMARY KEY, account_id TEXT NOT NULL, profile_id TEXT NOT NULL DEFAULT '',
- name TEXT NOT NULL DEFAULT '', platform TEXT NOT NULL DEFAULT '',
- trust TEXT NOT NULL DEFAULT 'pending' CHECK(trust IN('pending','approved','blocked')),
- first_seen_ms INTEGER NOT NULL, last_seen_ms INTEGER NOT NULL,
- revision INTEGER NOT NULL DEFAULT 1 CHECK(revision>0)) STRICT;
 CREATE TABLE access_receipts(
  scope TEXT NOT NULL, operation_id TEXT NOT NULL, digest TEXT NOT NULL,
  body TEXT NOT NULL, created_ms INTEGER NOT NULL, PRIMARY KEY(scope,operation_id)) STRICT;
@@ -2833,7 +2840,7 @@ CREATE TABLE identity_credential_attempts(
 ) STRICT;
 CREATE TABLE authorization_family_grants(
  family_id TEXT PRIMARY KEY REFERENCES authorization_session_families(id) ON DELETE CASCADE,
- grant_kind TEXT NOT NULL CHECK(grant_kind IN ('viewer_only'))
+ grant_kind TEXT NOT NULL CHECK(grant_kind IN ('viewer_only','cast_target'))
 ) STRICT;
 CREATE TABLE direct_profile_pin_attempts(
  profile_id TEXT NOT NULL REFERENCES direct_profiles(id) ON DELETE CASCADE,
@@ -3344,9 +3351,15 @@ CREATE TABLE hosted_identity_challenges(
  installation_id TEXT NOT NULL,
  expires_ms INTEGER NOT NULL) STRICT;
 CREATE TABLE portico_admitted_families(
- family_id TEXT PRIMARY KEY REFERENCES authorization_session_families(id) ON DELETE CASCADE) STRICT;
+ family_id TEXT PRIMARY KEY REFERENCES authorization_session_families(id) ON DELETE CASCADE,
+ -- The Hosted signing key whose identity assertion admitted this session (or
+ -- the session it was derived from). When that key is learned to be revoked,
+ -- the session ends.
+ signer_key_id TEXT NOT NULL DEFAULT '') STRICT;
+CREATE INDEX portico_admitted_signer ON portico_admitted_families(signer_key_id) WHERE signer_key_id<>'';
 CREATE TABLE portico_factor_challenges(
- token_hash TEXT PRIMARY KEY REFERENCES identity_factor_challenges(token_hash) ON DELETE CASCADE) STRICT;
+ token_hash TEXT PRIMARY KEY REFERENCES identity_factor_challenges(token_hash) ON DELETE CASCADE,
+ signer_key_id TEXT NOT NULL DEFAULT '') STRICT;
 CREATE TABLE hosted_migrated_families(family_id TEXT PRIMARY KEY, refresh_hash TEXT UNIQUE) STRICT;
 CREATE TABLE live_programme_icons(
  generation_id TEXT NOT NULL,
@@ -3929,9 +3942,8 @@ CREATE INDEX admin_receipts_age ON admin_receipts(created_ms);
 CREATE INDEX admin_dvr_groups_page ON admin_dvr_groups(created_ms DESC,id DESC);
 CREATE INDEX admin_channel_presets_page ON admin_channel_presets(name_key,id);
 CREATE UNIQUE INDEX direct_one_owner ON direct_memberships(role) WHERE role='owner';
+CREATE INDEX identity_devices_recent ON identity_devices(last_seen DESC,id DESC);
 CREATE INDEX access_invitation_page ON access_invitations(created_ms DESC,id DESC);
-CREATE INDEX access_devices_page ON access_devices(last_seen_ms DESC,id DESC);
-CREATE INDEX access_devices_account ON access_devices(account_id,id);
 CREATE INDEX client_log_uploads_page ON client_log_uploads(received_ms DESC,id DESC);
 CREATE INDEX audio_tag_evidence_asset ON audio_tag_evidence(asset_id,field,value);
 CREATE INDEX inventory_objects_directory ON inventory_objects(source_id,root_incarnation,directory_path,retired,id);
@@ -4430,6 +4442,12 @@ WHEN NEW.hosted_account_id IS NOT OLD.hosted_account_id OR (OLD.unindexed=1 AND 
 END;
 CREATE TRIGGER hosted_member_link_delete AFTER DELETE ON account_portico_links BEGIN
  INSERT INTO hosted_membership_journal(hosted_account_id) VALUES(OLD.hosted_account_id);
+END;
+CREATE TRIGGER direct_membership_disabled AFTER UPDATE OF disabled ON direct_memberships WHEN OLD.disabled IS NOT NEW.disabled BEGIN
+ UPDATE direct_memberships SET
+  disabled_ms=CASE WHEN NEW.disabled=0 THEN 0 WHEN NEW.disabled_ms>0 THEN NEW.disabled_ms ELSE CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) END,
+  disabled_reason=CASE WHEN NEW.disabled=0 THEN '' WHEN NEW.disabled_reason<>'' THEN NEW.disabled_reason ELSE 'owner' END
+  WHERE account_id=NEW.account_id;
 END;
 CREATE TRIGGER hosted_member_standing AFTER UPDATE OF role,disabled ON direct_memberships WHEN OLD.role IS NOT NEW.role OR OLD.disabled IS NOT NEW.disabled BEGIN
  INSERT INTO hosted_membership_journal(hosted_account_id) SELECT hosted_account_id FROM account_portico_links WHERE account_id=NEW.account_id;

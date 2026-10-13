@@ -127,7 +127,7 @@ func TestVisibilityClassBuildsRestrictedItemsAndContainersOffRequest(t *testing.
 	if err != nil || len(decades.Values) != 1 || decades.Values[0].Value != "2020" || decades.Values[0].Count != 1 {
 		t.Fatalf("restricted decade must count the one visible show once: %+v, %v", decades, err)
 	}
-	member := Viewer{Profile: "member", Fence: "member", Libraries: []string{"tv"}, MemberMaxRating: "PG"}
+	member := Viewer{Profile: "member", Fence: "member", Libraries: []string{"tv"}, Restrictions: identity.ContentRestrictions{}.Narrow(8, true, nil, 0)}
 	if err := s.RebuildVisibilityClass(context.Background(), "tv", member.EffectiveRestrictions()); err != nil {
 		t.Fatal(err)
 	}
