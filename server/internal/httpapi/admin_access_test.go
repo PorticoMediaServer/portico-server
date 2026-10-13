@@ -105,6 +105,11 @@ func TestMemberLimitsScopeCatalogueProjectionAndFence(t *testing.T) {
 	c.Attributes(family.ID, "contentRating", "G")
 	c.Attributes(adult.ID, "contentRating", "R")
 	c.Drain()
+	// The account limit is judged by the same classified ages a profile's is;
+	// a spelling the background worker has not classified yet is withheld.
+	if _, err := f.deps.Catalog.ClassifyPendingRatings(context.Background()); err != nil {
+		t.Fatal(err)
+	}
 	limits := access.DefaultLimits()
 	limits.MaxContentRating = "PG"
 	limits.AllowUnrated = false
