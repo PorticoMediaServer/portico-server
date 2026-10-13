@@ -158,7 +158,8 @@
         "summary": "Read the account document.",
         "x-access": "account_session",
         "x-cost": "constant",
-        "x-lane": "default"
+        "x-lane": "default",
+        "x-scope": "session"
       }
     },
     "/v1/account/deletion": {
@@ -239,7 +240,8 @@
         "x-access": "account_session",
         "x-cost": "constant",
         "x-lane": "security",
-        "x-max-body-bytes": 65536
+        "x-max-body-bytes": 65536,
+        "x-scope": "session"
       }
     },
     "/v1/account/deletion/preview": {
@@ -357,7 +359,8 @@
         "x-access": "account_session",
         "x-cost": "constant",
         "x-lane": "security",
-        "x-max-body-bytes": 65536
+        "x-max-body-bytes": 65536,
+        "x-scope": "session"
       }
     },
     "/v1/account/deletion/status": {
@@ -430,7 +433,8 @@
         "x-access": "public",
         "x-cost": "constant",
         "x-lane": "security",
-        "x-max-body-bytes": 65536
+        "x-max-body-bytes": 65536,
+        "x-scope": "open"
       }
     },
     "/v1/account/devices": {
@@ -522,7 +526,8 @@
         "summary": "List the account's devices.",
         "x-access": "account_session",
         "x-cost": "constant",
-        "x-lane": "default"
+        "x-lane": "default",
+        "x-scope": "session"
       }
     },
     "/v1/account/export": {
@@ -579,7 +584,8 @@
         "x-access": "account_session",
         "x-cost": "constant",
         "x-lane": "default",
-        "x-max-body-bytes": 65536
+        "x-max-body-bytes": 65536,
+        "x-scope": "session"
       }
     },
     "/v1/account/exports/{export}": {
@@ -617,7 +623,8 @@
         "summary": "Read an account data export's state.",
         "x-access": "account_session",
         "x-cost": "constant",
-        "x-lane": "default"
+        "x-lane": "default",
+        "x-scope": "session"
       }
     },
     "/v1/account/exports/{export}/download": {
@@ -673,7 +680,8 @@
         "summary": "Download a ready account data export.",
         "x-access": "account_session",
         "x-cost": "constant",
-        "x-lane": "default"
+        "x-lane": "default",
+        "x-scope": "session"
       }
     },
     "/v1/account/name": {
@@ -715,7 +723,8 @@
         "x-access": "account_session",
         "x-cost": "constant",
         "x-lane": "default",
-        "x-max-body-bytes": 65536
+        "x-max-body-bytes": 65536,
+        "x-scope": "session"
       }
     },
     "/v1/account/notification-preferences": {
@@ -752,7 +761,8 @@
         "summary": "Read the account's notification preferences.",
         "x-access": "account_session",
         "x-cost": "constant",
-        "x-lane": "default"
+        "x-lane": "default",
+        "x-scope": "session"
       },
       "put": {
         "operationId": "account_notification_preferences_set",
@@ -814,7 +824,8 @@
         "x-access": "account_session",
         "x-cost": "constant",
         "x-lane": "default",
-        "x-max-body-bytes": 65536
+        "x-max-body-bytes": 65536,
+        "x-scope": "session"
       }
     },
     "/v1/account/notifications": {
@@ -893,7 +904,8 @@
         "summary": "List the account's in-app notifications.",
         "x-access": "account_session",
         "x-cost": "page_sized",
-        "x-lane": "default"
+        "x-lane": "default",
+        "x-scope": "session"
       }
     },
     "/v1/account/notifications/read": {
@@ -948,7 +960,8 @@
         "x-access": "account_session",
         "x-cost": "constant",
         "x-lane": "default",
-        "x-max-body-bytes": 65536
+        "x-max-body-bytes": 65536,
+        "x-scope": "session"
       }
     },
     "/v1/account/notifications/{id}": {
@@ -1007,7 +1020,8 @@
         "summary": "Read one in-app notification.",
         "x-access": "account_session",
         "x-cost": "constant",
-        "x-lane": "default"
+        "x-lane": "default",
+        "x-scope": "session"
       }
     },
     "/v1/account/password": {
@@ -1166,7 +1180,8 @@
         "x-access": "account_session",
         "x-cost": "constant",
         "x-lane": "security",
-        "x-max-body-bytes": 65536
+        "x-max-body-bytes": 65536,
+        "x-scope": "session"
       }
     },
     "/v1/account/preferences": {
@@ -1225,7 +1240,8 @@
         "summary": "Read the account's preferences.",
         "x-access": "account_session",
         "x-cost": "constant",
-        "x-lane": "default"
+        "x-lane": "default",
+        "x-scope": "session"
       },
       "put": {
         "operationId": "account_preferences_set",
@@ -1337,7 +1353,8 @@
         "x-access": "account_session",
         "x-cost": "constant",
         "x-lane": "default",
-        "x-max-body-bytes": 65536
+        "x-max-body-bytes": 65536,
+        "x-scope": "session"
       }
     },
     "/v1/account/recovery/complete": {
@@ -1393,7 +1410,8 @@
         "x-access": "public",
         "x-cost": "constant",
         "x-lane": "security",
-        "x-max-body-bytes": 65536
+        "x-max-body-bytes": 65536,
+        "x-scope": "session"
       }
     },
     "/v1/account/recovery/request": {
@@ -1453,7 +1471,8 @@
         "x-access": "public",
         "x-cost": "constant",
         "x-lane": "security",
-        "x-max-body-bytes": 65536
+        "x-max-body-bytes": 65536,
+        "x-scope": "session"
       }
     },
     "/v1/account/security": {
@@ -1527,7 +1546,8 @@
         "summary": "Read the account's sign-in methods.",
         "x-access": "account_session",
         "x-cost": "constant",
-        "x-lane": "security"
+        "x-lane": "security",
+        "x-scope": "session"
       }
     },
     "/v1/account/security/actions": {
@@ -1686,7 +1706,8 @@
         "x-access": "account_session",
         "x-cost": "constant",
         "x-lane": "security",
-        "x-max-body-bytes": 65536
+        "x-max-body-bytes": 65536,
+        "x-scope": "session"
       }
     },
     "/v1/account/security/email/confirm": {
@@ -1839,7 +1860,8 @@
         "x-access": "account_session",
         "x-cost": "constant",
         "x-lane": "security",
-        "x-max-body-bytes": 65536
+        "x-max-body-bytes": 65536,
+        "x-scope": "session"
       }
     },
     "/v1/account/security/mfa/confirm": {
@@ -1992,7 +2014,8 @@
         "x-access": "account_session",
         "x-cost": "constant",
         "x-lane": "security",
-        "x-max-body-bytes": 65536
+        "x-max-body-bytes": 65536,
+        "x-scope": "session"
       }
     },
     "/v1/account/security/proof": {
@@ -2077,7 +2100,8 @@
         "x-access": "account_session",
         "x-cost": "constant",
         "x-lane": "security",
-        "x-max-body-bytes": 65536
+        "x-max-body-bytes": 65536,
+        "x-scope": "session"
       }
     },
     "/v1/account/sessions": {
@@ -2160,7 +2184,8 @@
         "summary": "List the account's sessions.",
         "x-access": "account_session",
         "x-cost": "page_sized",
-        "x-lane": "security"
+        "x-lane": "security",
+        "x-scope": "session"
       }
     },
     "/v1/account/sessions/{family}": {
@@ -2197,7 +2222,8 @@
         "summary": "End one of the account's sessions.",
         "x-access": "account_session",
         "x-cost": "constant",
-        "x-lane": "security"
+        "x-lane": "security",
+        "x-scope": "session"
       }
     },
     "/v1/accounts": {
@@ -2290,7 +2316,8 @@
         "x-access": "public",
         "x-cost": "constant",
         "x-lane": "security",
-        "x-max-body-bytes": 65536
+        "x-max-body-bytes": 65536,
+        "x-scope": "session"
       }
     },
     "/v1/app-authorizations": {
@@ -2383,7 +2410,8 @@
         "x-access": "public",
         "x-cost": "constant",
         "x-lane": "security",
-        "x-max-body-bytes": 65536
+        "x-max-body-bytes": 65536,
+        "x-scope": "session"
       }
     },
     "/v1/app-authorizations/token": {
@@ -2501,7 +2529,8 @@
         "x-access": "public",
         "x-cost": "constant",
         "x-lane": "security",
-        "x-max-body-bytes": 65536
+        "x-max-body-bytes": 65536,
+        "x-scope": "open"
       }
     },
     "/v1/app-authorizations/{id}/decision": {
@@ -2553,7 +2582,8 @@
         "x-access": "public",
         "x-cost": "constant",
         "x-lane": "security",
-        "x-max-body-bytes": 65536
+        "x-max-body-bytes": 65536,
+        "x-scope": "session"
       }
     },
     "/v1/appstore/notifications": {
@@ -2604,7 +2634,8 @@
         "x-access": "provider_notification",
         "x-cost": "constant",
         "x-lane": "default",
-        "x-max-body-bytes": 262144
+        "x-max-body-bytes": 262144,
+        "x-scope": "session"
       }
     },
     "/v1/device-authorizations": {
@@ -2702,7 +2733,8 @@
         "x-access": "public",
         "x-cost": "constant",
         "x-lane": "security",
-        "x-max-body-bytes": 65536
+        "x-max-body-bytes": 65536,
+        "x-scope": "open"
       }
     },
     "/v1/device-authorizations/cancel": {
@@ -2744,7 +2776,8 @@
         "x-access": "public",
         "x-cost": "constant",
         "x-lane": "security",
-        "x-max-body-bytes": 65536
+        "x-max-body-bytes": 65536,
+        "x-scope": "open"
       }
     },
     "/v1/device-authorizations/decision": {
@@ -2794,7 +2827,8 @@
         "x-access": "account_session",
         "x-cost": "constant",
         "x-lane": "security",
-        "x-max-body-bytes": 65536
+        "x-max-body-bytes": 65536,
+        "x-scope": "session"
       }
     },
     "/v1/device-authorizations/review": {
@@ -2872,7 +2906,8 @@
         "x-access": "account_session",
         "x-cost": "constant",
         "x-lane": "security",
-        "x-max-body-bytes": 65536
+        "x-max-body-bytes": 65536,
+        "x-scope": "session"
       }
     },
     "/v1/device-authorizations/token": {
@@ -2978,7 +3013,8 @@
         "x-access": "public",
         "x-cost": "constant",
         "x-lane": "security",
-        "x-max-body-bytes": 65536
+        "x-max-body-bytes": 65536,
+        "x-scope": "open"
       }
     },
     "/v1/dns/addresses": {
@@ -3044,7 +3080,8 @@
         "summary": "Read address changes after a sequence.",
         "x-access": "dns_feed",
         "x-cost": "page_sized",
-        "x-lane": "default"
+        "x-lane": "default",
+        "x-scope": "read"
       }
     },
     "/v1/email-links/confirm": {
@@ -3096,7 +3133,8 @@
         "x-access": "public",
         "x-cost": "constant",
         "x-lane": "security",
-        "x-max-body-bytes": 65536
+        "x-max-body-bytes": 65536,
+        "x-scope": "session"
       }
     },
     "/v1/identity/apple/notifications": {
@@ -3144,7 +3182,8 @@
         "x-access": "provider_notification",
         "x-cost": "constant",
         "x-lane": "security",
-        "x-max-body-bytes": 24576
+        "x-max-body-bytes": 24576,
+        "x-scope": "session"
       }
     },
     "/v1/identity/cancel": {
@@ -3167,7 +3206,8 @@
         "summary": "Cancel the caller's provider sign-in transaction.",
         "x-access": "public",
         "x-cost": "constant",
-        "x-lane": "security"
+        "x-lane": "security",
+        "x-scope": "session"
       }
     },
     "/v1/identity/current": {
@@ -3230,7 +3270,8 @@
         "summary": "Read the caller's provider sign-in transaction.",
         "x-access": "public",
         "x-cost": "constant",
-        "x-lane": "security"
+        "x-lane": "security",
+        "x-scope": "session"
       }
     },
     "/v1/identity/mfa/complete": {
@@ -3340,7 +3381,8 @@
         "x-access": "public",
         "x-cost": "constant",
         "x-lane": "security",
-        "x-max-body-bytes": 65536
+        "x-max-body-bytes": 65536,
+        "x-scope": "session"
       }
     },
     "/v1/identity/options": {
@@ -3419,7 +3461,8 @@
         "summary": "List the sign-in methods this deployment offers.",
         "x-access": "public",
         "x-cost": "constant",
-        "x-lane": "security"
+        "x-lane": "security",
+        "x-scope": "open"
       }
     },
     "/v1/identity/transactions/{id}": {
@@ -3482,7 +3525,8 @@
         "summary": "Read a provider sign-in transaction.",
         "x-access": "public",
         "x-cost": "constant",
-        "x-lane": "security"
+        "x-lane": "security",
+        "x-scope": "session"
       }
     },
     "/v1/identity/transactions/{id}/complete": {
@@ -3599,7 +3643,8 @@
         "x-access": "public",
         "x-cost": "constant",
         "x-lane": "security",
-        "x-max-body-bytes": 65536
+        "x-max-body-bytes": 65536,
+        "x-scope": "session"
       }
     },
     "/v1/identity/transactions/{id}/contact": {
@@ -3660,7 +3705,8 @@
         "x-access": "public",
         "x-cost": "constant",
         "x-lane": "security",
-        "x-max-body-bytes": 65536
+        "x-max-body-bytes": 65536,
+        "x-scope": "session"
       }
     },
     "/v1/identity/transactions/{id}/contact/verify": {
@@ -3746,7 +3792,8 @@
         "x-access": "public",
         "x-cost": "constant",
         "x-lane": "security",
-        "x-max-body-bytes": 65536
+        "x-max-body-bytes": 65536,
+        "x-scope": "session"
       }
     },
     "/v1/identity/transactions/{id}/native-apple": {
@@ -3832,7 +3879,8 @@
         "x-access": "public",
         "x-cost": "constant",
         "x-lane": "security",
-        "x-max-body-bytes": 65536
+        "x-max-body-bytes": 65536,
+        "x-scope": "session"
       }
     },
     "/v1/identity/{provider}/start": {
@@ -3933,7 +3981,8 @@
         "x-access": "public",
         "x-cost": "constant",
         "x-lane": "security",
-        "x-max-body-bytes": 65536
+        "x-max-body-bytes": 65536,
+        "x-scope": "session"
       }
     },
     "/v1/keys": {
@@ -4020,7 +4069,8 @@
         "summary": "Read the directory signing key and its trust chain.",
         "x-access": "public",
         "x-cost": "constant",
-        "x-lane": "default"
+        "x-lane": "default",
+        "x-scope": "open"
       }
     },
     "/v1/me": {
@@ -4084,7 +4134,8 @@
         "summary": "Read the signed-in account and its profiles.",
         "x-access": "account_session",
         "x-cost": "constant",
-        "x-lane": "default"
+        "x-lane": "default",
+        "x-scope": "session"
       }
     },
     "/v1/registrations": {
@@ -4177,7 +4228,8 @@
         "x-access": "public",
         "x-cost": "constant",
         "x-lane": "security",
-        "x-max-body-bytes": 65536
+        "x-max-body-bytes": 65536,
+        "x-scope": "session"
       }
     },
     "/v1/registrations/cancel": {
@@ -4200,7 +4252,8 @@
         "summary": "Cancel the caller's pending registration.",
         "x-access": "public",
         "x-cost": "constant",
-        "x-lane": "security"
+        "x-lane": "security",
+        "x-scope": "session"
       }
     },
     "/v1/registrations/current": {
@@ -4254,7 +4307,8 @@
         "summary": "Read the caller's pending registration.",
         "x-access": "public",
         "x-cost": "constant",
-        "x-lane": "security"
+        "x-lane": "security",
+        "x-scope": "session"
       }
     },
     "/v1/registrations/{id}": {
@@ -4308,7 +4362,8 @@
         "summary": "Read a pending registration.",
         "x-access": "public",
         "x-cost": "constant",
-        "x-lane": "security"
+        "x-lane": "security",
+        "x-scope": "session"
       }
     },
     "/v1/registrations/{id}/resend": {
@@ -4381,7 +4436,8 @@
         "x-access": "public",
         "x-cost": "constant",
         "x-lane": "security",
-        "x-max-body-bytes": 65536
+        "x-max-body-bytes": 65536,
+        "x-scope": "session"
       }
     },
     "/v1/registrations/{id}/verify": {
@@ -4491,7 +4547,8 @@
         "x-access": "public",
         "x-cost": "constant",
         "x-lane": "security",
-        "x-max-body-bytes": 65536
+        "x-max-body-bytes": 65536,
+        "x-scope": "session"
       }
     },
     "/v1/server-claims/ack": {
@@ -4563,7 +4620,8 @@
         "x-access": "server_credential",
         "x-cost": "constant",
         "x-lane": "security",
-        "x-max-body-bytes": 16384
+        "x-max-body-bytes": 16384,
+        "x-scope": "admin"
       }
     },
     "/v1/server-claims/approve": {
@@ -4692,7 +4750,8 @@
         "x-access": "account_session",
         "x-cost": "constant",
         "x-lane": "security",
-        "x-max-body-bytes": 16384
+        "x-max-body-bytes": 16384,
+        "x-scope": "session"
       }
     },
     "/v1/server-claims/approve-code": {
@@ -4750,7 +4809,8 @@
         "x-access": "account_session",
         "x-cost": "constant",
         "x-lane": "security",
-        "x-max-body-bytes": 65536
+        "x-max-body-bytes": 65536,
+        "x-scope": "session"
       }
     },
     "/v1/server-claims/cancel": {
@@ -4806,7 +4866,8 @@
         "x-access": "signed_request",
         "x-cost": "constant",
         "x-lane": "security",
-        "x-max-body-bytes": 16384
+        "x-max-body-bytes": 16384,
+        "x-scope": "session"
       }
     },
     "/v1/server-claims/cleanup": {
@@ -4912,7 +4973,8 @@
         "x-access": "signed_request",
         "x-cost": "constant",
         "x-lane": "security",
-        "x-max-body-bytes": 16384
+        "x-max-body-bytes": 16384,
+        "x-scope": "session"
       }
     },
     "/v1/server-claims/deny": {
@@ -4970,7 +5032,8 @@
         "x-access": "account_session",
         "x-cost": "constant",
         "x-lane": "security",
-        "x-max-body-bytes": 65536
+        "x-max-body-bytes": 65536,
+        "x-scope": "session"
       }
     },
     "/v1/server-claims/events": {
@@ -5024,7 +5087,8 @@
         "x-access": "signed_request",
         "x-cost": "constant",
         "x-lane": "realtime",
-        "x-max-body-bytes": 65536
+        "x-max-body-bytes": 65536,
+        "x-scope": "session"
       }
     },
     "/v1/server-claims/finalize": {
@@ -5088,7 +5152,8 @@
         "x-access": "signed_request",
         "x-cost": "constant",
         "x-lane": "security",
-        "x-max-body-bytes": 16384
+        "x-max-body-bytes": 16384,
+        "x-scope": "session"
       }
     },
     "/v1/server-claims/lookup": {
@@ -5168,7 +5233,8 @@
         "x-access": "account_session",
         "x-cost": "constant",
         "x-lane": "security",
-        "x-max-body-bytes": 65536
+        "x-max-body-bytes": 65536,
+        "x-scope": "session"
       }
     },
     "/v1/server-claims/nonce": {
@@ -5238,7 +5304,8 @@
         "x-access": "signed_request",
         "x-cost": "constant",
         "x-lane": "security",
-        "x-max-body-bytes": 16384
+        "x-max-body-bytes": 16384,
+        "x-scope": "session"
       }
     },
     "/v1/server-claims/pending": {
@@ -5316,7 +5383,8 @@
         "x-access": "signed_request",
         "x-cost": "constant",
         "x-lane": "security",
-        "x-max-body-bytes": 65536
+        "x-max-body-bytes": 65536,
+        "x-scope": "session"
       }
     },
     "/v1/server-claims/result": {
@@ -5384,7 +5452,8 @@
         "x-access": "signed_request",
         "x-cost": "constant",
         "x-lane": "security",
-        "x-max-body-bytes": 16384
+        "x-max-body-bytes": 16384,
+        "x-scope": "session"
       }
     },
     "/v1/server-list/{watch}/{version}": {
@@ -5413,7 +5482,8 @@
         "summary": "Check whether the account's server list changed.",
         "x-access": "public",
         "x-cost": "constant",
-        "x-lane": "default"
+        "x-lane": "default",
+        "x-scope": "open"
       }
     },
     "/v1/servers": {
@@ -5578,7 +5648,8 @@
         "summary": "List the account's servers.",
         "x-access": "account_session",
         "x-cost": "constant",
-        "x-lane": "default"
+        "x-lane": "default",
+        "x-scope": "session"
       }
     },
     "/v1/servers/{id}/certificates/namespace": {
@@ -5639,7 +5710,8 @@
         "summary": "Read the server's certificate namespace.",
         "x-access": "server_credential",
         "x-cost": "constant",
-        "x-lane": "default"
+        "x-lane": "default",
+        "x-scope": "admin"
       }
     },
     "/v1/servers/{id}/certificates/orders": {
@@ -5735,7 +5807,8 @@
         "x-access": "server_credential",
         "x-cost": "constant",
         "x-lane": "default",
-        "x-max-body-bytes": 65536
+        "x-max-body-bytes": 65536,
+        "x-scope": "admin"
       }
     },
     "/v1/servers/{id}/certificates/orders/lookup": {
@@ -5827,7 +5900,8 @@
         "x-access": "server_credential",
         "x-cost": "constant",
         "x-lane": "default",
-        "x-max-body-bytes": 65536
+        "x-max-body-bytes": 65536,
+        "x-scope": "admin"
       }
     },
     "/v1/servers/{id}/certificates/orders/{order}": {
@@ -5900,7 +5974,8 @@
         "summary": "Read a certificate order.",
         "x-access": "server_credential",
         "x-cost": "constant",
-        "x-lane": "default"
+        "x-lane": "default",
+        "x-scope": "admin"
       }
     },
     "/v1/servers/{id}/certificates/orders/{order}/cancel": {
@@ -5929,7 +6004,8 @@
         "summary": "Cancel a certificate order.",
         "x-access": "server_credential",
         "x-cost": "constant",
-        "x-lane": "default"
+        "x-lane": "default",
+        "x-scope": "admin"
       }
     },
     "/v1/servers/{id}/certificates/orders/{order}/chain": {
@@ -5958,7 +6034,8 @@
         "summary": "Read an issued certificate chain.",
         "x-access": "server_credential",
         "x-cost": "constant",
-        "x-lane": "default"
+        "x-lane": "default",
+        "x-scope": "admin"
       }
     },
     "/v1/servers/{id}/direct-route": {
@@ -6028,7 +6105,8 @@
         "x-access": "server_credential",
         "x-cost": "constant",
         "x-lane": "default",
-        "x-max-body-bytes": 65536
+        "x-max-body-bytes": 65536,
+        "x-scope": "admin"
       }
     },
     "/v1/servers/{id}/direct-route/withdraw": {
@@ -6084,7 +6162,8 @@
         "x-access": "server_credential",
         "x-cost": "constant",
         "x-lane": "default",
-        "x-max-body-bytes": 65536
+        "x-max-body-bytes": 65536,
+        "x-scope": "admin"
       }
     },
     "/v1/servers/{id}/endpoint": {
@@ -6141,7 +6220,8 @@
         "x-access": "server_credential",
         "x-cost": "constant",
         "x-lane": "default",
-        "x-max-body-bytes": 65536
+        "x-max-body-bytes": 65536,
+        "x-scope": "admin"
       }
     },
     "/v1/servers/{id}/erasures": {
@@ -6235,7 +6315,8 @@
         "summary": "List signed erasure jobs for the server.",
         "x-access": "server_credential",
         "x-cost": "constant",
-        "x-lane": "security"
+        "x-lane": "security",
+        "x-scope": "admin"
       }
     },
     "/v1/servers/{id}/erasures/{erasure}/ack": {
@@ -6279,7 +6360,8 @@
         "x-access": "server_credential",
         "x-cost": "constant",
         "x-lane": "security",
-        "x-max-body-bytes": 65536
+        "x-max-body-bytes": 65536,
+        "x-scope": "admin"
       }
     },
     "/v1/servers/{id}/events": {
@@ -6330,7 +6412,8 @@
         "x-access": "server_credential",
         "x-cost": "constant",
         "x-lane": "default",
-        "x-max-body-bytes": 65536
+        "x-max-body-bytes": 65536,
+        "x-scope": "admin"
       }
     },
     "/v1/servers/{id}/heartbeat": {
@@ -6482,7 +6565,8 @@
         "x-access": "server_credential",
         "x-cost": "constant",
         "x-lane": "default",
-        "x-max-body-bytes": 65536
+        "x-max-body-bytes": 65536,
+        "x-scope": "admin"
       }
     },
     "/v1/servers/{id}/identity": {
@@ -6587,7 +6671,8 @@
         "x-access": "account_session",
         "x-cost": "constant",
         "x-lane": "default",
-        "x-max-body-bytes": 65536
+        "x-max-body-bytes": 65536,
+        "x-scope": "session"
       }
     },
     "/v1/servers/{id}/leave": {
@@ -6616,7 +6701,8 @@
         "summary": "Remove a server from the account's list; the server ends the membership.",
         "x-access": "account_session",
         "x-cost": "constant",
-        "x-lane": "default"
+        "x-lane": "default",
+        "x-scope": "session"
       }
     },
     "/v1/servers/{id}/members": {
@@ -6724,7 +6810,8 @@
         "x-access": "server_credential",
         "x-cost": "constant",
         "x-lane": "default",
-        "x-max-body-bytes": 1048576
+        "x-max-body-bytes": 1048576,
+        "x-scope": "admin"
       }
     },
     "/v1/servers/{id}/notifications/storage-nearly-full": {
@@ -6753,7 +6840,8 @@
         "summary": "Report the server's storage is nearly full.",
         "x-access": "server_credential",
         "x-cost": "constant",
-        "x-lane": "default"
+        "x-lane": "default",
+        "x-scope": "admin"
       }
     },
     "/v1/servers/{id}/routes": {
@@ -6836,7 +6924,8 @@
         "summary": "Read a server's signed routes.",
         "x-access": "account_session",
         "x-cost": "constant",
-        "x-lane": "default"
+        "x-lane": "default",
+        "x-scope": "session"
       },
       "post": {
         "operationId": "server_routes_observe",
@@ -6915,7 +7004,8 @@
         "x-access": "server_credential",
         "x-cost": "constant",
         "x-lane": "default",
-        "x-max-body-bytes": 65536
+        "x-max-body-bytes": 65536,
+        "x-scope": "admin"
       }
     },
     "/v1/servers/{id}/routes/prove": {
@@ -6984,7 +7074,8 @@
         "x-access": "server_credential",
         "x-cost": "constant",
         "x-lane": "default",
-        "x-max-body-bytes": 65536
+        "x-max-body-bytes": 65536,
+        "x-scope": "admin"
       }
     },
     "/v1/servers/{server}": {
@@ -7047,7 +7138,8 @@
         "x-access": "account_session",
         "x-cost": "constant",
         "x-lane": "security",
-        "x-max-body-bytes": 65536
+        "x-max-body-bytes": 65536,
+        "x-scope": "session"
       }
     },
     "/v1/sessions": {
@@ -7161,7 +7253,8 @@
         "x-access": "public",
         "x-cost": "constant",
         "x-lane": "security",
-        "x-max-body-bytes": 65536
+        "x-max-body-bytes": 65536,
+        "x-scope": "session"
       }
     },
     "/v1/sessions/current": {
@@ -7184,7 +7277,8 @@
         "summary": "Sign out the presented access token.",
         "x-access": "account_session",
         "x-cost": "constant",
-        "x-lane": "security"
+        "x-lane": "security",
+        "x-scope": "session"
       }
     },
     "/v1/sessions/logout-all": {
@@ -7207,7 +7301,8 @@
         "summary": "Sign out every session of the account.",
         "x-access": "account_session",
         "x-cost": "constant",
-        "x-lane": "security"
+        "x-lane": "security",
+        "x-scope": "session"
       }
     },
     "/v1/sessions/refresh": {
@@ -7317,7 +7412,8 @@
         "x-access": "public",
         "x-cost": "constant",
         "x-lane": "security",
-        "x-max-body-bytes": 65536
+        "x-max-body-bytes": 65536,
+        "x-scope": "session"
       }
     },
     "/v1/sessions/revoke": {
@@ -7363,7 +7459,8 @@
         "x-access": "public",
         "x-cost": "constant",
         "x-lane": "security",
-        "x-max-body-bytes": 65536
+        "x-max-body-bytes": 65536,
+        "x-scope": "session"
       }
     },
     "/v1/system": {
@@ -7408,7 +7505,8 @@
         "summary": "Read the public build identity.",
         "x-access": "public",
         "x-cost": "constant",
-        "x-lane": "default"
+        "x-lane": "default",
+        "x-scope": "open"
       }
     },
     "/v1/tv-authorizations/token": {
@@ -7490,7 +7588,8 @@
         "x-access": "public",
         "x-cost": "constant",
         "x-lane": "security",
-        "x-max-body-bytes": 65536
+        "x-max-body-bytes": 65536,
+        "x-scope": "open"
       }
     }
   }

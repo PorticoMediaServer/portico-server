@@ -69,7 +69,7 @@ func CheckIn(wakeable bool) (after, presence time.Duration) {
 type Heartbeat struct {
 	// Root-signed current documents certificate, carried by existing check-ins.
 	// Servers verify and persist its monotonic revocations before admission.
-	// Null while this process's signer is expired or revoked.
+	// Null when no current root-verified certificate is available.
 	SigningCertificate    *trust.Certificate `json:"signingCertificate"`
 	HeartbeatAfterSeconds int                `json:"heartbeatAfterSeconds"`
 	PresenceExpiresAt     time.Time          `json:"presenceExpiresAt"`
@@ -118,8 +118,9 @@ type MemberStanding struct {
 	// ConsentKind is its kind: IdentityKind, or CustodyKind for an account
 	// accepting custody of the server. Both are set by the directory service,
 	// never read from the wire.
-	ConsentAt   time.Time `json:"-"`
-	ConsentKind string    `json:"-"`
+	ConsentAt     time.Time `json:"-"`
+	ConsentKind   string    `json:"-"`
+	ConsentSigner string    `json:"-"`
 }
 
 // MemberDigest is the digest a server reports at check-in and Hosted computes

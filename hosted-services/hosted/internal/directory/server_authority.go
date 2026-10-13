@@ -68,8 +68,15 @@ func (s *Service) ServerHeartbeat(ctx context.Context, a ServerAuthority, q Chec
 	}
 	// A check-in is not a signed document, so an expired or revoked signer does
 	// not refuse it: presence and wake acknowledgement carry on. Such a process
-	// only stops handing out its certificate.
-	if s.keys.ValidateSigner(time.Now()) == nil {
+	// only stops handing out its own certificate. The repository may supply
+	// a newer root-certified public certificate from another replica.
+	if out.SigningCertificate != nil {
+		if s.keys == nil {
+			out.SigningCertificate = nil
+		} else if _, err := out.SigningCertificate.Verify(s.keys.RootPublicKey, "documents", time.Now()); err != nil {
+			out.SigningCertificate = nil
+		}
+	} else if s.keys.ValidateSigner(time.Now()) == nil {
 		out.SigningCertificate = s.keys.Certificate
 	}
 	return out, nil
@@ -102,7 +109,7 @@ func (s *Service) PushMembers(ctx context.Context, a ServerAuthority, p MemberPu
 	}
 	for i := range p.Members {
 		if p.Members[i].Active {
-			p.Members[i].ConsentAt, p.Members[i].ConsentKind = s.verifyConsent(p.Members[i], a.ServerID)
+			p.Members[i].ConsentAt, p.Members[i].ConsentKind, p.Members[i].ConsentSigner = s.verifyConsent(p.Members[i], a.ServerID)
 		}
 	}
 	repo, ok := s.repo.(CurrentServerRepository)

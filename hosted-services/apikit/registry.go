@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"net/url"
 	"reflect"
+	"slices"
 	"sort"
 	"strings"
 
@@ -30,6 +31,71 @@ const (
 	Owner         Access = "owner"
 	Admin         Access = "admin_scope"
 )
+
+// Scope is what an API key or personal access token must have been given to
+// use an operation. A signed-in session is not limited by it: a session is
+// bounded by the member's own role and restrictions, which every credential is
+// bounded by as well.
+//
+//	open     — anyone may call it; a key or token changes nothing.
+//	read     — look at libraries, titles, the guide and the caller's own state.
+//	playback — play, control playback, and change the caller's own watch
+//	           state, lists, preferences and recordings.
+//	library  — scan, match, edit and delete what is in the libraries.
+//	admin    — everything else the member behind the credential may administer.
+//	session  — only a signed-in session may call it. Signing in and out,
+//	           changing passwords, approving devices and creating keys or
+//	           tokens are here: a credential can never mint or widen another.
+type Scope string
+
+const (
+	ScopeOpen     Scope = "open"
+	ScopeRead     Scope = "read"
+	ScopePlayback Scope = "playback"
+	ScopeLibrary  Scope = "library"
+	ScopeAdmin    Scope = "admin"
+	ScopeSession  Scope = "session"
+)
+
+// GrantableScopes are the scopes a key or token can be given, narrowest first.
+var GrantableScopes = []Scope{ScopeRead, ScopePlayback, ScopeLibrary, ScopeAdmin}
+
+// ValidScope reports whether s is a scope an operation may declare.
+func ValidScope(s Scope) bool {
+	switch s {
+	case ScopeOpen, ScopeRead, ScopePlayback, ScopeLibrary, ScopeAdmin, ScopeSession:
+		return true
+	}
+	return false
+}
+
+// Grantable reports whether s is a scope a key or token may hold.
+func Grantable(s Scope) bool {
+	for _, scope := range GrantableScopes {
+		if scope == s {
+			return true
+		}
+	}
+	return false
+}
+
+// ScopeAllows reports whether a credential holding granted may use an operation
+// that declares needed. Admin is every grantable scope; nothing grants session.
+func ScopeAllows(granted []Scope, needed Scope) bool {
+	switch needed {
+	case ScopeOpen:
+		return true
+	case ScopeRead, ScopePlayback, ScopeLibrary, ScopeAdmin:
+	default:
+		return false
+	}
+	for _, scope := range granted {
+		if scope == needed || scope == ScopeAdmin {
+			return true
+		}
+	}
+	return false
+}
 
 type Lane string
 
@@ -50,18 +116,23 @@ const (
 )
 
 type Metadata struct {
-	ID        string   `json:"id"`
-	Method    string   `json:"method"`
-	Path      string   `json:"path"`
-	Summary   string   `json:"summary"`
-	Access    Access   `json:"access"`
-	Scope     string   `json:"scope,omitempty"`
-	Lane      Lane     `json:"lane"`
-	Cost      Cost     `json:"cost"`
-	BodyLimit int64    `json:"bodyLimit"`
-	Query     []string `json:"query,omitempty"`
-	Errors    []string `json:"errors"`
-	Status    int      `json:"status"`
+	ID      string `json:"id"`
+	Method  string `json:"method"`
+	Path    string `json:"path"`
+	Summary string `json:"summary"`
+	Access  Access `json:"access"`
+	// AdminScope names the administrative area an Admin route belongs to.
+	AdminScope string `json:"adminScope,omitempty"`
+	// Requires is the scope an API key or personal access token needs. It is
+	// mandatory: a route that has not decided cannot be registered.
+	Requires            Scope    `json:"requires"`
+	Lane                Lane     `json:"lane"`
+	Cost                Cost     `json:"cost"`
+	BodyLimit           int64    `json:"bodyLimit"`
+	Query               []string `json:"query,omitempty"`
+	Errors              []string `json:"errors"`
+	Status              int      `json:"status"`
+	ResponseContentType string   `json:"responseContentType,omitempty"`
 	// OptionalBody lets a route with a body contract also accept no body at all
 	// (a DELETE whose body is optional); the handler then sees the zero Request.
 	OptionalBody bool `json:"optionalBody,omitempty"`
@@ -84,13 +155,42 @@ type Authorize func(context.Context, *http.Request, Metadata) error
 // AuthorizeContext is an Authorize that also returns the context the handler
 // runs in, so a route can reuse the principal it was admitted with.
 type AuthorizeContext func(context.Context, *http.Request, Metadata) (context.Context, error)
+
+// ScopeGate decides whether the credential a request carries may use an
+// operation that declares need. It returns nil for a request that carries no
+// key or token, and for one whose key or token holds the scope.
+type ScopeGate func(q *http.Request, need Scope) error
+
 type Registry struct {
 	handlers     []http.HandlerFunc
 	errors       *apierror.Registry
 	authorize    Authorize
 	authorizeCtx AuthorizeContext
+	scopes       ScopeGate
 	routes       []Definition
 	frozen       bool
+}
+
+// GateScopes installs the check every route passes before access, body
+// parsing or the handler. Public routes pass it too, so a route that only a
+// signed-in session may call refuses a key however it is reached.
+func (r *Registry) GateScopes(gate ScopeGate) { r.scopes = gate }
+
+// Lookup returns the route that would serve method and escaped path.
+func (r *Registry) Lookup(method, escapedPath string) (Metadata, bool) {
+	best, score := -1, -1
+	for i, route := range r.routes {
+		if route.Method != method {
+			continue
+		}
+		if _, rank, ok := matchRoute(route.Path, escapedPath); ok && rank > score {
+			best, score = i, rank
+		}
+	}
+	if best < 0 {
+		return Metadata{}, false
+	}
+	return r.routes[best].Metadata, true
 }
 
 // RawRoute is for the few routes that write their own response (event
@@ -150,6 +250,13 @@ func (r *Registry) Errors() *apierror.Registry { return r.errors }
 // handler must use, or false after writing the error.
 func (r *Registry) admit(w http.ResponseWriter, q *http.Request, m Metadata) (*http.Request, bool) {
 	fail := func(err error) { r.errors.Write(w, "", err) }
+	// A key or token is held to the route's declared scope before anything else.
+	if r.scopes != nil {
+		if err := r.scopes(q, m.Requires); err != nil {
+			fail(err)
+			return nil, false
+		}
+	}
 	// Access precedes body parsing and conditional responses.
 	if m.Access != Public {
 		if r.authorizeCtx != nil {
@@ -288,17 +395,43 @@ func matchRoute(pattern, path string) (map[string]string, int, bool) {
 }
 func (r *Registry) Freeze() { r.frozen = true }
 func validate(m Metadata) error {
-	if m.ID == "" || m.Summary == "" || !strings.HasPrefix(m.Path, "/v1/") || m.Status < 200 || m.Status >= 300 || m.BodyLimit < 0 || m.BodyLimit > 48<<20 {
+	if m.ID == "" || m.Summary == "" || !strings.HasPrefix(m.Path, "/v1/") || m.Status < 200 || m.Status >= 300 || m.BodyLimit < 0 || m.BodyLimit > 1<<30 {
 		return errors.New("route metadata incomplete")
+	}
+	if m.ResponseContentType != "" {
+		if _, _, e := mime.ParseMediaType(m.ResponseContentType); e != nil {
+			return errors.New("invalid response content type")
+		}
 	}
 	switch m.Access {
 	case Public, Device, ViewerLibrary, ViewerItem, Owner:
 	case Admin:
-		if m.Scope == "" {
+		if m.AdminScope == "" {
 			return errors.New("admin scope required")
 		}
 	default:
 		return errors.New("access rule required")
+	}
+	// An access label is a promise the authorizer keeps from the path. A route
+	// labelled for one title or one library must name it where the authorizer
+	// looks, or the label would say a check runs that does not.
+	if m.Access == ViewerItem && !strings.Contains(m.Path, "/{itemId}") {
+		return errors.New("a viewer_item route names its title as {itemId}")
+	}
+	if m.Access == ViewerLibrary && !strings.Contains(m.Path, "/{libraryId}") {
+		return errors.New("a viewer_library route names its library as {libraryId}")
+	}
+	if !ValidScope(m.Requires) {
+		return errors.New("credential scope required")
+	}
+	// An operation anyone may call is either open or reserved for signing in;
+	// one that needs a caller needs a scope a credential could be given, or is
+	// reserved for sessions.
+	if m.Access == Public && m.Requires != ScopeOpen && m.Requires != ScopeSession {
+		return errors.New("a public route is open or session-only")
+	}
+	if m.Access != Public && m.Requires == ScopeOpen {
+		return errors.New("an authenticated route needs a scope")
 	}
 	switch m.Lane {
 	case Default, Browsing, Realtime, Security, Media:
@@ -326,6 +459,12 @@ func Register[Request, Response any](r *Registry, route Route[Request, Response]
 	}
 	if route.RawHandler != nil && (!m.SSE || m.Method != "GET" || m.BodyLimit != 0) || route.RawHandler == nil && m.SSE {
 		return errors.New("streaming route must be a bodyless GET with a raw handler")
+	}
+	// A change to something that exists names the revision it was made
+	// against. The route says so in its contract without having to remember to.
+	fenced := route.RawHandler == nil && revisionFenced(m.Method, reflect.TypeFor[Request]())
+	if fenced && !slices.Contains(m.Errors, "revision_required") {
+		m.Errors = append(append([]string{}, m.Errors...), "revision_required")
 	}
 	if err := r.define(m, reflect.TypeFor[Request](), reflect.TypeFor[Response](), true); err != nil {
 		return err
@@ -359,6 +498,10 @@ func Register[Request, Response any](r *Registry, route Route[Request, Response]
 			}
 			if err = decodeStrict(raw, &request); err != nil {
 				fail(&apierror.Error{Code: "invalid_request", Cause: err})
+				return
+			}
+			if fenced && !revisionSent(raw) {
+				fail(&apierror.Error{Code: "revision_required"})
 				return
 			}
 		} else if m.BodyLimit == 0 && !empty {
@@ -408,6 +551,37 @@ func Register[Request, Response any](r *Registry, route Route[Request, Response]
 		_, _ = w.Write(raw)
 	})
 	return nil
+}
+
+// revisionFenced reports whether a body of this type, sent with this method,
+// changes something that already exists at a numbered revision: a PUT, PATCH
+// or DELETE whose body has an integer expectedRevision. A POST shares body
+// types with creations and is not fenced by this rule.
+func revisionFenced(method string, body reflect.Type) bool {
+	if method != "PUT" && method != "PATCH" && method != "DELETE" {
+		return false
+	}
+	for body != nil && body.Kind() == reflect.Pointer {
+		body = body.Elem()
+	}
+	if body == nil || body.Kind() != reflect.Struct {
+		return false
+	}
+	field, ok := body.FieldByName("ExpectedRevision")
+	return ok && field.Type.Kind() == reflect.Int64 && strings.Split(field.Tag.Get("json"), ",")[0] == "expectedRevision"
+}
+
+// revisionSent reports whether the body names its expected revision. Leaving
+// it out, or sending null, must never be read as revision 0: that would let a
+// request that knows nothing about the current state replace it. An explicit
+// 0 is a revision like any other.
+func revisionSent(raw []byte) bool {
+	var body map[string]json.RawMessage
+	if json.Unmarshal(raw, &body) != nil {
+		return false
+	}
+	revision, ok := body["expectedRevision"]
+	return ok && !bytes.Equal(bytes.TrimSpace(revision), []byte("null"))
 }
 func marshalResponse(v any) ([]byte, error) {
 	raw, err := json.Marshal(v)

@@ -36,7 +36,7 @@ func TestRevokedSignerCannotSupplyNewDirectoryConsent(t *testing.T) {
 	}
 	raw, _ := json.Marshal(envelope)
 	s := &Service{keys: &security.Keys{RootPublicKey: rootPub, PrivateKey: key, KeyID: "current", Certificate: cert}}
-	if at, _ := s.verifyConsent(MemberStanding{AccountID: "member", Consent: raw}, "server"); !at.IsZero() {
+	if at, _, _ := s.verifyConsent(MemberStanding{AccountID: "member", Consent: raw}, "server"); !at.IsZero() {
 		t.Fatal("revoked signer accepted")
 	}
 	envelope, e = trust.Sign(key, cert, payload)
@@ -44,7 +44,7 @@ func TestRevokedSignerCannotSupplyNewDirectoryConsent(t *testing.T) {
 		t.Fatal(e)
 	}
 	raw, _ = json.Marshal(envelope)
-	if at, kind := s.verifyConsent(MemberStanding{AccountID: "member", Consent: raw}, "server"); at.IsZero() || kind != IdentityKind {
+	if at, kind, _ := s.verifyConsent(MemberStanding{AccountID: "member", Consent: raw}, "server"); at.IsZero() || kind != IdentityKind {
 		t.Fatal(at, kind)
 	}
 }

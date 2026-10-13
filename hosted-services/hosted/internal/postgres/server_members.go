@@ -74,11 +74,37 @@ func (s *Store) PushMembers(ctx context.Context, authority directory.ServerAutho
 	if candidate != "" {
 		also = []string{candidate}
 	}
-	tx, e := s.beginServerOperation(ctx, authority, also...)
+	tx, e := s.beginServerOperationWithSigningState(ctx, authority, true, also...)
 	if e != nil {
 		return directory.MemberPushResult{}, e
 	}
 	defer tx.Rollback()
+	// A replica's loaded certificate may predate the current rollout. Recheck
+	// verified consent against terminal revocations in this transaction, while
+	// the shared state lock prevents a rollout crossing the decision.
+	rows, e := tx.QueryContext(ctx, `SELECT key_id FROM hosted_signing_revocations`)
+	if e != nil {
+		return directory.MemberPushResult{}, e
+	}
+	revoked := map[string]bool{}
+	for rows.Next() {
+		var id string
+		if e = rows.Scan(&id); e != nil {
+			rows.Close()
+			return directory.MemberPushResult{}, e
+		}
+		revoked[id] = true
+	}
+	rows.Close()
+	if e = rows.Err(); e != nil {
+		return directory.MemberPushResult{}, e
+	}
+	for i := range push.Members {
+		if revoked[push.Members[i].ConsentSigner] {
+			push.Members[i].ConsentAt = time.Time{}
+			push.Members[i].ConsentKind = ""
+		}
+	}
 	var stored int64
 	var storedDigest []byte
 	var fullThrough sql.NullInt64

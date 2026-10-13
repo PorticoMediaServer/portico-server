@@ -3,7 +3,9 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
+	"portico.local/hosted/trust"
 	"time"
 
 	"portico.local/hosted/internal/directory"
@@ -63,6 +65,18 @@ func (s *Store) ServerHeartbeat(ctx context.Context, authority directory.ServerA
 	rows.Close()
 	if e = rows.Err(); e != nil {
 		return result, e
+	}
+	// The root-signed certificate is a public artifact, not this process's
+	// signing authority. An old replica can deliver the newer certificate.
+	var certificate []byte
+	if e = tx.QueryRowContext(ctx, `SELECT certificate FROM hosted_signing_state WHERE singleton`).Scan(&certificate); e != nil {
+		return result, e
+	}
+	if len(certificate) != 0 {
+		result.SigningCertificate = &trust.Certificate{}
+		// Invalid stored bytes are ignored by the service's root verification;
+		// they never prevent presence or wake acknowledgment from committing.
+		_ = json.Unmarshal(certificate, result.SigningCertificate)
 	}
 	return result, tx.Commit()
 }

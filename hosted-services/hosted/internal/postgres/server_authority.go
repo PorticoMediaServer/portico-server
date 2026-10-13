@@ -91,9 +91,22 @@ func checkServerAuthorityTx(ctx context.Context, tx *sql.Tx, a directory.ServerA
 	return ctx.Err()
 }
 func (s *Store) beginServerOperation(ctx context.Context, a directory.ServerAuthority, also ...string) (*sql.Tx, error) {
+	return s.beginServerOperationWithSigningState(ctx, a, false, also...)
+}
+
+func (s *Store) beginServerOperationWithSigningState(ctx context.Context, a directory.ServerAuthority, signing bool, also ...string) (*sql.Tx, error) {
 	tx, e := s.DB.BeginTx(ctx, nil)
 	if e != nil {
 		return nil, e
+	}
+	// Take signing state before account/server rows, matching the rollout
+	// worker's signing-state -> server order. Hold it through consent use.
+	if signing {
+		var revision string
+		if e = tx.QueryRowContext(ctx, `SELECT revision::text FROM hosted_signing_state WHERE singleton FOR SHARE`).Scan(&revision); e != nil {
+			tx.Rollback()
+			return nil, e
+		}
 	}
 	if e = lockServerAuthorityOwnerTx(ctx, tx, a, also...); e == nil {
 		e = checkServerAuthorityTx(ctx, tx, a)

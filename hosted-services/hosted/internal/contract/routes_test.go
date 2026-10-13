@@ -179,6 +179,10 @@ func TestDefinitionsAreWellFormed(t *testing.T) {
 			t.Errorf("%s: duplicate ID", d.ID)
 		case d.Summary == "" || !strings.HasSuffix(d.Summary, "."):
 			t.Errorf("%s: summary must be one sentence", d.ID)
+		case !apikit.ValidScope(d.Requires):
+			t.Errorf("%s: credential scope is missing or invalid", d.ID)
+		case d.Access != contract.Public && d.Requires == apikit.ScopeOpen:
+			t.Errorf("%s: protected authority cannot declare an open scope", d.ID)
 		case !access[d.Access]:
 			t.Errorf("%s: unknown access %q", d.ID, d.Access)
 		case d.Status < 200 || d.Status > 299:

@@ -15,7 +15,7 @@ import (
 )
 
 const signingRolloutSchema = `
-CREATE TABLE hosted_signing_state(singleton boolean PRIMARY KEY CHECK(singleton),revision numeric(20,0) NOT NULL DEFAULT 0,certificate_hash bytea NOT NULL DEFAULT '\x',pending boolean NOT NULL DEFAULT false,after_server text NOT NULL DEFAULT '');
+CREATE TABLE hosted_signing_state(singleton boolean PRIMARY KEY CHECK(singleton),revision numeric(20,0) NOT NULL DEFAULT 0,certificate_hash bytea NOT NULL DEFAULT '\x',pending boolean NOT NULL DEFAULT false,after_server text NOT NULL DEFAULT '',certificate bytea NOT NULL DEFAULT '\x');
 INSERT INTO hosted_signing_state(singleton) VALUES(true);
 CREATE TABLE hosted_signing_revocations(key_id text PRIMARY KEY);
 `
@@ -87,7 +87,7 @@ func (s *Store) RecordSigningCertificate(ctx context.Context, keys *security.Key
 			return e
 		}
 	}
-	_, e = tx.ExecContext(ctx, `UPDATE hosted_signing_state SET revision=$1,certificate_hash=$2,pending=true,after_server='' WHERE singleton`, strconv.FormatUint(cert.Revision, 10), digest)
+	_, e = tx.ExecContext(ctx, `UPDATE hosted_signing_state SET revision=$1,certificate_hash=$2,pending=true,after_server='',certificate=$3 WHERE singleton`, strconv.FormatUint(cert.Revision, 10), digest, raw)
 	if e != nil {
 		return e
 	}

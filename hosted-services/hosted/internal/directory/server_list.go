@@ -328,36 +328,36 @@ func validServerID(v string) bool {
 // issued and its kind.
 // An old assertion is still consent (its signing certificate is checked as of
 // its issue time); only its subject matters.
-func (s *Service) verifyConsent(m MemberStanding, server string) (time.Time, string) {
+func (s *Service) verifyConsent(m MemberStanding, server string) (time.Time, string, string) {
 	if len(m.Consent) == 0 || len(m.Consent) > 8192 || s.keys == nil {
-		return time.Time{}, ""
+		return time.Time{}, "", ""
 	}
 	var envelope SignedPolicy
 	if json.Unmarshal(m.Consent, &envelope) != nil {
-		return time.Time{}, ""
+		return time.Time{}, "", ""
 	}
 	// A historical certificate proves the signature at issue time, but the
 	// current root certificate's revocations are terminal for new consent.
 	if s.keys.Certificate != nil {
 		for _, id := range s.keys.Certificate.Revoked {
 			if id == envelope.KeyID {
-				return time.Time{}, ""
+				return time.Time{}, "", ""
 			}
 		}
 	}
 	head, e := base64.RawURLEncoding.Strict().DecodeString(envelope.Payload)
 	if e != nil {
-		return time.Time{}, ""
+		return time.Time{}, "", ""
 	}
 	var c IdentityClaims
 	if json.Unmarshal(head, &c) != nil || (c.Kind != IdentityKind && c.Kind != CustodyKind) || c.AccountID != m.AccountID || c.ServerID != server || c.IssuedAt.After(time.Now().Add(5*time.Minute)) {
-		return time.Time{}, ""
+		return time.Time{}, "", ""
 	}
 	if len(s.keys.RootPublicKey) != ed25519.PublicKeySize || envelope.Certificate == nil {
-		return time.Time{}, ""
+		return time.Time{}, "", ""
 	}
 	if _, e = envelope.Verify(s.keys.RootPublicKey, "documents", c.IssuedAt); e != nil {
-		return time.Time{}, ""
+		return time.Time{}, "", ""
 	}
-	return c.IssuedAt, c.Kind
+	return c.IssuedAt, c.Kind, envelope.KeyID
 }
