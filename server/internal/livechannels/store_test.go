@@ -126,7 +126,9 @@ func TestRefreshCASAndStableCursor(t *testing.T) {
 		t.Fatal("stale write accepted")
 	}
 	in.ExpectedRevision = updated.Revision
-	in.Guide = "<tv><programme>broken</programme></tv>"
+	// Odd, well-formed programme rows are skipped. A structurally broken
+	// document must still leave the last published guide intact.
+	in.Guide = "<tv><programme>broken</tv>"
 	if _, e = s.Save(ctx, a, in); !errors.Is(e, ErrInvalid) {
 		t.Fatal("invalid refresh accepted")
 	}
