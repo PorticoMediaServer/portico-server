@@ -43,7 +43,8 @@ import {DownloadsService} from '../src/downloads-service.ts';
 import {parseDownloadUsage} from '../src/downloads.ts';
 import {GroupSessionService} from '../src/group-session.ts';
 import {ConsoleClient} from '../src/console.ts';
-import {parseAccessAPIKey, parseAccessDevice, parseAccessMember, parseInvitation, parseLogPage, parseLogSettings} from '../src/server-administration.ts';
+import {parseAccessDevice, parseAccessMember, parseInvitation, parseLogPage, parseLogSettings} from '../src/server-administration.ts';
+import {parseApiCredential} from '../src/api-access.ts';
 import {parseBackupsDocument, parseDVRDocument, parseEnvelope, parseLibraryDocument, parseLiveDefaultsDocument, parseStorageReport, parseTrashPage, parseTunerView, parseUpdateReport} from '../src/administration.ts';
 import {PreferencesReader} from '../src/preferences-reader.ts';
 import {IdentityClient} from '../src/identity-client.ts';
@@ -666,7 +667,7 @@ export async function walkProbe(api: HttpLocalApi, input: ProbeInput): Promise<P
       ['access members', '/v1/admin/access/members?limit=20', parseAccessMember],
       ['access invitations', '/v1/admin/access/invitations?limit=20', parseInvitation],
       ['access devices', '/v1/admin/access/devices?limit=20', parseAccessDevice],
-      ['access API keys', '/v1/admin/access/api-keys?limit=20', parseAccessAPIKey],
+      ['API keys', '/v1/admin/api-keys?limit=20', parseApiCredential],
     ];
     for (const [name, path, each] of accessLists) {
       await rec.check('owner', name, 'GET', path, async () => {
