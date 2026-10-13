@@ -35,8 +35,8 @@ var castCapabilities = map[string]bool{"load": true, "control": true, "stop": tr
 
 type CastBootstrapRequest struct {
 	ProtocolVersion string   `json:"protocolVersion"`
-	DisplayName     string   `json:"displayName"`
-	Capabilities    []string `json:"capabilities"`
+	DisplayName     string   `json:"displayName,omitempty"`
+	Capabilities    []string `json:"capabilities,omitempty"`
 }
 
 type CastBootstrap struct {
@@ -63,7 +63,7 @@ type CastRedeemRequest struct {
 	ProtocolVersion string `json:"protocolVersion"`
 	Code            string `json:"code"`
 	DeviceID        string `json:"deviceId"`
-	DisplayName     string `json:"displayName"`
+	DisplayName     string `json:"displayName,omitempty"`
 	// Source is the caller's network, set by the route: failed attempts are
 	// charged to it as well as to the server-wide budget.
 	Source string `json:"-"`
@@ -527,7 +527,7 @@ func (s *Store) castAttempt(ctx context.Context, source string, attempt func(*sq
 
 // RevokeCastDevice unpairs a receiver and ends the session it plays with. The
 // next reconnect fails closed.
-func (s *Store) RevokeCastDevice(ctx context.Context, p identity.Principal, id string) error {
+func (s *Store) RevokeCastDevice(ctx context.Context, p identity.Principal, id, expectedGeneration string) error {
 	gated, e := s.begin(ctx)
 	if e != nil {
 		return e
@@ -535,14 +535,27 @@ func (s *Store) RevokeCastDevice(ctx context.Context, p identity.Principal, id s
 	tx := gated.Tx()
 	defer gated.Rollback()
 	var family string
-	e = tx.QueryRowContext(ctx, `SELECT session_family_id FROM social_cast_devices WHERE id=? AND authority=? AND account_id=? AND profile_id=?`, id, p.Authority, p.AccountID, p.ProfileID).Scan(&family)
+	var generation int64
+	e = tx.QueryRowContext(ctx, `SELECT session_family_id,generation FROM social_cast_devices WHERE id=? AND authority=? AND account_id=? AND profile_id=?`, id, p.Authority, p.AccountID, p.ProfileID).Scan(&family, &generation)
 	if errors.Is(e, sql.ErrNoRows) {
 		return errNotFound
 	}
 	if e != nil {
 		return e
 	}
+	if expectedGeneration != "" {
+		expected, ok := parseCounter(strings.Trim(expectedGeneration, "\""))
+		if !ok {
+			return errInvalid
+		}
+		if expected != generation {
+			return errConflict
+		}
+	}
 	if _, e = tx.ExecContext(ctx, `UPDATE social_cast_devices SET state='revoked',previous_token_digest='',previous_valid_until_ms=0,session_family_id='' WHERE id=?`, id); e != nil {
+		return e
+	}
+	if _, e = tx.ExecContext(ctx, `UPDATE social_receivers SET state='retired' WHERE id=(SELECT receiver_id FROM social_cast_devices WHERE id=?)`, id); e != nil {
 		return e
 	}
 	if family != "" && s.Identity != nil {

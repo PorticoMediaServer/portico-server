@@ -122,7 +122,7 @@ func TestAStaleDocumentIsAskedForConditionally(t *testing.T) {
 	settleScreenPublication(t, s, db, item)
 	// The first fetch was unconditional and recorded no validator, so give it one, as a real
 	// provider's response would have.
-	if e := s.noteDocumentChecked(ctx, "tmdb", "movie", "42", documentValidators{ETag: `W/"v1"`}, true, s.publicationTime().UTC().Add(-90*24*time.Hour)); e != nil {
+	if e := s.noteDocumentChecked(ctx, "tmdb", "movie", screenDocumentResource("42", "en-US", "CA"), documentValidators{ETag: `W/"v1"`}, true, s.publicationTime().UTC().Add(-90*24*time.Hour)); e != nil {
 		t.Fatal(e)
 	}
 	p.notModified = true
@@ -322,7 +322,7 @@ func TestValidatorsArePersistedAndNotLostOnANotModified(t *testing.T) {
 	ctx := context.Background()
 	s, _, _, _ := freshnessFixture(t)
 	now := s.publicationTime().UTC()
-	if e := s.noteDocumentChecked(ctx, "tmdb", "movie", "42", documentValidators{ETag: `W/"v1"`, LastModified: "Wed, 17 Sep 2026 00:00:00 GMT"}, true, now); e != nil {
+	if e := s.noteDocumentChecked(ctx, "tmdb", "movie", screenDocumentResource("42", "en-US", "CA"), documentValidators{ETag: `W/"v1"`, LastModified: "Wed, 17 Sep 2026 00:00:00 GMT"}, true, now); e != nil {
 		t.Fatal(e)
 	}
 	state, e := s.documentState(ctx, "tmdb", "movie", "42")
@@ -356,7 +356,7 @@ func TestAFailedConditionalRefreshDoesNotRenewTheWindow(t *testing.T) {
 	s, db, p, item := freshnessFixture(t)
 	settleScreenPublication(t, s, db, item)
 	stale := s.publicationTime().UTC().Add(-90 * 24 * time.Hour)
-	if e := s.noteDocumentChecked(ctx, "tmdb", "movie", "42", documentValidators{ETag: `W/"v1"`}, true, stale); e != nil {
+	if e := s.noteDocumentChecked(ctx, "tmdb", "movie", screenDocumentResource("42", "en-US", "CA"), documentValidators{ETag: `W/"v1"`}, true, stale); e != nil {
 		t.Fatal(e)
 	}
 	p.failConditional = errors.New("provider unavailable")

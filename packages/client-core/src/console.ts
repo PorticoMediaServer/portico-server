@@ -3,6 +3,7 @@ import {parsePreferenceSnapshot,type DeviceClass,type PreferencePatch,type Prefe
 import {parseTelemetryReading,parseTelemetrySample,parseTranscodeCapacity,type TelemetryWindow} from './telemetry.ts';
 import {parseAttention} from './attention.ts';
 import {parsePlaybackHistory,type PlaybackHistoryPeriod} from './playback-history.ts';
+import {firstOfEach,keepReadable,noteSkipped} from './tolerant.ts';
 export type ConsoleAPI={request<T>(path:string,method?:string,body?:unknown,signal?:AbortSignal):Promise<T>;requestConsole?<T>(path:string,method:string,body:unknown,signal:AbortSignal):Promise<T>};
 export type ConsoleScope={serverId:string;viewerId:string};
 export type Page<T>={items:T[];nextCursor:string};
@@ -18,9 +19,20 @@ export const PLANNING_POLICIES:PlanningPolicy[]=['maximum_fidelity','maximum_com
 export type TranscodingSettings={
  hardwareBackend:HardwareBackend;hardwareDevice:string;hdrToneMapping:boolean;hdrToneMappingAlgorithm:ToneMappingAlgorithm;
  x264Preset:X264Preset;directStreamRemux:boolean;planningPolicy:PlanningPolicy;
- throttleBufferSeconds:number;playedRetentionSeconds:number;temporaryDirectory:string;
+ throttleBufferSeconds:number;playedRetentionSeconds:number;temporaryDirectory:string;ffmpegPath:string;sessionStorageMiB:number;
  maxConcurrentSessions:number;maxHardwareSessions:number;maxSoftwareSessions:number;maxBackgroundSessions:number};
-export type RuntimeSettings=TranscodingSettings&{name:string;transcodingEnabled:boolean;perAccountCap:number|null;serverCap:number|null;diagnosticDays:number;notificationDays:number;jobDays:number;/** How long the play history is kept; 0 keeps everything. Absent on a server without the setting. */playHistoryDays?:number;'home.communityActivityEnabled'?:boolean};
+export type RuntimeSettings=TranscodingSettings&{
+ name:string;transcodingEnabled:boolean;perAccountCap:number|null;serverCap:number|null;
+ diagnosticDays:number;notificationDays:number;jobDays:number;playHistoryDays:number;'home.communityActivityEnabled':boolean;
+ 'updates.releaseChannel':string;'updates.feedUrl':string;'library.missingTitles':MissingTitlesRule;'library.missingTitlesDays':number;
+ remoteSignInPolicy:string;remoteBitrateLimitKbps:number;lanNetworks:string[];accessUrls:string[];lanDiscoveryEnabled:boolean;
+ trustedProxies:string[];uploadCapacityKbps:number;pausedSessionTimeoutMinutes:number;advertisedInterface:string;
+ customCertificatePath:string;customCertificateKeyPath:string;customCertificateDomain:string;deviceApprovalRequired:boolean;
+ connectionLimit:number;advertiseUrl:string;apiRequestsPerMinute:number;blockMemberAccessTokens:boolean;
+ logLevel:string;logRetention:{category:string;days:number}[];
+};
+export type MissingTitlesRule='immediately'|'after_days'|'never';
+export const MISSING_TITLES_RULES:readonly MissingTitlesRule[]=Object.freeze(['immediately','after_days','never']);
 export type SettingsDocument={revision:number;digest:string;requested:RuntimeSettings;effective:RuntimeSettings;activeRevision:number;restartFields:string[];registryRevision:string};
 export type Diagnostic={platform:'web'|'ios'|'tvos';state:'idle'|'starting'|'playing'|'paused'|'buffering'|'failed'|'unknown';online:boolean};
 export type FeedbackStatus='open'|'in-progress'|'resolved'|'closed';
@@ -45,8 +57,16 @@ function base(v:unknown):Record<string,any>{if(!obj(v))invalid();return v;}
 function revision(v:Record<string,any>){if(!integer(v.revision)||v.revision<1)invalid();}
 export function parseSettings(v:unknown):SettingsDocument{
  const d=base(v);revision(d);if(!/^[a-f0-9]{64}$/.test(d.digest)||!integer(d.activeRevision)||!Array.isArray(d.restartFields))invalid();
- for(const key of ['requested','effective']){const s=base(d[key]);if(!text(s.name,100)||typeof s.transcodingEnabled!=='boolean')invalid();for(const key of ['serverCap','perAccountCap'])if(s[key]!==null&&(!integer(s[key])||s[key]<1||s[key]>1000000))invalid(); for(const key of ['diagnosticDays','notificationDays','jobDays'])if(!integer(s[key])||s[key]<1||s[key]>(key==='notificationDays'?180:30))invalid();if(s.playHistoryDays!==undefined&&(!integer(s.playHistoryDays)||s.playHistoryDays<0||s.playHistoryDays>36500))invalid();checkTranscoding(s);if(s['home.communityActivityEnabled']!==undefined&&typeof s['home.communityActivityEnabled']!=='boolean')invalid();}
+ for(const key of ['requested','effective']){const s=base(d[key]);if(!text(s.name,100)||typeof s.transcodingEnabled!=='boolean')invalid();for(const key of ['serverCap','perAccountCap'])if(s[key]!==null&&(!integer(s[key])||s[key]<1||s[key]>1000000))invalid(); for(const key of ['diagnosticDays','notificationDays','jobDays'])if(!integer(s[key])||s[key]<1||s[key]>(key==='notificationDays'?180:30))invalid();if(!integer(s.playHistoryDays)||s.playHistoryDays>36500)invalid();checkTranscoding(s);checkOwnerDocument(s);if(typeof s['home.communityActivityEnabled']!=='boolean')invalid();}
  return d as SettingsDocument;
+}
+function checkOwnerDocument(s:Record<string,any>){
+ for(const key of ['updates.releaseChannel','updates.feedUrl','remoteSignInPolicy','advertiseUrl','advertisedInterface','customCertificatePath','customCertificateKeyPath','customCertificateDomain','logLevel'])if(!text(s[key],4096))invalid();
+ for(const key of ['remoteBitrateLimitKbps','uploadCapacityKbps','pausedSessionTimeoutMinutes','connectionLimit','apiRequestsPerMinute'])if(!integer(s[key]))invalid();
+ for(const key of ['lanDiscoveryEnabled','deviceApprovalRequired','blockMemberAccessTokens'])if(typeof s[key]!=='boolean')invalid();
+ for(const key of ['lanNetworks','accessUrls','trustedProxies'])if(!Array.isArray(s[key])||s[key].length>64||!s[key].every((v:unknown)=>text(v,4096)))invalid();
+ if(!MISSING_TITLES_RULES.includes(s['library.missingTitles'])||!integer(s['library.missingTitlesDays'])||s['library.missingTitlesDays']<1||s['library.missingTitlesDays']>3650||s.connectionLimit>65536||s.apiRequestsPerMinute>100000)invalid();
+ if(!Array.isArray(s.logRetention)||s.logRetention.length>64||!s.logRetention.every((v:unknown)=>obj(v)&&text(v.category,100)&&integer(v.days)))invalid();
 }
 /** Transcoding values are rejected outside the bounds the registry publishes,
  * so a client cannot render a choice this server would refuse to save. */
@@ -54,13 +74,15 @@ function checkTranscoding(s:Record<string,any>){
  if(!HARDWARE_BACKENDS.includes(s.hardwareBackend)||!TONE_MAPPING_ALGORITHMS.includes(s.hdrToneMappingAlgorithm)||
   !X264_PRESETS.includes(s.x264Preset)||!PLANNING_POLICIES.includes(s.planningPolicy))invalid();
  if(typeof s.hdrToneMapping!=='boolean'||typeof s.directStreamRemux!=='boolean')invalid();
- if(!text(s.hardwareDevice,200)||!text(s.temporaryDirectory,1024))invalid();
+ if(!text(s.hardwareDevice,200)||!text(s.temporaryDirectory,1024)||!text(s.ffmpegPath,1024)||!integer(s.sessionStorageMiB)||s.sessionStorageMiB<64||s.sessionStorageMiB>1048576)invalid();
  if(!integer(s.throttleBufferSeconds)||s.throttleBufferSeconds<10||s.throttleBufferSeconds>600)invalid();
  if(!integer(s.playedRetentionSeconds)||s.playedRetentionSeconds>3600)invalid();
  for(const key of ['maxConcurrentSessions','maxHardwareSessions','maxSoftwareSessions','maxBackgroundSessions'])
   if(!integer(s[key])||s[key]>1000)invalid();
 }
-export function parseReport(v:unknown):FeedbackReport{const r=base(v);revision(r);if(!id(r.id)||!integer(r.createdAt)||!integer(r.updatedAt)||!['open','in-progress','resolved','closed'].includes(r.status)||!id(r.category)||!text(r.message,4000)||typeof r.contextAvailable!=='boolean'||r.itemId!==undefined&&!id(r.itemId))invalid();if(r.events!==undefined){if(!Array.isArray(r.events)||r.events.length>200)invalid();for(const e of r.events)if(!obj(e)||!integer(e.at)||!text(e.reply,4000)||!['owner','admin','viewer'].includes(e.actorClass))invalid();}return r as FeedbackReport;}
+export function parseReport(v:unknown):FeedbackReport{const r=base(v);revision(r);if(!id(r.id)||!integer(r.createdAt)||!integer(r.updatedAt)||!['open','in-progress','resolved','closed'].includes(r.status)||!id(r.category)||!text(r.message,4000)||typeof r.contextAvailable!=='boolean'||r.itemId!==undefined&&!id(r.itemId))invalid();if(r.events!==undefined){if(!Array.isArray(r.events)||r.events.length>200)invalid();
+ // A reply this app cannot read is left out of the thread; the report and its other replies are kept.
+ return {...r,events:keepReadable('console','report.events',r.events,e=>{if(!obj(e)||!integer(e.at)||!text(e.reply,4000)||!['owner','admin','viewer'].includes(e.actorClass))invalid();return e;})} as FeedbackReport;}return r as FeedbackReport;}
 export function parseEvidenceRecord(value:unknown):EvidenceRecord {
  const record=base(value);
  if(!integer(record.sequence)||!integer(record.at)||record.at>8640000000000000)invalid();
@@ -68,10 +90,13 @@ export function parseEvidenceRecord(value:unknown):EvidenceRecord {
  if(record.fields!==undefined){if(!obj(record.fields)||Object.keys(record.fields).length>64)invalid();for(const [key,value] of Object.entries(record.fields))if(!text(key,100)||typeof value!=='number'||!Number.isFinite(value))invalid();}
  return record as EvidenceRecord;
 }
-export function parsePage<T>(v:unknown,parse:(v:unknown)=>T):Page<T>{const p=base(v);if(!Array.isArray(p.items)||p.items.length>40||typeof p.nextCursor!=='string'||p.nextCursor!==''&&!/^\d{1,19}$/.test(p.nextCursor))invalid();return {items:p.items.map(parse),nextCursor:p.nextCursor};}
+/** The page size and the cursor stay exact. A row this app cannot read is left out alone, and a repeated id keeps its first row. */
+export function parsePage<T>(v:unknown,parse:(v:unknown)=>T):Page<T>{const p=base(v);if(!Array.isArray(p.items)||p.items.length>40||typeof p.nextCursor!=='string'||p.nextCursor!==''&&!/^\d{1,19}$/.test(p.nextCursor))invalid();return {items:distinct(keepReadable('console','page.items',p.items,parse)),nextCursor:p.nextCursor};}
+function distinct<T>(rows:T[]):T[]{return rows.every(row=>obj(row)&&typeof row.id==='string')?firstOfEach('console','rows',rows,row=>(row as {id:string}).id):rows;}
 function parseInbox(v:unknown):Inbox{const p=base(v);if(!integer(p.unread))invalid();return {...parsePage(v,n=>{const v=base(n);if(!id(v.id)||!integer(v.createdAt)||v.readAt!==null&&!integer(v.readAt)||!text(v.message,300)||v.targetId!==undefined&&!id(v.targetId))invalid();return v as Notice;}),unread:p.unread};}
-function parseJob(v:unknown):Job{const j=base(v);revision(j);if(!id(j.id)||!id(j.kind)||!Array.isArray(j.actions)||!j.actions.every((v:unknown)=>v==='retry'||v==='cancel'||v==='pause'||v==='resume')||!['queued','running','paused','reconciling','cancellation-requested','cancelled','failed','succeeded'].includes(j.state))invalid();return j as Job;}
-function list<T>(v:unknown,parse:(v:unknown)=>T,max=100):T[]{if(!Array.isArray(v)||v.length>max)invalid();return v.map(parse);}
+/** A job in a state this app does not know cannot be shown truthfully, so it is left out of its list. An action this app does not know is not offered. */
+function parseJob(v:unknown):Job{const j=base(v);revision(j);if(!id(j.id)||!id(j.kind)||!Array.isArray(j.actions)||!['queued','running','paused','reconciling','cancellation-requested','cancelled','failed','succeeded'].includes(j.state))invalid();const actions=j.actions.filter((v:unknown)=>v==='retry'||v==='cancel'||v==='pause'||v==='resume');if(actions.length===j.actions.length)return j as Job;noteSkipped('console','job.actions',j.actions.length-actions.length);return {...j,actions} as Job;}
+function list<T>(v:unknown,parse:(v:unknown)=>T,max=100):T[]{if(!Array.isArray(v)||v.length>max)invalid();return distinct(keepReadable('console','rows',v,parse));}
 function parseSchedule(v:unknown):Schedule{const s=base(v);revision(s);if(!id(s.id)||!id(s.kind)||!text(s.timezone,80)||typeof s.enabled!=='boolean'||!integer(s.startMinute)||s.startMinute>=1440||!integer(s.windowMinutes)||s.windowMinutes<1||s.windowMinutes>1440||typeof s.catchUp!=='boolean')invalid();return s as Schedule;}
 let sequence=0;
 /** Operation keys are uniqueness tokens, not credentials or authorization. */
@@ -138,7 +163,7 @@ export class ConsoleClient {
  jobCommand(job:Job,action:'cancel'|'retry'|'pause'|'resume'){return this.mutate('/v1/admin/console/jobs/'+encodeURIComponent(job.id)+'/'+action,'POST',{expectedRevision:job.revision},parseJob);}
  schedules(){return this.call('/v1/admin/console/schedules','GET',undefined,v=>list(v,parseSchedule));}
  saveSchedule(value:Schedule,expectedRevision:number){const {revision:_revision,lastSlot:_lastSlot,createdAt:_createdAt,...editable}=value;return this.mutate('/v1/admin/console/schedules','PUT',{expectedRevision,value:editable},parseSchedule);}
- measurement(name:string){return this.call('/v1/admin/console/panels/'+encodeURIComponent(name),'GET',undefined,v=>{const p=base(v);if(p.name!==name||!integer(p.observedAt)||p.freshUntil!==p.observedAt+30000||!obj(p.facts)||Object.keys(p.facts).length>30)invalid();for(const f of Object.values(p.facts))if(!obj(f)||!text(f.state,40))invalid();return p as Measurement;});}
+ measurement(name:string){return this.call('/v1/admin/console/panels/'+encodeURIComponent(name),'GET',undefined,v=>{const p=base(v);if(p.name!==name||!integer(p.observedAt)||p.freshUntil!==p.observedAt+30000||!obj(p.facts)||Object.keys(p.facts).length>30)invalid();const facts:Measurement['facts']={};for(const [key,f] of Object.entries(p.facts)){if(obj(f)&&text(f.state,40))facts[key]=f as Measurement['facts'][string];else noteSkipped('console','measurement.fact');}return {...p,facts} as Measurement;});}
  alerts(){return this.call('/v1/admin/console/alerts','GET',undefined,v=>list(v,a=>{const p=base(a);revision(p);if(!id(p.id)||!id(p.code))invalid();return p as Alert;}));}
  acknowledge(alert:Alert){return this.mutate('/v1/admin/console/alerts/'+encodeURIComponent(alert.id)+'/acknowledge','POST',{expectedRevision:alert.revision},base);}
  records(lane:'runtime'|'client'|'audit',cursor=''){return this.call('/v1/admin/console/diagnostics/'+lane+'?cursor='+encodeURIComponent(cursor),'GET',undefined,v=>parsePage(v,parseEvidenceRecord));}
@@ -160,4 +185,4 @@ export class ConsoleClient {
 function parseExport(v:unknown):SupportExport{const p=base(v);if(!id(p.id)||!integer(p.expiresAt)||!obj(p.manifest)||!Array.isArray(p.manifest.included)||!Array.isArray(p.manifest.excluded)||!text(p.manifest.redaction,500))invalid();return p as SupportExport;}
 
 
-export function parseStreamOptions(value:unknown):StreamOptions{const v=base(value);for(const field of ['libraries','viewers'])if(!Array.isArray(v[field])||v[field].length>500||v[field].some((row:unknown)=>!obj(row)||!text(row.id,300)||!row.id||!text(row.label,4096)))invalid();return v as StreamOptions;}
+export function parseStreamOptions(value:unknown):StreamOptions{const v=base(value);for(const field of ['libraries','viewers'])if(!Array.isArray(v[field])||v[field].length>500)invalid();const rows=(field:'libraries'|'viewers')=>distinct(keepReadable('console','stream-options.'+field,v[field] as unknown[],row=>{if(!obj(row)||!text(row.id,300)||!row.id||!text(row.label,4096))invalid();return row as {id:string;label:string};}));return {...v,libraries:rows('libraries'),viewers:rows('viewers')} as StreamOptions;}

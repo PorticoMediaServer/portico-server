@@ -176,6 +176,14 @@ func DevelopmentTool(tool string) (string, error) {
 	return RepositoryTool(tool, starts...)
 }
 func Resolve(tool string) string {
+	if configured := activePair.Load(); configured != nil {
+		switch tool {
+		case "ffmpeg":
+			return configured.ffmpeg
+		case "ffprobe":
+			return configured.ffprobe
+		}
+	}
 	if value := os.Getenv("PORTICO_" + strings.ToUpper(tool)); value != "" {
 		return value
 	}
@@ -206,6 +214,9 @@ func Resolve(tool string) string {
 // Explicit overrides still win independently. Packaged tools and PATH tools use
 // the same sibling convention; a missing companion goes through full resolution.
 func ResolvePair() (string, string) {
+	if configured := activePair.Load(); configured != nil {
+		return configured.ffmpeg, configured.ffprobe
+	}
 	ffmpeg := Resolve("ffmpeg")
 	if probe := os.Getenv("PORTICO_FFPROBE"); probe != "" {
 		return ffmpeg, probe

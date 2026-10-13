@@ -10,6 +10,12 @@ import (
 // PersistVideo is called only inside the scanner's existing source/policy-fenced
 // commit. Triggered work captures the same immutable local evidence, not raw XML.
 func PersistVideo(ctx context.Context, tx *sql.Tx, library, asset string, f assets.Facts) error {
+	if f.VideoMetadataStatus == "observed" && (f.LocalMetadataIssue == "" || f.LocalMetadataIssue == "video_nfo_fields_skipped") {
+		// The scanner confirmed the complete sidecar set. Missing files release evidence.
+		if _, e := tx.ExecContext(ctx, `DELETE FROM video_nfo_evidence WHERE library_id=? AND asset_id=?`, library, asset); e != nil {
+			return e
+		}
+	}
 	replaced := map[string]bool{}
 	for _, v := range f.VideoMetadata {
 		if replaced[v.Locator] {

@@ -9,6 +9,11 @@ import (
 
 func policyErrorDefinitions() []apierror.Definition {
 	return []apierror.Definition{
+		{Code: "invalid_channel_input", Status: 400, Message: "The playlist or guide could not be used. Check it and try again.", Retry: apierror.Never},
+		{Code: "channel_revision_conflict", Status: 409, Message: "The channel source changed. Refresh before saving.", Retry: apierror.AfterRefresh},
+		{Code: "source_lan_confirmation_required", Status: 422, Message: "Confirm the source addresses on your local network to continue.", Retry: apierror.Never},
+		{Code: "source_network_policy", Status: 422, Message: "This source address needs confirmation before it can be reached.", Retry: apierror.Never},
+		{Code: "source_credentials_required", Status: 422, Message: "The provider refused these credentials. Enter them again.", Retry: apierror.Never},
 		{Code: "metadata_unavailable", Status: 503, Message: "Metadata is temporarily unavailable.", Retry: apierror.SameRequest},
 		{Code: "artwork_pending", Status: 404, Message: "Artwork is not available yet.", Retry: apierror.SameRequest},
 		{Code: "artwork_gone", Status: 410, Message: "This artwork version is no longer available.", Retry: apierror.AfterRefresh},
@@ -18,7 +23,23 @@ func policyErrorDefinitions() []apierror.Definition {
 }
 
 func policyCatalogue() *apierror.Registry {
-	registry, err := apierror.New(append(append(append(v1ErrorDefinitions(), policyErrorDefinitions()...), connectionErrorDefinitions()...), downloadErrorDefinitions()...)...)
+	definitions := append(v1ErrorDefinitions(), policyErrorDefinitions()...)
+	definitions = append(definitions, connectionErrorDefinitions()...)
+	definitions = append(definitions, credentialErrorDefinitions()...)
+	definitions = append(definitions, webhookErrorDefinitions()...)
+	definitions = append(definitions, subtitleErrorDefinitions()...)
+	definitions = append(definitions, downloadErrorDefinitions()...)
+	known := map[string]bool{}
+	for _, d := range append(apierror.Defaults(), definitions...) {
+		known[d.Code] = true
+	}
+	for _, d := range socialErrorDefinitions() {
+		if !known[d.Code] {
+			definitions = append(definitions, d)
+			known[d.Code] = true
+		}
+	}
+	registry, err := apierror.New(definitions...)
 	if err != nil {
 		panic(err)
 	}

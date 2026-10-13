@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createDownloadRequest, getDownloadRequest, isDownloadRequestTerminal, parseDownloadRequest, parseDownloadRequestList, pollDownloadRequest} from '../src/download-requests.ts';
+import {resetSkippedParts, skippedParts} from '../src/tolerant.ts';
 
 const sha = 'b'.repeat(64);
 function preparation(id: string): any {
@@ -92,10 +93,54 @@ test('a device lists only its own requests, and duplicate rows are a contract br
   assert.throws(() => parseDownloadRequestList({requests: [{...summary, target: {kind: 'episode', id: 'e-1'}}]}));
 });
 
-test('duplicate members and stray error codes are contract breaks', () => {
-  assert.throws(() => parseDownloadRequest(request({items: [{itemId: 'a'}, {itemId: 'a'}]})));
-  // An error code only rides a failed capture, and only the published ones exist.
-  assert.throws(() => parseDownloadRequest(request({state: 'preparing', errorCode: 'authority_revoked'})));
-  assert.throws(() => parseDownloadRequest(request({state: 'failed', total: 0, totalKnown: true, errorCode: 'selection_changed'})));
-  assert.throws(() => parseDownloadRequest(request({state: 'failed', total: 0, totalKnown: true, errorCode: 'nope'})));
+test('a repeated member is read once, and an error code that cannot be read is left out', () => {
+  assert.deepEqual(parseDownloadRequest(request({items: [{itemId: 'a', reason: 'storage_full'}, {itemId: 'a'}, {itemId: 'b'}]})).items, [{itemId: 'a', reason: 'storage_full'}, {itemId: 'b'}]);
+  assert.equal('errorCode' in parseDownloadRequest(request({state: 'preparing', errorCode: 'selection_changed'})), false);
+  const failed = parseDownloadRequest(request({state: 'failed', total: 0, totalKnown: true, errorCode: 'nope'}));
+  assert.equal(failed.state, 'failed');
+  assert.equal('errorCode' in failed, false);
+  assert.equal(parseDownloadRequest(request({state: 'failed', total: 0, totalKnown: true, errorCode: 'authority_revoked'})).errorCode, 'authority_revoked');
+});
+
+test('one unreadable member leaves the rest of a request, and an unreadable preparation leaves its member', () => {
+  resetSkippedParts();
+  const parsed = parseDownloadRequest(request({
+    state: 'preparing', total: 6, totalKnown: true, ready: 1, queued: 5, nextCursor: 'after-e6', estimate: 'new',
+    items: [
+      {itemId: 'e1', preparation: preparation('e1'), badge: 'new'},
+      {itemId: 'e2', preparation: {...preparation('e2'), state: 'verifying'}},
+      {itemId: 'e3', preparation: {...preparation('e3'), artifact: {...preparation('e3').artifact, sha256: 'not-a-digest'}}},
+      {itemId: 'bad id!', preparation: preparation('e4')},
+      'not a member',
+      {itemId: 'e5', reason: 7},
+      {itemId: 'e6', reason: 'storage_full'},
+    ],
+  }));
+  assert.deepEqual(parsed.items.map(i => i.itemId), ['e1', 'e2', 'e3', 'e5', 'e6']);
+  assert.equal(parsed.items[0].preparation?.id, 'prep-e1');
+  assert.equal('badge' in parsed.items[0], false);
+  assert.deepEqual(parsed.items.slice(1, 4), [{itemId: 'e2'}, {itemId: 'e3'}, {itemId: 'e5'}]);
+  assert.equal(parsed.items[4].reason, 'storage_full');
+  assert.deepEqual([parsed.total, parsed.ready, parsed.queued, parsed.nextCursor], [6, 1, 5, 'after-e6']);
+  assert.deepEqual(skippedParts().map(p => p.document + ':' + p.part + ':' + p.count).sort(), ['download-request:item.preparation:2', 'download-request:item.reason:1', 'download-request:items:2']);
+});
+
+test('a request keeps its identity, state, counts, cursor and bounds exact', async () => {
+  for (const over of [
+    {requestId: 'bad id!'},
+    {state: 'archived'},
+    {total: -1},
+    {totalKnown: 'yes'},
+    {ready: '3'},
+    {paused: 1.5},
+    {nextCursor: 4},
+    {items: {0: {itemId: 'a'}}},
+    {items: Array.from({length: 101}, (_, i) => ({itemId: 'e' + i}))},
+  ]) assert.throws(() => parseDownloadRequest(request(over)), `accepted ${JSON.stringify(Object.keys(over))}`);
+  assert.throws(() => parseDownloadRequest([request()]));
+  // What the client sends stays exact: a policy with a field the server does not take is never sent.
+  const api = fakeApi({'POST /v1/downloads/requests': () => request()});
+  await assert.rejects(createDownloadRequest(api, {operationId: 'op-1', target: {kind: 'show', id: 's'}, deviceId: 'dev-1', quality: 'original', policy: {episodes: 'all', keepLast: 2} as any}));
+  await assert.rejects(createDownloadRequest(api, {operationId: 'op-1', target: {kind: 'show', id: 's'}, deviceId: 'dev-1', quality: 'original', policy: {episodes: 'some'} as any}));
+  assert.equal(api.calls.length, 0);
 });

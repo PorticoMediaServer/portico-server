@@ -11,6 +11,7 @@ export * from './route-connection.ts';
 export * from './known-servers.ts';
 export * from './portico-servers.ts';
 import type {PreparedChoice} from './prepared-media.ts';
+import type {PlaybackChoices} from './playback-v1/choices.ts';
 import {ListeningDeadlineClock,noListeningDeadlines,type NativeListeningStatus,type NativeListeningV1Control,type NativeListeningV1Event,type ListeningDeadlines,type ListeningPolicy} from './playback/native-listening.ts';
 import {audioEffectsEnabled,defaultAudioEffects,parseAudioEffects,type AudioEffectsSnapshot,type AudioEffectsSettings,type PreparedAudio} from './audio-effects.ts';
 import {playableAudio,type AudioRenderV2} from './playback-v1/audio-render.ts';
@@ -31,6 +32,7 @@ import type {QueueController} from './queue-controller.ts';
 import {readLyricsResponse} from "./lyrics-http.ts";
 import {readBoundedJson} from './bounded-json.ts';
 import {parseLocalSession} from './local-session.ts';
+import {parseLibraryList} from './library-list.ts';
 import {installationHeaders,issuesCredentials,provesIdentity} from './installation.ts';
 import {AudioSelection,emptyAudio,type AudioPlan,type AudioBinding,type AudioSelectionSnapshot} from './audio-selection.ts';
 export type {AudioPlan,AudioBinding,AudioSelectionSnapshot} from './audio-selection.ts';
@@ -147,6 +149,44 @@ function statusOf(error: unknown): number {
   const status = (error as { status?: unknown } | null)?.status;
   return typeof status === "number" ? status : 0;
 }
+/**
+ * A request the server accepted and then never answered. It is a failure the person can retry,
+ * never a cancellation: the screen that asked stops waiting and says so.
+ */
+export class RequestTimeoutError extends Error {
+  readonly code = 'request_timeout';
+  readonly retryable = true;
+  constructor() { super('The server did not answer in time.'); this.name = 'TimeoutError'; }
+}
+/**
+ * How long a request may go unanswered. A long poll waits as long as it asked the server to
+ * hold it, plus a margin; a read gets half a minute; a change gets a minute, and an owner's
+ * console change two (some do real work before they answer). Media, downloads and event streams
+ * do not come through here and have no such limit.
+ */
+export function requestDeadlineMs(path: string, method: string): number {
+  const held = /[?&]waitSeconds=(\d{1,4})(?:&|$)/.exec(path);
+  if (held) return (Math.min(Number(held[1]), 600) + 15) * 1000;
+  if (method === 'GET' || method === 'HEAD') return 30_000;
+  return path.startsWith('/v1/admin/') ? 120_000 : 60_000;
+}
+/** Runs `work` under the request's deadline and the caller's own cancellation. A caller's cancel stays a cancel; the deadline is a timeout. */
+async function withinDeadline<T>(ms: number, signal: AbortSignal | undefined, work: (signal: AbortSignal) => Promise<T>): Promise<T> {
+  const controller = new AbortController();
+  let timedOut = false;
+  const cancel = () => controller.abort();
+  if (signal?.aborted) cancel(); else signal?.addEventListener('abort', cancel, {once: true});
+  const timer = setTimeout(() => { timedOut = true; controller.abort(); }, ms);
+  try {
+    return await work(controller.signal);
+  } catch (error) {
+    if (timedOut && !signal?.aborted) throw new RequestTimeoutError();
+    throw error;
+  } finally {
+    clearTimeout(timer);
+    signal?.removeEventListener('abort', cancel);
+  }
+}
 export class ApiError extends Error {
   code: string;
   retryable: boolean;
@@ -210,7 +250,9 @@ export interface PlaybackApi {
 export type SessionEndInfo = Readonly<{ reason: string; message?: string }>;
 /** Match Go's canonical JSON escaping for signed-claim wrapper endpoints. */
 export function transportJSON(value:unknown):string {return JSON.stringify(value).replace(/[<>&\u2028\u2029]/g,c=>'\\u'+c.charCodeAt(0).toString(16).padStart(4,'0'));}
-export class HttpLocalApi implements PlaybackApi {
+/** The selected server's HTTP API. Playback sessions are not started here: they are Playback
+ * Protocol v1 sessions (`playback-v1/sessions.ts`), spoken through `requestRaw`. */
+export class HttpLocalApi {
   readonly baseUrl: string;
   private token: string;
   private certificateSessionEpoch = 0;
@@ -336,10 +378,11 @@ export class HttpLocalApi implements PlaybackApi {
   private auth?: AuthRecovery;
   /** Keep this transport's access token alive: refresh before expiry and once on a 401. */
   setAuthRecovery(auth: AuthRecovery | undefined) { this.auth = auth; }
-  private send(path: string, method: string, body: unknown, signal: AbortSignal | undefined, token: string, extra?: Readonly<Record<string, string>>) {
+  private send(path: string, method: string, body: unknown, signal: AbortSignal | undefined, token: string, extra?: Readonly<Record<string, string>>, keepalive = false) {
     return this.fetcher(this.baseUrl + path, {
       method,
       signal,
+      ...(keepalive ? {keepalive: true} : {}),
       // Credential/profile proof exchanges must never follow an HTTP redirect.
       ...(/^\/v1\/(?:direct(?:\/|$)|auth\/|hosted\/(?:attach|profiles\/offline-select))/.test(path)?{redirect:'error' as const,credentials:'omit' as const}:{}),
       headers: {
@@ -371,19 +414,30 @@ export class HttpLocalApi implements PlaybackApi {
     return response;
   }
   /**
+   * A last word as the page goes away (a stop with the final position): sent at once with the
+   * token in hand and `keepalive`, so the browser delivers it after the page has gone. Nothing is
+   * awaited, renewed or retried; the server's own time limits cover a message that never arrives.
+   */
+  farewell(path: string, method: string, body?: unknown): void {
+    if (!path.startsWith("/v1/") || provesIdentity(path, method)) return;
+    try { void this.send(path, method, body, undefined, this.token, undefined, true).then(r => { void r.body?.cancel().catch(() => {}); }, () => {}); } catch { /* the page is going away */ }
+  }
+  /**
    * Any status, with headers and the parsed body (playback v1's `V1Http` seam: 202, 412 `current`,
    * `ETag`, `Report-Every-Ms`). Rejects only when there is no response (offline, aborted).
    */
   async requestRaw(path: string, method: string, options: Readonly<{headers?: Readonly<Record<string, string>>; body?: unknown; signal?: AbortSignal}> = {}): Promise<{status: number; headers: Record<string, string>; body?: unknown}> {
-    const response = await this.exchange(path, method, options.body, options.signal, options.headers);
-    const headers: Record<string, string> = {};
-    response.headers.forEach((value, key) => { headers[key] = value; });
-    let body: unknown;
-    if (response.status !== 204 && response.status !== 205 && response.status !== 304) {
-      const text = await response.text();
-      if (text) { try { body = JSON.parse(text); } catch { body = undefined; } }
-    }
-    return {status: response.status, headers, body};
+    return withinDeadline(requestDeadlineMs(path, method), options.signal, async signal => {
+      const response = await this.exchange(path, method, options.body, signal, options.headers);
+      const headers: Record<string, string> = {};
+      response.headers.forEach((value, key) => { headers[key] = value; });
+      let body: unknown;
+      if (response.status !== 204 && response.status !== 205 && response.status !== 304) {
+        const text = await response.text();
+        if (text) { try { body = JSON.parse(text); } catch { body = undefined; } }
+      }
+      return {status: response.status, headers, body};
+    });
   }
   async request<T>(
     path: string,
@@ -391,6 +445,10 @@ export class HttpLocalApi implements PlaybackApi {
     body?: unknown,
     signal?: AbortSignal
   ): Promise<T> {
+    // No request waits for ever: one the server never answers fails as timed out (see `requestDeadlineMs`).
+    return withinDeadline(requestDeadlineMs(path, method), signal, bounded => this.answered<T>(path, method, body, bounded));
+  }
+  private async answered<T>(path: string, method: string, body: unknown, signal: AbortSignal): Promise<T> {
     // A 401 means the server did not act on the request, so one retry with a renewed token is safe for any method.
     const response = await this.exchange(path, method, body, signal);
     if (!response.ok) {
@@ -410,7 +468,7 @@ export class HttpLocalApi implements PlaybackApi {
       );
       const path = errorFieldPath(data?.error?.path);
       if (path) error.path = path;
-      const roots = errorConfirmRoots(data?.error?.confirmRoots);
+      const roots = errorConfirmRoots(data?.error?.current?.confirmRoots);
       if (roots) error.confirmRoots = roots;
       throw error;
     }
@@ -443,7 +501,7 @@ export class HttpLocalApi implements PlaybackApi {
     return this.request<void>("/v1/sessions/current", "DELETE");
   }
   libraries() {
-    return this.request<{ items: Library[] }>("/v1/libraries");
+    return this.request<unknown>("/v1/libraries").then(parseLibraryList);
   }
   items(libraryId = "", cursor = "", limit = 40) {
     const q = new URLSearchParams({ limit: String(limit) });
@@ -458,37 +516,6 @@ export class HttpLocalApi implements PlaybackApi {
   }
   reportRouteFailure(sessionId: string, code: RouteFailureCode, detail: string) {
     return reportRouteFailure((path, method, body) => this.request<unknown>(path, method, body), sessionId, code, detail);
-  }
-  createPlayback(itemId: string, requestId: string, signal?: AbortSignal) {
-    return this.request<PlaybackSession>(
-      "/v1/playback/sessions",
-      "POST",
-      { itemId, quality: "auto", requestId },
-      signal
-    );
-  }
-  stopPlayback(id: string, signal?: AbortSignal) {
-    return this.request<void>(
-      "/v1/playback/sessions/" + encodeURIComponent(id),
-      "DELETE",
-      undefined,
-      signal
-    );
-  }
-  progressPlayback(
-    id: string,
-    payload: {
-      generation: number;
-      sequence: number;
-      positionSeconds: number;
-      state: "playing" | "paused" | "ended";
-    }
-  ) {
-    return this.request<void>(
-      "/v1/playback/sessions/" + encodeURIComponent(id) + "/progress",
-      "POST",
-      payload
-    );
   }
   mediaUrl(path: string) {
     if (this.routes) return this.routes.mediaURL(path);
@@ -686,7 +713,9 @@ export class PlaybackService {
   private failedRecovery?: { positionSeconds?: number; intent: "playing" | "paused" };
   /** The server's music preferences have been adopted: the device journal no longer overrides them. */
   private effectsFromServer = false;
-  private lastPlay?: { itemId: string; prepared?: PreparedChoice; quality?: string; audioStream?: number; local?: () => PlaybackSession };
+  private lastPlay?: { itemId: string; prepared?: PreparedChoice; quality?: string; audioStream?: number; choices?: PlaybackChoices; local?: () => PlaybackSession };
+  private seekRearm?: () => void;
+  private startupRearm?: () => void;
   private escalations = 0;
   private seekTimer?: ReturnType<typeof setTimeout>;
   private hasObserved = false;
@@ -804,6 +833,32 @@ export class PlaybackService {
     if(oldPlan&&p.mode==='hls')this.audioSelection.install(before.intentId,{...oldPlan,generation:p.generation});
     return true;
   }
+  /**
+   * The same session re-planned on the server (a quality, version or audio change): its new
+   * presentation replaces the old one in place. The queue, the intent and the position stay; the
+   * engine loads the new stream where the picture was.
+   */
+  installPresentation(next:PlaybackSession):boolean {
+    const before=this.snapshot,session=before.session;
+    if(!session||next.id!==session.id||before.channel||!['starting','ready'].includes(before.phase))return false;
+    if(!Number.isSafeInteger(next.generation)||next.generation<=session.generation)return next.generation===session.generation;
+    const position=before.pendingSeek?.positionSeconds??(this.hasObserved?before.positionSeconds:session.resumeSeconds);
+    this.clearStartup();this.bookmarkProtected=true;this.hasObserved=false;
+    const intentId=before.intentId;
+    this.requestSeek(position,{session:{...next,duration:next.duration||session.duration,resumeSeconds:position},phase:'starting',audio:this.audioSelection.reset(),audioTracks:before.audioTracks?Object.freeze({...before.audioTracks,selected:before.audioTracks.pending??before.audioTracks.selected,pending:undefined}):undefined,error:undefined,recovering:undefined,
+      audioEffects:{...before.audioEffects,rendering:renderable(next)&&audioEffectsEnabled(before.audioEffects.settings),prepared:undefined,committed:undefined,notice:renderNotice(next)}});
+    this.armStartup(()=>{this.reportStalledStart(intentId);this.fail(intentId,'Playback did not become ready. Check the server and try again.');});
+    return true;
+  }
+  /**
+   * The engine is still receiving media for the start or seek in progress. A slow link or a
+   * server converting slower than real time is not a failure: the start and seek windows begin
+   * again, and only run out after a full window with nothing arriving at all.
+   */
+  engineProgress(intentId:number){
+    if(intentId!==this.snapshot.intentId)return;
+    this.startupRearm?.();this.seekRearm?.();
+  }
   /** ListeningService is the sole policy producer; render preferences join the
    * same snapshot before crossing the native boundary. Identical observations
    * never reset native deadlines or native-only remote-control activity. */
@@ -857,7 +912,8 @@ export class PlaybackService {
     if(intentId!==this.snapshot.intentId||!this.snapshot.session)return;
     const clean=tracks.filter(t=>Number.isInteger(t.streamIndex)&&t.streamIndex>=0&&t.streamIndex<=65535).slice(0,64);
     // The track this play asked for by name is the one in use; otherwise the caller's (the file's default).
-    const asked=this.lastPlay?.itemId===this.snapshot.itemId?this.lastPlay?.audioStream:undefined;
+    const choice=this.lastPlay?.itemId===this.snapshot.itemId?this.lastPlay?.choices?.audioTrackId:undefined;
+    const asked=this.lastPlay?.itemId===this.snapshot.itemId?(choice&&/^a\d{1,4}$/.test(choice)?Number(choice.slice(1)):this.lastPlay?.audioStream):undefined;
     if(asked!==undefined&&clean.some(t=>t.streamIndex===asked))selected=asked;
     this.update({audioTracks:clean.length>1?Object.freeze({tracks:Object.freeze(clean.map(t=>Object.freeze({...t}))),selected}):undefined});
   }
@@ -866,8 +922,33 @@ export class PlaybackService {
     if(!tracks||!itemId||last?.local||tracks.pending!==undefined||tracks.selected===streamIndex||!tracks.tracks.some(t=>t.streamIndex===streamIndex))return Promise.resolve();
     const position=this.snapshot.pendingSeek?.positionSeconds??this.snapshot.positionSeconds;
     this.update({audioTracks:Object.freeze({...tracks,pending:streamIndex})});
-    return this.play(itemId,position,undefined,last?.itemId===itemId?last.quality:undefined,streamIndex);
+    // The live session is re-planned with that track (same session, same queue entry).
+    if(this.queue?.changePlayback&&this.snapshot.session&&['starting','ready'].includes(this.snapshot.phase)){
+      const intentId=this.snapshot.intentId;
+      return this.changePlayback({audioTrackId:'a'+streamIndex}).then(()=>{
+        const now=this.snapshot.audioTracks;
+        if(this.snapshot.intentId===intentId&&now?.pending===streamIndex)this.update({audioTracks:Object.freeze({...now,selected:streamIndex,pending:undefined})});
+      },error=>{
+        const now=this.snapshot.audioTracks;
+        if(this.snapshot.intentId===intentId&&now?.pending===streamIndex)this.update({audioTracks:Object.freeze({...now,pending:undefined})});
+        throw error;
+      });
+    }
+    return this.play(itemId,position,undefined,last?.itemId===itemId?last.quality:undefined,streamIndex,last?.itemId===itemId?last.choices:undefined);
   }
+  /**
+   * Change the quality, version or audio track of what is playing. The session is re-planned on
+   * the server and stays the same session on the same queue entry, so Up next is untouched. The
+   * choices are remembered for a replay or an automatic retry of this title.
+   */
+  changePlayback(choices:PlaybackChoices):Promise<void>{
+    const itemId=this.snapshot.itemId,session=this.snapshot.session;
+    if(!itemId||!session||this.snapshot.channel||this.lastPlay?.local||!this.queue?.changePlayback)return Promise.resolve();
+    this.lastPlay={...(this.lastPlay?.itemId===itemId?this.lastPlay:{itemId}),choices:{...(this.lastPlay?.itemId===itemId?this.lastPlay.choices:undefined),...choices}};
+    return this.queue.changePlayback(choices);
+  }
+  /** The choices the current title was started or last changed with. */
+  playbackChoices():PlaybackChoices{return this.lastPlay?.itemId===this.snapshot.itemId?this.lastPlay?.choices??{}:{};}
   audioObserved(binding:AudioBinding,epoch:number,sequence:number,id:string|null){return this.audioSelection.observed(binding,epoch,sequence,id);}
   audioApplied(binding:AudioBinding,epoch:number,revision:number,id:string){return this.audioSelection.applied(binding,epoch,revision,id);}
   audioRenditionUnavailable(binding:AudioBinding,epoch:number,id:string){return this.audioSelection.renditionUnavailable(binding,epoch,id);}
@@ -907,6 +988,14 @@ export class PlaybackService {
   audioBoundary(token:string,position:number){void this.queue?.audioBoundary(token,position);}
   audioPreparationFailed(message:string){this.queue?.discardAudio(message);}
   audioRenderFailed(message:string){this.queue?.audioRenderFailed(message);}
+  /** A failed optional decoder hands the same session to the platform player. */
+  fallbackAudioRender():boolean {
+    const current=this.snapshot;
+    if(!current.session||!current.audioEffects.rendering||!current.session.streamUrl||this.nativeV1)return false;
+    this.queue?.invalidateAudioPreparation?.();this.bookmarkProtected=true;
+    this.requestSeek(current.pendingSeek?.positionSeconds??current.positionSeconds,{audioEffects:{...current.audioEffects,rendering:false,prepared:undefined,committed:undefined,notice:''}});
+    return true;
+  }
   async commitAudioAuthority(token:string,itemId:string,session:PlaybackSession,expectedIntent:number):Promise<boolean>{
     if(this.snapshot.intentId!==expectedIntent)return false;
     // The server has committed the next session (§18.3); the bridge reports its timeline from the
@@ -923,6 +1012,7 @@ export class PlaybackService {
   private clearStartup() {
     if (this.startupTimer) clearTimeout(this.startupTimer);
     this.startupTimer = undefined;
+    this.startupRearm = undefined;
     this.startupWait?.();
     this.startupWait = undefined;
   }
@@ -947,6 +1037,7 @@ export class PlaybackService {
       (this.startupTimer as any)?.unref?.();
     };
     arm();
+    this.startupRearm = () => { if (this.startupTimer) { clearTimeout(this.startupTimer); arm(); } };
   }
   /** Channel selection uses this same service/adapter owner, but never a VOD
    * create, persisted catalog placeholder, resume checkpoint or chapter query. */
@@ -1028,6 +1119,9 @@ export class PlaybackService {
   queueFailed(itemId:string,message:string){if(!this.snapshot.channel&&!this.snapshot.session)this.update({phase:'error',itemId,intent:'paused',error:message});}
   async adoptQueueSession(itemId:string,session:PlaybackSession,expectedIntentId:number):Promise<boolean>{
     if(this.snapshot.intentId!==expectedIntentId)return false;
+    // A title the queue started (Next, a container, the next episode) is the one an engine
+    // failure asks for again; one started through `play` keeps the choices it was started with.
+    if(this.lastPlay?.itemId!==itemId||this.lastPlay.local){this.lastPlay={itemId};this.escalations=0;}
     const intent=this.snapshot.intent;
     this.leave(false,true);this.sequence=0;this.lastProgress=0;
     const intentId=this.snapshot.intentId;
@@ -1095,10 +1189,10 @@ export class PlaybackService {
   /** `audioStream` is the absolute stream index of an audio track from the
    * offer. The server may change the delivery mode to reach it (an original whose
    * second track the engine cannot select is repackaged instead). */
-  play(itemId: string, startPosition?: number, prepared?: PreparedChoice, quality?: string, audioStream?: number): Promise<void> {
+  play(itemId: string, startPosition?: number, prepared?: PreparedChoice, quality?: string, audioStream?: number, choices?: PlaybackChoices): Promise<void> {
     if (this.lastPlay?.itemId !== itemId) this.escalations = 0;
-    this.lastPlay = { itemId, prepared, quality, audioStream };
-    if(this.queue)return this.queue.playItem(itemId,startPosition,prepared,quality,audioStream);
+    this.lastPlay = { itemId, prepared, quality, audioStream, choices };
+    if(this.queue)return this.queue.playItem(itemId,startPosition,prepared,quality,audioStream,choices);
     if(prepared){this.queueFailed(itemId,"Prepared playback requires the device queue. Reconnect it before choosing a version.");return Promise.resolve();}
     if(this.options.queueRequired){if(this.snapshot.channel)this.leave();this.queueFailed(itemId,this.queueConnection.error??'The device queue is still connecting. Retry once it is ready.');return Promise.resolve();}
     return this.startPlayback(itemId, startPosition, "playing");
@@ -1315,7 +1409,9 @@ export class PlaybackService {
     }
 
     if (this.snapshot.phase === "ended" && this.snapshot.itemId) {
-      void this.play(this.snapshot.itemId, this.endedSeekPosition ?? 0);
+      // Replay: the same title again with the choices it was playing with.
+      const last = this.lastPlay?.itemId === this.snapshot.itemId && !this.lastPlay.local ? this.lastPlay : undefined;
+      void this.play(this.snapshot.itemId, this.endedSeekPosition ?? 0, last?.prepared, last?.quality, last?.audioStream, last?.choices);
       return;
     }
     if (this.snapshot.phase === "starting" || this.snapshot.phase === "ready") {
@@ -1330,6 +1426,7 @@ export class PlaybackService {
   private clearSeek() {
     if (this.seekTimer) clearTimeout(this.seekTimer);
     this.seekTimer = undefined;
+    this.seekRearm = undefined;
   }
   private requestSeek(positionSeconds: number, patch: Partial<PlaybackSnapshot> = {}) {
     this.clearSeek();
@@ -1337,8 +1434,12 @@ export class PlaybackService {
     const target = Math.max(0, Math.min(positionSeconds, duration || positionSeconds));
     this.failedRecovery = { positionSeconds: target, intent: patch.intent ?? this.snapshot.intent };
     const revision = this.snapshot.seekRevision + 1, intentId = this.snapshot.intentId;
-    this.seekTimer = setTimeout(() => this.seekFailed(intentId, revision, "That position is not available to seek yet. Try again."), this.options.seekTimeoutMs ?? 15000);
-    (this.seekTimer as any)?.unref?.();
+    const arm = () => {
+      this.seekTimer = setTimeout(() => this.seekFailed(intentId, revision, "That position is not available to seek yet. Try again."), this.options.seekTimeoutMs ?? 15000);
+      (this.seekTimer as any)?.unref?.();
+    };
+    arm();
+    this.seekRearm = () => { if (this.seekTimer) { clearTimeout(this.seekTimer); arm(); } };
     this.update({...patch, seekRevision: revision, pendingSeek: Object.freeze({revision, positionSeconds: target}), seekError: undefined, failedSeek: undefined});
   }
   seek(positionSeconds: number) {
@@ -1469,7 +1570,7 @@ export class PlaybackService {
     void this.api.reportRouteFailure(session.id, code, detail).then(result => {
       if (intentId !== this.snapshot.intentId) return;
       if (!result?.escalates) { this.fail(intentId, message); return; }
-      return this.play(itemId, position, undefined, last.quality, last.audioStream);
+      return this.play(itemId, position, undefined, last.quality, last.audioStream, last.choices);
     }).catch(() => { if (intentId === this.snapshot.intentId) this.fail(intentId, message); });
   }
   fail(intentId: number, message: string, extra: Partial<PlaybackSnapshot> = {}) {
@@ -1516,6 +1617,7 @@ export class PlaybackService {
       pendingSeek: undefined,
       seekError: undefined,
       failedSeek: undefined,
+      recovering: undefined,
       positionSeconds: 0,
       duration: 0,
       error: undefined,
@@ -1850,3 +1952,8 @@ export * from './inbox.ts';
 export * from './identity-client.ts';
 export * from './sse.ts';
 export * from './downloads-service.ts';
+
+export * from './client-reports.ts';
+
+export * from './metadata-attention.ts';
+export * from './metadata-settings.ts';

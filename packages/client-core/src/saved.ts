@@ -1,4 +1,5 @@
 import {unreadableServerResponse} from './server-messages.ts';
+import {firstOfEach, keepReadable, noteSkipped, oneOfOr} from './tolerant.ts';
 /** Server-owned Saved projections and playlist commands. No ranking, navigation or queue owner. */
 import type { ContentEntry, ContentHeading, ContentProjection } from './library-content.ts';
 export type SavedScope = Readonly<{ serverId: string; viewerId: string }>;
@@ -81,6 +82,8 @@ const number = (v: unknown): v is number => typeof v === 'number' && Number.isFi
 class Failure extends Error { code: string; retryable: boolean; constructor(code: string, message: string, retryable = false) { super(message); this.code = code; this.retryable = retryable; } }
 function invalid(): never { throw new Failure('invalid_saved', unreadableServerResponse); }
 function list(v: unknown, max: number): unknown[] { if (!Array.isArray(v) || v.length > max) invalid(); return v; }
+/** An over-long list inside a row refuses the whole document, not just its row. */
+function within(v: unknown, max: number): void { if (Array.isArray(v) && v.length > max) invalid(); }
 function unique<T>(rows: T[], key: (row: T) => string): T[] { if (new Set(rows.map(key)).size !== rows.length) invalid(); return rows; }
 function freeze<T>(v: T): T { if (v && typeof v === 'object') { for (const child of Object.values(v)) freeze(child); Object.freeze(v); } return v; }
 function heading(v: unknown): ContentHeading { if (!record(v) || !id(v.key) || !text(v.fallback)) invalid(); return { key: v.key, fallback: v.fallback }; }
@@ -109,15 +112,17 @@ function media(v: unknown): ContentEntry {
  if (v.available !== undefined) { if (typeof v.available !== 'boolean') invalid(); out.available = v.available; }
  if (v.count !== undefined) { if (!int(v.count)) invalid(); out.count = v.count; }
  if (v.addedAt !== undefined) { if (v.addedAt !== null && !text(v.addedAt, 128)) invalid(); out.addedAt = v.addedAt; }
- if (v.navigation !== undefined) { const n = v.navigation; if (!record(n) || !['item','show','season','artist','album','book','collection','browse','categories','author','book_series','disc'].includes(n.view as string) || n.entityId !== undefined && !id(n.entityId) || n.category !== undefined && !text(n.category, 256)) invalid(); out.navigation = { view: n.view, ...(n.entityId === undefined ? {} : { entityId: n.entityId }), ...(n.category === undefined ? {} : { category: n.category }) }; }
- if (v.playback !== undefined) { const p = v.playback; if (!record(p) || !id(p.itemId) || p.startSeconds !== undefined && !number(p.startSeconds) || v.available === false) invalid(); out.playback = { itemId: p.itemId, ...(p.startSeconds === undefined ? {} : { startSeconds: p.startSeconds }) }; }
+ // A destination or a play action this app cannot read is left off; the entry is still shown.
+ if (v.navigation !== undefined) { const n = v.navigation; if (!record(n) || !['item','show','season','artist','album','book','collection','browse','categories','author','book_series','disc'].includes(n.view as string) || n.entityId !== undefined && !id(n.entityId) || n.category !== undefined && !text(n.category, 256)) noteSkipped('saved', 'entry.navigation'); else out.navigation = { view: n.view, ...(n.entityId === undefined ? {} : { entityId: n.entityId }), ...(n.category === undefined ? {} : { category: n.category }) }; }
+ if (v.playback !== undefined) { const p = v.playback; if (!record(p) || !id(p.itemId) || p.startSeconds !== undefined && !number(p.startSeconds) || v.available === false) noteSkipped('saved', 'entry.playback'); else out.playback = { itemId: p.itemId, ...(p.startSeconds === undefined ? {} : { startSeconds: p.startSeconds }) }; }
  return out as ContentEntry;
 }
 function entry(v: unknown, view: SavedRoute['view']): SavedEntry {
  if (!record(v)) invalid();
  if (view === 'playlist') {
-  if (!id(v.id) || v.kind !== 'playlist_entry' || typeof v.hidden !== 'boolean' || Object.keys(v).some(k => !['id','kind','hidden','media'].includes(k))) invalid();
-  if (v.hidden) { if (v.media !== undefined) invalid(); return { id: v.id, kind: 'playlist_entry', hidden: true }; }
+  if (!id(v.id) || v.kind !== 'playlist_entry' || typeof v.hidden !== 'boolean') invalid();
+  // A hidden occurrence stays opaque: whatever else the row carries is never read.
+  if (v.hidden) return { id: v.id, kind: 'playlist_entry', hidden: true };
   return { id: v.id, kind: 'playlist_entry', hidden: false, media: media(v.media) };
  }
  if (view === 'playlists') {
@@ -141,14 +146,25 @@ function projection(v: unknown, bound: SavedScope, selected: SavedRoute): SavedP
   if (q.category !== expected) invalid();
  } else if (q.category !== '') invalid();
  if (selected.view === 'playlist' ? q.sort !== 'position' || q.direction !== 'asc' || !int(v.playlistRevision) : selected.sort !== undefined && q.sort !== selected.sort || selected.direction !== undefined && q.direction !== selected.direction) invalid();
- const sections = unique(list(v.sections, 4).map(row => { if (!record(row) || !id(row.id) || !['rail','grid','list'].includes(row.type as string) || !int(row.totalCount) || !text(row.nextCursor, 4096)) invalid(); const entries = unique(list(row.entries, row.type === 'rail' ? 12 : 100).map(value => entry(value, selected.view)), value => value.id); if (row.totalCount < entries.length) invalid(); return { id: row.id, type: row.type as 'rail'|'grid'|'list', heading: heading(row.heading), entries, totalCount: row.totalCount, nextCursor: row.nextCursor }; }), row => row.id);
- const navigation = unique(list(v.navigation, 3).map(n => { if (!record(n) || !id(n.id) || !id(n.labelKey) || !['watchlist','favorites','playlists'].includes(n.view as string)) invalid(); return { id: n.id, labelKey: n.labelKey, view: n.view as 'watchlist'|'favorites'|'playlists' }; }), n => n.id);
- const sorts = unique(list(v.sorts, 16).map(row => { if (!record(row) || !id(row.id) || !id(row.labelKey)) invalid(); const directions = unique(list(row.directions, 2).map(d => { if (d !== 'asc' && d !== 'desc') invalid(); return d; }), d => d); return { id: row.id, labelKey: row.labelKey, directions }; }), row => row.id);
+ // Sizes and cursors refuse the whole page. Past that, an entry, section, tab, sort or filter this app
+ // cannot read is left out alone, a repeated id keeps its first row, and a section of an unknown
+ // layout is shown as a grid.
+ const rawSections = list(v.sections, 4);
+ for (const row of rawSections) if (record(row)) { within(row.entries, row.type === 'rail' ? 12 : 100); if (!text(row.nextCursor, 4096)) invalid(); }
+ const sections = firstOfEach('saved', 'sections', keepReadable('saved', 'sections', rawSections, row => { if (!record(row) || !id(row.id)) invalid(); const type = oneOfOr('saved', 'section.type', row.type, ['rail','grid','list'] as const, 'grid'); const entries = firstOfEach('saved', 'section.entries', keepReadable('saved', 'section.entries', list(row.entries, 100), value => entry(value, selected.view)), value => value.id); return { id: row.id, type, heading: heading(row.heading), entries, totalCount: int(row.totalCount) ? Math.max(row.totalCount, entries.length) : entries.length, nextCursor: row.nextCursor as string }; }), row => row.id);
+ const navigation = firstOfEach('saved', 'navigation', keepReadable('saved', 'navigation', list(v.navigation, 3), n => { if (!record(n) || !id(n.id) || !id(n.labelKey) || !['watchlist','favorites','playlists'].includes(n.view as string)) invalid(); return { id: n.id, labelKey: n.labelKey, view: n.view as 'watchlist'|'favorites'|'playlists' }; }), n => n.id);
+ const rawSorts = list(v.sorts, 16); for (const row of rawSorts) if (record(row)) within(row.directions, 2);
+ const sorts = firstOfEach('saved', 'sorts', keepReadable('saved', 'sorts', rawSorts, row => { if (!record(row) || !id(row.id) || !id(row.labelKey)) invalid(); const directions = [...new Set(list(row.directions, 2).filter((d): d is 'asc'|'desc' => d === 'asc' || d === 'desc'))]; return { id: row.id, labelKey: row.labelKey, directions }; }), row => row.id);
  // CD-17: preserve validated filter definitions/counts; do not erase server-authored filter state.
- const filters = unique(list(v.filters, listView ? 4 : 0).map(f => { if (!record(f) || !id(f.id) || !id(f.labelKey)) invalid(); const options = unique(list(f.options, 8).map(o => { if (!record(o) || !id(o.id) || !prose(o.label, 120) || !int(o.count)) invalid(); return Object.freeze({ id: o.id as string, label: o.label as string, count: o.count as number }); }), k => (k as { id: string }).id); return Object.freeze({ id: f.id as string, labelKey: f.labelKey as string, options: Object.freeze(options) }); }), k => (k as { id: string }).id);
- const actions = v.actions === undefined ? undefined : unique(list(v.actions, 8).map(a => { if (selected.view !== 'playlists' || a !== 'create_playlist') invalid(); return a; }), a => a);
+ // Only Watchlist and Favourites have filters here; ones published for another view are not read.
+ const sentFilters = list(v.filters, 4), rawFilters = listView ? sentFilters : []; for (const f of rawFilters) if (record(f)) within(f.options, 8);
+ if (rawFilters.length !== sentFilters.length) noteSkipped('saved', 'filters', sentFilters.length);
+ const filters = firstOfEach('saved', 'filters', keepReadable('saved', 'filters', rawFilters, f => { if (!record(f) || !id(f.id) || !id(f.labelKey)) invalid(); const options = firstOfEach('saved', 'filter.options', keepReadable('saved', 'filter.options', list(f.options, 8), o => { if (!record(o) || !id(o.id) || !prose(o.label, 120) || !int(o.count)) invalid(); return Object.freeze({ id: o.id as string, label: o.label as string, count: o.count as number }); }), k => k.id); return Object.freeze({ id: f.id as string, labelKey: f.labelKey as string, options: Object.freeze(options) }); }), k => k.id);
+ // An action this app does not know is not offered; nothing is ever offered that the server did not list.
+ const actions = v.actions === undefined ? undefined : [...new Set(list(v.actions, 8).filter((a): a is string => selected.view === 'playlists' && a === 'create_playlist'))];
+ if (actions !== undefined && actions.length !== (v.actions as unknown[]).length) noteSkipped('saved', 'actions', (v.actions as unknown[]).length - actions.length);
  if (selected.view === 'playlists' && actions === undefined) invalid();
- return freeze({ scope: { serverId: bound.serverId, libraryId: '', libraryKind: 'mixed', view: selected.view, entityId: s.entityId as string, viewerFence: s.viewerFence }, revision: { catalog: r.catalog, viewer: r.viewer }, heading: heading(v.heading), query: { sort: q.sort, direction: q.direction as string, category: q.category as string, q: '', limit: 40, searchMode: 'none' }, navigation, sorts, filters, sections, ...(actions === undefined ? {} : { actions }), ...(selected.view === 'playlist' ? { playlistRevision: v.playlistRevision as number } : {}), ...(v.empty === undefined ? {} : { empty: heading(v.empty) }) });
+ return freeze({ scope: { serverId: bound.serverId, libraryId: '', libraryKind: 'mixed', view: selected.view, entityId: s.entityId as string, viewerFence: s.viewerFence }, revision: { catalog: r.catalog, viewer: r.viewer }, heading: heading(v.heading), query: { sort: q.sort, direction: q.direction as string, category: q.category as string, q: '', limit: 40, searchMode: 'none' }, navigation, sorts, filters, sections, ...(actions === undefined ? {} : { actions }), ...(selected.view === 'playlist' ? { playlistRevision: v.playlistRevision as number } : {}), ...(v.empty === undefined ? {} : keepReadable('saved', 'empty', [v.empty], value => ({ empty: heading(value) }))[0]) });
 }
 function resource(v: unknown, bound: SavedScope, playlistId: string): PlaylistResource {
  if (!record(v) || v.serverId !== bound.serverId || !id(v.viewerFence) || v.id !== playlistId || !prose(v.name, 200) || !prose(v.summary, 4000, true) || !int(v.revision) || !['owner','editor','viewer'].includes(v.role as string) || !int(v.entryCount) || !record(v.limits)) invalid();
@@ -157,9 +173,11 @@ function resource(v: unknown, bound: SavedScope, playlistId: string): PlaylistRe
  const limits = v.limits;
  if (limits.maxEntries !== undefined && (!int(limits.maxEntries))) invalid();
  for (const k of ['maxShares','maxReorderEntries']) if (!int(limits[k]) || (limits[k] as number) > (k === 'maxShares' ? 100 : 1000)) invalid();
- const actions = unique(list(v.actions, 16).map(a => { if (!['rename','summary','delete','share','add','remove','reorder','pin'].includes(a as string)) invalid(); return a as string; }), a => a);
+ // An action this app does not know is not offered. The role, the limits and the actions a role may hold stay exact.
+ const offered = list(v.actions, 16), actions = [...new Set(offered.filter((a): a is string => ['rename','summary','delete','share','add','remove','reorder','pin'].includes(a as string)))];
+ if (actions.length !== offered.length) noteSkipped('playlist', 'actions', offered.length - actions.length);
  if (v.role === 'viewer' && actions.some(a=>a!=='pin') || v.role === 'editor' && actions.some(a => !['add','remove','reorder','pin'].includes(a))) invalid();
- const shares = v.shares === undefined ? undefined : unique(list(v.shares, 100).map(row => { if (!record(row) || !['viewer','editor'].includes(row.role as string) || !text(row.displayName)) invalid(); return { ...actor(row), role: row.role as 'viewer'|'editor', displayName: row.displayName }; }), row => JSON.stringify([row.authority,row.accountId,row.profileId]));
+ const shares = v.shares === undefined ? undefined : firstOfEach('playlist', 'shares', keepReadable('playlist', 'shares', list(v.shares, 100), row => { if (!record(row) || typeof row.role !== 'string' || !text(row.displayName)) invalid(); /* Someone a playlist is shared with is never hidden for holding a role this app does not know: they are listed, as a viewer, and can still be removed. */ return { ...actor(row), role: oneOfOr('playlist', 'share.role', row.role, ['viewer','editor'] as const, 'viewer'), displayName: row.displayName }; }), row => JSON.stringify([row.authority,row.accountId,row.profileId]));
  if (shares !== undefined && v.role !== 'owner' || limits.maxEntries !== undefined && v.entryCount > (limits.maxEntries as number)) invalid();
  if(v.pinned!==undefined&&typeof v.pinned!=='boolean'||v.pinRevision!==undefined&&!int(v.pinRevision))invalid();
  return freeze({ pinned:v.pinned===true,pinRevision:(v.pinRevision as number)??0,serverId: bound.serverId, viewerFence: v.viewerFence, id: playlistId, name: v.name, summary: v.summary, revision: v.revision, role: v.role as PlaylistResource['role'], entryCount: v.entryCount, actions, limits: { ...(limits.maxEntries === undefined ? {} : {maxEntries: limits.maxEntries as number}), maxShares: limits.maxShares as number, maxReorderEntries: limits.maxReorderEntries as number }, ...(shares === undefined ? {} : { shares }) });
@@ -369,11 +387,11 @@ export class SavedService {
    if (cursor) query.set('cursor', cursor);
    const raw = await this.deadline(this.api.request<unknown>('/v1/playlists/' + encodeURIComponent(p.id) + '/order?' + query, 'GET', undefined, controller.signal), controller);
    if (this.disposed || generation !== this.generation || read !== this.orderGeneration) return;
-   if (!record(raw) || Object.keys(raw).some(k => !['serverId','viewerFence','playlistId','revision','entryIds','nextCursor'].includes(k)) || raw.serverId !== this.bound.serverId || raw.viewerFence !== p.viewerFence || raw.playlistId !== p.id || !int(raw.revision)) invalid();
+   if (!record(raw) || raw.serverId !== this.bound.serverId || raw.viewerFence !== p.viewerFence || raw.playlistId !== p.id || !int(raw.revision)) invalid();
    const current = this.state.playlist;
    if (!current || current.revision !== raw.revision || current.viewerFence !== raw.viewerFence || !current.actions.includes('reorder')) throw new Failure('stale_continuation', 'The playlist changed. Refresh it before loading its order.', true);
    if (raw.nextCursor !== undefined && !text(raw.nextCursor, 4096)) invalid();
-   const entryIds = unique(list(raw.entryIds, limit ?? 100).map(value => { if (!id(value)) invalid(); return value; }), value => value);
+   const entryIds = firstOfEach('playlist-order', 'entryIds', list(raw.entryIds, limit ?? 100).map(value => { if (!id(value)) invalid(); return value; }), value => value);
    this.publish({ orderLoading: false, order: freeze({ serverId: this.bound.serverId, viewerFence: p.viewerFence, playlistId: p.id, revision: raw.revision, entryIds, nextCursor: String(raw.nextCursor ?? '') }) });
   } catch (error) { if (!this.disposed && generation === this.generation && read === this.orderGeneration) this.publish({ order: cursor ? this.state.order : null, orderLoading: false, orderError: errorInfo(error) }); }
  }
@@ -392,7 +410,7 @@ export class SavedService {
    if (raw.revision !== previous.revision) throw new Failure('stale_continuation', 'The playlist changed. Restart its order from the first page.', true);
    if (raw.nextCursor !== undefined && !text(raw.nextCursor, 4096)) invalid();
    const seen = new Set(previous.entryIds);
-   const entryIds = [...previous.entryIds, ...unique(list(raw.entryIds, 100).map(value => { if (!id(value)) invalid(); return value; }), value => value).filter(entryId => !seen.has(entryId))];
+   const entryIds = [...previous.entryIds, ...firstOfEach('playlist-order', 'entryIds', list(raw.entryIds, 100).map(value => { if (!id(value)) invalid(); return value; }), value => value).filter(entryId => !seen.has(entryId))];
    this.publish({ orderLoading: false, order: freeze({ ...previous, entryIds: Object.freeze(entryIds), nextCursor: String(raw.nextCursor ?? '') }) });
   } catch (error) { if (!this.disposed && generation === this.generation && read === this.orderGeneration) this.publish({ orderLoading: false, orderError: errorInfo(error) }); }
  }
@@ -409,7 +427,7 @@ export class SavedService {
    if (this.disposed || generation !== this.generation || read !== this.candidateGeneration) return;
    if (!record(raw) || raw.serverId !== this.bound.serverId || raw.viewerFence !== p.viewerFence || raw.playlistId !== p.id || !int(raw.revision) || !text(raw.nextCursor, 4096)) invalid();
    if (raw.revision !== this.state.playlist?.revision) throw new Failure('stale_continuation', 'The playlist changed. Reload its share candidates.', true);
-   const candidates = unique(list(raw.candidates, 40).map(row => { if (!record(row) || !id(row.id) || !text(row.displayName)) invalid(); return { ...actor(row), id: row.id, displayName: row.displayName }; }), row => row.id);
+   const candidates = firstOfEach('playlist-candidates', 'candidates', keepReadable('playlist-candidates', 'candidates', list(raw.candidates, 40), row => { if (!record(row) || !id(row.id) || !text(row.displayName)) invalid(); return { ...actor(row), id: row.id, displayName: row.displayName }; }), row => row.id);
    this.publish({ candidatesLoading: false, candidates: freeze({ serverId: this.bound.serverId, viewerFence: p.viewerFence, playlistId: p.id, revision: raw.revision, candidates, nextCursor: raw.nextCursor }) });
   } catch (error) { if (!this.disposed && generation === this.generation && read === this.candidateGeneration) this.publish({ candidatesLoading: false, candidatesError: errorInfo(error), candidates: null }); }
  }

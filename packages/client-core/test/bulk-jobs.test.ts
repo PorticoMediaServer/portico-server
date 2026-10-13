@@ -5,6 +5,7 @@ import {
   jobRequestBody, parseJob, parseJobFailures, parseJobUpdatedEvent, parseJobUpdatedFrame, pollJob, runBulkJobs, runBulkRequests,
   IDEMPOTENCY_REUSED, REVISION_MISMATCH,
 } from '../src/bulk-jobs.ts';
+import {resetSkippedParts, skippedParts} from '../src/tolerant.ts';
 
 function job(over: Record<string, unknown> = {}): any {
   return {
@@ -34,18 +35,67 @@ test('a bulk receipt starts indeterminate and parses terminal states', () => {
   assert.equal(parseJob(job({state: 'failed', total: 4, totalKnown: true, done: 1, failed: 1, errorCode: 'selection_changed'})).errorCode, 'selection_changed');
 });
 
-test('a job rejects unknown states, mismatched counts and stray error codes', () => {
+test('a job rejects an unknown state or command, an unreadable id, count or cursor', () => {
   for (const change of [
     (v: any) => { v.state = 'done'; },
-    (v: any) => { v.totalKnown = true; v.total = 2; v.done = 3; },
-    (v: any) => { v.errorCode = 'selection_changed'; },
-    (v: any) => { v.errorCode = 'made_up'; v.state = 'failed'; v.totalKnown = true; v.total = 1; },
     (v: any) => { v.command = 'reindex'; },
+    (v: any) => { v.jobId = ''; },
+    (v: any) => { v.jobId = 'job\n1'; },
+    (v: any) => { v.jobId = 'j'.repeat(257); },
+    (v: any) => { v.total = -1; },
+    (v: any) => { v.done = 1.5; },
+    (v: any) => { v.failed = '0'; },
+    (v: any) => { v.totalKnown = 'yes'; },
+    (v: any) => { v.failuresCursor = ''; },
+    (v: any) => { v.failuresCursor = 'c'.repeat(257); },
   ]) {
     const raw = job({total: 0, totalKnown: false});
     change(raw);
     assert.throws(() => parseJob(raw));
   }
+  for (const raw of [null, [], 'job']) assert.throws(() => parseJob(raw));
+});
+
+test('a job keeps its progress past a failure code it does not know, a stray code, a field it does not know and a count over the total', () => {
+  resetSkippedParts();
+  // An unknown failure code is left out, so the caller's general wording is used.
+  const unknownCode = parseJob(job({state: 'failed', total: 1, totalKnown: true, errorCode: 'made_up'}));
+  assert.equal(unknownCode.state, 'failed');
+  assert.equal('errorCode' in unknownCode, false);
+  // A failure code on a job that has not failed is left out.
+  const stray = parseJob(job({errorCode: 'selection_changed'}));
+  assert.equal(stray.state, 'running');
+  assert.equal('errorCode' in stray, false);
+  assert.equal('errorCode' in parseJob(job({state: 'failed', errorCode: 7})), false);
+  // A field from a newer server is ignored and never carried along.
+  const extra = parseJob(job({state: 'partial', total: 3, totalKnown: true, done: 2, failed: 1, failuresCursor: 'next', pausedBy: 'owner', estimate: {seconds: 4}}));
+  assert.deepEqual(extra, {jobId: 'job-1', command: 'personal-state', state: 'partial', total: 3, totalKnown: true, done: 2, failed: 1, failuresCursor: 'next'});
+  // A finished count over a known total reads as the total; while the total is unknown it is kept.
+  assert.equal(parseJob(job({totalKnown: true, total: 2, done: 3})).done, 2);
+  assert.equal(parseJob(job({totalKnown: false, total: 0, done: 3})).done, 3);
+  assert.deepEqual(skippedParts().map(p => [p.part, p.count]), [['job.errorCode', 3], ['job.done', 1]]);
+  assert.ok(skippedParts().every(p => p.document === 'bulk-jobs'));
+});
+
+test('a failures page keeps its readable rows, the first row of a repeated item and its cursor', () => {
+  resetSkippedParts();
+  const page = parseJobFailures({items: [
+    {itemId: 'a', code: 'trash_conflict', detail: {reason: 'newer field'}},
+    {itemId: 'b', code: ''},
+    {itemId: '', code: 'trash_conflict'},
+    'not a row',
+    {itemId: 'a', code: 'later_repeat'},
+    {itemId: 'c', code: 'a_code_this_app_has_never_seen'},
+  ], nextCursor: 'page-2', total: 6});
+  assert.deepEqual(page, {items: [{itemId: 'a', code: 'trash_conflict'}, {itemId: 'c', code: 'a_code_this_app_has_never_seen'}], nextCursor: 'page-2'});
+  assert.deepEqual(skippedParts().map(p => [p.document, p.part, p.count]), [['bulk-jobs', 'failures', 4]]);
+  // The page's shape, its size bound and its cursor still refuse the whole page.
+  assert.throws(() => parseJobFailures(null));
+  assert.throws(() => parseJobFailures({items: {}}));
+  assert.throws(() => parseJobFailures({items: new Array(101).fill(0).map((_, i) => ({itemId: 'id-' + i, code: 'x'}))}));
+  assert.throws(() => parseJobFailures({items: [], nextCursor: 7}));
+  assert.throws(() => parseJobFailures({items: [], nextCursor: 'c'.repeat(4097)}));
+  assert.equal(parseJobFailures({items: new Array(100).fill(0).map((_, i) => ({itemId: 'id-' + i, code: 'x'}))}).items.length, 100);
 });
 
 test('requests validate selectors, args and fences', () => {
@@ -56,7 +106,7 @@ test('requests validate selectors, args and fences', () => {
   assert.throws(() => jobRequestBody({...base, selector: {container: {kind: 'show', id: 's'}, items: {ids: ['a']}} as any}));
   assert.throws(() => jobRequestBody({...base, args: {}}));
   assert.throws(() => jobRequestBody({...base, args: {watched: true, playlistId: 'p'}}));
-  assert.throws(() => jobRequestBody({...base, command: 'trash' as const, args: {watched: true}}));
+  assert.throws(() => jobRequestBody({...base, command: 'refresh' as const, args: {watched: true}}));
   const query = jobRequestBody({
     operationId: 'op-2', command: 'personal-state', args: {favorite: true},
     selector: {query: {libraryId: 'lib', pivot: 'movies', filter: {all: []}, sort: [{field: 'title', direction: 'asc'}]}},
@@ -109,7 +159,7 @@ test('polling ends at a terminal state and failures page through cursors', async
   const finished = await pollJob(api, 'job-1', {intervalMs: 250, timeoutMs: 10000});
   assert.equal(finished.state, 'partial');
   assert.equal((await getJobFailures(api, 'job-1')).items.length, 1);
-  assert.throws(() => parseJobFailures({items: [{itemId: 'a', code: ''}]}));
+  assert.deepEqual(parseJobFailures({items: [{itemId: 'a', code: ''}]}).items, []);
 });
 
 test('failure pages collect across cursors and stop on a repeated cursor', async () => {
@@ -128,7 +178,18 @@ test('job.updated frames parse progress and ignore other events', () => {
   assert.equal(event?.done, 2);
   assert.equal(parseJobUpdatedFrame('queue.updated', '{}'), null);
   assert.throws(() => parseJobUpdatedFrame('job.updated', 'not json'));
-  assert.deepEqual(parseJobUpdatedEvent(job({command: 'trash'})).command, 'trash');
+  assert.deepEqual(parseJobUpdatedEvent(job({command: 'refresh'})).command, 'refresh');
+});
+
+test('a job.updated frame in a state or for a command this app does not know is passed over, and an unreadable one still fails', () => {
+  resetSkippedParts();
+  assert.equal(parseJobUpdatedFrame('job.updated', JSON.stringify(job({state: 'cancelled'}))), null);
+  assert.equal(parseJobUpdatedFrame('job.updated', JSON.stringify(job({command: 'reindex'}))), null);
+  assert.deepEqual(skippedParts().map(p => [p.document, p.part, p.count]), [['bulk-jobs', 'event', 2]]);
+  assert.equal(parseJobUpdatedFrame('job.updated', JSON.stringify(job({state: 'failed', errorCode: 'made_up', note: 'newer field'})))?.state, 'failed');
+  // The single job document has no neutral state, so it still refuses one it does not know.
+  assert.throws(() => parseJobUpdatedEvent(job({state: 'cancelled'})));
+  for (const raw of [job({jobId: ''}), job({state: 'cancelled', jobId: 7}), job({state: 5}), job({done: -1}), job({failuresCursor: ''}), []]) assert.throws(() => parseJobUpdatedFrame('job.updated', JSON.stringify(raw)));
 });
 
 test('M25-4: runBulkRequests runs one job per request with preparing/working progress', async () => {
@@ -178,8 +239,8 @@ test('M25-4: runBulkRequests maps the failures page to per-target outcomes; a fa
   assert.equal(outcome.ok, 1);
   assert.deepEqual(outcome.failed, [{itemId: 'b', code: 'metadata_conflict'}]);
   assert.deepEqual(bulkFailureCounts(outcome.failed), {metadata_conflict: 1});
-  const failing = {request: async <T>(): Promise<T> => ({jobId: 'job-9', command: 'trash', state: 'failed', total: 0, totalKnown: true, done: 0, failed: 0, errorCode: 'selection_changed'}) as T};
-  await assert.rejects(runBulkRequests(failing, 'trash', {}, [{selector: {items: {ids: ['a']}}, operationId: 'op-1', ids: ['a']}]), (e: unknown) => (e as {code?: string}).code === 'selection_changed');
+  const failing = {request: async <T>(): Promise<T> => ({jobId: 'job-9', command: 'refresh', state: 'failed', total: 0, totalKnown: true, done: 0, failed: 0, errorCode: 'selection_changed'}) as T};
+  await assert.rejects(runBulkRequests(failing, 'refresh', {}, [{selector: {items: {ids: ['a']}}, operationId: 'op-1', ids: ['a']}]), (e: unknown) => (e as {code?: string}).code === 'selection_changed');
 });
 
 test('M25-4: runBulkJobs chunks explicit ids one job per 200', async () => {

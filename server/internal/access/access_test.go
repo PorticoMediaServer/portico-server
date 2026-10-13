@@ -408,29 +408,38 @@ func TestRevokedInvitationFreesTheAddressAndCannotUndoAcceptance(t *testing.T) {
 	}
 }
 
-func TestAPIKeysAuthenticateAsADistinctPrincipalAndStopWhenRevoked(t *testing.T) {
+func TestCredentialScopesAreValidatedAndListedInPublishedOrder(t *testing.T) {
+	for _, bad := range [][]string{nil, {}, {"read", "read"}, {"session"}, {"open"}, {"full"}, {"read", "playback", "library", "admin", "read"}} {
+		if _, ok := NormalizeScopes(bad); ok {
+			t.Fatalf("%v accepted", bad)
+		}
+	}
+	got, ok := NormalizeScopes([]string{"admin", "read"})
+	if !ok || len(got) != 2 || got[0] != "read" || got[1] != "admin" {
+		t.Fatalf("order: %v %v", got, ok)
+	}
+}
+
+func TestCredentialStoreRefusesWhatItCannotIssueAndUnknownSecrets(t *testing.T) {
 	store, _, _ := fixture(t)
 	ctx := context.Background()
-	key, err := store.CreateAPIKey(ctx, nil, owner(), APIKeyRequest{OperationID: "key-create-1", Name: "Automation", Scope: "playback"})
-	if err != nil || key.Secret == "" || key.Hint == "" {
-		t.Fatalf("create: %v %+v", err, key)
+	// Without an issuer nothing is made; a hosted-policy or profile-less
+	// session cannot hold a credential at all.
+	if _, err := store.CreateCredential(ctx, nil, nil, owner(), identity.CredentialKindKey, CredentialRequest{OperationID: "key-create-1", Name: "Automation", Scopes: []string{"read"}}); !errors.Is(err, identity.ErrUnauthorized) {
+		t.Fatalf("no issuer: %v", err)
 	}
-	principal, err := store.AuthenticateKey(ctx, key.Secret)
-	if err != nil || principal.Principal.Authority != "api-key" || principal.Scope != "playback" || principal.Principal.Role != identity.TierOwner {
-		t.Fatalf("authenticate: %v %+v", err, principal)
+	if _, err := store.ResolveCredential(ctx, identity.Digest("pk.unknown")); !errors.Is(err, identity.ErrUnauthorized) {
+		t.Fatalf("unknown secret: %v", err)
 	}
-	page, err := store.APIKeys(ctx, nil, APIKeyQuery{})
-	if err != nil || len(page.Items) != 1 || page.Items[0].Secret != "" || page.Items[0].LastUsed == "" {
-		t.Fatalf("list leaked a secret or lost lastUsed: %v %+v", err, page)
+	if _, err := store.ResolveCredential(ctx, ""); !errors.Is(err, identity.ErrUnauthorized) {
+		t.Fatalf("empty digest: %v", err)
 	}
-	if !ScopeAllows("playback", "read-only") || ScopeAllows("playback", "full") || ScopeAllows("nonsense", "read-only") {
-		t.Fatal("scope ordering")
+	page, err := store.Credentials(ctx, nil, CredentialQuery{Kind: identity.CredentialKindKey})
+	if err != nil || page.Items == nil || len(page.Items) != 0 {
+		t.Fatalf("empty list: %v %+v", err, page)
 	}
-	if _, err = store.RevokeAPIKey(ctx, nil, key.ID, APIKeyRevoke{ExpectedRevision: 1, OperationID: "key-revoke-1"}); err != nil {
-		t.Fatal(err)
-	}
-	if _, err = store.AuthenticateKey(ctx, key.Secret); !errors.Is(err, identity.ErrUnauthorized) {
-		t.Fatalf("a revoked key still authenticated: %v", err)
+	if _, err = store.Credentials(ctx, nil, CredentialQuery{Kind: identity.CredentialKindKey, Limit: "1000"}); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("an unbounded page was accepted: %v", err)
 	}
 }
 
@@ -812,5 +821,29 @@ func TestMemberVisibilityDeniesChangedRating(t *testing.T) {
 	}
 	if visible {
 		t.Fatal("set predicate admitted changed rating")
+	}
+}
+
+func TestLiveProgrammeMemberRatingAppliesToKnownAndAbsentGuide(t *testing.T) {
+	s, db, _ := fixture(t)
+	ctx := context.Background()
+	_, e := s.SetLimits(ctx, nil, "member", LimitsChange{ExpectedRevision: 1, OperationID: "live-rating-limit", Limits: Limits{MaxContentRating: "PG", AllowUnrated: false}})
+	if e != nil {
+		t.Fatal(e)
+	}
+	tx, e := db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer tx.Rollback()
+	gate := Enforcer{Store: s}
+	p := identity.Principal{Viewer: identity.Viewer{AccountID: "member"}}
+	if e = gate.AdmitProgramme(ctx, tx, p, "PG"); e != nil {
+		t.Fatal(e)
+	}
+	for _, rating := range []string{"TV-MA", "", "unrecognised"} {
+		if e = gate.AdmitProgramme(ctx, tx, p, rating); !errors.Is(e, ErrContentRating) {
+			t.Fatalf("%q admitted: %v", rating, e)
+		}
 	}
 }

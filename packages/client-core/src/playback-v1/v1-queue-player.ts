@@ -1,8 +1,8 @@
 /**
  * The device queue on Playback Protocol v1 (Plan — Client Playback Migration, core step): the
  * same `QueueController` surface as the /v2 `QueuePlayer`, over v1 queues (§8) and sessions (§5).
- * Playback runs through the existing `PlaybackService` and engines (`legacy-bridge.ts`), so an
- * app switches per server and media kind without screen changes.
+ * Playback runs through `PlaybackService`; sessions are started, adopted and ended through a
+ * `QueueSessionTransport` (the web's session controller path, or the native apps' bridge).
  *
  * The server queue is the truth: the player holds its header and a window of at most 200
  * entries around the current one (Up Next), never the whole queue. Play and Shuffle are one
@@ -25,16 +25,25 @@
  * viewer's queue moves to the owner and adopts the sessions the owner moves to (its snapshots'
  * `transition`), so Up Next follows.
  *
+ * Changes to what is playing (quality, version, audio track) re-plan the live session
+ * (`changePlayback`): the same session on the same entry, so the queue is never rebuilt. Playing
+ * the current entry's title again (Replay, a retry on another route) restarts that entry in place.
+ * Queue moves run one after another, and a session whose answer arrives after the viewer has
+ * moved on is stopped rather than left to its lease.
+ *
  * Not here yet: live channels (phase 6).
  */
-import type {PlaybackService} from '../index.ts';
+import type {PlaybackService, PlaybackSession} from '../index.ts';
 import {ListeningService, loadListeningSelection, type ListeningTarget} from '../listening.ts';
 import type {QueueAdvanceMode, QueuePostPlay} from '../post-play.ts';
 import type {PreparedChoice} from '../prepared-media.ts';
 import type {CompletionPolicy, HeldCompletion, QueueController, QueuePlaybackView, QueuePlayerState, QueueWorkspaceService} from '../queue-controller.ts';
 import type {QueueEntry as LegacyEntry, QueueIntent, QueueItemInput, QueueScope, QueueSnapshot, QueueState} from '../queues.ts';
 import {PlaybackApiError, call, idempotencyKey, type V1Http} from './http.ts';
-import {toPlaybackSession, type V1PlaybackApi} from './legacy-bridge.ts';
+import {toPlaybackSession} from './session-shape.ts';
+import {audioTrackId, type PlaybackChoices} from './choices.ts';
+import type {QualityRequest} from './quality.ts';
+import type {SessionChange, StartOptions, StartTarget} from './sessions.ts';
 import {QUEUE_WINDOW_MAX, QueueClient, saveQueueAsPlaylist, type CreateResult, type QueueAnchor, type QueuePlaylistSave, type SegmentInput} from './queue.ts';
 import {audioTransitionsEnabled} from '../audio-effects.ts';
 import type {NativeListeningV1Control, NativeListeningV1Event} from '../playback/native-listening.ts';
@@ -48,9 +57,30 @@ const MUSIC_CONTAINERS = ['album', 'artist', 'disc'];
 
 export type V1Viewer = Readonly<{serverId: string; authority: 'local' | 'hosted'; accountId: string; profileId: string}>;
 
+/**
+ * How the queue player starts, adopts and ends sessions. The web gives it the session controller's
+ * transport; the native apps the bridge that reports through `PlaybackService`.
+ */
+export interface QueueSessionTransport {
+  start(target: StartTarget, options: StartOptions, key?: string, durationSeconds?: number, signal?: AbortSignal): Promise<{session: Session; playback: PlaybackSession}>;
+  /** Tracks a session another request started (a queue create with startPlayback, an advance). */
+  adopt(session: Session, durationSeconds: number): PlaybackSession;
+  duration(itemId: string, versionId?: string, signal?: AbortSignal): Promise<number>;
+  stopPlayback(id: string, signal?: AbortSignal): Promise<void>;
+  /** The server replaced or completed this session: nothing more is reported for it. */
+  retire(id: string): void;
+  forget(id: string): void;
+  reportedSeq(id: string): number;
+  /** Re-plans a live session (quality, version, audio track): same session, next generation. */
+  change?(id: string, change: SessionChange, durationSeconds: number): Promise<{session: Session; playback: PlaybackSession}>;
+}
+
 export type V1QueuePlayerOptions = Readonly<{
   http: V1Http;
-  api: V1PlaybackApi;
+  api: QueueSessionTransport;
+  /** The quality a new playback starts with (the viewer's saved default for this network), when
+   * the viewer has not chosen one in the player. Undefined leaves it to the server. */
+  quality?: () => QualityRequest | undefined;
   playback: PlaybackService;
   viewer: V1Viewer;
   key?: () => string;
@@ -105,7 +135,14 @@ export class V1QueuePlayer implements QueueController {
   readonly workspace: Readonly<{service: QueueWorkspaceService}>;
   readonly listening: ListeningService;
   private readonly client: QueueClient;
-  private readonly api: V1PlaybackApi;
+  private readonly api: QueueSessionTransport;
+  private readonly defaultQuality?: () => QualityRequest | undefined;
+  /** The quality chosen in the player for this viewing: it stays while the queue plays on. */
+  private qualityOverride?: QualityRequest;
+  /** Queue moves run one at a time: a second Next waits for the first and moves on from there. */
+  private moves: Promise<unknown> = Promise.resolve();
+  /** Rises when the viewer leaves or starts something else: a queue move still waiting its turn is then dropped. */
+  private epoch = 0;
   private readonly playback: PlaybackService;
   private readonly http: V1Http;
   private readonly scope: QueueScope;
@@ -154,6 +191,7 @@ export class V1QueuePlayer implements QueueController {
     this.nativeFor = options.nativeFor ?? (() => false);
     this.http = options.http;
     this.api = options.api;
+    this.defaultQuality = options.quality;
     this.playback = options.playback;
     this.key = options.key ?? (() => idempotencyKey());
     this.client = new QueueClient(options.http, this.key);
@@ -272,13 +310,109 @@ export class V1QueuePlayer implements QueueController {
 
   // ── Playing ─────────────────────────────────────────────────────────
 
-  playItem(itemId: string, startSeconds?: number, _prepared?: PreparedChoice, _quality?: string, _audioStream?: number): Promise<void> {
-    return this.playIds([itemId], {startSeconds});
+  /**
+   * Plays one title with the viewer's choices. A prepared copy and the older quality names have
+   * no selector of their own on this protocol: the planner picks a prepared copy when it fits the
+   * requested quality, so `choices.quality` is what reaches the server.
+   */
+  playItem(itemId: string, startSeconds?: number, _prepared?: PreparedChoice, _quality?: string, audioStream?: number, choices?: PlaybackChoices): Promise<void> {
+    const track = choices?.audioTrackId ?? audioTrackId(audioStream);
+    const chosen: PlaybackChoices = {...choices, ...(track ? {audioTrackId: track} : {})};
+    // Replay, a retry on another route: the title is the queue's current entry, which starts again
+    // in place. The rest of the queue is untouched.
+    const current = this.currentEntry();
+    if (current && current.itemId === itemId && this.session?.itemId === itemId && !this.nativeOwns()) return this.restartCurrent(startSeconds, chosen);
+    return this.play(segments([itemId], false), itemId, {startSeconds}, chosen);
   }
 
   playEntries(entries: readonly QueueItemInput[], options: {shuffle?: boolean; startSeconds?: number} = {}): Promise<void> {
     if (!entries.length) return Promise.reject(new Error('No available items were selected.'));
     return this.playIds(entries.map(e => e.itemId), options);
+  }
+
+  private currentEntry(): QueueEntry | undefined {
+    const id = this.header?.current?.entryId;
+    return id ? this.window.find(e => e.entryId === id) : undefined;
+  }
+
+  /** What a start asks for: the choices for this title, the quality chosen in the player for this
+   * viewing, else the viewer's saved default. */
+  private startChoices(choices?: PlaybackChoices): Pick<StartOptions, 'quality' | 'versionId' | 'audio'> {
+    const quality = choices?.quality ?? this.qualityOverride ?? this.defaultQuality?.();
+    return {...(quality ? {quality} : {}), ...(choices?.versionId ? {versionId: choices.versionId} : {}), ...(choices?.audioTrackId ? {audio: {trackId: choices.audioTrackId}} : {})};
+  }
+
+  /** A session whose request was overtaken (the viewer moved on while it was in flight) is ended
+   * now: nobody will play or report it, and it would hold a stream until its lease ran out. */
+  private abandon(session: Session | undefined) {
+    if (!session) return;
+    if (this.session?.id === session.id) this.session = undefined;
+    void this.api.stopPlayback(session.id).catch(() => {});
+  }
+
+  /** Starts the current entry again in place: a new session for the same entry, replacing the old one. */
+  private async restartCurrent(startSeconds: number | undefined, choices: PlaybackChoices, state: 'playing' | 'paused' = 'playing', keepIntent = false): Promise<void> {
+    const header = this.header, entry = this.currentEntry();
+    if (!header?.current) return;
+    const generation = ++this.generation;
+    ++this.epoch;
+    this.listening.interact();
+    if (choices.quality) this.qualityOverride = choices.quality;
+    const intent = keepIntent ? this.playback.getSnapshot().intentId : this.playback.beginQueueIntent(entry?.itemId);
+    this.publish({phase: 'preparing', error: null, completion: null});
+    try {
+      if (!keepIntent && (!await this.playback.prepareQueueIntent(intent) || generation !== this.generation)) return;
+      await this.startEntry(header.id, header.current.entryId, intent, startSeconds, generation, choices, state);
+      if (generation === this.generation) this.publish({phase: 'ready'});
+    } catch (e) {
+      if (generation !== this.generation) return;
+      this.fail(entry?.itemId ?? '', e, 'Playback could not start. Try again.');
+    }
+  }
+
+  /**
+   * Changes the quality, version or audio track of what is playing: the live session is
+   * re-planned at its position and stays the same session on the same entry. A session the
+   * server no longer has (its lease lapsed) starts again in place with the choice instead.
+   */
+  async changePlayback(choices: PlaybackChoices): Promise<void> {
+    const session = this.session;
+    if (this.disposed || !session || this.nativeOwns()) return;
+    if (choices.quality) this.qualityOverride = choices.quality;
+    const change: SessionChange = {...(choices.quality ? {quality: choices.quality} : {}), ...(choices.versionId ? {versionId: choices.versionId} : {}), ...(choices.audioTrackId ? {audio: {trackId: choices.audioTrackId}} : {})};
+    if (!Object.keys(change).length) return;
+    const generation = this.generation;
+    const live = () => !this.disposed && generation === this.generation && this.session?.id === session.id;
+    // The server cancels a prepared next track when the session changes; so does this device.
+    this.invalidateAudioPreparation();
+    try {
+      if (!this.api.change) throw new PlaybackApiError(410, 'session_ended', 'never');
+      const r = await this.api.change(session.id, change, this.playback.getSnapshot().duration);
+      if (!live()) return;
+      this.session = r.session;
+      if (this.header) this.accept(this.header);
+      this.playback.installPresentation(r.playback);
+    } catch (e) {
+      if (!live()) return;
+      if (e instanceof PlaybackApiError && (e.status === 404 || e.status === 410 || e.code === 'session_ended') && this.header?.current) {
+        const p = this.playback.getSnapshot();
+        await this.restartCurrent(p.pendingSeek?.positionSeconds ?? (p.phase === 'idle' ? undefined : p.positionSeconds), {...this.playback.playbackChoices(), ...choices}, p.intent === 'paused' ? 'paused' : 'playing', true);
+        return;
+      }
+      throw e;
+    }
+  }
+
+  /**
+   * The lease of the playing session lapsed while this device could not report (a sleeping
+   * laptop, a long outage): its entry starts again where it was, playing or paused as it was,
+   * instead of ending in an error. False when there is nothing to recover here.
+   */
+  async recoverLease(sessionId: string, positionSeconds: number): Promise<boolean> {
+    const p = this.playback.getSnapshot();
+    if (this.disposed || this.session?.id !== sessionId || !this.header?.current || this.nativeOwns() || p.session?.id !== sessionId || p.channel || !['starting', 'ready'].includes(p.phase)) return false;
+    await this.restartCurrent(p.pendingSeek?.positionSeconds ?? positionSeconds, this.playback.playbackChoices(), p.intent === 'paused' ? 'paused' : 'playing', true);
+    return this.session?.id !== sessionId && !!this.session;
   }
 
   async journey(target: ListeningTarget, action: 'play' | 'shuffle' | 'mix' | 'enqueue', resume = false, options: {signal?: AbortSignal; startItem?: string; startSeconds?: number} = {}) {
@@ -319,8 +453,12 @@ export class V1QueuePlayer implements QueueController {
     return this.play(segments(ids, !!options.shuffle), ids[0]!, options);
   }
 
-  private async play(input: readonly SegmentInput[], first: string, options: {startSeconds?: number; repeat?: 'off' | 'one' | 'all'}) {
+  private async play(input: readonly SegmentInput[], first: string, options: {startSeconds?: number; repeat?: 'off' | 'one' | 'all'}, choices: PlaybackChoices = {}) {
     const generation = ++this.generation;
+    ++this.epoch;
+    // A new play starts from the viewer's saved default again, unless it names a quality itself.
+    this.qualityOverride = choices.quality;
+    const asked = this.startChoices(choices);
     this.listening.interact();
     const intent = this.playback.beginQueueIntent(first || undefined);
     this.publish({phase: 'preparing', error: null, completion: null});
@@ -328,9 +466,10 @@ export class V1QueuePlayer implements QueueController {
       if (!await this.playback.prepareQueueIntent(intent) || generation !== this.generation) return;
       const at = options.startSeconds;
       // One request when the server may choose the start (resume or the beginning); an explicit
-      // position starts the session separately, at that position.
-      const created: CreateResult = await this.client.create(input, at === undefined ? {startPlayback: {state: 'playing'}} : {});
-      if (generation !== this.generation) return;
+      // position, version or audio track starts the session separately, with those.
+      const together = at === undefined && !asked.versionId && !asked.audio;
+      const created: CreateResult = await this.client.create(input, together ? {startPlayback: {state: 'playing', ...(asked.quality ? {quality: asked.quality} : {})}} : {});
+      if (generation !== this.generation) { this.abandon(created.session); return; }
       this.accept(created.queue, created.window);
       let header = created.queue;
       if (options.repeat && options.repeat !== 'off') {
@@ -345,9 +484,9 @@ export class V1QueuePlayer implements QueueController {
         if (generation !== this.generation) return;
         await this.refresh();
       }
-      if (created.session && at === undefined) await this.adopt(created.session, intent);
-      else if (header.current) await this.startEntry(header.id, header.current.entryId, intent, at);
-      this.publish({phase: 'ready'});
+      if (created.session && together) await this.adopt(created.session, intent, generation);
+      else if (header.current) await this.startEntry(header.id, header.current.entryId, intent, at, generation, choices);
+      if (generation === this.generation) this.publish({phase: 'ready'});
     } catch (e) {
       if (generation !== this.generation) return;
       this.fail(first, e, 'Playback could not start. Try again.');
@@ -355,21 +494,23 @@ export class V1QueuePlayer implements QueueController {
   }
 
   /** Starts the session for one entry (a start that wasn't made with the create or advance). */
-  private async startEntry(queueId: string, entryId: string, intent: number, startSeconds?: number) {
+  private async startEntry(queueId: string, entryId: string, intent: number, startSeconds?: number, generation: number = this.generation, choices?: PlaybackChoices, state: 'playing' | 'paused' = 'playing') {
     const entry = this.window.find(e => e.entryId === entryId);
-    const r = await this.whileBuilding(() => this.api.start({queue: {queueId, entryId}}, {state: 'playing', ...(startSeconds === undefined ? {startFrom: 'resume'} : {startPositionMs: Math.round(startSeconds * 1000)}), ...(this.session ? {replacesSessionId: this.session.id} : {})}, this.key(), entry?.durationMs !== undefined ? entry.durationMs / 1000 : undefined));
+    const r = await this.whileBuilding(() => this.api.start({queue: {queueId, entryId}}, {state, ...this.startChoices(choices), ...(startSeconds === undefined ? {startFrom: 'resume'} : {startPositionMs: Math.round(startSeconds * 1000)}), ...(this.session ? {replacesSessionId: this.session.id} : {})}, this.key(), entry?.durationMs !== undefined ? entry.durationMs / 1000 : undefined));
+    if (generation !== this.generation) { this.api.forget(r.session.id); this.abandon(r.session); return; }
     // The presentation's timeline is the whole title: the engine starts at the chosen position.
     await this.adoptPlayback(r.session, startSeconds === undefined ? r.playback : {...r.playback, resumeSeconds: startSeconds}, intent);
   }
 
   /** Adopts a session a queue request started (create with startPlayback, or advance). */
-  private async adopt(session: Session, intent: number) {
+  private async adopt(session: Session, intent: number, generation: number = this.generation) {
     const entry = this.window.find(e => e.entryId === session.queue?.entryId);
     const duration = entry?.durationMs !== undefined ? entry.durationMs / 1000 : await this.api.duration(session.itemId ?? '', session.versionId);
+    if (generation !== this.generation) { this.abandon(session); return; }
     await this.adoptPlayback(session, this.api.adopt(session, duration), intent);
   }
 
-  private async adoptPlayback(session: Session, playback: ReturnType<V1PlaybackApi['adopt']>, intent: number) {
+  private async adoptPlayback(session: Session, playback: PlaybackSession, intent: number) {
     const previous = this.session;
     this.session = session;
     this.sessionStartedAt = Date.now();
@@ -380,13 +521,17 @@ export class V1QueuePlayer implements QueueController {
     if (this.header) this.accept(this.header);
     const itemKind = this.window.find(e => e.entryId === session.queue?.entryId)?.kind ?? '';
     if (this.native && session.kind === 'audio' && this.nativeFor(itemKind)) { await this.adoptNative(session, playback, intent); return; }
-    if (!await this.playback.adoptQueueSession(session.itemId ?? '', playback, intent)) return;
+    if (!await this.playback.adoptQueueSession(session.itemId ?? '', playback, intent)) {
+      // The viewer did something else while this session was being made. Unless that already put
+      // another session here, this one has no player: it ends now instead of holding a stream.
+      if (this.session?.id === session.id && this.playback.getSnapshot().session?.id !== session.id) { this.api.forget(session.id); this.abandon(session); }
+    }
   }
 
   // ── Native listening (plan §9.3 C3) ─────────────────────────────────
 
   /** Hands an audio session to the native owner, with the timeline `seq` reached so far. */
-  private async adoptNative(session: Session, playback: ReturnType<V1PlaybackApi['adopt']>, intent: number) {
+  private async adoptNative(session: Session, playback: PlaybackSession, intent: number) {
     const native = this.native!, epoch = ++this.nativeEpoch, header = this.header;
     const lastSeq = this.api.reportedSeq(session.id), durationSeconds = playback.duration;
     // INT T4: another playback began while this session's request was in flight. Nobody will own
@@ -447,21 +592,34 @@ export class V1QueuePlayer implements QueueController {
     this.playback.queueFailed(itemId, text);
   }
 
+  /** Queue moves run one after another: two quick presses of Next move on twice, each from the
+   * queue the one before it left, instead of racing with the same revision. */
+  private advance(reason: 'completion' | 'next' | 'previous' | 'entry', entryId?: string): Promise<void> {
+    const epoch = this.epoch;
+    const run = () => (epoch === this.epoch ? this.advanceNow(reason, entryId) : Promise.resolve());
+    const move = this.moves.then(run, run);
+    this.moves = move.catch(() => {});
+    return move;
+  }
+
   /** `:advance` with the current revision; the next session starts in the same request. */
-  private async advance(reason: 'completion' | 'next' | 'previous' | 'entry', entryId?: string) {
+  private async advanceNow(reason: 'completion' | 'next' | 'previous' | 'entry', entryId?: string) {
     const header = this.header;
     if (!header) throw new Error('Load the queue first.');
+    if (this.disposed) return;
     const generation = ++this.generation;
     const current = this.window.find(e => e.entryId === entryId);
     const intent = this.playback.beginQueueIntent(current?.itemId);
     try {
       const r = await this.whileBuilding(() => this.client.advance(header.id, header.revision, reason, entryId));
-      if (generation !== this.generation) return;
-      this.header = r.queue;
+      // The queue moved on the server whether or not the viewer has since done something else.
+      if (this.header?.id === r.queue.id) this.header = r.queue;
+      if (generation !== this.generation) { this.abandon(r.session); return; }
       this.window = await this.client.window(r.queue.id, WINDOW_BEFORE, WINDOW_AFTER);
+      if (generation !== this.generation) { this.abandon(r.session); return; }
       this.accept(r.queue);
-      if (r.session) await this.adopt(r.session, intent);
-      else if (r.queue.current) await this.startEntry(r.queue.id, r.queue.current.entryId, intent);
+      if (r.session) await this.adopt(r.session, intent, generation);
+      else if (r.queue.current) await this.startEntry(r.queue.id, r.queue.current.entryId, intent, undefined, generation);
     } catch (e) {
       if (generation !== this.generation) return;
       if (e instanceof PlaybackApiError && e.status === 412) { await this.refresh().catch(() => {}); }
@@ -507,7 +665,8 @@ export class V1QueuePlayer implements QueueController {
       this.accept(created.queue, created.window);
       return;
     }
-    for (let i = 0; i < ids.length; i += SEGMENT_ITEMS) {
+    const starts:number[]=[];for(let i=0;i<ids.length;i+=SEGMENT_ITEMS)starts.push(i);if(next)starts.reverse();
+    for (const i of starts) {
       const r = await this.client.addSegment(this.header!.id, this.header!.revision, next ? 'next' : 'end', {source: {items: {ids: ids.slice(i, i + SEGMENT_ITEMS)}}});
       this.header = r.queue;
     }
@@ -605,14 +764,19 @@ export class V1QueuePlayer implements QueueController {
   async check(_retryUnknown = false): Promise<void> {
     const h = this.header;
     if (!h?.current) return;
-    const at = this.playback.recoveryTarget();
-    const intent = this.playback.beginQueueIntent(this.window.find(e => e.entryId === h.current!.entryId)?.itemId);
-    try { await this.startEntry(h.id, h.current.entryId, intent, at); } catch (e) { this.fail('', e, 'Playback could not start. Try again.'); }
+    const item = this.window.find(e => e.entryId === h.current!.entryId)?.itemId, p = this.playback.getSnapshot();
+    // The position and the choices belong to the title that failed. When the queue has since
+    // moved to another entry, that entry starts where its own progress says.
+    const same = !item || !p.itemId || p.itemId === item;
+    const at = same ? this.playback.recoveryTarget() : undefined, choices = same ? this.playback.playbackChoices() : undefined;
+    const generation = ++this.generation;
+    const intent = this.playback.beginQueueIntent(item);
+    try { await this.startEntry(h.id, h.current.entryId, intent, at, generation, choices); } catch (e) { if (generation === this.generation) this.fail('', e, 'Playback could not start. Try again.'); }
   }
 
-  async cancel(_invalidateSelection = true): Promise<void> { ++this.generation; this.prepared = undefined; this.audioReadyToken = undefined; this.publish({phase: 'ready'}); }
+  async cancel(_invalidateSelection = true): Promise<void> { ++this.generation; ++this.epoch; this.prepared = undefined; this.audioReadyToken = undefined; this.publish({phase: 'ready'}); }
 
-  leave() { ++this.generation; this.prepared = undefined; this.audioReadyToken = undefined; this.publish({completion: null}); }
+  leave() { ++this.generation; ++this.epoch; this.prepared = undefined; this.audioReadyToken = undefined; this.publish({completion: null}); }
 
   dispose() {
     if (this.disposed) return;
@@ -724,7 +888,7 @@ export class V1QueuePlayer implements QueueController {
   audioRenderFailed(message: string) {
     const p = this.playback.getSnapshot();
     this.prepared = undefined; this.audioReadyToken = undefined;
-    this.playback.fail(p.intentId, message);
+    if(!this.playback.fallbackAudioRender())this.playback.fail(p.intentId, message);
   }
 }
 

@@ -2,7 +2,7 @@ import {playOnDestinations, webDestinationSupport} from '@core/presentation/inde
 import {IconButton, Menu, type MenuItem} from '../ui';
 import {useI18n} from '../app/i18n';
 
-type AirPlayVideo = HTMLVideoElement & {webkitShowPlaybackTargetPicker?: () => void};
+type AirPlayVideo = HTMLVideoElement & {webkitShowPlaybackTargetPicker?: () => void; disableRemotePlayback?: boolean};
 
 /**
  * "Play on" (X-18, Justin's simplification): Google Cast where the browser has
@@ -12,7 +12,10 @@ type AirPlayVideo = HTMLVideoElement & {webkitShowPlaybackTargetPicker?: () => v
  */
 export function PlayOnButton({castAvailable, onCast, video}: {castAvailable: boolean; onCast: () => void; video: HTMLVideoElement | null}) {
   const i18n = useI18n();
-  const airplay = typeof window !== 'undefined' && 'WebKitPlaybackTargetAvailabilityEvent' in window && !!(video as AirPlayVideo | null)?.webkitShowPlaybackTargetPicker;
+  // AirPlay hands the receiver an address to fetch. A stream the page assembles itself (hls.js on a
+  // media source, which marks the element as not remotely playable) has none, so it is offered
+  // only for what can really be handed over: a file played directly, or the browser's own HLS.
+  const airplay = typeof window !== 'undefined' && 'WebKitPlaybackTargetAvailabilityEvent' in window && !!(video as AirPlayVideo | null)?.webkitShowPlaybackTargetPicker && !(video as AirPlayVideo | null)?.disableRemotePlayback;
   const support = webDestinationSupport({chromium: typeof window !== 'undefined' && 'chrome' in window, castApi: castAvailable, safariAirPlay: airplay});
   // Browsers can't run local-network discovery, so web has no nearby Portico devices of its own.
   const rows = playOnDestinations('web', support).rows;

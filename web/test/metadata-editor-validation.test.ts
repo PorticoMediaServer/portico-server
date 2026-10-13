@@ -136,7 +136,7 @@ test('editing a list field that is already locked is a pending change and is sav
   react:h.react,'@core/metadata-repair.ts':{MetadataRepairService:class{}},'@core/metadata-bulk.ts':{bulkTargetLimit:200,validateBulkReceipt:()=>{throw new Error('unused');}},'./bulk-job':{runBulkRequests:async()=>({ok:0,failed:[],jobs:0})},
   '../../app/content':{useService:()=>({})},'../../app/metadata-editor':{useMetadataEditor:()=>undefined},'../../app/session':{useSession:()=>({})},
   '../../ui':{...ui,cx:()=>'',useCompact:()=>false},'./MetadataEditor.module.css':{default:{}},
-  '../../app/i18n':{currentI18n:()=>defaultI18n},'../../app/viewer-scope':{useViewerScope:()=>({})},
+  '../../app/i18n':{currentI18n:()=>defaultI18n,useI18n:()=>defaultI18n},'../../app/viewer-scope':{useViewerScope:()=>({})},
   '../../app/errors':{errorText:()=>'error'},
  });
  const nodes=(tree:any):any[]=>!tree||typeof tree!=='object'?[]:Array.isArray(tree)?tree.flatMap(nodes):[tree,...nodes(tree.props?.children),...nodes(tree.props?.trailing)];

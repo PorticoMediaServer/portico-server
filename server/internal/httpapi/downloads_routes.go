@@ -128,14 +128,37 @@ type downloadRequestList struct {
 func registerDownloads(r *apikit.Registry, d Dependencies) {
 	read := []string{"invalid_request", "unauthorized", "not_permitted", "feature_restricted", "not_found", "downloads_not_allowed", "downloads_unavailable", "internal"}
 	write := append([]string{"download_conflict", "storage_full", "download_not_ready", "download_unavailable", "rate_limited"}, read...)
+	// What a key or token must be allowed to do to use each route. Reading what
+	// a member has claimed is reading; claiming, fetching, taking offline
+	// permission and reporting plays are that member's own playback; the
+	// owner's download settings are administration.
+	scopes := map[string]apikit.Scope{
+		"get_download_options": apikit.ScopeRead, "list_download_preparations": apikit.ScopeRead, "get_download_preparation": apikit.ScopeRead,
+		"get_download_bundle": apikit.ScopeRead, "list_download_revocations": apikit.ScopeRead, "list_download_receipt_keys": apikit.ScopeRead,
+		"get_download_usage": apikit.ScopeRead, "get_download_settings": apikit.ScopeRead, "list_download_requests": apikit.ScopeRead,
+		"create_download_preparations": apikit.ScopePlayback, "act_on_download_preparation": apikit.ScopePlayback, "create_download_grant": apikit.ScopePlayback,
+		"issue_download_receipts": apikit.ScopePlayback, "revalidate_download_receipts": apikit.ScopePlayback, "revoke_download_receipts": apikit.ScopePlayback,
+		"sync_download_progress": apikit.ScopePlayback,
+		// Fetched with no credential at all: the address is the permission, and
+		// taking the address is what needs the playback scope.
+		"get_download_artifact": apikit.ScopeOpen, "head_download_artifact": apikit.ScopeOpen, "get_download_artwork": apikit.ScopeOpen, "get_download_subtitle": apikit.ScopeOpen,
+		"put_download_settings": apikit.ScopeAdmin,
+	}
+	scope := func(id string) apikit.Scope {
+		requires, ok := scopes[id]
+		if !ok {
+			panic(id + ": a download route needs a key scope")
+		}
+		return requires
+	}
 	route := func(id, method, path, summary string, access apikit.Access, lane apikit.Lane, cost apikit.Cost, status int, bodyLimit int64, query []string) apikit.Metadata {
 		failures := read
 		if method != "GET" {
 			failures = write
 		}
-		return apikit.Metadata{ID: id, Method: method, Path: path, Summary: summary, Access: access, Lane: lane, Cost: cost, Status: status, BodyLimit: bodyLimit, Query: query, Errors: failures}
+		return apikit.Metadata{ID: id, Method: method, Path: path, Summary: summary, Access: access, Requires: scope(id), Lane: lane, Cost: cost, Status: status, BodyLimit: bodyLimit, Query: query, Errors: failures}
 	}
-	v1Route(r, route("get_download_options", "GET", "/v1/items/{id}/download-options", "Read what can be downloaded for one title, with sizes", apikit.ViewerItem, apikit.Browsing, apikit.Constant, 200, 0, nil), func(ctx context.Context, q *http.Request, _ noBody) (downloads.DownloadOptionsView, error) {
+	v1Route(r, route("get_download_options", "GET", "/v1/items/{id}/download-options", "Read what can be downloaded for one title, with sizes", apikit.Device, apikit.Browsing, apikit.Constant, 200, 0, nil), func(ctx context.Context, q *http.Request, _ noBody) (downloads.DownloadOptionsView, error) {
 		p, owner, e := d.downloadViewer(q)
 		if e == nil {
 			e = d.itemAccess(ctx, p, q.PathValue("id"))
@@ -258,7 +281,7 @@ func registerDownloads(r *apikit.Registry, d Dependencies) {
 		http.ServeContent(body, q, out.Artifact.FileName, out.Modified, out.Reader)
 	}
 	rawRoute := func(id, method, path, summary string, lane apikit.Lane, query []string, serve http.HandlerFunc) {
-		m := apikit.Metadata{ID: id, Method: method, Path: path, Summary: summary, Access: apikit.Public, Lane: lane, Cost: apikit.Constant, Status: 200, Query: query, Errors: []string{"invalid_request", "invalid_download_grant", "downloads_not_allowed", "download_unavailable", "download_not_ready", "download_source_offline", "downloads_unavailable", "not_found", "internal"}}
+		m := apikit.Metadata{ID: id, Method: method, Path: path, Summary: summary, Access: apikit.Public, Requires: scope(id), Lane: lane, Cost: apikit.Constant, Status: 200, Query: query, Errors: []string{"invalid_request", "invalid_download_grant", "downloads_not_allowed", "download_unavailable", "download_not_ready", "download_source_offline", "downloads_unavailable", "not_found", "internal"}}
 		if err := apikit.RegisterRaw(r, apikit.RawRoute[noBody, noBody]{Metadata: m, Serve: serve}); err != nil {
 			panic(m.ID + ": " + err.Error())
 		}

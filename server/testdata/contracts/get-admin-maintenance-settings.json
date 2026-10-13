@@ -6,7 +6,7 @@
   "status": 200,
   "response": {
     "revision": 1,
-    "digest": "a503d034c9370087f032852cfcfef06ca8f69d8c23cd377c707ebd699bf9f190",
+    "digest": "170aa20470a5fc84b08bb84ab651d5ec12c9c63756e9e2b1e8509a72d18fb7d8",
     "settings": {
       "windows": [
         {
@@ -28,19 +28,18 @@
           "timezone": "",
           "tasks": [
             "analysis",
+            "backup",
             "library-scan",
             "trickplay"
           ]
         }
       ],
       "retention": {
-        "backups": 365,
         "conversions": 7,
         "downloads": 30,
         "logs": 30,
         "prepared": 90,
         "subtitles": 365,
-        "trash": 30,
         "trickplay": 365
       },
       "backupKeepCount": 7,
@@ -101,7 +100,8 @@
       "library-scan",
       "metadata-refresh",
       "analysis",
-      "trickplay"
+      "trickplay",
+      "backup"
     ],
     "days": [
       "monday",
@@ -113,13 +113,11 @@
       "sunday"
     ],
     "retentionMaxima": {
-      "backups": 3650,
       "conversions": 90,
       "downloads": 365,
       "logs": 365,
       "prepared": 3650,
       "subtitles": 3650,
-      "trash": 3650,
       "trickplay": 3650
     },
     "storageCategories": [
@@ -216,26 +214,15 @@
         "retentionKey": "logs"
       },
       {
-        "id": "trash",
-        "name": "Trash",
-        "description": "Files held after a delete, waiting for their retention to run out.",
-        "directories": [
-          "trash"
-        ],
-        "cleanable": true,
-        "regenerable": false,
-        "retentionKey": "trash"
-      },
-      {
         "id": "backups",
         "name": "Backups",
-        "description": "Encrypted server backups.",
+        "description": "Server backups.",
         "directories": [
           "backups"
         ],
         "cleanable": false,
         "regenerable": false,
-        "retentionKey": "backups"
+        "retentionKey": ""
       },
       {
         "id": "recordings",

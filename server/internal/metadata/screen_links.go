@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"errors"
 
+	"portico.local/server/internal/catalog"
+	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/metadataprovider"
 )
 
@@ -88,6 +90,16 @@ func publishScreenLinks(ctx context.Context, tx *sql.Tx, entity int64, r metadat
 	}
 	for _, v := range external {
 		if _, err = tx.ExecContext(ctx, `INSERT INTO catalog_external_ids(entity_id,provider,provider_kind,provider_id) VALUES(?,?,?,?)`, entity, v.provider, v.kind, v.id); err != nil {
+			return err
+		}
+	}
+	// The work has just been given this identity. Another title of the library
+	// that already carries it is the same work (a second folder of one show, a
+	// film catalogued under two names): it becomes part of this one, which
+	// keeps its id, and state kept for the identity from an earlier removal is
+	// given back.
+	if kind, ok := screenLinkKind(r.Identity); ok {
+		if _, err = catalog.AdoptProviderIdentityTx(ctx, tx, entity, compactcatalog.ProviderIdentity{Provider: r.Identity.Provider, Kind: kind, ID: r.Identity.ID}); err != nil {
 			return err
 		}
 	}

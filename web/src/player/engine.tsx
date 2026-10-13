@@ -5,8 +5,11 @@ import type {GuideChannel} from '@core/channel-guide.ts';
 import {queueItemInput, type QueueController} from '@core/queue-controller.ts';
 import {localV1Http} from '@core/playback-v1/local-http.ts';
 import {V1ChannelControl} from '@core/playback-v1/channel-control.ts';
-import {V1PlaybackApi} from '@core/playback-v1/legacy-bridge.ts';
 import {V1QueuePlayer} from '@core/playback-v1/v1-queue-player.ts';
+import {fixedQualityOf, type PlaybackChoices, type QualityChoice} from '@core/playback-v1/choices.ts';
+import {WebPlayback} from '../playback-v1/web-playback';
+import type {HlsModule} from '../playback-v1/web-media-player';
+import {DecodeAudioRender} from '../bridge/DecodeAudioRender';
 import {EventsClient} from '@core/playback-v1/events.ts';
 import type {PreparedChoice} from '@core/prepared-media.ts';
 import {useSession} from '../app/session';
@@ -38,6 +41,8 @@ export type NowPlaying = {itemId?: string; title: string; subtitle?: string; pos
 
 export type PlayerEngine = {
   service: PlaybackService;
+  /** The web playback path under the service: the session controller and the media element's port. */
+  playback: WebPlayback;
   state: PlaybackSnapshot;
   /** The device's v1 queue (`V1QueuePlayer`). */
   queue?: QueueController;
@@ -54,7 +59,10 @@ export type PlayerEngine = {
   moreOrigin?: EntryOrigin;
   /** 4K/HDR source facts parsed from the pre-play playback-options read (M27's request, reused: no new request per play). */
   sourceFacts: (itemId: string | undefined) => SourceFacts | undefined;
-  play: (itemId: string, startSeconds: number, entry?: ContentEntry, prepared?: PreparedChoice, quality?: string) => void;
+  /** `choices`: the quality, version and audio track picked before Play (they reach the server
+   * with the start). `prepared` and `quality` are the older names for a prepared copy and a
+   * conversion step; the planner now picks a prepared copy when it fits `choices.quality`. */
+  play: (itemId: string, startSeconds: number, entry?: ContentEntry, prepared?: PreparedChoice, quality?: string, choices?: PlaybackChoices) => void;
   /** Play `entries[index]` and queue everything after it, so Up Next has somewhere to go. */
   playSequence: (entries: readonly ContentEntry[], index: number, startSeconds: number, container?: SequenceContainer) => void;
   tune: (channel: GuideChannel) => void;
@@ -78,6 +86,10 @@ export type PlayerEngine = {
   /** While watching with a group, play/pause and seeking belong to the group. A handler
    * returns true when it took the intent, so the local player is left to follow. */
   setGroupControl: (control: GroupControl | null) => void;
+  /** The quality the viewer picked in the player for this viewing; undefined: their saved default.
+   * It stays while the queue plays on and is forgotten when something else is started. */
+  qualityChoice?: QualityChoice;
+  setQualityChoice: (choice: QualityChoice | undefined) => void;
   /** Names what is playing when it was started by id alone (a group's pick). */
   describe: (identity: NowPlaying) => void;
 };
@@ -115,12 +127,26 @@ export function PlayerProvider({children}: {children: React.ReactNode}) {
   musicDefaultsRef.current = musicDefaultsSource;
   const v1 = useMemo(() => {
     const http = localV1Http(api);
-    const v1api = new V1PlaybackApi(http);
-    const playback = new PlaybackService(v1api, undefined, {queueRequired: true, diagnostics: import.meta.env.DEV, channels: new V1ChannelControl({http}), pageVisibility: documentVisibility});
+    // The one web playback path: the session controller on the media element's port, under the
+    // service the screens read.
+    const web = new WebPlayback({
+      http,
+      mediaUrl: path => api.mediaUrl(path),
+      subscribeRoute: api.subscribeRoute,
+      getRouteSnapshot: api.getRouteSnapshot,
+      recoverRoute: () => (api.getRouteConnection() ? api.recoverRoute() : undefined),
+      loadHls: () => import('hls.js').then(m => m.default as unknown as HlsModule),
+      createRender: (service, video) => new DecodeAudioRender(service, path => api.mediaUrl(path), video as unknown as HTMLVideoElement, (current, next) => !!current && !!next && (service.getQueueController()?.sameAlbum?.(current, next) ?? false)),
+      farewell: (path, method, body) => api.farewell(path, method, body),
+      deviceMemory: (navigator as Navigator & {deviceMemory?: number}).deviceMemory,
+    });
+    // A start or a seek may take as long as media keeps arriving; these are the windows of
+    // silence after which it is given up.
+    const playback = new PlaybackService(web.transport, undefined, {queueRequired: true, diagnostics: import.meta.env.DEV, channels: new V1ChannelControl({http}), pageVisibility: documentVisibility, startupTimeoutMs: 30_000, seekTimeoutMs: 30_000});
     const events = new EventsClient({http});
-    const player = new V1QueuePlayer({musicDefaults: () => (musicDefaultsRef.current ? musicQueueDefaults(musicDefaultsRef.current) : undefined), http, api: v1api, playback, events, viewer: {serverId: viewer.serverId, authority: viewer.authority === 'hosted' ? 'hosted' : 'local', accountId: viewer.accountId, profileId: viewer.profileId}});
+    const player = new V1QueuePlayer({musicDefaults: () => (musicDefaultsRef.current ? musicQueueDefaults(musicDefaultsRef.current) : undefined), http, api: web.transport, playback, events, viewer: {serverId: viewer.serverId, authority: viewer.authority === 'hosted' ? 'hosted' : 'local', accountId: viewer.accountId, profileId: viewer.profileId}});
     player.setCompletionPolicy(() => 'hold');
-    return {api: v1api, playback, player, events};
+    return {web, api: web.transport, playback, player, events};
   }, [api, viewerKey]); // eslint-disable-line react-hooks/exhaustive-deps
   const service = v1.playback;
   useEffect(() => {
@@ -128,13 +154,21 @@ export function PlayerProvider({children}: {children: React.ReactNode}) {
     if (import.meta.env.DEV) (window as unknown as {__porticoPlayback?: PlaybackService}).__porticoPlayback = service;
     v1.events.start();
     setDeviceEvents(v1.events);
+    const unbind = v1.web.bind(service, v1.player);
     const stop = v1.player.connect();
+    // Closing or reloading the tab ends the session with its position, in a request that outlives
+    // the page; a hidden tab (or a page kept for Back) only reports where it is.
+    const leaving = (event: PageTransitionEvent) => v1.web.pageHidden(!event.persisted);
+    const hidden = () => { if (document.visibilityState === 'hidden') v1.web.pageHidden(false); };
+    window.addEventListener('pagehide', leaving);
+    document.addEventListener('visibilitychange', hidden);
     // WEB-06: this provider owns the service, so it ends it (and the queue, and the feed).
-    return () => { service.leave(); stop(); v1.player.dispose(); v1.events.stop(); if (getDeviceEvents() === v1.events) setDeviceEvents(null); };
+    return () => { window.removeEventListener('pagehide', leaving); document.removeEventListener('visibilitychange', hidden); service.leave(); stop(); v1.player.dispose(); unbind(); v1.web.dispose(); v1.events.stop(); if (getDeviceEvents() === v1.events) setDeviceEvents(null); };
   }, [v1, service]);
-  /* The server ending this device's session (an owner's stop, a transfer) reaches the service at
-     once: `session.updated` goes to the bridge, which stops with the reason (`snapshot.ended`). */
-  useEffect(() => v1.events.on('session.updated', event => { if (event.resource?.kind === 'session' && event.resource.id) v1.api.sessionUpdated(event.resource.id, event.data); }), [v1]);
+  /* The server ending or changing this device's session (an owner's stop, a transfer, a change made
+     from another device) reaches the controller at once: an end stops with its reason
+     (`snapshot.ended`), a new presentation loads. */
+  useEffect(() => v1.events.on('session.updated', event => { if (event.resource?.kind === 'session' && event.resource.id) v1.api.sessionUpdated(event.resource.id, event.revision, event.data); }), [v1]);
   /* X-02: the viewer's music preferences (gapless, crossfade, normalization) are what the audio
      engine renders with, on sign-in, profile selection and every change. Until the server answers
      (or offline) the device's cached copy applies. */
@@ -168,10 +202,11 @@ export function PlayerProvider({children}: {children: React.ReactNode}) {
   const [moreEntry, setMoreEntry] = useState<ContentEntry>();
   const [moreAnchor, setMoreAnchor] = useState<MenuAnchor>();
   const [moreOrigin, setMoreOrigin] = useState<EntryOrigin>();
+  const [qualityChoice, setQualityChoice] = useState<QualityChoice>();
   const more = useCallback((entry: ContentEntry, anchor?: MenuAnchor, origin?: EntryOrigin) => { setMoreAnchor(anchor); setMoreOrigin(origin); setMoreEntry(entry); }, []);
   /* M27 Dolby Vision warning: pending play intent awaiting confirmation, and item ids already
    * acknowledged for this session (so it isn't asked twice per item). */
-  type DolbyPendingSingle = {kind: 'single'; itemId: string; startSeconds: number; entry?: ContentEntry; prepared?: PreparedChoice; quality?: string};
+  type DolbyPendingSingle = {kind: 'single'; itemId: string; startSeconds: number; entry?: ContentEntry; prepared?: PreparedChoice; quality?: string; choices?: PlaybackChoices};
   type DolbyPendingSequence = {kind: 'sequence'; entries: readonly ContentEntry[]; index: number; startSeconds: number; container?: SequenceContainer};
   const [dolbyPending, setDolbyPending] = useState<DolbyPendingSingle | DolbyPendingSequence | null>(null);
   const dolbyAcknowledged = useRef<Set<string>>(new Set());
@@ -217,13 +252,17 @@ export function PlayerProvider({children}: {children: React.ReactNode}) {
 
   const isAudio = identity.kind === 'song' || identity.kind === 'audiobook_file';
   const active = state.phase !== 'idle';
-  const startSingle = useCallback((itemId: string, startSeconds: number, entry?: ContentEntry, prepared?: PreparedChoice, quality?: string) => {
+  const startSingle = useCallback((itemId: string, startSeconds: number, entry?: ContentEntry, prepared?: PreparedChoice, quality?: string, choices?: PlaybackChoices) => {
     setIdentity({itemId, title: entry?.title ?? 'Now playing', subtitle: entry?.subtitle, posterUrl: entry?.posterUrl, backdropUrl: entry?.backdropUrl, kind: entry?.kind, libraryId: entry?.libraryId, seeded: !!(entry?.title && entry.kind && entry.libraryId && entry.id === itemId)});
     // A song starts in the mini player and leaves the listener on the page; Now Playing opens on click.
     setExpanded(entry?.kind !== 'song');
+    // A new play starts from the saved default again, unless Play itself named a quality.
+    setQualityChoice(choices?.quality ? (choices.quality.mode === 'original' ? 'original' : fixedQualityOf(choices.quality)?.id) : undefined);
     v1.player.listening.interact();
-    void v1.player.playItem(itemId, startSeconds, prepared, quality).catch(() => {});
-  }, [v1]);
+    // Through the service, so the title and its choices are what a retry on another route or a
+    // replay asks for again.
+    void service.play(itemId, startSeconds, prepared, quality, undefined, choices).catch(() => {});
+  }, [v1, service]);
   /** Behind presence: older servers have no Dolby reason and read as no warning (fail open). */
   const checkDolbyFor = useCallback(async (itemId: string): Promise<boolean> => {
     try {
@@ -236,11 +275,11 @@ export function PlayerProvider({children}: {children: React.ReactNode}) {
       return false;
     }
   }, [api]);
-  const play = useCallback((itemId: string, startSeconds: number, entry?: ContentEntry, prepared?: PreparedChoice, quality?: string) => {
-    if (!mayCarryVideo(entry?.kind) || dolbyAcknowledged.current.has(itemId)) { startSingle(itemId, startSeconds, entry, prepared, quality); return; }
+  const play = useCallback((itemId: string, startSeconds: number, entry?: ContentEntry, prepared?: PreparedChoice, quality?: string, choices?: PlaybackChoices) => {
+    if (!mayCarryVideo(entry?.kind) || dolbyAcknowledged.current.has(itemId)) { startSingle(itemId, startSeconds, entry, prepared, quality, choices); return; }
     void checkDolbyFor(itemId).then(needs => {
-      if (!needs) startSingle(itemId, startSeconds, entry, prepared, quality);
-      else setDolbyPending({kind: 'single', itemId, startSeconds, entry, prepared, quality});
+      if (!needs) startSingle(itemId, startSeconds, entry, prepared, quality, choices);
+      else setDolbyPending({kind: 'single', itemId, startSeconds, entry, prepared, quality, choices});
     });
   }, [startSingle, checkDolbyFor]);
   const startSequenceInner = useCallback((entries: readonly ContentEntry[], index: number, startSeconds: number, container?: SequenceContainer) => {
@@ -253,6 +292,7 @@ export function PlayerProvider({children}: {children: React.ReactNode}) {
     }
     setIdentity({itemId: first.playback.itemId, title: first.title, subtitle: first.subtitle, posterUrl: first.posterUrl, backdropUrl: first.backdropUrl, kind: first.kind, libraryId: first.libraryId});
     setExpanded(first.kind !== 'song');
+    setQualityChoice(undefined);
     v1.player.listening.interact();
     // A container plays as one server-snapshotted request, however large.
     if (container) {
@@ -277,7 +317,7 @@ export function PlayerProvider({children}: {children: React.ReactNode}) {
     if (pending.kind === 'single') {
       dolbyAcknowledged.current.add(pending.itemId);
       setDolbyPending(null);
-      startSingle(pending.itemId, pending.startSeconds, pending.entry, pending.prepared, pending.quality);
+      startSingle(pending.itemId, pending.startSeconds, pending.entry, pending.prepared, pending.quality, pending.choices);
     } else {
       const first = pending.entries.slice(pending.index).filter(e => e.playback)[0];
       if (first?.playback) dolbyAcknowledged.current.add(first.playback.itemId);
@@ -298,6 +338,16 @@ export function PlayerProvider({children}: {children: React.ReactNode}) {
   }, [activeService]);
   const groupControl = useRef<GroupControl | null>(null);
   const setGroupControl = useCallback((control: GroupControl | null) => { groupControl.current = control; }, []);
+  /* A pause or play made outside this page (a media key, the Picture in Picture window, a
+     headset) is the viewer's intent. While a group owns play and pause it goes to the group. */
+  useEffect(() => {
+    v1.web.external = state => {
+      const s = activeService.getSnapshot();
+      if (ownerStopOf(s.ended)) return;
+      if (groupControl.current?.toggle(state === 'paused')) return;
+      if (state === 'paused') activeService.pause(); else activeService.resume();
+    };
+  }, [v1, activeService]);
   const toggle = useCallback(() => {
     const s = activeService.getSnapshot();
     if (ownerStopOf(s.ended)) return; // Stopped by the server owner: play starts again only from a title.
@@ -330,14 +380,14 @@ export function PlayerProvider({children}: {children: React.ReactNode}) {
     await activeQueue?.continueCompletion(mode);
   }, [activeQueue]);
   const value = useMemo<PlayerEngine>(() => ({
-    service: activeService, state, queue: activeQueue, queueNotice, identity, active, isAudio, expanded, volume, muted, moreEntry, moreAnchor, moreOrigin, sourceFacts,
+    service: activeService, playback: v1.web, state, queue: activeQueue, queueNotice, identity, active, isAudio, expanded, volume, muted, moreEntry, moreAnchor, moreOrigin, sourceFacts,
     play, playSequence, tune, more, clearMore: () => setMoreEntry(undefined), toggle, retry, seekBy, seekTo, leave,
     collapse: () => setExpanded(false), expand: () => setExpanded(true),
     setVolume: setVolumeState, setMuted: setMutedState,
-    next, previous, advance, setGroupControl, describe: setIdentity,
+    next, previous, advance, setGroupControl, describe: setIdentity, qualityChoice, setQualityChoice,
     canNext: !!queueView?.next.available && !state.channel,
     canPrevious: !state.channel && !!queueView && queueView.items.length > 1,
-  }), [activeService, state, activeQueue, queueNotice, identity, active, isAudio, expanded, volume, muted, moreEntry, moreAnchor, moreOrigin, sourceFacts, more, play, playSequence, tune, toggle, retry, seekBy, seekTo, leave, next, previous, advance, queueView, setGroupControl]);
+  }), [activeService, v1, state, activeQueue, queueNotice, identity, active, isAudio, expanded, volume, muted, moreEntry, moreAnchor, moreOrigin, sourceFacts, qualityChoice, more, play, playSequence, tune, toggle, retry, seekBy, seekTo, leave, next, previous, advance, queueView, setGroupControl]);
   const actions = useMemo<PlayerIntents>(() => ({play, playSequence, tune, more}), [play, playSequence, tune, more]);
   const handOff = useMemo<MoreHandOff>(() => ({moreEntry, moreAnchor, moreOrigin, clearMore: () => setMoreEntry(undefined)}), [moreEntry, moreAnchor, moreOrigin]);
   const t = currentI18n().t;

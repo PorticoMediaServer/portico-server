@@ -63,21 +63,6 @@ func (d Dependencies) markerAccess(p identity.Principal, library, item, fence st
 }
 func (d Dependencies) detailRoutes(mux *http.ServeMux) {
 	personalRate := &personalLimiter{}
-	mux.HandleFunc("POST /v1/items/{id}/metadata/refresh", func(w http.ResponseWriter, r *http.Request) {
-		if _, e := d.owner(r); e != nil {
-			failure(w, e)
-			return
-		}
-		if d.Metadata == nil {
-			failure(w, errors.New("metadata provider is unavailable"))
-			return
-		}
-		if e := d.Metadata.QueueRefresh(r.PathValue("id")); e != nil {
-			failure(w, e)
-			return
-		}
-		write(w, 202, map[string]string{"itemId": r.PathValue("id"), "status": "queued"})
-	})
 	mux.HandleFunc("GET /v1/items/{id}/detail", func(w http.ResponseWriter, r *http.Request) {
 		p, library, fence, e := d.detailAccess(r)
 		if e != nil {

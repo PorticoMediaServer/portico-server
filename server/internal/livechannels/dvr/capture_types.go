@@ -18,6 +18,7 @@ type CaptureDriver interface {
 	Remove(context.Context, livechannels.Owner, string, mediaartifact.Object) error
 }
 type CaptureRequest struct {
+	Checkpoint     func(CaptureCheckpoint) error
 	Recording      Recording
 	Owner          livechannels.Owner
 	Input          livechannels.Input
@@ -35,7 +36,8 @@ type CaptureCheckpoint struct {
 	WriterRetired     bool
 	ProducerSucceeded bool
 	BoundaryReached   bool
-	SourceRevision    int64 // stamped by the scheduler, never accepted from a client
+	SourceFence       string `json:"sourceFence"`
+	SourceRevision    int64  // stamped by the scheduler, never accepted from a client
 }
 type CaptureResult struct {
 	CaptureCheckpoint
@@ -47,4 +49,10 @@ type CaptureResult struct {
 	ModifiedNS                        int64
 	Reason                            string
 	Complete                          bool
+}
+
+// SharedCaptureDriver publishes independent profile-owned paths for one closed
+// capture without copying its media bytes.
+type SharedCaptureDriver interface {
+	Share(context.Context, CaptureRequest, CaptureRequest, CaptureCheckpoint) (CaptureResult, error)
 }

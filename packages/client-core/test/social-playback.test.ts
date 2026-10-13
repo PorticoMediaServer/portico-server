@@ -7,14 +7,14 @@ import {
 } from '../src/social-playback.ts';
 
 const sync={noCorrectionUnderMs:750,rateCorrectionMinimum:'0.90',rateCorrectionMaximum:'1.10',rateCorrectionMaxMs:4000,seekAtOrOverMs:3000};
-const timeline={itemId:'item',currentEntryId:'ent_1',state:'playing',anchorPositionUs:'1000000',anchorAt:'2026-09-16T20:00:00Z',rate:{numerator:'1',denominator:'1'},queuePosition:0};
-const host={id:'mem_1',displayName:'Host',role:'host',state:'joined',readiness:'ready',positionUs:'1000000',reportedAt:'2026-09-16T20:00:00Z',presence:'connected',joinedAt:'2026-09-16T19:59:00Z'};
+const timeline={itemId:'item',currentEntryId:'ent_1',state:'playing',anchorPositionUs:'1000000',anchorAt:'2026-09-16T20:00:00Z',rate:{numerator:'1',denominator:'1'},queuePosition:0,waitUntil:null};
+const host={id:'mem_1',displayName:'Host',private:false,role:'host',state:'joined',readiness:'ready',positionUs:'1000000',reportedAt:'2026-09-16T20:00:00Z',presence:'connected',joinedAt:'2026-09-16T19:59:00Z'};
 const guest={...host,id:'mem_2',displayName:'Guest',role:'member'};
 
 function group(overrides:Record<string,unknown>={}){
   return {
     id:'grp_1',name:'Movie night',state:'playing',hostAuthority:'host-only',hostMemberId:'mem_1',
-    revision:'7',playbackRevision:'3',queueRevision:'2',reconnectGeneration:'1',
+    revision:'7',playbackRevision:'3',settingsRevision:'1',governanceRevision:'1',queueRevision:'2',reconnectGeneration:'1',
     lastCommand:'play',lastCommandId:'play-1',endedReason:'',eventOrdinal:'9',
     createdAt:'2026-09-16T19:59:00Z',updatedAt:'2026-09-16T20:00:00Z',
     permissions:{isHost:true,canControl:true,canManageQueue:true},
@@ -94,7 +94,7 @@ test('the host eligibility summary parses', () => {
 
 test('a transport receipt distinguishes an acceptance from a replay', () => {
   const body={protocolVersion:SOCIAL_PROTOCOL,serverTime:'2026-09-16T20:00:01Z',groupId:'grp_1',idempotencyKey:'play-1',
-    disposition:'accepted',command:'play',revision:'8',queueRevision:'2',recordedAt:'2026-09-16T20:00:01Z',
+    disposition:'accepted',groupState:'paused',command:'play',revision:'8',playbackRevision:'4',queueRevision:'2',recordedAt:'2026-09-16T20:00:01Z',
     timeline,settings:{shuffleEnabled:false,repeatMode:'none'},override:null};
   assert.equal(parseGroupTransportReceipt(body).disposition,'accepted');
   assert.equal(parseGroupTransportReceipt({...body,disposition:'duplicate'}).disposition,'duplicate');

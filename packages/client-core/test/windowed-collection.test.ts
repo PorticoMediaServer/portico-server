@@ -184,6 +184,49 @@ test('a failed visible page reports an error, keeps other pages and retries', as
   assert.equal(c.itemAt(100)?.n, 100);
 });
 
+test('a page the server refused with a wait is not asked for again, even after scrolling away and back, until the wait is over', async () => {
+  let failing = true;
+  let clock = 0;
+  const starts: number[] = [];
+  const c = createWindowedCollection<{id: string; n: number}>({
+    fetchPage: async (start, count) => {
+      starts.push(start);
+      if (failing && start === 100) throw Object.assign(new Error('busy'), {status: 503, retryAfterSeconds: 60});
+      return {items: Array.from({length: count}, (_, i) => ({id: 'i' + (start + i), n: start + i})), total: 1000};
+    },
+    pageSize: 100, maxResidentPages: 10, keyOf: i => i.id, prefetchPages: 0, now: () => clock,
+  });
+  c.ensureRange(0, 10); await settle();
+  c.ensureRange(100, 110); await settle();
+  assert.equal(c.getSnapshot().status, 'error');
+  failing = false;
+  // Past the collection's own five seconds, and away and back (which forgets the failed page): still inside the server's minute.
+  clock = 20_000;
+  c.ensureRange(0, 10); await settle();
+  c.ensureRange(100, 110); await settle();
+  assert.deepEqual(starts.filter(start => start === 100).length, 1, 'no second request inside the wait');
+  clock = 61_000;
+  c.ensureRange(100, 110); await settle();
+  assert.equal(c.itemAt(100)?.n, 100);
+});
+
+test('Try again from the viewer is not held back by the server wait', async () => {
+  let failing = true;
+  let clock = 0;
+  const c = createWindowedCollection<{id: string; n: number}>({
+    fetchPage: async (start, count) => {
+      if (failing) throw Object.assign(new Error('busy'), {status: 429, retryAfterMs: 120_000});
+      return {items: Array.from({length: count}, (_, i) => ({id: 'i' + (start + i), n: start + i})), total: 1000};
+    },
+    pageSize: 100, maxResidentPages: 10, keyOf: i => i.id, prefetchPages: 0, now: () => clock,
+  });
+  c.ensureRange(0, 10); await settle();
+  assert.equal(c.getSnapshot().status, 'error');
+  failing = false;
+  c.retry(); await settle();
+  assert.equal(c.itemAt(0)?.n, 0);
+});
+
 test('dispose aborts work in flight and stops notifying', async () => {
   const s = server(1000, {delay: true});
   const c = createWindowedCollection({fetchPage: s.fetchPage, pageSize: 100, maxResidentPages: 10, keyOf: i => i.id});

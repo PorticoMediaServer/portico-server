@@ -116,7 +116,7 @@ func openInventoryRoot(r InventoryRequest) (*os.Root, error) {
 		return nil, err
 	}
 	info, err := root.Stat(".")
-	if err != nil || !info.IsDir() || r.RootIdentity != "" && RootIdentity(snapshot(r.Root, info)) != r.RootIdentity {
+	if err != nil || !info.IsDir() || r.RootIdentity != "" && !SameRoot(r.RootIdentity, RootIdentity(snapshot(r.Root, info))) {
 		root.Close()
 		return nil, ErrInventoryChanged
 	}
@@ -148,7 +148,11 @@ func openInventoryContent(r InventoryRequest) (*os.File, error) {
 	return file, nil
 }
 func inventoryBlobHelper(r request, out io.Writer) error {
-	if r.Inventory == nil || r.Limit <= 0 || r.Limit > 8<<20 {
+	maximum := int64(8 << 20)
+	if r.Operation == "inventory-subtitle-blob" && binarySubtitlePath(r.Path) {
+		maximum = 32 << 20
+	}
+	if r.Inventory == nil || r.Limit <= 0 || r.Limit > maximum {
 		return errors.New("invalid inventory blob")
 	}
 	file, err := openInventoryContent(*r.Inventory)

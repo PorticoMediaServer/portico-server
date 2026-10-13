@@ -46,6 +46,9 @@ var (
 	PlanningPolicies      = []string{"maximum_fidelity", "maximum_compatibility", "minimize_server_work"}
 	// UpdateChannels are the release channels the updates page reports against.
 	UpdateChannels = []string{"stable", "beta"}
+	// MissingTitleRules are the owner's choices for when a title whose files
+	// have gone from disk is removed.
+	MissingTitleRules = []string{"immediately", "after_days", "never"}
 	// Administration (workstream G) publishes connectivity and diagnostics
 	// policy through this same registry, so the console has one authority for
 	// every server setting rather than a second document per feature area.
@@ -53,6 +56,10 @@ var (
 	LogLevels            = []string{"error", "warn", "info", "debug"}
 	LogCategories        = []string{"server", "playback", "scan", "network", "client"}
 )
+
+// DefaultAPIRequestsPerMinute is what one API key or personal access token may
+// ask for each minute when the owner has not chosen a number.
+const DefaultAPIRequestsPerMinute = 600
 
 func oneOf(value string, allowed []string) bool {
 	for _, v := range allowed {
@@ -80,6 +87,8 @@ func Registry() []Field {
 		field("planningPolicy", "transcoding", "enumeration", "maximum_fidelity", nil, nil, PlanningPolicies, "next-operation", "delivery planning", "Chooses how the planner trades picture fidelity, client compatibility and server work."),
 		field("throttleBufferSeconds", "transcoding", "integer", 60, bounded(10), bounded(600), nil, "next-operation", "conversion pacing", "How far ahead of the viewer a conversion may run before it pauses."),
 		field("playedRetentionSeconds", "transcoding", "integer", 180, bounded(0), bounded(3600), nil, "next-operation", "conversion segment retention", "How long already played segments stay on disk so a small rewind does not restart the conversion."),
+		field("ffmpegPath", "transcoding", "path", "", nil, nil, nil, "restart", "media tool qualification and conversion launch", "Absolute path to another FFmpeg build. It is checked before use and runs with the same process restrictions."),
+		field("sessionStorageMiB", "transcoding", "integer", 4096, bounded(64), bounded(1048576), nil, "next-operation", "conversion output retention", "Maximum working space for one playback session in MiB. Older played segments are removed first."),
 		field("temporaryDirectory", "transcoding", "path", "", nil, nil, nil, "restart", "conversion working directory", "Absolute path for conversion working files. Empty uses the server state directory. Readiness is reported by the transcode capacity report."),
 		field("maxConcurrentSessions", "transcoding", "integer", 0, bounded(0), bounded(1000), nil, "next-operation", "conversion admission", "Total conversions allowed at once. 0 means unlimited."),
 		field("maxHardwareSessions", "transcoding", "integer", 0, bounded(0), bounded(1000), nil, "next-operation", "conversion admission", "Hardware conversions allowed at once. 0 means unlimited."),
@@ -91,8 +100,9 @@ func Registry() []Field {
 		field("playHistoryDays", "retention", "integer", 0, bounded(0), bounded(36500), nil, "hot", "operations.Prune", "How long the server's play history is kept. 0 keeps every play since the server was set up. Play counts are kept either way."),
 		field("home.communityActivityEnabled", "home", "boolean", false, nil, nil, nil, "hot", "catalog home trending row", "Publish a server-wide popular-this-week row built from aggregated play counts across profiles. Off by default."),
 		field("updates.releaseChannel", "updates", "enumeration", "stable", nil, nil, UpdateChannels, "hot", "administration updates report", "Which release channel the updates page reports against. Nothing is ever installed automatically."),
-		field("updates.feedUrl", "updates", "string", "", nil, nil, nil, "hot", "administration updates report", "Optional release feed this server may read to report whether a newer build exists. Empty means the server only reports the build it is running."),
-		field("library.trashRetentionDays", "library", "nullable-integer", 30, bounded(0), bounded(3650), nil, "hot", "administration media deletion", "How long deleted files stay recoverable in the trash by default. 0 removes files immediately; null uses the shipped 30 days. Each library may override this on its own configuration page."),
+		field("updates.feedUrl", "updates", "string", DefaultUpdateFeedURL, nil, nil, nil, "hot", "administration updates report", "Release feed checked for newer versions. Clear the address to turn update checks off."),
+		field("library.missingTitles", "library", "enumeration", "after_days", nil, nil, MissingTitleRules, "hot", "catalog missing titles", "When a title whose files are no longer on disk is removed from the library: immediately, after a number of days, or never. Until then it stays, marked missing, and a file that comes back restores it. Each profile's watch state is kept either way."),
+		field("library.missingTitlesDays", "library", "integer", 30, bounded(1), bounded(3650), nil, "hot", "catalog missing titles", "How many days a missing title is kept when the rule is after a number of days."),
 		field("remoteSignInPolicy", "connectivity", "enumeration", "allow", nil, nil, RemoteSignInPolicies, "next-operation", "sign-in admission", "Who may sign in from outside this network. Owner-only still allows existing remote sessions to finish."),
 		field("remoteBitrateLimitKbps", "connectivity", "integer", 0, bounded(0), bounded(200000), nil, "next-operation", "playback delivery planning", "Server-wide ceiling on video bitrate for remote playback, in kbps. 0 means no ceiling."),
 		field("lanNetworks", "connectivity", "string-list", networkpolicy.DefaultHomeNetworks(), nil, nil, nil, "hot", "connectivity status and remote classification", "Home networks. Only these addresses count as local. An empty list makes every connection remote."),
@@ -108,12 +118,16 @@ func Registry() []Field {
 		field("customCertificateDomain", "connectivity", "string", "", nil, nil, nil, "hot", "TLS listener and route publication", "The domain the custom certificate serves. It is published to members as an access URL on the remote access port."),
 		field("lanDiscoveryEnabled", "connectivity", "boolean", true, nil, nil, nil, "hot", "LAN discovery advertisement", "Advertise this server on the local network with mDNS/Bonjour. The connectivity status report says whether this host can."),
 		field("deviceApprovalRequired", "access", "boolean", false, nil, nil, nil, "next-operation", "playback admission", "Require an administrator to approve a device before it can play anything."),
+		field("apiRequestsPerMinute", "access", "integer", 0, bounded(0), bounded(100000), nil, "hot", "API key and access token admission", "How many requests one API key or personal access token may make each minute. 0 uses the default of 600."),
+		field("blockMemberAccessTokens", "access", "boolean", false, nil, nil, nil, "next-operation", "personal access token creation", "Stop members creating personal access tokens. Tokens that already exist keep working until they are revoked."),
 		field("logLevel", "diagnostics", "enumeration", "info", nil, nil, LogLevels, "hot", "servicelog.Recorder", "How much detail the message log keeps. A debug window raises this temporarily without changing the saved value."),
 		field("logRetention", "diagnostics", "log-retention-list", []LogRetention{}, nil, nil, LogCategories, "hot", "servicelog.Recorder prune", "Days of message log history to keep per category. A category with no entry keeps whatever the bounded ring holds."),
 	}
 	// Viewer preferences are published by their own registry on GET /v1/preferences.
 	// Listing them here too would give clients two disagreeing authorities.
 }
+
+const DefaultUpdateFeedURL = "https://github.com/PorticoMediaServer/portico-server/releases/latest/download/portico-update-manifest.json"
 
 type Settings struct {
 	Name               string `json:"name"`
@@ -132,6 +146,8 @@ type Settings struct {
 	ThrottleBufferSeconds   int    `json:"throttleBufferSeconds"`
 	PlayedRetentionSeconds  int    `json:"playedRetentionSeconds"`
 	TemporaryDirectory      string `json:"temporaryDirectory"`
+	FFmpegPath              string `json:"ffmpegPath"`
+	SessionStorageMiB       int    `json:"sessionStorageMiB"`
 	MaxConcurrentSessions   int    `json:"maxConcurrentSessions"`
 	MaxHardwareSessions     int    `json:"maxHardwareSessions"`
 	MaxSoftwareSessions     int    `json:"maxSoftwareSessions"`
@@ -143,6 +159,13 @@ type Settings struct {
 	// default, keeps all of it. A document saved before the field existed reads
 	// as 0, which is the default.
 	PlayHistoryDays int `json:"playHistoryDays"`
+	// APIRequestsPerMinute is the rate one API key or personal access token is
+	// held to; 0, the value a document saved before the field existed reads as,
+	// is the default (DefaultAPIRequestsPerMinute).
+	APIRequestsPerMinute int `json:"apiRequestsPerMinute"`
+	// BlockMemberAccessTokens stops members making personal access tokens. It is
+	// phrased as the exception so that the zero value is the default: allowed.
+	BlockMemberAccessTokens bool `json:"blockMemberAccessTokens"`
 	// Aggregated server-wide play counts stay off until an owner opts in.
 	CommunityActivityEnabled bool `json:"home.communityActivityEnabled"`
 	// Update reporting and the default trash retention are owner administration
@@ -151,7 +174,10 @@ type Settings struct {
 	UpdateFeedURL string `json:"updates.feedUrl"`
 	// Null means the shipped default, so a client that does not send this field
 	// never silently switches the trash off.
-	TrashRetentionDays *int `json:"library.trashRetentionDays"`
+	// MissingTitles and MissingTitlesDays are the owner's rule for titles whose
+	// files are no longer on disk (catalog.MissingRule reads them).
+	MissingTitles     string `json:"library.missingTitles"`
+	MissingTitlesDays int    `json:"library.missingTitlesDays"`
 	// Connectivity, access and diagnostics policy (workstream G). The console
 	// document is their single authority; the typed /v1/admin/connectivity and
 	// /v1/admin/logs endpoints project these same fields.
@@ -188,7 +214,7 @@ type LogRetention struct {
 // DefaultSettings is the registry's own answer before any owner write, so a
 // fresh database and a document saved before these fields existed agree.
 func DefaultSettings() Settings {
-	return Settings{Name: "Portico", TranscodingEnabled: true, HardwareBackend: "auto", HDRToneMappingAlgorithm: "hable", X264Preset: "veryfast", DirectStreamRemux: true, PlanningPolicy: "maximum_fidelity", ThrottleBufferSeconds: 60, PlayedRetentionSeconds: 180, DiagnosticDays: 30, NotificationDays: 180, JobDays: 30, UpdateChannel: "stable", TrashRetentionDays: bounded(30),
+	return Settings{Name: "Portico", TranscodingEnabled: true, HDRToneMapping: true, HardwareBackend: "auto", HDRToneMappingAlgorithm: "hable", X264Preset: "veryfast", DirectStreamRemux: true, PlanningPolicy: "maximum_fidelity", ThrottleBufferSeconds: 60, PlayedRetentionSeconds: 180, SessionStorageMiB: 4096, DiagnosticDays: 30, NotificationDays: 180, JobDays: 30, UpdateChannel: "stable", UpdateFeedURL: DefaultUpdateFeedURL, MissingTitles: "after_days", MissingTitlesDays: 30,
 		RemoteSignInPolicy: "allow", LANNetworks: networkpolicy.DefaultHomeNetworks(), AccessURLs: []string{}, LANDiscoveryEnabled: true, TrustedProxies: []string{}, LogLevel: "info", LogRetention: []LogRetention{}}
 }
 
@@ -234,19 +260,40 @@ func readSettings(tx *sql.Tx) (SettingsDocument, error) {
 		return SettingsDocument{}, e
 	}
 	b, _ := json.Marshal(v)
-	return SettingsDocument{revision, Hash(string(b)), v, v, revision, restartFields(v), RegistryRevision}, nil
+	effective, pending := effectiveMediaSettings(v)
+	return SettingsDocument{revision, Hash(string(b)), v, effective, revision, pending, RegistryRevision}, nil
 }
 
-// restartFields names saved values the running process has not adopted. The
-// document is applied atomically, so a value is never half-saved; what a client
-// needs instead is the registry's applicationMode, which says which fields only
-// take effect after a restart. This stays empty rather than guessing at what
-// the process adopted at startup, which no table records.
-func restartFields(Settings) []string { return []string{} }
+// restartFields reports restart-applied settings the running process has not adopted.
+func restartFields(v Settings) []string { _, fields := effectiveMediaSettings(v); return fields }
 func (s *Store) Settings(ctx context.Context, auth Authorize) (out SettingsDocument, e error) {
 	e = s.snapshot(ctx, auth, "", func(tx *sql.Tx) error { var err error; out, err = readSettings(tx); return err })
+	if e == nil {
+		s.projectAppliedSettings(&out)
+	}
 	return
 }
+
+// projectAppliedSettings uses the startup value held by the running consumer.
+// The stored requested document remains the single settings authority.
+func (s *Store) projectAppliedSettings(document *SettingsDocument) {
+	if s.AppliedTemporaryDirectory == nil {
+		return
+	}
+	applied := *s.AppliedTemporaryDirectory
+	document.Effective.TemporaryDirectory = applied
+	fields := document.RestartFields[:0]
+	for _, field := range document.RestartFields {
+		if field != "temporaryDirectory" {
+			fields = append(fields, field)
+		}
+	}
+	document.RestartFields = fields
+	if document.Requested.TemporaryDirectory != applied {
+		document.RestartFields = append(document.RestartFields, "temporaryDirectory")
+	}
+}
+
 func validCap(n *int) bool { return n == nil || *n >= 1 && *n <= 1000000 }
 
 // clamp keeps a numeric transcoding control inside its published bounds rather
@@ -293,6 +340,9 @@ func validateSettings(v *Settings) error {
 	if v.JobDays < 1 || v.JobDays > 30 {
 		fields = append(fields, "values.jobDays")
 	}
+	if v.APIRequestsPerMinute < 0 || v.APIRequestsPerMinute > 100000 {
+		fields = append(fields, "values.apiRequestsPerMinute")
+	}
 	if v.PlayHistoryDays < 0 || v.PlayHistoryDays > 36500 {
 		fields = append(fields, "values.playHistoryDays")
 	}
@@ -314,6 +364,12 @@ func validateSettings(v *Settings) error {
 	if !validTemporaryDirectory(v.TemporaryDirectory) {
 		fields = append(fields, "values.temporaryDirectory")
 	}
+	if !validTemporaryDirectory(v.FFmpegPath) {
+		fields = append(fields, "values.ffmpegPath")
+	}
+	if v.SessionStorageMiB < 64 || v.SessionStorageMiB > 1048576 {
+		fields = append(fields, "values.sessionStorageMiB")
+	}
 	// An omitted channel is the default channel rather than a refusal: a client
 	// that does not know this field yet still saves the rest of the document.
 	if v.UpdateChannel == "" {
@@ -327,8 +383,18 @@ func validateSettings(v *Settings) error {
 	if v.UpdateFeedURL != "" && (len(v.UpdateFeedURL) > 2048 || !SafeText(v.UpdateFeedURL, 2048) || strings.ContainsAny(v.UpdateFeedURL, " \n\t") || !strings.HasPrefix(v.UpdateFeedURL, "https://") && !strings.HasPrefix(v.UpdateFeedURL, "http://")) {
 		fields = append(fields, "values.updates.feedUrl")
 	}
-	if v.TrashRetentionDays != nil && (*v.TrashRetentionDays < 0 || *v.TrashRetentionDays > 3650) {
-		fields = append(fields, "values.library.trashRetentionDays")
+	// Empty means the shipped rule: kept for thirty days.
+	if v.MissingTitles == "" {
+		v.MissingTitles = "after_days"
+	}
+	if v.MissingTitlesDays == 0 {
+		v.MissingTitlesDays = 30
+	}
+	if !oneOf(v.MissingTitles, MissingTitleRules) {
+		fields = append(fields, "values.library.missingTitles")
+	}
+	if v.MissingTitlesDays < 1 || v.MissingTitlesDays > 3650 {
+		fields = append(fields, "values.library.missingTitlesDays")
 	}
 	fields = append(fields, validateAdministration(v)...)
 	if len(fields) > 0 {
@@ -387,6 +453,9 @@ func (s *Store) ApplySettings(ctx context.Context, p identity.Principal, auth Au
 		}
 		return SaveReceipt(tx, scope, c.IdempotencyKey, digest, out, s.now())
 	})
+	if e == nil {
+		s.projectAppliedSettings(&out)
+	}
 	return
 }
 

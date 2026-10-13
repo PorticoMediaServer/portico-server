@@ -1,14 +1,18 @@
 import {unreadableServerResponse} from './server-messages.ts';
 import {serviceText} from './presentation/service-text.ts';
 import type {MessageId} from '../../i18n/src/index.ts';
+import {firstOfEach, keepReadable, noteSkipped, oneOf, oneOfOr} from './tolerant.ts';
 /**
  * Wire shapes for offline downloads (the `*_download_*` operations of
  * `server/api/portico.openapi.json`; `server/api/downloads.md` explains the model).
  *
  * Parsers only. A download decides whether a client may play bytes with no
  * server in reach, so nothing here is trusted by shape alone: every field is
- * checked, every collection is bounded, and a response that does not match the
- * published contract is rejected rather than half-read.
+ * checked and every collection is bounded. What verifies or unlocks a file
+ * (hashes, sizes, grants, receipts, keys, revocations, revisions, cursors,
+ * limits) is exact, and a response that breaks it is rejected. What is only
+ * shown is read forgivingly, because a server may be newer than this app: one
+ * unreadable row of a list is left out and the rest is kept.
  */
 
 export type DownloadState = 'queued'|'running'|'ready'|'paused'|'failed'|'unavailable'|'cancelled'|'expired';
@@ -18,7 +22,7 @@ export type DownloadArtifactKind = ''|'source'|'prepared';
 
 export const downloadStates: readonly DownloadState[] = Object.freeze(['queued','running','ready','paused','failed','unavailable','cancelled','expired'] as const);
 export const downloadActions: readonly DownloadAction[] = Object.freeze(['pause','resume','cancel','retry','remove'] as const);
-/** The closed reason set the server publishes. An unknown code is a contract break. */
+/** The reasons this app has its own words for. A newer server may publish another code; it is kept when it is shaped like one. */
 export const downloadReasons: readonly string[] = Object.freeze([
   '','downloads_not_allowed','item_deleted','source_unavailable','source_changed','optimized_version_unavailable',
   'optimization_failed','storage_full','artifact_changed','verification_failed','retention_expired','cancelled',
@@ -118,6 +122,9 @@ const id = (v: unknown): v is string => typeof v === 'string' && /^[A-Za-z0-9_-]
 const text = (v: unknown, max = 512): v is string => typeof v === 'string' && v.length <= max && !/[\x00-\x1f\x7f]/.test(v);
 const count = (v: unknown): v is number => Number.isSafeInteger(v) && Number(v) >= 0;
 const digest = (v: unknown): v is string => typeof v === 'string' && /^[0-9a-f]{64}$/.test(v);
+/** A published code (a reason, a quality rung) this app may not know yet: short and lower-case, never free text. */
+const code = (v: unknown): v is string => typeof v === 'string' && /^[a-z0-9_-]{1,64}$/.test(v);
+const reasonCode = (v: unknown): v is string => v === '' || code(v);
 const base64url = (v: unknown, max: number): v is string => typeof v === 'string' && v.length > 0 && v.length <= max && /^[A-Za-z0-9_-]+$/.test(v);
 /** An empty instant means "not yet" and is published as an absent field. */
 const instant = (v: unknown, optional = false): v is string => typeof v === 'string' && (optional && v === '' || /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/.test(v) && Number.isFinite(Date.parse(v)));
@@ -161,27 +168,38 @@ function progress(v: unknown): DownloadProgress {
   const eta = nullableCount(v.etaSeconds);
   return Object.freeze({bytesDone: v.bytesDone, bytesTotal: v.bytesTotal, bytesTotalEstimated: v.bytesTotalEstimated, percent: v.percent, etaSeconds: eta});
 }
+/** Progress is only shown. When it cannot be read the row is kept and shows none, rather than the row being lost with its actions. */
+const noProgress: DownloadProgress = Object.freeze({bytesDone: 0, bytesTotal: 0, bytesTotalEstimated: true, percent: 0, etaSeconds: null});
+const noTitle: DownloadTitle = Object.freeze({kind: '', title: '', year: 0, durationSeconds: 0, parentId: '', parentTitle: '', groupId: '', groupTitle: '', groupNumber: null, number: null, artist: '', onServer: true});
+/** A claim whose title cannot be read is still a claim: it is listed, without a name. */
+function shownTitle(v: unknown): DownloadTitle {
+  try { return parseDownloadTitle(v); } catch { noteSkipped('downloads', 'preparation.title'); return noTitle; }
+}
+function shownProgress(v: unknown): DownloadProgress {
+  try { return progress(v); } catch { noteSkipped('downloads', 'preparation.progress'); return noProgress; }
+}
 
 export function parseDownloadPreparation(raw: unknown): DownloadPreparation {
   if (!object(raw) || !id(raw.id) || !id(raw.itemId) || !id(raw.libraryId) || !id(raw.profileId)) invalid();
-  if (!id(raw.quality)) invalid();
-  if (!['item','items','container','next'].includes(String(raw.origin))) invalid();
+  if (!code(raw.quality)) invalid();
+  // No state stands in for one this app does not know, so that row is refused; a list leaves out only that row.
   if (!downloadStates.includes(String(raw.state) as DownloadState)) invalid();
-  if (!downloadReasons.includes(String(raw.reason ?? ''))) invalid();
+  if (!reasonCode(raw.reason ?? '')) invalid();
   if (!count(raw.revision) || raw.revision < 1) invalid();
   if (!instant(raw.createdAt) || !instant(raw.updatedAt) || !instant(raw.readyAt ?? '', true) || !instant(raw.expiresAt ?? '', true)) invalid();
   if (raw.batchId !== undefined && !text(raw.batchId, 128)) invalid();
-  const actions = array(raw.actions, 5).map(v => { if (!downloadActions.includes(String(v) as DownloadAction)) invalid(); return String(v) as DownloadAction; });
-  if (new Set(actions).size !== actions.length) invalid();
+  const offered = array(raw.actions, 5);
   const state = String(raw.state) as DownloadState;
   const bytes = artifact(raw.artifact);
   // A ready claim must name bytes a client can verify; anything else must not
   // pretend to, so a client cannot be talked into trusting an unhashed file.
   if (state === 'ready' ? bytes.sha256 === '' || bytes.kind === '' : false) invalid();
+  // An action this app does not know, or one offered twice, is left out: the row then offers less, never more.
+  const actions = firstOfEach('downloads', 'preparation.actions', keepReadable('downloads', 'preparation.actions', offered, v => oneOf(v, downloadActions)), v => v);
   return Object.freeze({
-    id: raw.id, itemId: raw.itemId, libraryId: raw.libraryId, profileId: raw.profileId, title: parseDownloadTitle(raw.title),
-    quality: String(raw.quality), origin: String(raw.origin) as DownloadOrigin, batchId: String(raw.batchId ?? ''),
-    state, reason: String(raw.reason ?? ''), artifact: bytes, progress: progress(raw.progress),
+    id: raw.id, itemId: raw.itemId, libraryId: raw.libraryId, profileId: raw.profileId, title: shownTitle(raw.title),
+    quality: raw.quality, origin: oneOfOr('downloads', 'preparation.origin', raw.origin, ['item','items','container','next'] as const, 'item'), batchId: String(raw.batchId ?? ''),
+    state, reason: String(raw.reason ?? ''), artifact: bytes, progress: shownProgress(raw.progress),
     actions: Object.freeze(actions), revision: raw.revision,
     createdAt: raw.createdAt, updatedAt: raw.updatedAt, readyAt: String(raw.readyAt ?? ''), expiresAt: String(raw.expiresAt ?? ''),
   });
@@ -189,20 +207,20 @@ export function parseDownloadPreparation(raw: unknown): DownloadPreparation {
 
 export function parseDownloadBatch(raw: unknown): DownloadBatch {
   if (!object(raw) || !text(raw.batchId, 128) || !count(raw.accepted) || typeof raw.duplicate !== 'boolean') invalid();
-  const items = array(raw.items, 100).map(parseDownloadPreparation);
-  if (new Set(items.map(v => v.id)).size !== items.length) invalid();
-  const rejected = array(raw.rejected, 100).map(v => {
-    if (!object(v) || !id(v.itemId) || !downloadReasons.includes(String(v.code)) || v.code === '') invalid();
-    return Object.freeze({itemId: v.itemId, code: String(v.code)});
+  const sent = array(raw.items, 100);
+  const items = firstOfEach('download-batch', 'items', keepReadable('download-batch', 'items', sent, v => parseDownloadPreparation(v)), v => v.id);
+  const rejected = keepReadable('download-batch', 'rejected', array(raw.rejected, 100), v => {
+    if (!object(v) || !id(v.itemId) || !code(v.code)) invalid();
+    return Object.freeze({itemId: v.itemId, code: v.code});
   });
-  if (raw.accepted > items.length) invalid();
-  return Object.freeze({batchId: raw.batchId, items: Object.freeze(items), rejected: Object.freeze(rejected), accepted: raw.accepted, duplicate: raw.duplicate});
+  // The server cannot have accepted more than it sent rows for; a larger figure reads as the rows it sent.
+  if (raw.accepted > sent.length) noteSkipped('download-batch', 'accepted');
+  return Object.freeze({batchId: raw.batchId, items: Object.freeze(items), rejected: Object.freeze(rejected), accepted: Math.min(raw.accepted, sent.length), duplicate: raw.duplicate});
 }
 
 export function parseDownloadPage(raw: unknown): DownloadPage {
   if (!object(raw) || !text(raw.nextCursor ?? '', 512)) invalid();
-  const items = array(raw.items, 200).map(parseDownloadPreparation);
-  if (new Set(items.map(v => v.id)).size !== items.length) invalid();
+  const items = firstOfEach('downloads', 'items', keepReadable('downloads', 'items', array(raw.items, 200), v => parseDownloadPreparation(v)), v => v.id);
   return Object.freeze({items: Object.freeze(items), nextCursor: String(raw.nextCursor ?? '')});
 }
 
@@ -264,21 +282,24 @@ export function parseDownloadBundle(raw: unknown, preparationId: string): Downlo
 }
 
 function qualityOption(raw: unknown): DownloadQualityOption {
-  if (!object(raw) || !id(raw.quality) || !text(raw.label, 128)) invalid();
+  // The server's menu is the list: a quality it offers is offered, and is sent back when chosen.
+  if (!object(raw) || !code(raw.quality) || !text(raw.label, 128)) invalid();
   if (!['source','optimized'].includes(String(raw.kind))) invalid();
   if (!count(raw.estimatedBytes) || typeof raw.estimated !== 'boolean' || typeof raw.available !== 'boolean' || typeof raw.requiresPreparation !== 'boolean') invalid();
-  if (!downloadReasons.includes(String(raw.reason ?? ''))) invalid();
+  if (!reasonCode(raw.reason ?? '')) invalid();
   for (const field of ['targetDisplayHeight','maxVideoBitrateBps','maxAudioBitrateBps'] as const) if (raw[field] !== undefined && !count(raw[field])) invalid();
   for (const field of ['preparedProfileId','preparedVersionId','preparationId'] as const) if (raw[field] !== undefined && raw[field] !== '' && !id(raw[field])) invalid();
-  if (raw.preparationState !== undefined && raw.preparationState !== '' && !downloadStates.includes(String(raw.preparationState) as DownloadState)) invalid();
   // An unavailable option owes the client a reason; an available one has none.
   if (raw.available === (String(raw.reason ?? '') !== '')) invalid();
+  // The state of a preparation already under way is a hint; one this app does not know is left out.
+  const preparationState = oneOf(raw.preparationState, downloadStates) ?? '';
+  if (!preparationState && raw.preparationState !== undefined && raw.preparationState !== '') noteSkipped('download-options', 'option.preparationState');
   return Object.freeze({
     quality: String(raw.quality), label: raw.label, kind: String(raw.kind) as 'source'|'optimized',
     targetDisplayHeight: Number(raw.targetDisplayHeight ?? 0), maxVideoBitrateBps: Number(raw.maxVideoBitrateBps ?? 0), maxAudioBitrateBps: Number(raw.maxAudioBitrateBps ?? 0),
     estimatedBytes: raw.estimatedBytes, estimated: raw.estimated, available: raw.available, reason: String(raw.reason ?? ''),
     requiresPreparation: raw.requiresPreparation, preparedProfileId: String(raw.preparedProfileId ?? ''), preparedVersionId: String(raw.preparedVersionId ?? ''),
-    preparationId: String(raw.preparationId ?? ''), preparationState: String(raw.preparationState ?? ''),
+    preparationId: String(raw.preparationId ?? ''), preparationState,
   });
 }
 
@@ -298,11 +319,11 @@ export function parseDownloadOptions(raw: unknown, itemId: string): DownloadOpti
   for (const field of ['videoCodec','audioCodec'] as const) if (source[field] !== undefined && !text(source[field], 64)) invalid();
   if (source.height !== undefined && !count(source.height)) invalid();
   const policy = raw.policy;
-  if (!object(policy) || typeof policy.allowDownloads !== 'boolean' || !downloadReasons.includes(String(policy.reason ?? ''))) invalid();
+  if (!object(policy) || typeof policy.allowDownloads !== 'boolean' || !reasonCode(policy.reason ?? '')) invalid();
   if (policy.allowDownloads === (String(policy.reason ?? '') !== '')) invalid();
-  const options = array(raw.options, 16).map(qualityOption);
-  if (new Set(options.map(v => v.quality)).size !== options.length) invalid();
-  if (!options.length || options[0].quality !== 'original') invalid();
+  const options = firstOfEach('download-options', 'options', keepReadable('download-options', 'options', array(raw.options, 16), v => qualityOption(v)), v => v.quality);
+  // Nothing readable to offer is not an answer a person can act on.
+  if (!options.length) invalid();
   return Object.freeze({
     itemId, kind: raw.kind,
     source: Object.freeze({container: String(source.container ?? ''), videoCodec: String(source.videoCodec ?? ''), audioCodec: String(source.audioCodec ?? ''), height: Number(source.height ?? 0), durationSeconds: source.durationSeconds, bytes: source.bytes, available: source.available}),
@@ -402,9 +423,10 @@ export function parseRevocationPage(raw: unknown): DownloadRevocationPage {
   if (!object(raw) || !text(raw.nextCursor ?? '', 64) || !instant(raw.asOf)) invalid();
   const items = array(raw.items, 500).map(v => {
     if (!object(v) || !id(v.receiptId) || !id(v.itemId) || !id(v.profileId) || !instant(v.revokedAt)) invalid();
-    if (!downloadReasons.includes(String(v.reason)) || v.reason === '') invalid();
+    // A withdrawal is honoured whatever its reason: a code this app has no words for is still a withdrawal.
+    if (!code(v.reason)) invalid();
     if (!count(v.sequence) || v.sequence < 1) invalid();
-    return Object.freeze({receiptId: v.receiptId, itemId: v.itemId, profileId: v.profileId, reason: String(v.reason), revokedAt: v.revokedAt, sequence: v.sequence});
+    return Object.freeze({receiptId: v.receiptId, itemId: v.itemId, profileId: v.profileId, reason: v.reason, revokedAt: v.revokedAt, sequence: v.sequence});
   });
   // The cursor is a sequence, so the page must be ordered for it to mean
   // anything; an out-of-order page would silently lose revocations.
@@ -416,7 +438,7 @@ export function parseRevocationPage(raw: unknown): DownloadRevocationPage {
 export function parseDeferredProgressReceipt(raw: unknown): DeferredProgressReceipt {
   if (!object(raw) || !count(raw.applied) || !count(raw.conflicts)) invalid();
   const outcomes: readonly string[] = ['applied','history_paused','stale_observation','superseded_online','item_deleted','invalid_entry','observation_in_future'];
-  const entries = array(raw.entries, 100).map(v => {
+  const entries = keepReadable('download-progress', 'entries', array(raw.entries, 100), v => {
     // The server echoes whatever it was sent, including an entry it found unreadable, so the
     // identifiers of a refused entry are text, not necessarily ids.
     if (!object(v) || !text(v.itemId ?? '', 256) || !text(v.playId ?? '', 256) || !outcomes.includes(String(v.outcome)) || typeof v.watched !== 'boolean') invalid();
@@ -424,10 +446,13 @@ export function parseDeferredProgressReceipt(raw: unknown): DeferredProgressRece
     if (v.observedAt !== undefined && !text(v.observedAt, 64)) invalid();
     return Object.freeze({playId: String(v.playId ?? ''), itemId: String(v.itemId ?? ''), outcome: String(v.outcome) as DeferredProgressOutcome, positionSeconds: v.positionSeconds, watched: v.watched, observedAt: String(v.observedAt ?? '')});
   });
-  // A play recorded while the viewer has paused their history is neither applied nor in conflict.
-  if (raw.applied + raw.conflicts + entries.filter(v => v.outcome === 'history_paused').length !== entries.length) invalid();
-  if (entries.filter(v => v.outcome === 'applied').length !== raw.applied) invalid();
-  return Object.freeze({applied: raw.applied, conflicts: raw.conflicts, entries: Object.freeze(entries)});
+  // The counts are read off the entries this app could read, so they never claim more than the
+  // entries show. A play recorded while the viewer has paused their history is neither applied
+  // nor in conflict.
+  const applied = entries.filter(v => v.outcome === 'applied').length;
+  const conflicts = entries.filter(v => v.outcome !== 'applied' && v.outcome !== 'history_paused').length;
+  if (applied !== raw.applied || conflicts !== raw.conflicts) noteSkipped('download-progress', 'counts');
+  return Object.freeze({applied, conflicts, entries: Object.freeze(entries)});
 }
 
 export function parseDownloadUsage(raw: unknown): DownloadUsage {
@@ -437,11 +462,10 @@ export function parseDownloadUsage(raw: unknown): DownloadUsage {
   if (raw.profileBytes > raw.serverBytes || raw.profileCount > raw.serverCount) invalid();
   const remaining = nullableCount(raw.remainingBytes);
   if (raw.maxPreparedBytes === 0 ? remaining !== null : remaining === null) invalid();
-  const profiles = array(raw.profiles, 256).map(v => {
+  const profiles = firstOfEach('download-usage', 'profiles', keepReadable('download-usage', 'profiles', array(raw.profiles, 256), v => {
     if (!object(v) || !id(v.profileId) || !count(v.bytes) || !count(v.count)) invalid();
     return Object.freeze({profileId: v.profileId, bytes: v.bytes, count: v.count});
-  });
-  if (new Set(profiles.map(v => v.profileId)).size !== profiles.length) invalid();
+  }), v => v.profileId);
   return Object.freeze({
     profileId: raw.profileId, profileBytes: raw.profileBytes, profileCount: raw.profileCount,
     serverBytes: raw.serverBytes, serverCount: raw.serverCount, distinctArtifactBytes: raw.distinctArtifactBytes,
@@ -452,12 +476,17 @@ export function parseDownloadUsage(raw: unknown): DownloadUsage {
 export function parseDownloadSettings(raw: unknown): DownloadSettings {
   if (!object(raw) || !count(raw.maxPreparedBytes) || !count(raw.retentionDays) || !count(raw.revision)) invalid();
   if (raw.retentionDays < 1 || raw.retentionDays > 365 || raw.revision < 1) invalid();
-  const qualities = array(raw.qualities, 32).map(v => {
-    if (!object(v) || !id(v.quality) || !text(v.label, 128) || !['source','optimized'].includes(String(v.kind))) invalid();
+  // The menu for a whole show or album. A choice this app cannot read is left out and the rest
+  // are kept; the original is always there to ask for, so a menu that cannot be read at all, or
+  // does not lead with it, is the original alone.
+  const original: DownloadQualityChoice = Object.freeze({quality: originalQuality, label: 'Original', kind: 'source', targetDisplayHeight: 0});
+  if (raw.qualities !== undefined && !Array.isArray(raw.qualities)) noteSkipped('download-settings', 'qualities');
+  let qualities = firstOfEach('download-settings', 'qualities', keepReadable('download-settings', 'qualities', Array.isArray(raw.qualities) ? raw.qualities.slice(0, 32) : [], v => {
+    if (!object(v) || !code(v.quality) || !text(v.label, 128) || !['source','optimized'].includes(String(v.kind))) invalid();
     if (v.targetDisplayHeight !== undefined && !count(v.targetDisplayHeight)) invalid();
     return Object.freeze({quality: v.quality, label: v.label, kind: String(v.kind) as 'source'|'optimized', targetDisplayHeight: Number(v.targetDisplayHeight ?? 0)});
-  });
-  if (new Set(qualities.map(v => v.quality)).size !== qualities.length || qualities[0]?.quality !== originalQuality) invalid();
+  }), v => v.quality);
+  if (qualities[0]?.quality !== originalQuality) qualities = [original, ...qualities.filter(v => v.quality !== originalQuality)];
   return Object.freeze({maxPreparedBytes: raw.maxPreparedBytes, retentionDays: raw.retentionDays, revision: raw.revision, qualities: Object.freeze(qualities)});
 }
 
@@ -483,10 +512,11 @@ export function downloadTitleLines(title: DownloadTitle): Readonly<{title: strin
 /** Whether an action the client is about to send is one the server published. */
 export const downloadActionOffered = (preparation: DownloadPreparation, action: DownloadAction): boolean => preparation.actions.includes(action);
 
-/** The sentence for a reason code, in the viewer's language. An unknown code says nothing rather
- * than showing the code. */
+/** The sentence for a reason code, in the viewer's language. A code this app has no sentence for
+ * (a newer server's) is said as its own words rather than left blank. */
 export function downloadReasonMessage(reason: string): string {
-  if (!reason || !downloadReasons.includes(reason)) return '';
+  if (!reason) return '';
+  if (!downloadReasons.includes(reason)) return reason.replace(/_/g, ' ');
   return serviceText(('downloads.reason.' + reason) as MessageId);
 }
 

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"portico.local/server/internal/dbwork"
 	workerloop "portico.local/server/internal/worker"
+	"strings"
 	"time"
 
 	"portico.local/server/internal/livechannels"
@@ -177,6 +178,13 @@ func (s *Store) ReconcileOne(ctx context.Context) (bool, error) {
 					}
 					return false, e
 				}
+				duplicate, err := duplicateEpisodeTx(ctx, tx, o, c.SourceID, p)
+				if err != nil {
+					return false, err
+				}
+				if duplicate {
+					continue
+				}
 				start, end, e := padded(p, c.Options)
 				if e != nil {
 					return false, e
@@ -282,4 +290,24 @@ func (s *Store) RunIntentMaintenance(ctx context.Context) {
 		}
 		return time.Second
 	})
+}
+
+// Only reliable episode evidence suppresses another airing. A generic provider
+// identifier or a title match never hides a programme the viewer meant to record.
+func duplicateEpisodeTx(ctx context.Context, tx *sql.Tx, o livechannels.Owner, source string, p livechannels.Programme) (bool, error) {
+	if p.SeriesID == "" {
+		return false, nil
+	}
+	episode := p.EpisodeID
+	if episode != "" && !strings.HasSuffix(episode, "0000") {
+		var exists bool
+		e := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM dvr_recordings WHERE owner_key=? AND source_id=? AND programme_id<>? AND json_extract(programme_json,'$.seriesId')=? AND json_extract(programme_json,'$.episodeId')=? AND state NOT IN('failed','cancelled','deleted','pending-delete'))`, o.Key(), source, p.ID, p.SeriesID, episode).Scan(&exists)
+		return exists, e
+	}
+	if p.Episode == nil || p.Episode.Season <= 0 || p.Episode.Number <= 0 {
+		return false, nil
+	}
+	var exists bool
+	e := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM dvr_recordings WHERE owner_key=? AND source_id=? AND programme_id<>? AND json_extract(programme_json,'$.seriesId')=? AND json_extract(programme_json,'$.episode.season')=? AND json_extract(programme_json,'$.episode.number')=? AND state NOT IN('failed','cancelled','deleted','pending-delete'))`, o.Key(), source, p.ID, p.SeriesID, p.Episode.Season, p.Episode.Number).Scan(&exists)
+	return exists, e
 }

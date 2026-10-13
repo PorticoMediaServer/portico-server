@@ -250,7 +250,8 @@ const blank: Omit<Group, 'id' | 'revision'> = {owner: {authority: 'local', accou
 /** Standing instructions for an explicitly owned series selected from the real guide. */
 export function RecordingRulesGroup({sources}: {sources: readonly {id: string; name: string}[]}) {
   const admin = useAdmin();
-  const {t} = useI18n();
+  const i18n = useI18n();
+  const {t} = i18n;
   const {api} = useSession();
   const serverId = useServerId();
   const policy = useRead(async () => {
@@ -324,7 +325,7 @@ export function RecordingRulesGroup({sources}: {sources: readonly {id: string; n
               {!guideRoute ? <Notice tone="info" compact>{t('web.recordingRules.validDate')}</Notice> : null}
               {guide.error ? <Notice tone="error" compact action={{label: t('action.tryAgain'), onClick: guide.reload}}>{guide.error}</Notice> : null}
               {guide.loading ? <Loading label={t('web.recordingRules.readingGuide')} /> : null}
-              <Select label={t('web.recordingRules.seriesFromGuide')} value={chosenSeries?.key ?? ''} onChange={e => { const picked = series.find(s => s.key === e.target.value); if (picked) setEdit({...edit, name: edit.name || picked.title, kind: 'series', match: picked.seriesId, sourceId: picked.anchor.sourceId, anchor: picked.anchor, enabled: picked.recordAvailable, options: {...edit.options, newEpisodesOnly: false}}); }} options={[{value: '', label: t('web.recordingRules.chooseProgram')}, ...series.map(s => ({value: s.key, label: t('web.recordingRules.seriesOption', {title: s.title, channel: s.channelName, time: new Date(s.startsAt).toLocaleTimeString(), available: s.recordAvailable ? 'yes' : 'no'})}))]} />
+              <Select label={t('web.recordingRules.seriesFromGuide')} value={chosenSeries?.key ?? ''} onChange={e => { const picked = series.find(s => s.key === e.target.value); if (picked) setEdit({...edit, name: edit.name || picked.title, kind: 'series', match: picked.seriesId, sourceId: picked.anchor.sourceId, anchor: picked.anchor, enabled: picked.recordAvailable, options: {...edit.options, newEpisodesOnly: false}}); }} options={[{value: '', label: t('web.recordingRules.chooseProgram')}, ...series.map(s => ({value: s.key, label: t('web.recordingRules.seriesOption', {title: s.title, channel: s.channelName, time: i18n.time(s.startsAt), available: s.recordAvailable ? 'yes' : 'no'})}))]} />
               {!guide.loading && guide.data && !series.length ? <Text variant="caption" tone="secondary">{t('web.recordingRules.noSeries')}</Text> : null}
               <div style={{display: 'flex', gap: 8}}>{guideCursor ? <Button size="sm" variant="ghost" label={t('web.recordingRules.firstChannels')} onClick={() => setGuideCursor('')} /> : null}{guide.data?.nextCursor ? <Button size="sm" variant="ghost" label={t('web.live.empty.moreTitle')} onClick={() => setGuideCursor(guide.data!.nextCursor)} /> : null}</div>
               {chosenSeries && !chosenSeries.recordAvailable ? <Notice tone="info" compact>{t('web.recordingRules.captureUnavailable')}</Notice> : null}

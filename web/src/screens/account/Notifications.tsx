@@ -1,16 +1,15 @@
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {useNavigate} from '@tanstack/react-router';
-import {defaultI18n} from '@i18n';
+import {useI18n, type I18n} from '../../app/i18n';
 import {AccountNotificationsClient, ACCOUNT_SECURITY_EVENTS, runAccountExport, type AccountNotification, type NotificationPreferences} from '@core/account-notifications.ts';
 import {saveJSON} from '../../app/account-notifications';
 import {accountApi, type AccountScope} from '../../bridge/account-api';
 import {ErrorNotice, errorText} from '../../app/errors';
 import {Button, Loading, Notice, SettingsGroup, SettingsPage, SettingsRow, StateView, Switch, relative, type IconName} from '../../ui';
 
-const t = defaultI18n.t;
-
 /** What a notification says: a title, a body line and its icon, from the kind and its detail. */
-export function describeNotification(n: AccountNotification): {title: string; body: string; icon: IconName} {
+export function describeNotification(n: AccountNotification, i18n: I18n): {title: string; body: string; icon: IconName} {
+  const {t} = i18n;
   const server = n.server?.name ?? '';
   switch (n.kind) {
     case 'server_offline': return {title: t('web.account.notif.serverOffline', {server}), body: t('web.account.notif.serverOfflineBody'), icon: 'server'};
@@ -22,7 +21,7 @@ export function describeNotification(n: AccountNotification): {title: string; bo
       return {title: event ? t(`web.account.notif.event.${event}` as 'web.account.notif.event.password_changed') : t('web.account.notif.security'), body: t('web.account.notif.securityBody'), icon: 'shield'};
     }
     case 'account_export_ready': return {title: t('web.account.notif.exportReady'), body: t('web.account.export.help'), icon: 'download'};
-    case 'signing_key_expiring': return {title: t('web.account.notif.keyExpiring'), body: t('web.account.notif.keyExpiringBody', {key: n.detail.keyId ?? '', date: n.detail.expiresAt ? new Date(n.detail.expiresAt).toLocaleDateString() : ''}), icon: 'lock'};
+    case 'signing_key_expiring': return {title: t('web.account.notif.keyExpiring'), body: t('web.account.notif.keyExpiringBody', {key: n.detail.keyId ?? '', date: n.detail.expiresAt ? i18n.date(n.detail.expiresAt) : ''}), icon: 'lock'};
     default: return {title: t('web.account.notif.other'), body: '', icon: 'bell'};
   }
 }
@@ -33,6 +32,8 @@ export function describeNotification(n: AccountNotification): {title: string; bo
  * data ready → the download). Below it, which owner alerts to show.
  */
 export function Notifications({scope, onUnread}: {scope: AccountScope; onUnread: (count: number) => void}) {
+  const i18n = useI18n();
+  const {t} = i18n;
   const navigate = useNavigate();
   const client = useMemo(() => new AccountNotificationsClient(accountApi(scope).request), [scope.accountId, scope.familyId]); // eslint-disable-line react-hooks/exhaustive-deps
   const [items, setItems] = useState<AccountNotification[]>([]);
@@ -81,7 +82,7 @@ export function Notifications({scope, onUnread}: {scope: AccountScope; onUnread:
       {items.length ? (
         <SettingsGroup title={t('web.account.notifications')} action={unread ? <Button size="sm" variant="ghost" icon="check" label={t('web.account.notif.markAll')} onClick={() => void markRead('all')} /> : undefined}>
           {items.map(n => {
-            const d = describeNotification(n);
+            const d = describeNotification(n, i18n);
             return <SettingsRow key={n.id} icon={d.icon} label={<span style={{fontWeight: n.read ? 500 : 700}}>{d.title}</span>} help={[d.body, relative(Date.now() - Date.parse(n.occurredAt))].filter(Boolean).join(' · ')} meta={n.read ? undefined : t('web.account.notif.unread')} onClick={() => open(n)} />;
           })}
         </SettingsGroup>
@@ -93,6 +94,7 @@ export function Notifications({scope, onUnread}: {scope: AccountScope; onUnread:
 }
 
 function NotificationPrefs({client}: {client: AccountNotificationsClient}) {
+  const {t} = useI18n();
   const [prefs, setPrefs] = useState<NotificationPreferences>();
   const [error, setError] = useState('');
   useEffect(() => { client.preferences().then(setPrefs, e => setError(errorText(e, 'account', 'load'))); }, [client]);
@@ -118,6 +120,7 @@ function NotificationPrefs({client}: {client: AccountNotificationsClient}) {
 
 /** "Download your data": request the export, wait while it's prepared, then save the JSON. No email, no link. */
 export function DataExport({scope}: {scope: AccountScope}) {
+  const {t} = useI18n();
   const client = useMemo(() => new AccountNotificationsClient(accountApi(scope).request), [scope.accountId, scope.familyId]); // eslint-disable-line react-hooks/exhaustive-deps
   const [phase, setPhase] = useState<'idle' | 'working' | 'pending' | 'done'>('idle');
   const [error, setError] = useState('');

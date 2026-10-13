@@ -77,7 +77,7 @@ a `personal-state:apply` selector endpoint are **not specified**.
 
 `POST /v1/jobs (jobs.openapi.yaml, operationId create_job)` captures a
 selection and enqueues one of `personal-state | playlist-add | collection-add
-| metadata-edit | refresh | trash`. The selector is the tagged union
+| metadata-edit | refresh`. The selector is the tagged union
 (`container` with `kind=show|season|album|artist|book|collection|playlist|library`
 plus `id`; `items` with 1–200 `ids`; `query` with `libraryId`, `pivot`, and the
 browse expression `filter`/`sort`):

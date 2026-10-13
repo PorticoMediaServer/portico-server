@@ -21,6 +21,9 @@ function Shell({label, help, error, optional, className, id, hideLabel, children
   );
 }
 
+/** What describes a control to assistive technology: the field's own help or error, then anything the caller names. */
+const describedBy = (id: string, help: React.ReactNode, error: React.ReactNode, own?: string) => [help || error ? id + '-help' : '', own ?? ''].filter(Boolean).join(' ') || undefined;
+
 /** Text input with a persistent label, help and inline validation. */
 export function Input({label, help, error, optional, className, hideLabel, trailing, mono, code, ...rest}: FieldShell & Omit<React.ComponentPropsWithoutRef<'input'>, 'className'> & {trailing?: React.ReactNode; mono?: boolean; code?: boolean}) {
   const auto = useId();
@@ -28,7 +31,7 @@ export function Input({label, help, error, optional, className, hideLabel, trail
   return (
     <Shell label={label} help={help} error={error} optional={optional} className={className} id={id} hideLabel={hideLabel}>
       <div className={s.control}>
-        <input {...rest} id={id} className={cx(s.input, trailing && s.withTrailing, mono && s.mono, code && s.code)} aria-invalid={error ? true : undefined} aria-describedby={[help || error ? id + '-help' : '', rest['aria-describedby'] ?? ''].filter(Boolean).join(' ') || undefined} />
+        <input {...rest} id={id} className={cx(s.input, trailing && s.withTrailing, mono && s.mono, code && s.code)} aria-invalid={error ? true : undefined} aria-describedby={describedBy(id, help, error, rest['aria-describedby'])} />
         {trailing ? <span className={s.trailing}>{trailing}</span> : null}
       </div>
     </Shell>
@@ -45,7 +48,7 @@ export function TextArea({label, help, error, optional, className, hideLabel, ..
   const id = rest.id ?? auto;
   return (
     <Shell label={label} help={help} error={error} optional={optional} className={className} id={id} hideLabel={hideLabel}>
-      <textarea {...rest} id={id} className={cx(s.input, s.textarea)} aria-invalid={error ? true : undefined} />
+      <textarea {...rest} id={id} className={cx(s.input, s.textarea)} aria-invalid={error ? true : undefined} aria-describedby={describedBy(id, help, error, rest['aria-describedby'])} />
     </Shell>
   );
 }
@@ -56,7 +59,7 @@ export function Select({label, help, error, optional, className, hideLabel, opti
   return (
     <Shell label={label} help={help} error={error} optional={optional} className={className} id={id} hideLabel={hideLabel}>
       <div className={s.control}>
-        <select {...rest} id={id} className={cx(s.input, s.select)} aria-invalid={error ? true : undefined}>
+        <select {...rest} id={id} className={cx(s.input, s.select)} aria-invalid={error ? true : undefined} aria-describedby={describedBy(id, help, error, rest['aria-describedby'])}>
           {placeholder ? <option value="" disabled>{placeholder}</option> : null}
           {options.map(o => <option key={o.value} value={o.value} disabled={o.disabled}>{o.label}</option>)}
         </select>

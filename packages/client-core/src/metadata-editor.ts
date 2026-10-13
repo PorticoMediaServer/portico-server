@@ -1,11 +1,12 @@
 import {unreadableServerResponse} from './server-messages.ts';
+import {oneOf} from './tolerant.ts';
 /** Owner text edits are explicit CAS commands; interrupted saves are never replayed. */
 export type MetadataEditorTarget=Readonly<{libraryId:string;itemId:string}>;
 export type MetadataEditorScope=Readonly<{serverId:string;viewerId:string}>;
 export type MetadataEditCommitted=Readonly<{scope:MetadataEditorScope;target:MetadataEditorTarget;revision:string}>;
 type Api={request<T>(path:string,method?:string,body?:unknown,signal?:AbortSignal):Promise<T>};
 export type MetadataField=Readonly<{value:string;automaticValue:string;manual:boolean}>;
-export type MetadataEditProjection=Readonly<{scope:Readonly<{serverId:string;libraryId:string;itemId:string;viewerFence:string}>;revision:string;kind:'movie'|'episode'|'song'|'audiobook_file';title:MetadataField;description:MetadataField;updatedAt?:string}>;
+export type MetadataEditProjection=Readonly<{scope:Readonly<{serverId:string;libraryId:string;itemId:string;viewerFence:string}>;revision:string;kind?:'movie'|'episode'|'song'|'audiobook_file';title:MetadataField;description:MetadataField;updatedAt?:string}>;
 export type MetadataEditPatch=Readonly<{title?:string|null;description?:string|null}>;
 type ErrorInfo=Readonly<{code:string;message:string}>;
 export type MetadataEditorSnapshot=Readonly<{phase:'idle'|'loading'|'ready'|'saving'|'conflict'|'uncertain'|'error'|'denied';data:MetadataEditProjection|null;error:ErrorInfo|null}>;
@@ -20,10 +21,15 @@ export function validMetadataPatch(patch:unknown):patch is MetadataEditPatch{
  (patch.title===undefined||patch.title===null||text(patch.title,300)&&Boolean(patch.title.trim()))&&
  (patch.description===undefined||patch.description===null||text(patch.description,20000,true));
 }
+const editKinds=['movie','episode','song','audiobook_file'] as const;
+/** The scope, the viewer fence and the revision stay exact; a kind this app does not know and an
+ * optional date it cannot read are left off rather than refusing the whole projection. */
 export function validateMetadataEdit(v:unknown,scope:MetadataEditorScope,target:MetadataEditorTarget):MetadataEditProjection{
- if(!object(v)||!object(v.scope)||v.scope.serverId!==scope.serverId||v.scope.libraryId!==target.libraryId||v.scope.itemId!==target.itemId||!hash(v.scope.viewerFence)||!hash(v.revision)||!['movie','episode','song','audiobook_file'].includes(String(v.kind))||v.updatedAt!==undefined&&(typeof v.updatedAt!=='string'||v.updatedAt.length>64||!Number.isFinite(Date.parse(v.updatedAt))))invalid();
+ if(!object(v)||!object(v.scope)||v.scope.serverId!==scope.serverId||v.scope.libraryId!==target.libraryId||v.scope.itemId!==target.itemId||!hash(v.scope.viewerFence)||!hash(v.revision))invalid();
+ const kind=oneOf(v.kind,editKinds);
+ const updatedAt=typeof v.updatedAt==='string'&&v.updatedAt.length<=64&&Number.isFinite(Date.parse(v.updatedAt))?v.updatedAt:undefined;
  const field=(raw:unknown,title:boolean):MetadataField=>{if(!object(raw)||!sourceText(raw.value,title)||!sourceText(raw.automaticValue,title)||typeof raw.manual!=='boolean'||!raw.manual&&raw.value!==raw.automaticValue)invalid();return Object.freeze({value:raw.value,automaticValue:raw.automaticValue,manual:raw.manual});};
- return Object.freeze({scope:Object.freeze({serverId:scope.serverId,libraryId:target.libraryId,itemId:target.itemId,viewerFence:v.scope.viewerFence}),revision:v.revision,kind:v.kind as MetadataEditProjection['kind'],title:field(v.title,true),description:field(v.description,false),...(v.updatedAt?{updatedAt:v.updatedAt as string}:{})});
+ return Object.freeze({scope:Object.freeze({serverId:scope.serverId,libraryId:target.libraryId,itemId:target.itemId,viewerFence:v.scope.viewerFence}),revision:v.revision,...(kind===undefined?{}:{kind}),title:field(v.title,true),description:field(v.description,false),...(updatedAt?{updatedAt}:{})});
 }
 type Options={api:Api;scope:MetadataEditorScope;timeoutMs?:number};
 export class MetadataEditorService{

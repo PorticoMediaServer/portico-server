@@ -9,7 +9,7 @@ const load = () => componentModule(new URL('../src/screens/server/Backups.tsx', 
 
 test('every restore refusal code has catalogue copy and nothing else maps', async () => {
   const {RESTORE_REFUSAL_MESSAGE_IDS} = await load();
-  assert.deepEqual(Object.keys(RESTORE_REFUSAL_MESSAGE_IDS).sort(), ['insufficient_disk', 'restore_integrity_failed', 'restore_not_portico', 'restore_pre_release', 'restore_schema_newer', 'restore_source_invalid']);
+  assert.deepEqual(Object.keys(RESTORE_REFUSAL_MESSAGE_IDS).sort(), ['insufficient_disk', 'restore_integrity_failed', 'restore_lock_unavailable', 'restore_not_portico', 'restore_pre_release', 'restore_schema_newer', 'restore_source_invalid']);
   for (const id of Object.values(RESTORE_REFUSAL_MESSAGE_IDS)) assert.match(id as string, /^web\.maintenance\./);
 });
 

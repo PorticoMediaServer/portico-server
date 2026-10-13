@@ -81,7 +81,7 @@ type CapAudioDecode struct {
 	SampleRates   []int    `json:"sampleRates,omitempty"`
 	MaxChannels   int      `json:"maxChannels,omitempty"`
 	MaxBitDepth   int      `json:"maxBitDepth,omitempty"`
-	// Via is the client's own note of which decoder path passed; the server ignores it.
+	// Via is the client's own note of which decoder path passed; the planner uses it to apply the decoder's qualified profile limits.
 	Via string `json:"via,omitempty"`
 }
 
@@ -93,7 +93,7 @@ func (c Capabilities) AudioDecodeCaps() []playback.AudioDecodeCap {
 		for _, x := range a.Containers {
 			containers = append(containers, strings.ToLower(x))
 		}
-		out = append(out, playback.AudioDecodeCap{Codec: strings.ToLower(a.Codec), Containers: containers, MaxSampleRate: a.MaxSampleRate, SampleRates: slices.Clone(a.SampleRates), MaxChannels: a.MaxChannels, MaxBitDepth: a.MaxBitDepth})
+		out = append(out, playback.AudioDecodeCap{Codec: strings.ToLower(a.Codec), Containers: containers, MaxSampleRate: a.MaxSampleRate, SampleRates: slices.Clone(a.SampleRates), MaxChannels: a.MaxChannels, MaxBitDepth: a.MaxBitDepth, Via: a.Via})
 	}
 	return out
 }
@@ -219,7 +219,7 @@ func (c Capabilities) ClientProfile(platform, app, appVersion string) playback.C
 	p.MaxBitrateBPS = c.Network.MaxBitrateKbps * 1000
 	p.EmbeddedAudioSwitching = c.Features["embeddedAudioSwitching"]
 	for _, a := range c.AudioDecode {
-		p.AudioDecode = append(p.AudioDecode, playback.ClientAudioDecode{Codec: strings.ToLower(a.Codec), Containers: a.Containers, MaxSampleRate: a.MaxSampleRate, SampleRates: a.SampleRates, MaxChannels: a.MaxChannels, MaxBitDepth: a.MaxBitDepth})
+		p.AudioDecode = append(p.AudioDecode, playback.ClientAudioDecode{Codec: strings.ToLower(a.Codec), Containers: a.Containers, MaxSampleRate: a.MaxSampleRate, SampleRates: a.SampleRates, MaxChannels: a.MaxChannels, MaxBitDepth: a.MaxBitDepth, Via: a.Via})
 	}
 	display := map[string]bool{"sdr": true}
 	if c.Display != nil {

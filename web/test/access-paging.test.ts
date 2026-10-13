@@ -15,10 +15,8 @@ const loadAccess = async () => {
 const loadCursors = () => componentModule(new URL('../src/admin/cursor-read.ts', import.meta.url), {
   react: hooks().react, './console': {},
 }) as Promise<any>;
-const loadAdmin = () => componentModule(new URL('../../packages/client-core/src/server-administration.ts', import.meta.url), {
-  react: {default: {}},
-  './server-messages.ts': {unreadableServerResponse: 'Unreadable server response.'},
-}) as Promise<any>;
+// The parser is headless TypeScript: it is loaded as itself, with the rules it shares with every other parser.
+const loadAdmin = () => import('@core/server-administration.ts') as Promise<any>;
 
 test('CD-07: every access list pages at limit=100 and follows nextCursor', async () => {
   const {accessLists, accessListPath} = await loadAccess();

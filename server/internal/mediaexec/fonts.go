@@ -5,9 +5,11 @@ import (
 	"crypto/sha256"
 	_ "embed"
 	"encoding/hex"
+	"encoding/xml"
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 )
@@ -18,14 +20,37 @@ import (
 // path does not exist) has no usable configuration at all: every glyph was
 // silently dropped and burned-in subtitles never appeared. Every decoder
 // therefore gets a fontconfig file of Portico's own, naming the host's font
-// directories (when there are any) and one bundled fallback face, DejaVu Sans
-// (fonts/LICENSE), so a subtitle always has a font whatever family it names.
+// directories (when there are any) and bundled Latin, CJK, Thai and Devanagari
+// fallback faces, so common scripts also work on a minimal host.
 
 //go:embed fonts/DejaVuSans.ttf
 var bundledFont []byte
 
 //go:embed fonts/LICENSE
 var bundledFontLicense []byte
+
+// Unmodified SIL OFL faces supply CJK, Thai and Devanagari glyphs on minimal
+// hosts. Embedded subtitle attachments take precedence through libass fontsdir.
+// Noto CJK revision f8d157532fbfaeda587e826d4cd5b21a49186f7c;
+// Google Fonts revision 66928797f271fed5ee428544e7229685e2d90127.
+//
+//go:embed fonts/NotoSansCJKjp-Regular.otf
+var notoCJKFont []byte
+
+//go:embed fonts/NotoCJK-LICENSE
+var notoCJKLicense []byte
+
+//go:embed fonts/NotoSansThai.ttf
+var notoThaiFont []byte
+
+//go:embed fonts/NotoSansThai-LICENSE
+var notoThaiLicense []byte
+
+//go:embed fonts/NotoSansDevanagari.ttf
+var notoDevanagariFont []byte
+
+//go:embed fonts/NotoSansDevanagari-LICENSE
+var notoDevanagariLicense []byte
 
 // hostFontDirs are read-only font sources a decoder may use when present:
 // the distribution's configuration, symlinked rules and fonts on Linux, the
@@ -50,13 +75,29 @@ func Fonts() (FontPack, error) {
 	fontPackMu.Lock()
 	defer fontPackMu.Unlock()
 	var host []string
-	for _, d := range hostFontDirs {
+	sources := append([]string(nil), hostFontDirs...)
+	if runtime.GOOS == "windows" {
+		root := os.Getenv("SystemRoot")
+		if filepath.IsAbs(root) && !strings.ContainsAny(root, "\n\r\x00") {
+			sources = append(sources, filepath.Join(root, "Fonts"))
+		}
+	}
+	for _, d := range sources {
 		if info, e := os.Stat(d); e == nil && info.IsDir() {
 			host = append(host, d)
 		}
 	}
 	sum := sha256.New()
 	sum.Write(bundledFont)
+	want := map[string][]byte{"DejaVuSans.ttf": bundledFont, "LICENSE": bundledFontLicense}
+	fallbacks := []struct {
+		name string
+		data []byte
+	}{{"NotoSansCJKjp-Regular.otf", notoCJKFont}, {"NotoCJK-LICENSE", notoCJKLicense}, {"NotoSansThai.ttf", notoThaiFont}, {"NotoSansThai-LICENSE", notoThaiLicense}, {"NotoSansDevanagari.ttf", notoDevanagariFont}, {"NotoSansDevanagari-LICENSE", notoDevanagariLicense}}
+	for _, font := range fallbacks {
+		want[font.name] = font.data
+		sum.Write(font.data)
+	}
 	sum.Write([]byte(strings.Join(host, "\n")))
 	dir := filepath.Join(fontRoot(), "portico-fonts-"+hex.EncodeToString(sum.Sum(nil))[:16])
 	if !filepath.IsAbs(dir) {
@@ -73,11 +114,11 @@ func Fonts() (FontPack, error) {
 			conf.WriteString("  <include ignore_missing=\"yes\">/etc/fonts/fonts.conf</include>\n")
 			continue
 		}
-		conf.WriteString("  <dir>" + d + "</dir>\n")
+		conf.WriteString("  <dir>" + fontXMLPath(d) + "</dir>\n")
 	}
-	conf.WriteString("  <dir>" + dir + "</dir>\n  <cachedir>/tmp/portico-fontconfig</cachedir>\n</fontconfig>\n")
+	conf.WriteString("  <dir>" + fontXMLPath(dir) + "</dir>\n  <cachedir>" + fontXMLPath(filepath.Join(os.TempDir(), "portico-fontconfig")) + "</cachedir>\n</fontconfig>\n")
 	pack := FontPack{Dir: dir, Config: filepath.Join(dir, "fonts.conf"), Host: host}
-	want := map[string][]byte{"DejaVuSans.ttf": bundledFont, "LICENSE": bundledFontLicense, "fonts.conf": []byte(conf.String())}
+	want["fonts.conf"] = []byte(conf.String())
 	for name, body := range want {
 		if have, e := os.ReadFile(filepath.Join(dir, name)); e == nil && bytes.Equal(have, body) {
 			continue
@@ -106,4 +147,10 @@ func Fonts() (FontPack, error) {
 		}
 	}
 	return pack, nil
+}
+
+func fontXMLPath(path string) string {
+	var out bytes.Buffer
+	_ = xml.EscapeText(&out, []byte(filepath.ToSlash(path)))
+	return out.String()
 }

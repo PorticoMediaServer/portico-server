@@ -23,6 +23,12 @@ func PaceBackground(ctx context.Context, batchStarted time.Time) bool {
 	}
 	elapsed := time.Since(batchStarted)
 	pause := 50 * time.Millisecond
+	switch BackgroundSpeed(ctx) {
+	case SpeedGentle:
+		pause = 100 * time.Millisecond
+	case SpeedFast:
+		pause = 20 * time.Millisecond
+	}
 	// Compare before multiplication so even a stale start cannot overflow.
 	if elapsed < pause/3 {
 		pause = max(2*time.Millisecond, 3*elapsed)

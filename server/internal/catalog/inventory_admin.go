@@ -57,7 +57,7 @@ func (s *Service) Inventory(ctx context.Context, r AdminRequest, source, state s
 	if err := adminLimit(&r); err != nil {
 		return out, err
 	}
-	if state != "" && state != "missing" && state != "trashed" && state != "available" && state != "unsupported" {
+	if state != "" && state != "missing" && state != "available" && state != "unsupported" {
 		return out, ErrAdminQuery
 	}
 	if err := s.read().QueryRowContext(ctx, `SELECT revision FROM library_configuration WHERE library_id=?`, r.LibraryID).Scan(&out.Revision); err != nil {
@@ -73,7 +73,7 @@ func (s *Service) Inventory(ctx context.Context, r AdminRequest, source, state s
 		}
 		after = c.ID
 	}
-	where := `s.library_id=? AND o.id>? AND o.state!='forgotten'`
+	where := `s.library_id=? AND o.id>?`
 	args := []any{r.LibraryID, after}
 	if source != "" {
 		where += ` AND s.id=?`
@@ -81,16 +81,14 @@ func (s *Service) Inventory(ctx context.Context, r AdminRequest, source, state s
 	}
 	switch state {
 	case "missing":
-		where += ` AND (o.state='missing' OR o.missing_since!='')`
-	case "trashed":
-		where += ` AND o.state='trashed'`
+		where += ` AND o.state='missing'`
 	case "available":
 		where += ` AND o.state='available' AND o.retired=0 AND s.enabled=1 AND s.health NOT IN('offline','root_changed','removing') AND o.root_incarnation=s.incarnation AND o.unsupported_reason=''`
 	case "unsupported":
 		where += ` AND o.unsupported_reason!=''`
 	}
 	args = append(args, r.Limit+1)
-	rows, err := s.read().QueryContext(ctx, `SELECT o.id,o.source_id,o.asset_id,COALESCE((SELECT pid(ve.public_id) FROM inventory_version_links v JOIN catalog_entities ve ON ve.id=v.item_id WHERE v.library_id=s.library_id AND v.asset_id=o.asset_id),(SELECT pid(i.public_id) FROM catalog_assets a JOIN catalog_asset_links ia INDEXED BY catalog_asset_links_asset ON ia.asset_id=a.id JOIN catalog_entities i ON i.id=ia.entity_id JOIN catalog_libraries cl ON cl.id=i.library_id WHERE a.token=o.asset_id AND cl.library_id=s.library_id ORDER BY ia.entity_id LIMIT 1),''),o.relative_path,o.revision,CASE WHEN o.state='trashed' THEN 'trashed' WHEN o.retired=1 OR o.root_incarnation!=s.incarnation THEN 'replaced' WHEN s.enabled=0 THEN 'source_removed' WHEN s.health IN('offline','root_changed') THEN 'source_unavailable' WHEN o.unsupported_reason!='' THEN 'unsupported' WHEN o.missing_since!='' AND o.state='available' THEN 'missing_candidate' ELSE o.state END,o.size,o.modified_ns,o.missing_since,o.analysis_state,o.analysis_error,o.unsupported_reason FROM inventory_objects o JOIN library_sources s ON s.id=o.source_id WHERE `+where+` ORDER BY o.id LIMIT ?`, args...)
+	rows, err := s.read().QueryContext(ctx, `SELECT o.id,o.source_id,o.asset_id,COALESCE((SELECT pid(ve.public_id) FROM inventory_version_links v JOIN catalog_entities ve ON ve.id=v.item_id WHERE v.library_id=s.library_id AND v.asset_id=o.asset_id),(SELECT pid(i.public_id) FROM catalog_assets a JOIN catalog_asset_links ia INDEXED BY catalog_asset_links_asset ON ia.asset_id=a.id JOIN catalog_entities i ON i.id=ia.entity_id JOIN catalog_libraries cl ON cl.id=i.library_id WHERE a.token=o.asset_id AND cl.library_id=s.library_id ORDER BY ia.entity_id LIMIT 1),''),o.relative_path,o.revision,CASE WHEN o.retired=1 OR o.root_incarnation!=s.incarnation THEN 'replaced' WHEN s.enabled=0 THEN 'source_removed' WHEN s.health IN('offline','root_changed') THEN 'source_unavailable' WHEN o.unsupported_reason!='' THEN 'unsupported' ELSE o.state END,o.size,o.modified_ns,o.missing_since,o.analysis_state,o.analysis_error,o.unsupported_reason FROM inventory_objects o JOIN library_sources s ON s.id=o.source_id WHERE `+where+` ORDER BY o.id LIMIT ?`, args...)
 	if err != nil {
 		return out, err
 	}
@@ -180,7 +178,7 @@ func (s *Service) CheckSource(ctx context.Context, library, id string, authorize
 	health := "ready"
 	if checkErr != nil {
 		health = "offline"
-	} else if storage.RootIdentity(observed) == "" || source.RootIdentity != "" && storage.RootIdentity(observed) != source.RootIdentity {
+	} else if storage.RootIdentity(observed) == "" || source.RootIdentity != "" && !storage.SameRoot(source.RootIdentity, storage.RootIdentity(observed)) {
 		health = "root_changed"
 	}
 	if ctx.Err() != nil {
@@ -212,97 +210,100 @@ func (s *Service) CheckSource(ctx context.Context, library, id string, authorize
 	return s.LibrarySource(ctx, id)
 }
 
-// Trash is reversible catalog state, never a filesystem delete. It requires a
-// corroborated missing object, fresh completed inventory and freshly unchanged
-// parent/root evidence. Permission failures are not interpreted as absence.
-func (s *Service) TrashInventory(ctx context.Context, library, object, revision, action string, authorize func(*sql.Tx) error) error {
-	if action != "trash" && action != "restore" && action != "forget" {
-		return ErrAdminQuery
-	}
-	var sourceID, asset, relative, state, job, inc string
-	var completed string
-	err := s.read().QueryRowContext(ctx, `SELECT o.source_id,o.asset_id,o.relative_path,o.state,s.last_complete_job,s.last_complete_at,o.root_incarnation FROM inventory_objects o JOIN library_sources s ON s.id=o.source_id WHERE o.id=? AND o.revision=? AND s.library_id=?`, object, revision, library).Scan(&sourceID, &asset, &relative, &state, &job, &completed, &inc)
+// SeparateInventoryVersion makes a file that was grouped as a version of a
+// title its own title again: the answer when two different films or tracks
+// were taken for one. The file keeps everything known about it; the title it
+// leaves keeps its other files and everyone's state. The decision is
+// remembered, so a later scan does not group them again.
+func (s *Service) SeparateInventoryVersion(ctx context.Context, library, object, revision string, authorize func(*sql.Tx) error) (string, error) {
+	gated, err := dbwork.Begin(ctx, s.db, dbwork.ClassFrom(ctx, dbwork.ClassInteractive))
 	if err != nil {
-		return err
+		return "", err
 	}
-	source, err := s.LibrarySource(ctx, sourceID)
-	if err != nil {
-		return err
-	}
-	if action == "restore" {
-		if state != "trashed" {
-			return ErrAdminQuery
-		}
-	} else {
-		if action == "trash" && state != "missing" || action == "forget" && state != "trashed" {
-			return ErrAdminQuery
-		}
-		when, e := time.Parse(time.RFC3339Nano, completed)
-		if e != nil || time.Since(when) > 10*time.Minute || !source.Enabled || inc != source.Incarnation {
-			return errors.New("a fresh complete scan is required before trash cleanup")
-		}
-		if err = s.VerifyInventoryAbsence(ctx, source, job, relative); err != nil {
-			return err
-		}
-	}
-	gated2, err := dbwork.Begin(ctx, s.db, dbwork.ClassFrom(ctx, dbwork.ClassInteractive))
-	if err != nil {
-		return err
-	}
-	tx := gated2.Tx()
-	defer gated2.Rollback()
+	tx := gated.Tx()
+	defer gated.Rollback()
 	if authorize == nil {
-		return ErrAdminQuery
+		return "", ErrAdminQuery
 	}
 	if err = authorize(tx); err != nil {
-		return err
+		return "", err
 	}
-	if err = sourcePlaybackBusy(ctx, tx, sourceID); err != nil {
-		return err
+	var asset, source, relative, libraryKind string
+	if err = tx.QueryRowContext(ctx, `SELECT o.asset_id,o.source_id,o.relative_path,l.kind FROM inventory_objects o JOIN library_sources s ON s.id=o.source_id JOIN libraries l ON l.id=s.library_id WHERE o.id=? AND o.revision=? AND o.retired=0 AND s.library_id=?`, object, revision, library).Scan(&asset, &source, &relative, &libraryKind); err != nil {
+		return "", err
 	}
-	var valid int
-	err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM inventory_objects o JOIN library_sources s ON s.id=o.source_id WHERE o.id=? AND o.revision=? AND o.state=? AND s.generation=? AND s.last_complete_job=? AND NOT EXISTS(SELECT 1 FROM inventory_source_active WHERE source_id=s.id))`, object, revision, state, source.Generation, job).Scan(&valid)
+	if libraryKind != "movie" && libraryKind != "music" && libraryKind != "audiobook" {
+		// An episode is placed by assigning it to a show, season and number.
+		return "", ErrAdminQuery
+	}
+	if err = sourcePlaybackBusy(ctx, tx, source); err != nil {
+		return "", err
+	}
+	assetID, err := compactcatalog.AssetByTokenTx(ctx, tx, asset)
 	if err != nil {
-		return err
+		return "", err
 	}
-	if valid != 1 {
-		return ErrStaleContinuation
+	handle, err := compactcatalog.LibraryTx(ctx, tx, library)
+	if err != nil {
+		return "", err
 	}
-	if action != "restore" {
-		if source.Kind == "remote" {
-			if err = remoteInventoryFenceTx(ctx, tx, job); err != nil {
-				return err
-			}
+	var current int64
+	var kind compactcatalog.Kind
+	var title string
+	var year, others int
+	if err = tx.QueryRowContext(ctx, `SELECT e.id,e.kind,e.title,e.year,(SELECT count(*) FROM catalog_asset_links x WHERE x.entity_id=e.id AND x.asset_id<>l.asset_id) FROM catalog_asset_links l INDEXED BY catalog_asset_links_asset JOIN catalog_entities e ON e.id=l.entity_id
+ JOIN catalog_kinds k ON k.id=e.kind AND k.playable=1 WHERE l.asset_id=? AND e.library_id=? ORDER BY e.id LIMIT 1`, assetID, handle).Scan(&current, &kind, &title, &year, &others); err != nil {
+		return "", err
+	}
+	if others == 0 {
+		// The only file of its title is already on its own.
+		return "", ErrAdminQuery
+	}
+	root, err := compactcatalog.LibraryRootTx(ctx, tx, handle)
+	if err != nil {
+		return "", err
+	}
+	var path string
+	if err = tx.QueryRowContext(ctx, `SELECT path FROM catalog_assets WHERE id=?`, assetID).Scan(&path); err != nil {
+		return "", err
+	}
+	if err = compactcatalog.UnlinkAssetTx(ctx, tx, current, assetID); err != nil {
+		return "", err
+	}
+	// The new title is known by its place alone, so no name it shares with the
+	// title it left can pull it back.
+	key := compactcatalog.ItemKey(root, path, 0) + "#separate"
+	separate, _, err := compactcatalog.EnsureEntityTx(ctx, tx, compactcatalog.Entity{Library: handle, Kind: kind, Key: key, Title: title, Year: year, Added: catalogedNow()})
+	if err != nil {
+		return "", err
+	}
+	if kind == compactcatalog.Track {
+		if _, err = tx.ExecContext(ctx, `INSERT OR IGNORE INTO catalog_songs(entity_id,album_id,disc_number,track_number) SELECT ?,album_id,disc_number,track_number FROM catalog_songs WHERE entity_id=?`, separate, current); err != nil {
+			return "", err
 		}
-		err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM inventory_objects o JOIN inventory_runs r ON r.job_id=? WHERE o.id=? AND r.authoritative=1 AND r.source_generation=? AND r.root_incarnation=? AND o.missing_observations>=2 AND o.seen_job!=r.job_id AND o.last_missing_job=r.job_id)`, job, object, source.Generation, source.Incarnation).Scan(&valid)
-		if err != nil {
-			return err
-		}
-		if valid != 1 {
-			return ErrStaleContinuation
+	}
+	if kind == compactcatalog.Part {
+		if _, err = tx.ExecContext(ctx, `INSERT OR IGNORE INTO catalog_book_files(entity_id,book_id,disc_number,part_number) SELECT ?,book_id,disc_number,part_number FROM catalog_book_files WHERE entity_id=?`, separate, current); err != nil {
+			return "", err
 		}
 	}
-	next := "trashed"
-	retired := 0
-	if action == "restore" {
-		next = "missing"
+	if err = compactcatalog.LinkAssetTx(ctx, tx, separate, assetID, compactcatalog.Link{}); err != nil {
+		return "", err
 	}
-	if action == "forget" {
-		next = "forgotten"
-		retired = 1
+	if err = compactcatalog.TouchEntityTx(ctx, tx, separate); err != nil {
+		return "", err
 	}
-	if _, err = tx.ExecContext(ctx, `UPDATE inventory_objects SET state=?,retired=?,trashed_at=CASE WHEN ?='trashed' THEN ? ELSE '' END WHERE id=?`, next, retired, next, time.Now().UTC().Format(time.RFC3339Nano), object); err != nil {
-		return err
+	if _, err = tx.ExecContext(ctx, `INSERT INTO inventory_version_links(library_id,asset_id,item_id) VALUES(?,?,?) ON CONFLICT(library_id,asset_id) DO UPDATE SET item_id=excluded.item_id`, library, asset, separate); err != nil {
+		return "", err
 	}
-	if action == "forget" {
-		if err = purgeForgottenInventoryItemsTx(ctx, tx, library, asset); err != nil {
-			return err
-		}
+	if err = inventoryEvent(ctx, tx, source, "owner:"+identity.Token(), object, asset, revision, "version_separated"); err != nil {
+		return "", err
 	}
-	if err = inventoryEvent(ctx, tx, sourceID, "owner:"+identity.Token(), object, asset, revision, action); err != nil {
-		return err
+	var public string
+	if err = tx.QueryRowContext(ctx, `SELECT pid(public_id) FROM catalog_entities WHERE id=?`, separate).Scan(&public); err != nil {
+		return "", err
 	}
-	return gated2.Commit()
+	return public, gated.Commit()
 }
 
 // AssociateInventoryVersion adds a physical alternative to an existing logical

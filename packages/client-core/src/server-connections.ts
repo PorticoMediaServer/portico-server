@@ -259,7 +259,22 @@ export function refreshStoredSession(o:RefreshStoredOptions):Promise<LocalSessio
   let requestId=record.pendingRefresh;
   if(!requestId){
    const id=routeBase64((o.env.crypto??webRouteCrypto).random(24));requestId=id;
-   await o.env.storage.change(current=>same(current)&&current!.session.refreshToken===session.refreshToken?{...current!,pendingRefresh:id}:current);
+   // The first context to save a request id owns this renewal. The lock above does not reach
+   // other tabs where the browser has no Web Locks (a page on plain HTTP), so two tabs can get
+   // here together: the store's own atomic change lets exactly one id in, and the other tab
+   // reads it back and sends the very same request, which the server answers once for both.
+   // Sending two different ids for one refresh credential would look like theft and end the sign-in.
+   await o.env.storage.change(current=>same(current)&&current!.session.refreshToken===session.refreshToken&&!current!.pendingRefresh?{...current!,pendingRefresh:id}:current);
+   let after:RememberedServer|undefined;
+   try{after=parseRememberedServer(await o.env.storage.read());}catch{after=undefined;}
+   if(after&&same(after)){
+    if(after.session.refreshToken!==session.refreshToken){
+     // Another context finished the renewal in the meantime: use what it stored, send nothing.
+     if(Date.parse(after.session.expiresAt)-now()>minValid&&!after.pendingRefresh)return after.session;
+     throw new SessionRefreshError('refresh_unavailable_now','The server couldn’t renew your sign-in right now.',false);
+    }
+    if(after.pendingRefresh)requestId=after.pendingRefresh;
+   }
   }
   // React Native lacks AbortSignal.any/timeout: a plain controller bounds the request.
   const bound=new AbortController(),abort=()=>bound.abort(),timer=setTimeout(abort,o.timeoutMs??15_000);
@@ -283,7 +298,10 @@ export function refreshStoredSession(o:RefreshStoredOptions):Promise<LocalSessio
    if(status===404||status===405)throw new SessionRefreshError('refresh_unsupported','This server doesn’t renew sign-ins.',false,status as number);
    // Transport failures keep their own shape so restore policies still see "offline, retry".
    if(typeof status!=='number')throw e;
-   throw new SessionRefreshError('refresh_unavailable_now','The server couldn’t renew your sign-in right now.',false,status);
+   // The server's own wait (a 429 or 503 with Retry-After) travels with the failure, so the next try respects it.
+   const busy=new SessionRefreshError('refresh_unavailable_now','The server couldn’t renew your sign-in right now.',false,status);
+   const wait=(e as {retryAfterSeconds?:unknown}|null)?.retryAfterSeconds;if(typeof wait==='number'&&Number.isFinite(wait)&&wait>0)busy.retryAfterSeconds=wait;
+   throw busy;
   }finally{clearTimeout(timer);o.signal?.removeEventListener('abort',abort);}
   let next:LocalSession;
   try{next=parseLocalSession(raw,{authority:session.viewer.authority,accountId:session.viewer.accountId,profileId:session.viewer.profileId,serverId:session.viewer.serverId,role:session.viewer.role});}

@@ -9,7 +9,6 @@ import (
 	"portico.local/server/internal/assets"
 	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/dbwork"
-	"portico.local/server/internal/entityid"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/naming"
 	"portico.local/server/internal/storage"
@@ -189,7 +188,7 @@ func (s *Service) Libraries() ([]Library, error) {
 		return out, err
 	}
 	// The owner's order first (position), then by name for libraries not ordered yet.
-	rows, e := s.read().Query(`SELECT id,name,kind FROM libraries ORDER BY position,name,id`)
+	rows, e := s.read().Query(`SELECT id,name,kind FROM libraries WHERE NOT EXISTS(SELECT 1 FROM catalog_libraries gone WHERE gone.library_id=libraries.id AND gone.retired=1) ORDER BY position,name,id`)
 	if e != nil {
 		return nil, e
 	}
@@ -325,31 +324,6 @@ func (s *Service) Get(profile, id string) (Item, error) {
 	}
 	return i, nil
 }
-func (s *Service) Delete(id string) error {
-	gated2, e := dbwork.Begin(context.Background(), s.db, dbwork.ClassFrom(context.Background(), dbwork.ClassInteractive))
-	if e != nil {
-		return e
-	}
-	tx := gated2.Tx()
-	defer gated2.Rollback()
-	item, e := entityid.Resolve(context.Background(), tx, id)
-	if errors.Is(e, entityid.ErrNotFound) {
-		return gated2.Commit()
-	}
-	if e != nil {
-		return e
-	}
-	if _, e = tx.Exec(`DELETE FROM playback_sessions WHERE item_id=?`, item); e != nil {
-		return e
-	}
-	if _, e = tx.Exec(`DELETE FROM provider_evidence WHERE item_id=?`, item); e != nil {
-		return e
-	}
-	if e = compactcatalog.DeleteEntityTx(context.Background(), tx, item); e != nil {
-		return e
-	}
-	return gated2.Commit()
-}
 
 // FilenameTitle is the display adapter for the shared path evidence reader.
 // Identification callers should pass library-relative paths to naming.Read.
@@ -484,8 +458,9 @@ func (s *Service) CommitMedia(ctx context.Context, job, library, path string, f 
 	return gated3.Commit()
 }
 
-// commitMovieItem returns the movie a file backs in its library, creating the
-// movie (titled from the filename) and linking the file when it has none.
+// commitMovieItem returns the movie a file backs in its library. A file that
+// backs none yet is read by name and handed to the attach point, which makes
+// it a version of the film it names (creating the film when it is new).
 func commitMovieItem(ctx context.Context, tx *sql.Tx, library string, asset int64, path string) (int64, error) {
 	handle, err := compactcatalog.LibraryTx(ctx, tx, library)
 	if err != nil {
@@ -496,15 +471,8 @@ func commitMovieItem(ctx context.Context, tx *sql.Tx, library string, asset int6
 	if !errors.Is(err, sql.ErrNoRows) {
 		return item, err
 	}
-	root, err := compactcatalog.LibraryRootTx(ctx, tx, handle)
-	if err != nil {
-		return 0, err
-	}
 	title, year := FilenameTitle(path)
-	if item, _, err = compactcatalog.EnsureEntityTx(ctx, tx, compactcatalog.Entity{Library: handle, Kind: compactcatalog.Movie, Key: compactcatalog.ItemKey(root, path, 0), Title: title, Year: year, Added: catalogedNow()}); err != nil {
-		return 0, err
-	}
-	return item, compactcatalog.LinkAssetTx(ctx, tx, item, asset, compactcatalog.Link{})
+	return AttachMovieTx(ctx, tx, MovieFile{Library: library, Asset: asset, Path: path, Title: title, Year: year})
 }
 
 func projectArtwork(i *Item) {

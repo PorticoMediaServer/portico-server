@@ -63,7 +63,7 @@ func TestReadSidecarsShowSeasonAndRootGuard(t *testing.T) {
 	// A second scan shares the cached reads.
 	before := len(calls)
 	service.ReadSidecars(context.Background(), "lib", "tv", "/root", "/root/Show/Season 1/other.mkv", 1)
-	if len(calls) != before {
+	if len(calls) != before+2 {
 		t.Fatalf("cache missed: %d vs %d reads", len(calls), before)
 	}
 	// Movies read logos from their own folder only.

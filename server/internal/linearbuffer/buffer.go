@@ -32,6 +32,7 @@ const maxSegmentBytes int64 = 64 << 20
 const maxPending = 8
 
 type Options struct {
+	LiveDelay time.Duration
 	Parent    string
 	OriginMS  int64
 	MaxBytes  int64
@@ -96,6 +97,15 @@ func New(o Options) (*Buffer, error) {
 	return &Buffer{options: o, directory: dir, owner: owner, byID: map[int64]*segment{}, next: 1}, nil
 }
 func (b *Buffer) Directory() string { return b.directory }
+func (b *Buffer) SetLiveDelay(seconds int) error {
+	if seconds < 0 || seconds > 120 {
+		return ErrMedia
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.options.LiveDelay = time.Duration(seconds) * time.Second
+	return nil
+}
 func (b *Buffer) Publisher(p Producer, check func() error) (*Publisher, error) {
 	if p.ID < 1 || check == nil || p.Scheduled && (p.TimelineBaseMS <= 0 || p.EndMS <= p.TimelineBaseMS) {
 		return nil, ErrMedia
@@ -118,8 +128,8 @@ func (b *Buffer) windowLocked(now int64) Window {
 	if b.options.Scheduled && w.EndUS > now-origin {
 		w.EndUS = now - origin
 	}
-	w.Ready = w.EndUS > w.StartUS
-	w.LiveUS = w.EndUS
+	w.Ready = w.EndUS > w.StartUS && b.producedUS >= b.options.LiveDelay.Microseconds()
+	w.LiveUS = max(w.StartUS, w.EndUS-b.options.LiveDelay.Microseconds())
 	for n := 1; n < len(b.segments); n++ {
 		a, z := b.segments[n-1], b.segments[n]
 		if z.startUS > a.endUS+1000 {
@@ -199,6 +209,11 @@ func (b *Buffer) Playlist() ([]byte, error) {
 	}
 	first := b.segments[0]
 	fmt.Fprintf(&out, "#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:%d\n#EXT-X-MEDIA-SEQUENCE:%d\n#EXT-X-DISCONTINUITY-SEQUENCE:%d\n", target, first.sequence, first.discontinuitiesBefore)
+	if b.options.LiveDelay > 0 {
+		window := b.windowLocked(time.Now().UnixMicro())
+		offset := max(window.StartUS, window.LiveUS-2_000_000) - window.EndUS
+		fmt.Fprintf(&out, "#EXT-X-START:TIME-OFFSET=%.6f,PRECISE=YES\n", float64(offset)/1e6)
+	}
 	// A channel change/restart changes buffer generation, but a programme change
 	// stays on this resource with an explicit decoder-clock discontinuity.
 	for _, s := range b.segments {

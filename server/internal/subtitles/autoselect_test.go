@@ -57,7 +57,7 @@ func TestAutoSelectAppliesOnceAndOnlyToStoredText(t *testing.T) {
 	c.Exec(`INSERT INTO playback_sessions(id,session_hash,account_id,profile_id,item_id,asset_id,generation,grant_token,grant_hash,mode,duration,state,expires_at,request_id) VALUES('play','login','owner','profile',?,?,1,'g','h','hls',100,'starting','2099-01-01T00:00:00Z','r')`, item.ID, item.Token)
 	c.Exec(`INSERT INTO subtitle_resources(id,item_id,source_id,scope,owner,current_revision) VALUES('text',?,?,'shared','',1),('burn',?,?,'shared','',1)`, item.ID, item.Token, item.ID, item.Token)
 	c.Exec(`INSERT INTO subtitle_revisions(resource_id,revision,digest,size,format,language,title,origin,rights,original_digest,offset_us,source_size,source_modified_ns,source_facts_revision,created_at) VALUES('text',1,'d',1,'srt','spa','Español','sidecar','r','o',250000,1000,1,1,'now'),('burn',1,'d2',1,'pgs','spa','Español PGS','embedded','r','o2',0,1000,1,1,'now')`)
-	c.Exec(`INSERT INTO subtitle_render_revisions VALUES('text',1,'external_text',0,0,''),('burn',1,'burn_in',1,0,'')`)
+	c.Exec(`INSERT INTO subtitle_render_revisions(resource_id,revision,renderer,is_default,is_forced,source_evidence) VALUES('text',1,'external_text',0,0,''),('burn',1,'burn_in',1,0,'')`)
 	testauth.InsertSession(t, db, "login", "owner", "profile", "local", "owner", "2099-01-01T00:00:00Z")
 	ctx := context.Background()
 	tx, _ := db.Begin()

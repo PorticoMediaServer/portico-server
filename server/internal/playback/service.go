@@ -13,6 +13,7 @@ import (
 	"portico.local/server/internal/decoder"
 	"portico.local/server/internal/entityid"
 	"portico.local/server/internal/identity"
+	"portico.local/server/internal/listeningrules"
 	"portico.local/server/internal/preparedmedia"
 	"portico.local/server/internal/segmentmarkers"
 	"portico.local/server/internal/subtitles"
@@ -429,6 +430,11 @@ func (s *Service) create(ctx context.Context, p identity.Principal, item, qualit
 	if pinRows != 1 {
 		return Session{}, ErrStaleOffer
 	}
+	if mode == "remote" && prepared.subtitleEvidence != "" {
+		if _, e = tx.Exec(`INSERT INTO subtitle_remote_sessions VALUES(?,?)`, id, prepared.subtitleEvidence); e != nil {
+			return Session{}, e
+		}
+	}
 	if e = subtitles.AutoSelectTx(ctx, tx, id, generation, item, aid, subtitles.ViewerKey(p.Authority, p.AccountID, p.ProfileID, p.ServerID), automaticSubtitles(values, delivery.Trace)); e != nil {
 		return Session{}, e
 	}
@@ -441,15 +447,7 @@ func (s *Service) create(ctx context.Context, p identity.Principal, item, qualit
 	if e = persistDeliveryPlan(tx, id, &delivery); e != nil {
 		return Session{}, e
 	}
-	if e = persistSubtitlePlan(tx, id, aid, mode); e != nil {
-		return Session{}, e
-	}
 	if mode == "remote" {
-		if prepared.subtitleEvidence != "" {
-			if _, e = tx.Exec(`INSERT INTO subtitle_remote_sessions VALUES(?,?)`, id, prepared.subtitleEvidence); e != nil {
-				return Session{}, e
-			}
-		}
 		if _, e = tx.Exec(`INSERT INTO remote_playback VALUES(?,?,?)`, id, prepared.descriptorDigest, prepared.networkRevision); e != nil {
 			return Session{}, e
 		}
@@ -467,6 +465,11 @@ func (s *Service) create(ctx context.Context, p identity.Principal, item, qualit
 		// New playable kinds follow the generic playback path until they gain
 		// kind-specific behavior.
 		itemKind = ""
+	}
+	if itemKind == "audiobook_file" {
+		var lastPlayed string
+		_ = tx.QueryRow(`SELECT last_played_at FROM personal_items WHERE profile_id=? AND item_id=(SELECT id FROM catalog_entities WHERE public_id=pid_blob(?))`, identity.PersonalKey(p.Viewer), item).Scan(&lastPlayed)
+		resume = listeningrules.Resume(resume, lastPlayed, time.Now())
 	}
 	if itemKind != "audiobook_file" && resume >= duration-3 {
 		resume = 0

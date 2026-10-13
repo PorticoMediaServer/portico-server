@@ -5,7 +5,7 @@
  */
 import type {RemoteAccess} from '../remote-access.ts';
 import type {CertificateStatus} from '../certificates.ts';
-import type {ConnectivityStatus} from '../server-administration.ts';
+import type {ConnectionDocument, ConnectivityStatus, CustomCertificateStatus} from '../server-administration.ts';
 import type {PlaybackSettingsSnapshot} from '../playback-settings.ts';
 import type {MessageId, MessageValues} from '../../../i18n/src/index.ts';
 import {sentence} from './console-words.ts';
@@ -82,4 +82,27 @@ export function deliveryStatusRows(t: Translate, d: NonNullable<NonNullable<Play
     [t('server.delivery.converted'), d.hlsConfigured ? (d.lifecycle === 'running' ? t('server.delivery.available') : sentence(d.lifecycle)) : t('server.delivery.notConfigured')],
     [t('server.delivery.active'), d.activeConversionSessions == null ? t('server.delivery.notMeasured') : d.conversionSessionLimit != null ? t('server.delivery.activeOf', {count: d.activeConversionSessions, limit: d.conversionSessionLimit}) : String(d.activeConversionSessions)],
   ];
+}
+
+/** Where the owner is connected from right now and which side of the home-network list that is; nothing when the server could not say. */
+export function connectionLine(t: Translate, connection: ConnectionDocument | undefined): {tone: StatusTone; text: string} | undefined {
+  if (!connection?.clientAddress) return undefined;
+  return {tone: 'neutral', text: t(connection.remote ? 'server.connection.away' : 'server.connection.home', {address: connection.clientAddress})};
+}
+
+const OWN_CERTIFICATE_PROBLEMS: Readonly<Record<string, MessageId>> = {
+  custom_certificate_unreadable: 'web.connectivity.customCertUnreadable', custom_certificate_invalid: 'web.connectivity.customCertInvalid',
+  custom_certificate_name_mismatch: 'web.connectivity.customCertMismatch', custom_certificate_expired: 'web.connectivity.customCertExpired',
+};
+
+/**
+ * The owner's own certificate in one line: in use and until when, or what is wrong with the
+ * files. When replacement files cannot be used the server keeps serving the pair that worked,
+ * and the line says so; nothing when no certificate is set.
+ */
+export function ownCertificateLine(t: Translate, certificate: CustomCertificateStatus | undefined, date: (iso: string) => string): {tone: StatusTone; text: string} | undefined {
+  if (!certificate || certificate.state === 'none') return undefined;
+  if (certificate.state === 'ready') return {tone: 'healthy', text: certificate.notAfter ? t('web.connectivity.customCertReady', {date: date(certificate.notAfter)}) : t('server.ownCert.inUse')};
+  const problem = t(OWN_CERTIFICATE_PROBLEMS[certificate.errorCode ?? ''] ?? 'server.ownCert.problem');
+  return certificate.serving ? {tone: 'warning', text: t('server.ownCert.keptPrevious', {problem})} : {tone: 'danger', text: problem};
 }

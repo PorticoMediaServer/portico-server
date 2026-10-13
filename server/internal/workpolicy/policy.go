@@ -149,7 +149,7 @@ func Allowed(_ Policy, _ string, _ time.Time) bool {
 // Open reports whether task may start now under policy p: some enabled window
 // holding the task is open at now. A window that crosses midnight belongs to
 // its start day; repeated DST hours both belong to that interval and
-// nonexistent local times admit no work.
+// nonexistent start times move to the first real minute on that date.
 func Open(p Policy, task string, now time.Time) bool {
 	_, ok := OccurrenceStart(p, task, now)
 	return ok
@@ -175,11 +175,21 @@ func OccurrenceStart(p Policy, task string, now time.Time) (time.Time, bool) {
 			if !contains(w.Days, strings.ToLower(day.Weekday().String())) {
 				continue
 			}
-			start := day.Add(time.Duration(w.StartMinute) * time.Minute)
+			start := time.Date(day.Year(), day.Month(), day.Day(), w.StartMinute/60, w.StartMinute%60, 0, 0, loc)
 			if !wallClockMatches(start, day, w.StartMinute) {
-				// The start wall time does not exist on this date (spring
-				// forward): this occurrence admits nothing.
-				continue
+				// Keep the nightly backup on spring-forward days, choosing the
+				// first existing wall minute after the owner's selected time.
+				found := false
+				for minute := w.StartMinute + 1; minute < 1440; minute++ {
+					candidate := time.Date(day.Year(), day.Month(), day.Day(), minute/60, minute%60, 0, 0, loc)
+					if wallClockMatches(candidate, day, minute) {
+						start, found = candidate, true
+						break
+					}
+				}
+				if !found {
+					continue
+				}
 			}
 			end := start.Add(time.Duration(w.DurationMinutes) * time.Minute)
 			if !now.Before(start) && now.Before(end) {

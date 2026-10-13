@@ -186,7 +186,7 @@ func TestEpisodeHierarchySharedAssetsAndManualCorrections(t *testing.T) {
 	if err != nil || len(first.Sources) != 2 {
 		t.Fatal("alternate source not linked", first, err)
 	}
-	if err = s.Delete(second.ID); err != nil {
+	if err = s.RemoveTitle(context.Background(), second.ID); err != nil {
 		t.Fatal(err)
 	}
 	episodicDrain(t, db)

@@ -138,7 +138,7 @@ func integratedArtworkAuthority(ctx context.Context, tx *sql.Tx, t RepairTarget,
 func (s *Service) artworkRequestContext(parent context.Context, t RepairTarget, provider, fence string) (context.Context, context.CancelFunc) {
 	ctx, cancel := context.WithTimeout(parent, 50*time.Second)
 	supervise.Go("metadata.artwork-integration.watch", func() {
-		ticker := time.NewTicker(300 * time.Millisecond)
+		ticker := time.NewTicker(2 * time.Second)
 		defer ticker.Stop()
 		for {
 			select {

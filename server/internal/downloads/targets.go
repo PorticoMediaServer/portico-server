@@ -47,11 +47,11 @@ const canonicalAudioRung = "1080p"
 //
 // A title may have several files in two different ways. Several files at the
 // same place in the title are versions of it (a 4K copy and a 1080p copy):
-// one of them is the download, and a version that can be read is preferred to
-// one that cannot. Several files at different places are parts of one title
-// (a film in two files): there is no single file to hand over, so the title
-// is refused with a reason that says so. This is the one place that choice is
-// made, so a better rule for picking a version belongs here and nowhere else.
+// one of them is the download, the best version that is there, by the same
+// rule playback uses when no version is named. Several files at different
+// places are parts of one title (a film in two files): there is no single
+// file to hand over, so the title is refused with a reason that says so. This
+// is the one place that choice is made.
 func resolveSource(ctx context.Context, tx *sql.Tx, item string) (source, error) {
 	var s source
 	var available int
@@ -59,7 +59,7 @@ func resolveSource(ctx context.Context, tx *sql.Tx, item string) (source, error)
 	e := tx.QueryRowContext(ctx, `SELECT cl.library_id,e.kind,a.token,a.path,a.size,a.modified_ns,a.container,a.video_codec,a.audio_codec,a.height,a.duration,link.available,
  (SELECT count(DISTINCT p.part_index) FROM catalog_asset_links p WHERE p.entity_id=e.id)
  FROM catalog_entities e JOIN catalog_libraries cl ON cl.id=e.library_id JOIN catalog_asset_links link ON link.entity_id=e.id JOIN catalog_assets a ON a.id=link.asset_id
- WHERE e.public_id=pid_blob(?) ORDER BY link.part_index,link.available DESC,a.token LIMIT 1`, item).Scan(&s.Library, &kindInt, &s.Asset, &s.Path, &s.Size, &s.ModifiedNS, &s.Container, &s.VideoCodec, &s.AudioCodec, &s.Height, &s.Duration, &available, &s.Parts)
+ WHERE e.public_id=pid_blob(?) ORDER BY `+compactcatalog.BestVersionOrder("link", "a")+` LIMIT 1`, item).Scan(&s.Library, &kindInt, &s.Asset, &s.Path, &s.Size, &s.ModifiedNS, &s.Container, &s.VideoCodec, &s.AudioCodec, &s.Height, &s.Duration, &available, &s.Parts)
 	if e != nil {
 		return s, e
 	}

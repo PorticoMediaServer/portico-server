@@ -83,9 +83,10 @@ func (t *transport) rawConditional(ctx context.Context, client *http.Client, bas
 	}
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
-	if err := t.acquire(ctx); err != nil {
+	if err := t.begin(ctx); err != nil {
 		return nil, in, err
 	}
+	defer t.release()
 	req, err := http.NewRequestWithContext(ctx, "GET", base+route, nil)
 	if err != nil {
 		return nil, in, errors.New("invalid provider request")
@@ -109,7 +110,7 @@ func (t *transport) rawConditional(ctx context.Context, client *http.Client, bas
 	}
 	if resp.StatusCode != http.StatusOK {
 		problem := &Error{Provider: t.provider, Status: resp.StatusCode, Code: "request_rejected"}
-		if resp.StatusCode == 429 || resp.StatusCode == 503 {
+		if resp.StatusCode == 429 || resp.StatusCode >= 500 {
 			problem.RetryAfter = retryDelay(resp.Header.Get("Retry-After"), time.Now())
 			t.deferRequests(ctx, problem.RetryAfter)
 		}

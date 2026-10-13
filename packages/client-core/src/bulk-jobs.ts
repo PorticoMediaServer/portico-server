@@ -1,5 +1,6 @@
 import {randomId} from './random-id.ts';
 import {unreadableServerResponse} from './server-messages.ts';
+import {firstOfEach,keepReadable,noteSkipped,oneOf} from './tolerant.ts';
 /**
  * Bulk jobs (`server/api/jobs.openapi.yaml`):
  * one `POST /v1/jobs` for a whole personal-state, playlist-add, collection-add,
@@ -18,7 +19,7 @@ export type JobSelector=
  | Readonly<{container:Readonly<{kind:JobContainerKind;id:string}>}>
  | Readonly<{items:Readonly<{ids:readonly string[]}>}>
  | Readonly<{query:Readonly<{libraryId:string;pivot:string;filter?:unknown;sort?:readonly {field:string;direction:'asc'|'desc'}[]}>}>;
-export type JobCommand='personal-state'|'playlist-add'|'collection-add'|'metadata-edit'|'refresh'|'trash';
+export type JobCommand='personal-state'|'playlist-add'|'collection-add'|'metadata-edit'|'refresh';
 export type JobPlacement='end'|'next'|Readonly<{after:string}>;
 export type JobArgs=Readonly<{
  watched?:boolean;favorite?:boolean;watchlist?:boolean;rating?:number|null;
@@ -61,7 +62,7 @@ const object=(v:unknown):v is Record<string,unknown>=>!!v&&typeof v==='object'&&
 const id=(v:unknown):v is string=>typeof v==='string'&&v.length>0&&v.length<=256&&!/[\x00-\x1f\x7f]/.test(v);
 const operationId=(v:unknown):v is string=>typeof v==='string'&&/^[A-Za-z0-9_-]{1,128}$/.test(v);
 const count=(v:unknown):v is number=>typeof v==='number'&&Number.isSafeInteger(v)&&v>=0;
-const commands:readonly string[]=Object.freeze(['personal-state','playlist-add','collection-add','metadata-edit','refresh','trash']);
+const commands:readonly string[]=Object.freeze(['personal-state','playlist-add','collection-add','metadata-edit','refresh']);
 const states:readonly string[]=Object.freeze(['queued','running','complete','partial','failed']);
 const errorCodes:readonly string[]=Object.freeze(['selection_changed','selection_too_large','authority_revoked','execution_failed','revision_mismatch','destination_not_found']);
 const containerKinds:readonly string[]=Object.freeze(['show','season','album','artist','book','collection','playlist','library']);
@@ -151,14 +152,17 @@ export function jobRequestBody(request:JobRequest):Readonly<{operationId:string;
 function progress(v:unknown):Job{
  if(!object(v)||!id(v.jobId)||!commands.includes(String(v.command))||!states.includes(String(v.state)))invalid();
  if(!count(v.total)||typeof v.totalKnown!=='boolean'||!count(v.done)||!count(v.failed))invalid();
- if((v.done as number)>(v.total as number)&&v.totalKnown)invalid();
- if(v.errorCode!==undefined&&!errorCodes.includes(String(v.errorCode)))invalid();
- if(v.errorCode!==undefined&&v.state!=='failed')invalid();
+ // A finished count above a known total reads as the total: progress never claims more than the job holds.
+ const done=v.totalKnown?Math.min(v.done as number,v.total as number):v.done as number;
+ if(done!==v.done)noteSkipped('bulk-jobs','job.done');
+ // A failure code this app does not know, or one on a job that has not failed, is left out; the caller has its own general wording.
+ const errorCode=v.state==='failed'?oneOf(v.errorCode,errorCodes as readonly JobErrorCode[]):undefined;
+ if(v.errorCode!==undefined&&errorCode===undefined)noteSkipped('bulk-jobs','job.errorCode');
  if(v.failuresCursor!==undefined&&!id(v.failuresCursor))invalid();
  return Object.freeze({
   jobId:v.jobId as string,command:v.command as JobCommand,state:v.state as JobState,
-  total:v.total as number,totalKnown:v.totalKnown as boolean,done:v.done as number,failed:v.failed as number,
-  ...(v.errorCode===undefined?{}:{errorCode:v.errorCode as JobErrorCode}),
+  total:v.total as number,totalKnown:v.totalKnown as boolean,done,failed:v.failed as number,
+  ...(errorCode===undefined?{}:{errorCode}),
   ...(v.failuresCursor===undefined?{}:{failuresCursor:v.failuresCursor as string}),
  });
 }
@@ -168,11 +172,11 @@ export function parseJob(raw:unknown):Job{return progress(raw);}
 
 export function parseJobFailures(raw:unknown):JobFailurePage{
  if(!object(raw)||!Array.isArray(raw.items)||raw.items.length>100)invalid();
- const items=Object.freeze(raw.items.map(entry=>{
+ // A failure that cannot be read is left out alone, and an item named twice keeps its first row.
+ const items=Object.freeze(firstOfEach('bulk-jobs','failures',keepReadable('bulk-jobs','failures',raw.items,entry=>{
   if(!object(entry)||!id(entry.itemId)||!id(entry.code))invalid();
   return Object.freeze({itemId:entry.itemId as string,code:entry.code as string});
- }));
- if(new Set(items.map(i=>i.itemId)).size!==items.length)invalid();
+ }),i=>i.itemId));
  if(raw.nextCursor!==undefined&&(typeof raw.nextCursor!=='string'||raw.nextCursor.length>4096))invalid();
  return Object.freeze({items,nextCursor:String(raw.nextCursor??'')});
 }
@@ -188,6 +192,8 @@ export function parseJobUpdatedFrame(event:string,data:string):JobUpdatedEvent|n
  if(event!=='job.updated')return null;
  let raw:unknown;
  try{raw=JSON.parse(data);}catch{throw new Error(unreadableServerResponse);}
+ // An update in a state or for a command this app does not know is passed over like any other event; the next read of the job says where it stands.
+ if(object(raw)&&id(raw.jobId)&&(typeof raw.state==='string'&&!states.includes(raw.state)||typeof raw.command==='string'&&!commands.includes(raw.command))){noteSkipped('bulk-jobs','event');return null;}
  return parseJobUpdatedEvent(raw);
 }
 

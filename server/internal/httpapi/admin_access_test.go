@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -27,6 +28,7 @@ import (
 	"portico.local/server/internal/operations"
 	"portico.local/server/internal/persistence"
 	"portico.local/server/internal/servicelog"
+	"portico.local/server/internal/webhooks"
 )
 
 type administrationFixture struct {
@@ -77,6 +79,9 @@ func administrationFixtureNew(t *testing.T) administrationFixture {
 	recorder.SetLevel("debug")
 	deps := Dependencies{DB: db, Identity: ident, Catalog: catalog.New(db), Hosted: control, Console: operations.New(db),
 		Access: AccessArea{Access: access.New(db), Logs: recorder, ClientLogs: servicelog.NewClientLogStore(db), Advertiser: connectivity.NewAdvertiser(connectivity.AdvertiserOptions{})}}
+	deps.credentials = newCredentialGate()
+	deps.Webhooks = webhooks.New(db)
+	deps.self = &selfHandler{}
 	return administrationFixture{handler: New(deps), owner: ownerToken.AccessToken, admin: adminToken.AccessToken, member: memberToken.AccessToken, memberDevice: memberToken.DeviceID, recorder: recorder, deps: deps}
 }
 
@@ -323,36 +328,6 @@ func TestInvitationPreviewIsOpaqueAndSharesAcceptBudget(t *testing.T) {
 	}
 }
 
-func TestAPIKeyCreationDisabled(t *testing.T) {
-	f := administrationFixtureNew(t)
-	w := f.call("POST", "/v1/admin/access/api-keys", f.owner, `{"operationId":"key-route-1","name":"Automation","scope":"playback"}`)
-	if w.Code != 403 || errorCode(t, w) != "api_keys_disabled" {
-		t.Fatalf("creation: %d %s", w.Code, w.Body)
-	}
-	w = f.call("GET", "/v1/admin/access/api-keys", f.owner, "")
-	if w.Code != 200 || strings.Contains(w.Body.String(), "Automation") {
-		t.Fatalf("disabled creation wrote a key: %d %s", w.Code, w.Body)
-	}
-}
-
-func TestLegacyAPIKeyCannotAuthenticateHTTP(t *testing.T) {
-	f := administrationFixtureNew(t)
-	p, err := f.deps.Identity.Authenticate(f.owner)
-	if err != nil {
-		t.Fatal(err)
-	}
-	key, err := f.deps.Access.Access.CreateAPIKey(context.Background(), nil, p, access.APIKeyRequest{OperationID: "legacy-key-1", Name: "Old automation", Scope: "full"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, path := range []string{"/v1/me", "/v1/admin/access/members", "/v1/admin/logs"} {
-		w := f.call("GET", path, key.Secret, "")
-		if w.Code != 401 {
-			t.Fatalf("legacy key authenticated %s: %d %s", path, w.Code, w.Body)
-		}
-	}
-}
-
 func TestMessageLogReadsFilterStreamAndOpenADebugWindow(t *testing.T) {
 	f := administrationFixtureNew(t)
 	f.recorder.Record("error", "playback", "the encoder stalled")
@@ -430,7 +405,7 @@ func TestClientLogUploadsAreBoundedStoredPerDeviceAndListedForAdmins(t *testing.
 	if w = f.call("POST", "/v1/diagnostics/client-logs", "", `{"body":"anonymous"}`); w.Code != 401 {
 		t.Fatalf("an unauthenticated upload was accepted: %d", w.Code)
 	}
-	w = f.call("GET", "/v1/admin/diagnostics/client-logs", f.admin, "")
+	w = f.call("GET", "/v1/admin/diagnostics/client-logs", f.owner, "")
 	if w.Code != 200 || !strings.Contains(w.Body.String(), `"deviceId":"`+f.memberDevice+`"`) || strings.Contains(w.Body.String(), "a client trace") {
 		t.Fatalf("a list must carry metadata but not bodies: %d %s", w.Code, w.Body)
 	}
@@ -438,7 +413,7 @@ func TestClientLogUploadsAreBoundedStoredPerDeviceAndListedForAdmins(t *testing.
 	if e := json.Unmarshal(w.Body.Bytes(), &page); e != nil || len(page.Items) != 1 {
 		t.Fatalf("page: %v %+v", e, page)
 	}
-	w = f.call("GET", "/v1/admin/diagnostics/client-logs/"+page.Items[0].ID, f.admin, "")
+	w = f.call("GET", "/v1/admin/diagnostics/client-logs/"+page.Items[0].ID, f.owner, "")
 	if w.Code != 200 || !strings.Contains(w.Body.String(), "a client trace") {
 		t.Fatalf("single read: %d %s", w.Code, w.Body)
 	}
@@ -459,7 +434,7 @@ func TestClientLogUploadsRedactAndEnforceAccountBudget(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &uploaded); err != nil {
 		t.Fatal(err)
 	}
-	w = f.call("GET", "/v1/admin/diagnostics/client-logs/"+uploaded.ID, f.admin, "")
+	w = f.call("GET", "/v1/admin/diagnostics/client-logs/"+uploaded.ID, f.owner, "")
 	if w.Code != 200 || strings.Contains(w.Body.String(), secret) || !strings.Contains(w.Body.String(), "[REDACTED]") {
 		t.Fatalf("unredacted body: %d %s", w.Code, w.Body)
 	}
@@ -483,7 +458,7 @@ func TestClientLogRetentionIsPerAuthenticatedDevice(t *testing.T) {
 			t.Fatalf("upload %d: %d %s", i, w.Code, w.Body)
 		}
 	}
-	w := f.call("GET", "/v1/admin/diagnostics/client-logs", f.admin, "")
+	w := f.call("GET", "/v1/admin/diagnostics/client-logs", f.owner, "")
 	var page servicelog.ClientUploadPage
 	if err := json.Unmarshal(w.Body.Bytes(), &page); err != nil || w.Code != 200 || len(page.Items) != servicelog.ClientUploadsPerDevice {
 		t.Fatalf("device retention: %d %v %+v", w.Code, err, page)
@@ -659,4 +634,93 @@ func (s *streamRecorder) body() string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.ResponseRecorder.Body.String()
+}
+
+func TestOwnerCanDownloadAndDeleteClientReport(t *testing.T) {
+	f := administrationFixtureNew(t)
+	uploaded := f.call("POST", "/v1/diagnostics/client-logs", f.member, `{"platform":"android","deviceClass":"phone","appVersion":"1.2.3","body":"Bearer private-secret"}`)
+	if uploaded.Code != 201 {
+		t.Fatal(uploaded.Code, uploaded.Body.String())
+	}
+	var report servicelog.ClientUpload
+	if err := json.Unmarshal(uploaded.Body.Bytes(), &report); err != nil {
+		t.Fatal(err)
+	}
+	if report.DeviceClass != "phone" {
+		t.Fatal(report)
+	}
+	path := "/v1/admin/diagnostics/client-logs/" + report.ID
+	if response := f.call("GET", path+"/download", f.admin, ""); response.Code != 403 {
+		t.Fatal("admin read owner report", response.Code)
+	}
+	downloaded := f.call("GET", path+"/download", f.owner, "")
+	if downloaded.Code != 200 || !strings.Contains(downloaded.Body.String(), "REDACTED") || downloaded.Header().Get("Content-Disposition") == "" || downloaded.Header().Get("Content-Type") != "application/json" {
+		t.Fatal(downloaded.Code, downloaded.Body.String())
+	}
+	if removed := f.call("DELETE", path, f.owner, ""); removed.Code != 200 {
+		t.Fatal(removed.Code, removed.Body.String())
+	}
+	if response := f.call("GET", path, f.owner, ""); response.Code != 404 {
+		t.Fatal("deleted report remained", response.Code)
+	}
+}
+
+func TestClientReportsPageKeepsTimestampTiesAndGlobalBound(t *testing.T) {
+	f := administrationFixtureNew(t)
+	ctx := context.Background()
+	for n := 0; n < 105; n++ {
+		id := fmt.Sprintf("%022d", n)
+		if _, err := f.deps.DB.Exec(`INSERT INTO client_log_uploads(id,account_id,profile_id,device_id,platform,app_version,device_class,received_ms,bytes,body) VALUES(?,?,?,?,?,?,?,1000,1,'x')`, id, "other", "other", id, "test", "1", "phone"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// One signed-in upload enforces the global cap, independently of device retention.
+	response := f.call("POST", "/v1/diagnostics/client-logs", f.member, `{"platform":"test","body":"new"}`)
+	if response.Code != 201 {
+		t.Fatal(response.Code, response.Body.String())
+	}
+	var count int
+	f.deps.DB.QueryRow(`SELECT count(*) FROM client_log_uploads`).Scan(&count)
+	if count != 100 {
+		t.Fatal("global bound", count)
+	}
+	store := f.deps.Access.ClientLogs
+	cursor := ""
+	seen := map[string]bool{}
+	for {
+		page, err := store.List(ctx, cursor, 25)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, item := range page.Items {
+			if seen[item.ID] {
+				t.Fatal("duplicate", item.ID)
+			}
+			seen[item.ID] = true
+		}
+		if page.NextCursor == "" {
+			break
+		}
+		cursor = page.NextCursor
+	}
+	if len(seen) != 100 {
+		t.Fatal("timestamp ties lost", len(seen))
+	}
+}
+
+func TestClientReportRedactionCannotExpandPastStorageLimit(t *testing.T) {
+	f := administrationFixtureNew(t)
+	body, _ := json.Marshal(servicelog.ClientUploadRequest{Body: strings.Repeat("Bearer x ", servicelog.MaxClientUploadBytes/9), DeviceClass: "phone"})
+	response := f.call("POST", "/v1/diagnostics/client-logs", f.member, string(body))
+	if response.Code != 201 {
+		t.Fatal(response.Code, response.Body.String())
+	}
+	var report servicelog.ClientUpload
+	if err := json.Unmarshal(response.Body.Bytes(), &report); err != nil {
+		t.Fatal(err)
+	}
+	stored, err := f.deps.Access.ClientLogs.Read(context.Background(), report.ID)
+	if err != nil || len(stored.Body) > servicelog.MaxClientUploadBytes || stored.Bytes != int64(len(stored.Body)) || strings.Contains(stored.Body, "Bearer x") {
+		t.Fatal(stored.Bytes, len(stored.Body), err)
+	}
 }

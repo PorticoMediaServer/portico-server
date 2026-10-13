@@ -61,6 +61,9 @@ func acceptPlaybackProgress(tx *sql.Tx, v identity.Viewer, playbackID, item stri
 	}
 	video := kind == int64(compactcatalog.Movie) || kind == int64(compactcatalog.Episode)
 	thresholdHit := duration > 0 && position >= duration*played/100
+	if kind == int64(compactcatalog.Part) {
+		thresholdHit = duration > 0 && position > 0 && duration-position <= math.Min(30, duration/20)
+	}
 	creditsHit := false
 	if video && settings.VideoCompletion != "threshold" && (settings.VideoCompletion == "credits" || !thresholdHit) {
 		creditsStart, creditsErr := firstApprovedCreditsTx(tx, item)
@@ -123,7 +126,7 @@ func acceptPlaybackProgress(tx *sql.Tx, v identity.Viewer, playbackID, item stri
 			// A book file is played at the threshold like anything else, but
 			// its listener is still in it: they keep their place, in the file
 			// and in the book, until the file really ends.
-			if state != "ended" && kind == int64(compactcatalog.Part) {
+			if kind == int64(compactcatalog.Part) {
 				out.ProgressSeconds = position
 			}
 		case position >= threshold:

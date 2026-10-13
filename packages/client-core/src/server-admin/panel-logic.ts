@@ -5,7 +5,8 @@
  */
 import type {DAVConfiguration} from '../remote-sources.ts';
 import type {FeedbackStatus} from '../console.ts';
-import type {AccessTier, KeyScope} from '../server-administration.ts';
+import type {AccessTier} from '../server-administration.ts';
+import {presetOf, type ApiScope, type ApiScopePreset} from '../api-access.ts';
 import type {FilesystemPage} from '../administration.ts';
 import type {LibraryAdminJob, LibraryManagementService, ManagedLibrary} from '../library-management.ts';
 import type {ScanTier, SourceSettings} from '../library-inventory.ts';
@@ -84,13 +85,6 @@ export function davConfiguration(source: {generation: number} | null, draft: Web
   return {name, root, username: draft.username, password: draft.password, keepPassword: false, keepConnection: false, insecureLocal: draft.insecureLocal, expectedGeneration: source.generation};
 }
 
-// ── Deleted titles ──────────────────────────────────────────────────────────────────────────
-
-/** CD-42: "Remove what's due" may run only when the loaded page is the whole held listing. */
-export function isFullTrashList(page: {items: readonly unknown[]; heldCount: number} | undefined, canPrevious: boolean, canNext: boolean): boolean {
-  return !!page && !canPrevious && !canNext && page.items.length === page.heldCount;
-}
-
 // ── Viewer feedback ─────────────────────────────────────────────────────────────────────────
 
 export const feedbackStatusLabel: Readonly<Record<FeedbackStatus, string>> = {open: 'Open', 'in-progress': 'In progress', resolved: 'Resolved', closed: 'Closed'};
@@ -132,11 +126,14 @@ export function regenerationBody(channel: {revision: number; replacementBoundary
 // ── People ──────────────────────────────────────────────────────────────────────────────────
 
 /** CD-07: the server allows at most 100 rows a page; every list stays on that limit and follows nextCursor. */
-export const accessLists = {members: '/v1/admin/access/members', invitations: '/v1/admin/access/invitations', devices: '/v1/admin/access/devices', apiKeys: '/v1/admin/access/api-keys'} as const;
+export const accessLists = {members: '/v1/admin/access/members', invitations: '/v1/admin/access/invitations', devices: '/v1/admin/access/devices', apiKeys: '/v1/admin/api-keys'} as const;
 export const accessListPath = (list: keyof typeof accessLists, cursor = '') => `${accessLists[list]}?limit=100${cursor ? '&cursor=' + encodeURIComponent(cursor) : ''}`;
 export const tierLabels: Readonly<Record<AccessTier, string>> = {owner: 'Owner', admin: 'Administrator', member: 'Member'};
-export const scopeLabels: Readonly<Record<KeyScope, string>> = {'read-only': 'Read only', playback: 'Playback', 'library-management': 'Library management', full: 'Full access'};
-export const scopeHelp: Readonly<Record<KeyScope, string>> = {'read-only': 'Browse and read, nothing else.', playback: 'Browse and start playback.', 'library-management': 'Also scan, match and edit libraries.', full: 'Everything this account can do.'};
+/** A key's access, as the simple picker offers it: four ready-made choices of scopes. */
+export const scopeLabels: Readonly<Record<ApiScopePreset, string>> = {read: 'Read only', playback: 'Playback', library: 'Library management', admin: 'Full access'};
+export const scopeHelp: Readonly<Record<ApiScopePreset, string>> = {read: 'Browse and read, nothing else.', playback: 'Browse, play and control playback.', library: 'Also scan, match and edit libraries.', admin: 'Everything this account can do.'};
+/** The words for a key's scopes in a list: the preset's name when they are one, otherwise each scope. */
+export const scopesLabel = (scopes: readonly ApiScope[]): string => { const preset = presetOf(scopes); return preset ? scopeLabels[preset] : scopes.map(scope => scopeLabels[scope]).join(', '); };
 /** An account made on this server. `hostedAccountId`: a Portico Account member, whose password lives at the Portico Account. */
 export type DirectMember = {id: string; username: string; primaryProfileId: string; role: AccessTier; revision: number; disabled: boolean; allowedLibraries: string[]; hostedAccountId?: string};
 
@@ -148,7 +145,7 @@ export const scanTierHelp: Readonly<Record<ScanTier, string>> = {file_list_only:
 
 /** CD-08: a new folder starts from the loaded configuration revision; zero is never submittable. */
 export function addSourceSettings(revision: number): SourceSettings {
-  return {name: '', path: '', classification: 'local', followSymlinks: false, missingGraceSeconds: 86400, intervalSeconds: 3600, expectedRevision: revision, acceptReplacement: false};
+  return {name: '', path: '', classification: 'local', followSymlinks: false, intervalSeconds: 3600, expectedRevision: revision, acceptReplacement: false};
 }
 export function canAddSource(revision: number | undefined): revision is number {
   return typeof revision === 'number' && revision > 0;
@@ -209,7 +206,7 @@ export async function createLibraryAndScan(service: LibraryManagementService, in
  */
 const RETENTION_ROWS: readonly (readonly [string, MessageId])[] = [
   ['logs', 'settings.server.keep.logs'], ['conversions', 'settings.server.keep.conversions'], ['prepared', 'settings.server.keep.prepared'],
-  ['downloads', 'settings.server.keep.downloads'], ['subtitles', 'settings.server.keep.subtitles'], ['trickplay', 'settings.server.keep.trickplay'], ['trash', 'settings.server.keep.trash'],
+  ['downloads', 'settings.server.keep.downloads'], ['subtitles', 'settings.server.keep.subtitles'], ['trickplay', 'settings.server.keep.trickplay'],
 ];
 
 export function retentionRows(keys: readonly string[], categoryName: (key: string) => string | undefined, t: (id: MessageId, values?: Record<string, string | number>) => string): readonly Readonly<{key: string; label: string}>[] {

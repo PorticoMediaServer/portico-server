@@ -4,12 +4,12 @@ import {ClaimConnectButton} from '../auth/ClaimConnectButton';
 import {sentence} from '../../admin/console';
 import {useSession} from '../../app/session';
 import {Badge, Button, KeyValue, Notice, SettingsGroup, SettingsRow, Text} from '../../ui';
-import {defaultI18n} from '@i18n';
+import {useI18n} from '../../app/i18n';
 
-const t = defaultI18n.t;
 
 /** General › Identity: what this server is, beside its name. */
 export function IdentityRows() {
+  const {t} = useI18n();
   const session = useSession();
   return (
     <>
@@ -21,6 +21,7 @@ export function IdentityRows() {
 
 /** Remote access › Portico Account: whether this server is connected to its owner's account. */
 export function AccountConnectionPanel() {
+  const {t} = useI18n();
   const session = useSession();
   const pin = session.api.getRouteConnection()?.pin;
   const claim = useMemo(() => (pin ? new ClaimOnboarding(session.api, pin) : undefined), [session.api, pin]);
