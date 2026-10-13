@@ -156,7 +156,9 @@ function projection(v: unknown, bound: SavedScope, selected: SavedRoute): SavedP
  const rawSorts = list(v.sorts, 16); for (const row of rawSorts) if (record(row)) within(row.directions, 2);
  const sorts = firstOfEach('saved', 'sorts', keepReadable('saved', 'sorts', rawSorts, row => { if (!record(row) || !id(row.id) || !id(row.labelKey)) invalid(); const directions = [...new Set(list(row.directions, 2).filter((d): d is 'asc'|'desc' => d === 'asc' || d === 'desc'))]; return { id: row.id, labelKey: row.labelKey, directions }; }), row => row.id);
  // CD-17: preserve validated filter definitions/counts; do not erase server-authored filter state.
- const rawFilters = list(v.filters, listView ? 4 : 0); for (const f of rawFilters) if (record(f)) within(f.options, 8);
+ // Only Watchlist and Favourites have filters here; ones published for another view are not read.
+ const sentFilters = list(v.filters, 4), rawFilters = listView ? sentFilters : []; for (const f of rawFilters) if (record(f)) within(f.options, 8);
+ if (rawFilters.length !== sentFilters.length) noteSkipped('saved', 'filters', sentFilters.length);
  const filters = firstOfEach('saved', 'filters', keepReadable('saved', 'filters', rawFilters, f => { if (!record(f) || !id(f.id) || !id(f.labelKey)) invalid(); const options = firstOfEach('saved', 'filter.options', keepReadable('saved', 'filter.options', list(f.options, 8), o => { if (!record(o) || !id(o.id) || !prose(o.label, 120) || !int(o.count)) invalid(); return Object.freeze({ id: o.id as string, label: o.label as string, count: o.count as number }); }), k => k.id); return Object.freeze({ id: f.id as string, labelKey: f.labelKey as string, options: Object.freeze(options) }); }), k => k.id);
  // An action this app does not know is not offered; nothing is ever offered that the server did not list.
  const actions = v.actions === undefined ? undefined : [...new Set(list(v.actions, 8).filter((a): a is string => selected.view === 'playlists' && a === 'create_playlist'))];

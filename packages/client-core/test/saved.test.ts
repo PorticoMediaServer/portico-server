@@ -42,6 +42,11 @@ test('an unknown layout reads as a grid, an unreadable destination or play actio
  const {playback:_,...plain}=media('two');assert.deepEqual(read.sections[0].entries,[media('one'),plain,media('three'),media('four')]);
  assert.deepEqual(read.navigation.map(n=>n.id),['watchlist','playlists']);assert.deepEqual(read.sorts,[{id:'title',labelKey:'sort.title',directions:['asc']}]);
 });
+test('filters published for a view that has none here are not read, and the page is kept',async()=>{
+ const s=setup(async p=>isContent(p)?{...projection(),filters:savedFilters()}:resource());await s.select({view:'playlist',playlistId:'playlist'});
+ assert.equal(s.getSnapshot().phase,'ready');assert.deepEqual(s.getSnapshot().projection!.filters,[]);
+ const tooMany=setup(async p=>isContent(p)?{...projection(),filters:new Array(5).fill(savedFilters()[0])}:resource());await tooMany.select({view:'playlist',playlistId:'playlist'});assert.equal(tooMany.getSnapshot().error?.code,'invalid_saved');
+});
 test('sizes, cursors, scope and revisions still refuse the whole page',async()=>{
  const tooMany=projection('watchlist',0,Array.from({length:101},(_,i)=>media('m'+i)));
  const tooManySections=projection('watchlist');tooManySections.sections=Array.from({length:5},(_,i)=>({...tooManySections.sections[0],id:'s'+i}));
