@@ -50,14 +50,16 @@ test('a member carries its tier and both revisions', () => {
   // itself, which the client refuses rather than renders.
   assert.throws(() => parseAccessMemberPage({limit: 0, items: []}));
 });
-test('a member page leaves out a member it cannot read and never lists one with a guessed role or limits', () => {
+test('a member page is refused whole when one member cannot be read, so nobody with access is ever missing from it', () => {
   const member = {accountId: 'a', username: 'ada', profileId: 'p', role: 'member', disabled: false, revision: 1, allowedLibraries: [], limitsRevision: 1, limits};
   const page = parseAccessMemberPage({limit: 25, nextCursor: '', futureField: 1, items: [member,
-    {...member, accountId: 'b', role: 'root'}, {...member, accountId: 'c', limits: {...limits, maxContentRating: 'XX'}},
-    {...member, accountId: 'd', limits: {...limits, channelPolicy: {mode: 'sometimes', channels: []}}}, {...member, accountId: 'e', revision: 0},
-    {...member, username: 'again'}, {...member, accountId: 'f', username: 'fay', futureField: {a: 1}}, null]});
+    {...member, username: 'again'}, {...member, accountId: 'f', username: 'fay', futureField: {a: 1}}]});
   assert.deepEqual(page.items.map(row => [row.accountId, row.username]), [['a', 'ada'], ['f', 'fay']]);
   assert.equal('futureField' in page.items[1], false);
+  // A role, a limit or a revision this app cannot read is never guessed and never hidden.
+  for (const unreadable of [{...member, accountId: 'b', role: 'root'}, {...member, accountId: 'c', limits: {...limits, maxContentRating: 'XX'}},
+    {...member, accountId: 'd', limits: {...limits, channelPolicy: {mode: 'sometimes', channels: []}}}, {...member, accountId: 'e', revision: 0}, null])
+    assert.throws(() => parseAccessMemberPage({limit: 25, items: [member, unreadable]}));
   // The page size, its cursor and its outer shape still refuse the whole page.
   assert.throws(() => parseAccessMemberPage({limit: 1, items: [member, {...member, accountId: 'b'}]}));
   assert.throws(() => parseAccessMemberPage({limit: 1001, items: [member]}));
@@ -86,9 +88,8 @@ test('a device page carries the approval policy that governs it', () => {
     profileId: 'p', name: 'Living Room', platform: 'tvos', trust: 'pending', firstSeenAt: '2026-09-16T12:00:00Z', lastSeenAt: '2026-09-16T12:30:00Z', revision: 1}]});
   assert.equal(page.approvalRequired, true);
   assert.equal(page.items[0].trust, 'pending');
-  // A device whose trust this app cannot read is left out; it is never listed as approved, pending or blocked.
-  const mixed = parseAccessDevicePage({limit: 25, approvalRequired: true, items: [{id: 'x', accountId: 'a', trust: 'trusted', firstSeenAt: '2026-09-16T12:00:00Z', lastSeenAt: '2026-09-16T12:00:00Z', revision: 1}, page.items[0]]});
-  assert.deepEqual(mixed.items.map(row => row.id), ['living-room']);
+  // A device whose trust this app cannot read is neither hidden nor listed as approved, pending or blocked: the page is refused.
+  assert.throws(() => parseAccessDevicePage({limit: 25, approvalRequired: true, items: [{id: 'x', accountId: 'a', trust: 'trusted', firstSeenAt: '2026-09-16T12:00:00Z', lastSeenAt: '2026-09-16T12:00:00Z', revision: 1}, page.items[0]]}));
   assert.throws(() => parseAccessDevicePage({limit: 25, approvalRequired: 'yes', items: []}));
 });
 
