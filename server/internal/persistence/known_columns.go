@@ -3715,6 +3715,8 @@ retained_title_state.title
 retained_title_state.unit
 retained_title_state.watched
 retained_title_state.watchlisted
+retained_title_state_counts.profile_id
+retained_title_state_counts.title_count
 saved_operation_fences.created_at
 saved_operation_fences.domain
 saved_operation_fences.operation_id

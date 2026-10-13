@@ -806,6 +806,11 @@ func DeleteAssetTx(ctx context.Context, tx *sql.Tx, asset int64) error {
 	if err = touchAssetItems(ctx, tx, asset); err != nil {
 		return err
 	}
+	// Derived issue evidence has a restrictive reference to the file and must
+	// leave with it, rather than prevent an otherwise valid title removal.
+	if _, err = tx.ExecContext(ctx, `DELETE FROM catalog_asset_issues WHERE asset_id=?`, asset); err != nil {
+		return err
+	}
 	if _, err = tx.ExecContext(ctx, `DELETE FROM catalog_assets WHERE id=?`, asset); err != nil {
 		return err
 	}

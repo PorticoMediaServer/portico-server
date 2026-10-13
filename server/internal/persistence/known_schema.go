@@ -981,6 +981,7 @@ table restriction_outbox
 table restrictions
 table retained_title_identities
 table retained_title_state
+table retained_title_state_counts
 table saved_operation_fences
 table saved_pin_order
 table saved_pin_order_revisions
@@ -1586,6 +1587,8 @@ trigger related_genres_termsource_insert
 trigger related_genres_termsource_update
 trigger related_item_update
 trigger repair_delete_entity
+trigger retained_title_state_count_delete
+trigger retained_title_state_count_insert
 trigger rev_listening_audio_evidence_delete
 trigger rev_listening_audio_evidence_insert
 trigger rev_listening_audio_evidence_update
