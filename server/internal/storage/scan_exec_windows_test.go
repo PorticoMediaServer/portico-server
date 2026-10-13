@@ -8,8 +8,10 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"golang.org/x/sys/windows"
 )
@@ -197,4 +199,71 @@ func TestWindowsEmbeddedLyricProbeUsesAdmittedMedia(t *testing.T) {
 	if err != nil || len(tags) != 1 || tags[0]["lyrics"] != "admitted lyrics" {
 		t.Fatalf("embedded lyrics unavailable: %v %v", tags, err)
 	}
+}
+
+func TestWindowsProbeDeadlineEndsHelperAndDescendant(t *testing.T) {
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, exe, "-test.run=^TestWindowsProbeDeadlineFixture$", "--", "deadline")
+	out, err := cmd.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd.Stderr = os.Stderr
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer cmd.Process.Kill()
+	var pid uint32
+	if _, err := fmt.Fscanln(out, &pid); err != nil || pid == 0 {
+		t.Fatalf("descendant did not start: %d %v", pid, err)
+	}
+	handle, err := windows.OpenProcess(windows.SYNCHRONIZE, false, pid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer windows.CloseHandle(handle)
+	if err := cmd.Wait(); err == nil || ctx.Err() != nil || cmd.ProcessState.ExitCode() != int(windows.ERROR_TIMEOUT) {
+		t.Fatalf("helper was not ended by its own deadline: %v %v %v", err, ctx.Err(), cmd.ProcessState)
+	}
+	status, err := windows.WaitForSingleObject(handle, 5000)
+	if err != nil || status != windows.WAIT_OBJECT_0 {
+		t.Fatalf("descendant survived helper deadline: %d %v", status, err)
+	}
+}
+
+func TestWindowsProbeDeadlineFixture(t *testing.T) {
+	if os.Args[len(os.Args)-1] != "deadline" {
+		return
+	}
+	if err := ensureWindowsProbeJob(); err != nil {
+		t.Fatal(err)
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(exe, "-test.run=^TestWindowsIdleProbeFixture$", "--", "idle")
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	fmt.Fprintln(os.Stdout, cmd.Process.Pid)
+	ctx, cancel := windowsProbeContext(2 * time.Second)
+	defer cancel()
+	<-ctx.Done()
+	// Let the deadline's job termination end this process, not the test runner.
+	time.Sleep(time.Minute)
+	os.Exit(2)
+}
+
+func TestWindowsIdleProbeFixture(t *testing.T) {
+	if os.Args[len(os.Args)-1] != "idle" {
+		return
+	}
+	time.Sleep(time.Minute)
+	os.Exit(2)
 }

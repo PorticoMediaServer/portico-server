@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -132,6 +133,24 @@ func ensureWindowsProbeJob() error {
 	return probeJob.err
 }
 
+// Bound wall time independently of the server, including acquisition and final
+// identity checks. Terminating the entire mandatory job also ends descendants
+// blocked on I/O, which a CPU budget or killing only the tool cannot guarantee.
+func windowsProbeContext(timeout time.Duration) (context.Context, func()) {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	stop := context.AfterFunc(ctx, func() {
+		if err := windows.TerminateJobObject(probeJob.handle, uint32(windows.ERROR_TIMEOUT)); err != nil {
+			// Process exit closes the kill-on-close job even if termination fails.
+			os.Exit(1)
+		}
+	})
+	return ctx, func() {
+		// Stop before cancellation: normal cleanup must not terminate this job.
+		stop()
+		cancel()
+	}
+}
+
 func inventoryCommandHelper(r request) error {
 	if err := validateInventoryCommand(r); err != nil {
 		return err
@@ -139,6 +158,9 @@ func inventoryCommandHelper(r request) error {
 	if err := ensureWindowsProbeJob(); err != nil {
 		return err
 	}
+	// Match the Unix probe's five-minute CPU ceiling with a wall-clock ceiling.
+	ctx, cancel := windowsProbeContext(time.Duration(scanCPUSeconds) * time.Second)
+	defer cancel()
 	source, err := openInventoryContent(*r.Inventory)
 	if err != nil {
 		return err
@@ -157,7 +179,7 @@ func inventoryCommandHelper(r request) error {
 	if err != nil {
 		return err
 	}
-	cmd, err := mediaexec.CommandArgv(context.Background(), argv)
+	cmd, err := mediaexec.CommandArgv(ctx, argv)
 	if err != nil {
 		return err
 	}
