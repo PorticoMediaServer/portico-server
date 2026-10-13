@@ -11,6 +11,7 @@ package httpapi
 var routeLanes = map[string]string{
 	// What travels with a download, and the requests a device started
 	// (downloads_routes.go).
+	"GET /v1/items/{itemId}/download-options":                                    laneBrowsing,
 	"GET /v1/downloads/requests":                                                 laneBrowsing,
 	"GET /v1/downloads/preparations/{id}/bundle":                                 laneDefault,
 	"GET /v1/downloads/artifacts/{grant}/artwork/{role}":                         laneMedia,
@@ -245,7 +246,6 @@ var routeLanes = map[string]string{
 	"GET /v1/items/{id}/chapters/{chapter}/image":                         laneMedia,
 	"GET /v1/items/{id}/detail":                                           laneBrowsing,
 	"GET /v1/items/{id}/credits":                                          laneBrowsing,
-	"GET /v1/items/{id}/download-options":                                 laneBrowsing,
 	"GET /v1/items/{id}/listening":                                        laneBrowsing,
 	"GET /v1/items/{id}/playback-offers":                                  lanePlayback,
 	"GET /v1/items/{id}/recommendations":                                  laneExpensive,

@@ -1150,12 +1150,12 @@ export const routes = [
   {
     "id": "get_download_options",
     "method": "GET",
-    "path": "/v1/items/{id}/download-options",
-    "summary": "Read what can be downloaded for one title, with sizes",
-    "access": "device",
+    "path": "/v1/items/{itemId}/download-options",
+    "summary": "List offline qualities this device can play and this server can produce",
+    "access": "viewer_item_restrictions",
     "requires": "read",
     "lane": "browsing",
-    "cost": "constant",
+    "cost": "page_sized",
     "bodyLimit": 0,
     "errors": [
       "invalid_request",

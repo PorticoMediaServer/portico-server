@@ -13,7 +13,6 @@ import (
 	"strings"
 
 	"portico.local/server/internal/decoder"
-
 	"portico.local/server/internal/identity"
 )
 

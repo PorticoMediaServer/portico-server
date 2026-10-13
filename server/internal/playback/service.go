@@ -402,7 +402,7 @@ func (s *Service) create(ctx context.Context, p identity.Principal, item, reques
 		}
 	}
 
-	if mode == "hls" && s.hls.finite != nil {
+	if mode == "hls" && s.hls.finite != nil && delivery.ConversionTarget == nil {
 		delivery.Profile = finiteDeliveryProfile
 		delivery.Strategy = DeliveryVideoConversion
 		delivery.Reason = ReasonFiniteNormalization

@@ -6,5 +6,12 @@ package decoder
 // offered from then on, and one it refuses is never offered.
 func PreparedProducible(r PreparedRecipe) bool {
 	_, err := preparedArgs("http://127.0.0.1/input", r, false)
-	return err == nil
+	if err != nil {
+		return false
+	}
+	video := "h264"
+	if r.AudioOnly {
+		video = ""
+	}
+	return AvailableConversionOutputs(CurrentToolchain()).SupportsConversion(video, 8, "aac", 2)
 }

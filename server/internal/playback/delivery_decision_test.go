@@ -2,6 +2,7 @@ package playback
 
 import (
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
@@ -203,9 +204,11 @@ func TestDecisionMatrixAcrossDevices(t *testing.T) {
 		}
 		noDV := appleTVProfile()
 		noDV.Video[1].DolbyVisionProfiles = []int{}
-		p := decide(t, source, noDV, nil)
-		if p.Strategy != DeliveryVideoConversion || !rejected(p, DeliveryOriginal, RejectDolbyVision) || !contains(p.Trace.Notes, NoteDolbyVisionNoLayer) {
-			t.Fatal(p, p.Trace)
+		policy := openPolicy()
+		p, err := planDelivery(DeliveryInput{Source: source, Client: noDV, Policy: policy, Target: autoTarget(policy, source.Video.Height), Config: DefaultDeliveryConfiguration(), TranscodingEnabled: true, FMP4Output: true})
+		var refused ErrDeliveryRefused
+		if !errors.As(err, &refused) || !rejected(p, DeliveryOriginal, RejectDolbyVision) {
+			t.Fatal(p, err)
 		}
 	})
 	t.Run("dolby vision 8.1 falls back to its hdr10 layer", func(t *testing.T) {
@@ -217,7 +220,11 @@ func TestDecisionMatrixAcrossDevices(t *testing.T) {
 			t.Fatal(p, p.Trace.Routes)
 		}
 		detail.CodecTag = "dvh1"
-		p := decide(t, videoSource("mp4", "hevc", detail, eac3), noDV, func(in *DeliveryInput) { in.FMP4Output = true })
+		p := decide(t, videoSource("mp4", "hevc", detail, eac3), noDV, func(in *DeliveryInput) {
+			in.FMP4Output = true
+			in.Server = plannerToolchain()
+			in.Server.BitstreamFilters = map[string]bool{"dovi_rpu": true}
+		})
 		if p.Strategy != DeliveryCopyRemux || !rejected(p, DeliveryOriginal, RejectDolbyVisionEntry) {
 			t.Fatal(p, p.Trace.Routes)
 		}
@@ -239,10 +246,10 @@ func TestDecisionMatrixAcrossDevices(t *testing.T) {
 		surround := chromeProfile()
 		surround.AudioOutput.MaxChannels = 6
 		p = decide(t, source, surround, nil)
-		if p.AudioChannels != 6 || p.AudioBitrateBPS != 384_000 || p.Downmix != "" {
+		if p.AudioChannels != 6 || p.AudioBitrateBPS != 512_000 || p.Downmix != "" {
 			t.Fatal(p)
 		}
-		if _, args, _, err := p.CodecArgs(); err != nil || !strings.Contains(strings.Join(args, " "), "-c:a aac -b:a 384k -ac 6") {
+		if _, args, _, err := p.CodecArgs(); err != nil || (!strings.Contains(strings.Join(args, " "), "-c:a aac -ac 6") || !strings.Contains(strings.Join(args, " "), "-b:a 512000")) {
 			t.Fatal(args, err)
 		}
 	})

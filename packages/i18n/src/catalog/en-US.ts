@@ -456,7 +456,6 @@ export const enUS = {
   'player.info.reason.subtitles': 'The subtitles are images and are drawn into the picture.',
   'player.info.reason.normalized': 'The stream’s timing is repaired as it plays.',
   'player.info.reason.audioTrack': 'The audio track you chose needs converting.',
-  'player.info.reason.dolbyVision': 'Dolby Vision colors are approximate on this screen.',
   'player.info.reason.unknown': 'The original can’t play on this device as it is.',
   'player.info.video': 'Video',
   'player.info.audio': 'Audio',

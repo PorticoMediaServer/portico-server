@@ -9668,6 +9668,11 @@ export const schemas = {
                         "evidence": {
                           "type": "string"
                         },
+                        "maxBitDepth": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
                         "maxChannels": {
                           "maximum": 9007199254740991,
                           "minimum": -9007199254740991,
@@ -9892,6 +9897,11 @@ export const schemas = {
                         },
                         "evidence": {
                           "type": "string"
+                        },
+                        "maxBitDepth": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
                         },
                         "maxChannels": {
                           "maximum": 9007199254740991,
@@ -21989,6 +21999,11 @@ export const schemas = {
                     "evidence": {
                       "type": "string"
                     },
+                    "maxBitDepth": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
                     "maxChannels": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
@@ -22213,6 +22228,11 @@ export const schemas = {
                     },
                     "evidence": {
                       "type": "string"
+                    },
+                    "maxBitDepth": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
                     },
                     "maxChannels": {
                       "maximum": 9007199254740991,
