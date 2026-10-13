@@ -1,3 +1,4 @@
+import {importSkipped} from '@core/server-admin/live-words.ts';
 import {useI18n} from '../../app/i18n';
 import {useEffect, useState} from 'react';
 import {lanConfirmationRoots, linearError, previewRemoteSource, remoteSourceDraft, withConfirmedLanRoots, type RemoteSourceDraft, type RemoteSourcePreview, type RefreshStatus, type SourceKind} from '@core/linear-api.ts';
@@ -52,6 +53,7 @@ export function LiveSourcesPanel() {
       {action.error ? <Notice tone="error">{action.error}</Notice> : null}
         <SettingsGroup title={t('web.liveTv.sources')} action={<div style={{display: 'flex', gap: 12, alignItems: 'center'}}><Freshness at={read.at} onRefresh={read.reload} refreshing={read.loading} />{<Menu label={t('web.liveTv.addSource')} trigger={<Button variant="primary" icon="plus" label={t('web.liveTv.addSource')} iconAfter="chevronDown" />} items={[{id: 'remote', label: t('web.liveTv.remoteSource'), icon: 'live', meta: t('web.liveTv.remoteSourceMeta')}, {id: 'discover', label: t('web.liveTv.discover'), icon: 'search', meta: t('web.liveTv.discoverMeta')}, {id: 'upload', label: t('web.liveTv.upload'), icon: 'upload', meta: t('web.liveTv.uploadMeta')}]} onSelect={id => { if (id === 'discover') setDiscover(true); else { setFound(undefined); setAdd(id as 'remote' | 'upload'); } }} />}</div>}>
           {read.data && !sources.length ? <SettingsRow label={t('live.noSources')} help={t('web.liveTv.noSourcesHelp')} /> : null}
+          {sources.map(src => <ImportSkippedNotice key={'skipped:' + src.id} name={src.name} diagnostics={(src as {diagnostics?: unknown}).diagnostics} />)}
           {sources.map(src => {
             const r = status(src.id);
             const refreshable = canRefreshSource(src, read.data?.refresh);
@@ -119,6 +121,7 @@ function RemoteSourceDialog({open, tuner, onClose, onSaved}: {open: boolean; tun
       <Select label={i18n.t('web.liveTv.whoCanWatch')} value={draft.viewerAccess} options={[{value: 'server-members', label: i18n.t('web.liveTv.everyoneOnServer')}, {value: 'owner-only', label: i18n.t('web.together.onlyMe')}]} onChange={e => setDraft({...draft, viewerAccess: e.target.value as RemoteSourceDraft['viewerAccess']})} />
       <Select label={i18n.t('web.liveTv.refreshGuide')} value={String(draft.refreshSeconds)} options={[{value: '3600', label: i18n.t('web.libraries.everyHour')}, {value: '21600', label: i18n.t('web.libraries.every6h')}, {value: '43200', label: i18n.t('web.liveTv.every12h')}, {value: '86400', label: i18n.t('web.libraries.daily')}]} onChange={e => setDraft({...draft, refreshSeconds: Number(e.target.value)})} />
       {preview ? <Notice tone="success" title={[i18n.t('server.live.channelCount', {count: preview.preview.channels}), i18n.t('server.live.programCount', {count: preview.preview.programmes})].join(' · ')}>{preview.preview.names.slice(0, 6).join(', ')}{preview.preview.names.length > 6 ? '…' : ''}{preview.discoveredCapacity ? ` · ${i18n.t('web.liveTv.capacityTuners', {count: preview.discoveredCapacity})}` : ''}</Notice> : null}
+      {preview ? <ImportSkippedNotice diagnostics={preview.preview.diagnostics} /> : null}
       {confirm ? (
         <Notice tone="warning" title={i18n.t('web.liveTv.lanTitle')}>
           <span>{i18n.t('web.liveTv.lanBody')}</span>
@@ -199,4 +202,13 @@ export function RecordingStoragePanel() {
       {inline.error ? <div style={{padding: '0 16px 12px'}}><Notice tone="error" compact>{problem(inline.error, 'action')}</Notice></div> : null}
     </SettingsGroup>
   );
+}
+
+/** What a guide or playlist import left out and why; nothing when it left nothing out. The rest of the import is in use either way. */
+function ImportSkippedNotice({name, diagnostics}: {name?: string; diagnostics: unknown}) {
+  const i18n = useI18n();
+  const skipped = importSkipped(i18n.t, id => i18n.has(id), diagnostics);
+  if (!skipped) return null;
+  const notice = <Notice tone="warning" compact title={name}>{[skipped.summary, ...skipped.reasons].join(' ')}</Notice>;
+  return name ? <div style={{padding: 12}}>{notice}</div> : notice;
 }

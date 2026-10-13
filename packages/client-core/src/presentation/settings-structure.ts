@@ -362,6 +362,12 @@ const serverPages: readonly AuthoredPage[] = [
         on('liveDefaults', 'logoImport', 'web.dvrSettings.logoImport'),
         on('liveDefaults', 'discoveryEnabled', 'web.dvrSettings.discovery', 'web.dvrSettings.discoveryHelp'),
       ]},
+      // The most one playlist or guide may bring in: plain numbers the owner can raise or lower.
+      {id: 'liveLimits', tab: 'sources', title: 'server.live.limits', description: 'server.live.limitsLede', rows: [
+        setting('liveDefaults', 'importLimits.channels', 'server.live.limitChannels', {type: 'number', min: 1, max: 100000}),
+        setting('liveDefaults', 'importLimits.programmes', 'server.live.limitProgrammes', {type: 'number', min: 1, max: 10000000}),
+        setting('liveDefaults', 'importLimits.bytes', 'server.live.limitSize', {type: 'number', min: 1, max: 1024, unit: 'settings.unit.mb', scale: 1048576}),
+      ]},
       panel('tuners', 'server.tuners', undefined, {tab: 'recording'}),
       // Who may record, and the standing rules.
       panel('recordingRules', 'server.recordingRules', undefined, {tab: 'recording'}),
