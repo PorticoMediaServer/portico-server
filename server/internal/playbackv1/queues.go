@@ -53,11 +53,12 @@ type QueueShuffle struct {
 	Lap  int64  `json:"lap"`
 }
 type SegmentView struct {
-	ID    string `json:"id"`
-	Kind  string `json:"kind"`
-	Label string `json:"label"`
-	Count int64  `json:"count"`
-	State string `json:"state"`
+	SourceRevision string `json:"sourceRevision,omitempty"`
+	ID             string `json:"id"`
+	Kind           string `json:"kind"`
+	Label          string `json:"label"`
+	Count          int64  `json:"count"`
+	State          string `json:"state"`
 }
 
 // QueueEntry is one window entry (ARCH-MEDIA-03 delivery).
@@ -194,6 +195,7 @@ func scanQueue(r scanner) (queueRow, error) {
 // segment is one queue_v1_segments row with its snapshot's kind and label.
 type segment struct {
 	id, snapshot, kind, label, sortKey string
+	sourceRevision                     string
 	first, count, removed              int64
 	// A snapshot still building (P16) holds keys [0, built); the rest are
 	// pending, except one resolved ahead (hint). waiting: a start waits for it.
@@ -222,14 +224,14 @@ type layout struct {
 
 func (s *Service) readLayout(ctx context.Context, tx *sql.Tx, q queueRow) (*layout, error) {
 	l := &layout{q: q, removals: map[string][]int64{}, chunks: map[string][]byte{}, tx: tx, ctx: ctx}
-	rows, err := tx.QueryContext(ctx, `SELECT g.id,g.snapshot_id,s.kind,s.label,g.sort_key,g.first_ordinal,g.count,g.removed,s.state,s.built,s.start<>'',s.hint_ordinal,s.hint_key FROM queue_v1_segments g JOIN queue_v1_snapshots s ON s.id=g.snapshot_id WHERE g.queue_id=? ORDER BY g.sort_key`, q.id)
+	rows, err := tx.QueryContext(ctx, `SELECT g.id,g.snapshot_id,s.kind,s.label,g.sort_key,g.first_ordinal,g.count,g.removed,s.state,s.built,s.start<>'',s.hint_ordinal,s.hint_key,s.source_revision FROM queue_v1_segments g JOIN queue_v1_snapshots s ON s.id=g.snapshot_id WHERE g.queue_id=? ORDER BY g.sort_key`, q.id)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var g segment
-		if err = rows.Scan(&g.id, &g.snapshot, &g.kind, &g.label, &g.sortKey, &g.first, &g.count, &g.removed, &g.state, &g.built, &g.waiting, &g.hint, &g.hintKey); err != nil {
+		if err = rows.Scan(&g.id, &g.snapshot, &g.kind, &g.label, &g.sortKey, &g.first, &g.count, &g.removed, &g.state, &g.built, &g.waiting, &g.hint, &g.hintKey, &g.sourceRevision); err != nil {
 			return nil, err
 		}
 		g.waiting = g.waiting && g.state == "building"
@@ -554,7 +556,7 @@ func (s *Service) header(l *layout) QueueView {
 		if kind != "items" {
 			kind = "selector"
 		}
-		v.Segments = append(v.Segments, SegmentView{ID: g.id, Kind: kind, Label: g.label, Count: g.live(), State: g.state})
+		v.Segments = append(v.Segments, SegmentView{ID: g.id, Kind: kind, Label: g.label, Count: g.live(), State: g.state, SourceRevision: g.sourceRevision})
 	}
 	return v
 }

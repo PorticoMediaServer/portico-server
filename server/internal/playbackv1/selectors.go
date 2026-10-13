@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/identity"
 )
@@ -17,10 +18,17 @@ import (
 // Selector is the style guide's tagged union (amendment 9): exactly one of a
 // container, a browse query, or an explicit list of at most 500 items.
 type Selector struct {
-	Container *ContainerRef `json:"container,omitempty"`
-	Query     JSONValue     `json:"query,omitempty"`
-	Items     *ItemList     `json:"items,omitempty"`
+	Container *ContainerRef       `json:"container,omitempty"`
+	Query     *catalog.QueueQuery `json:"query,omitempty"`
+	Saved     *SavedRef           `json:"saved,omitempty"`
+	Items     *ItemList           `json:"items,omitempty"`
 }
+type SavedRef struct {
+	ID string `json:"id"`
+}
+
+func (s Selector) isQuery() bool { return s.Query != nil || s.Saved != nil }
+
 type ContainerRef struct {
 	Kind string `json:"kind"`
 	ID   string `json:"id"`
@@ -103,8 +111,14 @@ func (s Selector) validate(path string) error {
 			return &FieldError{Path: path + ".container"}
 		}
 	}
-	if len(s.Query) > 0 {
+	if s.Query != nil {
 		n++
+	}
+	if s.Saved != nil {
+		n++
+		if !itemIDPattern.MatchString(s.Saved.ID) {
+			return &FieldError{Path: path + ".saved.id"}
+		}
 	}
 	if s.Items != nil {
 		n++
@@ -180,6 +194,7 @@ var containers = map[string]containerQuery{
 // priority, and never held in memory whole.
 type snapshot struct {
 	id, kind, label, selector string
+	sourceRevision            string
 	count                     int64
 	anchor                    int64
 	pending                   []chunkRow // written with the queue command
@@ -250,13 +265,14 @@ func storeSnapshot(ctx context.Context, tx *sql.Tx, queue string, snap *snapshot
 	if snap.hintKey != "" {
 		hint = snap.hint
 	}
-	_, err := tx.ExecContext(ctx, `UPDATE queue_v1_snapshots SET count=?,label=?,state=?,built=?,seen=?,caller=?,start=?,hint_ordinal=?,hint_key=? WHERE id=?`, snap.size(), snap.label, state, snap.count, snap.seen, snap.caller, snap.start, hint, snap.hintKey, snap.id)
+	_, err := tx.ExecContext(ctx, `UPDATE queue_v1_snapshots SET count=?,label=?,state=?,built=?,seen=?,caller=?,start=?,hint_ordinal=?,hint_key=?,source_revision=? WHERE id=?`, snap.size(), snap.label, state, snap.count, snap.seen, snap.caller, snap.start, hint, snap.hintKey, snap.sourceRevision, snap.id)
 	return err
 }
 
 // discardSnapshot removes a snapshot whose batches were written but whose
 // queue command didn't commit.
 func (s *Service) discardSnapshot(ctx context.Context, snap snapshot) {
+	s.releaseCapture(snap.id)
 	if snap.stored {
 		_, _ = dbwork.ExecWrite(context.WithoutCancel(ctx), s.DB, dbwork.ClassBackgroundMedia, `DELETE FROM queue_v1_snapshots WHERE id=?`, snap.id)
 	}

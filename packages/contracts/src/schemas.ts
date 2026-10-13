@@ -267,7 +267,97 @@ export const schemas = {
             ],
             "type": "object"
           },
-          "query": {}
+          "query": {
+            "properties": {
+              "libraryId": {
+                "type": "string"
+              },
+              "pivot": {
+                "type": "string"
+              },
+              "query": {
+                "additionalProperties": false,
+                "description": "A predicate or all/any/not group. The parser enforces the published depth and clause bounds.",
+                "properties": {
+                  "all": {
+                    "items": {
+                      "additionalProperties": {},
+                      "properties": {},
+                      "required": [],
+                      "type": "object"
+                    },
+                    "maxItems": 40,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "any": {
+                    "items": {
+                      "additionalProperties": {},
+                      "properties": {},
+                      "required": [],
+                      "type": "object"
+                    },
+                    "maxItems": 40,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "field": {
+                    "type": "string"
+                  },
+                  "not": {
+                    "additionalProperties": {},
+                    "properties": {},
+                    "required": [],
+                    "type": "object"
+                  },
+                  "operator": {
+                    "type": "string"
+                  },
+                  "value": {}
+                },
+                "required": [],
+                "type": "object"
+              },
+              "sort": {
+                "items": {
+                  "properties": {
+                    "direction": {
+                      "type": "string"
+                    },
+                    "field": {
+                      "type": "string"
+                    },
+                    "seed": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "field",
+                    "direction"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "libraryId"
+            ],
+            "type": "object"
+          },
+          "saved": {
+            "properties": {
+              "id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id"
+            ],
+            "type": "object"
+          }
         },
         "required": [],
         "type": "object"
@@ -374,6 +464,9 @@ export const schemas = {
                   "type": "string"
                 },
                 "label": {
+                  "type": "string"
+                },
+                "sourceRevision": {
                   "type": "string"
                 },
                 "state": {
@@ -1142,6 +1235,9 @@ export const schemas = {
                   "type": "string"
                 },
                 "label": {
+                  "type": "string"
+                },
+                "sourceRevision": {
                   "type": "string"
                 },
                 "state": {
@@ -4528,6 +4624,9 @@ export const schemas = {
                 "label": {
                   "type": "string"
                 },
+                "sourceRevision": {
+                  "type": "string"
+                },
                 "state": {
                   "type": "string"
                 }
@@ -6835,7 +6934,97 @@ export const schemas = {
                   ],
                   "type": "object"
                 },
-                "query": {}
+                "query": {
+                  "properties": {
+                    "libraryId": {
+                      "type": "string"
+                    },
+                    "pivot": {
+                      "type": "string"
+                    },
+                    "query": {
+                      "additionalProperties": false,
+                      "description": "A predicate or all/any/not group. The parser enforces the published depth and clause bounds.",
+                      "properties": {
+                        "all": {
+                          "items": {
+                            "additionalProperties": {},
+                            "properties": {},
+                            "required": [],
+                            "type": "object"
+                          },
+                          "maxItems": 40,
+                          "minItems": 1,
+                          "type": "array"
+                        },
+                        "any": {
+                          "items": {
+                            "additionalProperties": {},
+                            "properties": {},
+                            "required": [],
+                            "type": "object"
+                          },
+                          "maxItems": 40,
+                          "minItems": 1,
+                          "type": "array"
+                        },
+                        "field": {
+                          "type": "string"
+                        },
+                        "not": {
+                          "additionalProperties": {},
+                          "properties": {},
+                          "required": [],
+                          "type": "object"
+                        },
+                        "operator": {
+                          "type": "string"
+                        },
+                        "value": {}
+                      },
+                      "required": [],
+                      "type": "object"
+                    },
+                    "sort": {
+                      "items": {
+                        "properties": {
+                          "direction": {
+                            "type": "string"
+                          },
+                          "field": {
+                            "type": "string"
+                          },
+                          "seed": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "field",
+                          "direction"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "libraryId"
+                  ],
+                  "type": "object"
+                },
+                "saved": {
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id"
+                  ],
+                  "type": "object"
+                }
               },
               "required": [],
               "type": "object"
@@ -6879,7 +7068,97 @@ export const schemas = {
             ],
             "type": "object"
           },
-          "query": {}
+          "query": {
+            "properties": {
+              "libraryId": {
+                "type": "string"
+              },
+              "pivot": {
+                "type": "string"
+              },
+              "query": {
+                "additionalProperties": false,
+                "description": "A predicate or all/any/not group. The parser enforces the published depth and clause bounds.",
+                "properties": {
+                  "all": {
+                    "items": {
+                      "additionalProperties": {},
+                      "properties": {},
+                      "required": [],
+                      "type": "object"
+                    },
+                    "maxItems": 40,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "any": {
+                    "items": {
+                      "additionalProperties": {},
+                      "properties": {},
+                      "required": [],
+                      "type": "object"
+                    },
+                    "maxItems": 40,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "field": {
+                    "type": "string"
+                  },
+                  "not": {
+                    "additionalProperties": {},
+                    "properties": {},
+                    "required": [],
+                    "type": "object"
+                  },
+                  "operator": {
+                    "type": "string"
+                  },
+                  "value": {}
+                },
+                "required": [],
+                "type": "object"
+              },
+              "sort": {
+                "items": {
+                  "properties": {
+                    "direction": {
+                      "type": "string"
+                    },
+                    "field": {
+                      "type": "string"
+                    },
+                    "seed": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "field",
+                    "direction"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "libraryId"
+            ],
+            "type": "object"
+          },
+          "saved": {
+            "properties": {
+              "id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id"
+            ],
+            "type": "object"
+          }
         },
         "required": [],
         "type": "object"
@@ -7033,6 +7312,9 @@ export const schemas = {
                   "type": "string"
                 },
                 "label": {
+                  "type": "string"
+                },
+                "sourceRevision": {
                   "type": "string"
                 },
                 "state": {
@@ -54047,6 +54329,9 @@ export const schemas = {
             "label": {
               "type": "string"
             },
+            "sourceRevision": {
+              "type": "string"
+            },
             "state": {
               "type": "string"
             }
@@ -65038,6 +65323,9 @@ export const schemas = {
                   "type": "string"
                 },
                 "label": {
+                  "type": "string"
+                },
+                "sourceRevision": {
                   "type": "string"
                 },
                 "state": {
@@ -94688,6 +94976,9 @@ export const schemas = {
                 "label": {
                   "type": "string"
                 },
+                "sourceRevision": {
+                  "type": "string"
+                },
                 "state": {
                   "type": "string"
                 }
@@ -106491,6 +106782,9 @@ export const schemas = {
                   "type": "string"
                 },
                 "label": {
+                  "type": "string"
+                },
+                "sourceRevision": {
                   "type": "string"
                 },
                 "state": {

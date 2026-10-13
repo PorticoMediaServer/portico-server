@@ -385,6 +385,9 @@ func (s *Service) CreateQueue(ctx context.Context, c Caller, key string, req Cre
 	snaps := make([]snapshot, 0, len(segments))
 	staged := false
 	discard := func() {
+		for _, snap := range snaps {
+			s.releaseCapture(snap.id)
+		}
 		if staged {
 			_, _ = dbwork.ExecWrite(context.WithoutCancel(ctx), s.DB, dbwork.ClassBackgroundMedia, `DELETE FROM queues_v1 WHERE id=? AND owner_id=?`, q.id, staging)
 		}
@@ -399,6 +402,7 @@ func (s *Service) CreateQueue(ctx context.Context, c Caller, key string, req Cre
 		snap, err := s.buildSnapshot(ctx, c.Principal, q.id, in, "segments["+strconv.Itoa(i)+"]", s.queueKeyLimit()-planned, stage, budget)
 		staged = staged || snap.stored
 		if err != nil {
+			s.releaseCapture(snap.id)
 			discard()
 			return QueueReply{}, err
 		}
@@ -1318,6 +1322,9 @@ func (s *Service) planBuilding(ctx context.Context, c Caller, segments []Segment
 		}
 		snap.caller = string(caller)
 		in := segments[i]
+		if in.Source.isQuery() && snap.anchorItem == "" {
+			continue
+		}
 		if !(i == 0 && in.Order != nil && in.Order.Mode == "shuffle") {
 			if snap.anchorItem != "" {
 				raw, _ := json.Marshal(queueStart{Mode: "ordered", AnchorItem: snap.anchorItem})

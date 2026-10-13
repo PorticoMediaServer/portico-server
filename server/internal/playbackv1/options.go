@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"portico.local/server/internal/audiofacts"
+	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/compactcatalog"
 	"strconv"
 	"strings"
@@ -180,6 +181,7 @@ type Service struct {
 	PauseQueueBuilds bool
 	// LibraryCheck and Visibility authorize queue sources and windows (library
 	// access, restrictions and member limits); HTTP composition installs them.
+	QueryKeys    func(context.Context, *sql.Tx, identity.Principal, Selector) (catalog.QueueSelection, error)
 	LibraryCheck LibraryCheck
 	Visibility   Visibility
 	// Unrestricted says the caller's item fence admits every item (every

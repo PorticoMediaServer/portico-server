@@ -78,6 +78,9 @@ func (s *Service) read() reads {
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	if s.readTx != nil {
+		return reads{ctx: ctx, to: s.readTx}
+	}
 	if tx := dbwork.Snapshot(ctx); tx != nil {
 		return reads{ctx: ctx, to: tx}
 	}

@@ -78,16 +78,23 @@ type selectorKeys struct {
 	args     []any
 	kind     string
 	specials bool
+	revision string
+	label    string
 }
 
 // keysQuery checks the caller may use the selector's container and returns
 // its key query (see openKeys).
 func (s *Service) keysQuery(ctx context.Context, tx *sql.Tx, p identity.Principal, in SegmentInput) (selectorKeys, error) {
 	switch {
-	case len(in.Source.Query) > 0:
-		// Browse-query selectors need the browse engine's keyset scan; until
-		// then they are refused, never silently narrowed.
-		return selectorKeys{}, ErrUnsupportedSelector
+	case in.Source.isQuery():
+		if s.QueryKeys == nil {
+			return selectorKeys{}, ErrUnsupportedSelector
+		}
+		selection, err := s.QueryKeys(ctx, tx, p, in.Source)
+		if err != nil {
+			return selectorKeys{}, err
+		}
+		return selectorKeys{query: selection.SQL, args: selection.Args, kind: "selector", revision: selection.Revision, label: selection.Label}, nil
 	case in.Source.Items != nil:
 		// Keep the caller's order; unknown and inaccessible ids are dropped alike.
 		// catalog_entities is facts, so no readiness wait.
@@ -194,6 +201,10 @@ func (sc *snapshotScan) writeBatch() error {
 	})
 	if err == nil {
 		snap.stored, snap.pending = true, snap.pending[:0]
+		pace := dbwork.WithBackgroundSpeed(sc.ctx, dbwork.ReadBackgroundSpeed(sc.ctx, sc.s.DB))
+		if !dbwork.PaceBackground(pace, time.Now()) {
+			return pace.Err()
+		}
 	}
 	return err
 }
@@ -301,17 +312,39 @@ func (s *Service) buildSnapshot(ctx context.Context, p identity.Principal, queue
 	}
 	raw, _ := json.Marshal(in.Source)
 	snap := snapshot{id: newShortID("s"), selector: string(raw), anchor: -1}
-	tx, done, err := dbwork.BeginRead(ctx, s.DB)
+	var tx *sql.Tx
+	var done func()
+	var err error
+	retained := false
+	var capture *queryCapture
+	if in.Source.isQuery() {
+		capture, err = s.openCapture(ctx)
+		if err == nil {
+			tx, done = capture.tx, capture.close
+		}
+		budget.keys = chunkKeys // answer as soon as the first playable batch exists
+	} else {
+		tx, done, err = dbwork.BeginRead(ctx, s.DB)
+	}
 	if err != nil {
 		return snap, err
 	}
-	defer done()
-	keys, kind, specials, err := s.openKeys(ctx, tx, p, in)
+	defer func() {
+		if !retained {
+			done()
+		}
+	}()
+	k, err := s.keysQuery(ctx, tx, p, in)
+	if err != nil {
+		return snap, err
+	}
+	keys, err := tx.QueryContext(ctx, k.query, k.args...)
 	if err != nil {
 		return snap, err
 	}
 	defer keys.Close()
-	snap.kind = kind
+	kind, specials := k.kind, k.specials
+	snap.kind, snap.sourceRevision, snap.label = kind, k.revision, k.label
 	sc := &snapshotScan{s: s, ctx: ctx, snap: &snap, queue: queue, limit: limit, keep: true, budget: budget, stage: stage, anchorAt: -1, anchor: -1}
 	if in.Anchor != nil {
 		sc.anchorItem = in.Anchor.ItemID
@@ -334,13 +367,25 @@ func (s *Service) buildSnapshot(ctx context.Context, p identity.Principal, queue
 	}
 	// A label only for something the caller can play: a restricted show's or
 	// collection's title never reaches a segment (P12).
-	if snap.count > 0 {
+	if snap.count > 0 && snap.label == "" {
 		snap.label = s.snapshotLabel(ctx, tx, in, snap)
+	}
+	if capture != nil && snap.partial {
+		s.build.mu.Lock()
+		if s.build.captures == nil {
+			s.build.captures = make(map[string]*queryCapture)
+		}
+		s.build.captures[snap.id] = capture
+		s.build.mu.Unlock()
+		retained = true
 	}
 	return snap, nil
 }
 
 func (s *Service) snapshotLabel(ctx context.Context, tx *sql.Tx, in SegmentInput, snap snapshot) string {
+	if in.Source.isQuery() {
+		return snap.label
+	}
 	if snap.kind == "items" {
 		return fmt.Sprintf("%d items", snap.count)
 	}
@@ -475,10 +520,11 @@ func reservoirPick(seed, i int64) bool {
 // builder finishes building snapshots in the background, one at a time, at
 // background priority, resuming where a scan stopped (also after a restart).
 type builder struct {
-	mu      sync.Mutex
-	running bool
-	again   bool
-	resume  sync.Once
+	mu       sync.Mutex
+	running  bool
+	again    bool
+	resume   sync.Once
+	captures map[string]*queryCapture
 }
 
 // resumeOnce: the first queue request after a start continues what a restart
@@ -576,9 +622,10 @@ func (b *builder) run(s *Service) {
 
 // continueBuild resumes one building snapshot from its seen row and finishes it.
 func (s *Service) continueBuild(parent context.Context, id string) error {
-	var queue, kind, selector, caller, start, label string
+	defer s.releaseCapture(id)
+	var queue, kind, selector, caller, start, label, sourceRevision string
 	var count, built, seen int64
-	if err := s.DB.QueryRowContext(parent, `SELECT queue_id,kind,selector,caller,start,label,count,built,seen FROM queue_v1_snapshots WHERE id=? AND state='building'`, id).Scan(&queue, &kind, &selector, &caller, &start, &label, &count, &built, &seen); err != nil {
+	if err := s.DB.QueryRowContext(parent, `SELECT queue_id,kind,selector,caller,start,label,count,built,seen,source_revision FROM queue_v1_snapshots WHERE id=? AND state='building'`, id).Scan(&queue, &kind, &selector, &caller, &start, &label, &count, &built, &seen, &sourceRevision); err != nil {
 		return err
 	}
 	var who buildCaller
@@ -599,12 +646,27 @@ func (s *Service) continueBuild(parent context.Context, id string) error {
 	p := identity.Principal{Viewer: who.Viewer, Epoch: who.Epoch}
 	ctx, cancel := context.WithTimeout(parent, buildLifetime)
 	defer cancel()
-	tx, done, err := dbwork.BeginRead(ctx, s.DB)
+	var tx *sql.Tx
+	var done func()
+	var err error
+	capture := s.takeCapture(id)
+	if capture != nil {
+		tx, done = capture.tx, capture.close
+	} else {
+		tx, done, err = dbwork.BeginRead(ctx, s.DB)
+	}
 	if err != nil {
 		return err
 	}
 	defer done()
-	keys, _, _, err := s.openKeys(ctx, tx, p, in)
+	k, err := s.keysQuery(ctx, tx, p, in)
+	if err != nil {
+		return err
+	}
+	if in.Source.isQuery() && sourceRevision != k.revision {
+		return errSelectionChanged
+	}
+	keys, err := tx.QueryContext(ctx, k.query, k.args...)
 	if err != nil {
 		return err
 	}

@@ -36,6 +36,11 @@ export class QueueClient {
     return Object.freeze({queue: parseQueue(b.queue), window: Object.freeze(Array.isArray(b.window) ? b.window.map(parseEntry) : []), session: b.session !== undefined ? parseSession(b.session) : undefined});
   }
 
+  /** Capture every match on the server; the first batch can start playback. */
+  createSelector(source: Selector, options: {shuffleSeed?: string; shuffle?: boolean; startPlayback?: Readonly<{state?: 'playing' | 'paused'; quality?: QualityRequest}>; signal?: AbortSignal} = {}): Promise<CreateResult> {
+    return this.create([{source, ...(options.shuffle ? {order: {mode: 'shuffle' as const, ...(options.shuffleSeed ? {seed: options.shuffleSeed} : {})}} : {})}], options);
+  }
+
   async header(id: string, signal?: AbortSignal): Promise<QueueHeader> {
     return parseQueue((await call(this.http, {method: 'GET', path: encodedRoutePath("get_queue", {"id": enc(id)}), signal})).body);
   }
