@@ -1,4 +1,4 @@
-import React, {forwardRef, useEffect, useRef, useState} from 'react';
+import React, {forwardRef, useEffect, useRef, useState, useSyncExternalStore} from 'react';
 import {useNavigate} from '@tanstack/react-router';
 import type {ContentEntry} from '@core/library-content.ts';
 import type {WindowedCollection} from '@core/collections/index.ts';
@@ -47,6 +47,7 @@ const QUEUE_AHEAD = 200;
 export const TitlesTable = forwardRef(function TitlesTable({collection, libraryId, tracks, sort, sorts, onSort, onFirstVisible}: {collection: WindowedCollection<ContentEntry>; libraryId: string; /** Songs: title, artist, album, duration, plays, date added. */ tracks?: boolean; sort: BrowseSortSelection; sorts: readonly BrowseSortCapability[]; /** Absent: the order is the tab's own. */ onSort?: (next: BrowseSortSelection) => void; onFirstVisible?: (index: number) => void}, ref: React.Ref<WindowedGridHandle>) {
   const {t} = useI18n();
   const player = usePlayerActions();
+  const rowCount = useSyncExternalStore(collection.subscribe, () => collection.getSnapshot().total);
   const columns = tracks ? TRACK_COLUMNS : TITLE_COLUMNS;
   // A song plays on through the list in the order shown, as every music player does: the songs
   // already loaded after it are the queue (bounded; nothing is fetched to build it).
@@ -62,8 +63,8 @@ export const TitlesTable = forwardRef(function TitlesTable({collection, libraryI
     onSort(sort.field === cap.id ? (cap.directions.includes(flipped) ? {field: cap.id, direction: flipped} : sort) : {field: cap.id, direction: cap.defaultDirection});
   };
   return (
-    <div className={s.table} data-kind={tracks ? 'tracks' : 'titles'} role="table" aria-label={t('web.library.titlesLabel')}>
-      <div className={s.head} role="row">
+    <div className={s.table} data-kind={tracks ? 'tracks' : 'titles'} role="table" aria-label={t('web.library.titlesLabel')} aria-rowcount={rowCount === undefined ? -1 : rowCount + 1}>
+      <div className={s.head} role="row" aria-rowindex={1}>
         {columns.map(column => {
           const sortable = !!onSort && !!column.sort && sorts.some(x => x.id === column.sort);
           const current = sort.field === column.sort;
@@ -81,15 +82,16 @@ export const TitlesTable = forwardRef(function TitlesTable({collection, libraryI
         collection={collection}
         estimateRowHeight={64}
         label={t('web.library.titlesLabel')}
+        semantics="none"
         onFirstVisible={onFirstVisible}
-        renderItem={(entry, index) => <TitleRow entry={entry} libraryId={libraryId} tracks={tracks} onPlayTrack={tracks ? () => playFrom(index) : undefined} />}
+        renderItem={(entry, index) => <TitleRow entry={entry} rowIndex={index + 2} libraryId={libraryId} tracks={tracks} onPlayTrack={tracks ? () => playFrom(index) : undefined} />}
         renderPlaceholder={() => <div style={{height: 64, padding: '8px 16px'}}><Skeleton height={48} /></div>}
       />
     </div>
   );
 });
 
-const TitleRow = React.memo(function TitleRow({entry, libraryId, tracks, onPlayTrack}: {entry: ContentEntry; libraryId: string; tracks?: boolean; onPlayTrack?: () => void}) {
+const TitleRow = React.memo(function TitleRow({entry, rowIndex, libraryId, tracks, onPlayTrack}: {entry: ContentEntry; /** The row's place in the whole table (the header is row 1), since only the rows in view are drawn. */ rowIndex: number; libraryId: string; tracks?: boolean; onPlayTrack?: () => void}) {
   const i18n = useI18n();
   const {t} = i18n;
   const open = useOpenEntry();
@@ -104,7 +106,7 @@ const TitleRow = React.memo(function TitleRow({entry, libraryId, tracks, onPlayT
   const library = entry.libraryId ?? libraryId;
   const caption = tracks ? undefined : entry.kind === 'movie' || entry.kind === 'show' ? undefined : cardCaption(entry, t, {locale: i18n.locale});
   return (
-    <div className={s.row} role="row" data-playing={playing || undefined}>
+    <div className={s.row} role="row" aria-rowindex={rowIndex} data-playing={playing || undefined}>
       <button type="button" className={s.main} role="cell" onClick={activate} aria-label={tracks ? t('card.play', {title: entry.title}) : entry.title}>
         <span className={s.art} data-shape={shape}><Artwork path={entry.posterUrl ?? entry.backdropUrl} shape={shape === 'circle' ? 'square' : shape} icon={iconFor(entry.kind)} alt="" /></span>
         <span className={s.text}><span className={s.name}>{entry.title}</span>{caption ? <span className={s.caption}>{caption}</span> : null}</span>
