@@ -37,7 +37,8 @@ test('quiet clean SSE closures back off before falling back to long poll, retain
 test('stream errors retain Retry-After even when the next request switches to long poll',async()=>{
  const c=timers();let polls=0;
  const events=new EventsClient({http:{send:()=>{polls++;return held();}},openStream:async()=>{throw {status:503,retryAfterMs:60_000};},streamFailuresBeforePoll:1,random:()=>0.5,setTimer:c.setTimer,clearTimer:c.clearTimer});
- events.start();await settle();assert.equal(polls,0);assert.equal([...c.pending.values()][0].ms,60_000);
+ // The server's minute is a floor; each client waits a little longer, at random, so they do not all come back together.
+ events.start();await settle();assert.equal(polls,0);assert.equal([...c.pending.values()][0].ms,67_500);
  c.fire();await settle();assert.equal(polls,1);events.stop();
 });
 
@@ -61,7 +62,7 @@ test('a retired SSE callback and cleanup cannot overwrite the restarted connecti
 
 test('a zero-delay stream.closed envelope cannot cause an immediate reconnect loop',async()=>{
  const c=timers();let streams=0;
- const events=new EventsClient({http:{send:held},openStream:async(_cursor,event)=>{streams++;event({data:JSON.stringify({id:'close',type:'stream.closed',data:{reconnectAfterMs:0}})});},setTimer:c.setTimer,clearTimer:c.clearTimer});
+ const events=new EventsClient({http:{send:held},openStream:async(_cursor,event)=>{streams++;event({data:JSON.stringify({id:'close',type:'stream.closed',data:{reconnectAfterMs:0}})});},random:()=>0,setTimer:c.setTimer,clearTimer:c.clearTimer});
  events.start();await settle();assert.equal(streams,1);assert.equal([...c.pending.values()][0].ms,1000);events.stop();
 });
 
@@ -70,4 +71,15 @@ test('event retry sleep chunks long Retry-After values without overflowing a tim
  const events=new EventsClient({http:{send:async()=>{calls++;return {status:429,headers:{'Retry-After':'3000000'}};}},random:()=>0,setTimer:c.setTimer,clearTimer:c.clearTimer});
  events.start();await settle();assert.equal([...c.pending.values()][0].ms,2_147_483_647);
  c.fire();await settle();assert.equal(calls,1);assert.equal([...c.pending.values()][0].ms,3_000_000_000-2_147_483_647);events.stop();await settle();assert.equal(c.pending.size,0);
+});
+
+test('a wait the server asked for is spread between clients and never shortened',async()=>{
+ for(const [random,delay] of [[0,60_000],[1,75_000]]){
+  const c=timers();const events=new EventsClient({http:{send:async()=>({status:429,headers:{'Retry-After':'60'}})},random:()=>random,setTimer:c.setTimer,clearTimer:c.clearTimer});
+  events.start();await settle();assert.equal([...c.pending.values()][0].ms,delay);events.stop();
+ }
+ for(const [random,delay] of [[0,5000],[1,6250]]){
+  const c=timers();const events=new EventsClient({http:{send:held},openStream:async(_cursor,event)=>{event({data:JSON.stringify({id:'close',type:'stream.closed',data:{reconnectAfterMs:5000}})});},random:()=>random,setTimer:c.setTimer,clearTimer:c.clearTimer});
+  events.start();await settle();assert.equal([...c.pending.values()][0].ms,delay);events.stop();
+ }
 });
