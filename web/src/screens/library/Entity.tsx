@@ -14,6 +14,7 @@ import {usePlayerActions} from '../../player/PlayerContext';
 import {useSession} from '../../app/session';
 import {useDownloads} from '../../app/downloads';
 import {containerKindFor, useContainerWatched} from '../shared/container-watched';
+import {WatchedUndo} from '../shared/WatchedUndo';
 import {Button, Inset, KeyValue, ListRow, Page, Section, StateView, Text, TitleHero, type MenuAnchor} from '../../ui';
 import {LoadingShelves, SectionView} from '../shared/Sections';
 import body from '../detail/Detail.module.css';
@@ -180,6 +181,7 @@ export function EntityScreen() {
       <Page>
         {snapshot.phase === 'loading' && !snapshot.sections.length ? <LoadingShelves density={shape === 'square' ? 'square' : 'poster'} /> : null}
         {snapshot.phase === 'error' && !snapshot.sections.length ? <ErrorState error={snapshot.error} context="collection" retry={retry} refresh={refresh} /> : null}
+        <WatchedUndo watched={containerWatched} onUndone={refresh} />
         {snapshot.phase === 'refresh-required' ? <Inset><ErrorNotice error={snapshot.error ?? changedError} context="collection" refresh={refresh} /></Inset> : null}
         {/* Entity sections sit above the backdrop scrim (Detail `.body` rule). */}
         <div className={body.body}>

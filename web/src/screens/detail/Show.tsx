@@ -23,6 +23,7 @@ import {EpisodePanel} from './EpisodePanel';
 import s from './Show.module.css';
 import {useViewerScope} from '../../app/viewer-scope';
 import {useContainerWatched} from '../shared/container-watched';
+import {WatchedUndo} from '../shared/WatchedUndo';
 import {getContainerState} from '@core/container-state.ts';
 import {useI18n, type I18n} from '../../app/i18n';
 
@@ -248,6 +249,8 @@ export function ShowScreen() {
       {show && editingSettings ? <ShowSettingsDialog libraryId={show.libraryId} showId={show.id} settings={settings} onClose={() => setEditingSettings(false)} onSaved={() => { setEditingSettings(false); retry(); }} /> : null}
       <Page>
         <div style={{position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', gap: 32}}>
+          <WatchedUndo watched={showWatched} onUndone={retry} />
+          <WatchedUndo watched={seasonWatched} onUndone={retry} />
           {snapshot.phase === 'error' && data ? <Inset><ErrorNotice error={snapshot.error} context="show" retry={retry} /></Inset> : null}
           {snapshot.phase === 'refresh-required' ? <Inset><ErrorNotice error={snapshot.error ?? changedError} context="show" refresh={retry} /></Inset> : null}
           <Section title={t('title.episodes')}>

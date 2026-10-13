@@ -98,7 +98,7 @@ export type SettingsCustomId =
   | 'server.windows' | 'server.jobs'
   | 'server.logs' | 'server.detailWindow' | 'server.records' | 'server.capabilities' | 'server.supportExport' | 'server.feedback' | 'server.stateFolder'
   | 'server.identity' | 'server.updates' | 'server.restart' | 'server.clientReports'
-  | 'server.backgroundPause' | 'server.ffmpegStatus' | 'server.resourceUsage' | 'server.storageStatus' | 'server.downloadUsage';
+  | 'server.setAsideTitles' | 'server.backgroundPause' | 'server.ffmpegStatus' | 'server.resourceUsage' | 'server.storageStatus' | 'server.downloadUsage';
 
 type RowCopy = Readonly<{
   label: MessageId;
@@ -539,6 +539,8 @@ const serverPages: readonly AuthoredPage[] = [
     panel('records', 'server.records', 'settings.server.records'),
     panel('capabilities', 'server.capabilities', 'settings.server.capabilities'),
     // Logs an app sent after something went wrong: to read, download and delete.
+    // Titles a rebuild could not finish, with why: present only while there are any.
+    panel('setAside', 'server.setAsideTitles', 'server.setAside.title', {platforms: ['web']}),
     panel('clientReports', 'server.clientReports', 'web.diagnostics.clientReports', {platforms: ['web']}),
     panel('export', 'server.supportExport', 'settings.server.supportExport'),
     panel('feedback', 'server.feedback', 'settings.server.feedback'),

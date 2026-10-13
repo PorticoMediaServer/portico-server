@@ -1652,6 +1652,8 @@ export const enUS = {
   'title.fileUnavailable': 'This title’s file isn’t available right now.',
   'title.missing': 'Missing',
   'title.missingSince': 'Its files have not been on disk since {when}. It comes back by itself, with everything as it was, when they return.',
+  'watched.marked': 'Marked as watched.',
+  'watched.unmarked': 'Marked as unwatched.',
   'remote.title': 'Playing on your other devices',
   'remote.lede': 'What this profile is playing somewhere else, such as a TV you sent it to.',
   'remote.device': 'Another device',

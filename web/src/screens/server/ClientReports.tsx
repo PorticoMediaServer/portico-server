@@ -1,6 +1,11 @@
 import {useState} from 'react';
 import {deleteClientReport, listClientReports, readClientReport, type ClientReport} from '@core/client-reports.ts';
-import {problem, useAction} from '../../admin/console';
+import {problem, useAction, useRead} from '../../admin/console';
+import {readCatalogueFailures} from '@core/catalogue-failures.ts';
+import {dependsOn} from '@core/freshness-hub.ts';
+
+// A rebuild that finishes, or fails again, moves this list.
+const SET_ASIDE_MOVES = [dependsOn.content()];
 import {useCursorList} from '../../admin/cursor-read';
 import {ListPager} from './ListPager';
 import {useSession} from '../../app/session';
@@ -57,6 +62,32 @@ export function ClientReportsPanel() {
       </Dialog>
       <ConfirmDialog open={!!removing} onOpenChange={o => !o && setRemoving(undefined)} title={t('server.reports.deleteTitle')} body={t('server.reports.deleteBody')} confirmLabel={t('action.delete')} cancelLabel={t('action.cancel')} busy={action.busy} error={action.error}
         onConfirm={() => void action.run(async () => { if (!removing) return; await deleteClientReport(api, removing.id); setRemoving(undefined); read.reload(); })} />
+    </SettingsGroup>
+  );
+}
+
+/**
+ * Troubleshooting › Titles set aside: titles a catalogue rebuild could not finish, so that
+ * everything else could. Each says why, in the server's own words, and how often it has been
+ * tried; the server tries again by itself. Nothing is shown while there are none.
+ */
+export function SetAsideTitlesPanel() {
+  const i18n = useI18n();
+  const {t} = i18n;
+  const {api} = useSession();
+  const read = useRead(() => readCatalogueFailures(api), [api], {on: SET_ASIDE_MOVES});
+  const list = read.data;
+  if (!list?.failures.length) return null;
+  return (
+    <SettingsGroup title={t('server.setAside.title')} description={t('server.setAside.lede')}>
+      {read.error ? <div style={{padding: 12}}><Notice tone="warning" compact action={{label: t('action.tryAgain'), onClick: read.reload}}>{read.error}</Notice></div> : null}
+      {list.failures.map((f, n) => (
+        <SettingsRow key={`${f.domain}:${f.entityId ?? n}`} icon="warning" label={f.title || t('server.setAside.untitled')} stack
+          help={t('server.setAside.tried', {count: f.attempts, when: i18n.dateTime(f.failedAt)})}
+          control={<Text variant="mono" tone="tertiary" style={{fontSize: 12, overflowWrap: 'anywhere'}}>{f.reason}</Text>} />
+      ))}
+      {list.more ? <div style={{padding: '0 16px 16px'}}><Text variant="caption" tone="tertiary">{t('server.setAside.more')}</Text></div> : null}
+      <div style={{padding: '8px 16px 16px'}}><Button size="sm" variant="ghost" icon="refresh" label={t('server.setAside.check')} loading={read.loading} onClick={read.reload} /></div>
     </SettingsGroup>
   );
 }

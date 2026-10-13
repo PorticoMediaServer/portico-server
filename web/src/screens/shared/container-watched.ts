@@ -1,5 +1,5 @@
 import {useCallback, useEffect, useState} from 'react';
-import {containerCarries, getContainerState, setContainerFlag, setContainerState, type ContainerFlag, type ContainerKind, type ContainerState} from '@core/container-state.ts';
+import {containerCarries, getContainerState, setContainerFlag, setContainerState, undoContainerState, type ContainerFlag, type ContainerKind, type ContainerState} from '@core/container-state.ts';
 
 type WatchedApi = {request<T>(path: string, method?: string, body?: unknown, signal?: AbortSignal): Promise<T>};
 
@@ -16,6 +16,8 @@ export type ContainerWatched = Readonly<{
   saving: boolean;
   error: {code: string} | null;
   refresh: () => void;
+  /** Puts back what a mark just changed (each title's own watched state and place), while the server still offers it: about thirty seconds. */
+  undo: () => Promise<boolean>;
   /** Writes the default; rereads first on a 409 revision_mismatch. */
   setWatched: (watched: boolean) => Promise<boolean>;
   /** Whether this kind carries the flag (Watchlist: shows; Favorite: shows, albums, books, artists). */
@@ -76,6 +78,23 @@ export function useContainerWatched(api: WatchedApi | null, kind: ContainerKind 
       return false;
     }
   }, [api, kind, containerId, ready, state]);
+  const undo = useCallback(async () => {
+    if (!ready || !state?.undoToken) return false;
+    setSaving(true);
+    setError(null);
+    try {
+      const next = await undoContainerState(api!, kind!, containerId!, {expectedRevision: state.revision, undoToken: state.undoToken});
+      setState(next);
+      setSaving(false);
+      return true;
+    } catch (e) {
+      // Too late, or something changed since: the offer is gone and the mark stands.
+      setError({code: (e as {code?: string})?.code ?? 'request_failed'});
+      setState(current => (current ? {...current, undoToken: undefined, undoUntil: undefined} : current));
+      setSaving(false);
+      return false;
+    }
+  }, [api, kind, containerId, ready, state]);
   const carries = useCallback((flag: ContainerFlag | 'watched') => containerCarries(kind, flag), [kind]);
   const setFlag = useCallback(async (flag: ContainerFlag, value: boolean) => {
     if (!ready || !containerCarries(kind, flag)) return false;
@@ -93,5 +112,5 @@ export function useContainerWatched(api: WatchedApi | null, kind: ContainerKind 
       return false;
     }
   }, [api, kind, containerId, ready, state]);
-  return {state, loading, saving, error, refresh, setWatched, carries, setFlag};
+  return {state, loading, saving, error, refresh, setWatched, undo, carries, setFlag};
 }
