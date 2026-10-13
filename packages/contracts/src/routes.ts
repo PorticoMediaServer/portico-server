@@ -573,6 +573,23 @@ export const routes = [
     "sse": true
   },
   {
+    "id": "get_items_screen_metadata",
+    "method": "GET",
+    "path": "/v1/items/{id}/metadata/screen",
+    "summary": "Read match evidence, field provenance and provider candidates",
+    "access": "owner",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
     "id": "get_job",
     "method": "GET",
     "path": "/v1/jobs/{id}",
@@ -785,6 +802,23 @@ export const routes = [
     "cost": "constant",
     "bodyLimit": 0,
     "errors": [
+      "internal"
+    ],
+    "status": 200
+  },
+  {
+    "id": "get_shows_screen_metadata",
+    "method": "GET",
+    "path": "/v1/shows/{id}/metadata/screen",
+    "summary": "Read match evidence, field provenance and provider candidates",
+    "access": "owner",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "not_found",
       "internal"
     ],
     "status": 200

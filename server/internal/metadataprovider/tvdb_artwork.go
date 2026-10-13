@@ -3,6 +3,8 @@ package metadataprovider
 import (
 	"context"
 	"errors"
+	"golang.org/x/text/language"
+	"math"
 	"sort"
 	"strconv"
 	"strings"
@@ -86,15 +88,17 @@ func (s *TVDB) ArtworkForKind(ctx context.Context, kind string, id int64, locale
 	out := []ArtworkImage{}
 	for _, a := range result.Data.Artworks {
 		role := roles[a.Type]
-		if role == "" || a.ID <= 0 || len(a.Image) > 4096 || len(a.Language) > 64 {
+		if role == "" || a.ID <= 0 || len(a.Image) > 4096 || len(a.Language) > 64 || math.IsNaN(a.Score) || math.IsInf(a.Score, 0) {
 			continue
 		}
 		out = append(out, ArtworkImage{a.ID, role, a.Image, a.Language, a.Score})
 
 	}
-	preferred := strings.Split(strings.ToLower(locale), "-")[0]
+	base, _ := language.Make(locale).Base()
+	preferred := base.String()
+	iso3 := base.ISO3()
 	rank := func(l string) int {
-		if strings.EqualFold(l, preferred) {
+		if strings.EqualFold(l, preferred) || strings.EqualFold(l, iso3) {
 			return 0
 		}
 		if l == "" {

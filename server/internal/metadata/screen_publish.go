@@ -236,12 +236,14 @@ func (s *Service) applyScreenRecord(ctx context.Context, tx *sql.Tx, p *screenCl
 	}
 	for field, value := range fields {
 		provider := id.Provider
-		written, err := s.screenField(ctx, tx, b, field, value, provider, c.SourceKind, c.SourceURL, c.Confidence, stamp, selection, publication)
+		fieldBase := b
+		fieldBase.Language = r.FieldLanguages[field]
+		written, err := s.screenField(ctx, tx, fieldBase, field, value, provider, c.SourceKind, c.SourceURL, c.Confidence, stamp, selection, publication)
 		if err != nil {
 			return err
 		}
 		if written {
-			if err = s.screenCatalogField(ctx, tx, b, field, value, provider, c.SourceURL, stamp); err != nil {
+			if err = s.screenCatalogField(ctx, tx, fieldBase, field, value, provider, c.SourceURL, stamp); err != nil {
 				return err
 			}
 		}
@@ -305,6 +307,9 @@ func (s *Service) applyScreenRecord(ctx context.Context, tx *sql.Tx, p *screenCl
 }
 func screenRecordFields(r metadataprovider.ScreenRecord, region string) map[string]any {
 	out := map[string]any{}
+	if len(r.Skipped) > 0 {
+		out["providerIssues"] = r.Skipped
+	}
 	for k, v := range map[string]string{"title": r.Title, "originalTitle": r.OriginalTitle, "overview": r.Overview, "tagline": r.Tagline, "date": r.Date, "language": r.Language, "status": r.Status, "format": r.Format, "sourceMaterial": r.SourceMaterial, "season": r.Season} {
 		if v != "" {
 			out[k] = v
@@ -480,7 +485,8 @@ func (s *Service) screenCatalogField(ctx context.Context, tx *sql.Tx, b screenBa
 	}
 	class := map[string]string{"genres": "genre", "credits": "credit"}[field]
 	if class != "" {
-		locked, err := relationshipClassLocked(ctx, tx, b.TargetID, class)
+		locks, err := relationshipLocks(ctx, tx, RepairTarget{b.TargetKind, b.TargetID})
+		locked := locks[class]
 		if err != nil {
 			return err
 		}
@@ -930,7 +936,15 @@ func (s *Service) applyScreenLocal(ctx context.Context, tx *sql.Tx, b screenBase
 	if err != nil {
 		return err
 	}
+	retirementLocks, err := relationshipLocks(ctx, tx, RepairTarget{b.TargetKind, b.TargetID})
+	if err != nil {
+		return err
+	}
 	for _, field := range retired {
+		class := map[string]string{"genres": "genre", "credits": "credit"}[field]
+		if class != "" && retirementLocks[class] {
+			continue
+		}
 		if _, err = tx.ExecContext(ctx, `DELETE FROM screen_metadata_fields WHERE target_kind=? AND target_id=? AND field=? AND source_kind='nfo'`, b.TargetKind, b.Entity, field); err != nil {
 			return err
 		}

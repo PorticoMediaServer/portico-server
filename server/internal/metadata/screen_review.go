@@ -330,6 +330,7 @@ func (s *Service) ScreenState(ctx context.Context, kind, id string) (ScreenState
 			return out, err
 		}
 		out.Accepted = &r
+		out.LocalIssues = append(out.LocalIssues, r.Skipped...)
 		out.Attribution = metadataprovider.ScreenAttribution(r.Identity.Provider)
 	}
 	rows, err := tx.QueryContext(ctx, `SELECT candidate_key,provider,provider_type,provider_id,payload,confidence,strong_signals,contradiction,reasons,observed_at,source_kind FROM screen_metadata_candidates WHERE target_kind=? AND target_id=? ORDER BY confidence DESC,candidate_key LIMIT 75`, kind, entity)
@@ -398,7 +399,9 @@ func (s *Service) ScreenState(ctx context.Context, kind, id string) (ScreenState
 			rows.Close()
 			return out, err
 		}
-		out.LocalIssues = append(out.LocalIssues, issue)
+		if len(out.LocalIssues) < 16 {
+			out.LocalIssues = append(out.LocalIssues, issue)
+		}
 	}
 	err = rows.Err()
 	rows.Close()
@@ -565,7 +568,7 @@ func screenSupersedeChildren(ctx context.Context, tx *sql.Tx, show string) error
 	return err
 }
 func (s *Service) SearchScreen(ctx context.Context, kind, id string, body ScreenSearch, authorize func(*sql.Tx) error) error {
-	if body.ExpectedRevision < 1 || len(body.Query) > 512 || !screenQuerySafe(body.Query) || strings.TrimSpace(body.Query) == "" && body.Query != "" {
+	if body.ExpectedRevision < 1 || len(body.Query) > 512 || !screenSearchSafe(body.Query) || strings.TrimSpace(body.Query) == "" && body.Query != "" {
 		return errors.New("invalid provider search")
 	}
 	gated5, err := dbwork.Begin(ctx, s.db, dbwork.ClassBackgroundMedia)

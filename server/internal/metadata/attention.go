@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"strconv"
 
 	"portico.local/server/internal/dbwork"
@@ -21,6 +22,9 @@ type AttentionCandidate struct {
 	Orders     []metadataprovider.ScreenOrder `json:"orders"`
 }
 type AttentionEntry struct {
+	ItemKind   string               `json:"itemKind"`
+	ParentID   string               `json:"parentId"`
+	Actions    []string             `json:"actions"`
 	EntityID   string               `json:"entityId"`
 	Kind       string               `json:"kind"`
 	Title      string               `json:"title"`
@@ -65,7 +69,10 @@ func (s *Service) Attention(ctx context.Context, library, cursor string, limit i
 	if !exists {
 		return out, sql.ErrNoRows
 	}
-	rows, err := tx.QueryContext(ctx, `SELECT a.entity_id,a.target_kind,e.title,w.revision,a.reason,a.confidence FROM screen_metadata_attention a JOIN catalog_entities e ON e.id=a.entity_id JOIN screen_metadata_work w ON w.target_kind=a.target_kind AND w.target_id=a.entity_id WHERE a.library_id=? AND a.entity_id>? AND a.dismissed_generation<>a.generation ORDER BY a.entity_id LIMIT ?`, library, after, limit+1)
+	rows, err := tx.QueryContext(ctx, `SELECT a.entity_id,a.target_kind,e.title,w.generation,a.reason,a.confidence,k.name,COALESCE(pid(parent.public_id),''),p.enabled,c.confirmed FROM screen_metadata_attention a JOIN catalog_entities e ON e.id=a.entity_id JOIN screen_metadata_work w ON w.target_kind=a.target_kind AND w.target_id=a.entity_id
+ JOIN catalog_kinds k ON k.id=e.kind LEFT JOIN catalog_entities parent ON parent.id=w.parent_id
+ JOIN screen_metadata_policies p ON p.library_id=a.library_id CROSS JOIN screen_metadata_consent c
+ WHERE c.singleton=1 AND a.library_id=? AND a.entity_id>? AND a.dismissed_generation<>a.generation ORDER BY a.entity_id LIMIT ?`, library, after, limit+1)
 	if err != nil {
 		return out, err
 	}
@@ -73,13 +80,22 @@ func (s *Service) Attention(ctx context.Context, library, cursor string, limit i
 	for rows.Next() {
 		var e AttentionEntry
 		var id int64
-		if err = rows.Scan(&id, &e.Kind, &e.Title, &e.Revision, &e.Reason, &e.Confidence); err != nil {
+		var enabled, confirmed bool
+		if err = rows.Scan(&id, &e.Kind, &e.Title, &e.Revision, &e.Reason, &e.Confidence, &e.ItemKind, &e.ParentID, &enabled, &confirmed); err != nil {
 			rows.Close()
 			return out, err
 		}
 		if len(out.Entries) == limit {
 			out.NextCursor = base64.RawURLEncoding.EncodeToString([]byte(strconv.FormatInt(ids[len(ids)-1], 10)))
 			break
+		}
+		e.Actions = []string{"dismiss"}
+		if e.ItemKind == "episode" {
+			if e.ParentID != "" {
+				e.Actions = append(e.Actions, "parent")
+			}
+		} else if enabled && confirmed {
+			e.Actions = append(e.Actions, "accept", "search", "id")
 		}
 		e.Candidates = []AttentionCandidate{}
 		out.Entries = append(out.Entries, e)
@@ -124,6 +140,17 @@ func (s *Service) Attention(ctx context.Context, library, cursor string, limit i
 			return out, err
 		}
 	}
+	for i := range out.Entries {
+		if len(out.Entries[i].Candidates) == 0 {
+			actions := []string{}
+			for _, action := range out.Entries[i].Actions {
+				if action != "accept" {
+					actions = append(actions, action)
+				}
+			}
+			out.Entries[i].Actions = actions
+		}
+	}
 	return out, nil
 }
 
@@ -161,12 +188,25 @@ func (s *Service) AttentionAction(ctx context.Context, library string, in Attent
 	if found != library {
 		return ErrRepairInput
 	}
+	if in.Action != "dismiss" {
+		var kind string
+		if e = dbwork.QueryRow(ctx, s.db, `SELECT k.name FROM catalog_entities e JOIN catalog_kinds k ON k.id=e.kind WHERE e.id=?`, entity).Scan(&kind); e != nil {
+			return e
+		}
+		if kind == "episode" {
+			return ErrRepairInput
+		}
+	}
 	switch in.Action {
-	case "accept":
-		return s.SelectScreen(ctx, in.Kind, in.EntityID, ScreenSelection{Actor: actor, ExpectedRevision: in.ExpectedRevision, CandidateKey: in.CandidateKey, Order: in.Order}, authorize)
-	case "search":
-		return s.SearchScreen(ctx, in.Kind, in.EntityID, ScreenSearch{ExpectedRevision: in.ExpectedRevision, Provider: in.Provider, Query: in.Query}, authorize)
-	case "dismiss", "id":
+	case "accept", "search":
+		return s.attentionObservedAction(ctx, library, in, actor, authorize)
+	case "id":
+		if hint, ok := metadataprovider.ParseScreenHint(in.ProviderID, "movie"); ok && hint.Provider == "imdb" {
+			in.Action = "search"
+			in.Query = "imdb:" + hint.ID
+			return s.attentionObservedAction(ctx, library, in, actor, authorize)
+		}
+	case "dismiss":
 	default:
 		return ErrRepairInput
 	}
@@ -188,7 +228,7 @@ func (s *Service) AttentionAction(ctx context.Context, library string, in Attent
 	if b.Library != library {
 		return ErrRepairInput
 	}
-	if b.Revision != in.ExpectedRevision {
+	if b.Generation != in.ExpectedRevision {
 		return ErrScreenConflict
 	}
 	if in.Action == "dismiss" {
@@ -202,6 +242,12 @@ func (s *Service) AttentionAction(ctx context.Context, library string, in Attent
 			typ = "anime"
 		}
 		id := metadataprovider.ScreenID{Provider: in.Provider, Type: typ, ID: in.ProviderID}
+		if hint, ok := metadataprovider.ParseScreenHint(in.ProviderID, typ); ok {
+			if in.Provider != "" && hint.Provider != in.Provider {
+				return ErrRepairInput
+			}
+			id = hint
+		}
 		if !metadataprovider.ValidScreenID(id) {
 			return ErrRepairInput
 		}
@@ -238,4 +284,40 @@ func (s *Service) AttentionAction(ctx context.Context, library string, in Attent
 		}
 	}
 	return gated.Commit()
+}
+
+// The list's revision is the input generation, not worker leases/status. Retry
+// only the old route's incidental revision races; candidate input digests still
+// reject a choice whose evidence or authority really changed.
+func (s *Service) attentionObservedAction(ctx context.Context, library string, in AttentionCommand, actor MBActor, authorize func(*sql.Tx) error) error {
+	for attempt := 0; attempt < 3; attempt++ {
+		read, e := dbwork.BeginSnapshot(ctx, s.db)
+		if e != nil {
+			return e
+		}
+		b, e := readScreenBase(ctx, read.Tx(), in.Kind, in.EntityID)
+		read.Rollback()
+		if e != nil {
+			return e
+		}
+		if b.Library != library {
+			return ErrRepairInput
+		}
+		if b.Generation != in.ExpectedRevision {
+			return ErrScreenConflict
+		}
+		provider := in.Provider
+		if provider == "" && len(b.Providers) > 0 {
+			provider = b.Providers[0]
+		}
+		if in.Action == "accept" {
+			e = s.SelectScreen(ctx, in.Kind, in.EntityID, ScreenSelection{Actor: actor, ExpectedRevision: b.Revision, CandidateKey: in.CandidateKey, Order: in.Order}, authorize)
+		} else {
+			e = s.SearchScreen(ctx, in.Kind, in.EntityID, ScreenSearch{ExpectedRevision: b.Revision, Provider: provider, Query: in.Query}, authorize)
+		}
+		if !errors.Is(e, ErrScreenConflict) {
+			return e
+		}
+	}
+	return ErrScreenConflict
 }

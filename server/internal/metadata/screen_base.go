@@ -280,6 +280,11 @@ func readScreenBase(ctx context.Context, tx *sql.Tx, kind, id string) (screenBas
 			return b, err
 		}
 	}
+	if b.TargetKind == "show" {
+		if err = tx.QueryRowContext(ctx, `SELECT COALESCE(max(a.duration),0)/60 FROM catalog_assets a JOIN catalog_asset_links l ON l.asset_id=a.id JOIN catalog_episodes e ON e.entity_id=l.entity_id WHERE e.show_id=? AND a.available=1`, entity).Scan(&b.RuntimeMinutes); err != nil {
+			return b, err
+		}
+	}
 	if b.ItemKind == "movie" {
 		if err = tx.QueryRowContext(ctx, `SELECT COALESCE(max(a.duration),0)/60 FROM catalog_assets a JOIN catalog_asset_links l ON l.asset_id=a.id WHERE l.entity_id=? AND a.available=1`, entity).Scan(&b.RuntimeMinutes); err != nil {
 			return b, err

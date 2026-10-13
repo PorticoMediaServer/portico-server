@@ -3,6 +3,7 @@ package metadataprovider
 // BoundScreenRecord rejects the smallest invalid optional unit. The record
 // validator still enforces every count, byte, identifier and character bound.
 func BoundScreenRecord(r ScreenRecord) ScreenRecord {
+	before := len(r.Aliases) + len(r.Genres) + len(r.Tags) + len(r.Credits) + len(r.Relations) + len(r.Crosswalk) + len(r.Orders) + len(r.Certifications)
 	r.Aliases = boundedScreenList(r.Aliases, 256, func(s string) bool { return cleanScreenText(s, 2048) })
 	r.Genres = boundedScreenList(r.Genres, 64, func(n ScreenName) bool { return cleanScreenText(n.Name, 200) && len(n.ID) <= 128 })
 	r.Tags = boundedScreenList(r.Tags, 64, func(n ScreenName) bool { return cleanScreenText(n.Name, 200) && len(n.ID) <= 128 })
@@ -17,6 +18,16 @@ func BoundScreenRecord(r ScreenRecord) ScreenRecord {
 	r.Certifications = boundedScreenList(r.Certifications, 100, func(v ScreenCertification) bool {
 		return cleanScreenText(v.Region, 64) && cleanScreenText(v.Rating, 128)
 	})
+	after := len(r.Aliases) + len(r.Genres) + len(r.Tags) + len(r.Credits) + len(r.Relations) + len(r.Crosswalk) + len(r.Orders) + len(r.Certifications)
+	if after < before {
+		found := false
+		for _, issue := range r.Skipped {
+			found = found || issue == "provider_fields_skipped"
+		}
+		if !found && len(r.Skipped) < 16 {
+			r.Skipped = append(r.Skipped, "provider_fields_skipped")
+		}
+	}
 	return r
 }
 func boundedScreenList[T any](list []T, limit int, valid func(T) bool) []T {

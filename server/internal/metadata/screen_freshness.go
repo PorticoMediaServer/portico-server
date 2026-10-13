@@ -137,6 +137,10 @@ func (s *Service) screenRefreshRecord(ctx context.Context, p *screenClaim, id me
 	var r metadataprovider.ScreenRecord
 	if conditional, ok := provider.(screenConditionalProvider); ok && b.ForceRefresh {
 		r, _, e = conditional.ScreenDetailsConditional(ctx, kind, id.ID, b.Language, b.Region, metadataprovider.Conditional{})
+	} else if fresh, ok := provider.(interface {
+		ScreenDetailsFresh(context.Context, string, string, string, string) (metadataprovider.ScreenRecord, error)
+	}); ok && b.ForceRefresh {
+		r, e = fresh.ScreenDetailsFresh(ctx, kind, id.ID, b.Language, b.Region)
 	} else {
 		r, e = provider.ScreenDetails(ctx, kind, id.ID, b.Language, b.Region)
 	}
@@ -213,7 +217,23 @@ func (s *Service) screenEpisodeRecord(ctx context.Context, p *screenClaim, provi
 		}
 	}
 	var r metadataprovider.ScreenRecord
-	if b.Numbering == "absolute" {
+	if b.ForceRefresh {
+		if b.Numbering == "absolute" {
+			if fresh, ok := provider.(interface {
+				ScreenAbsoluteEpisodeFresh(context.Context, string, int, string, string) (metadataprovider.ScreenRecord, error)
+			}); ok {
+				r, e = fresh.ScreenAbsoluteEpisodeFresh(ctx, b.ParentProviderID, b.Number, b.ParentOrder, b.Language)
+			}
+		} else {
+			if fresh, ok := provider.(interface {
+				ScreenEpisodeFresh(context.Context, string, int, int, string, string) (metadataprovider.ScreenRecord, error)
+			}); ok {
+				r, e = fresh.ScreenEpisodeFresh(ctx, b.ParentProviderID, b.Season, b.Number, b.ParentOrder, b.Language)
+			}
+		}
+	}
+	if r.Identity.ID != "" || e != nil {
+	} else if b.Numbering == "absolute" {
 		if absolute, ok := provider.(interface {
 			ScreenAbsoluteEpisode(context.Context, string, int, string, string) (metadataprovider.ScreenRecord, error)
 		}); ok {

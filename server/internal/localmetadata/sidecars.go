@@ -160,6 +160,12 @@ func unlisted(ctx context.Context, path string) bool {
 // sidecarKey reads one sidecar file into the local artwork cache, returning
 // its key. Positive hits are cached by path within a bounded map.
 func (s *Service) sidecarKey(ctx context.Context, library, full string) (string, bool) {
+	if unlisted(ctx, full) {
+		s.mu.Lock()
+		delete(s.sidecars, full)
+		s.mu.Unlock()
+		return "", false
+	}
 	s.mu.Lock()
 	if key, ok := s.sidecars[full]; ok {
 		s.mu.Unlock()

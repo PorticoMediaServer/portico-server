@@ -30,7 +30,7 @@ func BackgroundSpeed(ctx context.Context) string {
 }
 
 // ReadBackgroundSpeed consumes the shared owner maintenance document. Call once
-// per bounded batch, outside a writer transaction. The settings lane owns its UI.
+// per bounded batch, outside a writer transaction.
 func ReadBackgroundSpeed(ctx context.Context, db *sql.DB) string {
 	var raw string
 	if QueryRow(ctx, db, `SELECT body FROM admin_documents WHERE scope='maintenance'`).Scan(&raw) != nil {

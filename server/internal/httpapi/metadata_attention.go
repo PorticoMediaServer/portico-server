@@ -21,7 +21,7 @@ func metadataAttentionError(err error) error {
 	if errors.Is(err, metadata.ErrScreenConflict) {
 		return &apierror.Error{Code: "revision_mismatch", Cause: err}
 	}
-	if errors.Is(err, metadata.ErrRepairInput) || errors.Is(err, metadata.ErrLocalMetadataOnly) {
+	if errors.Is(err, metadata.ErrRepairInput) || errors.Is(err, metadata.ErrLocalMetadataOnly) || errors.Is(err, metadata.ErrRefreshKind) {
 		return &apierror.Error{Code: "invalid_request", Cause: err}
 	}
 	return bulkError(err)
@@ -109,6 +109,31 @@ func registerMetadataRefresh(registry *apikit.Registry, d Dependencies) {
 				return refreshReceipt{}, metadataAttentionError(e)
 			}
 			return refreshReceipt{ItemID: r.PathValue("id"), Status: "queued"}, write.Commit()
+		})
+	}
+}
+
+func registerScreenMetadataReads(registry *apikit.Registry, d Dependencies) {
+	for _, target := range []struct{ route, kind string }{{"items", "item"}, {"shows", "show"}} {
+		kind := target.kind
+		v1Route(registry, apikit.Metadata{ID: "get_" + target.route + "_screen_metadata", Method: "GET", Path: "/v1/" + target.route + "/{id}/metadata/screen", Summary: "Read match evidence, field provenance and provider candidates", Access: apikit.Owner, Lane: apikit.Browsing, Cost: apikit.PageSized, Status: 200, Errors: []string{"unauthorized", "not_permitted", "not_found", "internal"}}, func(ctx context.Context, r *http.Request, _ noBody) (metadata.ScreenState, error) {
+			if _, e := d.owner(r); e != nil {
+				return metadata.ScreenState{}, e
+			}
+			out, e := d.Metadata.ScreenState(ctx, kind, r.PathValue("id"))
+			if e != nil {
+				return out, metadataAttentionError(e)
+			}
+			if _, e = d.owner(r); e != nil {
+				return out, e
+			}
+			_, _, fence, e := d.homeScope(r)
+			if e != nil {
+				return out, e
+			}
+			out.ServerID = d.Identity.ID()
+			out.ViewerFence = fence
+			return out, nil
 		})
 	}
 }

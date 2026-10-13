@@ -51,48 +51,65 @@ func (s *Service) VideoNFO(ctx context.Context, library, root, path, kind string
 		if e != nil {
 			if !errors.Is(e, os.ErrNotExist) {
 				complete = false
+				f.LocalMetadataIssue = "video_nfo_unavailable"
 			}
 			continue
 		}
 		if before.Directory || before.Size > 256<<10 {
+			complete = false
 			f.LocalMetadataIssue = "invalid_video_nfo"
 			continue
 		}
 		raw, e := s.storage.ReadSmall(ctx, library, side, 256<<10)
 		if e != nil {
+			complete = false
 			f.LocalMetadataIssue = "video_nfo_unavailable"
 			continue
 		}
 		after, e := s.storage.Stat(ctx, library, side)
 		if e != nil || before.Size != after.Size || before.ModifiedNS != after.ModifiedNS || before.Revision != after.Revision || before.ObjectIdentity != after.ObjectIdentity {
+			complete = false
 			f.LocalMetadataIssue = "video_nfo_changed"
 			continue
 		}
 		records, e := ParseVideoNFO(raw, kind == "anime")
 		if e != nil {
+			complete = false
 			f.LocalMetadataIssue = "invalid_video_nfo"
 			continue
 		}
 		locator := sha256.Sum256([]byte(rel))
 		for i := range records {
 			v := &records[i]
+			if v.Kind == "work" {
+				if kind == "movie" {
+					v.Kind = "movie"
+				} else if filepath.Base(side) == "tvshow.nfo" || strings.TrimSuffix(filepath.Base(side), filepath.Ext(side)) == filepath.Base(filepath.Dir(side)) {
+					v.Kind = "show"
+				} else {
+					v.Kind = "episode"
+				}
+			}
 			v.Locator = hex.EncodeToString(locator[:])
 			v.Size = after.Size
 			v.ModifiedNS = after.ModifiedNS
 			v.Revision = after.Revision
 			if kind == "movie" && v.Kind != "movie" || kind != "movie" && v.Kind == "movie" {
+				complete = false
 				f.LocalMetadataIssue = "video_nfo_kind_conflict"
 				continue
 			}
-			if len(v.Issues) > 0 {
+			if len(v.Issues) > 0 && f.LocalMetadataIssue == "" {
 				f.LocalMetadataIssue = "video_nfo_fields_skipped"
 			}
 			f.VideoMetadata = append(f.VideoMetadata, *v)
 		}
 		f.VideoMetadataStatus = "observed"
 	}
-	if complete && f.LocalMetadataIssue == "" {
+	if complete {
 		f.VideoMetadataStatus = "observed"
+	} else {
+		f.VideoMetadataStatus = "partial"
 	}
 	return f
 }

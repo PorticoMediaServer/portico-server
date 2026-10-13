@@ -80,3 +80,87 @@ func TestProviderConcurrentBodiesRemainBounded(t *testing.T) {
 		t.Fatal("concurrency was not bounded", peak.Load())
 	}
 }
+
+func TestTypedHintsNeverFetchTheSuppliedURL(t *testing.T) {
+	for _, raw := range []string{"tt0133093", "imdb:tt0133093", "https://www.imdb.com/title/tt0133093/", "tmdb:603", "https://www.themoviedb.org/movie/603-the-matrix", "https://anilist.co/anime/1"} {
+		if _, ok := ParseScreenHint(raw, "movie"); !ok {
+			t.Fatal(raw)
+		}
+	}
+	for _, raw := range []string{"https://localhost/title/tt0133093/", "https://imdb.com.evil.test/title/tt0133093/", "https://user:password@imdb.com/title/tt0133093/", "/media/Film.mkv", "tmdb:0"} {
+		if _, ok := ParseScreenHint(raw, "movie"); ok {
+			t.Fatal("accepted untyped input", raw)
+		}
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/find/tt0133093" || r.URL.Query().Get("external_source") != "imdb_id" {
+			t.Fatal(r.URL)
+		}
+		fmt.Fprint(w, `{"movie_results":[{"id":603}],"tv_results":[]}`)
+	}))
+	defer server.Close()
+	p, e := NewTMDBAt("fixture", server.URL)
+	if e != nil {
+		t.Fatal(e)
+	}
+	p.http.interval = 0
+	id, e := p.ResolveScreenID(context.Background(), ScreenID{"imdb", "title", "tt0133093"}, "movie", "en", "")
+	if e != nil || id.ID != "603" || id.Provider != "tmdb" {
+		t.Fatal(id, e)
+	}
+}
+
+func TestForcedEpisodeRefreshBypassesTheShortProviderCache(t *testing.T) {
+	var calls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n := calls.Add(1)
+		fmt.Fprintf(w, `{"id":9,"name":"Title %d","season_number":1,"episode_number":1}`, n)
+	}))
+	defer server.Close()
+	p, e := NewTMDBAt("fixture", server.URL)
+	if e != nil {
+		t.Fatal(e)
+	}
+	p.http.interval = 0
+	first, e := p.ScreenEpisode(context.Background(), "5", 1, 1, "official", "en")
+	if e != nil {
+		t.Fatal(e)
+	}
+	held, e := p.ScreenEpisode(context.Background(), "5", 1, 1, "official", "en")
+	if e != nil || held.Title != first.Title || calls.Load() != 1 {
+		t.Fatal(held, e)
+	}
+	fresh, e := p.ScreenEpisodeFresh(context.Background(), "5", 1, 1, "official", "en")
+	if e != nil || fresh.Title == first.Title || calls.Load() != 2 {
+		t.Fatal(fresh, e)
+	}
+}
+
+func TestCredentialCacheInvalidationPreservesNewInflightWork(t *testing.T) {
+	var cache screenCache
+	oldStarted, releaseOld, oldDone := make(chan struct{}), make(chan struct{}), make(chan struct{})
+	go func() {
+		defer close(oldDone)
+		var out any
+		_ = cache.get(context.Background(), "same-route", &out, func() (any, error) { close(oldStarted); <-releaseOld; return nil, fmt.Errorf("old credential refused") })
+	}()
+	<-oldStarted
+	cache.invalidate()
+	newStarted, releaseNew, newDone := make(chan struct{}), make(chan struct{}), make(chan struct{})
+	go func() {
+		defer close(newDone)
+		var out any
+		if e := cache.get(context.Background(), "same-route", &out, func() (any, error) { close(newStarted); <-releaseNew; return map[string]bool{"ok": true}, nil }); e != nil {
+			t.Error(e)
+		}
+	}()
+	<-newStarted
+	close(releaseOld)
+	<-oldDone
+	close(releaseNew)
+	<-newDone
+	var out any
+	if e := cache.get(context.Background(), "same-route", &out, func() (any, error) { return nil, fmt.Errorf("new cached work was discarded") }); e != nil {
+		t.Fatal(e)
+	}
+}

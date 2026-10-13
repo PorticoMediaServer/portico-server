@@ -19,6 +19,7 @@ var screenReleasePattern = regexp.MustCompile(`(?i)(?:^|[ ._\[(])(?:480p|576p|72
 var screenEpisodePattern = regexp.MustCompile(`(?i)(?:^|[ ._-])(?:s\d{1,2}e\d{1,4}|\d{1,2}x\d{1,4}|-\s*\d{1,4}(?:v\d)?)(?:\b|_)`)
 var screenGroupPattern = regexp.MustCompile(`^\[[^\]]{1,128}\]\s*`)
 var screenEditionPattern = regexp.MustCompile(`(?i)\{edition-([^}]{1,128})\}|\b(director'?s[ ._]cut|extended[ ._](?:cut|edition)|theatrical[ ._](?:cut|edition)|unrated|remastered|special[ ._]edition)\b`)
+var screenIMDbPattern = regexp.MustCompile(`(?i)[\[{]imdb(?:id)?[-=: ](tt[0-9]{7,10})[\]}]`)
 var screenIDPattern = regexp.MustCompile(`(?i)[\[{](tmdb|tvdb|anilist)(?:id)?[-=: ]([1-9][0-9]{0,14})[\]}]`)
 
 func intString(v int64) string { return strconv.FormatInt(v, 10) }
@@ -47,6 +48,10 @@ func normalizedScreenName(s string) string {
 		words = words[:len(words)-1]
 	}
 	for i, word := range words {
+		if word == "i" && i == len(words)-1 && len(words) > 1 {
+			words[i] = "1"
+			continue
+		}
 		if n, ok := screenRomanNumbers[word]; ok {
 			words[i] = n
 		}
@@ -119,6 +124,7 @@ func screenName(s string, released int) (title string, year int, edition string)
 		s = screenEditionPattern.ReplaceAllString(s, " ")
 	}
 	s = screenIDPattern.ReplaceAllString(s, " ")
+	s = screenIMDbPattern.ReplaceAllString(s, " ")
 	s = screenGroupPattern.ReplaceAllString(s, "")
 	if cut, y := screenReleaseYear(s); cut >= 0 && (released == 0 || y == released) {
 		year = y
@@ -139,7 +145,7 @@ func screenQueries(b screenBase) ([]string, int, []metadataprovider.ScreenID) {
 	ids := []metadataprovider.ScreenID{}
 	idseen := map[metadataprovider.ScreenID]bool{}
 	year := b.Year
-	for _, evidence := range b.Evidence {
+	for _, evidence := range b.Evidence[:min(len(b.Evidence), 16)] {
 		if year == 0 && evidence.Year > 0 {
 			year = evidence.Year
 		}
@@ -153,16 +159,20 @@ func screenQueries(b screenBase) ([]string, int, []metadataprovider.ScreenID) {
 		}
 	}
 	addID := func(id metadataprovider.ScreenID) {
-		if metadataprovider.ValidScreenID(id) && !idseen[id] {
+		if metadataprovider.ValidScreenID(id) && !idseen[id] && len(ids) < 16 {
 			ids = append(ids, id)
 			idseen[id] = true
 		}
 	}
 	if b.Query != "" {
-		add(b.Query)
+		if hint, ok := metadataprovider.ParseScreenHint(b.Query, b.ItemKind); ok {
+			addID(hint)
+		} else {
+			add(b.Query)
+		}
 		return out, year, ids
 	}
-	for _, evidence := range b.Evidence {
+	for _, evidence := range b.Evidence[:min(len(b.Evidence), 16)] {
 		add(evidence.Title)
 		for _, id := range evidence.IDs {
 			addID(id)
@@ -193,6 +203,9 @@ func screenQueries(b screenBase) ([]string, int, []metadataprovider.ScreenID) {
 			year = y
 		}
 		add(title)
+		for _, m := range screenIMDbPattern.FindAllStringSubmatch(name, 8) {
+			addID(metadataprovider.ScreenID{Provider: "imdb", Type: "title", ID: strings.ToLower(m[1])})
+		}
 		for _, m := range screenIDPattern.FindAllStringSubmatch(name, 8) {
 			kind := b.ItemKind
 			if kind == "episode" {
@@ -405,10 +418,19 @@ func scoreScreenEvidence(r metadataprovider.ScreenRecord, names []string, year i
 			c.Confidence = min(.99, c.Confidence+.06)
 			c.Reasons = append(c.Reasons, "runtime_agrees")
 		} else if difference > max(20, b.RuntimeMinutes*.3) {
-			c.Confidence = max(0, c.Confidence-.12)
+			if b.ItemKind == "movie" {
+				c.Confidence = max(0, c.Confidence-.12)
+			}
 			c.Reasons = append(c.Reasons, "runtime_differs")
 		}
 	}
 	c.Confidence = math.Round(c.Confidence*1000) / 1000
 	return c
+}
+
+func screenSearchSafe(query string) bool {
+	if _, ok := metadataprovider.ParseScreenHint(query, "movie"); ok {
+		return true
+	}
+	return screenQuerySafe(query)
 }

@@ -1,6 +1,7 @@
 package localmetadata
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -21,8 +22,8 @@ func TestVideoNFOTypedRootsAndEdition(t *testing.T) {
 		}
 	}
 }
-func TestVideoNFONeverResolvesExternalEntitiesAndRejectsConflictingIDs(t *testing.T) {
-	for _, raw := range []string{`<!DOCTYPE movie [<!ENTITY x SYSTEM "file:///etc/passwd">]><movie><plot>&x;</plot></movie>`, `<movie><uniqueid type="tmdb">1</uniqueid><uniqueid type="tmdb">2</uniqueid></movie>`, `<movie><uniqueid type="tmdb">https://example.org/42</uniqueid></movie>`, `<episodedetails><uniqueid type="anilist">1</uniqueid></episodedetails>`, strings.Repeat("x", 256*1024+1)} {
+func TestVideoNFONeverResolvesExternalEntitiesAndKeepsStructuralBudgets(t *testing.T) {
+	for _, raw := range []string{`<!DOCTYPE movie [<!ENTITY x SYSTEM "file:///etc/passwd">]><movie><plot>&x;</plot></movie>`, strings.Repeat("x", 256*1024+1)} {
 		if _, e := ParseVideoNFO([]byte(raw), true); e == nil {
 			t.Fatal("accepted invalid NFO")
 		}
@@ -48,6 +49,42 @@ func TestNFOOptionalFailuresPreserveUsefulFields(t *testing.T) {
 	raw = `<movie><title>Large cast</title>` + strings.Repeat(`<actor><name>Actor</name></actor>`, 120) + `</movie>`
 	v, e = ParseVideoNFO([]byte(raw), false)
 	if e != nil || len(v[0].Credits) != 100 || len(v[0].Issues) == 0 {
+		t.Fatal(v, e)
+	}
+}
+
+func TestNFOInvalidIdentifiersAreIsolatedAndConflictsRemainEvidence(t *testing.T) {
+	v, e := ParseVideoNFO([]byte(`<movie><title>Film</title><uniqueid type="tmdb">bad</uniqueid><imdbid>tt0133093</imdbid></movie>`), false)
+	if e != nil || len(v[0].IDs) != 1 || v[0].IDs[0].Provider != "imdb" || len(v[0].Issues) == 0 {
+		t.Fatal(v, e)
+	}
+	v, e = ParseVideoNFO([]byte(`<movie><title>Film</title><uniqueid type="tmdb">1</uniqueid><uniqueid type="tmdb">2</uniqueid></movie>`), false)
+	if e != nil || len(v[0].IDs) != 2 || len(v[0].Issues) == 0 {
+		t.Fatal(v, e)
+	}
+}
+
+func TestNFOURLOnlyAndXMLScraperHintsStayTyped(t *testing.T) {
+	for _, raw := range []string{`https://www.themoviedb.org/movie/603-the-matrix`, `https://www.imdb.com/title/tt0133093/`, `<movie><title>The Matrix</title></movie>https://www.imdb.com/title/tt0133093/`} {
+		v, e := ParseVideoNFO([]byte(raw), false)
+		if e != nil || len(v) != 1 || len(v[0].IDs) != 1 {
+			t.Fatal(v, e)
+		}
+	}
+	if _, e := ParseVideoNFO([]byte(`https://example.invalid/private`), false); e == nil {
+		t.Fatal("arbitrary scraper URL became metadata")
+	}
+}
+
+func TestConflictingNFOIdentifiersHaveABoundedEvidenceBudget(t *testing.T) {
+	var raw strings.Builder
+	raw.WriteString("<movie><title>Film</title>")
+	for i := 1; i <= 100; i++ {
+		fmt.Fprintf(&raw, `<uniqueid type="tmdb">%d</uniqueid>`, i)
+	}
+	raw.WriteString("</movie>")
+	v, e := ParseVideoNFO([]byte(raw.String()), false)
+	if e != nil || len(v[0].IDs) != 16 || len(v[0].Issues) == 0 {
 		t.Fatal(v, e)
 	}
 }

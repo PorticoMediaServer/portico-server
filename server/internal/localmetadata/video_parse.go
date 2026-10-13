@@ -51,6 +51,13 @@ func ParseVideoNFO(raw []byte, anime bool) ([]assets.VideoNFO, error) {
 	if len(raw) == 0 || len(raw) > 256<<10 {
 		return nil, errors.New("NFO exceeds budget")
 	}
+	if hint, ok := metadataprovider.ParseScreenHint(strings.TrimSpace(string(raw)), "movie"); ok {
+		kind := map[string]string{"movie": "movie", "show": "show", "anime": "show", "title": "work"}[hint.Type]
+		if kind != "" {
+			sum := sha256.Sum256(raw)
+			return []assets.VideoNFO{{Kind: kind, Digest: hex.EncodeToString(sum[:]), IDs: []metadataprovider.ScreenID{hint}}}, nil
+		}
+	}
 	// Kodi permits a trailing scraper URL and older files contain bare ampersands.
 	// Escape only bare ampersands; directives and external entities remain forbidden.
 	xmlRaw := escapeNFOAmpersands(raw)
@@ -59,6 +66,7 @@ func ParseVideoNFO(raw []byte, anime bool) ([]assets.VideoNFO, error) {
 	stack := []*nfoNode{}
 	roots := []*nfoNode{}
 	nodes := 0
+	outside := ""
 	for {
 		token, e := d.Token()
 		if e == io.EOF {
@@ -105,8 +113,8 @@ func ParseVideoNFO(raw []byte, anime bool) ([]assets.VideoNFO, error) {
 				if len(n.text) > 65536 {
 					return nil, errors.New("NFO field exceeds budget")
 				}
-			} else if strings.TrimSpace(string(t)) != "" {
-				continue
+			} else if strings.TrimSpace(string(t)) != "" && len(outside)+len(t) <= 2048 {
+				outside += string(t)
 			}
 		}
 	}
@@ -199,23 +207,39 @@ func ParseVideoNFO(raw []byte, anime bool) ([]assets.VideoNFO, error) {
 		put := func(provider, id string) error {
 			provider = strings.ToLower(strings.TrimSpace(provider))
 			id = strings.TrimSpace(id)
-			if provider != "tmdb" && provider != "tvdb" && provider != "anilist" {
+			if provider != "tmdb" && provider != "tvdb" && provider != "anilist" && provider != "imdb" {
 				return nil
 			}
 			typ := kind
+			if provider == "imdb" {
+				typ = "title"
+			}
 			if provider == "anilist" {
 				if !anime || kind == "episode" {
-					return errors.New("NFO identity names wrong entity kind")
+					v.Issues = appendNFOIssue(v.Issues, "invalid_nfo_identifier")
+					return nil
 				}
 				typ = "anime"
 			}
 			value := metadataprovider.ScreenID{Provider: provider, Type: typ, ID: id}
 			if !metadataprovider.ValidScreenID(value) {
-				return errors.New("invalid typed NFO provider identity")
+				v.Issues = appendNFOIssue(v.Issues, "invalid_nfo_identifier")
+				return nil
+			}
+			for _, old := range v.IDs {
+				if old == value {
+					return nil
+				}
+			}
+			if len(v.IDs) >= 16 {
+				v.Issues = appendNFOIssue(v.Issues, "skipped_nfo_identifiers")
+				return nil
 			}
 			if prior := ids[provider]; prior != "" {
 				if prior != id {
-					return errors.New("conflicting NFO identities")
+					v.Issues = appendNFOIssue(v.Issues, "conflicting_nfo_identifiers")
+					v.IDs = append(v.IDs, value)
+					return nil
 				}
 				return nil
 			}
@@ -223,16 +247,24 @@ func ParseVideoNFO(raw []byte, anime bool) ([]assets.VideoNFO, error) {
 			v.IDs = append(v.IDs, value)
 			return nil
 		}
+		if hint, ok := metadataprovider.ParseScreenHint(strings.TrimSpace(outside), kind); ok && (hint.Type == kind || hint.Type == "title" || hint.Type == "anime" && kind == "show") {
+			_ = put(hint.Provider, hint.ID)
+		}
 		for _, id := range n.values("uniqueid") {
 			if e = put(id.attrs["type"], id.text); e != nil {
 				return nil, e
 			}
 		}
-		for _, p := range []string{"tmdb", "tvdb", "anilist"} {
+		for _, p := range []string{"tmdb", "tvdb", "anilist", "imdb"} {
 			if id := n.value(p + "id"); id != "" {
 				if e = put(p, id); e != nil {
 					return nil, e
 				}
+			}
+		}
+		if id := n.value("id"); id != "" {
+			if hint, ok := metadataprovider.ParseScreenHint(id, kind); ok {
+				_ = put(hint.Provider, hint.ID)
 			}
 		}
 		for _, actor := range n.values("actor") {

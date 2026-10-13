@@ -17,7 +17,7 @@ import (
 // no new cache lifetime: its objects live only as long as the usual references.
 func (s *Service) sharedArtwork(ctx context.Context, j artworkWork) (artworkInstalled, artworkInstalled, bool, error) {
 	var a, b artworkInstalled
-	if j.provider == "local" || j.provider == "upload" {
+	if j.provider == "local" || j.provider == "upload" || j.actor != "" {
 		return a, b, false, nil
 	}
 	err := dbwork.QueryRow(ctx, s.db, `SELECT o.digest,o.mime,o.width,o.height,o.bytes,t.digest,t.mime,t.width,t.height,t.bytes FROM artwork_candidates c JOIN artwork_selections s ON s.candidate_id=c.id JOIN artwork_objects o ON o.digest=s.digest AND o.status='ready' JOIN artwork_objects t ON t.digest=s.thumbnail_digest AND t.status='ready' WHERE c.provider=? AND c.origin=? LIMIT 1`, j.provider, j.origin).Scan(&a.digest, &a.mime, &a.width, &a.height, &a.size, &b.digest, &b.mime, &b.width, &b.height, &b.size)

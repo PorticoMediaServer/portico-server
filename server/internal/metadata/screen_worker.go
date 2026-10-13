@@ -475,14 +475,33 @@ func (s *Service) acquireScreen(ctx context.Context, p *screenClaim) ([]screenCa
 			typ = "anime"
 		}
 		exacts := []metadataprovider.ScreenID{}
+		exactSeen := map[metadataprovider.ScreenID]bool{}
 		for _, id := range ids {
-			if id.Provider == name && id.Type == typ {
+			if id.Provider == "imdb" {
+				if resolver, ok := provider.(interface {
+					ResolveScreenID(context.Context, metadataprovider.ScreenID, string, string, string) (metadataprovider.ScreenID, error)
+				}); ok {
+					if e := s.screenBeforeRequest(ctx, p, name); e != nil {
+						return nil, -1, "", e
+					}
+					resolved, e := resolver.ResolveScreenID(ctx, id, typ, b.Language, b.Region)
+					if e != nil {
+						return nil, -1, "", e
+					}
+					id = resolved
+				}
+			}
+			if id.Provider == name && id.Type == typ && !exactSeen[id] {
 				exacts = append(exacts, id)
+				exactSeen[id] = true
 			}
 		}
 		// Two different typed IDs for the same provider are a local conflict, not an
 		// excuse to choose whichever remote response happened to arrive first.
-		for _, id := range exacts {
+		for index, id := range exacts {
+			if index >= 4 {
+				break
+			}
 			if err := s.screenBeforeRequest(ctx, p, name); err != nil {
 				return nil, -1, "", err
 			}
@@ -528,10 +547,11 @@ func (s *Service) acquireScreen(ctx context.Context, p *screenClaim) ([]screenCa
 				}
 				for _, r := range rows {
 					if r.Identity.Provider != name || r.Identity.Type != typ {
-						return nil, -1, "", &metadataprovider.Error{Provider: name, Code: "entity_type_mismatch"}
+						continue
 					}
+					r = metadataprovider.BoundScreenRecord(r)
 					if err = metadataprovider.ValidateScreenRecord(r); err != nil {
-						return nil, -1, "", err
+						continue
 					}
 					if !seen[r.Identity] {
 						c := scoreScreenEvidence(r, names, year, false, b)
@@ -661,7 +681,8 @@ func (s *Service) dispatchScreenChildren(ctx context.Context, p *screenClaim) er
  SELECT 1 FROM screen_metadata_publications parent JOIN screen_metadata_publications episode ON episode.id=screen_metadata_work.accepted_publication
  JOIN metadata_document_freshness f ON f.provider=episode.provider AND f.kind='episode' AND f.resource=episode.provider_id||'@'||episode.language||':'||episode.region
  WHERE parent.id=screen_metadata_work.parent_publication AND parent.provider=? AND parent.provider_id=? AND parent.language=? AND parent.region=?
- AND episode.language=? AND episode.region=? AND f.checked_at>?))`, id, p.Base.Provider, p.Base.ProviderID, p.Base.Language, p.Base.Region, p.Base.Language, p.Base.Region, s.publicationTime().Add(-24*time.Hour).Unix())
+ AND episode.language=? AND episode.region=? AND f.checked_at>CASE WHEN EXISTS(
+ SELECT 1 FROM catalog_item_details d WHERE d.entity_id=screen_metadata_work.target_id AND d.added_text>?) THEN ? ELSE ? END))`, id, p.Base.Provider, p.Base.ProviderID, p.Base.Language, p.Base.Region, p.Base.Language, p.Base.Region, tvdbStamp(s.publicationTime().Add(-recentlyAdded)), s.publicationTime().Add(-freshnessRecent).Unix(), s.publicationTime().Add(-freshnessEpisode).Unix())
 		if err != nil {
 			return err
 		}
