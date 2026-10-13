@@ -201,10 +201,11 @@ func Origin(r *http.Request, proxies []netip.Prefix) string {
 			}
 		}
 	}
-	if !validHost(host) {
+	host, ok = CanonicalHost(host)
+	if !ok {
 		return ""
 	}
-	return scheme + "://" + strings.ToLower(host)
+	return (&url.URL{Scheme: scheme, Host: host}).String()
 }
 
 func singleHeader(r *http.Request, key string) string {
@@ -215,11 +216,80 @@ func singleHeader(r *http.Request, key string) string {
 	return strings.TrimSpace(values[0])
 }
 func validHost(host string) bool {
-	if host == "" || len(host) > 255 || strings.ContainsAny(host, "/\\@?#% \r\n\t,") {
+	_, ok := CanonicalHost(host)
+	return ok
+}
+
+// CanonicalHost validates HTTP authority syntax. A zone is permitted only on
+// a bracketed IPv6 literal; its case is preserved because interface names can
+// be case-sensitive. URL.String encodes its percent delimiter in an origin.
+func CanonicalHost(host string) (string, bool) {
+	if host == "" || len(host) > 255 || strings.ContainsAny(host, "/\\@?# \r\n\t,") {
+		return "", false
+	}
+	if strings.HasPrefix(host, "[") {
+		end := strings.IndexByte(host, ']')
+		if end < 0 {
+			return "", false
+		}
+		addr, err := netip.ParseAddr(host[1:end])
+		if err != nil || !addr.Is6() {
+			return "", false
+		}
+		zone := addr.Zone()
+		if len(zone) > 64 {
+			return "", false
+		}
+		for _, c := range zone {
+			if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || strings.ContainsRune("._~-", c)) {
+				return "", false
+			}
+		}
+		suffix := host[end+1:]
+		if suffix != "" && (!strings.HasPrefix(suffix, ":") || len(suffix) == 1) {
+			return "", false
+		}
+		ip, _, scoped := strings.Cut(host[1:end], "%")
+		if scoped && zone == "" {
+			return "", false
+		}
+		host = "[" + strings.ToLower(ip)
+		if scoped {
+			host += "%" + zone
+		}
+		host += "]" + suffix
+	} else {
+		if strings.Contains(host, "%") {
+			return "", false
+		}
+		host = strings.ToLower(host)
+	}
+	u, err := url.Parse((&url.URL{Scheme: "http", Host: host}).String())
+	if err != nil || u.Hostname() == "" || u.User != nil {
+		return "", false
+	}
+	return host, true
+}
+
+// HostsMatch compares an HTTP Host with an origin's decoded authority. Zones
+// select a client's local interface and are removed by native HTTP clients;
+// they do not change the endpoint address or port being proved.
+func HostsMatch(a, b string) bool {
+	a, okA := CanonicalHost(a)
+	b, okB := CanonicalHost(b)
+	if !okA || !okB {
 		return false
 	}
-	u, err := url.Parse("http://" + host)
-	return err == nil && u.Hostname() != "" && u.User == nil
+	withoutZone := func(host string) string {
+		if strings.HasPrefix(host, "[") {
+			end := strings.IndexByte(host, ']')
+			if zone := strings.IndexByte(host[:end], '%'); zone >= 0 {
+				return host[:zone] + host[end:]
+			}
+		}
+		return host
+	}
+	return withoutZone(a) == withoutZone(b)
 }
 
 type homeKey struct{}

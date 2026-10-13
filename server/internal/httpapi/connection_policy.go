@@ -15,6 +15,7 @@ import (
 // every settings save. Warm request decisions do no settings SQL.
 type connectionPolicyCache struct {
 	mu      sync.Mutex
+	applyMu sync.Mutex
 	setting atomic.Pointer[connectionSettingValue]
 	// uploadAlert mirrors the upload-budget owner alert (upload_budget.go).
 	uploadAlert atomic.Bool

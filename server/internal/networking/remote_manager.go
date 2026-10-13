@@ -408,19 +408,18 @@ func (m *RemoteManager) stepRouteLocked(ctx context.Context) error {
 			}
 		}
 	}
+	lanTLSReady := cert.TLSReady && cert.PubliclyTrusted && cert.ListenerBound
+	lanCandidates := []RemoteCandidate{}
 	for _, raw := range topo.LAN {
-		if !c.Enabled && !c.LANSharing {
+		if !lanTLSReady || !c.Enabled && !c.LANSharing {
 			break
 		}
 		ip, err := netip.ParseAddr(raw)
 		if err == nil {
-			status.Candidates = append(status.Candidates, RemoteCandidate{BaseURL: routeURL(ip, port, lanScheme(cert.TLSReady && cert.PubliclyTrusted && cert.ListenerBound)), Class: "lan", State: "probe_required"})
+			lanCandidates = append(lanCandidates, RemoteCandidate{BaseURL: routeURL(ip, port, "https"), Class: "lan", State: "probe_required"})
 		}
 	}
-	if devLoopbackRoute && (c.Enabled || c.LANSharing) {
-		status.Candidates = append(status.Candidates, RemoteCandidate{BaseURL: routeURL(netip.MustParseAddr("127.0.0.1"), port, "http"), Class: "lan", State: "probe_required"})
-	}
-	ready := cert.TLSReady && cert.PubliclyTrusted && cert.ListenerBound && q.Scope.ID != ""
+	ready := lanTLSReady && q.Scope.ID != ""
 	mappings, mapError, e := m.reconcileMappings(ctx, c, authority, digest, topo, port, c.Enabled && c.Mapping && ready)
 	if e != nil {
 		return e
@@ -551,7 +550,7 @@ func (m *RemoteManager) stepRouteLocked(ctx context.Context) error {
 	}
 	allowNaming := !now.Before(state.NotBefore) && (unnamed || !now.Before(state.NextAttempt))
 	for _, raw := range addressKeys {
-		if len(status.Candidates) >= 12 {
+		if len(status.Candidates) >= maxPublishedCandidates {
 			break
 		}
 		origin, err := m.routeName(ctx, q, raw, addresses[raw], allowNaming)
@@ -573,6 +572,9 @@ func (m *RemoteManager) stepRouteLocked(ctx context.Context) error {
 			status.Candidates = append(status.Candidates, RemoteCandidate{BaseURL: origin, Class: "public", State: "probe_required"})
 		}
 	}
+	// Manual addresses retain owner order, followed by public and LAN routes.
+	// One budget applies to all classes, so Hosted never rejects the entire set.
+	status.Candidates = boundedRouteCandidates(append(status.Candidates, lanCandidates...))
 	observation := RouteObservation{RemoteEnabled: c.Enabled, CGNAT: status.ErrorCode == "cgnat_or_double_nat", Candidates: []PublishedCandidate{}}
 	for _, candidate := range status.Candidates {
 		observation.Candidates = append(observation.Candidates, PublishedCandidate{candidate.BaseURL, candidate.Class})
@@ -896,13 +898,6 @@ func (m *RemoteManager) cleanupMapping(ctx context.Context, row Mapping, t Topol
 	}
 	_, err := m.mapper.Map(ctx, row, 0)
 	return err
-}
-
-func lanScheme(tlsReady bool) string {
-	if tlsReady {
-		return "https"
-	}
-	return "http"
 }
 
 func hasPublicIPv6(t Topology) bool {

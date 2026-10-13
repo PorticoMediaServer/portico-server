@@ -90,9 +90,6 @@ func (d Dependencies) changeConnectivity(r *http.Request, body ConnectivityChang
 	if err != nil {
 		return connectivity.Policy{}, err
 	}
-	if d.Access.Advertiser != nil {
-		d.Access.Advertiser.Apply(document.Effective.LANDiscoveryEnabled)
-	}
 	return connectivity.ProjectPolicy(document), nil
 }
 
@@ -225,7 +222,7 @@ func registerIdentityProof(registry *apikit.Registry, d Dependencies) error {
 			return
 		}
 		request := r.Clone(r.Context())
-		if origin, err := url.Parse(networkpolicy.Origin(r, d.trustedProxyPrefixes(r.Context()))); err == nil {
+		if origin, err := url.Parse(networkpolicy.Origin(r, d.trustedProxyPrefixes(r.Context()))); err == nil && origin.Host != "" {
 			request.Host = origin.Host
 		}
 		d.RouteIdentity.ServeHTTP(w, request)

@@ -12,6 +12,7 @@ import (
 	"net/netip"
 	"net/url"
 	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/networkpolicy"
 	"strconv"
 	"strings"
 	"time"
@@ -44,11 +45,15 @@ func NewRouteIdentityHandler(keys *ProtectedKeys, runner *AuthorityRunner) *Rout
 // RouteOrigin is shared by owner configuration and the public identity proof.
 // HTTP and HTTPS are accepted from any address. Hosted publication remains TLS.
 func RouteOrigin(raw string) bool {
-	if len(raw) > 300 || strings.ContainsAny(raw, "\\\r\n\t") || strings.ToLower(raw) != raw {
+	if len(raw) > 300 || strings.ContainsAny(raw, "\\\r\n\t") {
 		return false
 	}
 	u, e := url.Parse(raw)
 	if e != nil || u.Host == "" || u.User != nil || u.Path != "" || u.RawPath != "" || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" || u.Opaque != "" || !validEndpointPort(u) {
+		return false
+	}
+	host, ok := networkpolicy.CanonicalHost(u.Host)
+	if !ok || host != u.Host || !strings.HasPrefix(raw, u.Scheme+"://") {
 		return false
 	}
 	if u.Scheme == "https" {
@@ -78,7 +83,7 @@ func (h *RouteIdentityHandler) ServeHTTP(w http.ResponseWriter, r *http.Request)
 	}
 	nonce, e := base64.RawURLEncoding.Strict().DecodeString(q.Nonce)
 	u, _ := url.Parse(q.BaseURL)
-	if e != nil || len(nonce) != 32 || base64.RawURLEncoding.EncodeToString(nonce) != q.Nonce || u.Host != strings.ToLower(r.Host) {
+	if e != nil || len(nonce) != 32 || base64.RawURLEncoding.EncodeToString(nonce) != q.Nonce || !networkpolicy.HostsMatch(u.Host, r.Host) {
 		writeClaimFailure(w, 400, "invalid_probe", "Invalid connection verification request.", false)
 		return
 	}
@@ -128,7 +133,7 @@ func (h *RouteIdentityHandler) ServeHTTP(w http.ResponseWriter, r *http.Request)
 	}
 }
 func routeURL(ip netip.Addr, port int, scheme string) string {
-	host := ip.String()
+	host := strings.ReplaceAll(ip.String(), "%", "%25")
 	if ip.Is6() {
 		host = "[" + host + "]"
 	}
