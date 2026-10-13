@@ -75,7 +75,7 @@ func Load(ctx context.Context, path string) (Config, map[string]*Provider, error
 	if e = json.Unmarshal(raw, &c); e != nil {
 		return c, nil, e
 	}
-	if c.WebOrigin != "https://web.getportico.tv" {
+	if c.WebOrigin != "https://web.getportico.tv" && !developmentAccountOrigin(c) {
 		return c, nil, errors.New("unexpected account origin")
 	}
 	if c.AppleNativeClientID != "" {
