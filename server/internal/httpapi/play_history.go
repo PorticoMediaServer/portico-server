@@ -1,8 +1,8 @@
 package httpapi
 
 import (
-	"errors"
 	"net/http"
+	"portico.local/server/internal/requestinput"
 	"strconv"
 
 	"portico.local/server/internal/catalog"
@@ -23,7 +23,7 @@ func (d Dependencies) playHistoryRoutes(mux *http.ServeMux) {
 		query := r.URL.Query()
 		for key, values := range query {
 			if len(values) != 1 || (key != "accountId" && key != "libraryId" && key != "period" && key != "cursor" && key != "limit") {
-				failure(w, errors.New("play history accepts accountId, libraryId, period, cursor and limit"))
+				failure(w, requestinput.New("play history accepts accountId, libraryId, period, cursor and limit"))
 				return
 			}
 		}
@@ -52,7 +52,7 @@ func (d Dependencies) playHistoryRoutes(mux *http.ServeMux) {
 		query := r.URL.Query()
 		for key, values := range query {
 			if len(values) != 1 || key != "period" {
-				failure(w, errors.New("the play history summary accepts period"))
+				failure(w, requestinput.New("the play history summary accepts period"))
 				return
 			}
 		}

@@ -3,17 +3,17 @@ package httpapi
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"io"
 	"mime"
 	"net/http"
+	"portico.local/server/internal/requestinput"
 	"reflect"
 	"strings"
 	"unicode/utf8"
 )
 
 // errStrictJSON is a body strictDecode refused (400 invalid_request).
-var errStrictJSON = errors.New("invalid request body")
+var errStrictJSON = requestinput.New("invalid request body")
 
 func strictDecode(w http.ResponseWriter, r *http.Request, out any) error {
 	media, params, err := mime.ParseMediaType(r.Header.Get("Content-Type"))

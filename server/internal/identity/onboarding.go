@@ -11,6 +11,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 	"os"
 	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/requestinput"
 	"strings"
 	"time"
 )
@@ -60,10 +61,10 @@ func (s *Service) SetupWithOptions(ctx context.Context, q SetupOptions, private 
 	q.Username = strings.ToLower(strings.TrimSpace(q.Username))
 	q.Name = strings.TrimSpace(q.Name)
 	if !setupUUID.MatchString(q.RequestID) || (q.AuthMode != "hosted" && q.AuthMode != "local") || len(q.Username) < 3 || len(q.Username) > 64 || !directPassword(q.Password) || !setupLabel(q.Name, 100) {
-		return Envelope{}, errors.New("Choose a server name, a username (3-64 characters) and a password of at least 8 characters")
+		return Envelope{}, requestinput.New("Choose a server name, a username (3-64 characters) and a password of at least 8 characters")
 	}
 	if q.AuthMode == "hosted" && !q.RecoverySaved {
-		return Envelope{}, errors.New("Confirm that you saved the recovery owner's password")
+		return Envelope{}, requestinput.New("Confirm that you saved the recovery owner's password")
 	}
 	raw, _ := json.Marshal(q)
 	defer clear(raw)

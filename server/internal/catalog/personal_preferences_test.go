@@ -73,7 +73,8 @@ func TestLibraryVideoCompletionUsesApprovedCreditsOrThreshold(t *testing.T) {
 		{"approved credits finish early", "earliest", 85, 90, true, 1, true},
 		{"threshold ignores credits", "threshold", 85, 90, true, 1, false},
 		{"credits mode uses marker", "credits", 85, 90, true, 1, true},
-		{"credits mode ignores percentage", "credits", 95, 90, false, 0, false},
+		{"credits mode falls back without approval", "credits", 95, 90, true, 0, true},
+		{"credits mode falls back without a marker", "credits", 95, 90, false, 0, true},
 		{"unapproved guess cannot finish", "earliest", 85, 90, true, 0, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -267,5 +268,24 @@ func TestProgressObservationsKeepHomeAndCommandsStable(t *testing.T) {
 	yes := true
 	if _, err = s.SetPersonal("local:account", key, item.Public, PersonalMutation{OperationID: "after-tick", ExpectedRevision: before.Revision, Favorite: &yes}, nil); err != nil {
 		t.Fatalf("tick invalidated command: %v", err)
+	}
+}
+
+func TestEarlyEndKeepsResumeForKnownDuration(t *testing.T) {
+	s, db, v := savedFixture(t)
+	item := phase34SavedFixtureItem(t, db)
+	key := identity.PersonalKey(v)
+	if _, e := db.Exec(`INSERT INTO progress(profile_id,item_id,position,unit,completed,playback_id) VALUES(?,?,0,0,0,'play')`, key, item.ID); e != nil {
+		t.Fatal(e)
+	}
+	accept(t, s, db, v, item.Public, 1, 35, 100, "ended")
+	p, e := s.Personal(key, item.Public)
+	if e != nil || p.Watched || p.ProgressSeconds != 35 {
+		t.Fatalf("early end discarded resume: %+v %v", p, e)
+	}
+	accept(t, s, db, v, item.Public, 2, 100, 100, "ended")
+	p, e = s.Personal(key, item.Public)
+	if e != nil || !p.Watched || p.ProgressSeconds != 0 {
+		t.Fatalf("natural end: %+v %v", p, e)
 	}
 }

@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"portico.local/server/internal/requestinput"
 	"strconv"
 	"strings"
 	"time"
@@ -17,11 +18,11 @@ import (
 	"portico.local/server/internal/identity"
 )
 
-var ErrCursor = errors.New("browse cursor is invalid or belongs to another viewer or query")
+var ErrCursor = requestinput.New("browse cursor is invalid or belongs to another viewer or query")
 
 // ErrContentStart refuses a start index on a view that is not a grid, or
 // together with a continuation cursor.
-var ErrContentStart = errors.New("start opens a grid view (browse, collection, collections, artist) and cannot follow a cursor")
+var ErrContentStart = requestinput.New("start opens a grid view (browse, collection, collections, artist) and cannot follow a cursor")
 var ErrStaleContinuation = errors.New("catalog or viewer state changed; restart this query from its first page")
 var ErrCollectionConflict = errors.New("a collection with that name already exists in this library")
 
@@ -172,7 +173,7 @@ func normalizeBrowse(q BrowseQuery) (BrowseQuery, error) {
 		q.Sort = "title"
 	}
 	if q.Sort != "title" && q.Sort != "added" && q.Sort != "year" {
-		return q, errors.New("sort must be title, added or year")
+		return q, requestinput.New("sort must be title, added or year")
 	}
 	if q.Direction == "" {
 		q.Direction = "asc"
@@ -181,7 +182,7 @@ func normalizeBrowse(q BrowseQuery) (BrowseQuery, error) {
 		}
 	}
 	if q.Direction != "asc" && q.Direction != "desc" {
-		return q, errors.New("direction must be asc or desc")
+		return q, requestinput.New("direction must be asc or desc")
 	}
 	q.Limit = pageLimit(q.Limit)
 	return q, nil
@@ -192,7 +193,7 @@ func browseScope(q BrowseQuery) cursorScope {
 func (s *Service) movieLibrary(id string) (Library, error) {
 	lib, err := s.library(id)
 	if err == nil && lib.Kind != "movie" {
-		err = errors.New("this discovery surface requires a movie library")
+		err = requestinput.New("this discovery surface requires a movie library")
 	}
 	return lib, err
 }
@@ -202,11 +203,11 @@ func categoryRange(category string) (int, error) {
 	}
 	raw, ok := strings.CutPrefix(category, "decade:")
 	if !ok {
-		return 0, errors.New("unknown category")
+		return 0, requestinput.New("unknown category")
 	}
 	year, err := strconv.Atoi(raw)
 	if err != nil || year < 1800 || year > 2190 || year%10 != 0 {
-		return 0, errors.New("invalid decade category")
+		return 0, requestinput.New("invalid decade category")
 	}
 	return year, nil
 }
@@ -227,7 +228,7 @@ func (s *Service) Browse(q BrowseQuery) ([]Item, string, error) {
 	clauses := []BrowseNode{}
 	if q.Search != "" {
 		if len(q.Search) > 100 {
-			return nil, "", errors.New("search prefix exceeds limit")
+			return nil, "", requestinput.New("search prefix exceeds limit")
 		}
 		clauses = append(clauses, BrowseNode{Field: "title", Operator: "starts-with", Value: q.Search})
 	}
@@ -244,7 +245,7 @@ func (s *Service) Browse(q BrowseQuery) ([]Item, string, error) {
 			return nil, "", err
 		}
 		if library != q.Library {
-			return nil, "", errors.New("collection belongs to another library")
+			return nil, "", requestinput.New("collection belongs to another library")
 		}
 		clauses = append(clauses, BrowseNode{Field: "collection", Operator: "contains", Value: q.Collection})
 	}

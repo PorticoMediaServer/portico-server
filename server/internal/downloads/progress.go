@@ -134,6 +134,12 @@ func (s *Service) SyncProgress(ctx context.Context, p identity.Principal, operat
 			conflict(result, ProgressFuture)
 			continue
 		}
+		// Small clock skew is usable evidence, but must never reserve a
+		// future position against newer online activity or explicit actions.
+		if observedMS > now {
+			observed = time.UnixMilli(now).UTC()
+			observedMS = now
+		}
 		entity, err := entityid.Resolve(ctx, tx, entry.ItemID)
 		if errors.Is(err, entityid.ErrNotFound) {
 			conflict(result, ProgressMissing)

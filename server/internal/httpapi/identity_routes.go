@@ -2,9 +2,9 @@ package httpapi
 
 import (
 	"bytes"
-	"errors"
 	"io"
 	"net/http"
+	"portico.local/server/internal/requestinput"
 	"strconv"
 	"strings"
 	"time"
@@ -87,7 +87,7 @@ func (d Dependencies) identityProfileRoutes(mux *http.ServeMux) {
 		size := 0
 		for key, values := range r.URL.Query() {
 			if len(values) != 1 || (key != "v" && key != "size") || len(values[0]) > 16 {
-				failure(w, errors.New("invalid avatar query"))
+				failure(w, requestinput.New("invalid avatar query"))
 				return
 			}
 			if key == "size" {

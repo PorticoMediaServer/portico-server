@@ -306,7 +306,7 @@ paths:
         Unauthenticated by design: a browser that has not signed in is exactly
         the caller that needs its account switcher, and no entry is a credential.
         The server keeps only descriptors; the tokens stay in the client. An
-        installation id is a 256-bit value the client generated, so guessing one
+        installation id is an opaque value the client generated, so guessing one
         is guessing a secret.
       parameters:
         - name: installationId

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -506,5 +507,53 @@ func TestScanFailureNoticeNamesOnlyADisplayableFolder(t *testing.T) {
 		if present != c.shown || c.shown && (path != c.where || !strings.Contains(item.Body, `"`+c.where+`"`)) || !c.shown && strings.Contains(item.Body, "It stopped at") {
 			t.Fatalf("%q: body=%q arguments=%v", c.where, item.Body, item.Arguments)
 		}
+	}
+}
+
+func TestNoticeBroadcastPagesAndResumesBeyondFiveHundredProfiles(t *testing.T) {
+	s, owner, _, auth := noticeFixture(t)
+	for i := 0; i < 520; i++ {
+		id := fmt.Sprintf("account-%04d", i)
+		if _, err := s.DB.Exec(`INSERT INTO accounts VALUES(?,?,x'00',?,1)`, id, id, id+"-profile"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	request := NoticeBroadcast{OperationID: "large-broadcast", Audience: notify.AudienceProfile, Severity: notify.SeverityInfo, DedupeKey: "server-maintenance", Title: "Maintenance", Body: "The server restarts tonight."}
+	ctx, cancel := context.WithCancel(context.Background())
+	pages := 0
+	interrupted := func(ctx context.Context, tx *sql.Tx, item string) error {
+		if err := auth(ctx, tx, item); err != nil {
+			return err
+		}
+		pages++
+		if pages == 3 {
+			cancel()
+			return context.Canceled
+		}
+		return nil
+	}
+	if _, err := s.BroadcastNotice(ctx, owner, interrupted, request); !errors.Is(err, context.Canceled) {
+		t.Fatalf("interruption did not pause fan-out: %v", err)
+	}
+	var delivered int
+	if err := s.DB.QueryRow(`SELECT delivered FROM notice_broadcast_work WHERE operation_id=?`, request.OperationID).Scan(&delivered); err != nil || delivered != 100 {
+		t.Fatalf("checkpoint: delivered=%d %v", delivered, err)
+	}
+	changed := request
+	changed.Title = "Changed message"
+	if _, err := s.BroadcastNotice(context.Background(), owner, auth, changed); !errors.Is(err, ErrIdempotencyKeyReused) {
+		t.Fatalf("in-progress operation accepted different intent: %v", err)
+	}
+	out, err := s.BroadcastNotice(context.Background(), owner, auth, request)
+	if err != nil || out.Delivered != 522 || out.Created != 522 || out.Updated != 0 || len(out.IDs) != 50 {
+		t.Fatalf("resumed fan-out: %+v %v", out, err)
+	}
+	replay, err := s.BroadcastNotice(context.Background(), owner, auth, request)
+	if err != nil || replay.Delivered != 522 || replay.Created != 522 {
+		t.Fatalf("replay: %+v %v", replay, err)
+	}
+	var count int
+	if err := s.DB.QueryRow(`SELECT count(*) FROM notification_records WHERE source='broadcast'`).Scan(&count); err != nil || count != 522 {
+		t.Fatalf("duplicate/missing notices: %d %v", count, err)
 	}
 }

@@ -2,10 +2,10 @@ package httpapi
 
 import (
 	"database/sql"
-	"errors"
 	"net/http"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/metadata"
+	"portico.local/server/internal/requestinput"
 )
 
 func (d Dependencies) screenMetadataRoutes(mux *http.ServeMux) {
@@ -139,7 +139,7 @@ func (d Dependencies) screenMetadataRoutes(mux *http.ServeMux) {
 		}
 		kind := r.PathValue("kind")
 		if !metadata.ValidLibraryKind(kind) {
-			failure(w, errors.New("invalid library kind"))
+			failure(w, requestinput.New("invalid library kind"))
 			return
 		}
 		write(w, 200, map[string]any{"libraryKind": kind, "agents": metadata.LibraryAgentOptions(kind)})

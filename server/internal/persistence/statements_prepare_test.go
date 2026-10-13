@@ -131,34 +131,50 @@ func TestProductionStatementsPrepareAgainstTheBaseline(t *testing.T) {
 	if _, err = dataset.Exec(`ATTACH DATABASE ? AS delta`, deltaPath); err != nil {
 		t.Fatal(err)
 	}
-	// A large programme guide is spooled through a private, disposable
-	// database of its own (internal/livechannels/programme_spool.go), whose
-	// schema is the CREATE statements in that file: its statements prepare
-	// against that schema, never against the state database's.
-	spoolFile := filepath.Join("..", "livechannels", "programme_spool.go")
-	spoolSource, err := os.ReadFile(spoolFile)
-	if err != nil {
-		t.Fatal(err)
-	}
+	// The guide producer uses a separate SQLite spool. Extract its actual
+	// literal DDL and prepare that file's queries against that schema, rather
+	// than excluding a table name from the baseline guard globally.
 	spool, err := sql.Open("sqlite", filepath.Join(t.TempDir(), "spool.sqlite"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer spool.Close()
-	spoolSchema := regexp.MustCompile("`(CREATE (?:TABLE|INDEX)[^`]+)`").FindAllStringSubmatch(string(spoolSource), -1)
-	if len(spoolSchema) == 0 {
-		t.Fatalf("%s no longer says what its spool holds", spoolFile)
+	spoolFile := filepath.Join("..", "livechannels", "programme_spool.go")
+	file, err := parser.ParseFile(token.NewFileSet(), spoolFile, nil, 0)
+	if err != nil {
+		t.Fatal(err)
 	}
-	for _, create := range spoolSchema {
-		if _, err = spool.Exec(create[1]); err != nil {
-			t.Fatalf("%s: %v\n\t%s", spoolFile, err, create[1])
+	spoolDDL := regexp.MustCompile(`(?i)^CREATE\s+(?:TABLE|INDEX)\s`)
+	spoolStatements := 0
+	ast.Inspect(file, func(node ast.Node) bool {
+		expression, ok := node.(ast.Expr)
+		if !ok {
+			return true
 		}
+		text, ok := literal(expression)
+		if !ok {
+			return true
+		}
+		if spoolDDL.MatchString(text) {
+			spoolStatements++
+			if _, err := spool.Exec(text); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return false
+	})
+	if spoolStatements == 0 {
+		t.Fatalf("%s no longer says what its spool holds", spoolFile)
 	}
 	missing := regexp.MustCompile(`no such (table|column|function)`)
 	name := regexp.MustCompile(`no such (table|column|function): (?:\w+\.)?(\w+)`)
 	checked := 0
 	for _, s := range statements {
-		stmt, err := db.Prepare(s.text)
+		target := db
+		if strings.HasPrefix(filepath.ToSlash(s.where), "internal/livechannels/programme_spool.go:") {
+			target = spool
+		}
+		stmt, err := target.Prepare(s.text)
 		if err == nil {
 			stmt.Close()
 			checked++
@@ -174,15 +190,7 @@ func TestProductionStatementsPrepareAgainstTheBaseline(t *testing.T) {
 				continue
 			}
 		}
-		if strings.HasSuffix(filepath.ToSlash(s.where[:strings.LastIndex(s.where, ":")]), "internal/livechannels/programme_spool.go") {
-			other, e := spool.Prepare(s.text)
-			if e == nil {
-				other.Close()
-				checked++
-				continue
-			}
-			err = e
-		}
+
 		if m := name.FindStringSubmatch(err.Error()); m != nil && m[1] != "column" && transient[m[1]+":"+strings.ToLower(m[2])] {
 			continue
 		}

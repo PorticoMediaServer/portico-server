@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"path/filepath"
+	"portico.local/server/internal/requestinput"
 	"sort"
 	"strings"
 	"time"
@@ -48,7 +49,7 @@ const (
 )
 
 // ErrPathReport is a report that cannot be read at all.
-var ErrPathReport = errors.New("invalid path report")
+var ErrPathReport = requestinput.New("invalid path report")
 
 // ReportedPath is what became of one path in a report.
 type ReportedPath struct {

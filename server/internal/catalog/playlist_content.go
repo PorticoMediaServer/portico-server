@@ -3,7 +3,7 @@ package catalog
 import (
 	"database/sql"
 	"encoding/json"
-	"errors"
+	"portico.local/server/internal/requestinput"
 	"strconv"
 	"time"
 
@@ -31,7 +31,7 @@ func (s *Service) PlaylistDirectory(r ContentRequest, a ResourceActor) (ContentE
 	out := resourceEnvelope(r, "Playlists")
 	out.Sorts = []ContentSort{{"title", "sort.title", []string{"asc", "desc"}}}
 	if r.Sort != "title" || (r.Direction != "asc" && r.Direction != "desc") || r.Limit < 1 || r.Limit > 100 {
-		return out, errors.New("invalid playlist directory query")
+		return out, requestinput.New("invalid playlist directory query")
 	}
 	ctx := s.Context()
 	gated, e := dbwork.BeginSnapshot(ctx, s.db)
@@ -139,7 +139,7 @@ func (s *Service) PlaylistContent(r ContentRequest, a ResourceActor, libraries [
 	r.Direction = "asc"
 	out := resourceEnvelope(r, "Playlist")
 	if r.Limit < 1 || r.Limit > 100 {
-		return out, errors.New("invalid playlist page limit")
+		return out, requestinput.New("invalid playlist page limit")
 	}
 	role, resourceRevision, deleted, e := catalogPlaylistRole(s.read(), r.EntityID, a)
 	if e != nil {

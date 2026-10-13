@@ -17,7 +17,13 @@ routes use `/v1`; the former `/v2` playback model has been removed. There are no
 legacy sign-in shortcuts to preserve. Library and content screens are composed
 by the server. Tools can use the additional bounded title query.
 
-The checked-in generated contract also needs regeneration as source-registered
-routes move forward. For example, current account-session routes are registered
-in `internal/httpapi/foundation.go` but are missing from this generated snapshot.
-Use their documented current source until that snapshot is refreshed.
+The cursor, precondition and idempotency packages in `apikit` are optional tools,
+not global runtime guarantees. Catalogue cursors use a database-held signing key,
+retain their traversal position across expiry/revisions and recompute cached totals.
+Mutation families implement their own typed revision checks and replay receipts;
+the generated route contract describes the accepted fields for each operation.
+
+The SQL preparation check covers complete literal statements, including concatenated
+literals. Runtime query constructors require their owning package's semantic and
+query-plan tests; a passing literal check does not establish every generated shape
+or every query's scaling behavior.

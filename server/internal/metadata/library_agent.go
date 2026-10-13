@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"portico.local/server/internal/requestinput"
 
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/localonly"
@@ -27,7 +28,7 @@ const (
 )
 
 var ErrLibraryAgentConflict = errors.New("These metadata settings changed. Refresh before trying again.")
-var ErrLibraryAgentInput = errors.New("choose a metadata source offered for this library")
+var ErrLibraryAgentInput = requestinput.New("choose a metadata source offered for this library")
 
 // ErrLocalMetadataOnly answers an online lookup requested for a library that
 // uses local metadata only.

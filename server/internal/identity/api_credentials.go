@@ -3,7 +3,7 @@ package identity
 import (
 	"context"
 	"database/sql"
-	"errors"
+	"portico.local/server/internal/requestinput"
 	"strings"
 	"time"
 )
@@ -53,7 +53,7 @@ const (
 var credentialForever = time.Date(9999, 12, 31, 23, 59, 59, 0, time.UTC)
 
 // ErrCredentialInput reports a key or token request that cannot be issued.
-var ErrCredentialInput = errors.New("invalid API credential request")
+var ErrCredentialInput = requestinput.New("invalid API credential request")
 
 // CredentialShaped reports whether a bearer is an API key or personal access
 // token by its shape. It says nothing about whether the secret is valid.

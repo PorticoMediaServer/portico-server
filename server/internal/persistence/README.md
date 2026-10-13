@@ -6,7 +6,8 @@ later change follows.
 ## The baseline
 
 `migrations/0001_baseline.sql` is the whole schema a new install gets. It replaced
-265 pre-release migrations on 25 Sep 2026. A database whose ledger
+the earlier development migration chain. Current pre-release schema changes are
+folded into it; no historical data backfill runs at startup. A database whose ledger
 (`schema_migrations`) does not record migration 1 was written by an earlier
 pre-release Portico; `Open` refuses it, and backup restore refuses it, with one
 plain message:

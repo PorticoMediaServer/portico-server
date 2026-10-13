@@ -1,7 +1,7 @@
 package catalog
 
 import (
-	"errors"
+	"portico.local/server/internal/requestinput"
 
 	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/personalstate"
@@ -405,7 +405,7 @@ func (s *Service) BrowseCapabilitiesFor(library, pivot string) (BrowseCapabiliti
 	out.Library = lib
 	available := pivotsForKind(lib.Kind)
 	if len(available) == 0 {
-		return out, errors.New("this library kind publishes no browse pivots")
+		return out, requestinput.New("this library kind publishes no browse pivots")
 	}
 	for _, entry := range available {
 		out.Pivots = append(out.Pivots, BrowsePivotCapability{ID: entry.ID, LabelKey: entry.LabelKey, EntityKinds: entry.EntityKinds, DefaultSort: entry.DefaultSort, SupportedViews: entry.SupportedViews, Browsable: entry.Browsable, Aggregate: entry.Aggregate})
@@ -414,7 +414,7 @@ func (s *Service) BrowseCapabilitiesFor(library, pivot string) (BrowseCapabiliti
 	if pivot != "" {
 		resolved, ok := pivotForKind(lib.Kind, pivot)
 		if !ok {
-			return out, errors.New("pivot is not published for this library")
+			return out, requestinput.New("pivot is not published for this library")
 		}
 		for index := range out.Pivots {
 			if out.Pivots[index].ID == pivot {

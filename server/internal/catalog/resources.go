@@ -7,6 +7,7 @@ import (
 	"errors"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/identity"
+	"portico.local/server/internal/requestinput"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -442,22 +443,22 @@ func (s *Service) SavedResourceContent(viewer Viewer, server, fence, id string, 
 func (s *Service) MutateSavedResource(a ResourceActor, id, action string, m SavedResourceMutation, authorize func(*sql.Tx) error) (SavedResourceReceipt, error) {
 	out := SavedResourceReceipt{OperationID: m.OperationID, ResourceID: id}
 	if !personalOperation.MatchString(m.OperationID) || m.ExpectedRevision < 0 || a.Authority == "" || a.AccountID == "" || a.ProfileID == "" {
-		return out, errors.New("invalid resource operation")
+		return out, requestinput.New("invalid resource operation")
 	}
 	if m.Name != nil && !resourceName(*m.Name) {
-		return out, errors.New("resource name must contain 1-200 characters")
+		return out, requestinput.New("resource name must contain 1-200 characters")
 	}
 	if m.Summary != nil && (!utf8.ValidString(*m.Summary) || utf8.RuneCountInString(*m.Summary) > 4000 || strings.ContainsRune(*m.Summary, 0)) {
-		return out, errors.New("invalid resource summary")
+		return out, requestinput.New("invalid resource summary")
 	}
 	if len(m.AddItemIDs) > 100 || len(m.RemoveEntryIDs) > 100 {
-		return out, errors.New("membership batches are limited to 100 entries")
+		return out, requestinput.New("membership batches are limited to 100 entries")
 	}
 	if m.Visibility != nil && *m.Visibility != "private" && *m.Visibility != "server" {
-		return out, errors.New("collection visibility must be private or server")
+		return out, requestinput.New("collection visibility must be private or server")
 	}
 	if m.Kind != "" && action != "create" || (m.Name != nil || m.Summary != nil || m.Definition != nil || m.Visibility != nil) && action != "create" && action != "update" || (m.AddItemIDs != nil || m.RemoveEntryIDs != nil) && action != "entries" || (m.Authority != "" || m.AccountID != "" || m.ProfileID != "") && action != "share" && action != "unshare" || m.Role != "" && action != "share" {
-		return out, errors.New("fields do not apply to resource operation")
+		return out, requestinput.New("fields do not apply to resource operation")
 	}
 	hash := operationHash(struct {
 		ID, Action string
@@ -509,15 +510,15 @@ func (s *Service) MutateSavedResource(a ResourceActor, id, action string, m Save
 	switch action {
 	case "create":
 		if m.Name == nil || (kind != "collection" && kind != "view") {
-			return out, errors.New("resource kind and name are required")
+			return out, requestinput.New("resource kind and name are required")
 		}
 		if kind == "view" && m.Definition == nil || kind == "collection" && m.Definition != nil {
-			return out, errors.New("only saved views require a query definition")
+			return out, requestinput.New("only saved views require a query definition")
 		}
 		definition := "{}"
 		if m.Definition != nil {
 			if len(validateSavedView(tx, *m.Definition)) > 0 {
-				return out, errors.New("saved view needs review")
+				return out, requestinput.New("saved view needs review")
 			}
 			b, _ := json.Marshal(m.Definition)
 			definition = string(b)
@@ -531,7 +532,7 @@ func (s *Service) MutateSavedResource(a ResourceActor, id, action string, m Save
 		visibility := "private"
 		if m.Visibility != nil {
 			if kind != "collection" {
-				return out, errors.New("only collections carry visibility")
+				return out, requestinput.New("only collections carry visibility")
 			}
 			visibility = *m.Visibility
 		}
@@ -539,15 +540,15 @@ func (s *Service) MutateSavedResource(a ResourceActor, id, action string, m Save
 		rev = 1
 	case "update":
 		if m.Name == nil && m.Summary == nil && m.Definition == nil && m.Visibility == nil {
-			return out, errors.New("set name, summary, visibility or saved query")
+			return out, requestinput.New("set name, summary, visibility or saved query")
 		}
 		if m.Visibility != nil && kind != "collection" {
-			return out, errors.New("only collections carry visibility")
+			return out, requestinput.New("only collections carry visibility")
 		}
 		var definition *string
 		if m.Definition != nil {
 			if kind != "view" || len(validateSavedView(tx, *m.Definition)) > 0 {
-				return out, errors.New("invalid saved view definition")
+				return out, requestinput.New("invalid saved view definition")
 			}
 			b, _ := json.Marshal(m.Definition)
 			v := string(b)
@@ -568,7 +569,7 @@ func (s *Service) MutateSavedResource(a ResourceActor, id, action string, m Save
 		out.Deleted = true
 	case "entries":
 		if kind != "collection" || len(m.AddItemIDs)+len(m.RemoveEntryIDs) == 0 {
-			return out, errors.New("collection membership changes are required")
+			return out, requestinput.New("collection membership changes are required")
 		}
 		// Membership is reported per item: an item that vanished between the
 		// client's read and this write must not discard the rest of the batch.
@@ -609,11 +610,11 @@ func (s *Service) MutateSavedResource(a ResourceActor, id, action string, m Save
 		out.Entries = &outcomes
 	case "share", "unshare":
 		if kind != "collection" || m.Authority == "" || m.AccountID == "" || m.ProfileID == "" || (ResourceActor{m.Authority, m.AccountID, m.ProfileID}) == a {
-			return out, errors.New("invalid collection share")
+			return out, requestinput.New("invalid collection share")
 		}
 		if action == "share" {
 			if m.Role != "viewer" && m.Role != "editor" {
-				return out, errors.New("invalid share role")
+				return out, requestinput.New("invalid share role")
 			}
 			var n int
 			if e = tx.QueryRow(`SELECT count(*) FROM saved_resource_shares WHERE resource_id=? AND NOT(authority=? AND account_id=? AND profile_id=?)`, id, m.Authority, m.AccountID, m.ProfileID).Scan(&n); e != nil {
@@ -627,7 +628,7 @@ func (s *Service) MutateSavedResource(a ResourceActor, id, action string, m Save
 			_, e = tx.Exec(`DELETE FROM saved_resource_shares WHERE resource_id=? AND authority=? AND account_id=? AND profile_id=?`, id, m.Authority, m.AccountID, m.ProfileID)
 		}
 	default:
-		return out, errors.New("unsupported resource operation")
+		return out, requestinput.New("unsupported resource operation")
 	}
 	if e != nil {
 		return out, e

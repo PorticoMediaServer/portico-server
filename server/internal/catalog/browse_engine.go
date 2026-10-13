@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"portico.local/server/internal/requestinput"
 	"strconv"
 	"strings"
 	"time"
@@ -20,7 +21,7 @@ import (
 
 // ErrBrowsePivot is returned when a caller names a pivot the library kind does
 // not publish.
-var ErrBrowsePivot = errors.New("pivot is not published for this library")
+var ErrBrowsePivot = requestinput.New("pivot is not published for this library")
 
 type BrowseSortSelection struct {
 	Field     string `json:"field"`

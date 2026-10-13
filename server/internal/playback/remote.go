@@ -11,6 +11,7 @@ import (
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/remotemedia"
+	"portico.local/server/internal/requestinput"
 	"portico.local/server/internal/storage"
 	"portico.local/server/internal/subtitles"
 	"strings"
@@ -44,7 +45,7 @@ func (r *Remote) SetRoots(ctx context.Context, library string, roots []string) (
 }
 func (r *Remote) SetRootsAuthorized(ctx context.Context, library string, roots []string, expected *int64, authorize func(*sql.Tx) error) ([]remotemedia.Approval, error) {
 	if len(roots) > 8 {
-		return nil, errors.New("at most eight network roots may be approved per library")
+		return nil, requestinput.New("at most eight network roots may be approved per library")
 	}
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()

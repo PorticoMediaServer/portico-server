@@ -4,9 +4,9 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
+	"portico.local/server/internal/requestinput"
 	"sort"
 	"strconv"
 
@@ -103,7 +103,7 @@ func (d Dependencies) serveGlobalSavedContent(w http.ResponseWriter, r *http.Req
 	case "watchlist", "favorites", "playlists":
 		d.savedContent(w, r)
 	default:
-		failure(w, errors.New("choose a saved list or playlist directory"))
+		failure(w, requestinput.New("choose a saved list or playlist directory"))
 	}
 }
 
