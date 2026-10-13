@@ -56,9 +56,8 @@ func validateAdministration(v *Settings) []string {
 	if v.AccessURLs == nil {
 		v.AccessURLs = []string{}
 	}
-	// Access URLs are published to members as routes, and Hosted carries at most
-	// twelve candidates, so the list is short and HTTPS origins only (an app
-	// never sends a credential over plain HTTP outside the LAN).
+	// Access URLs are bounded origins for local clients. Hosted publication
+	// filters this list to HTTPS; it never advertises plaintext routes.
 	if len(v.AccessURLs) > MaxAccessURLs {
 		fields = append(fields, "values.accessUrls")
 	}

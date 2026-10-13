@@ -1445,6 +1445,972 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "ChangeConnectivityPolicyRequest": {
+    "properties": {
+      "accessUrls": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "advertiseUrl": {
+        "type": "string"
+      },
+      "advertisedInterface": {
+        "type": "string"
+      },
+      "connectionLimit": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "customCertificateDomain": {
+        "type": "string"
+      },
+      "customCertificateKeyPath": {
+        "type": "string"
+      },
+      "customCertificatePath": {
+        "type": "string"
+      },
+      "expectedRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "lanDiscoveryEnabled": {
+        "type": "boolean"
+      },
+      "lanNetworks": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "operationId": {
+        "type": "string"
+      },
+      "pausedSessionTimeoutMinutes": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "remoteBitrateLimitKbps": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "remoteSignInPolicy": {
+        "type": "string"
+      },
+      "trustedProxies": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "uploadCapacityKbps": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "expectedRevision",
+      "operationId"
+    ],
+    "type": "object"
+  },
+  "ChangeConnectivityPolicyResponse": {
+    "properties": {
+      "accessUrls": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "advertiseUrl": {
+        "type": "string"
+      },
+      "advertisedInterface": {
+        "type": "string"
+      },
+      "connectionLimit": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "customCertificateDomain": {
+        "type": "string"
+      },
+      "customCertificateKeyPath": {
+        "type": "string"
+      },
+      "customCertificatePath": {
+        "type": "string"
+      },
+      "lanDiscoveryEnabled": {
+        "type": "boolean"
+      },
+      "lanNetworks": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "pausedSessionTimeoutMinutes": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "remoteBitrateLimitKbps": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "remoteSignInPolicy": {
+        "type": "string"
+      },
+      "revision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "trustedProxies": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "uploadCapacityKbps": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "connectionLimit",
+      "advertiseUrl",
+      "revision",
+      "remoteSignInPolicy",
+      "remoteBitrateLimitKbps",
+      "lanNetworks",
+      "accessUrls",
+      "lanDiscoveryEnabled",
+      "trustedProxies",
+      "uploadCapacityKbps",
+      "pausedSessionTimeoutMinutes",
+      "advertisedInterface",
+      "customCertificatePath",
+      "customCertificateKeyPath",
+      "customCertificateDomain"
+    ],
+    "type": "object"
+  },
+  "ChangeConsoleSettingsRequest": {
+    "properties": {
+      "expectedRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "idempotencyKey": {
+        "type": "string"
+      },
+      "values": {
+        "properties": {
+          "accessUrls": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "advertiseUrl": {
+            "type": "string"
+          },
+          "advertisedInterface": {
+            "type": "string"
+          },
+          "connectionLimit": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "customCertificateDomain": {
+            "type": "string"
+          },
+          "customCertificateKeyPath": {
+            "type": "string"
+          },
+          "customCertificatePath": {
+            "type": "string"
+          },
+          "deviceApprovalRequired": {
+            "type": "boolean"
+          },
+          "diagnosticDays": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "directStreamRemux": {
+            "type": "boolean"
+          },
+          "hardwareBackend": {
+            "type": "string"
+          },
+          "hardwareDevice": {
+            "type": "string"
+          },
+          "hdrToneMapping": {
+            "type": "boolean"
+          },
+          "hdrToneMappingAlgorithm": {
+            "type": "string"
+          },
+          "home.communityActivityEnabled": {
+            "type": "boolean"
+          },
+          "jobDays": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "lanDiscoveryEnabled": {
+            "type": "boolean"
+          },
+          "lanNetworks": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "library.trashRetentionDays": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "nullable": true,
+            "type": "integer"
+          },
+          "logLevel": {
+            "type": "string"
+          },
+          "logRetention": {
+            "items": {
+              "properties": {
+                "category": {
+                  "type": "string"
+                },
+                "days": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "category",
+                "days"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "maxBackgroundSessions": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "maxConcurrentSessions": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "maxHardwareSessions": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "maxSoftwareSessions": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "notificationDays": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "pausedSessionTimeoutMinutes": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "perAccountCap": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "nullable": true,
+            "type": "integer"
+          },
+          "planningPolicy": {
+            "type": "string"
+          },
+          "playHistoryDays": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "playedRetentionSeconds": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "remoteBitrateLimitKbps": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "remoteSignInPolicy": {
+            "type": "string"
+          },
+          "serverCap": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "nullable": true,
+            "type": "integer"
+          },
+          "temporaryDirectory": {
+            "type": "string"
+          },
+          "throttleBufferSeconds": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "transcodingEnabled": {
+            "type": "boolean"
+          },
+          "trustedProxies": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "updates.feedUrl": {
+            "type": "string"
+          },
+          "updates.releaseChannel": {
+            "type": "string"
+          },
+          "uploadCapacityKbps": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "x264Preset": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "transcodingEnabled",
+          "perAccountCap",
+          "serverCap",
+          "hardwareBackend",
+          "hardwareDevice",
+          "hdrToneMapping",
+          "hdrToneMappingAlgorithm",
+          "x264Preset",
+          "directStreamRemux",
+          "planningPolicy",
+          "throttleBufferSeconds",
+          "playedRetentionSeconds",
+          "temporaryDirectory",
+          "maxConcurrentSessions",
+          "maxHardwareSessions",
+          "maxSoftwareSessions",
+          "maxBackgroundSessions",
+          "diagnosticDays",
+          "notificationDays",
+          "jobDays",
+          "playHistoryDays",
+          "home.communityActivityEnabled",
+          "updates.releaseChannel",
+          "updates.feedUrl",
+          "library.trashRetentionDays",
+          "remoteSignInPolicy",
+          "remoteBitrateLimitKbps",
+          "connectionLimit",
+          "advertiseUrl",
+          "lanNetworks",
+          "accessUrls",
+          "lanDiscoveryEnabled",
+          "trustedProxies",
+          "uploadCapacityKbps",
+          "pausedSessionTimeoutMinutes",
+          "advertisedInterface",
+          "customCertificatePath",
+          "customCertificateKeyPath",
+          "customCertificateDomain",
+          "deviceApprovalRequired",
+          "logLevel",
+          "logRetention"
+        ],
+        "type": "object"
+      }
+    },
+    "required": [
+      "expectedRevision",
+      "idempotencyKey",
+      "values"
+    ],
+    "type": "object"
+  },
+  "ChangeConsoleSettingsResponse": {
+    "properties": {
+      "data": {
+        "properties": {
+          "activeRevision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "digest": {
+            "type": "string"
+          },
+          "effective": {
+            "properties": {
+              "accessUrls": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "advertiseUrl": {
+                "type": "string"
+              },
+              "advertisedInterface": {
+                "type": "string"
+              },
+              "connectionLimit": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "customCertificateDomain": {
+                "type": "string"
+              },
+              "customCertificateKeyPath": {
+                "type": "string"
+              },
+              "customCertificatePath": {
+                "type": "string"
+              },
+              "deviceApprovalRequired": {
+                "type": "boolean"
+              },
+              "diagnosticDays": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "directStreamRemux": {
+                "type": "boolean"
+              },
+              "hardwareBackend": {
+                "type": "string"
+              },
+              "hardwareDevice": {
+                "type": "string"
+              },
+              "hdrToneMapping": {
+                "type": "boolean"
+              },
+              "hdrToneMappingAlgorithm": {
+                "type": "string"
+              },
+              "home.communityActivityEnabled": {
+                "type": "boolean"
+              },
+              "jobDays": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "lanDiscoveryEnabled": {
+                "type": "boolean"
+              },
+              "lanNetworks": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "library.trashRetentionDays": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "nullable": true,
+                "type": "integer"
+              },
+              "logLevel": {
+                "type": "string"
+              },
+              "logRetention": {
+                "items": {
+                  "properties": {
+                    "category": {
+                      "type": "string"
+                    },
+                    "days": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "category",
+                    "days"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "maxBackgroundSessions": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "maxConcurrentSessions": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "maxHardwareSessions": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "maxSoftwareSessions": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "name": {
+                "type": "string"
+              },
+              "notificationDays": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "pausedSessionTimeoutMinutes": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "perAccountCap": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "nullable": true,
+                "type": "integer"
+              },
+              "planningPolicy": {
+                "type": "string"
+              },
+              "playHistoryDays": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "playedRetentionSeconds": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "remoteBitrateLimitKbps": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "remoteSignInPolicy": {
+                "type": "string"
+              },
+              "serverCap": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "nullable": true,
+                "type": "integer"
+              },
+              "temporaryDirectory": {
+                "type": "string"
+              },
+              "throttleBufferSeconds": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "transcodingEnabled": {
+                "type": "boolean"
+              },
+              "trustedProxies": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "updates.feedUrl": {
+                "type": "string"
+              },
+              "updates.releaseChannel": {
+                "type": "string"
+              },
+              "uploadCapacityKbps": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "x264Preset": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "transcodingEnabled",
+              "perAccountCap",
+              "serverCap",
+              "hardwareBackend",
+              "hardwareDevice",
+              "hdrToneMapping",
+              "hdrToneMappingAlgorithm",
+              "x264Preset",
+              "directStreamRemux",
+              "planningPolicy",
+              "throttleBufferSeconds",
+              "playedRetentionSeconds",
+              "temporaryDirectory",
+              "maxConcurrentSessions",
+              "maxHardwareSessions",
+              "maxSoftwareSessions",
+              "maxBackgroundSessions",
+              "diagnosticDays",
+              "notificationDays",
+              "jobDays",
+              "playHistoryDays",
+              "home.communityActivityEnabled",
+              "updates.releaseChannel",
+              "updates.feedUrl",
+              "library.trashRetentionDays",
+              "remoteSignInPolicy",
+              "remoteBitrateLimitKbps",
+              "connectionLimit",
+              "advertiseUrl",
+              "lanNetworks",
+              "accessUrls",
+              "lanDiscoveryEnabled",
+              "trustedProxies",
+              "uploadCapacityKbps",
+              "pausedSessionTimeoutMinutes",
+              "advertisedInterface",
+              "customCertificatePath",
+              "customCertificateKeyPath",
+              "customCertificateDomain",
+              "deviceApprovalRequired",
+              "logLevel",
+              "logRetention"
+            ],
+            "type": "object"
+          },
+          "registryRevision": {
+            "type": "string"
+          },
+          "requested": {
+            "properties": {
+              "accessUrls": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "advertiseUrl": {
+                "type": "string"
+              },
+              "advertisedInterface": {
+                "type": "string"
+              },
+              "connectionLimit": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "customCertificateDomain": {
+                "type": "string"
+              },
+              "customCertificateKeyPath": {
+                "type": "string"
+              },
+              "customCertificatePath": {
+                "type": "string"
+              },
+              "deviceApprovalRequired": {
+                "type": "boolean"
+              },
+              "diagnosticDays": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "directStreamRemux": {
+                "type": "boolean"
+              },
+              "hardwareBackend": {
+                "type": "string"
+              },
+              "hardwareDevice": {
+                "type": "string"
+              },
+              "hdrToneMapping": {
+                "type": "boolean"
+              },
+              "hdrToneMappingAlgorithm": {
+                "type": "string"
+              },
+              "home.communityActivityEnabled": {
+                "type": "boolean"
+              },
+              "jobDays": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "lanDiscoveryEnabled": {
+                "type": "boolean"
+              },
+              "lanNetworks": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "library.trashRetentionDays": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "nullable": true,
+                "type": "integer"
+              },
+              "logLevel": {
+                "type": "string"
+              },
+              "logRetention": {
+                "items": {
+                  "properties": {
+                    "category": {
+                      "type": "string"
+                    },
+                    "days": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "category",
+                    "days"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "maxBackgroundSessions": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "maxConcurrentSessions": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "maxHardwareSessions": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "maxSoftwareSessions": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "name": {
+                "type": "string"
+              },
+              "notificationDays": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "pausedSessionTimeoutMinutes": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "perAccountCap": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "nullable": true,
+                "type": "integer"
+              },
+              "planningPolicy": {
+                "type": "string"
+              },
+              "playHistoryDays": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "playedRetentionSeconds": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "remoteBitrateLimitKbps": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "remoteSignInPolicy": {
+                "type": "string"
+              },
+              "serverCap": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "nullable": true,
+                "type": "integer"
+              },
+              "temporaryDirectory": {
+                "type": "string"
+              },
+              "throttleBufferSeconds": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "transcodingEnabled": {
+                "type": "boolean"
+              },
+              "trustedProxies": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "updates.feedUrl": {
+                "type": "string"
+              },
+              "updates.releaseChannel": {
+                "type": "string"
+              },
+              "uploadCapacityKbps": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "x264Preset": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "transcodingEnabled",
+              "perAccountCap",
+              "serverCap",
+              "hardwareBackend",
+              "hardwareDevice",
+              "hdrToneMapping",
+              "hdrToneMappingAlgorithm",
+              "x264Preset",
+              "directStreamRemux",
+              "planningPolicy",
+              "throttleBufferSeconds",
+              "playedRetentionSeconds",
+              "temporaryDirectory",
+              "maxConcurrentSessions",
+              "maxHardwareSessions",
+              "maxSoftwareSessions",
+              "maxBackgroundSessions",
+              "diagnosticDays",
+              "notificationDays",
+              "jobDays",
+              "playHistoryDays",
+              "home.communityActivityEnabled",
+              "updates.releaseChannel",
+              "updates.feedUrl",
+              "library.trashRetentionDays",
+              "remoteSignInPolicy",
+              "remoteBitrateLimitKbps",
+              "connectionLimit",
+              "advertiseUrl",
+              "lanNetworks",
+              "accessUrls",
+              "lanDiscoveryEnabled",
+              "trustedProxies",
+              "uploadCapacityKbps",
+              "pausedSessionTimeoutMinutes",
+              "advertisedInterface",
+              "customCertificatePath",
+              "customCertificateKeyPath",
+              "customCertificateDomain",
+              "deviceApprovalRequired",
+              "logLevel",
+              "logRetention"
+            ],
+            "type": "object"
+          },
+          "restartFields": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "revision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "revision",
+          "digest",
+          "requested",
+          "effective",
+          "activeRevision",
+          "restartFields",
+          "registryRevision"
+        ],
+        "type": "object"
+      },
+      "scope": {
+        "properties": {
+          "serverId": {
+            "type": "string"
+          },
+          "viewerFence": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "serverId",
+          "viewerFence"
+        ],
+        "type": "object"
+      }
+    },
+    "required": [
+      "scope",
+      "data"
+    ],
+    "type": "object"
+  },
   "ChangePlaybackSessionRequest": {
     "properties": {
       "audio": {
@@ -5422,6 +6388,981 @@ export const schemas = {
     },
     "required": [
       "items"
+    ],
+    "type": "object"
+  },
+  "GetConnectionRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetConnectionResponse": {
+    "properties": {
+      "accessUrls": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "clientAddress": {
+        "type": "string"
+      },
+      "plainHttpOutsideHome": {
+        "type": "boolean"
+      },
+      "remote": {
+        "type": "boolean"
+      },
+      "secure": {
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "secure",
+      "remote",
+      "plainHttpOutsideHome",
+      "clientAddress",
+      "accessUrls"
+    ],
+    "type": "object"
+  },
+  "GetConnectivityPolicyRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetConnectivityPolicyResponse": {
+    "properties": {
+      "accessUrls": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "advertiseUrl": {
+        "type": "string"
+      },
+      "advertisedInterface": {
+        "type": "string"
+      },
+      "connectionLimit": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "customCertificateDomain": {
+        "type": "string"
+      },
+      "customCertificateKeyPath": {
+        "type": "string"
+      },
+      "customCertificatePath": {
+        "type": "string"
+      },
+      "lanDiscoveryEnabled": {
+        "type": "boolean"
+      },
+      "lanNetworks": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "pausedSessionTimeoutMinutes": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "remoteBitrateLimitKbps": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "remoteSignInPolicy": {
+        "type": "string"
+      },
+      "revision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "trustedProxies": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "uploadCapacityKbps": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "connectionLimit",
+      "advertiseUrl",
+      "revision",
+      "remoteSignInPolicy",
+      "remoteBitrateLimitKbps",
+      "lanNetworks",
+      "accessUrls",
+      "lanDiscoveryEnabled",
+      "trustedProxies",
+      "uploadCapacityKbps",
+      "pausedSessionTimeoutMinutes",
+      "advertisedInterface",
+      "customCertificatePath",
+      "customCertificateKeyPath",
+      "customCertificateDomain"
+    ],
+    "type": "object"
+  },
+  "GetConnectivityStatusRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetConnectivityStatusResponse": {
+    "properties": {
+      "addresses": {
+        "items": {
+          "properties": {
+            "address": {
+              "type": "string"
+            },
+            "class": {
+              "type": "string"
+            },
+            "family": {
+              "type": "string"
+            },
+            "source": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "address",
+            "family",
+            "class",
+            "source"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "connection": {
+        "properties": {
+          "accessUrls": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "clientAddress": {
+            "type": "string"
+          },
+          "plainHttpOutsideHome": {
+            "type": "boolean"
+          },
+          "remote": {
+            "type": "boolean"
+          },
+          "secure": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "secure",
+          "remote",
+          "plainHttpOutsideHome",
+          "clientAddress",
+          "accessUrls"
+        ],
+        "type": "object"
+      },
+      "discovery": {
+        "properties": {
+          "detail": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "serviceType": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "supported": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "enabled",
+          "supported",
+          "state"
+        ],
+        "type": "object"
+      },
+      "interfaces": {
+        "items": {
+          "properties": {
+            "addresses": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "loopback": {
+              "type": "boolean"
+            },
+            "name": {
+              "type": "string"
+            },
+            "up": {
+              "type": "boolean"
+            },
+            "virtual": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "name",
+            "up",
+            "loopback",
+            "virtual",
+            "addresses"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "observedAt": {
+        "type": "string"
+      },
+      "policy": {
+        "properties": {
+          "accessUrls": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "advertiseUrl": {
+            "type": "string"
+          },
+          "advertisedInterface": {
+            "type": "string"
+          },
+          "connectionLimit": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "customCertificateDomain": {
+            "type": "string"
+          },
+          "customCertificateKeyPath": {
+            "type": "string"
+          },
+          "customCertificatePath": {
+            "type": "string"
+          },
+          "lanDiscoveryEnabled": {
+            "type": "boolean"
+          },
+          "lanNetworks": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "pausedSessionTimeoutMinutes": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "remoteBitrateLimitKbps": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "remoteSignInPolicy": {
+            "type": "string"
+          },
+          "revision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "trustedProxies": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "uploadCapacityKbps": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "connectionLimit",
+          "advertiseUrl",
+          "revision",
+          "remoteSignInPolicy",
+          "remoteBitrateLimitKbps",
+          "lanNetworks",
+          "accessUrls",
+          "lanDiscoveryEnabled",
+          "trustedProxies",
+          "uploadCapacityKbps",
+          "pausedSessionTimeoutMinutes",
+          "advertisedInterface",
+          "customCertificatePath",
+          "customCertificateKeyPath",
+          "customCertificateDomain"
+        ],
+        "type": "object"
+      },
+      "tls": {
+        "properties": {
+          "configured": {
+            "type": "boolean"
+          },
+          "customCertificate": {
+            "properties": {
+              "domain": {
+                "type": "string"
+              },
+              "errorCode": {
+                "type": "string"
+              },
+              "issuer": {
+                "type": "string"
+              },
+              "notAfter": {
+                "type": "string"
+              },
+              "state": {
+                "type": "string"
+              }
+            },
+            "required": [],
+            "type": "object"
+          },
+          "dnsName": {
+            "type": "string"
+          },
+          "errorCode": {
+            "type": "string"
+          },
+          "issuer": {
+            "type": "string"
+          },
+          "listenPort": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "listenerBound": {
+            "type": "boolean"
+          },
+          "notAfter": {
+            "type": "string"
+          },
+          "publiclyTrusted": {
+            "type": "boolean"
+          },
+          "reachability": {
+            "type": "string"
+          },
+          "routeUrl": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "tlsReady": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "configured",
+          "tlsReady",
+          "publiclyTrusted",
+          "listenerBound",
+          "listenPort"
+        ],
+        "type": "object"
+      },
+      "warnings": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      }
+    },
+    "required": [
+      "observedAt",
+      "policy",
+      "tls",
+      "discovery",
+      "addresses",
+      "interfaces",
+      "warnings",
+      "connection"
+    ],
+    "type": "object"
+  },
+  "GetConsoleSettingsRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetConsoleSettingsResponse": {
+    "properties": {
+      "data": {
+        "properties": {
+          "activeRevision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "digest": {
+            "type": "string"
+          },
+          "effective": {
+            "properties": {
+              "accessUrls": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "advertiseUrl": {
+                "type": "string"
+              },
+              "advertisedInterface": {
+                "type": "string"
+              },
+              "connectionLimit": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "customCertificateDomain": {
+                "type": "string"
+              },
+              "customCertificateKeyPath": {
+                "type": "string"
+              },
+              "customCertificatePath": {
+                "type": "string"
+              },
+              "deviceApprovalRequired": {
+                "type": "boolean"
+              },
+              "diagnosticDays": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "directStreamRemux": {
+                "type": "boolean"
+              },
+              "hardwareBackend": {
+                "type": "string"
+              },
+              "hardwareDevice": {
+                "type": "string"
+              },
+              "hdrToneMapping": {
+                "type": "boolean"
+              },
+              "hdrToneMappingAlgorithm": {
+                "type": "string"
+              },
+              "home.communityActivityEnabled": {
+                "type": "boolean"
+              },
+              "jobDays": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "lanDiscoveryEnabled": {
+                "type": "boolean"
+              },
+              "lanNetworks": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "library.trashRetentionDays": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "nullable": true,
+                "type": "integer"
+              },
+              "logLevel": {
+                "type": "string"
+              },
+              "logRetention": {
+                "items": {
+                  "properties": {
+                    "category": {
+                      "type": "string"
+                    },
+                    "days": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "category",
+                    "days"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "maxBackgroundSessions": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "maxConcurrentSessions": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "maxHardwareSessions": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "maxSoftwareSessions": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "name": {
+                "type": "string"
+              },
+              "notificationDays": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "pausedSessionTimeoutMinutes": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "perAccountCap": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "nullable": true,
+                "type": "integer"
+              },
+              "planningPolicy": {
+                "type": "string"
+              },
+              "playHistoryDays": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "playedRetentionSeconds": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "remoteBitrateLimitKbps": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "remoteSignInPolicy": {
+                "type": "string"
+              },
+              "serverCap": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "nullable": true,
+                "type": "integer"
+              },
+              "temporaryDirectory": {
+                "type": "string"
+              },
+              "throttleBufferSeconds": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "transcodingEnabled": {
+                "type": "boolean"
+              },
+              "trustedProxies": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "updates.feedUrl": {
+                "type": "string"
+              },
+              "updates.releaseChannel": {
+                "type": "string"
+              },
+              "uploadCapacityKbps": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "x264Preset": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "transcodingEnabled",
+              "perAccountCap",
+              "serverCap",
+              "hardwareBackend",
+              "hardwareDevice",
+              "hdrToneMapping",
+              "hdrToneMappingAlgorithm",
+              "x264Preset",
+              "directStreamRemux",
+              "planningPolicy",
+              "throttleBufferSeconds",
+              "playedRetentionSeconds",
+              "temporaryDirectory",
+              "maxConcurrentSessions",
+              "maxHardwareSessions",
+              "maxSoftwareSessions",
+              "maxBackgroundSessions",
+              "diagnosticDays",
+              "notificationDays",
+              "jobDays",
+              "playHistoryDays",
+              "home.communityActivityEnabled",
+              "updates.releaseChannel",
+              "updates.feedUrl",
+              "library.trashRetentionDays",
+              "remoteSignInPolicy",
+              "remoteBitrateLimitKbps",
+              "connectionLimit",
+              "advertiseUrl",
+              "lanNetworks",
+              "accessUrls",
+              "lanDiscoveryEnabled",
+              "trustedProxies",
+              "uploadCapacityKbps",
+              "pausedSessionTimeoutMinutes",
+              "advertisedInterface",
+              "customCertificatePath",
+              "customCertificateKeyPath",
+              "customCertificateDomain",
+              "deviceApprovalRequired",
+              "logLevel",
+              "logRetention"
+            ],
+            "type": "object"
+          },
+          "registryRevision": {
+            "type": "string"
+          },
+          "requested": {
+            "properties": {
+              "accessUrls": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "advertiseUrl": {
+                "type": "string"
+              },
+              "advertisedInterface": {
+                "type": "string"
+              },
+              "connectionLimit": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "customCertificateDomain": {
+                "type": "string"
+              },
+              "customCertificateKeyPath": {
+                "type": "string"
+              },
+              "customCertificatePath": {
+                "type": "string"
+              },
+              "deviceApprovalRequired": {
+                "type": "boolean"
+              },
+              "diagnosticDays": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "directStreamRemux": {
+                "type": "boolean"
+              },
+              "hardwareBackend": {
+                "type": "string"
+              },
+              "hardwareDevice": {
+                "type": "string"
+              },
+              "hdrToneMapping": {
+                "type": "boolean"
+              },
+              "hdrToneMappingAlgorithm": {
+                "type": "string"
+              },
+              "home.communityActivityEnabled": {
+                "type": "boolean"
+              },
+              "jobDays": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "lanDiscoveryEnabled": {
+                "type": "boolean"
+              },
+              "lanNetworks": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "library.trashRetentionDays": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "nullable": true,
+                "type": "integer"
+              },
+              "logLevel": {
+                "type": "string"
+              },
+              "logRetention": {
+                "items": {
+                  "properties": {
+                    "category": {
+                      "type": "string"
+                    },
+                    "days": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "category",
+                    "days"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "maxBackgroundSessions": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "maxConcurrentSessions": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "maxHardwareSessions": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "maxSoftwareSessions": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "name": {
+                "type": "string"
+              },
+              "notificationDays": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "pausedSessionTimeoutMinutes": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "perAccountCap": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "nullable": true,
+                "type": "integer"
+              },
+              "planningPolicy": {
+                "type": "string"
+              },
+              "playHistoryDays": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "playedRetentionSeconds": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "remoteBitrateLimitKbps": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "remoteSignInPolicy": {
+                "type": "string"
+              },
+              "serverCap": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "nullable": true,
+                "type": "integer"
+              },
+              "temporaryDirectory": {
+                "type": "string"
+              },
+              "throttleBufferSeconds": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "transcodingEnabled": {
+                "type": "boolean"
+              },
+              "trustedProxies": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "updates.feedUrl": {
+                "type": "string"
+              },
+              "updates.releaseChannel": {
+                "type": "string"
+              },
+              "uploadCapacityKbps": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "x264Preset": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "transcodingEnabled",
+              "perAccountCap",
+              "serverCap",
+              "hardwareBackend",
+              "hardwareDevice",
+              "hdrToneMapping",
+              "hdrToneMappingAlgorithm",
+              "x264Preset",
+              "directStreamRemux",
+              "planningPolicy",
+              "throttleBufferSeconds",
+              "playedRetentionSeconds",
+              "temporaryDirectory",
+              "maxConcurrentSessions",
+              "maxHardwareSessions",
+              "maxSoftwareSessions",
+              "maxBackgroundSessions",
+              "diagnosticDays",
+              "notificationDays",
+              "jobDays",
+              "playHistoryDays",
+              "home.communityActivityEnabled",
+              "updates.releaseChannel",
+              "updates.feedUrl",
+              "library.trashRetentionDays",
+              "remoteSignInPolicy",
+              "remoteBitrateLimitKbps",
+              "connectionLimit",
+              "advertiseUrl",
+              "lanNetworks",
+              "accessUrls",
+              "lanDiscoveryEnabled",
+              "trustedProxies",
+              "uploadCapacityKbps",
+              "pausedSessionTimeoutMinutes",
+              "advertisedInterface",
+              "customCertificatePath",
+              "customCertificateKeyPath",
+              "customCertificateDomain",
+              "deviceApprovalRequired",
+              "logLevel",
+              "logRetention"
+            ],
+            "type": "object"
+          },
+          "restartFields": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "revision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "revision",
+          "digest",
+          "requested",
+          "effective",
+          "activeRevision",
+          "restartFields",
+          "registryRevision"
+        ],
+        "type": "object"
+      },
+      "scope": {
+        "properties": {
+          "serverId": {
+            "type": "string"
+          },
+          "viewerFence": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "serverId",
+          "viewerFence"
+        ],
+        "type": "object"
+      }
+    },
+    "required": [
+      "scope",
+      "data"
     ],
     "type": "object"
   },
@@ -9898,6 +11839,36 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "ProveNetworkIdentityRequest": {
+    "properties": {
+      "baseUrl": {
+        "type": "string"
+      },
+      "nonce": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "baseUrl",
+      "nonce"
+    ],
+    "type": "object"
+  },
+  "ProveNetworkIdentityResponse": {
+    "properties": {
+      "payload": {
+        "type": "string"
+      },
+      "signature": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "payload",
+      "signature"
+    ],
+    "type": "object"
+  },
   "PutAdminMaintenanceSettingsRequest": {
     "properties": {
       "expectedRevision": {
@@ -11565,6 +13536,142 @@ export const schemas = {
       "watermark",
       "watchlisted",
       "favorite"
+    ],
+    "type": "object"
+  },
+  "SetupServerRequest": {
+    "properties": {
+      "authMode": {
+        "type": "string"
+      },
+      "interactive": {
+        "type": "boolean"
+      },
+      "name": {
+        "type": "string"
+      },
+      "password": {
+        "type": "string"
+      },
+      "recoverySaved": {
+        "type": "boolean"
+      },
+      "requestId": {
+        "type": "string"
+      },
+      "setupToken": {
+        "type": "string"
+      },
+      "username": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "setupToken",
+      "username",
+      "password",
+      "name"
+    ],
+    "type": "object"
+  },
+  "SetupServerResponse": {
+    "properties": {
+      "accessToken": {
+        "type": "string"
+      },
+      "authorizationHorizon": {
+        "type": "string"
+      },
+      "deviceId": {
+        "type": "string"
+      },
+      "expiresAt": {
+        "type": "string"
+      },
+      "installationId": {
+        "type": "string"
+      },
+      "refreshToken": {
+        "type": "string"
+      },
+      "serverIdentity": {
+        "properties": {
+          "fingerprint": {
+            "type": "string"
+          },
+          "publicKey": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "publicKey",
+          "fingerprint"
+        ],
+        "type": "object"
+      },
+      "sessionFamilyId": {
+        "type": "string"
+      },
+      "tokenGeneration": {
+        "type": "string"
+      },
+      "viewer": {
+        "properties": {
+          "accountId": {
+            "type": "string"
+          },
+          "authority": {
+            "type": "string"
+          },
+          "profileId": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          },
+          "serverId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "accountId",
+          "profileId",
+          "serverId",
+          "authority",
+          "role"
+        ],
+        "type": "object"
+      }
+    },
+    "required": [
+      "accessToken",
+      "deviceId",
+      "installationId",
+      "expiresAt",
+      "viewer",
+      "sessionFamilyId",
+      "tokenGeneration",
+      "authorizationHorizon"
+    ],
+    "type": "object"
+  },
+  "StartBrowserSetupRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "StartBrowserSetupResponse": {
+    "properties": {
+      "serverId": {
+        "type": "string"
+      },
+      "setupToken": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "serverId",
+      "setupToken"
     ],
     "type": "object"
   },

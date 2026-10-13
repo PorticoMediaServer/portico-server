@@ -91,7 +91,7 @@ func TestAdvertisedInterfaceMissingFallsBack(t *testing.T) {
 		t.Fatalf("a missing interface falls back to automatic: %v", topo.LAN)
 	}
 	if got["172.17.0.1"] {
-		t.Fatalf("automatic still skips virtual interfaces: %v", topo.LAN)
+		t.Fatalf("automatic includes attached interfaces: %v", topo.LAN)
 	}
 	if topo.ErrorCode != "advertised_interface_missing" {
 		t.Fatalf("error code: %q", topo.ErrorCode)

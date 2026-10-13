@@ -10,6 +10,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/netip"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -136,9 +137,8 @@ func env(k, fallback string) string {
 	return fallback
 }
 
-// defaultBind is the first-run LAN-reachable default (ONB-02 item 2). Setup
-// still accepts only private peers and public traffic still requires TLS, so
-// reachability does not widen trust.
+// defaultBind accepts IPv4 and IPv6 on hosts supporting a dual-stack socket.
+// HTTP and TLS share this listener; route authorization applies to both.
 const defaultBind = ":32500"
 
 // stateDirFreshThisProcess reports whether this process created the state
@@ -986,7 +986,9 @@ func run() error {
 		runDatabaseHousekeeping(life, db)
 	})
 	supervise.Go("hosted.storage", func() { control.ObserveStorage(ctx, state) })
+	httpShutdownDone := make(chan struct{})
 	supervise.Go("cmd.http-shutdown", func() {
+		defer close(httpShutdownDone)
 		<-ctx.Done()
 		stop, c := context.WithTimeout(context.Background(), 10*time.Second)
 		defer c()
@@ -1036,7 +1038,21 @@ func run() error {
 	}
 	if env("PORTICO_DISCOVERY", "1") != "0" {
 		administration.Advertiser.Bind(ctx, func(life context.Context) {
-			networking.NewDiscovery(claimKeys, claimRunner, ident.Name).Run(life, listener.Addr().String())
+			discovery := networking.NewDiscovery(claimKeys, claimRunner, ident.Name)
+			discovery.SetHomeNetworks(func(ctx context.Context) []netip.Prefix {
+				document, err := console.Settings(ctx, operations.AllowServerScope)
+				if err != nil {
+					return nil
+				}
+				var networks []netip.Prefix
+				for _, raw := range document.Effective.LANNetworks {
+					if p, ok := operations.ParseNetwork(raw); ok {
+						networks = append(networks, p)
+					}
+				}
+				return networks
+			})
+			discovery.Run(life, listener.Addr().String())
 		})
 		discoveryDone := make(chan struct{})
 		drain.add("discovery", func() {
@@ -1063,6 +1079,7 @@ func run() error {
 	}
 	e = server.Serve(listener)
 	if errors.Is(e, http.ErrServerClosed) {
+		<-httpShutdownDone
 		if restartRequested.Load() {
 			return errRestartRequested
 		}

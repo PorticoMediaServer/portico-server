@@ -2,8 +2,14 @@ package httpapi
 
 import (
 	"context"
+	"errors"
 	"net/http"
+	"net/url"
 	"portico.local/apikit"
+	"portico.local/apikit/apierror"
+	"portico.local/server/internal/access"
+	"portico.local/server/internal/identity"
+	"portico.local/server/internal/networkpolicy"
 
 	"portico.local/server/internal/connectivity"
 	"portico.local/server/internal/networking"
@@ -126,7 +132,7 @@ func registerConnectivity(registry *apikit.Registry, d Dependencies) error {
 	}, Handler: func(ctx context.Context, r *http.Request, _ struct{}) (connectivity.Policy, error) {
 		document, err := d.settingsDocument(ctx)
 		if err != nil {
-			return connectivity.Policy{}, foundationAdministrationError(err)
+			return connectivity.Policy{}, connectionPolicyError(err)
 		}
 		return connectivity.ProjectPolicy(document), nil
 	}})
@@ -138,7 +144,7 @@ func registerConnectivity(registry *apikit.Registry, d Dependencies) error {
 	}, Handler: func(ctx context.Context, r *http.Request, body ConnectivityChange) (connectivity.Policy, error) {
 		out, err := d.changeConnectivity(r, body)
 		if err != nil {
-			return connectivity.Policy{}, foundationAdministrationError(err)
+			return connectivity.Policy{}, connectionPolicyError(err)
 		}
 		return out, nil
 	}})
@@ -146,11 +152,11 @@ func registerConnectivity(registry *apikit.Registry, d Dependencies) error {
 		return err
 	}
 	return apikit.Register(registry, apikit.Route[struct{}, ConnectivityStatusDocument]{Metadata: apikit.Metadata{
-		ID: "get_connectivity_status", Method: "GET", Path: "/v1/admin/connectivity/status", Summary: "Read certificates and observed connection addresses", Access: apikit.Admin, Lane: apikit.Default, Cost: apikit.Constant, Status: 200, Errors: []string{"unauthorized", "not_permitted", "internal"},
+		ID: "get_connectivity_status", Method: "GET", Path: "/v1/admin/connectivity/status", Summary: "Read certificates and observed connection addresses", Access: apikit.Admin, Scope: "connectivity", Lane: apikit.Default, Cost: apikit.Constant, Status: 200, Errors: []string{"unauthorized", "not_permitted", "internal"},
 	}, Handler: func(ctx context.Context, r *http.Request, _ struct{}) (ConnectivityStatusDocument, error) {
 		document, err := d.settingsDocument(ctx)
 		if err != nil {
-			return ConnectivityStatusDocument{}, foundationAdministrationError(err)
+			return ConnectivityStatusDocument{}, connectionPolicyError(err)
 		}
 		reporter := connectivity.Reporter{Advertiser: d.Access.Advertiser, Certificates: d.certificateStatus(), Custom: d.customCertificateStatus()}
 		return ConnectivityStatusDocument{Status: reporter.Report(ctx, connectivity.ProjectPolicy(document)), Connection: d.connectionDocument(r)}, nil
@@ -179,4 +185,49 @@ func (d Dependencies) customCertificateStatus() func(context.Context) networking
 	}
 	custom := d.CustomCertificate
 	return func(ctx context.Context) networking.CustomCertificateStatus { return custom.Status(ctx) }
+}
+
+// Networking identity proofs are typed public contracts. A trusted proxy's
+// external Host is the host the client probed, even if the backend Host differs.
+type IdentityProofRequest struct {
+	BaseURL string `json:"baseUrl"`
+	Nonce   string `json:"nonce"`
+}
+type IdentityProofResponse struct {
+	Payload   string `json:"payload"`
+	Signature string `json:"signature"`
+}
+
+func registerIdentityProof(registry *apikit.Registry, d Dependencies) error {
+	return apikit.RegisterRaw(registry, apikit.RawRoute[IdentityProofRequest, IdentityProofResponse]{Metadata: apikit.Metadata{
+		ID: "prove_network_identity", Method: "POST", Path: "/v1/networking/identity-proof", Summary: "Prove this server's pinned identity on the requested origin", Access: apikit.Public, Lane: apikit.Security, Cost: apikit.Constant, BodyLimit: 4096, Status: 200, Errors: []string{"invalid_request", "rate_limited", "internal"},
+	}, Serve: func(w http.ResponseWriter, r *http.Request) {
+		if d.RouteIdentity == nil {
+			failure(w, identity.ErrUnauthorized)
+			return
+		}
+		request := r.Clone(r.Context())
+		if origin, err := url.Parse(networkpolicy.Origin(r, d.trustedProxyPrefixes(r.Context()))); err == nil {
+			request.Host = origin.Host
+		}
+		d.RouteIdentity.ServeHTTP(w, request)
+	}})
+}
+
+func connectionPolicyError(err error) error {
+	var validation *operations.ValidationError
+	if errors.As(err, &validation) {
+		fields := []apierror.Field{}
+		for _, path := range validation.Fields {
+			fields = append(fields, apierror.Field{Path: path, Code: "invalid_value", Message: "Check this field and try again."})
+		}
+		return &apierror.Error{Code: "invalid_request", Fields: fields}
+	}
+	if errors.Is(err, operations.ErrConflict) {
+		return &apierror.Error{Code: "revision_mismatch"}
+	}
+	if errors.Is(err, operations.ErrInvalid) || errors.Is(err, access.ErrInvalid) {
+		return &apierror.Error{Code: "invalid_request"}
+	}
+	return foundationAdministrationError(err)
 }

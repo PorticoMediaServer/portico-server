@@ -142,6 +142,9 @@ func (c *CustomCertificate) Status(ctx context.Context) CustomCertificateStatus 
 		return c.statusLocked()
 	}
 	c.ensureLocked(certPath, keyPath, domain)
+	if c.cert != nil && c.cert.Leaf != nil && !c.nowOrDefault().Before(c.cert.Leaf.NotAfter) {
+		c.state, c.errorCode = "error", "custom_certificate_expired"
+	}
 	return c.statusLocked()
 }
 

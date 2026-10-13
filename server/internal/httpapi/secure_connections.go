@@ -11,7 +11,7 @@ import (
 )
 
 // The settings document is read once per router and replaced synchronously on
-// every settings save. A normal Preferred request does no settings SQL.
+// every settings save. Warm request decisions do no settings SQL.
 type securePolicyCache struct {
 	mu      sync.Mutex
 	setting atomic.Pointer[secureSetting]

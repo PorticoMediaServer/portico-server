@@ -135,7 +135,7 @@ func routeURL(ip netip.Addr, port int, scheme string) string {
 	if scheme == "https" && port == 443 || scheme == "http" && port == 80 {
 		return scheme + "://" + host
 	}
-	return scheme + "://" + net.JoinHostPort(ip.String(), strconv.Itoa(port))
+	return scheme + "://" + net.JoinHostPort(strings.ReplaceAll(ip.String(), "%", "%25"), strconv.Itoa(port))
 }
 
 // ChallengeProof is this server's signed answer to a Portico challenge

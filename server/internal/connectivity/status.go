@@ -195,6 +195,10 @@ func (r Reporter) Report(ctx context.Context, policy Policy) Status {
 			entry.State = "none"
 		}
 		out.TLS.Custom = &entry
+		if entry.State == "ready" {
+			out.TLS.Configured = true
+			out.TLS.TLSReady = true
+		}
 	}
 	out.Discovery = r.Advertiser.Status(policy.LANDiscoveryEnabled)
 	if policy.RemoteSignIn != "off" && !hasClass(out.Addresses, "public") && out.TLS.RouteURL == "" {

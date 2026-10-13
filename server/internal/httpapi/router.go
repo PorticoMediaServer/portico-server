@@ -12,6 +12,7 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"portico.local/server/internal/networkpolicy"
 	"strconv"
 	"strings"
 	"sync"
@@ -747,12 +748,10 @@ func New(d Dependencies) http.Handler {
 	d.installationRoutes(mux)
 	d.foundationRoutes(mux)
 	d.consoleRoutes(mux)
-	if d.RouteIdentity != nil {
-		mux.Handle("POST /v1/networking/identity-proof", d.RouteIdentity)
-	}
 	d.directIdentityRoutes(mux)
 	d.identityRoutes(mux)
 	if d.Networking != nil {
+		d.Networking.SetRequestAuthorizer(NetworkingClaimAuthorizer(d.Identity, d.Origins, d))
 		d.Networking.SetManagementAuthorizer(func(r *http.Request) (networking.ClaimRequestGuard, error) {
 			p, err := d.owner(r)
 			if err != nil {
@@ -815,23 +814,6 @@ func New(d Dependencies) http.Handler {
 	// sign-in must never be shown the Portico Account hand-off.
 	mux.HandleFunc("GET /v1/system", func(w http.ResponseWriter, r *http.Request) {
 		write(w, 200, map[string]any{"id": d.Identity.ID(), "name": d.Identity.Name(), "setupRequired": d.Identity.SetupRequired(), "hostedConfigured": d.Hosted.Configured(), "hostedAttached": d.Identity.Hosted(), "version": buildinfo.Info()["version"], "buildId": buildinfo.Info()["buildId"], "sourceDigest": buildinfo.Info()["sourceDigest"], "builtAt": buildinfo.Info()["builtAt"]})
-	})
-	mux.HandleFunc("POST /v1/setup", func(w http.ResponseWriter, r *http.Request) {
-		var body identity.SetupOptions
-		if e := decode(w, r, &body); e != nil {
-			failure(w, e)
-			return
-		}
-		if e := d.Identity.SetupLimit(r.Context(), d.setupPeerSubject(r), "setup", 10); e != nil {
-			setupFailure(w, e)
-			return
-		}
-		result, e := d.Identity.SetupWithOptions(r.Context(), body, d.privateSetupPeer(r))
-		if e != nil {
-			failure(w, e)
-			return
-		}
-		writeAuth(w, r, 201, result)
 	})
 	mux.HandleFunc("POST /v1/sessions", func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
@@ -1273,7 +1255,7 @@ func New(d Dependencies) http.Handler {
 			w.WriteHeader(204)
 			return
 		}
-		r = r.WithContext(identity.WithSignInSource(r.Context(), d.signInPeer(r)))
+		r = r.WithContext(identity.WithSignInSource(networkpolicy.WithHome(r.Context(), !d.requestIsRemote(r)), d.signInPeer(r)))
 		if installation := r.Header.Get("X-Portico-Installation-Id"); installation != "" {
 			claim := identity.DeviceRegistration{
 				InstallationID: installation,

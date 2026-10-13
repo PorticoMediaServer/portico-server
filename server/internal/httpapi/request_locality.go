@@ -8,6 +8,8 @@ import (
 	"portico.local/server/internal/operations"
 )
 
+var defaultLocality = newLocalityPolicy(operations.DefaultSettings())
+
 type localityPolicy struct{ lan, proxies []netip.Prefix }
 
 func newLocalityPolicy(s operations.Settings) localityPolicy {
@@ -39,7 +41,7 @@ func (d Dependencies) requestIsRemote(r *http.Request) bool {
 	if err != nil {
 		return true
 	}
-	policy := newLocalityPolicy(operations.DefaultSettings())
+	policy := defaultLocality
 	if setting != nil {
 		policy = setting.locality
 	}

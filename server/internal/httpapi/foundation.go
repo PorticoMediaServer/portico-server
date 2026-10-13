@@ -605,6 +605,15 @@ func FoundationRegistry(d Dependencies) (*apikit.Registry, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := registerConnectionSettings(registry, d); err != nil {
+		return nil, err
+	}
+	if err := registerSetupTransport(registry, d); err != nil {
+		return nil, err
+	}
+	if err := registerIdentityProof(registry, d); err != nil {
+		return nil, err
+	}
 	if err := registerConnectivity(registry, d); err != nil {
 		return nil, err
 	}

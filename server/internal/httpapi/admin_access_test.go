@@ -9,7 +9,6 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
-	"net/netip"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -23,7 +22,6 @@ import (
 	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/catalogtest"
 	"portico.local/server/internal/connectivity"
-	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/hosted"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/operations"
@@ -518,7 +516,7 @@ func TestConnectivityPolicyRoundTripsAndStatusReportsTheHost(t *testing.T) {
 	if e := json.Unmarshal(w.Body.Bytes(), &policy); e != nil || policy.RemoteSignIn != "allow" {
 		t.Fatalf("defaults: %v %+v", e, policy)
 	}
-	body := `{"expectedRevision":` + tl6Itoa(policy.Revision) + `,"operationId":"connectivity-1","remoteSignInPolicy":"owner-only","remoteBitrateLimitKbps":8000,"secureConnectionsPolicy":"required","lanNetworks":["192.168.1.5/24"],"accessUrls":["https://media.example.com/"],"lanDiscoveryEnabled":false}`
+	body := `{"expectedRevision":` + tl6Itoa(policy.Revision) + `,"operationId":"connectivity-1","remoteSignInPolicy":"owner-only","remoteBitrateLimitKbps":8000,"lanNetworks":["192.168.1.5/24"],"accessUrls":["https://media.example.com/"],"lanDiscoveryEnabled":false}`
 	w = f.call("PATCH", "/v1/admin/connectivity/policy", f.owner, body)
 	if w.Code != 200 {
 		t.Fatalf("write: %d %s", w.Code, w.Body)
@@ -550,10 +548,6 @@ func TestConnectivityPolicyRoundTripsAndStatusReportsTheHost(t *testing.T) {
 	}
 	if status.Policy.RemoteSignIn != "owner-only" || status.ObservedAt == "" || status.Warnings == nil {
 		t.Fatalf("report: %+v", status)
-	}
-	// TLS is required but no certificate is configured in this fixture.
-	if !strings.Contains(strings.Join(status.Warnings, ","), "secure_connections_required_without_tls") {
-		t.Fatalf("warnings: %v", status.Warnings)
 	}
 	// The server-wide remote bitrate ceiling reaches the delivery seam once
 	// the snapshot is refreshed, which a settings save triggers in production.

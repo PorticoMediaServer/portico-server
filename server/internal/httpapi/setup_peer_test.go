@@ -42,12 +42,12 @@ func TestSetupProxyBoundary(t *testing.T) {
 	if (Dependencies{}).sameMachineSetup(r) {
 		t.Fatal("forwarded loopback treated as direct")
 	}
-	if (Dependencies{}).privateSetupPeer(r) {
-		t.Fatal("untrusted forwarded header treated as private")
+	if !(Dependencies{}).privateSetupPeer(r) {
+		t.Fatal("untrusted forwarded header changed peer locality")
 	}
 	r.Header.Del("X-Forwarded-For")
 	r.Header.Set("Forwarded", "for=127.0.0.1")
-	if (Dependencies{}).privateSetupPeer(r) {
-		t.Fatal("untrusted Forwarded header treated as private")
+	if !(Dependencies{}).privateSetupPeer(r) {
+		t.Fatal("untrusted Forwarded header changed peer locality")
 	}
 }

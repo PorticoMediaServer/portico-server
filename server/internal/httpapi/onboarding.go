@@ -5,7 +5,6 @@ import (
 	"errors"
 	"net"
 	"net/http"
-	"net/url"
 	"portico.local/server/internal/identity"
 	"strconv"
 	"strings"
@@ -64,35 +63,6 @@ func fmtSetupInterval(n int) string {
 	return strconv.Itoa(n)
 }
 func (d Dependencies) onboardingRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("POST /v1/setup/browser", func(w http.ResponseWriter, r *http.Request) {
-		origin := r.Header.Get("Origin")
-		parsed, err := url.Parse(origin)
-		allowed := d.sameRequestOrigin(r, origin)
-		// Any browser may start first-run setup (Justin, 23 Sep: no setup code, even
-		// remotely). The origin check stays: another site can't drive a visitor's
-		// browser through it. The secret only lets this browser resume an
-		// interrupted setup; the first owner created wins.
-		if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || !allowed || !strings.HasPrefix(r.Header.Get("Content-Type"), "application/json") {
-			failure(w, identity.ErrUnauthorized)
-			return
-		}
-		var body struct{}
-		if err := decode(w, r, &body); err != nil {
-			failure(w, err)
-			return
-		}
-		if err := d.Identity.SetupLimit(r.Context(), d.setupPeerSubject(r), "browser-setup", 10); err != nil {
-			setupFailure(w, err)
-			return
-		}
-		token, err := d.Identity.BrowserSetupToken(r.Context())
-		if err != nil {
-			failure(w, err)
-			return
-		}
-		write(w, 200, map[string]string{"serverId": d.Identity.ID(), "setupToken": token})
-	})
-
 	mux.HandleFunc("POST /v1/setup/resume", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 		var q struct {

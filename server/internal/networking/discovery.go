@@ -12,6 +12,7 @@ import (
 	"net"
 	"net/netip"
 	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/networkpolicy"
 	"portico.local/server/internal/supervise"
 	"sort"
 	"strconv"
@@ -34,13 +35,14 @@ type discoverySet struct {
 	records        []discoveryRecord
 }
 type Discovery struct {
-	keys   *ProtectedKeys
-	runner *AuthorityRunner
-	name   func() string
+	keys         *ProtectedKeys
+	runner       *AuthorityRunner
+	name         func() string
+	homeNetworks func(context.Context) []netip.Prefix
 }
 
 func NewDiscovery(keys *ProtectedKeys, runner *AuthorityRunner, name func() string) *Discovery {
-	return &Discovery{keys, runner, name}
+	return &Discovery{keys: keys, runner: runner, name: name}
 }
 func dnsName(name string) []byte {
 	var out []byte
@@ -268,6 +270,7 @@ type discoverySocket struct {
 	destination *net.UDPAddr
 	set         discoverySet
 	signature   string
+	home        []netip.Prefix
 }
 
 func (d *Discovery) sockets(ctx context.Context, bind string, serial uint64) []discoverySocket {
@@ -276,6 +279,9 @@ func (d *Discovery) sockets(ctx context.Context, bind string, serial uint64) []d
 		return nil
 	}
 	port, e := strconv.Atoi(p)
+	if host == "" {
+		host = "::"
+	}
 	bound, e2 := netip.ParseAddr(host)
 	if e != nil || e2 != nil || port < 1 || port > 65535 || bound.IsLoopback() {
 		return nil
@@ -284,6 +290,7 @@ func (d *Discovery) sockets(ctx context.Context, bind string, serial uint64) []d
 	if e != nil {
 		return nil
 	}
+	home := d.networks(ctx)
 	var out []discoverySocket
 	for _, iface := range interfaces {
 		if len(out) >= 16 {
@@ -300,7 +307,7 @@ func (d *Discovery) sockets(ctx context.Context, bind string, serial uint64) []d
 				continue
 			}
 			ip := p.Addr().Unmap()
-			if (!bound.IsUnspecified() && ip != bound) || bound.Is4() && ip.Is6() || !ip.IsPrivate() {
+			if (!bound.IsUnspecified() && ip != bound) || bound.Is4() && ip.Is6() || !networkpolicy.Contains(home, ip) {
 				continue
 			}
 			addresses = append(addresses, ip)
@@ -312,9 +319,9 @@ func (d *Discovery) sockets(ctx context.Context, bind string, serial uint64) []d
 			continue
 		}
 		sort.Slice(addresses, func(i, j int) bool { return addresses[i].Less(addresses[j]) })
-		suffix := ""
+		suffix := discoveryInterfaceSuffix(iface.Name)
 		if serial > 0 {
-			suffix = "-" + strconv.FormatUint(serial, 36)
+			suffix += "-" + strconv.FormatUint(serial, 36)
 		}
 		set, e := d.snapshot(ctx, port, addresses, suffix)
 		if e != nil || set.packet(120, false) == nil {
@@ -345,7 +352,7 @@ func (d *Discovery) sockets(ctx context.Context, bind string, serial uint64) []d
 			}
 			_ = c.SetReadBuffer(16384)
 			signature := iface.Name + "/" + family + "/" + string(set.packet(120, false))
-			out = append(out, discoverySocket{c, dest, set, signature})
+			out = append(out, discoverySocket{c, dest, set, signature, home})
 		}
 	}
 	return out
@@ -356,6 +363,9 @@ func (d *Discovery) sockets(ctx context.Context, bind string, serial uint64) []d
 func (d *Discovery) topologySignature(ctx context.Context, bind string) string {
 	var parts []string
 	parts = append(parts, bind)
+	for _, p := range d.networks(ctx) {
+		parts = append(parts, p.String())
+	}
 	interfaces, _ := net.Interfaces()
 	for _, iface := range interfaces {
 		parts = append(parts, iface.Name+"/"+iface.Flags.String())
@@ -434,7 +444,7 @@ func (d *Discovery) Run(ctx context.Context, bind string) {
 						continue
 					}
 					ip, ok := netip.AddrFromSlice(peer.IP)
-					if !ok || (!ip.Unmap().IsPrivate() && !ip.IsLinkLocalUnicast()) {
+					if !ok || !networkpolicy.Contains(s.home, ip.Unmap()) {
 						continue
 					}
 					if s.set.conflict(packet[:n]) {
@@ -472,4 +482,26 @@ func (d *Discovery) Run(ctx context.Context, bind string) {
 		cancel()
 		wg.Wait()
 	}
+}
+
+// Distinct names prevent two interfaces on one link from conflicting over
+// different address RRsets. The advertised server ID remains the deduplication key.
+func discoveryInterfaceSuffix(name string) string {
+	sum := sha256.Sum256([]byte(name))
+	return "-" + hex.EncodeToString(sum[:5])
+}
+func (d *Discovery) SetHomeNetworks(source func(context.Context) []netip.Prefix) {
+	d.homeNetworks = source
+}
+func (d *Discovery) networks(ctx context.Context) []netip.Prefix {
+	if d.homeNetworks != nil {
+		return d.homeNetworks(ctx)
+	}
+	var out []netip.Prefix
+	for _, raw := range networkpolicy.DefaultHomeNetworks() {
+		if p, err := netip.ParsePrefix(raw); err == nil {
+			out = append(out, p)
+		}
+	}
+	return out
 }

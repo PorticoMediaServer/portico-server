@@ -1,3 +1,4 @@
+import {parseConnectionDocument,type ConnectionDocument} from './server-administration.ts';
 import {trackName} from './presentation/language.ts';
 import {randomId} from './random-id.ts';
 import {routeOrigin} from './route-identity.ts';
@@ -414,6 +415,9 @@ export class HttpLocalApi implements PlaybackApi {
       throw error;
     }
     return response.status === 204 ? (undefined as T) : response.json();
+  }
+  connection(signal?:AbortSignal):Promise<ConnectionDocument> {
+    return this.request<unknown>("/v1/networking/connection","GET",undefined,signal).then(parseConnectionDocument);
   }
   system() {
     return this.request<SystemInfo>("/v1/system");

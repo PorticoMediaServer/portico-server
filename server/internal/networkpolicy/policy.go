@@ -3,6 +3,7 @@
 package networkpolicy
 
 import (
+	"context"
 	"net"
 	"net/http"
 	"net/netip"
@@ -35,7 +36,7 @@ func DefaultHomeNetworks() []string {
 					continue
 				}
 				s := p.Masked().String()
-				if !seen[s] {
+				if !seen[s] && len(defaultNetworks) < 64 {
 					defaultNetworks = append(defaultNetworks, s)
 					seen[s] = true
 				}
@@ -85,6 +86,15 @@ func headerValues(r *http.Request, key string) []string {
 // Forwarded is bounded and rejects ambiguous or malformed chains in full,
 // including attacker-supplied entries to the left of the real client.
 func Forwarded(r *http.Request, proxies []netip.Prefix) (netip.Addr, bool) {
+	spellings := 0
+	for key := range r.Header {
+		if strings.EqualFold(key, "X-Forwarded-For") {
+			spellings++
+		}
+	}
+	if spellings > 1 {
+		return netip.Addr{}, false
+	}
 	xff := headerValues(r, "X-Forwarded-For")
 	var hops []netip.Addr
 	if len(xff) > 0 {
@@ -211,3 +221,10 @@ func validHost(host string) bool {
 	u, err := url.Parse("http://" + host)
 	return err == nil && u.Hostname() != "" && u.User == nil
 }
+
+type homeKey struct{}
+
+func WithHome(ctx context.Context, home bool) context.Context {
+	return context.WithValue(ctx, homeKey{}, home)
+}
+func Home(ctx context.Context) bool { value, _ := ctx.Value(homeKey{}).(bool); return value }
