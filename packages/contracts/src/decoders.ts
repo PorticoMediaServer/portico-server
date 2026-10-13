@@ -47,6 +47,7 @@ export function decodeGetDirectProfileAvatarsResponse(input: unknown): types.Get
 export function decodeGetDirectProfileRestrictionsResponse(input: unknown): types.GetDirectProfileRestrictionsResponse { return decode("GetDirectProfileRestrictionsResponse", input) as types.GetDirectProfileRestrictionsResponse; }
 export function decodeGetDirectRegistrationPolicyResponse(input: unknown): types.GetDirectRegistrationPolicyResponse { return decode("GetDirectRegistrationPolicyResponse", input) as types.GetDirectRegistrationPolicyResponse; }
 export function decodeGetDirectSessionsResponse(input: unknown): types.GetDirectSessionsResponse { return decode("GetDirectSessionsResponse", input) as types.GetDirectSessionsResponse; }
+export function decodeGetDownloadOptionsResponse(input: unknown): types.GetDownloadOptionsResponse { return decode("GetDownloadOptionsResponse", input) as types.GetDownloadOptionsResponse; }
 export function decodeGetDownloadRequestResponse(input: unknown): types.GetDownloadRequestResponse { return decode("GetDownloadRequestResponse", input) as types.GetDownloadRequestResponse; }
 export function decodeGetEventsResponse(input: unknown): types.GetEventsResponse { return decode("GetEventsResponse", input) as types.GetEventsResponse; }
 export function decodeGetItemsScreenMetadataResponse(input: unknown): types.GetItemsScreenMetadataResponse { return decode("GetItemsScreenMetadataResponse", input) as types.GetItemsScreenMetadataResponse; }

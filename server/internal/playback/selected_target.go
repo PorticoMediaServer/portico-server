@@ -40,7 +40,7 @@ func bestAudioConversionTransport(transports []ClientTransport, client ClientPro
 }
 
 // Complete and validate the contract before persisting it for the producer.
-func finishConversionTarget(p *DeliveryPlan, video *SourceVideo, audio *SourceAudio, client ClientProfile, probe decoder.HardwareProbe) error {
+func finishConversionTarget(p *DeliveryPlan, video *SourceVideo, audio *SourceAudio, client ClientProfile, probe decoder.HardwareProbe, facts *decoder.ToolchainFacts) error {
 	t := decoder.ConversionTarget{VideoCodec: p.OutputVideoCodec, BitDepth: p.OutputBitDepth, DynamicRange: p.OutputRange, ToneMap: p.ToneMap, Width: p.TargetWidth, Height: p.TargetHeight, FrameRate: p.MaxFrameRate, VideoBitrateBPS: p.VideoBitrateBPS, AudioCodec: p.OutputAudioCodec, AudioChannels: p.AudioChannels, AudioSampleRate: p.AudioSampleRate, AudioBitrateBPS: p.AudioBitrateBPS, Packaging: p.OutputContainer}
 	if p.VideoAction == "convert" {
 		t.RateControl = "bitrate"
@@ -70,6 +70,7 @@ func finishConversionTarget(p *DeliveryPlan, video *SourceVideo, audio *SourceAu
 			}
 			if p.OutputVideoCodec == "h264" {
 				t.VideoLevel = decoder.H264OutputLevel(w, h, rate)
+				t.VideoProfile = convertedH264Profile(client.videoCodec("h264"))
 			}
 			if p.OutputVideoCodec == "hevc" {
 				t.VideoLevel = decoder.HEVCOutputLevel(w, h, rate)
@@ -78,7 +79,7 @@ func finishConversionTarget(p *DeliveryPlan, video *SourceVideo, audio *SourceAu
 	}
 	if audio != nil {
 		if p.AudioAction == "copy" {
-			t.AudioChannels, t.AudioSampleRate, t.AudioBitrateBPS = audio.Channels, audio.SampleRate, int(audio.BitRate)
+			t.AudioChannels, t.AudioSampleRate, t.AudioBitrateBPS = audio.Channels, audio.SampleRate, 0
 			if t.AudioCodec == "flac" {
 				t.AudioBitrateBPS = 0
 			}
@@ -102,6 +103,7 @@ func finishConversionTarget(p *DeliveryPlan, video *SourceVideo, audio *SourceAu
 		return err
 	}
 	p.ConversionTarget = &t
+	p.ConversionToolchain = facts
 	if probe.Available {
 		copy := probe
 		p.ConversionProbe = &copy
@@ -159,4 +161,14 @@ func boundConvertedPicture(p *DeliveryPlan, v *SourceVideo, cap *ClientVideoCode
 	if height < v.Height || p.TargetHeight > 0 {
 		p.TargetHeight = height - height%2
 	}
+}
+
+func baseCopyRejections(video *SourceVideo, client ClientProfile, facts *decoder.ToolchainFacts) []RouteRejection {
+	if video == nil || video.DynamicRange != assets.RangeDolbyVision || nativeDolbyVision(video, client.videoCodec(video.Codec), client) {
+		return nil
+	}
+	if facts == nil || !facts.BitstreamFilters["dovi_rpu"] || video.DolbyVisionProfile == 7 && !facts.BitstreamFilters["filter_units"] {
+		return []RouteRejection{{RejectServerOutput, "Dolby Vision base stripping unavailable"}}
+	}
+	return nil
 }

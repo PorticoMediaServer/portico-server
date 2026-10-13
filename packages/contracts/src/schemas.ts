@@ -9843,6 +9843,182 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "GetDownloadOptionsRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetDownloadOptionsResponse": {
+    "properties": {
+      "itemId": {
+        "type": "string"
+      },
+      "kind": {
+        "type": "string"
+      },
+      "options": {
+        "items": {
+          "properties": {
+            "available": {
+              "type": "boolean"
+            },
+            "estimated": {
+              "type": "boolean"
+            },
+            "estimatedBytes": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "kind": {
+              "type": "string"
+            },
+            "label": {
+              "type": "string"
+            },
+            "maxAudioBitrateBps": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "maxVideoBitrateBps": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "preparationId": {
+              "type": "string"
+            },
+            "preparationState": {
+              "type": "string"
+            },
+            "preparedProfileId": {
+              "type": "string"
+            },
+            "preparedVersionId": {
+              "type": "string"
+            },
+            "quality": {
+              "type": "string"
+            },
+            "reason": {
+              "type": "string"
+            },
+            "requiresPreparation": {
+              "type": "boolean"
+            },
+            "targetDisplayHeight": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "quality",
+            "label",
+            "kind",
+            "estimatedBytes",
+            "estimated",
+            "available",
+            "requiresPreparation"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "policy": {
+        "properties": {
+          "allowDownloads": {
+            "type": "boolean"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "allowDownloads"
+        ],
+        "type": "object"
+      },
+      "source": {
+        "properties": {
+          "audioCodec": {
+            "type": "string"
+          },
+          "available": {
+            "type": "boolean"
+          },
+          "bytes": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "container": {
+            "type": "string"
+          },
+          "durationSeconds": {
+            "type": "number"
+          },
+          "height": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "videoCodec": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "container",
+          "durationSeconds",
+          "bytes",
+          "available"
+        ],
+        "type": "object"
+      },
+      "storage": {
+        "properties": {
+          "committedBytes": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "maxPreparedBytes": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "remainingBytes": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "nullable": true,
+            "type": "integer"
+          },
+          "retentionDays": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "maxPreparedBytes",
+          "committedBytes",
+          "remainingBytes",
+          "retentionDays"
+        ],
+        "type": "object"
+      }
+    },
+    "required": [
+      "itemId",
+      "kind",
+      "source",
+      "options",
+      "policy",
+      "storage"
+    ],
+    "type": "object"
+  },
   "GetDownloadRequestRequest": {
     "properties": {},
     "required": [],

@@ -379,7 +379,7 @@ func TestConversionFallbackUsesAdmissionsViewOfTheConnection(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if converted.VideoBitrateBPS <= 1_000_000 {
+		if converted.VideoBitrateBPS != 0 || converted.ConversionTarget == nil || converted.ConversionTarget.RateControl != "quality" {
 			t.Fatalf("a LAN presentation was held to the owner's remote ceiling: %d bit/s", converted.VideoBitrateBPS)
 		}
 	})
@@ -537,7 +537,7 @@ func TestConversionFallbackAppliesTheMembersCurrentCap(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if converted.VideoBitrateBPS <= 1_000_000 || len(*asked) != 0 {
+		if converted.VideoBitrateBPS != 0 || converted.ConversionTarget == nil || converted.ConversionTarget.RateControl != "quality" || len(*asked) != 0 {
 			t.Fatalf("a LAN presentation was held to the member's remote cap: %d bit/s, limit read %d times", converted.VideoBitrateBPS, len(*asked))
 		}
 	})

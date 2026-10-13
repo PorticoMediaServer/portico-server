@@ -965,3 +965,9 @@ func WithVideoBitrateCeiling(p ClientProfile, ceiling int) ClientProfile {
 	p.Video = narrowed
 	return p
 }
+
+// CapabilityDocumentTx reads the same device document inside an existing read
+// snapshot, so download menus and playback make their choices from one source.
+func CapabilityDocumentTx(ctx context.Context, tx *sql.Tx, p identity.Principal) CapabilityDocument {
+	return capabilityDocumentFor(ctx, tx, p)
+}

@@ -34,6 +34,7 @@ type ConversionTarget struct {
 	SourceRange              string  `json:"sourceRange"`
 	DolbyVisionProfile       int     `json:"dolbyVisionProfile"`
 	DolbyVisionCompatibility int     `json:"dolbyVisionCompatibility"`
+	VideoProfile             string  `json:"videoProfile,omitempty"`
 	VideoLevel               int     `json:"videoLevel"`
 	MasterDisplay            string  `json:"masterDisplay,omitempty"`
 	MaxCLL                   string  `json:"maxCLL,omitempty"`
@@ -66,6 +67,9 @@ func (t ConversionTarget) Normalized() (ConversionTarget, error) {
 		if (t.VideoCodec != "h264" && t.VideoCodec != "hevc" && t.VideoCodec != "mpeg2video") || t.AudioCodec == "flac" || t.AudioCodec == "opus" || t.AudioCodec == "truehd" {
 			t.Packaging = "fmp4_hls"
 		}
+	}
+	if t.VideoProfile != "" && (t.VideoCodec != "h264" || t.VideoProfile != "high" && t.VideoProfile != "main" && t.VideoProfile != "baseline") {
+		return t, ErrInvalidConfiguration
 	}
 	if !validVideoLevel(t.VideoCodec, t.VideoLevel) {
 		return t, ErrInvalidConfiguration

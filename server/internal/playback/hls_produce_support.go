@@ -255,7 +255,7 @@ func (h *HLS) downgradeCopyPlan(ctx context.Context, id string, plan *DeliveryPl
 		next.TargetWidth, next.TargetHeight, next.VideoBitrateBPS, next.AudioBitrateBPS = t.Width, t.Height, t.VideoBitrateBPS, t.AudioBitrateBPS
 		next.ReasonCodes = append(append([]string{}, plan.ReasonCodes...), ReasonHardwareFailedSoftware)
 	} else {
-		next, err = planDelivery(DeliveryInput{SourceID: source.ID, Source: &source, Client: client, Server: decoder.CurrentToolchain(), Policy: policy, Target: target, Config: cfg, TranscodingEnabled: true, AudioStream: plan.AudioStream, HasAudioChoice: plan.AudioStream >= 0, Excluded: excluded, BurnIn: plan.BurnIn != nil, Remote: source.Container == "strm"})
+		next, err = planDelivery(DeliveryInput{SourceID: source.ID, Source: &source, Client: client, Server: decoder.CurrentToolchain(), Policy: policy, Target: target, Config: cfg, TranscodingEnabled: true, AudioStream: plan.AudioStream, HasAudioChoice: plan.AudioStream >= 0, Excluded: excluded, FMP4Output: h.fragmentedOutput(), BurnIn: plan.BurnIn != nil, Remote: source.Container == "strm"})
 		if err != nil {
 			return nil, err
 		}
@@ -294,7 +294,7 @@ func (h *HLS) downgradeCopyPlan(ctx context.Context, id string, plan *DeliveryPl
 			return nil, err
 		}
 	}
-	if richReplacement {
+	if next.ConversionTarget != nil {
 		if err = StoreConversionTarget(ctx, tx, id, *next.ConversionTarget); err != nil {
 			return nil, err
 		}

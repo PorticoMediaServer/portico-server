@@ -24,9 +24,6 @@ var conversionOutputs atomic.Pointer[ConversionOutputs]
 // The composition root calls it once the converter's own abilities are known
 // (HEVC and HDR-preserving pictures, lossless and wider audio).
 func SetConversionOutputs(o ConversionOutputs) {
-	if len(o.Video) == 0 || len(o.Audio) == 0 {
-		return
-	}
 	conversionOutputs.Store(&o)
 }
 
@@ -69,7 +66,7 @@ func keptRange(v *SourceVideo, client ClientProfile, codec *ClientVideoCodec) st
 // the first of the server's outputs the engine takes on one of its HLS
 // transports, keeping the source's HDR where both sides can. ok is false when
 // no output of this server reaches the device.
-func chooseVideoOutput(v *SourceVideo, client ClientProfile, transports []ClientTransport, allowHDR bool, outputs ConversionOutputs) (videoOutput, bool) {
+func chooseVideoOutput(v *SourceVideo, client ClientProfile, transports []ClientTransport, allowHDR bool, outputs ConversionOutputs, audio *SourceAudio, target QualityTarget) (videoOutput, bool) {
 	preferredDepth := 8
 	if v != nil && v.BitDepth >= 10 {
 		preferredDepth = 10
@@ -94,7 +91,10 @@ func chooseVideoOutput(v *SourceVideo, client ClientProfile, transports []Client
 		if o.Codec == "av1" {
 			profile = "main"
 		}
-		if len(codec.Profiles) > 0 && !convertedProfileAllowed(profile, codec.Profiles) {
+		if o.Codec == "h264" {
+			profile = convertedH264Profile(codec)
+		}
+		if profile == "" || len(codec.Profiles) > 0 && !convertedProfileAllowed(profile, codec.Profiles) {
 			continue
 		}
 		ranges := []string{}
@@ -105,12 +105,35 @@ func chooseVideoOutput(v *SourceVideo, client ClientProfile, transports []Client
 			ranges = append(ranges, assets.RangeSDR)
 		}
 		for _, r := range ranges {
+			var best videoOutput
+			score := -1
 			for _, name := range o.Transports {
 				for _, t := range transports {
 					if t.Transport == name && containsString(t.Video, o.Codec) {
-						return videoOutput{Codec: o.Codec, BitDepth: o.BitDepth, Range: r, Transport: name}, true
+						audioScore := 0
+						if audio != nil {
+							converted := audioOutputFor(audio, client, target, &t, outputs)
+							if !converted.NoRate {
+								audioScore = converted.Channels * 10
+								if converted.Lossless {
+									audioScore++
+								}
+							}
+							if len(audioRejections(audio, client, t)) == 0 && serverCopyAudio(name, audio.Codec) && !bitrateOver(audio.BitRate, target.MaxAudioBitrateBPS) {
+								audioScore = 1000
+							}
+							if audioScore == 0 {
+								continue
+							}
+						}
+						if audioScore > score {
+							best, score = videoOutput{Codec: o.Codec, BitDepth: o.BitDepth, Range: r, Transport: name}, audioScore
+						}
 					}
 				}
+			}
+			if score >= 0 {
+				return best, true
 			}
 		}
 	}
@@ -140,4 +163,16 @@ func convertedProfileAllowed(profile string, profiles []string) bool {
 		}
 	}
 	return false
+}
+
+func convertedH264Profile(c *ClientVideoCodec) string {
+	if c == nil || len(c.Profiles) == 0 {
+		return "high"
+	}
+	for _, p := range []string{"high", "main", "baseline"} {
+		if convertedProfileAllowed(p, c.Profiles) || p == "baseline" && convertedProfileAllowed("constrained baseline", c.Profiles) {
+			return p
+		}
+	}
+	return ""
 }

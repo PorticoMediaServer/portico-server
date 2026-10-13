@@ -917,6 +917,25 @@ export const routes = [
     "status": 200
   },
   {
+    "id": "get_download_options",
+    "method": "GET",
+    "path": "/v1/items/{itemId}/download-options",
+    "summary": "List offline qualities this device can play and this server can produce",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
     "id": "get_download_request",
     "method": "GET",
     "path": "/v1/downloads/requests/{id}",

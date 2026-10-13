@@ -476,6 +476,7 @@ func run() (runErr error) {
 			log.Printf("Media toolchain qualification unavailable: %v", result.err)
 		} else {
 			decoder.ConfigureToolchain(result.facts)
+			playback.SetConversionOutputs(decoder.AvailableConversionOutputs(&result.facts))
 			log.Printf("Media toolchain: %s ass=%t zscale=%t", ffmpegTool, result.facts.Filters["ass"], result.facts.Filters["zscale"])
 			if missing := result.facts.MissingRequired(); len(missing) > 0 {
 				log.Printf("Media toolchain attention: missing %v", missing)
@@ -498,6 +499,7 @@ func run() (runErr error) {
 		retryCancel()
 		if err == nil {
 			decoder.ConfigureToolchain(facts)
+			playback.SetConversionOutputs(decoder.AvailableConversionOutputs(&facts))
 		} else {
 			log.Printf("Media toolchain qualification unavailable: %v", err)
 		}

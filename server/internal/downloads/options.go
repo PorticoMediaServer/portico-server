@@ -6,6 +6,8 @@ import (
 	"errors"
 	"portico.local/server/internal/dbwork"
 
+	"portico.local/server/internal/assets"
+	"portico.local/server/internal/decoder"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/operations"
 	"portico.local/server/internal/playback"
@@ -159,6 +161,7 @@ func (s *Service) Options(ctx context.Context, p identity.Principal, item string
 	// An audio source has exactly one optimized target. Walking the video ladder
 	// for it would publish six copies of the same AAC recipe under names like
 	// "4K 2160p", which describes nothing about an audio file.
+	device := playback.CapabilityDocumentTx(ctx, tx, p)
 	presets := playback.QualityLadder
 	if audioKind(found.Kind) {
 		preset, _ := playback.LadderPreset(canonicalAudioRung)
@@ -179,6 +182,17 @@ func (s *Service) Options(ctx context.Context, p identity.Principal, item string
 		}
 		option.Bytes, option.Estimated = estimateBytes(preset.ID, found)
 		version := selectableVersion(versions, option.PreparedProfileID)
+		recipe, recipeErr := preparedmedia.ProfileByID(option.PreparedProfileID)
+		if version == nil && (recipeErr != nil || !preparedmedia.ProfileProducible(recipe)) {
+			continue
+		}
+		targetSource := playback.DeliverySource{Container: "mp4", Audio: []playback.SourceAudio{{Codec: "aac", Channels: 2, StreamDetail: assets.StreamDetail{SampleRate: 48000}}}}
+		if !audioKind(found.Kind) {
+			targetSource.Video = &playback.SourceVideo{Codec: "h264", StreamDetail: assets.StreamDetail{Profile: "High", Level: decoder.H264OutputLevel(recipe.Width, recipe.Height, 60), Width: recipe.Width, Height: recipe.Height, FrameRate: 60, BitDepth: 8, DynamicRange: "sdr"}}
+		}
+		if !playback.DownloadPlayable(targetSource, device) {
+			continue
+		}
 		switch {
 		case !out.Source.Available:
 			option.Reason = ReasonSourceMissing

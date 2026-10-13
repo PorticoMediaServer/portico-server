@@ -68,25 +68,6 @@ func (d Dependencies) downloadsReady(w http.ResponseWriter) bool {
 }
 
 func (d Dependencies) downloadRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("GET /v1/items/{id}/download-options", func(w http.ResponseWriter, r *http.Request) {
-		if !d.downloadsReady(w) {
-			return
-		}
-		p, owner, e := d.downloadViewer(r)
-		if e == nil {
-			e = d.itemAccess(r.Context(), p, r.PathValue("id"))
-		}
-		if e != nil {
-			failure(w, e)
-			return
-		}
-		out, e := d.Downloads.Options(r.Context(), p, r.PathValue("id"), owner)
-		if e != nil {
-			downloadFailure(w, e)
-			return
-		}
-		write(w, 200, out)
-	})
 	mux.HandleFunc("POST /v1/downloads/preparations", func(w http.ResponseWriter, r *http.Request) {
 		if !d.downloadsReady(w) {
 			return

@@ -33,6 +33,7 @@ type AudioRenditionPlan struct {
 	BitrateBPS  int    `json:"bitrateBps"`
 	Downmix     string `json:"downmix,omitempty"`
 	SampleRate  int    `json:"sampleRate,omitempty"`
+	BitDepth    int    `json:"bitDepth,omitempty"`
 	Language    string `json:"language"`
 	Label       string `json:"label"`
 	Default     bool   `json:"default"`
@@ -43,7 +44,11 @@ func planAudioRenditions(p DeliveryPlan, source DeliverySource, client ClientPro
 	if p.Mode != "hls" || p.VideoAction == "none" || len(source.Audio) < 2 {
 		return nil
 	}
-	transport := transportNamed(client.Transports, TransportHLSTS)
+	kind := TransportHLSTS
+	if p.OutputContainer == "fmp4_hls" {
+		kind = TransportHLSFMP4
+	}
+	transport := transportNamed(client.Transports, kind)
 	if transport == nil {
 		transport = &ClientTransport{Transport: TransportHLSTS, Audio: []string{"aac"}}
 	}
@@ -67,11 +72,11 @@ func planAudioRenditions(p DeliveryPlan, source DeliverySource, client ClientPro
 	}
 	for _, a := range tracks {
 		r := AudioRenditionPlan{Ordinal: len(out), StreamIndex: a.Index, Action: "copy", Codec: a.Codec, Channels: a.Channels, BitrateBPS: int(a.BitRate), Language: manifestAudioLanguage(a.Language), Default: a.Index == p.AudioStream, Commentary: a.Commentary}
-		if len(audioRejections(&a, client, *transport)) > 0 || !serverCopyAudio(TransportHLSTS, a.Codec) || bitrateOver(a.BitRate, target.MaxAudioBitrateBPS) {
+		if len(audioRejections(&a, client, *transport)) > 0 || !serverCopyAudio(kind, a.Codec) || bitrateOver(a.BitRate, target.MaxAudioBitrateBPS) {
 			if !convert {
 				continue
 			}
-			t := audioConversionTarget(&a, client, target)
+			t := audioOutputFor(&a, client, target, transport, currentConversionOutputs())
 			if t.NoRate {
 				continue
 			}
@@ -79,6 +84,9 @@ func planAudioRenditions(p DeliveryPlan, source DeliverySource, client ClientPro
 			if t.Downmix {
 				r.Downmix = DownmixITULimited
 			}
+		}
+		if r.Codec == "flac" {
+			r.BitDepth = a.BitDepth
 		}
 		r.Label = fmt.Sprintf("%s · %s · track %d", r.Language, strings.ToUpper(r.Codec), a.Ordinal+1)
 		if a.Title != "" {
@@ -126,6 +134,14 @@ func videoCodecString(p *DeliveryPlan) string {
 	switch p.OutputVideoCodec {
 	case "h264":
 		profile, level := 100, 52
+		if p.VideoAction == "convert" && p.ConversionTarget != nil {
+			switch p.ConversionTarget.VideoProfile {
+			case "main":
+				profile = 77
+			case "baseline":
+				profile = 66
+			}
+		}
 		if p.VideoAction == "copy" && p.Trace != nil && p.Trace.Video != nil {
 			v := p.Trace.Video
 			if v.Level > 0 {
@@ -518,7 +534,8 @@ func (h *HLS) produceRendition(ctx context.Context, id string, r AudioRenditionP
 	}
 	offset := strconv.Itoa(from * HLSSegmentSeconds)
 	args := []string{"-nostdin", "-hide_banner", "-loglevel", "error", "-y", "-protocol_whitelist", "file,pipe", "-ss", offset, "-i", input.Argument, "-ss", "0", "-map", "0:" + strconv.Itoa(r.StreamIndex), "-vn", "-sn", "-dn"}
-	graph, err := decoder.BuildConversion(decoder.ConversionRequest{CopyAudio: r.Action == "copy", ConvertAudio: r.Action == "convert", AudioCodec: r.Codec, AudioChannels: r.Channels, AudioBitrateBPS: r.BitrateBPS, Downmix: r.Downmix == DownmixITULimited, AudioSampleRate: r.SampleRate})
+	audioTarget := decoder.ConversionTarget{AudioCodec: r.Codec, AudioChannels: r.Channels, AudioBitrateBPS: r.BitrateBPS, AudioSampleRate: r.SampleRate, AudioBitDepth: r.BitDepth, Packaging: renditionPackaging(r.Codec)}
+	graph, err := decoder.BuildConversion(decoder.ConversionRequest{Target: &audioTarget, Toolchain: decoder.CurrentToolchain(), CopyAudio: r.Action == "copy", ConvertAudio: r.Action == "convert", AudioCodec: r.Codec, AudioChannels: r.Channels, AudioBitrateBPS: r.BitrateBPS, Downmix: r.Downmix == DownmixITULimited, AudioSampleRate: r.SampleRate})
 	if err != nil {
 		failed(FailureConverter)
 		return
@@ -699,9 +716,6 @@ func (h *HLS) renditionFile(ctx context.Context, id, name string, p *DeliveryPla
 }
 
 func hevcSampleEntry(p *DeliveryPlan) string {
-	if p != nil && p.ConversionTarget != nil {
-		return "hvc1"
-	}
 	if p != nil && p.OutputVideoCodec == "hevc" && p.VideoAction == "copy" && p.Trace != nil && p.Trace.Video != nil && p.Trace.Video.OutputRange == assets.RangeDolbyVision && (p.Trace.Video.DolbyVisionProfile == 5 || p.Trace.Video.DolbyVisionProfile == 8) {
 		return "dvh1"
 	}

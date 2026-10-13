@@ -45,6 +45,20 @@ func downloadRequestError(e error) error {
 	return e
 }
 func registerDownloadRequests(r *apikit.Registry, d Dependencies) {
+	v1Route(r, apikit.Metadata{ID: "get_download_options", Method: "GET", Path: "/v1/items/{itemId}/download-options", Summary: "List offline qualities this device can play and this server can produce", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Cost: apikit.PageSized, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}, func(ctx context.Context, q *http.Request, _ noBody) (downloads.DownloadOptionsView, error) {
+		p, owner, err := d.downloadViewer(q)
+		if err != nil {
+			return downloads.DownloadOptionsView{}, err
+		}
+		if err := d.itemAccess(ctx, p, q.PathValue("itemId")); err != nil {
+			return downloads.DownloadOptionsView{}, err
+		}
+		if d.Downloads == nil {
+			return downloads.DownloadOptionsView{}, &apierror.Error{Code: "not_permitted"}
+		}
+		out, err := d.Downloads.Options(ctx, p, q.PathValue("itemId"), owner)
+		return out, downloadRequestError(err)
+	})
 	failures := []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "idempotency_key_reused", "rate_limited", "internal"}
 	v1Route(r, apikit.Metadata{ID: "create_download_request", Method: "POST", Path: "/v1/downloads/requests", Summary: "Queue all visible members of a container for offline preparation", Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Default, Cost: apikit.SelectionAsync, Status: 202, BodyLimit: 8192, Errors: failures}, func(ctx context.Context, q *http.Request, in downloads.ContainerRequest) (downloads.RequestView, error) {
 		p, e := d.principal(q)

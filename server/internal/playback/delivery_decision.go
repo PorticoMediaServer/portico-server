@@ -558,7 +558,7 @@ func audioOutputFor(a *SourceAudio, client ClientProfile, target QualityTarget, 
 				continue
 			}
 		}
-		out := convertedAudio{Codec: c.codec, Channels: c.channels, Bitrate: rate, Downmix: source > c.channels, Lossless: output.Lossless}
+		out := convertedAudio{Codec: c.codec, Channels: c.channels, Bitrate: rate, Downmix: source > c.channels, Lossless: output.Lossless && source == c.channels}
 		resample, ok := convertedSampleRate(a, c.codec, decoder)
 		if !ok {
 			if c.codec != "aac" {
@@ -569,6 +569,9 @@ func audioOutputFor(a *SourceAudio, client ClientProfile, target QualityTarget, 
 			out.NoRate = true
 		}
 		out.SampleRate = resample
+		if a != nil && a.SampleRate > 0 && resample != a.SampleRate {
+			out.Lossless = false
+		}
 		return out
 	}
 	// No invented AAC floor when that codec/layout cannot reach this engine.

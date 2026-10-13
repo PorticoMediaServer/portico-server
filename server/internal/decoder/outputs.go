@@ -32,6 +32,9 @@ func AvailableConversionOutputs(f *ToolchainFacts) ConversionOutputs {
 			continue
 		}
 		depths, transports := []int{10, 8}, mp4
+		if codec == "hevc" {
+			transports = []string{"hls_fmp4", "hls_ts"}
+		}
 		if codec == "h264" {
 			depths, transports = []int{8}, hls
 		}

@@ -99,41 +99,42 @@ type BurnInSpec struct {
 }
 
 type DeliveryPlan struct {
-	ConversionTarget *decoder.ConversionTarget `json:"-"`
-	ConversionProbe  *decoder.HardwareProbe    `json:"-"`
-	BurnIn           *BurnInSpec               `json:"burnIn,omitempty"`
-	TextRenditions   []TextRenditionPlan       `json:"-"`
-	Renditions       []AudioRenditionPlan      `json:"audioRenditions,omitempty"`
-	Prepared         *PreparedDelivery         `json:"prepared,omitempty"`
-	Policy           *ResolvedDeliveryPolicy   `json:"policy,omitempty"`
-	Trace            *DecisionTrace            `json:"trace,omitempty"`
-	SourceSize       int64                     `json:"-"`
-	SourceModifiedNS int64                     `json:"-"`
-	Profile          string                    `json:"profile"`
-	SourceID         string                    `json:"sourceId"`
-	FactsRevision    int64                     `json:"factsRevision"`
-	SourceContainer  string                    `json:"sourceContainer"`
-	SourceVideoCodec string                    `json:"sourceVideoCodec"`
-	SourceAudioCodec string                    `json:"sourceAudioCodec"`
-	Duration         float64                   `json:"duration"`
-	Mode             string                    `json:"mode"`
-	Strategy         DeliveryStrategy          `json:"strategy"`
-	Reason           string                    `json:"reason"`
-	ReasonCodes      []string                  `json:"reasonCodes"`
-	OutputContainer  string                    `json:"outputContainer"`
-	VideoAction      string                    `json:"videoAction"`
-	AudioAction      string                    `json:"audioAction"`
-	OutputVideoCodec string                    `json:"outputVideoCodec"`
-	OutputAudioCodec string                    `json:"outputAudioCodec"`
-	AudioChannels    int                       `json:"audioChannels"`
-	QualityID        string                    `json:"qualityId"`
-	TargetWidth      int                       `json:"targetDisplayWidth,omitempty"`
-	TargetHeight     int                       `json:"targetDisplayHeight,omitempty"`
-	VideoBitrateBPS  int                       `json:"videoBitrateBps,omitempty"`
-	AudioBitrateBPS  int                       `json:"audioBitrateBps,omitempty"`
-	ToneMap          bool                      `json:"toneMap"`
-	ToneMapAlgorithm string                    `json:"toneMapAlgorithm,omitempty"`
-	HardwareBackend  string                    `json:"hardwareBackend"`
+	ConversionToolchain *decoder.ToolchainFacts   `json:"-"`
+	ConversionTarget    *decoder.ConversionTarget `json:"-"`
+	ConversionProbe     *decoder.HardwareProbe    `json:"-"`
+	BurnIn              *BurnInSpec               `json:"burnIn,omitempty"`
+	TextRenditions      []TextRenditionPlan       `json:"-"`
+	Renditions          []AudioRenditionPlan      `json:"audioRenditions,omitempty"`
+	Prepared            *PreparedDelivery         `json:"prepared,omitempty"`
+	Policy              *ResolvedDeliveryPolicy   `json:"policy,omitempty"`
+	Trace               *DecisionTrace            `json:"trace,omitempty"`
+	SourceSize          int64                     `json:"-"`
+	SourceModifiedNS    int64                     `json:"-"`
+	Profile             string                    `json:"profile"`
+	SourceID            string                    `json:"sourceId"`
+	FactsRevision       int64                     `json:"factsRevision"`
+	SourceContainer     string                    `json:"sourceContainer"`
+	SourceVideoCodec    string                    `json:"sourceVideoCodec"`
+	SourceAudioCodec    string                    `json:"sourceAudioCodec"`
+	Duration            float64                   `json:"duration"`
+	Mode                string                    `json:"mode"`
+	Strategy            DeliveryStrategy          `json:"strategy"`
+	Reason              string                    `json:"reason"`
+	ReasonCodes         []string                  `json:"reasonCodes"`
+	OutputContainer     string                    `json:"outputContainer"`
+	VideoAction         string                    `json:"videoAction"`
+	AudioAction         string                    `json:"audioAction"`
+	OutputVideoCodec    string                    `json:"outputVideoCodec"`
+	OutputAudioCodec    string                    `json:"outputAudioCodec"`
+	AudioChannels       int                       `json:"audioChannels"`
+	QualityID           string                    `json:"qualityId"`
+	TargetWidth         int                       `json:"targetDisplayWidth,omitempty"`
+	TargetHeight        int                       `json:"targetDisplayHeight,omitempty"`
+	VideoBitrateBPS     int                       `json:"videoBitrateBps,omitempty"`
+	AudioBitrateBPS     int                       `json:"audioBitrateBps,omitempty"`
+	ToneMap             bool                      `json:"toneMap"`
+	ToneMapAlgorithm    string                    `json:"toneMapAlgorithm,omitempty"`
+	HardwareBackend     string                    `json:"hardwareBackend"`
 	// AudioStream is the absolute source stream index the session plays, -1 when
 	// the source has no audio or the plan predates track choice.
 	AudioStream    int     `json:"audioStream"`
@@ -350,8 +351,8 @@ func planDelivery(in DeliveryInput) (p DeliveryPlan, err error) {
 					p.Trace.Notes = append(p.Trace.Notes, NoteAudioPassthrough)
 				}
 			}
-			if p.VideoAction == "convert" || p.AudioAction == "convert" {
-				err = finishConversionTarget(&p, videoOf(source), sourceAudioAt(source.Audio, p.AudioStream), client, in.Hardware)
+			if p.VideoAction == "convert" || p.AudioAction == "convert" || p.VideoAction == "copy" && videoOf(source) != nil && videoOf(source).DynamicRange == assets.RangeDolbyVision && p.Trace.Video.OutputRange != assets.RangeDolbyVision {
+				err = finishConversionTarget(&p, videoOf(source), sourceAudioAt(source.Audio, p.AudioStream), client, in.Hardware, in.Server)
 			}
 			if err == nil {
 				p.Renditions = planAudioRenditions(p, source, client, in.Target, in.TranscodingEnabled && in.Policy.Transcode != "never")
@@ -533,6 +534,7 @@ func planDelivery(in DeliveryInput) (p DeliveryPlan, err error) {
 			rejections = append(rejections, RouteRejection{RejectOwnerRemuxDisabled, ""})
 		}
 		transport, r := bestCopyTransport(transports, client, video, audio, in.Target.AllowHDR, true)
+		r = append(r, baseCopyRejections(video, client, in.Server)...)
 		rejections = append(rejections, r...)
 		// remuxable describes the source and the device, not the preferences:
 		// it is what decides which refusal a closed policy is reported as.
@@ -549,6 +551,7 @@ func planDelivery(in DeliveryInput) (p DeliveryPlan, err error) {
 	if !audioOnly {
 		rejections := excluded(DeliveryAudioConversion)
 		transport, r := bestAudioConversionTransport(transports, client, video, audio, in.Target, outputs)
+		r = append(r, baseCopyRejections(video, client, in.Server)...)
 		converted := audioOutputFor(audio, client, in.Target, transportNamed(transports, transport), outputs)
 		rejections = append(rejections, serverConversionRejections(in.Server, in.Hardware, nil, audio, "", converted.Codec, false)...)
 		if audio != nil && converted.NoRate {
@@ -580,7 +583,7 @@ func planDelivery(in DeliveryInput) (p DeliveryPlan, err error) {
 		transport := ""
 		if audioOnly {
 			transport, _ = bestAudioConversionTransport(transports, client, nil, audio, in.Target, outputs)
-		} else if chosen, ok := chooseVideoOutput(video, client, transports, in.Target.AllowHDR, outputs); ok {
+		} else if chosen, ok := chooseVideoOutput(video, client, transports, in.Target.AllowHDR, outputs, audio, in.Target); ok {
 			picture, transport = chosen, chosen.Transport
 		}
 		carrier := transportNamed(transports, transport)
@@ -787,15 +790,24 @@ func planDelivery(in DeliveryInput) (p DeliveryPlan, err error) {
 	if p.TargetHeight > 0 {
 		outHeight = min(outHeight, p.TargetHeight)
 	}
-	p.VideoBitrateBPS = decoder.CodecVideoBitrate(picture.Codec, outHeight)
+	p.VideoBitrateBPS = decoder.CodecVideoBitrate("h264", outHeight)
 	if ceiling > 0 {
 		p.VideoBitrateBPS = min(p.VideoBitrateBPS, ceiling)
+	}
+	if picture.Codec == "hevc" {
+		p.VideoBitrateBPS = p.VideoBitrateBPS * 7 / 10
+	}
+	if picture.Codec == "av1" {
+		p.VideoBitrateBPS = p.VideoBitrateBPS * 6 / 10
 	}
 	if encoded != nil && encoded.MaxBitrateBPS > 0 {
 		p.VideoBitrateBPS = min(p.VideoBitrateBPS, encoded.MaxBitrateBPS)
 	}
-	if !rungFixed && !overHeight && in.Target.MaxVideoHeight == 0 && ceiling == 0 {
-		p.VideoBitrateBPS = 0
+	if !rungFixed && !overHeight && in.Target.MaxVideoHeight == 0 && (p.QualityID == "original" || p.QualityID == "auto" || p.QualityID == "automatic" || p.QualityID == "") {
+		p.VideoBitrateBPS = ceiling
+		if encoded != nil {
+			p.VideoBitrateBPS = narrowCeiling(p.VideoBitrateBPS, encoded.MaxBitrateBPS)
+		}
 	}
 	// A conversion that keeps the source's HDR needs no tone mapping. One that
 	// writes a standard picture from an HDR source does: left unmapped it is
@@ -974,6 +986,9 @@ func (p DeliveryPlan) conversionGraph(burn *decoder.BurnIn) (decoder.ConversionG
 		MaxFrameRate:     p.MaxFrameRate,
 		Downmix:          p.Downmix == DownmixITULimited,
 		AudioSampleRate:  p.AudioSampleRate,
+	}
+	if p.ConversionToolchain != nil {
+		request.Toolchain = p.ConversionToolchain
 	}
 	if p.ConversionProbe != nil && p.HardwareBackend == string(p.ConversionProbe.Backend) && p.HardwareBackend != string(decoder.BackendSoftware) {
 		request.Probe = *p.ConversionProbe

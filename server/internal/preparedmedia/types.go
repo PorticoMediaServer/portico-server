@@ -11,6 +11,7 @@ import (
 	"errors"
 	"regexp"
 
+	"portico.local/server/internal/decoder"
 	"portico.local/server/internal/identity"
 )
 
@@ -69,7 +70,18 @@ var legacyProfiles = []Profile{
 	{"audio-aac-v1", "Audio · AAC", "audio", 0, 0, 0, 192, "AAC stereo in M4A for music and audiobook files. Keeps the original."},
 }
 
-func Profiles() []Profile { return append([]Profile(nil), profiles...) }
+func Profiles() []Profile {
+	out := []Profile{}
+	for _, p := range profiles {
+		if ProfileProducible(p) {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+func ProfileProducible(p Profile) bool {
+	return decoder.CanPrepare(decoder.PreparedRecipe{AudioOnly: p.Kind == "audio", Width: p.Width, Height: p.Height, VideoKbps: p.VideoKbps, AudioKbps: p.AudioKbps})
+}
 
 // ProfileByID exposes the immutable recipe to size estimators.
 func ProfileByID(id string) (Profile, error) { return profile(id) }
