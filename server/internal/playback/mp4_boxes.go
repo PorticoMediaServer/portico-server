@@ -89,6 +89,9 @@ func mp4Timescales(init []byte) (map[uint32]uint32, error) {
 				return nil, e
 			}
 			ti, mi := tk.body+12, hd.body+12
+			if tk.end-tk.body < 4 || hd.end-hd.body < 4 || init[tk.body] > 1 || init[hd.body] > 1 {
+				return nil, errMP4Box
+			}
 			if init[tk.body] == 1 {
 				ti = tk.body + 20
 			}

@@ -2,9 +2,9 @@ package httpapi
 
 import (
 	"context"
-	"errors"
 	"net/http"
 	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/requestinput"
 	"strings"
 	"time"
 
@@ -105,4 +105,4 @@ func (d Dependencies) deliveryRoutes(mux *http.ServeMux) {
 	// takes this service's hardware probes through playbackProbes.
 }
 
-var errInvalidDeliveryQuery = errors.New("Read delivery policy without additional options.")
+var errInvalidDeliveryQuery = requestinput.New("Read delivery policy without additional options.")

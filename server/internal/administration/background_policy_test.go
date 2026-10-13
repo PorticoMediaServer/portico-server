@@ -53,3 +53,24 @@ func TestMaintenanceWindowsOnlyOfferScheduledBackups(t *testing.T) {
 		t.Fatal("inert schedule saved")
 	}
 }
+
+func TestCommittedBackgroundPolicySurvivesCancelledRequest(t *testing.T) {
+	defer dbwork.SetBackgroundPolicy(dbwork.SpeedNormal, 0)
+	service, _, _ := newService(t)
+	saved, e := service.MaintenanceSettings(context.Background(), allow)
+	if e != nil {
+		t.Fatal(e)
+	}
+	settings := saved.Settings
+	settings.BackgroundSpeed = "fast"
+	if _, e = service.SaveMaintenanceSettings(context.Background(), allow, Change[MaintenanceSettingsDocument]{ExpectedRevision: saved.Revision, OperationID: "committed-speed", Settings: settings}); e != nil {
+		t.Fatal(e)
+	}
+	dbwork.SetBackgroundPolicy(dbwork.SpeedNormal, 0)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	service.ApplyBackgroundPolicy(ctx)
+	if got := dbwork.BackgroundSpeed(context.Background()); got != "fast" {
+		t.Fatalf("committed speed left unapplied after request cancelled: %s", got)
+	}
+}

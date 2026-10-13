@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"portico.local/server/internal/entityid"
 
 	"portico.local/server/internal/compactcatalog"
 )
@@ -59,6 +60,9 @@ func versionTarget(ctx context.Context, tx *sql.Tx, item, asset string) (DeleteT
 }
 
 func (s *Service) PreviewDeleteVersion(ctx context.Context, auth Authorize, item, asset string) (VersionDeletePreview, error) {
+	if _, valid := entityid.Decode(item); !valid {
+		return VersionDeletePreview{}, ErrInput
+	}
 	out := VersionDeletePreview{AssetID: asset, DeletePreview: DeletePreview{Targets: []DeleteTarget{}, Blocked: []string{}}}
 	if validTargets([]string{item}) != nil || validTargets([]string{asset}) != nil {
 		return out, ErrInput

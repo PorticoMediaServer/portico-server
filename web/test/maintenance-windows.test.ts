@@ -22,19 +22,14 @@ test('CD-11: broadcasts carry a nonempty dedupe key stable across retries of one
   assert.throws(() => broadcastBody('', {audience: 'profile', severity: 'info', title: 'T', body: ''}), 'no send without an operation ID');
 });
 
-test('Background priority defaults to lower and the save never pauses work', async () => {
-  const {backgroundPriorityOrDefault, maintenanceSaveSettings} = await load();
-  assert.equal(backgroundPriorityOrDefault(undefined), 'lower');
-  assert.equal(backgroundPriorityOrDefault(''), 'lower');
-  assert.equal(backgroundPriorityOrDefault('paused'), 'lower');
-  assert.equal(backgroundPriorityOrDefault('normal'), 'normal');
-  assert.equal(backgroundPriorityOrDefault('lower'), 'lower');
-  const saved = maintenanceSaveSettings({windows: [], retention: {}, backupKeepCount: 7, backgroundTaskPriority: 'normal'});
-  assert.equal(saved.backgroundTaskPriority, 'normal');
-  assert.equal('pauseHeavyWorkOutsideWindows' in saved, false, 'the save never carries a pause field: background work is de-prioritized, never paused');
-  const missing = maintenanceSaveSettings({windows: [], retention: {}, backupKeepCount: 7} as never);
-  assert.equal(missing.backgroundTaskPriority, 'lower');
-  assert.equal('pauseHeavyWorkOutsideWindows' in missing, false);
+test('maintenance saves carry the owner’s single background speed choice', async () => {
+  const {maintenanceSaveSettings} = await load();
+  for (const backgroundSpeed of ['gentle', 'normal', 'fast']) {
+    const draft = {windows: [], retention: {}, backupKeepCount: 7, backgroundSpeed};
+    assert.deepEqual(maintenanceSaveSettings(draft), draft);
+    assert.equal('backgroundTaskPriority' in maintenanceSaveSettings(draft), false);
+    assert.equal('pauseHeavyWorkOutsideWindows' in maintenanceSaveSettings(draft), false);
+  }
 });
 test('CD-46: broadcast titles and bodies validate UTF-8 bytes, trimmed as sent', async () => {
   const {broadcastProblem, utf8Length} = await load();

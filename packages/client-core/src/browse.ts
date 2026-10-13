@@ -18,15 +18,16 @@ export type BrowseNode=
  |Readonly<{any:readonly BrowseNode[]}>
  |Readonly<{not:BrowseNode}>
  |Readonly<{field:string;operator:BrowseOperator;value:BrowseScalar|readonly BrowseScalar[]|null}>;
-export type BrowseSortSelection=Readonly<{field:string;direction:BrowseDirection}>;
+export type BrowseSortSelection=Readonly<{field:string;direction:BrowseDirection;seed?:number}>;
 export type BrowseFacetSource=Readonly<{endpoint:string;field:string}>;
 export type BrowseFieldCapability=Readonly<{id:string;labelKey:string;type:BrowseValueType;operators:readonly BrowseOperator[];controlHint:BrowseControlHint;complexity:BrowseComplexity;cost:BrowseCost;applicableKinds:readonly string[];allowedValues?:readonly string[];facetSource?:BrowseFacetSource}>;
-export type BrowseSortCapability=Readonly<{id:string;labelKey:string;directions:readonly BrowseDirection[];defaultDirection:BrowseDirection;expensive:boolean;applicableKinds:readonly string[]}>;
-export type BrowsePivotCapability=Readonly<{id:string;labelKey:string;entityKinds:readonly string[];defaultSort:readonly BrowseSortSelection[];supportedViews:readonly string[];browsable:boolean;aggregate?:string}>;
+export type BrowseSortCapability=Readonly<{id:string;labelKey:string;directions:readonly BrowseDirection[];defaultDirection:BrowseDirection;expensive:boolean;seeded?:boolean;applicableKinds:readonly string[]}>;
+export type BrowsePivotCapability=Readonly<{id:string;labelKey:string;entityKinds:readonly string[];defaultSort:readonly BrowseSortSelection[];supportedViews:readonly string[];browsable:boolean;aggregate?:string;sorts?:readonly string[];filters?:readonly string[];paging?:'keyset'}>;
 export type BrowseQuickFilter=Readonly<{id:string;labelKey:string;query:BrowseNode}>;
 export type BrowseQueryLimits=Readonly<{maximumDepth:number;maximumClauses:number;maximumBytes:number;maximumSorts:number;defaultLimit:number;maximumLimit:number;cursorTtlSeconds:number}>;
 export type BrowseLibraryScope=Readonly<{id:string;name:string;kind:string;defaultView:string;pinned:boolean}>;
-export type BrowseCapabilities=Readonly<{library:BrowseLibraryScope;pivots:readonly BrowsePivotCapability[];resolvedPivot:BrowsePivotCapability|null;fields:readonly BrowseFieldCapability[];sorts:readonly BrowseSortCapability[];quickFilters:readonly BrowseQuickFilter[];queryLimits:BrowseQueryLimits}>;
+export type BrowseSurfaceCapability=Readonly<{id:string;endpoint:string;membershipField?:string;sorts:readonly string[];filters:readonly string[];paging:'keyset'}>;
+export type BrowseCapabilities=Readonly<{surfaces?:readonly BrowseSurfaceCapability[];library:BrowseLibraryScope;pivots:readonly BrowsePivotCapability[];resolvedPivot:BrowsePivotCapability|null;fields:readonly BrowseFieldCapability[];sorts:readonly BrowseSortCapability[];quickFilters:readonly BrowseQuickFilter[];queryLimits:BrowseQueryLimits}>;
 export type BrowsePositionAnchor=Readonly<{key:string;index:number}>;
 export type BrowsePageInfo=Readonly<{start:number;total:number;revision:string;hasMore:boolean;nextCursor:string}>;
 export type BrowseRange=Readonly<{start:number;revision?:string;anchorId?:string}>;
@@ -63,7 +64,8 @@ export class BrowseQueryError extends Error{
 
 function sortSelection(v:unknown):BrowseSortSelection{
  if(!obj(v)||!id(v.field)||(v.direction!=='asc'&&v.direction!=='desc'))bad();
- return {field:v.field,direction:v.direction};
+ if(v.seed!==undefined&&(!count(v.seed)||v.seed>4294967295||v.field!=='random'))bad();
+ return {field:v.field,direction:v.direction,...(v.seed===undefined?{}:{seed:v.seed as number})};
 }
 
 /** Nodes are re-validated on the way in: a malformed tree is never handed to a
@@ -112,7 +114,7 @@ export function parseBrowseCapabilities(raw:unknown):BrowseCapabilities{
  const pivot=(v:unknown):BrowsePivotCapability=>{
   if(!obj(v)||!id(v.id)||!id(v.labelKey))bad();
   // A pivot that does not say it can be queried is not queried.
-  return {id:v.id,labelKey:v.labelKey,entityKinds:known('pivot.entityKinds',v.entityKinds,32),defaultSort:keepReadable('browse','pivot.defaultSort',rows(v.defaultSort??[],3),sortSelection),supportedViews:known('pivot.supportedViews',v.supportedViews,8),browsable:v.browsable===true,...(v.aggregate===undefined?{}:{aggregate:id(v.aggregate)?v.aggregate:bad()})};
+  return {id:v.id,labelKey:v.labelKey,entityKinds:known('pivot.entityKinds',v.entityKinds,32),defaultSort:keepReadable('browse','pivot.defaultSort',rows(v.defaultSort??[],3),sortSelection),supportedViews:known('pivot.supportedViews',v.supportedViews,8),sorts:known('pivot.sorts',v.sorts,64),filters:known('pivot.filters',v.filters,128),...(v.paging==='keyset'?{paging:'keyset' as const}:{}),browsable:v.browsable===true,...(v.aggregate===undefined?{}:{aggregate:id(v.aggregate)?v.aggregate:bad()})};
  };
  const pivots=firstOfEach('browse','pivots',keepReadable('browse','pivots',rows(raw.pivots,32),pivot),p=>p.id);
  const fields=firstOfEach('browse','fields',keepReadable('browse','fields',rows(raw.fields,128),v=>{
@@ -130,7 +132,7 @@ export function parseBrowseCapabilities(raw:unknown):BrowseCapabilities{
   // A sort with no direction this app knows is not offered; a default it does not know is the first direction offered.
   if(!directions.length)bad();
   const defaultDirection=directions.includes(v.defaultDirection as BrowseDirection)?v.defaultDirection as BrowseDirection:directions[0];
-  return {id:v.id,labelKey:v.labelKey,directions,defaultDirection,expensive:v.expensive===true,applicableKinds:known('sort.applicableKinds',v.applicableKinds,64)};
+  return {id:v.id,labelKey:v.labelKey,directions,defaultDirection,expensive:v.expensive===true,seeded:v.seeded===true,applicableKinds:known('sort.applicableKinds',v.applicableKinds,64)};
  }),v=>v.id);
  const quickFilters=keepReadable('browse','quickFilters',rows(raw.quickFilters??[],32),v=>{
   if(!obj(v)||!id(v.id)||!id(v.labelKey))bad();
@@ -141,7 +143,10 @@ export function parseBrowseCapabilities(raw:unknown):BrowseCapabilities{
  if(resolved&&!pivots.some(p=>p.id===resolved.id))bad();
  return freeze({
   library:{id:library.id,name:(library.name??'') as string,kind:library.kind,defaultView:(library.defaultView??'') as string,pinned:library.pinned===true},
-  pivots,resolvedPivot:resolved,fields,sorts,quickFilters,
+  surfaces:keepReadable('browse','surfaces',rows(raw.surfaces??[],32),v=>{
+   if(!obj(v)||!id(v.id)||!str(v.endpoint,256)||v.paging!=='keyset')bad();
+   return {id:v.id,endpoint:v.endpoint,paging:'keyset' as const,sorts:known('surface.sorts',v.sorts,64),filters:known('surface.filters',v.filters,128),...(v.membershipField===undefined?{}:{membershipField:id(v.membershipField)?v.membershipField:bad()})};
+  }),pivots,resolvedPivot:resolved,fields,sorts,quickFilters,
   queryLimits:{maximumDepth:limits.maximumDepth as number,maximumClauses:limits.maximumClauses as number,maximumBytes:limits.maximumBytes as number,maximumSorts:limits.maximumSorts as number,defaultLimit:limits.defaultLimit as number,maximumLimit:limits.maximumLimit as number,cursorTtlSeconds:limits.cursorTtlSeconds as number},
  });
 }
@@ -301,6 +306,7 @@ export class BrowseQueryBuilder{
   if(!pivot)throw new BrowseQueryError('pivot','That view is not available in this library.');
   if(!pivot.browsable)throw new BrowseQueryError('pivot','That view is not queryable.');
   this.pivot=pivot;
+  this.capabilities={...capabilities,fields:pivot.filters?.length?capabilities.fields.filter(field=>pivot.filters?.includes(field.id)):capabilities.fields};
  }
  /** Adds one condition to the implicit conjunction. */
  where(field:string,operator:BrowseOperator,value:BrowseScalar|readonly BrowseScalar[]|null=null):this{
@@ -320,14 +326,15 @@ export class BrowseQueryBuilder{
   if(!filter)throw new BrowseQueryError('query','That quick filter is not available.');
   return this.add(filter.query);
  }
- sort(field:string,direction?:BrowseDirection):this{
+ sort(field:string,direction?:BrowseDirection,seed?:number):this{
   const capability=this.capabilities.sorts.find(s=>s.id===field);
-  if(!capability)throw new BrowseQueryError(`sort[${this.sorts.length}].field`,'That sort is not available here.');
+  if(!capability||(this.pivot.sorts?.length&&!this.pivot.sorts.includes(field)))throw new BrowseQueryError(`sort[${this.sorts.length}].field`,'That sort is not available here.');
   const chosen=direction??capability.defaultDirection;
   if(!capability.directions.includes(chosen))throw new BrowseQueryError(`sort[${this.sorts.length}].direction`,'That direction is not available.');
   if(this.sorts.some(entry=>entry.field===field))throw new BrowseQueryError(`sort[${this.sorts.length}].field`,'That sort is already applied.');
   if(this.sorts.length>=this.capabilities.queryLimits.maximumSorts)throw new BrowseQueryError('sort',`Use at most ${this.capabilities.queryLimits.maximumSorts} sorts.`);
-  this.sorts.push({field,direction:chosen});
+  if(seed!==undefined&&(!capability.seeded||!count(seed)||seed>4294967295))throw new BrowseQueryError(`sort[${this.sorts.length}].seed`,'That random seed is not usable.');
+  this.sorts.push({field,direction:chosen,...(seed===undefined?{}:{seed})});
   return this;
  }
  limit(value:number):this{
@@ -365,4 +372,12 @@ export class BrowseQueryBuilder{
   if(JSON.stringify(body).length>limits.maximumBytes)throw new BrowseQueryError('query','That query is too large.');
   return freeze(body);
  }
+}
+
+/** Open a person's titles, a collection, a container, a list or search results
+ * through the same server browse surface as the library. */
+export function browseWithin(capabilities:BrowseCapabilities,surfaceId:string,value:string,pivotId?:string):BrowseQueryBuilder{
+ const surface=capabilities.surfaces?.find(s=>s.id===surfaceId);
+ if(!surface?.membershipField)throw new BrowseQueryError('surface','That title group is not available.');
+ return new BrowseQueryBuilder(capabilities,pivotId).where(surface.membershipField,surfaceId==='search-results'?'contains':'equals',value);
 }

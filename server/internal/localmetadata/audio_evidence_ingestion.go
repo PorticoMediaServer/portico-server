@@ -53,6 +53,10 @@ func (s *Service) prepareAudioEvidence(ctx context.Context, library, kind, path 
 			f.LocalMetadataIssue = "invalid_" + source + "_sidecar"
 			continue
 		}
+		if values["_partial"] == "true" {
+			f.LocalMetadataIssue = "invalid_" + source + "_sidecar"
+			delete(values, "_partial")
+		}
 		for k, v := range values {
 			v = assets.CleanAudioTag(k, v)
 			if !assets.ValidAudioTag(k, v) || len(f.AudioEvidence) >= 512 {

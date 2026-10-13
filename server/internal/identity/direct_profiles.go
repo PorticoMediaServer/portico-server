@@ -183,7 +183,7 @@ func (s *Service) EditDirectProfile(ctx context.Context, bearer, id string, q Di
 		if len(hash) > 0 {
 			value = hash
 		}
-		if _, e = tx.ExecContext(ctx, `UPDATE direct_profiles SET pin_hash=?,pin_revision=pin_revision+1,pin_attempts=0,pin_locked_until=0 WHERE id=?`, value, id); e != nil {
+		if _, e = tx.ExecContext(ctx, `UPDATE direct_profiles SET pin_hash=?,pin_revision=pin_revision+1 WHERE id=?`, value, id); e != nil {
 			return DirectSnapshot{}, e
 		}
 		if _, e = tx.ExecContext(ctx, `DELETE FROM direct_profile_pin_attempts WHERE profile_id=?`, id); e != nil {
@@ -494,11 +494,7 @@ func (s *Service) SelectDirectProfileFrom(ctx context.Context, bearer, id string
 	if e = inheritPorticoAdmissionTx(ctx, tx, c.familyID, out.Session.SessionFamilyID); e != nil {
 		return out, e
 	}
-	if c.viewerOnly {
-		if _, e = tx.ExecContext(ctx, `INSERT INTO authorization_family_grants(family_id,grant_kind) VALUES(?,'viewer_only')`, out.Session.SessionFamilyID); e != nil {
-			return out, e
-		}
-	}
+
 	if q.Trust {
 		proof := &DirectTrust{Authority: "local", Token: Token(), ExpiresAt: time.Now().UTC().Add(30 * 24 * time.Hour).Format(time.RFC3339), InstallationID: q.InstallationID, ServerID: s.ID(), AccountID: c.account.ID, ProfileID: id, PINRevision: pinRevision, ProfileRevision: revision, MembershipRevision: c.account.Revision}
 		if _, e = tx.ExecContext(ctx, `DELETE FROM direct_profile_trust WHERE (account_id=? AND profile_id=? AND installation_id=?) OR expires_at<=?`, c.account.ID, id, q.InstallationID, time.Now().UTC().Format(time.RFC3339)); e != nil {
@@ -605,7 +601,7 @@ func (s *Service) DeleteDirectProfile(ctx context.Context, bearer, id string, ex
 // EraseProfileSavedDataTx is deliberately authority-qualified. Physical media and
 // recordings are NOT deleted; existing playback revocation closes their readers.
 func EraseProfileSavedDataTx(ctx context.Context, tx *sql.Tx, v Viewer) error {
-	if v.Authority != "local" && v.Authority != "hosted" {
+	if v.Authority != "local" {
 		return ErrUnauthorized
 	}
 	key := PersonalKey(v)

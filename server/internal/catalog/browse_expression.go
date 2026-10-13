@@ -2,6 +2,7 @@ package catalog
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -9,6 +10,9 @@ import (
 	"strconv"
 	"strings"
 
+	"portico.local/server/internal/facettext"
+	"portico.local/server/internal/identity"
+	"portico.local/server/internal/sorttext"
 	"time"
 )
 
@@ -292,8 +296,9 @@ func containsString(values []string, target string) bool {
 // the entity row or an EXISTS over the entity's member items, so the join
 // surface stays bounded no matter how deep the expression is.
 type browseCompiler struct {
-	profile string
-	args    []any
+	restrictions identity.ContentRestrictions
+	profile      string
+	args         []any
 }
 
 func (c *browseCompiler) compile(node *BrowseNode) (string, error) {
@@ -360,7 +365,20 @@ func (c *browseCompiler) predicate(node BrowseNode) (string, error) {
 	return c.itemPredicate(field, node)
 }
 
+func foldBrowseText(field browseField) bool {
+	switch field.ID {
+	case "collection", "memberOf", "person", "list":
+		return false
+	}
+	return field.Type == valueString || field.Type == valueSet || field.Type == valueEnum
+}
 func collated(field browseField, expression string) string {
+	if foldBrowseText(field) {
+		return "portico_fold_text(" + expression + ")"
+	}
+	if field.ID == "collection" || field.ID == "memberOf" || field.ID == "person" || field.ID == "list" {
+		return "(" + expression + ")"
+	}
 	if field.Type == valueString || field.Type == valueEnum || field.Type == valueSet {
 		return "(" + expression + ") COLLATE NOCASE"
 	}
@@ -498,6 +516,23 @@ func (c *browseCompiler) comparison(field browseField, expression, operator stri
 		}
 	}
 	target := collated(field, expression)
+	if foldBrowseText(field) {
+		fold := func(v any) any {
+			if text, ok := v.(string); ok {
+				return sorttext.Fold(text)
+			}
+			return v
+		}
+		if values, ok := value.([]any); ok {
+			copy := make([]any, len(values))
+			for i, v := range values {
+				copy[i] = fold(v)
+			}
+			value = copy
+		} else {
+			value = fold(value)
+		}
+	}
 	switch operator {
 	case "equals":
 		c.args = append(c.args, value)
@@ -542,6 +577,26 @@ func (c *browseCompiler) comparison(field browseField, expression, operator stri
 }
 
 func (c *browseCompiler) entityPredicate(field browseField, node BrowseNode) (string, error) {
+	if field.ID == "search" {
+		q, ok := node.Value.(string)
+		if !ok {
+			return "", browseIssue("query.value", "search requires text")
+		}
+		normalized, match, err := NormalizeSearch(q)
+		if err != nil {
+			return "", browseIssue("query.value", "search requires between 1 and 128 characters")
+		}
+		c.args = append(c.args, match)
+		clause := `e.entity_id IN(SELECT d.entity_id FROM catalog_search_titles JOIN catalog_search_documents d ON d.entity_id=catalog_search_titles.rowid WHERE catalog_search_titles MATCH ?`
+		for _, word := range strings.Fields(normalized) {
+			if strings.ContainsFunc(word, facettext.CJK) {
+				clause += ` AND instr(d.normalized,?)>0`
+				c.args = append(c.args, word)
+			}
+		}
+		return clause + ")", nil
+	}
+
 	return c.comparison(field, field.Entity, node.Operator, node.Value)
 }
 
@@ -549,9 +604,25 @@ func (c *browseCompiler) entityPredicate(field browseField, node BrowseNode) (st
 // bound before the condition's own arguments so ordinal positions line up.
 func (c *browseCompiler) exists(field browseField, condition func() (string, error)) (string, error) {
 	prefix := "EXISTS(SELECT 1 FROM catalog_browse_memberships bei " + field.Join + " WHERE bei.entity_id=e.entity_id AND "
-	for i := 0; i < field.Profile; i++ {
-		c.args = append(c.args, c.profile)
+	if field.ID == "list" {
+		raw, err := base64.RawURLEncoding.DecodeString(strings.TrimPrefix(c.profile, "viewer:"))
+		var owner []string
+		if err != nil || !strings.HasPrefix(c.profile, "viewer:") || json.Unmarshal(raw, &owner) != nil || len(owner) != 3 {
+			return "0", nil
+		}
+		for i := 0; i < 2; i++ {
+			for _, part := range owner {
+				c.args = append(c.args, part)
+			}
+		}
+	} else {
+		for i := 0; i < field.Profile; i++ {
+			c.args = append(c.args, c.profile)
+		}
 	}
+	restriction, args := ItemRestrictionSQL("bei.item_id", c.restrictions)
+	prefix += "(" + restriction + ") AND "
+	c.args = append(c.args, args...)
 	body, err := condition()
 	if err != nil {
 		return "", err
@@ -560,6 +631,12 @@ func (c *browseCompiler) exists(field browseField, condition func() (string, err
 }
 
 func (c *browseCompiler) itemPredicate(field browseField, node BrowseNode) (string, error) {
+	if field.ID == "favorite" || field.ID == "watchlisted" || field.ID == "personalRating" || field.ID == "lastPlayedAt" {
+		return c.personalTitlePredicate(field, node)
+	}
+	if field.ID == "subtitleLanguage" {
+		return c.subtitleLanguagePredicate(field, node)
+	}
 	if field.Type == valueBoolean {
 		flag, _ := node.Value.(bool)
 		positive := (node.Operator == "equals") == flag
@@ -672,4 +749,76 @@ func (BrowseNode) JSONSchema() map[string]any {
 		"field": map[string]any{"type": "string"}, "operator": map[string]any{"type": "string"}, "value": map[string]any{},
 		"all": group, "any": group, "not": child,
 	}, "description": "A predicate or all/any/not group. The parser enforces the published depth and clause bounds."}
+}
+
+// Subtitle languages come from current file evidence and the viewer's own or
+// shared subtitle revisions. Private uploads never become another viewer's
+// filter values, and obsolete revisions never claim a playable language.
+func (c *browseCompiler) subtitleLanguagePredicate(field browseField, node BrowseNode) (string, error) {
+	if node.Operator == "contains-all" {
+		values, _ := node.Value.([]any)
+		parts := []string{}
+		for _, value := range values {
+			clause, err := c.subtitleLanguagePredicate(field, BrowseNode{Field: field.ID, Operator: "equals", Value: value})
+			if err != nil {
+				return "", err
+			}
+			parts = append(parts, clause)
+		}
+		return "(" + strings.Join(parts, " AND ") + ")", nil
+	}
+	neg := node.Operator == "not-equals" || node.Operator == "not-in" || node.Operator == "is-missing"
+	if neg {
+		node.Operator = map[string]string{"not-equals": "equals", "not-in": "in", "is-missing": "is-present"}[node.Operator]
+	}
+	sources := []browseField{
+		{ID: "subtitle-attribute", Type: valueSet, Join: attributeJoin("subtitleLanguage"), Value: "ca.source_value"},
+		{ID: "subtitle-file", Type: valueSet, Join: `JOIN catalog_asset_links link ON link.entity_id=bei.item_id JOIN catalog_assets asset ON asset.id=link.asset_id JOIN asset_subtitle_facts facts ON facts.asset_id=asset.token AND facts.size=asset.size AND facts.modified_ns=asset.modified_ns AND facts.status='known' JOIN asset_subtitles track ON track.asset_id=asset.token`, Value: "track.language"},
+		{ID: "subtitle-resource", Type: valueSet, Profile: 1, Join: `JOIN subtitle_resources resource ON resource.item_id=bei.item_id AND resource.deleted=0 AND (resource.scope='shared' OR resource.owner=?) JOIN subtitle_revisions revision ON revision.resource_id=resource.id AND revision.revision=resource.current_revision JOIN catalog_assets asset ON asset.token=resource.source_id AND asset.size=revision.source_size AND asset.modified_ns=revision.source_modified_ns`, Value: "revision.language"},
+	}
+	parts := []string{}
+	for _, source := range sources {
+		clause, err := c.exists(source, func() (string, error) { return c.comparison(source, source.Value, node.Operator, node.Value) })
+		if err != nil {
+			return "", err
+		}
+		parts = append(parts, clause)
+	}
+	clause := "(" + strings.Join(parts, " OR ") + ")"
+	if neg {
+		clause = "NOT " + clause
+	}
+	return clause, nil
+}
+
+// Container favourites and ratings belong to the title itself. Member state
+// remains useful for aggregate views, but cannot replace that direct intent.
+func (c *browseCompiler) personalTitlePredicate(field browseField, node BrowseNode) (string, error) {
+	negative := false
+	if field.Type == valueBoolean {
+		value, _ := node.Value.(bool)
+		negative = (node.Operator == "equals") != value
+		node.Operator = "equals"
+		node.Value = true
+	} else if node.Operator == "not-equals" || node.Operator == "not-in" || node.Operator == "is-missing" {
+		negative = true
+		node.Operator = map[string]string{"not-equals": "equals", "not-in": "in", "is-missing": "is-present"}[node.Operator]
+	}
+	c.args = append(c.args, c.profile)
+	own, err := c.comparison(field, field.Value, node.Operator, node.Value)
+	if err != nil {
+		return "", err
+	}
+	own = `EXISTS(SELECT 1 FROM personal_items pi WHERE pi.profile_id=? AND pi.item_id=e.entity_id AND ` + own + `)`
+	memberField := field
+	memberField.ID = "personal-member"
+	member, err := c.itemPredicate(memberField, node)
+	if err != nil {
+		return "", err
+	}
+	clause := "(" + own + " OR " + member + ")"
+	if negative {
+		clause = "NOT " + clause
+	}
+	return clause, nil
 }

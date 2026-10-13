@@ -15,7 +15,8 @@ func TestAnalysisClosedRecipes(t *testing.T) {
 		if strings.Contains(joined, " -t ") || strings.Contains(joined, " -to ") || kind != "image" && strings.Contains(joined, " -frames") {
 			t.Fatalf("truncated full analysis: %s", joined)
 		}
-		if !strings.Contains(joined, " -xerror ") || !strings.Contains(joined, "-protocol_whitelist http,tcp") || !strings.HasSuffix(joined, "pipe:1 ") {
+		preview := kind == "image" || kind == "trickplay" || kind == "scenes"
+		if strings.Contains(joined, " -xerror ") == preview || preview && !strings.Contains(joined, "-max_error_rate 0.05") || !strings.Contains(joined, "-protocol_whitelist http,tcp") || !strings.HasSuffix(joined, "pipe:1 ") {
 			t.Fatal(joined)
 		}
 		if kind == "image" && !strings.Contains(joined, "-ss 1.234567") {
@@ -29,5 +30,27 @@ func TestAnalysisClosedRecipes(t *testing.T) {
 		if _, err := AnalysisArgs("ignored", spec); err == nil {
 			t.Fatalf("accepted unsafe recipe %+v", spec)
 		}
+	}
+}
+
+func TestAnalysisPreviewColorAndDisplayGeometry(t *testing.T) {
+	original := CurrentToolchain()
+	defer RestoreToolchain(original)
+	for _, kind := range []string{"image", "trickplay", "scenes"} {
+		args, err := AnalysisArgs("input", AnalysisSpec{Kind: kind, MaxDurationUS: 60000000, IntervalUS: 1000000, MaxFrames: 12, SourceVideo: PreviewVideoFacts{DynamicRange: "hdr10"}})
+		graph := strings.Join(args, " ")
+		if err != nil || !strings.Contains(graph, "reset_sar=1") || !strings.Contains(graph, "zscale=t=linear") || !strings.Contains(graph, "tonemap=") {
+			t.Fatal(graph, err)
+		}
+	}
+	spec := AnalysisSpec{Kind: "image", MaxDurationUS: 60000000, SourceVideo: PreviewVideoFacts{DynamicRange: "dolby_vision", DolbyVisionProfile: 5}}
+	RestoreToolchain(nil)
+	if _, err := AnalysisArgs("input", spec); err == nil {
+		t.Fatal("unqualified Dolby Vision color conversion")
+	}
+	RestoreToolchain(&ToolchainFacts{VulkanAvailable: true, Filters: map[string]bool{"libplacebo": true}})
+	args, err := AnalysisArgs("input", spec)
+	if err != nil || !strings.Contains(strings.Join(args, " "), "libplacebo=") || !analysisNeedsHardware(spec) {
+		t.Fatal(args, err)
 	}
 }

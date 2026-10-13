@@ -1855,6 +1855,11 @@ export const schemas = {
             },
             "field": {
               "type": "string"
+            },
+            "seed": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
             }
           },
           "required": [
@@ -1944,6 +1949,11 @@ export const schemas = {
                 },
                 "field": {
                   "type": "string"
+                },
+                "seed": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
                 }
               },
               "required": [
@@ -4395,6 +4405,16 @@ export const schemas = {
       "lease",
       "presentation"
     ],
+    "type": "object"
+  },
+  "ClearPlaybackFailureMemoryRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "ClearPlaybackFailureMemoryResponse": {
+    "properties": {},
+    "required": [],
     "type": "object"
   },
   "CommitQueueNextRequest": {
@@ -9511,6 +9531,11 @@ export const schemas = {
                 },
                 "field": {
                   "type": "string"
+                },
+                "seed": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
                 }
               },
               "required": [
@@ -9762,6 +9787,11 @@ export const schemas = {
                 },
                 "field": {
                   "type": "string"
+                },
+                "seed": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
                 }
               },
               "required": [
@@ -21582,9 +21612,8 @@ export const schemas = {
               "type": "string"
             },
             "failedAt": {
-              "maximum": 9007199254740991,
-              "minimum": -9007199254740991,
-              "type": "integer"
+              "description": "RFC 3339 UTC instant; empty when absent.",
+              "type": "string"
             },
             "reason": {
               "type": "string"
@@ -29613,7 +29642,7 @@ export const schemas = {
                         ],
                         "type": "object"
                       },
-                      "maxItems": 3,
+                      "maxItems": 1,
                       "minItems": 1,
                       "type": "array"
                     },
@@ -29723,7 +29752,7 @@ export const schemas = {
                     ],
                     "type": "object"
                   },
-                  "maxItems": 3,
+                  "maxItems": 1,
                   "minItems": 1,
                   "type": "array"
                 },
@@ -30521,7 +30550,7 @@ export const schemas = {
                   ],
                   "type": "object"
                 },
-                "maxItems": 3,
+                "maxItems": 1,
                 "minItems": 1,
                 "type": "array"
               },
@@ -30631,7 +30660,7 @@ export const schemas = {
               ],
               "type": "object"
             },
-            "maxItems": 3,
+            "maxItems": 1,
             "minItems": 1,
             "type": "array"
           },
@@ -35036,6 +35065,9 @@ export const schemas = {
           "toneMapAlgorithm": {
             "type": "string"
           },
+          "toneMapOff": {
+            "type": "boolean"
+          },
           "trace": {
             "properties": {
               "audio": {
@@ -37266,7 +37298,7 @@ export const schemas = {
                         ],
                         "type": "object"
                       },
-                      "maxItems": 3,
+                      "maxItems": 1,
                       "minItems": 1,
                       "type": "array"
                     },
@@ -37376,7 +37408,7 @@ export const schemas = {
                     ],
                     "type": "object"
                   },
-                  "maxItems": 3,
+                  "maxItems": 1,
                   "minItems": 1,
                   "type": "array"
                 },
@@ -39425,6 +39457,11 @@ export const schemas = {
                   },
                   "field": {
                     "type": "string"
+                  },
+                  "seed": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
                   }
                 },
                 "required": [
@@ -39441,11 +39478,26 @@ export const schemas = {
               },
               "type": "array"
             },
+            "filters": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
             "id": {
               "type": "string"
             },
             "labelKey": {
               "type": "string"
+            },
+            "paging": {
+              "type": "string"
+            },
+            "sorts": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
             },
             "supportedViews": {
               "items": {
@@ -39460,7 +39512,10 @@ export const schemas = {
             "entityKinds",
             "defaultSort",
             "supportedViews",
-            "browsable"
+            "browsable",
+            "sorts",
+            "filters",
+            "paging"
           ],
           "type": "object"
         },
@@ -39594,6 +39649,11 @@ export const schemas = {
                 },
                 "field": {
                   "type": "string"
+                },
+                "seed": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
                 }
               },
               "required": [
@@ -39610,11 +39670,26 @@ export const schemas = {
             },
             "type": "array"
           },
+          "filters": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
           "id": {
             "type": "string"
           },
           "labelKey": {
             "type": "string"
+          },
+          "paging": {
+            "type": "string"
+          },
+          "sorts": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
           },
           "supportedViews": {
             "items": {
@@ -39629,7 +39704,10 @@ export const schemas = {
           "entityKinds",
           "defaultSort",
           "supportedViews",
-          "browsable"
+          "browsable",
+          "sorts",
+          "filters",
+          "paging"
         ],
         "type": "object"
       },
@@ -39659,6 +39737,9 @@ export const schemas = {
             },
             "labelKey": {
               "type": "string"
+            },
+            "seeded": {
+              "type": "boolean"
             }
           },
           "required": [
@@ -39667,7 +39748,47 @@ export const schemas = {
             "directions",
             "defaultDirection",
             "expensive",
+            "seeded",
             "applicableKinds"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "surfaces": {
+        "items": {
+          "properties": {
+            "endpoint": {
+              "type": "string"
+            },
+            "filters": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "id": {
+              "type": "string"
+            },
+            "membershipField": {
+              "type": "string"
+            },
+            "paging": {
+              "type": "string"
+            },
+            "sorts": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "id",
+            "endpoint",
+            "sorts",
+            "filters",
+            "paging"
           ],
           "type": "object"
         },
@@ -39675,6 +39796,7 @@ export const schemas = {
       }
     },
     "required": [
+      "surfaces",
       "library",
       "pivots",
       "fields",
@@ -41578,7 +41700,7 @@ export const schemas = {
                     ],
                     "type": "object"
                   },
-                  "maxItems": 3,
+                  "maxItems": 1,
                   "type": "array"
                 }
               },
@@ -42279,7 +42401,7 @@ export const schemas = {
                     ],
                     "type": "object"
                   },
-                  "maxItems": 3,
+                  "maxItems": 1,
                   "type": "array"
                 }
               },
@@ -44274,7 +44396,7 @@ export const schemas = {
                         ],
                         "type": "object"
                       },
-                      "maxItems": 3,
+                      "maxItems": 1,
                       "type": "array"
                     }
                   },
@@ -53359,7 +53481,7 @@ export const schemas = {
                     ],
                     "type": "object"
                   },
-                  "maxItems": 3,
+                  "maxItems": 1,
                   "type": "array"
                 }
               },
@@ -55675,7 +55797,7 @@ export const schemas = {
                     ],
                     "type": "object"
                   },
-                  "maxItems": 3,
+                  "maxItems": 1,
                   "type": "array"
                 }
               },
@@ -55869,6 +55991,11 @@ export const schemas = {
                     },
                     "field": {
                       "type": "string"
+                    },
+                    "seed": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
                     }
                   },
                   "required": [
@@ -57149,6 +57276,11 @@ export const schemas = {
                     },
                     "field": {
                       "type": "string"
+                    },
+                    "seed": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
                     }
                   },
                   "required": [
@@ -57354,6 +57486,11 @@ export const schemas = {
                 },
                 "field": {
                   "type": "string"
+                },
+                "seed": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
                 }
               },
               "required": [
@@ -57622,6 +57759,11 @@ export const schemas = {
                       },
                       "field": {
                         "type": "string"
+                      },
+                      "seed": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
                       }
                     },
                     "required": [
@@ -59711,7 +59853,7 @@ export const schemas = {
                         ],
                         "type": "object"
                       },
-                      "maxItems": 3,
+                      "maxItems": 1,
                       "minItems": 1,
                       "type": "array"
                     },
@@ -59821,7 +59963,7 @@ export const schemas = {
                     ],
                     "type": "object"
                   },
-                  "maxItems": 3,
+                  "maxItems": 1,
                   "minItems": 1,
                   "type": "array"
                 },
@@ -64390,6 +64532,65 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "ListPlaybackFailureMemoryRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "ListPlaybackFailureMemoryResponse": {
+    "properties": {
+      "items": {
+        "items": {
+          "properties": {
+            "code": {
+              "type": "string"
+            },
+            "detail": {
+              "type": "string"
+            },
+            "engine": {
+              "type": "string"
+            },
+            "expiresAtMs": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "reportedAtMs": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "route": {
+              "type": "string"
+            },
+            "sourceId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "sourceId",
+            "engine",
+            "route",
+            "code",
+            "detail",
+            "reportedAtMs",
+            "expiresAtMs"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "more": {
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "items",
+      "more"
+    ],
+    "type": "object"
+  },
   "ListQueueEntriesRequest": {
     "properties": {},
     "required": [],
@@ -67577,6 +67778,11 @@ export const schemas = {
                 },
                 "field": {
                   "type": "string"
+                },
+                "seed": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
                 }
               },
               "required": [
@@ -83824,6 +84030,11 @@ export const schemas = {
                 },
                 "field": {
                   "type": "string"
+                },
+                "seed": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
                 }
               },
               "required": [
@@ -92979,6 +93190,11 @@ export const schemas = {
                 },
                 "field": {
                   "type": "string"
+                },
+                "seed": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
                 }
               },
               "required": [
@@ -93230,6 +93446,11 @@ export const schemas = {
                 },
                 "field": {
                   "type": "string"
+                },
+                "seed": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
                 }
               },
               "required": [

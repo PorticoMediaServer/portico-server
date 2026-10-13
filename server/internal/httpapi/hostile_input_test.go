@@ -14,6 +14,8 @@ import (
 	"testing"
 	"time"
 
+	"portico.local/server/internal/access"
+	"portico.local/server/internal/administration"
 	"portico.local/server/internal/assets"
 	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/hosted"
@@ -22,10 +24,11 @@ import (
 	"portico.local/server/internal/operations"
 	"portico.local/server/internal/persistence"
 	"portico.local/server/internal/playback"
+	"portico.local/server/internal/servicelog"
 	"portico.local/server/internal/supervise"
 )
 
-// Every route, every hostile shape. The route table is the same one admission
+// Every route receives the same bounded battery of hostile bodies, queries and paths. The route table is the same one admission
 // is built from, so a route added tomorrow is covered the day it is added
 // rather than the day somebody remembers to write a test for it.
 //
@@ -111,7 +114,7 @@ var hostilePathValues = []string{
 	"null",
 }
 
-func hostileFixture(t *testing.T) (http.Handler, string) {
+func hostileFixture(t *testing.T) (http.Handler, string, func() string) {
 	t.Helper()
 	root := t.TempDir()
 	if resolved, err := filepath.EvalSymlinks(root); err == nil {
@@ -131,7 +134,11 @@ func hostileFixture(t *testing.T) (http.Handler, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	handler := New(Dependencies{DB: db, Identity: ident, Catalog: cat, Hosted: host,
+	admin := administration.NewAt(db, root)
+	admin.Discover = func(context.Context, time.Duration) ([]administration.TunerDevice, error) {
+		return []administration.TunerDevice{}, nil
+	}
+	handler := New(Dependencies{Administration: admin, Scheduler: operations.NewScheduler(operations.New(db)), Access: AccessArea{Access: access.New(db), ClientLogs: servicelog.NewClientLogStore(db)}, DB: db, Identity: ident, Catalog: cat, Hosted: host,
 		Ingestion: ingestion.New(db, cat, assets.Probe{}), Playback: playback.New(db), Console: operations.New(db)})
 	secret, err := os.ReadFile(filepath.Join(root, "setup-token"))
 	if err != nil {
@@ -149,7 +156,18 @@ func hostileFixture(t *testing.T) (http.Handler, string) {
 	if err = json.Unmarshal(w.Body.Bytes(), &owner); err != nil {
 		t.Fatal(err)
 	}
-	return handler, owner.AccessToken
+	return handler, owner.AccessToken, func() string {
+		t.Helper()
+		var epoch int
+		if err := db.QueryRow(`SELECT epoch FROM accounts WHERE id=?`, owner.Viewer.AccountID).Scan(&epoch); err != nil {
+			t.Fatal(err)
+		}
+		fresh, err := ident.Issue(owner.Viewer.AccountID, owner.Viewer.ProfileID, "local", "owner", epoch)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return fresh.AccessToken
+	}
 }
 
 // routesUnderTest is every classified route, in a stable order, with its
@@ -181,37 +199,71 @@ func routesUnderTest() []struct{ method, path string } {
 }
 
 func TestEveryRouteSurvivesHostileInput(t *testing.T) {
-	handler, token := hostileFixture(t)
+	handler, token, renew := hostileFixture(t)
 	bodies := hostileBodies(t)
 	before := supervise.Panics()
 	var failures []string
-	for index, route := range routesUnderTest() {
-		body := bodies[index%len(bodies)]
-		query := hostileQueries[index%len(hostileQueries)]
-		// Every hostile path value is used across the surface rather than only
-		// the first, by rotating through them route by route.
-		path := fillWildcards(route.path, hostilePathValues[index%len(hostilePathValues)])
-		for _, authorized := range []bool{false, true} {
-			r := httptest.NewRequest(route.method, path+query, strings.NewReader(body.body))
-			r.Header.Set("Content-Type", "application/json")
-			if authorized {
-				r.Header.Set("Authorization", "Bearer "+token)
-			}
-			// Valid streaming routes must leave when the synthetic client disconnects.
-			ctx, cancel := context.WithCancel(r.Context())
-			if strings.HasSuffix(route.path, "/events") {
+	for _, route := range routesUnderTest() {
+		type attack struct{ name, body, query, path string }
+		attacks := make([]attack, 0, len(bodies)+len(hostileQueries)+len(hostilePathValues))
+		for _, body := range bodies {
+			attacks = append(attacks, attack{body.name, body.body, "", fillWildcards(route.path, "hostile-id")})
+		}
+		for i, query := range hostileQueries {
+			attacks = append(attacks, attack{fmt.Sprintf("query %d", i), "{}", query, fillWildcards(route.path, "hostile-id")})
+		}
+		for i, value := range hostilePathValues {
+			attacks = append(attacks, attack{fmt.Sprintf("path %d", i), "{}", "", fillWildcards(route.path, value)})
+		}
+		for _, attack := range attacks {
+			for _, authorized := range []bool{false, true} {
+				r := httptest.NewRequest(route.method, attack.path+attack.query, strings.NewReader(attack.body))
+				r.Header.Set("Content-Type", "application/json")
+				if authorized {
+					r.Header.Set("Authorization", "Bearer "+token)
+				}
+				budget := 2 * time.Second
+				if strings.HasSuffix(route.path, "/events") {
+					budget = 10 * time.Millisecond
+				}
+				ctx, cancel := context.WithTimeout(r.Context(), budget)
+				r = r.WithContext(ctx)
+				w := httptest.NewRecorder()
+				done := make(chan struct{})
+				go func() { defer close(done); handler.ServeHTTP(w, r) }()
+				select {
+				case <-done:
+				case <-ctx.Done():
+					// Streaming routes normally wait for their client to disconnect.
+					select {
+					case <-done:
+					case <-time.After(time.Second):
+						cancel()
+						t.Fatalf("%s %s did not honor cancellation", route.method, route.path)
+					}
+				}
 				cancel()
-				ctx, cancel = context.WithTimeout(r.Context(), time.Second)
-			}
-			r = r.WithContext(ctx)
-			w := httptest.NewRecorder()
-			handler.ServeHTTP(w, r)
-			cancel()
-			if w.Code >= 500 && w.Code != 503 {
-				failures = append(failures, fmt.Sprintf("%s %s [%s] authorized=%v -> %d %s",
-					route.method, path, body.name, authorized, w.Code, strings.TrimSpace(firstLine(w.Body.String()))))
+				// The empty body is valid on sign-out. Give subsequent cases
+				// a fresh family instead of silently testing as a stranger.
+				if authorized && (route.path == "/v1/sessions/current" || route.path == "/v1/direct/sessions/sign-out-everywhere") && w.Code < 300 {
+					token = renew()
+				}
+				// Optional subsystems are deliberately absent from this fixture;
+				// admission and those subsystem-unavailable responses may be 503.
+				if w.Code >= 500 && w.Code != 503 {
+					failures = append(failures, fmt.Sprintf("%s %s [%s] authorized=%v -> %d %s", route.method, attack.path, attack.name, authorized, w.Code, strings.TrimSpace(firstLine(w.Body.String()))))
+				}
 			}
 		}
+	}
+	// Successful bodyless mutations must not silently revoke the fixture's
+	// credential and turn all later authorized cases into trivial denials.
+	canary := httptest.NewRequest("GET", "/v1/preferences?deviceClass=web", nil)
+	canary.Header.Set("Authorization", "Bearer "+token)
+	answer := httptest.NewRecorder()
+	handler.ServeHTTP(answer, canary)
+	if answer.Code != 200 {
+		t.Errorf("hostile cases lost their authorized fixture: %d %s", answer.Code, answer.Body.String())
 	}
 	if grown := supervise.Panics() - before; grown > 0 {
 		t.Errorf("%d panics were contained while serving hostile input; containment is the backstop, not the validation", grown)
@@ -224,7 +276,7 @@ func TestEveryRouteSurvivesHostileInput(t *testing.T) {
 // Every hostile body against one heavily parsed route, so that the battery is
 // applied in full rather than spread one-per-route.
 func TestTheParsedRoutesSurviveEveryHostileBody(t *testing.T) {
-	handler, token := hostileFixture(t)
+	handler, token, _ := hostileFixture(t)
 	routes := []struct{ method, path string }{
 		{"POST", "/v1/libraries"},
 		{"POST", "/v1/direct/sign-in"},
@@ -258,7 +310,7 @@ func TestTheParsedRoutesSurviveEveryHostileBody(t *testing.T) {
 // more than it claims, are both ordinary on a bad network and both are shapes a
 // reader can be made to trust.
 func TestMisdeclaredBodiesAreNotTrusted(t *testing.T) {
-	handler, token := hostileFixture(t)
+	handler, token, _ := hostileFixture(t)
 	cases := []struct {
 		name          string
 		contentLength string
@@ -285,7 +337,7 @@ func TestMisdeclaredBodiesAreNotTrusted(t *testing.T) {
 // Headers are input too, and the ones the server reads for identity and
 // delivery are read before any handler runs.
 func TestHostileHeadersAreNotTrusted(t *testing.T) {
-	handler, _ := hostileFixture(t)
+	handler, _, _ := hostileFixture(t)
 	headers := []struct{ name, value string }{
 		{"Authorization", ""},
 		{"Authorization", "Bearer"},

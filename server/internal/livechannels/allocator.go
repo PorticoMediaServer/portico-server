@@ -17,7 +17,7 @@ type Owner struct {
 }
 
 func (o Owner) Valid() bool {
-	return (o.Authority == "local" || o.Authority == "hosted") && validText(o.AccountID, 256) && validText(o.ProfileID, 256)
+	return o.Authority == "local" && validText(o.AccountID, 256) && validText(o.ProfileID, 256)
 }
 func (o Owner) Key() string { return id(o.Authority, o.AccountID, o.ProfileID) }
 

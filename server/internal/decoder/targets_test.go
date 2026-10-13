@@ -30,7 +30,7 @@ func TestConversionTargetsDescribeEveryOutput(t *testing.T) {
 		codec, rangeName, pixel, transfer string
 		depth                             int
 		encoder                           string
-	}{{"h264", "sdr", "yuv420p", "bt709", 8, "libx264"}, {"hevc", "sdr", "yuv420p", "bt709", 8, "libx265"}, {"hevc", "hdr10", "yuv420p10le", "smpte2084", 10, "libx265"}, {"hevc", "hlg", "yuv420p10le", "arib-std-b67", 10, "libx265"}, {"av1", "hdr10", "yuv420p10le", "smpte2084", 10, "libaom-av1"}} {
+	}{{"h264", "sdr", "yuv420p", "", 8, "libx264"}, {"hevc", "sdr", "yuv420p", "", 8, "libx265"}, {"hevc", "hdr10", "yuv420p10le", "smpte2084", 10, "libx265"}, {"hevc", "hlg", "yuv420p10le", "arib-std-b67", 10, "libx265"}, {"av1", "hdr10", "yuv420p10le", "smpte2084", 10, "libaom-av1"}} {
 		t.Run(tc.codec+tc.rangeName, func(t *testing.T) {
 			target := ConversionTarget{VideoCodec: tc.codec, BitDepth: tc.depth, DynamicRange: tc.rangeName, RateControl: "quality", Height: 1080}
 			g, err := BuildConversion(ConversionRequest{Target: &target, ConvertVideo: true, Toolchain: targetFacts()})
@@ -274,7 +274,7 @@ func TestBitmapBurnPreservesGlyphShapeOnCroppedVideo(t *testing.T) {
 	if err := os.WriteFile(file, pgsFixture(), 0600); err != nil {
 		t.Fatal(err)
 	}
-	graph, err := BuildConversion(ConversionRequest{ConvertVideo: true, BurnIn: &BurnIn{File: file, Format: "pgs", PositionUS: 5000000, Width: 160, Height: 60}})
+	graph, err := BuildConversion(ConversionRequest{ConvertVideo: true, BurnIn: &BurnIn{File: file, Format: "pgs", InputStartUS: 5000000, PositionUS: 5000000, Width: 160, Height: 60}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -367,7 +367,7 @@ func TestHDRBitmapBurnKeepsTenBitPlane(t *testing.T) {
 		t.Fatal(err)
 	}
 	target := ConversionTarget{VideoCodec: "hevc", BitDepth: 10, DynamicRange: "hdr10", Width: 160, Height: 60, FrameRate: 24}
-	graph, err := BuildConversion(ConversionRequest{Target: &target, ConvertVideo: true, SoftwarePreset: "ultrafast", BurnIn: &BurnIn{File: file, Format: "pgs", PositionUS: 5000000, Width: 160, Height: 60}})
+	graph, err := BuildConversion(ConversionRequest{Target: &target, ConvertVideo: true, SoftwarePreset: "ultrafast", BurnIn: &BurnIn{File: file, Format: "pgs", InputStartUS: 5000000, PositionUS: 5000000, Width: 160, Height: 60}})
 	if err != nil {
 		t.Fatal(err)
 	}

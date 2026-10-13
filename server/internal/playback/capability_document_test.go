@@ -142,6 +142,11 @@ func TestReportedRouteFailureEscalatesTheNextPlan(t *testing.T) {
 	if out, err = s.RecordRouteFailure(ctx, p, fourth.ID, "decode_error", ""); err != nil || out.Escalates {
 		t.Fatal(out, err)
 	}
+	var finalFailures int
+	if err = db.QueryRow(`SELECT count(*) FROM playback_route_failures WHERE route='video_conversion'`).Scan(&finalFailures); err != nil || finalFailures != 1 {
+		t.Fatal("final conversion failure was not recorded", finalFailures, err)
+	}
+
 	// Somebody else's session cannot be reported on, and junk is refused.
 	stranger := identity.Principal{Hash: "stranger", Viewer: identity.Viewer{AccountID: "other", ProfileID: "other", Authority: "local", Role: "member"}}
 	if _, err = s.RecordRouteFailure(ctx, stranger, first.ID, "decode_error", ""); !errors.Is(err, identity.ErrUnauthorized) {

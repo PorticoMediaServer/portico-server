@@ -8,6 +8,7 @@ export function decodeBrowseLibraryResponse(input: unknown): types.BrowseLibrary
 export function decodeChangeConnectivityPolicyResponse(input: unknown): types.ChangeConnectivityPolicyResponse { return decode("ChangeConnectivityPolicyResponse", input) as types.ChangeConnectivityPolicyResponse; }
 export function decodeChangeConsoleSettingsResponse(input: unknown): types.ChangeConsoleSettingsResponse { return decode("ChangeConsoleSettingsResponse", input) as types.ChangeConsoleSettingsResponse; }
 export function decodeChangePlaybackSessionResponse(input: unknown): types.ChangePlaybackSessionResponse { return decode("ChangePlaybackSessionResponse", input) as types.ChangePlaybackSessionResponse; }
+export function decodeClearPlaybackFailureMemoryResponse(input: unknown): types.ClearPlaybackFailureMemoryResponse { return decode("ClearPlaybackFailureMemoryResponse", input) as types.ClearPlaybackFailureMemoryResponse; }
 export function decodeCommitQueueNextResponse(input: unknown): types.CommitQueueNextResponse { return decode("CommitQueueNextResponse", input) as types.CommitQueueNextResponse; }
 export function decodeControlAdminSessionResponse(input: unknown): types.ControlAdminSessionResponse { return decode("ControlAdminSessionResponse", input) as types.ControlAdminSessionResponse; }
 export function decodeCreateAccessTokenResponse(input: unknown): types.CreateAccessTokenResponse { return decode("CreateAccessTokenResponse", input) as types.CreateAccessTokenResponse; }
@@ -331,6 +332,7 @@ export function decodeListLiveSourceGroupsResponse(input: unknown): types.ListLi
 export function decodeListLiveSourcesResponse(input: unknown): types.ListLiveSourcesResponse { return decode("ListLiveSourcesResponse", input) as types.ListLiveSourcesResponse; }
 export function decodeListMemberAccessTokensResponse(input: unknown): types.ListMemberAccessTokensResponse { return decode("ListMemberAccessTokensResponse", input) as types.ListMemberAccessTokensResponse; }
 export function decodeListMissingTitlesResponse(input: unknown): types.ListMissingTitlesResponse { return decode("ListMissingTitlesResponse", input) as types.ListMissingTitlesResponse; }
+export function decodeListPlaybackFailureMemoryResponse(input: unknown): types.ListPlaybackFailureMemoryResponse { return decode("ListPlaybackFailureMemoryResponse", input) as types.ListPlaybackFailureMemoryResponse; }
 export function decodeListQueueEntriesResponse(input: unknown): types.ListQueueEntriesResponse { return decode("ListQueueEntriesResponse", input) as types.ListQueueEntriesResponse; }
 export function decodeListWebhookDeliveriesResponse(input: unknown): types.ListWebhookDeliveriesResponse { return decode("ListWebhookDeliveriesResponse", input) as types.ListWebhookDeliveriesResponse; }
 export function decodeListWebhooksResponse(input: unknown): types.ListWebhooksResponse { return decode("ListWebhooksResponse", input) as types.ListWebhooksResponse; }

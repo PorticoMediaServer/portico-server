@@ -2,9 +2,9 @@ package httpapi
 
 import (
 	"context"
-	"errors"
 	"net/http"
 	"portico.local/server/internal/playback"
+	"portico.local/server/internal/requestinput"
 	"time"
 )
 
@@ -18,7 +18,7 @@ func (d Dependencies) playbackOfferRoutes(mux *http.ServeMux) {
 		q := r.URL.Query()
 		for key, values := range q {
 			if (key != "sessionId" && key != "revision") || len(values) != 1 || len(values[0]) > 128 {
-				failure(w, errors.New("invalid playback offer query"))
+				failure(w, requestinput.New("invalid playback offer query"))
 				return
 			}
 		}

@@ -23,10 +23,10 @@ func TestBrowseAdHocCountsAreExactAndRangesUnbounded(t *testing.T) {
 			t.Fatalf("start %d: %+v %v", start, page.PageInfo, err)
 		}
 	}
-	page, err := s.BrowseEntities(viewer, BrowseRequest{Library: "a", Profile: "p", ViewerFence: "f", Pivot: "movies", Limit: 2, Sort: []BrowseSortSelection{{Field: "year", Direction: "desc"}, {Field: "title", Direction: "asc"}}, Range: &BrowseRange{Start: 20000}})
+	page, err := s.BrowseEntities(viewer, BrowseRequest{Library: "a", Profile: "p", ViewerFence: "f", Pivot: "movies", Limit: 2, Sort: []BrowseSortSelection{{Field: "year", Direction: "desc"}}, Range: &BrowseRange{Start: 20000}})
 	// An unfiltered range past the end clamps to the last row, as it always has.
 	if err != nil || page.PageInfo.Start != 4 || len(page.Entries) != 1 {
-		t.Fatalf("a deep range under two sorts: %+v %v", page.PageInfo, err)
+		t.Fatalf("a deep range under year order: %+v %v", page.PageInfo, err)
 	}
 }
 
@@ -82,8 +82,8 @@ func TestBrowseAdHocPagesWithoutAnchors(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if ranged.PageInfo.Start != 20000 || len(ranged.Entries) != 0 {
-		t.Fatalf("out-of-result filtered range was clamped: %+v, entries %+v", ranged.PageInfo, ranged.Entries)
+	if ranged.PageInfo.Start != ranged.PageInfo.Total-1 || len(ranged.Entries) != 1 {
+		t.Fatalf("out-of-result filtered range did not fall back: %+v, entries %+v", ranged.PageInfo, ranged.Entries)
 	}
 	request.Range = nil
 	request.Sort = []BrowseSortSelection{{Field: "year", Direction: "desc"}}
@@ -97,7 +97,7 @@ func TestBrowseAdHocPagesWithoutAnchors(t *testing.T) {
 	}
 }
 
-func TestBrowseAdHocRejectsAnchorNavigation(t *testing.T) {
+func TestBrowseAdHocRejectsSeekNavigation(t *testing.T) {
 	_, s, _ := browseFixture(t)
 	query, err := ParseBrowseQuery(json.RawMessage(`{"field":"year","operator":"at-least","value":0}`), "query")
 	if err != nil {
@@ -111,7 +111,6 @@ func TestBrowseAdHocRejectsAnchorNavigation(t *testing.T) {
 		rangeRequest *BrowseRange
 	}{
 		{"seek", "seek", &BrowseSeek{Prefix: "A"}, nil},
-		{"anchor", "range.anchorId", nil, &BrowseRange{Start: 1, AnchorID: "m1"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			request.Seek, request.Range = tc.seek, tc.rangeRequest
@@ -121,5 +120,17 @@ func TestBrowseAdHocRejectsAnchorNavigation(t *testing.T) {
 				t.Fatalf("wanted %s validation, got %v", tc.path, err)
 			}
 		})
+	}
+}
+
+func TestBrowseAdHocTreatsAnAnchorAsAPositionHint(t *testing.T) {
+	_, s, _ := browseFixture(t)
+	query, err := ParseBrowseQuery(json.RawMessage(`{"field":"year","operator":"at-least","value":0}`), "query")
+	if err != nil {
+		t.Fatal(err)
+	}
+	page, err := s.BrowseEntities(Viewer{Profile: "p", Fence: "f", Libraries: []string{"a"}}, BrowseRequest{Library: "a", Profile: "p", ViewerFence: "f", Pivot: "movies", Query: query, Limit: 2, Range: &BrowseRange{Start: 1, AnchorID: "missing"}})
+	if err != nil || page.PageInfo.Start != 1 {
+		t.Fatalf("position hint: %+v %v", page.PageInfo, err)
 	}
 }

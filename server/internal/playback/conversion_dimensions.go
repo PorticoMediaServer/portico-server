@@ -11,6 +11,9 @@ func convertedDimensions(p DeliveryPlan) (int, int) {
 		return p.TargetWidth, p.TargetHeight
 	}
 	v := p.Trace.Video
+	if v.Width <= 0 || v.Height <= 0 {
+		return p.TargetWidth, p.TargetHeight
+	}
 	w, h := float64(v.Width), float64(v.Height)
 	if v.Rotation%180 != 0 {
 		w, h = h, w

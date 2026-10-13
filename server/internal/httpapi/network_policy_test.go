@@ -10,7 +10,6 @@ import (
 	"portico.local/server/internal/operations"
 	"strconv"
 	"testing"
-	"time"
 )
 
 func TestSetupOriginAndContentType(t *testing.T) {
@@ -94,7 +93,7 @@ func TestPreservedProxyHostNeedsNoOriginAllowList(t *testing.T) {
 
 func TestLargeUploadsHaveTheirOwnBoundedBudget(t *testing.T) {
 	spec := laneSpecs[laneUpload]
-	if spec.capacity != 2 || spec.budget != 60*time.Second || spec.queueWait != 0 {
+	if spec.capacity != 2 || spec.budget != 0 || !spec.endsWithClient || spec.queueWait != 0 {
 		t.Fatalf("%+v", spec)
 	}
 	for _, route := range []string{"POST /v1/admin/live-sources", "POST /v1/admin/live-sources/preview", "POST /v1/diagnostics/client-logs"} {

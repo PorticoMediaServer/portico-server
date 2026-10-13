@@ -174,15 +174,7 @@ func (s *Store) FeedbackCapabilitiesDocument(ctx context.Context, p identity.Pri
 		out.ReporterName = name
 		// A revoked or unknown profile cannot open a report. The check names the
 		// reason so a client can say why the button is unavailable.
-		if p.Authority == "hosted" {
-			var revoked int
-			err = tx.QueryRow(`SELECT revoked FROM restrictions WHERE profile_id=?`, p.ProfileID).Scan(&revoked)
-			if err == nil && revoked != 0 {
-				out.CanSubmit, out.SubmitBlockedReason = false, "This profile's access has been revoked on this server."
-			} else if err != nil && !errors.Is(err, sql.ErrNoRows) {
-				return err
-			}
-		}
+
 		if out.CanSubmit {
 			var recent int
 			if err = tx.QueryRow(`SELECT count(*) FROM console_reports WHERE scope=? AND created_ms>?`, ViewerKey(p), s.now()-int64(time.Hour/time.Millisecond)).Scan(&recent); err != nil {

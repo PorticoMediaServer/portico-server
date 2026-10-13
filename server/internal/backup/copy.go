@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"errors"
 	"os"
+	"path/filepath"
+	"portico.local/server/internal/diskspace"
 	"time"
 
 	sqlite "portico.local/server/internal/thirdparty/sqlite"
@@ -12,24 +14,65 @@ import (
 	"portico.local/server/internal/dbwork"
 )
 
+var ErrBackupPressure = errors.New("backup database pressure limit reached")
+
+type copyLimits struct {
+	snapshotTimeout time.Duration
+	maxWALGrowth    int64
+	reportEvery     time.Duration
+}
+
 // copyDatabase writes a consistent copy of the live database to dest with
 // SQLite's online backup API while the server runs. It pins one WAL read
 // snapshot on a background-pool connection so concurrent commits cannot restart
-// the copy from page zero, steps in small increments so a writer never waits
-// long behind it, and never takes the write gate. progress reports
+// the copy from page zero. Small steps and snapshot time/WAL-growth bounds
+// release checkpoint pressure during heavy writes without taking the write gate.
+// progress reports
 // (PageCount-Remaining)*pageSize as the copy advances.
 func copyDatabase(ctx context.Context, source *sql.DB, dest string, progress func(done, total int64)) error {
+	return copyDatabaseLimited(ctx, source, dest, progress, defaultCopyLimits())
+}
+
+func defaultCopyLimits() copyLimits {
+	return copyLimits{snapshotTimeout: 2 * time.Minute, maxWALGrowth: 64 << 20, reportEvery: 200 * time.Millisecond}
+}
+
+func copyDatabaseLimited(ctx context.Context, source *sql.DB, dest string, progress func(done, total int64), limits copyLimits) error {
+	return copyDatabaseGuardedLimited(ctx, source, dest, progress, limits, nil)
+}
+
+// The optional guard lets an embedding abort a copy at a page boundary. Built-in
+// time, WAL and disk budgets apply regardless of whether a guard was supplied.
+func copyDatabaseGuarded(ctx context.Context, source *sql.DB, dest string, progress func(done, total int64), guard func(done, total int64) error) error {
+	return copyDatabaseGuardedLimited(ctx, source, dest, progress, defaultCopyLimits(), guard)
+}
+
+func copyDatabaseGuardedLimited(ctx context.Context, source *sql.DB, dest string, progress func(done, total int64), limits copyLimits, guard func(done, total int64) error) error {
 	if source == nil || dest == "" {
 		return errors.New("backup: no database to copy")
 	}
 	ctx = dbwork.WithClass(ctx, dbwork.ClassMaintenance)
+	ctx, cancel := context.WithTimeout(ctx, limits.snapshotTimeout)
+	defer cancel()
+	sourcePath := dbwork.DatabaseFile(ctx, source)
+	walPath := ""
+	if sourcePath != "" {
+		walPath = sourcePath + "-wal"
+	}
+	initialWAL, err := walBytes(walPath)
+	if err != nil {
+		return err
+	}
 	conn, err := dbwork.ReadHandle(ctx, source).Conn(ctx)
 	if err != nil {
 		return err
 	}
 	defer conn.Close()
 	var pageSize int64
-	if err = conn.QueryRowContext(ctx, "PRAGMA page_size").Scan(&pageSize); err != nil || pageSize < 512 || pageSize > 65536 || pageSize&(pageSize-1) != 0 {
+	if err = conn.QueryRowContext(ctx, "PRAGMA page_size").Scan(&pageSize); err != nil {
+		return err
+	}
+	if pageSize < 512 || pageSize > 65536 || pageSize&(pageSize-1) != 0 {
 		return errors.New("backup: unexpected database page size")
 	}
 	// One pinned read snapshot on this same connection: the copy sees one WAL
@@ -63,15 +106,55 @@ func copyDatabase(ctx context.Context, source *sql.DB, dest string, progress fun
 		}
 		var copyErr error
 		lastReport := time.Now()
+		lastDiskCheck := time.Time{}
 		for {
 			if ctx.Err() != nil {
 				copyErr = ctx.Err()
 				break
 			}
+			currentWAL, pressureErr := walBytes(walPath)
+			if pressureErr != nil {
+				copyErr = pressureErr
+				break
+			}
+			if currentWAL-initialWAL > limits.maxWALGrowth {
+				copyErr = ErrBackupPressure
+				break
+			}
 			more, err := backup.Step(16)
 			copied := int64(backup.PageCount()-backup.Remaining()) * pageSize
 			total := int64(backup.PageCount()) * pageSize
-			if progress != nil && (time.Since(lastReport) >= 200*time.Millisecond || !more && err == nil) {
+			if lastDiskCheck.IsZero() || time.Since(lastDiskCheck) >= 250*time.Millisecond {
+				lastDiskCheck = time.Now()
+				if sourcePath != "" {
+					free, err := diskspace.Free(filepath.Dir(sourcePath))
+					if err != nil {
+						copyErr = err
+						break
+					}
+					if free < 128<<20 {
+						copyErr = ErrInsufficientDisk
+						break
+					}
+				}
+				free, err := diskspace.Free(filepath.Dir(dest))
+				if err != nil {
+					copyErr = err
+					break
+				}
+				remaining := max(total-copied, 0)
+				if remaining > free || free-remaining < 128<<20 {
+					copyErr = ErrInsufficientDisk
+					break
+				}
+			}
+			if guard != nil {
+				if err := guard(copied, total); err != nil {
+					copyErr = err
+					break
+				}
+			}
+			if progress != nil && (time.Since(lastReport) >= limits.reportEvery || !more && err == nil) {
 				progress(copied, total)
 				lastReport = time.Now()
 			}
@@ -161,4 +244,18 @@ func quickCheck(path string) error {
 		return errors.New("backup: database copy failed quick_check")
 	}
 	return nil
+}
+
+func walBytes(path string) (int64, error) {
+	if path == "" {
+		return 0, nil
+	}
+	info, err := os.Stat(path)
+	if os.IsNotExist(err) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, err
+	}
+	return info.Size(), nil
 }

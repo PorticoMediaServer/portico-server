@@ -59,10 +59,8 @@ func portico_watch_event(token C.uintptr_t, path *C.char, flags C.uint32_t) {
 		if err != nil || !filepath.IsLocal(relative) {
 			continue
 		}
-		// Parent listing covers file edits, new directories and directory removals.
-		if relative != "." {
-			relative = filepath.Dir(relative)
-		}
+		// Retain the named path so a removed file can be verified separately
+		// from an ambiguous directory/overflow hint.
 		change := InventoryChange{SourceID: root.SourceID, RelativePath: relative}
 		select {
 		case w.changes <- change:

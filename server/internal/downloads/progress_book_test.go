@@ -345,3 +345,26 @@ func TestOfflineProgressOnAFilmWritesNoBookPointer(t *testing.T) {
 		t.Fatalf("book pointers %d %v", rows, e)
 	}
 }
+
+func TestFutureOfflineClockCannotFenceLaterOnlineActivity(t *testing.T) {
+	b := newBookHarness(t)
+	part := b.parts[0]
+	future := b.now.Add(12 * time.Hour)
+	out := b.sync(t, "future-clock", ProgressEntry{ItemID: part.Public, PositionSeconds: 120, ObservedAt: future.Format(time.RFC3339)})
+	if out.Applied != 1 {
+		t.Fatalf("usable skewed observation discarded: %+v", out)
+	}
+	var mark int64
+	if err := b.db.QueryRow(`SELECT observed_ms FROM download_progress_marks WHERE item_id=?`, part.ID).Scan(&mark); err != nil || mark != b.now.UnixMilli() {
+		t.Fatalf("future mark persisted: %d %v", mark, err)
+	}
+	b.listenedOnline(t, part, 240, b.now.Add(time.Second))
+	out = b.sync(t, "later-online", ProgressEntry{ItemID: part.Public, PositionSeconds: 180, ObservedAt: future.Format(time.RFC3339)})
+	if out.Entries[0].Outcome != ProgressStale && out.Entries[0].Outcome != ProgressSuperseded {
+		t.Fatalf("skewed replay beat later activity: %+v", out)
+	}
+	var position int64
+	if err := b.db.QueryRow(`SELECT position FROM progress WHERE item_id=? AND profile_id=?`, part.ID, b.personal).Scan(&position); err != nil || position != 240000 {
+		t.Fatalf("newer online resume lost: %d %v", position, err)
+	}
+}

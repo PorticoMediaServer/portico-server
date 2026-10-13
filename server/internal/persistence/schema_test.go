@@ -14,7 +14,7 @@ func TestSchemaMigrationsAreNumberedAndImmutable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(migrations) == 0 || migrations[0].version != baselineSchemaVersion {
+	if len(migrations) != 1 || migrations[0].version != baselineSchemaVersion {
 		t.Fatal("missing baseline")
 	}
 }
@@ -124,5 +124,20 @@ func TestAppliedMigrationDigestRejectsSilentSchemaDrift(t *testing.T) {
 	_, err = OpenFresh(path)
 	if err == nil || !strings.Contains(err.Error(), "digest mismatch") {
 		t.Fatal("changed applied SQL silently accepted", err)
+	}
+}
+
+func TestEarlierDevelopmentBaselineRequiresReset(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "old.sqlite")
+	db, err := OpenFresh(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.Exec(`UPDATE schema_migrations SET digest='earlier-development-baseline';UPDATE configuration SET value='11' WHERE key='schema_version'`); err != nil {
+		t.Fatal(err)
+	}
+	db.Close()
+	if _, err = OpenFresh(path); !errors.Is(err, ErrSchemaResetRequired) {
+		t.Fatalf("development state got an upgrade instruction instead of reset: %v", err)
 	}
 }

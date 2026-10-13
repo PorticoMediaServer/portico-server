@@ -103,6 +103,10 @@ func validTrickplay(t TrickplaySettings) bool {
 var BasicScanOperations = []string{"probe", "local_metadata", "subtitles"}
 var DeepScanOperations = []string{"checksum", "chapter_images", "trickplay", "waveform", "loudness", "fingerprint", "segment_detection"}
 
+// Complete prepares the navigation and audio features viewers can use. An owner
+// can explicitly request integrity reads or diagnostic fingerprints in Custom.
+var CompleteScanOperations = []string{"chapter_images", "trickplay", "waveform", "loudness", "segment_detection"}
+
 func (p ScanPolicy) Allows(operation string) bool {
 	if p.Tier == "file_list_only" {
 		return false
@@ -124,7 +128,7 @@ func ValidateScanPolicy(p ScanPolicy) (ScanPolicy, error) {
 	case "basic":
 		p.Operations = append([]string{}, BasicScanOperations...)
 	case "complete":
-		p.Operations = append(append([]string{}, BasicScanOperations...), DeepScanOperations...)
+		p.Operations = append(append([]string{}, BasicScanOperations...), CompleteScanOperations...)
 	case "custom":
 		seen := map[string]bool{}
 		for _, v := range p.Operations {
@@ -159,6 +163,9 @@ func scanScanPolicy(row interface{ Scan(...any) error }) (ScanPolicy, error) {
 	err := row.Scan(&p.Tier, &p.Revision, &raw, &p.Trickplay.IntervalSeconds, &p.Trickplay.TileWidth, &p.Trickplay.MaxTiles)
 	if err == nil {
 		err = json.Unmarshal([]byte(raw), &p.Operations)
+	}
+	if err == nil && p.Tier == "complete" {
+		p, err = ValidateScanPolicy(p)
 	}
 	return p, err
 }

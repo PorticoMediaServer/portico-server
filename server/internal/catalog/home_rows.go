@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/operations"
+	"portico.local/server/internal/requestinput"
 	"sort"
 	"strconv"
 	"strings"
@@ -29,8 +30,8 @@ const (
 	homeCursorLifetime  = 30 * time.Minute
 )
 
-var ErrHomeRowUnknown = errors.New("that home row does not exist for this viewer")
-var ErrHomeLayoutRow = errors.New("home layout refers to a row that does not exist")
+var ErrHomeRowUnknown = requestinput.New("that home row does not exist for this viewer")
+var ErrHomeLayoutRow = requestinput.New("home layout refers to a row that does not exist")
 
 type HomeSeeAll struct {
 	Type       string                `json:"type"`

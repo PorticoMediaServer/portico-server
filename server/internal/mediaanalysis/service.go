@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"portico.local/server/internal/assets"
 	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/decoder"
 	"portico.local/server/internal/identity"
@@ -23,7 +24,7 @@ import (
 	"portico.local/server/internal/mediaartifact"
 )
 
-const Algorithm = "portico-analysis-1"
+const Algorithm = "portico-analysis-2"
 
 var (
 	ErrInput       = errors.New("Invalid media analysis request.")
@@ -123,6 +124,7 @@ type binding struct {
 	DurationUS, MarkerRevision                                        int64
 	ProbeEvidence, SourceBinding, WorkAlgorithm                       string
 	Trickplay                                                         catalog.TrickplaySettings
+	Video                                                             assets.StreamDetail
 }
 
 func (s *Service) bindingTx(ctx context.Context, tx *sql.Tx, r Request) (b binding, err error) {
@@ -143,6 +145,18 @@ func (s *Service) bindingTx(ctx context.Context, tx *sql.Tx, r Request) (b bindi
 	err = tx.QueryRowContext(ctx, `SELECT o.asset_id,a.container,a.audio_codec,a.video_codec,a.duration,o.analysis_revision FROM inventory_objects o JOIN catalog_assets a ON a.token=o.asset_id WHERE o.id=? AND o.source_id=? AND o.revision=? AND o.root_incarnation=? AND o.retired=0 AND o.state='available' AND a.available=1`, r.ObjectID, b.Source.ID, r.SourceRevision, b.Source.Incarnation).Scan(&b.AssetID, &b.Container, &b.AudioCodec, &b.VideoCodec, &duration, &b.BasicRevision)
 	if err != nil {
 		return
+	}
+	if b.VideoCodec != "" {
+		var detail string
+		e := tx.QueryRowContext(ctx, `SELECT st.detail_json FROM asset_streams st JOIN catalog_assets a ON a.id=st.asset_id WHERE a.token=? AND st.type='video' ORDER BY st.stream_index LIMIT 1`, b.AssetID).Scan(&detail)
+		if e != nil && !errors.Is(e, sql.ErrNoRows) {
+			return b, e
+		}
+		if e == nil {
+			var stream assets.Stream
+			stream.DecodeDetail(detail)
+			b.Video = stream.Detail
+		}
 	}
 	b.DurationUS, err = exactUS(duration)
 	if err != nil {

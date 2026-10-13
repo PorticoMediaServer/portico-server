@@ -131,10 +131,12 @@ func (s *ClientLogStore) Store(ctx context.Context, accountID, profileID, sessio
 	if _, err = tx.ExecContext(ctx, `INSERT INTO client_log_uploads(id,account_id,profile_id,device_id,platform,app_version,device_class,received_ms,bytes,body) VALUES(?,?,?,?,?,?,?,?,?,?)`, id, accountID, profileID, deviceID, q.Platform, q.AppVersion, q.DeviceClass, now.UnixMilli(), len(redacted), redacted); err != nil {
 		return out, err
 	}
-	if _, err = tx.ExecContext(ctx, `DELETE FROM client_log_uploads WHERE account_id=? AND device_id=? AND id NOT IN(SELECT id FROM client_log_uploads WHERE account_id=? AND device_id=? ORDER BY received_ms DESC,id DESC LIMIT ?)`, accountID, deviceID, accountID, deviceID, ClientUploadsPerDevice); err != nil {
+	// The accepted report owns one slot even when the clock ties an older
+	// arrival. Random ids order pages, but must never evict this receipt's row.
+	if _, err = tx.ExecContext(ctx, `DELETE FROM client_log_uploads WHERE account_id=? AND device_id=? AND id<>? AND id NOT IN(SELECT id FROM client_log_uploads WHERE account_id=? AND device_id=? AND id<>? ORDER BY received_ms DESC,id DESC LIMIT ?)`, accountID, deviceID, id, accountID, deviceID, id, ClientUploadsPerDevice-1); err != nil {
 		return out, err
 	}
-	if _, err = tx.ExecContext(ctx, `DELETE FROM client_log_uploads WHERE id NOT IN (SELECT id FROM client_log_uploads ORDER BY received_ms DESC,id DESC LIMIT 100)`); err != nil {
+	if _, err = tx.ExecContext(ctx, `DELETE FROM client_log_uploads WHERE id<>? AND id NOT IN (SELECT id FROM client_log_uploads WHERE id<>? ORDER BY received_ms DESC,id DESC LIMIT 99)`, id, id); err != nil {
 		return out, err
 	}
 	if _, err = tx.ExecContext(ctx, `DELETE FROM client_log_daily_usage WHERE day_ms<?`, dayStart-30*24*60*60*1000); err != nil {

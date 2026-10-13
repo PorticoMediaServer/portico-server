@@ -144,9 +144,9 @@ func TestRoleChangeRequiresRevisionAppliesLiveAndRefusesPeers(t *testing.T) {
 	testauth.InsertSession(t, db, "hash", "member", "member-profile", "local", "member", "2099-01-01T00:00:00Z")
 	// An account session held between sign-in and choosing a profile.
 	testauth.InsertSession(t, db, "account-hash", "member", "member-profile", "local", "account", "2099-01-01T00:00:00Z")
-	// A viewer-only device.
+	// A paired playback-only device.
 	testauth.InsertSession(t, db, "viewer-hash", "member", "member-profile", "local", "member", "2099-01-01T00:00:00Z")
-	if _, err := db.Exec(`INSERT INTO authorization_family_grants(family_id,grant_kind) VALUES('fixture-family-viewer-hash','viewer_only')`); err != nil {
+	if _, err := db.Exec(`INSERT INTO authorization_family_grants(family_id,grant_kind) VALUES('fixture-family-viewer-hash','cast_target')`); err != nil {
 		t.Fatal(err)
 	}
 	// A second profile of the same account, which is a member whatever the account is.

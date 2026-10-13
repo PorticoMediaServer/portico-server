@@ -10,13 +10,14 @@ import (
 )
 
 type Watch struct {
-	mu     sync.Mutex
-	timer  *time.Timer
-	idle   time.Duration
-	closed bool
-	cancel context.CancelFunc
-	outer  context.CancelFunc
-	expire context.CancelFunc
+	mu           sync.Mutex
+	timer        *time.Timer
+	idle         time.Duration
+	lastProgress time.Time
+	closed       bool
+	cancel       context.CancelFunc
+	outer        context.CancelFunc
+	expire       context.CancelFunc
 }
 
 // New keeps the parent's cancellation. overall is a safety bound for hostile
@@ -43,11 +44,18 @@ func (w *Watch) Ping() {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	if !w.closed {
+		w.lastProgress = time.Now()
 		if w.timer == nil {
 			w.timer = time.AfterFunc(w.idle, func() {
 				w.mu.Lock()
 				defer w.mu.Unlock()
 				if !w.closed {
+					// Reset cannot stop a callback that has already started and
+					// is waiting for this mutex. Recheck actual byte/work progress.
+					if remaining := time.Until(w.lastProgress.Add(w.idle)); remaining > 0 {
+						w.timer.Reset(remaining)
+						return
+					}
 					w.closed = true
 					w.expire()
 				}

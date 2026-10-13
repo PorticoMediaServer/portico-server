@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/requestinput"
 	"strings"
 	"time"
 	"unicode"
@@ -12,7 +13,7 @@ import (
 )
 
 var ErrLibraryConfigurationConflict = errors.New("library configuration changed; reload before renaming")
-var ErrAdminQuery = errors.New("invalid library management query")
+var ErrAdminQuery = requestinput.New("invalid library management query")
 
 type AdminScope struct {
 	ServerID    string `json:"serverId"`

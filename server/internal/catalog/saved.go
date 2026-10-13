@@ -3,9 +3,9 @@ package catalog
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/personalstate"
+	"portico.local/server/internal/requestinput"
 	"strconv"
 	"time"
 )
@@ -63,7 +63,7 @@ func (s *Service) Saved(r ContentRequest, libraries []string) (ContentEnvelope, 
 	}
 	out := ContentEnvelope{Scope: ContentScope{r.ServerID, "", "mixed", r.View, "", r.ViewerFence}, Navigation: savedNavigation(), Sorts: savedSortOptions(), Filters: []ContentFilter{}, Sections: []ContentSection{}}
 	if r.View != "watchlist" && r.View != "favorites" {
-		return out, errors.New("invalid Saved view")
+		return out, requestinput.New("invalid Saved view")
 	}
 	if r.Sort == "" {
 		r.Sort = "title"
@@ -80,7 +80,7 @@ func (s *Service) Saved(r ContentRequest, libraries []string) (ContentEnvelope, 
 	order, sortOK := savedSorts[r.Sort]
 	filter, filterOK := savedFilters[r.Filter]
 	if !sortOK || !filterOK || (r.Direction != "asc" && r.Direction != "desc") || r.Limit < 1 || r.Limit > 100 || r.Q != "" || r.Category != "" || r.EntityID != "" {
-		return out, errors.New("invalid Saved query")
+		return out, requestinput.New("invalid Saved query")
 	}
 	heading := "My List"
 	flag := "watchlisted"

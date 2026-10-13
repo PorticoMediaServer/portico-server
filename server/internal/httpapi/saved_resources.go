@@ -45,9 +45,7 @@ func (d Dependencies) shareTargetTx(tx *sql.Tx, authority, account, profile stri
 	if authority == "local" {
 		return identity.DirectShareTarget(tx, account, profile)
 	}
-	if authority == "hosted" {
-		return d.Hosted.AllowedTx(identity.Principal{Viewer: identity.Viewer{Authority: authority, AccountID: account, ProfileID: profile}}, "", tx)
-	}
+
 	return errors.New("invalid share authority")
 }
 func (d Dependencies) savedResourceRoutes(mux *http.ServeMux) {
@@ -153,20 +151,19 @@ func (d Dependencies) savedResourceRoutes(mux *http.ServeMux) {
 				failure(w, e)
 				return
 			}
-			// Membership reports per item. An item that is gone or in a library
-			// this viewer cannot read is one outcome, not a rejected batch.
+			// Membership reports per item. Hidden and absent titles have the
+			// same outcome, so a saved list cannot reveal a restricted title.
 			rejected := []catalog.EntryOutcome{}
 			if route.action == "entries" && len(m.AddItemIDs) > 0 {
 				keep := []string{}
 				for _, id := range m.AddItemIDs {
-					var library string
-					if err := d.DB.QueryRowContext(r.Context(), `SELECT cl.library_id FROM catalog_entities e JOIN catalog_libraries cl ON cl.id=e.library_id WHERE e.public_id=pid_blob(?)`, id).Scan(&library); err != nil {
-						rejected = append(rejected, catalog.EntryOutcome{ItemID: id, Code: "not_found"})
-						continue
-					}
-					if err := d.allowedLibrary(r.Context(), p, library); err != nil {
-						rejected = append(rejected, catalog.EntryOutcome{ItemID: id, Code: "unauthorized"})
-						continue
+					if err := d.itemAccess(r.Context(), p, id); err != nil {
+						if errors.Is(err, sql.ErrNoRows) || errors.Is(err, identity.ErrNotVisible) || errors.Is(err, identity.ErrContentRestricted) || errors.Is(err, identity.ErrForbidden) {
+							rejected = append(rejected, catalog.EntryOutcome{ItemID: id, Code: "not_found"})
+							continue
+						}
+						failure(w, err)
+						return
 					}
 					keep = append(keep, id)
 				}
@@ -191,6 +188,9 @@ func (d Dependencies) savedResourceRoutes(mux *http.ServeMux) {
 						return e
 					}
 					if e := d.resourceAuthorize(tx, p, library); e != nil {
+						return e
+					}
+					if _, e := d.playbackAuthorityTx(r.Context(), tx, p, id); e != nil {
 						return e
 					}
 				}

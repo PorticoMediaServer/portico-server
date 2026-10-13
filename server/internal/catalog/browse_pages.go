@@ -24,9 +24,9 @@ import (
 // so a descending page is the ascending run at the mirrored position, read
 // backwards, and one block set serves both directions.
 //
-// A posted query (a filter), or more than one sort, has no blocks: its pages
-// are offsets over its order, costing what the position costs, and its total is
-// counted once per revision (a cursor carries it).
+// A posted query has no position blocks: continuation pages seek to their
+// saved keys. A direct range walks bounded keyset chunks; its total is counted
+// once per revision and carried by its cursor.
 
 // browseRowColumns selects a browseRow over e (catalog_browse_rows) and ce.
 var browseRowColumns = `pid(ce.public_id),e.entity_id,` + compactBrowseKindSQL("e.kind") + `,e.title,e.year,COALESCE(e.added_text,''),e.sort_key,COALESCE(e.duration_max,0),COALESCE(e.rating_max,0)`
@@ -94,6 +94,12 @@ func (p pageShape) positional() bool {
 // browsePage selects the page's rows.
 func (s *Service) browsePage(p pageShape) ([]browseRow, error) {
 	primary, desc := p.primary()
+	if primary.Ordering == -2 {
+		return s.indexedFactPage(p, primary, desc)
+	}
+	if primary.Profile && primary.ID != "forYou" {
+		return s.indexedPersonalPage(p, primary, desc)
+	}
 	if len(p.seekKeys) > 0 && browseKeyedSorts(p.sorts) {
 		if typed, ok := browseKeyValues(p.sorts, p.seekKeys); ok {
 			if anchor, err := strconv.ParseInt(p.seekAnchor, 10, 64); err == nil {
@@ -118,8 +124,11 @@ func (s *Service) browsePage(p pageShape) ([]browseRow, error) {
 	if primary.Profile && len(p.sorts) == 1 {
 		return s.personalPage(p, primary, desc)
 	}
-	args := append(append(append([]any{}, p.args...), p.orderArgs...), p.limit, p.start)
-	return s.queryBrowseRows(`SELECT `+browseRowColumns+` FROM catalog_browse_rows e JOIN catalog_entities ce ON ce.id=e.entity_id WHERE `+p.where+` ORDER BY `+p.order+` LIMIT ? OFFSET ?`, args...)
+	if p.start > 0 && len(p.seekKeys) == 0 {
+		return s.walkIndexedRange(p, func(p pageShape) ([]browseRow, error) { return s.browsePage(p) })
+	}
+	args := append(append(append([]any{}, p.args...), p.orderArgs...), p.limit)
+	return s.queryBrowseRows(`SELECT `+browseRowColumns+` FROM catalog_browse_rows e JOIN catalog_entities ce ON ce.id=e.entity_id WHERE `+p.where+` ORDER BY `+p.order+` LIMIT ?`, args...)
 }
 
 func (s *Service) queryBrowseRows(query string, args ...any) ([]browseRow, error) {

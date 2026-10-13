@@ -282,6 +282,18 @@ func (d *Driver) Recover(ctx context.Context, in dvr.CaptureRequest, cp dvr.Capt
 	if in.OnRetired != nil {
 		in.OnRetired()
 	}
+	// Match Capture's seal/publication protocol: a crash after sealing must
+	// find the exact immutable object in the durable checkpoint, not an old prefix.
+	cp.WriterRetired = true
+	cp.Object, e = writer.Checkpoint()
+	if e != nil {
+		return out, e
+	}
+	if in.Checkpoint != nil {
+		if e = in.Checkpoint(cp); e != nil {
+			return out, e
+		}
+	}
 	out, e = d.validate(ctx, store, writer, root, in, cp)
 	if e == nil {
 		out.Complete = false

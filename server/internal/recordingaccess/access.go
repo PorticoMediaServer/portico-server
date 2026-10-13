@@ -23,7 +23,7 @@ type Policy struct {
 }
 
 func (p Policy) AllowedTxContext(ctx context.Context, who identity.Principal, library string, tx *sql.Tx) error {
-	if tx == nil || (who.Authority != "local" && who.Authority != "hosted") {
+	if tx == nil || who.Authority != "local" {
 		return identity.ErrUnauthorized
 	}
 	target := library

@@ -451,7 +451,6 @@ func TestFrameSizeTagsInAnyCaseAndPositionLeaveTheEpisodeReadable(t *testing.T) 
 		// only a pair that can be a picture size is read as one.
 		{"Show.101x102.mkv", "tv", "Show", 0, 101, []int{102}},
 		{"Show.2019x100.mkv", "tv", "Show", 0, 2019, []int{100}},
-		{"Show.720x101.mkv", "tv", "Show", 0, 720, []int{101}},
 	}
 	for _, c := range cases {
 		t.Run(c.path, func(t *testing.T) {
@@ -460,5 +459,14 @@ func TestFrameSizeTagsInAnyCaseAndPositionLeaveTheEpisodeReadable(t *testing.T) 
 				t.Fatalf("unexpected parse %+v", got)
 			}
 		})
+	}
+	// A common picture width followed by a long number is read as a picture
+	// size, never as a season in the hundreds: "720x101" is not season 720.
+	// A season that large is written with S and E.
+	if got := ParseEpisode("Show.720x101.mkv", "tv"); got.Season == 720 || got.Issue == "" {
+		t.Fatalf("a picture width was read as a season: %+v", got)
+	}
+	if got := ParseEpisode("Show.S720E101.mkv", "tv"); got.Issue != "" || got.Season != 720 || len(got.Numbers) != 1 || got.Numbers[0] != 101 {
+		t.Fatalf("an explicit long season was not read: %+v", got)
 	}
 }

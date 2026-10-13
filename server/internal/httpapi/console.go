@@ -21,6 +21,12 @@ func (d Dependencies) consoleAuthority(p identity.Principal, owner bool) operati
 	return func(ctx context.Context, tx *sql.Tx, item string) error {
 		current, e := d.playbackAuthorityTx(ctx, tx, p, item)
 		if e != nil {
+			// A title outside this profile's limits is answered exactly as a
+			// title that does not exist: a report about it, or a question
+			// about it, must not be a way to learn that it is there.
+			if item != "" && errors.Is(e, identity.ErrContentRestricted) {
+				return identity.ErrNotVisible
+			}
 			return e
 		}
 		if owner {

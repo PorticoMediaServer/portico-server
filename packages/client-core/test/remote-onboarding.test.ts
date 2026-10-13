@@ -18,10 +18,12 @@ function document(urls=['http://192.168.1.8:32500'],generation='1',issued=Date.n
  return {kind:'portico.routes',version:'1',algorithm:'Ed25519',keyId:key.keyId,audience:'account',...pin,name:'Media server',policyRevision:1,claimGeneration:'1',credentialGeneration:'1',generation,issuedAt:new Date(issued).toISOString(),expiresAt:new Date(issued+45*60000).toISOString(),candidates:urls.map(baseUrl=>({baseUrl,generation,class:baseUrl.startsWith('http:')?'lan':'public',quality:baseUrl.startsWith('http:')?'probe_required':'reachable'}))};
 }
 async function routes(urls?:string[],generation?:string){return verifyRoutes({...signed(document(urls,generation)),keyId:key.keyId},key,{accountId:'account',serverId:pin.serverId});}
-test('route origins require private plaintext and canonical IP syntax',()=>{
+test('route origins accept plaintext at any address and require canonical IP syntax',()=>{
  assert.equal(routeOrigin('https://media.example:443/'),'https://media.example');
  assert.equal(routeOrigin('http://192.168.1.8:80'),'http://192.168.1.8');
- for(const value of ['http://public.example','http://100.64.2.1','http://0x7f000001','http://2130706433','https://x.example/a','https://x.example?token=secret','https://a:b@x.example'])assert.throws(()=>routeOrigin(value),value);
+ assert.equal(routeOrigin('http://public.example'),'http://public.example');
+ assert.equal(routeOrigin('http://100.64.2.1'),'http://100.64.2.1');
+ for(const value of ['http://0x7f000001','http://2130706433','https://x.example/a','https://x.example?token=secret','https://a:b@x.example'])assert.throws(()=>routeOrigin(value),value);
 });
 test('actual Hosted signed-policy wrapper keyId is accepted; authoritative pin is derived',async()=>{
  assert.deepEqual(await serverPin(pin.serverId,publicKey,pin.fingerprint),pin);

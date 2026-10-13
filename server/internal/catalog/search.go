@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"portico.local/server/internal/requestinput"
 	"portico.local/server/internal/supervise"
 	"sort"
 	"strconv"
@@ -25,7 +26,7 @@ import (
 // slow or missing projection must never take the other groups down with it.
 const SearchGroupBudget = 600 * time.Millisecond
 
-var ErrSearchQuery = errors.New("search requires 1–128 characters and 1–8 title tokens; limit is 1–40")
+var ErrSearchQuery = requestinput.New("search requires 1–128 characters and 1–8 title tokens; limit is 1–40")
 
 type searchGroupDefinition struct {
 	id, kind, label, view, source string

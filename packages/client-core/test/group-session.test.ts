@@ -416,3 +416,13 @@ test('a host whose player reaches the end pauses the group once and clamps its t
  assert.equal(follower.target(),60);assert.equal(s.calls.filter(c=>c.path.endsWith('/readiness')&&c.body.ended).length,1);
  assert(!local.log.some(x=>x.startsWith('seek')));service.dispose();
 });
+
+for (const latency of [1200, 2000, 5000, 12000, 19000]) test(`native follower converges with ${latency} ms seeks and no rate adjustment`, async t => {
+ const {service,clock}=await room(t);
+ const slow=slowPlayer(()=>clock.now,{latency,says:'seeking',duration:7200});
+ const follower=new GroupFollower(service,slow.p,()=>clock.now);
+ const {restarted,drift}=run(follower,slow,clock,120);
+ assert.equal(restarted,0,'never supersede a pending correction');
+ assert.ok(slow.log.length<=3,`correction loop: ${slow.log.length} seeks`);
+ assert.ok(Math.abs(drift.at(-1)!)<0.75,`did not settle: ${drift.at(-1)} seconds`);
+});

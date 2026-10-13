@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"portico.local/server/internal/requestinput"
 
 	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/dbwork"
@@ -18,7 +19,7 @@ import (
 
 // ErrNotMergeable: the two entities are not the same kind of thing in the
 // same library, so they cannot be one title.
-var ErrNotMergeable = errors.New("titles of different kinds or libraries cannot be merged")
+var ErrNotMergeable = requestinput.New("titles of different kinds or libraries cannot be merged")
 
 // MergeTitlesTx makes from part of into and removes from. Both must be of one
 // kind in one library. A show takes the other show's seasons and episodes

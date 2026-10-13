@@ -10,6 +10,13 @@ import (
 )
 
 func init() {
+	sqlite.MustRegisterDeterministicScalarFunction("portico_fold_text", 1, func(_ *sqlite.FunctionContext, args []driver.Value) (driver.Value, error) {
+		if args[0] == nil {
+			return nil, nil
+		}
+		value, _ := args[0].(string)
+		return sorttext.Fold(value), nil
+	})
 	sqlite.MustRegisterDeterministicScalarFunction("portico_search_text", 1, func(_ *sqlite.FunctionContext, args []driver.Value) (driver.Value, error) {
 		value, _ := args[0].(string)
 		return facettext.SearchDocument(value), nil

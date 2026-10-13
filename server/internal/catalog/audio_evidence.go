@@ -319,22 +319,26 @@ func audioProjection(tx *sql.Tx, library string, item int64, f assets.Facts) (as
 // A selected provider release and a physical/local edition are independent.
 // Do not combine two named editions merely because their titles are identical.
 func audioEdition(tags map[string]string) string {
-	return localKey(tags["edition"] + "|" + tags["musicbrainz_albumid"] + "|" + tags["barcode"] + "|" + tags["catalognumber"])
+	key, _ := json.Marshal([]string{localKey(tags["edition"]), localKey(tags["musicbrainz_albumid"]), localKey(tags["barcode"]), localKey(tags["catalognumber"])})
+	return string(key)
 }
+
+const emptyAudioEdition = `["","","",""]`
+
 func localEditionCompatible(tx *sql.Tx, album int64, edition string) (bool, error) {
 	var old string
 	e := tx.QueryRow(`SELECT edition_key FROM catalog_albums WHERE entity_id=?`, album).Scan(&old)
 	if errors.Is(e, sql.ErrNoRows) {
 		return true, nil
 	}
-	return old == edition || edition == "|||", e
+	return old == edition || edition == emptyAudioEdition, e
 }
 
 // Unknown fields may be enriched within one physical album, but two different
 // known editions are never reconciled by title alone.
 func mergeLocalEdition(a, b string) (string, bool) {
-	left, right := strings.Split(a, "|"), strings.Split(b, "|")
-	if len(left) != 4 || len(right) != 4 {
+	var left, right []string
+	if json.Unmarshal([]byte(a), &left) != nil || json.Unmarshal([]byte(b), &right) != nil || len(left) != 4 || len(right) != 4 {
 		return "", false
 	}
 	for i := range left {
@@ -345,5 +349,6 @@ func mergeLocalEdition(a, b string) (string, bool) {
 			left[i] = right[i]
 		}
 	}
-	return strings.Join(left, "|"), true
+	merged, _ := json.Marshal(left)
+	return string(merged), true
 }

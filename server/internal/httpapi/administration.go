@@ -57,7 +57,7 @@ func administrationFailure(w http.ResponseWriter, err error) {
 		status, code, message = 415, "unsupported_image", "Upload a JPEG, PNG or WebP image no larger than 10 MiB."
 	case errors.Is(err, administration.ErrBusy):
 		status, code, retryable = 409, "administration_busy", true
-	case errors.Is(err, administration.ErrUnavailable):
+	case errors.Is(err, context.DeadlineExceeded), errors.Is(err, context.Canceled), errors.Is(err, administration.ErrUnavailable):
 		status, code, retryable = 503, "administration_unavailable", true
 	case errors.Is(err, administration.ErrInput):
 		status, code, message, retryable = 400, "invalid_administration_input", publicErrorMessage("invalid_administration_input"), false

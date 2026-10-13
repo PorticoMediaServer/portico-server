@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"portico.local/server/internal/requestinput"
 	"strconv"
 	"time"
 
@@ -13,7 +14,7 @@ import (
 )
 
 var ErrRepairConflict = errors.New("metadata changed; reload and review your decision")
-var ErrRepairInput = errors.New("invalid metadata repair")
+var ErrRepairInput = requestinput.New("invalid metadata repair")
 
 type RepairTarget struct {
 	Kind string `json:"kind"`

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"portico.local/server/internal/requestinput"
 	"strings"
 	"time"
 
@@ -167,7 +168,7 @@ func (s *Service) MusicBrainzState(kind, id string) (MBState, error) {
 }
 func (s *Service) SelectMusicBrainz(kind, id string, m MBSelection, authorize func(*sql.Tx) error) error {
 	if !mbIdentifier.MatchString(m.ProviderID) || m.ExpectedRevision < 1 || m.Actor.Authority == "" || m.Actor.AccountID == "" || m.Actor.ProfileID == "" {
-		return errors.New("observed providerId and expectedRevision are required")
+		return requestinput.New("observed providerId and expectedRevision are required")
 	}
 	gated2, e := dbwork.Begin(context.Background(), s.db, dbwork.ClassBackgroundMedia)
 	if e != nil {
@@ -210,7 +211,7 @@ func (s *Service) selectMusicBrainzTx(tx *sql.Tx, kind, id string, m MBSelection
 	var e error
 
 	if !mbIdentifier.MatchString(m.ProviderID) || m.ExpectedRevision < 1 || m.Actor.Authority == "" || m.Actor.AccountID == "" || m.Actor.ProfileID == "" {
-		return errors.New("observed providerId and expectedRevision are required")
+		return requestinput.New("observed providerId and expectedRevision are required")
 	}
 	entity, e := entityid.Resolve(context.Background(), tx, id)
 	if e != nil {
@@ -229,7 +230,7 @@ func (s *Service) selectMusicBrainzTx(tx *sql.Tx, kind, id string, m MBSelection
 	m.ProviderID = strings.ToLower(m.ProviderID)
 	var queryDigest string
 	if e = tx.QueryRow(`SELECT query_digest FROM mb_candidates WHERE kind=? AND entity_id=? AND provider_id=?`, kind, entity, m.ProviderID).Scan(&queryDigest); e != nil {
-		return errors.New("select an observed MusicBrainz candidate")
+		return requestinput.New("select an observed MusicBrainz candidate")
 	}
 	base, e := readMBBase(context.Background(), tx, kind, id)
 	if e != nil {
@@ -294,7 +295,7 @@ func (s *Service) RetryMusicBrainz(kind, id string, revision int64, authorize fu
 		return ErrMBConflict
 	}
 	if status != "unavailable" && status != "unresolved" && status != "needs_selection" {
-		return errors.New("retry requires an unresolved or failed job")
+		return requestinput.New("retry requires an unresolved or failed job")
 	}
 	if _, e = tx.Exec(`UPDATE mb_jobs SET status='pending',attempts=0,next_attempt='',error='',revision=revision+1,generation=generation+1,lease='',lease_until='' WHERE kind=? AND entity_id=?`, kind, entity); e != nil {
 		return e

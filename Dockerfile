@@ -27,7 +27,7 @@
 #    (server/internal/mediaexec). PORTICO_DECODER_SANDBOX=required
 #    makes media jobs fail instead; =off skips the sandbox.
 
-FROM node:24-bookworm AS web
+FROM node:24-bookworm@sha256:3d27e5c11e5786e309ec3e03f93ae536eb36e6e5eb3714d5eb3300a36157add0 AS web
 WORKDIR /src
 COPY package.json package-lock.json ./
 COPY web ./web
@@ -51,7 +51,7 @@ WORKDIR /src/web
 RUN node --input-type=module -e "import {build} from 'vite'; await build({build:{outDir:'/out/web',sourcemap:false}})"
 RUN cp /out/portico-build.json /out/web/portico-build.json
 
-FROM golang:1.26-bookworm AS build
+FROM golang:1.26-bookworm@sha256:d9c68c2c51161e12fd77e4c6320687c9cd86e1af1e3ad6e6cd63ff970641453c AS build
 WORKDIR /src/server
 COPY trust/hosted-root-public-key.pem /identity/root-public-key.pem
 COPY scripts/inspect-hosted-root.go /identity/inspect-hosted-root.go
@@ -69,7 +69,7 @@ RUN ROOT_KEY=$(go run /identity/inspect-hosted-root.go /identity/root-public-key
 # takes its own. A single-architecture build may instead place the native
 # bundle directly in third_party/ffmpeg/bundle. Either way the final stage
 # verifies what it was given before the image is finished.
-FROM debian:bookworm-slim AS ffmpeg
+FROM debian:bookworm-slim@sha256:7c7b2c966bc9ee8cedfeef67e0e279108992c77681fa595db4a9d65c06ccc587 AS ffmpeg
 RUN apt-get update && apt-get install --yes --no-install-recommends python3 bash && rm -rf /var/lib/apt/lists/*
 ARG TARGETOS
 ARG TARGETARCH
@@ -79,7 +79,7 @@ RUN if [ -d "/bundle/${TARGETOS}-${TARGETARCH}" ]; then mv "/bundle/${TARGETOS}-
 COPY scripts/verify-ffmpeg-manifest.py scripts/verify-ffmpeg-bundle.sh /tmp/
 RUN bash /tmp/verify-ffmpeg-bundle.sh /ffmpeg full
 
-FROM debian:bookworm-slim
+FROM debian:bookworm-slim@sha256:7c7b2c966bc9ee8cedfeef67e0e279108992c77681fa595db4a9d65c06ccc587
 ARG TARGETARCH
 RUN apt-get update \
  && apt-get install --yes --no-install-recommends bubblewrap ca-certificates tini tzdata libva2 libva-drm2 mesa-va-drivers \

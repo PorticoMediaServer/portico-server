@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"portico.local/server/internal/requestinput"
 
 	"golang.org/x/text/language"
 )
@@ -78,15 +79,15 @@ func ApplyAdministrationPolicyTx(ctx context.Context, tx *sql.Tx, library, kind 
 			return err
 		}
 		if p.Region != "" && (len(p.Region) != 2 || p.Region[0] < 'A' || p.Region[0] > 'Z' || p.Region[1] < 'A' || p.Region[1] > 'Z') {
-			return errors.New("invalid metadata region")
+			return requestinput.New("invalid metadata region")
 		}
 		if len(p.Providers) > 1 {
-			return errors.New("choose one metadata provider for a library")
+			return requestinput.New("choose one metadata provider for a library")
 		}
 		seen := map[string]bool{}
 		for _, provider := range p.Providers {
 			if seen[provider] || (provider != "tmdb" && provider != "tvdb" && (provider != "anilist" || kind != "anime")) {
-				return errors.New("unsupported library provider")
+				return requestinput.New("unsupported library provider")
 			}
 			seen[provider] = true
 		}
@@ -111,13 +112,13 @@ func ApplyAdministrationPolicyTx(ctx context.Context, tx *sql.Tx, library, kind 
 	}
 	if kind == "music" || kind == "audiobook" {
 		if p.Language != "" || p.Region != "" || len(p.Providers) > 1 || (len(p.Providers) == 1 && p.Providers[0] != "musicbrainz") {
-			return errors.New("unsupported music metadata setting")
+			return requestinput.New("unsupported music metadata setting")
 		}
 		enabled := len(p.Providers) == 1
 		// MusicBrainz has an existing independent opt-in. This general settings
 		// page can disable it; enabling needs that domain's explicit consent flow.
 		if enabled && !old.Consent {
-			return errors.New("MusicBrainz consent required")
+			return requestinput.New("MusicBrainz consent required")
 		}
 		if _, err = tx.ExecContext(ctx, `UPDATE audio_metadata_policies SET revision=revision+1 WHERE library_id=?`, library); err != nil {
 			return err

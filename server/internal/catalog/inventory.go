@@ -242,6 +242,15 @@ func (s *Service) CommitInventoryPage(ctx context.Context, job, relative, cursor
 	return gated.Commit()
 }
 func (s *Service) observeInventoryTx(ctx context.Context, tx *sql.Tx, job string, source LibrarySource, relative string, v storage.Snapshot, reason string, policy ScanPolicy) (bool, error) {
+	var removed bool
+	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM inventory_scan_issues WHERE job_id=? AND relative_path=? AND reason='reported_file_removed')`, job, relative).Scan(&removed); err != nil {
+		return false, err
+	}
+	if removed {
+		// A later run owns reappearance; this run may be replaying a page read
+		// before the exact reported removal was committed.
+		return false, nil
+	}
 	if source.Kind == "remote" {
 		if s.storage == nil || !s.storage.IsRemote(v.Path) {
 			return false, storage.ErrRemoteConfig

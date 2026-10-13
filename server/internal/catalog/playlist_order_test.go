@@ -223,8 +223,8 @@ func TestPlaylistOrderWindowsBeyondThousand(t *testing.T) {
 	if e = db.QueryRow(`SELECT order_key FROM catalog_playlist_entries WHERE token=?`, entryIDs[1]).Scan(&unchanged); e != nil || unchanged != original {
 		t.Fatal("rewrote unselected entry", unchanged, e)
 	}
-	if _, e = s.PlaylistOrder("s", "f", r.PlaylistID, a, nil, PlaylistOrderWindow{Limit: 1, Cursor: first.NextCursor}); !errors.Is(e, ErrStaleContinuation) {
-		t.Fatal("stale cursor accepted", e)
+	if _, e = s.PlaylistOrder("s", "f", r.PlaylistID, a, nil, PlaylistOrderWindow{Limit: 1, Cursor: first.NextCursor}); e != nil {
+		t.Fatal("cursor did not continue after publication", e)
 	}
 }
 

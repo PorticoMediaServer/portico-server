@@ -19,7 +19,14 @@ func scanLoopError(err error) error {
 		return &apierror.Error{Code: "revision_mismatch", Cause: err}
 	case errors.Is(err, administration.ErrIdempotencyKeyReused):
 		return &apierror.Error{Code: "idempotency_key_reused", Cause: err}
-	case errors.Is(err, administration.ErrInput), errors.Is(err, catalog.ErrAdminQuery), errors.As(err, &invalid):
+	case errors.As(err, &invalid):
+		// A refused value is named, so the owner (or a script) knows which one.
+		out := &apierror.Error{Code: "invalid_request", Cause: err}
+		for _, name := range invalid.Fields {
+			out.Fields = append(out.Fields, apierror.Field{Path: name, Code: "invalid", Message: "Check this value."})
+		}
+		return out
+	case errors.Is(err, administration.ErrInput), errors.Is(err, catalog.ErrAdminQuery):
 		return &apierror.Error{Code: "invalid_request", Cause: err}
 	case errors.Is(err, administration.ErrDenied):
 		return &apierror.Error{Code: "not_permitted", Cause: err}

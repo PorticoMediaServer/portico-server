@@ -23,3 +23,19 @@ node packages/contracts/scripts/sync-hosted.mjs <hosted-generated-contract-direc
 ```
 
 This reads the Hosted artifacts and applies the same shared builder template; it writes only the local contract package. The local server generator does not describe Hosted endpoints.
+
+This is a prerelease API with no compatibility promise. The current public
+routes use `/v1`; the former `/v2` playback model has been removed. There are no
+legacy sign-in shortcuts to preserve. Library and content screens are composed
+by the server. Tools can use the additional bounded title query.
+
+The cursor, precondition and idempotency packages in `apikit` are optional tools,
+not global runtime guarantees. Catalogue cursors use a database-held signing key,
+retain their traversal position across expiry/revisions and recompute cached totals.
+Mutation families implement their own typed revision checks and replay receipts;
+the generated route contract describes the accepted fields for each operation.
+
+The SQL preparation check covers complete literal statements, including concatenated
+literals. Runtime query constructors require their owning package's semantic and
+query-plan tests; a passing literal check does not establish every generated shape
+or every query's scaling behavior.

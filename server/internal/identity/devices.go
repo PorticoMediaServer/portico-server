@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net"
 	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/requestinput"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -13,7 +14,7 @@ import (
 	"portico.local/server/internal/persistence"
 )
 
-var ErrDeviceInput = errors.New("invalid device record")
+var ErrDeviceInput = requestinput.New("invalid device record")
 var ErrDeviceUnknown = errors.New("This device is not registered on this account.")
 var ErrDevicePending = errors.New("This device is waiting for the account owner to approve it.")
 var ErrDeviceDenied = errors.New("The account owner refused this device.")
@@ -43,7 +44,7 @@ const (
 // validInstallationID is stricter than validFamilyID. An installation id is the
 // only thing standing between a stranger and the unauthenticated remembered-account
 // list, so it must actually be a secret: at least 32 characters of the token
-// alphabet, which is what a client that generated 256 random bits produces. A
+// alphabet. This validates grammar and length, not randomness or entropy. A
 // short, guessable id is refused rather than quietly accepted.
 func validInstallationID(v string) bool { return len(v) >= 32 && validFamilyID(v) }
 
@@ -316,7 +317,7 @@ func (s *Service) Devices(ctx context.Context, bearer, _ string) ([]Device, erro
 	}
 	tx := gated3.Tx()
 	defer gated3.Rollback()
-	c, e := s.deviceCallerTx(ctx, tx, bearer, false)
+	c, e := s.deviceCallerTx(ctx, tx, bearer, true)
 	if e != nil {
 		return nil, e
 	}
@@ -366,7 +367,7 @@ func (s *Service) EditDevice(ctx context.Context, bearer, id string, q DeviceEdi
 	}
 	tx := gated4.Tx()
 	defer gated4.Rollback()
-	c, e := s.deviceCallerTx(ctx, tx, bearer, false)
+	c, e := s.deviceCallerTx(ctx, tx, bearer, true)
 	if e != nil {
 		return Device{}, e
 	}

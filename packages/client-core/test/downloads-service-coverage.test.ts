@@ -15,7 +15,7 @@ const preparation = (over: Record<string, unknown> = {}): any => ({
 });
 const optionsDoc = {
   itemId: 'item', kind: 'movie',
-  source: {container: 'mp4', videoCodec: 'h264', audioCodec: 'aac', height: 1080, durationSeconds: 5400, bytes: 8000000000, available: true},
+  source: {container: 'mp4', videoCodec: 'h264', audioCodec: 'aac', height: 1080, durationMs: 5400000, bytes: 8000000000, available: true},
   options: [
     {quality: 'original', label: 'Original', kind: 'source', targetDisplayHeight: 1080, estimatedBytes: 8000000000, estimated: false, available: true, reason: '', requiresPreparation: false},
   ],

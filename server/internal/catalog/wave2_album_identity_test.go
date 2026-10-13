@@ -58,10 +58,18 @@ func TestWave2PhysicalAlbumEnrichesMissingEditionWithoutMergingConflicts(t *test
 			if err = db.QueryRow(`SELECT count(*) FROM catalog_albums`).Scan(&n); err != nil || n != 1 {
 				t.Fatal("missing tags split physical album", n, err)
 			}
+			// A different known release in the same folder is a different
+			// album. The same release in another folder is the same album: a
+			// release identifier outranks the folder, so a multi-disc set kept
+			// in two folders stays one album.
 			add("three", "Album", "22222222-2222-2222-2222-222222222222")
 			add("four", "Other", release)
-			if err = db.QueryRow(`SELECT count(*) FROM catalog_albums`).Scan(&n); err != nil || n != 3 {
-				t.Fatal("conflicting edition or independent folder merged", n, err)
+			if err = db.QueryRow(`SELECT count(*) FROM catalog_albums`).Scan(&n); err != nil || n != 2 {
+				t.Fatal("conflicting release IDs merged or the same release split across folders", n, err)
+			}
+			var largest, smallest int
+			if err = db.QueryRow(`SELECT max(n),min(n) FROM (SELECT count(*) n FROM catalog_songs GROUP BY album_id)`).Scan(&largest, &smallest); err != nil || largest != 3 || smallest != 1 {
+				t.Fatal("the tracks of one release are not together, apart from the other release", largest, smallest, err)
 			}
 		})
 	}

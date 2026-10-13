@@ -128,6 +128,9 @@ func (w *Watchdog) probe(ctx context.Context, statement bool) {
 	}
 	cancel()
 	elapsed := time.Since(start)
+	if err == nil {
+		err = WriteGate().StuckHolder(StuckWait)
+	}
 
 	w.mu.Lock()
 	w.lastProbe = elapsed

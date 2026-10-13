@@ -120,7 +120,9 @@ func RecSignalFor(ctx context.Context, q Querier, profile string, work int64, no
 		s.Weight += 2
 	}
 	if rating.Valid {
-		s.Weight += (rating.Float64 - 3) * 0.8
+		// Ratings are kept from 0 to 10, two points to a star: three stars
+		// says nothing, five stars adds 1.6, one star takes 1.6 away.
+		s.Weight += (rating.Float64/2 - 3) * 0.8
 	}
 	if watchlisted == 1 {
 		s.Weight += 0.5

@@ -48,7 +48,7 @@ func (s *Service) IssueTopShelfToken(ctx context.Context, p Principal, installat
 	if _, e = s.SessionFamilyTx(ctx, tx, p); e != nil {
 		return TopShelfGrant{}, e
 	}
-	if p.Authority != "local" && p.Authority != "hosted" {
+	if p.Authority != "local" {
 		return TopShelfGrant{}, ErrDeviceInput
 	}
 	device, e := s.deviceTx(ctx, tx, p.Authority, p.AccountID, installation, "")
@@ -110,20 +110,9 @@ func (s *Service) TopShelfGrant(ctx context.Context, token string) (TopShelfGran
 // topShelfViewerTx re-derives the viewer a feed token stands for, so nothing about it is
 // carried in the token itself.
 //
-// A local account is read from this server's own account and profile tables. A Portico Account
-// is read from its live viewing families here on this server — no call to Hosted Services, and
-// no cached copy of anything: the family is what the policy already wrote, and when the account
-// service removes the member their families are revoked, which takes the feed away with them.
+// The account and profile are re-read from the local identity tables.
 func (s *Service) topShelfViewerTx(ctx context.Context, tx *sql.Tx, authority, account, profile string) (string, int, error) {
-	if authority == "hosted" {
-		var role string
-		var epoch int
-		e := tx.QueryRowContext(ctx, `SELECT role,epoch FROM authorization_session_families WHERE authority='hosted' AND account_id=? AND profile_id=? AND revoked=0 ORDER BY epoch DESC LIMIT 1`, account, profile).Scan(&role, &epoch)
-		if e != nil {
-			return "", 0, e
-		}
-		return role, epoch, nil
-	}
+
 	c, e := s.directAccountTx(ctx, tx, account)
 	if e != nil {
 		return "", 0, e

@@ -8,6 +8,7 @@ import {routePath} from "../../contracts/src/routes.ts";
 import type {CatalogueFailure} from './freshness.ts';
 import {keepReadable} from './tolerant.ts';
 import {unreadableServerResponse} from './server-messages.ts';
+import {wireInstants} from './wire-units.ts';
 
 export type CatalogueFailures = Readonly<{failures: readonly CatalogueFailure[]; /** The server holds more than the latest it lists. */ more: boolean}>;
 const obj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
@@ -16,7 +17,8 @@ const count = (v: unknown): v is number => typeof v === 'number' && Number.isSaf
 
 export function parseCatalogueFailures(raw: unknown): CatalogueFailures {
   if (!obj(raw) || !Array.isArray(raw.failures) || raw.failures.length > 200) throw new Error(unreadableServerResponse);
-  const failures = keepReadable('catalogue-failures', 'failures', raw.failures, (v): CatalogueFailure => {
+  const failures = keepReadable('catalogue-failures', 'failures', raw.failures, (value): CatalogueFailure => {
+    const v = wireInstants(value, ['failedAt']);
     if (!obj(v) || !count(v.domain) || !text(v.reason, 2048) || !count(v.attempts) || !count(v.failedAt) || (v.entityId !== undefined && !text(v.entityId, 256)) || (v.title !== undefined && !text(v.title, 2048))) throw new Error(unreadableServerResponse);
     return Object.freeze({domain: v.domain, reason: v.reason, attempts: v.attempts, failedAt: v.failedAt, ...(v.entityId ? {entityId: v.entityId as string} : {}), ...(v.title ? {title: v.title as string} : {})});
   });

@@ -6,6 +6,12 @@ import (
 )
 
 func buildAudioTarget(t ConversionTarget, downmix bool, facts *ToolchainFacts) ([]string, error) {
+	if t.AudioChannels != 1 && t.AudioChannels != 2 && t.AudioChannels != 6 && t.AudioChannels != 8 {
+		return nil, ErrInvalidConfiguration
+	}
+	if t.AudioChannelLayout != map[int]string{1: "mono", 2: "stereo", 6: "5.1", 8: "7.1"}[t.AudioChannels] && !(t.AudioChannels == 6 && t.AudioChannelLayout == "5.1(side)") {
+		return nil, ErrInvalidConfiguration
+	}
 	codec := t.AudioCodec
 	encoder := codec
 	if codec == "opus" {

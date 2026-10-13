@@ -114,7 +114,8 @@ export const routes = [
       "invalid_request",
       "revision_mismatch",
       "request_in_progress",
-      "internal"
+      "internal",
+      "revision_required"
     ],
     "status": 200,
     "admission": "admin"
@@ -136,7 +137,8 @@ export const routes = [
       "revision_mismatch",
       "idempotency_key_reused",
       "rate_limited",
-      "internal"
+      "internal",
+      "revision_required"
     ],
     "status": 200,
     "admission": "admin"
@@ -165,6 +167,25 @@ export const routes = [
     ],
     "status": 200,
     "admission": "playback"
+  },
+  {
+    "id": "clear_playback_failure_memory",
+    "method": "DELETE",
+    "path": "/v1/admin/playback/route-failures/{sourceId}",
+    "summary": "Forget remembered failures for a media file",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "invalid_request",
+      "internal"
+    ],
+    "status": 204,
+    "admission": "admin"
   },
   {
     "id": "commit_queue_next",
@@ -636,7 +657,8 @@ export const routes = [
       "invalid_request",
       "not_found",
       "revision_mismatch",
-      "internal"
+      "internal",
+      "revision_required"
     ],
     "status": 204,
     "admission": "security-fence"
@@ -7723,6 +7745,24 @@ export const routes = [
     "admission": "admin"
   },
   {
+    "id": "list_playback_failure_memory",
+    "method": "GET",
+    "path": "/v1/admin/playback/route-failures",
+    "summary": "Read active remembered playback failures",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "internal"
+    ],
+    "status": 200,
+    "admission": "admin"
+  },
+  {
     "id": "list_queue_entries",
     "method": "GET",
     "path": "/v1/queues/{id}/entries",
@@ -8287,6 +8327,7 @@ export const routes = [
     "errors": [
       "unauthorized",
       "invalid_request",
+      "request_in_progress",
       "insufficient_disk",
       "administration_unavailable",
       "internal"
@@ -11531,7 +11572,8 @@ export const routes = [
       "invalid_request",
       "not_found",
       "revision_mismatch",
-      "internal"
+      "internal",
+      "revision_required"
     ],
     "status": 200,
     "admission": "security-fence"
@@ -11786,7 +11828,8 @@ export const routes = [
       "not_found",
       "request_in_progress",
       "administration_unavailable",
-      "internal"
+      "internal",
+      "revision_required"
     ],
     "status": 200,
     "admission": "admin"
@@ -11870,7 +11913,8 @@ export const routes = [
       "not_permitted",
       "invalid_request",
       "revision_mismatch",
-      "internal"
+      "internal",
+      "revision_required"
     ],
     "status": 200,
     "admission": "security-fence"
@@ -11938,7 +11982,8 @@ export const routes = [
       "not_found",
       "downloads_not_allowed",
       "downloads_unavailable",
-      "internal"
+      "internal",
+      "revision_required"
     ],
     "status": 200,
     "admission": "default"
@@ -12236,7 +12281,8 @@ export const routes = [
       "invalid_request",
       "revision_mismatch",
       "idempotency_key_reused",
-      "internal"
+      "internal",
+      "revision_required"
     ],
     "status": 200,
     "admission": "admin"
@@ -12319,7 +12365,8 @@ export const routes = [
       "not_permitted",
       "invalid_request",
       "revision_mismatch",
-      "internal"
+      "internal",
+      "revision_required"
     ],
     "status": 200,
     "admission": "admin"
@@ -12672,7 +12719,8 @@ export const routes = [
       "not_permitted",
       "not_found",
       "invalid_request",
-      "internal"
+      "internal",
+      "revision_required"
     ],
     "status": 202,
     "admission": "admin"
@@ -12718,7 +12766,8 @@ export const routes = [
       "revision_mismatch",
       "idempotency_key_reused",
       "rate_limited",
-      "internal"
+      "internal",
+      "revision_required"
     ],
     "status": 200,
     "admission": "default"
@@ -13010,7 +13059,8 @@ export const routes = [
       "idempotency_key_reused",
       "revision_mismatch",
       "rate_limited",
-      "internal"
+      "internal",
+      "revision_required"
     ],
     "status": 200,
     "admission": "default"
@@ -13038,7 +13088,8 @@ export const routes = [
       "source_network_policy",
       "source_credentials_required",
       "source_unavailable",
-      "internal"
+      "internal",
+      "revision_required"
     ],
     "status": 200,
     "admission": "admin"
@@ -13066,7 +13117,8 @@ export const routes = [
       "source_network_policy",
       "source_credentials_required",
       "source_unavailable",
-      "internal"
+      "internal",
+      "revision_required"
     ],
     "status": 200,
     "admission": "admin"
@@ -15532,6 +15584,7 @@ export const routePaths = {
   "change_connectivity_policy": "/v1/admin/connectivity/policy",
   "change_console_settings": "/v1/admin/console/settings",
   "change_playback_session": "/v1/playback/sessions/{id}",
+  "clear_playback_failure_memory": "/v1/admin/playback/route-failures/{sourceId}",
   "commit_queue_next": "/v1/queues/{id}:commit-next",
   "control_admin_session": "/v1/admin/sessions/{id}/controls",
   "create_access_token": "/v1/me/access-tokens",
@@ -15855,6 +15908,7 @@ export const routePaths = {
   "list_live_sources": "/v1/admin/live-sources",
   "list_member_access_tokens": "/v1/admin/access-tokens",
   "list_missing_titles": "/v1/admin/missing-titles",
+  "list_playback_failure_memory": "/v1/admin/playback/route-failures",
   "list_queue_entries": "/v1/queues/{id}/entries",
   "list_webhook_deliveries": "/v1/admin/webhooks/{id}/deliveries",
   "list_webhooks": "/v1/admin/webhooks",

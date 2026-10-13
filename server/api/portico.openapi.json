@@ -1947,6 +1947,11 @@
                 },
                 "field": {
                   "type": "string"
+                },
+                "seed": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
                 }
               },
               "required": [
@@ -2042,6 +2047,11 @@
                     },
                     "field": {
                       "type": "string"
+                    },
+                    "seed": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
                     }
                   },
                   "required": [
@@ -4608,6 +4618,16 @@
           "lease",
           "presentation"
         ],
+        "type": "object"
+      },
+      "ClearPlaybackFailureMemoryRequest": {
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
+      "ClearPlaybackFailureMemoryResponse": {
+        "properties": {},
+        "required": [],
         "type": "object"
       },
       "CommitQueueNextRequest": {
@@ -10360,6 +10380,11 @@
                     },
                     "field": {
                       "type": "string"
+                    },
+                    "seed": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
                     }
                   },
                   "required": [
@@ -10617,6 +10642,11 @@
                     },
                     "field": {
                       "type": "string"
+                    },
+                    "seed": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
                     }
                   },
                   "required": [
@@ -22971,9 +23001,8 @@
                   "type": "string"
                 },
                 "failedAt": {
-                  "maximum": 9007199254740991,
-                  "minimum": -9007199254740991,
-                  "type": "integer"
+                  "description": "RFC 3339 UTC instant; empty when absent.",
+                  "type": "string"
                 },
                 "reason": {
                   "type": "string"
@@ -31106,7 +31135,7 @@
                             ],
                             "type": "object"
                           },
-                          "maxItems": 3,
+                          "maxItems": 1,
                           "minItems": 1,
                           "type": "array"
                         },
@@ -31216,7 +31245,7 @@
                         ],
                         "type": "object"
                       },
-                      "maxItems": 3,
+                      "maxItems": 1,
                       "minItems": 1,
                       "type": "array"
                     },
@@ -32044,7 +32073,7 @@
                       ],
                       "type": "object"
                     },
-                    "maxItems": 3,
+                    "maxItems": 1,
                     "minItems": 1,
                     "type": "array"
                   },
@@ -32154,7 +32183,7 @@
                   ],
                   "type": "object"
                 },
-                "maxItems": 3,
+                "maxItems": 1,
                 "minItems": 1,
                 "type": "array"
               },
@@ -36670,6 +36699,9 @@
                   "toneMapAlgorithm": {
                     "type": "string"
                   },
+                  "toneMapOff": {
+                    "type": "boolean"
+                  },
                   "trace": {
                     "properties": {
                       "audio": {
@@ -38977,7 +39009,7 @@
                             ],
                             "type": "object"
                           },
-                          "maxItems": 3,
+                          "maxItems": 1,
                           "minItems": 1,
                           "type": "array"
                         },
@@ -39087,7 +39119,7 @@
                         ],
                         "type": "object"
                       },
-                      "maxItems": 3,
+                      "maxItems": 1,
                       "minItems": 1,
                       "type": "array"
                     },
@@ -41148,6 +41180,11 @@
                       },
                       "field": {
                         "type": "string"
+                      },
+                      "seed": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
                       }
                     },
                     "required": [
@@ -41164,11 +41201,26 @@
                   },
                   "type": "array"
                 },
+                "filters": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
                 "id": {
                   "type": "string"
                 },
                 "labelKey": {
                   "type": "string"
+                },
+                "paging": {
+                  "type": "string"
+                },
+                "sorts": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
                 },
                 "supportedViews": {
                   "items": {
@@ -41183,7 +41235,10 @@
                 "entityKinds",
                 "defaultSort",
                 "supportedViews",
-                "browsable"
+                "browsable",
+                "sorts",
+                "filters",
+                "paging"
               ],
               "type": "object"
             },
@@ -41323,6 +41378,11 @@
                     },
                     "field": {
                       "type": "string"
+                    },
+                    "seed": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
                     }
                   },
                   "required": [
@@ -41339,11 +41399,26 @@
                 },
                 "type": "array"
               },
+              "filters": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
               "id": {
                 "type": "string"
               },
               "labelKey": {
                 "type": "string"
+              },
+              "paging": {
+                "type": "string"
+              },
+              "sorts": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
               },
               "supportedViews": {
                 "items": {
@@ -41358,7 +41433,10 @@
               "entityKinds",
               "defaultSort",
               "supportedViews",
-              "browsable"
+              "browsable",
+              "sorts",
+              "filters",
+              "paging"
             ],
             "type": "object"
           },
@@ -41388,6 +41466,9 @@
                 },
                 "labelKey": {
                   "type": "string"
+                },
+                "seeded": {
+                  "type": "boolean"
                 }
               },
               "required": [
@@ -41396,7 +41477,47 @@
                 "directions",
                 "defaultDirection",
                 "expensive",
+                "seeded",
                 "applicableKinds"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "surfaces": {
+            "items": {
+              "properties": {
+                "endpoint": {
+                  "type": "string"
+                },
+                "filters": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "membershipField": {
+                  "type": "string"
+                },
+                "paging": {
+                  "type": "string"
+                },
+                "sorts": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              },
+              "required": [
+                "id",
+                "endpoint",
+                "sorts",
+                "filters",
+                "paging"
               ],
               "type": "object"
             },
@@ -41404,6 +41525,7 @@
           }
         },
         "required": [
+          "surfaces",
           "library",
           "pivots",
           "fields",
@@ -43373,7 +43495,7 @@
                         ],
                         "type": "object"
                       },
-                      "maxItems": 3,
+                      "maxItems": 1,
                       "type": "array"
                     }
                   },
@@ -44104,7 +44226,7 @@
                         ],
                         "type": "object"
                       },
-                      "maxItems": 3,
+                      "maxItems": 1,
                       "type": "array"
                     }
                   },
@@ -46185,7 +46307,7 @@
                             ],
                             "type": "object"
                           },
-                          "maxItems": 3,
+                          "maxItems": 1,
                           "type": "array"
                         }
                       },
@@ -55506,7 +55628,7 @@
                         ],
                         "type": "object"
                       },
-                      "maxItems": 3,
+                      "maxItems": 1,
                       "type": "array"
                     }
                   },
@@ -57890,7 +58012,7 @@
                         ],
                         "type": "object"
                       },
-                      "maxItems": 3,
+                      "maxItems": 1,
                       "type": "array"
                     }
                   },
@@ -58090,6 +58212,11 @@
                         },
                         "field": {
                           "type": "string"
+                        },
+                        "seed": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
                         }
                       },
                       "required": [
@@ -59436,6 +59563,11 @@
                         },
                         "field": {
                           "type": "string"
+                        },
+                        "seed": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
                         }
                       },
                       "required": [
@@ -59647,6 +59779,11 @@
                     },
                     "field": {
                       "type": "string"
+                    },
+                    "seed": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
                     }
                   },
                   "required": [
@@ -59921,6 +60058,11 @@
                           },
                           "field": {
                             "type": "string"
+                          },
+                          "seed": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
                           }
                         },
                         "required": [
@@ -62052,7 +62194,7 @@
                             ],
                             "type": "object"
                           },
-                          "maxItems": 3,
+                          "maxItems": 1,
                           "minItems": 1,
                           "type": "array"
                         },
@@ -62162,7 +62304,7 @@
                         ],
                         "type": "object"
                       },
-                      "maxItems": 3,
+                      "maxItems": 1,
                       "minItems": 1,
                       "type": "array"
                     },
@@ -66068,7 +66210,7 @@
                             ],
                             "type": "object"
                           },
-                          "maxItems": 3,
+                          "maxItems": 1,
                           "minItems": 1,
                           "type": "array"
                         },
@@ -66178,7 +66320,7 @@
                         ],
                         "type": "object"
                       },
-                      "maxItems": 3,
+                      "maxItems": 1,
                       "minItems": 1,
                       "type": "array"
                     },
@@ -68119,6 +68261,65 @@
           "total",
           "rule",
           "days"
+        ],
+        "type": "object"
+      },
+      "ListPlaybackFailureMemoryRequest": {
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
+      "ListPlaybackFailureMemoryResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "properties": {
+                "code": {
+                  "type": "string"
+                },
+                "detail": {
+                  "type": "string"
+                },
+                "engine": {
+                  "type": "string"
+                },
+                "expiresAtMs": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "reportedAtMs": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "route": {
+                  "type": "string"
+                },
+                "sourceId": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "sourceId",
+                "engine",
+                "route",
+                "code",
+                "detail",
+                "reportedAtMs",
+                "expiresAtMs"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "more": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "items",
+          "more"
         ],
         "type": "object"
       },
@@ -71373,6 +71574,11 @@
                     },
                     "field": {
                       "type": "string"
+                    },
+                    "seed": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
                     }
                   },
                   "required": [
@@ -87788,6 +87994,11 @@
                     },
                     "field": {
                       "type": "string"
+                    },
+                    "seed": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
                     }
                   },
                   "required": [
@@ -97075,6 +97286,11 @@
                     },
                     "field": {
                       "type": "string"
+                    },
+                    "seed": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
                     }
                   },
                   "required": [
@@ -97332,6 +97548,11 @@
                     },
                     "field": {
                       "type": "string"
+                    },
+                    "seed": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
                     }
                   },
                   "required": [
@@ -112983,7 +113204,8 @@
           "invalid_request",
           "not_found",
           "revision_mismatch",
-          "internal"
+          "internal",
+          "revision_required"
         ],
         "x-lane": "security",
         "x-max-body-bytes": 4096,
@@ -115607,6 +115829,7 @@
         "x-error-codes": [
           "unauthorized",
           "invalid_request",
+          "request_in_progress",
           "insufficient_disk",
           "administration_unavailable",
           "internal"
@@ -115812,9 +116035,8 @@
                             "type": "string"
                           },
                           "failedAt": {
-                            "maximum": 9007199254740991,
-                            "minimum": -9007199254740991,
-                            "type": "integer"
+                            "description": "RFC 3339 UTC instant; empty when absent.",
+                            "type": "string"
                           },
                           "reason": {
                             "type": "string"
@@ -116251,7 +116473,8 @@
           "invalid_request",
           "revision_mismatch",
           "request_in_progress",
-          "internal"
+          "internal",
+          "revision_required"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 32768,
@@ -121615,7 +121838,8 @@
           "revision_mismatch",
           "idempotency_key_reused",
           "rate_limited",
-          "internal"
+          "internal",
+          "revision_required"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 65536,
@@ -129551,7 +129775,8 @@
           "not_permitted",
           "not_found",
           "invalid_request",
-          "internal"
+          "internal",
+          "revision_required"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 4096,
@@ -131956,7 +132181,8 @@
           "invalid_request",
           "revision_mismatch",
           "idempotency_key_reused",
-          "internal"
+          "internal",
+          "revision_required"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 65536,
@@ -141070,7 +141296,8 @@
           "source_network_policy",
           "source_credentials_required",
           "source_unavailable",
-          "internal"
+          "internal",
+          "revision_required"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 8388608,
@@ -141961,7 +142188,8 @@
           "source_network_policy",
           "source_credentials_required",
           "source_unavailable",
-          "internal"
+          "internal",
+          "revision_required"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 65536,
@@ -143812,7 +144040,8 @@
           "not_found",
           "request_in_progress",
           "administration_unavailable",
-          "internal"
+          "internal",
+          "revision_required"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 65536,
@@ -144919,7 +145148,8 @@
           "not_permitted",
           "invalid_request",
           "revision_mismatch",
-          "internal"
+          "internal",
+          "revision_required"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 32768,
@@ -147359,6 +147589,177 @@
           "internal"
         ],
         "x-lane": "media",
+        "x-scope": "admin"
+      }
+    },
+    "/v1/admin/playback/route-failures": {
+      "get": {
+        "operationId": "list_playback_failure_memory",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "items": {
+                      "items": {
+                        "properties": {
+                          "code": {
+                            "type": "string"
+                          },
+                          "detail": {
+                            "type": "string"
+                          },
+                          "engine": {
+                            "type": "string"
+                          },
+                          "expiresAtMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "reportedAtMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "route": {
+                            "type": "string"
+                          },
+                          "sourceId": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "sourceId",
+                          "engine",
+                          "route",
+                          "code",
+                          "detail",
+                          "reportedAtMs",
+                          "expiresAtMs"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "more": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "items",
+                    "more"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Read active remembered playback failures",
+        "x-access": "owner",
+        "x-admission": "admin",
+        "x-cost": "page_sized",
+        "x-error-codes": [
+          "unauthorized",
+          "not_permitted",
+          "internal"
+        ],
+        "x-lane": "default",
+        "x-scope": "admin"
+      }
+    },
+    "/v1/admin/playback/route-failures/{sourceId}": {
+      "delete": {
+        "operationId": "clear_playback_failure_memory",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sourceId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Forget remembered failures for a media file",
+        "x-access": "owner",
+        "x-admission": "admin",
+        "x-cost": "constant",
+        "x-error-codes": [
+          "unauthorized",
+          "not_permitted",
+          "invalid_request",
+          "internal"
+        ],
+        "x-lane": "default",
         "x-scope": "admin"
       }
     },
@@ -157574,7 +157975,8 @@
           "idempotency_key_reused",
           "revision_mismatch",
           "rate_limited",
-          "internal"
+          "internal",
+          "revision_required"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 2048,
@@ -159262,7 +159664,7 @@
                                   ],
                                   "type": "object"
                                 },
-                                "maxItems": 3,
+                                "maxItems": 1,
                                 "type": "array"
                               }
                             },
@@ -160897,7 +161299,8 @@
           "invalid_request",
           "not_found",
           "revision_mismatch",
-          "internal"
+          "internal",
+          "revision_required"
         ],
         "x-lane": "security",
         "x-max-body-bytes": 4096,
@@ -163458,7 +163861,8 @@
           "not_permitted",
           "invalid_request",
           "revision_mismatch",
-          "internal"
+          "internal",
+          "revision_required"
         ],
         "x-lane": "security",
         "x-max-body-bytes": 32768,
@@ -169681,7 +170085,8 @@
           "not_found",
           "downloads_not_allowed",
           "downloads_unavailable",
-          "internal"
+          "internal",
+          "revision_required"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 4096,
@@ -187387,7 +187792,7 @@
                                       ],
                                       "type": "object"
                                     },
-                                    "maxItems": 3,
+                                    "maxItems": 1,
                                     "minItems": 1,
                                     "type": "array"
                                   },
@@ -187497,7 +187902,7 @@
                                   ],
                                   "type": "object"
                                 },
-                                "maxItems": 3,
+                                "maxItems": 1,
                                 "minItems": 1,
                                 "type": "array"
                               },
@@ -188834,7 +189239,7 @@
                                 ],
                                 "type": "object"
                               },
-                              "maxItems": 3,
+                              "maxItems": 1,
                               "minItems": 1,
                               "type": "array"
                             },
@@ -188944,7 +189349,7 @@
                             ],
                             "type": "object"
                           },
-                          "maxItems": 3,
+                          "maxItems": 1,
                           "minItems": 1,
                           "type": "array"
                         },
@@ -200691,6 +201096,9 @@
                             "toneMapAlgorithm": {
                               "type": "string"
                             },
+                            "toneMapOff": {
+                              "type": "boolean"
+                            },
                             "trace": {
                               "properties": {
                                 "audio": {
@@ -203122,7 +203530,7 @@
                                       ],
                                       "type": "object"
                                     },
-                                    "maxItems": 3,
+                                    "maxItems": 1,
                                     "minItems": 1,
                                     "type": "array"
                                   },
@@ -203232,7 +203640,7 @@
                                   ],
                                   "type": "object"
                                 },
-                                "maxItems": 3,
+                                "maxItems": 1,
                                 "minItems": 1,
                                 "type": "array"
                               },
@@ -209823,6 +210231,11 @@
                         },
                         "field": {
                           "type": "string"
+                        },
+                        "seed": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
                         }
                       },
                       "required": [
@@ -209926,6 +210339,11 @@
                               },
                               "field": {
                                 "type": "string"
+                              },
+                              "seed": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
                               }
                             },
                             "required": [
@@ -210783,6 +211201,11 @@
                                 },
                                 "field": {
                                   "type": "string"
+                                },
+                                "seed": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
                                 }
                               },
                               "required": [
@@ -210799,11 +211222,26 @@
                             },
                             "type": "array"
                           },
+                          "filters": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
+                          },
                           "id": {
                             "type": "string"
                           },
                           "labelKey": {
                             "type": "string"
+                          },
+                          "paging": {
+                            "type": "string"
+                          },
+                          "sorts": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
                           },
                           "supportedViews": {
                             "items": {
@@ -210818,7 +211256,10 @@
                           "entityKinds",
                           "defaultSort",
                           "supportedViews",
-                          "browsable"
+                          "browsable",
+                          "sorts",
+                          "filters",
+                          "paging"
                         ],
                         "type": "object"
                       },
@@ -210958,6 +211399,11 @@
                               },
                               "field": {
                                 "type": "string"
+                              },
+                              "seed": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
                               }
                             },
                             "required": [
@@ -210974,11 +211420,26 @@
                           },
                           "type": "array"
                         },
+                        "filters": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
                         "id": {
                           "type": "string"
                         },
                         "labelKey": {
                           "type": "string"
+                        },
+                        "paging": {
+                          "type": "string"
+                        },
+                        "sorts": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
                         },
                         "supportedViews": {
                           "items": {
@@ -210993,7 +211454,10 @@
                         "entityKinds",
                         "defaultSort",
                         "supportedViews",
-                        "browsable"
+                        "browsable",
+                        "sorts",
+                        "filters",
+                        "paging"
                       ],
                       "type": "object"
                     },
@@ -211023,6 +211487,9 @@
                           },
                           "labelKey": {
                             "type": "string"
+                          },
+                          "seeded": {
+                            "type": "boolean"
                           }
                         },
                         "required": [
@@ -211031,7 +211498,47 @@
                           "directions",
                           "defaultDirection",
                           "expensive",
+                          "seeded",
                           "applicableKinds"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "surfaces": {
+                      "items": {
+                        "properties": {
+                          "endpoint": {
+                            "type": "string"
+                          },
+                          "filters": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "membershipField": {
+                            "type": "string"
+                          },
+                          "paging": {
+                            "type": "string"
+                          },
+                          "sorts": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "endpoint",
+                          "sorts",
+                          "filters",
+                          "paging"
                         ],
                         "type": "object"
                       },
@@ -211039,6 +211546,7 @@
                     }
                   },
                   "required": [
+                    "surfaces",
                     "library",
                     "pivots",
                     "fields",
@@ -213030,7 +213538,7 @@
                                   ],
                                   "type": "object"
                                 },
-                                "maxItems": 3,
+                                "maxItems": 1,
                                 "type": "array"
                               }
                             },
@@ -213836,7 +214344,7 @@
                                   ],
                                   "type": "object"
                                 },
-                                "maxItems": 3,
+                                "maxItems": 1,
                                 "type": "array"
                               }
                             },
@@ -217858,7 +218366,7 @@
                                       ],
                                       "type": "object"
                                     },
-                                    "maxItems": 3,
+                                    "maxItems": 1,
                                     "type": "array"
                                   }
                                 },
@@ -240310,7 +240818,7 @@
                                   ],
                                   "type": "object"
                                 },
-                                "maxItems": 3,
+                                "maxItems": 1,
                                 "type": "array"
                               }
                             },
@@ -241028,7 +241536,8 @@
           "revision_mismatch",
           "idempotency_key_reused",
           "rate_limited",
-          "internal"
+          "internal",
+          "revision_required"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 65536,
@@ -252932,6 +253441,11 @@
                                     },
                                     "field": {
                                       "type": "string"
+                                    },
+                                    "seed": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
                                     }
                                   },
                                   "required": [
@@ -253213,6 +253727,11 @@
                             },
                             "field": {
                               "type": "string"
+                            },
+                            "seed": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
                             }
                           },
                           "required": [
@@ -253545,6 +254064,11 @@
                             },
                             "field": {
                               "type": "string"
+                            },
+                            "seed": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
                             }
                           },
                           "required": [
@@ -253870,6 +254394,11 @@
                               },
                               "field": {
                                 "type": "string"
+                              },
+                              "seed": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
                               }
                             },
                             "required": [
@@ -254138,6 +254667,11 @@
                             },
                             "field": {
                               "type": "string"
+                            },
+                            "seed": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
                             }
                           },
                           "required": [
@@ -254491,6 +255025,11 @@
                                   },
                                   "field": {
                                     "type": "string"
+                                  },
+                                  "seed": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
                                   }
                                 },
                                 "required": [
@@ -255837,6 +256376,11 @@
                                   },
                                   "field": {
                                     "type": "string"
+                                  },
+                                  "seed": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
                                   }
                                 },
                                 "required": [
@@ -256116,6 +256660,11 @@
                             },
                             "field": {
                               "type": "string"
+                            },
+                            "seed": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
                             }
                           },
                           "required": [
@@ -256583,6 +257132,11 @@
                             },
                             "field": {
                               "type": "string"
+                            },
+                            "seed": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
                             }
                           },
                           "required": [
@@ -256913,6 +257467,11 @@
                             },
                             "field": {
                               "type": "string"
+                            },
+                            "seed": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
                             }
                           },
                           "required": [
@@ -262650,7 +263209,7 @@
                                       ],
                                       "type": "object"
                                     },
-                                    "maxItems": 3,
+                                    "maxItems": 1,
                                     "minItems": 1,
                                     "type": "array"
                                   },
@@ -262760,7 +263319,7 @@
                                   ],
                                   "type": "object"
                                 },
-                                "maxItems": 3,
+                                "maxItems": 1,
                                 "minItems": 1,
                                 "type": "array"
                               },

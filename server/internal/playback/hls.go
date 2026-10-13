@@ -80,7 +80,8 @@ type HLS struct {
 	// what orders eviction under the global byte budget; see hls_sweep.go.
 	usage       map[string]*hlsUsage
 	budgetSwept time.Time
-	orphanAfter string
+	orphanMu    sync.Mutex
+	orphanDir   *os.File
 	// producers joins every produce goroutine, so shutdown can wait for the
 	// converters it just cancelled instead of leaving them to be killed with the
 	// process and orphan their ffmpeg children.
@@ -279,6 +280,7 @@ func (h *HLS) Shutdown(ctx context.Context) error {
 		return nil
 	}
 	h.cancelAll()
+	h.closeOrphanDirectory()
 	done := make(chan struct{})
 	supervise.Go("playback.hls.shutdown", func() { h.producers.Wait(); close(done) })
 	select {
@@ -1025,6 +1027,7 @@ func (h *HLS) Run(ctx context.Context) {
 	unregister := dbwork.WakeOnCommit(wake)
 	defer unregister()
 	defer h.cancelAll()
+	defer h.closeOrphanDirectory()
 	worker.Run(ctx, "playback.hls-maintenance", wake, func(ctx context.Context) time.Duration {
 		h.sweep(ctx)
 		cleanupErr := h.CleanupGenerated(ctx)

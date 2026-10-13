@@ -3,37 +3,23 @@
 This document covers the identity surface a client actually has to reason about:
 what a profile may see, how a device is recognised and signed out, and how a
 direct server handles second factors, self-registration and the tvOS Top Shelf.
-The machine-readable contract is `identity.openapi.yaml`; this file explains the
-decisions behind it, because several of them constrain clients in ways a schema
-cannot express.
+Source-registered routes and their shapes are in `internal/httpapi/foundation.go`
+and `device_contract.go`; other identity handlers remain in `direct_identity.go`
+and `identity_routes.go`. The historical YAML is stale.
 
-## 1. Three credentials, three audiences
+## 1. Session phases and credentials
 
-A Portico server hands out three kinds of bearer token, and they are not
-interchangeable. Confusing them is the most common way to build something that
-appears to work and is not actually authorised.
+[Authentication](guide/02-authentication.md) documents sign-in and refresh.
+Direct sign-in returns `session.accessToken`. For accounts needing profile
+selection or a password change, it initially has account scope; after selection
+it is a viewer session. A single profile without a PIN can receive viewing
+scope directly. There is no separate wire `accountToken` or profile step-up token.
+The ordinary session also serves permitted account-management calls.
 
-| Credential | Obtained from | Reaches | Can play media |
-| --- | --- | --- | --- |
-| Account session | `POST /v1/direct/sign-in` | `/v1/direct/*` | No |
-| Viewing session | `POST /v1/direct/profiles/{id}/select` | everything else | Yes |
-| Top Shelf feed token | `POST /v1/topshelf/token` | `/v1/topshelf*` | No |
-
-The account session manages the account: profiles, restrictions, devices, second
-factors. It is deliberately unable to read the catalogue or play anything, so a
-management screen left open on a shared computer is not a way into the library.
-
-The viewing session is the profile's session. It is what carries content
-restrictions, and it is the only credential that can reach media.
-
-The feed token is for the tvOS Top Shelf extension, which runs outside the app in
-a process that cannot hold the app's session. It reads one feed and its artwork
-and nothing else, lives thirty days and is renewed whenever the app is opened, and cannot be exchanged for a session.
-
-Unauthenticated routes are `GET /v1/auth/capabilities`,
-`POST /v1/auth/remembered-accounts`, `POST /v1/auth/register` and
-`POST /v1/auth/two-factor/challenge`. Each is unauthenticated because the caller
-that needs it has nothing yet; each is rate limited per peer.
+A Top Shelf token is a separate limited feed credential, and API keys/personal
+tokens are separate scoped integration credentials. Neither is a substitute for
+a signed-in session on session-only account routes. Access bearers do not prove
+a device private key; refresh is bound to the approved device and installation.
 
 ## 2. Start with capabilities
 
@@ -58,7 +44,7 @@ A profile carries eight restriction fields. Three of them decide **visibility**:
   may be seen.
 - `blockedLabels[]` — labels whose content is hidden.
 
-The other four gate features rather than visibility: `allowDownloads`,
+Four further fields gate features rather than visibility: `allowDownloads`,
 `allowLiveTv`, `allowDvr`, `allowWatchTogether`. Each is answered by the
 feature that owns it.
 
@@ -73,7 +59,8 @@ playback. A client must not re-implement it:
 - A title the predicate refuses is **absent** from every list, and the count next
   to that list is the filtered count, not the real one. A list and its total
   always agree.
-- Opening or playing such a title answers `403 content_restricted`. Knowing an id
+- Opening or playing such a title is refused or hidden (ordinary catalogue reads
+  answer `404 not_found`). Knowing an id
   is not a way around a list that filtered it.
 - The same code is used everywhere, so a client can say one clear thing.
 
@@ -127,8 +114,8 @@ cached page presented across a restriction change fails with
 ## 4. Account changes
 
 The normal account session manages profiles, restrictions, PINs, devices and
-sessions. A selected child profile has viewing authority, not account-management
-authority. Only changing the account email, password or two-factor settings
+sessions. A selected child profile has limited account-management authority; some
+device and TV-code operations remain available to restricted profiles. Only changing the account email, password or two-factor settings
 requires the current password and, when enabled, a two-factor code in that same
 request. There is no profile step-up proof or account token.
 
@@ -171,13 +158,13 @@ A device record is what a person recognises on a sign-out screen — "the TV in 
 living room" — rather than a token family id.
 
 ```
-POST   /v1/direct/devices                     register or refresh at sign-in
-GET    /v1/direct/devices                     the list
-PATCH  /v1/direct/devices/{id}                rename; last profile; remember-account
-POST   /v1/direct/devices/{id}/approval       owner approves or denies
-POST   /v1/direct/devices/{id}/sessions/bind  bind a new viewing family
-DELETE /v1/direct/devices/{id}/sessions       sign this device out
-DELETE /v1/direct/devices/{id}                forget it entirely
+POST   /v1/devices                     register or refresh at sign-in
+GET    /v1/devices                     the list
+PATCH  /v1/devices/{id}                rename; last profile; remember-account
+POST   /v1/devices/{id}/approval       owner approves or denies
+POST   /v1/devices/{id}/sessions/bind  bind a new viewing family
+DELETE /v1/devices/{id}/sessions       sign this device out
+DELETE /v1/devices/{id}                forget it entirely
 POST   /v1/direct/sessions/sign-out-everywhere
 ```
 
@@ -188,8 +175,8 @@ refuses anything shorter than 32 characters. Regenerating it makes the device lo
 new to the owner's approval policy and orphans its remembered accounts.
 
 **Registration is an assertion.** Everything in the body is what the client says
-about itself. The peer address is taken from the connection, never from a header
-the caller supplied. Re-registering the same installation refreshes the record
+about itself. The peer address follows the owner’s trusted-proxy policy; arbitrary
+client-supplied forwarding headers are ignored. Re-registering the same installation refreshes the record
 rather than creating a second one, and it does **not** overwrite a name a person
 gave the device.
 
@@ -204,9 +191,9 @@ the owner cannot approve an arrival that was rolled back. A pending device canno
 bind a viewing family. Denying a device also signs it out, so turning the policy
 on does not leave the very device the owner objects to signed in.
 
-**Binding and sign-out.** Token families remain the unit of revocation. Call
-`sessions/bind` once after profile selection so a later per-device sign-out knows
-exactly what to revoke. Signing a device out revokes only its families and keeps
+**Binding and sign-out.** Token families remain the unit of revocation. Sessions are bound when issued. The optional
+`sessions/bind` call verifies that existing binding; it cannot move the family to
+another device. Signing a device out revokes only its families and keeps
 the record, so the person keeps seeing the device and signing back in on it does
 not look like a new arrival.
 
@@ -257,7 +244,7 @@ bystander read off a screen cannot be replayed. One step of clock drift either w
 is tolerated.
 
 Once a factor is in force, `POST /v1/direct/sign-in` returns a `challenge` instead
-of an `accountToken`: the password has been proven and nothing else has. Exchange
+of a `session`: the password has been proven and nothing else has. Exchange
 the challenge and a code at `POST /v1/auth/two-factor/challenge`. Five wrong
 attempts retire the challenge, and after that even a correct code is refused —
 start a new sign-in. A recovery code is accepted anywhere a code is, and is
@@ -300,14 +287,14 @@ a child profile inheriting a parent's occurrence would inherit content its own
 restrictions forbid.
 
 Ending runs through the family revocation hook, so occurrences, queues and
-physical readers retire through the v2 controller model rather than being
+physical readers retire through the current playback service rather than being
 orphaned. The switch is local to one device: the same profile playing on another
 screen is untouched.
 
 ## 12. Top Shelf
 
 ```
-POST /v1/topshelf/token   { installationId }   → a 24-hour feed token
+POST /v1/topshelf/token   { installationId }   → a limited feed token (read expiresAt)
 GET  /v1/topshelf                              → the feed
 GET  /v1/topshelf/art/{id}?token=              → one entry's poster
 ```
@@ -330,7 +317,7 @@ rather than caching an image URL past `expiresAt`.
 
 | Code | Status | Meaning |
 | --- | --- | --- |
-| `content_restricted` | 403 | This profile's restrictions forbid the title. |
+| `not_found` | 404 | A title is absent or hidden from this profile. |
 | `restrictions_changed` | 409 | `expectedRevision` is stale; re-read and retry. |
 | `avatar_unsupported` | 415 | Not a JPEG, PNG or WebP. |
 | `avatar_not_found` | 404 | No avatar, or a stale `v`. |
@@ -346,3 +333,5 @@ rather than caching an image URL past `expiresAt`.
 | `username_taken` | 409 | Choose another username. |
 | `topshelf_token_expired` | 401 | Mint a new feed token from the app. |
 | `authentication_busy` | 503 | Password-hashing capacity exhausted; retry shortly. |
+
+Sessions are bearer credentials associated with an installation and refresh family. The server does not require proof of a device private key; the installation identifier is not cryptographic sender constraint. Remembered-account lookup sends that identifier in a POST body and returns descriptors only, never credentials.

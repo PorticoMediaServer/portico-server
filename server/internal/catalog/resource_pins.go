@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/requestinput"
 	"time"
 )
 
@@ -27,7 +28,7 @@ type PinReceipt struct {
 func (s *Service) MutateSavedPin(a ResourceActor, kind, id string, m PinMutation, authorize func(*sql.Tx) error) (PinReceipt, error) {
 	out := PinReceipt{OperationID: m.OperationID, ResourceID: id, Pinned: m.Pinned}
 	if !personalOperation.MatchString(m.OperationID) || m.ExpectedRevision < 0 {
-		return out, errors.New("invalid pin operation")
+		return out, requestinput.New("invalid pin operation")
 	}
 	gated, e := dbwork.Begin(context.Background(), s.db, dbwork.ClassFrom(context.Background(), dbwork.ClassInteractive))
 	if e != nil {
@@ -49,7 +50,7 @@ func (s *Service) MutateSavedPin(a ResourceActor, kind, id string, m PinMutation
 			e = sql.ErrNoRows
 		}
 	} else {
-		return out, errors.New("invalid resource kind")
+		return out, requestinput.New("invalid resource kind")
 	}
 	if e != nil {
 		return out, e

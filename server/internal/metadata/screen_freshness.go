@@ -159,8 +159,8 @@ func (s *Service) screenRefreshRecord(ctx context.Context, p *screenClaim, id me
 // somebody else's answer, and the provider is asked.
 func (s *Service) rememberedEpisodeRecord(ctx context.Context, b screenBase) (metadataprovider.ScreenRecord, bool, error) {
 	var payload string
-	e := dbwork.QueryRow(ctx, s.db, `SELECT payload FROM screen_metadata_candidates WHERE target_kind=? AND target_id=? AND provider=? AND provider_type='episode' AND language=? LIMIT 1`,
-		b.TargetKind, b.Entity, b.ParentProvider, b.Language).Scan(&payload)
+	e := dbwork.QueryRow(ctx, s.db, `SELECT payload FROM screen_metadata_candidates WHERE target_kind=? AND target_id=? AND provider=? AND provider_type='episode' AND language=? AND region=? ORDER BY observed_at DESC LIMIT 1`,
+		b.TargetKind, b.Entity, b.ParentProvider, b.Language, b.Region).Scan(&payload)
 	if errors.Is(e, sql.ErrNoRows) {
 		return metadataprovider.ScreenRecord{}, false, nil
 	}
@@ -201,7 +201,7 @@ func (s *Service) screenEpisodeRecord(ctx context.Context, p *screenClaim, provi
 	}
 	resource := screenDocumentResource(remembered.Identity.ID, b.Language, b.Region)
 	if held {
-		fresh, _, err := s.documentFresh(ctx, remembered.Identity.Provider, "episode", resource, s.screenRefreshPriority(ctx, b, remembered, now), now)
+		fresh, validators, err := s.documentFresh(ctx, remembered.Identity.Provider, "episode", resource, s.screenRefreshPriority(ctx, b, remembered, now), now)
 		if err != nil {
 			return metadataprovider.ScreenRecord{}, err
 		}
@@ -214,6 +214,25 @@ func (s *Service) screenEpisodeRecord(ctx context.Context, p *screenClaim, provi
 		}
 		if !admitted {
 			return remembered, nil
+		}
+		if conditional, ok := provider.(interface {
+			ScreenEpisodeConditional(context.Context, metadataprovider.ScreenRecord, string, metadataprovider.Conditional) (metadataprovider.ScreenRecord, metadataprovider.Conditional, error)
+		}); ok {
+			r, out, err := conditional.ScreenEpisodeConditional(ctx, remembered, b.Language, toConditional(validators))
+			unchanged := errors.Is(err, metadataprovider.ErrNotModified)
+			if err != nil && !unchanged {
+				return r, err
+			}
+			if !unchanged && (r.Identity != remembered.Identity || metadataprovider.ValidateScreenRecord(r) != nil) {
+				return r, &metadataprovider.Error{Provider: b.ParentProvider, Code: "episode_identity_mismatch"}
+			}
+			if err = s.noteDocumentChecked(ctx, remembered.Identity.Provider, "episode", resource, fromConditional(out), !unchanged, now); err != nil {
+				return r, err
+			}
+			if unchanged {
+				return remembered, nil
+			}
+			return r, nil
 		}
 	}
 	var r metadataprovider.ScreenRecord

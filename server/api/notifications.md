@@ -1,10 +1,12 @@
 # Notifications and viewer feedback
 
 A guide for third-party client authors. The normative contract is
-`notifications.openapi.yaml`; this file explains how to use it well.
+the notification handlers and generated registry contract; this file explains
+how to use them. The hand-written YAML is historical.
 
-Everything needs `Authorization: Bearer <access token>`. Routes under
-`/v1/admin/` need an owner session.
+Requests need `Authorization: Bearer <access token or scoped credential>`.
+Owner administration routes require owner authority and the route’s scope;
+session-only operations still refuse keys and tokens.
 
 ## Revisions and stream positions
 
@@ -360,7 +362,7 @@ If the same profile already opened a report with the same kind, category and
 item, whose message normalises to the same text, within 24 hours, you get that
 report back:
 
-```json
+```text
 { "data": { "report": { "id": "b31d…", "duplicates": 1, … },
             "duplicate": true, "created": false, "duplicateOf": "b31d…" } }
 ```
@@ -418,3 +420,12 @@ reporter. The thread is capped at 200 entries.
 Every write here is idempotent by `operationId`. On a 503 or a dropped
 connection, retry with the same key: you will get the recorded answer, not a
 second effect.
+
+Broadcast fan-out uses pages of at most 50 profiles, releasing the database writer
+and checking owner authority between pages. An interruption preserves its cursor
+and counts for fourteen days; resend the same operation and payload to continue.
+Changing that payload with the same operation ID is refused. The final response
+keeps the existing counts and at most 50 sample notice IDs. The initial last profile
+bounds the traversal; profiles created after the broadcast starts are not promised
+that notice. Portico Account sign-in uses the server's local membership/profile
+identity, so these inboxes also receive its broadcasts.

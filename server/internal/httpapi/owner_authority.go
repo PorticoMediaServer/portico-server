@@ -30,11 +30,6 @@ func (d Dependencies) ownerAuthorityTx(ctx context.Context, tx *sql.Tx, p identi
 	switch p.Authority {
 	case "local":
 		return nil // SessionFamilyTx validates the live direct account/profile.
-	case "hosted":
-		if d.Hosted != nil {
-			_, err := d.Hosted.AuthorizationHorizonTx(ctx, tx, p)
-			return err
-		}
 	}
 	return identity.ErrForbidden
 }

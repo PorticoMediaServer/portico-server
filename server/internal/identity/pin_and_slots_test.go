@@ -194,11 +194,11 @@ func TestARefreshCredentialUsedTwiceEndsTheSessionThroughTheCleanUpHook(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	first, err := s.RefreshSession(phone, login.Session.RefreshToken, memberPhone, "renew-0001", nil)
+	first, err := s.RefreshSession(phone, login.Session.RefreshToken, memberPhone, "renew-0001")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = s.RefreshSession(phone, first.RefreshToken, memberPhone, "renew-0002", nil); err != nil {
+	if _, err = s.RefreshSession(phone, first.RefreshToken, memberPhone, "renew-0002"); err != nil {
 		t.Fatal(err)
 	}
 	var retired []string
@@ -207,7 +207,7 @@ func TestARefreshCredentialUsedTwiceEndsTheSessionThroughTheCleanUpHook(t *testi
 		return nil
 	}
 	// The first credential again, long after its successor was used.
-	if _, err = s.RefreshSession(phone, login.Session.RefreshToken, memberPhone, "renew-0003", nil); !errors.Is(err, ErrUnauthorized) {
+	if _, err = s.RefreshSession(phone, login.Session.RefreshToken, memberPhone, "renew-0003"); !errors.Is(err, ErrUnauthorized) {
 		t.Fatalf("a reused refresh credential: %v", err)
 	}
 	if len(retired) != 1 || retired[0] != login.Session.SessionFamilyID {
