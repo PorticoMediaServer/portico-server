@@ -5,6 +5,8 @@ import {compatContentApi} from '@core/presentation/index.ts';
 import {currentI18n} from './i18n';
 import {useSession} from './session';
 import {useViewerScope} from './viewer-scope';
+import {usePooledService} from './freshness';
+import {titlesWithPersonalState} from '@core/freshness-hub.ts';
 import {RECOMMENDATIONS_RESET, recommendationViewer} from './not-interested';
 import {browseCountLabel as countLabel, isQuickFilterVisible as quickVisible, kindAwareQuickKey as quickKey, kindCaptionFor as kindCaption, libraryKindSingular as kindSingular, nounPivotFor as nounPivot, quickFilterLabelForKind as quickLabel, seeAllTarget as seeAll, type T as WordsT} from './library-words';
 
@@ -41,16 +43,22 @@ export function useService<S extends {subscribe: (l: () => void) => () => void; 
 export function useContent(route: ContentRoute | null) {
   const {api} = useSession();
   const scope = useViewerScope();
-  const {service, snapshot} = useService<LibraryContentService, LibraryContentSnapshot>(() => new LibraryContentService({api: compatContentApi(api) as typeof api, scope}), [api, scope]);
   const key = route ? JSON.stringify(route) : '';
-  const last = useRef<{key: string; service: unknown}>({key: '', service: null});
+  // One kept document per destination (library, view, sort): Back shows it at once, and it is
+  // read again in the background only when its library or this profile's state moved.
+  const {service, snapshot, document, memo} = usePooledService<LibraryContentService, LibraryContentSnapshot>(
+    'content:' + key,
+    () => new LibraryContentService({api: compatContentApi(api) as typeof api, scope}),
+    route ? titlesWithPersonalState(route.libraryId) : [],
+  );
   useEffect(() => {
-    if (!route) return;
-    if (last.current.key === key && last.current.service === service) return;
-    last.current = {key, service};
+    if (!route || memo.selected) return;
+    memo.selected = true;
+    document.markCurrent();
     try { void service.select(route).catch(e => { if (import.meta.env.DEV) console.error('[content] select failed', e); }); } catch (e) { if (import.meta.env.DEV) console.error('[content] select rejected', e); }
-  }, [service, key, route]);
-  const refresh = useCallback(() => void service.refresh().catch(() => {}), [service]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [service, key]);
+  const refresh = useCallback(() => { document.markCurrent(); void service.refresh().catch(() => {}); }, [service, document]);
   useEffect(() => {
     if (route?.view !== 'discover') return;
     const viewer = recommendationViewer(scope);

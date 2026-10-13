@@ -2,7 +2,8 @@ import {useCallback, useEffect, useRef, useState} from 'react';
 import {DetailService, parseCreditPage, type DetailCredit, type DetailSnapshot, type DetailTarget, type PersonalIntent} from '@core/detail.ts';
 import {fetchItemRecommendations, fetchShowRecommendations, type ItemRecommendations, type ShowRecommendations} from '@core/recommendations.ts';
 import {ShowWorkspaceService, type ShowWorkspaceRoute, type ShowWorkspaceSnapshot} from '@core/show-workspace.ts';
-import {useService} from './content';
+import {usePooledService} from './freshness';
+import {titlesWithPersonalState} from '@core/freshness-hub.ts';
 import {compatContentApi} from '@core/presentation/index.ts';
 import {useSession} from './session';
 import {useViewerScope} from './viewer-scope';
@@ -17,14 +18,20 @@ export const PERSONAL_CHANGE = 'portico:personal-change';
 export function useDetail(target: DetailTarget | null) {
   const {api} = useSession();
   const scope = useViewerScope();
-  const {service, snapshot} = useService<DetailService, DetailSnapshot>(() => new DetailService({api, scope, requestId}), [api, scope]);
   const key = target ? target.libraryId + '/' + target.itemId : '';
-  const last = useRef<{key: string; service: unknown}>({key: '', service: null});
+  // The title's page is kept after Back and read again only when its library or this profile's state moved.
+  const {service, snapshot, document, memo} = usePooledService<DetailService, DetailSnapshot>(
+    'detail:' + key,
+    () => new DetailService({api, scope, requestId}),
+    target ? titlesWithPersonalState(target.libraryId) : [],
+  );
   useEffect(() => {
-    if (!target || (last.current.key === key && last.current.service === service)) return;
-    last.current = {key, service};
+    if (!target || memo.selected) return;
+    memo.selected = true;
+    document.markCurrent();
     try { void service.select(target).catch(e => { if (import.meta.env.DEV) console.error('[detail] select failed', e); }); } catch (e) { if (import.meta.env.DEV) console.error('[detail] select rejected', e); }
-  }, [service, key, target]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [service, key]);
   // WEB-SAVED-04: tell the rest of the app (Saved listens) once a Watchlist,
   // Favorites or watched change has been accepted by the server.
   // WEB-DETAIL-02: `mutate` validates synchronously; a throw must still end in a rejected promise.
@@ -35,7 +42,7 @@ export function useDetail(target: DetailTarget | null) {
     if (typeof window !== 'undefined' && itemId) window.dispatchEvent(new CustomEvent(PERSONAL_CHANGE, {detail: {itemId, action: intent.action, value: intent.value}}));
   }).catch(() => {}), [service, target?.itemId]);
   const retry = useCallback(() => void service.retryRead().catch(() => {}), [service]);
-  const refresh = useCallback(() => void service.refresh().catch(() => {}), [service]);
+  const refresh = useCallback(() => { document.markCurrent(); void service.refresh().catch(() => {}); }, [service, document]);
   const retryMutation = useCallback(() => void service.retryMutation().catch(() => {}), [service]);
   const dismissMutation = useCallback(() => service.dismissMutation(), [service]);
   return {snapshot, mutate, retry, refresh, retryMutation, dismissMutation};
@@ -45,18 +52,24 @@ export function useDetail(target: DetailTarget | null) {
 export function useShowWorkspace(route: ShowWorkspaceRoute | null) {
   const {api} = useSession();
   const scope = useViewerScope();
-  const {service, snapshot} = useService<ShowWorkspaceService, ShowWorkspaceSnapshot>(() => new ShowWorkspaceService({api: compatContentApi(api) as typeof api, scope}), [api, scope]);
   const key = route ? JSON.stringify(route) : '';
-  const last = useRef<{key: string; service: unknown}>({key: '', service: null});
+  // Kept per address (show, season, episode): Back returns to the season and page the person left.
+  const {service, snapshot, document, memo} = usePooledService<ShowWorkspaceService, ShowWorkspaceSnapshot>(
+    'show:' + key,
+    () => new ShowWorkspaceService({api: compatContentApi(api) as typeof api, scope}),
+    route ? titlesWithPersonalState(route.libraryId) : [],
+  );
   useEffect(() => {
-    if (!route || (last.current.key === key && last.current.service === service)) return;
-    last.current = {key, service};
+    if (!route || memo.selected) return;
+    memo.selected = true;
+    document.markCurrent();
     try { void service.select(route).catch(e => { if (import.meta.env.DEV) console.error('[content] select failed', e); }); } catch (e) { if (import.meta.env.DEV) console.error('[content] select rejected', e); }
-  }, [service, key, route]);
-  const selectSeason = useCallback((id: string) => void service.selectSeason(id).catch(() => {}), [service]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [service, key]);
+  const selectSeason = useCallback((id: string) => { document.markCurrent(); void service.selectSeason(id).catch(() => {}); }, [service, document]);
   // The group that was chosen (a range, All, Specials). `selectGroup` validates synchronously; a
   // throw must still end in a rejected promise, not escape the click.
-  const selectGroup = useCallback((group: string) => void Promise.resolve().then(() => service.selectGroup(group)).catch(() => {}), [service]);
+  const selectGroup = useCallback((group: string) => { document.markCurrent(); void Promise.resolve().then(() => service.selectGroup(group)).catch(() => {}); }, [service, document]);
   // The shared workspace serves one bounded page at a time and keeps its own
   // history, so the screen needs both directions — and the season list pages
   // the same way. Exposing only `next` is what made earlier episodes and later

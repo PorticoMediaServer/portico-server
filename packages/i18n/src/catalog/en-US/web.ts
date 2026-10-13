@@ -692,6 +692,7 @@ export const webMessages = {
   'web.network.ipv6.firewallOpen': 'Your router already allows incoming IPv6.',
   'web.network.ipv6.ownerConfirmed': 'You confirmed your router allows incoming IPv6.',
   'web.network.ipv6.unverified': 'Portico couldn’t confirm that incoming IPv6 gets through. Check your router’s IPv6 firewall.',
+  'web.connection.cantReach': 'Can’t reach {server}. Trying again.',
   'web.connection.reconnectingBody': '{server} isn’t answering right now. Portico keeps trying and brings this page back as soon as it reconnects. Settings, your account and switching servers still work.',
   'web.account.porticoMemberTitle': 'Password and two-step verification',
   'web.account.porticoMemberBody': 'You sign in to this server with your Portico Account, so your password and two-step verification are managed there. Profiles, PINs and signed-in devices are managed here.',

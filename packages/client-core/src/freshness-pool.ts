@@ -71,6 +71,17 @@ export class DocumentPool {
     };
   }
 
+  /**
+   * The same as `acquire` for a screen that is still being drawn and may yet be abandoned: the
+   * document is found or made and kept for a moment, without a screen being counted as showing
+   * it. The screen calls `acquire` once it is really there.
+   */
+  peek<S extends {dispose?(): void}>(key: string, create: () => {service: S; document: FreshDocumentOptions; watch?(document: FreshDocument): () => void}, holdMs = 5000): Pick<PooledDocument<S>, 'service' | 'document' | 'memo' | 'created'> {
+    const held = this.acquire(key, create);
+    this.hub.timers.setTimer(() => held.release(), holdMs);
+    return {service: held.service, document: held.document, memo: held.memo, created: held.created};
+  }
+
   /** Forget one document (it was deleted, or the screen knows it can never be shown again). */
   evict(key: string): void {
     const entry = this.entries.get(key);

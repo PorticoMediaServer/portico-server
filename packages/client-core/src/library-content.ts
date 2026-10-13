@@ -2,6 +2,7 @@ import {unreadableServerResponse} from './server-messages.ts';
 import {parseListeningJourney,type ListeningJourney} from './listening.ts';
 import {parseBrowseNode,type BrowseNode,type BrowseSortSelection} from './browse.ts';
 import {firstOfEach,keepReadable,noteSkipped,oneOfOr} from './tolerant.ts';
+import {mergeRevalidatedList} from './freshness-actions.ts';
 /** Transport/state for server-authored semantic projections. No client ranking or grouping. */
 export type ContentView = 'discover' | 'browse' | 'collections' | 'categories' | 'show' | 'season' | 'artist' | 'album' | 'book' | 'collection' | 'releases' | 'songs' | 'authors' | 'series' | 'author' | 'book_series' | 'disc';
 export type ContentSurface = ContentView;
@@ -80,6 +81,12 @@ export type LibraryContentSnapshot = Readonly<{
    * merges this into what it shows (`mergeRevalidatedList`) instead of starting over.
    */
   head?: Readonly<{ serial: number; sections: readonly ContentSection[] }>;
+  /**
+   * Everything read so far, as one list per section: the first page, each later page of a
+   * section appended to it (duplicates dropped), and quiet reads merged in place. A screen that
+   * shows "More" inside a section renders this; `sections` is only the page last read.
+   */
+  appended: readonly ContentSection[];
 }>;
 const views: readonly string[] = ['discover','browse','collections','categories','show','season','artist','album','book','collection','releases','songs','authors','series','author','book_series','disc'];
 const entityViews = new Set(['show','season','artist','album','book','collection','author','book_series','disc']);
@@ -284,6 +291,39 @@ function projection(raw: unknown, expected: ContentRoute, bound: ContentScope, p
   return Object.freeze({ ...(entity?{entity}:{}), ...(listening?{listening}:{}), heading: headingOr(raw.heading, s.view as string), scope: Object.freeze({ serverId: s.serverId as string, libraryId: s.libraryId as string, libraryKind: s.libraryKind as string, view: s.view as ContentSurface, entityId: s.entityId as string, viewerFence: s.viewerFence as string }), revision: Object.freeze({ catalog: r.catalog, viewer: r.viewer }), query: Object.freeze({ sort: q.sort, direction: q.direction, category: q.category, q: q.q, limit: q.limit, searchMode }), navigation: Object.freeze(navigation), sorts: Object.freeze(sorts), filters: Object.freeze(filters), sections: Object.freeze(sections), ...(empty ? { empty } : {}) });
 }
 type Page = { cursor: string | null; sectionId?: string };
+const seenEntries = new WeakMap<ContentSection, Set<string>>();
+const sameEntry = (a: ContentEntry, b: ContentEntry) => a === b || JSON.stringify(a) === JSON.stringify(b);
+/** One more page of one section, appended to that section; the other sections stay as they are. */
+function appendSectionPage(previous: readonly ContentSection[], page: readonly ContentSection[]): readonly ContentSection[] {
+  if (page.length !== 1 || !previous.length) return page;
+  const next = page[0], index = previous.findIndex(s => s.id === next.id);
+  if (index < 0) return page;
+  const current = previous[index];
+  // The seen set follows the merged section, so a page keys only its own entries.
+  const seen = seenEntries.get(current) ?? new Set(current.entries.map(e => e.id));
+  const added: ContentEntry[] = [];
+  for (const e of next.entries) if (!seen.has(e.id)) { seen.add(e.id); added.push(e); }
+  const merged: ContentSection = Object.freeze({ ...current, entries: added.length ? Object.freeze(current.entries.concat(added)) : current.entries, totalCount: next.totalCount, nextCursor: next.nextCursor });
+  seenEntries.set(merged, seen);
+  return Object.freeze(previous.map((s, i) => (i === index ? merged : s)));
+}
+/** A fresh first page merged into what is shown: sections follow the server, unchanged ones keep their identity, paged ones keep their tail. */
+function mergeHead(previous: readonly ContentSection[], fresh: readonly ContentSection[]): readonly ContentSection[] {
+  const before = new Map(previous.map(s => [s.id, s]));
+  let changed = previous.length !== fresh.length;
+  const sections = fresh.map((section, index) => {
+    const old = before.get(section.id);
+    if (!old) { changed = true; return section; }
+    const entries = mergeRevalidatedList(old.entries, section.entries, e => e.id, { same: sameEntry, complete: !section.nextCursor });
+    const keptTail = entries.length > section.entries.length;
+    const nextCursor = keptTail ? old.nextCursor : section.nextCursor;
+    const { entries: _a, nextCursor: _b, ...oldRest } = old, { entries: _c, nextCursor: _d, ...freshRest } = section;
+    if (entries === old.entries && nextCursor === old.nextCursor && JSON.stringify(oldRest) === JSON.stringify(freshRest)) { if (previous[index] !== old) changed = true; return old; }
+    changed = true;
+    return Object.freeze({ ...section, entries: entries === old.entries ? entries : Object.freeze([...entries]), nextCursor }) as ContentSection;
+  });
+  return changed ? Object.freeze(sections) : previous;
+}
 type Operation = { route: ContentRoute; page: Page; history: Page[]; fence: ContentProjection | null };
 export class LibraryContentService {
   private api: LibraryContentApi;
@@ -307,7 +347,7 @@ export class LibraryContentService {
     if (!Number.isInteger(this.pageSize) || this.pageSize < 1 || this.pageSize > 100 || !Number.isFinite(this.timeoutMs) || this.timeoutMs <= 0 || this.timeoutMs > 120_000) throw new Error('Invalid content request bounds.');
     this.snapshot = this.empty();
   }
-  private empty(): LibraryContentSnapshot { return Object.freeze({ generation: this.generation, scope: this.bound, route: null, phase: 'idle', projection: null, sections: Object.freeze([]), pagination: Object.freeze({ cursor: null, canPrevious: false, next: Object.freeze([]) }), error: null }); }
+  private empty(): LibraryContentSnapshot { return Object.freeze({ generation: this.generation, scope: this.bound, route: null, phase: 'idle', projection: null, sections: Object.freeze([]), appended: Object.freeze([]), pagination: Object.freeze({ cursor: null, canPrevious: false, next: Object.freeze([]) }), error: null }); }
   getSnapshot = (): LibraryContentSnapshot => this.snapshot;
   subscribe = (listener: () => void): (() => void) => { if (this.disposed) return () => {}; this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
   private publish(patch: Partial<LibraryContentSnapshot>): void { if (this.disposed) return; this.snapshot = Object.freeze({ ...this.snapshot, ...patch }); for (const listener of this.listeners) listener(); }
@@ -347,8 +387,9 @@ export class LibraryContentService {
       await context?.settle?.();
       if (this.disposed || generation !== this.generation || controller.signal.aborted || this.snapshot.phase !== 'ready') return;
       const head = Object.freeze({ serial: ++this.headSerial, sections: result.sections });
-      if (this.current.cursor === null) this.publish({ projection: result, sections: result.sections, head, pagination: Object.freeze({ cursor: null, canPrevious: false, next: Object.freeze(result.sections.filter(s => s.nextCursor).map(s => Object.freeze({ sectionId: s.id, cursor: s.nextCursor }))) }) });
-      else this.publish({ head });
+      const appended = mergeHead(this.snapshot.appended, result.sections);
+      if (this.current.cursor === null) this.publish({ projection: result, sections: result.sections, appended, head, pagination: Object.freeze({ cursor: null, canPrevious: false, next: Object.freeze(result.sections.filter(s => s.nextCursor).map(s => Object.freeze({ sectionId: s.id, cursor: s.nextCursor }))) }) });
+      else this.publish({ head, appended });
     } catch (error) {
       if (this.disposed || generation !== this.generation || controller.signal.aborted) return;
       const e = error as { status?: unknown; code?: unknown } | null;
@@ -364,7 +405,8 @@ export class LibraryContentService {
   next(sectionId: string): Promise<void> {
     this.assertActive();
     if (this.snapshot.phase !== 'ready' || !this.snapshot.projection || !this.snapshot.route) return Promise.resolve();
-    const section = this.snapshot.sections.find(s => s.id === sectionId);
+    // The section as shown (every page of it read so far), so More works on any section of the page, not only the one paged last.
+    const section = this.snapshot.appended.find(s => s.id === sectionId) ?? this.snapshot.sections.find(s => s.id === sectionId);
     if (!section?.nextCursor) return Promise.resolve();
     return this.load({ route: this.snapshot.route, page: { cursor: section.nextCursor, sectionId }, history: [...this.history, this.current].slice(-63), fence: this.snapshot.projection });
   }
@@ -391,7 +433,7 @@ export class LibraryContentService {
     // setScope/cancel clear synchronously; a different library/entity/view never inherits it.
     const previous = this.snapshot.route;
     const retain = previous?.view === op.route.view && previous?.libraryId === op.route.libraryId && previous?.entityId === op.route.entityId;
-    this.publish({ generation, route: op.route, phase: 'loading', projection: retain ? this.snapshot.projection : null, sections: retain ? this.snapshot.sections : Object.freeze([]), error: null, pagination: retain ? this.snapshot.pagination : Object.freeze({ cursor: op.page.cursor, canPrevious: false, next: Object.freeze([]) }) });
+    this.publish({ generation, route: op.route, phase: 'loading', projection: retain ? this.snapshot.projection : null, sections: retain ? this.snapshot.sections : Object.freeze([]), appended: retain ? this.snapshot.appended : Object.freeze([]), error: null, pagination: retain ? this.snapshot.pagination : Object.freeze({ cursor: op.page.cursor, canPrevious: false, next: Object.freeze([]) }) });
     const task = this.fetch(op, api, bound, controller, generation);
     this.pending = task; return task;
   }
@@ -414,7 +456,7 @@ export class LibraryContentService {
       const repeats = (c: string) => c === op.page.cursor || op.history.some(p => p.cursor === c);
       const sections = result.sections.some(s2 => s2.nextCursor && repeats(s2.nextCursor)) ? Object.freeze(result.sections.map(s2 => (s2.nextCursor && repeats(s2.nextCursor) ? Object.freeze({ ...s2, nextCursor: '' }) : s2))) : result.sections;
       this.history = op.history; this.current = op.page;
-      this.publish({ phase: 'ready', projection: result, sections, pagination: Object.freeze({ cursor: op.page.cursor, canPrevious: this.history.length > 0, next: Object.freeze(sections.filter(s => s.nextCursor).map(s => Object.freeze({ sectionId: s.id, cursor: s.nextCursor }))) }) });
+      this.publish({ phase: 'ready', projection: result, sections, appended: op.page.cursor === null ? sections : appendSectionPage(this.snapshot.appended, sections), pagination: Object.freeze({ cursor: op.page.cursor, canPrevious: this.history.length > 0, next: Object.freeze(sections.filter(s => s.nextCursor).map(s => Object.freeze({ sectionId: s.id, cursor: s.nextCursor }))) }) });
     } catch (error) {
       if (this.disposed || generation !== this.generation) return;
       const e = error as { code?: unknown; retryable?: unknown; message?: unknown; status?: unknown } | null;
@@ -430,7 +472,7 @@ export class LibraryContentService {
       if (stale && op.page.cursor) { await this.load({ route: op.route, page: { cursor: null }, history: [], fence: null }); return; }
       const code = string(e?.code) && e?.code ? e.code : 'request_failed';
       const transient = !stale && code !== 'invalid_projection' && e?.status !== 401 && e?.status !== 403 && (e?.retryable === true || code === 'timeout' || error instanceof TypeError || typeof e?.status === 'number' && (e.status >= 500 || e.status === 408 || e.status === 429));
-      this.publish({ phase: stale ? 'refresh-required' : 'error', projection: transient ? this.snapshot.projection : null, sections: transient ? this.snapshot.sections : Object.freeze([]), error: Object.freeze({ code, message: stale ? 'The library changed. Refresh to continue.' : error instanceof Error ? error.message : 'Could not load this library.', retryable: stale || transient }), pagination: Object.freeze({ cursor: op.page.cursor, canPrevious: false, next: Object.freeze([]) }) });
+      this.publish({ phase: stale ? 'refresh-required' : 'error', projection: transient ? this.snapshot.projection : null, sections: transient ? this.snapshot.sections : Object.freeze([]), appended: transient ? this.snapshot.appended : Object.freeze([]), error: Object.freeze({ code, message: stale ? 'The library changed. Refresh to continue.' : error instanceof Error ? error.message : 'Could not load this library.', retryable: stale || transient }), pagination: Object.freeze({ cursor: op.page.cursor, canPrevious: false, next: Object.freeze([]) }) });
     } finally {
       if (timer) clearTimeout(timer);
       if (onAbort) controller.signal.removeEventListener('abort', onAbort);

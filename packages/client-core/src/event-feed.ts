@@ -115,8 +115,13 @@ export function runEventFeed(events: EventsClient, hub: FreshnessHub | undefined
   const setTimer = setT(env), clearTimer = clearT(env), graceMs = env.graceMs ?? 30_000;
   let timer: unknown, stopped = false;
   const wanted = () => env.visible() || !!env.busy?.();
+  let was: string | undefined;
   const follow = () => {
     if (stopped) return;
+    // `onBusy` may fire with every tick of a player: only a change of state does anything.
+    const state = `${env.visible()}:${wanted()}`;
+    if (state === was) return;
+    was = state;
     hub?.setActive(env.visible());
     if (timer !== undefined) { clearTimer(timer); timer = undefined; }
     if (wanted()) { events.start(); return; }

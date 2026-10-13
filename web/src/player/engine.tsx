@@ -15,6 +15,8 @@ import type {PreparedChoice} from '@core/prepared-media.ts';
 import {useSession} from '../app/session';
 import {documentVisibility} from './page-visibility';
 import {getDeviceEvents, setDeviceEvents} from '../app/device-events';
+import {browserEventStream, browserFeedEnvironment} from '../app/event-feed';
+import {runEventFeed} from '@core/event-feed.ts';
 import type {MenuAnchor} from '../ui/Menu';
 import {ConfirmDialog} from '../ui';
 import {errorText} from '../app/errors';
@@ -123,6 +125,8 @@ export function PlayerProvider({children}: {children: React.ReactNode}) {
   const viewerKey = JSON.stringify([viewer.authority, viewer.accountId, viewer.profileId, viewer.serverId]);
   // One Playback v1 stack per signed-in viewer: sessions, the device's v1 queue, channels as v1
   // sessions (spec §18.6), and this device's event feed.
+  const tokenRef = useRef(session!.accessToken);
+  tokenRef.current = session!.accessToken;
   const musicDefaultsSource = useServerPreferences().snapshot;
   const musicDefaultsRef = useRef(musicDefaultsSource);
   musicDefaultsRef.current = musicDefaultsSource;
@@ -145,7 +149,8 @@ export function PlayerProvider({children}: {children: React.ReactNode}) {
     // A start or a seek may take as long as media keeps arriving; these are the windows of
     // silence after which it is given up.
     const playback = new PlaybackService(web.transport, undefined, {queueRequired: true, diagnostics: import.meta.env.DEV, channels: new V1ChannelControl({http}), pageVisibility: documentVisibility, startupTimeoutMs: 30_000, seekTimeoutMs: 30_000});
-    const events = new EventsClient({http});
+    // One feed for this viewer in this browser: a stream shared between tabs where the browser allows it, the long poll otherwise.
+    const events = new EventsClient({http, openStream: browserEventStream(api, viewerKey, () => tokenRef.current)});
     const player = new V1QueuePlayer({musicDefaults: () => (musicDefaultsRef.current ? musicQueueDefaults(musicDefaultsRef.current) : undefined), http, api: web.transport, playback, events, viewer: {serverId: viewer.serverId, authority: viewer.authority === 'hosted' ? 'hosted' : 'local', accountId: viewer.accountId, profileId: viewer.profileId}});
     player.setCompletionPolicy(() => 'hold');
     return {web, api: web.transport, playback, player, events};
@@ -154,7 +159,8 @@ export function PlayerProvider({children}: {children: React.ReactNode}) {
   useEffect(() => {
     // Development aid: inspect the live service from the console.
     if (import.meta.env.DEV) (window as unknown as {__porticoPlayback?: PlaybackService}).__porticoPlayback = service;
-    v1.events.start();
+    // The feed runs while the tab is in front or something is playing, and is stopped a little after neither is true.
+    const stopFeed = runEventFeed(v1.events, undefined, browserFeedEnvironment(() => !!service.getSnapshot().itemId, listener => service.subscribe(listener)));
     setDeviceEvents(v1.events);
     const unbind = v1.web.bind(service, v1.player);
     const stop = v1.player.connect();
@@ -165,7 +171,7 @@ export function PlayerProvider({children}: {children: React.ReactNode}) {
     window.addEventListener('pagehide', leaving);
     document.addEventListener('visibilitychange', hidden);
     // WEB-06: this provider owns the service, so it ends it (and the queue, and the feed).
-    return () => { window.removeEventListener('pagehide', leaving); document.removeEventListener('visibilitychange', hidden); service.leave(); stop(); v1.player.dispose(); unbind(); v1.web.dispose(); v1.events.stop(); if (getDeviceEvents() === v1.events) setDeviceEvents(null); };
+    return () => { window.removeEventListener('pagehide', leaving); document.removeEventListener('visibilitychange', hidden); service.leave(); stop(); v1.player.dispose(); unbind(); v1.web.dispose(); stopFeed(); if (getDeviceEvents() === v1.events) setDeviceEvents(null); };
   }, [v1, service]);
   /* The server ending or changing this device's session (an owner's stop, a transfer, a change made
      from another device) reaches the controller at once: an end stops with its reason

@@ -53,6 +53,8 @@
 /* The same status over a page that stays mounted: it holds the viewport wherever the page was scrolled to, and takes no room of its own. */
 .connectionCover { position: sticky; top: 0; z-index: 1; height: calc(100vh - 120px); margin-bottom: calc(120px - 100vh); display: flex; align-items: center; justify-content: center; padding: 24px 16px; }
 .connectionHeld { visibility: hidden; }
+/* The server has been away for a while: one small line above the page, which stays as it is. */
+.connectionAway { padding: 8px var(--page-gutter, 16px) 0; }
 
 .railCount { margin-left: auto; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 10px; background: var(--accent); color: var(--text-on-action); font-size: 11px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; font-variant-numeric: tabular-nums; }
 .collapsed .railCount { position: absolute; top: 6px; right: 6px; min-width: 8px; width: 8px; height: 8px; padding: 0; font-size: 0; }
