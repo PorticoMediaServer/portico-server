@@ -1,7 +1,7 @@
 Noto Sans Arabic, Noto Sans Bengali, Noto Sans Devanagari, Noto Sans Hebrew, Noto Sans Tamil, Noto Sans Thai
 Copyright 2010, 2012-2020 Google Inc. Copyright 2015-2020 Google LLC.
 
-Liberation Sans (default.woff2 in ../libass-wasm/dist)
+Liberation Sans (files/default.woff2)
 Digitized data copyright (c) 2010 Google Corporation. Copyright (c) 2012 Red Hat, Inc.
 Liberation is a trademark of Red Hat, Inc.
 

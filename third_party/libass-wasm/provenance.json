@@ -15,18 +15,18 @@
   "modified": false,
   "runtimeDependencies": [],
   "distSha256": {
-    "dist/subtitles-octopus.js": "e4913e53099c4be7a1ca1297dc05f8c19a7512978aa67acfac2f79f36d59cc88",
-    "dist/subtitles-octopus-worker.js": "d3e9939dba7bd637413619a967195c0e3ee399b8ff1ee8ceb427963ec83c7020",
-    "dist/subtitles-octopus-worker.wasm": "78066c04476886bec25a17326cf2d0d2f0c84573767ba9c14a759d14021c2c04",
-    "dist/default.woff2": "886929903707c5bb28b07cd2eed69921b3d5ef5c49c73a0dd1e187ebf6546a4c",
+    "files/subtitles-octopus.js": "e4913e53099c4be7a1ca1297dc05f8c19a7512978aa67acfac2f79f36d59cc88",
+    "files/subtitles-octopus-worker.js": "d3e9939dba7bd637413619a967195c0e3ee399b8ff1ee8ceb427963ec83c7020",
+    "files/subtitles-octopus-worker.wasm": "78066c04476886bec25a17326cf2d0d2f0c84573767ba9c14a759d14021c2c04",
+    "files/default.woff2": "886929903707c5bb28b07cd2eed69921b3d5ef5c49c73a0dd1e187ebf6546a4c",
     "LICENSE": "352fbab9abdf49eff4cb1bb010fe307022dc3f05a4d821afe1d2ebdc0e3db10e",
     "COPYRIGHT": "ab5c01d34e1f19e2bb99c893d2bd6693dc35da8c8a029f8e4aafd78af93b527a"
   },
   "archiveMembers": {
-    "dist/subtitles-octopus.js": "package/dist/js/subtitles-octopus.js",
-    "dist/subtitles-octopus-worker.js": "package/dist/js/subtitles-octopus-worker.js",
-    "dist/subtitles-octopus-worker.wasm": "package/dist/js/subtitles-octopus-worker.wasm",
-    "dist/default.woff2": "package/dist/js/default.woff2",
+    "files/subtitles-octopus.js": "package/dist/js/subtitles-octopus.js",
+    "files/subtitles-octopus-worker.js": "package/dist/js/subtitles-octopus-worker.js",
+    "files/subtitles-octopus-worker.wasm": "package/dist/js/subtitles-octopus-worker.wasm",
+    "files/default.woff2": "package/dist/js/default.woff2",
     "LICENSE": "package/LICENSE",
     "COPYRIGHT": "package/dist/js/COPYRIGHT"
   },
@@ -42,6 +42,6 @@
     {"component": "Brotli", "license": "MIT"},
     {"component": "zlib", "license": "Zlib"},
     {"component": "other small parts listed in COPYRIGHT", "license": "BSD-2-Clause, BSL-1.0, NTP, public domain"},
-    {"component": "Liberation Sans 2.00.5 (dist/default.woff2)", "license": "OFL-1.1", "note": "not listed in the package's COPYRIGHT; identified from the font's own name table"}
+    {"component": "Liberation Sans 2.00.5 (files/default.woff2)", "license": "OFL-1.1", "note": "not listed in the package's COPYRIGHT; identified from the font's own name table"}
   ]
 }

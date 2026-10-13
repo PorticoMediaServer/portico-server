@@ -1,6 +1,6 @@
 /**
  * Where the third-party subtitle files are served (see `web/vite.config.ts`, which serves
- * `third_party/libass-wasm/dist` and `third_party/subtitle-fonts/fonts` under these names).
+ * `third_party/libass-wasm/files` and `third_party/subtitle-fonts/fonts` under these names).
  * They are fetched only when a styled subtitle is selected.
  */
 const base = (): string => {

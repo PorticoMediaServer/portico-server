@@ -12,8 +12,13 @@ const at = (p: string) => fileURLToPath(new URL(p, import.meta.url));
  * names the same paths.
  */
 const vendored: Record<string, string> = {
-  'vendor/libass-wasm-4.2.4/': at('../third_party/libass-wasm/dist/'),
+  'vendor/libass-wasm-4.2.4/': at('../third_party/libass-wasm/files/'),
   'vendor/subtitle-fonts-1/': at('../third_party/subtitle-fonts/fonts/'),
+};
+/* The licences travel with the files: a build carries each folder's notices beside what they cover. */
+const vendoredNotices: Record<string, string[]> = {
+  'vendor/libass-wasm-4.2.4/': ['LICENSE', 'COPYRIGHT', 'OFL-1.1.txt'].map(name => at('../third_party/libass-wasm/' + name)),
+  'vendor/subtitle-fonts-1/': ['OFL-1.1.txt', 'Apache-2.0.txt'].map(name => at('../third_party/subtitle-fonts/' + name)),
 };
 const vendoredTypes: Record<string, string> = {js: 'text/javascript', wasm: 'application/wasm', woff2: 'font/woff2', ttf: 'font/ttf'};
 function vendoredFiles(): Plugin {
@@ -40,6 +45,8 @@ function vendoredFiles(): Plugin {
     generateBundle() {
       for (const [prefix, directory] of Object.entries(vendored))
         for (const name of readdirSync(directory)) this.emitFile({type: 'asset', fileName: prefix + name, source: readFileSync(directory + name)});
+      for (const [prefix, files] of Object.entries(vendoredNotices))
+        for (const file of files) this.emitFile({type: 'asset', fileName: prefix + file.split(/[\\/]/).pop(), source: readFileSync(file)});
     },
   };
 }
