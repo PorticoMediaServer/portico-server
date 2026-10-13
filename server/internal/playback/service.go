@@ -391,7 +391,7 @@ func (s *Service) create(ctx context.Context, p identity.Principal, item, reques
 		replacing = replacement.ID
 	}
 
-	if e = checkSessionPolicy(ctx, tx, p, mode, replacing); e != nil {
+	if e = checkSessionPolicy(ctx, tx, p, replacing); e != nil {
 		return Session{}, e
 	}
 

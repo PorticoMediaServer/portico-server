@@ -152,7 +152,10 @@ func TestSubtitleReplanRoutesHoldToTheMembersCurrentCeiling(t *testing.T) {
 	selectBy(media, "route-select-2", second)
 	held("burn-in through the subtitle route by media session", 3_000_000, true)
 
-	// A lower cap applies to the next change; lifting it gives nothing back.
+	// A lower cap applies to the next change. Once the owner lifts it, the next
+	// change on the home network is planned from the quality the session asked
+	// for (the original) under the ceilings that hold now, like any other change
+	// to the session.
 	if err = f.db.QueryRow(`SELECT revision FROM playback_v1_sessions WHERE id=?`, s.ID).Scan(&revision); err != nil {
 		t.Fatal(err)
 	}
@@ -161,5 +164,7 @@ func TestSubtitleReplanRoutesHoldToTheMembersCurrentCeiling(t *testing.T) {
 	held("burn-in after the cap was lowered", 1_000_000, true)
 	setMemberLimits(t, f, `{}`)
 	patch(lan, nil, second)
-	held("burn-in after the cap was lifted, back on the LAN", 1_000_000, true)
+	if _, bitrate, action := planned(); action != "convert" || bitrate <= 1_000_000 {
+		t.Fatalf("burn-in after the cap was lifted, back on the LAN: planned %s at %d bit/s", action, bitrate)
+	}
 }

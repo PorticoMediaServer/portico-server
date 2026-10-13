@@ -20,7 +20,18 @@ import (
 // routeFailureTTL bounds how long a report keeps a route closed. It is long
 // enough to cover the rest of a viewing and short enough that a fixed client,
 // driver or file is tried again without anyone clearing anything.
-const routeFailureTTL = 7 * 24 * time.Hour
+//
+// That is for a report that says what was wrong: the engine could not decode
+// the picture or the sound, or could not read the source. A report that only
+// says something went wrong (a generic engine error, a stall) may be a passing
+// glitch, so it closes the route for an evening, not a week.
+const (
+	routeFailureTTL          = 7 * 24 * time.Hour
+	uncertainRouteFailureTTL = 6 * time.Hour
+)
+
+// certainRouteFailures are the codes that name a fault of the stream itself.
+const certainRouteFailures = `'decode_error','source_not_supported','audio_decode_error','manifest_incompatible'`
 
 var routeFailureCode = regexp.MustCompile(`^[a-z0-9_]{1,48}$`)
 
@@ -82,7 +93,7 @@ func routeFailuresTx(ctx context.Context, tx *sql.Tx, p identity.Principal, asse
 	if p.Hash == "" {
 		return nil, nil
 	}
-	rows, err := tx.QueryContext(ctx, `SELECT engine,route,code FROM (SELECT engine,route,code,ROW_NUMBER() OVER(PARTITION BY engine,route ORDER BY reported_at_ms DESC) AS rank FROM playback_route_failures WHERE (session_hash=? OR session_hash IN(SELECT original.token_hash FROM authorization_family_tokens original JOIN authorization_family_tokens caller ON caller.family_id=original.family_id WHERE caller.token_hash=?)) AND asset_id=? AND reported_at_ms>?  ) WHERE rank=1 LIMIT 8`, p.Hash, p.Hash, asset, time.Now().Add(-routeFailureTTL).UnixMilli())
+	rows, err := tx.QueryContext(ctx, `SELECT engine,route,code FROM (SELECT engine,route,code,ROW_NUMBER() OVER(PARTITION BY engine,route ORDER BY reported_at_ms DESC) AS rank FROM playback_route_failures WHERE (session_hash=? OR session_hash IN(SELECT original.token_hash FROM authorization_family_tokens original JOIN authorization_family_tokens caller ON caller.family_id=original.family_id WHERE caller.token_hash=?)) AND asset_id=? AND reported_at_ms>CASE WHEN code IN(`+certainRouteFailures+`) THEN ? ELSE ? END) WHERE rank=1 LIMIT 8`, p.Hash, p.Hash, asset, time.Now().Add(-routeFailureTTL).UnixMilli(), time.Now().Add(-uncertainRouteFailureTTL).UnixMilli())
 	if err != nil {
 		return nil, err
 	}

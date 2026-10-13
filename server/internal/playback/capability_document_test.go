@@ -7,6 +7,7 @@ import (
 	"errors"
 	"reflect"
 	"testing"
+	"time"
 
 	"portico.local/server/internal/assets"
 	"portico.local/server/internal/compactcatalog"
@@ -215,5 +216,75 @@ func TestWithVideoBitrateCeiling(t *testing.T) {
 	}
 	if equal := WithVideoBitrateCeiling(in, 0); !reflect.DeepEqual(equal, in) {
 		t.Fatalf("ceiling 0 changed the profile: %+v", equal)
+	}
+}
+
+// Turning conversion off does not turn repackaging off: a file whose streams
+// are only copied into another container converts nothing and still plays.
+// Anything that would be converted is refused.
+func TestConversionOffStillRepackages(t *testing.T) {
+	db, s, p, _, item, _ := activityFixture(t)
+	s.ConfigureHLS(&HLS{})
+	if _, err := db.Exec(`UPDATE playback_owner_policy SET transcoding_enabled=0 WHERE singleton=1`); err != nil {
+		t.Fatal(err)
+	}
+	asset := firstCatalogAssetToken(t, db)
+	updateCatalogAsset(t, db, asset, func(a *compactcatalog.Asset) { a.Container = "mkv" })
+	session, err := s.Create(p, item, "original", "repackage")
+	if err != nil || session.Mode != "hls" {
+		t.Fatal("a copy-only stream was refused with conversion off", session, err)
+	}
+	if plan, _ := loadDeliveryPlan(db, session.ID); plan.Strategy != DeliveryCopyRemux || plan.VideoAction != "copy" || plan.AudioAction != "copy" {
+		t.Fatal(plan.Strategy, plan.VideoAction, plan.AudioAction)
+	}
+	updateCatalogAsset(t, db, asset, func(a *compactcatalog.Asset) { a.VideoCodec = "vp9" })
+	if _, err = s.Create(p, item, "original", "convert"); err == nil {
+		t.Fatal("a conversion was started with conversion off")
+	}
+}
+
+// A report that names a fault of the stream closes its route for a week; one
+// that only says something went wrong closes it for an evening.
+func TestUncertainRouteFailuresLapseSooner(t *testing.T) {
+	db, s, p, _, item, _ := activityFixture(t)
+	ctx := context.Background()
+	s.ConfigureHLS(&HLS{})
+	first, err := s.Create(p, item, "auto", "first")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.RecordRouteFailure(ctx, p, first.ID, "engine_error", ""); err != nil {
+		t.Fatal(err)
+	}
+	modeOfNext := func(request string) string {
+		t.Helper()
+		next, err := s.Create(p, item, "auto", request)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return next.Mode
+	}
+	if modeOfNext("second") != "hls" {
+		t.Fatal("a fresh failure did not close the route")
+	}
+	age := func(d time.Duration) {
+		t.Helper()
+		if _, err := db.Exec(`UPDATE playback_route_failures SET reported_at_ms=?`, time.Now().Add(-d).UnixMilli()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	age(7 * time.Hour)
+	if modeOfNext("third") != "direct" {
+		t.Fatal("an uncertain failure still closes the route after an evening")
+	}
+	if _, err = db.Exec(`UPDATE playback_route_failures SET code='decode_error'`); err != nil {
+		t.Fatal(err)
+	}
+	if modeOfNext("fourth") != "hls" {
+		t.Fatal("a decode failure lapsed with the uncertain ones")
+	}
+	age(8 * 24 * time.Hour)
+	if modeOfNext("fifth") != "direct" {
+		t.Fatal("a failure outlived its week")
 	}
 }

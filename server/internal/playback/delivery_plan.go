@@ -254,6 +254,23 @@ type candidate struct {
 	rank      int
 }
 
+// assumedBitrate is what a file of unknown bitrate is taken to need, by the
+// height of its picture: a generous ordinary rate, so a small ceiling converts
+// the file and a roomy one does not. An unknown height is taken as 1080p.
+func assumedBitrate(height int) int64 {
+	switch {
+	case height > 1440:
+		return 40_000_000
+	case height > 1080:
+		return 20_000_000
+	case height > 720 || height <= 0:
+		return 12_000_000
+	case height > 480:
+		return 6_000_000
+	}
+	return 3_000_000
+}
+
 func bitrateOver(actual int64, ceiling int) bool {
 	// Ten percent of tolerance: an average rate is not a peak, and a file a hair
 	// over a round-number ceiling is not worth a conversion.
@@ -387,7 +404,16 @@ func planDelivery(in DeliveryInput) (p DeliveryPlan, err error) {
 		ceiling = client.MaxBitrateBPS
 		trace.Notes = append(trace.Notes, NoteDeviceBitrate)
 	}
-	overBitrate := bitrateOver(max(source.BitRate, source.MaxBitRate), ceiling)
+	sourceRate := max(source.BitRate, source.MaxBitRate)
+	if sourceRate == 0 && ceiling > 0 && video != nil && source.DetailKnown {
+		// A file whose streams were read but whose bitrate was never observed (no
+		// size or no duration) must not pass every ceiling on that account: it is
+		// taken to be an ordinary file of its picture size. A file not analysed
+		// yet is left alone: its picture is itself a guess, and it may be a song.
+		sourceRate = assumedBitrate(height)
+		trace.Notes = append(trace.Notes, NoteBitrateAssumed)
+	}
+	overBitrate := bitrateOver(sourceRate, ceiling)
 
 	// Rules that close every route which leaves the picture as it is.
 	var pictureRules []RouteRejection
@@ -401,7 +427,7 @@ func planDelivery(in DeliveryInput) (p DeliveryPlan, err error) {
 		pictureRules = append(pictureRules, RouteRejection{ReasonHeightExceedsPolicy, fmt.Sprintf("%d>%d", height, in.Target.MaxVideoHeight)})
 	}
 	if overBitrate {
-		pictureRules = append(pictureRules, RouteRejection{ReasonBitrateExceedsPolicy, fmt.Sprintf("%d>%d", source.BitRate, ceiling)})
+		pictureRules = append(pictureRules, RouteRejection{ReasonBitrateExceedsPolicy, fmt.Sprintf("%d>%d", sourceRate, ceiling)})
 	}
 
 	candidates := []candidate{}

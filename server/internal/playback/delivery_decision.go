@@ -44,6 +44,7 @@ const (
 	NoteToneMapOwnerOff    = "hdr_tone_mapping_disabled_by_owner"
 	NoteDolbyVisionNoLayer = "dolby_vision_without_fallback_converted_approximately"
 	NoteDeviceBitrate      = "device_bitrate_ceiling_applied"
+	NoteBitrateAssumed     = "source_bitrate_unobserved_assumed_from_picture_size"
 	// NoteFirstAudioTrackPlayed marks a plan that plays the original although the
 	// wanted audio track is not the first, because no other route existed.
 	NoteFirstAudioTrackPlayed = "wanted_audio_track_unreachable_first_track_played"

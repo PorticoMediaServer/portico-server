@@ -377,3 +377,36 @@ func TestRememberedAudioLanguage(t *testing.T) {
 		t.Fatal(a, by)
 	}
 }
+
+// A file whose bitrate nobody observed does not pass every ceiling: it is
+// taken to be an ordinary file of its picture size.
+func TestUnknownBitrateIsAssumedUnderACeiling(t *testing.T) {
+	detail := avcDetail
+	detail.BitRate = 0
+	source := videoSource("mp4", "h264", detail, SourceAudio{Codec: "aac", Channels: 2})
+	source.BitRate = 0
+	// No ceiling: nothing to assume, the file plays as it is.
+	if p := decide(t, source, chromeProfile(), nil); p.Strategy != DeliveryOriginal || contains(p.Trace.Notes, NoteBitrateAssumed) {
+		t.Fatal(p.Strategy, p.Trace.Notes)
+	}
+	// A 1080p file under a 4 Mb/s ceiling is taken as 12 Mb/s and converted.
+	p := decide(t, source, chromeProfile(), func(in *DeliveryInput) { in.Target.MaxVideoBitrateBPS = 4_000_000 })
+	if p.Strategy != DeliveryVideoConversion || p.VideoBitrateBPS != 4_000_000 || !contains(p.Trace.Notes, NoteBitrateAssumed) || !rejected(p, DeliveryOriginal, ReasonBitrateExceedsPolicy) {
+		t.Fatal(p.Strategy, p.VideoBitrateBPS, p.Trace.Notes)
+	}
+	// A file that was never analysed is not guessed at twice.
+	unread := source
+	unread.DetailKnown = false
+	if p = decide(t, unread, chromeProfile(), func(in *DeliveryInput) { in.Target.MaxVideoBitrateBPS = 4_000_000 }); p.Strategy != DeliveryOriginal || contains(p.Trace.Notes, NoteBitrateAssumed) {
+		t.Fatal(p.Strategy, p.Trace.Notes)
+	}
+	// A roomy ceiling leaves it alone.
+	if p = decide(t, source, chromeProfile(), func(in *DeliveryInput) { in.Target.MaxVideoBitrateBPS = 20_000_000 }); p.Strategy != DeliveryOriginal {
+		t.Fatal(p.Strategy)
+	}
+	for height, want := range map[int]int64{2160: 40_000_000, 1440: 20_000_000, 1080: 12_000_000, 720: 6_000_000, 480: 3_000_000, 0: 12_000_000} {
+		if got := assumedBitrate(height); got != want {
+			t.Errorf("%dp is taken as %d, want %d", height, got, want)
+		}
+	}
+}

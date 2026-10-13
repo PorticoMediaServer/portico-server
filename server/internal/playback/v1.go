@@ -10,10 +10,11 @@ import (
 	"portico.local/server/internal/identity"
 )
 
-// V1Choice is what a Playback Protocol v1 client asks for (spec §5.1–§5.4),
-// narrowed by admin ceilings. Quality is decided only by the request and those
-// ceilings: the viewer's server-side per-network presets are not consulted,
-// because "Auto" is the client's own choice of a limit (spec §5.2).
+// V1Choice is what one presentation is planned from besides the file and the
+// device (spec §5.1–§5.4): the version, the tracks, the quality's ceilings and
+// the caller's reach. The quality is the viewer's (asked for in the request, or
+// their saved default for where the request comes from); the owner's ceilings,
+// the member's remote cap and the upload budget always narrow it.
 type V1Choice struct {
 	// AssetID is the version to play; empty plays the item's first available one.
 	AssetID string
