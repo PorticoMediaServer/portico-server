@@ -1,6 +1,14 @@
 package playback
 
-import "testing"
+import (
+	"context"
+	"database/sql"
+	"errors"
+	"testing"
+
+	"portico.local/server/internal/catalogtest"
+	"portico.local/server/internal/compactcatalog"
+)
 
 // Review P4: remote caps (the member's and the server-wide one) apply only to a
 // remote request; a LAN viewer is never capped or told "admin_cap_remote_bitrate".
@@ -36,5 +44,29 @@ func TestV1ChoiceAppliesRemoteCapsOnlyRemotely(t *testing.T) {
 	limited := V1Choice{Limit: true, MaxVideoBitrateBPS: 1_000_000, MaxVideoHeight: 720}
 	if got := limited.target(ResolvedDeliveryPolicy{NetworkClass: NetworkLocal}, cfg); got.MaxVideoBitrateBPS != 1_000_000 || got.MaxVideoHeight != 720 || got.Kind != QualityAutomatic {
 		t.Fatalf("client limit %+v", got)
+	}
+}
+
+func TestSelectedAssetReturnsTheScannedVersion(t *testing.T) {
+	db, service, _, _, item, entity := activityFixture(t)
+	defer db.Close()
+	first := firstCatalogAssetToken(t, db)
+	if got, err := service.SelectedAsset(context.Background(), item, nil); err != nil || got != first {
+		t.Fatalf("default asset %q, want %q: %v", got, first, err)
+	}
+	var second string
+	catalogtest.New(t, db).Write(func(ctx context.Context, tx *sql.Tx) error {
+		asset, token, err := compactcatalog.UpsertAssetTx(ctx, tx, compactcatalog.Asset{Path: "/media/second.mkv", Size: 10, ModifiedNS: 1, Container: "mkv", VideoCodec: "h264", AudioCodec: "aac", Duration: 60})
+		if err != nil {
+			return err
+		}
+		second = token
+		return compactcatalog.LinkAssetTx(ctx, tx, entity, asset, compactcatalog.Link{})
+	})
+	if got, err := service.SelectedAsset(context.Background(), item, &V1Choice{AssetID: second}); err != nil || got != second {
+		t.Fatalf("explicit asset %q, want %q: %v", got, second, err)
+	}
+	if got, err := service.SelectedAsset(context.Background(), item, &V1Choice{AssetID: "absent"}); !errors.Is(err, sql.ErrNoRows) || got != "" {
+		t.Fatalf("absent asset %q: %v", got, err)
 	}
 }

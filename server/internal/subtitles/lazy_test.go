@@ -285,3 +285,33 @@ func TestStyledResourceCanDeliverPlainTextAndRetainOriginalAfterMetadataEdit(t *
 		t.Fatal(original, e)
 	}
 }
+
+func TestDiscoveredASSCachePreservesStyleAndOriginal(t *testing.T) {
+	f := newSubtitleFixture(t)
+	persistDiscovered(t, f, []Track{{Origin: "embedded", StreamIndex: 3, Format: "ass", Language: "en"}})
+	catalog, err := f.s.List(context.Background(), f.p, f.item.Public)
+	if err != nil || len(catalog.Resources) != 1 {
+		t.Fatal(catalog, err)
+	}
+	resource := catalog.Resources[0]
+	if resource.Renderer != "burn_in" {
+		t.Fatalf("discovered styled track advertised as %q", resource.Renderer)
+	}
+	body := assHeader + "Dialogue: 0,0:00:01.00,0:00:03.00,Default,,0,0,0,,{\\pos(100,120)}Styled\r\n"
+	f.s.Extractor = &cacheTestExtractor{body: []byte(body)}
+	if err = f.s.ensureCached(context.Background(), f.p, f.item.Public, resource.ID, resource.Revision); err != nil {
+		t.Fatal(err)
+	}
+	catalog, err = f.s.List(context.Background(), f.p, f.item.Public)
+	if err != nil || catalog.Resources[0].Renderer != "burn_in" || catalog.Resources[0].Revision != resource.Revision {
+		t.Fatalf("cache changed the discovery's rendering or revision: %+v %v", catalog, err)
+	}
+	plan, err := f.s.Select(context.Background(), f.p, f.item.Public, "session", SelectRequest{OperationID: "draw-discovered-ass", Generation: 1, ExpectedRevision: 1, Mode: "track", ResourceID: resource.ID, ResourceRevision: resource.Revision, Rendering: "ass", OffsetUS: "0"})
+	if err != nil || plan.Renderer != "client" || plan.Generation != 1 {
+		t.Fatal(plan, err)
+	}
+	original, err := f.s.OriginalAsset(context.Background(), f.p, f.item.Public, "session", resource.ID, resource.Revision)
+	if err != nil || string(original.Data) != body {
+		t.Fatalf("cache stripped the authored style: %v", err)
+	}
+}

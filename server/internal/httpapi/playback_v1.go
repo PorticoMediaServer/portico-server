@@ -38,6 +38,7 @@ func v1ErrorDefinitions() []apierror.Definition {
 	return []apierror.Definition{
 		{Code: "idempotency_key_required", Status: 428, Message: "Send an Idempotency-Key with this request.", Retry: apierror.Never},
 		{Code: "session_ended", Status: 410, Message: "This playback has ended.", Retry: apierror.Never},
+		{Code: "conversion_capacity", Status: 429, Message: "This server is already converting as many streams as it is allowed. Wait a moment or stop another stream, then try again.", Retry: apierror.SameRequest},
 		{Code: "stream_limit_reached", Status: 409, Message: "This account is already playing as many streams as it is allowed.", Retry: apierror.Never},
 		{Code: "transcode_not_allowed", Status: 403, Message: "This title needs converting, and converting is turned off for this account.", Retry: apierror.Never},
 		{Code: "source_unavailable", Status: 503, Message: "The file for this title can't be reached right now.", Retry: apierror.SameRequest},
@@ -130,6 +131,8 @@ func v1Error(err error) error {
 		code = "feature_restricted"
 	case errors.Is(err, access.ErrStreamLimit), errors.Is(err, access.ErrSchedule), errors.Is(err, playback.ErrOwnerAccountCap), errors.Is(err, playback.ErrOwnerServerCap):
 		code = "stream_limit_reached"
+	case errors.Is(err, playback.ErrConversionCapacity):
+		return &apierror.Error{Code: "conversion_capacity", RetryAfterSeconds: 2, Cause: err}
 	case errors.Is(err, playback.ErrTranscodingDisabled):
 		code = "transcode_not_allowed"
 	case errors.As(err, &refused), errors.Is(err, playback.ErrIncompatible), errors.Is(err, playback.ErrQualityUnavailable):
