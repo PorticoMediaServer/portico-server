@@ -3,8 +3,8 @@ package catalog
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"errors"
 	"fmt"
+	"portico.local/server/internal/requestinput"
 	"strconv"
 	"strings"
 	"time"
@@ -287,7 +287,7 @@ func (s *Service) QueryTitles(viewer Viewer, q TitleQuery) (TitlePage, error) {
 }
 
 // ErrTitleLibrary is a library that does not exist for this caller.
-var ErrTitleLibrary = errors.New("library is not available")
+var ErrTitleLibrary = requestinput.New("library is not available")
 
 // decorateTitles adds provider ids and a poster to a page that has already
 // passed the visibility checks, in two reads for the whole page.

@@ -9,6 +9,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/notify"
+	"portico.local/server/internal/requestinput"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -19,7 +20,7 @@ var ErrProfilePIN = errors.New("That profile PIN is not correct. Try again after
 var ErrProfileLocked = errors.New("Profile PIN attempts are temporarily locked. Try again later.")
 var ErrProfileCapacity = errors.New("An account can have up to eight active profiles, including its primary profile.")
 var ErrProfileChanged = errors.New("This profile changed. Refresh before trying again.")
-var ErrDirectInput = errors.New("invalid Direct Sign-In account or profile input")
+var ErrDirectInput = requestinput.New("invalid Direct Sign-In account or profile input")
 var ErrPrimaryProfile = errors.New("The primary profile cannot be deleted.")
 
 // An unknown username takes the same bcrypt work as a current direct account.

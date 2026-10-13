@@ -254,3 +254,5 @@ month.
 A profile with downloads switched off is refused on every route here except revalidation and
 offline plays. Permission is rechecked at claim, grant, every transfer request, receipt and
 renewal, and a title the viewer may not see answers exactly like one that does not exist.
+
+Offline observations up to 24 hours ahead are retained with their effective observation time clamped to the receiving server time. Larger future skew is refused per entry. A skewed device cannot reserve tomorrow’s resume point against newer activity. Clients still need a persisted monotonic receipt clock for offline expiry across device-clock changes.

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"portico.local/server/internal/requestinput"
 	"strconv"
 	"time"
 
@@ -16,7 +17,7 @@ import (
 	"portico.local/server/internal/personalstate"
 )
 
-var ErrJobRequest = errors.New("invalid job request")
+var ErrJobRequest = requestinput.New("invalid job request")
 
 func jobInvalid(message string) error { return fmt.Errorf("%w: %s", ErrJobRequest, message) }
 

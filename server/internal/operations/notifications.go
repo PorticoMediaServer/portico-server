@@ -184,7 +184,7 @@ const (
 	noticeMaxWait       = 60
 	noticeDeltaCap      = 50
 	noticeBatchIDCap    = 200
-	noticeBroadcastCap  = 500
+	noticeBroadcastCap  = 50
 	noticeStreamBackoff = 2 * time.Second
 )
 
@@ -715,72 +715,153 @@ func (s *Store) BroadcastNotice(ctx context.Context, p identity.Principal, auth 
 		return out, invalidFields("actions")
 	}
 	out.Audience, out.DedupeKey, out.IDs = c.Audience, c.DedupeKey, []string{}
-	e = s.transaction(ctx, auth, "", func(tx *sql.Tx) error {
-		now := s.now()
-		scope := "broadcast:" + AccountKey(p)
-		raw, digest, err := Receipt(tx, scope, c.OperationID, c, now)
-		if err != nil {
-			return err
-		}
-		if raw != "" {
-			return decodeDocument(raw, &out)
-		}
-		targets, err := notify.ProfileScopes(tx)
-		if err != nil {
-			return err
-		}
-		if c.Audience == notify.AudienceAccountAdmin {
-			if targets, err = notify.AdminScopes(tx); err != nil {
+
+	scope := "broadcast:" + AccountKey(p)
+	for {
+		finished := false
+		e = s.transaction(ctx, auth, "", func(tx *sql.Tx) error {
+			now := s.now()
+			raw, digest, err := Receipt(tx, scope, c.OperationID, c, now)
+			if err != nil {
 				return err
 			}
-		}
-		if len(targets) > noticeBroadcastCap {
-			return ErrCapacity
-		}
-		expiry := int64(0)
-		if c.ExpiresInDays > 0 {
-			expiry = now + days(c.ExpiresInDays)
-		}
-		draft := notify.Draft{
-			Audience: c.Audience, Severity: c.Severity, Source: notify.SourceBroadcast,
-			Category: "server.message", Title: c.Title, Body: c.Body,
-			Actions: c.Actions, DedupeKey: c.DedupeKey, ExpiresAt: expiry,
-		}
-		for _, target := range targets {
-			draft.Scope = target
-			result, err := notify.Raise(tx, now, draft)
+			if raw != "" {
+				finished = true
+				return decodeDocument(raw, &out)
+			}
+			var prior, lastAccount, lastProfile, upperAccount, upperProfile, ids string
+			var expiry int64
+			err = tx.QueryRow(`SELECT digest,last_account,last_profile,upper_account,upper_profile,delivered,created,updated,revision,ids,expires_ms FROM notice_broadcast_work WHERE scope=? AND operation_id=?`, scope, c.OperationID).Scan(&prior, &lastAccount, &lastProfile, &upperAccount, &upperProfile, &out.Delivered, &out.Created, &out.Updated, &out.Revision, &ids, &expiry)
+			if errors.Is(err, sql.ErrNoRows) {
+				var pending int
+				if err = tx.QueryRow(`SELECT (SELECT count(*) FROM notice_broadcast_work WHERE scope=?)+(SELECT count(*) FROM console_receipts WHERE scope=? AND expires_ms>?)`, scope, scope, now).Scan(&pending); err != nil {
+					return err
+				}
+				if pending >= 2048 {
+					return ErrCapacity
+				}
+				err = tx.QueryRow(`SELECT account_id,id FROM direct_profiles WHERE deleted=0 ORDER BY account_id DESC,id DESC LIMIT 1`).Scan(&upperAccount, &upperProfile)
+				if errors.Is(err, sql.ErrNoRows) {
+					err = nil
+				}
+				if err != nil {
+					return err
+				}
+				expiry = now + int64(14*24*time.Hour/time.Millisecond)
+				_, err = tx.Exec(`INSERT INTO notice_broadcast_work(scope,operation_id,digest,upper_account,upper_profile,expires_ms) VALUES(?,?,?,?,?,?)`, scope, c.OperationID, digest, upperAccount, upperProfile, expiry)
+				if err != nil {
+					return err
+				}
+			} else if err != nil {
+				return err
+			} else {
+				if prior != digest {
+					return ErrIdempotencyKeyReused
+				}
+				if expiry <= now {
+					return ErrExpired
+				}
+				if err = json.Unmarshal([]byte(ids), &out.IDs); err != nil {
+					return err
+				}
+			}
+			type target struct{ account, profile, scope string }
+			targets := []target{}
+			var rows *sql.Rows
+			if c.Audience == notify.AudienceAccountAdmin {
+				rows, err = tx.Query(`SELECT account_id,'' FROM direct_memberships WHERE role='owner' AND disabled=0 AND account_id>? ORDER BY account_id LIMIT ?`, lastAccount, noticeBroadcastCap)
+			} else {
+				rows, err = tx.Query(`SELECT account_id,id FROM direct_profiles WHERE deleted=0 AND (account_id,id)>(?,?) AND (account_id,id)<=(?,?) ORDER BY account_id,id LIMIT ?`, lastAccount, lastProfile, upperAccount, upperProfile, noticeBroadcastCap)
+			}
 			if err != nil {
+				return err
+			}
+			for rows.Next() {
+				var t target
+				if err = rows.Scan(&t.account, &t.profile); err != nil {
+					rows.Close()
+					return err
+				}
+				t.scope = notify.ProfileScope("local", t.account, t.profile)
+				if c.Audience == notify.AudienceAccountAdmin {
+					t.scope = notify.AdminScope("local", t.account)
+				}
+				targets = append(targets, t)
+			}
+			err = rows.Err()
+			rows.Close()
+			if err != nil {
+				return err
+			}
+			noticeExpiry := int64(0)
+			// Keep one expiry across resumptions rather than extending each batch.
+			if c.ExpiresInDays > 0 {
+				noticeExpiry = expiry - int64(14*24*time.Hour/time.Millisecond) + days(c.ExpiresInDays)
+			}
+			draft := notify.Draft{Audience: c.Audience, Severity: c.Severity, Source: notify.SourceBroadcast, Category: "server.message", Title: c.Title, Body: c.Body, Actions: c.Actions, DedupeKey: c.DedupeKey, ExpiresAt: noticeExpiry}
+			for _, target := range targets {
+				draft.Scope = target.scope
+				result, err := notify.Raise(tx, now, draft)
 				if errors.Is(err, notify.ErrInvalid) {
 					return ErrInvalid
 				}
+				if err != nil {
+					return err
+				}
+				out.Delivered++
+				if result.Created {
+					out.Created++
+				} else {
+					out.Updated++
+				}
+				out.Revision = result.Revision
+				if len(out.IDs) < 50 {
+					out.IDs = append(out.IDs, result.ID)
+				}
+				lastAccount, lastProfile = target.account, target.profile
+			}
+			if len(targets) < noticeBroadcastCap {
+				if err = Audit(tx, now, AccountKey(p), "notifications.broadcast", c.DedupeKey, int64(out.Delivered)); err != nil {
+					return err
+				}
+				if err = SaveReceipt(tx, scope, c.OperationID, digest, out, now); err != nil {
+					return err
+				}
+				if _, err = tx.Exec(`DELETE FROM notice_broadcast_work WHERE scope=? AND operation_id=?`, scope, c.OperationID); err != nil {
+					return err
+				}
+				finished = true
+				return nil
+			}
+			encoded, err := json.Marshal(out.IDs)
+			if err != nil {
 				return err
 			}
-			out.Delivered++
-			if result.Created {
-				out.Created++
-			} else {
-				out.Updated++
-			}
-			out.Revision = result.Revision
-			if len(out.IDs) < 50 {
-				out.IDs = append(out.IDs, result.ID)
-			}
+			_, err = tx.Exec(`UPDATE notice_broadcast_work SET last_account=?,last_profile=?,delivered=?,created=?,updated=?,revision=?,ids=? WHERE scope=? AND operation_id=?`, lastAccount, lastProfile, out.Delivered, out.Created, out.Updated, out.Revision, string(encoded), scope, c.OperationID)
+			return err
+		})
+		if e != nil {
+			return
 		}
-		if e := Audit(tx, now, AccountKey(p), "notifications.broadcast", c.DedupeKey, int64(out.Delivered)); e != nil {
-			return e
-		}
-		return SaveReceipt(tx, scope, c.OperationID, digest, out, now)
-	})
-	if e == nil {
 		WakeNotifications()
+		if finished {
+			return
+		}
+		// Each checkpoint releases the writer and rechecks the owner's authority.
+		if e = ctx.Err(); e != nil {
+			return
+		}
 	}
-	return
 }
 
 // pruneNotifications enforces retention. It runs from the maintenance tick, not
 // from a read, and bumps the revision of every inbox it actually changed so a
 // parked client learns its counts moved.
 func (s *Store) pruneNotifications(tx *sql.Tx, now int64, retentionDays int) error {
+	if _, err := tx.Exec(`DELETE FROM notice_broadcast_work WHERE (scope,operation_id) IN(SELECT scope,operation_id FROM notice_broadcast_work WHERE expires_ms<=? ORDER BY expires_ms LIMIT 100)`, now); err != nil {
+		return err
+	}
+
 	cutoff := now - days(retentionDays)
 	rows, e := tx.Query(`SELECT DISTINCT scope,audience FROM notification_records WHERE expires_ms<=? OR created_ms<?`, now, cutoff)
 	if e != nil {

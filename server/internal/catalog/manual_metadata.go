@@ -10,6 +10,7 @@ import (
 	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/entityid"
+	"portico.local/server/internal/requestinput"
 	"strings"
 	"time"
 	"unicode"
@@ -19,7 +20,7 @@ import (
 var ErrManualMetadataConflict = errors.New("These values changed. Load the latest values before saving again.")
 var ErrManualMetadataProjection = errors.New("Editable metadata exceeds the supported read limits.")
 
-var ErrManualMetadataInput = errors.New("Check the metadata fields and try again.")
+var ErrManualMetadataInput = requestinput.New("Check the metadata fields and try again.")
 
 type MetadataEditValue struct {
 	Present bool

@@ -6,11 +6,12 @@ import (
 	"encoding/json"
 	"errors"
 	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/requestinput"
 	"sort"
 	"strings"
 )
 
-var ErrRestrictionInput = errors.New("invalid profile restriction")
+var ErrRestrictionInput = requestinput.New("invalid profile restriction")
 var ErrRestrictionChanged = errors.New("These restrictions changed. Refresh before trying again.")
 
 // ProfileRestrictions is the complete per-profile restriction document. It is

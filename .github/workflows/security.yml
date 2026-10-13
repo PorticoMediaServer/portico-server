@@ -44,3 +44,24 @@ jobs:
           (cd apikit && go build ./...)
           (cd server && go build ./...)
       - uses: github/codeql-action/analyze@d6317709a54fd87078d323eeb0e48ec331c8e621 # v3
+
+  go-vulnerabilities:
+    runs-on: ubuntu-24.04
+    strategy: {matrix: {module: [apikit, server]}}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with: {go-version-file: '${{ matrix.module }}/go.mod', cache-dependency-path: '${{ matrix.module }}/go.sum'}
+      - name: Check reachable Go vulnerabilities
+        working-directory: ${{ matrix.module }}
+        env: {GOFLAGS: '-p=2'}
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
+
+  javascript-vulnerabilities:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with: {node-version: '24', cache: npm}
+      - name: Check JavaScript dependency advisories
+        run: npm audit --audit-level=high

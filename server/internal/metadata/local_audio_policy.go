@@ -3,7 +3,7 @@ package metadata
 import (
 	"context"
 	"database/sql"
-	"errors"
+	"portico.local/server/internal/requestinput"
 
 	"portico.local/server/internal/dbwork"
 )
@@ -18,7 +18,7 @@ type LocalAudioPolicyChange struct {
 // a current owner transaction and library identity + revision CAS.
 func (s *Service) UpdateLocalBookPolicy(item string, m LocalAudioPolicyChange, authorize func(*sql.Tx) error) error {
 	if m.LibraryID == "" || m.ExpectedRevision < 1 || (m.LocalMode != "off" && m.LocalMode != "prefer" && m.LocalMode != "supplement") {
-		return errors.New("invalid local audio policy")
+		return requestinput.New("invalid local audio policy")
 	}
 	gated, e := dbwork.Begin(context.Background(), s.db, dbwork.ClassBackgroundMedia)
 	if e != nil {

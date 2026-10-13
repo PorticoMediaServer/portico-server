@@ -381,3 +381,14 @@ to two seconds and returns as soon as anything moves. Once playback is running, 
 post observations to `POST /v2/playback/occurrences/{playbackId}/observations` — that is what
 records progress, resume position and history — and read `session.streamUrl` for the actual media,
 re-reading it after any renewal because the grant rotates.
+
+The cursor, precondition and idempotency packages in `apikit` are optional tools,
+not global runtime guarantees. Catalogue cursors use a database-held signing key,
+retain their traversal position across expiry/revisions and recompute cached totals.
+Mutation families implement their own typed revision checks and replay receipts;
+the generated route contract describes the accepted fields for each operation.
+
+The SQL preparation check covers complete literal statements, including concatenated
+literals. Runtime query constructors require their owning package's semantic and
+query-plan tests; a passing literal check does not establish every generated shape
+or every query's scaling behavior.

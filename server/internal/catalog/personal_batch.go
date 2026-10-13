@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/requestinput"
 	"time"
 )
 
@@ -108,7 +109,7 @@ func personalBatchFields(item PersonalBatchItem) []struct {
 func (s *Service) SetPersonalBatch(account, profile string, m PersonalBatchMutation, authorize func(*sql.Tx, string) error) (PersonalBatchReceipt, error) {
 	out := PersonalBatchReceipt{OperationID: m.OperationID, Results: []PersonalBatchResult{}, ReceiptLifetimeSeconds: 2592000}
 	if !personalOperation.MatchString(m.OperationID) {
-		return out, errors.New("invalid operationId")
+		return out, requestinput.New("invalid operationId")
 	}
 	if len(m.Items) == 0 || len(m.Items) > MaxPersonalBatch {
 		return out, fmt.Errorf("a batch carries 1 to %d items", MaxPersonalBatch)
@@ -116,14 +117,14 @@ func (s *Service) SetPersonalBatch(account, profile string, m PersonalBatchMutat
 	seen := map[string]bool{}
 	for _, item := range m.Items {
 		if item.ItemID == "" || len(item.ItemID) > 256 || seen[item.ItemID] {
-			return out, errors.New("each batch item must name a distinct itemId")
+			return out, requestinput.New("each batch item must name a distinct itemId")
 		}
 		seen[item.ItemID] = true
 		if item.Watched == nil && item.Favorite == nil && item.Watchlisted == nil && item.NotInterested == nil {
-			return out, errors.New("each batch item must set watched, favorite, watchlisted or notInterested")
+			return out, requestinput.New("each batch item must set watched, favorite, watchlisted or notInterested")
 		}
 		if item.ExpectedRevision != nil && (*item.ExpectedRevision < 0 || *item.ExpectedRevision > 9007199254740991) {
-			return out, errors.New("invalid expectedRevision")
+			return out, requestinput.New("invalid expectedRevision")
 		}
 	}
 	hash := operationHash(m)

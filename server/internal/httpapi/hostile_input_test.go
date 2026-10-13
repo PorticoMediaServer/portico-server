@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"portico.local/server/internal/access"
 	"portico.local/server/internal/assets"
 	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/hosted"
@@ -22,10 +23,11 @@ import (
 	"portico.local/server/internal/operations"
 	"portico.local/server/internal/persistence"
 	"portico.local/server/internal/playback"
+	"portico.local/server/internal/servicelog"
 	"portico.local/server/internal/supervise"
 )
 
-// Every route, every hostile shape. The route table is the same one admission
+// Every route receives the same bounded battery of hostile bodies, queries and paths. The route table is the same one admission
 // is built from, so a route added tomorrow is covered the day it is added
 // rather than the day somebody remembers to write a test for it.
 //
@@ -131,7 +133,7 @@ func hostileFixture(t *testing.T) (http.Handler, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	handler := New(Dependencies{DB: db, Identity: ident, Catalog: cat, Hosted: host,
+	handler := New(Dependencies{Access: AccessArea{Access: access.New(db), ClientLogs: servicelog.NewClientLogStore(db)}, DB: db, Identity: ident, Catalog: cat, Hosted: host,
 		Ingestion: ingestion.New(db, cat, assets.Probe{}), Playback: playback.New(db), Console: operations.New(db)})
 	secret, err := os.ReadFile(filepath.Join(root, "setup-token"))
 	if err != nil {
@@ -185,31 +187,51 @@ func TestEveryRouteSurvivesHostileInput(t *testing.T) {
 	bodies := hostileBodies(t)
 	before := supervise.Panics()
 	var failures []string
-	for index, route := range routesUnderTest() {
-		body := bodies[index%len(bodies)]
-		query := hostileQueries[index%len(hostileQueries)]
-		// Every hostile path value is used across the surface rather than only
-		// the first, by rotating through them route by route.
-		path := fillWildcards(route.path, hostilePathValues[index%len(hostilePathValues)])
-		for _, authorized := range []bool{false, true} {
-			r := httptest.NewRequest(route.method, path+query, strings.NewReader(body.body))
-			r.Header.Set("Content-Type", "application/json")
-			if authorized {
-				r.Header.Set("Authorization", "Bearer "+token)
-			}
-			// Valid streaming routes must leave when the synthetic client disconnects.
-			ctx, cancel := context.WithCancel(r.Context())
-			if strings.HasSuffix(route.path, "/events") {
+	for _, route := range routesUnderTest() {
+		type attack struct{ name, body, query, path string }
+		attacks := make([]attack, 0, len(bodies)+len(hostileQueries)+len(hostilePathValues))
+		for _, body := range bodies {
+			attacks = append(attacks, attack{body.name, body.body, "", fillWildcards(route.path, "hostile-id")})
+		}
+		for i, query := range hostileQueries {
+			attacks = append(attacks, attack{fmt.Sprintf("query %d", i), "{}", query, fillWildcards(route.path, "hostile-id")})
+		}
+		for i, value := range hostilePathValues {
+			attacks = append(attacks, attack{fmt.Sprintf("path %d", i), "{}", "", fillWildcards(route.path, value)})
+		}
+		for _, attack := range attacks {
+			for _, authorized := range []bool{false, true} {
+				r := httptest.NewRequest(route.method, attack.path+attack.query, strings.NewReader(attack.body))
+				r.Header.Set("Content-Type", "application/json")
+				if authorized {
+					r.Header.Set("Authorization", "Bearer "+token)
+				}
+				budget := 2 * time.Second
+				if strings.HasSuffix(route.path, "/events") {
+					budget = 10 * time.Millisecond
+				}
+				ctx, cancel := context.WithTimeout(r.Context(), budget)
+				r = r.WithContext(ctx)
+				w := httptest.NewRecorder()
+				done := make(chan struct{})
+				go func() { defer close(done); handler.ServeHTTP(w, r) }()
+				select {
+				case <-done:
+				case <-ctx.Done():
+					// Streaming routes normally wait for their client to disconnect.
+					select {
+					case <-done:
+					case <-time.After(time.Second):
+						cancel()
+						t.Fatalf("%s %s did not honor cancellation", route.method, route.path)
+					}
+				}
 				cancel()
-				ctx, cancel = context.WithTimeout(r.Context(), time.Second)
-			}
-			r = r.WithContext(ctx)
-			w := httptest.NewRecorder()
-			handler.ServeHTTP(w, r)
-			cancel()
-			if w.Code >= 500 && w.Code != 503 {
-				failures = append(failures, fmt.Sprintf("%s %s [%s] authorized=%v -> %d %s",
-					route.method, path, body.name, authorized, w.Code, strings.TrimSpace(firstLine(w.Body.String()))))
+				// Optional subsystems are deliberately absent from this fixture;
+				// admission and those subsystem-unavailable responses may be 503.
+				if w.Code >= 500 && w.Code != 503 {
+					failures = append(failures, fmt.Sprintf("%s %s [%s] authorized=%v -> %d %s", route.method, attack.path, attack.name, authorized, w.Code, strings.TrimSpace(firstLine(w.Body.String()))))
+				}
 			}
 		}
 	}

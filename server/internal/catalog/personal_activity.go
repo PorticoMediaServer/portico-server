@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"math"
+	"portico.local/server/internal/requestinput"
 
 	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/dbwork"
@@ -368,7 +369,7 @@ type ActivityReceipt struct {
 func (s *Service) MutateActivity(profile string, m ActivityMutation, authorize func(*sql.Tx) error) (ActivityReceipt, error) {
 	out := ActivityReceipt{OperationID: m.OperationID, Action: m.Action}
 	if !personalOperation.MatchString(m.OperationID) || m.ExpectedRevision < 0 || (m.Action != "clear-history" && m.Action != "reset-viewing-activity") {
-		return out, errors.New("invalid activity operation")
+		return out, requestinput.New("invalid activity operation")
 	}
 	gated, e := dbwork.Begin(context.Background(), s.db, dbwork.ClassFrom(context.Background(), dbwork.ClassInteractive))
 	if e != nil {

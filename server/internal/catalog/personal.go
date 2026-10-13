@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"portico.local/server/internal/requestinput"
 
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/entityid"
@@ -236,7 +237,7 @@ func applyPersonalField(out *PersonalState, field string, value json.RawMessage)
 		out.Watched = v.Watched
 		out.ProgressSeconds = v.Progress
 	default:
-		return errors.New("invalid personal field")
+		return requestinput.New("invalid personal field")
 	}
 	return nil
 }
@@ -269,11 +270,11 @@ func mutationField(m *PersonalMutation) (string, json.RawMessage, error) {
 		field = "rating"
 		var rating *float64
 		if e := json.Unmarshal(m.Rating, &rating); e != nil {
-			return "", nil, errors.New("invalid personal rating")
+			return "", nil, requestinput.New("invalid personal rating")
 		}
 		// A null value clears the rating; zero is a rated value.
 		if rating != nil && (math.IsNaN(*rating) || math.IsInf(*rating, 0) || *rating < 0 || *rating > 10 || math.Trunc(*rating) != *rating) {
-			return "", nil, errors.New("personal rating must be an integer from 0 to 10, or null")
+			return "", nil, requestinput.New("personal rating must be an integer from 0 to 10, or null")
 		}
 		value = rating
 		m.Rating, _ = json.Marshal(rating)
@@ -285,7 +286,7 @@ func mutationField(m *PersonalMutation) (string, json.RawMessage, error) {
 		if m.ProgressSeconds != nil {
 			position = *m.ProgressSeconds
 			if *m.Watched || math.IsNaN(position) || math.IsInf(position, 0) || position < 0 {
-				return "", nil, errors.New("resume may only accompany Mark Unwatched")
+				return "", nil, requestinput.New("resume may only accompany Mark Unwatched")
 			}
 		}
 		value = struct {
@@ -293,16 +294,16 @@ func mutationField(m *PersonalMutation) (string, json.RawMessage, error) {
 			Progress float64 `json:"progressSeconds"`
 		}{*m.Watched, position}
 	} else if m.ProgressSeconds != nil {
-		return "", nil, errors.New("resume requires an explicit watched action")
+		return "", nil, requestinput.New("resume requires an explicit watched action")
 	}
 	if m.Resolution != nil {
 		if fields != 0 || m.Offline != nil {
-			return "", nil, errors.New("resolution is a separate operation")
+			return "", nil, requestinput.New("resolution is a separate operation")
 		}
 		return "resolution", nil, nil
 	}
 	if fields != 1 {
-		return "", nil, errors.New("set exactly one personal field")
+		return "", nil, requestinput.New("set exactly one personal field")
 	}
 	raw, _ := json.Marshal(value)
 	return field, raw, nil
@@ -329,7 +330,7 @@ func personalTarget(tx *sql.Tx, entityID int64, field string) error {
 func (s *Service) SetPersonal(account, profile, item string, m PersonalMutation, authorize func(*sql.Tx) error) (PersonalState, error) {
 	out := PersonalState{}
 	if !personalOperation.MatchString(m.OperationID) || m.ExpectedRevision < 0 || m.ExpectedRevision > 9007199254740991 {
-		return out, errors.New("invalid operationId or expectedRevision")
+		return out, requestinput.New("invalid operationId or expectedRevision")
 	}
 	field, value, e := mutationField(&m)
 	if e != nil {
@@ -338,7 +339,7 @@ func (s *Service) SetPersonal(account, profile, item string, m PersonalMutation,
 	if o := m.Offline; o != nil {
 		authored, err := time.Parse(time.RFC3339, o.AuthoredAt)
 		if !personalOperation.MatchString(o.DeviceID) || !personalOperation.MatchString(o.DeviceMutationID) || o.Sequence < 1 || o.Sequence > 9007199254740991 || o.BaseRevision != m.ExpectedRevision || err != nil {
-			return out, errors.New("invalid offline mutation evidence")
+			return out, requestinput.New("invalid offline mutation evidence")
 		}
 		if authored.After(time.Now().Add(5*time.Minute)) || authored.Before(time.Now().Add(-30*24*time.Hour)) {
 			return out, ErrPersonalReview
@@ -399,7 +400,7 @@ func (s *Service) SetPersonal(account, profile, item string, m PersonalMutation,
 	if field == "resolution" {
 		r := m.Resolution
 		if !personalOperation.MatchString(r.ConflictID) || r.ChoiceOperationID == "" {
-			return out, errors.New("invalid conflict resolution")
+			return out, requestinput.New("invalid conflict resolution")
 		}
 		if out.Revision != m.ExpectedRevision {
 			return out, ErrPersonalConflict
@@ -515,7 +516,7 @@ func (s *Service) SetPersonal(account, profile, item string, m PersonalMutation,
 				return out, e
 			}
 			if duration > 0 && out.ProgressSeconds > duration {
-				return out, errors.New("resume exceeds the media duration")
+				return out, requestinput.New("resume exceeds the media duration")
 			}
 		}
 		if e = explicitResumeByID(tx, profile, entityID, out.ProgressSeconds); e != nil {

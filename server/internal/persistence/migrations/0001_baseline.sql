@@ -6404,3 +6404,15 @@ CREATE TRIGGER catalog_facet_episode_move AFTER UPDATE OF show_id ON catalog_epi
 END;
 
 CREATE INDEX rec_profile_signals_positive_recent ON rec_profile_signals(profile_id,at) WHERE weight>0;
+
+-- Resumable notice fan-out releases the writer between bounded pages.
+CREATE INDEX direct_profiles_broadcast ON direct_profiles(deleted,account_id,id);
+CREATE TABLE notice_broadcast_work(
+ scope TEXT NOT NULL,operation_id TEXT NOT NULL,digest TEXT NOT NULL,
+ last_account TEXT NOT NULL DEFAULT '',last_profile TEXT NOT NULL DEFAULT '',
+ upper_account TEXT NOT NULL,upper_profile TEXT NOT NULL,
+ delivered INTEGER NOT NULL DEFAULT 0,created INTEGER NOT NULL DEFAULT 0,
+ updated INTEGER NOT NULL DEFAULT 0,revision INTEGER NOT NULL DEFAULT 0,
+ ids TEXT NOT NULL DEFAULT '[]',expires_ms INTEGER NOT NULL,
+ PRIMARY KEY(scope,operation_id)) STRICT, WITHOUT ROWID;
+CREATE INDEX notice_broadcast_work_expiry ON notice_broadcast_work(expires_ms);

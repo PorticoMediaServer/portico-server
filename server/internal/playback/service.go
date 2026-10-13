@@ -15,6 +15,7 @@ import (
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/listeningrules"
 	"portico.local/server/internal/preparedmedia"
+	"portico.local/server/internal/requestinput"
 	"portico.local/server/internal/segmentmarkers"
 	"portico.local/server/internal/subtitles"
 	"strings"
@@ -136,7 +137,7 @@ type SessionReplacement struct {
 func (s *Service) CreateReplacingContext(ctx context.Context, p identity.Principal, item, quality, request string, replacement *SessionReplacement) (Session, error) {
 	choice, ok := namedQualityChoice(quality)
 	if !ok {
-		return Session{}, errors.New("requestId and a published quality are required")
+		return Session{}, requestinput.New("requestId and a published quality are required")
 	}
 	return s.create(ctx, p, item, request, replacement, &choice)
 }
@@ -202,7 +203,7 @@ func (s *Service) create(ctx context.Context, p identity.Principal, item, reques
 		v1 = &V1Choice{}
 	}
 	if request == "" || len(request) > 128 {
-		return Session{}, errors.New("requestId is required")
+		return Session{}, requestinput.New("requestId is required")
 	}
 	legacyRequest := request
 	request = sessionRequestKey(p, request)
@@ -257,7 +258,7 @@ func (s *Service) create(ctx context.Context, p identity.Principal, item, reques
 	e = tx.QueryRow(`SELECT response,(SELECT pid(public_id) FROM catalog_entities WHERE id=playback_requests.item_id),request_id FROM playback_requests WHERE account_id=? AND profile_id=? AND request_id IN(?,?) ORDER BY request_id=? DESC LIMIT 1`, p.AccountID, p.ProfileID, request, legacyRequest, request).Scan(&receipt, &originalItem, &storedRequest)
 	if e == nil {
 		if originalItem != item {
-			return Session{}, errors.New("requestId already belongs to another item")
+			return Session{}, requestinput.New("requestId already belongs to another item")
 		}
 		var existing Session
 		if e = json.Unmarshal([]byte(receipt), &existing); e != nil {
@@ -287,7 +288,7 @@ func (s *Service) create(ctx context.Context, p identity.Principal, item, reques
 			return Session{}, bindErr
 		}
 		if replacement == nil && bindErr == nil || replacement != nil && (bindErr != nil || oldID != replacement.ID || oldGeneration != replacement.Generation) {
-			return Session{}, errors.New("requestId belongs to a different replacement")
+			return Session{}, requestinput.New("requestId belongs to a different replacement")
 		}
 		existing.State = state
 		if state == "failed" {
@@ -611,10 +612,10 @@ func (s *Service) Progress(p identity.Principal, id string, generation int, sequ
 // deadline expires, without stopping the live presentation.
 func (s *Service) ProgressContext(ctx context.Context, p identity.Principal, id string, generation int, sequence int64, position float64, state string) error {
 	if math.IsNaN(position) || math.IsInf(position, 0) || position < 0 || sequence < 0 {
-		return errors.New("invalid progress")
+		return requestinput.New("invalid progress")
 	}
 	if state != "playing" && state != "paused" && state != "ended" {
-		return errors.New("invalid playback state")
+		return requestinput.New("invalid playback state")
 	}
 	gated3, e := dbwork.Begin(ctx, s.db, dbwork.ClassEstablishedPlayback)
 	if e != nil {

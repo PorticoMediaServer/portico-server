@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"time"
 
+	"portico.local/server/internal/remotemedia"
 	"portico.local/server/internal/supervise"
 )
 
@@ -20,22 +21,32 @@ type cachedUpdateFeed struct {
 
 // FetchReleaseFeed is installed by the composition root. Only an owner-set
 // HTTP(S) URL is read, with a bounded request and response. A redirect must
-// remain HTTP(S) and must not carry URL credentials.
+// remain within that origin and cannot downgrade TLS or carry URL credentials.
 func FetchReleaseFeed(ctx context.Context, rawURL string) ([]byte, error) {
 	if !safeFeedURL(rawURL) {
 		return nil, ErrInput
 	}
-	client := &http.Client{Timeout: 8 * time.Second, CheckRedirect: func(req *http.Request, via []*http.Request) error {
-		if len(via) >= 3 || !safeFeedURL(req.URL.String()) {
-			return errors.New("release feed redirect refused")
-		}
-		return nil
-	}}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	ctx, cancel := context.WithTimeout(ctx, 8*time.Second)
+	defer cancel()
+	locator, err := url.Parse(rawURL)
+	if err != nil {
+		return nil, ErrInput
+	}
+	// Configuring this origin is the owner's explicit permission to fetch it,
+	// including a private feed. The shared policy still blocks metadata services,
+	// pins DNS answers and prevents redirects escaping to another origin.
+	policy := remotemedia.Policy{ReadTimeout: 8 * time.Second}
+	approval, err := policy.Approve(ctx, locator.Scheme+"://"+locator.Host+"/")
 	if err != nil {
 		return nil, err
 	}
-	response, err := client.Do(req)
+	policy.Approvals = []remotemedia.Approval{approval}
+	client, err := remotemedia.New(ctx, rawURL, policy)
+	if err != nil {
+		return nil, err
+	}
+	defer client.Close()
+	response, err := client.Open(ctx, http.MethodGet, "")
 	if err != nil {
 		return nil, err
 	}

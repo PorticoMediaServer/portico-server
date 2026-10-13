@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"portico.local/server/internal/remotemedia"
 	"testing"
 	"time"
 )
@@ -64,5 +65,22 @@ func TestFetchReleaseFeedBoundsTheResponse(t *testing.T) {
 	}
 	if _, err := FetchReleaseFeed(context.Background(), "file:///etc/passwd"); !errors.Is(err, ErrInput) {
 		t.Fatalf("non-HTTP feed accepted: %v", err)
+	}
+}
+
+func TestReleaseFeedCannotReachMetadataOrEscapeConfiguredOrigin(t *testing.T) {
+	if _, err := FetchReleaseFeed(context.Background(), "http://169.254.169.254/latest/meta-data"); !errors.Is(err, remotemedia.ErrPolicy) {
+		t.Fatalf("metadata service accepted: %v", err)
+	}
+	reached := false
+	destination := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { reached = true; w.Write([]byte("secret")) }))
+	defer destination.Close()
+	feed := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { http.Redirect(w, r, destination.URL, 302) }))
+	defer feed.Close()
+	if _, err := FetchReleaseFeed(context.Background(), feed.URL); !errors.Is(err, remotemedia.ErrPolicy) {
+		t.Fatalf("redirect escaped: %v", err)
+	}
+	if reached {
+		t.Fatal("unapproved redirect destination contacted")
 	}
 }

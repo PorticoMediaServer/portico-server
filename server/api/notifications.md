@@ -418,3 +418,12 @@ reporter. The thread is capped at 200 entries.
 Every write here is idempotent by `operationId`. On a 503 or a dropped
 connection, retry with the same key: you will get the recorded answer, not a
 second effect.
+
+Broadcast fan-out uses pages of at most 50 profiles, releasing the database writer
+and checking owner authority between pages. An interruption preserves its cursor
+and counts for fourteen days; resend the same operation and payload to continue.
+Changing that payload with the same operation ID is refused. The final response
+keeps the existing counts and at most 50 sample notice IDs. The initial last profile
+bounds the traversal; profiles created after the broadcast starts are not promised
+that notice. Portico Account sign-in uses the server's local membership/profile
+identity, so these inboxes also receive its broadcasts.
