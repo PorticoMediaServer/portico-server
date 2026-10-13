@@ -293,7 +293,14 @@ var failureCodePattern = regexp.MustCompile(`^[a-z0-9_]{1,48}$`)
 // in force is drawn by the engine or burned in (leaving it frees both).
 func (s *Service) subtitleReplans(ctx context.Context, c Caller, r row, current Presentation, req *SubtitleRequest) bool {
 	if shown := current.Subtitle; shown != nil && shown.Delivery != "sidecar" {
-		return true
+		// A track the client asked to draw itself, from the original handed
+		// over beside the stream, never weighed in the plan (subtitleWeight):
+		// the picture and the engine were chosen without it, so leaving it
+		// changes neither. Anything else burned in or drawn by the engine does.
+		asked := r.stored().Subtitles
+		if !(shown.Delivery == "device" && asked != nil && asked.Delivery == "embeddedClient" && len(current.Subtitles) > 0) {
+			return true
+		}
 	}
 	if d := current.Decision.Video; d != nil && d.Action == "burn" {
 		return true

@@ -601,6 +601,7 @@ func (s *Service) Options(ctx context.Context, p identity.Principal, item string
 		burnable = renderers[subtitleID] == "burn_in"
 		if burnable {
 			choice.SubtitleKind = subtitleKindOf(formats[subtitleID])
+			choice.SubtitleBesideStream = subtitles.RenderingFormat(formats[subtitleID]) != "text"
 			if choice.SubtitleKind == playback.SubtitleText {
 				choice.SubtitleKind = playback.SubtitleBurnAlways
 			}

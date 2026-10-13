@@ -306,7 +306,7 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
   const toggleSubtitles = () => {
     const plan = subtitles.snapshot.plan;
     if (!subtitles.service || !plan || subtitles.snapshot.busy) return;
-    if (plan.mode === 'track' && !subtitles.snapshot.suppressed) { lastSubtitle.current = plan.selected?.id; void subtitles.service.choose(null).catch(() => {}); return; }
+    if (plan.mode === 'track' && !subtitles.snapshot.suppressed) { lastSubtitle.current = plan.selected?.id; void subtitles.turnOff().catch(() => {}); return; }
     const pick = plan.resources.find(r => r.id === lastSubtitle.current && r.enabled) ?? plan.resources.find(r => r.enabled && !burnsIn(r)) ?? plan.resources.find(r => r.enabled);
     if (pick) chooseSubtitle(pick); else flash(i18n.t('web.player.subtitles.none'));
   };
@@ -491,7 +491,7 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
     }, {
       selectRendition: id => { service.selectAudio(id); },
       selectTrack: stream => { void service.selectAudioTrack(stream); },
-      chooseSubtitle: id => { const resource = id ? subtitlePlan?.resources.find(r => r.id === id) : null; if (resource === null) void subtitles.service?.choose(null).catch(() => {}); else if (resource) void subtitles.choose(resource).catch(() => {}); },
+      chooseSubtitle: id => { const resource = id ? subtitlePlan?.resources.find(r => r.id === id) : null; if (resource === null) void subtitles.turnOff().catch(() => {}); else if (resource) void subtitles.choose(resource).catch(() => {}); },
     });
   }, [state.session?.id, state.itemId, audioPlan.plan, audioPlan.availability, state.audioTracks, subtitlePlan, subtitles.service, subtitles.snapshot.busy, service]);
   /* Quality. Original is the default; Automatic starts at Original and moves down, and back up,
@@ -766,7 +766,7 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
                 <>
                   {subtitles.service && subtitlePlan ? (
                     <>
-                      {optionRow('Off', subtitlePlan.mode === 'off', () => { void subtitles.service!.choose(null); setOpenBox(null); })}
+                      {optionRow('Off', subtitlePlan.mode === 'off', () => { void subtitles.turnOff().catch(() => {}); setOpenBox(null); })}
                       {(subtitlePlan.resources ?? []).map(r => optionRow(trackName(r, i18n.locale) || r.title, !subtitles.snapshot.suppressed && subtitlePlan.selected?.id === r.id, () => chooseSubtitle(r), !r.enabled ? subtitleReason(r.reason) : ownerBlocks(r) ? i18n.t('player.ownerOff') : burnsIn(r) ? i18n.t('player.subtitles.bitmapNote') : r.origin === 'embedded' ? 'In file' : r.origin === 'sidecar' ? 'File' : r.origin === 'upload' ? 'Uploaded' : 'Provider', subtitles.snapshot.busy || !r.enabled || ownerBlocks(r)))}
                       {(subtitlePlan.discovered ?? []).filter(d => !(subtitlePlan.resources ?? []).some(r => r.discoveryId === d.id && r.enabled)).map(d => optionRow(trackName(d, i18n.locale) || d.title, false, () => { void subtitles.service!.import(d); setOpenBox(null); }, d.enabled ? 'Import' : subtitleReason(d.reason), subtitles.snapshot.busy || !d.enabled))}
                       {subtitles.snapshot.catalog?.provider.enabled ? (
@@ -815,7 +815,7 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
               ))}
               {!isAudio ? box('subtitles', 'subtitles', 'Subtitles', currentSubtitle, subtitles.service && subtitlePlan ? (
                 <>
-                  {optionRow('Off', subtitlePlan.mode === 'off', () => { void subtitles.service!.choose(null); })}
+                  {optionRow('Off', subtitlePlan.mode === 'off', () => { void subtitles.turnOff().catch(() => {}); })}
                   {(subtitlePlan.resources ?? []).map(r => optionRow(trackName(r, i18n.locale) || r.title, !subtitles.snapshot.suppressed && subtitlePlan.selected?.id === r.id, () => chooseSubtitle(r), !r.enabled ? subtitleReason(r.reason) : ownerBlocks(r) ? i18n.t('player.ownerOff') : burnsIn(r) ? i18n.t('player.subtitles.bitmapNote') : undefined, subtitles.snapshot.busy || !r.enabled || ownerBlocks(r)))}
                 </>
               ) : <Text variant="caption" tone="tertiary">Subtitles are available once playback starts.</Text>) : null}

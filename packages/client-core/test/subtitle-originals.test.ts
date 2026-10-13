@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {chooseSubtitleRendering, drawnRenderingFor, readSubtitleFile, readSubtitleFontList, selectedSubtitleOriginal, subtitleOriginals} from '../src/subtitle-originals.ts';
+import {drawnRenderingFor, readSubtitleFile, readSubtitleFontList, selectedSubtitleOriginal, subtitleOriginals} from '../src/subtitle-originals.ts';
 
 const root = '/v1/media/grant_1/subtitles/res-1/3';
 const styled = {id: 'res-1', format: 'ass', deliveries: [{format: 'text', url: root + '.vtt'}, {format: 'ass', url: root + '/original.ass', fontsUrl: root + '/fonts'}]};
@@ -33,19 +33,12 @@ test('what to ask for depends on what the device draws', () => {
   assert.equal(drawnRenderingFor({format: 'srt', deliveries: [{format: 'text', url: root + '.vtt'}]}, ['text', 'ass', 'pgs', 'vobsub', 'dvb']), undefined);
 });
 
-test('the plan says when the device is to draw, and the selection carries the request', async () => {
+test('the plan says when the device is to draw', () => {
   assert.deepEqual(selectedSubtitleOriginal({renderer: 'client', mode: 'track', selected: styled}), {format: 'ass', url: root + '/original.ass', fontsUrl: root + '/fonts'});
   assert.equal(selectedSubtitleOriginal({renderer: 'external_text', mode: 'track', selected: styled}), null, 'text delivery of the same track');
   assert.equal(selectedSubtitleOriginal({renderer: 'burn_in', mode: 'track', selected: dvd}), null);
   assert.equal(selectedSubtitleOriginal({renderer: 'client', mode: 'off', selected: null}), null);
   assert.equal(selectedSubtitleOriginal(null), null);
-  const calls: unknown[][] = [];
-  const service = {marker: 1, choose(this: {marker: number}, ...args: unknown[]) { calls.push([this.marker, ...args]); return Promise.resolve(); }};
-  await chooseSubtitleRendering(service, styled, 'ass');
-  await chooseSubtitleRendering(service, styled);
-  await chooseSubtitleRendering(service, styled, undefined, '500000');
-  await chooseSubtitleRendering(service, dvd, 'vobsub', '-100000');
-  assert.deepEqual(calls, [[1, styled, undefined, 'ass'], [1, styled], [1, styled, '500000'], [1, dvd, '-100000', 'vobsub']], 'an undefined timing keeps the saved one');
 });
 
 const response = (body: Uint8Array | string, init: {status?: number; headers?: Record<string, string>; chunk?: number} = {}) => {

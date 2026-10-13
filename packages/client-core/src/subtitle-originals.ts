@@ -7,10 +7,12 @@
  * it when it selects the track; the server then leaves the video alone instead of burning the
  * subtitle in, and the plan comes back with `renderer: "client"`.
  *
- * This file is the client side of that exchange for every app: which original a track offers,
- * which one to ask for given what the device draws, and bounded reads of the files. It reads the
- * `deliveries` field of a subtitle resource as it arrives, so it does not depend on how strictly
- * the catalogue parser types that field.
+ * This file is the client side of that exchange for every app: which original a track offers
+ * (from the `deliveries` of a subtitle resource or of a playback-options subtitle stream), which
+ * one to ask for given what the device draws, and bounded reads of the files. Asking is done with
+ * the selection itself: `subtitles: {trackId, delivery: "embeddedClient"}` on the session
+ * (`PlaybackChoices.subtitleDelivery`), or `rendering` on the subtitle route
+ * (`SubtitleService.choose`).
  */
 export type DrawnSubtitleFormat = 'ass' | 'pgs' | 'vobsub' | 'dvb';
 export const drawnSubtitleFormats: readonly DrawnSubtitleFormat[] = Object.freeze(['ass', 'pgs', 'vobsub', 'dvb']);
@@ -54,17 +56,6 @@ export function drawnRenderingFor(resource: unknown, draws: readonly string[]): 
 export function selectedSubtitleOriginal(plan: unknown): SubtitleOriginal | null {
   if (!record(plan) || plan.renderer !== 'client' || plan.mode !== 'track' || !record(plan.selected)) return null;
   return subtitleOriginals(plan.selected)[0] ?? null;
-}
-
-/** The part of the subtitle service this file uses: `choose(resource, offsetUs?, rendering?)`. */
-type Chooser = {choose: (...args: never[]) => Promise<unknown>};
-/**
- * Selects a track, asking for the original when `rendering` names one. `offsetUs` undefined keeps
- * the track's saved timing.
- */
-export function chooseSubtitleRendering(service: Chooser, resource: unknown, rendering?: DrawnSubtitleFormat, offsetUs?: string): Promise<unknown> {
-  const choose = service.choose as unknown as (this: Chooser, resource: unknown, offsetUs?: string, rendering?: string) => Promise<unknown>;
-  return rendering ? choose.call(service, resource, offsetUs, rendering) : offsetUs === undefined ? choose.call(service, resource) : choose.call(service, resource, offsetUs);
 }
 
 export type SubtitleFile = Readonly<{bytes: Uint8Array; charset: string}>;

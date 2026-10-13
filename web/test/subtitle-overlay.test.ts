@@ -8,6 +8,7 @@ import {fallbackFontsFor, scriptsIn} from '../src/player/subtitles/fallback-font
 import {decodeSubtitleText, type DrawnSubtitleRenderer, type OverlayClock, type OverlayGeometry, type ReadSubtitleFile} from '../src/player/subtitles/types.ts';
 import type {ImageWorkerReply, ImageWorkerRequest} from '../src/player/subtitles/image-protocol.ts';
 import {SubtitleSurface} from '../src/player/subtitle-surface.ts';
+import {subtitleSessionChange} from '../src/player/subtitles/selection.ts';
 
 const settle = () => new Promise(resolve => setTimeout(resolve, 0));
 const noRead: ReadSubtitleFile = () => Promise.reject(new Error('not read in this test'));
@@ -383,4 +384,23 @@ test('the capability declaration: one list, written into either document shape',
   const older = declareSubtitleRendering({version: 1, subtitles: {text: ['srt', 'vtt'], styled: [] as string[], bitmap: [] as string[]}}, kinds);
   assert.deepEqual(older.subtitles, {text: ['srt', 'vtt'], styled: ['ass', 'ssa'], bitmap: ['pgs', 'vobsub', 'dvb']});
   assert.deepEqual(declareSubtitleRendering({version: 1, subtitles: {text: ['vtt'], styled: ['x'], bitmap: ['y']}}, ['text']).subtitles, {text: ['vtt'], styled: [], bitmap: []});
+});
+
+test('a subtitle choice as a change of the session: the original when the browser draws it, the picture when drawing failed', () => {
+  const root = '/v1/media/grant/subtitles/';
+  const styled = {id: 'ass-1', format: 'ass', offsetUs: '-250000', deliveries: [{format: 'text', url: root + 'ass-1/2.vtt'}, {format: 'ass', url: root + 'ass-1/2/original.ass', fontsUrl: root + 'ass-1/2/fonts'}]};
+  const bluray = {id: 'pgs-1', format: 'pgs', offsetUs: '0', deliveries: [{format: 'pgs', url: root + 'pgs-1/1/original.sup'}]};
+  const plain = {id: 'srt-1', format: 'srt', offsetUs: '1500000', deliveries: [{format: 'text', url: root + 'srt-1/1.vtt'}]};
+  const desktop = ['text', 'ass', 'pgs', 'vobsub', 'dvb'], phone = ['text'];
+  const cases: {name: string; got: unknown; want: unknown}[] = [
+    {name: 'a styled track the browser draws', got: subtitleSessionChange(styled, 'ass', desktop), want: {subtitleTrackId: 'ass-1', subtitleDelivery: 'embeddedClient', subtitleOffsetMs: -250}},
+    {name: 'an image track the browser draws', got: subtitleSessionChange(bluray, 'pgs', desktop), want: {subtitleTrackId: 'pgs-1', subtitleDelivery: 'embeddedClient', subtitleOffsetMs: 0}},
+    {name: 'a text track keeps the timing saved for it', got: subtitleSessionChange(plain, undefined, desktop), want: {subtitleTrackId: 'srt-1', subtitleOffsetMs: 1500}},
+    {name: 'a timing nudge on a drawn track', got: subtitleSessionChange(bluray, 'pgs', desktop, '400000'), want: {subtitleTrackId: 'pgs-1', subtitleDelivery: 'embeddedClient', subtitleOffsetMs: 400}},
+    {name: 'a styled track that failed to draw falls back to text: the server is left to deliver it', got: subtitleSessionChange(styled, undefined, desktop), want: {subtitleTrackId: 'ass-1', subtitleOffsetMs: -250}},
+    {name: 'an image track that failed to draw is asked for in the picture', got: subtitleSessionChange(bluray, undefined, desktop), want: {subtitleTrackId: 'pgs-1', subtitleDelivery: 'burn', subtitleOffsetMs: 0}},
+    {name: 'an image track on a browser that draws nothing: the server decides (it burns)', got: subtitleSessionChange(bluray, undefined, phone), want: {subtitleTrackId: 'pgs-1', subtitleOffsetMs: 0}},
+    {name: 'off', got: subtitleSessionChange(null, undefined, desktop), want: {subtitleTrackId: null}},
+  ];
+  for (const c of cases) assert.deepEqual(c.got, c.want, c.name);
 });
