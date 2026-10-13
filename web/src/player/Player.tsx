@@ -487,7 +487,9 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
   const savedValue = String(readComposite(savedRow, key => prefs.value<PreferenceValue>(key, '')));
   // Until the session says which network it is on, nothing is assumed about the saved default.
   // A saved limit at or above this source does not limit it: that is Original for this title.
-  const savedQuality: QualityChoice = qualityFooter.network && isQualityChoice(savedValue) && (!fixedQuality(savedValue) || offeredSteps.some(q => q.id === savedValue)) ? savedValue : 'original';
+  // Preferences that have not arrived yet say nothing either: Original until they do.
+  const savedKnown = !!qualityFooter.network && prefs.value<string>('quality.local.mode', '') !== '';
+  const savedQuality: QualityChoice = savedKnown && isQualityChoice(savedValue) && (!fixedQuality(savedValue) || offeredSteps.some(q => q.id === savedValue)) ? savedValue : 'original';
   const qualityChoice: QualityChoice = engine.qualityChoice ?? savedQuality;
   const automaticStep = useSyncExternalStore(engine.playback.subscribeAutomatic, () => engine.playback.automaticAt);
   const stepLabel = (q: FixedQuality) => (q.id === '2160' ? i18n.t('quality.4k') : i18n.t('quality.height', {height: q.height}));
