@@ -239,3 +239,64 @@ test('dispose aborts work in flight and stops notifying', async () => {
   s.release(); await settle();
   assert.equal(calls, before);
 });
+
+test('a quiet read swaps in whole, at the same place, and only once every page in view has arrived', async () => {
+  const first = server(500), second = server(501, {prefix: 'n', delay: true});
+  const c = createWindowedCollection({fetchPage: first.fetchPage, pageSize: 50, maxResidentPages: 8, keyOf: i => i.id});
+  c.ensureRange(40, 70); // the view spans pages 0 and 1
+  await settle();
+  const generation = c.getSnapshot().generation;
+  const statuses: string[] = [];
+  c.subscribe(() => statuses.push(c.getSnapshot().status + ':' + c.getSnapshot().refreshing));
+  const quiet = c.revalidate({fetchPage: second.fetchPage});
+  await settle();
+  assert.equal(c.itemAt(45)!.id, 'i45', 'the list on screen is still the old one');
+  assert.equal(c.getSnapshot().refreshing, false, 'no refreshing state is shown for a quiet read');
+  second.release();
+  await quiet;
+  assert.equal(c.itemAt(45)!.id, 'n45');
+  assert.equal(c.itemAt(65)!.id, 'n65', 'both pages in view arrived before the swap: no placeholder flashes');
+  assert.equal(c.getSnapshot().total, 501);
+  assert.equal(c.getSnapshot().generation, generation + 1);
+  assert.ok(statuses.every(s => s === 'ready:false'), statuses.join());
+});
+
+test('a quiet read that fails leaves the list exactly as it was and rejects', async () => {
+  const good = server(500), bad = server(500, {fail: () => true});
+  const c = createWindowedCollection({fetchPage: good.fetchPage, pageSize: 50, maxResidentPages: 8, keyOf: i => i.id});
+  c.ensureRange(0, 30);
+  await settle();
+  const before = c.getSnapshot();
+  await assert.rejects(c.revalidate({fetchPage: bad.fetchPage}), /boom/);
+  assert.equal(c.getSnapshot(), before);
+  assert.equal(c.itemAt(3)!.id, 'i3');
+  // The list goes on working: scrolling still loads from the list on screen.
+  c.ensureRange(200, 230);
+  await settle();
+  assert.equal(c.itemAt(205)!.id, 'i205');
+  // Nothing shown yet: there is nothing to keep, so a quiet read is not needed.
+  const empty = createWindowedCollection({fetchPage: good.fetchPage, pageSize: 50, maxResidentPages: 8, keyOf: i => i.id});
+  await empty.revalidate();
+});
+
+test('a quiet read waits for the pause it is given, and a new filter supersedes it', async () => {
+  const first = server(100), second = server(100, {prefix: 'n'}), third = server(100, {prefix: 'f'});
+  const c = createWindowedCollection({fetchPage: first.fetchPage, pageSize: 50, maxResidentPages: 8, keyOf: i => i.id});
+  c.ensureRange(0, 10);
+  await settle();
+  let release!: () => void; const pause = new Promise<void>(r => { release = r; });
+  const quiet = c.revalidate({fetchPage: second.fetchPage, hold: () => pause});
+  await settle();
+  assert.equal(c.itemAt(0)!.id, 'i0', 'the person is mid-press: nothing moves yet');
+  release(); await quiet;
+  assert.equal(c.itemAt(0)!.id, 'n0');
+  let hold!: () => void; const held = new Promise<void>(r => { hold = r; });
+  const superseded = c.revalidate({fetchPage: first.fetchPage, hold: () => held});
+  await settle();
+  c.invalidate(third.fetchPage);
+  await superseded;
+  await settle();
+  hold();
+  await settle();
+  assert.equal(c.itemAt(0)!.id, 'f0');
+});

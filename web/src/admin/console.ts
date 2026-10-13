@@ -1,4 +1,6 @@
 export {alertLabel, alertLabels, alertTone, duration, factLabel, factLabels, formatFact, jobLabel, jobLabels, jobStateLabel, jobTone, sentence} from '@core/server-admin/console-words.ts';
+import {useFreshness} from '../app/freshness';
+import type {FreshnessDependency} from '@core/freshness-hub.ts';
 import type {I18n} from '@i18n';
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {ConsoleClient} from '@core/console.ts';
@@ -19,7 +21,7 @@ export function useConsole(): ConsoleClient {
 export type Read<T> = {data?: T; error?: string; loading: boolean; at?: number; reload: () => void};
 
 /** A bounded read with freshness, retry and stale-result fencing. */
-export function useRead<T>(fn: () => Promise<T>, deps: readonly unknown[], options: {auto?: boolean; every?: number} = {}): Read<T> {
+export function useRead<T>(fn: () => Promise<T>, deps: readonly unknown[], options: {auto?: boolean; every?: number; /** Read again, quietly, when any of these moves on the event feed (a scan's progress, a task's state). */ on?: readonly FreshnessDependency[]} = {}): Read<T> {
   const [state, setState] = useState<{data?: T; error?: string; loading: boolean; at?: number}>({loading: options.auto !== false});
   const seq = useRef(0);
   const reload = useCallback(() => {
@@ -35,6 +37,18 @@ export function useRead<T>(fn: () => Promise<T>, deps: readonly unknown[], optio
     const t = setInterval(() => document.visibilityState === 'visible' && reload(), options.every);
     return () => clearInterval(t);
   }, [reload, options.auto, options.every]);
+  // The feed says when something this read shows has moved; hints that arrive together are answered by one read.
+  const {hub} = useFreshness();
+  const on = options.on?.join('\n') ?? '';
+  useEffect(() => {
+    if (!on || options.auto === false) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const off = hub.watch(on.split('\n'), () => {
+      if (timer !== undefined || document.visibilityState !== 'visible') return;
+      timer = setTimeout(() => { timer = undefined; reload(); }, 600);
+    });
+    return () => { off(); if (timer !== undefined) clearTimeout(timer); };
+  }, [hub, on, reload, options.auto]);
   return {...state, reload};
 }
 

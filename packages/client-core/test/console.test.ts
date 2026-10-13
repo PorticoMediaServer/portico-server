@@ -57,6 +57,14 @@ test('known revision conflicts keep drafts but permit a deliberate revised submi
  c.setDraft('runtime-settings',{revision:1,values});await assert.rejects(c.applySettings(1,values),/revision: 4/);assert.equal(c.hasUnconfirmed(),false);assert.ok(c.getDraft('runtime-settings'));
  conflict=false;assert.equal((await c.applySettings(4,values)).revision,5);c.dispose();
 });
+test('a patch or a row command that lost a race is sent again with the current revision, without a conflict shown',async()=>{
+ const sent:any[]=[];let current=4;
+ const c=client(async(_path:string,_method?:string,body?:any)=>{sent.push(body);if(body.expectedRevision!==current)throw new ConsoleTransportError(409,'console_conflict',current,[]);return envelope(settings(current+1));});
+ assert.equal((await c.applySettings(1,values)).revision,5);
+ assert.deepEqual(sent.map(b=>b.expectedRevision),[1,4]);
+ assert.deepEqual(sent[1].values,sent[0].values,'the same change, against the newer document');
+ assert.equal(c.hasUnconfirmed(),false);c.dispose();
+});
 test('server and viewer fences revoke the entire selected scope',async()=>{
  let foreign=false;const c=client(async()=>envelope(settings(),foreign?'server-two':'server-one'));
  await c.settings();c.setDraft('private','do not retain');let denied=0;c.onDenied(()=>denied++);foreign=true;

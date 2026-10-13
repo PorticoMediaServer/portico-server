@@ -1,8 +1,11 @@
-import {useCallback, useEffect, useRef, useState} from 'react';
-import {fetchHome, fetchHomeLayout, fetchHomeRow, appendHomeRowPage, resetHomeLayout, saveHomeLayout, type HomeDocument, type HomeLayout, type HomeLayoutView, type HomeRow} from '@core/home.ts';
-import {sessionIdentity, useSession} from './session';
-import {homeRecovery} from './home-recovery.ts';
+import {useCallback, useEffect, useMemo} from 'react';
+import {type HomeDocument, type HomeLayout, type HomeLayoutView, type HomeRow} from '@core/home.ts';
+import {HomeService, type HomeSnapshot} from '@core/home-service.ts';
+import {dependsOn, titlesWithPersonalState} from '@core/freshness-hub.ts';
+import {serviceDocument} from '@core/freshness-pool.ts';
+import {useSession} from './session';
 import {useViewerScope} from './viewer-scope';
+import {usePooled, useRecovering} from './freshness';
 import {RECOMMENDATIONS_RESET, recommendationViewer} from './not-interested';
 import {currentI18n} from './i18n';
 import type {MessageId} from '@i18n';
@@ -13,90 +16,49 @@ import type {ServerText} from '@core/home.ts';
  * Home on the rows API: one document with every row the server composed for
  * this viewer (order and hidden set applied server-side), per-row paging by
  * cursor, and a layout the viewer can reorder or hide with a revision fence.
+ *
+ * The document is client-core's `HomeService`, kept for the signed-in viewer: coming back to
+ * Home shows it at once, and it is read again in the background only when a library, the list of
+ * libraries, or this profile's watched state or positions moved. What changed is merged into
+ * the rows on screen; nothing is blanked and no row loses its place.
  */
 export type HomeState = {phase: 'loading' | 'ready' | 'error'; document?: HomeDocument; error?: unknown; paging: ReadonlySet<string>};
 
+/** Everything Home is built from: every library's titles and order, the list of libraries, and this profile's state. */
+const homeDependencies = Object.freeze([dependsOn.libraries, ...titlesWithPersonalState()]);
+const operationKey = () => crypto.randomUUID();
+
 export function useHome() {
-  const {api, session} = useSession();
+  const {api} = useSession();
   const viewer = recommendationViewer(useViewerScope());
-  const [state, setState] = useState<HomeState>({phase: 'loading', paging: new Set()});
-  const generation = useRef(0);
-  const recovery = useRef<ReturnType<typeof homeRecovery<HomeDocument>> | undefined>(undefined);
-  const currentApi = useRef(api);
-  currentApi.current = api;
-  const pages = useRef(new Set<AbortController>());
-  const load = useCallback((clear = false, invalidate = false) => {
-    if (clear) {
-      generation.current++;
-      for (const page of pages.current) page.abort();
-      pages.current.clear();
-      setState(prev => ({...prev, document: undefined, phase: 'loading', paging: new Set(), error: undefined}));
-    }
-    return recovery.current?.refresh(clear || invalidate) ?? Promise.resolve();
-  }, []);
-  const who = sessionIdentity(session);
+  const {service, snapshot, document, memo} = usePooled<HomeService, HomeSnapshot>('home', () => serviceDocument(new HomeService(api), homeDependencies));
   useEffect(() => {
-    const reader = homeRecovery(signal => fetchHome(currentApi.current, undefined, signal), {
-      loading: () => {
-        generation.current++;
-        for (const page of pages.current) page.abort();
-        pages.current.clear();
-        setState(prev => ({...prev, phase: 'loading', paging: new Set(), error: undefined}));
-      },
-      success: document => setState({phase: 'ready', document, paging: new Set()}),
-      error: error => setState(prev => ({...prev, phase: 'error', error})),
-    });
-    recovery.current = reader;
-    // A new sign-in/profile must not retain another viewer's cached rows. Token rotation
-    // uses the same identity and transport, so it does not restart this read/retry lifecycle.
-    setState({phase: 'loading', paging: new Set()});
-    void reader.refresh();
-    return () => {
-      generation.current++; reader.stop();
-      if (recovery.current === reader) recovery.current = undefined;
-      for (const page of pages.current) page.abort();
-      pages.current.clear();
-    };
-  }, [who]);
+    if (memo.selected) return;
+    memo.selected = true;
+    document.markCurrent();
+    void service.load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [service]);
+  /** An explicit refresh. `clear` first drops what is shown (this profile's taste was reset). */
+  const load = useCallback((clear = false, _invalidate = false) => {
+    document.markCurrent();
+    return service.load({clear: clear === true});
+  }, [service, document]);
   useEffect(() => {
     const onReset = (event: Event) => { if ((event as CustomEvent<{viewer: string}>).detail.viewer === viewer) void load(true); };
     window.addEventListener(RECOMMENDATIONS_RESET, onReset);
     return () => window.removeEventListener(RECOMMENDATIONS_RESET, onReset);
   }, [viewer, load]);
-  const more = useCallback(async (rowId: string) => {
-    const row = state.document?.rows.find(r => r.id === rowId);
-    if (!row?.nextCursor || state.paging.has(rowId)) return;
-    const mine = generation.current;
-    const controller = new AbortController();
-    pages.current.add(controller);
-    setState(prev => ({...prev, paging: new Set(prev.paging).add(rowId)}));
-    try {
-      const page = await fetchHomeRow(api, rowId, {cursor: row.nextCursor}, controller.signal);
-      if (mine !== generation.current || controller.signal.aborted) return;
-      setState(prev => {
-        if (mine !== generation.current || !prev.document || prev.document.rows.find(r => r.id === rowId)?.nextCursor !== row.nextCursor) return prev;
-        const rows = prev.document.rows.map(r => (r.id === rowId ? appendHomeRowPage(r, page) : r));
-        const paging = new Set(prev.paging); paging.delete(rowId);
-        return {...prev, phase: 'ready', error: undefined, document: {...prev.document, rows}, paging};
-      });
-    } catch (error) {
-      if (mine !== generation.current || controller.signal.aborted) return;
-      if ((error as {code?: string})?.code === 'stale_continuation') { void load(true); return; }
-      setState(prev => { if (mine !== generation.current || !prev.document) return prev; const paging = new Set(prev.paging); paging.delete(rowId); return {...prev, phase: 'error', paging, error}; });
-    } finally {
-      pages.current.delete(controller);
-    }
-  }, [api, state.document, state.paging, load]);
-  const saveLayout = useCallback(async (rowOrder: readonly string[], hiddenRowIds: readonly string[], expectedRevision?: number): Promise<HomeLayout> => {
-    const current = state.document?.layout;
-    const revision = expectedRevision ?? current?.revision;
-    if (revision === undefined) throw new Error('Home is not loaded.');
-    const layout = await saveHomeLayout(api, {expectedRevision: revision, rowOrder, hiddenRowIds, idempotencyKey: crypto.randomUUID()});
-    await load(false, true);
-    return layout;
-  }, [api, state.document, load]);
-  const resetLayout = useCallback(async () => { await resetHomeLayout(api, crypto.randomUUID()); await load(false, true); }, [api, load]);
-  const loadLayout = useCallback(async (signal?: AbortSignal): Promise<HomeLayoutView> => fetchHomeLayout(api, signal), [api]);
+  const more = useCallback((rowId: string) => service.more(rowId), [service]);
+  const saveLayout = useCallback((rowOrder: readonly string[], hiddenRowIds: readonly string[], expectedRevision?: number): Promise<HomeLayout> => service.saveLayout(rowOrder, hiddenRowIds, operationKey, expectedRevision), [service]);
+  const resetLayout = useCallback(() => service.resetLayout(operationKey), [service]);
+  const loadLayout = useCallback((signal?: AbortSignal): Promise<HomeLayoutView> => service.loadLayout(signal), [service]);
+  // A first load that failed is tried again by itself; for its first moments Home goes on showing that it is loading.
+  const recovering = useRecovering(document);
+  const state = useMemo<HomeState>(() => {
+    const quiet = recovering && snapshot.phase === 'error' && !snapshot.document;
+    return {phase: snapshot.phase === 'idle' || quiet ? 'loading' : snapshot.phase, document: snapshot.document, error: quiet ? undefined : snapshot.error, paging: snapshot.paging};
+  }, [snapshot, recovering]);
   return {state, refresh: load, more, saveLayout, resetLayout, loadLayout};
 }
 

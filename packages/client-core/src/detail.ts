@@ -72,7 +72,7 @@ export type DetailSnapshot = Readonly<{
   mutationError: DetailError | null;
 }>;
 type Receipt = { operationId: string; serverId: string; itemId: string; libraryId: string; viewerFence: string; personal: PersonalState };
-type Command = { offline?:PersonalOfflineMutation; intent: PersonalIntent; operationId?: string; expectedRevision?: number; phase: 'queued' | 'sending' | 'retry-required' | 'conflict'; promise: Promise<void>; resolve: () => void };
+type Command = { silentRetries?: number; offline?:PersonalOfflineMutation; intent: PersonalIntent; operationId?: string; expectedRevision?: number; phase: 'queued' | 'sending' | 'retry-required' | 'conflict'; promise: Promise<void>; resolve: () => void };
 const obj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 const str = (v: unknown, max = 512): v is string => typeof v === 'string' && v.length <= max && !/[\x00-\x1f\x7f]/.test(v);
 const id = (v: unknown): v is string => str(v, 256) && v.length > 0;
@@ -286,6 +286,37 @@ export class DetailService {
     this.readPromise = task; return task;
   }
   retryRead(): Promise<void> { return this.refresh(); }
+  retry(): Promise<void> { return this.refresh(); }
+  /**
+   * Read the title again without touching `phase`, and show the answer in place. A failed read
+   * rejects and changes nothing. An answer that the title is gone or no longer allowed is the
+   * page's state from then on, exactly as a first load would have shown it.
+   */
+  async revalidate(context?: { signal?: AbortSignal; settle?: () => Promise<void> }): Promise<void> {
+    this.active(); const target = this.state.target;
+    if (!target || this.state.phase !== 'ready' || !this.state.data) return;
+    const controller = new AbortController(), stop = () => controller.abort();
+    context?.signal?.addEventListener('abort', stop, { once: true });
+    const generation = this.generation, read = this.readGeneration, bound = this.bound, api = this.api;
+    try {
+      const raw = await this.deadline(api.request<unknown>('/v1/items/' + encodeURIComponent(target.itemId) + '/detail?related=all', 'GET', undefined, controller.signal), controller);
+      if (this.disposed || generation !== this.generation || read !== this.readGeneration) return;
+      const data = projection(raw, bound, target);
+      await context?.settle?.();
+      if (this.disposed || generation !== this.generation || read !== this.readGeneration || controller.signal.aborted || !this.state.data) return;
+      // Another viewer's answer, or one older than what is shown (a change made here has not reached this read), is not shown.
+      if (data.scope.viewerFence !== this.state.data.scope.viewerFence) { await this.refresh(); return; }
+      if (data.revision.catalog < this.state.data.revision.catalog || data.personal.revision < this.state.data.personal.revision) return;
+      // Nothing on the page changed: nothing is published, so nothing re-renders.
+      if (JSON.stringify(data) === JSON.stringify(this.state.data)) return;
+      this.publish({ data });
+    } catch (error) {
+      if (this.disposed || generation !== this.generation || read !== this.readGeneration || controller.signal.aborted) return;
+      const code = errorInfo(error).code;
+      if (['unauthorized', 'forbidden', 'not_found', 'invalid_detail'].includes(code)) { await this.refresh(); return; }
+      throw error;
+    } finally { context?.signal?.removeEventListener('abort', stop); }
+  }
   mutate(input: PersonalIntent): Promise<void> {
     this.active(); const intent = checkIntent(input), data = this.state.data;
     if (!data || (intent.action==='resolution' ? !data.personal.conflicts.some(c=>c.id===intent.value.conflictId) : !data.actions.some(a => a.id === intent.action && a.enabled))) throw new Error('This personal action is not currently available.');
@@ -336,10 +367,27 @@ export class DetailService {
       const applied = receipt(raw, command.operationId, data);
       if (this.state.data && applied.personal.revision >= this.state.data.personal.revision) this.publish({ data: Object.freeze({ ...this.state.data, item:Object.freeze({...this.state.data.item,progressSeconds:applied.personal.progressSeconds}), personal: applied.personal }) });
       this.commands.shift(); command.resolve(); this.publish({ mutationError: null });
-      await this.refresh();
+      // What the change touched elsewhere on the page (Up Next, counts) is read in place, with no loading state.
+      if (this.state.phase === 'ready') await this.revalidate().catch(() => {}); else await this.refresh();
     } catch (error) {
       if (this.disposed || generation !== this.generation) return;
       const info = errorInfo(error);
+      // The state moved under this action (another device, or the person's own previous press).
+      // That is not theirs to sort out: read the title again and, when the action still makes
+      // sense, send it with what the server has now. Only a real disagreement is shown.
+      if (info.code === 'personal_state_conflict' && !command.offline && (command.silentRetries ?? 0) < 2) {
+        command.silentRetries = (command.silentRetries ?? 0) + 1;
+        await this.refresh();
+        if (this.disposed || generation !== this.generation) return;
+        const now = this.state.data;
+        if (this.state.phase === 'ready' && now) {
+          const field = command.intent.action === 'watchlist' ? 'watchlisted' : command.intent.action;
+          const settled = command.intent.action !== 'resolution' && (now.personal as unknown as Record<string, unknown>)[field] === (command.intent as { value?: unknown }).value;
+          const offered = command.intent.action === 'resolution' ? now.personal.conflicts.some(c => c.id === (command.intent as { value: { conflictId: string } }).value.conflictId) : now.actions.some(a => a.id === command.intent.action && a.enabled);
+          if (settled) { this.commands.shift(); command.resolve(); this.publish({ mutationError: null }); return; }
+          if (offered) { command.operationId = undefined; command.expectedRevision = undefined; command.phase = 'queued'; this.publish({ mutationError: null }); return; }
+        }
+      }
       command.phase = ['personal_state_conflict','personal_needs_resolution','personal_needs_review','operation_expired'].includes(info.code) ? 'conflict' : 'retry-required'; command.resolve();
       this.publish({ mutationError: info });
       if (command.phase === 'conflict') await this.refresh();

@@ -1,8 +1,8 @@
-import type {ContentSection} from '@core/library-content.ts';
 
 /**
- * PERF-S02/S08: cursor-page accumulation for section "More" and saved lists
- * (the web port of Apple's `useAppendedPages` core). A page is stored under
+ * PERF-S02/S08: cursor-page accumulation for saved lists (the web port of Apple's
+ * `useAppendedPages` core). A library section's pages are kept by the content service itself
+ * (`LibraryContentSnapshot.appended`), with the document, so they survive Back. A page is stored under
  * its cursor, so a page that changes in place replaces its own segment; a new
  * scope (tab, sort, route) or a first page (`cursor === null`) starts over.
  * Entries dedupe by key. Pure, so the unit tests drive it without React.
@@ -45,33 +45,6 @@ export function accumulatePage<T>(store: PageStore<T>, scope: string, cursor: st
   store.out = out;
   store.seen = seen;
   return out;
-}
-
-export type AppendedSections = {routeKey: string; sections: readonly ContentSection[]};
-
-const sectionSeen = new WeakMap<ContentSection, Set<string>>();
-
-/**
- * PERF-S02 pure core: a full projection (first page) replaces every section;
- * a single-section "More" load appends its entries into the stored section and
- * keeps the page's other sections. Never reorders, never drops a section.
- */
-export function mergeSectionPages(previous: AppendedSections | null, routeKey: string, pageCursor: string | null, incoming: readonly ContentSection[]): AppendedSections {
-  if (!previous || previous.routeKey !== routeKey || pageCursor === null || incoming.length !== 1) {
-    return {routeKey, sections: incoming};
-  }
-  const next = incoming[0]!;
-  const index = previous.sections.findIndex(s => s.id === next.id);
-  if (index < 0) return {routeKey, sections: incoming};
-  const current = previous.sections[index]!;
-  // The seen set follows the merged section, so a "More" page keys only its
-  // own entries.
-  const seen = sectionSeen.get(current) ?? new Set(current.entries.map(e => e.id));
-  const added: ContentSection["entries"][number][] = [];
-  for (const e of next.entries) if (!seen.has(e.id)) { seen.add(e.id); added.push(e); }
-  const merged: ContentSection = {...current, entries: added.length ? current.entries.concat(added) : current.entries, totalCount: next.totalCount, nextCursor: next.nextCursor};
-  sectionSeen.set(merged, seen);
-  return {routeKey, sections: previous.sections.map((s, i) => (i === index ? merged : s))};
 }
 
 /** Past this many entries a section renders through the windowed grid/list (O(visible), never O(loaded)). */
