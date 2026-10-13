@@ -65,6 +65,9 @@ type Principal struct {
 	Viewer
 	Hash  string
 	Epoch int
+	// ExpiresAt is the earlier of token expiry and family horizon. Cached
+	// authentication must never extend this deadline.
+	ExpiresAt time.Time `json:"-"`
 	// DeviceID is verified accounting metadata, never an authorization claim.
 	DeviceID string `json:"-"`
 	// Grant narrows what the session may be used for, whatever its role: empty

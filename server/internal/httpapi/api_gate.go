@@ -195,7 +195,11 @@ func (g *credentialGate) remember(digest string, credential access.ResolvedCrede
 			}
 		}
 	}
-	g.resolved[digest] = resolvedEntry{credential: credential, expires: now.Add(credentialResolveTTL), authority: generation}
+	expires := now.Add(credentialResolveTTL)
+	if !credential.ExpiresAt.IsZero() && credential.ExpiresAt.Before(expires) {
+		expires = credential.ExpiresAt
+	}
+	g.resolved[digest] = resolvedEntry{credential: credential, expires: expires, authority: generation}
 }
 
 // take charges one request to the credential's bucket. It reports what is left

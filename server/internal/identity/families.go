@@ -199,6 +199,10 @@ func (s *Service) familyTokenTx(ctx context.Context, tx *sql.Tx, hash string) (f
 	if err != nil {
 		return r, err
 	}
+	r.principal.ExpiresAt = r.tokenExpiry
+	if r.AuthorizationHorizon.Before(r.principal.ExpiresAt) {
+		r.principal.ExpiresAt = r.AuthorizationHorizon
+	}
 	r.revoked = revoked != 0
 	r.retired = retired != 0
 	return r, nil

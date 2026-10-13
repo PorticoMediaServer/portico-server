@@ -94,7 +94,11 @@ func (c *principalCache) store(key string, p identity.Principal, now time.Time, 
 	if c == nil {
 		return
 	}
-	entry := principalEntry{principal: p, expires: now.Add(principalCacheTTL), authority: generation}
+	expires := now.Add(principalCacheTTL)
+	if !p.ExpiresAt.IsZero() && p.ExpiresAt.Before(expires) {
+		expires = p.ExpiresAt
+	}
+	entry := principalEntry{principal: p, expires: expires, authority: generation}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if element, ok := c.entries[key]; ok {
