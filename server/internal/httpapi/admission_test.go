@@ -153,7 +153,7 @@ func TestStreamsAreRefusedImmediatelyRatherThanQueued(t *testing.T) {
 	mux := http.NewServeMux()
 	release := make(chan struct{})
 	var served sync.WaitGroup
-	mux.HandleFunc("GET /v1/notifications/events", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("GET /v1/events", func(w http.ResponseWriter, r *http.Request) {
 		served.Done()
 		<-release
 	})
@@ -161,11 +161,11 @@ func TestStreamsAreRefusedImmediatelyRatherThanQueued(t *testing.T) {
 	// Shrink the lane so the test does not have to open 512 streams.
 	a.lanes[laneRealtime] = newLane(laneRealtime, laneSpec{capacity: 1, queueWait: 0, budget: 0, class: dbwork.ClassInteractive})
 	served.Add(1)
-	go handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("GET", "/v1/notifications/events", nil))
+	go handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("GET", "/v1/events", nil))
 	served.Wait()
 	start := time.Now()
 	w := httptest.NewRecorder()
-	handler.ServeHTTP(w, httptest.NewRequest("GET", "/v1/notifications/events", nil))
+	handler.ServeHTTP(w, httptest.NewRequest("GET", "/v1/events", nil))
 	if w.Code != 503 {
 		t.Fatalf("a stream over capacity returned %d", w.Code)
 	}

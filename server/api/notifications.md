@@ -6,22 +6,16 @@ A guide for third-party client authors. The normative contract is
 Everything needs `Authorization: Bearer <access token>`. Routes under
 `/v1/admin/` need an owner session.
 
-## The one number
+## Revisions and stream positions
 
-Every inbox carries a monotonic `revision`. The same number does three jobs:
+Every inbox carries a monotonic `revision`. Use it as `expectedRevision` when
+changing the inbox. It advances for new notices, read receipts, archives and
+retention prunes. A batch that changes nothing does not advance it.
 
-| Job | Where it goes |
-| --- | --- |
-| Fence a write | `expectedRevision` in the batch body |
-| Resume a stream | `Last-Event-ID` header on `/v1/events` |
-| Park a long poll | `?revision=` on `/v1/notifications/wait` |
-
-Hold one number and you hold your whole position. It only ever increases, and it
-increases when anything about the inbox changes — a new notice, a read receipt on
-another device, an archive, a retention prune.
-
-A batch that changes nothing does **not** advance it, so a no-op on one device
-does not invalidate another device's fence.
+The shared `/v1/events` feed has a separate decimal event position. Resume SSE
+with `Last-Event-ID`, or use `?after=<event-id>&waitSeconds=25` for the long-poll
+fallback. A `notification.changed` hint carries the inbox revision; quietly
+reread the inbox and counts. Never use the inbox revision as the feed position.
 
 ## Reading the inbox
 

@@ -152,7 +152,7 @@ func TestHandlerMiddlewareKeepsFlushAndTheResponseController(t *testing.T) {
 		deadline = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(time.Second)) == nil
 	}))
 	server := httptest.NewServer(handler)
-	response, err := http.Get(server.URL + "/v1/notifications/events")
+	response, err := http.Get(server.URL + "/v1/events")
 	if err != nil {
 		server.Close()
 		t.Fatal(err)
