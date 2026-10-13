@@ -2,7 +2,9 @@ export {alertLabel, alertLabels, alertTone, duration, factLabel, factLabels, for
 import {useFreshness} from '../app/freshness';
 import type {FreshnessDependency} from '@core/freshness-hub.ts';
 import type {I18n} from '@i18n';
-import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
+import {useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore} from 'react';
+import {QuietRead} from '@core/server-admin/quiet-read.ts';
+export {QUIET_READ_EVERY_MS} from '@core/server-admin/quiet-read.ts';
 import {ConsoleClient} from '@core/console.ts';
 import {presentError} from '@core/presentation/index.ts';
 import {useSession} from '../app/session';
@@ -20,36 +22,43 @@ export function useConsole(): ConsoleClient {
 
 export type Read<T> = {data?: T; error?: string; loading: boolean; at?: number; reload: () => void};
 
-/** A bounded read with freshness, retry and stale-result fencing. */
-export function useRead<T>(fn: () => Promise<T>, deps: readonly unknown[], options: {auto?: boolean; every?: number; /** Read again, quietly, when any of these moves on the event feed (a scan's progress, a task's state). */ on?: readonly FreshnessDependency[]} = {}): Read<T> {
-  const [state, setState] = useState<{data?: T; error?: string; loading: boolean; at?: number}>({loading: options.auto !== false});
-  const seq = useRef(0);
-  const reload = useCallback(() => {
-    const n = ++seq.current;
-    setState(s => ({...s, loading: true, error: undefined}));
-    fn().then(data => n === seq.current && setState({data, loading: false, at: Date.now()})).catch(e => n === seq.current && setState(s => ({...s, loading: false, error: problem(e)})));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, deps);
-  useEffect(() => {
-    if (options.auto === false) return;
-    reload();
-    if (!options.every) return;
-    const t = setInterval(() => document.visibilityState === 'visible' && reload(), options.every);
-    return () => clearInterval(t);
-  }, [reload, options.auto, options.every]);
-  // The feed says when something this read shows has moved; hints that arrive together are answered by one read.
+export type ReadOptions = {
+  auto?: boolean;
+  /** Look again this often while the page is in front, for something the server sends no hint about (`QUIET_READ_EVERY_MS` is the usual pace). */
+  every?: number;
+  /** Read again when any of these moves on the event feed (a scan's progress, a task's state, the server's settings). */
+  on?: readonly FreshnessDependency[];
+};
+
+/**
+ * A console panel's read, kept current quietly (client-core `QuietRead`): what is shown stays
+ * while it is read again; a read the owner did not ask for never spins, never blanks and never
+ * shows its own failure; `reload` is the read the owner asks for (Try again, Refresh, after their
+ * own action), and that one answers at once. `loading` is true only for a read the panel is
+ * waiting on.
+ */
+export function useRead<T>(fn: () => Promise<T>, deps: readonly unknown[], options: ReadOptions = {}): Read<T> {
   const {hub} = useFreshness();
+  const store = useMemo(() => new QuietRead<T>(hub), [hub]);
+  useEffect(() => () => store.dispose(), [store]);
+  const latest = useRef(fn);
+  latest.current = fn;
   const on = options.on?.join('\n') ?? '';
+  const every = options.every ?? 0;
+  useEffect(() => { store.configure(() => latest.current(), on ? on.split('\n') : [], every); }, [store, on, every]);
+  const auto = options.auto !== false;
   useEffect(() => {
-    if (!on || options.auto === false) return;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const off = hub.watch(on.split('\n'), () => {
-      if (timer !== undefined || document.visibilityState !== 'visible') return;
-      timer = setTimeout(() => { timer = undefined; reload(); }, 600);
-    });
-    return () => { off(); if (timer !== undefined) clearTimeout(timer); };
-  }, [hub, on, reload, options.auto]);
-  return {...state, reload};
+    if (!auto) return;
+    store.setOpen(true);
+    store.reload(false);
+    return () => store.setOpen(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [store, auto, ...deps]);
+  const state = useSyncExternalStore(store.subscribe, store.getSnapshot);
+  const reload = useCallback(() => store.reload(), [store]);
+  const error = useMemo(() => (state.error === undefined ? undefined : problem(state.error) || undefined), [state.error]);
+  // Before the first read has started there is nothing yet: that is loading, not empty.
+  return {data: state.data, error, loading: state.loading || (auto && state.data === undefined && state.error === undefined), at: state.at, reload};
 }
 
 /** Serialised mutation runner with one error and one notice at a time. */

@@ -4,7 +4,13 @@
  * page. A `DraftForm` is one settings document (load, edit, dirty, save, discard); a `FormSet`
  * is a page's forms behind one `dirty / save() / discard()`. No rendering: the web's sticky bar
  * and the iPhone's toolbar both sit on a `FormSet`.
+ *
+ * A document that moved on the server while it was being edited is not the owner's problem: what
+ * they did not touch takes the server's value, what they changed stays theirs, and a save the
+ * server calls out of date is read again and sent again by itself (`freshness-actions.ts`). Only
+ * a setting they changed that was also changed elsewhere, to something else, is ever reported.
  */
+import {ALREADY_DONE, rebaseDraft, retryWhenStale} from '../freshness-actions.ts';
 
 export type FormState<T, S = undefined> = Readonly<{
   /** The first read has not answered yet. */
@@ -66,10 +72,11 @@ export class DraftForm<T extends object, S = undefined> {
 
   private adopt(loaded: Loaded<T, S> | null, keepDraft: boolean) {
     if (loaded === null) { this.publish({loading: false, unavailable: true, loadError: undefined, saved: undefined, draft: undefined, status: undefined}); return; }
-    // Keep the comparison basis while editing: moving saved under a whole draft would turn
-    // somebody else's changed fields into local edits when this form next saves.
-    if (keepDraft && this.state.dirty) { this.publish({loading: false, loadError: undefined}); return; }
-    this.publish({loading: false, unavailable: false, loadError: undefined, saved: loaded.value, status: loaded.status, draft: keepDraft && this.state.dirty ? this.state.draft : loaded.value});
+    // While editing, the draft is carried onto the newer document: the owner's own changes stay,
+    // and nobody else's change turns into a local edit when this form next saves.
+    const editing = keepDraft && this.state.dirty && this.state.saved !== undefined && this.state.draft !== undefined;
+    const draft = editing ? rebaseDraft(this.state.saved as T, this.state.draft as T, loaded.value).merged : loaded.value;
+    this.publish({loading: false, unavailable: false, loadError: undefined, saved: loaded.value, status: loaded.status, draft});
   }
 
   /** Reads the document. A failure keeps what was loaded before. */
@@ -97,22 +104,38 @@ export class DraftForm<T extends object, S = undefined> {
     if (this.state.saved !== undefined && !this.state.saving) this.publish({draft: this.state.saved, saveError: undefined});
   }
 
-  /** Saves a dirty, valid draft. Rejects with the server's failure, which is also kept in `saveError`. */
+  /**
+   * Saves a dirty, valid draft. An out-of-date answer is met by reading the document again,
+   * carrying the draft onto it and sending it again, silently. Rejects with the server's failure,
+   * which is also kept in `saveError`; after a real conflict the form holds the newer document
+   * with the owner's own changes still in the draft, so saving again is a deliberate choice.
+   */
   async save(): Promise<void> {
     const {saved, draft, status, dirty, saving, problem} = this.state;
     if (!dirty || saving || saved === undefined || draft === undefined) return;
     if (problem) throw new Error(problem);
     this.publish({saving: true, saveError: undefined});
+    let base = saved, sending = draft, sendingStatus = status, conflict = false, gone = false, moved = false;
     try {
-      const stored = await this.o.save(draft, saved, status);
-      if (stored) this.publish({saving: false, saved: stored.value, status: stored.status ?? status, draft: stored.value});
+      const stored = await retryWhenStale(() => this.o.save(sending, base, sendingStatus), {
+        reread: async () => {
+          const fresh = await this.o.load(new AbortController().signal);
+          if (fresh === null) { gone = true; return; }
+          const rebased = rebaseDraft(base, sending, fresh.value);
+          base = fresh.value; sending = rebased.merged; sendingStatus = fresh.status; conflict = rebased.conflict; moved = true;
+        },
+        stillApplies: () => (gone || conflict ? false : same(sending, base) ? 'done' : true),
+      });
+      if (stored === ALREADY_DONE) this.publish({saving: false, saved: base, status: sendingStatus, draft: base});
+      else if (stored) this.publish({saving: false, saved: stored.value, status: stored.status ?? sendingStatus, draft: stored.value});
       else {
         // The write did not answer with the document: what was sent is what is stored, until the reread says otherwise.
-        this.publish({saving: false, saved: draft});
+        this.publish({saving: false, saved: sending, status: sendingStatus, draft: sending});
         await this.load();
       }
     } catch (error) {
-      this.publish({saving: false, saveError: error});
+      // What the re-read brought stays: the next Save is made against the document as it is now.
+      this.publish(moved && !gone ? {saving: false, saveError: error, saved: base, status: sendingStatus, draft: sending} : {saving: false, saveError: error});
       throw error;
     }
   }

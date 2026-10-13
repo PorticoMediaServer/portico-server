@@ -123,7 +123,8 @@ export interface FreshDocument {
 
 type Urgency = 0 | 1 | 2; // current, progress moved, content moved
 
-function finalAnswer(error: unknown): boolean {
+/** The server answered, and asking again will not change the answer (not allowed, gone, refused): not a failure to try again. */
+export function finalAnswer(error: unknown): boolean {
   const e = error as {status?: unknown; retryable?: unknown; code?: unknown} | null;
   if (e?.retryable === true) return false;
   if (e?.retryable === false) return true;

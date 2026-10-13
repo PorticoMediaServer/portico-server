@@ -1,6 +1,5 @@
 import {useCallback, useState} from 'react';
-import {useRead, type Read} from './console';
-import type {FreshnessDependency} from '@core/freshness-hub.ts';
+import {useRead, type Read, type ReadOptions} from './console';
 
 /**
  * PERF-S15: a console list read one page at a time by the server's cursor, with Previous and Next,
@@ -11,7 +10,7 @@ export type CursorRead<T> = Read<T> & {page: number; canPrevious: boolean; canNe
 
 const FIRST_PAGE: readonly string[] = [''];
 
-export function useCursorRead<T extends {nextCursor?: string}>(fetch: (cursor: string) => Promise<T>, deps: readonly unknown[], options: {on?: readonly FreshnessDependency[]} = {}): CursorRead<T> {
+export function useCursorRead<T extends {nextCursor?: string}>(fetch: (cursor: string) => Promise<T>, deps: readonly unknown[], options: Pick<ReadOptions, 'on' | 'every'> = {}): CursorRead<T> {
   const [walked, setWalked] = useState<{deps: readonly unknown[]; stack: readonly string[]}>({deps, stack: ['']});
   // A cursor belongs to the list it came from: when what is being listed changes (another
   // account, another filter) the walk starts again from the first page instead of sending the
@@ -33,7 +32,7 @@ export function useCursorRead<T extends {nextCursor?: string}>(fetch: (cursor: s
 export const withCursor = (path: string, cursor: string) => (cursor ? `${path}${path.includes('?') ? '&' : '?'}cursor=${encodeURIComponent(cursor)}` : path);
 
 /** The same over a list whose page is `{items, nextCursor}`: `data` is the page's items. */
-export function useCursorList<T>(fetch: (cursor: string) => Promise<{items: T[]; nextCursor: string}>, deps: readonly unknown[], options: {on?: readonly FreshnessDependency[]} = {}): CursorRead<T[]> {
+export function useCursorList<T>(fetch: (cursor: string) => Promise<{items: T[]; nextCursor: string}>, deps: readonly unknown[], options: Pick<ReadOptions, 'on' | 'every'> = {}): CursorRead<T[]> {
   const pages = useCursorRead(fetch, deps, options);
   return {...pages, data: pages.data?.items} as CursorRead<T[]>;
 }

@@ -14,6 +14,8 @@ const STALE_CODES: ReadonlySet<string> = new Set([
   'personal_state_conflict', 'playlist_conflict', 'collection_conflict', 'console_conflict', 'administration_conflict',
   'show_settings_conflict', 'listening_preferences_conflict', 'library_configuration_conflict', 'metadata_conflict',
   'channel_revision_conflict', 'operation_conflict', 'precondition_failed', 'stale_playback_offer', 'stale_chapter_projection',
+  // A change sent with no revision, or with one that has moved on (428 and 412 on the typed routes).
+  'revision_required', 'revision_mismatch',
 ]);
 
 /** The server (or a client check) said what the action was based on is out of date. */
@@ -57,6 +59,49 @@ export async function retryWhenStale<T>(attempt: (retries: number) => Promise<T>
       if (!applies) throw error;
     }
   }
+}
+
+/**
+ * An action on one record that carries a revision (a role, a device's trust, a source's switch).
+ * When the server says the record moved, it is read again; `applies` then says whether the action
+ * still makes sense on the record as it is now (`'done'` when it already is what was asked for).
+ * A record that is gone ends with the first answer. Resolves with `ALREADY_DONE` when there was
+ * nothing left to do.
+ */
+export async function sendWithFreshRecord<R, T>(record: R, send: (record: R, retries: number) => Promise<T>, options: Readonly<{reread(): Promise<R | undefined | null>; applies?(now: R, was: R): boolean | 'done'; attempts?: number}>): Promise<T | typeof ALREADY_DONE> {
+  let current = record, gone = false;
+  return retryWhenStale(retries => send(current, retries), {
+    attempts: options.attempts,
+    reread: async () => { const next = await options.reread(); if (next === undefined || next === null) gone = true; else current = next; },
+    stillApplies: () => (gone ? false : options.applies ? options.applies(current, record) : true),
+  });
+}
+
+const plain = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === 'object' && !Array.isArray(v);
+const equal = (a: unknown, b: unknown) => a === b || JSON.stringify(a) === JSON.stringify(b);
+
+/**
+ * A draft carried onto a newer copy of the document it was edited from.
+ *
+ * `base` is what the person started from, `draft` what they made of it, `fresh` what the server
+ * has now. Whatever they did not touch takes the server's value; whatever they changed keeps
+ * theirs. `conflict` is true only when something they changed was also changed underneath to a
+ * different value: that is the one case worth telling them about. Objects are compared field by
+ * field; a list is one value.
+ */
+export function rebaseDraft<T>(base: T, draft: T, fresh: T): Readonly<{merged: T; conflict: boolean}> {
+  if (equal(draft, base)) return {merged: fresh, conflict: false};
+  if (equal(fresh, base) || equal(fresh, draft)) return {merged: draft, conflict: false};
+  if (!plain(base) || !plain(draft) || !plain(fresh)) return {merged: draft, conflict: true};
+  const merged: Record<string, unknown> = {};
+  let conflict = false;
+  for (const key of new Set([...Object.keys(fresh), ...Object.keys(draft)])) {
+    const part = rebaseDraft(base[key], draft[key], fresh[key]);
+    if (part.conflict) conflict = true;
+    // A field neither side has any more is left out, as it would be in either copy.
+    if (part.merged !== undefined || key in draft && key in fresh) merged[key] = part.merged;
+  }
+  return {merged: merged as T, conflict};
 }
 
 /**
