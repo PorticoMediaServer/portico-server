@@ -3,11 +3,11 @@ import {useSelection} from '../../app/selection';
 import {useSession} from '../../app/session';
 import {repairTargetFor, useMetadataEditor} from '../../app/metadata-editor';
 import {Dialog, Icon, Menu, Spinner, useCompact} from '../../ui';
-import {currentI18n} from '../../app/i18n';
 import {CollectionPicker, PlaylistPicker} from './EntryActions';
 import {runBulkSelection, type BulkProgress} from './bulk-job';
 import type {JobArgs, JobCommand, JobFailure} from '@core/bulk-jobs.ts';
 import s from './SelectionBar.module.css';
+import {useI18n} from '../../app/i18n';
 
 /**
  * Bulk actions for the current selection. Every action is one bulk job
@@ -17,6 +17,7 @@ import s from './SelectionBar.module.css';
  * falls back to one job per 200 loaded items.
  */
 export function SelectionBar() {
+  const {t} = useI18n();
   const selection = useSelection();
   const {api, owner, session} = useSession();
   const editor = useMetadataEditor();
@@ -27,7 +28,6 @@ export function SelectionBar() {
   const [playlist, setPlaylist] = useState(false);
   const [collection, setCollection] = useState(false);
   if (!selection?.active) return null;
-  const t = currentI18n().t;
   const count = selection.entries.length;
   const ids = () => [...new Set(selection.entries.map(e => e.playback?.itemId ?? e.id))];
 

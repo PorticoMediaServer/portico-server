@@ -16,7 +16,6 @@ import b from './BrowseFilters.module.css';
 import {useNavigate, useParams, useSearch} from '@tanstack/react-router';
 import type {ContentRoute, ContentSeeAll, ContentView} from '@core/library-content.ts';
 import {useContent} from '../../app/content';
-import {currentI18n} from '../../app/i18n';
 import {browseCountLabel, libraryKindSingular, seeAllTarget} from '../../app/content';
 import {useLibrariesContext, libraryKindLabel} from '../../app/libraries';
 import {useSession} from '../../app/session';
@@ -39,11 +38,13 @@ import {ErrorNotice, ErrorState, changedError, errorText} from '../../app/errors
 import {isRecommendationRow} from '@core/recommendation-feedback.ts';
 import {useNotInterested} from '../../app/not-interested-notice';
 import {withoutHidden} from '../../app/not-interested';
+import {useI18n, type I18n} from '../../app/i18n';
 
-const sortLabel = (key: string): string => {
+const SORT_NAMES = new Set(['title', 'added', 'year', 'duration', 'last_played', 'rating', 'episode', 'track', 'artist', 'album', 'author', 'release', 'random']);
+const sortLabel = (t: I18n['t'], key: string): string => {
   const id = key.replace(/^sort\./, '');
-  const names: Record<string, string> = {title: 'Title', added: 'Date added', year: 'Year', duration: 'Duration', last_played: 'Last played', rating: 'Rating', episode: 'Episode', track: 'Track', artist: 'Artist', album: 'Album', author: 'Author', release: 'Release date', random: 'Random'}; // lint-strings-allow: sort-key label map (server sort keys; only Title matches the lint's prop list)
-  return names[id] ?? id.charAt(0).toUpperCase() + id.slice(1).replace(/_/g, ' ');
+  // A sort this build has no name for shows the server's own key, tidied.
+  return SORT_NAMES.has(id) ? t('lib.sortField', {field: id}) : id.charAt(0).toUpperCase() + id.slice(1).replace(/_/g, ' ');
 };
 /** The tab that reads a pivot in a library of this kind (a row's See all names a pivot). */
 export const tabForPivot = (pivot: string, kind: string): Tab | undefined => libraryTabForPivot(kind, pivot)?.id as Tab | undefined;
@@ -56,6 +57,8 @@ export const tabForPivot = (pivot: string, kind: string): Tab | undefined => lib
 const fallbackSort: BrowseSortSelection = {field: 'title', direction: 'asc'};
 
 export function LibraryScreen() {
+  const i18n = useI18n();
+  const {t} = i18n;
   const emptyCopy = useEmptyLibraryCopy();
   const {libraryId} = useParams({from: '/app/library/$libraryId'});
   const search = useSearch({from: '/app/library/$libraryId'});
@@ -76,7 +79,7 @@ export function LibraryScreen() {
   // Card size is the Appearance setting; the toolbar is a second place to set it, where the cards are.
   const serverPreferences = useServerPreferences();
   const cardSize = preferences.posterSize === 'compact' ? 'small' : preferences.posterSize === 'large' ? 'large' : 'medium';
-  const cardSizeItems: MenuItem[] = (['small', 'medium', 'large'] as const).map(id => ({id, label: currentI18n().t(`settings.cardSize.${id}`), selected: id === cardSize}));
+  const cardSizeItems: MenuItem[] = (['small', 'medium', 'large'] as const).map(id => ({id, label: t(`settings.cardSize.${id}`), selected: id === cardSize}));
   const setCardSize = (id: string) => {
     // At once on this device; the profile's setting follows, and is the one Appearance shows.
     update({posterSize: id === 'small' ? 'compact' : id === 'large' ? 'large' : 'regular'});
@@ -163,15 +166,15 @@ export function LibraryScreen() {
     setScanBusy(true);
     setScanNotice(null);
     void api.request(`/v1/libraries/${encodeURIComponent(libraryId)}/scans`, 'POST').then(
-      () => setScanNotice({tone: 'success', message: currentI18n().t('web.library.scanStarted')}),
+      () => setScanNotice({tone: 'success', message: t('web.library.scanStarted')}),
       (e: unknown) => setScanNotice({tone: 'error', message: errorText(e, 'library', 'load')}),
     ).finally(() => setScanBusy(false));
   };
   const ownerMenu: MenuItem[] = [
-    {id: 'scan', label: currentI18n().t('web.library.scan'), icon: 'refresh'},
-    {id: 'manage', label: currentI18n().t('web.library.manage'), icon: 'settings'},
+    {id: 'scan', label: t('web.library.scan'), icon: 'refresh'},
+    {id: 'manage', label: t('web.library.manage'), icon: 'settings'},
   ];
-  const tabs = useMemo(() => libraryTabs(kind, tabOptions).map(x => ({id: x.id, label: currentI18n().t(x.label)})), [kind, tabOptions]);
+  const tabs = useMemo(() => libraryTabs(kind, tabOptions).map(x => ({id: x.id, label: t(x.label)})), [kind, tabOptions, t]);
   const sorts = projection?.sorts ?? [];
   const setSearch = (patch: Partial<typeof search>) => void navigate({to: '/library/$libraryId', params: {libraryId}, search: {...search, ...patch}, replace: true});
   // WEB-LIB-05: See all lands on a clean, linkable destination (no stale sort/filter/row).
@@ -196,15 +199,15 @@ export function LibraryScreen() {
   return (
     <Page>
       <PageHeader
-        eyebrow={library ? currentI18n().t('web.library.kind', {kind: libraryKindSingular(library.kind)}) : undefined}
-        title={library?.name ?? projection?.heading.fallback ?? currentI18n().t('web.library.titleFallback')}
+        eyebrow={library ? t('web.library.kind', {kind: libraryKindSingular(library.kind)}) : undefined}
+        title={library?.name ?? projection?.heading.fallback ?? t('web.library.titleFallback')}
         provisional={!library?.name && !projection?.heading.fallback}
-        subtitle={scan.scanning ? <Badge tone="accent" dot live>{currentI18n().t('web.library.scanning', {count: currentI18n().number(scan.found)})}</Badge> : undefined}
-        titleAdornment={libraries.length > 1 ? <Menu label={currentI18n().t('web.library.switchLibrary')} align="start" trigger={<Button variant="ghost" icon="chevronDown" aria-label={currentI18n().t('web.library.switchLibrary')} size="sm" />} items={libraryItems} onSelect={id => void navigate({to: '/library/$libraryId', params: {libraryId: id}, search: {}})} /> : undefined}
-        actions={<>{viewChoice ? <Segmented label={currentI18n().t('action.view')} size="sm" options={[{id: 'grid', icon: 'grid', label: currentI18n().t('web.prefs.grid')}, {id: 'list', icon: 'list', label: currentI18n().t('web.prefs.list')}]} value={view} onChange={setView} /> : null}{viewChoice && view === 'grid' ? <Menu label={currentI18n().t('settings.row.cardSize')} trigger={<Button variant="ghost" icon="sliders" aria-label={currentI18n().t('settings.row.cardSize')} title={currentI18n().t('settings.row.cardSize')} size="sm" />} items={cardSizeItems} onSelect={setCardSize} /> : null}{owner ? <Menu label={currentI18n().t('title.moreActions')} trigger={<Button variant="ghost" icon="more" aria-label={currentI18n().t('title.moreActions')} title={currentI18n().t('title.moreActions')} size="sm" />} items={ownerMenu} onSelect={id => { if (id === 'scan') scanLibrary(); else if (id === 'manage') void navigate({to: '/settings/$section', params: {section: 'server-libraries'}, search: {id: libraryId}}); }} /> : null}</>}
+        subtitle={scan.scanning ? <Badge tone="accent" dot live>{t('web.library.scanning', {count: i18n.number(scan.found)})}</Badge> : undefined}
+        titleAdornment={libraries.length > 1 ? <Menu label={t('web.library.switchLibrary')} align="start" trigger={<Button variant="ghost" icon="chevronDown" aria-label={t('web.library.switchLibrary')} size="sm" />} items={libraryItems} onSelect={id => void navigate({to: '/library/$libraryId', params: {libraryId: id}, search: {}})} /> : undefined}
+        actions={<>{viewChoice ? <Segmented label={t('action.view')} size="sm" options={[{id: 'grid', icon: 'grid', label: t('web.prefs.grid')}, {id: 'list', icon: 'list', label: t('web.prefs.list')}]} value={view} onChange={setView} /> : null}{viewChoice && view === 'grid' ? <Menu label={t('settings.row.cardSize')} trigger={<Button variant="ghost" icon="sliders" aria-label={t('settings.row.cardSize')} title={t('settings.row.cardSize')} size="sm" />} items={cardSizeItems} onSelect={setCardSize} /> : null}{owner ? <Menu label={t('title.moreActions')} trigger={<Button variant="ghost" icon="more" aria-label={t('title.moreActions')} title={t('title.moreActions')} size="sm" />} items={ownerMenu} onSelect={id => { if (id === 'scan') scanLibrary(); else if (id === 'manage') void navigate({to: '/settings/$section', params: {section: 'server-libraries'}, search: {id: libraryId}}); }} /> : null}</>}
       />
       {scanNotice ? <Inset><Notice tone={scanNotice.tone}>{scanNotice.message}</Notice></Inset> : null}
-      <Tabs items={tabs} value={tab} onChange={id => setSearch({view: id as Tab, category: undefined, sort: undefined, direction: undefined, row: undefined})} size="large" label={currentI18n().t('web.library.viewsLabel')} />
+      <Tabs items={tabs} value={tab} onChange={id => setSearch({view: id as Tab, category: undefined, sort: undefined, direction: undefined, row: undefined})} size="large" label={t('web.library.viewsLabel')} />
       {search.row ? (
         <RowView libraryId={libraryId} rowId={search.row} snapshot={snapshot} retry={retry} refresh={refresh} next={next} onBack={() => setSearch({row: undefined})} list={view === 'list'} square={square} />
       ) : (
@@ -217,7 +220,7 @@ export function LibraryScreen() {
       ) : null}
       {active.shows === 'genres' && active.pivot && active.opens ? <GenresGrid libraryId={libraryId} pivot={active.pivot} onOpen={genre => void navigate({to: '/library/$libraryId', params: {libraryId}, search: {view: active.opens!.tab as Tab, filters: encodePredicates([{field: active.opens!.field, operator: 'in', value: [genre]}])}})} /> : null}
       {active.shows === 'playlists' ? <LibraryPlaylists /> : null}
-      {engine && capabilityError ? <Inset><Notice tone="error" action={{label: currentI18n().t('action.tryAgain'), onClick: () => window.location.reload()}}>{capabilityError}</Notice></Inset> : null}
+      {engine && capabilityError ? <Inset><Notice tone="error" action={{label: t('action.tryAgain'), onClick: () => window.location.reload()}}>{capabilityError}</Notice></Inset> : null}
       {engine && browse.collection ? <EngineResults unmatched={tab === 'unmatched'} collection={browse.collection} onRefresh={browse.refresh} filtered={chosenPredicates.length > 0} onClearFilters={() => setSearch({filters: undefined})} pivot={pivot} libraryId={libraryId} libraryKind={library?.kind ?? ''} list={view === 'list' || active.shows === 'tracks'} tracks={active.shows === 'tracks'} sort={sort} sorts={capabilities?.sorts ?? []} onSort={active.fixedSort ? undefined : next => setSearch({sort: next.field, direction: next.direction})} sortField={sort.field} square={square} scanning={scan.scanning} listKey={listWindowKey({serverId: scope.serverId, viewerId: scope.viewerId, libraryId, pivot, query: JSON.stringify([search.filters ?? null, sort])})} /> : engine && !capabilityError ? <LoadingGrid density={square ? 'square' : 'poster'} /> : null}
       {!engine && !custom && tab === 'browse' && sorts.length ? (
         <Inset>
@@ -227,9 +230,9 @@ export function LibraryScreen() {
               const activeId = projection?.query.sort ?? sorts[0]?.id ?? 'title';
               const direction = projection?.query.direction === 'desc' ? 'desc' : 'asc';
               const active = sorts.find(srt => srt.id === activeId);
-              return <Menu label={currentI18n().t('web.filters.sort')} align="start" trigger={<Chip label={`${active ? sortLabel(active.labelKey) : ''} · ${currentI18n().t('web.filters.direction', {kind: /title|name/.test(activeId ?? '') ? 'alpha' : /added|date|year/.test(activeId ?? '') ? 'date' : 'other', dir: direction})}`} icon="sort" />} items={sorts.map(srt => ({id: srt.id, label: sortLabel(srt.labelKey), selected: srt.id === activeId, icon: srt.id === activeId ? (direction === 'desc' ? 'chevronDown' as const : 'chevronUp' as const) : undefined}))} onSelect={id => setSearch({sort: id, direction: id === activeId && direction === 'asc' ? 'desc' : 'asc'})} />;
+              return <Menu label={t('web.filters.sort')} align="start" trigger={<Chip label={t('lib.sortChip', {field: active ? sortLabel(t, active.labelKey) : '', direction: t('web.filters.direction', {kind: /title|name/.test(activeId ?? '') ? 'alpha' : /added|date|year/.test(activeId ?? '') ? 'date' : 'other', dir: direction})})} icon="sort" />} items={sorts.map(srt => ({id: srt.id, label: sortLabel(t, srt.labelKey), selected: srt.id === activeId, icon: srt.id === activeId ? (direction === 'desc' ? 'chevronDown' as const : 'chevronUp' as const) : undefined}))} onSelect={id => setSearch({sort: id, direction: id === activeId && direction === 'asc' ? 'desc' : 'asc'})} />;
             })()}
-            {search.category ? <Chip label={currentI18n().t('web.library.categoryChip', {category: categoryName(search.category)})} pressed icon="close" onClick={() => setSearch({category: undefined})} /> : null}
+            {search.category ? <Chip label={t('web.library.categoryChip', {category: categoryName(search.category)})} pressed icon="close" onClick={() => setSearch({category: undefined})} /> : null}
           </Row>
         </Inset>
       ) : null}
@@ -242,7 +245,7 @@ export function LibraryScreen() {
         const section = recommendation ? withoutHidden(raw, notInterested.hidden) : raw;
         return <SectionView key={section.id} origin={recommendation ? 'recommendation' : undefined} section={view === 'list' && section.type === 'grid' ? {...section, type: 'list'} : section} libraryId={libraryId} hideTitle={tab === 'browse' && appendedSections.length === 1} loadingMore={snapshot.phase === 'loading'} onMore={section.nextCursor ? () => next(section.id) : undefined} onSeeAll={section.type === 'rail' && (section.totalCount > section.entries.length || section.seeAll) ? () => goSeeAll(section) : undefined} />;
       })) : null}
-      {!engine && !custom && snapshot.phase === 'ready' && !snapshot.sections.length ? <StateView icon={iconFor(library?.kind ?? '')} title={scan.scanning ? currentI18n().t('web.library.scanningTitle') : (projection?.empty?.fallback ?? currentI18n().t('library.emptyLibrary'))} body={scan.scanning ? currentI18n().t('web.library.scanningBody') : emptyCopy.body} action={scan.scanning ? undefined : emptyCopy.action} /> : null}
+      {!engine && !custom && snapshot.phase === 'ready' && !snapshot.sections.length ? <StateView icon={iconFor(library?.kind ?? '')} title={scan.scanning ? t('web.library.scanningTitle') : (projection?.empty?.fallback ?? t('library.emptyLibrary'))} body={scan.scanning ? t('web.library.scanningBody') : emptyCopy.body} action={scan.scanning ? undefined : emptyCopy.action} /> : null}
       </>
       )}
     </Page>
@@ -263,6 +266,8 @@ function categoryName(id: string): string {
  * rail), rendered as a grid with the row's title and a way back.
  */
 function RowView({libraryId, rowId, snapshot, retry, refresh, next, onBack, list, square}: {libraryId: string; rowId: string; snapshot: LibraryContentSnapshot; retry: () => void; refresh: () => void; next: (sectionId: string) => void; onBack: () => void; list: boolean; square: boolean}) {
+  const i18n = useI18n();
+  const {t} = i18n;
   const notInterested = useNotInterested();
   const found = snapshot.sections.find(s => s.id === rowId);
   const recommendation = !!found && isRecommendationRow(found);
@@ -270,7 +275,7 @@ function RowView({libraryId, rowId, snapshot, retry, refresh, next, onBack, list
   if (snapshot.phase === 'loading' && !snapshot.sections.length) {
     return (
       <>
-        <PageHeader title=" " onBack={onBack} backLabel={currentI18n().t('action.back')} />
+        <PageHeader title=" " onBack={onBack} backLabel={t('action.back')} />
         <LoadingGrid density={square ? 'square' : 'poster'} />
       </>
     );
@@ -278,19 +283,19 @@ function RowView({libraryId, rowId, snapshot, retry, refresh, next, onBack, list
   if (snapshot.phase === 'error' && !snapshot.sections.length) {
     return (
       <>
-        <PageHeader title=" " onBack={onBack} backLabel={currentI18n().t('action.back')} />
+        <PageHeader title=" " onBack={onBack} backLabel={t('action.back')} />
         <ErrorState error={snapshot.error} context="library" retry={retry} refresh={refresh} />
       </>
     );
   }
   if (!section && snapshot.phase === 'ready') {
-    return <StateView icon="library" title={currentI18n().t('route.notFoundTitle')} body={currentI18n().t('route.notFoundBody')} action={{label: currentI18n().t('action.back'), onClick: onBack}} />;
+    return <StateView icon="library" title={t('route.notFoundTitle')} body={t('route.notFoundBody')} action={{label: t('action.back'), onClick: onBack}} />;
   }
   if (!section) return null;
   const presented = section.type === 'rail' ? {...section, type: 'grid' as const} : (list && section.type === 'grid' ? {...section, type: 'list' as const} : section);
   return (
     <>
-      <PageHeader title={sectionHeading(section.heading)} onBack={onBack} backLabel={currentI18n().t('action.back')} />
+      <PageHeader title={sectionHeading(i18n, section.heading)} onBack={onBack} backLabel={t('action.back')} />
       {snapshot.phase === 'refresh-required' ? <Inset><ErrorNotice error={snapshot.error ?? changedError} context="library" refresh={refresh} /></Inset> : null}
       <SectionView section={presented} libraryId={libraryId} hideTitle origin={recommendation ? 'recommendation' : undefined} onMore={section.nextCursor ? () => next(section.id) : undefined} />
     </>
@@ -311,6 +316,7 @@ const EMPTY: readonly ContentEntry[] = [];
  * scroll offset while the live collection revalidates behind it.
  */
 function EngineResults({collection, onRefresh, libraryId, libraryKind, list, tracks, unmatched, sort, sorts, onSort, sortField, square, filtered, onClearFilters, pivot, listKey, scanning}: {tracks?: boolean; /** The owner's Unmatched tab: empty is good news. */ unmatched?: boolean; sort: BrowseSortSelection; sorts: readonly BrowseSortCapability[]; /** Absent: the tab's order is fixed. */ onSort?: (next: BrowseSortSelection) => void; collection: WindowedCollection<ContentEntry>; onRefresh: () => void; libraryId: string; libraryKind: string; list: boolean; sortField: string; square: boolean; filtered: boolean; onClearFilters?: () => void; pivot?: string; listKey: string; scanning?: boolean}) {
+  const {t} = useI18n();
   const emptyCopy = useEmptyLibraryCopy();
   const remembered = useMemo(() => recallListWindow<ContentEntry>(listKey), [listKey]);
   const staticStore = useMemo(() => (remembered ? createStaticCollection<ContentEntry>({keyOf: e => e.id, base: remembered.first}) : null), [remembered]);
@@ -398,16 +404,16 @@ function EngineResults({collection, onRefresh, libraryId, libraryKind, list, tra
   if (snapshot.status === 'error' && !snapshot.total) return <ErrorState error={snapshot.error} context="library" retry={() => active.retry()} refresh={onRefresh} />;
   // WEB-LIB-02: "no match" only when a filter is doing the excluding.
   if (snapshot.total === 0) return filtered
-    ? <StateView icon="filter" title={currentI18n().t('library.noMatch')} body={currentI18n().t('library.noMatchBody')} action={onClearFilters ? {label: currentI18n().t('library.clearFilters'), onClick: onClearFilters} : undefined} />
+    ? <StateView icon="filter" title={t('library.noMatch')} body={t('library.noMatchBody')} action={onClearFilters ? {label: t('library.clearFilters'), onClick: onClearFilters} : undefined} />
     : scanning
-      ? <StateView icon={iconFor(libraryKind)} title={currentI18n().t('web.library.scanningTitle')} body={currentI18n().t('web.library.scanningBody')} />
+      ? <StateView icon={iconFor(libraryKind)} title={t('web.library.scanningTitle')} body={t('web.library.scanningBody')} />
       : pivot === 'collections'
-        ? <StateView icon="collection" title={currentI18n().t('library.emptyCollections')} body={currentI18n().t('library.emptyCollectionsBody')} />
+        ? <StateView icon="collection" title={t('library.emptyCollections')} body={t('library.emptyCollectionsBody')} />
         : unmatched
-          ? <StateView icon="check" title={currentI18n().t('library.emptyUnmatched')} body={currentI18n().t('library.emptyUnmatchedBody')} />
+          ? <StateView icon="check" title={t('library.emptyUnmatched')} body={t('library.emptyUnmatchedBody')} />
         : pivot === 'series'
-          ? <StateView icon="collection" title={currentI18n().t('library.emptySeries')} body={currentI18n().t('library.emptySeriesBody')} />
-          : <StateView icon={iconFor(libraryKind)} title={currentI18n().t('library.emptyLibrary')} body={emptyCopy.body} action={emptyCopy.action} />;
+          ? <StateView icon="collection" title={t('library.emptySeries')} body={t('library.emptySeriesBody')} />
+          : <StateView icon={iconFor(libraryKind)} title={t('library.emptyLibrary')} body={emptyCopy.body} action={emptyCopy.action} />;
   const shape = square ? 'square' : 'poster';
   // M20: the rail follows anchor presence for default browsing (behind
   // presence for older servers), not the sort. An ad hoc query (a filter or
@@ -427,7 +433,7 @@ function EngineResults({collection, onRefresh, libraryId, libraryKind, list, tra
             collection={active}
             columnMin={gridColumnMin(density)}
             estimateRowHeight={square ? 240 : 300}
-            label={currentI18n().t('web.library.titlesLabel')}
+            label={t('web.library.titlesLabel')}
             onFirstVisible={onFirstVisible}
             renderItem={entry => <EntryCard entry={entry} siblings={siblings} libraryId={libraryId} selectable={selectable} />}
             renderPlaceholder={() => <div aria-hidden><Skeleton style={{aspectRatio: shape === 'square' ? '1 / 1' : '2 / 3', width: '100%'}} /><Skeleton height={14} width="70%" style={{marginTop: 8}} /></div>}

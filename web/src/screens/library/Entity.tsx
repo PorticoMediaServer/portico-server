@@ -3,7 +3,6 @@ import React, {useMemo} from 'react';
 import {useNavigate, useParams, useSearch} from '@tanstack/react-router';
 import type {ContentEntry, ContentRoute, ContentView} from '@core/library-content.ts';
 import {useContent} from '../../app/content';
-import {currentI18n} from '../../app/i18n';
 import {usePlayingItemId} from '../../player/engine';
 import {activeYearsLabel, artistReleaseGroups, captionFor, formatClock, formatDuration, iconFor, shapeFor} from '@core/presentation/index.ts';
 import {mosaicPaths} from '../../app/title-layout';
@@ -18,6 +17,7 @@ import {Button, Inset, KeyValue, ListRow, Page, Section, StateView, Text, TitleH
 import {LoadingShelves, SectionView, useAppendedSections} from '../shared/Sections';
 import body from '../detail/Detail.module.css';
 import {ErrorNotice, ErrorState, changedError} from '../../app/errors';
+import {useI18n} from '../../app/i18n';
 
 /**
  * Generic entity workspace: artist, album, collection, category, author,
@@ -28,6 +28,7 @@ import {ErrorNotice, ErrorState, changedError} from '../../app/errors';
  * and "Disc N" subheadings inside the list for multi-disc albums.
  */
 export function EntityScreen() {
+  const {t} = useI18n();
   const {libraryId, view, entityId} = useParams({from: '/app/library/$libraryId/$view/$entityId'});
   const {title} = useSearch({from: '/app/library/$libraryId/$view/$entityId'});
   const navigate = useNavigate();
@@ -41,7 +42,6 @@ export function EntityScreen() {
   // PERF-S02: section "More" appends inside its own section; the page's other
   // sections stay rendered.
   const appendedSections = useAppendedSections(JSON.stringify(content), snapshot.pagination.cursor, snapshot.sections);
-  const t = currentI18n().t;
   const projection = snapshot.projection;
   const entity = projection?.entity;
   const kind = entity?.kind ?? view;
@@ -162,8 +162,8 @@ export function EntityScreen() {
           onContext={albumArtist?.id ? () => void navigate({to: '/library/$libraryId/$view/$entityId', params: {libraryId, view: 'artist', entityId: albumArtist.id!}, search: {title: albumArtist.name}}) : undefined}
           facts={heroFacts}
           synopsis={entity?.overview}
-          primary={resumeEntry?.playback ? {label: currentI18n().t('title.resumeRemaining', {remaining: formatDuration(Math.max(0, (resumeEntry.duration ?? 0) - (resumeEntry.progressSeconds ?? 0)))}), onClick: () => player.play(resumeEntry.playback!.itemId, resumeEntry.playback!.startSeconds ?? 0, resumeEntry), progress: resumeEntry.duration ? (resumeEntry.progressSeconds ?? 0) / resumeEntry.duration : undefined}
-            : playable?.playback ? {label: currentI18n().t('action.play'), onClick: () => (loaded.length ? player.playSequence(loaded, Math.max(0, loaded.indexOf(playable)), playable.playback!.startSeconds ?? 0, containerOf(false)) : player.play(playable.playback!.itemId, playable.playback!.startSeconds ?? 0, playable))} : undefined}
+          primary={resumeEntry?.playback ? {label: t('title.resumeRemaining', {remaining: formatDuration(Math.max(0, (resumeEntry.duration ?? 0) - (resumeEntry.progressSeconds ?? 0)))}), onClick: () => player.play(resumeEntry.playback!.itemId, resumeEntry.playback!.startSeconds ?? 0, resumeEntry), progress: resumeEntry.duration ? (resumeEntry.progressSeconds ?? 0) / resumeEntry.duration : undefined}
+            : playable?.playback ? {label: t('action.play'), onClick: () => (loaded.length ? player.playSequence(loaded, Math.max(0, loaded.indexOf(playable)), playable.playback!.startSeconds ?? 0, containerOf(false)) : player.play(playable.playback!.itemId, playable.playback!.startSeconds ?? 0, playable))} : undefined}
           secondary={music && loaded.length > 1 || entityMore || watchedKind || canFavorite || canList || canDownload ? (
             <>
               {/* One row on every title (Justin, 2 Oct 2026): Play · Shuffle (music) · My List (books) · Favorite · Finished (books; music has no "watched") · Download · ⋯. */}
@@ -172,7 +172,7 @@ export function EntityScreen() {
               {canFavorite && entity ? <Button variant="secondary" size="lg" icon={favorite ? 'heartFilled' : 'heart'} aria-label={t(favorite ? 'entry.removeFromFavorites' : 'entry.addToFavorites')} title={t(favorite ? 'entry.removeFromFavorites' : 'entry.addToFavorites')} selected={favorite} disabled={!containerWatched.state} onClick={() => void containerWatched.setFlag('favorite', !favorite)} /> : null}
               {watchedKind && entity ? <Button variant="secondary" size="lg" icon={containerWatched.state?.watched ? 'watched' : 'check'} aria-label={t(containerWatched.state?.watched ? 'title.markNotFinished' : 'title.markFinished')} title={t(containerWatched.state?.watched ? 'title.markNotFinished' : 'title.markFinished')} selected={containerWatched.state?.watched} disabled={containerWatched.saving} onClick={() => void containerWatched.setWatched(!(containerWatched.state?.watched ?? false)).then(done => { if (done) retry(); })} /> : null}
               {canDownload && downloadKind && entity ? <Button variant="secondary" size="lg" icon="download" aria-label={t('entry.download')} title={t('entry.download')} onClick={() => downloads.ask({target: {containerId: entity.id, containerKind: downloadKind}, title: entity.title})} /> : null}
-              {entityMore ? <Button variant="secondary" size="lg" icon="more" aria-label={currentI18n().t('title.moreActions')} title={currentI18n().t('title.moreActions')} onClick={(e: React.MouseEvent<HTMLElement>) => player.more(entityMore, anchorOf(e.currentTarget), 'page')} /> : null}
+              {entityMore ? <Button variant="secondary" size="lg" icon="more" aria-label={t('title.moreActions')} title={t('title.moreActions')} onClick={(e: React.MouseEvent<HTMLElement>) => player.more(entityMore, anchorOf(e.currentTarget), 'page')} /> : null}
             </>
           ) : undefined}
         />
@@ -212,7 +212,7 @@ export function EntityScreen() {
             return (
               <SectionView
                 key={group.id}
-                section={{...releases, id: group.id, heading: {key: group.label, fallback: currentI18n().t(group.label)}, entries: group.entries, totalCount: group.entries.length, nextCursor: last ? releases.nextCursor : ''}}
+                section={{...releases, id: group.id, heading: {key: group.label, fallback: t(group.label)}, entries: group.entries, totalCount: group.entries.length, nextCursor: last ? releases.nextCursor : ''}}
                 libraryId={libraryId}
                 loadingMore={snapshot.phase === 'loading'}
                 onMore={last && releases.nextCursor ? () => next(releases.id) : undefined}
@@ -231,7 +231,7 @@ export function EntityScreen() {
             </div>
           </Section>
         ) : null}
-        {snapshot.phase === 'ready' && !snapshot.sections.length ? <StateView icon={iconFor(entity?.kind ?? '')} title={currentI18n().t('web.entity.emptyTitle')} body={currentI18n().t('web.entity.emptyBody')} /> : null}
+        {snapshot.phase === 'ready' && !snapshot.sections.length ? <StateView icon={iconFor(entity?.kind ?? '')} title={t('web.entity.emptyTitle')} body={t('web.entity.emptyBody')} /> : null}
       </Page>
     </div>
   );
@@ -255,7 +255,7 @@ function MusicTracks({kind, albumArtist, entries, onPlay, onMore, onShowMore}: {
   onMore: (entry: ContentEntry, el: Element) => void;
   onShowMore?: () => void;
 }) {
-  const t = currentI18n().t;
+  const {t} = useI18n();
   const wordsT = t as unknown as WordsT;
   // The playing track is marked in its list.
   const playingId = usePlayingItemId();

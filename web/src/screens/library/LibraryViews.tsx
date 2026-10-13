@@ -39,7 +39,6 @@ const TRACK_COLUMNS: readonly Column[] = [
 /** Songs queued after the one pressed. */
 const QUEUE_AHEAD = 200;
 
-const addedDate = (iso?: string | null) => (iso && Number.isFinite(Date.parse(iso)) ? new Date(iso).toLocaleDateString(undefined, {year: 'numeric', month: 'short', day: 'numeric'}) : '');
 
 /**
  * A library's list view (and the Songs tab): a table whose headers sort the list on the server,
@@ -116,7 +115,7 @@ const TitleRow = React.memo(function TitleRow({entry, libraryId, tracks, onPlayT
           <span role="cell" className={`${s.cell} ${s.album}`}>{entry.album ? <button type="button" className={s.link} onClick={() => void navigate({to: '/library/$libraryId/$view/$entityId', params: {libraryId: library, view: 'album', entityId: entry.album!.id}})}>{entry.album.name}</button> : ''}</span>
           <span role="cell" className={`${s.cell} ${s.end} ${s.runtime}`}>{entry.duration ? formatClock(entry.duration) : ''}</span>
           <span role="cell" className={`${s.cell} ${s.end} ${s.plays}`}>{entry.plays ?? ''}</span>
-          <span role="cell" className={`${s.cell} ${s.end} ${s.added}`}>{addedDate(entry.addedAt)}</span>
+          <span role="cell" className={`${s.cell} ${s.end} ${s.added}`}>{entry.addedAt ? i18n.date(entry.addedAt) : ''}</span>
         </>
       ) : (
         <>
@@ -124,7 +123,7 @@ const TitleRow = React.memo(function TitleRow({entry, libraryId, tracks, onPlayT
           <span role="cell" className={`${s.cell} ${s.end} ${s.runtime}`}>{formatDuration(entry.duration)}</span>
           <span role="cell" className={`${s.cell} ${s.end} ${s.rating}`}>{entry.rating ? entry.rating.toFixed(1) : ''}</span>
           <span role="cell" className={`${s.cell} ${s.end} ${s.resolution}`}>{entry.resolution ? valueLabel(entry.resolution) : ''}</span>
-          <span role="cell" className={`${s.cell} ${s.end} ${s.added}`}>{addedDate(entry.addedAt)}</span>
+          <span role="cell" className={`${s.cell} ${s.end} ${s.added}`}>{entry.addedAt ? i18n.date(entry.addedAt) : ''}</span>
         </>
       )}
       <span role="cell" className={s.state}>{tracks ? null : watched ? <Icon name="check" size={16} aria-label={t('card.watched')} /> : progress ? <Text variant="caption" tone="tertiary">{`${Math.round(progress * 100)}%`}</Text> : null}</span>

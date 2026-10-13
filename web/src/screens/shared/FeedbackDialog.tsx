@@ -1,15 +1,15 @@
 import {useEffect, useMemo, useState, useSyncExternalStore} from 'react';
 import {FeedbackService, type FeedbackDraft} from '../../../../packages/client-core/src/index';
 import {useSession} from '../../app/session';
-import {currentI18n} from '../../app/i18n';
 import {Button, Checkbox, Dialog, Loading, Notice, Select, Text, TextArea} from '../../ui';
+import {useI18n} from '../../app/i18n';
 
 /** Report a problem. Opened from the player it arrives knowing what was playing; the server,
  * not this dialog, decides what diagnostics that becomes. What someone typed survives a
  * failed send. */
 export function FeedbackDialog({open, onOpenChange, itemId, playbackSessionId, title}: {open: boolean; onOpenChange: (open: boolean) => void; itemId?: string; playbackSessionId?: string; title?: string}) {
+  const {t} = useI18n();
   const {api} = useSession();
-  const t = currentI18n().t;
   const service = useMemo(() => new FeedbackService(api), [api, open]);
   const state = useSyncExternalStore(service.subscribe, service.getSnapshot);
   const [draft, setDraft] = useState<FeedbackDraft>({kind: '', category: '', message: '', attachDiagnostics: true});
