@@ -76,6 +76,7 @@ export const serverCodes: Readonly<Record<string, Answer>> = {
   timeout: E('web.signIn.error.timeout'), remote_stalled: E('web.signIn.error.timeout'),
   setup_required: E('web.signIn.error.notSetUp'),
   unsupported_version: E('web.signIn.error.update'), client_too_old: E('web.signIn.error.update'), client_update_required: E('web.signIn.error.update'),
+  invitation_for_another_account: E('web.signIn.error.invitationOtherAccount'),
   invitation_expired: E('web.signIn.error.invitationExpired'), invitation_incomplete: E('web.signIn.error.invitationIncomplete'),
   administration_conflict: E('web.signIn.error.invitationUsed'),
   registration_closed: E('web.signIn.error.closed'), registration_invitation_required: E('web.signIn.error.closed'),

@@ -14,6 +14,8 @@ func publicErrorMessage(code string) string {
 		return "This action is not permitted."
 	case "remote_sign_in_not_allowed":
 		return "This server does not allow sign-in from outside its home network."
+	case "invitation_for_another_account":
+		return "This invitation is for a different account."
 	case "outside_allowed_hours":
 		return "This account cannot be used at this time of day."
 	case "invitation_expired", "console_expired", "playback_operation_expired", "storage_operation_expired":

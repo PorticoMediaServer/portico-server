@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -777,5 +778,263 @@ func TestRatingLimitIsValidatedAndResolvedToAnAge(t *testing.T) {
 	// A stored rating the table no longer knows admits all-ages titles only.
 	if got := (Limits{MaxContentRating: "no-longer-known"}).Ceiling(); got != 0 {
 		t.Fatalf("an unreadable stored rating resolved to %d", got)
+	}
+}
+
+func signedInNowhere(context.Context, *sql.Tx) (identity.DirectSignIn, error) {
+	return identity.DirectSignIn{}, nil
+}
+
+func membershipOf(t *testing.T, db *sql.DB, hosted string) (role, libraries string, disabled bool, at int64, reason string) {
+	t.Helper()
+	if err := db.QueryRow(`SELECT m.role,m.allowed_libraries,m.disabled,m.disabled_ms,m.disabled_reason FROM direct_memberships m JOIN account_portico_links l ON l.account_id=m.account_id WHERE l.hosted_account_id=?`, hosted).Scan(&role, &libraries, &disabled, &at, &reason); err != nil {
+		t.Fatal(err)
+	}
+	return
+}
+
+// Turning an account off records when and why, whichever statement does it,
+// and turning it back on clears both.
+func TestTurningAnAccountOffRecordsWhenAndWhy(t *testing.T) {
+	_, db, _ := fixture(t)
+	read := func() (bool, int64, string) {
+		var disabled bool
+		var at int64
+		var reason string
+		if err := db.QueryRow(`SELECT disabled,disabled_ms,disabled_reason FROM direct_memberships WHERE account_id='member'`).Scan(&disabled, &at, &reason); err != nil {
+			t.Fatal(err)
+		}
+		return disabled, at, reason
+	}
+	if disabled, at, reason := read(); disabled || at != 0 || reason != "" {
+		t.Fatalf("an account that is on: %v %d %q", disabled, at, reason)
+	}
+	before := time.Now().UnixMilli()
+	if _, err := db.Exec(`UPDATE direct_memberships SET disabled=1 WHERE account_id='member'`); err != nil {
+		t.Fatal(err)
+	}
+	if disabled, at, reason := read(); !disabled || at < before-1000 || at > time.Now().UnixMilli()+1000 || reason != "owner" {
+		t.Fatalf("turned off with nothing said: %v %d %q", disabled, at, reason)
+	}
+	if _, err := db.Exec(`UPDATE direct_memberships SET disabled=0 WHERE account_id='member'`); err != nil {
+		t.Fatal(err)
+	}
+	if disabled, at, reason := read(); disabled || at != 0 || reason != "" {
+		t.Fatalf("turned back on: %v %d %q", disabled, at, reason)
+	}
+	// A writer that knows better (the person left, and when) is kept.
+	if _, err := db.Exec(`UPDATE direct_memberships SET disabled=1,disabled_ms=12345,disabled_reason='left' WHERE account_id='member'`); err != nil {
+		t.Fatal(err)
+	}
+	if disabled, at, reason := read(); !disabled || at != 12345 || reason != "left" {
+		t.Fatalf("turned off as having left: %v %d %q", disabled, at, reason)
+	}
+	if _, err := db.Exec(`UPDATE direct_memberships SET disabled_reason='because' WHERE account_id='member'`); err == nil {
+		t.Fatal("an unknown reason was stored")
+	}
+}
+
+// An invitation brings a turned-off member back only if it was made after
+// they were turned off. An older one, still lying around, does not undo the
+// later decision; it stays usable by someone else.
+func TestAnOlderInvitationDoesNotBringBackAMemberWhoWasTurnedOffLater(t *testing.T) {
+	store, db, _ := fixture(t)
+	ctx := context.Background()
+	clock := time.Now().UnixMilli()
+	store.Now = func() time.Time { return time.UnixMilli(clock) }
+	join, err := store.Invite(ctx, nil, owner(), InvitationRequest{OperationID: "join-invite", Role: identity.TierAdmin, AllowedLibraries: []string{"lib"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = store.AcceptPortico(ctx, PorticoAcceptance{Code: join.Code, AccountID: "acc_guest", Username: "guest", DisplayName: "Guest"}, signedInNowhere); err != nil {
+		t.Fatal(err)
+	}
+	// A second invitation exists before the owner turns the member off.
+	clock += 1000
+	stale, err := store.Invite(ctx, nil, owner(), InvitationRequest{OperationID: "stale-invite", Role: identity.TierAdmin, AllowedLibraries: []string{"lib", "other"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	clock += 1000
+	if _, err = db.Exec(`UPDATE direct_memberships SET disabled=1,disabled_ms=?,disabled_reason='owner',revision=revision+1 WHERE account_id=(SELECT account_id FROM account_portico_links WHERE hosted_account_id='acc_guest')`, clock); err != nil {
+		t.Fatal(err)
+	}
+	clock += 1000
+	if _, err = store.AcceptPortico(ctx, PorticoAcceptance{Code: stale.Code, AccountID: "acc_guest", Username: "guest", DisplayName: "Guest"}, signedInNowhere); !errors.Is(err, ErrExpired) {
+		t.Fatalf("an invitation older than the turning off brought the member back: %v", err)
+	}
+	if _, _, disabled, _, reason := membershipOf(t, db, "acc_guest"); !disabled || reason != "owner" {
+		t.Fatalf("the member after a refused invitation: disabled=%v reason=%q", disabled, reason)
+	}
+	var state string
+	if err = db.QueryRow(`SELECT state FROM access_invitations WHERE id=?`, stale.ID).Scan(&state); err != nil || state != "pending" {
+		t.Fatalf("the refused invitation was spent: %q %v", state, err)
+	}
+	// Someone else can still use it.
+	if _, err = store.AcceptPortico(ctx, PorticoAcceptance{Code: stale.Code, AccountID: "acc_other", Username: "other", DisplayName: "Other"}, signedInNowhere); err != nil {
+		t.Fatalf("the older invitation used by someone else: %v", err)
+	}
+	// Inviting the member again, after turning them off, brings them back
+	// with what the new invitation grants and nothing they had before.
+	fresh, err := store.Invite(ctx, nil, owner(), InvitationRequest{OperationID: "fresh-invite", Role: identity.TierMember, AllowedLibraries: []string{"other"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = store.AcceptPortico(ctx, PorticoAcceptance{Code: fresh.Code, AccountID: "acc_guest", Username: "guest", DisplayName: "Guest"}, signedInNowhere); err != nil {
+		t.Fatalf("an invitation made after the turning off: %v", err)
+	}
+	if role, libraries, disabled, at, reason := membershipOf(t, db, "acc_guest"); disabled || role != identity.TierMember || libraries != `["other"]` || at != 0 || reason != "" {
+		t.Fatalf("the member brought back: role=%s libraries=%s disabled=%v at=%d reason=%q", role, libraries, disabled, at, reason)
+	}
+}
+
+// Someone who left at their Portico Account comes back with an invitation
+// made after they left, even if this server only heard about the leaving later.
+func TestAMemberWhoLeftComesBackWithAnInvitationMadeAfterTheyLeft(t *testing.T) {
+	store, db, _ := fixture(t)
+	ctx := context.Background()
+	clock := time.Now().UnixMilli()
+	store.Now = func() time.Time { return time.UnixMilli(clock) }
+	join, err := store.Invite(ctx, nil, owner(), InvitationRequest{OperationID: "join-invite", Role: identity.TierMember, AllowedLibraries: []string{"lib"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = store.AcceptPortico(ctx, PorticoAcceptance{Code: join.Code, AccountID: "acc_leaver", Username: "leaver", DisplayName: "Leaver"}, signedInNowhere); err != nil {
+		t.Fatal(err)
+	}
+	leftAt := clock + 1000
+	clock += 2000
+	back, err := store.Invite(ctx, nil, owner(), InvitationRequest{OperationID: "back-invite", Role: identity.TierMember, AllowedLibraries: []string{"lib"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The server hears of the leaving only now, with the time it happened.
+	clock += 5000
+	if _, err = db.Exec(`UPDATE direct_memberships SET disabled=1,disabled_ms=?,disabled_reason='left',revision=revision+1 WHERE account_id=(SELECT account_id FROM account_portico_links WHERE hosted_account_id='acc_leaver')`, leftAt); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, disabled, at, reason := membershipOf(t, db, "acc_leaver"); !disabled || at != leftAt || reason != "left" {
+		t.Fatalf("the leaving as recorded: %v %d %q", disabled, at, reason)
+	}
+	if _, err = store.AcceptPortico(ctx, PorticoAcceptance{Code: back.Code, AccountID: "acc_leaver", Username: "leaver", DisplayName: "Leaver"}, signedInNowhere); err != nil {
+		t.Fatalf("an invitation made after the person left, heard about later: %v", err)
+	}
+	if _, _, disabled, _, _ := membershipOf(t, db, "acc_leaver"); disabled {
+		t.Fatal("the person was not brought back")
+	}
+}
+
+// An invitation made for one Portico Account is that account's only.
+func TestAnInvitationMadeForOnePorticoAccountIsOnlyThatAccounts(t *testing.T) {
+	store, db, _ := fixture(t)
+	ctx := context.Background()
+	invite, err := store.Invite(ctx, nil, owner(), InvitationRequest{OperationID: "bound-invite", Role: identity.TierMember, AllowedLibraries: []string{"lib"}, PorticoUsername: "  Ada  "})
+	if err != nil || invite.PorticoUsername != "ada" {
+		t.Fatalf("invite: %+v %v", invite, err)
+	}
+	preview, err := store.Preview(ctx, invite.Code)
+	if err != nil || !preview.ForPorticoAccount {
+		t.Fatalf("preview: %+v %v", preview, err)
+	}
+	accounts := func() int {
+		var n int
+		if err := db.QueryRow(`SELECT count(*) FROM accounts`).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+	before := accounts()
+	if _, err = store.AcceptPortico(ctx, PorticoAcceptance{Code: invite.Code, AccountID: "acc_mallory", Username: "mallory", DisplayName: "Mallory"}, signedInNowhere); !errors.Is(err, ErrInvitationRecipient) {
+		t.Fatalf("another Portico Account accepted it: %v", err)
+	}
+	hash, err := HashPassword("Testing1!")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = store.Accept(ctx, Acceptance{Code: invite.Code, Username: "ada", Password: "Testing1!", Name: "Ada"}, hash); !errors.Is(err, ErrInvitationRecipient) {
+		t.Fatalf("it became a password account: %v", err)
+	}
+	if got := accounts(); got != before {
+		t.Fatalf("a refused acceptance left an account behind: %d, was %d", got, before)
+	}
+	var state string
+	if err = db.QueryRow(`SELECT state FROM access_invitations WHERE id=?`, invite.ID).Scan(&state); err != nil || state != "pending" {
+		t.Fatalf("a refused acceptance spent the invitation: %q %v", state, err)
+	}
+	if _, err = store.AcceptPortico(ctx, PorticoAcceptance{Code: invite.Code, AccountID: "acc_ada", Username: "Ada", DisplayName: "Ada L"}, signedInNowhere); err != nil {
+		t.Fatalf("the account it was made for: %v", err)
+	}
+	// An invitation with nobody named is still open to whoever holds the code.
+	open, err := store.Invite(ctx, nil, owner(), InvitationRequest{OperationID: "open-invite", Role: identity.TierMember})
+	if err != nil || open.PorticoUsername != "" {
+		t.Fatalf("%+v %v", open, err)
+	}
+	if p, err := store.Preview(ctx, open.Code); err != nil || p.ForPorticoAccount {
+		t.Fatalf("open preview: %+v %v", p, err)
+	}
+	if _, err = store.Invite(ctx, nil, owner(), InvitationRequest{OperationID: "bad-bound-invite", PorticoUsername: "two words"}); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("a username with a space: %v", err)
+	}
+}
+
+// Invite-only sign-up spends a member invitation inside the registration.
+func TestInvitationSpentAtRegistrationOnlyWhenItIsAPlainMembersAndUnspent(t *testing.T) {
+	store, db, _ := fixture(t)
+	ctx := context.Background()
+	clock := time.Now().UnixMilli()
+	store.Now = func() time.Time { return time.UnixMilli(clock) }
+	redeem := store.RegistrationRedeemer()
+	try := func(code string, commit bool) ([]string, error) {
+		tx, err := db.Begin()
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer tx.Rollback()
+		libraries, err := redeem(ctx, tx, code, "member")
+		if err == nil && commit {
+			if err := tx.Commit(); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return libraries, err
+	}
+	member, err := store.Invite(ctx, nil, owner(), InvitationRequest{OperationID: "register-member", Role: identity.TierMember, AllowedLibraries: []string{"lib"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	admin, err := store.Invite(ctx, nil, owner(), InvitationRequest{OperationID: "register-admin", Role: identity.TierAdmin})
+	if err != nil {
+		t.Fatal(err)
+	}
+	bound, err := store.Invite(ctx, nil, owner(), InvitationRequest{OperationID: "register-bound", Role: identity.TierMember, PorticoUsername: "ada"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, code := range map[string]string{"an administrator's invitation": admin.Code, "one made for a Portico Account": bound.Code, "an unknown code": strings.Repeat("x", 43), "a short code": "nope"} {
+		if _, err := try(code, true); !errors.Is(err, identity.ErrRegistrationInvite) {
+			t.Fatalf("%s was spent at registration: %v", name, err)
+		}
+	}
+	// A registration that fails after redeeming leaves the invitation unspent.
+	if libraries, err := try(member.Code, false); err != nil || len(libraries) != 1 || libraries[0] != "lib" {
+		t.Fatalf("redeem: %v %v", libraries, err)
+	}
+	var state string
+	if err = db.QueryRow(`SELECT state FROM access_invitations WHERE id=?`, member.ID).Scan(&state); err != nil || state != "pending" {
+		t.Fatalf("a rolled-back registration spent the invitation: %q %v", state, err)
+	}
+	if _, err = try(member.Code, true); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = try(member.Code, true); !errors.Is(err, identity.ErrRegistrationInvite) {
+		t.Fatalf("an invitation was spent twice: %v", err)
+	}
+	expired, err := store.Invite(ctx, nil, owner(), InvitationRequest{OperationID: "register-expired", Role: identity.TierMember, ExpiresInHours: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	clock += int64(2 * time.Hour / time.Millisecond)
+	if _, err = try(expired.Code, true); !errors.Is(err, identity.ErrRegistrationInvite) {
+		t.Fatalf("an expired invitation was spent: %v", err)
 	}
 }

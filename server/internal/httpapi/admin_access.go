@@ -167,7 +167,7 @@ func (d Dependencies) accessRoutes(mux *http.ServeMux) {
 				return d.Identity.PorticoSignInTx(ctx, tx, who)
 			})
 			if e != nil {
-				if errors.Is(e, access.ErrExpired) || errors.Is(e, access.ErrInvalid) {
+				if errors.Is(e, access.ErrExpired) || errors.Is(e, access.ErrInvalid) || errors.Is(e, access.ErrInvitationRecipient) {
 					accessFailure(w, e)
 				} else {
 					failure(w, e)

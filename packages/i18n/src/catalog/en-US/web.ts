@@ -866,6 +866,7 @@ export const webMessages = {
   'web.signIn.error.pinFormat': 'A profile PIN is four digits.',
   'web.signIn.error.profilesChanged': 'The profiles on {server} changed. Choose again.',
   'web.signIn.error.invitationExpired': 'This invitation has expired. Ask the owner of {server} for a new one.',
+  'web.signIn.error.invitationOtherAccount': 'This invitation was made for a different Portico Account. Sign in with that account, or ask the owner of {server} for a new one.',
   'web.signIn.error.invitationIncomplete': 'This invitation link is incomplete. Open the whole link from the message you were sent.',
   'web.signIn.error.invitationUsed': 'This invitation has already been used or was withdrawn. Ask the owner of {server} for a new one.',
   'web.signIn.error.closed': '{server} isn’t taking new accounts. Ask its owner for an invitation.',

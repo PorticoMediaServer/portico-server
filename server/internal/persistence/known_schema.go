@@ -1293,6 +1293,7 @@ trigger continue_show_dismiss_insert
 trigger continue_show_dismiss_update
 trigger direct_account_created
 trigger direct_account_epoch
+trigger direct_membership_disabled
 trigger direct_profile_capacity
 trigger dvr_managed_inventory_reject
 trigger dvr_managed_library_delete

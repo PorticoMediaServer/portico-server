@@ -34,6 +34,11 @@ type DirectAccount struct {
 	Revision         int64    `json:"revision"`
 	Disabled         bool     `json:"disabled"`
 	AllowedLibraries []string `json:"allowedLibraries"`
+	// DisabledAt and DisabledReason are set while the account is off: when it
+	// was turned off, and whether an owner or administrator did it ("owner")
+	// or the person left at their Portico Account ("left").
+	DisabledAt     string `json:"disabledAt,omitempty"`
+	DisabledReason string `json:"disabledReason,omitempty"`
 	// HostedAccountID is set for a Portico Account member: its password, email
 	// and second factor are managed at Hosted, everything else here.
 	HostedAccountID string `json:"hostedAccountId,omitempty"`
@@ -597,7 +602,7 @@ func (s *Service) DirectMembers(ctx context.Context, bearer string) ([]DirectAcc
 	if c.account.Role != "owner" {
 		return nil, ErrForbidden
 	}
-	rows, e := tx.QueryContext(ctx, `SELECT a.id,a.username,a.profile_id,m.role,m.revision,m.disabled,m.allowed_libraries,COALESCE(l.hosted_account_id,'') FROM accounts a JOIN direct_memberships m ON m.account_id=a.id LEFT JOIN account_portico_links l ON l.account_id=a.id ORDER BY a.username`)
+	rows, e := tx.QueryContext(ctx, `SELECT a.id,a.username,a.profile_id,m.role,m.revision,m.disabled,m.allowed_libraries,COALESCE(l.hosted_account_id,''),m.disabled_ms,m.disabled_reason FROM accounts a JOIN direct_memberships m ON m.account_id=a.id LEFT JOIN account_portico_links l ON l.account_id=a.id ORDER BY a.username`)
 	if e != nil {
 		return nil, e
 	}
@@ -606,8 +611,12 @@ func (s *Service) DirectMembers(ctx context.Context, bearer string) ([]DirectAcc
 	for rows.Next() {
 		var a DirectAccount
 		var raw string
-		if e = rows.Scan(&a.ID, &a.Username, &a.PrimaryProfileID, &a.Role, &a.Revision, &a.Disabled, &raw, &a.HostedAccountID); e != nil {
+		var disabledMs int64
+		if e = rows.Scan(&a.ID, &a.Username, &a.PrimaryProfileID, &a.Role, &a.Revision, &a.Disabled, &raw, &a.HostedAccountID, &disabledMs, &a.DisabledReason); e != nil {
 			return nil, e
+		}
+		if disabledMs > 0 {
+			a.DisabledAt = time.UnixMilli(disabledMs).UTC().Format(time.RFC3339)
 		}
 		if e = json.Unmarshal([]byte(raw), &a.AllowedLibraries); e != nil {
 			return nil, e

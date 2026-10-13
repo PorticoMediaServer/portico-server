@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"time"
 
 	"portico.local/server/internal/identity"
 )
@@ -13,11 +14,16 @@ import (
 // list and the revision of its limits envelope, so a console can render the
 // people page from one list.
 type Member struct {
-	AccountID        string   `json:"accountId"`
-	Username         string   `json:"username"`
-	ProfileID        string   `json:"profileId"`
-	Role             string   `json:"role"`
-	Disabled         bool     `json:"disabled"`
+	AccountID string `json:"accountId"`
+	Username  string `json:"username"`
+	ProfileID string `json:"profileId"`
+	Role      string `json:"role"`
+	Disabled  bool   `json:"disabled"`
+	// DisabledAt and DisabledReason say when and why an account that is off
+	// was turned off: "owner" (an owner or administrator did it) or "left"
+	// (the person removed this server from their Portico Account).
+	DisabledAt       string   `json:"disabledAt,omitempty"`
+	DisabledReason   string   `json:"disabledReason,omitempty"`
 	Revision         int64    `json:"revision"`
 	AllowedLibraries []string `json:"allowedLibraries"`
 	LimitsRevision   int64    `json:"limitsRevision"`
@@ -51,7 +57,7 @@ func (s *Store) Members(ctx context.Context, auth Authorize, q MemberQuery) (out
 	}
 	out.Limit, out.Items = limit, []Member{}
 	err = s.snapshot(ctx, auth, func(tx *sql.Tx) error {
-		rows, e := tx.QueryContext(ctx, `SELECT a.id,a.username,a.profile_id,m.role,m.disabled,m.revision,m.allowed_libraries,
+		rows, e := tx.QueryContext(ctx, `SELECT a.id,a.username,a.profile_id,m.role,m.disabled,m.disabled_ms,m.disabled_reason,m.revision,m.allowed_libraries,
  COALESCE(l.revision,1),COALESCE(l.body,''),COALESCE(p.hosted_account_id,'') FROM accounts a JOIN direct_memberships m ON m.account_id=a.id
  LEFT JOIN access_limits l ON l.account_id=a.id LEFT JOIN account_portico_links p ON p.account_id=a.id WHERE a.id>? ORDER BY a.id LIMIT ?`, after, limit+1)
 		if e != nil {
@@ -61,9 +67,11 @@ func (s *Store) Members(ctx context.Context, auth Authorize, q MemberQuery) (out
 		for rows.Next() {
 			var m Member
 			var libraries, body string
-			if e = rows.Scan(&m.AccountID, &m.Username, &m.ProfileID, &m.Role, &m.Disabled, &m.Revision, &libraries, &m.LimitsRevision, &body, &m.HostedAccountID); e != nil {
+			var disabledMs int64
+			if e = rows.Scan(&m.AccountID, &m.Username, &m.ProfileID, &m.Role, &m.Disabled, &disabledMs, &m.DisabledReason, &m.Revision, &libraries, &m.LimitsRevision, &body, &m.HostedAccountID); e != nil {
 				return e
 			}
+			m.DisabledAt = disabledAt(disabledMs)
 			if e = json.Unmarshal([]byte(libraries), &m.AllowedLibraries); e != nil {
 				return e
 			}
@@ -156,12 +164,14 @@ func (s *Store) SetRole(ctx context.Context, auth Authorize, actor identity.Prin
 func readMember(ctx context.Context, tx *sql.Tx, account string) (Member, error) {
 	var m Member
 	var libraries, body string
-	e := tx.QueryRowContext(ctx, `SELECT a.id,a.username,a.profile_id,m.role,m.disabled,m.revision,m.allowed_libraries,
+	var disabledMs int64
+	e := tx.QueryRowContext(ctx, `SELECT a.id,a.username,a.profile_id,m.role,m.disabled,m.disabled_ms,m.disabled_reason,m.revision,m.allowed_libraries,
  COALESCE(l.revision,1),COALESCE(l.body,''),COALESCE(p.hosted_account_id,'') FROM accounts a JOIN direct_memberships m ON m.account_id=a.id
- LEFT JOIN access_limits l ON l.account_id=a.id LEFT JOIN account_portico_links p ON p.account_id=a.id WHERE a.id=?`, account).Scan(&m.AccountID, &m.Username, &m.ProfileID, &m.Role, &m.Disabled, &m.Revision, &libraries, &m.LimitsRevision, &body, &m.HostedAccountID)
+ LEFT JOIN access_limits l ON l.account_id=a.id LEFT JOIN account_portico_links p ON p.account_id=a.id WHERE a.id=?`, account).Scan(&m.AccountID, &m.Username, &m.ProfileID, &m.Role, &m.Disabled, &disabledMs, &m.DisabledReason, &m.Revision, &libraries, &m.LimitsRevision, &body, &m.HostedAccountID)
 	if e != nil {
 		return m, e
 	}
+	m.DisabledAt = disabledAt(disabledMs)
 	if e = json.Unmarshal([]byte(libraries), &m.AllowedLibraries); e != nil {
 		return m, e
 	}
@@ -194,4 +204,11 @@ func Role(tx *sql.Tx, account string) (string, error) {
 		return "", identity.ErrUnauthorized
 	}
 	return role, nil
+}
+
+func disabledAt(ms int64) string {
+	if ms <= 0 {
+		return ""
+	}
+	return time.UnixMilli(ms).UTC().Format(time.RFC3339)
 }

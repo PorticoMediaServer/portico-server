@@ -2593,7 +2593,13 @@ CREATE TABLE direct_memberships(
  account_id TEXT PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
  role TEXT NOT NULL CHECK(role IN('owner','admin','member')),
  allowed_libraries TEXT NOT NULL DEFAULT '[]' CHECK(json_valid(allowed_libraries)),
- revision INTEGER NOT NULL DEFAULT 1 CHECK(revision>0), disabled INTEGER NOT NULL DEFAULT 0 CHECK(disabled IN(0,1))
+ revision INTEGER NOT NULL DEFAULT 1 CHECK(revision>0), disabled INTEGER NOT NULL DEFAULT 0 CHECK(disabled IN(0,1)),
+ -- When and why the account was turned off: 'owner' (an owner or administrator
+ -- did it) or 'left' (the person left at the Portico Account service). Both are
+ -- empty while the account is on; the direct_membership_disabled trigger keeps
+ -- them so whichever statement flips "disabled".
+ disabled_ms INTEGER NOT NULL DEFAULT 0 CHECK(disabled_ms>=0),
+ disabled_reason TEXT NOT NULL DEFAULT '' CHECK(disabled_reason IN('','owner','left'))
 ) STRICT;
 CREATE TABLE access_invitations(
  id TEXT PRIMARY KEY, email TEXT NOT NULL, code_hash TEXT NOT NULL UNIQUE,
@@ -2601,7 +2607,9 @@ CREATE TABLE access_invitations(
  allowed_libraries TEXT NOT NULL DEFAULT '[]' CHECK(json_valid(allowed_libraries)),
  state TEXT NOT NULL DEFAULT 'pending' CHECK(state IN('pending','accepted','revoked')),
  created_ms INTEGER NOT NULL, expires_ms INTEGER NOT NULL, accepted_ms INTEGER,
- created_by TEXT NOT NULL, account_id TEXT, revision INTEGER NOT NULL DEFAULT 1 CHECK(revision>0)) STRICT;
+ created_by TEXT NOT NULL, account_id TEXT, revision INTEGER NOT NULL DEFAULT 1 CHECK(revision>0),
+ -- A Portico Account username this invitation is for. Empty means whoever holds the code.
+ bound_username TEXT NOT NULL DEFAULT '') STRICT;
 CREATE TABLE access_limits(
  account_id TEXT PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
  revision INTEGER NOT NULL DEFAULT 1 CHECK(revision>0), updated_ms INTEGER NOT NULL,
@@ -4309,6 +4317,12 @@ WHEN NEW.hosted_account_id IS NOT OLD.hosted_account_id OR (OLD.unindexed=1 AND 
 END;
 CREATE TRIGGER hosted_member_link_delete AFTER DELETE ON account_portico_links BEGIN
  INSERT INTO hosted_membership_journal(hosted_account_id) VALUES(OLD.hosted_account_id);
+END;
+CREATE TRIGGER direct_membership_disabled AFTER UPDATE OF disabled ON direct_memberships WHEN OLD.disabled IS NOT NEW.disabled BEGIN
+ UPDATE direct_memberships SET
+  disabled_ms=CASE WHEN NEW.disabled=0 THEN 0 WHEN NEW.disabled_ms>0 THEN NEW.disabled_ms ELSE CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) END,
+  disabled_reason=CASE WHEN NEW.disabled=0 THEN '' WHEN NEW.disabled_reason<>'' THEN NEW.disabled_reason ELSE 'owner' END
+  WHERE account_id=NEW.account_id;
 END;
 CREATE TRIGGER hosted_member_standing AFTER UPDATE OF role,disabled ON direct_memberships WHEN OLD.role IS NOT NEW.role OR OLD.disabled IS NOT NEW.disabled BEGIN
  INSERT INTO hosted_membership_journal(hosted_account_id) SELECT hosted_account_id FROM account_portico_links WHERE account_id=NEW.account_id;

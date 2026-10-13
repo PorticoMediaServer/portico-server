@@ -139,6 +139,8 @@ func accessFailure(w http.ResponseWriter, e error) {
 		status, code, message = 409, "administration_conflict", publicErrorMessage("administration_conflict")
 	case errors.Is(e, access.ErrExpired):
 		status, code, message = 410, "invitation_expired", publicErrorMessage("invitation_expired")
+	case errors.Is(e, access.ErrInvitationRecipient):
+		status, code, message = 403, "invitation_for_another_account", publicErrorMessage("invitation_for_another_account")
 	case errors.Is(e, access.ErrCapacity):
 		status, code, message = 429, "administration_capacity", publicErrorMessage("administration_capacity")
 	case errors.Is(e, servicelog.ErrClientLogBudget):

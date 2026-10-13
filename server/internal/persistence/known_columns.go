@@ -23,6 +23,7 @@ access_api_keys.secret_hash
 access_invitations.accepted_ms
 access_invitations.account_id
 access_invitations.allowed_libraries
+access_invitations.bound_username
 access_invitations.code_hash
 access_invitations.created_by
 access_invitations.created_ms
@@ -1271,6 +1272,8 @@ diagnostics_debug_window.singleton
 direct_memberships.account_id
 direct_memberships.allowed_libraries
 direct_memberships.disabled
+direct_memberships.disabled_ms
+direct_memberships.disabled_reason
 direct_memberships.revision
 direct_memberships.role
 direct_profile_pin_attempts.device_id
