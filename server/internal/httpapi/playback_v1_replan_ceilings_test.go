@@ -61,6 +61,9 @@ func TestSubtitleReplanRoutesHoldToTheMembersCurrentCeiling(t *testing.T) {
 		t.Skipf("no HLS producer here: %v", err)
 	}
 	player := playback.New(f.db)
+	cfg := playback.DefaultDeliveryConfiguration()
+	cfg.MaxConversions = 1
+	player.ConfigureDelivery(playbackReviewSettings{cfg}, nil, nil, "")
 	player.ConfigureSubtitleDelivery(subs)
 	player.ConfigureHLS(hls)
 	f.v1.Subtitles = subs
@@ -164,7 +167,7 @@ func TestSubtitleReplanRoutesHoldToTheMembersCurrentCeiling(t *testing.T) {
 	held("burn-in after the cap was lowered", 1_000_000, true)
 	setMemberLimits(t, f, `{}`)
 	patch(lan, nil, second)
-	if _, bitrate, action := planned(); action != "convert" || bitrate <= 1_000_000 {
+	if _, bitrate, action := planned(); action != "convert" || bitrate != 0 {
 		t.Fatalf("burn-in after the cap was lifted, back on the LAN: planned %s at %d bit/s", action, bitrate)
 	}
 }

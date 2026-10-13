@@ -129,6 +129,8 @@ func (s *Service) CreateContext(ctx context.Context, p identity.Principal, item,
 type SessionReplacement struct {
 	ID         string `json:"id"`
 	Generation int    `json:"generation"`
+	// Deferred keeps the old presentation live until the resource layer commits.
+	Deferred bool `json:"-"`
 }
 
 func (s *Service) CreateReplacingContext(ctx context.Context, p identity.Principal, item, quality, request string, replacement *SessionReplacement) (Session, error) {
@@ -370,8 +372,9 @@ func (s *Service) create(ctx context.Context, p identity.Principal, item, reques
 	}
 
 	replacing := ""
-	private := v1.PrivateFor != ""
-	if private {
+	deferred := replacement != nil && replacement.Deferred
+	private := v1.PrivateFor != "" || deferred || v1.PendingActivation
+	if private && !deferred && !v1.PendingActivation {
 		// A private presentation shares its owner's slot, and the owner plays on.
 		var valid int
 		if e = tx.QueryRowContext(ctx, `SELECT count(*) FROM playback_sessions WHERE id=? AND account_id=? AND profile_id=? AND state NOT IN('stopped','ended','failed')`, v1.PrivateFor, p.AccountID, p.ProfileID).Scan(&valid); e != nil {
@@ -383,7 +386,13 @@ func (s *Service) create(ctx context.Context, p identity.Principal, item, reques
 		replacing = v1.PrivateFor
 	} else if replacement != nil {
 		var valid int
-		if e = tx.QueryRowContext(ctx, `SELECT count(*) FROM playback_sessions WHERE id=? AND generation=? AND account_id=? AND profile_id=? AND `+sessionFamilyMatch+` AND state NOT IN('stopped','ended','failed')`, replacement.ID, replacement.Generation, p.AccountID, p.ProfileID, p.Hash, p.Hash).Scan(&valid); e != nil {
+		query := `SELECT count(*) FROM playback_sessions WHERE id=? AND generation=? AND account_id=? AND profile_id=? AND state NOT IN('stopped','ended','failed')`
+		args := []any{replacement.ID, replacement.Generation, p.AccountID, p.ProfileID}
+		if !deferred {
+			query += ` AND ` + sessionFamilyMatch
+			args = append(args, p.Hash, p.Hash)
+		}
+		if e = tx.QueryRowContext(ctx, query, args...).Scan(&valid); e != nil {
 			return Session{}, e
 		}
 		if valid != 1 {
@@ -402,7 +411,7 @@ func (s *Service) create(ctx context.Context, p identity.Principal, item, reques
 		}
 	}
 
-	if mode == "hls" && s.hls.finite != nil {
+	if mode == "hls" && s.hls.finite != nil && delivery.ConversionTarget == nil {
 		delivery.Profile = finiteDeliveryProfile
 		delivery.Strategy = DeliveryVideoConversion
 		delivery.Reason = ReasonFiniteNormalization
@@ -484,11 +493,13 @@ func (s *Service) create(ctx context.Context, p identity.Principal, item, reques
 		_ = tx.QueryRow(`SELECT last_played_at FROM personal_items WHERE profile_id=? AND item_id=(SELECT id FROM catalog_entities WHERE public_id=pid_blob(?))`, identity.PersonalKey(p.Viewer), item).Scan(&lastPlayed)
 		resume = listeningrules.Resume(resume, lastPlayed, time.Now())
 	}
-	if itemKind != "audiobook_file" && resume >= duration-3 {
+	if duration > 0 && itemKind != "audiobook_file" && resume >= duration-3 {
 		resume = 0
 	}
-	if e = claimSessionProgress(tx, p, item, id, resume); e != nil {
-		return Session{}, e
+	if !private {
+		if e = claimSessionProgress(tx, p, item, id, resume); e != nil {
+			return Session{}, e
+		}
 	}
 	streamURL := "/v1/media/" + grant
 	if mode == "hls" {
@@ -500,7 +511,14 @@ func (s *Service) create(ctx context.Context, p identity.Principal, item, reques
 	}
 	result := Session{ID: id, Generation: generation, StreamURL: streamURL, Mode: responseMode, Duration: duration, ResumeSeconds: resume, State: "starting"}
 	if private {
-		if _, e = tx.ExecContext(ctx, `INSERT INTO playback_private_presentations(session_id,owner_session_id,expires_ms) VALUES(?,?,?)`, id, v1.PrivateFor, v1.PrivateUntilMs); e != nil {
+		owner, until := v1.PrivateFor, v1.PrivateUntilMs
+		if v1.PendingActivation {
+			until = time.Now().Add(time.Minute).UnixMilli()
+		}
+		if deferred {
+			owner, until = replacement.ID, time.Now().Add(time.Minute).UnixMilli()
+		}
+		if _, e = tx.ExecContext(ctx, `INSERT INTO playback_private_presentations(session_id,owner_session_id,expires_ms) VALUES(?,?,?)`, id, owner, until); e != nil {
 			return Session{}, e
 		}
 	}
@@ -637,7 +655,7 @@ func (s *Service) progressTx(ctx context.Context, tx *sql.Tx, p identity.Princip
 	if n == 0 {
 		return nil
 	}
-	_, e = tx.ExecContext(ctx, `UPDATE playback_observations SET reported_at=?,position=min(?,(SELECT duration FROM playback_sessions WHERE id=?)) WHERE session_id=?`, time.Now().UTC().Format("2006-01-02T15:04:05.000Z"), position, id, id)
+	_, e = tx.ExecContext(ctx, `UPDATE playback_observations SET reported_at=?,position=CASE WHEN (SELECT duration FROM playback_sessions WHERE id=?)>0 THEN min(?,(SELECT duration FROM playback_sessions WHERE id=?)) ELSE ? END WHERE session_id=?`, time.Now().UTC().Format("2006-01-02T15:04:05.000Z"), id, position, id, position, id)
 	if e != nil {
 		return e
 	}

@@ -294,70 +294,11 @@ test('invalid requests fail before transport and disposal fences late results', 
   assert.equal(disposed.getSnapshot(), snapshot); assert.throws(() => disposed.refresh(), /disposed/);
 });
 
-function homeProjection(path: string, changes: Record<string, unknown> = {}): any {
-  const data = projection(path);
-  data.scope = { ...data.scope, libraryId: '', libraryKind: 'mixed', view: 'home', entityId: '' };
-  data.query = { sort: 'server', direction: 'asc', category: '', q: '', limit: 12, searchMode: 'none' };
-  data.navigation = []; data.sorts = []; data.filters = [];
-  data.heading = { key: 'home.heading', fallback: 'Home' };
-  data.sections = [{ id: 'continue_watching', type: 'rail', heading: { key: 'home.continue_watching', fallback: 'Continue Watching' }, entries: [{ ...entry('movie-b'), libraryId: 'library-b' }, { ...entry('movie-a'), libraryId: 'library-a' }], totalCount: 2, nextCursor: '' }];
-  data.featured = { ...entry('chosen-movie'), libraryId: 'library-c', available: true, backdropUrl: '/v1/items/chosen-movie/artwork/backdrop', overview: 'The server-selected synopsis.', playback: { itemId: 'chosen-movie' } };
-  return { ...data, ...changes };
-}
-
-test('Home uses global endpoint and preserves the cross-library row order', async () => {
-  let requested = '';
-  const nav = service(async path => { requested = path; return homeProjection(path); });
-  await nav.select({ view: 'home' });
-  assert.equal(requested, '/v1/content?view=home&limit=12');
-  const data = nav.getSnapshot().projection!;
-  assert.equal(nav.getSnapshot().phase, 'ready');
-  assert.equal(data.scope.libraryId, ''); assert.equal(data.scope.libraryKind, 'mixed');
-  assert.deepEqual(data.sections[0].entries.map(e => [e.id, e.libraryId]), [['movie-b','library-b'], ['movie-a','library-a']]);
-  // The projection has no featured title any more: Home's hero is named by `/v1/home` (`home.ts`).
-  assert.equal((data as {featured?: unknown}).featured, undefined);
+test('Home is read through the composed Home API, not the library content service',()=>{
+ const nav=service(async path=>projection(path));
+ assert.throws(()=>nav.select({view:'home'} as any),/Invalid library content route/);
+ assert.throws(()=>nav.select({libraryId:'movies',view:'home'} as any),/Invalid library content route/);
 });
-
-test('Home accepts no featured media and an explicitly empty authorized catalog', async () => {
-  const nav = service(async path => { const d = homeProjection(path); delete d.featured; d.sections = []; d.empty = { key: 'home.empty', fallback: 'No authorized content.' }; return d; });
-  await nav.select({ view: 'home' });
-  assert.equal(nav.getSnapshot().phase, 'ready'); assert.equal(nav.getSnapshot().projection!.featured, undefined);
-  assert.deepEqual(nav.getSnapshot().sections, []); assert.equal(nav.getSnapshot().projection!.empty!.key, 'home.empty');
-});
-
-test('Home validates its entries\' source library and its global scope', async () => {
-  for (const mutate of [
-    (d: any) => { d.scope.libraryId = 'not-global'; }, (d: any) => { d.scope.serverId = 'another-server'; },
-  ]) {
-    const nav = service(async path => { const d = homeProjection(path); mutate(d); return d; }); await nav.select({ view: 'home' });
-    assert.equal(nav.getSnapshot().phase, 'error'); assert.equal(nav.getSnapshot().error!.code, 'invalid_projection');
-    assert.equal(nav.getSnapshot().projection, null);
-  }
-  // An entry that does not say which library it is from is left out alone.
-  const nav = service(async path => { const d = homeProjection(path); const first = d.sections[0].entries[0]; d.sections[0].entries = [{ ...first, id: 'unplaced', libraryId: undefined }, first]; return d; }); await nav.select({ view: 'home' });
-  assert.equal(nav.getSnapshot().phase, 'ready');
-  assert.deepEqual(nav.getSnapshot().sections[0].entries.map(e => e.id), [nav.getSnapshot().sections[0].entries[0].id]);
-  assert.equal(nav.getSnapshot().sections[0].entries.some(e => e.id === 'unplaced'), false);
-});
-
-test('global-to-library switching fences late Home hero and does not send global cursors to libraries', async () => {
-  const late = deferred<unknown>(); let homePath = ''; const paths: string[] = [];
-  const nav = service(async path => { paths.push(path); if (path.startsWith('/v1/content?')) { homePath = path; return late.promise; } return projection(path); });
-  const home = nav.select({ view: 'home' }); await nav.select(route); await home;
-  late.resolve(homeProjection(homePath)); await Promise.resolve();
-  assert.equal(nav.getSnapshot().projection!.scope.libraryId, 'movies'); assert.equal(nav.getSnapshot().projection!.featured, undefined);
-  assert.ok(!paths.at(-1)!.includes('cursor='));
-});
-
-test('Home scope replacement clears hero immediately and denies stale or unauthorized responses', async () => {
-  const nav = service(async path => homeProjection(path)); await nav.select({ view: 'home' });
-  nav.setScope({ ...scope, viewerId: 'other-profile' }, { request: async () => { throw Object.assign(new Error('Permission denied'), { status: 403, code: 'permission_denied' }); } });
-  assert.equal(nav.getSnapshot().projection, null);
-  await nav.select({ view: 'home' }); assert.equal(nav.getSnapshot().phase, 'error'); assert.equal(nav.getSnapshot().sections.length, 0);
-  assert.throws(() => nav.select({ view: 'home', libraryId: 'library' } as any), /Home does not accept/);
-  assert.throws(() => nav.select({ view: 'home', q: 'client-ranked' }), /Home does not accept/);
-});
-
 
 test('same-destination refresh retains bounded content until replacement; destination and permission changes clear it', async () => {
   const response = deferred<unknown>(); let count = 0;

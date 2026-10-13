@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"portico.local/server/internal/assets"
+	"portico.local/server/internal/decoder"
 	"portico.local/server/internal/subtitles"
 )
 
@@ -31,6 +32,7 @@ const (
 	RejectAudioCodec          = "audio_codec_unsupported"
 	RejectAudioChannels       = "audio_channels_exceed_device"
 	RejectAudioSampleRate     = "audio_sample_rate_exceeds_device"
+	RejectAudioBitDepth       = "audio_bit_depth_unsupported"
 	RejectAudioTrack          = "audio_track_not_selectable_in_original"
 	RejectTransport           = "transport_unsupported"
 	RejectServerOutput        = "server_output_unavailable"
@@ -39,12 +41,11 @@ const (
 	RejectTranscodingDisabled = "transcoding_disabled"
 	RejectNoAudio             = "source_has_no_audio_to_convert"
 
-	NoteDetailUnobserved   = "source_detail_unobserved"
-	NoteBaselineProfile    = "client_published_no_profile"
-	NoteToneMapOwnerOff    = "hdr_tone_mapping_disabled_by_owner"
-	NoteDolbyVisionNoLayer = "dolby_vision_without_fallback_converted_approximately"
-	NoteDeviceBitrate      = "device_bitrate_ceiling_applied"
-	NoteBitrateAssumed     = "source_bitrate_unobserved_assumed_from_picture_size"
+	NoteDetailUnobserved = "source_detail_unobserved"
+	NoteBaselineProfile  = "client_published_no_profile"
+	NoteToneMapOwnerOff  = "hdr_tone_mapping_disabled_by_owner"
+	NoteDeviceBitrate    = "device_bitrate_ceiling_applied"
+	NoteBitrateAssumed   = "source_bitrate_unobserved_assumed_from_picture_size"
 	// NoteFirstAudioTrackPlayed marks a plan that plays the original although the
 	// wanted audio track is not the first, because no other route existed.
 	NoteFirstAudioTrackPlayed = "wanted_audio_track_unreachable_first_track_played"
@@ -142,18 +143,7 @@ func profileName(s string) string {
 // decodes the base layer. Profile 5 has no such layer: its base is IPT-PQ-C2,
 // which an HDR10 pipeline shows in the wrong colours.
 func dolbyVisionFallback(v *SourceVideo) string {
-	switch v.DolbyVisionCompatibility {
-	case 1, 6:
-		return assets.RangeHDR10
-	case 4:
-		return assets.RangeHLG
-	case 2:
-		return assets.RangeSDR
-	}
-	if v.DolbyVisionProfile == 7 {
-		return assets.RangeHDR10
-	}
-	return ""
+	return decoder.DolbyVisionBaseRange(v.DolbyVisionProfile, v.DolbyVisionCompatibility)
 }
 
 // effectiveRange is the dynamic range the device will actually be shown for this
@@ -259,6 +249,9 @@ func audioRejections(a *SourceAudio, client ClientProfile, t ClientTransport) []
 	if c.MaxChannels > 0 && a.Channels > c.MaxChannels {
 		out = append(out, RouteRejection{RejectAudioChannels, fmt.Sprintf("%d>%d", a.Channels, c.MaxChannels)})
 	}
+	if c.MaxBitDepth > 0 && sourceAudioDepth(a) > c.MaxBitDepth {
+		out = append(out, RouteRejection{RejectAudioBitDepth, fmt.Sprint(sourceAudioDepth(a))})
+	}
 	if c.MaxSampleRate > 0 && a.SampleRate > c.MaxSampleRate {
 		out = append(out, RouteRejection{RejectAudioSampleRate, fmt.Sprintf("%d", a.SampleRate)})
 	}
@@ -357,7 +350,7 @@ var (
 	tsCopyVideo   = []string{"h264", "hevc", "mpeg2video"}
 	tsCopyAudio   = []string{"aac", "mp3", "mp2", "ac3", "eac3"}
 	fmp4CopyVideo = []string{"h264", "hevc", "av1", "vp9"}
-	fmp4CopyAudio = []string{"aac", "mp3", "ac3", "eac3", "flac", "opus", "alac"}
+	fmp4CopyAudio = []string{"aac", "mp3", "ac3", "eac3", "flac", "opus", "alac", "truehd", "dts", "dts_hd"}
 )
 
 // hlsTransports lists the device's HLS transports this server can produce, in
@@ -410,7 +403,9 @@ type convertedAudio struct {
 	SampleRate int
 	// NoRate means no codec this server converts to is encoded at a rate the
 	// device takes for it: the track cannot be converted for this device.
-	NoRate bool
+	NoRate        bool
+	NoOutput      bool
+	LosslessCodec bool
 }
 
 // convertedAudioRates are the rates each output codec is encoded at that
@@ -418,11 +413,11 @@ type convertedAudio struct {
 // decoder takes 48 kHz; many televisions, Cast devices and set-top boxes take
 // nothing above it.
 var convertedAudioRates = map[string][]int{
-	"aac":  {48000, 44100, 32000, 24000, 22050, 16000, 12000, 11025, 8000},
+	"aac":  {48000, 44100, 32000, 24000, 22050, 16000, 12000, 11025, 8000, 7350},
 	"ac3":  {48000, 44100, 32000},
 	"eac3": {48000, 44100, 32000},
-	"flac": {48000, 44100, 32000, 24000, 22050, 16000, 12000, 11025, 8000},
-	"opus": {48000},
+	"flac": {192000, 176400, 96000, 88200, 64000, 48000, 44100, 32000, 24000, 22050, 16000, 12000, 11025, 8000},
+	"opus": {48000, 24000, 16000, 12000, 8000},
 }
 
 // convertedSampleRate is the rate a track converted to codec is resampled to,
@@ -439,13 +434,22 @@ func convertedSampleRate(a *SourceAudio, codec string, output *ClientAudioCodec)
 		return 48000, true
 	}
 	limit := 48000
+	if codec == "flac" {
+		limit = 192000
+	}
 	if output != nil && output.MaxSampleRate > 0 && output.MaxSampleRate < limit {
 		limit = output.MaxSampleRate
+	}
+	if codec == "flac" && a.SampleRate > 0 && a.SampleRate <= limit {
+		return a.SampleRate, true
 	}
 	chosen := 0
 	for _, rate := range convertedAudioRates[codec] {
 		if rate > limit {
 			continue
+		}
+		if a.SampleRate == 0 && rate == 48000 {
+			return rate, true
 		}
 		if a.SampleRate > 0 && rate == a.SampleRate {
 			return rate, true
@@ -487,40 +491,34 @@ func audioOutputFor(a *SourceAudio, client ClientProfile, target QualityTarget, 
 	if source >= 6 {
 		layouts = append(layouts, 6)
 	}
+	if source < 2 {
+		layouts = append(layouts, 1)
+	} else {
+		layouts = append(layouts, 2)
+	}
 	type candidate struct {
 		codec    string
 		channels int
 	}
 	var candidates []candidate
-	if lossless {
+	// Keep the widest audible layout first. Within it, keep lossless samples,
+	// then receiver-friendly Dolby, Opus and AAC, before dropping channels.
+	for _, n := range layouts {
 		for _, o := range outputs.Audio {
-			if !o.Lossless {
-				continue
-			}
-			for _, n := range append(append([]int{}, layouts...), 2) {
+			if o.Lossless {
 				candidates = append(candidates, candidate{o.Codec, n})
 			}
 		}
-	}
-	dolby := func() {
-		for _, n := range layouts {
-			candidates = append(candidates, candidate{"eac3", n}, candidate{"ac3", n})
+		order := []string{"eac3", "ac3", "opus", "aac"}
+		if !lossless {
+			order = []string{"aac", "eac3", "ac3", "opus"}
 		}
-	}
-	aac := func() {
-		for _, n := range layouts {
-			candidates = append(candidates, candidate{"aac", n})
+		for _, codec := range order {
+			candidates = append(candidates, candidate{codec, n})
 		}
-	}
-	if lossless {
-		dolby()
-		aac()
-	} else {
-		aac()
-		dolby()
 	}
 	for _, c := range candidates {
-		output := outputs.audio(c.codec)
+		output := outputs.AudioOutput(c.codec)
 		if output == nil {
 			continue
 		}
@@ -534,10 +532,13 @@ func audioOutputFor(a *SourceAudio, client ClientProfile, target QualityTarget, 
 		// What the device does with it: decodes it to the channels its output
 		// has, or hands it to a receiver.
 		decoder := client.audioCodec(c.codec)
-		decoded := decoder != nil && decoder.MaxChannels >= c.channels && (c.channels <= 2 || client.AudioOutput.MaxChannels >= c.channels)
+		decoded := decoder != nil && (decoder.MaxChannels == 0 || decoder.MaxChannels >= c.channels) && (c.channels <= 2 || (client.AudioOutput.MaxChannels == 0 || client.AudioOutput.MaxChannels >= c.channels))
 		passed := false
 		if p := client.passthroughCodec(c.codec); p != nil && (p.MaxChannels == 0 || p.MaxChannels >= c.channels) {
 			passed = true
+		}
+		if c.codec == "flac" && decoder != nil && decoder.MaxBitDepth > 0 && decoder.MaxBitDepth < 16 {
+			continue
 		}
 		if !decoded && !passed {
 			continue
@@ -549,8 +550,8 @@ func audioOutputFor(a *SourceAudio, client ClientProfile, target QualityTarget, 
 			if ceiling > 0 {
 				continue
 			}
-		case c.codec == "aac":
-			if ceiling > 0 && ceiling < 256_000 {
+		case c.codec == "aac" || c.codec == "opus":
+			if c.channels > 2 && ceiling > 0 && ceiling < 256_000 {
 				continue
 			}
 			if ceiling > 0 && ceiling < rate {
@@ -561,7 +562,7 @@ func audioOutputFor(a *SourceAudio, client ClientProfile, target QualityTarget, 
 				continue
 			}
 		}
-		out := convertedAudio{Codec: c.codec, Channels: c.channels, Bitrate: rate, Downmix: source > c.channels, Lossless: output.Lossless}
+		out := convertedAudio{Codec: c.codec, Channels: c.channels, Bitrate: rate, Downmix: source > c.channels, LosslessCodec: output.Lossless, Lossless: output.Lossless && source == c.channels && (a == nil || !strings.HasPrefix(a.NativeCodec, "pcm_f"))}
 		resample, ok := convertedSampleRate(a, c.codec, decoder)
 		if !ok {
 			if c.codec != "aac" {
@@ -571,12 +572,18 @@ func audioOutputFor(a *SourceAudio, client ClientProfile, target QualityTarget, 
 			}
 			out.NoRate = true
 		}
+		if output.Lossless && decoder != nil && decoder.MaxBitDepth > 0 && sourceAudioDepth(a) > decoder.MaxBitDepth {
+			out.Lossless = false
+		}
 		out.SampleRate = resample
+		if a != nil && a.SampleRate > 0 && resample != a.SampleRate {
+			out.Lossless = false
+		}
 		return out
 	}
-	floor.Downmix = source > floor.Channels
-	rate, ok := convertedSampleRate(a, floor.Codec, client.audioCodec(floor.Codec))
-	floor.SampleRate, floor.NoRate = rate, !ok
+	// No invented AAC floor when that codec/layout cannot reach this engine.
+	floor.NoRate = true
+	floor.NoOutput = true
 	return floor
 }
 
@@ -607,4 +614,41 @@ func HLSTSRejections(video *SourceVideo, audio *SourceAudio, client ClientProfil
 		ar = audioRejections(audio, client, *t)
 	}
 	return vr, ar
+}
+
+func sourceAudioDepth(a *SourceAudio) int {
+	if a == nil {
+		return 0
+	}
+	if a.BitsPerSample > 0 {
+		return a.BitsPerSample
+	}
+	return a.BitDepth
+}
+
+func flacDepth(a *SourceAudio, c *ClientAudioCodec) int {
+	depth := sourceAudioDepth(a)
+	if depth == 0 {
+		depth = 24
+	}
+	// Integer FLAC output accepts 16, 24 or 32 bits. Promotion keeps samples;
+	// a smaller declared device ceiling is an explicit reduction.
+	if depth <= 16 {
+		depth = 16
+	} else if depth <= 24 {
+		depth = 24
+	} else {
+		depth = 32
+	}
+	if c != nil && c.MaxBitDepth > 0 {
+		for depth > c.MaxBitDepth {
+			if depth > 24 {
+				depth = 24
+			} else {
+				depth = 16
+				break
+			}
+		}
+	}
+	return depth
 }

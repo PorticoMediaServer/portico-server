@@ -205,8 +205,8 @@ func toolHash(path string) (string, error) {
 	}
 	defer f.Close()
 	h := sha256.New()
-	n, e := io.Copy(h, io.LimitReader(f, 256<<20+1))
-	if e != nil || n > 256<<20 {
+	n, e := io.Copy(h, io.LimitReader(f, 4<<30+1))
+	if e != nil || n > 4<<30 {
 		return "", ErrUnsupported
 	}
 	return hex.EncodeToString(h.Sum(nil)), nil

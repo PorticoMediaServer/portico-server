@@ -6,6 +6,8 @@ import (
 	"io"
 	"os/exec"
 	"path/filepath"
+	"portico.local/server/internal/progressio"
+	"time"
 
 	"portico.local/server/internal/storage"
 )
@@ -64,6 +66,8 @@ func runOwnedAdmission(ctx context.Context, supervisor *storage.Supervisor, key 
 	if !reservation.claim(endpoint, cmd) {
 		return nil, ErrReservationInUse
 	}
+	ctx, progress := progressio.NewDormant(ctx, 2*time.Minute)
+	defer progress.Close()
 	retired := make(chan struct{})
 	var data []byte
 	run := supervisor.RunOwnedCompletion
@@ -72,7 +76,8 @@ func runOwnedAdmission(ctx context.Context, supervisor *storage.Supervisor, key 
 	}
 	err := run(ctx, "playback:probe:"+key, cmd, func(reader io.Reader) error {
 		var e error
-		data, e = io.ReadAll(io.LimitReader(reader, MaxProbeOutputBytes+1))
+		progress.Ping()
+		data, e = io.ReadAll(io.LimitReader(progress.Reader(reader), MaxProbeOutputBytes+1))
 		if e != nil {
 			return e
 		}
@@ -114,8 +119,10 @@ func RunStreamingProbe(ctx context.Context, supervisor *storage.Supervisor, key,
 	if !reservation.claim(endpoint, cmd) {
 		return ErrReservationInUse
 	}
+	ctx, progress := progressio.NewDormant(ctx, 2*time.Minute)
+	defer progress.Close()
 	retired := make(chan struct{})
-	err = supervisor.RunOwnedCompletion(ctx, "playback:probe:"+key, cmd, consume, nil, func() { reservation.retire(); close(retired) })
+	err = supervisor.RunOwnedCompletion(ctx, "playback:probe:"+key, cmd, func(reader io.Reader) error { progress.Ping(); return consume(progress.Reader(reader)) }, nil, func() { reservation.retire(); close(retired) })
 	<-retired
 	return err
 }

@@ -13,7 +13,7 @@ export type MetadataProvider=Readonly<{id:MetadataProviderId;name:string;mediaKi
 export type ProviderSelection=Readonly<{mediaKind:string;provider:MetadataProviderId;apiKeySet:boolean;language:string;region:string}>;
 export type ChapterThumbnailMode='none'|'embedded'|'generated';
 export type GeneratedNavigation=Readonly<{trickplayIntervalSeconds:number;trickplayTileWidth:number;trickplayMaxTiles:number;chapterThumbnailMode:ChapterThumbnailMode;videoPreviewEnabled:boolean;videoPreviewSeconds:number}>;
-export type LibrarySettings=Readonly<{allowMediaDeletion:boolean;providers:readonly ProviderSelection[];analysis:readonly string[];navigation:GeneratedNavigation}>;
+export type LibrarySettings=Readonly<{allowMediaDeletion:boolean;monitorChanges:boolean;providers:readonly ProviderSelection[];analysis:readonly string[];navigation:GeneratedNavigation}>;
 export type LibrarySource=Readonly<{id:string;name:string;root:string;classification:'local'|'network';enabled:boolean}>;
 export type LibraryAdminDocument=Readonly<{libraryId:string;libraryName:string;libraryKind:string;revision:number;digest:string;settings:LibrarySettings;analysisMatrix:AnalysisMatrix;availableProviders:readonly MetadataProvider[];enumerations:Readonly<Record<string,readonly string[]>>;sources:readonly LibrarySource[]}>;
 export type DeleteFile=Readonly<{assetId:string;path:string;bytes:number;present:boolean;shared:boolean}>;
@@ -148,8 +148,8 @@ function parseNavigation(v:unknown):GeneratedNavigation{
  return Object.freeze({trickplayIntervalSeconds:v.trickplayIntervalSeconds,trickplayTileWidth:v.trickplayTileWidth,trickplayMaxTiles:v.trickplayMaxTiles,chapterThumbnailMode:choice(v.chapterThumbnailMode,['none','embedded','generated'] as const,'chapter thumbnail mode'),videoPreviewEnabled:v.videoPreviewEnabled,videoPreviewSeconds:v.videoPreviewSeconds});
 }
 function parseLibrarySettings(v:unknown):LibrarySettings{
- if(!object(v)||!flag(v.allowMediaDeletion))invalid('library settings');
- return Object.freeze({allowMediaDeletion:v.allowMediaDeletion,providers:Object.freeze(list(v.providers,16,'library providers').map(parseSelection)),analysis:strings(v.analysis,128,'library analysis'),navigation:parseNavigation(v.navigation)});
+ if(!object(v)||!flag(v.allowMediaDeletion)||!flag(v.monitorChanges))invalid('library settings');
+ return Object.freeze({allowMediaDeletion:v.allowMediaDeletion,monitorChanges:v.monitorChanges,providers:Object.freeze(list(v.providers,16,'library providers').map(parseSelection)),analysis:strings(v.analysis,128,'library analysis'),navigation:parseNavigation(v.navigation)});
 }
 /** parseLibraryDocument reads one library's administration document. */
 export function parseLibraryDocument(v:unknown):LibraryAdminDocument{

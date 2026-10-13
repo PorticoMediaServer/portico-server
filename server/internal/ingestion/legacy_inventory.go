@@ -65,7 +65,7 @@ func (s *Service) adoptLegacyPage(ctx context.Context, job string, source catalo
 	if len(batch) > 0 {
 		_, err = tx.ExecContext(ctx, `UPDATE inventory_runs SET reconcile_cursor=? WHERE job_id=?`, batch[len(batch)-1].id, job)
 	} else {
-		_, err = tx.ExecContext(ctx, `UPDATE inventory_runs SET phase='verifying',reconcile_cursor='',verify_cursor='' WHERE job_id=?`, job)
+		_, err = tx.ExecContext(ctx, `UPDATE inventory_runs SET phase='extras',reconcile_cursor='',verify_cursor='' WHERE job_id=?`, job)
 	}
 	if err != nil {
 		return err

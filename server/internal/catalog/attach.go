@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"path/filepath"
+	"portico.local/server/internal/naming"
 	"regexp"
 	"strings"
 
@@ -137,24 +138,17 @@ func IdentifyTrackTx(ctx context.Context, tx *sql.Tx, item int64, tagKey string)
 	return held, restoreRetainedTx(ctx, tx, held)
 }
 
-var seasonLikeFolder = regexp.MustCompile(`(?i)^(?:(?:season|series|staffel|saison|temporada|stagione|sezon|seizoen|s)[ ._-]*\d{1,4}|specials?|extras?|(?:disc|disk|cd|dvd)[ ._-]*\d{1,3})$`)
-
 var bracketed = regexp.MustCompile(`[\[({][^\])}]*[\])}]`)
 
 // showFolder is the folder a show's episodes sit in, from an episode file's
 // path relative to its source: the nearest folder above the file that is not
 // a season folder. Empty for a loose file.
 func showFolder(relative string) string {
-	parts := strings.Split(filepath.ToSlash(filepath.Dir(relative)), "/")
-	for i := len(parts) - 1; i >= 0; i-- {
-		name := strings.TrimSpace(parts[i])
-		if name == "" || name == "." {
-			continue
+	reading := naming.Read(relative, "tv")
+	for _, title := range reading.Titles {
+		if title.Source != naming.FileName {
+			return filepath.FromSlash(title.Path)
 		}
-		if seasonLikeFolder.MatchString(name) {
-			continue
-		}
-		return strings.Join(parts[:i+1], "/")
 	}
 	return ""
 }
@@ -224,10 +218,10 @@ func resolveShowTx(ctx context.Context, tx *sql.Tx, library string, handle, asse
 			return 0, "", err
 		}
 		if folder := showFolder(relative); source != "" && folder != "" && folderNamesShow(filepath.Base(folder), plan.ShowTitle) {
-			primary = "folder:" + source + ":" + folder
+			primary = "folder:" + source + ":" + filepath.ToSlash(folder)
 		}
 	}
-	show, created, err := compactcatalog.ResolveTitleTx(ctx, tx, compactcatalog.TitleClaim{Library: handle, Kind: compactcatalog.Show, Keys: []string{compactcatalog.ShowKey(primary)}, Title: plan.ShowTitle, Year: plan.Year})
+	show, created, err := compactcatalog.ResolveTitleTx(ctx, tx, compactcatalog.TitleClaim{Library: handle, Kind: compactcatalog.Show, Provider: plan.Provider, Keys: []string{compactcatalog.ShowKey(primary)}, Title: plan.ShowTitle, Year: plan.Year})
 	if err != nil {
 		return 0, "", err
 	}

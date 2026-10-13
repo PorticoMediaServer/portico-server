@@ -46,7 +46,7 @@ func TestAutomaticEngineChoice(t *testing.T) {
 		{"a file the native player plays as it is", videoSource("mp4", "hevc", hdr10Detail, eac3), nil, EngineNative, DeliveryOriginal},
 		{"a file the native player only needs repackaged", videoSource("mkv", "hevc", hdr10Detail, eac3), nil, EngineNative, DeliveryCopyRemux},
 		{"a picture the native player would need converted", videoSource("mkv", "vp9", vp9, eac3), nil, EngineMPV, DeliveryOriginal},
-		{"sound the native player would need converted to a lossy codec", videoSource("mkv", "hevc", hdr10Detail, dts), nil, EngineMPV, DeliveryOriginal},
+		{"sound the native player would need converted to a lossy codec", videoSource("mkv", "hevc", hdr10Detail, dts), func(in *DeliveryInput) { outputs := lossyOnlyTestOutputs(); in.Outputs = &outputs }, EngineMPV, DeliveryOriginal},
 		{"image subtitles the native player cannot draw", videoSource("mp4", "hevc", hdr10Detail, eac3), func(in *DeliveryInput) { in.SubtitleKind = SubtitlePGS }, EngineMPV, DeliveryOriginal},
 		{"text subtitles cost nothing", videoSource("mp4", "hevc", hdr10Detail, eac3), func(in *DeliveryInput) { in.SubtitleKind = "" }, EngineNative, DeliveryOriginal},
 		{"a subtitle the viewer wants burned in whatever the engine", videoSource("mp4", "hevc", hdr10Detail, eac3), func(in *DeliveryInput) { in.SubtitleKind = SubtitleBurnAlways }, EngineNative, DeliveryOriginal},
@@ -244,17 +244,17 @@ func TestLosslessAudioKeepsTheBestTargetTheDeviceTakes(t *testing.T) {
 	truehd := SourceAudio{Codec: "truehd", Channels: 8}
 	dtsMA := SourceAudio{Codec: "dts", Channels: 6}
 	dtsMA.Profile = "DTS-HD MA"
-	// An Apple TV decodes Dolby Digital Plus: lossless surround goes there at
-	// its full rate, in 5.1.
+	// With no fragmented MP4 producer, keep all eight channels in AAC rather
+	// than reduce them to Dolby 5.1.
 	p := decide(t, videoSource("mkv", "h264", avcDetail, truehd), appleTVProfile(), nil)
-	if p.AudioAction != "convert" || p.OutputAudioCodec != "eac3" || p.AudioChannels != 6 || p.AudioBitrateBPS != 640_000 || p.AudioLossless {
+	if p.AudioAction != "convert" || p.OutputAudioCodec != "aac" || p.AudioChannels != 8 || p.AudioBitrateBPS != 768_000 || p.AudioLossless {
 		t.Fatal(p.OutputAudioCodec, p.AudioChannels, p.AudioBitrateBPS)
 	}
 	if p = decide(t, videoSource("mkv", "h264", avcDetail, dtsMA), appleTVProfile(), nil); p.OutputAudioCodec != "eac3" {
 		t.Fatal("DTS-HD MA", p.OutputAudioCodec)
 	}
 	// Lossy surround still goes to multichannel AAC first.
-	if p = decide(t, videoSource("mkv", "h264", avcDetail, SourceAudio{Codec: "dts", Channels: 6}), appleTVProfile(), nil); p.OutputAudioCodec != "aac" || p.AudioChannels != 6 || p.AudioBitrateBPS != 384_000 {
+	if p = decide(t, videoSource("mkv", "h264", avcDetail, SourceAudio{Codec: "dts", Channels: 6}), appleTVProfile(), nil); p.OutputAudioCodec != "aac" || p.AudioChannels != 6 || p.AudioBitrateBPS != 512_000 {
 		t.Fatal("DTS core", p.OutputAudioCodec, p.AudioChannels, p.AudioBitrateBPS)
 	}
 	// A browser with stereo AAC and nothing else gets stereo AAC.
@@ -266,8 +266,8 @@ func TestLosslessAudioKeepsTheBestTargetTheDeviceTakes(t *testing.T) {
 	outputs := DefaultConversionOutputs()
 	outputs.Audio = append([]ConversionAudioOutput{{Codec: "flac", Lossless: true, Bitrates: map[int]int{2: 0, 6: 0, 8: 0}, Transports: []string{TransportHLSFMP4}}}, outputs.Audio...)
 	p = decide(t, videoSource("mkv", "h264", avcDetail, truehd), appleTVProfile(), func(in *DeliveryInput) { in.Outputs, in.FMP4Output = &outputs, true })
-	if p.OutputAudioCodec != "eac3" {
-		// H.264 is carried in MPEG-TS first, which has no FLAC: the Dolby target stands.
+	if p.OutputAudioCodec != "flac" || p.AudioChannels != 8 || p.OutputContainer != "fmp4_hls" {
+		// H.264 can use fragmented MP4 to retain lossless surround.
 		t.Fatal("TS carrier", p.OutputAudioCodec)
 	}
 	hevc := hdr10Detail
@@ -286,9 +286,9 @@ func TestLosslessAudioKeepsTheBestTargetTheDeviceTakes(t *testing.T) {
 func TestConversionPictureFollowsTheServersOutputs(t *testing.T) {
 	vp9HDR := assets.StreamDetail{Profile: "Profile 2", BitDepth: 10, Width: 3840, Height: 2160, FrameRate: 24, DynamicRange: assets.RangeHDR10, BitRate: 30_000_000}
 	source := videoSource("mkv", "vp9", vp9HDR, SourceAudio{Codec: "aac", Channels: 2})
-	// Today's converter: an 8-bit standard picture, tone-mapped.
+	// The registered converter keeps 10-bit HDR in HEVC.
 	p := decide(t, source, appleTVProfile(), func(in *DeliveryInput) { in.FMP4Output = true })
-	if p.Strategy != DeliveryVideoConversion || p.OutputVideoCodec != "h264" || p.OutputRange != assets.RangeSDR || p.OutputBitDepth != 8 || !p.ToneMap || p.OutputContainer != "mpegts_hls" {
+	if p.Strategy != DeliveryVideoConversion || p.OutputVideoCodec != "hevc" || p.OutputRange != assets.RangeHDR10 || p.OutputBitDepth != 10 || p.ToneMap || p.OutputContainer != "fmp4_hls" {
 		t.Fatal(p.OutputVideoCodec, p.OutputRange, p.OutputBitDepth, p.ToneMap, p.OutputContainer)
 	}
 	// A converter that writes 10-bit HEVC keeping HDR.
@@ -409,4 +409,16 @@ func TestUnknownBitrateIsAssumedUnderACeiling(t *testing.T) {
 			t.Errorf("%dp is taken as %d, want %d", height, got, want)
 		}
 	}
+}
+
+func lossyOnlyTestOutputs() ConversionOutputs {
+	out := DefaultConversionOutputs()
+	audio := []ConversionAudioOutput{}
+	for _, o := range out.Audio {
+		if !o.Lossless {
+			audio = append(audio, o)
+		}
+	}
+	out.Audio = audio
+	return out
 }

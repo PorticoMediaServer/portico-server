@@ -13,6 +13,7 @@ import (
 	"portico.local/server/internal/administration"
 	"portico.local/server/internal/buildinfo"
 	"portico.local/server/internal/catalog"
+	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/downloads"
 	"portico.local/server/internal/eventfeed"
 	"portico.local/server/internal/identity"
@@ -364,7 +365,7 @@ func FoundationRegistry(d Dependencies) (*apikit.Registry, error) {
 		// Integration merge (edit 14): a saved background priority applies to
 		// the running supervisor at once, as the legacy route did.
 		if d.Storage != nil && d.Storage.Supervisor != nil {
-			if err = d.Storage.Supervisor.SetBackgroundTaskPriority(out.Settings.BackgroundTaskPriority); err != nil {
+			if err = d.Storage.Supervisor.SetBackgroundTaskPriority(dbwork.BackgroundPriorityForSpeed(out.Settings.BackgroundSpeed)); err != nil {
 				return out, &apierror.Error{Code: "internal", Cause: err}
 			}
 		}
@@ -374,6 +375,12 @@ func FoundationRegistry(d Dependencies) (*apikit.Registry, error) {
 		return out, nil
 	}})
 	if err != nil {
+		return nil, err
+	}
+	if err = registerResourceUsage(registry, d); err != nil {
+		return nil, err
+	}
+	if err = registerBackgroundPause(registry, d); err != nil {
 		return nil, err
 	}
 	err = apikit.Register(registry, apikit.Route[struct{}, administration.UpdateReport]{Metadata: apikit.Metadata{
@@ -626,10 +633,14 @@ func FoundationRegistry(d Dependencies) (*apikit.Registry, error) {
 		return nil, err
 	}
 	registerBulkJobs(registry, d)
+	if err := registerPersonalReads(registry, d); err != nil {
+		return nil, err
+	}
 	registerDownloadRequests(registry, d)
 	registerDownloads(registry, d)
 	registerSocial(registry, d)
 	registerPlaylistWindows(registry, d)
+	registerScanLoop(registry, d)
 	registerMetadataAttention(registry, d)
 	registerMetadataSettings(registry, d)
 	registerMetadataRefresh(registry, d)

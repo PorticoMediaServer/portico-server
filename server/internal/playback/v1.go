@@ -17,6 +17,8 @@ import (
 // their saved default for where the request comes from); the owner's ceilings,
 // the member's remote cap and the upload budget always narrow it.
 type V1Choice struct {
+	// PendingActivation hides a candidate and defers personal state until acceptance.
+	PendingActivation bool
 	// AssetID is the version to play; empty plays the item's first available one.
 	AssetID string
 	// AudioStream is the absolute source stream index the viewer chose.
@@ -158,7 +160,7 @@ func (s *Service) PlanV1(ctx context.Context, p identity.Principal, item string,
 	if e != nil {
 		return DeliveryPlan{}, e
 	}
-	if plan.Mode == "hls" && s.hls != nil && s.hls.finite != nil {
+	if plan.Mode == "hls" && s.hls != nil && s.hls.finite != nil && plan.ConversionTarget == nil {
 		plan.Strategy, plan.VideoAction, plan.OutputVideoCodec = DeliveryVideoConversion, "convert", "h264"
 		plan.ReasonCodes = append(plan.ReasonCodes, ReasonFiniteNormalization)
 	}
@@ -217,9 +219,10 @@ func (s *Service) StopV1(ctx context.Context, id string) error {
 // at commit: its grant then serves the media and every render window, and it
 // takes the stream slot its owner leaves. It fails when the preparation has
 // expired, converting is no longer allowed, or the source changed.
-func (s *Service) ReleasePrivateTx(ctx context.Context, tx *sql.Tx, id string) error {
+func (s *Service) ReleasePrivateTx(ctx context.Context, tx *sql.Tx, p identity.Principal, id string) error {
 	var until int64
-	if err := tx.QueryRowContext(ctx, `SELECT expires_ms FROM playback_private_presentations WHERE session_id=?`, id).Scan(&until); err != nil {
+	var owner, item string
+	if err := tx.QueryRowContext(ctx, `SELECT pp.expires_ms,pp.owner_session_id,pid(e.public_id) FROM playback_private_presentations pp JOIN playback_sessions ps ON ps.id=pp.session_id JOIN catalog_entities e ON e.id=ps.item_id WHERE pp.session_id=? AND ps.account_id=? AND ps.profile_id=?`, id, p.AccountID, p.ProfileID).Scan(&until, &owner, &item); err != nil {
 		return identity.ErrUnauthorized
 	}
 	if until <= time.Now().UnixMilli() {
@@ -251,7 +254,14 @@ func (s *Service) ReleasePrivateTx(ctx context.Context, tx *sql.Tx, id string) e
 	if changed != 0 {
 		return ErrSourceChanged
 	}
-	_, err := tx.ExecContext(ctx, `DELETE FROM playback_private_presentations WHERE session_id=?`, id)
+	ordinal, err := inheritedPersonalIntent(tx, p, owner)
+	if err != nil {
+		return err
+	}
+	if err = activatePersonalWriter(tx, p, item, id, 0, ordinal); err != nil {
+		return err
+	}
+	_, err = tx.ExecContext(ctx, `DELETE FROM playback_private_presentations WHERE session_id=?`, id)
 	return err
 }
 
@@ -261,3 +271,50 @@ var (
 	// ErrSourceChanged: the file behind a presentation changed since it was planned.
 	ErrSourceChanged = errors.New("source changed")
 )
+
+// PublishPresentationTx exposes a validated candidate and activates its progress
+// writer in the same transaction as the resource pointing to it. Replacements
+// retire the old grant only here; a rejected start never takes progress authority.
+func (s *Service) PublishPresentationTx(ctx context.Context, tx *sql.Tx, p identity.Principal, next string, positionMs int64, old *SessionReplacement, inherit bool) error {
+	var item string
+	query := `SELECT pid(e.public_id) FROM playback_private_presentations pp JOIN playback_sessions n ON n.id=pp.session_id JOIN catalog_entities e ON e.id=n.item_id`
+	args := []any{next, p.AccountID, p.ProfileID, time.Now().UnixMilli()}
+	if old != nil {
+		query += ` JOIN playback_sessions o ON o.id=pp.owner_session_id`
+	}
+	query += ` WHERE n.id=? AND n.account_id=? AND n.profile_id=? AND n.state NOT IN('stopped','ended','failed') AND pp.expires_ms>?`
+	if old == nil {
+		query += ` AND pp.owner_session_id=''`
+	} else {
+		query += ` AND o.id=? AND o.generation=? AND o.account_id=? AND o.profile_id=? AND o.state NOT IN('stopped','ended','failed')`
+		args = append(args, old.ID, old.Generation, p.AccountID, p.ProfileID)
+	}
+	if err := tx.QueryRowContext(ctx, query, args...).Scan(&item); err != nil {
+		return err
+	}
+	if s.AuthorityTx != nil {
+		if _, err := s.AuthorityTx(ctx, tx, p, item); err != nil {
+			return err
+		}
+	}
+	var ordinal int64
+	var err error
+	if inherit && old != nil {
+		ordinal, err = inheritedPersonalIntent(tx, p, old.ID)
+	} else {
+		ordinal, err = reservePersonalIntent(tx, "playback:"+next)
+	}
+	if err != nil {
+		return err
+	}
+	if err = activatePersonalWriter(tx, p, item, next, float64(positionMs)/1000, ordinal); err != nil {
+		return err
+	}
+	if old != nil {
+		if err = terminateControlOccurrence(ctx, tx, old.ID, "stopped"); err != nil {
+			return err
+		}
+	}
+	_, err = tx.ExecContext(ctx, `DELETE FROM playback_private_presentations WHERE session_id=?`, next)
+	return err
+}

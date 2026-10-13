@@ -78,7 +78,7 @@ func Yield(ctx context.Context) bool {
 	if ForegroundWorkActive() {
 		yields.Add(1)
 	}
-	return ctx.Err() == nil
+	return WaitBackground(ctx)
 }
 
 // PressureStats reports how much background work has actually deferred.

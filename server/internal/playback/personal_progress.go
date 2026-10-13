@@ -5,6 +5,7 @@ import (
 	"errors"
 	"math"
 	"portico.local/server/internal/identity"
+	"portico.local/server/internal/operations"
 )
 
 // Explicit plays reserve their position when accepted, not when remote
@@ -63,9 +64,20 @@ func activatePersonalWriter(tx *sql.Tx, p identity.Principal, item, id string, r
 	}
 	// Positions are integer milliseconds with a unit (Rewrite Map §7); the
 	// caller still passes seconds.
-	resumeMS := int64(math.Round(resume * 1000))
-	if _, err = tx.Exec(`INSERT INTO progress(profile_id,item_id,position,unit,playback_id) SELECT ?,e.id,?,0,? FROM catalog_entities e WHERE e.public_id=pid_blob(?) ON CONFLICT(profile_id,item_id) DO UPDATE SET playback_id=excluded.playback_id,position=excluded.position,unit=excluded.unit`, key, resumeMS, id, item); err != nil {
+	preferences, _, _, err := operations.EffectivePreferences(tx, p.Viewer, "")
+	if err != nil {
 		return err
+	}
+	paused := preferences.Bool("privacy.pauseWatchHistory")
+	resumeMS := int64(math.Round(resume * 1000))
+	if paused {
+		resumeMS = 0
+	}
+	if _, err = tx.Exec(`INSERT INTO progress(profile_id,item_id,position,unit,playback_id) SELECT ?,e.id,?,0,? FROM catalog_entities e WHERE e.public_id=pid_blob(?) ON CONFLICT(profile_id,item_id) DO UPDATE SET playback_id=excluded.playback_id,position=CASE WHEN ? THEN progress.position ELSE excluded.position END,unit=excluded.unit`, key, resumeMS, id, item, paused); err != nil {
+		return err
+	}
+	if paused {
+		return nil
 	}
 	// A book summary is shared by its parts; order it by the same explicit intent.
 	_, err = tx.Exec(`INSERT INTO book_resume(profile_id,book_id,item_id,playback_id,position,unit)

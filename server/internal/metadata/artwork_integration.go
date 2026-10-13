@@ -136,7 +136,7 @@ func integratedArtworkAuthority(ctx context.Context, tx *sql.Tx, t RepairTarget,
 // Long-running downloads are cancelled when source/selection/consent changes;
 // the publication transaction still independently rechecks the full fence.
 func (s *Service) artworkRequestContext(parent context.Context, t RepairTarget, provider, fence string) (context.Context, context.CancelFunc) {
-	ctx, cancel := context.WithTimeout(parent, 50*time.Second)
+	ctx, cancel := context.WithCancel(parent)
 	supervise.Go("metadata.artwork-integration.watch", func() {
 		ticker := time.NewTicker(2 * time.Second)
 		defer ticker.Stop()

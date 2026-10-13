@@ -26,6 +26,7 @@ type linearProbeStream struct {
 	SampleRate  string `json:"sample_rate"`
 	Layout      string `json:"channel_layout"`
 	Bitrate     string `json:"bit_rate"`
+	AudioDepth  string `json:"bits_per_raw_sample"`
 }
 
 // Plan from probed elementary streams and the admitted engine's declarations.
@@ -61,36 +62,6 @@ func linearPlan(raw []byte, w playback.LinearWork) (decoder.LinearEncoding, erro
 	if !slices.ContainsFunc(client.Transports, func(t playback.ClientTransport) bool { return t.Transport == playback.TransportHLSTS }) {
 		return plan, channelFault("engine_transport_unavailable", 422)
 	}
-	var videoCaps *playback.ClientVideoCodec
-	var vc *playback.ControlCodec
-	var ac *playback.ControlCodec
-	for _, c := range client.Video {
-		if c.Codec == "h264" {
-			videoCaps = &c
-			v := playback.ControlCodec{Codec: "h264", BitDepths: c.BitDepths, DynamicRanges: c.DynamicRanges}
-			if c.MaxHeight > 0 {
-				h := c.MaxHeight
-				v.MaxHeight = &h
-			}
-			if c.MaxWidth > 0 {
-				w := c.MaxWidth
-				v.MaxWidth = &w
-			}
-			vc = &v
-			break
-		}
-	}
-	for _, c := range client.Audio {
-		if c.Codec == "aac" {
-			v := playback.ControlCodec{Codec: "aac"}
-			if c.MaxChannels > 0 {
-				n := c.MaxChannels
-				v.MaxChannels = &n
-			}
-			ac = &v
-			break
-		}
-	}
 	var sourceVideo *playback.SourceVideo
 	var sourceAudio *playback.SourceAudio
 	if video != nil {
@@ -112,160 +83,36 @@ func linearPlan(raw []byte, w playback.LinearWork) (decoder.LinearEncoding, erro
 	}
 	if audio != nil {
 		rate, _ := strconv.Atoi(audio.SampleRate)
-		sourceAudio = &playback.SourceAudio{Codec: audio.Codec, Channels: audio.Channels, StreamDetail: assets.StreamDetail{SampleRate: rate}}
+		depth, _ := strconv.Atoi(audio.AudioDepth)
+		bitrate, _ := strconv.ParseInt(audio.Bitrate, 10, 64)
+		sourceAudio = &playback.SourceAudio{Index: 1, Codec: audio.Codec, Channels: audio.Channels, Layout: audio.Layout, StreamDetail: assets.StreamDetail{Profile: audio.Profile, SampleRate: rate, BitRate: bitrate, BitDepth: depth}}
 	}
-	videoRules, audioRules := playback.HLSTSRejections(sourceVideo, sourceAudio, client)
+	if sourceVideo != nil && (sourceVideo.Width < 1 || sourceVideo.Height < 1 || sourceVideo.Width > 32768 || sourceVideo.Height > 32768) {
+		return plan, channelFault("source_video_invalid", 422)
+	}
+	source := playback.DeliverySource{Container: "mpegts", Video: sourceVideo, DetailKnown: false}
+	if sourceAudio != nil {
+		source.Audio = []playback.SourceAudio{*sourceAudio}
+	}
+	source.BitRate, _ = strconv.ParseInt(facts.Format.Bitrate, 10, 64)
+	selected, err := playback.PlanLinearDelivery(source, client, w.Selection.Quality, w.TranscodingEnabled)
+	if err != nil {
+		return plan, channelFault("engine_codec_unavailable", 422)
+	}
 	q := w.Selection.Quality
 	plan.Video, plan.Audio = video != nil, audio != nil
-	hdr := video != nil && (video.Transfer == "smpte2084" || video.Transfer == "arib-std-b67")
-	if video != nil {
-		if video.Width < 1 || video.Height < 1 || video.Width > 32768 || video.Height > 32768 {
-			return plan, channelFault("source_video_invalid", 422)
-		}
-		if len(videoRules) == 0 && (q.MaxHeight == nil || video.Height <= *q.MaxHeight) && (q.MaxWidth == nil || video.Width <= *q.MaxWidth) && q.MaxBitrateBPS == nil {
-			plan.ConvertVideo = false
-		} else {
-			if vc == nil || len(vc.BitDepths) > 0 && !slices.Contains(vc.BitDepths, 8) || len(vc.DynamicRanges) > 0 && !slices.Contains(vc.DynamicRanges, "sdr") {
-				return plan, channelFault("engine_codec_unavailable", 422)
-			}
-			height := video.Height
-			for _, limit := range []*int{q.MaxHeight, vc.MaxHeight} {
-				if limit != nil {
-					height = min(height, *limit)
-				}
-			}
-			for _, limit := range []*int{q.MaxWidth, vc.MaxWidth} {
-				if limit != nil && video.Width > *limit {
-					height = min(height, video.Height**limit/video.Width)
-				}
-			}
-			if height < 2 {
-				return plan, channelFault("unsupported_tuple", 422)
-			}
-			// Bound the encoded tuple as well as the copied input. H.264 levels
-			// constrain macroblocks per frame and per second, not just pixel height.
-			fps := sourceVideo.FrameRate
-			limit := 60.0
-			if videoCaps.MaxFrameRate > 0 {
-				limit = min(limit, videoCaps.MaxFrameRate)
-			}
-			if fps > limit {
-				fps = limit
-				plan.MaxFrameRate = limit
-			}
-			if videoCaps.MaxLevel > 0 {
-				plan.Level = videoCaps.MaxLevel
-				maxFS, maxMBPS := h264LevelBudget(plan.Level)
-				for height > 2 && ((video.Width*height/video.Height+15)/16)*((height+15)/16) > maxFS {
-					height -= 2
-				}
-				blocks := ((video.Width*height/video.Height + 15) / 16) * ((height + 15) / 16)
-				if blocks < 1 {
-					return plan, channelFault("unsupported_tuple", 422)
-				}
-				if cap := float64(maxMBPS) / float64(blocks); fps > cap {
-					fps = cap
-					plan.MaxFrameRate = cap
-				}
-			}
-			if len(videoCaps.Profiles) > 0 {
-				for _, supported := range []string{"high", "main", "baseline"} {
-					if slices.ContainsFunc(videoCaps.Profiles, func(v string) bool {
-						return strings.EqualFold(strings.ReplaceAll(v, "_", " "), supported) || supported == "baseline" && strings.EqualFold(strings.ReplaceAll(v, "_", " "), "constrained baseline")
-					}) {
-						plan.Profile = supported
-						break
-					}
-				}
-				if plan.Profile == "" {
-					return plan, channelFault("unsupported_tuple", 422)
-				}
-			}
-			plan.Deinterlace = sourceVideo.Interlaced
-			plan.ConvertVideo = plan.MaxFrameRate > 0 || len(videoRules) > 0 || plan.Deinterlace || video.Codec != "h264" || video.PixelFormat != "yuv420p" || hdr || height < video.Height
-			if height < video.Height {
-				plan.MaxHeight = height - height%2
-			}
-			bitrate, _ := strconv.Atoi(video.Bitrate)
-			if bitrate == 0 {
-				bitrate, _ = strconv.Atoi(facts.Format.Bitrate)
-			}
-			if videoCaps.MaxBitrateBPS > 0 {
-				plan.VideoBitrate = min(200000000, videoCaps.MaxBitrateBPS)
-				if bitrate > plan.VideoBitrate {
-					plan.ConvertVideo = true
-				}
-			}
-			if q.MaxBitrateBPS != nil {
-				audioBudget := 0
-				if audio != nil {
-					audioBudget = 192000
-				}
-				if *q.MaxBitrateBPS < audioBudget+128000 {
-					return plan, channelFault("channel_quality_too_low", 422)
-				}
-				if plan.VideoBitrate == 0 {
-					plan.VideoBitrate = *q.MaxBitrateBPS - audioBudget
-				} else {
-					plan.VideoBitrate = min(plan.VideoBitrate, *q.MaxBitrateBPS-audioBudget)
-				}
-				if bitrate == 0 || bitrate > plan.VideoBitrate {
-					plan.ConvertVideo = true
-				}
-			}
-		}
+	plan.ConvertVideo, plan.ConvertAudio = selected.VideoAction == "convert", selected.AudioAction == "convert"
+	if (plan.ConvertVideo || plan.ConvertAudio) && !q.AllowLossy && (plan.ConvertVideo || !selected.AudioLossless) {
+		return plan, channelFault("channel_quality_requires_original", 422)
 	}
-	if audio != nil {
-		if len(audioRules) == 0 && audio.Channels > 0 && q.MaxBitrateBPS == nil {
-			plan.ConvertAudio = false
-		} else {
-			if ac == nil || ac.MaxChannels != nil && *ac.MaxChannels < 2 || len(ac.SampleRates) > 0 && !slices.Contains(ac.SampleRates, 48000) || len(ac.ChannelLayouts) > 0 && !slices.Contains(ac.ChannelLayouts, "stereo") {
-				return plan, channelFault("engine_codec_unavailable", 422)
-			}
-			if len(ac.Profiles) > 0 || len(ac.Levels) > 0 {
-				return plan, channelFault("unsupported_tuple", 422)
-			}
-			sampleRate, _ := strconv.Atoi(audio.SampleRate)
-			layout := audio.Layout
-			if layout == "" && audio.Channels == 1 {
-				layout = "mono"
-			}
-			if layout == "" && audio.Channels == 2 {
-				layout = "stereo"
-			}
-			plan.ConvertAudio = len(audioRules) > 0 || audio.Codec != "aac" || !strings.EqualFold(audio.Profile, "LC") || audio.Channels < 1 || audio.Channels > 2 || ac.MaxChannels != nil && audio.Channels > *ac.MaxChannels || len(ac.SampleRates) > 0 && !slices.Contains(ac.SampleRates, sampleRate) || len(ac.ChannelLayouts) > 0 && !slices.Contains(ac.ChannelLayouts, layout)
-			// A requested aggregate ceiling also applies to copied audio.
-			if q.MaxBitrateBPS != nil {
-				rate, _ := strconv.Atoi(audio.Bitrate)
-				if *q.MaxBitrateBPS < 192000 {
-					return plan, channelFault("channel_quality_too_low", 422)
-				}
-				if rate == 0 || rate > 192000 {
-					plan.ConvertAudio = true
-				}
-			}
-		}
+	if selected.ToneMap && !q.AllowHDRToSDR {
+		return plan, channelFault("hdr_conversion_not_allowed", 422)
 	}
-	if plan.ConvertVideo || plan.ConvertAudio {
-		if !q.AllowLossy {
-			return plan, channelFault("channel_quality_requires_original", 422)
-		}
-		if !w.TranscodingEnabled {
-			return plan, channelFault("transcoding_disabled", 422)
-		}
-		if hdr && plan.ConvertVideo && !q.AllowHDRToSDR {
-			return plan, channelFault("hdr_conversion_not_allowed", 422)
-		}
-		plan.HDRToSDR = hdr && plan.ConvertVideo
+	plan.HDRToSDR, plan.Deinterlace, plan.MaxFrameRate = selected.ToneMap, selected.Deinterlace, selected.MaxFrameRate
+	plan.MaxHeight, plan.VideoBitrate = selected.TargetHeight, selected.VideoBitrateBPS
+	plan.Target = selected.ConversionTarget
+	if plan.Target != nil {
+		plan.Level = plan.Target.VideoLevel
 	}
 	return plan, nil
-}
-
-func h264LevelBudget(level int) (int, int) {
-	for _, v := range []struct{ level, frames, second int }{{10, 99, 1485}, {11, 396, 3000}, {12, 396, 6000}, {13, 396, 11880}, {20, 396, 11880}, {21, 792, 19800}, {22, 1620, 20250}, {30, 1620, 40500}, {31, 3600, 108000}, {32, 5120, 216000}, {40, 8192, 245760}, {41, 8192, 245760}, {42, 8704, 522240}, {50, 22080, 589824}, {51, 36864, 983040}, {52, 36864, 2073600}, {60, 139264, 4177920}, {61, 139264, 8355840}, {62, 139264, 16711680}} {
-		if level <= v.level {
-			return v.frames, v.second
-		}
-	}
-	return 139264, 16711680
 }

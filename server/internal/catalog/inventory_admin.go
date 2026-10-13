@@ -139,29 +139,58 @@ type InventoryChange struct {
 	CreatedAt string `json:"createdAt"`
 }
 
-func (s *Service) InventoryChanges(ctx context.Context, library, source string, after int64) ([]InventoryChange, int64, error) {
-	out := []InventoryChange{}
-	var found int
+type InventoryChangesPage struct {
+	SourceID       string            `json:"sourceId"`
+	Items          []InventoryChange `json:"items"`
+	NextSequence   int64             `json:"nextSequence"`
+	HasMore        bool              `json:"hasMore"`
+	ResetRequired  bool              `json:"resetRequired"`
+	OldestSequence int64             `json:"oldestSequence"`
+}
+
+func (s *Service) InventoryChangesPage(ctx context.Context, library, source string, after int64) (InventoryChangesPage, error) {
+	out := InventoryChangesPage{SourceID: source, Items: []InventoryChange{}, NextSequence: after}
 	if after < 0 {
-		return out, after, ErrAdminQuery
+		return out, ErrAdminQuery
 	}
-	if err := s.read().QueryRowContext(ctx, `SELECT 1 FROM library_sources WHERE id=? AND library_id=?`, source, library).Scan(&found); err != nil {
-		return out, after, err
-	}
-	rows, err := s.read().QueryContext(ctx, `SELECT sequence,source_id,job_id,object_id,asset_id,revision,kind,created_at FROM inventory_changes WHERE source_id=? AND sequence>? ORDER BY sequence LIMIT 128`, source, after)
-	if err != nil {
-		return out, after, err
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var v InventoryChange
-		if err = rows.Scan(&v.Sequence, &v.SourceID, &v.JobID, &v.ObjectID, &v.AssetID, &v.Revision, &v.Kind, &v.CreatedAt); err != nil {
-			return out, after, err
+	err := dbwork.WithReadSnapshot(ctx, s.db, func(ctx context.Context) error {
+		var floor int64
+		if err := dbwork.QueryRow(ctx, s.db, `SELECT changes_pruned_sequence FROM library_sources WHERE id=? AND library_id=?`, source, library).Scan(&floor); err != nil {
+			return err
 		}
-		out = append(out, v)
-		after = v.Sequence
-	}
-	return out, after, rows.Err()
+		out.ResetRequired = after > 0 && after < floor
+		if err := dbwork.QueryRow(ctx, s.db, `SELECT COALESCE(min(sequence),0) FROM inventory_changes WHERE source_id=?`, source).Scan(&out.OldestSequence); err != nil {
+			return err
+		}
+		rows, err := dbwork.Query(ctx, s.db, `SELECT sequence,source_id,job_id,object_id,asset_id,revision,kind,created_at FROM inventory_changes WHERE source_id=? AND sequence>? ORDER BY sequence LIMIT 129`, source, after)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var v InventoryChange
+			if err = rows.Scan(&v.Sequence, &v.SourceID, &v.JobID, &v.ObjectID, &v.AssetID, &v.Revision, &v.Kind, &v.CreatedAt); err != nil {
+				return err
+			}
+			out.Items = append(out.Items, v)
+		}
+		if err = rows.Err(); err != nil {
+			return err
+		}
+		if len(out.Items) > 128 {
+			out.HasMore = true
+			out.Items = out.Items[:128]
+		}
+		if len(out.Items) > 0 {
+			out.NextSequence = out.Items[len(out.Items)-1].Sequence
+		}
+		return nil
+	})
+	return out, err
+}
+func (s *Service) InventoryChanges(ctx context.Context, library, source string, after int64) ([]InventoryChange, int64, error) {
+	out, err := s.InventoryChangesPage(ctx, library, source, after)
+	return out.Items, out.NextSequence, err
 }
 
 // CheckSource publishes health only after reauthorizing and comparing the exact

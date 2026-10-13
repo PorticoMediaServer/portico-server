@@ -7,13 +7,18 @@ import (
 	"bytes"
 	"encoding/binary"
 	"encoding/json"
+	"portico.local/server/internal/medialimits"
 	"regexp"
 	"strconv"
 	"strings"
 )
 
-const MaxBinaryBytes = 32 << 20
-const MaxAssetBytes = 48 << 20
+// These hard limits also bound previously stored assets. New reads use the owner policy.
+const MaxBinaryBytes = medialimits.MaxSubtitleFileMiB << 20
+const MaxAssetBytes = MaxBinaryBytes * 3 / 2
+
+func BinaryLimitBytes() int { return medialimits.SubtitleFileBytes() }
+func AssetLimitBytes() int  { return medialimits.SubtitleAssetBytes() }
 
 type RenderAsset struct {
 	Version      int              `json:"version"`
@@ -167,7 +172,7 @@ func CanonicalAsset(raw, companion []byte, format string, durationUS int64) ([]b
 	}
 }
 func validatePGS(raw []byte) error {
-	if len(raw) == 0 || len(raw) > MaxBinaryBytes {
+	if len(raw) == 0 || len(raw) > BinaryLimitBytes() {
 		return ErrCapacity
 	}
 	cues := 0

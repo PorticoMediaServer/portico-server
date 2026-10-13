@@ -188,7 +188,7 @@ func explicitResumeByID(tx *sql.Tx, profile string, entityID int64, position flo
 	if _, e = tx.Exec(`UPDATE book_resume SET position=? WHERE profile_id=? AND item_id=?`, millis, profile, entityID); e != nil {
 		return e
 	}
-	_, e = tx.Exec(`UPDATE progress_activity SET state=CASE WHEN ?=0 THEN 'ended' ELSE 'paused' END WHERE profile_id=? AND item_id=?`, millis, profile, entityID)
+	_, e = tx.Exec(`INSERT INTO progress_activity(profile_id,library_id,item_id,updated_at,state) SELECT ?,cl.library_id,e.id,?,CASE WHEN ?=0 THEN 'ended' ELSE 'paused' END FROM catalog_entities e JOIN catalog_libraries cl ON cl.id=e.library_id WHERE e.id=? ON CONFLICT(profile_id,item_id) DO UPDATE SET state=excluded.state`, profile, time.Now().UTC().Format("2006-01-02T15:04:05.000Z"), millis, entityID)
 	return e
 }
 func personalField(out PersonalState, field string) json.RawMessage {

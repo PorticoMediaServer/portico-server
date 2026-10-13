@@ -18,9 +18,19 @@ type showActivityKey struct {
 	showID       int64
 }
 
-func homeShowContinuation(r HomeRequest, cutoffs, premieres string, window int, showID string, after *showActivityKey) (string, []any) {
+func homeShowContinuation(r HomeRequest, cutoffs, premieres string, window int, showID string, after *showActivityKey, detail ...bool) (string, []any) {
+	page := len(detail) > 0 && detail[0]
+	partialDismissal := ` AND NOT EXISTS(SELECT 1 FROM continue_dismissals d WHERE d.profile_id=p.profile_id AND d.item_id=p.item_id AND d.playback_id=p.playback_id)`
+	nextDismissal := ` AND NOT EXISTS(SELECT 1 FROM continue_dismissals d WHERE d.profile_id=w.profile_id AND d.item_id=i2.id AND d.playback_id=COALESCE((SELECT p.playback_id FROM progress p WHERE p.profile_id=d.profile_id AND p.item_id=d.item_id),''))`
+	showDismissal := ` AND NOT EXISTS(SELECT 1 FROM continue_show_dismissals d WHERE d.profile_id=w.profile_id AND d.show_id=w.show_id AND d.last_activity>=w.last_activity AND d.playback_id=COALESCE((SELECT p.playback_id FROM progress p WHERE p.profile_id=d.profile_id AND p.item_id=d.item_id),'')))`
+	if page {
+		partialDismissal = ""
+		nextDismissal = ""
+		showDismissal = ")"
+	}
 	partialVisibility, partialArgs := ItemRestrictionSQL("i2.id", r.Restrictions)
 	nextVisibility, nextArgs := ItemRestrictionSQL("i2.id", r.Restrictions)
+	premiereVisibility, premiereArgs := ItemRestrictionSQL("early_item.id", r.Restrictions)
 	libraries, _ := json.Marshal(r.Libraries)
 	showFilter := ""
 	if showID != "" {
@@ -44,9 +54,9 @@ func homeShowContinuation(r HomeRequest, cutoffs, premieres string, window int, 
    WHERE pa.profile_id=w.profile_id AND e2.show_id=w.show_id AND EXISTS(SELECT 1 FROM catalog_libraries cl WHERE cl.id=i2.library_id AND cl.library_id=w.library_id)
     ` + item + `
 	    AND pa.state!='ended' AND p.position>0 AND ` + homeVisible("i2.id") + `
-    AND p.position<(SELECT max(a.duration)*1000-3000 FROM catalog_asset_links ia JOIN catalog_assets a ON a.id=ia.asset_id WHERE ia.entity_id=i2.id AND a.available=1 AND ia.available=1)
+    AND p.position<(SELECT COALESCE(max(NULLIF(COALESCE(ia.end_seconds,a.duration)-ia.start_seconds,0))*1000-3000,9223372036854775807) FROM catalog_asset_links ia JOIN catalog_assets a ON a.id=ia.asset_id WHERE ia.entity_id=i2.id AND a.available=1 AND ia.available=1)
     AND ` + personalstate.CompactSQL("pa.profile_id", "i2.id") + `=0
-    AND NOT EXISTS(SELECT 1 FROM continue_dismissals d WHERE d.profile_id=p.profile_id AND d.item_id=p.item_id AND d.playback_id=p.playback_id)
+    ` + partialDismissal + `
     AND ` + partialVisibility + ` AND pa.updated_at>=(SELECT value FROM json_each(?) WHERE key=w.library_id)
    ORDER BY pa.updated_at DESC,pa.item_id DESC LIMIT 1)`
 	}
@@ -62,26 +72,25 @@ func homeShowContinuation(r HomeRequest, cutoffs, premieres string, window int, 
    JOIN catalog_entities sh ON sh.id=w.show_id JOIN catalog_episodes e2 ON e2.show_id=sh.id
    JOIN catalog_entities i2 ON i2.id=e2.entity_id LEFT JOIN catalog_seasons s2 ON s2.entity_id=e2.season_id AND (SELECT retired FROM catalog_entities WHERE id=e2.season_id)=0
 	   WHERE pe.id=CAST(w.last_item_id AS INTEGER) AND EXISTS(SELECT 1 FROM catalog_libraries cl WHERE cl.id=i2.library_id AND cl.library_id=w.library_id) AND ` + homeVisible("i2.id") + `
-    AND (e2.numbering='absolute' AND previous.numbering='absolute' AND e2.number>previous.number
+    AND (i2.id=previous.entity_id OR e2.numbering='absolute' AND previous.numbering='absolute' AND e2.number>previous.number
       OR e2.numbering!='absolute' AND previous.numbering!='absolute' AND
        (COALESCE(s2.number,0)>COALESCE(ps.number,0) OR COALESCE(s2.number,0)=COALESCE(ps.number,0) AND e2.number>previous.number))
     AND (COALESCE(s2.number,0)>0 OR COALESCE(ps.number,0)=0)
     AND ` + personalstate.CompactSQL("w.profile_id", "i2.id") + `=0
     AND COALESCE((SELECT p.position FROM progress p WHERE p.profile_id=w.profile_id AND p.item_id=i2.id),0)=0
-    AND NOT EXISTS(SELECT 1 FROM continue_dismissals d WHERE d.profile_id=w.profile_id AND d.item_id=i2.id AND d.playback_id=COALESCE((SELECT p.playback_id FROM progress p WHERE p.profile_id=d.profile_id AND p.item_id=d.item_id),''))
+    ` + nextDismissal + `
     AND ` + nextVisibility + `
    ORDER BY COALESCE(s2.number,0),e2.number,i2.id LIMIT 1)
 	 ) AS id,w.last_activity AS ord,w.library_id AS library_id,w.last_item_id AS last_item_id FROM
 	 (SELECT * FROM profile_show_activity WHERE profile_id=? AND library_id IN(SELECT value FROM json_each(?))` + showFilter + ` ORDER BY last_activity DESC,show_id LIMIT ` + strconv.Itoa(window) + `) w
 	 WHERE w.profile_id=? AND w.library_id IN(SELECT value FROM json_each(?))
-	 AND NOT EXISTS(SELECT 1 FROM continue_show_dismissals d WHERE d.profile_id=w.profile_id AND d.show_id=w.show_id
-	  AND d.last_activity>=w.last_activity AND d.playback_id=COALESCE((SELECT p.playback_id FROM progress p WHERE p.profile_id=d.profile_id AND p.item_id=d.item_id),''))) chosen
+	 ` + showDismissal + ` chosen
 	 WHERE chosen.id IS NOT NULL AND (chosen.ord>=(SELECT value FROM json_each(?) WHERE key=chosen.library_id)
 	 OR (EXISTS(SELECT 1 FROM json_each(?) WHERE key=chosen.library_id AND value=1)
 	 AND EXISTS(SELECT 1 FROM catalog_entities ce JOIN catalog_episodes e ON e.entity_id=ce.id JOIN catalog_seasons se ON se.entity_id=e.season_id AND (SELECT retired FROM catalog_entities WHERE id=e.season_id)=0
 	  JOIN catalog_entities pe ON pe.id=CAST(chosen.last_item_id AS INTEGER) JOIN catalog_episodes prior ON prior.entity_id=pe.id
 	  LEFT JOIN catalog_seasons sp ON sp.entity_id=prior.season_id AND (SELECT retired FROM catalog_entities WHERE id=prior.season_id)=0
-	  WHERE ce.public_id=pid_blob(chosen.id) AND e.number=1 AND se.number>COALESCE(sp.number,0))))`
+	  WHERE ce.public_id=pid_blob(chosen.id) AND julianday(ce.added_ms/1000.0,'unixepoch')>=julianday((SELECT value FROM json_each(?) WHERE key=chosen.library_id)) AND NOT EXISTS(SELECT 1 FROM catalog_episodes earlier JOIN catalog_entities early_item ON early_item.id=earlier.entity_id WHERE earlier.season_id=e.season_id AND earlier.number<e.number AND ` + homeVisible("early_item.id") + ` AND ` + premiereVisibility + `) AND se.number>COALESCE(sp.number,0))))`
 	args := append([]any{}, partialArgs...)
 	args = append(args, cutoffs)
 	args = append(args, partialArgs...)
@@ -94,6 +103,7 @@ func homeShowContinuation(r HomeRequest, cutoffs, premieres string, window int, 
 	if after != nil {
 		args = append(args, after.lastActivity, after.lastActivity, after.showID)
 	}
-	args = append(args, r.Profile, string(libraries), cutoffs, premieres)
+	args = append(args, r.Profile, string(libraries), cutoffs, premieres, cutoffs)
+	args = append(args, premiereArgs...)
 	return base, args
 }

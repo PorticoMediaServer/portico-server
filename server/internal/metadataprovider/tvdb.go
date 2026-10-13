@@ -69,7 +69,7 @@ func (s *TVDB) access(ctx context.Context, invalid string) (string, error) {
 	return s.token, nil
 }
 func (s *TVDB) get(ctx context.Context, route string, out any) error {
-	ctx, cancel := context.WithTimeout(ctx, 45*time.Second)
+	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	token, err := s.access(ctx, "")
 	if err != nil {

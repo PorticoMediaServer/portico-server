@@ -2,6 +2,7 @@ package subtitles
 
 import (
 	"context"
+	"portico.local/server/internal/medialimits"
 
 	"errors"
 	"os"
@@ -11,7 +12,7 @@ import (
 	"strings"
 )
 
-const MaxTracks = 32
+const MaxTracks = medialimits.MaxSubtitleTracks
 
 type Track struct {
 	Origin, Locator, Format, Language, Title, Reason string
@@ -44,9 +45,9 @@ func Discover(ctx context.Context, c *storage.Client, key, path string, embedded
 }
 func discover(ctx context.Context, c *storage.Client, key, path string, embedded []Track, originUS int64, known bool, enumerate func(func(storage.Snapshot) error) error) (*Inventory, error) {
 	out := &Inventory{OriginUS: originUS, TimingKnown: known, Status: "known", Tracks: append([]Track{}, embedded...)}
-	if len(out.Tracks) > MaxTracks {
+	if len(out.Tracks) > medialimits.SubtitleTracks() {
 		out.Status = "capacity"
-		out.Tracks = out.Tracks[:MaxTracks]
+		out.Tracks = out.Tracks[:medialimits.SubtitleTracks()]
 	}
 	if c == nil {
 		return out, nil
@@ -75,7 +76,7 @@ func discover(ctx context.Context, c *storage.Client, key, path string, embedded
 		case ".srt", ".vtt", ".ass", ".ssa", ".sub", ".sup", ".idx", ".smi", ".sami", ".ttml", ".dfxp":
 			matches = append(matches, v)
 		}
-		if len(matches) > MaxTracks*2 {
+		if len(matches) > medialimits.SubtitleTracks()*2 {
 			return ErrCapacity
 		}
 		return nil
@@ -138,7 +139,7 @@ func discover(ctx context.Context, c *storage.Client, key, path string, embedded
 			} else {
 				limit := int64(MaxInputBytes)
 				if ext == ".sup" {
-					limit = MaxBinaryBytes
+					limit = int64(BinaryLimitBytes())
 				}
 				var raw []byte
 				var e error
@@ -153,7 +154,7 @@ func discover(ctx context.Context, c *storage.Client, key, path string, embedded
 					pairedPath := strings.TrimSuffix(v.Path, filepath.Ext(v.Path)) + ".sub"
 					pairedBefore, e = c.Stat(ctx, key, pairedPath)
 					if e == nil {
-						companion, e = c.ReadSubtitleBinary(ctx, key, pairedPath, MaxBinaryBytes)
+						companion, e = c.ReadSubtitleBinary(ctx, key, pairedPath, int64(BinaryLimitBytes()))
 					}
 					if e == nil {
 						after, x := c.Stat(ctx, key, pairedPath)
@@ -178,7 +179,7 @@ func discover(ctx context.Context, c *storage.Client, key, path string, embedded
 				}
 			}
 		}
-		if len(out.Tracks) < MaxTracks {
+		if len(out.Tracks) < medialimits.SubtitleTracks() {
 			out.Tracks = append(out.Tracks, t)
 		} else {
 			out.Status = "capacity"

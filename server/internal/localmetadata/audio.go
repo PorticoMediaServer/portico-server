@@ -220,19 +220,21 @@ func (s *Service) MovieArtwork(ctx context.Context, library, path string, f asse
 	defer cancel()
 	stem := strings.TrimSuffix(path, filepath.Ext(path))
 	for _, candidate := range []string{stem + "-poster.jpg", stem + "-poster.png", filepath.Join(filepath.Dir(path), "poster.jpg"), filepath.Join(filepath.Dir(path), "poster.png"), filepath.Join(filepath.Dir(path), "folder.jpg"), filepath.Join(filepath.Dir(path), "folder.png")} {
-		if unlisted(ctx, candidate) {
-			continue
-		}
-		raw, err := s.storage.ReadSmall(ctx, library, candidate, 4<<20)
-		if err != nil {
-			continue
-		}
-		if key, err := s.store(raw); err == nil {
+		if key, ok := s.sidecarKey(ctx, library, candidate); ok {
 			f.ArtworkKey = key
 			return f
-		} else {
-			f.LocalMetadataIssue = "invalid_local_cover"
 		}
 	}
 	return f
+}
+
+// ArtworkUsage returns the accounting already used by ingestion. A console
+// request never waits behind the first directory measurement or image write.
+// Unknown means ingestion has not measured it yet (or is currently updating it).
+func (s *Service) ArtworkUsage() (int64, bool) {
+	if s == nil || !s.mu.TryLock() {
+		return 0, false
+	}
+	defer s.mu.Unlock()
+	return s.artworkBytes, s.artworkAccounted
 }

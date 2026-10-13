@@ -171,6 +171,9 @@ index console_receipts_expiry
 index console_records_page
 index console_reports_owner
 index console_reports_status
+index container_personal_undo_container
+index container_personal_undo_expiry
+index container_personal_undo_items_item
 index content_rating_age_lookup
 index continue_dismissals_item_id_fk
 index continue_show_dismissals_show_id_fk
@@ -216,6 +219,7 @@ index identity_refresh_receipts_expiry
 index identity_refresh_receipts_family
 index identity_unknown_attempts_age
 index inventory_analysis_pending
+index inventory_artwork_sources_role
 index inventory_changes_source
 index inventory_directories_pending
 index inventory_directories_visited
@@ -228,10 +232,15 @@ index inventory_objects_identity
 index inventory_objects_missing
 index inventory_objects_path
 index inventory_objects_source
+index inventory_runs_retention
 index inventory_runs_source
 index inventory_runs_turn
+index inventory_scan_issues_job
+index inventory_scan_issues_protected
+index inventory_sidecars_directory
 index inventory_version_links_item
 index item_extras_asset
+index item_extras_owner
 index item_extras_parent
 index jobs_directory
 index jobs_library_directory
@@ -310,6 +319,7 @@ index notification_records_live
 index notification_records_page
 index notification_records_resume
 index personal_batch_receipts_expiry
+index personal_completed_plays_item
 index personal_conflict_open
 index personal_conflicts_item_id_fk
 index personal_event_ancestor
@@ -384,6 +394,7 @@ index rec_profile_signals_positive_recent
 index rec_profile_signals_recent
 index rec_profile_signals_work
 index remote_inventory_check_job
+index remote_listing_directory_history
 index remote_listing_retention
 index retained_title_identities_state
 index retained_title_state_profile
@@ -630,8 +641,9 @@ table console_report_events
 table console_reports
 table console_schedules
 table console_settings_revision
-table container_personal_resets
 table container_personal_state
+table container_personal_undo
+table container_personal_undo_items
 table content_rating_ages
 table content_rating_pending
 table continue_dismissals
@@ -701,6 +713,7 @@ table identity_refresh_predecessors
 table identity_refresh_receipts
 table identity_unknown_attempts
 table inventory_analysis_queue
+table inventory_artwork_sources
 table inventory_changes
 table inventory_directories
 table inventory_directory_cache
@@ -710,8 +723,13 @@ table inventory_path_notices
 table inventory_policy_pending
 table inventory_run_targets
 table inventory_runs
+table inventory_scan_issues
+table inventory_sidecar_changes
+table inventory_sidecars
 table inventory_source_active
 table inventory_version_links
+table inventory_video_ids
+table inventory_video_names
 table item_extras
 table job_observations
 table jobs
@@ -863,6 +881,7 @@ table onboarding_state_v1
 table personal_activity_receipts
 table personal_activity_revisions
 table personal_batch_receipts
+table personal_completed_plays
 table personal_conflicts
 table personal_device_sequences
 table personal_evidence_fences
@@ -1657,6 +1676,8 @@ trigger screen_source_change
 trigger screen_wake_item_assets_DELETE
 trigger screen_wake_item_assets_INSERT
 trigger screen_wake_item_assets_UPDATE
+trigger screen_wake_video_names_INSERT
+trigger screen_wake_video_names_UPDATE
 trigger screen_wake_video_nfo_evidence_DELETE
 trigger screen_wake_video_nfo_evidence_INSERT
 trigger screen_wake_video_nfo_evidence_UPDATE

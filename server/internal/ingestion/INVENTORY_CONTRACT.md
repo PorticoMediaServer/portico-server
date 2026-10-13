@@ -1,186 +1,137 @@
-# P04A inventory and scan lifecycle contract
+# Inventory and scan lifecycle
 
-This describes the implemented local/OS-mounted source boundary. Provider
-registration, managed-rclone, native WebDAV and STRM completion belong to P04B.
-The existing storage supervisor, source-access registry, catalog, jobs and
-contract-32 playback ownership remain authoritative.
+The scanner uses the existing source-access registry, supervised storage helpers,
+SQLite work gate, title catalogue and playback ownership. Filesystem/network
+reads never run inside a catalogue writer transaction. A blocked mount stays in
+a killable child and cannot hold the server's only scan worker.
 
-## Identity and revisions
+## Files, titles and evidence
 
-`library_sources.id` is an opaque durable source ID, not a path. A migrated
-primary source uses its existing library ID to preserve current root consumers.
-A library can retain up to 64 source records. Each source has a configuration
-`generation`, an opaque root `incarnation`, an observed root object identity and
-an explicit confirmation state. A root locator edit retaining the same physical
-identity preserves its incarnation. A replacement requires explicit owner
-acceptance, changes incarnation and cannot silently adopt the old locations.
-An unmounted backing directory is not the previously admitted mount.
+A source has a stable ID, configuration generation, root incarnation, admitted
+root identity and owner confirmation. Source replacement requires the existing
+explicit acceptance. Every page/result rechecks source, incarnation, generation,
+job status and policy before publication. Root escape, protocol, byte, depth,
+process and output limits remain enforced.
 
-`inventory_objects.id` is a durable location record; `asset_id` is the existing
-physical asset identity; `item_assets` associates it with existing logical item
-IDs. A pathname is a locator, never a logical identity. Exact observed physical
-identity plus size and modification time may reuse a unique existing asset on
-rename/move/hardlink. Ambiguous candidates do not auto-merge. A same-source
-single-location move retains its location ID. Additional locations share an
-asset; distinct copies are separate assets until explicitly associated with a
-logical entry. Cross-volume copies without continuity evidence are not matched
-by filename. Replacement retires the collided location without deleting the old
-asset, item history or surviving aliases.
+Inventory objects are locations, assets are physical files, and titles are
+logical entities. Shared folder/filename/embedded evidence is read relative to
+the source root. Meaningful file evidence wins contradictory folder evidence.
+Matching receives typed title/year/ID/edition provenance; provider details still
+validate candidates. Audio tags outrank path hints, and the canonical disc-folder
+reader supplies untagged disc context.
 
-Owner `associate` adds a physical version to an existing same-library/type item
-and records the target in `inventory_version_links`. It preserves old logical
-history and does not infer title equivalence. Only unambiguous whole-item,
-part-zero associations are admitted; episodic links must be whole-source.
-Existing audio hierarchy identity is preserved across folder-only moves when
-its admitted metadata grouping is unchanged.
+A second copy attaches as a version through the catalogue's title identity.
+Version links carry edition and split-part numbers. Exact same-file moves keep
+asset/location identity and re-read their interpretation; explicit owner
+placement stays pinned. Episode zero and stacked episode parts are admitted
+within existing numeric/multi-episode bounds. Extras have one identifiable title
+owner. BDMV/VIDEO_TS folders are represented once as unsupported disc titles;
+standalone extracted streams still use ordinary media handling. No disc menus,
+decryption or archive expansion is implemented.
 
-`mediasource.InventoryEvidence.Revision()` hashes a versioned encoding of source
-incarnation scope, provider kind, observed object identity, size, modification
-nanoseconds, change token and optional provider version. Local evidence uses
-the file's inode (without the device number, which a restart may change) and
-change-time evidence. This is invalidation evidence,
-NOT a cryptographic digest, `NoInPlaceMutation` claim or playback byte-version
-grant. Contract-32 admission still performs its own validation. Analysis is
-fenced by location revision, source generation/incarnation, policy revision and
-current job state before publication.
+Observed revisions are invalidation evidence, not content hashes or playback
+byte-version grants. Device-renumber handling remains in storage/title identity;
+strict playback source pins still apply independently.
 
-## Durable inventory and completion
+## Durable traversal and tolerance
 
-The existing startup constructs `ingestion.Service`, injects the guarded storage
-client, and runs its worker. One durable active claim exists per source,
-including paused jobs. Library scans fan out over enabled sources and coalesce
-existing claims; the response retains the first job ID and adds all `jobs` IDs.
-Up to four sources run concurrently, one bounded quantum per source. The scan
-phases are `inventory`, `legacy_inventory`, `verifying`, `reconciling`,
-`analysis_enqueue`, `basic_pending`, `basic_running`, then terminal completion.
+One active claim exists per source, including paused work. Manual, scheduled and
+reported scans coalesce; reports received during active work remain durable for
+the next pass. Phases are inventory, catalogue-only asset adoption, extras,
+verification, missing reconciliation, sidecar reconciliation, analysis enqueue,
+basic/deep execution and terminal completion. The existing adoption phase uses
+the internal `legacy_inventory` name; it is not a database upgrade path.
 
-Inventory pages contain at most 128 entries, including directory work. Each
-page atomically commits observations, immediate provisional catalog entries,
-change records, child-directory work and its continuation. A crash can replay an
-uncommitted page; it cannot advance a durable cursor past uncommitted entries.
-The adapter cursor is opaque and valid only for the admitted root and unchanged
-directory revision. Linux uses per-record getdents cookies; the portable fallback
-uses bounded-memory lexical pages and re-enumerates the directory. Very large
-single directories on the fallback have a performance cost, not an unbounded
-materialized listing. Changed revisions fail the run conservatively; explicit
-retry starts a new inventory while retaining prior commits. Pause/resume and
-restart retain the same committed continuation.
+A quantum commits a bounded page or unit together with its cursor. Local pages
+contain 32/64/128 entries under gentle/normal/fast; the hard page maximum is 128.
+Source concurrency is 2/4/8, with one quantum per source. Urgent continuation
+runs as storage allows and yields through foreground work pacing. Playback from
+the same source adds a bounded delay between analysis units; it does not cancel
+or permanently suspend the backlog. Helper CPU/I/O priority remains effective.
 
-Completed directory identity/revision is rechecked before the inventory becomes
-authoritative. Migrated path-only roots can publish observed files but require
-owner confirmation before authoritative absence reconciliation. Legacy catalog
-assets are adopted in bounded pages, retaining existing IDs; they are not swept
-or discarded at database startup. `discovered` counts committed recognized
-media observations, not a percentage of an unknown total. Unsupported images
-count as warnings. `analyzed` counts committed analysis results, not all files.
+Local scans list file facts every time. Directory timestamps alone cannot prove
+that a file was not replaced or edited in place. Managed adapters retain their
+paged listing/cursor protocol. Portable local listing retains a bounded readdir
+stream in a supervised child. Lost/changed continuations protect that folder,
+retain already committed observations and let other folders reach analysis.
 
-`inventory_completed` means verified enumeration for that source run. It is
-published before bounded missing reconciliation and optional analysis finish;
-it is NOT a promise that the whole job or every analysis stage completed.
-`inventory_runs.authoritative`, generation/incarnation and
-`inventory_completed_at` record this distinction. Job states include `queued`,
-`running`, `paused`, `cancelled`, `failed`, `complete` and
-`complete_with_warnings`. A failed analysis does not erase committed inventory.
+Unreadable/changing subtrees, disappearing entries and unsafe/dangling links are
+isolated and recorded. Those paths and their descendants never authorize
+absence. A changing folder is queued for another limited pass. A root that cannot
+be admitted/read still stops the source. Duplicate directory identities are
+skipped before visited-index updates and protect prior alias coverage.
 
-Only completed, current-root inventories contribute absence evidence. A file
-that a complete listing of its folder does not contain is `missing` from that
-scan on: there is no second scan and no waiting period. The nearest fully
-enumerated ancestor is rechecked outside the database writer immediately before
-each missing publication. Permission failure, interruption, changed directories,
-source outage or root replacement is never an authoritative empty listing, and
-neither is a root that lists nothing at all where the source held available
-files before: that is what an unmounted disk looks like, so the scan fails as
-source unavailable and nothing is marked. Reappearance clears the missing state
-through a fresh admitted object observation.
+Hidden/system/sample rules and bounded .plexignore/.ignore configuration apply
+during the walk. Invalid lines are skipped individually; excessive diagnostic
+output is summarized. Configuration reads use retained-root containment and
+existing helper/request budgets. Managed adapters identify the two configuration
+names in their completed staged listings, keep an inherited scope cache bounded
+to 128 scopes/512 KiB per run, and leave provider commit pages intact. Ignored entries are deliberately reconciled as
+missing, rather than protected as an access failure.
 
-Missing is not removal. A missing file is no longer a version of its title; a
-title left with no file stays in the catalogue, marked missing with the time
-its last file went (`catalog_missing_titles`). The owner's rule (immediately,
-after a number of days, never; thirty days by default) decides when missing
-files and missing titles are removed, and "empty now" removes them at once.
-Removing a title keeps each profile's state under the title's identities so
-the same title coming back gets it back. A file that resolves to a missing
-title (the same provider identity, or read as the same title) re-attaches to
-it.
+Only complete stable coverage judges a file missing, with the nearest listed
+ancestor rechecked outside the writer immediately before publication. Missing
+is immediate; no second observation/grace period remains. Ordinary scans retain
+empty-root protection. A paths-changed/native report can observe last-file
+removal in a readable unchanged admitted root; an identity rebound retains the
+empty-root safeguard. Missing titles follow the owner's existing removal rule,
+and retained state is restored through the title identity model.
 
-A file at the same place with the same size and modified time is the same
-file whatever identity its filesystem reports: device numbers are left out of
-kept identities (`storage.StableObjectIdentity`), a root whose device number
-alone changed is the same root (`storage.SameRoot`), and a changed inode with
-unchanged size and time keeps the file's catalogue record and analysis.
+## Analysis and local changes
 
-Scheduling is optional, persisted per source, has a 15-minute minimum interval
-and applies jitter. It coalesces paused/in-flight jobs. Source edits clear
-completion evidence and require fresh inventory for cleanup.
+File List Only reads directory/stat facts and bounded ignore configuration; it
+opens no media, NFO, artwork, subtitle or STRM contents. Basic uses bounded probe,
+local metadata and subtitle stages. Complete/Custom select permitted deep stages.
+Policy changes preempt obsolete reads and select missing permitted work.
 
-Owner actions on a file are `associate` (this file is another version of that
-title) and `separate` (this file is not a version of the title it was grouped
-with). Both are remembered across scans. Source removal disables its head,
-cancels work and marks the files under it missing in the background; their
-titles then follow the rule for missing titles. A surviving available version
-keeps the logical item available.
+Analysis rechecks the file before and after reads. A failed probe keeps its
+name-based title and produces an owner issue. A changed file schedules another
+folder observation. Source/configuration/policy/cancel fences still decide
+whether results may publish.
 
-## Analysis and resource ownership
+Normal enqueue selects incomplete revision, policy, operation, algorithm,
+generation, deep-head or enabled STRM-target evidence. It writes only pending
+work rather than a done row for every available file. Completed deep facts stay
+reusable when a sidecar changes. Disabled STRM analysis stays deferred without
+recurring per-run work rows.
 
-File List Only performs directory/stat work and provisional catalog publication;
-it does not read media bytes, metadata sidecars, artwork, subtitles or STRM
-contents. Basic selects bounded probe, local metadata and subtitle stages.
-Complete preserves those stages and requests declared deep-operation names.
-Custom validates explicit operations and dependencies; it never silently grants
-additional media-read permission. Policy edits have a durable pending handoff,
-preempt old work and queue missing analysis on current revisions without
-requiring another full inventory.
+Sidecar observations persist path/revision and last-seen job. Complete trusted
+coverage detects removal; partial/outage coverage preserves evidence. NFO/art/
+subtitle changes invalidate affected media, including child seasons/discs under
+parent metadata, in bounded batches. Negative directory listings are checked
+against their revision; positive artwork caches are invalidated on changes.
+Complete artwork observations release automatic carriers/selections backed by
+removed/replaced sidecars, preserving owner picks and retained content-addressed
+bytes. Embedded video names/IDs are normalized revision-bound evidence, separate
+from sidecars and technical probe facts.
 
-No new checksum, trickplay, waveform, loudness, fingerprint or segment-detection
-algorithms are implemented here. Uninstalled requested stages remain explicit
-`analysis_stages_not_installed` warnings, never fabricated successful analysis.
-Existing completed basic operations can be reused under a stronger policy.
+## Monitoring, history and consumers
 
-Analysis checks policy before each admitted read and again before publishing,
-defers/preempts for source playback activity, bounds probe/output/sidecar work,
-and uses the existing storage supervisor. Production scan probes and embedded
-artwork use a retained root-contained file descriptor in the supervised helper;
-on Linux/macOS it execs the media tool in the same process so cancellation and
-physical Wait ownership do not create an unmanaged child. Root-contained small
-reads use the same context. File/pipe protocol and format restrictions reject
-indirect playlist/descriptor expansion. Other operating systems report the
-actual unsupported retained-descriptor command capability. These guards do not
-change existing provider transport or relax playback version checks.
+Monitoring defaults on per library (`settings.monitorChanges`). One supervised
+helper provides inotify, ReadDirectoryChangesW or FSEvents hints; non-cgo macOS
+uses kqueue. Maximums are 64 roots, 4,096 directory watches and the existing
+64 KiB helper request. Events debounce after two seconds quiet or ten seconds
+continuous change and feed the ordinary ReportPaths path. Overflow collapses to
+root observation. Network/unavailable-watch fallback runs every five minutes;
+local monitored sources have a fifteen-minute safety inventory. Native hints
+are never authority for absence. Monitoring off leaves manual reports/scans and
+explicit source schedules available.
 
-Ordinary extracted media files such as M2TS/MTS/VOB/MPG/MPEG use the normal file
-path. ISO/IMG remain visible unsupported inventory outcomes. There is no disc
-decryption, menu navigation or archive expansion.
+Terminal directory/analysis/listing work is deleted in chunks of at most 256
+after fifteen minutes. Remote staged listings retire in the same bounded chunks;
+one newest ready snapshot per current cached directory supplies inherited ignore
+configuration, and superseded generations retire. Twenty terminal run summaries remain per source; older
+runs/diagnostics are dismantled in bounded chunks. Current directory/sidecar
+caches retire removed/excluded paths and obsolete incarnations. Integrity cadence
+is stored on the source, not dependent on unbounded run history.
 
-## Changes and consumer projection
+The owner change feed retains up to 10,000 entries per source or thirty days.
+Sequences are global and can have gaps. The typed changes response adds
+oldestSequence/resetRequired; an expired nonzero cursor requires reading current
+inventory rather than assuming a complete change history. Active/paused runs are
+never pruned.
 
-`inventory_changes.sequence` is a monotonically increasing database cursor, not
-a source-local count. Read `GET /v1/admin/libraries/{id}/sources/{source}/changes`
-with `after`; pages contain at most 128 records and return `nextSequence` and
-`hasMore`. Sequences can have gaps for another source. Consumers persist their
-own cursor, tolerate replay, and process committed records idempotently by
-sequence. Per-job/object/revision/kind uniqueness also prevents page replay from
-duplicating events. There is no automatic event-log retention/purge in P04A.
-
-Kinds include `created`, `revision_changed`, `reappeared`, `relocated`,
-`replaced`, `missing`, `analysis_completed`, `inventory_completed`,
-`root_identity_confirmation_required`, `version_associated` and
-`version_separated`. A changed revision takes precedence over a separate
-relocation/reappearance label; consumers must read the current location state,
-not infer a complete snapshot from one label. Owner-generated changes use an
-`owner:` operation token rather than a scan job ID. Completion records have
-empty object/asset/revision fields. Events carry stable IDs, not secret locators.
-There is no invented global transaction snapshot across different sources.
-
-Owner inventory is a live 40-row keyset view, not a frozen running-scan snapshot.
-Continuation tokens bind library, source, filter, viewer, limit and configuration
-revision. Commands use configuration/revision preconditions. Lost command
-responses require explicit read reconciliation, never automatic mutation replay.
-Owner scope changes clear cached locators and abort pending reads.
-
-Viewer `GET /v1/libraries/{id}/inventory-status` rechecks library authorization and
-exposes only source IDs, health, job/phase, counts, pause reason and completion
-status. Web/iOS/tvOS consume this path-free projection. Source configuration is
-owner web UI only. Existing catalog readers use exact-library/item/asset
-availability views; playback resolves an available admitted location and its
-exact source root. Shows, albums and books remain navigable when an unavailable
-child has no play action. No parallel player or credential system is introduced.
+Owner GET /v1/admin/libraries/{id}/scans/{job}/issues pages bounded path, reason,
+line and string-catalogue message keys. Viewer scan status and scan events remain
+path-free, with existing authorization rechecks and publication pacing. No
+parallel credential/player system or viewer revision redesign is introduced.

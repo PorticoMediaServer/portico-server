@@ -88,7 +88,14 @@ func sanitizeConverterOutput(text string, secrets ...string) string {
 }
 
 // Local and bridge jobs use the same conservative encoder-backend grants.
-func conversionJobHardware(plan *DeliveryPlan) bool {
+func conversionJobHardware(plan *DeliveryPlan, stages ...[]decoder.HardwareStage) bool {
+	for _, graph := range stages {
+		for _, stage := range graph {
+			if stage.Execution == decoder.ExecutionHardware {
+				return true
+			}
+		}
+	}
 	return plan != nil && plan.HardwareBackend != "" && plan.HardwareBackend != string(decoder.BackendSoftware)
 }
 
@@ -255,7 +262,7 @@ func (h *HLS) downgradeCopyPlan(ctx context.Context, id string, plan *DeliveryPl
 		next.TargetWidth, next.TargetHeight, next.VideoBitrateBPS, next.AudioBitrateBPS = t.Width, t.Height, t.VideoBitrateBPS, t.AudioBitrateBPS
 		next.ReasonCodes = append(append([]string{}, plan.ReasonCodes...), ReasonHardwareFailedSoftware)
 	} else {
-		next, err = planDelivery(DeliveryInput{SourceID: source.ID, Source: &source, Client: client, Server: decoder.CurrentToolchain(), Policy: policy, Target: target, Config: cfg, TranscodingEnabled: true, AudioStream: plan.AudioStream, HasAudioChoice: plan.AudioStream >= 0, Excluded: excluded, BurnIn: plan.BurnIn != nil, Remote: source.Container == "strm"})
+		next, err = planDelivery(DeliveryInput{SourceID: source.ID, Source: &source, Client: client, Server: decoder.CurrentToolchain(), Policy: policy, Target: target, Config: cfg, TranscodingEnabled: true, AudioStream: plan.AudioStream, HasAudioChoice: plan.AudioStream >= 0, Excluded: excluded, FMP4Output: h.fragmentedOutput(), BurnIn: plan.BurnIn != nil, Remote: source.Container == "strm"})
 		if err != nil {
 			return nil, err
 		}
@@ -294,7 +301,7 @@ func (h *HLS) downgradeCopyPlan(ctx context.Context, id string, plan *DeliveryPl
 			return nil, err
 		}
 	}
-	if richReplacement {
+	if next.ConversionTarget != nil {
 		if err = StoreConversionTarget(ctx, tx, id, *next.ConversionTarget); err != nil {
 			return nil, err
 		}

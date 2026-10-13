@@ -38,7 +38,7 @@ func eraseProfileRuntimeDataTx(ctx context.Context, tx *sql.Tx, v Viewer) error 
 		}
 	}
 	key := PersonalKey(v)
-	for _, table := range []string{"personal_jobs", "container_personal_state", "container_personal_resets", "personal_watched_intents", "queue_v1_saves"} {
+	for _, table := range []string{"personal_jobs", "personal_completed_plays", "container_personal_state", "container_personal_undo", "personal_watched_intents", "queue_v1_saves"} {
 		if ok, e := exists(table); e != nil {
 			return e
 		} else if ok {

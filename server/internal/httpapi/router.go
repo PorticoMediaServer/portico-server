@@ -54,8 +54,10 @@ import (
 )
 
 type Dependencies struct {
-	Restart       func()
-	ListeningPort int
+	ConnectionUsage   func() ConnectionUsage
+	LocalArtworkUsage func() (int64, bool)
+	Restart           func()
+	ListeningPort     int
 	// SettingsApplied runs after an owner saves console settings so snapshot
 	// readers (delivery configuration) refresh off the request path.
 	SettingsApplied func(context.Context)
@@ -739,9 +741,6 @@ func New(d Dependencies) http.Handler {
 			if err := d.Scheduler.Register(d.Catalog.BulkAdapter(d.bulkAccess)); err != nil {
 				panic(err)
 			}
-			if err := d.Scheduler.Register(d.Catalog.ContainerResetAdapter()); err != nil {
-				panic(err)
-			}
 			if err := d.Scheduler.Register(d.Catalog.LibraryRemovalAdapter()); err != nil {
 				panic(err)
 			}
@@ -838,7 +837,6 @@ func New(d Dependencies) http.Handler {
 	d.deliveryRoutes(mux)
 	d.activityRoutes(mux)
 	d.discoveryRoutes(mux)
-	d.contentHomeRoutes(mux)
 	d.browseRoutes(mux)
 	d.notificationRoutes(mux)
 	d.socialRoutes(mux)

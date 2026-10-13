@@ -49,12 +49,12 @@ func newPlaybackV1(d Dependencies) *playbackv1.Service {
 	s.Visibility = func(ctx context.Context, tx *sql.Tx, p identity.Principal, item string) (string, []any, error) {
 		return contentaccess.VisibleItemsSQL(ctx, tx, p, item, func(library string) error { return d.allowedLibraryTx(ctx, p, library, tx) })
 	}
-	s.PostPlay = func(ctx context.Context, tx *sql.Tx, p identity.Principal) (bool, int, error) {
+	s.PostPlay = func(ctx context.Context, tx *sql.Tx, p identity.Principal) (playbackv1.PostPlayPolicy, error) {
 		values, _, _, err := operations.EffectivePreferences(tx, p.Viewer, "")
 		if err != nil {
-			return false, 0, err
+			return playbackv1.PostPlayPolicy{}, err
 		}
-		return values.Bool("playback.autoplayNext"), values.Int("playback.upNextCountdownSeconds"), nil
+		return playbackv1.PostPlayPolicy{Autoplay: values.Bool("playback.autoplayNext"), CountdownSeconds: values.Int("playback.upNextCountdownSeconds"), Protection: values.Bool("playback.passoutProtection"), Episodes: values.Int("playback.passoutAfterEpisodes")}, nil
 	}
 	if d.AudioMedia != nil {
 		s.MeasureAudio = d.AudioMedia.MeasureAudio
@@ -180,7 +180,9 @@ func registerPlaybackV1Admin(r *apikit.Registry, d Dependencies) {
 // v1Caller turns the admitted caller into the service's caller, with media
 // admission for new presentations and channel admission for channel starts.
 func (d Dependencies) v1ServiceCaller(q *http.Request, c v1Caller) playbackv1.Caller {
-	return playbackv1.Caller{Principal: c.Principal, DeviceID: c.DeviceID, Remote: d.v1Remote(q), Admit: func(ctx context.Context, item string) (int, error) {
+	return playbackv1.Caller{Principal: c.Principal, DeviceID: c.DeviceID, Remote: d.v1Remote(q), AuthorizeItem: func(ctx context.Context, item string) error {
+		return itemAdmission(d.itemAccess(ctx, c.Principal, item))
+	}, Admit: func(ctx context.Context, item string) (int, error) {
 		// A channel start admits with no item: there is no title to fence,
 		// only the account-level limits. The channel allow/deny list runs
 		// separately through AdmitChannel.
@@ -193,6 +195,13 @@ func (d Dependencies) v1ServiceCaller(q *http.Request, c v1Caller) playbackv1.Ca
 		if err != nil {
 			return 0, itemAdmission(err)
 		}
+		if replan := playbackv1.ReplanOf(ctx); replan.Remote {
+			ceilings, err := d.replanCeilingsAt(q.WithContext(ctx), c.Principal, replan.Session, true)
+			if err != nil {
+				return 0, err
+			}
+			decision.MaxVideoBitrateBPS = narrowBitrate(decision.MaxVideoBitrateBPS, ceilings.MaxVideoBitrateBPS)
+		}
 		return decision.MaxVideoBitrateBPS, nil
 	}, AdmitChannel: func(ctx context.Context, channel string) error {
 		if err := d.admitChannel(q.WithContext(ctx), c.Principal, channel); err != nil {
@@ -200,7 +209,7 @@ func (d Dependencies) v1ServiceCaller(q *http.Request, c v1Caller) playbackv1.Ca
 		}
 		return nil
 	}, Ceiling: func(ctx context.Context, session string) (int, error) {
-		ceilings, err := d.replanCeilings(q.WithContext(ctx), c.Principal, session)
+		ceilings, err := d.replanCeilingsAt(q.WithContext(ctx), c.Principal, session, d.requestIsRemote(q) || playbackv1.ReplanOf(ctx).Remote)
 		return ceilings.MaxVideoBitrateBPS, err
 	}, SavedQuality: func(ctx context.Context) (string, error) {
 		return d.savedQuality(q.WithContext(ctx), c.Principal)
@@ -237,7 +246,11 @@ func (d Dependencies) savedQuality(q *http.Request, p identity.Principal) (strin
 // upload budget. session is the v1 session being changed, whose own share of
 // the budget is not counted against it.
 func (d Dependencies) replanCeilings(q *http.Request, p identity.Principal, session string) (playback.ReplanCeilings, error) {
-	out := playback.ReplanCeilings{Remote: d.requestIsRemote(q)}
+	return d.replanCeilingsAt(q, p, session, d.requestIsRemote(q))
+}
+
+func (d Dependencies) replanCeilingsAt(q *http.Request, p identity.Principal, session string, remote bool) (playback.ReplanCeilings, error) {
+	out := playback.ReplanCeilings{Remote: remote}
 	if !out.Remote || d.Access.Access == nil || d.DB == nil {
 		return out, nil
 	}

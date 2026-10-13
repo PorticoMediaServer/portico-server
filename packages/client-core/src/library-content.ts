@@ -4,8 +4,8 @@ import {parseBrowseNode,type BrowseNode,type BrowseSortSelection} from './browse
 import {firstOfEach,keepReadable,noteSkipped,oneOfOr} from './tolerant.ts';
 /** Transport/state for server-authored semantic projections. No client ranking or grouping. */
 export type ContentView = 'discover' | 'browse' | 'collections' | 'categories' | 'show' | 'season' | 'artist' | 'album' | 'book' | 'collection' | 'releases' | 'songs' | 'authors' | 'series' | 'author' | 'book_series' | 'disc';
-export type ContentSurface = ContentView | 'home';
-export type ContentRoute = Readonly<{ sort?: string; direction?: 'asc' | 'desc'; category?: string; q?: string } & ({ view: 'home'; libraryId?: never; entityId?: never } | { libraryId: string; view: Exclude<ContentView, 'home'>; entityId?: string })>;
+export type ContentSurface = ContentView;
+export type ContentRoute = Readonly<{ sort?: string; direction?: 'asc' | 'desc'; category?: string; q?: string } & { libraryId: string; view: ContentView; entityId?: string }>;
 export type ContentScope = Readonly<{ viewerId: string; serverId: string }>;
 export interface LibraryContentApi { request<T>(path: string, method?: string, body?: unknown, signal?: AbortSignal): Promise<T> }
 export type ContentEntryKind = 'movie' | 'show' | 'season' | 'episode' | 'artist' | 'album' | 'song' | 'book' | 'audiobook_file' | 'chapter' | 'collection' | 'category' | 'author' | 'book_series' | 'disc' | 'extra';
@@ -75,7 +75,7 @@ export type LibraryContentSnapshot = Readonly<{
   pagination: Readonly<{ cursor: string | null; canPrevious: boolean; next: readonly Readonly<{ sectionId: string; cursor: string }>[] }>;
   error: Readonly<{ code: string; message: string; retryable: boolean }> | null;
 }>;
-const views: readonly string[] = ['home','discover','browse','collections','categories','show','season','artist','album','book','collection','releases','songs','authors','series','author','book_series','disc'];
+const views: readonly string[] = ['discover','browse','collections','categories','show','season','artist','album','book','collection','releases','songs','authors','series','author','book_series','disc'];
 const entityViews = new Set(['show','season','artist','album','book','collection','author','book_series','disc']);
 const entryKinds: readonly string[] = ['movie','show','season','episode','artist','album','song','book','audiobook_file','chapter','collection','category','author','book_series','disc','extra'];
 /** Unknown string kinds are future server cards; only their entries are omitted. */
@@ -215,10 +215,6 @@ function entry(v: unknown): ContentEntry {
   return Object.freeze(row);
 }
 function route(input: ContentRoute): ContentRoute {
-  if (record(input) && input.view === 'home') {
-    if (input.libraryId !== undefined || input.entityId !== undefined || input.sort !== undefined || input.direction !== undefined || input.category !== undefined || input.q !== undefined) throw new Error('Home does not accept library query overrides.');
-    return Object.freeze({ view: 'home' });
-  }
   if (!record(input) || !id(input.libraryId) || !views.includes(input.view) || (entityViews.has(input.view) && !id(input.entityId))) throw new Error('Invalid library content route.');
   for (const field of ['entityId', 'sort', 'category', 'q'] as const) if (input[field] !== undefined && !string(input[field], field === 'q' ? 512 : 256)) throw new Error('Invalid library content query.');
   if (input.direction !== undefined && input.direction !== 'asc' && input.direction !== 'desc') throw new Error('Invalid library sort direction.');
@@ -235,9 +231,8 @@ function projection(raw: unknown, expected: ContentRoute, bound: ContentScope, p
   if (!count(r.catalog) || !count(r.viewer)) invalid();
   // A search mode this app does not know reads as no search.
   const searchMode = oneOfOr('content', 'query.searchMode', q.searchMode, ['none', 'title_prefix'] as const, 'none');
-  if (!string(q.sort) || !string(q.direction) || !string(q.category) || !string(q.q) || !count(q.limit) || q.limit < 1 || q.limit > (expected.view === 'home' ? 12 : pageSize)) invalid();
+  if (!string(q.sort) || !string(q.direction) || !string(q.category) || !string(q.q) || !count(q.limit) || q.limit < 1 || q.limit > pageSize) invalid();
   for (const field of ['sort','direction','category','q'] as const) if (expected[field] !== undefined && expected[field] !== q[field]) invalid();
-  if (expected.view === 'home' && (s.libraryKind !== 'mixed' || q.sort !== 'server' || q.direction !== 'asc' || q.category !== '' || q.q !== '' || searchMode !== 'none')) invalid();
   // The lists below keep what can be read: a tab, sort, filter, option, section or entry this app
   // cannot read is left out alone, and a repeated id keeps its first appearance.
   const navigation = firstOfEach('content', 'navigation', keepReadable('content', 'navigation', boundedArray(raw.navigation ?? [], 16), n => {
@@ -264,7 +259,7 @@ function projection(raw: unknown, expected: ContentRoute, bound: ContentScope, p
     const type = oneOfOr('content', 'section.type', n.type, ['rail', 'grid', 'list'] as const, 'grid');
     const entries = firstOfEach('content', 'entries', keepReadable('content', 'entries', boundedArray(n.entries, type === 'rail' ? 12 : 100), v => {
       const row = entry(v);
-      if (expected.view === 'home' ? !row.libraryId : row.libraryId !== undefined && row.libraryId !== expected.libraryId) invalid();
+      if (row.libraryId !== undefined && row.libraryId !== expected.libraryId) invalid();
       return row;
     }), e => e.id);
     // The count is at least the entries kept.
@@ -355,10 +350,10 @@ export class LibraryContentService {
   private async fetch(op: Operation, api: LibraryContentApi, bound: ContentScope, controller: AbortController, generation: number): Promise<void> {
     let timer: ReturnType<typeof setTimeout> | undefined;
     let onAbort: (() => void) | undefined;
-    const query = new URLSearchParams({ view: op.route.view, limit: String(op.route.view === 'home' ? 12 : this.pageSize) });
+    const query = new URLSearchParams({ view: op.route.view, limit: String(this.pageSize) });
     for (const field of ['entityId','sort','direction','category','q'] as const) if (op.route[field] !== undefined) query.set(field, op.route[field]!);
     if (op.page.cursor) query.set('cursor', op.page.cursor);
-    const path = (op.route.view === 'home' ? '/v1/content?' : '/v1/libraries/' + encodeURIComponent(op.route.libraryId) + '/content?') + query;
+    const path = ('/v1/libraries/' + encodeURIComponent(op.route.libraryId) + '/content?') + query;
     try {
       const cancelled = new Promise<never>((_, reject) => { onAbort = () => reject(new ContentFailure('cancelled', 'Library request cancelled.')); controller.signal.addEventListener('abort', onAbort, { once: true }); });
       const raw = await Promise.race([api.request<unknown>(path, 'GET', undefined, controller.signal), cancelled, new Promise<never>((_, reject) => { timer = setTimeout(() => { reject(new ContentFailure('timeout', 'The server took too long to respond. Try again.', true)); controller.abort(); }, this.timeoutMs); })]);

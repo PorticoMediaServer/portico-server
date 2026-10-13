@@ -297,9 +297,9 @@ export class V1QueuePlayer implements QueueController {
       : Object.freeze({id: e.entryId, removed: false, hidden: true as const, ...(e.kind === 'pending' ? {pending: true as const} : {})}));
     const at = current ? this.window.findIndex(e => e.entryId === current.entryId) : -1;
     const following = at >= 0 ? this.window[at + 1] : undefined;
-    const reason: 'ready' | 'end' | 'unavailable' = following ? (following.available ? 'ready' : 'unavailable') : header.repeat === 'all' && header.total > 0 ? 'ready' : 'end';
-    const next = Object.freeze({entryId: following?.entryId ?? null, available: reason === 'ready', reason});
-    const postPlay: QueuePostPlay = Object.freeze({nextEntryId: next.entryId, available: next.available, reason, countdownSeconds: 10, autoplay: true, passoutCheckDue: false, automaticAdvances: 0});
+    const reason: 'ready' | 'end' | 'unavailable' = header.next?.reason ?? (following ? (following.available ? 'ready' : 'unavailable') : header.repeat === 'all' && header.total > 0 ? 'ready' : 'end');
+    const next = Object.freeze({entryId: header.next?.entryId ?? following?.entryId ?? null, available: header.next?.available ?? reason === 'ready', reason});
+    const postPlay: QueuePostPlay = Object.freeze({nextEntryId: next.entryId, available: next.available, reason, countdownSeconds: header.postPlay?.countdownSeconds as 0|5|10|15 ?? 10, autoplay: header.postPlay?.autoplay ?? true, passoutCheckDue: header.postPlay?.passoutCheckDue ?? false, automaticAdvances: header.postPlay?.automaticAdvances ?? 0});
     const queue: QueueSnapshot = Object.freeze({
       id: header.id, scope: this.scope, revision: header.revision, highestSeenSequence: '0', replayWindow: Object.freeze({results: 256, bodies: 32}),
       repeat: header.repeat, shuffled: !!header.shuffle, currentEntryId: current?.entryId ?? null, currentPlaybackId: this.session?.id ?? null, entries: Object.freeze(entries),
@@ -757,7 +757,7 @@ export class V1QueuePlayer implements QueueController {
         // it goes on, at once; the post-play hold (a countdown the video player shows) never applies.
         const listening = session.kind === 'audio' || LISTENING_KINDS.has(kind);
         if (listening && !this.listening.mayAdvance()) return;
-        if (!listening && this.completionPolicy({kind, itemId: item?.itemId ?? p.itemId ?? ''}) === 'hold') {
+        if (!listening && (view?.postPlay.passoutCheckDue || view?.postPlay.autoplay === false || this.completionPolicy({kind, itemId: item?.itemId ?? p.itemId ?? ''}) === 'hold')) {
           const held: HeldCompletion = Object.freeze({sessionId: session.id, intentId: intent, nextEntryId: view!.next.entryId, nextAvailable: view!.next.available, reason: view!.next.reason, postPlay: view!.postPlay});
           this.publish({completion: held});
           return;
@@ -772,7 +772,7 @@ export class V1QueuePlayer implements QueueController {
 
   async continueCompletion(mode: QueueAdvanceMode = 'automatic'): Promise<void> {
     const held = this.state.completion;
-    if (!held) return;
+    if (!held || mode === 'automatic' && held.postPlay.passoutCheckDue) return;
     this.publish({completion: null});
     const p = this.playback.getSnapshot();
     if (p.phase !== 'ended' || p.session?.id !== held.sessionId || !held.nextAvailable) return;

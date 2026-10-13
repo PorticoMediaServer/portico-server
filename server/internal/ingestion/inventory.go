@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"os"
 	"path/filepath"
 	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/dbwork"
@@ -57,6 +58,9 @@ func (s *Service) readySource(ctx context.Context, job string, source *catalog.L
 			return err
 		}
 		source.RootIdentity = actual
+		if _, err = dbwork.ExecWrite(ctx, s.db, dbwork.ClassBackgroundMedia, `UPDATE inventory_runs SET root_rebound=1 WHERE job_id=?`, job); err != nil {
+			return err
+		}
 	}
 	if source.RootIdentity == "" {
 		gated, e := dbwork.Begin(ctx, s.db, dbwork.ClassBackgroundMedia)
@@ -106,7 +110,7 @@ func (s *Service) inventoryPage(ctx context.Context, job string, source catalog.
 			return e
 		}
 		if mode == "incremental" {
-			return s.phase(ctx, job, "verifying", true)
+			return s.phase(ctx, job, "extras", true)
 		}
 		return s.phase(ctx, job, "legacy_inventory", true)
 	}
@@ -114,14 +118,32 @@ func (s *Service) inventoryPage(ctx context.Context, job string, source catalog.
 		return err
 	}
 	err = s.readDirectoryPage(ctx, job, source, relative)
-	if err != nil && ctx.Err() == nil {
-		// A reported folder that cannot be listed has most likely been removed:
-		// look from the folder above it instead, where its absence can be seen.
-		if widened, e := s.widenTarget(ctx, job, relative); e == nil && widened {
+	if err == nil || ctx.Err() != nil || errors.Is(err, storage.ErrBusy) {
+		return err
+	}
+	var read *directoryReadError
+	if !errors.As(err, &read) && !errors.Is(err, storage.ErrInventoryChanged) {
+		return stoppedAt(relative, err)
+	}
+	if relative == "." && !errors.Is(err, storage.ErrInventoryChanged) {
+		return stoppedAt(relative, errors.New(sourceUnavailable))
+	}
+	if errors.Is(err, storage.ErrRemoteOffline) || errors.Is(err, storage.ErrRemoteCredentials) || errors.Is(err, storage.ErrRemoteChanged) || errors.Is(err, storage.ErrRemoteBinary) {
+		return stoppedAt(relative, err)
+	}
+	if errors.Is(err, os.ErrNotExist) || source.Kind == "remote" && !errors.Is(err, storage.ErrRemoteCursor) {
+		if widened, e := s.widenTarget(ctx, job, relative); e != nil {
+			return e
+		} else if widened {
 			return nil
 		}
 	}
-	return stoppedAt(relative, err)
+	reason := "directory_unreadable"
+	if errors.Is(err, storage.ErrInventoryChanged) {
+		reason = "directory_changed"
+	}
+	return s.excludeDirectory(ctx, job, relative, reason)
+
 }
 func (s *Service) readDirectoryPage(ctx context.Context, job string, source catalog.LibrarySource, relative string) error {
 	var cursor, revision string
@@ -132,19 +154,21 @@ func (s *Service) readDirectoryPage(ctx context.Context, job string, source cata
 		directory := filepath.Join(source.ResolvedPath, relative)
 		remote, err := s.storage.Remote.ListPage(ctx, job, directory, cursor)
 		if err != nil {
-			return err
+			return &directoryReadError{err}
 		}
 		next := remote.Next
 		if remote.Complete {
 			next = ""
 		}
 		page := storage.InventoryPage{RootIdentity: source.RootIdentity, DirectoryIdentity: storage.RemoteDirectoryIdentity(remote.SourceID, directory), DirectoryRevision: remote.ID, Entries: remote.Entries, NextCursor: next, Complete: remote.Complete, Pending: remote.Pending, Remote: &remote}
+		if err = s.applyRemoteIgnores(ctx, job, source, relative, &page, func(ctx context.Context, path string, limit int64) ([]byte, error) {
+			return s.readRemoteIgnore(ctx, job, source, path, limit)
+		}); err != nil {
+			return &directoryReadError{err}
+		}
 		return s.catalog.CommitInventoryPage(ctx, job, relative, cursor, page)
 	}
-	if skipped, e := s.skipUnchangedDirectory(ctx, job, source, relative, cursor); skipped || e != nil {
-		return e
-	}
-	req := storage.InventoryRequest{Root: source.ResolvedPath, RelativePath: relative, RootIdentity: source.RootIdentity, DirectoryRevision: revision, Cursor: cursor, Limit: 32, FollowSymlinks: source.FollowSymlinks}
+	req := storage.InventoryRequest{Root: source.ResolvedPath, RelativePath: relative, RootIdentity: source.RootIdentity, DirectoryRevision: revision, Cursor: cursor, Limit: s.inventoryBatch(ctx), FollowSymlinks: source.FollowSymlinks}
 	var page storage.InventoryPage
 	var err error
 	if s.storage != nil {
@@ -153,12 +177,25 @@ func (s *Service) readDirectoryPage(ctx context.Context, job string, source cata
 		page, err = storage.LocalInventoryPage(req)
 	}
 	if err != nil {
-		return err
+		return &directoryReadError{err}
 	}
 	if err = s.catalog.CommitInventoryPage(ctx, job, relative, cursor, page); err != nil {
 		return err
 	}
 	s.noteDirectoryPage(job, relative, cursor, page)
+	if page.Unstable {
+		gated, e := dbwork.Begin(ctx, s.db, dbwork.ClassBackgroundMedia)
+		if e != nil {
+			return e
+		}
+		defer gated.Rollback()
+		if e = recordNoticeTx(ctx, gated.Tx(), source.ID, relative, time.Now().UnixMilli()); e != nil {
+			return e
+		}
+		if e = gated.Commit(); e != nil {
+			return e
+		}
+	}
 	return nil
 }
 func (s *Service) phase(ctx context.Context, job, phase string, reset bool) error {
@@ -208,7 +245,12 @@ func (s *Service) verifyPage(ctx context.Context, job string, source catalog.Lib
 				return storage.ErrRemoteConfig
 			}
 			if err = verifier.VerifyInventoryDirectory(ctx, job, filepath.Join(source.ResolvedPath, d.path), d.revision); err != nil {
-				return stoppedAt(d.path, err)
+				if errors.Is(err, storage.ErrBusy) || ctx.Err() != nil {
+					return err
+				}
+				if e := s.excludeDirectory(ctx, job, d.path, "directory_changed"); e != nil {
+					return e
+				}
 			}
 			continue
 		}
@@ -220,10 +262,18 @@ func (s *Service) verifyPage(ctx context.Context, job string, source catalog.Lib
 			v, err = storage.LocalInventoryDirectory(req)
 		}
 		if err != nil {
-			return stoppedAt(d.path, err)
+			if errors.Is(err, storage.ErrBusy) || ctx.Err() != nil {
+				return err
+			}
+			if e := s.excludeDirectory(ctx, job, d.path, "directory_unreadable"); e != nil {
+				return e
+			}
+			continue
 		}
 		if v.ObjectIdentity != d.identity || storage.InventoryRevision(v) != d.revision {
-			return stoppedAt(d.path, storage.ErrInventoryChanged)
+			if e := s.excludeDirectory(ctx, job, d.path, "directory_changed"); e != nil {
+				return e
+			}
 		}
 	}
 	gated4, err := dbwork.Begin(ctx, s.db, dbwork.ClassBackgroundMedia)
@@ -250,10 +300,10 @@ func (s *Service) verifyPage(ctx context.Context, job string, source catalog.Lib
 			}
 			return gated4.Commit()
 		}
-		if _, err = tx.ExecContext(ctx, `UPDATE inventory_runs SET phase='reconciling',authoritative=1,inventory_completed_at=?,reconcile_cursor='' WHERE job_id=? AND NOT EXISTS(SELECT 1 FROM inventory_directories WHERE job_id=? AND state!='done')`, now, job, job); err != nil {
+		if _, err = tx.ExecContext(ctx, `UPDATE inventory_runs SET phase='reconciling',authoritative=1,inventory_completed_at=?,reconcile_cursor='' WHERE job_id=? AND NOT EXISTS(SELECT 1 FROM inventory_directories WHERE job_id=? AND state='pending')`, now, job, job); err != nil {
 			return err
 		}
-		if _, err = tx.ExecContext(ctx, `UPDATE library_sources SET last_complete_job=?,last_complete_at=? WHERE id=?`, job, now, source.ID); err != nil {
+		if _, err = tx.ExecContext(ctx, `UPDATE library_sources SET last_complete_job=?,last_complete_at=?,last_integrity_at=CASE WHEN (SELECT scan_mode FROM inventory_runs WHERE job_id=?) IN('first-import','full','integrity') THEN ? ELSE last_integrity_at END WHERE id=?`, job, now, job, now, source.ID); err != nil {
 			return err
 		}
 		_, err = tx.ExecContext(ctx, `INSERT OR IGNORE INTO inventory_changes(source_id,job_id,kind,created_at) VALUES(?,?,'inventory_completed',?)`, source.ID, job, now)
@@ -271,7 +321,7 @@ func (s *Service) reconcilePage(ctx context.Context, job string, source catalog.
 	} else if unmounted {
 		return catalog.ErrSourceLooksUnmounted
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT o.id,o.asset_id,o.revision,o.missing_since,o.missing_observations,o.last_missing_job,o.relative_path,o.state FROM inventory_objects o JOIN inventory_runs r ON r.source_id=o.source_id WHERE r.job_id=? AND r.authoritative=1 AND o.root_incarnation=r.root_incarnation AND o.id>r.reconcile_cursor AND o.retired=0 AND o.seen_job!=? AND `+targetScopeSQL+` AND NOT(o.state='available' AND o.missing_observations=0 AND EXISTS(SELECT 1 FROM inventory_directories d WHERE d.job_id=r.job_id AND d.relative_path=o.directory_path AND d.skipped=1 AND d.state='done')) ORDER BY o.id LIMIT ?`, job, job, string(filepath.Separator), s.reconciliationBatch(source))
+	rows, err := s.db.QueryContext(ctx, `SELECT o.id,o.asset_id,o.revision,o.missing_since,o.missing_observations,o.last_missing_job,o.relative_path,o.state FROM inventory_objects o JOIN inventory_runs r ON r.source_id=o.source_id WHERE r.job_id=? AND r.authoritative=1 AND o.root_incarnation=r.root_incarnation AND o.id>r.reconcile_cursor AND o.retired=0 AND o.seen_job!=? AND `+targetScopeSQL+` AND `+unprotectedObjectSQL+` AND NOT(o.state='available' AND o.missing_observations=0 AND EXISTS(SELECT 1 FROM inventory_directories d WHERE d.job_id=r.job_id AND d.relative_path=o.directory_path AND d.skipped=1 AND d.state='done')) ORDER BY o.id LIMIT ?`, job, job, string(filepath.Separator), string(filepath.Separator), s.reconciliationBatch(source))
 	if err != nil {
 		return err
 	}
@@ -298,11 +348,18 @@ func (s *Service) reconcilePage(ctx context.Context, job string, source catalog.
 	check, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	checked := map[string]bool{}
+	unsafe := map[string]bool{}
 	for _, v := range batch {
 		parent := filepath.Dir(v.relative)
 		if !checked[parent] {
 			if err = s.catalog.VerifyInventoryAbsence(check, source, job, v.relative); err != nil {
-				return stoppedAt(parent, err)
+				if errors.Is(err, storage.ErrBusy) || check.Err() != nil {
+					return err
+				}
+				unsafe[parent] = true
+				if e := s.excludeDirectory(ctx, job, parent, "directory_changed"); e != nil {
+					return e
+				}
 			}
 			checked[parent] = true
 		}
@@ -321,6 +378,9 @@ func (s *Service) reconcilePage(ctx context.Context, job string, source catalog.
 	// owner's rule for missing titles removes it or the file comes back.
 	now := time.Now().UTC()
 	for _, v := range batch {
+		if unsafe[filepath.Dir(v.relative)] {
+			continue
+		}
 		if err = catalog.MarkInventoryMissingTx(ctx, tx, source.ID, job, v.id, now); err != nil {
 			return err
 		}
@@ -328,7 +388,7 @@ func (s *Service) reconcilePage(ctx context.Context, job string, source catalog.
 	if len(batch) > 0 {
 		_, err = tx.ExecContext(ctx, `UPDATE inventory_runs SET reconcile_cursor=? WHERE job_id=?`, batch[len(batch)-1].id, job)
 	} else {
-		_, err = tx.ExecContext(ctx, `UPDATE inventory_runs SET phase='analysis_enqueue',reconcile_cursor='' WHERE job_id=?`, job)
+		_, err = tx.ExecContext(ctx, `UPDATE inventory_runs SET phase='sidecars',reconcile_cursor='' WHERE job_id=?`, job)
 	}
 	if err != nil {
 		return err

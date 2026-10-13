@@ -6,6 +6,8 @@ import (
 	"errors"
 	"portico.local/server/internal/dbwork"
 
+	"portico.local/server/internal/assets"
+	"portico.local/server/internal/decoder"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/operations"
 	"portico.local/server/internal/playback"
@@ -169,6 +171,7 @@ func (s *Service) Options(ctx context.Context, p identity.Principal, item string
 	// An audio source has exactly one optimized target. Walking the video ladder
 	// for it would publish six copies of the same AAC recipe under names like
 	// "4K 2160p", which describes nothing about an audio file.
+	device := playback.CapabilityDocumentTx(ctx, tx, p)
 	presets := playback.QualityLadder
 	if audioKind(found.Kind) {
 		preset, _ := playback.LadderPreset(canonicalAudioRung)
@@ -189,12 +192,17 @@ func (s *Service) Options(ctx context.Context, p identity.Principal, item string
 		}
 		option.Bytes, option.Estimated = estimateBytes(preset.ID, found)
 		version := selectableVersion(versions, option.PreparedProfileID)
-		// The menu is what this server can hand over, not the ladder: a rung
-		// with no finished copy that the conversion code cannot make is left
-		// out. When the conversion code learns a recipe, its rung appears here
-		// with nothing else to change.
-		producible := preparedmedia.Producible(option.PreparedProfileID)
-		if version == nil && !producible {
+		recipe, recipeErr := preparedmedia.ProfileByID(option.PreparedProfileID)
+		// Finished versions remain usable without an available encoder. New
+		// work must pass the same recipe and inventory checks as the producer.
+		if recipeErr != nil || version == nil && !preparedmedia.Producible(option.PreparedProfileID) {
+			continue
+		}
+		targetSource := playback.DeliverySource{Container: "mp4", Audio: []playback.SourceAudio{{Codec: "aac", Channels: 2, StreamDetail: assets.StreamDetail{SampleRate: 48000}}}}
+		if !audioKind(found.Kind) {
+			targetSource.Video = &playback.SourceVideo{Codec: "h264", StreamDetail: assets.StreamDetail{Profile: "High", Level: decoder.H264OutputLevel(recipe.Width, recipe.Height, 60), Width: recipe.Width, Height: recipe.Height, FrameRate: 60, BitDepth: 8, DynamicRange: "sdr"}}
+		}
+		if !playback.DownloadPlayable(targetSource, device) {
 			continue
 		}
 		switch {

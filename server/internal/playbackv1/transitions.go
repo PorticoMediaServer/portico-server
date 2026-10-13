@@ -7,6 +7,7 @@ import (
 	"errors"
 	"time"
 
+	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/playback"
 )
@@ -331,7 +332,7 @@ func (s *Service) CommitNext(ctx context.Context, c Caller, id string, req Commi
 		if entry, _, found := l.entryAt(pos); !found || entry != p.entry {
 			return fail("queue_changed")
 		}
-		switch err := s.Playback.ReleasePrivateTx(ctx, tx, p.media); {
+		switch err := s.Playback.ReleasePrivateTx(ctx, tx, c.Principal, p.media); {
 		case errors.Is(err, playback.ErrPreparationExpired):
 			fence = ErrPreparedExpired
 			_, err = tx.ExecContext(ctx, `UPDATE playback_v1_prepared SET state='canceled',cancel_reason='expired' WHERE token=?`, p.token)
@@ -449,10 +450,8 @@ func (s *Service) withNext(ctx context.Context, c Caller, v *QueueView, q queueR
 		}
 	}
 	v.Next = &next
-	if s.PostPlay != nil {
-		if autoplay, countdown, err := s.PostPlay(ctx, tx, c.Principal); err == nil {
-			v.PostPlay = &QueuePostPlay{Autoplay: autoplay, CountdownSeconds: countdown}
-		}
+	if policy, err := s.postPlayPolicy(ctx, tx, c, l); err == nil {
+		v.PostPlay = &policy
 	}
 }
 
@@ -531,4 +530,38 @@ func audioRenderOf(p *playback.AudioPlan) *AudioRender {
 		out.Gain = &AudioRenderGain{TrackDB: p.Gain.TrackDB, AlbumDB: p.Gain.AlbumDB, TrackPeak: p.Gain.TrackPeak, AlbumPeak: p.Gain.AlbumPeak, Source: p.Gain.Source}
 	}
 	return out
+}
+
+// PostPlayPolicy is the effective viewer choice, read for each completion edge.
+type PostPlayPolicy struct {
+	Autoplay         bool
+	CountdownSeconds int
+	Protection       bool
+	Episodes         int
+}
+
+func (s *Service) postPlayPolicy(ctx context.Context, tx *sql.Tx, c Caller, l *layout) (QueuePostPlay, error) {
+	out := QueuePostPlay{Autoplay: true, CountdownSeconds: 10, AutomaticAdvances: l.q.automatic}
+	if s.PostPlay == nil {
+		return out, nil
+	}
+	policy, err := s.PostPlay(ctx, tx, c.Principal)
+	if err != nil {
+		return out, err
+	}
+	out.Autoplay, out.CountdownSeconds = policy.Autoplay, policy.CountdownSeconds
+	out.PassoutCheckDue = currentEpisode(ctx, tx, l) && policy.Protection && policy.Episodes > 0 && l.q.automatic+1 >= policy.Episodes
+	return out, nil
+}
+
+func currentEpisode(ctx context.Context, tx *sql.Tx, l *layout) bool {
+	_, key, err := l.entryAtErr(l.q.current)
+	if err != nil {
+		return false
+	}
+	var episode bool
+	if tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM catalog_entities WHERE kind=? AND public_id=pid_blob(?))`, compactcatalog.Episode, key).Scan(&episode) != nil {
+		return false
+	}
+	return episode
 }

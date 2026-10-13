@@ -7,7 +7,6 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
-	"time"
 )
 
 // The Portico Music agent's artist chain (Spec — Page Content §8): a
@@ -60,7 +59,7 @@ func (s *MusicBrainz) Artist(ctx context.Context, id string) (MusicArtist, error
 			} `json:"url"`
 		} `json:"relations"`
 	}
-	ctx, cancel := context.WithTimeout(ctx, 45*time.Second)
+	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	if err := s.http.request(ctx, "GET", "/artist/"+strings.ToLower(id)+"?"+query.Encode(), "", nil, &v); err != nil {
 		return out, err

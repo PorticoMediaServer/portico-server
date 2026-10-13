@@ -41,6 +41,7 @@ import (
 	"portico.local/server/internal/localmetadata"
 	"portico.local/server/internal/lyrics"
 	"portico.local/server/internal/mediaexec"
+	"portico.local/server/internal/medialimits"
 	"portico.local/server/internal/metadata"
 	"portico.local/server/internal/mounts"
 	"portico.local/server/internal/networking"
@@ -148,6 +149,9 @@ func main() {
 		if errors.Is(e, errRestartRequested) {
 			log.Print("Restart requested")
 			os.Exit(supervise.RestartExitCode)
+		}
+		if !errors.Is(e, context.Canceled) {
+			serveEarlyStartupFailure(e)
 		}
 		log.Fatal(e)
 	}
@@ -286,6 +290,16 @@ func run() (runErr error) {
 	reporter.finish("listener", nil)
 	ip = listener.Addr().(*net.TCPAddr).IP
 	defer listener.Close()
+	defer func() {
+		if runErr == nil || errors.Is(runErr, errRestartRequested) || ctx.Err() != nil {
+			return
+		}
+		reporter.fail(runErr)
+		log.Printf("Portico could not start. A recovery page is available on %s; fix the cause and restart the service: %v", listener.Addr(), runErr)
+		serveStartupRecovery(ctx, listener, reporter)
+		runErr = errors.Join(runErr, ctx.Err())
+	}()
+
 	// One process owns one state directory. The lock is taken now — after the
 	// listener is bound, so a second instance's refusal is visible, and before
 	// anything opens the database or the journal, so a second instance never
@@ -325,7 +339,7 @@ func run() (runErr error) {
 				// Files may already have moved: starting now could serve a
 				// half-restored folder or a new empty database. Nothing has been
 				// deleted, and the next start resumes the restore.
-				log.Fatalf("A restore didn't finish (%v). Portico won't start on a half-restored state folder; nothing has been deleted, and the previous data is kept under %s. Fix the cause (for example free disk space or folder permissions), then start Portico again: it resumes the restore.", err, filepath.Join(state, backup.BackupsDir))
+				return fmt.Errorf("A restore didn't finish (%v). Portico won't start on a half-restored state folder; nothing has been deleted, and the previous data is kept under %s. Fix the cause (for example free disk space or folder permissions), then start Portico again: it resumes the restore.", err, filepath.Join(state, backup.BackupsDir))
 			}
 			log.Printf("warn: Staged restore did not apply (%v); continuing on the current state", err)
 		}
@@ -364,6 +378,7 @@ func run() (runErr error) {
 	if e != nil {
 		return e
 	}
+	medialimits.ConfigureSubtitles(startupMedia.SubtitleTrackLimit, startupMedia.SubtitleFileLimitMiB)
 	decoder.SetBackgroundConversionLimit(startupMedia.MaxBackgroundSessions)
 	ffmpegTool, ffprobeTool := decoder.ResolveTools()
 	defaultFFmpegTool, defaultFFprobeTool := ffmpegTool, ffprobeTool
@@ -393,6 +408,7 @@ func run() (runErr error) {
 	}
 	workAdmission := workpolicy.Service{DB: db}
 	adminOperations := adminops.NewAt(db, state)
+	adminOperations.ApplyBackgroundPolicy(ctx)
 	adminOperations.LogoFetch = func(ctx context.Context, locator string) ([]byte, error) {
 		return livechannels.ReadSource(ctx, locator, remotemedia.Policy{ReadTimeout: 10 * time.Second}, adminops.LogoUploadBytes)
 	}
@@ -482,6 +498,7 @@ func run() (runErr error) {
 			log.Printf("Media toolchain qualification unavailable: %v", result.err)
 		} else {
 			decoder.ConfigureToolchain(result.facts)
+			playback.SetConversionOutputs(decoder.AvailableConversionOutputs(&result.facts))
 			log.Printf("Media toolchain: %s ass=%t zscale=%t", ffmpegTool, result.facts.Filters["ass"], result.facts.Filters["zscale"])
 			if missing := result.facts.MissingRequired(); len(missing) > 0 {
 				log.Printf("Media toolchain attention: missing %v", missing)
@@ -504,6 +521,7 @@ func run() (runErr error) {
 		retryCancel()
 		if err == nil {
 			decoder.ConfigureToolchain(facts)
+			playback.SetConversionOutputs(decoder.AvailableConversionOutputs(&facts))
 		} else {
 			log.Printf("Media toolchain qualification unavailable: %v", err)
 		}
@@ -1069,7 +1087,11 @@ func run() (runErr error) {
 	if manager := claimHandler.Remote(); manager != nil {
 		manager.SetAccessURLs(accessURLsProvider(console, manager))
 	}
-	handler := httpapi.New(httpapi.Dependencies{Restart: requestRestart, ListeningPort: listener.Addr().(*net.TCPAddr).Port, Events: events, Administration: adminOperations, Backups: backupService, Access: administration, Webhooks: outboundWebhooks, SettingsApplied: func(ctx context.Context) {
+	var transport *cappedListener
+	handler := httpapi.New(httpapi.Dependencies{LocalArtworkUsage: localMeta.ArtworkUsage, ConnectionUsage: func() httpapi.ConnectionUsage {
+		held, _ := transport.Held()
+		return httpapi.ConnectionUsage{Ordinary: len(transport.ordinary), Total: held, OrdinaryLimit: cap(transport.ordinary), ConsoleReserve: consoleConnectionReserve}
+	}, Restart: requestRestart, ListeningPort: listener.Addr().(*net.TCPAddr).Port, Events: events, Administration: adminOperations, Backups: backupService, Access: administration, Webhooks: outboundWebhooks, SettingsApplied: func(ctx context.Context) {
 		control.NotifySettingsChanged(ctx)
 		supervise.Go("delivery-settings.refresh", func() { deliverySettings.Refresh(ctx) })
 		claimHandler.Remote().Wake()
@@ -1095,7 +1117,7 @@ func run() (runErr error) {
 			connectionLimit = document.Effective.ConnectionLimit
 		}
 	}
-	transport := consoleConnections(listener, connectionLimit)
+	transport = consoleConnections(listener, connectionLimit)
 	listener = transport
 	server.ConnContext = transport.context
 	server.ConnState = transport.state

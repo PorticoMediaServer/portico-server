@@ -182,7 +182,7 @@ func (s *Service) RunOne(ctx context.Context, request Request) (done bool, warni
 	if err = s.db.QueryRowContext(ctx, `SELECT COALESCE(SUM(size),0) FROM (SELECT MAX(size) AS size FROM analysis_artifacts GROUP BY digest)`).Scan(&used); err != nil {
 		return s.stageFailure(ctx, b, stage, err)
 	}
-	if used >= s.options.MaxCacheBytes {
+	if used >= s.cacheLimit(ctx) {
 		return s.stageFailure(ctx, b, stage, ErrBudget)
 	}
 	runner := s.options.Decoder(counted)
@@ -332,7 +332,7 @@ func (s *Service) publish(ctx context.Context, b binding, stage, id, evidence, t
 			stored += a.Object.Size
 		}
 	}
-	if stored > s.options.MaxCacheBytes {
+	if stored > s.cacheLimit(ctx) {
 		return ErrBudget
 	}
 	gated3, e := dbwork.Begin(ctx, s.db, dbwork.ClassBackgroundMedia)

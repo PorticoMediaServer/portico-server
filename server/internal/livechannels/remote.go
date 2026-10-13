@@ -443,7 +443,7 @@ func (s *Store) RefreshOne(ctx context.Context, f SourceFetcher) (bool, error) {
 	if gated.Commit() != nil {
 		return false, ErrUnavailable
 	}
-	work, cancelWork := context.WithTimeout(ctx, 20*time.Minute)
+	work, cancelWork := context.WithCancel(ctx)
 	defer cancelWork()
 	renewalDone := make(chan struct{})
 	supervise.Go("livechannels.refresh.renew", func() {
@@ -491,7 +491,7 @@ func (s *Store) RefreshOne(ctx context.Context, f SourceFetcher) (bool, error) {
 	if e == nil {
 		var in SourceInput
 		var physical int
-		fetchCtx, cancel := context.WithTimeout(ctx, 75*time.Second)
+		fetchCtx, cancel := context.WithCancel(ctx)
 		in, physical, e = s.fetchSource(fetchCtx, f, c)
 		in.parseContext = ctx
 		defer in.removeGuide()

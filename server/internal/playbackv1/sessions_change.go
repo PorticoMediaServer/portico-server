@@ -51,10 +51,11 @@ func (p Presentation) converting() bool {
 // engine) at the current position. The session keeps its id, its queue and
 // its place in it. Other changes keep the generation.
 func (s *Service) Patch(ctx context.Context, c Caller, id, ifMatch string, change Change) (SessionView, error) {
+	release := s.admission.hold(c.Principal.AccountID)
+	defer release()
 	if err := validateTracks(change.Audio, change.Subtitles); err != nil {
 		return SessionView{}, err
 	}
-	s.cancelPreparedFor(ctx, id) // §18.2: a change to the session cancels its prepared next
 	switch change.State {
 	case "", "playing", "paused":
 	default:
@@ -92,6 +93,18 @@ func (s *Service) Patch(ctx context.Context, c Caller, id, ifMatch string, chang
 	}
 	if isChannel(r) {
 		return s.patchChannel(ctx, c, r, change)
+	}
+	if c.DeviceID != r.device {
+		// A controller acts for the profile, but the engine and media connection
+		// still belong to the device playing this occurrence. Use its current
+		// token family binding even if its bearer rotated since playback began.
+		var hash string
+		err := dbwork.QueryRow(ctx, s.DB, `SELECT COALESCE((SELECT t.token_hash FROM authorization_family_tokens origin JOIN authorization_family_tokens t ON t.family_id=origin.family_id JOIN authorization_access a ON a.hash=t.token_hash WHERE origin.token_hash=ps.session_hash AND a.revoked=0 AND a.expires_at>? ORDER BY a.expires_at DESC LIMIT 1),ps.session_hash) FROM playback_sessions ps WHERE ps.id=? AND ps.account_id=? AND ps.profile_id=?`, s.now().UTC().Format(time.RFC3339), r.media, r.account, r.profile).Scan(&hash)
+		if err != nil {
+			return SessionView{}, err
+		}
+		c.Principal.Hash, c.DeviceID = hash, r.device
+		c.Remote = r.location == "remote" || r.location == "cellular"
 	}
 	stored := r.stored()
 	next := stored
@@ -145,6 +158,9 @@ func (s *Service) Patch(ctx context.Context, c Caller, id, ifMatch string, chang
 	if change.SubtitleOffsetMs != nil {
 		next.SubtitleOffsetMs = *change.SubtitleOffsetMs
 	}
+	oldMediaGeneration := r.mediaGeneration
+	rMediaBefore := r.media
+	committed := false
 	generation, media, mediaGeneration := r.generation, r.media, r.mediaGeneration
 	position := r.position
 	if change.PositionMs != nil {
@@ -170,7 +186,11 @@ func (s *Service) Patch(ctx context.Context, c Caller, id, ifMatch string, chang
 	// so its own slot is not counted again: a member at their stream limit can
 	// still change quality.
 	if bytes {
-		if err := c.admit(WithReplan(ctx, id, ""), r.item); err != nil {
+		admitCtx := WithReplan(ctx, id, "")
+		replan := ReplanOf(admitCtx)
+		replan.Remote = c.Remote
+		admitCtx = context.WithValue(admitCtx, replanKey{}, replan)
+		if err := c.admit(admitCtx, r.item); err != nil {
 			return SessionView{}, err
 		}
 	}
@@ -180,28 +200,39 @@ func (s *Service) Patch(ctx context.Context, c Caller, id, ifMatch string, chang
 	}
 	switch {
 	case bytes:
+		// Subtitle delivery can renew a media grant independently of the v1
+		// row. Replace the media generation that is actually live, and guard
+		// that same generation again when publishing the replacement.
+		if err := dbwork.QueryRow(ctx, s.DB, `SELECT generation FROM playback_sessions WHERE id=? AND account_id=? AND profile_id=? AND state NOT IN('stopped','ended','failed')`, r.media, r.account, r.profile).Scan(&oldMediaGeneration); err != nil {
+			return SessionView{}, err
+		}
 		version := next.VersionID
 		if version == "" {
 			version = r.version
 		}
-		op := "v1-" + r.id + "-" + strconv.Itoa(r.generation+1)
+		attempt := newID("change_")
+		op := "v1-" + r.id + "-" + attempt
 		part := changedPart(r, change, version)
 		target := presentationTarget{item: r.item, version: version, part: part, request: next, startMs: position,
-			replacing: &playback.SessionReplacement{ID: r.media, Generation: r.mediaGeneration}, requestID: "v1." + r.id + "." + strconv.Itoa(r.generation+1), subtitleOp: op,
+			replacing: &playback.SessionReplacement{ID: r.media, Generation: oldMediaGeneration, Deferred: true}, requestID: "v1." + r.id + "." + attempt, subtitleOp: op,
 			rememberAudio: change.Audio != nil, rememberSubtitle: change.Subtitles != nil}
 		if change.Quality != nil {
 			// Only a quality asked for now is checked against the connection.
 			target.throughputKbps = throughput
 		}
 		newMedia, view, err := s.present(ctx, c, target)
-		if errors.Is(err, identity.ErrUnauthorized) {
-			_ = s.Playback.StopV1(ctx, r.media)
-			target.replacing, target.requestID, target.subtitleOp = nil, target.requestID+".r", op+"-r"
-			newMedia, view, err = s.present(ctx, c, target)
-		}
+
 		if err != nil {
+			if newMedia.ID != "" {
+				_ = s.Playback.StopV1(context.WithoutCancel(ctx), newMedia.ID)
+			}
 			return SessionView{}, err
 		}
+		defer func() {
+			if !committed {
+				_ = s.Playback.StopV1(context.WithoutCancel(ctx), newMedia.ID)
+			}
+		}()
 		presentation, media, mediaGeneration, generation = view, newMedia.ID, newMedia.Generation, r.generation+1
 		if view.Quality != nil {
 			next.Quality = *view.Quality
@@ -220,13 +251,7 @@ func (s *Service) Patch(ctx context.Context, c Caller, id, ifMatch string, chang
 			return SessionView{}, err
 		}
 		presentation.Subtitles, presentation.Subtitle = result.files, result.shown
-		if change.Subtitles != nil {
-			mode := "off"
-			if result.shown != nil {
-				mode = "on"
-			}
-			s.rememberTracks(ctx, c.Principal, r.item, nil, mode, result.language)
-		}
+
 		if result.replaced != nil {
 			// The stream changed after all (an offset moved a converted
 			// stream's subtitles): new bytes from the position.
@@ -253,6 +278,13 @@ func (s *Service) Patch(ctx context.Context, c Caller, id, ifMatch string, chang
 	if change.ThroughputKbps != nil {
 		bandwidth = int64(throughput)
 	}
+	location := r.location
+	if bytes {
+		location = "local"
+		if c.Remote {
+			location = "remote"
+		}
+	}
 	requestJSON, _ := json.Marshal(next)
 	presentationJSON, _ := json.Marshal(presentation)
 	now := s.now()
@@ -262,14 +294,20 @@ func (s *Service) Patch(ctx context.Context, c Caller, id, ifMatch string, chang
 	}
 	part := changedPart(r, change, version)
 	err = dbwork.WithWriteTxContext(ctx, s.DB, dbwork.ClassEstablishedPlayback, func(ctx context.Context, tx *sql.Tx) error {
-		res, err := tx.ExecContext(ctx, `UPDATE playback_v1_sessions SET state=?,version_id=?,part_index=?,request=?,media_session_id=?,media_generation=?,presentation=?,generation=?,position_ms=?,start_position_ms=?,bandwidth_kbps=?,revision=revision+1,updated_ms=?,`+pausedSinceUpdate+` WHERE id=? AND revision=? AND ended_ms=0`,
-			state, version, part, string(requestJSON), media, mediaGeneration, string(presentationJSON), generation, position, presentation.StartPositionMs, bandwidth, now.UnixMilli(), state, now.UnixMilli(), r.id, r.revision)
+		res, err := tx.ExecContext(ctx, `UPDATE playback_v1_sessions SET state=?,location=?,version_id=?,part_index=?,request=?,media_session_id=?,media_generation=?,presentation=?,generation=?,position_ms=?,start_position_ms=?,bandwidth_kbps=?,revision=revision+1,updated_ms=?,`+pausedSinceUpdate+` WHERE id=? AND revision=? AND ended_ms=0`,
+			state, location, version, part, string(requestJSON), media, mediaGeneration, string(presentationJSON), generation, position, presentation.StartPositionMs, bandwidth, now.UnixMilli(), state, now.UnixMilli(), r.id, r.revision)
 		if err != nil {
 			return err
 		}
 		if n, _ := res.RowsAffected(); n != 1 {
 			return ErrRevision
 		}
+		if bytes {
+			if err := s.Playback.PublishPresentationTx(ctx, tx, c.Principal, media, position, &playback.SessionReplacement{ID: r.media, Generation: oldMediaGeneration}, true); err != nil {
+				return err
+			}
+		}
+		r.location = location
 		r.state, r.version, r.partIndex, r.request, r.media, r.mediaGeneration = state, version, part, string(requestJSON), media, mediaGeneration
 		r.presentation, r.generation, r.position, r.startPosition, r.revision, r.updated, r.bandwidth = string(presentationJSON), generation, position, presentation.StartPositionMs, r.revision+1, now.UnixMilli(), bandwidth
 		return s.sessionEventsTx(ctx, tx, r, now, false)
@@ -281,6 +319,12 @@ func (s *Service) Patch(ctx context.Context, c Caller, id, ifMatch string, chang
 	if err != nil {
 		return SessionView{}, err
 	}
+	committed = true
+	if bytes {
+		_ = s.Playback.StopV1(context.WithoutCancel(ctx), rMediaBefore)
+	}
+	s.rememberPresentationTracks(ctx, c.Principal, r.item, media, presentation, change.Audio != nil, change.Subtitles != nil)
+	s.cancelPreparedFor(ctx, id)
 	s.hub.wake()
 	return s.view(r), nil
 }
@@ -318,7 +362,6 @@ func (s *Service) subtitleReplans(ctx context.Context, c Caller, r row, current 
 // Stop is DELETE /v1/playback/sessions/{id} (spec §5.8): idempotent; a final
 // position is recorded for resume before the grant is fenced.
 func (s *Service) Stop(ctx context.Context, c Caller, id string, positionMs *int64) error {
-	s.cancelPreparedFor(ctx, id)
 	r, err := s.session(ctx, c, id)
 	if err != nil {
 		return err

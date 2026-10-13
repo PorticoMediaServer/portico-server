@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/identity"
+	"portico.local/server/internal/operations"
 	"portico.local/server/internal/persistence"
 	"testing"
 )
@@ -124,4 +125,21 @@ func TestManualFenceCoversPendingAndAutomaticButAllowsLaterExplicit(t *testing.T
 		return activatePersonalWriter(tx, p, itemA, "new", 25, ordinal)
 	})
 	expectWriter(t, db, p, idA, "new")
+}
+
+func TestPausedHistorySessionStartPreservesResume(t *testing.T) {
+	db, p, item, _, entity, _ := personalWriterFixture(t)
+	key := identity.PersonalKey(p.Viewer)
+	if _, err := db.Exec(`INSERT INTO progress(profile_id,item_id,position,unit,playback_id) VALUES(?,?,123000,0,'old')`, key, entity); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO console_documents(scope,revision,body,updated_ms) VALUES(?,1,'{"privacy.pauseWatchHistory":true}',0)`, "profile:"+operations.ViewerScopeKey(p.Viewer)); err != nil {
+		t.Fatal(err)
+	}
+	writerTx(t, db, func(tx *sql.Tx) error { return claimSessionProgress(tx, p, item, "new", 0) })
+	var position int64
+	if err := db.QueryRow(`SELECT position FROM progress WHERE profile_id=? AND item_id=?`, key, entity).Scan(&position); err != nil || position != 123000 {
+		t.Fatal(position, err)
+	}
+	expectWriter(t, db, p, entity, "new")
 }

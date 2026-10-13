@@ -516,7 +516,7 @@ export const routes = [
     "requires": "library",
     "lane": "default",
     "cost": "constant",
-    "bodyLimit": 50331648,
+    "bodyLimit": 805306368,
     "query": [
       "segment"
     ],
@@ -651,6 +651,23 @@ export const routes = [
     "errors": [
       "unauthorized",
       "administration_unavailable",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
+    "id": "get_admin_resource_usage",
+    "method": "GET",
+    "path": "/v1/admin/resource-usage",
+    "summary": "Read current resource usage and owner limits",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
       "internal"
     ],
     "status": 200
@@ -1150,12 +1167,12 @@ export const routes = [
   {
     "id": "get_download_options",
     "method": "GET",
-    "path": "/v1/items/{id}/download-options",
-    "summary": "Read what can be downloaded for one title, with sizes",
-    "access": "device",
+    "path": "/v1/items/{itemId}/download-options",
+    "summary": "List offline qualities this device can play and this server can produce",
+    "access": "viewer_item_restrictions",
     "requires": "read",
     "lane": "browsing",
-    "cost": "constant",
+    "cost": "page_sized",
     "bodyLimit": 0,
     "errors": [
       "invalid_request",
@@ -1336,6 +1353,84 @@ export const routes = [
     "sse": true
   },
   {
+    "id": "get_home",
+    "method": "GET",
+    "path": "/v1/home",
+    "summary": "Read this viewer's composed Home rows and destinations",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "limit"
+    ],
+    "errors": [
+      "invalid_request",
+      "invalid_cursor",
+      "stale_continuation",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "rate_limited",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
+    "id": "get_home_row",
+    "method": "GET",
+    "path": "/v1/home/rows/{id}",
+    "summary": "Page a composed Home row",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "limit",
+      "cursor",
+      "start",
+      "revision",
+      "anchorId"
+    ],
+    "errors": [
+      "invalid_request",
+      "invalid_cursor",
+      "stale_continuation",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "rate_limited",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
+    "id": "get_inventory_changes",
+    "method": "GET",
+    "path": "/v1/admin/libraries/{id}/sources/{source}/changes",
+    "summary": "Read retained inventory changes and cursor expiry",
+    "access": "owner",
+    "requires": "library",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "after"
+    ],
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "invalid_request",
+      "revision_mismatch",
+      "idempotency_key_reused",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
     "id": "get_items_screen_metadata",
     "method": "GET",
     "path": "/v1/items/{id}/metadata/screen",
@@ -1396,6 +1491,27 @@ export const routes = [
       "rate_limited",
       "internal",
       "invalid_cursor"
+    ],
+    "status": 200
+  },
+  {
+    "id": "get_library_settings",
+    "method": "GET",
+    "path": "/v1/admin/libraries/{id}/settings",
+    "summary": "Read a library's scanning and metadata settings",
+    "access": "owner",
+    "requires": "library",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "invalid_request",
+      "revision_mismatch",
+      "idempotency_key_reused",
+      "internal"
     ],
     "status": 200
   },
@@ -1525,6 +1641,34 @@ export const routes = [
     "status": 200
   },
   {
+    "id": "get_personal_history",
+    "method": "GET",
+    "path": "/v1/personal-history",
+    "summary": "Read this viewer's history within current title access",
+    "access": "device",
+    "requires": "read",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "cursor",
+      "period",
+      "libraryId",
+      "limit"
+    ],
+    "errors": [
+      "invalid_request",
+      "invalid_cursor",
+      "stale_continuation",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "rate_limited",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
     "id": "get_playback_options",
     "method": "GET",
     "path": "/v1/items/{itemId}/playback-options",
@@ -1644,6 +1788,61 @@ export const routes = [
     "bodyLimit": 0,
     "errors": [
       "unauthorized",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
+    "id": "get_saved_content",
+    "method": "GET",
+    "path": "/v1/content",
+    "summary": "Read a saved list or playlist directory",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "view",
+      "sort",
+      "direction",
+      "filter",
+      "limit",
+      "cursor"
+    ],
+    "errors": [
+      "invalid_request",
+      "invalid_cursor",
+      "stale_continuation",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "rate_limited",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
+    "id": "get_scan_issues",
+    "method": "GET",
+    "path": "/v1/admin/libraries/{id}/scans/{job}/issues",
+    "summary": "List files and folders skipped during a scan",
+    "access": "owner",
+    "requires": "library",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "after",
+      "limit"
+    ],
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "invalid_request",
+      "revision_mismatch",
+      "idempotency_key_reused",
       "internal"
     ],
     "status": 200
@@ -2809,6 +3008,26 @@ export const routes = [
     "status": 200
   },
   {
+    "id": "post_admin_background_pause",
+    "method": "POST",
+    "path": "/v1/admin/maintenance/background-pause",
+    "summary": "Pause background work for an hour or resume it",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 4096,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "invalid_request",
+      "revision_mismatch",
+      "administration_unavailable",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
     "id": "post_admin_backups",
     "method": "POST",
     "path": "/v1/admin/backups",
@@ -3054,7 +3273,7 @@ export const routes = [
     "requires": "library",
     "lane": "default",
     "cost": "constant",
-    "bodyLimit": 50331648,
+    "bodyLimit": 805306368,
     "query": [
       "segment"
     ],
@@ -3085,7 +3304,7 @@ export const routes = [
     "requires": "library",
     "lane": "default",
     "cost": "constant",
-    "bodyLimit": 50331648,
+    "bodyLimit": 805306368,
     "query": [
       "segment"
     ],
@@ -3116,7 +3335,7 @@ export const routes = [
     "requires": "library",
     "lane": "default",
     "cost": "constant",
-    "bodyLimit": 50331648,
+    "bodyLimit": 805306368,
     "query": [
       "segment"
     ],
@@ -3147,7 +3366,7 @@ export const routes = [
     "requires": "library",
     "lane": "default",
     "cost": "constant",
-    "bodyLimit": 50331648,
+    "bodyLimit": 805306368,
     "query": [
       "segment"
     ],
@@ -3178,7 +3397,7 @@ export const routes = [
     "requires": "library",
     "lane": "default",
     "cost": "constant",
-    "bodyLimit": 50331648,
+    "bodyLimit": 805306368,
     "query": [
       "segment"
     ],
@@ -3209,7 +3428,7 @@ export const routes = [
     "requires": "library",
     "lane": "default",
     "cost": "constant",
-    "bodyLimit": 50331648,
+    "bodyLimit": 805306368,
     "query": [
       "segment"
     ],
@@ -3503,6 +3722,27 @@ export const routes = [
     "status": 200
   },
   {
+    "id": "put_library_settings",
+    "method": "PUT",
+    "path": "/v1/admin/libraries/{id}/settings",
+    "summary": "Save a library's scanning and metadata settings",
+    "access": "owner",
+    "requires": "library",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "invalid_request",
+      "revision_mismatch",
+      "idempotency_key_reused",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
     "id": "put_metadata_settings",
     "method": "PUT",
     "path": "/v1/admin/metadata/settings",
@@ -3530,7 +3770,7 @@ export const routes = [
     "requires": "playback",
     "lane": "default",
     "cost": "constant",
-    "bodyLimit": 50331648,
+    "bodyLimit": 805306368,
     "query": [
       "segment"
     ],
@@ -3561,7 +3801,7 @@ export const routes = [
     "requires": "library",
     "lane": "default",
     "cost": "constant",
-    "bodyLimit": 50331648,
+    "bodyLimit": 805306368,
     "query": [
       "segment"
     ],
@@ -3940,7 +4180,7 @@ export const routes = [
     "access": "device",
     "requires": "playback",
     "lane": "default",
-    "cost": "constant",
+    "cost": "page_sized",
     "bodyLimit": 2048,
     "errors": [
       "invalid_request",
@@ -6345,6 +6585,28 @@ export const routes = [
       "internal"
     ],
     "status": 202
+  },
+  {
+    "id": "undo_container_personal_state",
+    "method": "POST",
+    "path": "/v1/containers/{kind}/{id}/personal-state/undo",
+    "summary": "Restore watched and resume state before a recent container mark",
+    "access": "device",
+    "requires": "playback",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 2048,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_found",
+      "idempotency_key_reused",
+      "revision_mismatch",
+      "rate_limited",
+      "internal",
+      "operation_expired"
+    ],
+    "status": 200
   },
   {
     "id": "update_queue",

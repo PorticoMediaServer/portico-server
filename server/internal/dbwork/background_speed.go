@@ -24,7 +24,7 @@ func WithBackgroundSpeed(ctx context.Context, speed string) context.Context {
 func BackgroundSpeed(ctx context.Context) string {
 	speed, _ := ctx.Value(backgroundSpeedKey{}).(string)
 	if !ValidBackgroundSpeed(speed) {
-		return SpeedNormal
+		return processBackgroundSpeed()
 	}
 	return speed
 }

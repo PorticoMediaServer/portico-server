@@ -162,7 +162,7 @@ func (r *Runtime) probe(ctx context.Context, input subtitles.RenderInput, ledger
 			if f.audioCodec == "" {
 				f.audioCodec = s.Codec
 			}
-			if len(f.audios) >= 32 {
+			if len(f.audios) >= 4096 {
 				return f, nil, subtitles.ErrCapacity
 			}
 			name := s.Tags["title"]

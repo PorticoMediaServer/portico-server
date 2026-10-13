@@ -2,10 +2,11 @@ package main
 
 import (
 	"context"
-	"log"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"portico.local/server/internal/backup"
 	"portico.local/server/internal/identity"
@@ -22,32 +23,38 @@ import (
 // database with its old sessions intact is the thing this exists to prevent.
 func signOutAfterRestore(ctx context.Context, ident *identity.Service, state string) error {
 	result, err := backup.ReadRestoreResult(state)
-	if err != nil || result == nil || result.Outcome != "restored" {
-		// No restore, one that was rolled back, or an unreadable record of an
-		// old one: the database in place is the one that was already running.
+	if err != nil {
+		return fmt.Errorf("read restore result: %w", err)
+	}
+	if result == nil || result.Outcome == "rolled_back" {
 		return nil
 	}
-	acted, err := ident.SignEveryoneOutAfterRestore(ctx, result.At)
+	if result.Outcome != "restored" {
+		return fmt.Errorf("unrecognized restore outcome: %s", result.Outcome)
+	}
+	if _, err = time.Parse(time.RFC3339Nano, result.At); err != nil {
+		return fmt.Errorf("invalid restore time: %w", err)
+	}
+	_, err = ident.SignEveryoneOutAfterRestore(ctx, result.At)
 	if err != nil {
 		return err
 	}
-	if !acted {
+	// A previous start may have signed the live database out before a copy
+	// scrub failed. Retry those copies without ending any newer sign-ins.
+	entries, err := os.ReadDir(filepath.Join(state, backup.BackupsDir))
+	if os.IsNotExist(err) {
 		return nil
 	}
-	entries, err := os.ReadDir(filepath.Join(state, backup.BackupsDir))
 	if err != nil {
-		return nil
+		return err
 	}
 	for _, entry := range entries {
 		if !entry.IsDir() || !strings.HasSuffix(entry.Name(), "-pre-restore") {
 			continue
 		}
-		copyPath := filepath.Join(state, backup.BackupsDir, entry.Name(), backup.DatabaseName)
-		if _, err = os.Stat(copyPath); err != nil {
-			continue
-		}
-		if err = identity.ScrubBackupCopy(ctx, copyPath); err != nil {
-			log.Printf("The copy of the previous database kept by the restore (%s) still holds its sign-ins: %v", entry.Name(), err)
+		folder := filepath.Join(state, backup.BackupsDir, entry.Name())
+		if err = backup.ScrubPreRestoreCopy(ctx, folder, identity.ScrubBackupCopy); err != nil {
+			return fmt.Errorf("remove sign-ins from pre-restore backup %s: %w", entry.Name(), err)
 		}
 	}
 	return nil

@@ -54,7 +54,7 @@ func (g *Gateway) resourceBytes(ctx context.Context, res resource, rng string) (
 		g.mu.Unlock()
 		return nil, ErrUnavailable
 	}
-	work, cancel := context.WithTimeout(g.ctx, 30*time.Second)
+	work, cancel := context.WithCancel(g.ctx)
 	defer cancel()
 	limit := int64(maxSegment)
 	if res.kind == "manifest" {

@@ -33,7 +33,7 @@ func TestSubtitleBinaryReaderDoesNotChangeMetadataLimit(t *testing.T) {
 	if _, e = client.ReadSmall(context.Background(), "metadata", path, 32<<20); e == nil {
 		t.Fatal("metadata accepted a subtitle binary bound")
 	}
-	if _, e = client.ReadSubtitleBinary(context.Background(), "subtitle", path, 33<<20); e == nil {
+	if _, e = client.ReadSubtitleBinary(context.Background(), "subtitle", path, 513<<20); e == nil {
 		t.Fatal("subtitle binary bound widened")
 	}
 	if _, e = client.ReadSubtitleBinary(context.Background(), "subtitle", filepath.Join(filepath.Dir(path), "movie.nfo"), 32<<20); e == nil {

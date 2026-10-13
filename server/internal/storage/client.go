@@ -11,11 +11,13 @@ import (
 	"os/exec"
 	"path/filepath"
 	"portico.local/server/internal/mediasource"
+	"portico.local/server/internal/progressio"
 	"strings"
 	"time"
 )
 
 type Snapshot struct {
+	ErrorCode string `json:"errorCode,omitempty"`
 	// Opaque adapter evidence; never a provider locator.
 	Revision       string `json:"revision,omitempty"`
 	ObjectID       string `json:"objectId,omitempty"`
@@ -42,6 +44,7 @@ type request struct {
 	// Argv is a media tool invocation built by mediaexec in the server, reading
 	// its input from descriptor 3 (inventory-command).
 	Argv                   []string              `json:"argv,omitempty"`
+	Watch                  *WatchRequest         `json:"watch,omitempty"`
 	Inventory              *InventoryRequest     `json:"inventory,omitempty"`
 	LyricsRoot             string                `json:"lyricsRoot,omitempty"`
 	LyricsLanguage         string                `json:"lyricsLanguage,omitempty"`
@@ -95,8 +98,8 @@ func (c *Client) runWithStem(ctx context.Context, key, op, path, stem string, vi
 	if duration <= 0 {
 		duration = 30 * time.Second
 	}
-	ctx, cancel := context.WithTimeout(ctx, duration)
-	defer cancel()
+	ctx, progress := progressio.NewDormant(ctx, duration)
+	defer progress.Close()
 	req := request{Stem: stem, Operation: op, Path: path, Identity: c.expectedIdentity, ManagedArtifact: c.managedRecording(path)}
 	if c.MountedRoot != nil {
 		req.MountedRoot = c.MountedRoot(path)
@@ -105,7 +108,8 @@ func (c *Client) runWithStem(ctx context.Context, key, op, path, stem string, vi
 	cmd := exec.Command(c.Binary, "--portico-storage-helper")
 	cmd.Stdin = bytes.NewReader(data)
 	return c.Supervisor.Run(ctx, filepath.Clean(key), cmd, func(reader io.Reader) error {
-		scanner := bufio.NewScanner(reader)
+		progress.Ping()
+		scanner := bufio.NewScanner(progress.Reader(reader))
 		scanner.Buffer(make([]byte, 4096), 64<<10)
 		for scanner.Scan() {
 			var value Snapshot
@@ -167,6 +171,11 @@ func Helper(in io.Reader, out io.Writer) (result error) {
 	}
 	encoder := json.NewEncoder(out)
 	switch r.Operation {
+	case "inventory-watch":
+		if r.Watch == nil {
+			return errors.New("missing watcher request")
+		}
+		return inventoryWatchHelper(*r.Watch, out)
 	case "inventory-page":
 		if r.Inventory == nil {
 			return errors.New("missing inventory request")
@@ -178,7 +187,7 @@ func Helper(in io.Reader, out io.Writer) (result error) {
 		}
 		v, e := inspectInventoryObject(*r.Inventory)
 		if e != nil {
-			return e
+			return inventoryFailure(e, out)
 		}
 		return encoder.Encode(v)
 	case "inventory-directory":
@@ -187,7 +196,7 @@ func Helper(in io.Reader, out io.Writer) (result error) {
 		}
 		v, e := inspectInventoryDirectory(*r.Inventory)
 		if e != nil {
-			return e
+			return inventoryFailure(e, out)
 		}
 		return encoder.Encode(v)
 	case "inventory-audio-cover":
@@ -241,7 +250,7 @@ func Helper(in io.Reader, out io.Writer) (result error) {
 	case "blob", "subtitle-blob":
 		maximum := int64(8 << 20)
 		if r.Operation == "subtitle-blob" && binarySubtitlePath(r.Path) {
-			maximum = 32 << 20
+			maximum = 512 << 20
 		}
 		if r.Limit <= 0 || r.Limit > maximum {
 			return errors.New("invalid blob limit")
@@ -400,7 +409,7 @@ func (c *Client) ReadSmall(ctx context.Context, key, path string, limit int64) (
 // Metadata readers retain their smaller limits and the same rooted custody.
 func (c *Client) ReadSubtitleBinary(ctx context.Context, key, path string, limit int64) ([]byte, error) {
 	ext := strings.ToLower(filepath.Ext(path))
-	if (ext != ".sup" && ext != ".sub") || limit <= 0 || limit > 32<<20 {
+	if (ext != ".sup" && ext != ".sub") || limit <= 0 || limit > 512<<20 {
 		return nil, errors.New("invalid subtitle binary read")
 	}
 	return c.readBlob(ctx, key, path, limit, true)
@@ -408,7 +417,7 @@ func (c *Client) ReadSubtitleBinary(ctx context.Context, key, path string, limit
 func (c *Client) readBlob(ctx context.Context, key, path string, limit int64, subtitle bool) ([]byte, error) {
 	if c.IsRemote(path) {
 		if subtitle {
-			return c.readRemoteBlob(ctx, path, limit, 32<<20)
+			return c.readRemoteBlob(ctx, path, limit, 512<<20)
 		}
 		return c.readRemoteSmall(ctx, path, limit)
 	}
@@ -420,8 +429,8 @@ func (c *Client) readBlob(ctx context.Context, key, path string, limit int64, su
 			return nil, err
 		}
 	}
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
+	ctx, progress := progressio.NewDormant(ctx, 30*time.Second)
+	defer progress.Close()
 	req := request{Operation: "blob", Path: path, Limit: limit, ManagedArtifact: c.managedRecording(path)}
 	if subtitle {
 		req.Operation = "subtitle-blob"
@@ -446,7 +455,8 @@ func (c *Client) readBlob(ctx context.Context, key, path string, limit int64, su
 	var raw []byte
 	err = c.Supervisor.Run(ctx, key, cmd, func(r io.Reader) error {
 		var err error
-		raw, err = io.ReadAll(io.LimitReader(r, limit+1))
+		progress.Ping()
+		raw, err = io.ReadAll(io.LimitReader(progress.Reader(r), limit+1))
 		if int64(len(raw)) > limit {
 			return errors.New("local metadata exceeds limit")
 		}

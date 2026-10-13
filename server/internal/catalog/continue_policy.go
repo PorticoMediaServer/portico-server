@@ -89,7 +89,7 @@ func firstApprovedCreditsTx(tx *sql.Tx, item string) (sql.NullFloat64, error) {
 
 func (s *Service) continueWatchingPolicy(libraries []string, now time.Time) (string, string, int, error) {
 	cutoffs, premieres := map[string]string{}, map[string]bool{}
-	maximum := 200
+	maximum := 0
 	if len(libraries) == 0 {
 		return "{}", "{}", 40, nil
 	}
@@ -108,12 +108,15 @@ func (s *Service) continueWatchingPolicy(libraries []string, now time.Time) (str
 		settings := readContinueWatchingSettings(body)
 		cutoffs[library] = now.AddDate(0, 0, -7*settings.Weeks).UTC().Format("2006-01-02T15:04:05.000Z")
 		premieres[library] = *settings.IncludeSeasonPremieres
-		if settings.MaximumItems < maximum {
+		if settings.MaximumItems > maximum {
 			maximum = settings.MaximumItems
 		}
 	}
 	if err = rows.Err(); err != nil {
 		return "", "", 0, err
+	}
+	if maximum == 0 {
+		maximum = 40
 	}
 	cutoffJSON, _ := json.Marshal(cutoffs)
 	premiereJSON, _ := json.Marshal(premieres)

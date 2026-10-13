@@ -50,7 +50,7 @@ func (r *Runtime) AcquireSubtitleSidecar(ctx context.Context, item, source, path
 	}
 	limit := int64(subtitles.MaxInputBytes)
 	if format == "sup" || format == "pgs" {
-		limit = subtitles.MaxBinaryBytes
+		limit = int64(subtitles.BinaryLimitBytes())
 	}
 	data, e := read(path, size, modified, limit)
 	if e != nil {
@@ -58,7 +58,7 @@ func (r *Runtime) AcquireSubtitleSidecar(ctx context.Context, item, source, path
 	}
 	var companion []byte
 	if format == "idx" || format == "vobsub" {
-		companion, e = read(strings.TrimSuffix(path, filepath.Ext(path))+".sub", -1, 0, subtitles.MaxBinaryBytes)
+		companion, e = read(strings.TrimSuffix(path, filepath.Ext(path))+".sub", -1, 0, int64(subtitles.BinaryLimitBytes()))
 		if e != nil {
 			return nil, nil, true, e
 		}

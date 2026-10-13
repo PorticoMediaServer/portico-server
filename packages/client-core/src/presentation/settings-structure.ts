@@ -491,6 +491,12 @@ const serverPages: readonly AuthoredPage[] = [
   ]},
   {id: 'storage', title: 'settings.server.storage', icon: 'storage', sections: [
     panel('disk', 'server.diskUsage', 'settings.server.diskUsage'),
+    {id: 'limits', rows: [
+      setting('runtime', 'analysisStorageGiB', 'settings.server.analysisStorage', {type: 'number', min: 1, max: 16384}),
+      setting('runtime', 'analysisStageStorageMiB', 'settings.server.analysisStageStorage', {type: 'number', min: 1, max: 4096}),
+      setting('runtime', 'subtitleTrackLimit', 'settings.server.subtitleTracks', {type: 'number', min: 32, max: 4096}),
+      setting('runtime', 'subtitleFileLimitMiB', 'settings.server.subtitleFileSize', {type: 'number', min: 32, max: 512}),
+    ]},
     // Retention in one place: it was split between Maintenance and Logs & diagnostics.
     {id: 'retention', title: 'settings.server.retention', description: 'settings.server.retentionLede', rows: [
       setting('runtime', 'diagnosticDays', 'web.logs.includeServer', {type: 'number', min: 1, max: 30, unit: 'settings.unit.days'}, {help: 'web.logs.serverRecordsHelp'}),
@@ -513,7 +519,6 @@ const serverPages: readonly AuthoredPage[] = [
     panel('jobs', 'server.jobs', 'settings.server.jobs'),
     panel('windows', 'server.windows', 'settings.server.windows', {description: 'settings.server.windowsLede'}),
     {id: 'priority', rows: [
-      setting('maintenance', 'backgroundTaskPriority', 'web.maintenance.backgroundPriority', {type: 'choice', choices: [{value: 'lower', label: 'web.maintenance.backgroundLower'}, {value: 'normal', label: 'web.maintenance.backgroundNormal'}]}, {help: 'web.maintenance.backgroundPriorityHelp'}),
       // One named choice in place of rates and worker counts: how hard matching and artwork work.
       setting('maintenance', 'backgroundSpeed', 'metadata.settings.backgroundSpeed', {type: 'choice', choices: [{value: 'gentle', label: 'metadata.settings.gentle'}, {value: 'normal', label: 'metadata.settings.normal'}, {value: 'fast', label: 'metadata.settings.fast'}]}, {help: 'settings.server.backgroundSpeedHelp'}),
     ]},

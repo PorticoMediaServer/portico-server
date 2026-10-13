@@ -23,7 +23,7 @@ const recCandidateLimit = 960
 const recMinimumShelf = 3
 const recMinimumTrend = 3
 const communityWindow = 7 * 24 * time.Hour
-const communityViewers = 2
+const communityViewers = 3
 
 // Normalize descriptive text only. Provider and local entity identifiers are
 // never normalized or compared across namespaces.
@@ -190,7 +190,7 @@ func (s *Service) recommendationCandidates(r HomeRequest, row, seed string) ([]r
 		if err != nil {
 			return nil, err
 		}
-		if len(eligible) < 2 {
+		if len(eligible) < communityViewers {
 			return nil, nil
 		}
 		extra = ` , community AS (SELECT m.work,count(DISTINCT h.profile_id) AS viewers FROM members m JOIN personal_history h ON h.item_id=m.id
@@ -201,7 +201,7 @@ func (s *Service) recommendationCandidates(r HomeRequest, row, seed string) ([]r
    OR pr.maximum_age>=0 AND EXISTS(SELECT 1 FROM catalog_item_attribute_edges eae JOIN catalog_attribute_terms at ON at.id=eae.term_id JOIN catalog_attribute_fields af ON af.id=at.field_id LEFT JOIN content_rating_ages ra ON ra.value_key=at.value_key WHERE eae.item_id=m.id AND af.field='contentRating' AND (ra.minimum_age>pr.maximum_age OR ra.minimum_age IS NULL))
    OR pr.allow_unrated=0 AND NOT EXISTS(SELECT 1 FROM catalog_item_attribute_edges eae JOIN catalog_attribute_terms at ON at.id=eae.term_id JOIN catalog_attribute_fields af ON af.id=at.field_id JOIN content_rating_ages ra ON ra.value_key=at.value_key WHERE eae.item_id=m.id AND af.field='contentRating' AND ra.minimum_age>=0)))
   AND julianday(h.updated_at)>=julianday(?) AND julianday(h.updated_at)<=julianday(?)
-  AND (h.completed=1 OR h.position>=30000 AND h.position>=(SELECT max(a.duration)*50 FROM catalog_asset_links link JOIN catalog_assets a ON a.id=link.asset_id WHERE link.entity_id=m.id AND a.available=1 AND a.duration>0)) GROUP BY m.work HAVING count(DISTINCT h.profile_id)>=2)`
+  AND (h.completed=1 OR h.position>=30000 AND h.position>=(SELECT max(a.duration)*50 FROM catalog_asset_links link JOIN catalog_assets a ON a.id=link.asset_id WHERE link.entity_id=m.id AND a.available=1 AND a.duration>0)) GROUP BY m.work HAVING count(DISTINCT h.profile_id)>=` + strconv.Itoa(communityViewers) + `)`
 		actors := []map[string]string{}
 		for _, key := range eligible {
 			v, _ := viewerFromPersonalKey(key)
@@ -258,7 +258,7 @@ func validTrendSQL() string {
 func diversifyRecommendations(in []recCandidate, now time.Time) []recCandidate {
 	out := make([]recCandidate, 0, len(in))
 	used := map[string]int{}
-	day := now.UTC().Format("2006-01-02")
+	day := now.In(time.Local).Format("2006-01-02")
 	tie := func(id string) uint64 { h := fnv.New64a(); h.Write([]byte(day + ":" + id)); return h.Sum64() }
 	// Only the first 60 entries need the quadratic diversity pass. Remaining
 	// candidates retain score order for stable bounded row paging.
@@ -350,7 +350,7 @@ func (s *Service) homeEngineSource(r HomeRequest, spec homeRowSpec) (homeSource,
 	if row == "recommended" {
 		// The ranking is defined per day (rotation): a cursor from yesterday's
 		// order never continues into today's, even where the order agrees.
-		src.fingerprint += ":" + s.recommendationNow(r.Now).UTC().Format("2006-01-02")
+		src.fingerprint += ":" + s.recommendationNow(r.Now).In(time.Local).Format("2006-01-02")
 	}
 	// A modelled list may predate a restriction change: re-apply the viewer's
 	// current restriction to its entities on every read. Candidates are public

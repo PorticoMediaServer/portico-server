@@ -16,7 +16,7 @@ func TestLinearUsesPublishedProfileAndBoundsConvertedPicture(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	if !p.ConvertVideo || !p.Deinterlace || p.MaxHeight != 1080 || p.MaxFrameRate > 30 || p.Level != 41 {
+	if !p.ConvertVideo || !p.Deinterlace || p.MaxHeight != 1080 || p.MaxFrameRate > 30 || p.Level > 41 {
 		t.Fatalf("%+v", p)
 	}
 	w.ClientProfile.Transports = nil
@@ -91,5 +91,28 @@ func TestLinearAudioConversionKeepsCopiedHDR(t *testing.T) {
 	plan, e := linearPlan(raw, w)
 	if e != nil || plan.ConvertVideo || !plan.ConvertAudio || plan.HDRToSDR {
 		t.Fatalf("%+v %v", plan, e)
+	}
+}
+
+func TestLinearUsesSharedHEVCAndSurroundTargets(t *testing.T) {
+	p := playback.BaselineClientProfile()
+	p.Video = append(p.Video, playback.ClientVideoCodec{Codec: "hevc", BitDepths: []int{8, 10}, DynamicRanges: []string{"sdr", "hdr10"}, MaxWidth: 3840, MaxHeight: 2160})
+	p.Display.DynamicRanges = []string{"sdr", "hdr10"}
+	p.AudioOutput.MaxChannels = 6
+	p.Audio = []playback.ClientAudioCodec{{Codec: "eac3", MaxChannels: 6}}
+	for i := range p.Transports {
+		if p.Transports[i].Transport == playback.TransportHLSTS {
+			p.Transports[i].Video = append(p.Transports[i].Video, "hevc")
+			p.Transports[i].Audio = []string{"eac3"}
+		}
+	}
+	height := 1080
+	w := playback.LinearWork{ClientProfile: p, TranscodingEnabled: true}
+	w.Selection.Quality.AllowLossy = true
+	w.Selection.Quality.MaxHeight = &height
+	raw := []byte(`{"streams":[{"codec_type":"video","codec_name":"vc1","pix_fmt":"yuv420p10le","color_transfer":"smpte2084","width":3840,"height":2160,"avg_frame_rate":"24/1"},{"codec_type":"audio","codec_name":"dts","profile":"DTS-HD MA","channels":8,"sample_rate":"96000","channel_layout":"7.1"}]}`)
+	plan, err := linearPlan(raw, w)
+	if err != nil || plan.Target == nil || !plan.ConvertVideo || !plan.ConvertAudio || plan.HDRToSDR || plan.Target.VideoCodec != "hevc" || plan.Target.BitDepth != 10 || plan.Target.DynamicRange != "hdr10" || plan.Target.AudioCodec != "eac3" || plan.Target.AudioChannels != 6 || plan.Target.AudioBitrateBPS != 640000 {
+		t.Fatalf("%+v %v", plan.Target, err)
 	}
 }

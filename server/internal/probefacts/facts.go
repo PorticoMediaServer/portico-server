@@ -8,7 +8,7 @@ import "portico.local/server/internal/producerinput"
 const (
 	SchemaVersion   = 1
 	MaxOutputBytes  = 1 << 20
-	MaxStreams      = 128
+	MaxStreams      = 8192
 	MaxFormatNames  = 8
 	MaxNameBytes    = 64
 	MaxVersionBytes = 4096

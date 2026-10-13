@@ -2,6 +2,10 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"database/sql"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -51,9 +55,10 @@ func TestStartAfterARestoreSignsEveryoneOutAndScrubsTheSetAsideCopy(t *testing.T
 	if _, err = db.Exec(`VACUUM INTO ?`, filepath.Join(setAside, backup.DatabaseName)); err != nil {
 		t.Fatal(err)
 	}
+	writePreRestoreManifest(t, setAside)
 	liveIn := func(path string) int {
 		t.Helper()
-		copyDB, err := dbwork.OpenHandle(path, dbwork.DefaultPolicy())
+		copyDB, err := sql.Open("sqlite", "file:"+filepath.ToSlash(path)+"?mode=ro")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -95,6 +100,15 @@ func TestStartAfterARestoreSignsEveryoneOutAndScrubsTheSetAsideCopy(t *testing.T
 	if n := liveIn(filepath.Join(setAside, backup.DatabaseName)); n != 0 {
 		t.Fatalf("the copy of the previous database still holds %d live sessions", n)
 	}
+	svc := backup.New(state, db, ident.ID(), "test", persistence.SchemaVersion())
+	for _, source := range []backup.Source{{BackupID: filepath.Base(setAside)}, {Path: setAside}} {
+		if _, err = svc.Stage(ctx, source); err != nil {
+			t.Fatalf("scrubbed pre-restore backup cannot be staged (%+v): %v", source, err)
+		}
+		if err = os.RemoveAll(filepath.Join(state, backup.RestoreStagedDir)); err != nil {
+			t.Fatal(err)
+		}
+	}
 	// The next ordinary start leaves a new sign-in alone.
 	again, err := ident.Issue("account", "profile", "local", "owner", 1)
 	if err != nil {
@@ -105,5 +119,157 @@ func TestStartAfterARestoreSignsEveryoneOutAndScrubsTheSetAsideCopy(t *testing.T
 	}
 	if _, err = ident.Authenticate(again.AccessToken); err != nil {
 		t.Fatalf("a later start signed out someone who signed in after the restore: %v", err)
+	}
+}
+
+func TestUnreadableRestoreResultStopsStartup(t *testing.T) {
+	state := t.TempDir()
+	for _, body := range []string{"broken", `{}`, `{"outcome":"restored","at":""}`, `{"outcome":"unexpected","at":"2026-10-13T10:05:00Z"}`} {
+		if err := os.WriteFile(filepath.Join(state, backup.RestoreResultFile), []byte(body), 0600); err != nil {
+			t.Fatal(err)
+		}
+		if err := signOutAfterRestore(context.Background(), nil, state); err == nil {
+			t.Fatalf("invalid restore result %q was treated as no restore", body)
+		}
+	}
+}
+
+func TestRestoreScrubbingRetriesAFailedSetAsideCopy(t *testing.T) {
+	ctx := context.Background()
+	state := t.TempDir()
+	db, err := persistence.Open(filepath.Join(state, "server.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	ident, err := identity.New(db, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.Exec(`INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES('account','owner',X'00','profile',1)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = ident.Issue("account", "profile", "local", "owner", 1); err != nil {
+		t.Fatal(err)
+	}
+	intact := filepath.Join(state, "intact.db")
+	if _, err = db.Exec(`VACUUM INTO ?`, intact); err != nil {
+		t.Fatal(err)
+	}
+	folder := filepath.Join(state, backup.BackupsDir, "2026-10-13T100000Z-pre-restore")
+	if err = os.MkdirAll(folder, 0700); err != nil {
+		t.Fatal(err)
+	}
+	copyPath := filepath.Join(folder, backup.DatabaseName)
+	if err = os.WriteFile(copyPath, []byte("broken database"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	writeRestoreResult(t, state, "restored", "2026-10-13T10:05:00Z")
+	if err = signOutAfterRestore(ctx, ident, state); err == nil {
+		t.Error("a failed backup scrub did not stop startup")
+	}
+	raw, err := os.ReadFile(intact)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(copyPath, raw, 0600); err != nil {
+		t.Fatal(err)
+	}
+	writePreRestoreManifest(t, folder)
+	if err = signOutAfterRestore(ctx, ident, state); err != nil {
+		t.Fatal(err)
+	}
+	copyDB, err := dbwork.OpenHandle(copyPath, dbwork.DefaultPolicy())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer copyDB.Close()
+	var live int
+	if err = copyDB.QueryRow(`SELECT count(*) FROM authorization_session_families WHERE revoked=0`).Scan(&live); err != nil || live != 0 {
+		t.Fatalf("failed scrub was not retried: %d live sessions, %v", live, err)
+	}
+}
+
+func writePreRestoreManifest(t *testing.T, folder string) {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join(folder, backup.DatabaseName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	digest := sha256.Sum256(raw)
+	manifest, err := json.Marshal(backup.Manifest{Format: backup.Format, Version: backup.Version, SchemaVersion: persistence.SchemaVersion(), Kind: backup.KindPreRestore, CreatedAt: "2026-10-13T10:00:00Z", Files: []backup.FileEntry{{Name: backup.DatabaseName, Bytes: int64(len(raw)), SHA256: hex.EncodeToString(digest[:])}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(filepath.Join(folder, backup.ManifestName), manifest, 0600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRealRestoreKeepsItsScrubbedRollbackBackupRestorable(t *testing.T) {
+	ctx := context.Background()
+	state := t.TempDir()
+	db, err := persistence.Open(filepath.Join(state, "server.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { db.Close() }()
+	ident, err := identity.New(db, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.Exec(`INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES('account','owner',X'00','profile',1)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = ident.Issue("account", "profile", "local", "owner", 1); err != nil {
+		t.Fatal(err)
+	}
+	svc := backup.New(state, db, ident.ID(), "test", persistence.SchemaVersion())
+	id, err := svc.Create(ctx, backup.KindManual)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = svc.Stage(ctx, backup.Source{BackupID: id}); err != nil {
+		t.Fatal(err)
+	}
+	if err = db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err = backup.ApplyStaged(ctx, state, nil); err != nil {
+		t.Fatal(err)
+	}
+	db, err = persistence.Open(filepath.Join(state, "server.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ident, err = identity.New(db, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = signOutAfterRestore(ctx, ident, state); err != nil {
+		t.Fatal(err)
+	}
+	svc = backup.New(state, db, ident.ID(), "test", persistence.SchemaVersion())
+	entries, err := svc.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, entry := range entries {
+		if entry.Kind != backup.KindPreRestore {
+			continue
+		}
+		found = true
+		for _, source := range []backup.Source{{BackupID: entry.ID}, {Path: filepath.Join(state, backup.BackupsDir, entry.ID)}} {
+			if _, err = svc.Stage(ctx, source); err != nil {
+				t.Fatalf("real scrubbed rollback backup cannot stage: %v", err)
+			}
+			if err = os.RemoveAll(filepath.Join(state, backup.RestoreStagedDir)); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("no automatic rollback backup")
 	}
 }

@@ -72,6 +72,9 @@ func (s *Service) PorticoSignIn(ctx context.Context, who PorticoIdentity) (Direc
 // PorticoSignInTx is PorticoSignIn inside the caller's transaction, so an
 // invitation acceptance creates the account and signs it in atomically.
 func (s *Service) PorticoSignInTx(ctx context.Context, tx *sql.Tx, who PorticoIdentity) (DirectSignIn, error) {
+	if err := admitPorticoSignerTx(ctx, tx, who.SignerKeyID); err != nil {
+		return DirectSignIn{}, err
+	}
 	var account string
 	e := tx.QueryRowContext(ctx, `SELECT l.account_id FROM account_portico_links l JOIN direct_memberships m ON m.account_id=l.account_id WHERE l.hosted_account_id=? AND m.disabled=0`, who.AccountID).Scan(&account)
 	if errors.Is(e, sql.ErrNoRows) {
@@ -123,7 +126,27 @@ func markPorticoAdmissionTx(ctx context.Context, tx *sql.Tx, out DirectSignIn, s
 	return recordPorticoAdmissionTx(ctx, tx, out.Session.SessionFamilyID, signer)
 }
 
+// admitPorticoSignerTx fences both initial admission and every descendant against
+// revocations learned since its assertion, challenge or pairing was created.
+// It runs in the issuing transaction so learning and admission cannot race.
+func admitPorticoSignerTx(ctx context.Context, tx *sql.Tx, signer string) error {
+	if signer == "" {
+		return nil
+	}
+	var revoked bool
+	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM hosted_signing_revocations WHERE key_id=?)`, signer).Scan(&revoked); err != nil {
+		return err
+	}
+	if revoked {
+		return ErrUnauthorized
+	}
+	return nil
+}
+
 func recordPorticoAdmissionTx(ctx context.Context, tx *sql.Tx, family, signer string) error {
+	if err := admitPorticoSignerTx(ctx, tx, signer); err != nil {
+		return err
+	}
 	_, e := tx.ExecContext(ctx, `INSERT INTO portico_admitted_families(family_id,signer_key_id) VALUES(?,?) ON CONFLICT(family_id) DO UPDATE SET signer_key_id=excluded.signer_key_id WHERE excluded.signer_key_id<>''`, family, signer)
 	return e
 }
@@ -136,9 +159,13 @@ func inheritPorticoAdmissionTx(ctx context.Context, tx *sql.Tx, from, to string)
 	if from == "" || to == "" {
 		return nil
 	}
-	admitted, signer := porticoAdmissionTx(ctx, tx, from)
-	if !admitted {
+	var signer string
+	err := tx.QueryRowContext(ctx, `SELECT signer_key_id FROM portico_admitted_families WHERE family_id=?`, from).Scan(&signer)
+	if errors.Is(err, sql.ErrNoRows) {
 		return nil
+	}
+	if err != nil {
+		return err
 	}
 	return recordPorticoAdmissionTx(ctx, tx, to, signer)
 }

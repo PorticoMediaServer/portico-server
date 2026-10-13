@@ -6,7 +6,7 @@
   "status": 200,
   "response": {
     "server": {
-      "id": "88amE6UqLFrMUlN4wypfJ3yVQh2gX3ld7q6bSnrenrc",
+      "id": "4lwag9VqLAm-YtpPKLqyd0sqO7SsJnRNPOH2sRK0cDw",
       "name": "Portico",
       "api": {
         "major": 1,
@@ -24,11 +24,20 @@
         "dvr": "unavailable",
         "feedback": "enabled",
         "live_tv": "unavailable",
+        "playback_v1": "enabled",
+        "playback_v1_kinds": "movie,episode,video,audiobook,audiobook_file,book,song,track",
+        "queueTransitions": "enabled",
+        "subtitle_burn_in": "enabled",
+        "transcoding": "enabled",
         "watch_together": "enabled"
       },
       "limits": {
-        "longPollSecondsMax": 55,
+        "bulkJobsActiveMax": 32,
+        "downloadBatchMax": 100,
+        "longPollSecondsMax": 25,
         "pageSizeMax": 100,
+        "playlistWriteMax": 200,
+        "queueKeysMax": 10000000,
         "selectorIdsMax": 500
       }
     },
@@ -36,7 +45,7 @@
       "viewer": {
         "accountId": "account",
         "profileId": "profile",
-        "serverId": "88amE6UqLFrMUlN4wypfJ3yVQh2gX3ld7q6bSnrenrc",
+        "serverId": "4lwag9VqLAm-YtpPKLqyd0sqO7SsJnRNPOH2sRK0cDw",
         "authority": "local",
         "role": "owner"
       }
@@ -50,7 +59,7 @@
       },
       "deviceClass": "web",
       "registry": {
-        "revision": "p39.CD32.B4",
+        "revision": "p40.Q2.B5",
         "fields": [
           {
             "consumer": "client.playback.controls",
@@ -118,7 +127,7 @@
             "labelKey": "preferences.playback.upNextCountdownSeconds"
           },
           {
-            "consumer": "client.playback.continuation",
+            "consumer": "server.playback.queue_completion",
             "key": "playback.passoutProtection",
             "type": "boolean",
             "default": true,
@@ -129,7 +138,7 @@
             "labelKey": "preferences.playback.passoutProtection"
           },
           {
-            "consumer": "client.playback.continuation",
+            "consumer": "server.playback.queue_completion",
             "step": 1,
             "key": "playback.passoutAfterEpisodes",
             "type": "integer",
@@ -242,7 +251,9 @@
               1.25,
               1.5,
               1.75,
-              2
+              2,
+              2.5,
+              3
             ],
             "scopes": [
               "profile-server"
@@ -432,571 +443,45 @@
           },
           {
             "consumer": "server.playback.delivery_policy",
-            "key": "quality.local.mode",
+            "key": "quality.home",
             "type": "string",
             "default": "original",
             "allowedValues": [
-              "off",
-              "automatic",
               "original",
-              "high",
-              "standard",
-              "data-saver"
+              "automatic",
+              "2160p",
+              "1440p",
+              "1080p",
+              "720p",
+              "480p",
+              "360p"
             ],
             "scopes": [
               "profile-device-class"
             ],
             "group": "quality",
-            "labelKey": "preferences.quality.local.mode"
+            "labelKey": "preferences.quality.home"
           },
           {
             "consumer": "server.playback.delivery_policy",
-            "step": 1,
-            "key": "quality.local.maxVideoBitrateMbps",
-            "type": "integer",
-            "default": 0,
-            "allowedValues": [
-              {
-                "value": 0,
-                "label": "Original"
-              },
-              {
-                "value": 40,
-                "label": "40 Mbps",
-                "maxVideoHeight": 2160
-              },
-              {
-                "value": 20,
-                "label": "20 Mbps",
-                "maxVideoHeight": 2160
-              },
-              {
-                "value": 12,
-                "label": "12 Mbps",
-                "maxVideoHeight": 1080
-              },
-              {
-                "value": 8,
-                "label": "8 Mbps",
-                "maxVideoHeight": 1080
-              },
-              {
-                "value": 4,
-                "label": "4 Mbps",
-                "maxVideoHeight": 720
-              },
-              {
-                "value": 2,
-                "label": "2 Mbps",
-                "maxVideoHeight": 720
-              },
-              {
-                "value": 1,
-                "label": "1 Mbps",
-                "maxVideoHeight": 480
-              }
-            ],
-            "scopes": [
-              "profile-device-class"
-            ],
-            "group": "quality",
-            "labelKey": "preferences.quality.local.maxVideoBitrateMbps"
-          },
-          {
-            "consumer": "server.playback.delivery_policy",
-            "step": 1,
-            "key": "quality.local.maxAudioBitrateKbps",
-            "type": "integer",
-            "default": 0,
-            "allowedValues": [
-              {
-                "value": 0,
-                "label": "Original"
-              },
-              {
-                "value": 320,
-                "label": "320 kbps"
-              },
-              {
-                "value": 256,
-                "label": "256 kbps"
-              },
-              {
-                "value": 192,
-                "label": "192 kbps"
-              },
-              {
-                "value": 128,
-                "label": "128 kbps"
-              },
-              {
-                "value": 96,
-                "label": "96 kbps"
-              }
-            ],
-            "scopes": [
-              "profile-device-class"
-            ],
-            "group": "quality",
-            "labelKey": "preferences.quality.local.maxAudioBitrateKbps"
-          },
-          {
-            "consumer": "server.playback.delivery_policy",
-            "step": 1,
-            "key": "quality.local.maxVideoHeight",
-            "type": "integer",
-            "default": 4320,
-            "allowedValues": [
-              360,
-              480,
-              720,
-              1080,
-              1440,
-              2160,
-              4320
-            ],
-            "scopes": [
-              "profile-device-class"
-            ],
-            "group": "quality",
-            "labelKey": "preferences.quality.local.maxVideoHeight"
-          },
-          {
-            "consumer": "server.playback.delivery_policy",
-            "key": "quality.local.allowHDR",
-            "type": "boolean",
-            "default": true,
-            "scopes": [
-              "profile-device-class"
-            ],
-            "group": "quality",
-            "labelKey": "preferences.quality.local.allowHDR"
-          },
-          {
-            "consumer": "server.playback.delivery_policy",
-            "key": "quality.wifi.mode",
+            "key": "quality.remote",
             "type": "string",
-            "default": "automatic",
+            "default": "original",
             "allowedValues": [
-              "off",
-              "automatic",
               "original",
-              "high",
-              "standard",
-              "data-saver"
-            ],
-            "scopes": [
-              "profile-device-class"
-            ],
-            "group": "quality",
-            "labelKey": "preferences.quality.wifi.mode"
-          },
-          {
-            "consumer": "server.playback.delivery_policy",
-            "step": 1,
-            "key": "quality.wifi.maxVideoBitrateMbps",
-            "type": "integer",
-            "default": 0,
-            "allowedValues": [
-              {
-                "value": 0,
-                "label": "Original"
-              },
-              {
-                "value": 40,
-                "label": "40 Mbps",
-                "maxVideoHeight": 2160
-              },
-              {
-                "value": 20,
-                "label": "20 Mbps",
-                "maxVideoHeight": 2160
-              },
-              {
-                "value": 12,
-                "label": "12 Mbps",
-                "maxVideoHeight": 1080
-              },
-              {
-                "value": 8,
-                "label": "8 Mbps",
-                "maxVideoHeight": 1080
-              },
-              {
-                "value": 4,
-                "label": "4 Mbps",
-                "maxVideoHeight": 720
-              },
-              {
-                "value": 2,
-                "label": "2 Mbps",
-                "maxVideoHeight": 720
-              },
-              {
-                "value": 1,
-                "label": "1 Mbps",
-                "maxVideoHeight": 480
-              }
-            ],
-            "scopes": [
-              "profile-device-class"
-            ],
-            "group": "quality",
-            "labelKey": "preferences.quality.wifi.maxVideoBitrateMbps"
-          },
-          {
-            "consumer": "server.playback.delivery_policy",
-            "step": 1,
-            "key": "quality.wifi.maxAudioBitrateKbps",
-            "type": "integer",
-            "default": 0,
-            "allowedValues": [
-              {
-                "value": 0,
-                "label": "Original"
-              },
-              {
-                "value": 320,
-                "label": "320 kbps"
-              },
-              {
-                "value": 256,
-                "label": "256 kbps"
-              },
-              {
-                "value": 192,
-                "label": "192 kbps"
-              },
-              {
-                "value": 128,
-                "label": "128 kbps"
-              },
-              {
-                "value": 96,
-                "label": "96 kbps"
-              }
-            ],
-            "scopes": [
-              "profile-device-class"
-            ],
-            "group": "quality",
-            "labelKey": "preferences.quality.wifi.maxAudioBitrateKbps"
-          },
-          {
-            "consumer": "server.playback.delivery_policy",
-            "step": 1,
-            "key": "quality.wifi.maxVideoHeight",
-            "type": "integer",
-            "default": 2160,
-            "allowedValues": [
-              360,
-              480,
-              720,
-              1080,
-              1440,
-              2160,
-              4320
-            ],
-            "scopes": [
-              "profile-device-class"
-            ],
-            "group": "quality",
-            "labelKey": "preferences.quality.wifi.maxVideoHeight"
-          },
-          {
-            "consumer": "server.playback.delivery_policy",
-            "key": "quality.wifi.allowHDR",
-            "type": "boolean",
-            "default": true,
-            "scopes": [
-              "profile-device-class"
-            ],
-            "group": "quality",
-            "labelKey": "preferences.quality.wifi.allowHDR"
-          },
-          {
-            "consumer": "server.playback.delivery_policy",
-            "key": "quality.cellular.mode",
-            "type": "string",
-            "default": "standard",
-            "allowedValues": [
-              "off",
               "automatic",
-              "original",
-              "high",
-              "standard",
-              "data-saver"
+              "2160p",
+              "1440p",
+              "1080p",
+              "720p",
+              "480p",
+              "360p"
             ],
             "scopes": [
               "profile-device-class"
             ],
             "group": "quality",
-            "labelKey": "preferences.quality.cellular.mode"
-          },
-          {
-            "consumer": "server.playback.delivery_policy",
-            "step": 1,
-            "key": "quality.cellular.maxVideoBitrateMbps",
-            "type": "integer",
-            "default": 8,
-            "allowedValues": [
-              {
-                "value": 0,
-                "label": "Original"
-              },
-              {
-                "value": 40,
-                "label": "40 Mbps",
-                "maxVideoHeight": 2160
-              },
-              {
-                "value": 20,
-                "label": "20 Mbps",
-                "maxVideoHeight": 2160
-              },
-              {
-                "value": 12,
-                "label": "12 Mbps",
-                "maxVideoHeight": 1080
-              },
-              {
-                "value": 8,
-                "label": "8 Mbps",
-                "maxVideoHeight": 1080
-              },
-              {
-                "value": 4,
-                "label": "4 Mbps",
-                "maxVideoHeight": 720
-              },
-              {
-                "value": 2,
-                "label": "2 Mbps",
-                "maxVideoHeight": 720
-              },
-              {
-                "value": 1,
-                "label": "1 Mbps",
-                "maxVideoHeight": 480
-              }
-            ],
-            "scopes": [
-              "profile-device-class"
-            ],
-            "group": "quality",
-            "labelKey": "preferences.quality.cellular.maxVideoBitrateMbps"
-          },
-          {
-            "consumer": "server.playback.delivery_policy",
-            "step": 1,
-            "key": "quality.cellular.maxAudioBitrateKbps",
-            "type": "integer",
-            "default": 256,
-            "allowedValues": [
-              {
-                "value": 0,
-                "label": "Original"
-              },
-              {
-                "value": 320,
-                "label": "320 kbps"
-              },
-              {
-                "value": 256,
-                "label": "256 kbps"
-              },
-              {
-                "value": 192,
-                "label": "192 kbps"
-              },
-              {
-                "value": 128,
-                "label": "128 kbps"
-              },
-              {
-                "value": 96,
-                "label": "96 kbps"
-              }
-            ],
-            "scopes": [
-              "profile-device-class"
-            ],
-            "group": "quality",
-            "labelKey": "preferences.quality.cellular.maxAudioBitrateKbps"
-          },
-          {
-            "consumer": "server.playback.delivery_policy",
-            "step": 1,
-            "key": "quality.cellular.maxVideoHeight",
-            "type": "integer",
-            "default": 1080,
-            "allowedValues": [
-              360,
-              480,
-              720,
-              1080,
-              1440,
-              2160,
-              4320
-            ],
-            "scopes": [
-              "profile-device-class"
-            ],
-            "group": "quality",
-            "labelKey": "preferences.quality.cellular.maxVideoHeight"
-          },
-          {
-            "consumer": "server.playback.delivery_policy",
-            "key": "quality.cellular.allowHDR",
-            "type": "boolean",
-            "default": false,
-            "scopes": [
-              "profile-device-class"
-            ],
-            "group": "quality",
-            "labelKey": "preferences.quality.cellular.allowHDR"
-          },
-          {
-            "consumer": "server.playback.delivery_policy",
-            "key": "quality.unknown.mode",
-            "type": "string",
-            "default": "automatic",
-            "allowedValues": [
-              "off",
-              "automatic",
-              "original",
-              "high",
-              "standard",
-              "data-saver"
-            ],
-            "scopes": [
-              "profile-device-class"
-            ],
-            "group": "quality",
-            "labelKey": "preferences.quality.unknown.mode"
-          },
-          {
-            "consumer": "server.playback.delivery_policy",
-            "step": 1,
-            "key": "quality.unknown.maxVideoBitrateMbps",
-            "type": "integer",
-            "default": 20,
-            "allowedValues": [
-              {
-                "value": 0,
-                "label": "Original"
-              },
-              {
-                "value": 40,
-                "label": "40 Mbps",
-                "maxVideoHeight": 2160
-              },
-              {
-                "value": 20,
-                "label": "20 Mbps",
-                "maxVideoHeight": 2160
-              },
-              {
-                "value": 12,
-                "label": "12 Mbps",
-                "maxVideoHeight": 1080
-              },
-              {
-                "value": 8,
-                "label": "8 Mbps",
-                "maxVideoHeight": 1080
-              },
-              {
-                "value": 4,
-                "label": "4 Mbps",
-                "maxVideoHeight": 720
-              },
-              {
-                "value": 2,
-                "label": "2 Mbps",
-                "maxVideoHeight": 720
-              },
-              {
-                "value": 1,
-                "label": "1 Mbps",
-                "maxVideoHeight": 480
-              }
-            ],
-            "scopes": [
-              "profile-device-class"
-            ],
-            "group": "quality",
-            "labelKey": "preferences.quality.unknown.maxVideoBitrateMbps"
-          },
-          {
-            "consumer": "server.playback.delivery_policy",
-            "step": 1,
-            "key": "quality.unknown.maxAudioBitrateKbps",
-            "type": "integer",
-            "default": 320,
-            "allowedValues": [
-              {
-                "value": 0,
-                "label": "Original"
-              },
-              {
-                "value": 320,
-                "label": "320 kbps"
-              },
-              {
-                "value": 256,
-                "label": "256 kbps"
-              },
-              {
-                "value": 192,
-                "label": "192 kbps"
-              },
-              {
-                "value": 128,
-                "label": "128 kbps"
-              },
-              {
-                "value": 96,
-                "label": "96 kbps"
-              }
-            ],
-            "scopes": [
-              "profile-device-class"
-            ],
-            "group": "quality",
-            "labelKey": "preferences.quality.unknown.maxAudioBitrateKbps"
-          },
-          {
-            "consumer": "server.playback.delivery_policy",
-            "step": 1,
-            "key": "quality.unknown.maxVideoHeight",
-            "type": "integer",
-            "default": 1080,
-            "allowedValues": [
-              360,
-              480,
-              720,
-              1080,
-              1440,
-              2160,
-              4320
-            ],
-            "scopes": [
-              "profile-device-class"
-            ],
-            "group": "quality",
-            "labelKey": "preferences.quality.unknown.maxVideoHeight"
-          },
-          {
-            "consumer": "server.playback.delivery_policy",
-            "key": "quality.unknown.allowHDR",
-            "type": "boolean",
-            "default": true,
-            "scopes": [
-              "profile-device-class"
-            ],
-            "group": "quality",
-            "labelKey": "preferences.quality.unknown.allowHDR"
+            "labelKey": "preferences.quality.remote"
           },
           {
             "consumer": "client.audio_effects",
@@ -1228,32 +713,14 @@
         "playback.sleepTimerMinutes": 0,
         "playback.startedThresholdPercent": 5,
         "playback.subtitleBackground": "translucent",
-        "playback.subtitleSize": "medium",
         "playback.subtitleMode": "forced",
+        "playback.subtitleSize": "medium",
         "playback.upNextCountdownSeconds": 10,
         "privacy.includeInWatchTogether": true,
         "privacy.pauseWatchHistory": false,
         "privacy.showActivityToMembers": true,
-        "quality.cellular.allowHDR": false,
-        "quality.cellular.maxAudioBitrateKbps": 256,
-        "quality.cellular.maxVideoBitrateMbps": 8,
-        "quality.cellular.maxVideoHeight": 1080,
-        "quality.cellular.mode": "off",
-        "quality.local.allowHDR": true,
-        "quality.local.maxAudioBitrateKbps": 0,
-        "quality.local.maxVideoBitrateMbps": 0,
-        "quality.local.maxVideoHeight": 4320,
-        "quality.local.mode": "original",
-        "quality.unknown.allowHDR": true,
-        "quality.unknown.maxAudioBitrateKbps": 320,
-        "quality.unknown.maxVideoBitrateMbps": 20,
-        "quality.unknown.maxVideoHeight": 1080,
-        "quality.unknown.mode": "automatic",
-        "quality.wifi.allowHDR": true,
-        "quality.wifi.maxAudioBitrateKbps": 0,
-        "quality.wifi.maxVideoBitrateMbps": 0,
-        "quality.wifi.maxVideoHeight": 2160,
-        "quality.wifi.mode": "automatic",
+        "quality.home": "original",
+        "quality.remote": "original",
         "region.hourCycle": "auto",
         "region.locale": "auto",
         "search.rememberHistory": true
@@ -1289,38 +756,20 @@
         "playback.sleepTimerMinutes": "default",
         "playback.startedThresholdPercent": "default",
         "playback.subtitleBackground": "default",
-        "playback.subtitleSize": "default",
         "playback.subtitleMode": "default",
+        "playback.subtitleSize": "default",
         "playback.upNextCountdownSeconds": "default",
         "privacy.includeInWatchTogether": "default",
         "privacy.pauseWatchHistory": "default",
         "privacy.showActivityToMembers": "default",
-        "quality.cellular.allowHDR": "default",
-        "quality.cellular.maxAudioBitrateKbps": "default",
-        "quality.cellular.maxVideoBitrateMbps": "default",
-        "quality.cellular.maxVideoHeight": "default",
-        "quality.cellular.mode": "policy",
-        "quality.local.allowHDR": "default",
-        "quality.local.maxAudioBitrateKbps": "default",
-        "quality.local.maxVideoBitrateMbps": "default",
-        "quality.local.maxVideoHeight": "default",
-        "quality.local.mode": "default",
-        "quality.unknown.allowHDR": "default",
-        "quality.unknown.maxAudioBitrateKbps": "default",
-        "quality.unknown.maxVideoBitrateMbps": "default",
-        "quality.unknown.maxVideoHeight": "default",
-        "quality.unknown.mode": "default",
-        "quality.wifi.allowHDR": "default",
-        "quality.wifi.maxAudioBitrateKbps": "default",
-        "quality.wifi.maxVideoBitrateMbps": "default",
-        "quality.wifi.maxVideoHeight": "default",
-        "quality.wifi.mode": "default",
+        "quality.home": "default",
+        "quality.remote": "default",
         "region.hourCycle": "default",
         "region.locale": "default",
         "search.rememberHistory": "default"
       },
       "clampedFields": [],
-      "registryRevision": "p39.CD32.B4"
+      "registryRevision": "p40.Q2.B5"
     },
     "homeLayout": {
       "revision": 1,

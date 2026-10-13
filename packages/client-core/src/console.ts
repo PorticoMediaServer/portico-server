@@ -22,7 +22,7 @@ export type TranscodingSettings={
  throttleBufferSeconds:number;playedRetentionSeconds:number;temporaryDirectory:string;ffmpegPath:string;sessionStorageMiB:number;
  maxConcurrentSessions:number;maxHardwareSessions:number;maxSoftwareSessions:number;maxBackgroundSessions:number};
 export type RuntimeSettings=TranscodingSettings&{
- name:string;transcodingEnabled:boolean;perAccountCap:number|null;serverCap:number|null;
+ analysisStorageGiB:number;analysisStageStorageMiB:number;subtitleTrackLimit:number;subtitleFileLimitMiB:number;name:string;transcodingEnabled:boolean;perAccountCap:number|null;serverCap:number|null;
  diagnosticDays:number;notificationDays:number;jobDays:number;playHistoryDays:number;'home.communityActivityEnabled':boolean;
  'updates.releaseChannel':string;'updates.feedUrl':string;'library.missingTitles':MissingTitlesRule;'library.missingTitlesDays':number;
  remoteSignInPolicy:string;remoteBitrateLimitKbps:number;lanNetworks:string[];accessUrls:string[];lanDiscoveryEnabled:boolean;
@@ -61,6 +61,8 @@ export function parseSettings(v:unknown):SettingsDocument{
  return d as SettingsDocument;
 }
 function checkOwnerDocument(s:Record<string,any>){
+ if(!integer(s.analysisStorageGiB)||s.analysisStorageGiB<1||s.analysisStorageGiB>16384||!integer(s.analysisStageStorageMiB)||s.analysisStageStorageMiB<1||s.analysisStageStorageMiB>4096||s.analysisStageStorageMiB>s.analysisStorageGiB*1024)invalid();
+ if(!integer(s.subtitleTrackLimit)||s.subtitleTrackLimit<32||s.subtitleTrackLimit>4096||!integer(s.subtitleFileLimitMiB)||s.subtitleFileLimitMiB<32||s.subtitleFileLimitMiB>512)invalid();
  for(const key of ['updates.releaseChannel','updates.feedUrl','remoteSignInPolicy','advertiseUrl','advertisedInterface','customCertificatePath','customCertificateKeyPath','customCertificateDomain','logLevel'])if(!text(s[key],4096))invalid();
  for(const key of ['remoteBitrateLimitKbps','uploadCapacityKbps','pausedSessionTimeoutMinutes','connectionLimit','apiRequestsPerMinute'])if(!integer(s[key]))invalid();
  for(const key of ['lanDiscoveryEnabled','deviceApprovalRequired','blockMemberAccessTokens'])if(typeof s[key]!=='boolean')invalid();

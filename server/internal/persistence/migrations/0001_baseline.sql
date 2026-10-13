@@ -1923,7 +1923,7 @@ CREATE TABLE library_sources (
  enabled INTEGER NOT NULL DEFAULT 1, follow_symlinks INTEGER NOT NULL DEFAULT 0,
  interval_seconds INTEGER NOT NULL DEFAULT 0 CHECK(interval_seconds=0 OR interval_seconds>=900),
  next_scan_at TEXT NOT NULL DEFAULT '', last_complete_job TEXT NOT NULL DEFAULT '',
- last_complete_at TEXT NOT NULL DEFAULT '', last_progress_at TEXT NOT NULL DEFAULT '',
+ last_complete_at TEXT NOT NULL DEFAULT '', last_integrity_at TEXT NOT NULL DEFAULT '', changes_pruned_sequence INTEGER NOT NULL DEFAULT 0, last_progress_at TEXT NOT NULL DEFAULT '',
  UNIQUE(library_id,root)
 ) STRICT;
 CREATE TABLE library_scan_policies (
@@ -1939,7 +1939,7 @@ CREATE TABLE inventory_runs (
  job_id TEXT PRIMARY KEY REFERENCES jobs(id), source_id TEXT NOT NULL REFERENCES library_sources(id),
  source_generation INTEGER NOT NULL, root_incarnation TEXT NOT NULL, root_identity TEXT NOT NULL,
  policy_revision INTEGER NOT NULL, phase TEXT NOT NULL DEFAULT 'inventory',
- authoritative INTEGER NOT NULL DEFAULT 0, discovered INTEGER NOT NULL DEFAULT 0,
+ authoritative INTEGER NOT NULL DEFAULT 0, reported INTEGER NOT NULL DEFAULT 0, root_rebound INTEGER NOT NULL DEFAULT 0, discovered INTEGER NOT NULL DEFAULT 0,
  analyzed INTEGER NOT NULL DEFAULT 0, warnings INTEGER NOT NULL DEFAULT 0,
  reconcile_cursor TEXT NOT NULL DEFAULT '', verify_cursor TEXT NOT NULL DEFAULT '',
  last_turn TEXT NOT NULL DEFAULT '', pause_reason TEXT NOT NULL DEFAULT '',
@@ -1963,13 +1963,39 @@ CREATE TABLE inventory_objects (
  retired INTEGER NOT NULL DEFAULT 0, missing_since TEXT NOT NULL DEFAULT '', missing_observations INTEGER NOT NULL DEFAULT 0,
  last_missing_job TEXT NOT NULL DEFAULT '', unsupported_reason TEXT NOT NULL DEFAULT '',
  analysis_revision TEXT NOT NULL DEFAULT '', analysis_policy INTEGER NOT NULL DEFAULT 0, analysis_operations_json TEXT NOT NULL DEFAULT '[]',
- analysis_state TEXT NOT NULL DEFAULT 'pending', analysis_error TEXT NOT NULL DEFAULT ''
+ analysis_state TEXT NOT NULL DEFAULT 'pending', analysis_error TEXT NOT NULL DEFAULT '',
+ analysis_algorithm TEXT NOT NULL DEFAULT '', analysis_generation INTEGER NOT NULL DEFAULT 0
 , directory_path TEXT NOT NULL DEFAULT '.') STRICT;
 CREATE TABLE inventory_changes (
  sequence INTEGER PRIMARY KEY AUTOINCREMENT, source_id TEXT NOT NULL, job_id TEXT NOT NULL,
  object_id TEXT NOT NULL DEFAULT '', asset_id TEXT NOT NULL DEFAULT '', revision TEXT NOT NULL DEFAULT '',
  kind TEXT NOT NULL, created_at TEXT NOT NULL,
  UNIQUE(job_id,object_id,revision,kind)
+) STRICT;
+CREATE TABLE inventory_scan_issues (
+ sequence INTEGER PRIMARY KEY AUTOINCREMENT,job_id TEXT NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+ relative_path TEXT NOT NULL,reason TEXT NOT NULL,line INTEGER NOT NULL DEFAULT 0,protect INTEGER NOT NULL DEFAULT 0,warning INTEGER NOT NULL DEFAULT 0,
+ UNIQUE(job_id,relative_path,reason,line)
+) STRICT;
+CREATE INDEX inventory_scan_issues_job ON inventory_scan_issues(job_id,sequence);
+CREATE INDEX inventory_scan_issues_protected ON inventory_scan_issues(job_id,relative_path) WHERE protect=1;
+CREATE TABLE inventory_video_names(
+ asset_id TEXT NOT NULL REFERENCES catalog_assets(token) ON DELETE CASCADE,revision TEXT NOT NULL,
+ title TEXT NOT NULL,show_title TEXT NOT NULL,year INTEGER NOT NULL,season INTEGER,number INTEGER,edition TEXT NOT NULL,ids_digest TEXT NOT NULL,PRIMARY KEY(asset_id,revision)
+) STRICT;
+CREATE TABLE inventory_video_ids(
+ asset_id TEXT NOT NULL,revision TEXT NOT NULL,
+ provider TEXT NOT NULL,provider_id TEXT NOT NULL,PRIMARY KEY(asset_id,revision,provider),FOREIGN KEY(asset_id,revision) REFERENCES inventory_video_names(asset_id,revision) ON DELETE CASCADE
+) STRICT;
+CREATE TABLE inventory_sidecars (
+ source_id TEXT NOT NULL REFERENCES library_sources(id) ON DELETE CASCADE,incarnation TEXT NOT NULL,
+ relative_path TEXT NOT NULL,directory_path TEXT NOT NULL,revision TEXT NOT NULL,seen_job TEXT NOT NULL,
+ PRIMARY KEY(source_id,incarnation,relative_path)
+) STRICT;
+CREATE INDEX inventory_sidecars_directory ON inventory_sidecars(source_id,incarnation,directory_path,relative_path);
+CREATE TABLE inventory_sidecar_changes (
+ job_id TEXT NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,relative_path TEXT NOT NULL,
+ cursor TEXT NOT NULL DEFAULT '',PRIMARY KEY(job_id,relative_path)
 ) STRICT;
 CREATE TABLE inventory_operation_jobs (
  operation_id TEXT NOT NULL, job_id TEXT NOT NULL REFERENCES jobs(id),
@@ -2073,6 +2099,11 @@ CREATE TABLE dvr_catalog_provenance(
  state TEXT NOT NULL CHECK(state IN('completed','incomplete-playable'))) STRICT;
 CREATE TABLE continue_dismissals(profile_id TEXT NOT NULL,item_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,playback_id TEXT NOT NULL,PRIMARY KEY(profile_id,item_id)) STRICT;
 CREATE TABLE personal_evidence_fences(profile_id TEXT NOT NULL,item_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,playback_id TEXT NOT NULL,PRIMARY KEY(profile_id,item_id)) STRICT;
+CREATE TABLE personal_completed_plays(
+ profile_id TEXT NOT NULL,playback_id TEXT NOT NULL,
+ item_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,
+ PRIMARY KEY(profile_id,playback_id)) WITHOUT ROWID, STRICT;
+CREATE INDEX personal_completed_plays_item ON personal_completed_plays(item_id);
 CREATE TABLE personal_history(id TEXT NOT NULL,profile_id TEXT NOT NULL,item_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,started_at TEXT NOT NULL,updated_at TEXT NOT NULL,sequence INTEGER NOT NULL,position INTEGER NOT NULL,unit INTEGER NOT NULL DEFAULT 0 CHECK(unit BETWEEN 0 AND 99),completed INTEGER NOT NULL,PRIMARY KEY(profile_id,id)) STRICT;
 CREATE TABLE personal_activity_revisions(profile_id TEXT PRIMARY KEY,revision INTEGER NOT NULL DEFAULT 0) STRICT;
 CREATE TABLE saved_operation_fences(owner_key TEXT NOT NULL,domain TEXT NOT NULL,operation_id TEXT NOT NULL,request_hash TEXT NOT NULL,created_at TEXT NOT NULL,PRIMARY KEY(owner_key,domain,operation_id)) STRICT;
@@ -2396,10 +2427,12 @@ CREATE TABLE item_extras(
   item_id INTEGER PRIMARY KEY REFERENCES catalog_entities(id) ON DELETE CASCADE,
   library_id TEXT NOT NULL REFERENCES libraries(id),
   parent_path TEXT NOT NULL,
+  owner_id INTEGER REFERENCES catalog_entities(id) ON DELETE SET NULL,
   kind TEXT NOT NULL CHECK(kind IN('trailer','featurette','deleted_scene','behind_the_scenes','interview','scene','short','other')),
   title TEXT NOT NULL,
   asset_id TEXT NOT NULL REFERENCES catalog_assets(token),
   relative_path TEXT NOT NULL) STRICT;
+CREATE INDEX item_extras_owner ON item_extras(owner_id,kind,item_id);
 CREATE TABLE personal_batch_receipts(profile_id TEXT NOT NULL,operation_id TEXT NOT NULL,request_hash TEXT NOT NULL,response TEXT NOT NULL,created_at TEXT NOT NULL,PRIMARY KEY(profile_id,operation_id)) STRICT;
 CREATE TABLE telemetry_rollups(
  minute_ms INTEGER PRIMARY KEY CHECK(minute_ms>0),
@@ -2710,7 +2743,7 @@ CREATE TABLE admin_channel_numbers(
  source_id TEXT NOT NULL,channel_id TEXT NOT NULL,number TEXT NOT NULL DEFAULT '',
  guide_channel_id TEXT NOT NULL DEFAULT '',hidden INTEGER NOT NULL DEFAULT 0,updated_ms INTEGER NOT NULL,
  PRIMARY KEY(source_id,channel_id)) STRICT;
-CREATE TABLE maintenance_policy(singleton INTEGER PRIMARY KEY CHECK(singleton=1),revision INTEGER NOT NULL CHECK(revision>0),background_priority TEXT NOT NULL DEFAULT 'lower' CHECK(background_priority IN('lower','normal'))) STRICT;
+CREATE TABLE maintenance_policy(singleton INTEGER PRIMARY KEY CHECK(singleton=1),revision INTEGER NOT NULL CHECK(revision>0),background_priority TEXT NOT NULL DEFAULT 'lower' CHECK(background_priority IN('lower','normal')),paused_until_ms INTEGER NOT NULL DEFAULT 0 CHECK(paused_until_ms>=0)) STRICT;
 CREATE TABLE maintenance_windows(id TEXT PRIMARY KEY,name TEXT NOT NULL,enabled INTEGER NOT NULL CHECK(enabled IN(0,1)),cadence TEXT NOT NULL,start_minute INTEGER NOT NULL CHECK(start_minute BETWEEN 0 AND 1439),duration_minutes INTEGER NOT NULL CHECK(duration_minutes BETWEEN 15 AND 1440),timezone TEXT NOT NULL) STRICT;
 CREATE TABLE maintenance_window_days(window_id TEXT NOT NULL REFERENCES maintenance_windows(id) ON DELETE CASCADE,day TEXT NOT NULL,PRIMARY KEY(window_id,day)) STRICT;
 CREATE TABLE dvr_recording_grants(
@@ -2757,7 +2790,7 @@ CREATE TABLE content_rating_pending(value_key TEXT PRIMARY KEY,value TEXT NOT NU
 CREATE TABLE inventory_directory_cache(
  source_id TEXT NOT NULL REFERENCES library_sources(id) ON DELETE CASCADE,
  incarnation TEXT NOT NULL,relative_path TEXT NOT NULL,parent_path TEXT NOT NULL,
- parent_revision TEXT NOT NULL DEFAULT '',identity TEXT NOT NULL DEFAULT '',revision TEXT NOT NULL DEFAULT '',
+ parent_revision TEXT NOT NULL DEFAULT '',identity TEXT NOT NULL DEFAULT '',revision TEXT NOT NULL DEFAULT '',seen_job TEXT NOT NULL DEFAULT '',
  PRIMARY KEY(source_id,incarnation,relative_path)) STRICT;
 -- A route a device's player could not play, per file and per player engine
 -- (native or mpv): the next plan for that engine skips it.
@@ -3072,6 +3105,7 @@ CREATE TABLE api_events(
  at_ms INTEGER NOT NULL
 ) STRICT;
 CREATE TABLE queues_v1(
+ automatic_advances INTEGER NOT NULL DEFAULT 0 CHECK(automatic_advances BETWEEN 0 AND 1000000),
  id TEXT PRIMARY KEY,
  owner_kind TEXT NOT NULL CHECK(owner_kind IN('device','group')),
  owner_id TEXT NOT NULL,
@@ -3397,7 +3431,7 @@ CREATE TABLE live_icon_jobs(
  skipped INTEGER NOT NULL DEFAULT 0,
  next_attempt_ms INTEGER NOT NULL DEFAULT 0
 ) WITHOUT ROWID, STRICT;
-CREATE TABLE "maintenance_window_tasks"(window_id TEXT NOT NULL REFERENCES maintenance_windows(id) ON DELETE CASCADE,task TEXT NOT NULL CHECK(task IN('library-scan','metadata-refresh','analysis','trickplay','backup')),PRIMARY KEY(window_id,task)) STRICT;
+CREATE TABLE "maintenance_window_tasks"(window_id TEXT NOT NULL REFERENCES maintenance_windows(id) ON DELETE CASCADE,task TEXT NOT NULL CHECK(task='backup'),PRIMARY KEY(window_id,task)) STRICT;
 CREATE TABLE networking_claim_credentials(
  operation_id TEXT PRIMARY KEY REFERENCES networking_claim_intents(operation_id),
  server_id TEXT NOT NULL, local_generation INTEGER NOT NULL CHECK(local_generation>=0),
@@ -3694,8 +3728,24 @@ CREATE TABLE container_personal_state(profile_id TEXT NOT NULL,kind TEXT NOT NUL
  PRIMARY KEY(profile_id,kind,container_id)) STRICT;
 CREATE TABLE personal_watched_intents(profile_id TEXT NOT NULL,item_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,
  watched INTEGER NOT NULL CHECK(watched IN(0,1)),authored_at TEXT NOT NULL,PRIMARY KEY(profile_id,item_id)) STRICT;
-CREATE TABLE container_personal_resets(id TEXT PRIMARY KEY,profile_id TEXT NOT NULL,kind TEXT NOT NULL,container_id INTEGER NOT NULL,
- watermark TEXT NOT NULL,cursor TEXT NOT NULL DEFAULT '',state TEXT NOT NULL DEFAULT 'queued') STRICT;
+CREATE TABLE container_personal_undo(
+ token TEXT PRIMARY KEY,profile_id TEXT NOT NULL,kind TEXT NOT NULL,container_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,
+ revision INTEGER NOT NULL,previous_watched INTEGER NOT NULL,previous_watermark TEXT NOT NULL,previous_clear TEXT NOT NULL,
+ watermark TEXT NOT NULL,expires_ms INTEGER NOT NULL,member_count INTEGER NOT NULL,
+ UNIQUE(profile_id,kind,container_id)
+) STRICT;
+CREATE INDEX container_personal_undo_expiry ON container_personal_undo(expires_ms);
+CREATE INDEX container_personal_undo_container ON container_personal_undo(container_id);
+CREATE TABLE container_personal_undo_items(
+ token TEXT NOT NULL REFERENCES container_personal_undo(token) ON DELETE CASCADE,
+ item_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,
+ previous_watched INTEGER NOT NULL,after_revision INTEGER NOT NULL,
+ position INTEGER,unit INTEGER,playback_id TEXT,activity_at TEXT,activity_state TEXT,book_position INTEGER,
+ previous_intent INTEGER,previous_authored_at TEXT,intent_at TEXT NOT NULL,
+ added_ms INTEGER,show_id INTEGER,season_id INTEGER,album_id INTEGER,book_id INTEGER,
+ PRIMARY KEY(token,item_id)
+) STRICT;
+CREATE INDEX container_personal_undo_items_item ON container_personal_undo_items(item_id,token);
 CREATE TABLE personal_job_destinations(
  job_id TEXT PRIMARY KEY REFERENCES personal_jobs(id) ON DELETE CASCADE,
  kind TEXT NOT NULL,target_id TEXT NOT NULL,revision INTEGER NOT NULL,
@@ -3788,11 +3838,17 @@ CREATE TABLE local_artwork(
  library_id TEXT NOT NULL REFERENCES libraries(id) ON DELETE CASCADE,
  kind TEXT NOT NULL CHECK(kind IN('show','season','artist','item')),
  entity_id INTEGER NOT NULL,
- role TEXT NOT NULL CHECK(role IN('poster','backdrop','logo','portrait')),
+ role TEXT NOT NULL CHECK(role IN('poster','backdrop','logo','portrait','still')),
  art_key TEXT NOT NULL,
  observed_at TEXT NOT NULL,
  PRIMARY KEY(library_id,kind,entity_id,role)
 ) STRICT;
+CREATE TABLE inventory_artwork_sources (
+ asset_id TEXT NOT NULL REFERENCES catalog_assets(token) ON DELETE CASCADE,kind TEXT NOT NULL,
+ entity_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,role TEXT NOT NULL,art_key TEXT NOT NULL,
+ PRIMARY KEY(asset_id,kind,entity_id,role)
+) STRICT;
+CREATE INDEX inventory_artwork_sources_role ON inventory_artwork_sources(kind,entity_id,role,art_key);
 CREATE VIEW inventory_asset_availability AS
  SELECT asset_id,MAX(CASE WHEN o.retired=0 AND o.state='available' AND o.unsupported_reason='' AND s.enabled=1 AND s.health NOT IN('offline','removing','root_changed') AND o.root_incarnation=s.incarnation THEN 1 ELSE 0 END) AS available
  FROM inventory_objects o JOIN library_sources s ON s.id=o.source_id GROUP BY asset_id;
@@ -3858,6 +3914,7 @@ CREATE INDEX media_analysis_item_candidates ON media_analysis_item_mappings(item
 CREATE INDEX library_sources_due ON library_sources(enabled,next_scan_at,id);
 CREATE INDEX library_sources_library ON library_sources(library_id,id);
 CREATE INDEX inventory_runs_source ON inventory_runs(source_id,job_id);
+CREATE INDEX inventory_runs_retention ON inventory_runs(source_id,finished_at,job_id);
 CREATE INDEX inventory_runs_turn ON inventory_runs(last_turn,job_id);
 CREATE UNIQUE INDEX inventory_directories_visited ON inventory_directories(job_id,identity) WHERE identity!='';
 CREATE INDEX inventory_directories_pending ON inventory_directories(job_id,state,relative_path);
@@ -4017,6 +4074,7 @@ CREATE INDEX dvr_recordings_due ON dvr_recordings(state,start_ms,id);
 CREATE INDEX dvr_recordings_rule ON dvr_recordings(rule_id,start_ms,id);
 CREATE INDEX remote_inventory_check_job ON remote_inventory_checks(check_job);
 CREATE INDEX remote_listing_retention ON remote_listing_sessions(created_at);
+CREATE INDEX remote_listing_directory_history ON remote_listing_sessions(source_id,directory,ready,created_at DESC,id DESC);
 CREATE INDEX live_logo_jobs_due ON live_logo_jobs(state,next_attempt_ms,source_id);
 CREATE INDEX profile_show_recent ON profile_show_activity(profile_id,last_activity DESC,show_id);
 CREATE INDEX progress_home_profile_recent
@@ -4562,9 +4620,6 @@ INSERT INTO live_allocation_reconcile_cursor(singleton,cursor) VALUES(1,'');
 INSERT INTO lc_maintenance_cursor(singleton,position,channel_id) VALUES(1,-1,'');
 INSERT INTO dvr_storage_policy(singleton,revision,retention_days,episode_limit,floor_bytes,cap_bytes) VALUES(1,1,0,0,0,0);
 INSERT INTO hosted_membership_sync(singleton,acked,full_pending,next_at,attempts,full_through,full_page,full_cursor,custodian) VALUES(1,0,1,0,0,0,0,'',NULL);
-INSERT INTO maintenance_window_tasks(window_id,task) VALUES('nightly','library-scan');
-INSERT INTO maintenance_window_tasks(window_id,task) VALUES('nightly','analysis');
-INSERT INTO maintenance_window_tasks(window_id,task) VALUES('nightly','trickplay');
 INSERT INTO maintenance_window_tasks(window_id,task) VALUES('nightly','backup');
 INSERT INTO catalog_collection_visible_state(id,class_cursor,generation_cursor,item_cursor,backfill_done,turn) VALUES(1,0,0,0,0,0);
 INSERT INTO catalog_attribute_fields(id,field) VALUES(1,'contentRating');
@@ -4659,6 +4714,14 @@ CREATE TRIGGER tvdb_publication_item_source AFTER UPDATE OF source_revision ON m
 CREATE TRIGGER artwork_source_changed AFTER UPDATE OF source_revision,identity_revision ON metadata_publication_heads WHEN OLD.source_revision IS NOT NEW.source_revision OR OLD.identity_revision IS NOT NEW.identity_revision BEGIN
  UPDATE artwork_entity_heads SET revision=revision+1 WHERE entity_id=NEW.item_id OR entity_id IN(SELECT book_id FROM catalog_book_files WHERE entity_id=NEW.item_id);
  INSERT INTO artwork_dirty VALUES('item',NEW.item_id) ON CONFLICT(kind,entity_id) DO NOTHING;END;
+CREATE TRIGGER screen_wake_video_names_INSERT AFTER INSERT ON inventory_video_names BEGIN
+ UPDATE screen_metadata_work SET status='pending',generation=generation+1,revision=revision+1,lease='',lease_until='',next_attempt='',error=''
+ WHERE target_id IN(SELECT l.entity_id FROM catalog_assets a JOIN catalog_asset_links l ON l.asset_id=a.id WHERE a.token=NEW.asset_id
+  UNION SELECT ep.show_id FROM catalog_assets a JOIN catalog_asset_links l ON l.asset_id=a.id JOIN catalog_episodes ep ON ep.entity_id=l.entity_id WHERE a.token=NEW.asset_id);END;
+CREATE TRIGGER screen_wake_video_names_UPDATE AFTER UPDATE ON inventory_video_names BEGIN
+ UPDATE screen_metadata_work SET status='pending',generation=generation+1,revision=revision+1,lease='',lease_until='',next_attempt='',error=''
+ WHERE target_id IN(SELECT l.entity_id FROM catalog_assets a JOIN catalog_asset_links l ON l.asset_id=a.id WHERE a.token=NEW.asset_id
+  UNION SELECT ep.show_id FROM catalog_assets a JOIN catalog_asset_links l ON l.asset_id=a.id JOIN catalog_episodes ep ON ep.entity_id=l.entity_id WHERE a.token=NEW.asset_id);END;
 CREATE TRIGGER screen_wake_video_nfo_evidence_INSERT AFTER INSERT ON video_nfo_evidence BEGIN
  UPDATE screen_metadata_work SET status='pending',generation=generation+1,revision=revision+1,lease='',lease_until='',next_attempt='',error=''
  WHERE target_id IN(SELECT l.entity_id FROM catalog_assets a JOIN catalog_asset_links l ON l.asset_id=a.id WHERE a.token=NEW.asset_id

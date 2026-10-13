@@ -6,7 +6,7 @@ const fence='a'.repeat(64);
 const envelope=(data:unknown,serverId='server-one',viewerFence=fence)=>({scope:{serverId,viewerFence},data});
 const values:RuntimeSettings={name:'My server',transcodingEnabled:true,perAccountCap:null,serverCap:null,diagnosticDays:30,notificationDays:180,jobDays:30,
  hardwareBackend:'auto',hardwareDevice:'',hdrToneMapping:false,hdrToneMappingAlgorithm:'hable',x264Preset:'veryfast',directStreamRemux:true,
- planningPolicy:'maximum_fidelity',throttleBufferSeconds:60,playedRetentionSeconds:180,temporaryDirectory:'',ffmpegPath:'',sessionStorageMiB:4096,
+ analysisStorageGiB:32,analysisStageStorageMiB:256,subtitleTrackLimit:128,subtitleFileLimitMiB:128,planningPolicy:'maximum_fidelity',throttleBufferSeconds:60,playedRetentionSeconds:180,temporaryDirectory:'',ffmpegPath:'',sessionStorageMiB:4096,
  maxConcurrentSessions:0,maxHardwareSessions:0,maxSoftwareSessions:0,maxBackgroundSessions:0,
  playHistoryDays:0,'home.communityActivityEnabled':false,'updates.releaseChannel':'stable','updates.feedUrl':'','library.missingTitles':'after_days','library.missingTitlesDays':30,
  remoteSignInPolicy:'allow',remoteBitrateLimitKbps:0,lanNetworks:[],accessUrls:[],lanDiscoveryEnabled:true,

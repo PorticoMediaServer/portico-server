@@ -337,7 +337,7 @@ func (s *Service) runTVDBAcquisition(ctx context.Context, p tvdbPublication) err
 	requestCtx := ctx
 	if screenTVDBRestricted(ctx) {
 		var cancel context.CancelFunc
-		requestCtx, cancel = context.WithTimeout(ctx, 75*time.Second)
+		requestCtx, cancel = context.WithCancel(ctx)
 		defer cancel()
 		supervise.Go("metadata.tvdb.watch", func() {
 			tick := time.NewTicker(250 * time.Millisecond)

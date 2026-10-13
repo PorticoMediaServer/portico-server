@@ -192,7 +192,7 @@ type Service struct {
 	CreatePlaylist func(ctx context.Context, p identity.Principal, key, name, summary string, items []string) (id string, revision int64, err error)
 	// PostPlay reads the viewer's post-play policy (autoplay, countdown) for
 	// QueueView.postPlay (spec §18.5).
-	PostPlay func(ctx context.Context, tx *sql.Tx, p identity.Principal) (autoplay bool, countdownSeconds int, err error)
+	PostPlay func(ctx context.Context, tx *sql.Tx, p identity.Principal) (PostPlayPolicy, error)
 	// Channels plays Live TV and Library Channels as v1 sessions (§18.6);
 	// ChannelWake starts the linear runtime's work after a change; TunerAvailable
 	// says whether a live source has a tuner for one more viewer (excluding the
