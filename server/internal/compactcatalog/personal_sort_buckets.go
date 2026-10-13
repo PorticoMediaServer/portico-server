@@ -112,11 +112,11 @@ func stepPersonalSortMember(ctx context.Context, tx *sql.Tx, limit int) (int, er
 			return 0, err
 		}
 	}
-	rows, err := tx.QueryContext(ctx, `WITH items AS (
+	rows, err := tx.QueryContext(ctx, `WITH sort_items AS (
  SELECT profile_id,item_id FROM personal_items WHERE item_id=?1 AND profile_id>?2 ORDER BY profile_id LIMIT ?3
 ), plays AS (
  SELECT profile_id,item_id FROM personal_play_counts WHERE item_id=?1 AND profile_id>?2 ORDER BY profile_id LIMIT ?3
-), current AS (SELECT profile_id,item_id FROM items UNION SELECT profile_id,item_id FROM plays ORDER BY profile_id,item_id LIMIT ?3), prior AS (
+), current AS (SELECT profile_id,item_id FROM sort_items UNION SELECT profile_id,item_id FROM plays ORDER BY profile_id,item_id LIMIT ?3), prior AS (
  SELECT DISTINCT profile_id,item_id FROM catalog_personal_sort_members INDEXED BY catalog_personal_sort_member_item_id WHERE item_id=?1 AND profile_id>?2 ORDER BY profile_id,item_id LIMIT ?3
 ) SELECT profile_id,item_id FROM current UNION SELECT profile_id,item_id FROM prior ORDER BY profile_id,item_id LIMIT ?3`, item, after, limit)
 	if err != nil {
@@ -228,7 +228,7 @@ func stepPersonalSortBackfill(ctx context.Context, tx *sql.Tx, limit int) (int, 
 	if done {
 		return 0, nil
 	}
-	rows, err := tx.QueryContext(ctx, `WITH items AS(SELECT profile_id,item_id FROM personal_items WHERE (profile_id,item_id)>(?1,?2) ORDER BY profile_id,item_id LIMIT ?3),plays AS(SELECT profile_id,item_id FROM personal_play_counts WHERE (profile_id,item_id)>(?1,?2) ORDER BY profile_id,item_id LIMIT ?3) SELECT profile_id,item_id FROM items UNION SELECT profile_id,item_id FROM plays ORDER BY profile_id,item_id LIMIT ?3`, afterProfile, afterItem, limit)
+	rows, err := tx.QueryContext(ctx, `WITH sort_items AS(SELECT profile_id,item_id FROM personal_items WHERE (profile_id,item_id)>(?1,?2) ORDER BY profile_id,item_id LIMIT ?3),plays AS(SELECT profile_id,item_id FROM personal_play_counts WHERE (profile_id,item_id)>(?1,?2) ORDER BY profile_id,item_id LIMIT ?3) SELECT profile_id,item_id FROM sort_items UNION SELECT profile_id,item_id FROM plays ORDER BY profile_id,item_id LIMIT ?3`, afterProfile, afterItem, limit)
 	if err != nil {
 		return 0, err
 	}

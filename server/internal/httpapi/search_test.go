@@ -90,6 +90,9 @@ func TestSearchAuthorizationAndRevocation(t *testing.T) {
 	}
 	cursor := out.Groups[0].NextCursor
 	apply(2, []string{"b"})
+	if _, e = db.Exec(`UPDATE direct_memberships SET allowed_libraries='["b"]',revision=revision+1 WHERE account_id='member'`); e != nil {
+		t.Fatal(e)
+	}
 	w = request(path+"&cursor="+url.QueryEscape(cursor), session.AccessToken)
 	if w.Code != 400 && w.Code != 409 {
 		t.Fatal("stale auth cursor", w.Code, w.Body.String())
@@ -101,7 +104,7 @@ func TestSearchAuthorizationAndRevocation(t *testing.T) {
 	if strings.Contains(w.Body.String(), "Harbor First") {
 		t.Fatal("revocation leak")
 	}
-	if _, e = db.Exec(`INSERT INTO restrictions(profile_id,revision,allowed_libraries,revoked) VALUES('p',1,'[]',1)`); e != nil {
+	if _, e = db.Exec(`UPDATE direct_memberships SET disabled=1 WHERE account_id='member'`); e != nil {
 		t.Fatal(e)
 	}
 	if w = request(path, session.AccessToken); w.Code != 401 {

@@ -64,7 +64,7 @@ func TestPeopleBatchAndCollectionRoutesAreAuthorizedAndBounded(t *testing.T) {
 	if e = control.Apply(certifiedHostedPolicy(t, priv, "key", raw)); e != nil {
 		t.Fatal(e)
 	}
-	session, e := issueHostedFixture(t, db, ident, "member", "p", "member")
+	session, e := issuePorticoFixture(t, db, ident, "member", "p", "member")
 	if e != nil {
 		t.Fatal(e)
 	}

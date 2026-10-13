@@ -88,7 +88,7 @@ func TestOlderOfflinePlayKeepsLatestPlayDate(t *testing.T) {
 	h := newHarness(t)
 	ctx := context.Background()
 	for i, age := range []time.Duration{time.Minute, 2 * time.Minute} {
-		play := []ProgressEntry{{PlayID: []string{"newer", "older"}[i], ItemID: h.item, PositionSeconds: 20, Ended: true, ObservedAt: h.now.Add(-age).Format(time.RFC3339)}}
+		play := []ProgressEntry{{PlayID: []string{"newer", "older"}[i], ItemID: h.item, PositionSeconds: 60, Ended: true, ObservedAt: h.now.Add(-age).Format(time.RFC3339)}}
 		if _, err := h.service.SyncProgress(ctx, h.viewer, []string{"newer-op", "older-op"}[i], play); err != nil {
 			t.Fatal(err)
 		}

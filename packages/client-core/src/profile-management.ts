@@ -1,3 +1,4 @@
+import {routePath as developmentRoutePath} from "../../contracts/src/development/routes.ts";
 import {routeBody} from "../../contracts/src/routes.ts";
 import type {RouteResponse} from "../../contracts/src/routes.ts";
 import {routePath as hostedRoutePath} from "../../contracts/src/hosted/routes.ts";
@@ -92,11 +93,11 @@ export async function directSignIn(api:ProfileAPI,username:string,password:strin
 }
 /** Development builds only: the server's seeded e2e owner, if it has one (`GET /v1/dev/e2e`; 404 otherwise). */
 export async function devE2EUsername(api:ProfileAPI,signal?:AbortSignal):Promise<string|undefined>{
- try{const raw=await api.request<unknown>('/v1/dev/e2e','GET',undefined,signal);return obj(raw)&&text(raw.username,64)?raw.username:undefined;}catch{return undefined;}
+ try{const raw=await api.request<unknown>(developmentRoutePath("get_dev_e2e"),'GET',undefined,signal);return obj(raw)&&text(raw.username,64)?raw.username:undefined;}catch{return undefined;}
 }
 /** Development builds only: signs in as the seeded e2e owner without a password (`POST /v1/dev/e2e/sign-in`, loopback servers built with devtrust). */
 export async function devE2ESignIn(api:ProfileAPI,username:string,signal?:AbortSignal):Promise<DirectSignIn>{
- return parseDirectSignIn(await api.request<unknown>('/v1/dev/e2e/sign-in','POST',{username},signal));
+ return parseDirectSignIn(await api.request<unknown>(developmentRoutePath("post_dev_e2e_sign_in"),'POST',{username},signal));
 }
 /** Finishes a two-step sign-in: the challenge token and an authenticator or recovery code (`POST /v1/auth/two-factor/challenge`). */
 export async function completeDirectSignInChallenge(api:ProfileAPI,token:string,code:string,signal?:AbortSignal):Promise<DirectSignIn>{

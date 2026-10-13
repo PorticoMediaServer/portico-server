@@ -71,15 +71,15 @@ func TestDeviceControlCharactersAndLiveFamilyContract(t *testing.T) {
 	var doc apispec.Document
 	found := false
 	for _, d := range docs {
-		if d.File == "identity.openapi.yaml" {
+		if d.File == "portico.openapi.json" {
 			doc = d
 			found = true
 		}
 	}
 	if !found {
-		t.Fatal("identity API document missing")
+		t.Fatal("generated API document missing")
 	}
-	deviceSchema := map[string]any{"$ref": "#/components/schemas/Device"}
+	deviceSchema := map[string]any{"$ref": "#/components/schemas/PatchDeviceResponse"}
 	for _, d := range devices {
 		b, _ := json.Marshal(d)
 		if issues := doc.ValidateJSON(deviceSchema, b); len(issues) > 0 {

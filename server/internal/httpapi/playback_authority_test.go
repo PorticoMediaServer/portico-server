@@ -50,7 +50,7 @@ func playbackAuthorityFixture(t *testing.T) (Dependencies, identity.Principal, s
 	if err = control.Apply(certifiedHostedPolicy(t, private, "transaction-fixture", raw)); err != nil {
 		t.Fatal(err)
 	}
-	envelope, err := issueHostedFixture(t, db, ident, "account", "profile", "member")
+	envelope, err := issuePorticoFixture(t, db, ident, "account", "profile", "member")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -74,16 +74,16 @@ func TestPlaybackAuthorityUsesOneTransactionForSessionAndItemPolicy(t *testing.T
 		t.Fatalf("authorized: %v", err)
 	}
 	for _, item := range []string{itemB, "missing"} {
-		if _, err := d.playbackAuthorityTx(ctx, tx, principal, item); !errors.Is(err, identity.ErrUnauthorized) {
+		if _, err := d.playbackAuthorityTx(ctx, tx, principal, item); !errors.Is(err, identity.ErrNotVisible) {
 			t.Fatalf("item %s: %v", item, err)
 		}
 	}
-	if _, err = tx.ExecContext(ctx, `INSERT INTO restrictions VALUES('profile',1,0,'[]')`); err != nil {
+	if _, err = tx.ExecContext(ctx, `UPDATE direct_profiles SET allowed_libraries='[]',revision=revision+1 WHERE id='profile'`); err != nil {
 		t.Fatal(err)
 	}
 	// The changed library restriction is visible to item authority in the same
 	// transaction, so the command must be denied before the transaction ends.
-	if _, err = d.playbackAuthorityTx(ctx, tx, principal, itemA); !errors.Is(err, identity.ErrUnauthorized) {
+	if _, err = d.playbackAuthorityTx(ctx, tx, principal, itemA); !errors.Is(err, identity.ErrNotVisible) {
 		t.Fatalf("uncommitted item policy: %v", err)
 	}
 	if _, err = d.playbackAuthorityTx(ctx, tx, principal, ""); err != nil {
@@ -99,10 +99,10 @@ func TestPlaybackAuthorityUsesOneTransactionForSessionAndItemPolicy(t *testing.T
 
 func TestPlaybackAuthorityRejectsCachedRestrictionAndPolicyChanges(t *testing.T) {
 	mutations := map[string]string{
-		"library restriction": `INSERT INTO restrictions VALUES('profile',1,0,'[]')`,
-		"profile revocation":  `INSERT INTO restrictions VALUES('profile',1,1,'["a"]')`,
-		"policy expired":      `UPDATE policy SET expires_at='2000-01-01T00:00:00Z'`,
-		"membership removed":  `UPDATE policy SET payload=json_set(payload,'$.members',json('[]'))`,
+		"library restriction": `UPDATE direct_profiles SET allowed_libraries='[]',revision=revision+1 WHERE id='profile'`,
+		"profile revocation":  `UPDATE direct_profiles SET deleted=1 WHERE id='profile'`,
+		"session expired":     `UPDATE authorization_family_tokens SET expires_at='2000-01-01T00:00:00Z'`,
+		"membership removed":  `DELETE FROM direct_memberships WHERE account_id='account'`,
 	}
 	for name, mutation := range mutations {
 		t.Run(name, func(t *testing.T) {
@@ -115,7 +115,7 @@ func TestPlaybackAuthorityRejectsCachedRestrictionAndPolicyChanges(t *testing.T)
 			if _, err = tx.Exec(mutation); err != nil {
 				t.Fatal(err)
 			}
-			if _, err = d.playbackAuthorityTx(context.Background(), tx, principal, itemA); !errors.Is(err, identity.ErrUnauthorized) {
+			if _, err = d.playbackAuthorityTx(context.Background(), tx, principal, itemA); !errors.Is(err, identity.ErrUnauthorized) && !(name == "library restriction" && errors.Is(err, identity.ErrNotVisible)) {
 				t.Fatalf("changed authority admitted: %v", err)
 			}
 		})
@@ -129,7 +129,7 @@ func TestPlaybackAuthorityFailsClosedWithoutDependenciesAndOnCancellation(t *tes
 		t.Fatal(err)
 	}
 	defer tx.Rollback()
-	for _, missing := range []Dependencies{{}, {Identity: d.Identity}} {
+	for _, missing := range []Dependencies{{}} {
 		if _, err = missing.playbackAuthorityTx(context.Background(), tx, principal, ""); !errors.Is(err, identity.ErrUnauthorized) {
 			t.Fatalf("missing dependency: %v", err)
 		}

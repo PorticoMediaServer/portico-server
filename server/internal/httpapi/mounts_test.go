@@ -49,6 +49,12 @@ func TestStorageOwnerProjectionReceiptsAndClock(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
+	if _, e = svc.Revision(); e != nil {
+		t.Fatal("mount revision:", e)
+	}
+	if _, e = svc.List(); e != nil {
+		t.Fatal("mount list:", e)
+	}
 	handler := New(Dependencies{DB: db, Identity: ident, Mounts: svc, Hosted: control})
 	req := func(method, path, token, body string) *httptest.ResponseRecorder {
 		r := httptest.NewRequest(method, path, bytes.NewBufferString(body))
@@ -75,7 +81,7 @@ func TestStorageOwnerProjectionReceiptsAndClock(t *testing.T) {
 		}
 	}
 	op := fmt.Sprintf("%013d-00000000-0000-4000-8000-000000000001", time.Now().UnixMilli())
-	body := fmt.Sprintf(`{"operationId":%q,"expectedRevision":1,"action":"start"}`, op)
+	body := fmt.Sprintf(`{"operationId":%q,"expectedRevision":1,"action":"stop"}`, op)
 	w = req("POST", "/v1/storage/mounts/mount/actions", owner.AccessToken, body)
 	if w.Code != 202 {
 		t.Fatal(w.Code, w.Body.String())
@@ -87,7 +93,7 @@ func TestStorageOwnerProjectionReceiptsAndClock(t *testing.T) {
 	if w = req("GET", "/v1/storage/operations/"+op, owner.AccessToken, ""); w.Code != 200 || w.Body.String() != original {
 		t.Fatal("recovery", w.Code, w.Body.String())
 	}
-	if w = req("POST", "/v1/storage/mounts/mount/actions", owner.AccessToken, strings.Replace(body, "start", "stop", 1)); w.Code != 409 {
+	if w = req("POST", "/v1/storage/mounts/mount/actions", owner.AccessToken, strings.Replace(body, "stop", "start", 1)); w.Code != 409 {
 		t.Fatal("changed body", w.Code, w.Body.String())
 	}
 	old := fmt.Sprintf("%013d-00000000-0000-4000-8000-000000000002", time.Now().Add(-time.Hour).UnixMilli())

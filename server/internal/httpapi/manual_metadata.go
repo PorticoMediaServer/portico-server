@@ -61,7 +61,7 @@ func manualMetadataAuthorize(ctx context.Context, tx *sql.Tx, p identity.Princip
 		return identity.ErrForbidden
 	}
 	var count int
-	err := tx.QueryRowContext(ctx, `SELECT count(*) FROM authorization_access s JOIN accounts a ON a.id=s.account_id AND a.profile_id=s.profile_id AND a.epoch=s.epoch WHERE s.hash=? AND s.authority='local' AND s.role='owner' AND s.account_id=? AND s.profile_id=? AND s.epoch=? AND s.revoked=0 AND s.expires_at>?`, p.Hash, p.AccountID, p.ProfileID, p.Epoch, time.Now().UTC().Format(time.RFC3339)).Scan(&count)
+	err := tx.QueryRowContext(ctx, `SELECT count(*) FROM authorization_access s JOIN accounts a ON a.id=s.account_id AND a.profile_id=s.profile_id AND a.epoch=s.epoch JOIN direct_memberships m ON m.account_id=a.id AND m.role='owner' AND m.disabled=0 JOIN direct_profiles p ON p.account_id=a.id AND p.id=s.profile_id AND p.deleted=0 AND p.is_primary=1 WHERE s.hash=? AND s.authority='local' AND s.role='owner' AND s.account_id=? AND s.profile_id=? AND s.epoch=? AND s.revoked=0 AND s.expires_at>?`, p.Hash, p.AccountID, p.ProfileID, p.Epoch, time.Now().UTC().Format(time.RFC3339)).Scan(&count)
 	if err != nil {
 		return err
 	}

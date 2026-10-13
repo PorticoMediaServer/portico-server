@@ -154,8 +154,8 @@ func boundConvertedPicture(p *DeliveryPlan, v *SourceVideo, cap *ClientVideoCode
 	// Decoder bounds apply after autorotation and square-pixel scaling, just
 	// like the dimensions advertised by the producer's master playlist.
 	width, height := convertedDimensions(DeliveryPlan{Trace: &DecisionTrace{Video: &TraceVideo{Width: v.Width, Height: v.Height, Rotation: v.Rotation, SampleAspectRatio: v.SampleAspectRatio}}})
-	if v.Height == 0 {
-		height = 1080
+	if v.Width <= 0 || v.Height <= 0 {
+		width, height = 1920, 1080
 	}
 	displayHeight := height
 	if p.TargetHeight > 0 {

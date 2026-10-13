@@ -74,7 +74,12 @@ func TestReauthorizeTxRejectsStalePrincipalAndAccountChanges(t *testing.T) {
 	for name, mutation := range cases {
 		t.Run(name, func(t *testing.T) {
 			db, service, principal := transactionAuthorityFixture(t)
-			if _, err := db.Exec(mutation); err != nil {
+			if name == "session authority" {
+				if _, err := db.Exec(mutation); err == nil {
+					t.Fatal("retired authority stored")
+				}
+				principal.Authority = "hosted"
+			} else if _, err := db.Exec(mutation); err != nil {
 				t.Fatal(err)
 			}
 			tx, err := db.Begin()
@@ -90,40 +95,20 @@ func TestReauthorizeTxRejectsStalePrincipalAndAccountChanges(t *testing.T) {
 }
 
 func TestReauthorizeTxCancellationAndHostedIdentityBoundary(t *testing.T) {
-	db, service, _ := transactionAuthorityFixture(t)
-	// Identity does not invent Hosted authority. This unit test supplies the
-	// caller-verified horizon explicitly; Hosted claim/policy verification is
-	// tested by the hosted package, not by the retired Issue wrapper.
+	db, service, principal := transactionAuthorityFixture(t)
 	if _, err := service.Issue("hosted-account", "hosted-profile", "hosted", "member", 1); !errors.Is(err, ErrUnauthorized) {
-		t.Fatalf("Hosted wrapper invented authority: %v", err)
-	}
-	horizon := time.Now().UTC().Add(time.Hour).Truncate(time.Second)
-	if _, err := db.Exec(`INSERT INTO policy(server_id,revision,payload,expires_at) VALUES(?,1,'{}',?)`, service.ID(), horizon.Format(time.RFC3339)); err != nil {
-		t.Fatal(err)
-	}
-	issueTx, err := db.Begin()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer issueTx.Rollback()
-	issued, err := service.IssueTx(context.Background(), issueTx, "hosted-account", "hosted-profile", "hosted", "member", 1, horizon)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = issueTx.Commit(); err != nil {
-		t.Fatal(err)
-	}
-	principal, err := service.Authenticate(issued.AccessToken)
-	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("retired wrapper invented authority: %v", err)
 	}
 	tx, err := db.Begin()
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer tx.Rollback()
+	if _, err = service.IssueTx(context.Background(), tx, "hosted-account", "hosted-profile", "hosted", "member", 1, time.Now().Add(time.Hour)); !errors.Is(err, ErrUnauthorized) {
+		t.Fatalf("transaction invented retired authority: %v", err)
+	}
 	if _, err = service.ReauthorizeTx(context.Background(), tx, principal); err != nil {
-		t.Fatalf("hosted identity without password row: %v", err)
+		t.Fatalf("current local identity: %v", err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()

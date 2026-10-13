@@ -265,14 +265,14 @@ func TestLibraryDiscoveryAndCollectionPermissions(t *testing.T) {
 			}
 		}
 	}
-	if _, err = db.Exec(`UPDATE policy SET expires_at='2000-01-01T00:00:00Z'`); err != nil {
+	if _, err = db.Exec(`UPDATE direct_memberships SET disabled=1 WHERE account_id='member'`); err != nil {
 		t.Fatal(err)
 	}
 	if w := request("PUT", "/v1/items/"+itemA.Public+"/personal-state", reader.AccessToken, mutation); w.Code != 401 {
-		t.Fatal("receipt replay bypassed expired policy", w.Code)
+		t.Fatal("receipt replay bypassed disabled membership", w.Code)
 	}
 	if w := request("GET", "/v1/home", reader.AccessToken, ""); w.Code != 401 {
-		t.Fatal("expired policy fabricated empty Home", w.Code, w.Body.String())
+		t.Fatal("disabled membership received Home", w.Code, w.Body.String())
 	}
 
 }

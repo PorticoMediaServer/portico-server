@@ -713,9 +713,6 @@ func New(d Dependencies) http.Handler {
 		}
 	}
 	mux := http.NewServeMux()
-	for _, add := range devRoutes {
-		add(d, mux)
-	}
 	// Admission is created with the router and lives as long as it. Its lanes
 	// publish this server's foreground-pressure signal, which is what background
 	// loops yield to.
@@ -788,6 +785,9 @@ func New(d Dependencies) http.Handler {
 	} else {
 		d.registry = registry
 		d.self.registry = registry
+	}
+	for _, add := range devRoutes {
+		add(d, mux)
 	}
 	d.installationRoutes(mux)
 	d.foundationRoutes(mux)

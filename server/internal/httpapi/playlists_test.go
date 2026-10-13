@@ -51,7 +51,7 @@ func TestPlaylistHTTPShareNeverGrantsMedia(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	member, e := issueHostedFixture(t, db, ident, "member", "member-p", "member")
+	member, e := issuePorticoFixture(t, db, ident, "member", "member-p", "member")
 	if e != nil {
 		t.Fatal(e)
 	}

@@ -213,7 +213,7 @@ func (s *Service) Command(ctx context.Context, actor, id string, c Command, auth
 	if c.Action == "delete" && s.NativeBusy != nil && s.NativeBusy(id) {
 		return zero, errors.New("stop active playback using this source before removal")
 	}
-	if (c.Action == "start" || c.Action == "restart") && !MountSupported() {
+	if (c.Action == "start" || c.Action == "restart") && !s.mountSupported() {
 		return zero, errors.New("this host does not provide supported FUSE mount semantics; native listing and playback remain available")
 	}
 	if c.Action == "delete" && (m.DesiredState != "stopped" || s.active[id] != nil) {

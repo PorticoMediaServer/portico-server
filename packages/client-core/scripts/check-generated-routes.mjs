@@ -9,8 +9,6 @@ const pending = new Map([
  ['playback-v1/commands.ts\0/v1/me/devices?controllable=true', 1],
  ['playback-v1/commands.ts\0/v1/devices/${enc(deviceId)}/commands', 1],
  ['playback-v1/commands.ts\0/v1/playback/sessions/${enc(sessionId)}/transfers', 1],
- ['profile-management.ts\0/v1/dev/e2e', 1],
- ['profile-management.ts\0/v1/dev/e2e/sign-in', 1],
  ['profile-management.ts\0/v1/account/profile-deletions/', 1],
 ]);
 
@@ -39,5 +37,5 @@ export function checkGeneratedRoutes(root=fileURLToPath(new URL('../src/',import
 }
 if(process.argv[1]===fileURLToPath(import.meta.url)){
  const errors=checkGeneratedRoutes();if(errors.length){process.stderr.write(errors.join('\n')+'\n');process.exitCode=1;}
- else process.stdout.write('Generated-route check passed; six existing dormant/development calls remain recorded.\n');
+ else process.stdout.write('Generated-route check passed; four existing dormant calls remain recorded.\n');
 }

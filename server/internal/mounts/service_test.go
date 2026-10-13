@@ -78,6 +78,8 @@ func fixture(t *testing.T) (*Service, CreateInput) {
 		t.Fatal(err)
 	}
 	t.Cleanup(s.shutdown)
+	// The executable above simulates mounting; command tests need no host FUSE.
+	s.mountSupported = func() bool { return true }
 	return s, CreateInput{Name: "Cloud movies", Executable: binary, Remote: "cloud:movies", Config: "[cloud]\ntype = s3\nprovider = AWS\naccess_key_id = fixture\nsecret_access_key = leaky-secret\n"}
 }
 func TestPlainConfigLifecycleAndDurableIntent(t *testing.T) {

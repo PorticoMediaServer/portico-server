@@ -219,6 +219,21 @@ func TestManualMetadataTransactionAuthorizationPredicates(t *testing.T) {
 			if e != nil {
 				t.Fatal(e)
 			}
+			if name == "session-authority" {
+				if _, e = d.DB.Exec(change); e == nil {
+					t.Fatal("retired authority stored")
+				}
+				p.Authority = "hosted"
+				tx, e := d.DB.Begin()
+				if e != nil {
+					t.Fatal(e)
+				}
+				defer tx.Rollback()
+				if e = manualMetadataAuthorize(context.Background(), tx, p); !errors.Is(e, identity.ErrForbidden) {
+					t.Fatalf("retired authority admitted: %v", e)
+				}
+				return
+			}
 			if _, e = d.DB.Exec(change); e != nil {
 				t.Fatal(e)
 			}

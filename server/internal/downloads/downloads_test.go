@@ -63,6 +63,9 @@ func newHarness(t *testing.T) *harness {
 	if _, e = db.Exec(`INSERT INTO libraries(id,name,kind,root) VALUES('lib','Movies','movie',?)`, root); e != nil {
 		t.Fatal(e)
 	}
+	if _, e = db.Exec(`INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES('account','owner',x'00','profile',1)`); e != nil {
+		t.Fatal(e)
+	}
 	h := &harness{db: db, root: root, assetPath: film, now: time.Unix(1_760_000_000, 0).UTC()}
 	h.item, h.itemID = addCompactFixtureItem(t, db, "lib", compactcatalog.Movie, "item", "Film", 0, "", nil)
 	h.asset, h.assetID = addCompactFixtureAsset(t, db, h.itemID, film, info, "mp4", "h264", "aac", 1920, 1080, 60)
@@ -652,9 +655,6 @@ func TestDownloadSwitchRevokesGrantAndReceiptRenewal(t *testing.T) {
 	if err != nil || len(receipts) != 1 || receipts[0].Receipt == nil {
 		t.Fatalf("initial receipt: %+v %v", receipts, err)
 	}
-	if _, err = h.db.Exec(`INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES('account','owner',X'00','profile',1)`); err != nil {
-		t.Fatal(err)
-	}
 	if _, err = h.db.Exec(`INSERT INTO profile_restrictions(profile_id,allow_downloads) VALUES('profile',0)`); err != nil {
 		t.Fatal(err)
 	}
@@ -923,8 +923,8 @@ func TestProgressBatchIsIdempotent(t *testing.T) {
 
 func TestPolicyRefusesAViewerWithoutDownloads(t *testing.T) {
 	h := newHarness(t)
-	h.viewer.Authority = "hosted" // The restrictions table is Hosted membership policy.
-	if _, e := h.db.Exec(`INSERT INTO restrictions(profile_id,revision,revoked) VALUES('profile',1,1)`); e != nil {
+	// The profile switch is server-local for every account.
+	if _, e := h.db.Exec(`INSERT INTO profile_restrictions(profile_id,allow_downloads) VALUES('profile',0)`); e != nil {
 		t.Fatal(e)
 	}
 	if _, e := h.service.Submit(context.Background(), h.viewer, Request{OperationID: "op-policy", MediaID: h.item, Quality: QualityOriginal}, nil); e != ErrPolicy {
@@ -946,12 +946,12 @@ func TestPolicyRefusesAViewerWithoutDownloads(t *testing.T) {
 
 func TestPolicyRevocationStopsAnAdmittedClaimAndItsReceipts(t *testing.T) {
 	h := newHarness(t)
-	h.viewer.Authority = "hosted" // Exercise the Hosted revocation, not direct-profile policy.
+	// Disable the actual local membership after issuing its copy.
 	ready := h.ready(t, "op-lost")
 	if _, e := h.service.IssueReceipts(context.Background(), h.viewer, "server", "op-lost-1", []string{ready.ID}); e != nil {
 		t.Fatal(e)
 	}
-	if _, e := h.db.Exec(`INSERT INTO restrictions(profile_id,revision,revoked) VALUES('profile',1,1)`); e != nil {
+	if _, e := h.db.Exec(`UPDATE direct_memberships SET disabled=1 WHERE account_id='account'`); e != nil {
 		t.Fatal(e)
 	}
 	out, e := h.service.Revalidate(context.Background(), h.viewer, "server", "op-lost-2", []string{}, nil)

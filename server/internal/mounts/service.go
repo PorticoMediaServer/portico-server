@@ -80,6 +80,7 @@ type Service struct {
 	validationSupervisor            *storage.Supervisor
 	nativeInventory, nativePlayback *storage.Supervisor
 	observe                         func(context.Context, string) (bool, error)
+	mountSupported                  func() bool
 	observeIdentity                 func(context.Context, string) (string, error)
 }
 
@@ -156,6 +157,7 @@ func New(db *sql.DB, state, root, helper string, store *storage.Client) (*Servic
 	}
 	s := &Service{db: db, root: root, private: private, helper: helper, fpKey: fpKey, storage: store, active: map[string]*child{}, available: map[string]bool{}, paths: map[string]string{}, retry: map[string]time.Time{}, validation: make(chan struct{}, 2), validationSupervisor: &storage.Supervisor{Limit: 2}, nativeInventory: &storage.Supervisor{Limit: 4}, nativePlayback: &storage.Supervisor{Limit: 8}}
 	s.observe = store.Mounted
+	s.mountSupported = MountSupported
 	s.observeIdentity = store.MountedIdentity
 	rows, err := db.Query(`SELECT id,mount_path FROM managed_mounts`)
 	if err != nil {

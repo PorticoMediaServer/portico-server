@@ -1,6 +1,7 @@
 package downloads
 
 import (
+	"errors"
 	"path/filepath"
 	"testing"
 
@@ -29,8 +30,8 @@ func TestDownloadPolicySeparatesLocalAndHostedProfileIDs(t *testing.T) {
 	if allowed, err := ProfileAllowsDownloads(tx, local); err != nil || allowed {
 		t.Fatalf("local download restriction: %v %v", allowed, err)
 	}
-	if allowed, err := ProfileAllowsDownloads(tx, hosted); err != nil || !allowed {
-		t.Fatalf("hosted viewer borrowed local restriction: %v %v", allowed, err)
+	if allowed, err := ProfileAllowsDownloads(tx, hosted); !errors.Is(err, identity.ErrUnauthorized) || allowed {
+		t.Fatalf("retired authority accepted: %v %v", allowed, err)
 	}
 	if _, err := tx.Exec(`UPDATE profile_restrictions SET allow_downloads=1 WHERE profile_id='same-profile'; INSERT INTO restrictions(profile_id,revision,revoked,allowed_libraries) VALUES('same-profile',1,1,'[]')`); err != nil {
 		t.Fatal(err)
@@ -41,7 +42,7 @@ func TestDownloadPolicySeparatesLocalAndHostedProfileIDs(t *testing.T) {
 	if disabled, err := AccountDisabled(tx, local); err != nil || disabled {
 		t.Fatalf("local account borrowed Hosted revocation: %v %v", disabled, err)
 	}
-	if disabled, err := AccountDisabled(tx, hosted); err != nil || !disabled {
-		t.Fatalf("Hosted revocation missing: %v %v", disabled, err)
+	if disabled, err := AccountDisabled(tx, hosted); !errors.Is(err, identity.ErrUnauthorized) || disabled {
+		t.Fatalf("retired authority accepted: %v %v", disabled, err)
 	}
 }

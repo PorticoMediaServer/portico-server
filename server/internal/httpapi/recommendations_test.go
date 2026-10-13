@@ -73,6 +73,10 @@ func TestRelatedMoviesDetailPermissionAndRevocation(t *testing.T) {
 		t.Fatal(e)
 	}
 	apply := func(revision int64, libraries []string) {
+		encoded, _ := json.Marshal(libraries)
+		if _, e = db.Exec(`UPDATE direct_memberships SET allowed_libraries=?,revision=revision+1 WHERE account_id='member'`, string(encoded)); e != nil {
+			t.Fatal(e)
+		}
 		p := hosted.Policy{ServerID: ident.ID(), Revision: revision, IssuedAt: time.Now().UTC().Format(time.RFC3339), ExpiresAt: time.Now().Add(time.Hour).UTC().Format(time.RFC3339), Members: []hosted.Member{{AccountID: "member", ProfileID: "p", Role: "member", AllowedLibraries: libraries}}}
 		raw, _ := json.Marshal(p)
 		if e = control.Apply(tl6CertifiedHostedPolicy(t, priv, "key", raw)); e != nil {
@@ -80,16 +84,7 @@ func TestRelatedMoviesDetailPermissionAndRevocation(t *testing.T) {
 		}
 	}
 	apply(1, []string{"a"})
-	tx, e := db.BeginTx(context.Background(), nil)
-	if e != nil {
-		t.Fatal(e)
-	}
-	session, e := ident.IssueTx(context.Background(), tx, "member", "p", "hosted", "member", 1, time.Now().Add(59*time.Minute))
-	if e != nil {
-		tx.Rollback()
-		t.Fatal(e)
-	}
-	e = tx.Commit()
+	session, e := issuePorticoFixture(t, db, ident, "member", "p", "member")
 	if e != nil {
 		t.Fatal(e)
 	}

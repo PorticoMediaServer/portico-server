@@ -23,10 +23,15 @@ func TestBookOPFNamesRolesSeriesAndIdentifiers(t *testing.T) {
 	}
 }
 func TestAudioSidecarsRejectExternalEntitiesDepthAndWrongKinds(t *testing.T) {
-	for _, raw := range []string{`<!DOCTYPE package [<!ENTITY file SYSTEM "file:///secret">]><package><metadata><title>&file;</title></metadata></package>`, `<package/> <package/>`, strings.Repeat("<a>", 17) + strings.Repeat("</a>", 17), `<a>` + strings.Repeat("x", 4097) + `</a>`} {
+	for _, raw := range []string{`<!DOCTYPE package [<!ENTITY file SYSTEM "file:///secret">]><package><metadata><title>&file;</title></metadata></package>`, `<package/> <package/>`, strings.Repeat("<a>", 17) + strings.Repeat("</a>", 17)} {
 		if _, e := parseAudioXML([]byte(raw)); e == nil {
 			t.Fatal("unsafe/unbounded XML accepted")
 		}
+	}
+	// Oversized text is truncated with a partial marker; the rest of a bounded
+	// document remains usable under the tolerant local metadata rule.
+	if root, e := parseAudioXML([]byte(`<a>` + strings.Repeat("x", 4097) + `</a>`)); e != nil || !root.partial || len(root.text) != 4096 {
+		t.Fatalf("bounded partial XML: %+v %v", root, e)
 	}
 	if _, e := parseMusicNFO([]byte(`<movie><title>Wrong kind</title></movie>`), "music"); e == nil {
 		t.Fatal("video sidecar entered music identity")

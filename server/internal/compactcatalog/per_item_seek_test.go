@@ -116,6 +116,15 @@ func TestPerItemDerivationStatementsSeek(t *testing.T) {
 			// out to the batch; CROSS JOIN fixes the order.
 			if m := drivesFromBatch.FindStringSubmatch(query); m != nil {
 				lines := strings.Split(strings.TrimSpace(plan), "\n")
+				// An UPDATE first seeks its target; the batch drives the IN subquery.
+				if strings.HasPrefix(strings.TrimSpace(query), "UPDATE ") {
+					for i, line := range lines {
+						if strings.HasPrefix(line, "LIST SUBQUERY ") {
+							lines = lines[i+1:]
+							break
+						}
+					}
+				}
 				for _, line := range lines {
 					if strings.HasPrefix(line, "SCAN "+m[1]+" ") || line == "SCAN "+m[1] {
 						break
@@ -134,9 +143,11 @@ func TestPerItemDerivationStatementsSeek(t *testing.T) {
 				scanned := strings.Fields(line)[1]
 				// A CTE the statement defines is a bounded stream built by its
 				// own (checked) lines.
-				cte := regexp.MustCompile(`(?i)(WITH|,)\s+` + regexp.QuoteMeta(scanned) + `\s+AS\s*\(`).MatchString(query)
+				cte := regexp.MustCompile(`(?i)(WITH|,)\s*` + regexp.QuoteMeta(scanned) + `\s+AS\s*\(`).MatchString(query)
 				switch {
 				case cte:
+				case scanned == "k" && strings.Contains(query, "FROM (SELECT ? AS profile,? AS item) k"):
+					// Exactly one parameter-only row, with no catalogue scan.
 				case scanned == "j", scanned == "json_each", strings.HasPrefix(scanned, "CONSTANT"), strings.HasPrefix(line, "SCAN d ") && strings.Contains(query, "(VALUES"):
 				case strings.Contains(line, "VIRTUAL TABLE INDEX"), bounded:
 				default:

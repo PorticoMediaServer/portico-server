@@ -112,7 +112,7 @@ func (s *Service) PINReset(ctx context.Context, bearer, profile, pin string) (Di
 	if len(hash) > 0 {
 		value = hash
 	}
-	if _, e = tx.ExecContext(ctx, `UPDATE direct_profiles SET pin_hash=?,pin_revision=pin_revision+1,pin_attempts=0,pin_locked_until=0,revision=revision+1 WHERE id=?`, value, profile); e != nil {
+	if _, e = tx.ExecContext(ctx, `UPDATE direct_profiles SET pin_hash=?,pin_revision=pin_revision+1,revision=revision+1 WHERE id=?`, value, profile); e != nil {
 		return DirectSnapshot{}, e
 	}
 	if _, e = tx.ExecContext(ctx, `DELETE FROM direct_profile_pin_attempts WHERE profile_id=?`, profile); e != nil {
