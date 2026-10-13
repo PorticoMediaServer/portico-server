@@ -41,6 +41,7 @@ type request struct {
 	ExpectedMountIdentity  string                `json:"expectedMountIdentity,omitempty"`
 	ObservedRegistrationID string                `json:"observedRegistrationId,omitempty"`
 	ObservedRelativePath   string                `json:"observedRelativePath,omitempty"`
+	Stem                   string                `json:"stem,omitempty"`
 	Operation              string                `json:"operation"`
 	Identity               string                `json:"identity,omitempty"`
 	Path                   string                `json:"path"`
@@ -74,6 +75,9 @@ func New(binary string) *Client {
 	return &Client{Binary: binary, Supervisor: &Supervisor{}, Timeout: 30 * time.Second}
 }
 func (c *Client) run(ctx context.Context, key, op, path string, visit func(Snapshot) error) error {
+	return c.runWithStem(ctx, key, op, path, "", visit)
+}
+func (c *Client) runWithStem(ctx context.Context, key, op, path, stem string, visit func(Snapshot) error) error {
 	if c.Guard != nil {
 		if err := c.Guard(path); err != nil {
 			return err
@@ -85,7 +89,7 @@ func (c *Client) run(ctx context.Context, key, op, path string, visit func(Snaps
 	}
 	ctx, cancel := context.WithTimeout(ctx, duration)
 	defer cancel()
-	req := request{Operation: op, Path: path, Identity: c.expectedIdentity, ManagedArtifact: c.managedRecording(path)}
+	req := request{Stem: stem, Operation: op, Path: path, Identity: c.expectedIdentity, ManagedArtifact: c.managedRecording(path)}
 	if c.MountedRoot != nil {
 		req.MountedRoot = c.MountedRoot(path)
 	}
@@ -312,7 +316,11 @@ func Helper(in io.Reader, out io.Writer) (result error) {
 			return errors.New("not a regular file")
 		}
 		return encoder.Encode(snapshot(r.Path, info))
-	case "inventory":
+	case "inventory", "subtitle-candidates":
+		if r.Operation == "subtitle-candidates" && (r.Stem == "" || len(r.Stem) > 4096 || strings.ContainsAny(r.Stem, "/\\\x00")) {
+			return errors.New("invalid subtitle association")
+		}
+
 		f, e := os.Open(r.Path)
 		if e != nil {
 			return e
@@ -327,6 +335,9 @@ func Helper(in io.Reader, out io.Writer) (result error) {
 				return e
 			}
 			for _, entry := range entries {
+				if r.Operation == "subtitle-candidates" && !subtitleCandidate(entry.Name(), entry.IsDir(), r.Stem) {
+					continue
+				}
 				info, err := entry.Info()
 				if err != nil {
 					return err
@@ -453,4 +464,28 @@ func (c *Client) RemoveOwnedMountRoot(ctx context.Context, path, identity string
 func binarySubtitlePath(path string) bool {
 	ext := strings.ToLower(filepath.Ext(path))
 	return ext == ".sup" || ext == ".sub"
+}
+
+// InventorySubtitleCandidates streams bounded directory pages but emits only
+// exact-stem subtitle candidates and the two conventional subtitle folders.
+// Unrelated entries do not consume the caller's admitted-candidate bound.
+func (c *Client) InventorySubtitleCandidates(ctx context.Context, key, path, stem string, visit func(Snapshot) error) error {
+	if c.IsRemote(path) {
+		return ErrRemoteCursor
+	}
+	return c.runWithStem(ctx, key, "subtitle-candidates", path, stem, visit)
+}
+func subtitleCandidate(name string, directory bool, stem string) bool {
+	if directory {
+		return strings.EqualFold(name, "Subs") || strings.EqualFold(name, "Subtitles")
+	}
+	base := strings.TrimSuffix(name, filepath.Ext(name))
+	if !(strings.EqualFold(base, stem) || strings.HasPrefix(strings.ToLower(base), strings.ToLower(stem)+".")) {
+		return false
+	}
+	switch strings.ToLower(filepath.Ext(name)) {
+	case ".srt", ".vtt", ".ass", ".ssa", ".sub", ".sup", ".idx", ".smi", ".sami", ".ttml", ".dfxp":
+		return true
+	}
+	return false
 }

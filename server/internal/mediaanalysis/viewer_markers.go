@@ -101,7 +101,7 @@ func ViewerMarkersTx(ctx context.Context, tx *sql.Tx, a Access, sourceID string)
 		if e = rows.Scan(&m.ID, &m.Kind, &start, &end, &confidence, &provenance, &approved); e != nil {
 			break
 		}
-		if !segmentmarkers.ViewerKind(m.Kind) || !approved && strings.Contains(provenance, "luminance") {
+		if !segmentmarkers.ViewerKind(m.Kind) || !approved && confidence < 0.85 && (strings.Contains(provenance, "luminance") || strings.Contains(provenance, "semantic_ambiguous")) {
 			continue
 		}
 		m.StartSeconds = float64(max(start, v.Start)-v.Start) / 1e6

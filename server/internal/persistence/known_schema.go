@@ -997,6 +997,7 @@ table subtitle_collections
 table subtitle_inventory_entries
 table subtitle_inventory_evidence
 table subtitle_operations
+table subtitle_original_files
 table subtitle_original_revisions
 table subtitle_provider_candidates
 table subtitle_remote_sessions

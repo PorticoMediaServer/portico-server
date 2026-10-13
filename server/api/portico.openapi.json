@@ -4026,6 +4026,2193 @@
         "x-lane": "realtime"
       }
     },
+    "/v1/items/{id}/chapters/{chapter}/image": {
+      "get": {
+        "operationId": "get_v1_items_id_chapters_chapter_image",
+        "responses": {
+          "200": {
+            "content": {
+              "image/jpeg": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Read or change authorized subtitles",
+        "x-access": "viewer_library",
+        "x-cost": "constant",
+        "x-lane": "default"
+      }
+    },
+    "/v1/items/{id}/playback/{session}/subtitles": {
+      "get": {
+        "operationId": "get_v1_items_id_playback_session_subtitles",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "appliedRevision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "catalogRevision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "discovered": {
+                      "items": {
+                        "properties": {
+                          "default": {
+                            "type": "boolean"
+                          },
+                          "enabled": {
+                            "type": "boolean"
+                          },
+                          "forced": {
+                            "type": "boolean"
+                          },
+                          "format": {
+                            "type": "string"
+                          },
+                          "hearingImpaired": {
+                            "type": "boolean"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "language": {
+                            "type": "string"
+                          },
+                          "origin": {
+                            "type": "string"
+                          },
+                          "reason": {
+                            "type": "string"
+                          },
+                          "revision": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "sourceId": {
+                            "type": "string"
+                          },
+                          "title": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "sourceId",
+                          "revision",
+                          "origin",
+                          "format",
+                          "language",
+                          "title",
+                          "default",
+                          "forced",
+                          "hearingImpaired",
+                          "enabled"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "documentUrl": {
+                      "type": "string"
+                    },
+                    "generation": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "mode": {
+                      "type": "string"
+                    },
+                    "offAvailable": {
+                      "type": "boolean"
+                    },
+                    "offsetUs": {
+                      "type": "string"
+                    },
+                    "presentation": {
+                      "properties": {
+                        "generation": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "mode": {
+                          "type": "string"
+                        },
+                        "positionUs": {
+                          "type": "string"
+                        },
+                        "sessionId": {
+                          "type": "string"
+                        },
+                        "streamUrl": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "sessionId",
+                        "generation",
+                        "streamUrl",
+                        "mode",
+                        "positionUs"
+                      ],
+                      "type": "object"
+                    },
+                    "renderer": {
+                      "type": "string"
+                    },
+                    "resources": {
+                      "items": {
+                        "properties": {
+                          "attribution": {
+                            "type": "string"
+                          },
+                          "canManage": {
+                            "type": "boolean"
+                          },
+                          "default": {
+                            "type": "boolean"
+                          },
+                          "deliveries": {
+                            "items": {
+                              "properties": {
+                                "companionUrl": {
+                                  "type": "string"
+                                },
+                                "fontsUrl": {
+                                  "type": "string"
+                                },
+                                "format": {
+                                  "type": "string"
+                                },
+                                "url": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "format"
+                              ],
+                              "type": "object"
+                            },
+                            "type": "array"
+                          },
+                          "discoveryId": {
+                            "type": "string"
+                          },
+                          "enabled": {
+                            "type": "boolean"
+                          },
+                          "forced": {
+                            "type": "boolean"
+                          },
+                          "format": {
+                            "type": "string"
+                          },
+                          "hearingImpaired": {
+                            "type": "boolean"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "language": {
+                            "type": "string"
+                          },
+                          "manifestName": {
+                            "type": "string"
+                          },
+                          "offsetUs": {
+                            "type": "string"
+                          },
+                          "origin": {
+                            "type": "string"
+                          },
+                          "pinned": {
+                            "type": "boolean"
+                          },
+                          "provider": {
+                            "type": "string"
+                          },
+                          "reason": {
+                            "type": "string"
+                          },
+                          "renderer": {
+                            "type": "string"
+                          },
+                          "retired": {
+                            "type": "boolean"
+                          },
+                          "revision": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "rights": {
+                            "type": "string"
+                          },
+                          "scope": {
+                            "type": "string"
+                          },
+                          "sourceId": {
+                            "type": "string"
+                          },
+                          "title": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "deliveries",
+                          "id",
+                          "sourceId",
+                          "revision",
+                          "scope",
+                          "language",
+                          "title",
+                          "format",
+                          "origin",
+                          "rights",
+                          "offsetUs",
+                          "canManage",
+                          "enabled",
+                          "renderer",
+                          "default",
+                          "hearingImpaired",
+                          "forced"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "revision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "selected": {
+                      "nullable": true,
+                      "properties": {
+                        "attribution": {
+                          "type": "string"
+                        },
+                        "canManage": {
+                          "type": "boolean"
+                        },
+                        "default": {
+                          "type": "boolean"
+                        },
+                        "deliveries": {
+                          "items": {
+                            "properties": {
+                              "companionUrl": {
+                                "type": "string"
+                              },
+                              "fontsUrl": {
+                                "type": "string"
+                              },
+                              "format": {
+                                "type": "string"
+                              },
+                              "url": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "format"
+                            ],
+                            "type": "object"
+                          },
+                          "type": "array"
+                        },
+                        "discoveryId": {
+                          "type": "string"
+                        },
+                        "enabled": {
+                          "type": "boolean"
+                        },
+                        "forced": {
+                          "type": "boolean"
+                        },
+                        "format": {
+                          "type": "string"
+                        },
+                        "hearingImpaired": {
+                          "type": "boolean"
+                        },
+                        "id": {
+                          "type": "string"
+                        },
+                        "language": {
+                          "type": "string"
+                        },
+                        "manifestName": {
+                          "type": "string"
+                        },
+                        "offsetUs": {
+                          "type": "string"
+                        },
+                        "origin": {
+                          "type": "string"
+                        },
+                        "pinned": {
+                          "type": "boolean"
+                        },
+                        "provider": {
+                          "type": "string"
+                        },
+                        "reason": {
+                          "type": "string"
+                        },
+                        "renderer": {
+                          "type": "string"
+                        },
+                        "retired": {
+                          "type": "boolean"
+                        },
+                        "revision": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "rights": {
+                          "type": "string"
+                        },
+                        "scope": {
+                          "type": "string"
+                        },
+                        "sourceId": {
+                          "type": "string"
+                        },
+                        "title": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "deliveries",
+                        "id",
+                        "sourceId",
+                        "revision",
+                        "scope",
+                        "language",
+                        "title",
+                        "format",
+                        "origin",
+                        "rights",
+                        "offsetUs",
+                        "canManage",
+                        "enabled",
+                        "renderer",
+                        "default",
+                        "hearingImpaired",
+                        "forced"
+                      ],
+                      "type": "object"
+                    },
+                    "sessionId": {
+                      "type": "string"
+                    },
+                    "sourceId": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "version",
+                    "sessionId",
+                    "generation",
+                    "sourceId",
+                    "revision",
+                    "catalogRevision",
+                    "renderer",
+                    "mode",
+                    "offAvailable",
+                    "offsetUs",
+                    "selected",
+                    "resources",
+                    "discovered"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Read or change authorized subtitles",
+        "x-access": "viewer_library",
+        "x-cost": "constant",
+        "x-lane": "default"
+      },
+      "put": {
+        "operationId": "put_v1_items_id_playback_session_subtitles",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "control": {},
+                  "expectedRevision": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "generation": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "mode": {
+                    "type": "string"
+                  },
+                  "offsetUs": {
+                    "type": "string"
+                  },
+                  "operationId": {
+                    "type": "string"
+                  },
+                  "positionUs": {
+                    "type": "string"
+                  },
+                  "rendering": {
+                    "type": "string"
+                  },
+                  "resourceId": {
+                    "type": "string"
+                  },
+                  "resourceRevision": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "operationId",
+                  "generation",
+                  "expectedRevision",
+                  "mode",
+                  "offsetUs"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "appliedRevision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "catalogRevision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "discovered": {
+                      "items": {
+                        "properties": {
+                          "default": {
+                            "type": "boolean"
+                          },
+                          "enabled": {
+                            "type": "boolean"
+                          },
+                          "forced": {
+                            "type": "boolean"
+                          },
+                          "format": {
+                            "type": "string"
+                          },
+                          "hearingImpaired": {
+                            "type": "boolean"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "language": {
+                            "type": "string"
+                          },
+                          "origin": {
+                            "type": "string"
+                          },
+                          "reason": {
+                            "type": "string"
+                          },
+                          "revision": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "sourceId": {
+                            "type": "string"
+                          },
+                          "title": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "sourceId",
+                          "revision",
+                          "origin",
+                          "format",
+                          "language",
+                          "title",
+                          "default",
+                          "forced",
+                          "hearingImpaired",
+                          "enabled"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "documentUrl": {
+                      "type": "string"
+                    },
+                    "generation": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "mode": {
+                      "type": "string"
+                    },
+                    "offAvailable": {
+                      "type": "boolean"
+                    },
+                    "offsetUs": {
+                      "type": "string"
+                    },
+                    "presentation": {
+                      "properties": {
+                        "generation": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "mode": {
+                          "type": "string"
+                        },
+                        "positionUs": {
+                          "type": "string"
+                        },
+                        "sessionId": {
+                          "type": "string"
+                        },
+                        "streamUrl": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "sessionId",
+                        "generation",
+                        "streamUrl",
+                        "mode",
+                        "positionUs"
+                      ],
+                      "type": "object"
+                    },
+                    "renderer": {
+                      "type": "string"
+                    },
+                    "resources": {
+                      "items": {
+                        "properties": {
+                          "attribution": {
+                            "type": "string"
+                          },
+                          "canManage": {
+                            "type": "boolean"
+                          },
+                          "default": {
+                            "type": "boolean"
+                          },
+                          "deliveries": {
+                            "items": {
+                              "properties": {
+                                "companionUrl": {
+                                  "type": "string"
+                                },
+                                "fontsUrl": {
+                                  "type": "string"
+                                },
+                                "format": {
+                                  "type": "string"
+                                },
+                                "url": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "format"
+                              ],
+                              "type": "object"
+                            },
+                            "type": "array"
+                          },
+                          "discoveryId": {
+                            "type": "string"
+                          },
+                          "enabled": {
+                            "type": "boolean"
+                          },
+                          "forced": {
+                            "type": "boolean"
+                          },
+                          "format": {
+                            "type": "string"
+                          },
+                          "hearingImpaired": {
+                            "type": "boolean"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "language": {
+                            "type": "string"
+                          },
+                          "manifestName": {
+                            "type": "string"
+                          },
+                          "offsetUs": {
+                            "type": "string"
+                          },
+                          "origin": {
+                            "type": "string"
+                          },
+                          "pinned": {
+                            "type": "boolean"
+                          },
+                          "provider": {
+                            "type": "string"
+                          },
+                          "reason": {
+                            "type": "string"
+                          },
+                          "renderer": {
+                            "type": "string"
+                          },
+                          "retired": {
+                            "type": "boolean"
+                          },
+                          "revision": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "rights": {
+                            "type": "string"
+                          },
+                          "scope": {
+                            "type": "string"
+                          },
+                          "sourceId": {
+                            "type": "string"
+                          },
+                          "title": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "deliveries",
+                          "id",
+                          "sourceId",
+                          "revision",
+                          "scope",
+                          "language",
+                          "title",
+                          "format",
+                          "origin",
+                          "rights",
+                          "offsetUs",
+                          "canManage",
+                          "enabled",
+                          "renderer",
+                          "default",
+                          "hearingImpaired",
+                          "forced"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "revision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "selected": {
+                      "nullable": true,
+                      "properties": {
+                        "attribution": {
+                          "type": "string"
+                        },
+                        "canManage": {
+                          "type": "boolean"
+                        },
+                        "default": {
+                          "type": "boolean"
+                        },
+                        "deliveries": {
+                          "items": {
+                            "properties": {
+                              "companionUrl": {
+                                "type": "string"
+                              },
+                              "fontsUrl": {
+                                "type": "string"
+                              },
+                              "format": {
+                                "type": "string"
+                              },
+                              "url": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "format"
+                            ],
+                            "type": "object"
+                          },
+                          "type": "array"
+                        },
+                        "discoveryId": {
+                          "type": "string"
+                        },
+                        "enabled": {
+                          "type": "boolean"
+                        },
+                        "forced": {
+                          "type": "boolean"
+                        },
+                        "format": {
+                          "type": "string"
+                        },
+                        "hearingImpaired": {
+                          "type": "boolean"
+                        },
+                        "id": {
+                          "type": "string"
+                        },
+                        "language": {
+                          "type": "string"
+                        },
+                        "manifestName": {
+                          "type": "string"
+                        },
+                        "offsetUs": {
+                          "type": "string"
+                        },
+                        "origin": {
+                          "type": "string"
+                        },
+                        "pinned": {
+                          "type": "boolean"
+                        },
+                        "provider": {
+                          "type": "string"
+                        },
+                        "reason": {
+                          "type": "string"
+                        },
+                        "renderer": {
+                          "type": "string"
+                        },
+                        "retired": {
+                          "type": "boolean"
+                        },
+                        "revision": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "rights": {
+                          "type": "string"
+                        },
+                        "scope": {
+                          "type": "string"
+                        },
+                        "sourceId": {
+                          "type": "string"
+                        },
+                        "title": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "deliveries",
+                        "id",
+                        "sourceId",
+                        "revision",
+                        "scope",
+                        "language",
+                        "title",
+                        "format",
+                        "origin",
+                        "rights",
+                        "offsetUs",
+                        "canManage",
+                        "enabled",
+                        "renderer",
+                        "default",
+                        "hearingImpaired",
+                        "forced"
+                      ],
+                      "type": "object"
+                    },
+                    "sessionId": {
+                      "type": "string"
+                    },
+                    "sourceId": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "version",
+                    "sessionId",
+                    "generation",
+                    "sourceId",
+                    "revision",
+                    "catalogRevision",
+                    "renderer",
+                    "mode",
+                    "offAvailable",
+                    "offsetUs",
+                    "selected",
+                    "resources",
+                    "discovered"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Read or change authorized subtitles",
+        "x-access": "viewer_library",
+        "x-cost": "constant",
+        "x-lane": "default",
+        "x-max-body-bytes": 50331648
+      }
+    },
+    "/v1/items/{id}/subtitles": {
+      "get": {
+        "operationId": "get_v1_items_id_subtitles",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "canShare": {
+                      "type": "boolean"
+                    },
+                    "discovered": {
+                      "items": {
+                        "properties": {
+                          "default": {
+                            "type": "boolean"
+                          },
+                          "enabled": {
+                            "type": "boolean"
+                          },
+                          "forced": {
+                            "type": "boolean"
+                          },
+                          "format": {
+                            "type": "string"
+                          },
+                          "hearingImpaired": {
+                            "type": "boolean"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "language": {
+                            "type": "string"
+                          },
+                          "origin": {
+                            "type": "string"
+                          },
+                          "reason": {
+                            "type": "string"
+                          },
+                          "revision": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "sourceId": {
+                            "type": "string"
+                          },
+                          "title": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "sourceId",
+                          "revision",
+                          "origin",
+                          "format",
+                          "language",
+                          "title",
+                          "default",
+                          "forced",
+                          "hearingImpaired",
+                          "enabled"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "itemId": {
+                      "type": "string"
+                    },
+                    "provider": {
+                      "properties": {
+                        "enabled": {
+                          "type": "boolean"
+                        },
+                        "id": {
+                          "type": "string"
+                        },
+                        "reason": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "enabled"
+                      ],
+                      "type": "object"
+                    },
+                    "resources": {
+                      "items": {
+                        "properties": {
+                          "attribution": {
+                            "type": "string"
+                          },
+                          "canManage": {
+                            "type": "boolean"
+                          },
+                          "default": {
+                            "type": "boolean"
+                          },
+                          "deliveries": {
+                            "items": {
+                              "properties": {
+                                "companionUrl": {
+                                  "type": "string"
+                                },
+                                "fontsUrl": {
+                                  "type": "string"
+                                },
+                                "format": {
+                                  "type": "string"
+                                },
+                                "url": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "format"
+                              ],
+                              "type": "object"
+                            },
+                            "type": "array"
+                          },
+                          "discoveryId": {
+                            "type": "string"
+                          },
+                          "enabled": {
+                            "type": "boolean"
+                          },
+                          "forced": {
+                            "type": "boolean"
+                          },
+                          "format": {
+                            "type": "string"
+                          },
+                          "hearingImpaired": {
+                            "type": "boolean"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "language": {
+                            "type": "string"
+                          },
+                          "manifestName": {
+                            "type": "string"
+                          },
+                          "offsetUs": {
+                            "type": "string"
+                          },
+                          "origin": {
+                            "type": "string"
+                          },
+                          "pinned": {
+                            "type": "boolean"
+                          },
+                          "provider": {
+                            "type": "string"
+                          },
+                          "reason": {
+                            "type": "string"
+                          },
+                          "renderer": {
+                            "type": "string"
+                          },
+                          "retired": {
+                            "type": "boolean"
+                          },
+                          "revision": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "rights": {
+                            "type": "string"
+                          },
+                          "scope": {
+                            "type": "string"
+                          },
+                          "sourceId": {
+                            "type": "string"
+                          },
+                          "title": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "deliveries",
+                          "id",
+                          "sourceId",
+                          "revision",
+                          "scope",
+                          "language",
+                          "title",
+                          "format",
+                          "origin",
+                          "rights",
+                          "offsetUs",
+                          "canManage",
+                          "enabled",
+                          "renderer",
+                          "default",
+                          "hearingImpaired",
+                          "forced"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "revision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "sources": {
+                      "items": {
+                        "properties": {
+                          "available": {
+                            "type": "boolean"
+                          },
+                          "durationUs": {
+                            "type": "string"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "inventoryRevision": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "timingKnown": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "durationUs",
+                          "inventoryRevision",
+                          "available",
+                          "timingKnown"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "version": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "version",
+                    "itemId",
+                    "revision",
+                    "canShare",
+                    "sources",
+                    "resources",
+                    "discovered",
+                    "provider"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Read or change authorized subtitles",
+        "x-access": "viewer_library",
+        "x-cost": "constant",
+        "x-lane": "default"
+      },
+      "post": {
+        "operationId": "post_v1_items_id_subtitles",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "companion": {
+                    "contentEncoding": "base64",
+                    "format": "byte",
+                    "type": "string"
+                  },
+                  "content": {
+                    "type": "string"
+                  },
+                  "data": {
+                    "contentEncoding": "base64",
+                    "format": "byte",
+                    "type": "string"
+                  },
+                  "default": {
+                    "type": "boolean"
+                  },
+                  "expectedRevision": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "forced": {
+                    "type": "boolean"
+                  },
+                  "format": {
+                    "type": "string"
+                  },
+                  "language": {
+                    "type": "string"
+                  },
+                  "offsetUs": {
+                    "type": "string"
+                  },
+                  "operationId": {
+                    "type": "string"
+                  },
+                  "render": {
+                    "type": "string"
+                  },
+                  "resourceId": {
+                    "type": "string"
+                  },
+                  "rights": {
+                    "type": "string"
+                  },
+                  "scope": {
+                    "type": "string"
+                  },
+                  "sourceId": {
+                    "type": "string"
+                  },
+                  "title": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "operationId",
+                  "sourceId",
+                  "expectedRevision",
+                  "scope",
+                  "format",
+                  "language",
+                  "title",
+                  "rights",
+                  "offsetUs"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "catalogRevision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "deleted": {
+                      "type": "boolean"
+                    },
+                    "operationId": {
+                      "type": "string"
+                    },
+                    "resourceId": {
+                      "type": "string"
+                    },
+                    "revision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "operationId",
+                    "resourceId",
+                    "revision",
+                    "catalogRevision",
+                    "deleted"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Read or change authorized subtitles",
+        "x-access": "viewer_library",
+        "x-cost": "constant",
+        "x-lane": "default",
+        "x-max-body-bytes": 50331648
+      }
+    },
+    "/v1/items/{id}/subtitles/apply": {
+      "post": {
+        "operationId": "post_v1_items_id_subtitles_apply",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "candidateId": {
+                    "type": "string"
+                  },
+                  "operationId": {
+                    "type": "string"
+                  },
+                  "rights": {
+                    "type": "string"
+                  },
+                  "scope": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "operationId",
+                  "candidateId",
+                  "scope",
+                  "rights"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "catalogRevision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "deleted": {
+                      "type": "boolean"
+                    },
+                    "operationId": {
+                      "type": "string"
+                    },
+                    "resourceId": {
+                      "type": "string"
+                    },
+                    "revision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "operationId",
+                    "resourceId",
+                    "revision",
+                    "catalogRevision",
+                    "deleted"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Read or change authorized subtitles",
+        "x-access": "viewer_library",
+        "x-cost": "constant",
+        "x-lane": "default",
+        "x-max-body-bytes": 50331648
+      }
+    },
+    "/v1/items/{id}/subtitles/import": {
+      "post": {
+        "operationId": "post_v1_items_id_subtitles_import",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "discoveryId": {
+                    "type": "string"
+                  },
+                  "expectedRevision": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "operationId": {
+                    "type": "string"
+                  },
+                  "render": {
+                    "type": "string"
+                  },
+                  "scope": {
+                    "type": "string"
+                  },
+                  "sourceId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "operationId",
+                  "sourceId",
+                  "discoveryId",
+                  "expectedRevision",
+                  "scope"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "catalogRevision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "deleted": {
+                      "type": "boolean"
+                    },
+                    "operationId": {
+                      "type": "string"
+                    },
+                    "resourceId": {
+                      "type": "string"
+                    },
+                    "revision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "operationId",
+                    "resourceId",
+                    "revision",
+                    "catalogRevision",
+                    "deleted"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Read or change authorized subtitles",
+        "x-access": "viewer_library",
+        "x-cost": "constant",
+        "x-lane": "default",
+        "x-max-body-bytes": 50331648
+      }
+    },
+    "/v1/items/{id}/subtitles/refresh": {
+      "post": {
+        "operationId": "post_v1_items_id_subtitles_refresh",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "sourceId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "sourceId"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "canShare": {
+                      "type": "boolean"
+                    },
+                    "discovered": {
+                      "items": {
+                        "properties": {
+                          "default": {
+                            "type": "boolean"
+                          },
+                          "enabled": {
+                            "type": "boolean"
+                          },
+                          "forced": {
+                            "type": "boolean"
+                          },
+                          "format": {
+                            "type": "string"
+                          },
+                          "hearingImpaired": {
+                            "type": "boolean"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "language": {
+                            "type": "string"
+                          },
+                          "origin": {
+                            "type": "string"
+                          },
+                          "reason": {
+                            "type": "string"
+                          },
+                          "revision": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "sourceId": {
+                            "type": "string"
+                          },
+                          "title": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "sourceId",
+                          "revision",
+                          "origin",
+                          "format",
+                          "language",
+                          "title",
+                          "default",
+                          "forced",
+                          "hearingImpaired",
+                          "enabled"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "itemId": {
+                      "type": "string"
+                    },
+                    "provider": {
+                      "properties": {
+                        "enabled": {
+                          "type": "boolean"
+                        },
+                        "id": {
+                          "type": "string"
+                        },
+                        "reason": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "enabled"
+                      ],
+                      "type": "object"
+                    },
+                    "resources": {
+                      "items": {
+                        "properties": {
+                          "attribution": {
+                            "type": "string"
+                          },
+                          "canManage": {
+                            "type": "boolean"
+                          },
+                          "default": {
+                            "type": "boolean"
+                          },
+                          "deliveries": {
+                            "items": {
+                              "properties": {
+                                "companionUrl": {
+                                  "type": "string"
+                                },
+                                "fontsUrl": {
+                                  "type": "string"
+                                },
+                                "format": {
+                                  "type": "string"
+                                },
+                                "url": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "format"
+                              ],
+                              "type": "object"
+                            },
+                            "type": "array"
+                          },
+                          "discoveryId": {
+                            "type": "string"
+                          },
+                          "enabled": {
+                            "type": "boolean"
+                          },
+                          "forced": {
+                            "type": "boolean"
+                          },
+                          "format": {
+                            "type": "string"
+                          },
+                          "hearingImpaired": {
+                            "type": "boolean"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "language": {
+                            "type": "string"
+                          },
+                          "manifestName": {
+                            "type": "string"
+                          },
+                          "offsetUs": {
+                            "type": "string"
+                          },
+                          "origin": {
+                            "type": "string"
+                          },
+                          "pinned": {
+                            "type": "boolean"
+                          },
+                          "provider": {
+                            "type": "string"
+                          },
+                          "reason": {
+                            "type": "string"
+                          },
+                          "renderer": {
+                            "type": "string"
+                          },
+                          "retired": {
+                            "type": "boolean"
+                          },
+                          "revision": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "rights": {
+                            "type": "string"
+                          },
+                          "scope": {
+                            "type": "string"
+                          },
+                          "sourceId": {
+                            "type": "string"
+                          },
+                          "title": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "deliveries",
+                          "id",
+                          "sourceId",
+                          "revision",
+                          "scope",
+                          "language",
+                          "title",
+                          "format",
+                          "origin",
+                          "rights",
+                          "offsetUs",
+                          "canManage",
+                          "enabled",
+                          "renderer",
+                          "default",
+                          "hearingImpaired",
+                          "forced"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "revision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "sources": {
+                      "items": {
+                        "properties": {
+                          "available": {
+                            "type": "boolean"
+                          },
+                          "durationUs": {
+                            "type": "string"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "inventoryRevision": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "timingKnown": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "durationUs",
+                          "inventoryRevision",
+                          "available",
+                          "timingKnown"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "version": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "version",
+                    "itemId",
+                    "revision",
+                    "canShare",
+                    "sources",
+                    "resources",
+                    "discovered",
+                    "provider"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Read or change authorized subtitles",
+        "x-access": "viewer_library",
+        "x-cost": "constant",
+        "x-lane": "default",
+        "x-max-body-bytes": 50331648
+      }
+    },
+    "/v1/items/{id}/subtitles/remote": {
+      "post": {
+        "operationId": "post_v1_items_id_subtitles_remote",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "format": {
+                    "type": "string"
+                  },
+                  "language": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "operationId": {
+                    "type": "string"
+                  },
+                  "rights": {
+                    "type": "string"
+                  },
+                  "scope": {
+                    "type": "string"
+                  },
+                  "sourceId": {
+                    "type": "string"
+                  },
+                  "title": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "operationId",
+                  "sourceId",
+                  "name",
+                  "format",
+                  "language",
+                  "title",
+                  "rights",
+                  "scope"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "catalogRevision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "deleted": {
+                      "type": "boolean"
+                    },
+                    "operationId": {
+                      "type": "string"
+                    },
+                    "resourceId": {
+                      "type": "string"
+                    },
+                    "revision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "operationId",
+                    "resourceId",
+                    "revision",
+                    "catalogRevision",
+                    "deleted"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Read or change authorized subtitles",
+        "x-access": "viewer_library",
+        "x-cost": "constant",
+        "x-lane": "default",
+        "x-max-body-bytes": 50331648
+      }
+    },
+    "/v1/items/{id}/subtitles/search": {
+      "post": {
+        "operationId": "post_v1_items_id_subtitles_search",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "language": {
+                    "type": "string"
+                  },
+                  "page": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "query": {
+                    "type": "string"
+                  },
+                  "sourceId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "sourceId",
+                  "language",
+                  "query",
+                  "page"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "candidates": {
+                      "items": {
+                        "properties": {
+                          "attribution": {
+                            "type": "string"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "language": {
+                            "type": "string"
+                          },
+                          "title": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "language",
+                          "title",
+                          "attribution"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "expiresAt": {
+                      "type": "string"
+                    },
+                    "page": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "version": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "version",
+                    "candidates",
+                    "page",
+                    "expiresAt"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Read or change authorized subtitles",
+        "x-access": "viewer_library",
+        "x-cost": "constant",
+        "x-lane": "default",
+        "x-max-body-bytes": 50331648
+      }
+    },
+    "/v1/items/{id}/subtitles/{resource}": {
+      "delete": {
+        "operationId": "delete_v1_items_id_subtitles_resource",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "expectedRevision": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "operationId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "operationId",
+                  "expectedRevision"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "catalogRevision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "deleted": {
+                      "type": "boolean"
+                    },
+                    "operationId": {
+                      "type": "string"
+                    },
+                    "resourceId": {
+                      "type": "string"
+                    },
+                    "revision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "operationId",
+                    "resourceId",
+                    "revision",
+                    "catalogRevision",
+                    "deleted"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Read or change authorized subtitles",
+        "x-access": "viewer_library",
+        "x-cost": "constant",
+        "x-lane": "default",
+        "x-max-body-bytes": 50331648
+      },
+      "put": {
+        "operationId": "put_v1_items_id_subtitles_resource",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "companion": {
+                    "contentEncoding": "base64",
+                    "format": "byte",
+                    "type": "string"
+                  },
+                  "content": {
+                    "type": "string"
+                  },
+                  "data": {
+                    "contentEncoding": "base64",
+                    "format": "byte",
+                    "type": "string"
+                  },
+                  "default": {
+                    "type": "boolean"
+                  },
+                  "expectedRevision": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "forced": {
+                    "type": "boolean"
+                  },
+                  "format": {
+                    "type": "string"
+                  },
+                  "language": {
+                    "type": "string"
+                  },
+                  "offsetUs": {
+                    "type": "string"
+                  },
+                  "operationId": {
+                    "type": "string"
+                  },
+                  "render": {
+                    "type": "string"
+                  },
+                  "resourceId": {
+                    "type": "string"
+                  },
+                  "rights": {
+                    "type": "string"
+                  },
+                  "scope": {
+                    "type": "string"
+                  },
+                  "sourceId": {
+                    "type": "string"
+                  },
+                  "title": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "operationId",
+                  "sourceId",
+                  "expectedRevision",
+                  "scope",
+                  "format",
+                  "language",
+                  "title",
+                  "rights",
+                  "offsetUs"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "catalogRevision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "deleted": {
+                      "type": "boolean"
+                    },
+                    "operationId": {
+                      "type": "string"
+                    },
+                    "resourceId": {
+                      "type": "string"
+                    },
+                    "revision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "operationId",
+                    "resourceId",
+                    "revision",
+                    "catalogRevision",
+                    "deleted"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Read or change authorized subtitles",
+        "x-access": "viewer_library",
+        "x-cost": "constant",
+        "x-lane": "default",
+        "x-max-body-bytes": 50331648
+      }
+    },
+    "/v1/items/{id}/trickplay/{set}/tiles/{tile}.jpg": {
+      "get": {
+        "operationId": "get_v1_items_id_trickplay_set_tiles_tile_jpg",
+        "responses": {
+          "200": {
+            "content": {
+              "image/jpeg": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Read or change authorized subtitles",
+        "x-access": "viewer_library",
+        "x-cost": "constant",
+        "x-lane": "default"
+      }
+    },
     "/v1/items/{itemId}/playback-options": {
       "get": {
         "operationId": "get_playback_options",
@@ -4334,6 +6521,29 @@
                                 "default": {
                                   "type": "boolean"
                                 },
+                                "deliveries": {
+                                  "items": {
+                                    "properties": {
+                                      "companionUrl": {
+                                        "type": "string"
+                                      },
+                                      "fontsUrl": {
+                                        "type": "string"
+                                      },
+                                      "format": {
+                                        "type": "string"
+                                      },
+                                      "url": {
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": [
+                                      "format"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  "type": "array"
+                                },
                                 "forced": {
                                   "type": "boolean"
                                 },
@@ -4357,6 +6567,7 @@
                                 }
                               },
                               "required": [
+                                "deliveries",
                                 "id",
                                 "format",
                                 "source",
@@ -5818,6 +8029,440 @@
         "x-max-body-bytes": 32768
       }
     },
+    "/v1/media/{grant}/subtitles/{resource}/{revision}": {
+      "get": {
+        "operationId": "get_v1_media_grant_subtitles_resource_revision",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "cues": {
+                      "items": {
+                        "properties": {
+                          "endUs": {
+                            "type": "string"
+                          },
+                          "italic": {
+                            "type": "boolean"
+                          },
+                          "startUs": {
+                            "type": "string"
+                          },
+                          "text": {
+                            "type": "string"
+                          },
+                          "top": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "startUs",
+                          "endUs",
+                          "text"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "skippedCues": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "timeDomain": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "version",
+                    "timeDomain",
+                    "cues"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Read or change authorized subtitles",
+        "x-access": "public",
+        "x-cost": "constant",
+        "x-lane": "media"
+      }
+    },
+    "/v1/media/{grant}/subtitles/{resource}/{revision}.vtt": {
+      "get": {
+        "operationId": "get_v1_media_grant_subtitles_resource_revision_vtt",
+        "responses": {
+          "200": {
+            "content": {
+              "text/vtt": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Read or change authorized subtitles",
+        "x-access": "public",
+        "x-cost": "constant",
+        "x-lane": "media"
+      }
+    },
+    "/v1/media/{grant}/subtitles/{resource}/{revision}/fonts": {
+      "get": {
+        "operationId": "get_v1_media_grant_subtitles_resource_revision_fonts",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "fonts": {
+                      "items": {
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "url": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "name",
+                          "url"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "skippedCount": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "fonts"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Read or change authorized subtitles",
+        "x-access": "public",
+        "x-cost": "constant",
+        "x-lane": "media"
+      }
+    },
+    "/v1/media/{grant}/subtitles/{resource}/{revision}/fonts/{font}": {
+      "get": {
+        "operationId": "get_v1_media_grant_subtitles_resource_revision_fonts_font",
+        "responses": {
+          "200": {
+            "content": {
+              "font/ttf": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Read or change authorized subtitles",
+        "x-access": "public",
+        "x-cost": "constant",
+        "x-lane": "media"
+      },
+      "head": {
+        "operationId": "head_v1_media_grant_subtitles_resource_revision_fonts_font",
+        "responses": {
+          "200": {
+            "content": {
+              "font/ttf": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Read or change authorized subtitles",
+        "x-access": "public",
+        "x-cost": "constant",
+        "x-lane": "media"
+      }
+    },
+    "/v1/media/{grant}/subtitles/{resource}/{revision}/original.ass": {
+      "get": {
+        "operationId": "get_v1_media_grant_subtitles_resource_revision_original_ass",
+        "responses": {
+          "200": {
+            "content": {
+              "text/x-ssa": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Read or change authorized subtitles",
+        "x-access": "public",
+        "x-cost": "constant",
+        "x-lane": "media"
+      },
+      "head": {
+        "operationId": "head_v1_media_grant_subtitles_resource_revision_original_ass",
+        "responses": {
+          "200": {
+            "content": {
+              "text/x-ssa": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Read or change authorized subtitles",
+        "x-access": "public",
+        "x-cost": "constant",
+        "x-lane": "media"
+      }
+    },
+    "/v1/media/{grant}/subtitles/{resource}/{revision}/original.idx": {
+      "get": {
+        "operationId": "get_v1_media_grant_subtitles_resource_revision_original_idx",
+        "responses": {
+          "200": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Read or change authorized subtitles",
+        "x-access": "public",
+        "x-cost": "constant",
+        "x-lane": "media"
+      },
+      "head": {
+        "operationId": "head_v1_media_grant_subtitles_resource_revision_original_idx",
+        "responses": {
+          "200": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Read or change authorized subtitles",
+        "x-access": "public",
+        "x-cost": "constant",
+        "x-lane": "media"
+      }
+    },
+    "/v1/media/{grant}/subtitles/{resource}/{revision}/original.mks": {
+      "get": {
+        "operationId": "get_v1_media_grant_subtitles_resource_revision_original_mks",
+        "responses": {
+          "200": {
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Read or change authorized subtitles",
+        "x-access": "public",
+        "x-cost": "constant",
+        "x-lane": "media"
+      },
+      "head": {
+        "operationId": "head_v1_media_grant_subtitles_resource_revision_original_mks",
+        "responses": {
+          "200": {
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Read or change authorized subtitles",
+        "x-access": "public",
+        "x-cost": "constant",
+        "x-lane": "media"
+      }
+    },
+    "/v1/media/{grant}/subtitles/{resource}/{revision}/original.ssa": {
+      "get": {
+        "operationId": "get_v1_media_grant_subtitles_resource_revision_original_ssa",
+        "responses": {
+          "200": {
+            "content": {
+              "text/x-ssa": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Read or change authorized subtitles",
+        "x-access": "public",
+        "x-cost": "constant",
+        "x-lane": "media"
+      },
+      "head": {
+        "operationId": "head_v1_media_grant_subtitles_resource_revision_original_ssa",
+        "responses": {
+          "200": {
+            "content": {
+              "text/x-ssa": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Read or change authorized subtitles",
+        "x-access": "public",
+        "x-cost": "constant",
+        "x-lane": "media"
+      }
+    },
+    "/v1/media/{grant}/subtitles/{resource}/{revision}/original.sub": {
+      "get": {
+        "operationId": "get_v1_media_grant_subtitles_resource_revision_original_sub",
+        "responses": {
+          "200": {
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Read or change authorized subtitles",
+        "x-access": "public",
+        "x-cost": "constant",
+        "x-lane": "media"
+      },
+      "head": {
+        "operationId": "head_v1_media_grant_subtitles_resource_revision_original_sub",
+        "responses": {
+          "200": {
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Read or change authorized subtitles",
+        "x-access": "public",
+        "x-cost": "constant",
+        "x-lane": "media"
+      }
+    },
+    "/v1/media/{grant}/subtitles/{resource}/{revision}/original.sup": {
+      "get": {
+        "operationId": "get_v1_media_grant_subtitles_resource_revision_original_sup",
+        "responses": {
+          "200": {
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Read or change authorized subtitles",
+        "x-access": "public",
+        "x-cost": "constant",
+        "x-lane": "media"
+      },
+      "head": {
+        "operationId": "head_v1_media_grant_subtitles_resource_revision_original_sup",
+        "responses": {
+          "200": {
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Read or change authorized subtitles",
+        "x-access": "public",
+        "x-cost": "constant",
+        "x-lane": "media"
+      }
+    },
     "/v1/playback/sessions": {
       "post": {
         "operationId": "start_playback_session",
@@ -6349,6 +8994,12 @@
                         "subtitles": {
                           "items": {
                             "properties": {
+                              "companionUrl": {
+                                "type": "string"
+                              },
+                              "fontsUrl": {
+                                "type": "string"
+                              },
                               "format": {
                                 "type": "string"
                               },
@@ -6888,6 +9539,12 @@
                         "subtitles": {
                           "items": {
                             "properties": {
+                              "companionUrl": {
+                                "type": "string"
+                              },
+                              "fontsUrl": {
+                                "type": "string"
+                              },
                               "format": {
                                 "type": "string"
                               },
@@ -7489,6 +10146,12 @@
                         "subtitles": {
                           "items": {
                             "properties": {
+                              "companionUrl": {
+                                "type": "string"
+                              },
+                              "fontsUrl": {
+                                "type": "string"
+                              },
                               "format": {
                                 "type": "string"
                               },
@@ -8570,6 +11233,12 @@
                             "subtitles": {
                               "items": {
                                 "properties": {
+                                  "companionUrl": {
+                                    "type": "string"
+                                  },
+                                  "fontsUrl": {
+                                    "type": "string"
+                                  },
                                   "format": {
                                     "type": "string"
                                   },
@@ -9484,6 +12153,12 @@
                             "subtitles": {
                               "items": {
                                 "properties": {
+                                  "companionUrl": {
+                                    "type": "string"
+                                  },
+                                  "fontsUrl": {
+                                    "type": "string"
+                                  },
                                   "format": {
                                     "type": "string"
                                   },
@@ -10301,6 +12976,12 @@
                             "subtitles": {
                               "items": {
                                 "properties": {
+                                  "companionUrl": {
+                                    "type": "string"
+                                  },
+                                  "fontsUrl": {
+                                    "type": "string"
+                                  },
                                   "format": {
                                     "type": "string"
                                   },
@@ -11023,6 +13704,12 @@
                             "subtitles": {
                               "items": {
                                 "properties": {
+                                  "companionUrl": {
+                                    "type": "string"
+                                  },
+                                  "fontsUrl": {
+                                    "type": "string"
+                                  },
                                   "format": {
                                     "type": "string"
                                   },
@@ -11795,6 +14482,12 @@
                             "subtitles": {
                               "items": {
                                 "properties": {
+                                  "companionUrl": {
+                                    "type": "string"
+                                  },
+                                  "fontsUrl": {
+                                    "type": "string"
+                                  },
                                   "format": {
                                     "type": "string"
                                   },
@@ -12633,6 +15326,12 @@
                             "subtitles": {
                               "items": {
                                 "properties": {
+                                  "companionUrl": {
+                                    "type": "string"
+                                  },
+                                  "fontsUrl": {
+                                    "type": "string"
+                                  },
                                   "format": {
                                     "type": "string"
                                   },
@@ -13355,6 +16054,12 @@
                             "subtitles": {
                               "items": {
                                 "properties": {
+                                  "companionUrl": {
+                                    "type": "string"
+                                  },
+                                  "fontsUrl": {
+                                    "type": "string"
+                                  },
                                   "format": {
                                     "type": "string"
                                   },
@@ -13904,6 +16609,12 @@
                         "subtitles": {
                           "items": {
                             "properties": {
+                              "companionUrl": {
+                                "type": "string"
+                              },
+                              "fontsUrl": {
+                                "type": "string"
+                              },
                               "format": {
                                 "type": "string"
                               },

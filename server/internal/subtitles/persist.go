@@ -16,6 +16,15 @@ func Persist(tx *sql.Tx, asset string, size, modified int64, f *Inventory) error
 	if len(f.Tracks) > MaxTracks {
 		return ErrCapacity
 	}
+	if f.Status != "known" {
+		var oldSize, oldModified int64
+		if err := tx.QueryRow(`SELECT size,modified_ns FROM asset_subtitle_facts WHERE asset_id=?`, asset).Scan(&oldSize, &oldModified); err == nil && oldSize == size && oldModified == modified {
+			// An incomplete directory cannot prove a previously seen subtitle
+			// disappeared. The caller still records the current scan warning.
+			return nil
+		}
+	}
+
 	raw, e := json.Marshal(f)
 	if e != nil {
 		return e

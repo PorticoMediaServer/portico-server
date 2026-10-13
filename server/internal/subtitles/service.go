@@ -22,7 +22,6 @@ import (
 
 type Authorize func(context.Context, *sql.Tx, identity.Principal, string) (identity.Principal, error)
 type Service struct {
-	scanTextSlot chan struct{}
 	life         context.Context
 	cancel       context.CancelFunc
 	cacheMu      sync.Mutex
@@ -68,7 +67,7 @@ func New(o Options) (*Service, error) {
 	}
 	ffmpeg, _ := exec.LookPath(o.FFmpeg)
 	life, cancel := context.WithCancel(context.Background())
-	return &Service{life: life, cancel: cancel, cacheFills: map[string]*cacheFill{}, cacheWorkers: make(chan struct{}, 2), scanTextSlot: make(chan struct{}, 1), db: o.DB, objects: objects, storage: o.Storage, authorize: o.Authorize, helper: o.HelperBinary, ffmpeg: ffmpeg, provider: o.Provider}, nil
+	return &Service{life: life, cancel: cancel, cacheFills: map[string]*cacheFill{}, cacheWorkers: make(chan struct{}, 2), db: o.DB, objects: objects, storage: o.Storage, authorize: o.Authorize, helper: o.HelperBinary, ffmpeg: ffmpeg, provider: o.Provider}, nil
 }
 func (s *Service) Close() error {
 	if s.cancel != nil {
@@ -128,15 +127,7 @@ func (s *Service) readTx(ctx context.Context, p identity.Principal, item string)
 func (s *Service) authorized(ctx context.Context, gated *dbwork.Write, p identity.Principal, item string) (*dbwork.Write, identity.Principal, error) {
 	var e error
 	tx := gated.Tx()
-	if scan, ok := ctx.Value(scanTextAuthorityKey{}).(scanTextAuthority); ok {
-		if scan.item != item || scan.check == nil {
-			e = identity.ErrUnauthorized
-		} else {
-			e = scan.check(ctx, tx)
-		}
-	} else {
-		p, e = s.authorize(ctx, tx, p, item)
-	}
+	p, e = s.authorize(ctx, tx, p, item)
 	if e != nil {
 		gated.Rollback()
 		return nil, p, e
@@ -365,21 +356,21 @@ func (s *Service) ListTx(ctx context.Context, tx *sql.Tx, p identity.Principal, 
 // Mutation is a replacement of exactly one subtitle resource, not filesystem
 // write authority and not a change to any source media timeline.
 type Mutation struct {
-	OperationID      string  `json:"operationId"`
-	ResourceID       string  `json:"resourceId,omitempty"`
-	SourceID         string  `json:"sourceId"`
-	ExpectedRevision int64   `json:"expectedRevision"`
-	Scope            string  `json:"scope"`
-	Format           string  `json:"format"`
-	Language         string  `json:"language"`
-	Title            string  `json:"title"`
-	Rights           string  `json:"rights"`
-	OffsetUS         string  `json:"offsetUs"`
-	Content          *string `json:"content,omitempty"`
-	Data             []byte  `json:"data,omitempty"`
-	Companion        []byte  `json:"companion,omitempty"`
-	Default          *bool   `json:"default,omitempty"`
-	Forced           *bool   `json:"forced,omitempty"`
+	OperationID      string      `json:"operationId"`
+	ResourceID       string      `json:"resourceId,omitempty"`
+	SourceID         string      `json:"sourceId"`
+	ExpectedRevision int64       `json:"expectedRevision"`
+	Scope            string      `json:"scope"`
+	Format           string      `json:"format"`
+	Language         string      `json:"language"`
+	Title            string      `json:"title"`
+	Rights           string      `json:"rights"`
+	OffsetUS         string      `json:"offsetUs"`
+	Content          *string     `json:"content,omitempty"`
+	Data             Base64Bytes `json:"data,omitempty"`
+	Companion        Base64Bytes `json:"companion,omitempty"`
+	Default          *bool       `json:"default,omitempty"`
+	Forced           *bool       `json:"forced,omitempty"`
 	// Render is "text" (default) or "styled"; see ImportRequest.Render.
 	Render string `json:"render,omitempty"`
 }
@@ -401,6 +392,7 @@ type publication struct {
 	defaultTrack, forcedTrack                                bool
 	originalAsset                                            []byte
 	hearingImpaired                                          bool
+	copyOriginalRevision                                     int64
 }
 
 func requestDigest(v any) string { b, _ := json.Marshal(v); return digestBytes(b) }
@@ -505,6 +497,7 @@ func (s *Service) Mutate(ctx context.Context, p identity.Principal, item string,
 			pub.provider = r.Provider
 			pub.attribution = r.Attribution
 			m.Format = r.Format
+			pub.copyOriginalRevision = r.Revision
 			pub.originalDigest = ""
 			if e = tx.QueryRowContext(ctx, `SELECT original_digest FROM subtitle_revisions WHERE resource_id=? AND revision=?`, r.ID, r.Revision).Scan(&pub.originalDigest); e != nil {
 				return Receipt{}, e
@@ -570,7 +563,14 @@ func (s *Service) publish(ctx context.Context, p identity.Principal, item string
 		}
 	}
 	var originalObject mediaartifact.Object
-	if len(pub.originalAsset) > 0 && assetRenderer(pub.originalAsset) == "burn_in" {
+	var originalFiles []originalFile
+	var originalHeader struct {
+		SkippedFonts int `json:"skippedFonts"`
+	}
+	if len(pub.originalAsset) > 0 {
+		_ = json.Unmarshal(pub.originalAsset, &originalHeader)
+	}
+	if len(pub.originalAsset) > 0 && originalArchive(pub.originalAsset) {
 		w, e := s.objects.Begin(MaxAssetBytes)
 		if e != nil {
 			return Receipt{}, e
@@ -580,6 +580,14 @@ func (s *Service) publish(ctx context.Context, p identity.Principal, item string
 			return Receipt{}, e
 		}
 		originalObject, e = w.Seal(ctx)
+		if e != nil {
+			return Receipt{}, e
+		}
+	}
+
+	if originalObject.Size > 0 {
+		var e error
+		originalFiles, e = s.sealOriginalFiles(ctx, pub.originalAsset, int64(pub.source.duration*1e6))
 		if e != nil {
 			return Receipt{}, e
 		}
@@ -620,9 +628,12 @@ func (s *Service) publish(ctx context.Context, p identity.Principal, item string
 			}
 		}
 		if originalObject.Size > 0 {
-			if _, err = tx.ExecContext(ctx, `INSERT OR IGNORE INTO subtitle_original_revisions VALUES(?,?,?,?)`, pub.cacheResource, pub.cacheRevision, originalObject.Digest, originalObject.Size); err != nil {
+			if _, err = tx.ExecContext(ctx, `INSERT OR IGNORE INTO subtitle_original_revisions VALUES(?,?,?,?,?)`, pub.cacheResource, pub.cacheRevision, originalObject.Digest, originalObject.Size, originalHeader.SkippedFonts); err != nil {
 				return Receipt{}, err
 			}
+		}
+		if e := publishOriginalFiles(ctx, tx, pub.cacheResource, pub.cacheRevision, originalFiles); e != nil {
+			return Receipt{}, e
 		}
 		out := Receipt{OperationID: m.OperationID, ResourceID: pub.cacheResource, Revision: pub.cacheRevision}
 		return out, gated3.Commit()
@@ -695,7 +706,19 @@ func (s *Service) publish(ctx context.Context, p identity.Principal, item string
 		return Receipt{}, e
 	}
 	if originalObject.Size > 0 {
-		if _, e = tx.ExecContext(ctx, `INSERT INTO subtitle_original_revisions VALUES(?,?,?,?)`, id, rev, originalObject.Digest, originalObject.Size); e != nil {
+		if _, e = tx.ExecContext(ctx, `INSERT INTO subtitle_original_revisions VALUES(?,?,?,?,?)`, id, rev, originalObject.Digest, originalObject.Size, originalHeader.SkippedFonts); e != nil {
+			return Receipt{}, e
+		}
+	}
+
+	if e := publishOriginalFiles(ctx, tx, id, rev, originalFiles); e != nil {
+		return Receipt{}, e
+	}
+	if pub.copyOriginalRevision > 0 {
+		if _, e = tx.ExecContext(ctx, `INSERT INTO subtitle_original_revisions SELECT resource_id,?,digest,size,skipped_fonts FROM subtitle_original_revisions WHERE resource_id=? AND revision=?`, rev, id, pub.copyOriginalRevision); e != nil {
+			return Receipt{}, e
+		}
+		if _, e = tx.ExecContext(ctx, `INSERT INTO subtitle_original_files SELECT resource_id,?,part,name,format,encoding,digest,size FROM subtitle_original_files WHERE resource_id=? AND revision=?`, rev, id, pub.copyOriginalRevision); e != nil {
 			return Receipt{}, e
 		}
 	}
@@ -824,7 +847,7 @@ func (s *Service) Cleanup(ctx context.Context) error {
 	}
 	for _, r := range stale {
 		var refs int
-		if e = s.db.QueryRowContext(ctx, `SELECT (SELECT count(*) FROM subtitle_revisions WHERE digest=?1)+(SELECT count(*) FROM subtitle_original_revisions WHERE digest=?1)`, r.object.Digest).Scan(&refs); e != nil {
+		if e = s.db.QueryRowContext(ctx, `SELECT (SELECT count(*) FROM subtitle_revisions WHERE digest=?1)+(SELECT count(*) FROM subtitle_original_revisions WHERE digest=?1)+(SELECT count(*) FROM subtitle_original_files WHERE digest=?1)`, r.object.Digest).Scan(&refs); e != nil {
 			return e
 		}
 		if refs == 0 && r.object.Size > 0 {
@@ -852,7 +875,7 @@ func (s *Service) Cleanup(ctx context.Context) error {
 			continue
 		}
 		var references int
-		if e = s.db.QueryRowContext(ctx, `SELECT (SELECT count(*) FROM subtitle_revisions WHERE digest=?1)+(SELECT count(*) FROM subtitle_original_revisions WHERE digest=?1)`, candidate.Object.Digest).Scan(&references); e != nil {
+		if e = s.db.QueryRowContext(ctx, `SELECT (SELECT count(*) FROM subtitle_revisions WHERE digest=?1)+(SELECT count(*) FROM subtitle_original_revisions WHERE digest=?1)+(SELECT count(*) FROM subtitle_original_files WHERE digest=?1)`, candidate.Object.Digest).Scan(&references); e != nil {
 			return e
 		}
 		if references == 0 {

@@ -551,7 +551,7 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
                           subtitles.snapshot.busy && !subtitles.snapshot.candidates.length ? <Text variant="caption" tone="tertiary">{i18n.t('player.opt.lookingForSubtitles')}</Text>
                             : subtitles.snapshot.candidates.length ? subtitles.snapshot.candidates.map(c => optionRow(`${c.title} · ${c.language}`, false, () => { void subtitles.service!.apply(c, 'personal', 'Downloaded by the viewer for personal viewing').then(() => setSubtitleSearch(false), () => {}); }, c.attribution, subtitles.snapshot.busy))
                             : <Text variant="caption" tone="tertiary">{i18n.t('player.opt.noSubtitlesFound')}</Text>
-                        ) : optionRow(i18n.t('player.opt.findSubtitles'), false, () => { setSubtitleSearch(true); void subtitles.service!.search(i18n.locale.split('-')[0] ?? 'en').catch(() => {}); })
+                        ) : optionRow(i18n.t('player.opt.findSubtitles'), false, () => { setSubtitleSearch(true); void subtitles.service!.search().catch(() => {}); })
                       ) : null}
                       {subtitlePlan.selected ? <div style={{display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap'}}><Text variant="caption" tone="tertiary">Timing {(Number(subtitlePlan.offsetUs) / 1e6).toFixed(1)} s</Text><Button size="sm" variant="ghost" label="−0.5" onClick={() => void subtitles.service!.choose(subtitlePlan.selected!, String(Number(subtitlePlan.offsetUs) - 500000))} /><Button size="sm" variant="ghost" label="+0.5" onClick={() => void subtitles.service!.choose(subtitlePlan.selected!, String(Number(subtitlePlan.offsetUs) + 500000))} /></div> : null}
                     </>

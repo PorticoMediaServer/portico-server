@@ -632,6 +632,9 @@ func FoundationRegistry(d Dependencies) (*apikit.Registry, error) {
 	if err := d.registerSubtitleRoutes(registry); err != nil {
 		return nil, err
 	}
+	if err := d.registerTrickplayImageRoutes(registry); err != nil {
+		return nil, err
+	}
 	registry.Freeze()
 	return registry, nil
 }

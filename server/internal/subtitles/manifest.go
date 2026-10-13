@@ -20,7 +20,7 @@ func PinManifestTextTx(ctx context.Context, tx *sql.Tx, session, item, source, v
  SELECT ?,r.id,v.revision FROM subtitle_resources r JOIN subtitle_revisions v ON v.resource_id=r.id AND v.revision=r.current_revision
  JOIN catalog_assets a ON a.token=r.source_id JOIN subtitle_render_revisions rr ON rr.resource_id=r.id AND rr.revision=v.revision
  WHERE r.item_id=(SELECT id FROM catalog_entities WHERE public_id=pid_blob(?)) AND r.source_id=? AND r.deleted=0 AND (r.scope='shared' OR r.owner=?) AND rr.renderer='external_text'
- AND v.source_size=a.size AND v.source_modified_ns=a.modified_ns ORDER BY rr.is_default DESC,rr.is_forced DESC,v.language,r.id LIMIT 32`, session, item, source, viewer)
+ AND v.source_size=a.size AND v.source_modified_ns=a.modified_ns ORDER BY CASE WHEN r.id=(SELECT resource_id FROM playback_subtitle_state WHERE session_id=?1) THEN 0 ELSE 1 END,rr.is_default DESC,rr.is_forced DESC,v.language,r.id LIMIT 32`, session, item, source, viewer)
 	if err != nil {
 		return err
 	}
@@ -29,6 +29,9 @@ func PinManifestTextTx(ctx context.Context, tx *sql.Tx, session, item, source, v
 }
 
 func (s *Service) OpenManifestDocument(ctx context.Context, p identity.Principal, item, session, id string, revision int64) (*mediaartifact.Reader, int64, error) {
+	if e := s.CheckManifestDocument(ctx, p, item, session, id, revision); e != nil {
+		return nil, 0, e
+	}
 	if e := s.ensureCached(ctx, p, item, id, revision); e != nil {
 		return nil, 0, e
 	}
@@ -41,7 +44,13 @@ func (s *Service) OpenManifestDocument(ctx context.Context, p identity.Principal
 	if e != nil {
 		return nil, 0, e
 	}
-	reader, e := s.objects.Open(ctx, mediaartifact.Object{Digest: r.digest, Size: r.size})
+	object := mediaartifact.Object{Digest: r.digest, Size: r.size}
+	if r.Renderer != "external_text" {
+		if e = gate.Tx().QueryRowContext(ctx, `SELECT digest,size FROM subtitle_original_files WHERE resource_id=? AND revision=? AND part='text'`, id, revision).Scan(&object.Digest, &object.Size); e != nil {
+			return nil, 0, ErrUnsupported
+		}
+	}
+	reader, e := s.objects.Open(ctx, object)
 	if e != nil {
 		return nil, 0, e
 	}
@@ -59,8 +68,8 @@ func ManifestWebVTT(reader io.Reader, offset int64, segment int) ([]byte, error)
 	if segment < -1 || segment > 1440 {
 		return nil, ErrInput
 	}
-	raw, e := io.ReadAll(io.LimitReader(reader, MaxInputBytes+1))
-	if e != nil || len(raw) > MaxInputBytes {
+	raw, e := io.ReadAll(io.LimitReader(reader, MaxInputBytes*2+1))
+	if e != nil || len(raw) > MaxInputBytes*2 {
 		return nil, ErrCapacity
 	}
 	var d Document
@@ -100,7 +109,7 @@ func ManifestWebVTT(reader io.Reader, offset int64, segment int) ([]byte, error)
 			placement = " line:10%"
 		}
 		fmt.Fprintf(&b, "%d\n%s --> %s%s\n%s\n\n", i+1, stamp(start), stamp(end), placement, text)
-		if b.Len() > MaxInputBytes {
+		if b.Len() > MaxInputBytes*2 {
 			return nil, ErrCapacity
 		}
 	}
@@ -132,9 +141,16 @@ func manifestDocumentTx(ctx context.Context, tx *sql.Tx, p identity.Principal, i
 		return Resource{}, 0, ErrUnavailable
 	}
 	r, e := scanResource(tx.QueryRowContext(ctx, `SELECT `+resourceColumns+` FROM playback_subtitle_pins pin JOIN subtitle_resources r ON r.id=pin.resource_id JOIN subtitle_revisions v ON v.resource_id=r.id AND v.revision=pin.resource_revision WHERE pin.session_id=? AND pin.resource_id=? AND pin.resource_revision=? AND r.item_id=(SELECT id FROM catalog_entities WHERE public_id=pid_blob(?))`, session, id, revision, item))
-	if e != nil || !visible(r, p) || r.Renderer != "external_text" || r.SourceID != scope.source || r.sourceSize != scope.size || r.sourceModified != scope.modified {
+	if e != nil || !visible(r, p) || r.SourceID != scope.source || r.sourceSize != scope.size || r.sourceModified != scope.modified {
 		return Resource{}, 0, identity.ErrUnauthorized
 	}
+	if r.Renderer != "external_text" {
+		var ok bool
+		if e = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM subtitle_original_files WHERE resource_id=? AND revision=? AND part='text')`, id, revision).Scan(&ok); e != nil || !ok {
+			return Resource{}, 0, ErrUnsupported
+		}
+	}
+
 	offset, e := strconv.ParseInt(r.OffsetUS, 10, 64)
 	if e != nil {
 		return Resource{}, 0, ErrInput

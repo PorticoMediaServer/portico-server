@@ -25,7 +25,8 @@ type FontFile struct {
 	URL  string `json:"url"`
 }
 type FontFiles struct {
-	Fonts []FontFile `json:"fonts"`
+	SkippedCount int        `json:"skippedCount,omitempty"`
+	Fonts        []FontFile `json:"fonts"`
 }
 
 func deliveryFormats(format string) []Delivery {
@@ -99,7 +100,7 @@ func (s *Service) CheckOriginal(ctx context.Context, p identity.Principal, item,
 		return ErrUnavailable
 	}
 	var ok bool
-	e = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM subtitle_resources r JOIN subtitle_revisions v ON v.resource_id=r.id JOIN playback_subtitle_pins pin ON pin.resource_id=v.resource_id AND pin.resource_revision=v.revision WHERE pin.session_id=? AND r.id=? AND v.revision=? AND r.item_id=(SELECT id FROM catalog_entities WHERE public_id=pid_blob(?)) AND r.source_id=? AND v.source_size=? AND v.source_modified_ns=? AND (r.scope='shared' OR r.owner=?))`, session, id, revision, item, scope.source, scope.size, scope.modified, actor(p)).Scan(&ok)
+	e = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM subtitle_resources r JOIN subtitle_revisions v ON v.resource_id=r.id LEFT JOIN subtitle_render_revisions rr ON rr.resource_id=v.resource_id AND rr.revision=v.revision JOIN playback_subtitle_pins pin ON pin.resource_id=v.resource_id AND pin.resource_revision=v.revision WHERE pin.session_id=? AND r.id=? AND v.revision=? AND r.item_id=(SELECT id FROM catalog_entities WHERE public_id=pid_blob(?)) AND r.source_id=? AND v.source_size=? AND v.source_modified_ns=? AND (r.scope='shared' OR r.owner=?) AND (COALESCE(rr.source_evidence,'')='' OR rr.source_evidence=(SELECT evidence FROM subtitle_remote_sessions WHERE session_id=?)))`, session, id, revision, item, scope.source, scope.size, scope.modified, actor(p), session).Scan(&ok)
 	if e != nil {
 		return e
 	}
@@ -138,7 +139,7 @@ func deliveries(base, format string) []Delivery {
 	return out
 }
 func FontURLs(base string, a RenderAsset) FontFiles {
-	out := FontFiles{Fonts: []FontFile{}}
+	out := FontFiles{Fonts: []FontFile{}, SkippedCount: a.SkippedFonts}
 	for i, f := range a.Fonts {
 		out.Fonts = append(out.Fonts, FontFile{Name: f.Name, URL: base + "/fonts/" + strconv.Itoa(i)})
 	}
@@ -152,4 +153,11 @@ func RenderingFormat(format string) string {
 		}
 	}
 	return "text"
+}
+
+func originalArchive(raw []byte) bool {
+	var a struct {
+		Version int `json:"version"`
+	}
+	return json.Unmarshal(raw, &a) == nil && a.Version == 2
 }

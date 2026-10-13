@@ -3971,6 +3971,7 @@ source_strm_analysis.revision
 subtitle_collections.item_id
 subtitle_collections.revision
 subtitle_inventory_entries.directory
+subtitle_inventory_entries.directory_key
 subtitle_inventory_entries.incarnation
 subtitle_inventory_entries.job_id
 subtitle_inventory_entries.name
@@ -3986,10 +3987,19 @@ subtitle_operations.item_id
 subtitle_operations.operation_id
 subtitle_operations.request_digest
 subtitle_operations.result
+subtitle_original_files.digest
+subtitle_original_files.encoding
+subtitle_original_files.format
+subtitle_original_files.name
+subtitle_original_files.part
+subtitle_original_files.resource_id
+subtitle_original_files.revision
+subtitle_original_files.size
 subtitle_original_revisions.digest
 subtitle_original_revisions.resource_id
 subtitle_original_revisions.revision
 subtitle_original_revisions.size
+subtitle_original_revisions.skipped_fonts
 subtitle_provider_candidates.actor
 subtitle_provider_candidates.attribution
 subtitle_provider_candidates.expires_at

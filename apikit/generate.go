@@ -276,7 +276,11 @@ func GenerateWith(definitions []Definition, options Options) (Artifacts, error) 
 		schemas[name+"Response"] = response
 		ts.WriteString("export type " + name + "Request = " + tsType(request) + ";\n")
 		ts.WriteString("export type " + name + "Response = " + tsType(response) + ";\n")
-		operation := map[string]any{"operationId": d.ID, "summary": d.Summary, "x-access": d.Access, "x-lane": d.Lane, "x-cost": d.Cost, "responses": map[string]any{fmt.Sprint(d.Status): map[string]any{"description": "Success", "content": map[string]any{"application/json": map[string]any{"schema": response}}}}}
+		contentType := d.ResponseContentType
+		if contentType == "" {
+			contentType = "application/json"
+		}
+		operation := map[string]any{"operationId": d.ID, "summary": d.Summary, "x-access": d.Access, "x-lane": d.Lane, "x-cost": d.Cost, "responses": map[string]any{fmt.Sprint(d.Status): map[string]any{"description": "Success", "content": map[string]any{contentType: map[string]any{"schema": response}}}}}
 		if d.SSE {
 			field, ok := d.Response.FieldByName("Events")
 			if !ok || field.Type.Kind() != reflect.Slice {

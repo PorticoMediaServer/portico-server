@@ -35,9 +35,7 @@ func (s *Service) Import(ctx context.Context, p identity.Principal, item string,
 	if !validID(m.OperationID) || !validID(m.SourceID) || !validID(m.DiscoveryID) || m.ExpectedRevision < 1 || (m.Scope != "personal" && m.Scope != "shared") || !validRender(m.Render) {
 		return Receipt{}, ErrInput
 	}
-	if scan, ok := ctx.Value(scanTextAuthorityKey{}).(scanTextAuthority); ok && m.SourceID != scan.source {
-		return Receipt{}, identity.ErrUnauthorized
-	}
+
 	digest := requestDigest([]any{"import", item, m})
 	gated, p, e := s.tx(ctx, p, item)
 	if e != nil {

@@ -129,17 +129,17 @@ func (s *Service) PlanTx(ctx context.Context, tx *sql.Tx, p identity.Principal, 
 			return out, e
 		}
 		r.Retired = r.deleted || current != r.Revision
+		if selectedRenderer != "" {
+			r.Renderer = selectedRenderer
+		}
 		if scope.mode == "hls" && r.Renderer == "external_text" {
 			var ordinal int
-			err := tx.QueryRowContext(ctx, `SELECT (SELECT count(*) FROM playback_manifest_subtitles earlier WHERE earlier.session_id=pin.session_id AND earlier.resource_id<pin.resource_id) FROM playback_manifest_subtitles pin WHERE pin.session_id=? AND pin.resource_id=? AND pin.resource_revision=?`, session, r.ID, r.Revision).Scan(&ordinal)
+			err := tx.QueryRowContext(ctx, `SELECT 0 FROM playback_manifest_subtitles pin WHERE pin.session_id=? AND pin.resource_id=? AND pin.resource_revision=?`, session, r.ID, r.Revision).Scan(&ordinal)
 			if err == nil {
 				r.ManifestName = ManifestSubtitleName(r.Title, r.Language, ordinal)
 			} else if !errors.Is(err, sql.ErrNoRows) {
 				return out, err
 			}
-		}
-		if selectedRenderer == "client" {
-			r.Renderer = "client"
 		}
 		r.Deliveries = deliveries("/v1/media/"+scope.grant+"/subtitles/"+r.ID+"/"+strconv.FormatInt(r.Revision, 10), r.Format)
 		out.Selected = &r
@@ -269,7 +269,7 @@ func (s *Service) selectCommit(ctx context.Context, p identity.Principal, item, 
 		if _, e = tx.ExecContext(ctx, `INSERT OR IGNORE INTO playback_subtitle_pins VALUES(?,?,?)`, session, r.ID, r.Revision); e != nil {
 			return PlaybackPlan{}, e
 		}
-		if r.Renderer == "external_text" {
+		if r.Renderer == "external_text" || m.Rendering == "text" {
 			if _, e = tx.ExecContext(ctx, `INSERT OR IGNORE INTO playback_manifest_subtitles VALUES(?,?,?)`, session, r.ID, r.Revision); e != nil {
 				return PlaybackPlan{}, e
 			}
@@ -348,6 +348,9 @@ func (s *Service) selectCommit(ctx context.Context, p identity.Principal, item, 
 // OpenDocument requires the exact CURRENT selection and a live session pin.
 // Keeping old bytes for physical readers never creates a new access grant.
 func (s *Service) OpenDocument(ctx context.Context, p identity.Principal, item, session, id string, revision int64) (*mediaartifact.Reader, error) {
+	if e := s.CheckDocument(ctx, p, item, session, id, revision); e != nil {
+		return nil, e
+	}
 	if e := s.ensureCached(ctx, p, item, id, revision); e != nil {
 		return nil, e
 	}
@@ -368,7 +371,7 @@ func (s *Service) OpenDocument(ctx context.Context, p identity.Principal, item, 
 	if e != nil {
 		return nil, identity.ErrUnauthorized
 	}
-	if r.Renderer != "external_text" || !visible(r, p) || r.SourceID != scope.source || r.sourceSize != scope.size || r.sourceModified != scope.modified {
+	if !visible(r, p) || r.SourceID != scope.source || r.sourceSize != scope.size || r.sourceModified != scope.modified {
 		return nil, identity.ErrUnauthorized
 	}
 	if r.sourceEvidence != "" {
@@ -379,7 +382,13 @@ func (s *Service) OpenDocument(ctx context.Context, p identity.Principal, item, 
 	}
 	// Opening under the authoritative transaction acquires the physical lease
 	// before GC can retire the last pin. Authorization is checked again per read.
-	reader, e := s.objects.Open(ctx, mediaartifact.Object{Digest: r.digest, Size: r.size})
+	object := mediaartifact.Object{Digest: r.digest, Size: r.size}
+	if r.Renderer != "external_text" {
+		if e = tx.QueryRowContext(ctx, `SELECT digest,size FROM subtitle_original_files WHERE resource_id=? AND revision=? AND part='text'`, id, revision).Scan(&object.Digest, &object.Size); e != nil {
+			return nil, ErrUnsupported
+		}
+	}
+	reader, e := s.objects.Open(ctx, object)
 	if e != nil {
 		return nil, e
 	}

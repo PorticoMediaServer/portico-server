@@ -609,6 +609,12 @@ export const schemas = {
               "subtitles": {
                 "items": {
                   "properties": {
+                    "companionUrl": {
+                      "type": "string"
+                    },
+                    "fontsUrl": {
+                      "type": "string"
+                    },
                     "format": {
                       "type": "string"
                     },
@@ -1308,6 +1314,12 @@ export const schemas = {
               "subtitles": {
                 "items": {
                   "properties": {
+                    "companionUrl": {
+                      "type": "string"
+                    },
+                    "fontsUrl": {
+                      "type": "string"
+                    },
                     "format": {
                       "type": "string"
                     },
@@ -1946,6 +1958,12 @@ export const schemas = {
           "subtitles": {
             "items": {
               "properties": {
+                "companionUrl": {
+                  "type": "string"
+                },
+                "fontsUrl": {
+                  "type": "string"
+                },
                 "format": {
                   "type": "string"
                 },
@@ -2582,6 +2600,12 @@ export const schemas = {
               "subtitles": {
                 "items": {
                   "properties": {
+                    "companionUrl": {
+                      "type": "string"
+                    },
+                    "fontsUrl": {
+                      "type": "string"
+                    },
                     "format": {
                       "type": "string"
                     },
@@ -4331,6 +4355,12 @@ export const schemas = {
               "subtitles": {
                 "items": {
                   "properties": {
+                    "companionUrl": {
+                      "type": "string"
+                    },
+                    "fontsUrl": {
+                      "type": "string"
+                    },
                     "format": {
                       "type": "string"
                     },
@@ -4516,6 +4546,54 @@ export const schemas = {
   "DeleteQueueResponse": {
     "properties": {},
     "required": [],
+    "type": "object"
+  },
+  "DeleteV1ItemsIdSubtitlesResourceRequest": {
+    "properties": {
+      "expectedRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "operationId": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "operationId",
+      "expectedRevision"
+    ],
+    "type": "object"
+  },
+  "DeleteV1ItemsIdSubtitlesResourceResponse": {
+    "properties": {
+      "catalogRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "deleted": {
+        "type": "boolean"
+      },
+      "operationId": {
+        "type": "string"
+      },
+      "resourceId": {
+        "type": "string"
+      },
+      "revision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "operationId",
+      "resourceId",
+      "revision",
+      "catalogRevision",
+      "deleted"
+    ],
     "type": "object"
   },
   "GetAdminBackupsRequest": {
@@ -6860,6 +6938,29 @@ export const schemas = {
                   "default": {
                     "type": "boolean"
                   },
+                  "deliveries": {
+                    "items": {
+                      "properties": {
+                        "companionUrl": {
+                          "type": "string"
+                        },
+                        "fontsUrl": {
+                          "type": "string"
+                        },
+                        "format": {
+                          "type": "string"
+                        },
+                        "url": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "format"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
                   "forced": {
                     "type": "boolean"
                   },
@@ -6883,6 +6984,7 @@ export const schemas = {
                   }
                 },
                 "required": [
+                  "deliveries",
                   "id",
                   "format",
                   "source",
@@ -7379,6 +7481,12 @@ export const schemas = {
           "subtitles": {
             "items": {
               "properties": {
+                "companionUrl": {
+                  "type": "string"
+                },
+                "fontsUrl": {
+                  "type": "string"
+                },
                 "format": {
                   "type": "string"
                 },
@@ -7854,6 +7962,916 @@ export const schemas = {
       "setupRequired"
     ],
     "type": "object"
+  },
+  "GetV1ItemsIdChaptersChapterImageRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetV1ItemsIdChaptersChapterImageResponse": {
+    "format": "binary",
+    "type": "string"
+  },
+  "GetV1ItemsIdPlaybackSessionSubtitlesRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetV1ItemsIdPlaybackSessionSubtitlesResponse": {
+    "properties": {
+      "appliedRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "catalogRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "discovered": {
+        "items": {
+          "properties": {
+            "default": {
+              "type": "boolean"
+            },
+            "enabled": {
+              "type": "boolean"
+            },
+            "forced": {
+              "type": "boolean"
+            },
+            "format": {
+              "type": "string"
+            },
+            "hearingImpaired": {
+              "type": "boolean"
+            },
+            "id": {
+              "type": "string"
+            },
+            "language": {
+              "type": "string"
+            },
+            "origin": {
+              "type": "string"
+            },
+            "reason": {
+              "type": "string"
+            },
+            "revision": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "sourceId": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "sourceId",
+            "revision",
+            "origin",
+            "format",
+            "language",
+            "title",
+            "default",
+            "forced",
+            "hearingImpaired",
+            "enabled"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "documentUrl": {
+        "type": "string"
+      },
+      "generation": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "mode": {
+        "type": "string"
+      },
+      "offAvailable": {
+        "type": "boolean"
+      },
+      "offsetUs": {
+        "type": "string"
+      },
+      "presentation": {
+        "properties": {
+          "generation": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "mode": {
+            "type": "string"
+          },
+          "positionUs": {
+            "type": "string"
+          },
+          "sessionId": {
+            "type": "string"
+          },
+          "streamUrl": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "sessionId",
+          "generation",
+          "streamUrl",
+          "mode",
+          "positionUs"
+        ],
+        "type": "object"
+      },
+      "renderer": {
+        "type": "string"
+      },
+      "resources": {
+        "items": {
+          "properties": {
+            "attribution": {
+              "type": "string"
+            },
+            "canManage": {
+              "type": "boolean"
+            },
+            "default": {
+              "type": "boolean"
+            },
+            "deliveries": {
+              "items": {
+                "properties": {
+                  "companionUrl": {
+                    "type": "string"
+                  },
+                  "fontsUrl": {
+                    "type": "string"
+                  },
+                  "format": {
+                    "type": "string"
+                  },
+                  "url": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "format"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "discoveryId": {
+              "type": "string"
+            },
+            "enabled": {
+              "type": "boolean"
+            },
+            "forced": {
+              "type": "boolean"
+            },
+            "format": {
+              "type": "string"
+            },
+            "hearingImpaired": {
+              "type": "boolean"
+            },
+            "id": {
+              "type": "string"
+            },
+            "language": {
+              "type": "string"
+            },
+            "manifestName": {
+              "type": "string"
+            },
+            "offsetUs": {
+              "type": "string"
+            },
+            "origin": {
+              "type": "string"
+            },
+            "pinned": {
+              "type": "boolean"
+            },
+            "provider": {
+              "type": "string"
+            },
+            "reason": {
+              "type": "string"
+            },
+            "renderer": {
+              "type": "string"
+            },
+            "retired": {
+              "type": "boolean"
+            },
+            "revision": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "rights": {
+              "type": "string"
+            },
+            "scope": {
+              "type": "string"
+            },
+            "sourceId": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "deliveries",
+            "id",
+            "sourceId",
+            "revision",
+            "scope",
+            "language",
+            "title",
+            "format",
+            "origin",
+            "rights",
+            "offsetUs",
+            "canManage",
+            "enabled",
+            "renderer",
+            "default",
+            "hearingImpaired",
+            "forced"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "revision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "selected": {
+        "nullable": true,
+        "properties": {
+          "attribution": {
+            "type": "string"
+          },
+          "canManage": {
+            "type": "boolean"
+          },
+          "default": {
+            "type": "boolean"
+          },
+          "deliveries": {
+            "items": {
+              "properties": {
+                "companionUrl": {
+                  "type": "string"
+                },
+                "fontsUrl": {
+                  "type": "string"
+                },
+                "format": {
+                  "type": "string"
+                },
+                "url": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "format"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "discoveryId": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "forced": {
+            "type": "boolean"
+          },
+          "format": {
+            "type": "string"
+          },
+          "hearingImpaired": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string"
+          },
+          "language": {
+            "type": "string"
+          },
+          "manifestName": {
+            "type": "string"
+          },
+          "offsetUs": {
+            "type": "string"
+          },
+          "origin": {
+            "type": "string"
+          },
+          "pinned": {
+            "type": "boolean"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "renderer": {
+            "type": "string"
+          },
+          "retired": {
+            "type": "boolean"
+          },
+          "revision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "rights": {
+            "type": "string"
+          },
+          "scope": {
+            "type": "string"
+          },
+          "sourceId": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "deliveries",
+          "id",
+          "sourceId",
+          "revision",
+          "scope",
+          "language",
+          "title",
+          "format",
+          "origin",
+          "rights",
+          "offsetUs",
+          "canManage",
+          "enabled",
+          "renderer",
+          "default",
+          "hearingImpaired",
+          "forced"
+        ],
+        "type": "object"
+      },
+      "sessionId": {
+        "type": "string"
+      },
+      "sourceId": {
+        "type": "string"
+      },
+      "version": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "version",
+      "sessionId",
+      "generation",
+      "sourceId",
+      "revision",
+      "catalogRevision",
+      "renderer",
+      "mode",
+      "offAvailable",
+      "offsetUs",
+      "selected",
+      "resources",
+      "discovered"
+    ],
+    "type": "object"
+  },
+  "GetV1ItemsIdSubtitlesRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetV1ItemsIdSubtitlesResponse": {
+    "properties": {
+      "canShare": {
+        "type": "boolean"
+      },
+      "discovered": {
+        "items": {
+          "properties": {
+            "default": {
+              "type": "boolean"
+            },
+            "enabled": {
+              "type": "boolean"
+            },
+            "forced": {
+              "type": "boolean"
+            },
+            "format": {
+              "type": "string"
+            },
+            "hearingImpaired": {
+              "type": "boolean"
+            },
+            "id": {
+              "type": "string"
+            },
+            "language": {
+              "type": "string"
+            },
+            "origin": {
+              "type": "string"
+            },
+            "reason": {
+              "type": "string"
+            },
+            "revision": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "sourceId": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "sourceId",
+            "revision",
+            "origin",
+            "format",
+            "language",
+            "title",
+            "default",
+            "forced",
+            "hearingImpaired",
+            "enabled"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "itemId": {
+        "type": "string"
+      },
+      "provider": {
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "enabled"
+        ],
+        "type": "object"
+      },
+      "resources": {
+        "items": {
+          "properties": {
+            "attribution": {
+              "type": "string"
+            },
+            "canManage": {
+              "type": "boolean"
+            },
+            "default": {
+              "type": "boolean"
+            },
+            "deliveries": {
+              "items": {
+                "properties": {
+                  "companionUrl": {
+                    "type": "string"
+                  },
+                  "fontsUrl": {
+                    "type": "string"
+                  },
+                  "format": {
+                    "type": "string"
+                  },
+                  "url": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "format"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "discoveryId": {
+              "type": "string"
+            },
+            "enabled": {
+              "type": "boolean"
+            },
+            "forced": {
+              "type": "boolean"
+            },
+            "format": {
+              "type": "string"
+            },
+            "hearingImpaired": {
+              "type": "boolean"
+            },
+            "id": {
+              "type": "string"
+            },
+            "language": {
+              "type": "string"
+            },
+            "manifestName": {
+              "type": "string"
+            },
+            "offsetUs": {
+              "type": "string"
+            },
+            "origin": {
+              "type": "string"
+            },
+            "pinned": {
+              "type": "boolean"
+            },
+            "provider": {
+              "type": "string"
+            },
+            "reason": {
+              "type": "string"
+            },
+            "renderer": {
+              "type": "string"
+            },
+            "retired": {
+              "type": "boolean"
+            },
+            "revision": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "rights": {
+              "type": "string"
+            },
+            "scope": {
+              "type": "string"
+            },
+            "sourceId": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "deliveries",
+            "id",
+            "sourceId",
+            "revision",
+            "scope",
+            "language",
+            "title",
+            "format",
+            "origin",
+            "rights",
+            "offsetUs",
+            "canManage",
+            "enabled",
+            "renderer",
+            "default",
+            "hearingImpaired",
+            "forced"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "revision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "sources": {
+        "items": {
+          "properties": {
+            "available": {
+              "type": "boolean"
+            },
+            "durationUs": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            },
+            "inventoryRevision": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "timingKnown": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "id",
+            "durationUs",
+            "inventoryRevision",
+            "available",
+            "timingKnown"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "version": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "version",
+      "itemId",
+      "revision",
+      "canShare",
+      "sources",
+      "resources",
+      "discovered",
+      "provider"
+    ],
+    "type": "object"
+  },
+  "GetV1ItemsIdTrickplaySetTilesTileJpgRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetV1ItemsIdTrickplaySetTilesTileJpgResponse": {
+    "format": "binary",
+    "type": "string"
+  },
+  "GetV1MediaGrantSubtitlesResourceRevisionFontsFontRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetV1MediaGrantSubtitlesResourceRevisionFontsFontResponse": {
+    "format": "binary",
+    "type": "string"
+  },
+  "GetV1MediaGrantSubtitlesResourceRevisionFontsRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetV1MediaGrantSubtitlesResourceRevisionFontsResponse": {
+    "properties": {
+      "fonts": {
+        "items": {
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "url": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "url"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "skippedCount": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "fonts"
+    ],
+    "type": "object"
+  },
+  "GetV1MediaGrantSubtitlesResourceRevisionOriginalAssRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetV1MediaGrantSubtitlesResourceRevisionOriginalAssResponse": {
+    "format": "binary",
+    "type": "string"
+  },
+  "GetV1MediaGrantSubtitlesResourceRevisionOriginalIdxRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetV1MediaGrantSubtitlesResourceRevisionOriginalIdxResponse": {
+    "format": "binary",
+    "type": "string"
+  },
+  "GetV1MediaGrantSubtitlesResourceRevisionOriginalMksRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetV1MediaGrantSubtitlesResourceRevisionOriginalMksResponse": {
+    "format": "binary",
+    "type": "string"
+  },
+  "GetV1MediaGrantSubtitlesResourceRevisionOriginalSsaRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetV1MediaGrantSubtitlesResourceRevisionOriginalSsaResponse": {
+    "format": "binary",
+    "type": "string"
+  },
+  "GetV1MediaGrantSubtitlesResourceRevisionOriginalSubRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetV1MediaGrantSubtitlesResourceRevisionOriginalSubResponse": {
+    "format": "binary",
+    "type": "string"
+  },
+  "GetV1MediaGrantSubtitlesResourceRevisionOriginalSupRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetV1MediaGrantSubtitlesResourceRevisionOriginalSupResponse": {
+    "format": "binary",
+    "type": "string"
+  },
+  "GetV1MediaGrantSubtitlesResourceRevisionRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetV1MediaGrantSubtitlesResourceRevisionResponse": {
+    "properties": {
+      "cues": {
+        "items": {
+          "properties": {
+            "endUs": {
+              "type": "string"
+            },
+            "italic": {
+              "type": "boolean"
+            },
+            "startUs": {
+              "type": "string"
+            },
+            "text": {
+              "type": "string"
+            },
+            "top": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "startUs",
+            "endUs",
+            "text"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "skippedCues": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "timeDomain": {
+        "type": "string"
+      },
+      "version": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "version",
+      "timeDomain",
+      "cues"
+    ],
+    "type": "object"
+  },
+  "GetV1MediaGrantSubtitlesResourceRevisionVttRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetV1MediaGrantSubtitlesResourceRevisionVttResponse": {
+    "format": "binary",
+    "type": "string"
+  },
+  "HeadV1MediaGrantSubtitlesResourceRevisionFontsFontRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "HeadV1MediaGrantSubtitlesResourceRevisionFontsFontResponse": {
+    "format": "binary",
+    "type": "string"
+  },
+  "HeadV1MediaGrantSubtitlesResourceRevisionOriginalAssRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "HeadV1MediaGrantSubtitlesResourceRevisionOriginalAssResponse": {
+    "format": "binary",
+    "type": "string"
+  },
+  "HeadV1MediaGrantSubtitlesResourceRevisionOriginalIdxRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "HeadV1MediaGrantSubtitlesResourceRevisionOriginalIdxResponse": {
+    "format": "binary",
+    "type": "string"
+  },
+  "HeadV1MediaGrantSubtitlesResourceRevisionOriginalMksRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "HeadV1MediaGrantSubtitlesResourceRevisionOriginalMksResponse": {
+    "format": "binary",
+    "type": "string"
+  },
+  "HeadV1MediaGrantSubtitlesResourceRevisionOriginalSsaRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "HeadV1MediaGrantSubtitlesResourceRevisionOriginalSsaResponse": {
+    "format": "binary",
+    "type": "string"
+  },
+  "HeadV1MediaGrantSubtitlesResourceRevisionOriginalSubRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "HeadV1MediaGrantSubtitlesResourceRevisionOriginalSubResponse": {
+    "format": "binary",
+    "type": "string"
+  },
+  "HeadV1MediaGrantSubtitlesResourceRevisionOriginalSupRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "HeadV1MediaGrantSubtitlesResourceRevisionOriginalSupResponse": {
+    "format": "binary",
+    "type": "string"
   },
   "ListAdminSessionsRequest": {
     "properties": {},
@@ -8759,6 +9777,12 @@ export const schemas = {
               "subtitles": {
                 "items": {
                   "properties": {
+                    "companionUrl": {
+                      "type": "string"
+                    },
+                    "fontsUrl": {
+                      "type": "string"
+                    },
                     "format": {
                       "type": "string"
                     },
@@ -9426,6 +10450,641 @@ export const schemas = {
     "required": [],
     "type": "object"
   },
+  "PostV1ItemsIdSubtitlesApplyRequest": {
+    "properties": {
+      "candidateId": {
+        "type": "string"
+      },
+      "operationId": {
+        "type": "string"
+      },
+      "rights": {
+        "type": "string"
+      },
+      "scope": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "operationId",
+      "candidateId",
+      "scope",
+      "rights"
+    ],
+    "type": "object"
+  },
+  "PostV1ItemsIdSubtitlesApplyResponse": {
+    "properties": {
+      "catalogRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "deleted": {
+        "type": "boolean"
+      },
+      "operationId": {
+        "type": "string"
+      },
+      "resourceId": {
+        "type": "string"
+      },
+      "revision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "operationId",
+      "resourceId",
+      "revision",
+      "catalogRevision",
+      "deleted"
+    ],
+    "type": "object"
+  },
+  "PostV1ItemsIdSubtitlesImportRequest": {
+    "properties": {
+      "discoveryId": {
+        "type": "string"
+      },
+      "expectedRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "operationId": {
+        "type": "string"
+      },
+      "render": {
+        "type": "string"
+      },
+      "scope": {
+        "type": "string"
+      },
+      "sourceId": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "operationId",
+      "sourceId",
+      "discoveryId",
+      "expectedRevision",
+      "scope"
+    ],
+    "type": "object"
+  },
+  "PostV1ItemsIdSubtitlesImportResponse": {
+    "properties": {
+      "catalogRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "deleted": {
+        "type": "boolean"
+      },
+      "operationId": {
+        "type": "string"
+      },
+      "resourceId": {
+        "type": "string"
+      },
+      "revision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "operationId",
+      "resourceId",
+      "revision",
+      "catalogRevision",
+      "deleted"
+    ],
+    "type": "object"
+  },
+  "PostV1ItemsIdSubtitlesRefreshRequest": {
+    "properties": {
+      "sourceId": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "sourceId"
+    ],
+    "type": "object"
+  },
+  "PostV1ItemsIdSubtitlesRefreshResponse": {
+    "properties": {
+      "canShare": {
+        "type": "boolean"
+      },
+      "discovered": {
+        "items": {
+          "properties": {
+            "default": {
+              "type": "boolean"
+            },
+            "enabled": {
+              "type": "boolean"
+            },
+            "forced": {
+              "type": "boolean"
+            },
+            "format": {
+              "type": "string"
+            },
+            "hearingImpaired": {
+              "type": "boolean"
+            },
+            "id": {
+              "type": "string"
+            },
+            "language": {
+              "type": "string"
+            },
+            "origin": {
+              "type": "string"
+            },
+            "reason": {
+              "type": "string"
+            },
+            "revision": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "sourceId": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "sourceId",
+            "revision",
+            "origin",
+            "format",
+            "language",
+            "title",
+            "default",
+            "forced",
+            "hearingImpaired",
+            "enabled"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "itemId": {
+        "type": "string"
+      },
+      "provider": {
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "enabled"
+        ],
+        "type": "object"
+      },
+      "resources": {
+        "items": {
+          "properties": {
+            "attribution": {
+              "type": "string"
+            },
+            "canManage": {
+              "type": "boolean"
+            },
+            "default": {
+              "type": "boolean"
+            },
+            "deliveries": {
+              "items": {
+                "properties": {
+                  "companionUrl": {
+                    "type": "string"
+                  },
+                  "fontsUrl": {
+                    "type": "string"
+                  },
+                  "format": {
+                    "type": "string"
+                  },
+                  "url": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "format"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "discoveryId": {
+              "type": "string"
+            },
+            "enabled": {
+              "type": "boolean"
+            },
+            "forced": {
+              "type": "boolean"
+            },
+            "format": {
+              "type": "string"
+            },
+            "hearingImpaired": {
+              "type": "boolean"
+            },
+            "id": {
+              "type": "string"
+            },
+            "language": {
+              "type": "string"
+            },
+            "manifestName": {
+              "type": "string"
+            },
+            "offsetUs": {
+              "type": "string"
+            },
+            "origin": {
+              "type": "string"
+            },
+            "pinned": {
+              "type": "boolean"
+            },
+            "provider": {
+              "type": "string"
+            },
+            "reason": {
+              "type": "string"
+            },
+            "renderer": {
+              "type": "string"
+            },
+            "retired": {
+              "type": "boolean"
+            },
+            "revision": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "rights": {
+              "type": "string"
+            },
+            "scope": {
+              "type": "string"
+            },
+            "sourceId": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "deliveries",
+            "id",
+            "sourceId",
+            "revision",
+            "scope",
+            "language",
+            "title",
+            "format",
+            "origin",
+            "rights",
+            "offsetUs",
+            "canManage",
+            "enabled",
+            "renderer",
+            "default",
+            "hearingImpaired",
+            "forced"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "revision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "sources": {
+        "items": {
+          "properties": {
+            "available": {
+              "type": "boolean"
+            },
+            "durationUs": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            },
+            "inventoryRevision": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "timingKnown": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "id",
+            "durationUs",
+            "inventoryRevision",
+            "available",
+            "timingKnown"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "version": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "version",
+      "itemId",
+      "revision",
+      "canShare",
+      "sources",
+      "resources",
+      "discovered",
+      "provider"
+    ],
+    "type": "object"
+  },
+  "PostV1ItemsIdSubtitlesRemoteRequest": {
+    "properties": {
+      "format": {
+        "type": "string"
+      },
+      "language": {
+        "type": "string"
+      },
+      "name": {
+        "type": "string"
+      },
+      "operationId": {
+        "type": "string"
+      },
+      "rights": {
+        "type": "string"
+      },
+      "scope": {
+        "type": "string"
+      },
+      "sourceId": {
+        "type": "string"
+      },
+      "title": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "operationId",
+      "sourceId",
+      "name",
+      "format",
+      "language",
+      "title",
+      "rights",
+      "scope"
+    ],
+    "type": "object"
+  },
+  "PostV1ItemsIdSubtitlesRemoteResponse": {
+    "properties": {
+      "catalogRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "deleted": {
+        "type": "boolean"
+      },
+      "operationId": {
+        "type": "string"
+      },
+      "resourceId": {
+        "type": "string"
+      },
+      "revision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "operationId",
+      "resourceId",
+      "revision",
+      "catalogRevision",
+      "deleted"
+    ],
+    "type": "object"
+  },
+  "PostV1ItemsIdSubtitlesRequest": {
+    "properties": {
+      "companion": {
+        "contentEncoding": "base64",
+        "format": "byte",
+        "type": "string"
+      },
+      "content": {
+        "type": "string"
+      },
+      "data": {
+        "contentEncoding": "base64",
+        "format": "byte",
+        "type": "string"
+      },
+      "default": {
+        "type": "boolean"
+      },
+      "expectedRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "forced": {
+        "type": "boolean"
+      },
+      "format": {
+        "type": "string"
+      },
+      "language": {
+        "type": "string"
+      },
+      "offsetUs": {
+        "type": "string"
+      },
+      "operationId": {
+        "type": "string"
+      },
+      "render": {
+        "type": "string"
+      },
+      "resourceId": {
+        "type": "string"
+      },
+      "rights": {
+        "type": "string"
+      },
+      "scope": {
+        "type": "string"
+      },
+      "sourceId": {
+        "type": "string"
+      },
+      "title": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "operationId",
+      "sourceId",
+      "expectedRevision",
+      "scope",
+      "format",
+      "language",
+      "title",
+      "rights",
+      "offsetUs"
+    ],
+    "type": "object"
+  },
+  "PostV1ItemsIdSubtitlesResponse": {
+    "properties": {
+      "catalogRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "deleted": {
+        "type": "boolean"
+      },
+      "operationId": {
+        "type": "string"
+      },
+      "resourceId": {
+        "type": "string"
+      },
+      "revision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "operationId",
+      "resourceId",
+      "revision",
+      "catalogRevision",
+      "deleted"
+    ],
+    "type": "object"
+  },
+  "PostV1ItemsIdSubtitlesSearchRequest": {
+    "properties": {
+      "language": {
+        "type": "string"
+      },
+      "page": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "query": {
+        "type": "string"
+      },
+      "sourceId": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "sourceId",
+      "language",
+      "query",
+      "page"
+    ],
+    "type": "object"
+  },
+  "PostV1ItemsIdSubtitlesSearchResponse": {
+    "properties": {
+      "candidates": {
+        "items": {
+          "properties": {
+            "attribution": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            },
+            "language": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "language",
+            "title",
+            "attribution"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "expiresAt": {
+        "type": "string"
+      },
+      "page": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "version": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "version",
+      "candidates",
+      "page",
+      "expiresAt"
+    ],
+    "type": "object"
+  },
   "PrepareQueueNextRequest": {
     "properties": {
       "sessionGeneration": {
@@ -9812,6 +11471,12 @@ export const schemas = {
           "subtitles": {
             "items": {
               "properties": {
+                "companionUrl": {
+                  "type": "string"
+                },
+                "fontsUrl": {
+                  "type": "string"
+                },
                 "format": {
                   "type": "string"
                 },
@@ -10607,6 +12272,547 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "PutV1ItemsIdPlaybackSessionSubtitlesRequest": {
+    "properties": {
+      "control": {},
+      "expectedRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "generation": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "mode": {
+        "type": "string"
+      },
+      "offsetUs": {
+        "type": "string"
+      },
+      "operationId": {
+        "type": "string"
+      },
+      "positionUs": {
+        "type": "string"
+      },
+      "rendering": {
+        "type": "string"
+      },
+      "resourceId": {
+        "type": "string"
+      },
+      "resourceRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "operationId",
+      "generation",
+      "expectedRevision",
+      "mode",
+      "offsetUs"
+    ],
+    "type": "object"
+  },
+  "PutV1ItemsIdPlaybackSessionSubtitlesResponse": {
+    "properties": {
+      "appliedRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "catalogRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "discovered": {
+        "items": {
+          "properties": {
+            "default": {
+              "type": "boolean"
+            },
+            "enabled": {
+              "type": "boolean"
+            },
+            "forced": {
+              "type": "boolean"
+            },
+            "format": {
+              "type": "string"
+            },
+            "hearingImpaired": {
+              "type": "boolean"
+            },
+            "id": {
+              "type": "string"
+            },
+            "language": {
+              "type": "string"
+            },
+            "origin": {
+              "type": "string"
+            },
+            "reason": {
+              "type": "string"
+            },
+            "revision": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "sourceId": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "sourceId",
+            "revision",
+            "origin",
+            "format",
+            "language",
+            "title",
+            "default",
+            "forced",
+            "hearingImpaired",
+            "enabled"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "documentUrl": {
+        "type": "string"
+      },
+      "generation": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "mode": {
+        "type": "string"
+      },
+      "offAvailable": {
+        "type": "boolean"
+      },
+      "offsetUs": {
+        "type": "string"
+      },
+      "presentation": {
+        "properties": {
+          "generation": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "mode": {
+            "type": "string"
+          },
+          "positionUs": {
+            "type": "string"
+          },
+          "sessionId": {
+            "type": "string"
+          },
+          "streamUrl": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "sessionId",
+          "generation",
+          "streamUrl",
+          "mode",
+          "positionUs"
+        ],
+        "type": "object"
+      },
+      "renderer": {
+        "type": "string"
+      },
+      "resources": {
+        "items": {
+          "properties": {
+            "attribution": {
+              "type": "string"
+            },
+            "canManage": {
+              "type": "boolean"
+            },
+            "default": {
+              "type": "boolean"
+            },
+            "deliveries": {
+              "items": {
+                "properties": {
+                  "companionUrl": {
+                    "type": "string"
+                  },
+                  "fontsUrl": {
+                    "type": "string"
+                  },
+                  "format": {
+                    "type": "string"
+                  },
+                  "url": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "format"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "discoveryId": {
+              "type": "string"
+            },
+            "enabled": {
+              "type": "boolean"
+            },
+            "forced": {
+              "type": "boolean"
+            },
+            "format": {
+              "type": "string"
+            },
+            "hearingImpaired": {
+              "type": "boolean"
+            },
+            "id": {
+              "type": "string"
+            },
+            "language": {
+              "type": "string"
+            },
+            "manifestName": {
+              "type": "string"
+            },
+            "offsetUs": {
+              "type": "string"
+            },
+            "origin": {
+              "type": "string"
+            },
+            "pinned": {
+              "type": "boolean"
+            },
+            "provider": {
+              "type": "string"
+            },
+            "reason": {
+              "type": "string"
+            },
+            "renderer": {
+              "type": "string"
+            },
+            "retired": {
+              "type": "boolean"
+            },
+            "revision": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "rights": {
+              "type": "string"
+            },
+            "scope": {
+              "type": "string"
+            },
+            "sourceId": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "deliveries",
+            "id",
+            "sourceId",
+            "revision",
+            "scope",
+            "language",
+            "title",
+            "format",
+            "origin",
+            "rights",
+            "offsetUs",
+            "canManage",
+            "enabled",
+            "renderer",
+            "default",
+            "hearingImpaired",
+            "forced"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "revision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "selected": {
+        "nullable": true,
+        "properties": {
+          "attribution": {
+            "type": "string"
+          },
+          "canManage": {
+            "type": "boolean"
+          },
+          "default": {
+            "type": "boolean"
+          },
+          "deliveries": {
+            "items": {
+              "properties": {
+                "companionUrl": {
+                  "type": "string"
+                },
+                "fontsUrl": {
+                  "type": "string"
+                },
+                "format": {
+                  "type": "string"
+                },
+                "url": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "format"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "discoveryId": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "forced": {
+            "type": "boolean"
+          },
+          "format": {
+            "type": "string"
+          },
+          "hearingImpaired": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string"
+          },
+          "language": {
+            "type": "string"
+          },
+          "manifestName": {
+            "type": "string"
+          },
+          "offsetUs": {
+            "type": "string"
+          },
+          "origin": {
+            "type": "string"
+          },
+          "pinned": {
+            "type": "boolean"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "renderer": {
+            "type": "string"
+          },
+          "retired": {
+            "type": "boolean"
+          },
+          "revision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "rights": {
+            "type": "string"
+          },
+          "scope": {
+            "type": "string"
+          },
+          "sourceId": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "deliveries",
+          "id",
+          "sourceId",
+          "revision",
+          "scope",
+          "language",
+          "title",
+          "format",
+          "origin",
+          "rights",
+          "offsetUs",
+          "canManage",
+          "enabled",
+          "renderer",
+          "default",
+          "hearingImpaired",
+          "forced"
+        ],
+        "type": "object"
+      },
+      "sessionId": {
+        "type": "string"
+      },
+      "sourceId": {
+        "type": "string"
+      },
+      "version": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "version",
+      "sessionId",
+      "generation",
+      "sourceId",
+      "revision",
+      "catalogRevision",
+      "renderer",
+      "mode",
+      "offAvailable",
+      "offsetUs",
+      "selected",
+      "resources",
+      "discovered"
+    ],
+    "type": "object"
+  },
+  "PutV1ItemsIdSubtitlesResourceRequest": {
+    "properties": {
+      "companion": {
+        "contentEncoding": "base64",
+        "format": "byte",
+        "type": "string"
+      },
+      "content": {
+        "type": "string"
+      },
+      "data": {
+        "contentEncoding": "base64",
+        "format": "byte",
+        "type": "string"
+      },
+      "default": {
+        "type": "boolean"
+      },
+      "expectedRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "forced": {
+        "type": "boolean"
+      },
+      "format": {
+        "type": "string"
+      },
+      "language": {
+        "type": "string"
+      },
+      "offsetUs": {
+        "type": "string"
+      },
+      "operationId": {
+        "type": "string"
+      },
+      "render": {
+        "type": "string"
+      },
+      "resourceId": {
+        "type": "string"
+      },
+      "rights": {
+        "type": "string"
+      },
+      "scope": {
+        "type": "string"
+      },
+      "sourceId": {
+        "type": "string"
+      },
+      "title": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "operationId",
+      "sourceId",
+      "expectedRevision",
+      "scope",
+      "format",
+      "language",
+      "title",
+      "rights",
+      "offsetUs"
+    ],
+    "type": "object"
+  },
+  "PutV1ItemsIdSubtitlesResourceResponse": {
+    "properties": {
+      "catalogRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "deleted": {
+        "type": "boolean"
+      },
+      "operationId": {
+        "type": "string"
+      },
+      "resourceId": {
+        "type": "string"
+      },
+      "revision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "operationId",
+      "resourceId",
+      "revision",
+      "catalogRevision",
+      "deleted"
+    ],
+    "type": "object"
+  },
   "RemoveQueueEntryRequest": {
     "properties": {},
     "required": [],
@@ -11160,6 +13366,12 @@ export const schemas = {
               "subtitles": {
                 "items": {
                   "properties": {
+                    "companionUrl": {
+                      "type": "string"
+                    },
+                    "fontsUrl": {
+                      "type": "string"
+                    },
                     "format": {
                       "type": "string"
                     },
@@ -12085,6 +14297,12 @@ export const schemas = {
           "subtitles": {
             "items": {
               "properties": {
+                "companionUrl": {
+                  "type": "string"
+                },
+                "fontsUrl": {
+                  "type": "string"
+                },
                 "format": {
                   "type": "string"
                 },
@@ -12763,6 +14981,12 @@ export const schemas = {
               "subtitles": {
                 "items": {
                   "properties": {
+                    "companionUrl": {
+                      "type": "string"
+                    },
+                    "fontsUrl": {
+                      "type": "string"
+                    },
                     "format": {
                       "type": "string"
                     },

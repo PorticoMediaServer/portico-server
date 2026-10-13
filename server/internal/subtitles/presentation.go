@@ -123,7 +123,7 @@ func (s *Service) Select(ctx context.Context, p identity.Principal, item, sessio
 				return PlaybackPlan{}, ErrUnsupported
 			}
 		}
-		if resource.Renderer == "burn_in" && (m.Rendering == "" || m.Rendering == "text") {
+		if resource.Renderer == "burn_in" && m.Rendering == "" {
 			if s.ChangeDeliveryTx == nil {
 				return PlaybackPlan{}, ErrUnavailable
 			}

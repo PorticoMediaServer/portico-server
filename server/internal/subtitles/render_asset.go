@@ -16,20 +16,26 @@ const MaxBinaryBytes = 32 << 20
 const MaxAssetBytes = 48 << 20
 
 type RenderAsset struct {
-	Version    int              `json:"version"`
-	TimeDomain string           `json:"timeDomain"`
-	Renderer   string           `json:"renderer"`
-	Format     string           `json:"format"`
-	Data       []byte           `json:"data"`
-	Companion  []byte           `json:"companion,omitempty"`
-	Authored   []byte           `json:"authored,omitempty"`
-	Fonts      []FontAttachment `json:"fonts,omitempty"`
+	Version      int              `json:"version"`
+	TimeDomain   string           `json:"timeDomain"`
+	Renderer     string           `json:"renderer"`
+	Format       string           `json:"format"`
+	Data         []byte           `json:"data"`
+	Companion    []byte           `json:"companion,omitempty"`
+	Encoding     string           `json:"encoding,omitempty"`
+	TextOnly     bool             `json:"textOnly,omitempty"`
+	Authored     []byte           `json:"authored,omitempty"`
+	SkippedFonts int              `json:"skippedFonts,omitempty"`
+	Fonts        []FontAttachment `json:"fonts,omitempty"`
 }
 
 func DecodeRenderAsset(raw []byte) (RenderAsset, error) {
 	var a RenderAsset
 	if len(raw) > MaxAssetBytes || json.Unmarshal(raw, &a) != nil || a.Version != 2 || a.TimeDomain != "source-relative" || a.Renderer != "burn_in" || len(a.Data) == 0 {
 		return a, ErrInput
+	}
+	if a.TextOnly {
+		return a, ErrUnsupported
 	}
 	switch a.Format {
 	case "ass", "ssa", "pgs", "vobsub", "dvb", "mks":
@@ -46,9 +52,10 @@ func assetJSON(format string, data, companion []byte) ([]byte, error) {
 }
 func assetRenderer(raw []byte) string {
 	var h struct {
-		Version int `json:"version"`
+		Version  int  `json:"version"`
+		TextOnly bool `json:"textOnly"`
 	}
-	if json.Unmarshal(raw, &h) == nil && h.Version == 2 {
+	if json.Unmarshal(raw, &h) == nil && h.Version == 2 && !h.TextOnly {
 		return "burn_in"
 	}
 	return "external_text"
@@ -59,8 +66,10 @@ func assetRenderer(raw []byte) string {
 // file. Matroska subtitle-only capsules are accepted only from our extractor.
 func CanonicalAssetWithLanguage(raw, companion []byte, format string, durationUS int64, language string) ([]byte, error) {
 	original := raw
+	encoding := ""
 	if textFormat(format) || format == "idx" || format == "vobsub" {
-		decoded, e := DecodeSubtitleText(raw, language)
+		decoded, enc, e := decodeSubtitleText(raw, language)
+		encoding = enc
 		if e != nil {
 			return nil, e
 		}
@@ -71,6 +80,7 @@ func CanonicalAssetWithLanguage(raw, companion []byte, format string, durationUS
 		var a RenderAsset
 		if json.Unmarshal(canonical, &a) == nil {
 			a.Authored = original
+			a.Encoding = encoding
 			canonical, e = json.Marshal(a)
 		}
 	}
@@ -122,7 +132,7 @@ func CanonicalAsset(raw, companion []byte, format string, durationUS int64) ([]b
 		if len(companion) != 0 {
 			return nil, ErrInput
 		}
-		text, e := decodeLoosely(raw)
+		text, enc, e := decodeSubtitleText(raw, "")
 		if e != nil {
 			return nil, e
 		}
@@ -130,11 +140,10 @@ func CanonicalAsset(raw, companion []byte, format string, durationUS int64) ([]b
 			if e != ErrText {
 				return nil, e
 			}
-			cues, err := ParseASSAsText(text, durationUS)
-			if err != nil {
+			if _, err := ParseASSAsText(text, durationUS); err != nil {
 				return nil, e
 			}
-			return textDocument(cues)
+			return json.Marshal(RenderAsset{Version: 2, TimeDomain: "source-relative", Renderer: "burn_in", Format: format, Data: text, Authored: raw, Encoding: enc, TextOnly: true})
 		}
 		out, e := assetJSON(format, text, nil)
 		if e != nil {
@@ -143,6 +152,7 @@ func CanonicalAsset(raw, companion []byte, format string, durationUS int64) ([]b
 		var a RenderAsset
 		_ = json.Unmarshal(out, &a)
 		a.Authored = raw
+		a.Encoding = enc
 		return json.Marshal(a)
 	case "srt", "vtt", "smi", "sami", "ttml", "dfxp":
 		if len(companion) != 0 {

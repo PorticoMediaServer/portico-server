@@ -44,12 +44,21 @@ var subtitleCharsets = []charsetCandidate{
 // Unicode takes precedence. For legacy files, score a bounded sample and use the
 // track language as a prior; decoding tables come from the existing x/text module.
 func DecodeSubtitleText(raw []byte, language string) ([]byte, error) {
+	decoded, _, e := decodeSubtitleText(raw, language)
+	return decoded, e
+}
+func decodeSubtitleText(raw []byte, language string) ([]byte, string, error) {
 	if len(raw) == 0 || len(raw) > MaxInputBytes {
-		return nil, ErrCapacity
+		return nil, "", ErrCapacity
 	}
 	bom := bytes.HasPrefix(raw, []byte{0xff, 0xfe}) || bytes.HasPrefix(raw, []byte{0xfe, 0xff})
 	if bom {
-		return DecodeText(raw)
+		decoded, e := DecodeText(raw)
+		enc := "utf-16le"
+		if raw[0] == 0xfe {
+			enc = "utf-16be"
+		}
+		return decoded, enc, e
 	}
 	// UTF-16 without a BOM commonly exposes ASCII timing in alternating bytes.
 	if len(raw)%2 == 0 {
@@ -69,11 +78,16 @@ func DecodeSubtitleText(raw []byte, language string) ([]byte, error) {
 			if even > odd {
 				prefix = []byte{0xfe, 0xff}
 			}
-			return DecodeText(append(prefix, raw...))
+			decoded, e := DecodeText(append(prefix, raw...))
+			enc := "utf-16le"
+			if even > odd {
+				enc = "utf-16be"
+			}
+			return decoded, enc, e
 		}
 	}
 	if utf8.Valid(raw) {
-		return bytes.TrimPrefix(raw, []byte{0xef, 0xbb, 0xbf}), nil
+		return bytes.TrimPrefix(raw, []byte{0xef, 0xbb, 0xbf}), "utf-8", nil
 	}
 	hint := subtitleLanguageKey(language)
 	sample := raw[:min(len(raw), 65536)]
@@ -104,12 +118,12 @@ func DecodeSubtitleText(raw []byte, language string) ([]byte, error) {
 	}
 	out, e := best.encoding.NewDecoder().Bytes(raw)
 	if e != nil || !utf8.Valid(out) {
-		return nil, ErrText
+		return nil, "", ErrText
 	}
 	if len(out) > MaxInputBytes*3 {
-		return nil, ErrCapacity
+		return nil, "", ErrCapacity
 	}
-	return out, nil
+	return out, best.name, nil
 }
 
 func charsetScore(s, hint string) float64 {
@@ -167,6 +181,12 @@ func charsetScore(s, hint string) float64 {
 				}
 			}
 			if unicode.In(r, unicode.Hiragana, unicode.Hangul) {
+				score += 1
+			}
+			if unicode.In(r, unicode.Han) && strings.ContainsRune("的一是不了人我在有他这中大来上国个到说们为子和你地出道也时年得就那要下以生会自着去之过家学对可她里后小么心多天而能好都然没日于起还发成事只作当想看文无开手十用主行方又如前所本见经头面公同三已老从动两长知民样现分将外但身些与高意进把法此平美新情声明实才最感点很其请你好世界字幕这是日本語", r) {
+				score += 1.5
+			}
+			if unicode.In(r, unicode.Hangul) && strings.ContainsRune("이다는에의을를하고서안녕한국어자막입니세", r) {
 				score += 1
 			}
 			if strings.ContainsRune("оеаинтсрвлкмдпуяыьгзбчйхжшюцщэфё", r) {

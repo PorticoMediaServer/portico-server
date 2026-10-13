@@ -248,6 +248,27 @@ export const routes = [
     "status": 204
   },
   {
+    "id": "delete_v1_items_id_subtitles_resource",
+    "method": "DELETE",
+    "path": "/v1/items/{id}/subtitles/{resource}",
+    "summary": "Read or change authorized subtitles",
+    "access": "viewer_library",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 50331648,
+    "query": [
+      "segment"
+    ],
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "invalid_request",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
     "id": "get_admin_backups",
     "method": "GET",
     "path": "/v1/admin/backups",
@@ -748,6 +769,464 @@ export const routes = [
     "status": 200
   },
   {
+    "id": "get_v1_items_id_chapters_chapter_image",
+    "method": "GET",
+    "path": "/v1/items/{id}/chapters/{chapter}/image",
+    "summary": "Read or change authorized subtitles",
+    "access": "viewer_library",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "query": [
+      "segment"
+    ],
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "invalid_request",
+      "internal"
+    ],
+    "status": 200,
+    "responseContentType": "image/jpeg"
+  },
+  {
+    "id": "get_v1_items_id_playback_session_subtitles",
+    "method": "GET",
+    "path": "/v1/items/{id}/playback/{session}/subtitles",
+    "summary": "Read or change authorized subtitles",
+    "access": "viewer_library",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "query": [
+      "segment"
+    ],
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "invalid_request",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
+    "id": "get_v1_items_id_subtitles",
+    "method": "GET",
+    "path": "/v1/items/{id}/subtitles",
+    "summary": "Read or change authorized subtitles",
+    "access": "viewer_library",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "query": [
+      "segment"
+    ],
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "invalid_request",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
+    "id": "get_v1_items_id_trickplay_set_tiles_tile_jpg",
+    "method": "GET",
+    "path": "/v1/items/{id}/trickplay/{set}/tiles/{tile}.jpg",
+    "summary": "Read or change authorized subtitles",
+    "access": "viewer_library",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "query": [
+      "segment"
+    ],
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "invalid_request",
+      "internal"
+    ],
+    "status": 200,
+    "responseContentType": "image/jpeg"
+  },
+  {
+    "id": "get_v1_media_grant_subtitles_resource_revision",
+    "method": "GET",
+    "path": "/v1/media/{grant}/subtitles/{resource}/{revision}",
+    "summary": "Read or change authorized subtitles",
+    "access": "public",
+    "lane": "media",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "query": [
+      "segment"
+    ],
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "invalid_request",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
+    "id": "get_v1_media_grant_subtitles_resource_revision_fonts",
+    "method": "GET",
+    "path": "/v1/media/{grant}/subtitles/{resource}/{revision}/fonts",
+    "summary": "Read or change authorized subtitles",
+    "access": "public",
+    "lane": "media",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "query": [
+      "segment"
+    ],
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "invalid_request",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
+    "id": "get_v1_media_grant_subtitles_resource_revision_fonts_font",
+    "method": "GET",
+    "path": "/v1/media/{grant}/subtitles/{resource}/{revision}/fonts/{font}",
+    "summary": "Read or change authorized subtitles",
+    "access": "public",
+    "lane": "media",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "query": [
+      "segment"
+    ],
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "invalid_request",
+      "internal"
+    ],
+    "status": 200,
+    "responseContentType": "font/ttf"
+  },
+  {
+    "id": "get_v1_media_grant_subtitles_resource_revision_original_ass",
+    "method": "GET",
+    "path": "/v1/media/{grant}/subtitles/{resource}/{revision}/original.ass",
+    "summary": "Read or change authorized subtitles",
+    "access": "public",
+    "lane": "media",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "query": [
+      "segment"
+    ],
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "invalid_request",
+      "internal"
+    ],
+    "status": 200,
+    "responseContentType": "text/x-ssa"
+  },
+  {
+    "id": "get_v1_media_grant_subtitles_resource_revision_original_idx",
+    "method": "GET",
+    "path": "/v1/media/{grant}/subtitles/{resource}/{revision}/original.idx",
+    "summary": "Read or change authorized subtitles",
+    "access": "public",
+    "lane": "media",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "query": [
+      "segment"
+    ],
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "invalid_request",
+      "internal"
+    ],
+    "status": 200,
+    "responseContentType": "text/plain"
+  },
+  {
+    "id": "get_v1_media_grant_subtitles_resource_revision_original_mks",
+    "method": "GET",
+    "path": "/v1/media/{grant}/subtitles/{resource}/{revision}/original.mks",
+    "summary": "Read or change authorized subtitles",
+    "access": "public",
+    "lane": "media",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "query": [
+      "segment"
+    ],
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "invalid_request",
+      "internal"
+    ],
+    "status": 200,
+    "responseContentType": "application/octet-stream"
+  },
+  {
+    "id": "get_v1_media_grant_subtitles_resource_revision_original_ssa",
+    "method": "GET",
+    "path": "/v1/media/{grant}/subtitles/{resource}/{revision}/original.ssa",
+    "summary": "Read or change authorized subtitles",
+    "access": "public",
+    "lane": "media",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "query": [
+      "segment"
+    ],
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "invalid_request",
+      "internal"
+    ],
+    "status": 200,
+    "responseContentType": "text/x-ssa"
+  },
+  {
+    "id": "get_v1_media_grant_subtitles_resource_revision_original_sub",
+    "method": "GET",
+    "path": "/v1/media/{grant}/subtitles/{resource}/{revision}/original.sub",
+    "summary": "Read or change authorized subtitles",
+    "access": "public",
+    "lane": "media",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "query": [
+      "segment"
+    ],
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "invalid_request",
+      "internal"
+    ],
+    "status": 200,
+    "responseContentType": "application/octet-stream"
+  },
+  {
+    "id": "get_v1_media_grant_subtitles_resource_revision_original_sup",
+    "method": "GET",
+    "path": "/v1/media/{grant}/subtitles/{resource}/{revision}/original.sup",
+    "summary": "Read or change authorized subtitles",
+    "access": "public",
+    "lane": "media",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "query": [
+      "segment"
+    ],
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "invalid_request",
+      "internal"
+    ],
+    "status": 200,
+    "responseContentType": "application/octet-stream"
+  },
+  {
+    "id": "get_v1_media_grant_subtitles_resource_revision_vtt",
+    "method": "GET",
+    "path": "/v1/media/{grant}/subtitles/{resource}/{revision}.vtt",
+    "summary": "Read or change authorized subtitles",
+    "access": "public",
+    "lane": "media",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "query": [
+      "segment"
+    ],
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "invalid_request",
+      "internal"
+    ],
+    "status": 200,
+    "responseContentType": "text/vtt"
+  },
+  {
+    "id": "head_v1_media_grant_subtitles_resource_revision_fonts_font",
+    "method": "HEAD",
+    "path": "/v1/media/{grant}/subtitles/{resource}/{revision}/fonts/{font}",
+    "summary": "Read or change authorized subtitles",
+    "access": "public",
+    "lane": "media",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "query": [
+      "segment"
+    ],
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "invalid_request",
+      "internal"
+    ],
+    "status": 200,
+    "responseContentType": "font/ttf"
+  },
+  {
+    "id": "head_v1_media_grant_subtitles_resource_revision_original_ass",
+    "method": "HEAD",
+    "path": "/v1/media/{grant}/subtitles/{resource}/{revision}/original.ass",
+    "summary": "Read or change authorized subtitles",
+    "access": "public",
+    "lane": "media",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "query": [
+      "segment"
+    ],
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "invalid_request",
+      "internal"
+    ],
+    "status": 200,
+    "responseContentType": "text/x-ssa"
+  },
+  {
+    "id": "head_v1_media_grant_subtitles_resource_revision_original_idx",
+    "method": "HEAD",
+    "path": "/v1/media/{grant}/subtitles/{resource}/{revision}/original.idx",
+    "summary": "Read or change authorized subtitles",
+    "access": "public",
+    "lane": "media",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "query": [
+      "segment"
+    ],
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "invalid_request",
+      "internal"
+    ],
+    "status": 200,
+    "responseContentType": "text/plain"
+  },
+  {
+    "id": "head_v1_media_grant_subtitles_resource_revision_original_mks",
+    "method": "HEAD",
+    "path": "/v1/media/{grant}/subtitles/{resource}/{revision}/original.mks",
+    "summary": "Read or change authorized subtitles",
+    "access": "public",
+    "lane": "media",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "query": [
+      "segment"
+    ],
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "invalid_request",
+      "internal"
+    ],
+    "status": 200,
+    "responseContentType": "application/octet-stream"
+  },
+  {
+    "id": "head_v1_media_grant_subtitles_resource_revision_original_ssa",
+    "method": "HEAD",
+    "path": "/v1/media/{grant}/subtitles/{resource}/{revision}/original.ssa",
+    "summary": "Read or change authorized subtitles",
+    "access": "public",
+    "lane": "media",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "query": [
+      "segment"
+    ],
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "invalid_request",
+      "internal"
+    ],
+    "status": 200,
+    "responseContentType": "text/x-ssa"
+  },
+  {
+    "id": "head_v1_media_grant_subtitles_resource_revision_original_sub",
+    "method": "HEAD",
+    "path": "/v1/media/{grant}/subtitles/{resource}/{revision}/original.sub",
+    "summary": "Read or change authorized subtitles",
+    "access": "public",
+    "lane": "media",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "query": [
+      "segment"
+    ],
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "invalid_request",
+      "internal"
+    ],
+    "status": 200,
+    "responseContentType": "application/octet-stream"
+  },
+  {
+    "id": "head_v1_media_grant_subtitles_resource_revision_original_sup",
+    "method": "HEAD",
+    "path": "/v1/media/{grant}/subtitles/{resource}/{revision}/original.sup",
+    "summary": "Read or change authorized subtitles",
+    "access": "public",
+    "lane": "media",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "query": [
+      "segment"
+    ],
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "invalid_request",
+      "internal"
+    ],
+    "status": 200,
+    "responseContentType": "application/octet-stream"
+  },
+  {
     "id": "list_admin_sessions",
     "method": "GET",
     "path": "/v1/admin/sessions",
@@ -982,6 +1461,132 @@ export const routes = [
     "status": 204
   },
   {
+    "id": "post_v1_items_id_subtitles",
+    "method": "POST",
+    "path": "/v1/items/{id}/subtitles",
+    "summary": "Read or change authorized subtitles",
+    "access": "viewer_library",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 50331648,
+    "query": [
+      "segment"
+    ],
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "invalid_request",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
+    "id": "post_v1_items_id_subtitles_apply",
+    "method": "POST",
+    "path": "/v1/items/{id}/subtitles/apply",
+    "summary": "Read or change authorized subtitles",
+    "access": "viewer_library",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 50331648,
+    "query": [
+      "segment"
+    ],
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "invalid_request",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
+    "id": "post_v1_items_id_subtitles_import",
+    "method": "POST",
+    "path": "/v1/items/{id}/subtitles/import",
+    "summary": "Read or change authorized subtitles",
+    "access": "viewer_library",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 50331648,
+    "query": [
+      "segment"
+    ],
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "invalid_request",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
+    "id": "post_v1_items_id_subtitles_refresh",
+    "method": "POST",
+    "path": "/v1/items/{id}/subtitles/refresh",
+    "summary": "Read or change authorized subtitles",
+    "access": "viewer_library",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 50331648,
+    "query": [
+      "segment"
+    ],
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "invalid_request",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
+    "id": "post_v1_items_id_subtitles_remote",
+    "method": "POST",
+    "path": "/v1/items/{id}/subtitles/remote",
+    "summary": "Read or change authorized subtitles",
+    "access": "viewer_library",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 50331648,
+    "query": [
+      "segment"
+    ],
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "invalid_request",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
+    "id": "post_v1_items_id_subtitles_search",
+    "method": "POST",
+    "path": "/v1/items/{id}/subtitles/search",
+    "summary": "Read or change authorized subtitles",
+    "access": "viewer_library",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 50331648,
+    "query": [
+      "segment"
+    ],
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "invalid_request",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
     "id": "prepare_queue_next",
     "method": "POST",
     "path": "/v1/queues/{id}:prepare-next",
@@ -1095,6 +1700,48 @@ export const routes = [
     "errors": [
       "unauthorized",
       "not_permitted",
+      "invalid_request",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
+    "id": "put_v1_items_id_playback_session_subtitles",
+    "method": "PUT",
+    "path": "/v1/items/{id}/playback/{session}/subtitles",
+    "summary": "Read or change authorized subtitles",
+    "access": "viewer_library",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 50331648,
+    "query": [
+      "segment"
+    ],
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "invalid_request",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
+    "id": "put_v1_items_id_subtitles_resource",
+    "method": "PUT",
+    "path": "/v1/items/{id}/subtitles/{resource}",
+    "summary": "Read or change authorized subtitles",
+    "access": "viewer_library",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 50331648,
+    "query": [
+      "segment"
+    ],
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "not_found",
       "invalid_request",
       "internal"
     ],

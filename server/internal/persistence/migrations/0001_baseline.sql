@@ -1611,8 +1611,12 @@ CREATE TABLE subtitle_render_revisions(
  PRIMARY KEY(resource_id,revision),
  FOREIGN KEY(resource_id,revision) REFERENCES subtitle_revisions(resource_id,revision) ON DELETE CASCADE) STRICT;
 CREATE TABLE subtitle_original_revisions(
- resource_id TEXT NOT NULL,revision INTEGER NOT NULL,digest TEXT NOT NULL,size INTEGER NOT NULL CHECK(size>0),
+ resource_id TEXT NOT NULL,revision INTEGER NOT NULL,digest TEXT NOT NULL,size INTEGER NOT NULL CHECK(size>0),skipped_fonts INTEGER NOT NULL DEFAULT 0,
  PRIMARY KEY(resource_id,revision),FOREIGN KEY(resource_id,revision) REFERENCES subtitle_revisions(resource_id,revision) ON DELETE CASCADE) STRICT;
+CREATE TABLE subtitle_original_files(
+ resource_id TEXT NOT NULL,revision INTEGER NOT NULL,part TEXT NOT NULL,name TEXT NOT NULL,
+ format TEXT NOT NULL,encoding TEXT NOT NULL,digest TEXT NOT NULL,size INTEGER NOT NULL CHECK(size>0),
+ PRIMARY KEY(resource_id,revision,part),FOREIGN KEY(resource_id,revision) REFERENCES subtitle_revisions(resource_id,revision) ON DELETE CASCADE) STRICT;
 CREATE TABLE subtitle_inventory_evidence(
  asset_id TEXT PRIMARY KEY REFERENCES catalog_assets(token) ON DELETE CASCADE,
  revision INTEGER NOT NULL, evidence TEXT NOT NULL) STRICT;
@@ -2011,8 +2015,8 @@ CREATE TABLE saved_pins(owner_key TEXT NOT NULL,kind TEXT NOT NULL,resource_id T
 CREATE TABLE saved_resource_generation(id INTEGER PRIMARY KEY CHECK(id=1),revision INTEGER NOT NULL DEFAULT 0) STRICT;
 CREATE TABLE playback_legacy_replacement_requests(account_id TEXT NOT NULL,profile_id TEXT NOT NULL,request_id TEXT NOT NULL,old_session_id TEXT NOT NULL,old_generation INTEGER NOT NULL,PRIMARY KEY(account_id,profile_id,request_id)) STRICT;
 CREATE TABLE playback_physical_source_pins(session_id TEXT PRIMARY KEY REFERENCES playback_sessions(id) ON DELETE CASCADE,source_id TEXT NOT NULL,incarnation TEXT NOT NULL,configuration_generation INTEGER NOT NULL) STRICT;
-CREATE TABLE subtitle_inventory_entries(source_id TEXT NOT NULL,incarnation TEXT NOT NULL,job_id TEXT NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,directory TEXT NOT NULL,path TEXT NOT NULL,name TEXT NOT NULL,snapshot TEXT NOT NULL,PRIMARY KEY(source_id,job_id,path)) STRICT;
-CREATE INDEX subtitle_inventory_entries_association ON subtitle_inventory_entries(source_id,incarnation,job_id,lower(directory),name);
+CREATE TABLE subtitle_inventory_entries(source_id TEXT NOT NULL,incarnation TEXT NOT NULL,job_id TEXT NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,directory TEXT NOT NULL,directory_key TEXT NOT NULL,path TEXT NOT NULL,name TEXT NOT NULL,snapshot TEXT NOT NULL,PRIMARY KEY(source_id,job_id,path)) STRICT;
+CREATE INDEX subtitle_inventory_entries_association ON subtitle_inventory_entries(source_id,incarnation,job_id,directory_key,name COLLATE NOCASE);
 CREATE TABLE playback_vod_retries(playback_id TEXT PRIMARY KEY REFERENCES playback_occurrences(id),request_id TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'pending') STRICT;
 CREATE TABLE playback_vod_subtitle_intents(playback_id TEXT PRIMARY KEY REFERENCES playback_occurrences(id),request_id TEXT NOT NULL,ownership_revision INTEGER NOT NULL,command_sequence INTEGER NOT NULL) STRICT;
 CREATE TABLE playback_vod_observations(playback_id TEXT PRIMARY KEY REFERENCES playback_occurrences(id),acknowledged_seek_id TEXT) STRICT;

@@ -62,3 +62,21 @@ func TestTolerantASSAndMarkupKeepGoodCues(t *testing.T) {
 		t.Fatal(cues, e)
 	}
 }
+
+func TestLegacySubtitlesWithoutLanguageHint(t *testing.T) {
+	for _, v := range []struct{ name, body string }{{"windows-1251", "Это русский текст. Что происходит? Привет!"}, {"koi8-r", "Это русский текст. Что происходит? Привет!"}, {"gbk", "这是中文字幕。你好世界。"}, {"shift-jis", "これは日本語です。こんにちは。"}, {"euc-kr", "안녕하세요. 한국어 자막입니다."}} {
+		for _, c := range subtitleCharsets {
+			if c.name != v.name {
+				continue
+			}
+			raw, e := c.encoding.NewEncoder().Bytes([]byte("1\n00:00:01,000 --> 00:00:03,000\n" + v.body))
+			if e != nil {
+				t.Fatal(e)
+			}
+			got, e := DecodeSubtitleText(raw, "")
+			if e != nil || !strings.Contains(string(got), v.body) {
+				t.Fatalf("%s: %q %v", v.name, got, e)
+			}
+		}
+	}
+}

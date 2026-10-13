@@ -57,7 +57,7 @@ func (s *Service) applySubtitles(ctx context.Context, p identity.Principal, item
 			switch {
 			case req.Delivery == "burn" && !burns, req.Delivery == "sidecar" && burns:
 				return out, &FieldError{Path: "subtitles.delivery"}
-			case burns && req.Delivery == "embeddedClient":
+			case req.Delivery == "embeddedClient":
 				m.Rendering = subtitles.RenderingFormat(chosen.Format)
 			}
 			m.Mode, m.ResourceID, m.ResourceRevision = "track", chosen.ID, chosen.Revision

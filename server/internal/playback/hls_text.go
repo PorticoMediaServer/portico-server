@@ -17,7 +17,7 @@ type TextRenditionPlan struct {
 }
 
 func (h *HLS) loadTextRenditions(ctx context.Context, id string, p *DeliveryPlan) error {
-	rows, e := dbwork.Query(ctx, h.db, `SELECT pin.resource_id,pin.resource_revision,v.language,v.title,s.grant_token,COALESCE(st.resource_id=pin.resource_id AND st.resource_revision=pin.resource_revision AND st.renderer='external_text',0),COALESCE(rr.is_forced,0),COALESCE(rr.hearing_impaired,0) FROM playback_manifest_subtitles pin JOIN playback_sessions s ON s.id=pin.session_id JOIN subtitle_revisions v ON v.resource_id=pin.resource_id AND v.revision=pin.resource_revision LEFT JOIN subtitle_render_revisions rr ON rr.resource_id=v.resource_id AND rr.revision=v.revision LEFT JOIN playback_subtitle_state st ON st.session_id=s.id AND st.generation=s.generation WHERE pin.session_id=? ORDER BY pin.resource_id LIMIT 32`, id)
+	rows, e := dbwork.Query(ctx, h.db, `SELECT pin.resource_id,pin.resource_revision,v.language,v.title,s.grant_token,COALESCE(st.resource_id=pin.resource_id AND st.resource_revision=pin.resource_revision AND st.renderer='external_text',0),COALESCE(rr.is_forced,0),COALESCE(rr.hearing_impaired,0) FROM playback_manifest_subtitles pin JOIN playback_sessions s ON s.id=pin.session_id JOIN subtitle_revisions v ON v.resource_id=pin.resource_id AND v.revision=pin.resource_revision LEFT JOIN subtitle_render_revisions rr ON rr.resource_id=v.resource_id AND rr.revision=v.revision LEFT JOIN playback_subtitle_state st ON st.session_id=s.id AND st.generation=s.generation WHERE pin.session_id=? ORDER BY CASE WHEN st.resource_id=pin.resource_id THEN 0 ELSE 1 END,pin.resource_id LIMIT 32`, id)
 	if e != nil {
 		return e
 	}

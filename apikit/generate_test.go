@@ -150,3 +150,28 @@ func TestNullablePointerMembers(t *testing.T) {
 		t.Fatal("runtime changed for a contract without nullable members")
 	}
 }
+
+func TestGeneratedBinaryResponseUsesItsContentType(t *testing.T) {
+	definitions := []Definition{{Metadata: Metadata{ID: "subtitle_original", Method: "GET", Path: "/v1/media/{grant}/original", Summary: "Read original subtitle bytes", Access: Public, Lane: Media, Cost: Constant, Status: 200, ResponseContentType: "application/octet-stream"}, Request: reflect.TypeFor[struct{}](), Response: reflect.TypeFor[string]()}}
+	out, e := Generate(definitions)
+	if e != nil {
+		t.Fatal(e)
+	}
+	var spec struct {
+		Paths map[string]map[string]struct {
+			Responses map[string]struct {
+				Content map[string]any `json:"content"`
+			} `json:"responses"`
+		} `json:"paths"`
+	}
+	if e = json.Unmarshal(out.OpenAPI, &spec); e != nil {
+		t.Fatal(e)
+	}
+	content := spec.Paths["/v1/media/{grant}/original"]["get"].Responses["200"].Content
+	if _, ok := content["application/octet-stream"]; !ok {
+		t.Fatal(content)
+	}
+	if _, ok := content["application/json"]; ok {
+		t.Fatal("binary response labelled JSON")
+	}
+}

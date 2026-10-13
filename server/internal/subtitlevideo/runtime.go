@@ -240,7 +240,7 @@ func (r *Runtime) Extract(ctx context.Context, item, source string, index int, f
 	if e == nil && (format == "ass" || format == "ssa") {
 		var asset subtitles.RenderAsset
 		if json.Unmarshal(data, &asset) == nil && asset.Version == 2 {
-			asset.Fonts, e = r.extractFonts(ctx, progress)
+			asset.Fonts, asset.SkippedFonts, e = r.extractFonts(ctx, progress)
 			if e != nil {
 				return nil, "", e
 			}

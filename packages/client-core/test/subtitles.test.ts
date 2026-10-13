@@ -36,10 +36,10 @@ function api(fn:(path:string,method:string,body:unknown,signal?:AbortSignal)=>Pr
  for(const response of [new Response(json),new Response(json,{status:403}),new Response(json,{headers:{'Content-Type':'application/json','Content-Length':'8388609'}}),new Response(new Uint8Array([0xff]),{headers:{'Content-Type':'application/json'}})])await assert.rejects(readSubtitleDocument(response,c.signal));
  c.abort();await assert.rejects(readSubtitleDocument(new Response(json,{headers:{'Content-Type':'application/json'}}),c.signal));
  });
- test('Off suppresses immediately and wins over an in-flight discovery import without auto-selection',async()=>{
- const pending=deferred<unknown>();const writes:{method:string;body:any}[]=[];let current=plan();
- const s=new SubtitleService(api(async(p,m,b)=>{if(m==='GET')return p.includes('/playback/')?current:catalog();writes.push({method:m,body:b});if(p.endsWith('/import'))return pending.promise;current=plan(current.revision+1);return current;}),target,(()=>{let n=0;return()=>`op${++n}`;})());
- try{await ready(s);const imported=s.import({id:'discovered',sourceId:'source',revision:1,origin:'sidecar',format:'vtt',language:'en',title:'English',default:false,forced:false,enabled:true});await flush();const off=s.choose(null);assert.equal(s.getSnapshot().suppressed,true);pending.resolve({operationId:'op1',resourceId:'sub',revision:1,catalogRevision:2});await imported;await off;assert.equal(writes.length,2);assert.equal(writes[1].body.mode,'off');assert.equal(s.getSnapshot().plan?.mode,'off');}finally{s.stop();}
+ test('Off wins over an in-flight selection of a discovered resource without importing it',async()=>{
+ const pending=deferred<unknown>();const writes:{method:string;body:any}[]=[];let current={...plan(),resources:[{...resource,discoveryId:'discovered'}]};
+ const s=new SubtitleService(api(async(p,m,b)=>{if(m==='GET')return p.includes('/playback/')?current:catalog();assert(!p.endsWith('/import'));writes.push({method:m,body:b});if(writes.length===1)return pending.promise;current={...plan(current.revision+1),resources:current.resources};return current;}),target,(()=>{let n=0;return()=>`op${++n}`;})());
+ try{await ready(s);const selected=s.import({id:'discovered',sourceId:'source',revision:1,origin:'sidecar',format:'vtt',language:'en',title:'English',default:false,forced:false,enabled:true});await flush();const off=s.choose(null);assert.equal(s.getSnapshot().suppressed,true);pending.resolve({...plan(2,resource),resources:current.resources});await selected;await off;assert.equal(writes.length,2);assert.equal(writes[1].body.mode,'off');assert.equal(s.getSnapshot().plan?.mode,'off');}finally{s.stop();}
  });
  test('ambiguous selection response retries identical operation and CAS payload without rebasing',async()=>{
  let current=plan(),failOnce=true;const writes:any[]=[];

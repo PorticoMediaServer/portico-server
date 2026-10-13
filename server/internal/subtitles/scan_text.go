@@ -6,16 +6,9 @@ import (
 	"portico.local/server/internal/dbwork"
 )
 
-type scanTextAuthorityKey struct{}
-type scanTextAuthority struct {
-	item, source string
-	check        func(context.Context, *sql.Tx) error
-}
-
 // ImportScanText is called only by the durable inventory analysis worker after
-// its exact source revision has been published. The caller's inventory fence is
-// checked inside every read/write transaction; no viewer credential is forged or
-// borrowed. The internal actor can import shared resources for this one source.
+// its exact source revision has been published. It completes the caller's
+// inventory fence without extracting bytes or borrowing viewer credentials.
 func (s *Service) ImportScanText(ctx context.Context, item, source string, check func(context.Context, *sql.Tx) error) error {
 	if check == nil {
 		return ErrInput

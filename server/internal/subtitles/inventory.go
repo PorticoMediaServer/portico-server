@@ -33,9 +33,10 @@ type Inventory struct {
 // symlink. Versions with the same basename share their sidecars.
 func Discover(ctx context.Context, c *storage.Client, key, path string, embedded []Track, originUS int64, known bool) (*Inventory, error) {
 	return discover(ctx, c, key, path, embedded, originUS, known, func(visit func(storage.Snapshot) error) error {
-		return c.Inventory(ctx, key, filepath.Dir(path), func(v storage.Snapshot) error {
+		stem := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
+		return c.InventorySubtitleCandidates(ctx, key, filepath.Dir(path), stem, func(v storage.Snapshot) error {
 			if v.Directory && (strings.EqualFold(v.Name, "Subs") || strings.EqualFold(v.Name, "Subtitles")) {
-				return c.Inventory(ctx, key, v.Path, visit)
+				return c.InventorySubtitleCandidates(ctx, key, v.Path, stem, visit)
 			}
 			return visit(v)
 		})

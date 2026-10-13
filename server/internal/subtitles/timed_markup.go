@@ -10,7 +10,8 @@ import (
 var samiSync = regexp.MustCompile(`(?i)<sync\b[^>]{0,1000}>`)
 var markupAttribute = regexp.MustCompile(`(?i)([a-z][a-z0-9:_-]*)\s*=\s*(?:"([^"<>]{0,256})"|'([^'<>]{0,256})'|([^\s<>]{1,256}))`)
 var markupBreak = regexp.MustCompile(`(?i)<br\s*/?>`)
-var ttmlParagraph = regexp.MustCompile(`(?is)<(?:[a-z0-9_]+:)?p\b([^>]{0,1000})>(.*?)</(?:[a-z0-9_]+:)?p\s*>`)
+var ttmlStart = regexp.MustCompile(`(?is)<(?:[a-z0-9_]+:)?p\b([^>]{0,1000})>`)
+var ttmlEnd = regexp.MustCompile(`(?is)</(?:[a-z0-9_]+:)?p\s*>`)
 
 func attributes(s string) map[string]string {
 	out := map[string]string{}
@@ -60,6 +61,14 @@ func parseSAMI(raw []byte, durationUS int64) ([]StyledCue, error) {
 	if len(matches) > MaxCues*2 {
 		return nil, ErrCapacity
 	}
+	times := make([]int64, 0, len(matches))
+	for _, m := range matches {
+		v, e := strconv.ParseInt(attributes(s[m[0]:m[1]])["start"], 10, 64)
+		if e == nil && v >= 0 && v <= MaxDurationMS {
+			times = append(times, v)
+		}
+	}
+	sort.Slice(times, func(i, j int) bool { return times[i] < times[j] })
 	var cues []StyledCue
 	for i, m := range matches {
 		start, e := strconv.ParseInt(attributes(s[m[0]:m[1]])["start"], 10, 64)
@@ -71,11 +80,9 @@ func parseSAMI(raw []byte, durationUS int64) ([]StyledCue, error) {
 		if durationUS > 0 {
 			end = durationUS / 1000
 		}
-		if i+1 < len(matches) {
-			v, x := strconv.ParseInt(attributes(s[matches[i+1][0]:matches[i+1][1]])["start"], 10, 64)
-			if x == nil && v > start {
-				end = v
-			}
+		nextTime := sort.Search(len(times), func(j int) bool { return times[j] > start })
+		if nextTime < len(times) {
+			end = times[nextTime]
 		}
 		if i+1 < len(matches) {
 			next = matches[i+1][0]
@@ -113,13 +120,15 @@ func parseTTML(raw []byte, durationUS int64) ([]StyledCue, error) {
 	if e != nil {
 		return nil, e
 	}
-	matches := ttmlParagraph.FindAllStringSubmatch(string(decoded), MaxCues+1)
+
+	text := string(decoded)
+	matches := ttmlStart.FindAllStringSubmatchIndex(text, MaxCues+1)
 	if len(matches) > MaxCues {
 		return nil, ErrCapacity
 	}
 	var cues []StyledCue
-	for _, m := range matches {
-		a := attributes(m[1])
+	for i, m := range matches {
+		a := attributes(text[m[2]:m[3]])
 		start, ok := markupTime(a["begin"])
 		if !ok {
 			continue
@@ -134,8 +143,16 @@ func parseTTML(raw []byte, durationUS int64) ([]StyledCue, error) {
 		if !valid || end <= start {
 			continue
 		}
-		body, italic, top := plainCueText(markupBreak.ReplaceAllString(m[2], "\n"))
-		cues = append(cues, StyledCue{StartMS: start, EndMS: end, Text: body, Italic: italic, Top: top})
+		stop := len(text)
+		if i+1 < len(matches) {
+			stop = matches[i+1][0]
+		}
+		body := text[m[1]:stop]
+		if close := ttmlEnd.FindStringIndex(body); close != nil {
+			body = body[:close[0]]
+		}
+		plain, italic, top := plainCueText(markupBreak.ReplaceAllString(body, "\n"))
+		cues = append(cues, StyledCue{StartMS: start, EndMS: end, Text: plain, Italic: italic, Top: top})
 	}
 	return finishMarkup(cues, durationUS)
 }

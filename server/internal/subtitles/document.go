@@ -129,12 +129,13 @@ func canonicalPlain(raw []byte, format string, durationUS int64) ([]byte, error)
 	}
 	var d Document
 	_ = json.Unmarshal(out, &d)
-	total := strings.Count(string(raw), "-->")
+	decoded, _ := decodeLoosely(raw)
+	total := strings.Count(string(decoded), "-->")
 	if format == "smi" || format == "sami" {
-		total = len(samiSync.FindAllIndex(raw, -1))
+		total = len(samiSync.FindAllIndex(decoded, -1))
 	}
 	if format == "ttml" || format == "dfxp" {
-		total = len(ttmlParagraph.FindAllIndex(raw, -1))
+		total = len(ttmlStart.FindAllIndex(decoded, -1))
 	}
 	d.SkippedCues = max(0, total-len(cues))
 	return json.Marshal(d)

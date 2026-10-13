@@ -134,7 +134,7 @@ export async function readSubtitleDocument(response:Response,signal:AbortSignal)
  finally{signal.removeEventListener('abort',abort);void reader.cancel().catch(()=>{});reader.releaseLock();}
 }
 export function subtitleReason(reason?:string,translate:(id:MessageId)=>string=id=>enUS[id]):string{
- const key:Record<string,MessageId>={provider_not_configured:'player.subtitleReason.provider',unsupported_format:'player.subtitleReason.format',unsupported_text_features:'player.subtitleReason.text',extraction_unavailable:'player.subtitleReason.extraction',source_changed:'player.subtitleReason.changed',source_unavailable:'player.subtitleReason.source',ambiguous_association:'player.subtitleReason.association',unsupported_timing:'player.subtitleReason.timing',capacity:'player.subtitleReason.capacity'};
+ const key:Record<string,MessageId>={provider_not_configured:'player.subtitleReason.provider',provider_sign_in_failed:'player.subtitleReason.signIn',unsupported_format:'player.subtitleReason.format',unsupported_text_features:'player.subtitleReason.text',extraction_unavailable:'player.subtitleReason.extraction',source_changed:'player.subtitleReason.changed',source_unavailable:'player.subtitleReason.source',ambiguous_association:'player.subtitleReason.association',unsupported_timing:'player.subtitleReason.timing',capacity:'player.subtitleReason.capacity'};
  return translate(key[reason??'']??'player.subtitleReason.unavailable');
 }
 
@@ -195,6 +195,7 @@ export class SubtitleService {
   return this.enqueue(async()=>{if(choice!==this.choice)return;if(!payload){const current=await this.plan();payload={operationId:op,generation:this.target.generation,expectedRevision:current.revision,mode:resource?'track':'off',...(resource?{resourceId:resource.id,resourceRevision:resource.revision,...(rendering?{rendering}:{})}:{}),offsetUs:resource?offsetUs:'0',positionUs:this.transport?.positionUs()??'0'};if(this.transport?.reserve)payload=await this.transport.reserve(payload);}const raw=payload.control&&this.transport?.select?await this.transport.select(this.selectionPath(),payload):await this.request(this.selectionPath(),'PUT',payload);if(choice===this.choice){this.acceptPlan(raw);this.publish({suppressed:false});}});
  }
  import(track:SubtitleDiscovery){
+  if(this.target.sourceId!==undefined)return Promise.reject(new Error('Start playback to select subtitles.'));
   const resource=this.state.plan?.resources.find(r=>r.discoveryId===track.id&&r.sourceId===track.sourceId);
   if(!resource)return Promise.reject(new Error(subtitleReason(track.reason)));
   return this.choose(resource);
@@ -206,7 +207,7 @@ export class SubtitleService {
   return this.enqueue(async()=>{this.receipt(await this.request(this.path(resource?'/'+resource.id:''),resource?'PUT':'POST',payload));});
  }
  remove(resource:SubtitleResource){const body={operationId:this.operationId(),expectedRevision:resource.revision};return this.enqueue(async()=>{this.receipt(await this.request(this.path('/'+resource.id),'DELETE',body));});}
- search(language:string,query='',page=1){return this.enqueue(async()=>{const raw=await this.request(this.path('/search'),'POST',{sourceId:this.sourceId,language,query,page});if(!record(raw)||raw.version!==1||!integer(raw.page))invalid();const candidates=array(raw.candidates,40).map(c=>{if(!record(c)||!id(c.id)||!text(c.language,64)||!text(c.title,160)||!text(c.attribution,512))invalid();return Object.freeze({...c}) as SubtitleCandidate;});this.publish({candidates:Object.freeze(candidates)});});}
+ search(language='',query='',page=1){return this.enqueue(async()=>{const raw=await this.request(this.path('/search'),'POST',{sourceId:this.sourceId,language,query,page});if(!record(raw)||raw.version!==1||!integer(raw.page))invalid();const candidates=array(raw.candidates,40).map(c=>{if(!record(c)||!id(c.id)||!text(c.language,64)||!text(c.title,160)||!text(c.attribution,512))invalid();return Object.freeze({...c}) as SubtitleCandidate;});this.publish({candidates:Object.freeze(candidates)});});}
  apply(candidate:SubtitleCandidate,scope:'personal'|'shared',rights:string){const payload={operationId:this.operationId(),candidateId:candidate.id,scope,rights};return this.enqueue(async()=>{this.receipt(await this.request(this.path('/apply'),'POST',payload));this.publish({candidates:[]});});}
 }
 

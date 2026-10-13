@@ -12,10 +12,12 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/localonly"
+	"portico.local/server/internal/operations"
 
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/remotemedia"
@@ -40,6 +42,9 @@ func (s *Service) ProviderStatus() ProviderStatus {
 	if s.provider == nil {
 		return ProviderStatus{ID: "opensubtitles", Reason: "provider_not_configured"}
 	}
+	if status, ok := s.provider.(interface{ Status() ProviderStatus }); ok {
+		return status.Status()
+	}
 	return ProviderStatus{ID: s.provider.ID(), Enabled: true}
 }
 
@@ -48,7 +53,7 @@ func (s *Service) ProviderStatus() ProviderStatus {
 type OpenSubtitles struct {
 	key, token, agent        string
 	username, password, host string
-	loginRejected            bool
+	loginRejected            atomic.Bool
 	client                   *http.Client
 	mu                       sync.Mutex
 	next                     time.Time
@@ -69,7 +74,7 @@ func ProviderFromEnvironment() Provider {
 	if agent == "" {
 		agent = "Portico v1"
 	}
-	return &OpenSubtitles{key: key, username: os.Getenv("PORTICO_OPENSUBTITLES_USERNAME"), password: os.Getenv("PORTICO_OPENSUBTITLES_PASSWORD"), host: "api.opensubtitles.com", token: strings.TrimSpace(os.Getenv("PORTICO_OPENSUBTITLES_TOKEN")), agent: agent, gate: make(chan struct{}, 1), client: &http.Client{Transport: tr, Timeout: 20 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}
+	return &OpenSubtitles{key: key, username: os.Getenv("PORTICO_OPENSUBTITLES_USERNAME"), password: os.Getenv("PORTICO_OPENSUBTITLES_PASSWORD"), host: "api.opensubtitles.com", agent: agent, gate: make(chan struct{}, 1), client: &http.Client{Transport: tr, Timeout: 20 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}
 }
 func (p *OpenSubtitles) ID() string { return "opensubtitles" }
 func (p *OpenSubtitles) request(ctx context.Context, method, path string, body, out any) error {
@@ -86,7 +91,7 @@ func (p *OpenSubtitles) request(ctx context.Context, method, path string, body, 
 		}
 	}
 	e := p.requestOnce(ctx, method, path, body, out)
-	if e == errProviderAuthorization && p.username != "" && !p.loginRejected {
+	if e == errProviderAuthorization && p.username != "" && !p.loginRejected.Load() {
 		p.token = ""
 		if e = p.login(ctx); e != nil {
 			return e
@@ -99,7 +104,7 @@ func (p *OpenSubtitles) request(ctx context.Context, method, path string, body, 
 var errProviderAuthorization = errors.New("subtitle provider authorization expired")
 
 func (p *OpenSubtitles) login(ctx context.Context) error {
-	if p.loginRejected || p.username == "" || p.password == "" {
+	if p.loginRejected.Load() || p.username == "" || p.password == "" {
 		return ErrUnavailable
 	}
 	p.host = "api.opensubtitles.com"
@@ -109,7 +114,7 @@ func (p *OpenSubtitles) login(ctx context.Context) error {
 	}
 	e := p.requestOnce(ctx, "POST", "/login", map[string]string{"username": p.username, "password": p.password}, &response)
 	if e == errProviderAuthorization {
-		p.loginRejected = true
+		p.loginRejected.Store(true)
 	}
 	if e != nil {
 		return e
@@ -310,18 +315,32 @@ func (s *Service) Search(ctx context.Context, p identity.Principal, item string,
 	defer cancel()
 	out := SearchResult{Version: 1, Candidates: []SearchCandidate{}, Page: m.Page}
 	language, e := Language(m.Language)
-	if e != nil || language == "und" || m.Page < 1 || m.Page > 20 || !textField(m.Query, 160) {
+	if e != nil || language == "und" && m.Language != "" || m.Page < 1 || m.Page > 20 || !textField(m.Query, 160) {
 		return out, ErrInput
 	}
 	if s.provider == nil {
 		return out, ErrUnavailable
 	}
-	gated, p, e := s.tx(ctx, p, item)
+	gated, p, e := s.readTx(ctx, p, item)
 	if e != nil {
 		return out, e
 	}
 	tx := gated.Tx()
 	defer gated.Rollback()
+	if m.Language == "" {
+		values, _, _, err := operations.EffectivePreferences(tx, p.Viewer, "")
+		if err != nil {
+			return out, err
+		}
+		language = "en"
+		for _, want := range values.List("playback.preferredSubtitleLanguages") {
+			if normalized, err := Language(want); err == nil && normalized != "und" {
+				language = normalized
+				break
+			}
+		}
+	}
+
 	src, e := sourceQuery(ctx, tx, item, m.SourceID)
 	if e != nil {
 		return out, e
@@ -444,4 +463,11 @@ func (s *Service) Apply(ctx context.Context, p identity.Principal, item string, 
 	}
 	mutation := Mutation{OperationID: m.OperationID, SourceID: srcID, Scope: m.Scope, Format: "srt", Language: language, Title: title, Rights: m.Rights, OffsetUS: "0"}
 	return s.publish(ctx, p, item, mutation, digest, publication{source: src, origin: "provider", provider: provider, attribution: attribution, originalDigest: digestBytes(raw)}, canonical)
+}
+
+func (p *OpenSubtitles) Status() ProviderStatus {
+	if p.loginRejected.Load() {
+		return ProviderStatus{ID: p.ID(), Reason: "provider_sign_in_failed"}
+	}
+	return ProviderStatus{ID: p.ID(), Enabled: true}
 }

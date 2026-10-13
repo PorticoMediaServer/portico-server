@@ -50,18 +50,19 @@ const (
 )
 
 type Metadata struct {
-	ID        string   `json:"id"`
-	Method    string   `json:"method"`
-	Path      string   `json:"path"`
-	Summary   string   `json:"summary"`
-	Access    Access   `json:"access"`
-	Scope     string   `json:"scope,omitempty"`
-	Lane      Lane     `json:"lane"`
-	Cost      Cost     `json:"cost"`
-	BodyLimit int64    `json:"bodyLimit"`
-	Query     []string `json:"query,omitempty"`
-	Errors    []string `json:"errors"`
-	Status    int      `json:"status"`
+	ID                  string   `json:"id"`
+	Method              string   `json:"method"`
+	Path                string   `json:"path"`
+	Summary             string   `json:"summary"`
+	Access              Access   `json:"access"`
+	Scope               string   `json:"scope,omitempty"`
+	Lane                Lane     `json:"lane"`
+	Cost                Cost     `json:"cost"`
+	BodyLimit           int64    `json:"bodyLimit"`
+	Query               []string `json:"query,omitempty"`
+	Errors              []string `json:"errors"`
+	Status              int      `json:"status"`
+	ResponseContentType string   `json:"responseContentType,omitempty"`
 	// OptionalBody lets a route with a body contract also accept no body at all
 	// (a DELETE whose body is optional); the handler then sees the zero Request.
 	OptionalBody bool `json:"optionalBody,omitempty"`
@@ -290,6 +291,11 @@ func (r *Registry) Freeze() { r.frozen = true }
 func validate(m Metadata) error {
 	if m.ID == "" || m.Summary == "" || !strings.HasPrefix(m.Path, "/v1/") || m.Status < 200 || m.Status >= 300 || m.BodyLimit < 0 || m.BodyLimit > 48<<20 {
 		return errors.New("route metadata incomplete")
+	}
+	if m.ResponseContentType != "" {
+		if _, _, e := mime.ParseMediaType(m.ResponseContentType); e != nil {
+			return errors.New("invalid response content type")
+		}
 	}
 	switch m.Access {
 	case Public, Device, ViewerLibrary, ViewerItem, Owner:

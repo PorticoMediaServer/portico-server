@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"portico.local/apikit"
@@ -106,14 +107,15 @@ func subtitleDecode(w http.ResponseWriter, r *http.Request, out any) error {
 	return nil
 }
 func (d Dependencies) registerSubtitleRoutes(registry *apikit.Registry) error {
-	if d.Subtitles == nil {
-		return nil
-	}
 	var registrationError error
 	type handler func(http.ResponseWriter, *http.Request, identity.Principal) (any, error)
 	register := func(pattern string, fn handler) {
 		serve := func(w http.ResponseWriter, r *http.Request) {
 			subtitleHeaders(w)
+			if d.Subtitles == nil {
+				subtitleFailure(w, subtitles.ErrUnavailable)
+				return
+			}
 			p, e := d.principal(r)
 			if e != nil {
 				subtitleFailure(w, e)
@@ -277,9 +279,13 @@ func (d Dependencies) registerSubtitleRoutes(registry *apikit.Registry) error {
 	if registrationError != nil {
 		return registrationError
 	}
-	registrationError = registerSubtitleRaw[struct{}, SubtitleBytesContract](registry, "GET /v1/media/{grant}/subtitles/{resource}/{revision}", func(w http.ResponseWriter, r *http.Request) {
+	documentHandler := func(w http.ResponseWriter, r *http.Request) {
+		if d.Subtitles == nil || d.Playback == nil {
+			subtitleFailure(w, subtitles.ErrUnavailable)
+			return
+		}
 		subtitleHeaders(w)
-		isVTT := strings.HasSuffix(r.PathValue("revision"), ".vtt")
+		isVTT := strings.HasSuffix(r.URL.Path, ".vtt")
 		revisionText := strings.TrimSuffix(r.PathValue("revision"), ".vtt")
 		revision, e := strconv.ParseInt(revisionText, 10, 64)
 		if e != nil || revision < 1 || strconv.FormatInt(revision, 10) != revisionText {
@@ -329,7 +335,14 @@ func (d Dependencies) registerSubtitleRoutes(registry *apikit.Registry) error {
 			}
 			w.Header().Set("Content-Type", "text/vtt; charset=utf-8")
 			w.Header().Set("Cache-Control", "no-store")
-			w.Write(data)
+			w.Header().Set("ETag", `"subtitle-vtt-`+id+`-`+strconv.FormatInt(revision, 10)+`-`+strconv.FormatInt(offset, 10)+`-`+strconv.Itoa(segment)+`"`)
+			check := func() error {
+				if _, _, _, e := d.Playback.ResolveGrantContext(r.Context(), r.PathValue("grant")); e != nil {
+					return e
+				}
+				return d.Subtitles.CheckManifestDocument(r.Context(), p, item, session, id, revision)
+			}
+			http.ServeContent(w, r, id+".vtt", time.Time{}, &authorizedSubtitleBytes{Reader: bytes.NewReader(data), check: check})
 			return
 		}
 		reader, e := d.Subtitles.OpenDocument(r.Context(), p, item, session, id, revision)
@@ -346,12 +359,19 @@ func (d Dependencies) registerSubtitleRoutes(registry *apikit.Registry) error {
 			return d.Subtitles.CheckDocument(r.Context(), p, item, session, id, revision)
 		}
 		serveSubtitleDocument(w, r, id, revision, reader, check)
-	})
-	if registrationError != nil {
-		return registrationError
 	}
-	for _, path := range []string{"/v1/media/{grant}/subtitles/{resource}/{revision}/{file}", "/v1/media/{grant}/subtitles/{resource}/{revision}/fonts/{font}"} {
+	if e := registerSubtitleRaw[struct{}, subtitles.Document](registry, "GET /v1/media/{grant}/subtitles/{resource}/{revision}", documentHandler); e != nil {
+		return e
+	}
+	if e := registerSubtitleRaw[struct{}, SubtitleBytesContract](registry, "GET /v1/media/{grant}/subtitles/{resource}/{revision}.vtt", documentHandler); e != nil {
+		return e
+	}
+
+	for _, path := range []string{"/v1/media/{grant}/subtitles/{resource}/{revision}/original.ass", "/v1/media/{grant}/subtitles/{resource}/{revision}/original.ssa", "/v1/media/{grant}/subtitles/{resource}/{revision}/original.sup", "/v1/media/{grant}/subtitles/{resource}/{revision}/original.idx", "/v1/media/{grant}/subtitles/{resource}/{revision}/original.sub", "/v1/media/{grant}/subtitles/{resource}/{revision}/original.mks", "/v1/media/{grant}/subtitles/{resource}/{revision}/fonts/{font}"} {
 		if e := registerSubtitleRaw[struct{}, SubtitleBytesContract](registry, "GET "+path, d.originalSubtitleRoute); e != nil {
+			return e
+		}
+		if e := registerSubtitleRaw[struct{}, SubtitleBytesContract](registry, "HEAD "+path, d.originalSubtitleRoute); e != nil {
 			return e
 		}
 	}

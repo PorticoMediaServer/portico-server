@@ -1,6 +1,7 @@
 package subtitles
 
 import (
+	"encoding/json"
 	"html"
 	"regexp"
 	"sort"
@@ -228,6 +229,11 @@ func ParseASSAsText(raw []byte, durationUS int64) ([]StyledCue, error) {
 		}
 		if rest, ok := cutPrefixFold(line, "Format:"); ok {
 			fields := strings.Split(rest, ",")
+			if len(fields) < 3 || len(fields) > 32 {
+				columns = 0
+				continue
+			}
+			startColumn, endColumn, textColumn = 1, 2, 9
 			columns = len(fields)
 			for i, f := range fields {
 				switch strings.ToLower(strings.TrimSpace(f)) {
@@ -302,12 +308,19 @@ func validRender(v string) bool { return v == "" || v == "text" || v == "styled"
 // a bitmap track has no text to keep. A script that cannot be read as text stays
 // styled rather than being lost.
 func renderChoice(canonical []byte, render string, durationUS int64) []byte {
-	if render == "styled" || assetRenderer(canonical) != "burn_in" {
+	var asset RenderAsset
+	if json.Unmarshal(canonical, &asset) != nil || asset.Version != 2 || (asset.Format != "ass" && asset.Format != "ssa") {
 		return canonical
 	}
-	asset, err := DecodeRenderAsset(canonical)
-	if err != nil || (asset.Format != "ass" && asset.Format != "ssa") {
-		return canonical
+	if !asset.TextOnly {
+		if render == "styled" {
+			return canonical
+		}
+		var err error
+		asset, err = DecodeRenderAsset(canonical)
+		if err != nil {
+			return canonical
+		}
 	}
 	cues, err := ParseASSAsText(asset.Data, durationUS)
 	if err != nil {
@@ -317,5 +330,9 @@ func renderChoice(canonical []byte, render string, durationUS int64) []byte {
 	if err != nil {
 		return canonical
 	}
+	var d Document
+	_ = json.Unmarshal(document, &d)
+	d.SkippedCues = max(0, strings.Count(strings.ToLower(string(asset.Data)), "dialogue:")-len(cues))
+	document, _ = json.Marshal(d)
 	return document
 }
