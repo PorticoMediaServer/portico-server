@@ -133,7 +133,8 @@ func TestInventoryRootReplacementAndEscapingSymlinkFailClosed(t *testing.T) {
 		t.Fatal("disabled symlink was inventoried", err)
 	}
 	request.FollowSymlinks = true
-	if _, err = LocalInventoryPage(request); err == nil {
-		t.Fatal("escaping symlink was admitted")
+	page, err = LocalInventoryPage(request)
+	if err != nil || len(page.Entries) != 0 || len(page.Issues) != 1 || page.Issues[0].Reason != "symlink_outside_root" || !page.Issues[0].Protect {
+		t.Fatal("escaping symlink was admitted or not diagnosed", page, err)
 	}
 }

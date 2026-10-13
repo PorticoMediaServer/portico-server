@@ -252,19 +252,7 @@ func (d Dependencies) libraryAdministrationRoutes(mux *http.ServeMux) {
 		}
 		return map[string]any{"providers": administration.MetadataProviders()}, nil
 	}))
-	mux.HandleFunc("GET /v1/admin/libraries/{id}/settings", d.administrationHandler(30*time.Second, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
-		if r.URL.RawQuery != "" {
-			return nil, administration.ErrInput
-		}
-		return d.Administration.LibrarySettingsFor(ctx, d.administrationAuthority(p), r.PathValue("id"))
-	}))
-	mux.HandleFunc("PUT /v1/admin/libraries/{id}/settings", d.administrationHandler(30*time.Second, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
-		var body administration.Change[administration.LibrarySettings]
-		if err := decodeLegacyRevision(w, r, &body); err != nil {
-			return nil, errors.Join(administration.ErrInput, err)
-		}
-		return d.Administration.SaveLibrarySettings(ctx, d.administrationAuthority(p), r.PathValue("id"), body)
-	}))
+
 }
 
 // ---------------------------------------------------------------- live sources

@@ -49,7 +49,7 @@ type scanListing struct {
 // those can be reported absent.
 func sidecarLike(name string) bool {
 	switch strings.ToLower(filepath.Ext(name)) {
-	case ".jpg", ".png", ".nfo", ".opf", ".json":
+	case ".jpg", ".jpeg", ".png", ".webp", ".nfo", ".opf", ".json":
 		return true
 	}
 	return false
@@ -119,6 +119,7 @@ func (s *Service) noteDirectoryPage(job, relative, cursor string, page storage.I
 func (s *Service) forgetListing(job string) {
 	s.listingMu.Lock()
 	delete(s.listings, job)
+	delete(s.ignoreScopes, job)
 	s.listingMu.Unlock()
 }
 

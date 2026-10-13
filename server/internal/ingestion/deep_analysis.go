@@ -42,10 +42,7 @@ func (s *Service) analyzeDeep(parent context.Context, job, object, revision stri
 					cancel()
 					return
 				}
-				if busy, e := s.playbackBusy(ctx, source.ID); e != nil || busy {
-					cancel()
-					return
-				}
+
 			}
 		}
 	})

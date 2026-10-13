@@ -73,6 +73,9 @@ func AnalysisOperations() []AnalysisOperation {
 	supported := []AnalysisOperation{}
 	for _, op := range operations {
 		if _, ok := analysisRuntime[op.ID]; ok {
+			if op.Requires == nil {
+				op.Requires = []string{}
+			}
 			supported = append(supported, op)
 		}
 	}
@@ -145,6 +148,7 @@ type GeneratedNavigation struct {
 
 // LibrarySettings is one library's whole administration document.
 type LibrarySettings struct {
+	MonitorChanges     bool                             `json:"monitorChanges"`
 	AllowMediaDeletion bool                             `json:"allowMediaDeletion"`
 	ContinueWatching   catalog.ContinueWatchingSettings `json:"continueWatching"`
 	Providers          []ProviderSelection              `json:"providers"`
@@ -165,6 +169,7 @@ func DefaultLibrarySettings() LibrarySettings {
 		}
 	}
 	return LibrarySettings{
+		MonitorChanges:     true,
 		AllowMediaDeletion: false,
 		ContinueWatching:   catalog.DefaultContinueWatchingSettings(),
 		Providers:          []ProviderSelection{},

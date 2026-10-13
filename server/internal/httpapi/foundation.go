@@ -633,6 +633,7 @@ func FoundationRegistry(d Dependencies) (*apikit.Registry, error) {
 	registerDownloads(registry, d)
 	registerSocial(registry, d)
 	registerPlaylistWindows(registry, d)
+	registerScanLoop(registry, d)
 	registerMetadataAttention(registry, d)
 	registerMetadataSettings(registry, d)
 	registerMetadataRefresh(registry, d)

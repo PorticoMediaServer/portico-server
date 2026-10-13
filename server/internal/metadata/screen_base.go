@@ -14,6 +14,7 @@ import (
 	"portico.local/server/internal/assets"
 	"portico.local/server/internal/entityid"
 	"portico.local/server/internal/metadataprovider"
+	"portico.local/server/internal/naming"
 )
 
 const screenAlgorithm = "screen-evidence-confidence-v2"
@@ -203,16 +204,16 @@ func readScreenBase(ctx context.Context, tx *sql.Tx, kind, id string) (screenBas
 	if err != nil {
 		return b, err
 	}
-	rows, err = tx.QueryContext(ctx, `SELECT a.token,a.path,a.size,a.modified_ns,a.available,COALESCE(o.id,''),COALESCE(o.revision,''),COALESCE(o.root_incarnation,''),COALESCE(o.state,''),COALESCE(o.retired,0),COALESCE(s.enabled,0),COALESCE(s.incarnation,''),COALESCE(s.health,'') FROM catalog_assets a LEFT JOIN inventory_objects o ON o.asset_id=a.token LEFT JOIN library_sources s ON s.id=o.source_id WHERE a.token IN(`+screenTargetAssets(kind)+`) ORDER BY a.id,o.id`, entity)
+	rows, err = tx.QueryContext(ctx, `SELECT a.token,a.path,a.size,a.modified_ns,a.available,COALESCE(o.id,''),COALESCE(o.revision,''),COALESCE(o.root_incarnation,''),COALESCE(o.state,''),COALESCE(o.retired,0),COALESCE(s.enabled,0),COALESCE(s.incarnation,''),COALESCE(s.health,''),COALESCE(o.relative_path,''),json_object('Title',vn.title,'ShowTitle',vn.show_title,'Year',vn.year,'Season',vn.season,'Number',vn.number,'Edition',vn.edition,'IDs',json(COALESCE((SELECT json_group_array(json_object('Provider',vi.provider,'ID',vi.provider_id)) FROM inventory_video_ids vi WHERE vi.asset_id=vn.asset_id AND vi.revision=vn.revision),'[]'))) FROM catalog_assets a LEFT JOIN inventory_objects o ON o.asset_id=a.token LEFT JOIN library_sources s ON s.id=o.source_id LEFT JOIN inventory_video_names vn ON vn.asset_id=a.token AND vn.revision=COALESCE(o.revision,'') WHERE a.token IN(`+screenTargetAssets(kind)+`) ORDER BY a.id,o.id`, entity)
 	if err != nil {
 		return b, err
 	}
 	names := map[string]bool{}
 	for rows.Next() {
-		var aid, path, oid, rev, inc, state, sinc, health string
+		var aid, path, oid, rev, inc, state, sinc, health, relative, embeddedJSON string
 		var size, modified int64
 		var available, retired, enabled bool
-		if err = rows.Scan(&aid, &path, &size, &modified, &available, &oid, &rev, &inc, &state, &retired, &enabled, &sinc, &health); err != nil {
+		if err = rows.Scan(&aid, &path, &size, &modified, &available, &oid, &rev, &inc, &state, &retired, &enabled, &sinc, &health, &relative, &embeddedJSON); err != nil {
 			rows.Close()
 			return b, err
 		}
@@ -221,18 +222,68 @@ func readScreenBase(ctx context.Context, tx *sql.Tx, kind, id string) (screenBas
 		if good {
 			b.Available = true
 		}
-		if kind == "item" && b.ItemKind == "movie" && len(b.Names) < 8 {
-			n := filepath.Base(path)
-			if !names[n] {
-				b.Names = append(b.Names, n)
-				names[n] = true
-			}
-			folder := filepath.Base(filepath.Dir(path))
-			if !names[folder] && len(b.Names) < 8 {
-				b.Names = append(b.Names, folder)
-				names[folder] = true
+		if relative == "" {
+			relative = filepath.Base(path)
+		}
+		var embedded naming.Embedded
+		if err = json.Unmarshal([]byte(embeddedJSON), &embedded); err != nil {
+			rows.Close()
+			return b, err
+		}
+		_ = enc.Encode(embedded)
+		r := naming.ReadWithEmbedded(relative, b.LibraryKind, embedded)
+		for _, e := range r.Editions {
+			if len(b.Editions) < 64 {
+				b.Editions = append(b.Editions, screenEdition{AssetID: aid, Label: e.Value, Source: string(e.Source)})
 			}
 		}
+		for _, e := range r.Titles {
+			if len(b.Evidence) >= 16 {
+				break
+			}
+			if e.Confidence < .4 {
+				continue
+			}
+			key := string(e.Source) + ":" + e.Value
+			if names[key] {
+				continue
+			}
+			names[key] = true
+			evidence := MatchEvidence{Title: e.Value, Source: string(e.Source), Confidence: e.Confidence}
+			_, preferredYear := r.PreferredTitle()
+			if e.Source == naming.FileName || e.Source == naming.EmbeddedMetadata {
+				evidence.Year = preferredYear
+			}
+			for _, y := range r.Years {
+				if y.Path == e.Path && y.Confidence >= .6 {
+					evidence.Year = y.Value
+					break
+				}
+			}
+			for _, id := range r.ProviderIDs {
+				if id.Path == e.Path {
+					typ := "movie"
+					if kind == "show" {
+						typ = "show"
+					}
+					if id.Value.Provider == "imdb" {
+						typ = "title"
+					}
+					if id.Value.Provider == "anilist" {
+						typ = "anime"
+					}
+					evidence.IDs = append(evidence.IDs, metadataprovider.ScreenID{Provider: id.Value.Provider, Type: typ, ID: id.Value.ID})
+				}
+			}
+			for _, edition := range r.Editions {
+				if edition.Path == e.Path {
+					evidence.Edition = edition.Value
+					break
+				}
+			}
+			b.Evidence = append(b.Evidence, evidence)
+		}
+
 	}
 	err = rows.Err()
 	rows.Close()

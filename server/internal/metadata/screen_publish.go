@@ -1008,11 +1008,22 @@ func (s *Service) applyScreenLocal(ctx context.Context, tx *sql.Tx, b screenBase
 	}
 	editions := []string{}
 	seen := map[string]bool{}
+	for _, e := range b.Editions {
+		if e.Label != "" && !seen[e.Label] {
+			editions = append(editions, e.Label)
+			seen[e.Label] = true
+		}
+	}
 	for _, name := range append([]string{b.Title}, b.Names...) {
 		_, _, edition := screenFilename(name)
 		if edition != "" && !seen[edition] {
 			editions = append(editions, edition)
 			seen[edition] = true
+		}
+	}
+	if len(editions) == 0 {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM screen_metadata_fields WHERE target_kind=? AND target_id=? AND field='filenameEditions' AND source_kind='filename'`, b.TargetKind, b.Entity); err != nil {
+			return err
 		}
 	}
 	if len(editions) > 0 {

@@ -1,0 +1,65 @@
+package ingestion
+
+import (
+	"context"
+	"encoding/json"
+	"path/filepath"
+	"portico.local/server/internal/storage"
+	"testing"
+)
+
+func TestManagedIgnoreRulesUseStagedNamesAndPreserveAdapterPages(t *testing.T) {
+	f := newLoopFixture(t, "movie")
+	source, err := f.s.catalog.LibrarySource(context.Background(), f.source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range []struct{ id, relative, name, contents string }{{"root-list", ".", ".plexignore", "Ignored*.mkv\n"}, {"child-list", "Nested", ".ignore", "Skip*.mkv\n[broken\n"}} {
+		directory := filepath.Join(f.root, entry.relative)
+		f.exec(`INSERT INTO remote_listing_sessions(id,job_id,source_id,generation,directory,ready,created_at) VALUES(?,'job','remote','generation',?,1,1)`, entry.id, directory)
+		snapshot := storage.Snapshot{Path: filepath.Join(directory, entry.name), Name: entry.name, Size: int64(len(entry.contents)), Revision: "revision"}
+		raw, _ := json.Marshal(snapshot)
+		f.exec(`INSERT INTO remote_listing_entries(listing_id,name,snapshot) VALUES(?,?,?)`, entry.id, snapshot.Path, string(raw))
+	}
+	reads := 0
+	read := func(_ context.Context, path string, _ int64) ([]byte, error) {
+		reads++
+		if filepath.Base(path) == ".plexignore" {
+			return []byte("Ignored*.mkv\n"), nil
+		}
+		return []byte("Skip*.mkv\n[broken\n"), nil
+	}
+	entries := []storage.Snapshot{}
+	for _, name := range []string{"Ignored (2000).mkv", "Skipped (2001).mkv", "Kept (2002).mkv"} {
+		entries = append(entries, storage.Snapshot{Name: name, Path: filepath.Join(f.root, "Nested", name)})
+	}
+	remote := storage.RemotePage{ID: "child-list", SourceID: "remote", Generation: "generation", Directory: filepath.Join(f.root, "Nested"), Entries: entries, Complete: true}
+	for n := 0; n < 2; n++ {
+		page := storage.InventoryPage{Remote: &remote, Entries: entries, Complete: true}
+		if err = f.s.applyRemoteIgnores(context.Background(), "job", source, "Nested", &page, read); err != nil {
+			t.Fatal(err)
+		}
+		if len(page.Entries) != 1 || page.Entries[0].Name != "Kept (2002).mkv" {
+			t.Fatalf("filtered: %+v", page.Entries)
+		}
+		if len(remote.Entries) != 3 {
+			t.Fatal("adapter commit page was modified")
+		}
+		found := false
+		for _, issue := range page.Issues {
+			if issue.Reason == "invalid_ignore_pattern" && issue.Line == 2 {
+				found = true
+			}
+		}
+		if !found {
+			t.Fatal("managed invalid line not reported")
+		}
+	}
+	if reads != 2 {
+		t.Fatalf("ignore contents reread for each media page: %d", reads)
+	}
+	f.s.forgetListing("job")
+	if len(f.s.ignoreScopes) != 0 {
+		t.Fatal("remote ignore cache survived scan completion")
+	}
+}

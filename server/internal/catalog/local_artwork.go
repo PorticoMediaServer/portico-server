@@ -48,6 +48,21 @@ func commitSidecars(ctx context.Context, tx *sql.Tx, library string, carriers []
 		if c.kind == "" || c.entity == 0 || c.role == "" || c.key == "" {
 			continue
 		}
+		var old string
+		err := tx.QueryRowContext(ctx, `SELECT art_key FROM local_artwork WHERE library_id=? AND kind=? AND entity_id=? AND role=?`, library, c.kind, c.entity, c.role).Scan(&old)
+		if err != nil && err != sql.ErrNoRows {
+			return err
+		}
+		if old != "" && old != c.key {
+			previous := c
+			previous.key = old
+			if err = releaseAutomaticSidecar(ctx, tx, previous); err != nil {
+				return err
+			}
+		}
+		if read, ok := ctx.Value(sidecarReadKey{}).(*sidecarRead); ok {
+			read.carriers = append(read.carriers, c)
+		}
 		if _, err := tx.ExecContext(ctx, `INSERT INTO local_artwork(library_id,kind,entity_id,role,art_key,observed_at) VALUES(?,?,?,?,?,?) ON CONFLICT(library_id,kind,entity_id,role) DO UPDATE SET art_key=excluded.art_key,observed_at=excluded.observed_at`, library, c.kind, c.entity, c.role, c.key, now); err != nil {
 			return err
 		}
@@ -134,7 +149,7 @@ func (s *Service) commitAssetSidecars(ctx context.Context, tx *sql.Tx, library, 
 		}
 		carriers := []sidecarCarrier{}
 		for _, item := range items {
-			for _, role := range []string{"logo", "backdrop"} {
+			for _, role := range []string{"poster", "logo", "backdrop"} {
 				if key := extra["item/"+role]; key != "" {
 					carriers = append(carriers, sidecarCarrier{"item", item, role, key})
 				}
