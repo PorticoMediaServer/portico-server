@@ -1,5 +1,6 @@
 import {unreadableServerResponse} from './server-messages.ts';
 import type {ContentScope, LibraryContentApi} from './library-content.ts';
+import {firstOfEach, keepReadable} from './tolerant.ts';
 
 /** A derivative is neither a catalog edition nor an original source-version ID. */
 export type PreparedChoice = Readonly<{versionId: string; expectedRevision: number; offersRevision: string}>;
@@ -26,7 +27,8 @@ const integer = (v: unknown): v is number => Number.isSafeInteger(v) && Number(v
 const digest = (v: unknown): v is string => typeof v === 'string' && /^[0-9a-f]{64}$/.test(v);
 function invalid(): never { throw new Error(unreadableServerResponse); }
 function array(v: unknown, max: number): unknown[] { if (!Array.isArray(v) || v.length > max) invalid(); return v; }
-function unique<T extends {id: string}>(values: T[]): readonly T[] { if (new Set(values.map(v=>v.id)).size !== values.length) invalid(); return Object.freeze(values); }
+/** Reads a bounded list row by row: a row that cannot be read (a kind, state or codec this app does not know, a digest or revision that is not one) or that repeats an id is left out, and the rest are kept. */
+function rows<T extends {id: string}>(part: string, values: unknown[], read: (v: unknown)=>T): readonly T[] { return Object.freeze(firstOfEach('prepared-versions', part, keepReadable('prepared-versions', part, values, v=>read(v)), v=>v.id)); }
 export function parsePreparedChoice(v: unknown): PreparedChoice {
   if (!object(v) || Object.keys(v).some(k=>!['versionId','expectedRevision','offersRevision'].includes(k)) || !id(v.versionId) || !integer(v.expectedRevision) || v.expectedRevision<1 || !digest(v.offersRevision)) invalid();
   return Object.freeze({versionId:v.versionId, expectedRevision:v.expectedRevision, offersRevision:v.offersRevision});
@@ -46,18 +48,20 @@ function job(v: unknown, itemId: string): OptimizationJob {
 }
 export function parsePreparedView(raw: unknown, itemId: string): PreparedView {
   if (!object(raw) || raw.itemId!==itemId || typeof raw.canManage!=='boolean' || !digest(raw.preparedOffersRevision) || typeof raw.configured!=='boolean' || !text(raw.configurationReason,256) || !integer(raw.pollAfterMs) || raw.pollAfterMs<1000 || raw.pollAfterMs>60000) invalid();
-  const profiles=unique(array(raw.profiles,16).map(v=>{
+  const profiles=rows('profiles',array(raw.profiles,16),v=>{
     if (!object(v)||!id(v.id)||!text(v.name,128)||!['audio','video'].includes(String(v.kind))||!integer(v.width)||!integer(v.height)||!integer(v.videoKbps)||!integer(v.audioKbps)||!text(v.description,1024)) invalid();
     return Object.freeze({...v}) as OptimizationProfile;
-  }));
-  const targets=unique(array(raw.targets,16).map(v=>{ if(!object(v)||!id(v.id)||!text(v.name,128)) invalid();return Object.freeze({id:v.id,name:v.name}); }));
-  const sources=unique(array(raw.sources,32).map(v=>{
+  });
+  const targets=rows('targets',array(raw.targets,16),v=>{ if(!object(v)||!id(v.id)||!text(v.name,128)) invalid();return Object.freeze({id:v.id,name:v.name}); });
+  const sources=rows('sources',array(raw.sources,32),v=>{
     if(!object(v)||!id(v.id)||(v.available?!digest(v.revision):v.revision!==''&&!digest(v.revision))||!integer(v.partIndex)||!text(v.container,128)||!integer(v.height)||typeof v.available!=='boolean'||!text(v.reason,128)) invalid();
     return Object.freeze({...v}) as OptimizationSource;
-  }));
-  const jobs=unique(array(raw.jobs,64).map(v=>job(v,itemId)));
-  const versions=unique(array(raw.versions,128).map(v=>parsePreparedVersion(v,itemId)));
-  if(!raw.canManage&&jobs.length) invalid();
+  });
+  const sentJobs=array(raw.jobs,64);
+  const jobs=rows('jobs',sentJobs,v=>job(v,itemId));
+  const versions=rows('versions',array(raw.versions,128),v=>parsePreparedVersion(v,itemId));
+  // Judged on what the server sent, so an unreadable job never makes a viewer's answer look permitted.
+  if(!raw.canManage&&sentJobs.length) invalid();
   return Object.freeze({...raw,profiles,targets,sources,jobs,versions}) as PreparedView;
 }
 export function preparedChoice(view: Pick<PreparedView,'preparedOffersRevision'>, version: PreparedVersion): PreparedChoice {
