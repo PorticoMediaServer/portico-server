@@ -38,6 +38,7 @@ export const enUS = {
   'signIn.error.tooManyTries': 'Too many tries. Wait a moment, then try again.',
   'signIn.error.pinInvalid': 'That PIN isn’t right. Try again.',
   'signIn.error.expired': 'That took too long. Start again.',
+  'web.signIn.error.clock': 'This device and the server don’t agree on the time. Check the date and time on this device, then try again.',
   'signIn.plainHttp.note': 'This connection to the server isn’t encrypted.',
   'signIn.plainHttp.link': 'How to turn on a secure connection',
   'link.openFailed': 'That page couldn’t be opened. Open it on another device: {address}',

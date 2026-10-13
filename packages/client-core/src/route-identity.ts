@@ -78,6 +78,19 @@ function times(v:Record<string,unknown>,maxAge:number,now:number,allowExpired:bo
  const issued=typeof v.issuedAt==='string'?Date.parse(v.issuedAt):NaN,expires=typeof v.expiresAt==='string'?Date.parse(v.expiresAt):NaN;
  if(!Number.isFinite(issued)||!Number.isFinite(expires)||issued>now+120000||expires<=issued||expires-issued>maxAge||(!allowExpired&&expires<=now))throw new RouteError('route_stale','The connection evidence is expired or has an invalid clock.');
 }
+/**
+ * The time check for a proof the server signed over this client's own nonce. The nonce already
+ * proves the answer is fresh, so a failure here can only mean the two clocks disagree: this
+ * device's is allowed to be up to two minutes off in either direction (the same allowance the
+ * issue time always had), and beyond that the failure says so plainly instead of reading as a
+ * wrong server. Call only after the signature has been verified.
+ */
+const PROOF_CLOCK_ALLOWANCE=120000;
+function proofTimes(v:Record<string,unknown>,maxAge:number,now:number):void {
+ const issued=typeof v.issuedAt==='string'?Date.parse(v.issuedAt):NaN,expires=typeof v.expiresAt==='string'?Date.parse(v.expiresAt):NaN;
+ if(!Number.isFinite(issued)||!Number.isFinite(expires)||expires<=issued||expires-issued>maxAge)throw new RouteError('route_stale','The connection evidence is expired or has an invalid clock.');
+ if(issued>now+PROOF_CLOCK_ALLOWANCE||expires+PROOF_CLOCK_ALLOWANCE<=now)throw new RouteError('clocks_disagree','This device and the server do not agree on the time. No credentials were sent.');
+}
 export async function verifyRoutes(value:unknown,key:RouteKey,expected:{accountId:string;serverId:string;pin?:ServerPin;allowExpiredHint?:boolean;now?:number},crypto:RouteCrypto=webRouteCrypto):Promise<VerifiedRoutes> {
  // A rotated transport key ID must take the same bounded fresh-key path as a payload/signature mismatch.
  if(object(value)&&typeof value.keyId==='string'&&value.keyId!==key.keyId)throw new RouteError('invalid_signature','The account service signing key changed.');
@@ -109,8 +122,9 @@ export async function probeRoute(origin:string,pin:ServerPin|undefined,options:{
   const signed=envelope(await routeJSON(response,controller.signal,8192)),v=parseSignedJSON(signed);
   if(v.kind!=='portico.route-proof'||v.version!=='1'||v.baseUrl!==baseUrl||v.nonce!==nonce||typeof v.serverId!=='string'||typeof v.publicKey!=='string'||typeof v.fingerprint!=='string')throw new RouteError('identity_mismatch','The server did not prove this connection.');
   const actual=await serverPin(v.serverId,v.publicKey,v.fingerprint,crypto);if(pin&&!sameServerPin(actual,pin))throw new RouteError('identity_mismatch','This address belongs to a different server. No credentials were sent.');
-  times(v,30000,options.now?.()??Date.now(),false);
   if(!await crypto.verify(routeBytes(actual.publicKey,32),routeBytes(signed.signature,64),routeBytes(signed.payload)))throw new RouteError('identity_mismatch','The server could not prove its identity. No credentials were sent.');
+  // After the signature: only a proof this server really signed over our nonce can blame the clocks.
+  proofTimes(v,30000,options.now?.()??Date.now());
   if(controller.signal.aborted)throw new RouteError('cancelled','Connection check cancelled.');return actual;
  }finally{clearTimeout(timer);options.signal?.removeEventListener('abort',cancel);controller.abort();}
 }
