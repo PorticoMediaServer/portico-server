@@ -54,11 +54,18 @@ func TestLockedScanInputExcludesReplacementAndAncestorRename(t *testing.T) {
 }
 
 func TestLockedScanInputRejectsPathSubstitution(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "media.mkv")
+	directory := t.TempDir()
+	path := filepath.Join(directory, "media.mkv")
 	if err := os.WriteFile(path, []byte("old"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	file, err := os.Open(path)
+	root, err := os.OpenRoot(directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+	// Match inventory acquisition: Root.Open permits renames of this handle.
+	file, err := root.Open("media.mkv")
 	if err != nil {
 		t.Fatal(err)
 	}
