@@ -77,6 +77,10 @@ func (s *Service) Cleanup(ctx context.Context, payload, signature []byte) (Envel
 	if !ok {
 		return Envelope{}, ErrInvalid
 	}
+	// Checked before the work is handed out and again before it is signed.
+	if e := s.keys.ValidateSigner(s.now()); e != nil {
+		return Envelope{}, e
+	}
 	retired, jobs, e := repo.ClaimCleanup(ctx, w)
 	if e != nil {
 		return Envelope{}, e
@@ -89,6 +93,9 @@ func (s *Service) Cleanup(ctx context.Context, payload, signature []byte) (Envel
 	}
 	raw, e := json.Marshal(result)
 	if e != nil {
+		return Envelope{}, e
+	}
+	if e := s.keys.ValidateSigner(s.now()); e != nil {
 		return Envelope{}, e
 	}
 	return Envelope{Payload: base64.RawURLEncoding.EncodeToString(raw), Signature: base64.RawURLEncoding.EncodeToString(ed25519.Sign(s.keys.PrivateKey, raw)), KeyID: s.keys.KeyID, Certificate: s.keys.Certificate}, nil
