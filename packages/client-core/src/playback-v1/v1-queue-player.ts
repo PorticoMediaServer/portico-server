@@ -141,6 +141,8 @@ export class V1QueuePlayer implements QueueController {
   private qualityOverride?: QualityRequest;
   /** Queue moves run one at a time: a second Next waits for the first and moves on from there. */
   private moves: Promise<unknown> = Promise.resolve();
+  /** Rises when the viewer leaves or starts something else: a queue move still waiting its turn is then dropped. */
+  private epoch = 0;
   private readonly playback: PlaybackService;
   private readonly http: V1Http;
   private readonly scope: QueueScope;
@@ -353,6 +355,7 @@ export class V1QueuePlayer implements QueueController {
     const header = this.header, entry = this.currentEntry();
     if (!header?.current) return;
     const generation = ++this.generation;
+    ++this.epoch;
     this.listening.interact();
     if (choices.quality) this.qualityOverride = choices.quality;
     const intent = keepIntent ? this.playback.getSnapshot().intentId : this.playback.beginQueueIntent(entry?.itemId);
@@ -452,6 +455,7 @@ export class V1QueuePlayer implements QueueController {
 
   private async play(input: readonly SegmentInput[], first: string, options: {startSeconds?: number; repeat?: 'off' | 'one' | 'all'}, choices: PlaybackChoices = {}) {
     const generation = ++this.generation;
+    ++this.epoch;
     // A new play starts from the viewer's saved default again, unless it names a quality itself.
     this.qualityOverride = choices.quality;
     const asked = this.startChoices(choices);
@@ -591,7 +595,8 @@ export class V1QueuePlayer implements QueueController {
   /** Queue moves run one after another: two quick presses of Next move on twice, each from the
    * queue the one before it left, instead of racing with the same revision. */
   private advance(reason: 'completion' | 'next' | 'previous' | 'entry', entryId?: string): Promise<void> {
-    const run = () => this.advanceNow(reason, entryId);
+    const epoch = this.epoch;
+    const run = () => (epoch === this.epoch ? this.advanceNow(reason, entryId) : Promise.resolve());
     const move = this.moves.then(run, run);
     this.moves = move.catch(() => {});
     return move;
@@ -768,9 +773,9 @@ export class V1QueuePlayer implements QueueController {
     try { await this.startEntry(h.id, h.current.entryId, intent, at, generation, choices); } catch (e) { if (generation === this.generation) this.fail('', e, 'Playback could not start. Try again.'); }
   }
 
-  async cancel(_invalidateSelection = true): Promise<void> { ++this.generation; this.prepared = undefined; this.audioReadyToken = undefined; this.publish({phase: 'ready'}); }
+  async cancel(_invalidateSelection = true): Promise<void> { ++this.generation; ++this.epoch; this.prepared = undefined; this.audioReadyToken = undefined; this.publish({phase: 'ready'}); }
 
-  leave() { ++this.generation; this.prepared = undefined; this.audioReadyToken = undefined; this.publish({completion: null}); }
+  leave() { ++this.generation; ++this.epoch; this.prepared = undefined; this.audioReadyToken = undefined; this.publish({completion: null}); }
 
   dispose() {
     if (this.disposed) return;

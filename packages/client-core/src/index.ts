@@ -825,7 +825,7 @@ export class PlaybackService {
     const position=before.pendingSeek?.positionSeconds??(this.hasObserved?before.positionSeconds:session.resumeSeconds);
     this.clearStartup();this.bookmarkProtected=true;this.hasObserved=false;
     const intentId=before.intentId;
-    this.requestSeek(position,{session:{...next,duration:next.duration||session.duration,resumeSeconds:position},phase:'starting',audio:this.audioSelection.reset(),audioTracks:before.audioTracks?Object.freeze({...before.audioTracks,pending:undefined}):undefined,error:undefined,recovering:undefined,
+    this.requestSeek(position,{session:{...next,duration:next.duration||session.duration,resumeSeconds:position},phase:'starting',audio:this.audioSelection.reset(),audioTracks:before.audioTracks?Object.freeze({...before.audioTracks,selected:before.audioTracks.pending??before.audioTracks.selected,pending:undefined}):undefined,error:undefined,recovering:undefined,
       audioEffects:{...before.audioEffects,rendering:renderable(next)&&audioEffectsEnabled(before.audioEffects.settings),prepared:undefined,committed:undefined,notice:renderNotice(next)}});
     this.armStartup(()=>{this.reportStalledStart(intentId);this.fail(intentId,'Playback did not become ready. Check the server and try again.');});
     return true;

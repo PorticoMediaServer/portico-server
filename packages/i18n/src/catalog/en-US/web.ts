@@ -969,7 +969,7 @@ export const webMessages = {
   'web.player.keys.start': 'Go to the start',
   'web.player.keys.end': 'Go to the end',
   'web.player.keys.frame': 'One frame back or forward (while paused)',
-  'web.player.keys.speed': 'Slower or faster',
+  'web.player.keys.speed': 'Speed down or up',
   'web.player.keys.nextPrevious': 'Next or previous title',
   'web.player.keys.chapter': 'Previous or next chapter',
   'web.player.keys.channel': 'Channel up or down',

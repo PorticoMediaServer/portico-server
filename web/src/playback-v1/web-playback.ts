@@ -34,7 +34,7 @@ import {PlaybackSessionController, SessionsClient, type SessionChange, type Star
 import {toPlaybackSession} from '@core/playback-v1/session-shape.ts';
 import type {Session} from '@core/playback-v1/types.ts';
 import type {QueueSessionTransport} from '@core/playback-v1/v1-queue-player.ts';
-import {WebMediaPlayer, type HlsModule, type SubtitleTimeline, type VideoLike, type WebPlayerNotice} from './web-media-player.ts';
+import {WebMediaPlayer, type HlsModule, type SubtitleTimeline, type VideoLike, type WebPlayerNotice, type WebPlayerTimers} from './web-media-player.ts';
 
 /** What the binding tells the player screen in words (the screen owns the wording). */
 export type WebPlaybackNotice = 'autoplayBlocked' | 'qualityLowered' | 'qualityRaised';
@@ -66,6 +66,8 @@ export type WebPlaybackHost = Readonly<{
   farewell?(path: string, method: string, body?: unknown): void;
   deviceMemory?: number;
   timers?: Timers;
+  /** The media element port's clock and timers (tests drive them by hand). */
+  playerTimers?: WebPlayerTimers;
   key?: () => string;
 }>;
 
@@ -231,7 +233,7 @@ export class WebPlayback implements PlaybackAdapter {
   /** The player screen's element is in the page. Returns the undo for when it leaves. */
   mount(video: VideoLike, subtitles?: SubtitleTimeline, externalRoute?: () => PlayerObservation['externalRoute']): () => void {
     const player = new WebMediaPlayer(video, {
-      loadHls: this.host.loadHls, resolveUrl: path => this.host.mediaUrl(path), subtitles, deviceMemory: this.host.deviceMemory, externalRoute,
+      loadHls: this.host.loadHls, resolveUrl: path => this.host.mediaUrl(path), subtitles, deviceMemory: this.host.deviceMemory, externalRoute, timers: this.host.playerTimers,
     });
     this.video = video;
     this.slot.mount(player);

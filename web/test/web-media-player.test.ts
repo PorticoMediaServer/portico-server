@@ -1,197 +1,320 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {WebMediaPlayer, type HlsErrorData, type HlsModule, type VideoLike} from '../src/playback-v1/web-media-player.ts';
-import {PlaybackSessionController, type PlayerEvent} from '@core/playback-v1/index.ts';
-import {FakePlaybackServer, fakeHttp} from '@core/playback-v1/testing/fake-server.ts';
+import {WebMediaPlayer, bufferTargets, type WebPlayerNotice} from '../src/playback-v1/web-media-player.ts';
+import type {PlayerEvent} from '@core/playback-v1/index.ts';
+import {FakeVideo, fakeHls, manualClock, settle} from './helpers/fake-media.ts';
 
-const settle = async () => { for (let i = 0; i < 10; i++) await new Promise(setImmediate); };
-
-class FakeVideo implements VideoLike {
-  src = ''; currentTime = 0; playbackRate = 1; volume = 1; muted = false; paused = true; ended = false;
-  buffered = {length: 1, start: () => 0, end: () => this.currentTime + 12};
-  tracks: {id: string; mode: string; kind: string; src: string; srclang: string; label: string; default: boolean; remove(): void}[] = [];
-  get textTracks() { return this.tracks; }
-  loads = 0;
-  private handlers = new Map<string, Set<() => void>>();
-  ownerDocument = {createElement: () => { const t = {id: '', mode: 'disabled', kind: '', src: '', srclang: '', label: '', default: false, remove: () => { this.tracks = this.tracks.filter(x => x !== t); }}; return t; }};
-  play() { this.paused = false; this.fire('playing'); return Promise.resolve(); }
-  pause() { if (this.paused) return; this.paused = true; this.fire('pause'); }
-  load() { this.loads++; }
-  removeAttribute(name: string) { if (name === 'src') this.src = ''; }
-  canPlayType(type: string) { return type === 'application/vnd.apple.mpegurl' ? this.nativeHls : ''; }
-  nativeHls = '';
-  appendChild(node: unknown) { this.tracks.push(node as FakeVideo['tracks'][number]); return node; }
-  querySelectorAll() { return [...this.tracks]; }
-  addEventListener(type: string, fn: () => void) { let s = this.handlers.get(type); if (!s) this.handlers.set(type, s = new Set()); s.add(fn); }
-  removeEventListener(type: string, fn: () => void) { this.handlers.get(type)?.delete(fn); }
-  getVideoPlaybackQuality() { return {droppedVideoFrames: 3}; }
-  fire(type: string) { for (const fn of [...(this.handlers.get(type) ?? [])]) fn(); }
-  listenerCount() { let n = 0; for (const s of this.handlers.values()) n += s.size; return n; }
-}
-
-function fakeHls(supported = true) {
-  const instances: {config: Record<string, unknown>; source?: string; destroyed: boolean; startLoads: number; recoveries: number; swaps: number; error?: (e: string, d: HlsErrorData) => void}[] = [];
-  const Hls = class {
-    static isSupported() { return supported; }
-    static Events = {ERROR: 'hlsError'};
-    static ErrorTypes = {NETWORK_ERROR: 'networkError', MEDIA_ERROR: 'mediaError'};
-    bandwidthEstimate = 5_000_000;
-    i: (typeof instances)[number];
-    constructor(config: Record<string, unknown>) { this.i = {config, destroyed: false, startLoads: 0, recoveries: 0, swaps: 0}; instances.push(this.i); }
-    attachMedia() {}
-    loadSource(url: string) { this.i.source = url; }
-    startLoad() { this.i.startLoads++; }
-    recoverMediaError() { this.i.recoveries++; }
-    swapAudioCodec() { this.i.swaps++; }
-    destroy() { this.i.destroyed = true; }
-    on(_e: string, fn: (e: string, d: HlsErrorData) => void) { this.i.error = fn; }
-  } as unknown as HlsModule;
-  return {Hls, instances};
-}
-
-const source = (over: Partial<Parameters<WebMediaPlayer['load']>[0]> = {}) => ({url: '/v1/media/grant/1/master.m3u8', generation: 1, mode: 'stream' as const, startPositionMs: 90_000, subtitles: [{trackId: 's4', format: 'webvtt', url: '/v1/media/grant/1/subs/s4.vtt'}], autoplay: true, ...over});
 const resolveUrl = (u: string) => new URL(u, 'https://portico.test').href;
+const source = (over: Partial<Parameters<WebMediaPlayer['load']>[0]> = {}) => ({url: '/v1/media/grant/1/master.m3u8', generation: 1, mode: 'stream' as const, startPositionMs: 90_000, subtitles: [], autoplay: true, ...over});
 
-test('stream: hls.js gets an absolute URL, the start position and an origin guard; autoplay on canplay', async () => {
+function setup(options: {supported?: boolean; subtitles?: {reset(): void; timeline(o: number | null): void}; silentMs?: number; giveUpMs?: number; hls?: boolean} = {}) {
   const video = new FakeVideo();
-  const {Hls, instances} = fakeHls();
-  const player = new WebMediaPlayer(video, {loadHls: async () => Hls, resolveUrl, hlsConfig: {maxBufferLength: 30}});
-  const events: PlayerEvent[] = [];
+  const clock = manualClock();
+  const {Hls, instances, Events} = fakeHls(options.supported ?? true);
+  const player = new WebMediaPlayer(video, {...(options.hls === false ? {} : {loadHls: async () => Hls}), resolveUrl, timers: clock, subtitles: options.subtitles, silentMs: options.silentMs, giveUpMs: options.giveUpMs});
+  const events: PlayerEvent[] = [], notices: WebPlayerNotice[] = [];
   player.onEvent(e => events.push(e));
+  player.onNotice(n => notices.push(n));
+  return {video, clock, Hls, instances, Events, player, events, notices};
+}
+const types = (list: WebPlayerNotice[]) => list.map(n => n.type);
+
+test('a resume loads from the resume point, never from the start of the title', async () => {
+  const {video, instances, player, events} = setup();
   player.load(source());
   await settle();
-  assert.equal(instances[0]!.source, 'https://portico.test/v1/media/grant/1/master.m3u8');
-  assert.equal(instances[0]!.config.startPosition, 90);
-  assert.equal(instances[0]!.config.maxBufferLength, 30);
-  const xhr = {withCredentials: true};
-  (instances[0]!.config.xhrSetup as (x: typeof xhr, u: string) => void)(xhr, 'https://portico.test/v1/media/grant/1/seg1.ts');
-  assert.equal(xhr.withCredentials, false);
-  assert.throws(() => (instances[0]!.config.xhrSetup as (x: typeof xhr, u: string) => void)(xhr, 'https://elsewhere.test/x.ts'));
+  const hls = instances[0]!;
+  assert.equal(hls.source, 'https://portico.test/v1/media/grant/1/master.m3u8');
+  assert.equal(hls.config.startPosition, 90, 'hls.js is told where playback begins');
+  assert.equal(video.seeks.length, 0, 'no seek after loading the beginning');
+  // Until the picture is there, the reading is the position asked for, not the element's zero.
   assert.equal(player.observe().state, 'loading');
-  video.fire('canplay');
+  assert.equal(player.observe().positionMs, 90_000);
+  video.ready(90);
+  assert.equal(player.settling, false);
+  assert.equal(events.filter(e => e.type === 'seeked').length, 1, 'the landing is announced once');
   assert.equal(player.observe().state, 'playing');
-  const o = player.observe();
-  assert.equal(o.generation, 1);
-  assert.equal(o.bufferedMs, 12_000);
-  assert.equal(o.bandwidthKbps, 5000);
-  assert.equal(o.droppedFrames, 3);
-  assert.equal(video.tracks[0]!.src, 'https://portico.test/v1/media/grant/1/subs/s4.vtt');
+  assert.equal(player.observe().positionMs, 90_000);
   player.dispose();
   assert.equal(video.listenerCount(), 0);
-  assert.equal(instances[0]!.destroyed, true);
 });
 
-test('a new generation replaces the engine and the sidecars; events carry the new generation', async () => {
-  const video = new FakeVideo();
-  const {Hls, instances} = fakeHls();
-  const player = new WebMediaPlayer(video, {loadHls: async () => Hls, resolveUrl});
-  const gens: number[] = [];
-  player.onEvent(e => gens.push(e.observation.generation));
-  player.load(source());
+test('capability URLs keep their origin and carry no cookies; the engine never switches quality by itself', async () => {
+  const {instances, player} = setup();
+  player.load(source({startPositionMs: 0}));
   await settle();
-  player.load(source({generation: 2, url: '/v1/media/grant/2/master.m3u8', subtitles: []}));
-  await settle();
-  assert.equal(instances[0]!.destroyed, true);
-  assert.equal(instances.length, 2);
-  assert.equal(video.tracks.length, 0, 'old sidecars removed');
-  video.fire('timeupdate');
-  assert.equal(gens.at(-1), 2);
+  const config = instances[0]!.config;
+  const xhr = {withCredentials: true};
+  (config.xhrSetup as (x: typeof xhr, u: string) => void)(xhr, 'https://portico.test/v1/media/grant/1/seg1.ts');
+  assert.equal(xhr.withCredentials, false);
+  assert.throws(() => (config.xhrSetup as (x: typeof xhr, u: string) => void)(xhr, 'https://elsewhere.test/x.ts'));
+  assert.equal(config.capLevelToPlayerSize, false);
+  // A manifest with two renditions is pinned to its best; no automatic switching.
+  instances[0]!.engine.levels = [{bitrate: 2_000_000}, {bitrate: 8_000_000}];
+  instances[0]!.emit('hlsManifestParsed');
+  assert.equal(instances[0]!.engine.loadLevel, 1);
   player.dispose();
 });
 
-test('direct play sets src and seeks to the start on loadedmetadata; seeks report seeked', async () => {
-  const video = new FakeVideo();
-  const player = new WebMediaPlayer(video, {resolveUrl});
-  const types: string[] = [];
-  player.onEvent(e => types.push(e.type));
-  player.load(source({mode: 'direct', url: '/v1/media/grant/1/file.mp4', autoplay: false}));
+test('a fragment has no wall-clock limit: one that keeps receiving bytes for minutes is never restarted or failed', async () => {
+  const {video, clock, instances, player, events, notices} = setup();
+  player.load(source({startPositionMs: 0}));
+  await settle();
+  const hls = instances[0]!;
+  const policy = (hls.config.fragLoadPolicy as {default: {maxLoadTimeMs: number}}).default;
+  assert.ok(policy.maxLoadTimeMs >= 600_000, 'the total is a far ceiling, not a deadline');
+  video.ready(0, 4);
+  video.starve();
+  const frag = hls.fragment(6);
+  // Five minutes of a slow link: a trickle of bytes every tick.
+  for (let i = 0; i < 300; i++) { frag.stats.loaded += 20_000; clock.advance(1000); player.tick(); }
+  assert.deepEqual(hls.startLoads, [], 'the download in hand was never thrown away');
+  assert.equal(events.some(e => e.type === 'error'), false);
+  assert.ok(types(notices).includes('alive'), 'the start or seek in hand is reported alive');
+  player.dispose();
+});
+
+test('a download that receives nothing is restarted; with no sign of life for long enough, playback is given up', async () => {
+  const {video, clock, instances, player, events, notices} = setup({silentMs: 20_000, giveUpMs: 90_000});
+  player.load(source({startPositionMs: 0}));
+  await settle();
+  const hls = instances[0]!;
+  video.ready(0, 4);
+  video.starve();
+  hls.fragment(6);
+  for (let i = 0; i < 19; i++) { clock.advance(1000); player.tick(); }
+  assert.deepEqual(hls.startLoads, [], 'nineteen silent seconds are still patience');
+  for (let i = 0; i < 4; i++) { clock.advance(1000); player.tick(); }
+  assert.equal(hls.startLoads.length, 1, 'a dead transfer is asked for again');
+  assert.ok(notices.some(n => n.type === 'starved' && n.active), 'the viewer is told once the buffer is empty');
+  assert.equal(events.some(e => e.type === 'error'), false);
+  for (let i = 0; i < 100; i++) { clock.advance(1000); player.tick(); }
+  const error = events.find(e => e.type === 'error');
+  assert.ok(error && error.type === 'error' && error.code === 'network_error');
+  player.dispose();
+});
+
+test('recovery never interrupts a download that is receiving bytes, and "still preparing" keeps a slow server alive', async () => {
+  const {video, clock, instances, player, events} = setup({giveUpMs: 30_000});
+  player.load(source({startPositionMs: 0}));
+  await settle();
+  const hls = instances[0]!;
+  video.ready(0, 4);
+  video.starve();
+  hls.error({fatal: true, type: 'networkError', details: 'fragLoadError', response: {code: 502}});
+  clock.advance(1000);
+  assert.equal(hls.startLoads.length, 1, 'a failed load is asked for again');
+  const frag = hls.fragment(6);
+  for (let i = 0; i < 60; i++) { frag.stats.loaded += 10_000; clock.advance(1000); player.tick(); }
+  assert.equal(hls.startLoads.length, 1, 'while bytes arrive nothing is restarted');
+  assert.equal(events.some(e => e.type === 'error'), false, 'slow is not failed, however long it takes');
+  // The server says it is still preparing: that is the server working.
+  hls.loaded(frag);
+  for (let i = 0; i < 60; i++) { hls.error({fatal: false, type: 'networkError', response: {code: 503, data: JSON.stringify({error: {code: 'segment_preparing'}})}}); clock.advance(1000); player.tick(); }
+  assert.equal(events.some(e => e.type === 'error'), false);
+  // Media arrives: recovery ends.
+  video.ready(0, 12);
+  video.fire('playing');
+  clock.advance(12_000);
+  assert.equal(clock.pending(), 0, 'nothing keeps retrying once media flows');
+  player.dispose();
+});
+
+test('errors: a refused stream fails at once; a media error recovers twice, then is a decode error', async () => {
+  const a = setup();
+  a.player.load(source());
+  await settle();
+  a.instances[0]!.error({fatal: true, type: 'networkError', response: {code: 410}});
+  const gone = a.events.find(e => e.type === 'error');
+  assert.ok(gone && gone.type === 'error' && gone.code === 'stream_gone');
+  assert.equal(a.instances[0]!.destroyed, true);
+  a.player.dispose();
+
+  const b = setup();
+  b.player.load(source());
+  await settle();
+  const hls = b.instances[0]!;
+  hls.error({fatal: true, type: 'mediaError', details: 'bufferAppendError'});
+  hls.error({fatal: true, type: 'mediaError', details: 'bufferAppendError'});
+  assert.equal(hls.recoveries, 2);
+  assert.equal(hls.swaps, 1, 'the second attempt swaps the audio codec hint');
+  hls.error({fatal: true, type: 'mediaError', details: 'bufferAppendError'});
+  const decode = b.events.find(e => e.type === 'error');
+  assert.ok(decode && decode.type === 'error' && decode.code === 'decode_error');
+  hls.error({fatal: false, type: 'mediaError'});
+  b.player.dispose();
+});
+
+test('a pause from outside the page is the viewer’s; the port’s own pause and the end of a title are not', async () => {
+  const {video, player, notices} = setup();
+  player.load(source({startPositionMs: 0}));
+  await settle();
+  video.ready(0);
+  assert.equal(player.observe().state, 'playing');
+  // A media key, the Picture in Picture window, a headset: the element pauses by itself.
+  video.pause();
+  assert.deepEqual(notices.filter(n => n.type === 'unsolicited'), [{type: 'unsolicited', state: 'paused'}]);
+  assert.equal(player.observe().state, 'paused');
+  // …and starts again from outside.
+  void video.play();
+  assert.deepEqual(notices.filter(n => n.type === 'unsolicited').at(-1), {type: 'unsolicited', state: 'playing'});
+  // The port's own pause is not news.
+  const before = notices.length;
+  player.pause();
+  assert.equal(notices.length, before);
+  player.play();
+  await settle();
+  // The browser's final pause just before `ended` is completion.
+  video.finish();
+  assert.equal(notices.filter(n => n.type === 'unsolicited').length, 2);
+  assert.equal(player.observe().state, 'ended');
+  player.dispose();
+});
+
+test('a refused autoplay is reported, not retried', async () => {
+  const {video, player, notices} = setup();
+  video.refusePlay = true;
+  player.load(source({startPositionMs: 0}));
+  await settle();
+  video.ready(0);
+  await settle();
+  assert.ok(types(notices).includes('autoplay-blocked'));
+  assert.equal(player.observe().state, 'paused');
+  player.dispose();
+});
+
+test('direct play: the source is the file, the start position is set once metadata is there', async () => {
+  const {video, instances, player, events} = setup();
+  player.load(source({mode: 'direct', url: '/v1/media/grant/1/file.mp4', startPositionMs: 30_000}));
+  await settle();
+  assert.equal(instances.length, 0);
   assert.equal(video.src, 'https://portico.test/v1/media/grant/1/file.mp4');
+  video.readyState = 1;
+  video.duration = 600;
   video.fire('loadedmetadata');
-  assert.equal(video.currentTime, 90);
+  assert.deepEqual(video.seeks, [30]);
+  video.land(30);
   video.fire('canplay');
-  assert.equal(player.observe().state, 'paused', 'not autoplay: stays paused at the start');
-  video.fire('seeked');
-  assert.ok(!types.includes('seeked'), 'a seek nobody asked for is not reported');
-  player.seek(120_000);
-  video.fire('seeked');
-  assert.equal(types.filter(t => t === 'seeked').length, 1);
-  assert.equal(player.observe().positionMs, 120_000);
+  assert.equal(events.filter(e => e.type === 'seeked').length, 1);
+  assert.equal(player.observe().positionMs, 30_000);
+  // A network error after it has played is asked for again, quietly, from where it was.
+  video.advance(45);
+  video.fail(2);
+  assert.equal(events.some(e => e.type === 'error'), false);
+  // A file the browser cannot decode is the engine refusing this route.
+  const fresh = setup();
+  fresh.player.load(source({mode: 'direct', url: '/v1/media/grant/2/file.mkv', startPositionMs: 0}));
+  fresh.video.fail(4);
+  const refused = fresh.events.find(e => e.type === 'error');
+  assert.ok(refused && refused.type === 'error' && refused.code === 'source_not_supported');
   player.dispose();
+  fresh.player.dispose();
 });
 
-test('sidecar subtitles switch locally and show in the observation', async () => {
-  const video = new FakeVideo();
-  const player = new WebMediaPlayer(video, {resolveUrl});
-  player.load(source({mode: 'direct'}));
-  player.selectSidecarSubtitle('s4');
-  assert.equal(video.tracks[0]!.mode, 'showing');
-  assert.equal(player.observe().subtitleTrackId, 's4');
-  player.selectSidecarSubtitle(null);
-  assert.equal(video.tracks[0]!.mode, 'disabled');
-  assert.equal(player.observe().subtitleTrackId, null);
+test('a seek is acknowledged where it lands; one the element cannot reach is reported', async () => {
+  const {video, player, events, notices} = setup();
+  player.load(source({startPositionMs: 0}));
+  await settle();
+  video.ready(0);
+  player.seek(600_000);
+  assert.deepEqual(video.seeks, [600]);
+  assert.equal(player.settling, true);
+  assert.equal(player.observe().positionMs, 0, 'the position is not reported before the picture is there');
+  video.land(600);
+  assert.equal(player.settling, false);
+  assert.equal(events.filter(e => e.type === 'seeked').at(-1)!.observation.positionMs, 600_000);
+  player.seek(900_000);
+  video.land(30); // the element went somewhere else
+  assert.deepEqual(notices.find(n => n.type === 'seek-failed'), {type: 'seek-failed', positionMs: 900_000});
   player.dispose();
-});
-
-test('errors: refused streams fail at once, network retries twice, media recovers twice then fails', async () => {
-  for (const [data, expect] of [
-    [{fatal: true, type: 'networkError', response: {code: 410}}, {code: 'stream_gone', startLoads: 0}],
-    [{fatal: true, type: 'networkError', details: 'fragLoadTimeOut'}, {code: 'network_error', startLoads: 2}],
-    [{fatal: true, type: 'mediaError', details: 'bufferStalledError'}, {code: 'decode_error', recoveries: 2, swaps: 1}],
-  ] as const) {
-    const video = new FakeVideo();
-    const {Hls, instances} = fakeHls();
-    const player = new WebMediaPlayer(video, {loadHls: async () => Hls, resolveUrl});
-    const errors: string[] = [];
-    player.onEvent(e => { if (e.type === 'error') errors.push(e.code); });
-    player.load(source());
-    await settle();
-    const i = instances[0]!;
-    i.error!('hlsError', {fatal: false, type: 'networkError'}); // non-fatal: ignored
-    for (let n = 0; n < 3; n++) i.error!('hlsError', data as HlsErrorData);
-    assert.deepEqual(errors, [expect.code]);
-    if ('startLoads' in expect) assert.equal(i.startLoads, expect.startLoads);
-    if ('recoveries' in expect) { assert.equal(i.recoveries, expect.recoveries); assert.equal(i.swaps, expect.swaps); }
-    assert.equal(player.observe().state, 'error');
-    player.dispose();
-  }
 });
 
 test('no hls.js support: native HLS where the browser has it, else unsupported', async () => {
-  const {Hls} = fakeHls(false);
-  const safari = new FakeVideo(); safari.nativeHls = 'maybe';
-  const a = new WebMediaPlayer(safari, {loadHls: async () => Hls, resolveUrl});
-  a.load(source());
+  const a = setup({supported: false});
+  a.video.nativeHls = 'maybe';
+  a.player.load(source());
   await settle();
-  assert.equal(safari.src, 'https://portico.test/v1/media/grant/1/master.m3u8');
-  const other = new FakeVideo();
-  const b = new WebMediaPlayer(other, {loadHls: async () => Hls, resolveUrl});
-  const errors: string[] = [];
-  b.onEvent(e => { if (e.type === 'error') errors.push(e.code); });
-  b.load(source());
+  assert.equal(a.video.src, 'https://portico.test/v1/media/grant/1/master.m3u8');
+  a.player.dispose();
+  const b = setup({supported: false});
+  b.player.load(source());
   await settle();
-  assert.deepEqual(errors, ['unsupported']);
-  a.dispose(); b.dispose();
+  const e = b.events.find(x => x.type === 'error');
+  assert.ok(e && e.type === 'error' && e.code === 'unsupported');
+  b.player.dispose();
 });
 
-test('driven by PlaybackSessionController against the fake server: load, report, track change', async () => {
-  const server = new FakePlaybackServer();
-  const video = new FakeVideo();
-  const {Hls, instances} = fakeHls();
-  const player = new WebMediaPlayer(video, {loadHls: async () => Hls, resolveUrl});
-  let n = 0;
-  const ctl = new PlaybackSessionController({http: fakeHttp(server), player, key: () => 'key_web_player_' + String(++n).padStart(4, '0')});
-  const s = (await ctl.start({itemId: 'movie-1'}))!;
+test('the route to the server changing lets go of the media and comes back at the same position', async () => {
+  const {video, instances, player} = setup();
+  player.load(source({startPositionMs: 0}));
   await settle();
-  assert.equal(instances.length, 1);
-  video.fire('canplay');
-  await settle();
-  assert.ok(server.session(s.id)!.reports.some(r => r.state === 'playing'), 'the first playing state is reported');
-  await ctl.setAudio('a2');
-  await settle();
-  assert.equal(instances.length, 2, 'a new generation loads a new engine');
+  video.ready(0);
+  video.advance(321);
+  player.suspend();
   assert.equal(instances[0]!.destroyed, true);
-  await ctl.stop();
-  assert.equal(server.session(s.id)!.ended, true);
-  ctl.dispose();
+  assert.equal(player.observe().positionMs, 321_000, 'the position is kept, not the element’s zero');
+  player.resume();
+  await settle();
+  assert.equal(instances[1]!.config.startPosition, 321);
   player.dispose();
+});
+
+test('cues are placed by the stream’s offset, and a hair’s difference between fragments does not move them', async () => {
+  const offsets: (number | null)[] = [];
+  let resets = 0;
+  const {instances, player} = setup({subtitles: {reset: () => { resets++; }, timeline: o => { offsets.push(o); }}});
+  player.load(source({startPositionMs: 0}));
+  await settle();
+  assert.deepEqual(offsets, [null], 'nothing is shown until the stream says where it sits');
+  const hls = instances[0]!;
+  hls.emit('hlsFragChanged', {frag: {start: 0, startPTS: 1.4}});
+  hls.emit('hlsFragChanged', {frag: {start: 6, startPTS: 7.4004}});
+  hls.emit('hlsFragChanged', {frag: {start: 12, startPTS: 13.409}});
+  assert.deepEqual(offsets, [null, 1.4], 'sub-frame wobble is ignored');
+  hls.emit('hlsFragChanged', {frag: {start: 18, startPTS: 20}});
+  assert.equal(offsets.length, 3, 'a real change is followed');
+  assert.ok(resets >= 1);
+  player.dispose();
+});
+
+test('a live channel is positioned by the stream’s programme dates', async () => {
+  const origin = Date.UTC(2026, 0, 1, 20, 0, 0);
+  const {video, instances, player} = setup();
+  player.load(source({startPositionMs: 600_000, liveOriginMs: origin}));
+  await settle();
+  const hls = instances[0]!;
+  assert.equal(hls.config.startPosition, -1, 'a live stream joins at its edge');
+  hls.engine.levels = [{details: {fragments: [{start: 100, duration: 6, programDateTime: origin + 598_000} as never, {start: 106, duration: 6, programDateTime: origin + 604_000} as never]}}];
+  video.readyState = 4;
+  video.seekableRanges = [[0, 400]];
+  player.tick();
+  assert.deepEqual(video.seeks, [102], 'ten minutes after the origin is two seconds into the first fragment');
+  hls.engine.playingDate = new Date(origin + 600_000);
+  video.land(102);
+  assert.equal(player.observe().positionMs, 600_000);
+  player.dispose();
+});
+
+test('a late event from the presentation before cannot speak for the one now loading', async () => {
+  const {video, player, events} = setup();
+  player.load(source({generation: 1, startPositionMs: 0}));
+  await settle();
+  video.ready(0);
+  player.load(source({generation: 2, startPositionMs: 0}));
+  const before = events.length;
+  video.fire('ended');
+  video.fire('playing');
+  video.fire('pause');
+  assert.equal(events.slice(before).some(e => e.type === 'state' && e.observation.state !== 'loading'), false);
+  assert.equal(player.observe().generation, 2);
+  player.dispose();
+});
+
+test('buffers are sized by bit rate: a high-rate stream holds fewer seconds than a page can afford', () => {
+  assert.equal(bufferTargets(8000).forward, 30);
+  assert.ok(bufferTargets(80_000).forward <= 12, 'an 80 Mbps remux is not given thirty seconds');
+  assert.ok(bufferTargets(80_000).forward >= 6);
+  assert.ok(bufferTargets(80_000).back <= bufferTargets(8000).back);
+  assert.equal(bufferTargets(undefined).forward, 30);
+  assert.ok(bufferTargets(8000, 2).forward <= 20, 'a small device buffers less');
 });
