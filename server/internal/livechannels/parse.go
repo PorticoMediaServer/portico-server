@@ -204,6 +204,7 @@ func parse(in SourceInput) (out parsedSource, result error) {
 		mapped[m.ChannelKey] = true
 		channelGuide[m.ChannelKey] = m.GuideKey
 	}
+	guideLookup := indexGuideChannels(out.channels, mapped)
 	mapping := map[string][]string{}
 	for _, ch := range out.channels {
 		mapping[channelGuide[ch.key]] = append(mapping[channelGuide[ch.key]], ch.key)
@@ -274,33 +275,22 @@ func parse(in SourceInput) (out parsedSource, result error) {
 				if !validText(row.ID, 256) {
 					continue
 				}
-				for i := range out.channels {
+				for _, i := range guideLookup.match(row.ID, row.Names) {
 					ch := &out.channels[i]
-					if mapped[ch.key] {
-						continue
-					}
-					matched := row.ID == ch.guideKey || row.ID == ch.key || row.ID == ch.number
-					for _, name := range row.Names {
-						if strings.EqualFold(strings.Join(strings.Fields(name), " "), ch.name) {
-							matched = true
+					exists := false
+					for _, key := range mapping[row.ID] {
+						if key == ch.key {
+							exists = true
 						}
 					}
-					if matched {
-						exists := false
-						for _, key := range mapping[row.ID] {
-							if key == ch.key {
-								exists = true
-							}
-						}
-						if !exists {
-							mapping[row.ID] = append(mapping[row.ID], ch.key)
-						}
-						if ch.logo == "" {
-							for _, icon := range row.Icons {
-								if validLocator(icon.Src) {
-									ch.logo = icon.Src
-									break
-								}
+					if !exists {
+						mapping[row.ID] = append(mapping[row.ID], ch.key)
+					}
+					if ch.logo == "" {
+						for _, icon := range row.Icons {
+							if validLocator(icon.Src) {
+								ch.logo = icon.Src
+								break
 							}
 						}
 					}
@@ -635,9 +625,11 @@ type guideTokens struct {
 	decoder             *xml.Decoder
 	depth, nodes, roots int
 	declared            bool
+	recordStart         int64
 }
 
 func (g *guideTokens) Token() (xml.Token, error) {
+	before := g.decoder.InputOffset()
 	t, e := g.decoder.Token()
 	if e != nil {
 		if e == io.EOF && (g.depth != 0 || g.roots != 1) {
@@ -663,6 +655,9 @@ func (g *guideTokens) Token() (xml.Token, error) {
 			}
 		}
 		g.depth++
+		if g.depth == 2 {
+			g.recordStart = before
+		}
 		if g.depth > 32 || len(v.Attr) > 64 {
 			return nil, ErrInvalid
 		}
@@ -683,10 +678,16 @@ func (g *guideTokens) Token() (xml.Token, error) {
 			return nil, ErrInvalid
 		}
 	}
+	if g.recordStart != 0 && g.decoder.InputOffset()-g.recordStart > maxGuideRecordBytes {
+		return nil, ErrInvalid
+	}
+	if g.depth < 2 {
+		g.recordStart = 0
+	}
 	return t, nil
 }
 func newGuideDecoder(r io.Reader) *xml.Decoder {
-	d := xml.NewDecoder(r)
+	d := xml.NewDecoder(&guideByteReader{reader: r})
 	d.CharsetReader = guideCharset
 	return xml.NewTokenDecoder(&guideTokens{decoder: d})
 }

@@ -128,3 +128,11 @@ func (s *Store) pendingSharedTx(ctx context.Context, tx *sql.Tx, id string) (boo
 	e := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM dvr_recording_shares x JOIN dvr_recordings r ON r.id=x.recording_id WHERE x.capture_recording_id=? AND r.state NOT IN('completed','incomplete-playable','deleted','failed','cancelled','pending-delete'))`, id).Scan(&busy)
 	return busy, e
 }
+
+// hasSharedCaptureTx includes finished leaders until the follower acquires its
+// own path. Explicit cancellation and durable permission checks stay separate.
+func (s *Store) hasSharedCaptureTx(ctx context.Context, tx *sql.Tx, id string) (bool, error) {
+	var shared bool
+	err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM dvr_recording_shares x JOIN dvr_recordings leader ON leader.id=x.capture_recording_id WHERE x.recording_id=? AND leader.state IN('preparing','recording','finalizing','completed','incomplete-playable','pending-delete'))`, id).Scan(&shared)
+	return shared, err
+}

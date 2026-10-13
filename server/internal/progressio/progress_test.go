@@ -74,3 +74,27 @@ func TestWaitingForAdmissionDoesNotStartIdleTimer(t *testing.T) {
 		t.Fatal("started producer had no idle bound")
 	}
 }
+
+func TestQueuedExpiryDoesNotCancelNewProgress(t *testing.T) {
+	ctx, watch := New(context.Background(), 100*time.Millisecond, 0)
+	defer watch.Close()
+	// Queue actual progress first, then let the old callback queue on the same
+	// mutex. Go's mutex hands off to the long-waiting progress goroutine first.
+	watch.mu.Lock()
+	started, pinged := make(chan struct{}), make(chan struct{})
+	go func() { close(started); watch.Ping(); close(pinged) }()
+	<-started
+	time.Sleep(160 * time.Millisecond)
+	watch.mu.Unlock()
+	<-pinged
+	select {
+	case <-ctx.Done():
+		t.Fatal("queued expiry cancelled newly progressing work")
+	case <-time.After(20 * time.Millisecond):
+	}
+	select {
+	case <-ctx.Done():
+	case <-time.After(time.Second):
+		t.Fatal("real idle stall did not expire")
+	}
+}

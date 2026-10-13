@@ -260,6 +260,22 @@ func (s *Store) claimNext(ctx context.Context) (*claim, bool, error) {
 	if e != nil {
 		return nil, false, e
 	}
+	if !capturing(r.State) {
+		if r.RuleID != "" {
+			var enabled, deleted bool
+			var currentRevision, acceptedRevision int64
+			e = tx.QueryRowContext(ctx, `SELECT r.enabled,r.deleted,r.revision,x.rule_revision FROM dvr_rules r JOIN dvr_recordings x ON x.rule_id=r.id WHERE x.id=?`, id).Scan(&enabled, &deleted, &currentRevision, &acceptedRevision)
+			if e != nil {
+				return nil, false, e
+			}
+			if !enabled || deleted {
+				return fail("rule-disabled")
+			}
+			if currentRevision != acceptedRevision {
+				return later("rule-reconciliation-pending")
+			}
+		}
+	}
 	if shared, waiting, err := s.sharedCaptureTx(ctx, tx, c, r, generation); err != nil {
 		return nil, false, err
 	} else if shared {
@@ -304,20 +320,7 @@ func (s *Store) claimNext(ctx context.Context) (*claim, bool, error) {
 			return nil, false, e
 		}
 	} else {
-		if r.RuleID != "" {
-			var enabled, deleted bool
-			var currentRevision, acceptedRevision int64
-			e = tx.QueryRowContext(ctx, `SELECT r.enabled,r.deleted,r.revision,x.rule_revision FROM dvr_rules r JOIN dvr_recordings x ON x.rule_id=r.id WHERE x.id=?`, id).Scan(&enabled, &deleted, &currentRevision, &acceptedRevision)
-			if e != nil {
-				return nil, false, e
-			}
-			if !enabled || deleted {
-				return fail("rule-disabled")
-			}
-			if currentRevision != acceptedRevision {
-				return later("rule-reconciliation-pending")
-			}
-		}
+
 		var active, state string
 		e = tx.QueryRowContext(ctx, `SELECT active_generation,state FROM live_sources WHERE id=?`, r.Occurrence.SourceID).Scan(&active, &state)
 		if e != nil {

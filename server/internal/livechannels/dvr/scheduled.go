@@ -61,6 +61,15 @@ func (s *Store) ReconcileScheduled(ctx context.Context) error {
 		if e != nil {
 			return e
 		}
+		shared, err := s.hasSharedCaptureTx(ctx, tx, r.ID)
+		if err != nil {
+			return err
+		}
+		// This intent already committed to a capture. Finalization and linking
+		// may outlast the airing; guide maintenance must not expire it.
+		if permission == nil && shared {
+			continue
+		}
 		p, lookup := s.committedProgrammeTx(ctx, tx, r, generation)
 		state, reason := "scheduled", ""
 		switch {

@@ -17,6 +17,7 @@ import (
 // Readers have independent private endpoints, output sinks and cancellation.
 // Only acquisition and its bounded byte ring belong to the channel.
 type sharedInput struct {
+	cancel     context.CancelFunc
 	fence      string
 	closing    bool
 	retired    chan struct{}
@@ -78,11 +79,12 @@ func Open(ctx context.Context, in livechannels.Input) (*Gateway, error) {
 		}
 	}
 	if entry == nil {
-		entry = &sharedInput{fence: fence, retired: make(chan struct{}), ready: make(chan struct{})}
+		life, cancel := context.WithCancel(context.Background())
+		entry = &sharedInput{cancel: cancel, fence: fence, retired: make(chan struct{}), ready: make(chan struct{})}
 		inputs.entries[key] = entry
 		supervise.Go("linearinput.channel.open", func() {
 			// Acquisition is bounded; the channel lifetime is detached from the first reader.
-			g, e := openInput(context.Background(), in)
+			g, e := openInput(life, in)
 			inputs.Lock()
 			entry.gateway, entry.err = g, e
 			close(entry.ready)
@@ -174,6 +176,7 @@ func releaseInput(key string, entry *sharedInput) {
 
 func retireInput(key string, entry *sharedInput) {
 	entry.retireOnce.Do(func() {
+		entry.cancel()
 		<-entry.ready
 		if entry.gateway != nil {
 			_ = entry.gateway.Close()
