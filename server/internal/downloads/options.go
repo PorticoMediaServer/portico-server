@@ -244,3 +244,13 @@ func selectableVersion(versions []preparedmedia.Version, profile string) *prepar
 
 // ladderRung resolves a published rung id.
 func ladderRung(quality string) (playback.QualityPreset, bool) { return playback.LadderPreset(quality) }
+
+func selectableVersionForSource(versions []preparedmedia.Version, profile, source string) *preparedmedia.Version {
+	selected := []preparedmedia.Version{}
+	for _, v := range versions {
+		if v.SourceID == source {
+			selected = append(selected, v)
+		}
+	}
+	return selectableVersion(selected, profile)
+}

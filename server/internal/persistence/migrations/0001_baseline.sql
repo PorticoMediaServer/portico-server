@@ -2686,6 +2686,7 @@ CREATE TABLE download_preparations(
  profile_key TEXT NOT NULL, authority TEXT NOT NULL, account_id TEXT NOT NULL, profile_id TEXT NOT NULL,
  item_id INTEGER NOT NULL, item_public TEXT NOT NULL DEFAULT '', library_id TEXT NOT NULL,
  title_json TEXT NOT NULL DEFAULT '',
+ source_asset_id TEXT NOT NULL DEFAULT '',
  quality TEXT NOT NULL, origin TEXT NOT NULL CHECK(origin IN('item','items','container','next')),
  batch_id TEXT NOT NULL DEFAULT '',
  state TEXT NOT NULL CHECK(state IN('queued','running','ready','paused','failed','unavailable','cancelled','expired')),
@@ -4000,8 +4001,8 @@ CREATE INDEX notification_records_expiry ON notification_records(expires_ms);
 CREATE INDEX feedback_details_fingerprint ON feedback_details(fingerprint);
 CREATE INDEX feedback_details_kind ON feedback_details(kind);
 CREATE INDEX console_reports_status ON console_reports(status,sequence DESC);
-CREATE UNIQUE INDEX download_preparation_live
- ON download_preparations(profile_key,item_id,quality)
+CREATE INDEX download_preparation_live
+ ON download_preparations(profile_key,item_id,quality,source_asset_id)
  WHERE state IN('queued','running','ready','paused','failed');
 CREATE INDEX download_preparation_viewer ON download_preparations(profile_key,created_ms DESC,id DESC);
 CREATE INDEX download_preparation_work ON download_preparations(state,updated_ms,id);
@@ -6322,3 +6323,14 @@ CREATE TRIGGER library_directory_update_hint AFTER UPDATE OF retired ON catalog_
 CREATE TRIGGER library_directory_name_hint AFTER UPDATE OF name,kind ON libraries WHEN OLD.name IS NOT NEW.name OR OLD.kind IS NOT NEW.kind BEGIN
  UPDATE catalog_directory_revision SET revision=revision+1 WHERE singleton=1;
  INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision,data) SELECT 'server','libraries.changed','catalogue','libraries',CAST(revision AS TEXT),json_object('directory',CAST(revision AS TEXT)) FROM catalog_directory_revision WHERE singleton=1 ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision,data=excluded.data; END;
+CREATE INDEX download_receipts_item ON download_receipts(item_id);
+CREATE INDEX download_grants_item ON download_grants(item_id);
+
+CREATE TABLE database_maintenance_status(singleton INTEGER PRIMARY KEY CHECK(singleton=1),last_ran_ms INTEGER NOT NULL DEFAULT 0,last_reclaimed_bytes INTEGER NOT NULL DEFAULT 0) STRICT;
+INSERT INTO database_maintenance_status(singleton) VALUES(1);
+
+CREATE TABLE live_channel_choices(generation_id TEXT NOT NULL REFERENCES live_generations(id) ON DELETE CASCADE,channel_key TEXT NOT NULL,name TEXT NOT NULL,group_name TEXT NOT NULL,PRIMARY KEY(generation_id,channel_key)) STRICT;
+CREATE INDEX live_channel_choices_groups ON live_channel_choices(generation_id,group_name,channel_key);
+
+CREATE INDEX download_request_items_item ON download_request_items(item_id,preparation_id);
+CREATE INDEX download_requests_target ON download_requests(target_id);

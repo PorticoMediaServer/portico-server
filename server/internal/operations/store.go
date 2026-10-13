@@ -57,10 +57,12 @@ func auditAnchor(tx *sql.Tx) (AuditAnchor, error) {
 }
 
 type Store struct {
+	FFmpegValidation func(context.Context, string) FFmpegStatus
 	// Set once at startup by the conversion consumer. Nil is a store without a running converter.
 	AppliedTemporaryDirectory *string
 	// Set once by the listener at startup; zero means the automatic ceiling.
 	AppliedConnectionLimit *int
+	AppliedFFmpegPath      *string
 	DB                     *sql.DB
 	Now                    func() time.Time
 }

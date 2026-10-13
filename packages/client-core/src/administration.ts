@@ -395,3 +395,28 @@ export function isStatePermissionsAlert(alert:Pick<Alert,'code'|'status'>):boole
 export function providerChoices(available:readonly MetadataProvider[],selection:Readonly<{mediaKind:string;provider:string}>):readonly MetadataProvider[]{
  return available.filter(a=>a.mediaKinds.includes(selection.mediaKind)&&(a.id!=='local'||selection.provider==='local'));
 }
+
+export type VersionDeletePreview=DeletePreview&Readonly<{assetId:string;previewKey:string}>;
+export function parseVersionDeletePreview(raw:unknown):VersionDeletePreview{
+ const preview=parseDeletePreview(raw);
+ if(!object(raw)||!filled(raw.assetId,128)||!text(raw.previewKey,64)||!/^[0-9a-f]{64}$/.test(raw.previewKey)||preview.targets.length!==1||preview.totalFiles!==1||preview.targets[0].files.length!==1||preview.targets[0].files[0].assetId!==raw.assetId)invalid('version delete preview');
+ return Object.freeze({...preview,assetId:raw.assetId,previewKey:raw.previewKey});
+}
+export function versionDeletionService(request:<T>(path:string,method?:string,body?:unknown)=>Promise<T>){
+ const path=(item:string,asset:string)=>`/v1/admin/items/${encodeURIComponent(item)}/files/${encodeURIComponent(asset)}`;
+ return Object.freeze({
+  async preview(item:string,asset:string){return parseVersionDeletePreview(await request<unknown>(path(item,asset)+'/delete/preview','POST'));},
+  async remove(preview:VersionDeletePreview,confirmation:string,operationId:string){return parseDeleteResult(await request<unknown>(path(preview.targets[0].itemId,preview.assetId),'DELETE',{confirmation,operationId,previewKey:preview.previewKey}));},
+ });
+}
+
+export type LiveSourceChoicePage=Readonly<{sourceId:string;generation:string;kind:'groups'|'channels';total:number;items:readonly Readonly<{id:string;name:string;group:string;channels:number}>[];nextCursor:string}>;
+export function parseLiveSourceChoicePage(v:unknown):LiveSourceChoicePage{
+ if(!object(v)||!filled(v.sourceId,128)||!text(v.generation,128)||!count(v.total)||!text(v.nextCursor,4096))invalid('source choices');
+ const kind=choice(v.kind,['groups','channels'] as const,'source choice kind');
+ const items=readable(v.items,200,'source choices',e=>{if(!object(e)||!filled(e.id,256)||!text(e.name,512)||!text(e.group,256)||!count(e.channels))invalid('source choice');return Object.freeze({id:e.id,name:e.name,group:e.group,channels:e.channels});});
+ return Object.freeze({sourceId:v.sourceId,generation:v.generation,kind,total:v.total,items:Object.freeze(items),nextCursor:v.nextCursor});
+}
+export function liveSourceChoicesService(request:<T>(path:string,method?:string,body?:unknown)=>Promise<T>,source:string){return Object.freeze({
+ async list(kind:'groups'|'channels',cursor='',limit=50,q=''){return parseLiveSourceChoicePage(await request<unknown>(`/v1/admin/live/sources/${encodeURIComponent(source)}/${kind}?cursor=${encodeURIComponent(cursor)}&limit=${limit}&q=${encodeURIComponent(q)}`));},
+});}

@@ -56,6 +56,7 @@ import (
 type Dependencies struct {
 	ConnectionUsage   func() ConnectionUsage
 	LocalArtworkUsage func() (int64, bool)
+	CacheDirectory    string
 	Restart           func()
 	ListeningPort     int
 	// SettingsApplied runs after an owner saves console settings so snapshot

@@ -19,7 +19,7 @@ func (s *Service) compactPageItems(profile string, ids []string, moviesOnly bool
 		factsArgs = append(factsArgs, compactcatalog.Movie)
 	}
 	rows, err := s.read().Query(`SELECT pid(e.public_id),l.library_id,e.title,e.kind,e.year,d.overview,d.poster_url,d.backdrop_url,d.added_text,
-	COALESCE(p.position,0)/1000.0,`+personalstate.CompactSQL("?", "e.id")+`
+	EXISTS(SELECT 1 FROM catalog_missing_titles missing WHERE missing.entity_id=e.id),COALESCE(p.position,0)/1000.0,`+personalstate.CompactSQL("?", "e.id")+`
  FROM json_each(?) requested JOIN catalog_entities e ON e.public_id=pid_blob(requested.value)
  JOIN catalog_libraries l ON l.id=e.library_id JOIN catalog_item_details d ON d.entity_id=e.id
  LEFT JOIN progress p ON p.profile_id=? AND p.item_id=e.id
@@ -31,7 +31,7 @@ func (s *Service) compactPageItems(profile string, ids []string, moviesOnly bool
 	for rows.Next() {
 		item := new(Item)
 		var kind compactcatalog.Kind
-		if err = rows.Scan(&item.ID, &item.LibraryID, &item.Title, &kind, &item.Year, &item.Overview, &item.PosterURL, &item.BackdropURL, &item.AddedAt, &item.ProgressSeconds, &item.Watched); err != nil {
+		if err = rows.Scan(&item.ID, &item.LibraryID, &item.Title, &kind, &item.Year, &item.Overview, &item.PosterURL, &item.BackdropURL, &item.AddedAt, &item.Missing, &item.ProgressSeconds, &item.Watched); err != nil {
 			rows.Close()
 			return nil, err
 		}

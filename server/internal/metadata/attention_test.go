@@ -253,3 +253,27 @@ func TestRemovedNFORelationshipsRespectOwnerLocks(t *testing.T) {
 		t.Fatal("removing an NFO cleared locked relationships", genres, credits)
 	}
 }
+
+func TestAttentionCountsExcludeWorkInProgressAndDismissals(t *testing.T) {
+	s, db, _ := screenFixture(t)
+	item := publicationFixtureMovie(t, db)
+	ctx := context.Background()
+	publicationExec(t, db, `UPDATE screen_metadata_attention SET reason='low_confidence' WHERE entity_id=?`, item.ID)
+	counts, err := s.AttentionCounts(ctx)
+	if err != nil || counts.Total != 1 {
+		t.Fatal(counts, err)
+	}
+	page, err := s.AttentionFiltered(ctx, "", "", 1, false)
+	if err != nil || page.Total != 1 || len(page.Entries) != 1 || page.Entries[0].LibraryID != "lib" {
+		t.Fatal(page, err)
+	}
+	publicationExec(t, db, `UPDATE screen_metadata_attention SET reason='searching' WHERE entity_id=?`, item.ID)
+	counts, err = s.AttentionCounts(ctx)
+	if err != nil || counts.Total != 0 {
+		t.Fatal(counts, err)
+	}
+	page, err = s.AttentionFiltered(ctx, "lib", "", 1, false)
+	if err != nil || page.Total != 0 || len(page.Entries) != 0 {
+		t.Fatal(page, err)
+	}
+}

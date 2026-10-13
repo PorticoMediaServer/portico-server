@@ -34,6 +34,11 @@ func TestLocalArtworkRejectsUnboundedOrNonImageContent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	used, e := service.MeasuredArtworkUsage(context.Background())
+	if e != nil || used != int64(valid.Len()) {
+		t.Fatal("artwork ledger disagrees with stored bytes", used, e)
+	}
+
 	file, mime, err := service.Open(key)
 	if err != nil || mime != "image/png" {
 		t.Fatal(mime, err)

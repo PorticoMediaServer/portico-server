@@ -194,9 +194,13 @@ export const schemas = {
       },
       "updatedAt": {
         "type": "string"
+      },
+      "versionId": {
+        "type": "string"
       }
     },
     "required": [
+      "versionId",
       "id",
       "itemId",
       "libraryId",
@@ -2567,6 +2571,39 @@ export const schemas = {
             ],
             "type": "object"
           },
+          "ffmpegValidation": {
+            "properties": {
+              "checkedAt": {
+                "type": "string"
+              },
+              "inUse": {
+                "type": "boolean"
+              },
+              "missingFeatures": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "path": {
+                "type": "string"
+              },
+              "reasonCode": {
+                "type": "string"
+              },
+              "state": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "path",
+              "state",
+              "inUse",
+              "missingFeatures",
+              "checkedAt"
+            ],
+            "type": "object"
+          },
           "registryRevision": {
             "type": "string"
           },
@@ -4346,6 +4383,58 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "ControlAdminSessionRequest": {
+    "properties": {
+      "action": {
+        "type": "string"
+      },
+      "expectedRevision": {
+        "type": "string"
+      },
+      "positionMs": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "action",
+      "expectedRevision"
+    ],
+    "type": "object"
+  },
+  "ControlAdminSessionResponse": {
+    "properties": {
+      "actions": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "positionMs": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "revision": {
+        "type": "string"
+      },
+      "sessionId": {
+        "type": "string"
+      },
+      "state": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "sessionId",
+      "revision",
+      "state",
+      "positionMs",
+      "actions"
+    ],
+    "type": "object"
+  },
   "CreateAccessTokenRequest": {
     "properties": {
       "expiresAt": {
@@ -4671,6 +4760,9 @@ export const schemas = {
       },
       "quality": {
         "type": "string"
+      },
+      "versionId": {
+        "type": "string"
       }
     },
     "required": [
@@ -4866,9 +4958,13 @@ export const schemas = {
             },
             "updatedAt": {
               "type": "string"
+            },
+            "versionId": {
+              "type": "string"
             }
           },
           "required": [
+            "versionId",
             "id",
             "itemId",
             "libraryId",
@@ -5175,9 +5271,13 @@ export const schemas = {
                 },
                 "updatedAt": {
                   "type": "string"
+                },
+                "versionId": {
+                  "type": "string"
                 }
               },
               "required": [
+                "versionId",
                 "id",
                 "itemId",
                 "libraryId",
@@ -6985,6 +7085,114 @@ export const schemas = {
     "required": [],
     "type": "object"
   },
+  "DeleteTitleVersionRequest": {
+    "properties": {
+      "confirmation": {
+        "type": "string"
+      },
+      "operationId": {
+        "type": "string"
+      },
+      "previewKey": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "confirmation",
+      "previewKey",
+      "operationId"
+    ],
+    "type": "object"
+  },
+  "DeleteTitleVersionResponse": {
+    "properties": {
+      "bytesDeleted": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "failed": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "filesRetained": {
+        "type": "boolean"
+      },
+      "receipts": {
+        "items": {
+          "properties": {
+            "bytes": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "code": {
+              "type": "string"
+            },
+            "filesDeleted": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "filesKept": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "itemId": {
+              "type": "string"
+            },
+            "removed": {
+              "type": "boolean"
+            },
+            "title": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "itemId",
+            "title",
+            "removed",
+            "filesDeleted",
+            "filesKept",
+            "bytes"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "removed": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "revision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "revision",
+      "receipts",
+      "removed",
+      "failed",
+      "bytesDeleted",
+      "filesRetained"
+    ],
+    "type": "object"
+  },
+  "DeleteUpgradeCopyRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "DeleteUpgradeCopyResponse": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
   "DeleteV1ItemsItemIdSubtitlesResourceRequest": {
     "properties": {
       "expectedRevision": {
@@ -7711,6 +7919,43 @@ export const schemas = {
       "streamLimit",
       "subtitleTracksPerFile",
       "subtitleFileLimitMiB"
+    ],
+    "type": "object"
+  },
+  "GetAdminSessionControlsRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetAdminSessionControlsResponse": {
+    "properties": {
+      "actions": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "positionMs": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "revision": {
+        "type": "string"
+      },
+      "sessionId": {
+        "type": "string"
+      },
+      "state": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "sessionId",
+      "revision",
+      "state",
+      "positionMs",
+      "actions"
     ],
     "type": "object"
   },
@@ -9415,6 +9660,39 @@ export const schemas = {
               "deviceApprovalRequired",
               "logLevel",
               "logRetention"
+            ],
+            "type": "object"
+          },
+          "ffmpegValidation": {
+            "properties": {
+              "checkedAt": {
+                "type": "string"
+              },
+              "inUse": {
+                "type": "boolean"
+              },
+              "missingFeatures": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "path": {
+                "type": "string"
+              },
+              "reasonCode": {
+                "type": "string"
+              },
+              "state": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "path",
+              "state",
+              "inUse",
+              "missingFeatures",
+              "checkedAt"
             ],
             "type": "object"
           },
@@ -11621,9 +11899,13 @@ export const schemas = {
       },
       "updatedAt": {
         "type": "string"
+      },
+      "versionId": {
+        "type": "string"
       }
     },
     "required": [
+      "versionId",
       "id",
       "itemId",
       "libraryId",
@@ -11835,9 +12117,13 @@ export const schemas = {
                 },
                 "updatedAt": {
                   "type": "string"
+                },
+                "versionId": {
+                  "type": "string"
                 }
               },
               "required": [
+                "versionId",
                 "id",
                 "itemId",
                 "libraryId",
@@ -12029,6 +12315,15 @@ export const schemas = {
       "profiles": {
         "items": {
           "properties": {
+            "accountId": {
+              "type": "string"
+            },
+            "accountName": {
+              "type": "string"
+            },
+            "authority": {
+              "type": "string"
+            },
             "bytes": {
               "maximum": 9007199254740991,
               "minimum": -9007199254740991,
@@ -12041,9 +12336,26 @@ export const schemas = {
             },
             "profileId": {
               "type": "string"
+            },
+            "profileKey": {
+              "type": "string"
+            },
+            "profileName": {
+              "type": "string"
+            },
+            "storedBytes": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
             }
           },
           "required": [
+            "profileKey",
+            "authority",
+            "accountId",
+            "accountName",
+            "profileName",
+            "storedBytes",
             "profileId",
             "bytes",
             "count"
@@ -12051,6 +12363,9 @@ export const schemas = {
           "type": "object"
         },
         "type": "array"
+      },
+      "profilesNextCursor": {
+        "type": "string"
       },
       "remainingBytes": {
         "maximum": 9007199254740991,
@@ -12075,6 +12390,7 @@ export const schemas = {
       }
     },
     "required": [
+      "profilesNextCursor",
       "profileId",
       "profileBytes",
       "profileCount",
@@ -12330,6 +12646,11 @@ export const schemas = {
                   "country": {
                     "type": "string"
                   },
+                  "discNumber": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
                   "duration": {
                     "type": "number"
                   },
@@ -12473,6 +12794,11 @@ export const schemas = {
                       "country": {
                         "type": "string"
                       },
+                      "discNumber": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
                       "duration": {
                         "type": "number"
                       },
@@ -12532,6 +12858,9 @@ export const schemas = {
                       },
                       "libraryId": {
                         "type": "string"
+                      },
+                      "missing": {
+                        "type": "boolean"
                       },
                       "navigation": {
                         "properties": {
@@ -12643,12 +12972,16 @@ export const schemas = {
                       }
                     },
                     "required": [
+                      "missing",
                       "id",
                       "kind",
                       "title",
                       "addedAt"
                     ],
                     "type": "object"
+                  },
+                  "missing": {
+                    "type": "boolean"
                   },
                   "navigation": {
                     "properties": {
@@ -12760,6 +13093,7 @@ export const schemas = {
                   }
                 },
                 "required": [
+                  "missing",
                   "id",
                   "kind",
                   "title",
@@ -13205,6 +13539,11 @@ export const schemas = {
             "country": {
               "type": "string"
             },
+            "discNumber": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
             "duration": {
               "type": "number"
             },
@@ -13348,6 +13687,11 @@ export const schemas = {
                 "country": {
                   "type": "string"
                 },
+                "discNumber": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
                 "duration": {
                   "type": "number"
                 },
@@ -13407,6 +13751,9 @@ export const schemas = {
                 },
                 "libraryId": {
                   "type": "string"
+                },
+                "missing": {
+                  "type": "boolean"
                 },
                 "navigation": {
                   "properties": {
@@ -13518,12 +13865,16 @@ export const schemas = {
                 }
               },
               "required": [
+                "missing",
                 "id",
                 "kind",
                 "title",
                 "addedAt"
               ],
               "type": "object"
+            },
+            "missing": {
+              "type": "boolean"
             },
             "navigation": {
               "properties": {
@@ -13635,6 +13986,7 @@ export const schemas = {
             }
           },
           "required": [
+            "missing",
             "id",
             "kind",
             "title",
@@ -14854,6 +15206,123 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "GetLibraryInventoryRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetLibraryInventoryResponse": {
+    "properties": {
+      "items": {
+        "items": {
+          "properties": {
+            "analysisError": {
+              "type": "string"
+            },
+            "analysisState": {
+              "type": "string"
+            },
+            "assetId": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            },
+            "itemId": {
+              "type": "string"
+            },
+            "missingSince": {
+              "type": "string"
+            },
+            "modifiedNs": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "relativePath": {
+              "type": "string"
+            },
+            "revision": {
+              "type": "string"
+            },
+            "size": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "sourceId": {
+              "type": "string"
+            },
+            "state": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "unsupportedReason": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "sourceId",
+            "assetId",
+            "itemId",
+            "title",
+            "relativePath",
+            "revision",
+            "state",
+            "size",
+            "modifiedNs",
+            "missingSince",
+            "analysisState",
+            "analysisError",
+            "unsupportedReason"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "libraryId": {
+        "type": "string"
+      },
+      "nextCursor": {
+        "type": "string"
+      },
+      "revision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "scope": {
+        "properties": {
+          "serverId": {
+            "type": "string"
+          },
+          "viewerFence": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "serverId",
+          "viewerFence"
+        ],
+        "type": "object"
+      },
+      "sourceId": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "scope",
+      "libraryId",
+      "sourceId",
+      "revision",
+      "items",
+      "nextCursor"
+    ],
+    "type": "object"
+  },
   "GetLibrarySettingsRequest": {
     "properties": {},
     "required": [],
@@ -15747,6 +16216,45 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "GetMetadataAttentionCountsRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetMetadataAttentionCountsResponse": {
+    "properties": {
+      "libraries": {
+        "items": {
+          "properties": {
+            "libraryId": {
+              "type": "string"
+            },
+            "total": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "libraryId",
+            "total"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "total": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "total",
+      "libraries"
+    ],
+    "type": "object"
+  },
   "GetMetadataAttentionRequest": {
     "properties": {},
     "required": [],
@@ -15849,6 +16357,9 @@ export const schemas = {
             "kind": {
               "type": "string"
             },
+            "libraryId": {
+              "type": "string"
+            },
             "parentId": {
               "type": "string"
             },
@@ -15865,6 +16376,7 @@ export const schemas = {
             }
           },
           "required": [
+            "libraryId",
             "itemKind",
             "parentId",
             "actions",
@@ -15885,9 +16397,15 @@ export const schemas = {
       },
       "nextCursor": {
         "type": "string"
+      },
+      "total": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
       }
     },
     "required": [
+      "total",
       "libraryId",
       "entries",
       "nextCursor"
@@ -15909,6 +16427,11 @@ export const schemas = {
         "minimum": -9007199254740991,
         "type": "integer"
       },
+      "localArtworkUsedBytes": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
       "revision": {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
@@ -15922,6 +16445,7 @@ export const schemas = {
       }
     },
     "required": [
+      "localArtworkUsedBytes",
       "revision",
       "localArtworkLimitBytes",
       "includeAdult",
@@ -16028,6 +16552,11 @@ export const schemas = {
                 },
                 "country": {
                   "type": "string"
+                },
+                "discNumber": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
                 },
                 "duration": {
                   "type": "number"
@@ -16172,6 +16701,11 @@ export const schemas = {
                     "country": {
                       "type": "string"
                     },
+                    "discNumber": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
                     "duration": {
                       "type": "number"
                     },
@@ -16231,6 +16765,9 @@ export const schemas = {
                     },
                     "libraryId": {
                       "type": "string"
+                    },
+                    "missing": {
+                      "type": "boolean"
                     },
                     "navigation": {
                       "properties": {
@@ -16342,12 +16879,16 @@ export const schemas = {
                     }
                   },
                   "required": [
+                    "missing",
                     "id",
                     "kind",
                     "title",
                     "addedAt"
                   ],
                   "type": "object"
+                },
+                "missing": {
+                  "type": "boolean"
                 },
                 "navigation": {
                   "properties": {
@@ -16459,6 +17000,7 @@ export const schemas = {
                 }
               },
               "required": [
+                "missing",
                 "id",
                 "kind",
                 "title",
@@ -17949,6 +18491,93 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "GetRemotePlaybackControlsRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetRemotePlaybackControlsResponse": {
+    "properties": {
+      "items": {
+        "items": {
+          "properties": {
+            "actions": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "device": {
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "name"
+              ],
+              "type": "object"
+            },
+            "item": {
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "title"
+              ],
+              "type": "object"
+            },
+            "kind": {
+              "type": "string"
+            },
+            "positionMs": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "revision": {
+              "type": "string"
+            },
+            "sessionId": {
+              "type": "string"
+            },
+            "state": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "sessionId",
+            "revision",
+            "state",
+            "positionMs",
+            "actions",
+            "device",
+            "kind"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "nextCursor": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "items",
+      "nextCursor"
+    ],
+    "type": "object"
+  },
   "GetSavedContentRequest": {
     "properties": {},
     "required": [],
@@ -18065,6 +18694,11 @@ export const schemas = {
           },
           "country": {
             "type": "string"
+          },
+          "discNumber": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
           },
           "duration": {
             "type": "number"
@@ -18209,6 +18843,11 @@ export const schemas = {
               "country": {
                 "type": "string"
               },
+              "discNumber": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
               "duration": {
                 "type": "number"
               },
@@ -18268,6 +18907,9 @@ export const schemas = {
               },
               "libraryId": {
                 "type": "string"
+              },
+              "missing": {
+                "type": "boolean"
               },
               "navigation": {
                 "properties": {
@@ -18379,12 +19021,16 @@ export const schemas = {
               }
             },
             "required": [
+              "missing",
               "id",
               "kind",
               "title",
               "addedAt"
             ],
             "type": "object"
+          },
+          "missing": {
+            "type": "boolean"
           },
           "navigation": {
             "properties": {
@@ -18496,6 +19142,7 @@ export const schemas = {
           }
         },
         "required": [
+          "missing",
           "id",
           "kind",
           "title",
@@ -18817,6 +19464,11 @@ export const schemas = {
                   "country": {
                     "type": "string"
                   },
+                  "discNumber": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
                   "duration": {
                     "type": "number"
                   },
@@ -18960,6 +19612,11 @@ export const schemas = {
                       "country": {
                         "type": "string"
                       },
+                      "discNumber": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
                       "duration": {
                         "type": "number"
                       },
@@ -19019,6 +19676,9 @@ export const schemas = {
                       },
                       "libraryId": {
                         "type": "string"
+                      },
+                      "missing": {
+                        "type": "boolean"
                       },
                       "navigation": {
                         "properties": {
@@ -19130,12 +19790,16 @@ export const schemas = {
                       }
                     },
                     "required": [
+                      "missing",
                       "id",
                       "kind",
                       "title",
                       "addedAt"
                     ],
                     "type": "object"
+                  },
+                  "missing": {
+                    "type": "boolean"
                   },
                   "navigation": {
                     "properties": {
@@ -19247,6 +19911,7 @@ export const schemas = {
                   }
                 },
                 "required": [
+                  "missing",
                   "id",
                   "kind",
                   "title",
@@ -19451,6 +20116,163 @@ export const schemas = {
       "items",
       "nextSequence",
       "hasMore"
+    ],
+    "type": "object"
+  },
+  "GetServerMetadataAttentionRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetServerMetadataAttentionResponse": {
+    "properties": {
+      "entries": {
+        "items": {
+          "properties": {
+            "actions": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "candidates": {
+              "items": {
+                "properties": {
+                  "confidence": {
+                    "type": "number"
+                  },
+                  "identity": {
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "provider": {
+                        "type": "string"
+                      },
+                      "type": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "provider",
+                      "type",
+                      "id"
+                    ],
+                    "type": "object"
+                  },
+                  "key": {
+                    "type": "string"
+                  },
+                  "orders": {
+                    "items": {
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "reasons": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "title": {
+                    "type": "string"
+                  },
+                  "year": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "key",
+                  "identity",
+                  "title",
+                  "year",
+                  "confidence",
+                  "reasons",
+                  "orders"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "confidence": {
+              "type": "number"
+            },
+            "entityId": {
+              "type": "string"
+            },
+            "itemKind": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string"
+            },
+            "libraryId": {
+              "type": "string"
+            },
+            "parentId": {
+              "type": "string"
+            },
+            "reason": {
+              "type": "string"
+            },
+            "revision": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "title": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "libraryId",
+            "itemKind",
+            "parentId",
+            "actions",
+            "entityId",
+            "kind",
+            "title",
+            "revision",
+            "reason",
+            "confidence",
+            "candidates"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "libraryId": {
+        "type": "string"
+      },
+      "nextCursor": {
+        "type": "string"
+      },
+      "total": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "total",
+      "libraryId",
+      "entries",
+      "nextCursor"
     ],
     "type": "object"
   },
@@ -20232,6 +21054,74 @@ export const schemas = {
       "seasons",
       "parentId",
       "episodeStatus"
+    ],
+    "type": "object"
+  },
+  "GetStorageStatusRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetStorageStatusResponse": {
+    "properties": {
+      "backupDirectory": {
+        "type": "string"
+      },
+      "cacheDirectory": {
+        "type": "string"
+      },
+      "databasePath": {
+        "type": "string"
+      },
+      "lastReclaimedAt": {
+        "type": "string"
+      },
+      "lastReclaimedBytes": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "reclaimableBytes": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "upgradeCopies": {
+        "items": {
+          "properties": {
+            "bytes": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "createdAt": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            },
+            "path": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "createdAt",
+            "bytes",
+            "path"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      }
+    },
+    "required": [
+      "databasePath",
+      "cacheDirectory",
+      "backupDirectory",
+      "reclaimableBytes",
+      "lastReclaimedBytes",
+      "upgradeCopies"
     ],
     "type": "object"
   },
@@ -21997,9 +22887,13 @@ export const schemas = {
             },
             "updatedAt": {
               "type": "string"
+            },
+            "versionId": {
+              "type": "string"
             }
           },
           "required": [
+            "versionId",
             "id",
             "itemId",
             "libraryId",
@@ -22184,6 +23078,132 @@ export const schemas = {
       "items",
       "nextCursor",
       "asOf"
+    ],
+    "type": "object"
+  },
+  "ListLiveSourceChannelsRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "ListLiveSourceChannelsResponse": {
+    "properties": {
+      "generation": {
+        "type": "string"
+      },
+      "items": {
+        "items": {
+          "properties": {
+            "channels": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "group": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "name",
+            "group",
+            "channels"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "kind": {
+        "type": "string"
+      },
+      "nextCursor": {
+        "type": "string"
+      },
+      "sourceId": {
+        "type": "string"
+      },
+      "total": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "sourceId",
+      "generation",
+      "kind",
+      "total",
+      "items",
+      "nextCursor"
+    ],
+    "type": "object"
+  },
+  "ListLiveSourceGroupsRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "ListLiveSourceGroupsResponse": {
+    "properties": {
+      "generation": {
+        "type": "string"
+      },
+      "items": {
+        "items": {
+          "properties": {
+            "channels": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "group": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "name",
+            "group",
+            "channels"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "kind": {
+        "type": "string"
+      },
+      "nextCursor": {
+        "type": "string"
+      },
+      "sourceId": {
+        "type": "string"
+      },
+      "total": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "sourceId",
+      "generation",
+      "kind",
+      "total",
+      "items",
+      "nextCursor"
     ],
     "type": "object"
   },
@@ -25678,6 +26698,168 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "PreviewDeleteTitleVersionRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "PreviewDeleteTitleVersionResponse": {
+    "properties": {
+      "assetId": {
+        "type": "string"
+      },
+      "blocked": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "confirmation": {
+        "type": "string"
+      },
+      "confirmationKind": {
+        "type": "string"
+      },
+      "previewKey": {
+        "type": "string"
+      },
+      "revision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "targets": {
+        "items": {
+          "properties": {
+            "allowMediaDeletion": {
+              "type": "boolean"
+            },
+            "bytes": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "dependents": {
+              "items": {
+                "properties": {
+                  "count": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "count",
+                  "description"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "files": {
+              "items": {
+                "properties": {
+                  "assetId": {
+                    "type": "string"
+                  },
+                  "bytes": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "path": {
+                    "type": "string"
+                  },
+                  "present": {
+                    "type": "boolean"
+                  },
+                  "shared": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "assetId",
+                  "path",
+                  "bytes",
+                  "present",
+                  "shared"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "itemId": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string"
+            },
+            "libraryId": {
+              "type": "string"
+            },
+            "libraryName": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "titles": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "itemId",
+            "title",
+            "kind",
+            "libraryId",
+            "libraryName",
+            "allowMediaDeletion",
+            "titles",
+            "files",
+            "bytes",
+            "dependents"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "totalBytes": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "totalBytesText": {
+        "type": "string"
+      },
+      "totalFiles": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "revision",
+      "targets",
+      "confirmation",
+      "confirmationKind",
+      "totalBytes",
+      "totalFiles",
+      "totalBytesText",
+      "blocked",
+      "assetId",
+      "previewKey"
+    ],
+    "type": "object"
+  },
   "PreviewInvitationRequest": {
     "properties": {
       "code": {
@@ -28062,6 +29244,11 @@ export const schemas = {
         "minimum": -9007199254740991,
         "type": "integer"
       },
+      "localArtworkUsedBytes": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
       "revision": {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
@@ -28075,6 +29262,7 @@ export const schemas = {
       }
     },
     "required": [
+      "localArtworkUsedBytes",
       "revision",
       "localArtworkLimitBytes",
       "includeAdult",
@@ -30430,6 +31618,44 @@ export const schemas = {
       "createdAt",
       "state",
       "member"
+    ],
+    "type": "object"
+  },
+  "RevokeProfileDownloadsRequest": {
+    "properties": {
+      "operationId": {
+        "type": "string"
+      },
+      "profileKey": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "profileKey",
+      "operationId"
+    ],
+    "type": "object"
+  },
+  "RevokeProfileDownloadsResponse": {
+    "properties": {
+      "claims": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "more": {
+        "type": "boolean"
+      },
+      "receipts": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "claims",
+      "receipts",
+      "more"
     ],
     "type": "object"
   },

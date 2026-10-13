@@ -34,28 +34,48 @@ func errMetadataUnavailable() error { return &apierror.Error{Code: "metadata_una
 func registerMetadataAttention(registry *apikit.Registry, d Dependencies) {
 	failures := []string{"unauthorized", "not_permitted", "not_found", "invalid_request", "revision_mismatch", "rate_limited", "internal"}
 	rate := &personalLimiter{}
-	v1Route(registry, apikit.Metadata{ID: "get_metadata_attention", Method: "GET", Path: "/v1/libraries/{id}/metadata/attention", Summary: "List unmatched and uncertain titles with their best candidates", Access: apikit.Owner, Requires: apikit.ScopeLibrary, Lane: apikit.Browsing, Cost: apikit.PageSized, Status: 200, Query: []string{"cursor", "limit"}, Errors: failures}, func(ctx context.Context, r *http.Request, _ noBody) (metadata.AttentionPage, error) {
-		if _, e := d.owner(r); e != nil {
-			return metadata.AttentionPage{}, e
-		}
-		limit := 25
-		if value := r.URL.Query().Get("limit"); value != "" {
-			n, e := strconv.Atoi(value)
-			if e != nil || n < 1 || n > 50 {
-				return metadata.AttentionPage{}, &apierror.Error{Code: "invalid_request"}
+	for _, route := range []struct{ id, path string }{{"get_metadata_attention", "/v1/libraries/{id}/metadata/attention"}, {"get_server_metadata_attention", "/v1/admin/metadata/attention"}} {
+		v1Route(registry, apikit.Metadata{ID: route.id, Method: "GET", Path: route.path, Summary: "List unmatched and uncertain titles with their best candidates", Access: apikit.Owner, Requires: apikit.ScopeLibrary, Lane: apikit.Browsing, Cost: apikit.PageSized, Status: 200, Query: []string{"cursor", "limit", "includeInProgress"}, Errors: failures}, func(ctx context.Context, r *http.Request, _ noBody) (metadata.AttentionPage, error) {
+			if _, e := d.owner(r); e != nil {
+				return metadata.AttentionPage{}, e
 			}
-			limit = n
+			limit := 25
+			if value := r.URL.Query().Get("limit"); value != "" {
+				n, e := strconv.Atoi(value)
+				if e != nil || n < 1 || n > 50 {
+					return metadata.AttentionPage{}, &apierror.Error{Code: "invalid_request"}
+				}
+				limit = n
+			}
+			if d.Metadata == nil {
+				return metadata.AttentionPage{}, errMetadataUnavailable()
+			}
+			include := true
+			if raw := r.URL.Query().Get("includeInProgress"); raw != "" {
+				var err error
+				include, err = strconv.ParseBool(raw)
+				if err != nil {
+					return metadata.AttentionPage{}, &apierror.Error{Code: "invalid_request"}
+				}
+			}
+			out, e := d.Metadata.AttentionFiltered(ctx, r.PathValue("id"), r.URL.Query().Get("cursor"), limit, include)
+			if e != nil {
+				return out, metadataAttentionError(e)
+			}
+			_, e = d.owner(r)
+			return out, e
+		})
+	}
+	v1Route(registry, apikit.Metadata{ID: "get_metadata_attention_counts", Method: "GET", Path: "/v1/admin/metadata/attention/counts", Summary: "Count titles waiting for attention per library and across the server", Access: apikit.Owner, Requires: apikit.ScopeLibrary, Lane: apikit.Browsing, Cost: apikit.PageSized, Status: 200, Errors: failures}, func(ctx context.Context, r *http.Request, _ noBody) (metadata.AttentionCounts, error) {
+		if _, err := d.owner(r); err != nil {
+			return metadata.AttentionCounts{}, err
 		}
 		if d.Metadata == nil {
-			return metadata.AttentionPage{}, errMetadataUnavailable()
+			return metadata.AttentionCounts{}, errMetadataUnavailable()
 		}
-		out, e := d.Metadata.Attention(ctx, r.PathValue("id"), r.URL.Query().Get("cursor"), limit)
-		if e != nil {
-			return out, metadataAttentionError(e)
-		}
-		_, e = d.owner(r)
-		return out, e
+		return d.Metadata.AttentionCounts(ctx)
 	})
+
 	v1Route(registry, apikit.Metadata{ID: "post_metadata_attention", Method: "POST", Path: "/v1/libraries/{id}/metadata/attention", Summary: "Accept a candidate, search, enter a provider ID or dismiss a title", Access: apikit.Owner, Requires: apikit.ScopeLibrary, Lane: apikit.Browsing, Cost: apikit.Constant, Status: 202, BodyLimit: 4096, Errors: failures}, func(ctx context.Context, r *http.Request, in metadata.AttentionCommand) (attentionReceipt, error) {
 		p, e := d.owner(r)
 		if e != nil {

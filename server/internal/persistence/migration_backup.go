@@ -132,5 +132,15 @@ func ReclaimSpace(ctx context.Context, db *sql.DB) error {
 	if err != nil {
 		return err
 	}
+	var remaining, pageSize int64
+	if err = write.Tx().QueryRowContext(ctx, "PRAGMA freelist_count").Scan(&remaining); err != nil {
+		return err
+	}
+	if err = write.Tx().QueryRowContext(ctx, "PRAGMA page_size").Scan(&pageSize); err != nil {
+		return err
+	}
+	if _, err = write.Tx().ExecContext(ctx, `UPDATE database_maintenance_status SET last_ran_ms=?,last_reclaimed_bytes=? WHERE singleton=1`, time.Now().UnixMilli(), max(0, int64(free)-remaining)*pageSize); err != nil {
+		return err
+	}
 	return write.Commit()
 }

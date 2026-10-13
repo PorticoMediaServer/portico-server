@@ -19,6 +19,7 @@ let clock = Date.UTC(2026, 8, 22, 12);
 const iso = (ms: number) => new Date(ms).toISOString().replace(/\.\d+Z$/, 'Z');
 
 class FakeAuthServer {
+ role=viewer.role;
   generation = 1;
   access = new Map<string, {generation: number; expires: number}>();
   refresh = 'refresh_000000000001';
@@ -36,7 +37,7 @@ class FakeAuthServer {
   headers: Record<string, string>[] = [];
   constructor() { this.access.set('access_1', {generation: 1, expires: clock + 15 * MIN}); }
   envelope(access: string, refresh: string, generation: number) {
-    return {accessToken: access, refreshToken: refresh, deviceId: 'dev_1', expiresAt: iso(this.access.get(access)!.expires), viewer, sessionFamilyId: 'family_1', tokenGeneration: String(generation), authorizationHorizon: iso(clock + 90 * 24 * 60 * MIN)};
+    return {accessToken: access, refreshToken: refresh, deviceId: 'dev_1', expiresAt: iso(this.access.get(access)!.expires), viewer:{...viewer,role:this.role}, sessionFamilyId: 'family_1', tokenGeneration: String(generation), authorizationHorizon: iso(clock + 90 * 24 * 60 * MIN)};
   }
   initial(): LocalSession { return parseLocalSession(this.envelope('access_1', this.refresh, 1)); }
   expireAccess() { for (const v of this.access.values()) v.expires = clock - 1; }
@@ -75,7 +76,7 @@ class FakeAuthServer {
       const token = headers.authorization?.replace(/^Bearer /, '') ?? '';
       const a = this.access.get(token);
       if (this.revoked || !a || a.expires <= clock) return json(401, {error: {code: 'unauthorized'}});
-      return json(200, {viewer});
+      return json(200, {viewer:{...viewer,role:this.role}});
     }
     if (url.pathname === '/v1/direct/sign-in') return json(401, {error: {code: 'unauthorized'}});
     return json(404, {error: {code: 'not_found'}});
@@ -428,4 +429,18 @@ test('two tabs with no lock between them (plain HTTP) send one renewal request i
   assert.equal(new Set(ids).size, 1, 'both tabs named the same request');
   assert.equal(store.peek()!.session.refreshToken, 'refresh_000000000002');
   assert.equal(store.peek()!.pendingRefresh, undefined);
+});
+
+
+test('live role changes refresh the viewer and protected record before token renewal',async t=>{
+ const {server,store,timers,events,tab}=setup(t);const {refresher}=tab();
+ server.role='member';timers.advance(30_000);await settle();
+ assert.equal(refresher.current().viewer.role,'member');assert.equal(store.peek()!.session.viewer.role,'member');assert.equal(events.rotated.at(-1)!.viewer.role,'member');assert.equal(server.rotations,0);
+ server.role='admin';assert.equal(await refresher.permissionDenied(),true);assert.equal(refresher.current().viewer.role,'admin');
+ const viewers=new ViewerService();viewers.select(ORIGIN,server.initial());server.role='member';assert.equal(viewers.rotate({...refresher.current(),viewer:{...refresher.current().viewer,role:'member'}}),true);
+});
+
+test('credential renewal accepts the server’s current role without changing viewer identity',async t=>{
+ const {server,tab}=setup(t);const {refresher}=tab();server.role='member';server.expireAccess();
+ await refresher.recover('access_1');assert.equal(refresher.current().viewer.role,'member');assert.equal(server.rotations,1);
 });

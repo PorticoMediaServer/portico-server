@@ -154,13 +154,18 @@ func TestReportedPathsScanOnlyTheReportedFolders(t *testing.T) {
 		t.Fatalf("reports were not consumed: %d %v", waiting, err)
 	}
 
-	// Reporting the folder a file was removed from lets the run see it is gone.
+	// Reporting a known removed file marks it missing before the queued scan runs.
 	report, err = s.ReportPaths(ctx, []string{filepath.Join(media, "Alpha (2000)", "Alpha (2000).mp4")}, nil)
 	if err != nil || len(report.Jobs) != 1 || report.Paths[0].Folder != "Alpha (2000)" {
 		t.Fatalf("removed file report: %v %+v", err, report)
 	}
+
+	var missingState string
+	if err = db.QueryRow(`SELECT state FROM inventory_objects WHERE relative_path=?`, filepath.Join("Alpha (2000)", "Alpha (2000).mp4")).Scan(&missingState); err != nil || missingState != "missing" {
+		t.Fatal("removal was not immediate", missingState, err)
+	}
 	finish(report.Jobs[0])
-	if err = db.QueryRow(`SELECT missing_observations FROM inventory_objects WHERE relative_path=?`, filepath.Join("Alpha (2000)", "Alpha (2000).mp4")).Scan(&alphaObservations); err != nil || alphaObservations != 1 {
+	if err = db.QueryRow(`SELECT missing_observations FROM inventory_objects WHERE relative_path=?`, filepath.Join("Alpha (2000)", "Alpha (2000).mp4")).Scan(&alphaObservations); err != nil || alphaObservations < 1 {
 		t.Fatalf("the removed file was not noticed: %d %v", alphaObservations, err)
 	}
 

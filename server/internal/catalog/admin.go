@@ -82,6 +82,7 @@ type AdminJobs struct {
 	NextCursor string     `json:"nextCursor"`
 }
 type AdminRequest struct {
+	AssetID                                                   string
 	ServerID, ViewerFence, Profile, LibraryID, Status, Cursor string
 	Limit                                                     int
 }

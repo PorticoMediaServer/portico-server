@@ -280,6 +280,24 @@ func (s *Store) save(ctx context.Context, a Authority, in SourceInput, refresh b
 	if e != nil || status == "published" {
 		return result, e
 	}
+
+	for begin := 0; begin < len(data.choices); begin += StageBatch {
+		end := min(begin+StageBatch, len(data.choices))
+		e = s.transaction(ctx, a, true, func(tx *sql.Tx) error {
+			if err := staging(ctx, tx, in.RequestID); err != nil {
+				return err
+			}
+			for _, c := range data.choices[begin:end] {
+				if _, err := tx.ExecContext(ctx, `INSERT INTO live_channel_choices(generation_id,channel_key,name,group_name) VALUES(?,?,?,?) ON CONFLICT DO NOTHING`, generation, c.key, c.name, c.group); err != nil {
+					return err
+				}
+			}
+			return nil
+		})
+		if e != nil {
+			return Source{}, e
+		}
+	}
 	ranges, e := data.ranges()
 	if e != nil {
 		return Source{}, e

@@ -1,3 +1,4 @@
+import {parseFFmpegValidation,type FFmpegValidation} from './storage-status.ts';
 /** Selected-server operations wire contract. No Hosted transport is accepted. */
 import {parsePreferenceSnapshot,type DeviceClass,type PreferencePatch,type PreferenceScope} from './preferences.ts';
 import {parseTelemetryReading,parseTelemetrySample,parseTranscodeCapacity,type TelemetryWindow} from './telemetry.ts';
@@ -33,7 +34,7 @@ export type RuntimeSettings=TranscodingSettings&{
 };
 export type MissingTitlesRule='immediately'|'after_days'|'never';
 export const MISSING_TITLES_RULES:readonly MissingTitlesRule[]=Object.freeze(['immediately','after_days','never']);
-export type SettingsDocument={revision:number;digest:string;requested:RuntimeSettings;effective:RuntimeSettings;activeRevision:number;restartFields:string[];registryRevision:string};
+export type SettingsDocument={ffmpegValidation?:FFmpegValidation;revision:number;digest:string;requested:RuntimeSettings;effective:RuntimeSettings;activeRevision:number;restartFields:string[];registryRevision:string};
 export type Diagnostic={platform:'web'|'ios'|'tvos';state:'idle'|'starting'|'playing'|'paused'|'buffering'|'failed'|'unknown';online:boolean};
 export type FeedbackStatus='open'|'in-progress'|'resolved'|'closed';
 export type FeedbackReport={id:string;createdAt:number;updatedAt:number;revision:number;status:FeedbackStatus;category:string;message:string;itemId?:string;diagnostic?:Diagnostic;contextAvailable:boolean;events?:{sequence:number;at:number;revision:number;status:FeedbackStatus;reply:string;actorClass:'owner'|'admin'|'viewer'}[]};
@@ -58,7 +59,7 @@ function revision(v:Record<string,any>){if(!integer(v.revision)||v.revision<1)in
 export function parseSettings(v:unknown):SettingsDocument{
  const d=base(v);revision(d);if(!/^[a-f0-9]{64}$/.test(d.digest)||!integer(d.activeRevision)||!Array.isArray(d.restartFields))invalid();
  for(const key of ['requested','effective']){const s=base(d[key]);if(!text(s.name,100)||typeof s.transcodingEnabled!=='boolean')invalid();for(const key of ['serverCap','perAccountCap'])if(s[key]!==null&&(!integer(s[key])||s[key]<1||s[key]>1000000))invalid(); for(const key of ['diagnosticDays','notificationDays','jobDays'])if(!integer(s[key])||s[key]<1||s[key]>(key==='notificationDays'?180:30))invalid();if(!integer(s.playHistoryDays)||s.playHistoryDays>36500)invalid();checkTranscoding(s);checkOwnerDocument(s);if(typeof s['home.communityActivityEnabled']!=='boolean')invalid();}
- return d as SettingsDocument;
+ return {...d,...(d.ffmpegValidation?{ffmpegValidation:parseFFmpegValidation(d.ffmpegValidation)}:{})} as SettingsDocument;
 }
 function checkOwnerDocument(s:Record<string,any>){
  if(!integer(s.analysisStorageGiB)||s.analysisStorageGiB<1||s.analysisStorageGiB>16384||!integer(s.analysisStageStorageMiB)||s.analysisStageStorageMiB<1||s.analysisStageStorageMiB>4096||s.analysisStageStorageMiB>s.analysisStorageGiB*1024)invalid();

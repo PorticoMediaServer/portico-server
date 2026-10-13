@@ -589,6 +589,10 @@ func TestAFileCanBeSplitOffATitleItWasWronglyGroupedWith(t *testing.T) {
 	b, bToken := identityFile(t, c, "m", "/m/Dune 1984 fan edit.mkv", 720)
 	film := attachMovie(t, c, "m", a, "/m/Dune (1984).mkv", "Dune", 1984)
 	attachMovie(t, c, "m", b, "/m/Dune 1984 fan edit.mkv", "Dune", 1984)
+
+	if _, err := c.DB.Exec(`INSERT INTO download_preparations(id,profile_key,authority,account_id,profile_id,item_id,item_public,library_id,source_asset_id,quality,origin,state,created_ms,updated_ms) VALUES('split-claim','viewer','local','account','profile',?,?,'m',?,'original','item','queued',0,0)`, film, c.Public(film), bToken); err != nil {
+		t.Fatal(err)
+	}
 	s := New(c.DB)
 	separate, err := s.SeparateInventoryVersion(context.Background(), "m", "object:"+bToken, "r", func(*sql.Tx) error { return nil })
 	if err != nil || separate == "" || separate == c.Public(film) {
@@ -599,6 +603,11 @@ func TestAFileCanBeSplitOffATitleItWasWronglyGroupedWith(t *testing.T) {
 	}
 	if n := rows(t, c, `SELECT count(*) FROM catalog_asset_links WHERE entity_id=? AND asset_id=?`, c.ID(separate), b); n != 1 {
 		t.Fatal("the split file is not on its own title")
+	}
+
+	var downloadTitle string
+	if err = c.DB.QueryRow(`SELECT item_public FROM download_preparations WHERE id='split-claim'`).Scan(&downloadTitle); err != nil || downloadTitle != separate {
+		t.Fatal("download did not follow its file", downloadTitle, err)
 	}
 	// The decision is remembered: reading the name again does not regroup it.
 	c.Write(func(ctx context.Context, tx *sql.Tx) error {

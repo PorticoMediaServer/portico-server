@@ -14,7 +14,7 @@ export type ContentEntryKind = 'movie' | 'show' | 'season' | 'episode' | 'artist
 export type ContentHeading = Readonly<{ key: string; fallback: string; params?: Readonly<Record<string, string>> }>;
 export type ContentEntry = Readonly<{
   id: string; libraryId?: string; kind: ContentEntryKind; title: string; subtitle?: string; posterUrl?: string; backdropUrl?: string; /** An episode's own still, never inherited from the season or show (absent when it has none). */ stillUrl?: string; overview?: string;
-  available?: boolean; watched?:boolean;trackNumber?:number;episodeNumber?:number;seasonNumber?:number; duration?: number; progressSeconds?: number; addedAt?: string | null; count?: number;
+  missing?:boolean; available?: boolean; watched?:boolean;discNumber?:number;trackNumber?:number;episodeNumber?:number;seasonNumber?:number; duration?: number; progressSeconds?: number; addedAt?: string | null; count?: number;
   year?: number; contentRating?: string; genres?: readonly string[]; watchlisted?: boolean;
   /** The album artist; album entities only (M24, behind presence). Absent on older servers. */
   artist?: Readonly<{ id: string; name: string }>;
@@ -153,7 +153,8 @@ function entry(v: unknown): ContentEntry {
   if (v.addedAt === null || string(v.addedAt, 128)) row.addedAt = v.addedAt as string | null; else left('entry.addedAt', v.addedAt);
   if (count(v.count)) row.count = v.count; else left('entry.count', v.count);
   if(typeof v.watched==='boolean')row.watched=v.watched;else left('entry.watched',v.watched);
-  for(const field of ['trackNumber','episodeNumber','seasonNumber'] as const){if(count(v[field]))row[field]=v[field] as number;else left('entry.'+field,v[field]);}
+  for(const field of ['discNumber','trackNumber','episodeNumber','seasonNumber'] as const){if(count(v[field]))row[field]=v[field] as number;else left('entry.'+field,v[field]);}
+  if (typeof v.missing === 'boolean') row.missing=v.missing;
   if (typeof v.available === 'boolean') row.available = v.available; else left('entry.available', v.available);
   for (const field of ['duration', 'progressSeconds'] as const) {
     if (finite(v[field])) row[field] = v[field] as number; else left('entry.' + field, v[field]);

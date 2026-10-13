@@ -22,8 +22,8 @@ import (
 // A reported path is mapped to the library folder it lies in and narrowed to a
 // directory Portico already knows: the path itself when it is a known folder,
 // the folder of a known file, otherwise the nearest known folder above it
-// (which is where a new folder or file will be found). Nothing on disk is
-// touched while the request is answered.
+// (which is where a new folder or file will be found). A removed, known file is marked missing immediately when its parent
+// and verified library root are readable; other changes are queued.
 //
 // The scan that follows is an ordinary incremental run seeded with those
 // directories instead of the library folder's root. Everything else about it
@@ -111,6 +111,10 @@ func (s *Service) ReportPaths(ctx context.Context, paths []string, authorize fun
 	if len(paths) == 0 || len(paths) > MaxReportedPaths {
 		return out, ErrPathReport
 	}
+	evidence, err := s.removedPathEvidence(ctx, paths)
+	if err != nil {
+		return out, err
+	}
 	gated, err := dbwork.Begin(ctx, s.db, dbwork.ClassBackgroundMedia)
 	if err != nil {
 		return out, err
@@ -121,6 +125,9 @@ func (s *Service) ReportPaths(ctx context.Context, paths []string, authorize fun
 		if err = authorize(tx); err != nil {
 			return out, err
 		}
+	}
+	if err = applyReportedMissingTx(ctx, tx, evidence); err != nil {
+		return out, err
 	}
 	rows, err := tx.QueryContext(ctx, `SELECT s.id,s.library_id,s.configured_root,s.root,s.incarnation FROM library_sources s WHERE s.enabled=1 AND NOT EXISTS(SELECT 1 FROM dvr_private_libraries d WHERE d.library_id=s.library_id) ORDER BY s.id LIMIT 4096`)
 	if err != nil {

@@ -166,6 +166,29 @@ export const routes = [
     "status": 200
   },
   {
+    "id": "control_admin_session",
+    "method": "POST",
+    "path": "/v1/admin/sessions/{id}/controls",
+    "summary": "Pause, resume or seek any administrable session using its current revision",
+    "access": "admin_scope",
+    "adminScope": "playback",
+    "requires": "playback",
+    "lane": "media",
+    "cost": "constant",
+    "bodyLimit": 4096,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "invalid_request",
+      "revision_required",
+      "revision_mismatch",
+      "session_ended",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
     "id": "create_access_token",
     "method": "POST",
     "path": "/v1/me/access-tokens",
@@ -508,6 +531,47 @@ export const routes = [
     "status": 204
   },
   {
+    "id": "delete_title_version",
+    "method": "DELETE",
+    "path": "/v1/admin/items/{id}/files/{fileId}",
+    "summary": "Delete one file version while keeping its title and personal state",
+    "access": "owner",
+    "requires": "library",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 4096,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "invalid_request",
+      "revision_mismatch",
+      "confirmation_mismatch",
+      "administration_unavailable",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
+    "id": "delete_upgrade_copy",
+    "method": "DELETE",
+    "path": "/v1/admin/storage/upgrade-copies/{id}",
+    "summary": "Delete one automatic pre-upgrade database copy",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "invalid_request",
+      "internal"
+    ],
+    "status": 204
+  },
+  {
     "id": "delete_v1_items_itemId_subtitles_resource",
     "method": "DELETE",
     "path": "/v1/items/{itemId}/subtitles/{resource}",
@@ -668,6 +732,29 @@ export const routes = [
     "errors": [
       "unauthorized",
       "not_permitted",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
+    "id": "get_admin_session_controls",
+    "method": "GET",
+    "path": "/v1/admin/sessions/{id}/controls",
+    "summary": "Read the transport controls and current revision of any administrable session",
+    "access": "admin_scope",
+    "adminScope": "playback",
+    "requires": "playback",
+    "lane": "media",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "invalid_request",
+      "revision_required",
+      "revision_mismatch",
+      "session_ended",
       "internal"
     ],
     "status": 200
@@ -1330,7 +1417,9 @@ export const routes = [
     "cost": "page_sized",
     "bodyLimit": 0,
     "query": [
-      "scope"
+      "scope",
+      "cursor",
+      "limit"
     ],
     "errors": [
       "invalid_request",
@@ -1511,6 +1600,33 @@ export const routes = [
     "status": 200
   },
   {
+    "id": "get_library_inventory",
+    "method": "GET",
+    "path": "/v1/admin/libraries/{id}/inventory",
+    "summary": "Read one page of library files, optionally locating one file by its asset id",
+    "access": "owner",
+    "requires": "library",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "sourceId",
+      "assetId",
+      "state",
+      "cursor",
+      "limit"
+    ],
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "invalid_request",
+      "not_found",
+      "revision_mismatch",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
     "id": "get_library_settings",
     "method": "GET",
     "path": "/v1/admin/libraries/{id}/settings",
@@ -1624,8 +1740,30 @@ export const routes = [
     "bodyLimit": 0,
     "query": [
       "cursor",
-      "limit"
+      "limit",
+      "includeInProgress"
     ],
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "invalid_request",
+      "revision_mismatch",
+      "rate_limited",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
+    "id": "get_metadata_attention_counts",
+    "method": "GET",
+    "path": "/v1/admin/metadata/attention/counts",
+    "summary": "Count titles waiting for attention per library and across the server",
+    "access": "owner",
+    "requires": "library",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
     "errors": [
       "unauthorized",
       "not_permitted",
@@ -1809,6 +1947,32 @@ export const routes = [
     "status": 200
   },
   {
+    "id": "get_remote_playback_controls",
+    "method": "GET",
+    "path": "/v1/playback/controls",
+    "summary": "Read what this profile is playing on each device and the controls it may use",
+    "access": "device",
+    "requires": "playback",
+    "lane": "media",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "cursor",
+      "limit"
+    ],
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "invalid_request",
+      "revision_required",
+      "revision_mismatch",
+      "session_ended",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
     "id": "get_saved_content",
     "method": "GET",
     "path": "/v1/content",
@@ -1879,6 +2043,32 @@ export const routes = [
     "status": 200
   },
   {
+    "id": "get_server_metadata_attention",
+    "method": "GET",
+    "path": "/v1/admin/metadata/attention",
+    "summary": "List unmatched and uncertain titles with their best candidates",
+    "access": "owner",
+    "requires": "library",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "cursor",
+      "limit",
+      "includeInProgress"
+    ],
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "invalid_request",
+      "revision_mismatch",
+      "rate_limited",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
     "id": "get_shows_screen_metadata",
     "method": "GET",
     "path": "/v1/shows/{id}/metadata/screen",
@@ -1892,6 +2082,25 @@ export const routes = [
       "unauthorized",
       "not_permitted",
       "not_found",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
+    "id": "get_storage_status",
+    "method": "GET",
+    "path": "/v1/admin/storage/status",
+    "summary": "Read upgrade copies, active storage destinations and reclaimable database space",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "invalid_request",
       "internal"
     ],
     "status": 200
@@ -2788,6 +2997,60 @@ export const routes = [
     "status": 200
   },
   {
+    "id": "list_live_source_channels",
+    "method": "GET",
+    "path": "/v1/admin/live/sources/{id}/channels",
+    "summary": "List source choices, including groups and channels excluded from the line-up",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "cursor",
+      "limit",
+      "q"
+    ],
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "invalid_request",
+      "invalid_cursor",
+      "revision_mismatch",
+      "administration_unavailable",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
+    "id": "list_live_source_groups",
+    "method": "GET",
+    "path": "/v1/admin/live/sources/{id}/groups",
+    "summary": "List source choices, including groups and channels excluded from the line-up",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "cursor",
+      "limit",
+      "q"
+    ],
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "invalid_request",
+      "invalid_cursor",
+      "revision_mismatch",
+      "administration_unavailable",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
     "id": "list_live_sources",
     "method": "GET",
     "path": "/v1/admin/live-sources",
@@ -3494,6 +3757,29 @@ export const routes = [
     "status": 200
   },
   {
+    "id": "preview_delete_title_version",
+    "method": "POST",
+    "path": "/v1/admin/items/{id}/files/{fileId}/delete/preview",
+    "summary": "Delete one file version while keeping its title and personal state",
+    "access": "owner",
+    "requires": "library",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 4096,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "invalid_request",
+      "revision_mismatch",
+      "confirmation_mismatch",
+      "administration_unavailable",
+      "internal"
+    ],
+    "status": 200,
+    "optionalBody": true
+  },
+  {
     "id": "preview_invitation",
     "method": "POST",
     "path": "/v1/access/invitations/preview",
@@ -4133,6 +4419,26 @@ export const routes = [
       "invalid_request",
       "not_found",
       "administration_unavailable",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
+    "id": "revoke_profile_downloads",
+    "method": "POST",
+    "path": "/v1/admin/downloads/revoke",
+    "summary": "Withdraw one bounded page of a profile’s download claims and offline permissions; repeat while more is true",
+    "access": "owner",
+    "requires": "playback",
+    "lane": "security",
+    "cost": "page_sized",
+    "bodyLimit": 4096,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "invalid_request",
+      "idempotency_key_reused",
+      "downloads_unavailable",
       "internal"
     ],
     "status": 200

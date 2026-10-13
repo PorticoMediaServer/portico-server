@@ -120,26 +120,13 @@ export async function libraryFolders(api:TitleIdentityApi,libraryId:string,signa
  */
 export async function findLibraryFile(api:TitleIdentityApi,libraryId:string,fileId:string,options:Readonly<{folderId?:string;signal?:AbortSignal;onProgress?:(looked:number)=>void}>={}):Promise<LibraryFileRecord|undefined>{
  if(!id(libraryId)||!id(fileId))invalid('file to find');
- let cursor='',looked=0;
- const seen=new Set<string>();
- // A library of a few hundred thousand files is 5,000 pages; past that the list is not ending.
- for(let page=0;page<10000;page++){
-  const params=new URLSearchParams({limit:'40',state:'available'});
-  if(options.folderId)params.set('sourceId',options.folderId);
-  if(cursor)params.set('cursor',cursor);
-  const raw=await api.request<unknown>(libraryBase(libraryId)+'/inventory?'+params,'GET',undefined,options.signal);
-  if(!obj(raw)||!Array.isArray(raw.items)||raw.items.length>40||(raw.nextCursor!==undefined&&!text(raw.nextCursor,4096)))invalid('library files');
-  for(const row of raw.items){
-   if(!obj(row)||row.assetId!==fileId)continue;
-   if(!id(row.id)||!id(row.revision))invalid('library file');
-   return Object.freeze({objectId:row.id,revision:row.revision});
-  }
-  looked+=raw.items.length;
-  options.onProgress?.(looked);
-  const next=typeof raw.nextCursor==='string'?raw.nextCursor:'';
-  if(!next||seen.has(next))return undefined;
-  seen.add(next);cursor=next;
- }
+
+ const params=new URLSearchParams({limit:'40',assetId:fileId,state:'available'});
+ if(options.folderId)params.set('sourceId',options.folderId);
+ const raw=await api.request<unknown>(libraryBase(libraryId)+'/inventory?'+params,'GET',undefined,options.signal);
+ if(!obj(raw)||!Array.isArray(raw.items)||raw.items.length>40)invalid('library files');
+ options.onProgress?.(raw.items.length);
+ for(const row of raw.items){if(!obj(row)||row.assetId!==fileId)continue;if(!id(row.id)||!id(row.revision))invalid('library file');return Object.freeze({objectId:row.id,revision:row.revision});}
  return undefined;
 }
 

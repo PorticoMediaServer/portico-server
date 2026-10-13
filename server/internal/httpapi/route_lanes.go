@@ -9,10 +9,23 @@ package httpapi
 // /v1/downloads/settings is an ordinary read while /v1/downloads/artifacts/{grant}
 // is a byte stream — and a prefix rule cannot tell them apart.
 var routeLanes = map[string]string{
-	"POST /v1/admin/maintenance/background-pause":     laneAdmin,
-	"GET /v1/admin/resource-usage":                    laneAdmin,
-	"GET /v1/admin/libraries/{id}/scans/{job}/issues": laneBrowsing,
-	"GET /v1/admin/catalogue/failures":                laneDefault,
+	"POST /v1/admin/maintenance/background-pause":             laneAdmin,
+	"GET /v1/admin/resource-usage":                            laneAdmin,
+	"GET /v1/admin/libraries/{id}/scans/{job}/issues":         laneBrowsing,
+	"GET /v1/admin/catalogue/failures":                        laneDefault,
+	"POST /v1/admin/items/{id}/files/{fileId}/delete/preview": laneAdminHeavy,
+	"DELETE /v1/admin/items/{id}/files/{fileId}":              laneAdminHeavy,
+	"GET /v1/admin/metadata/attention":                        laneBrowsing,
+	"GET /v1/admin/metadata/attention/counts":                 laneBrowsing,
+	"GET /v1/admin/storage/status":                            laneAdmin,
+	"DELETE /v1/admin/storage/upgrade-copies/{id}":            laneAdmin,
+	"GET /v1/admin/live/sources/{id}/groups":                  laneAdmin,
+	"GET /v1/admin/live/sources/{id}/channels":                laneAdmin,
+	"GET /v1/admin/sessions/{id}/controls":                    laneMedia,
+	"POST /v1/admin/sessions/{id}/controls":                   laneMedia,
+	"GET /v1/playback/controls":                               laneMedia,
+	"POST /v1/admin/downloads/revoke":                         laneSecurityFence,
+
 	// What travels with a download, and the requests a device started
 	// (downloads_routes.go).
 	"GET /v1/items/{itemId}/download-options":                                    laneBrowsing,

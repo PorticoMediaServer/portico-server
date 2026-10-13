@@ -1,0 +1,134 @@
+package playbackv1
+
+import (
+	"context"
+	"strconv"
+
+	"portico.local/server/internal/identity"
+)
+
+type ControlCommand struct {
+	Action           string `json:"action"`
+	PositionMs       *int64 `json:"positionMs,omitempty"`
+	ExpectedRevision string `json:"expectedRevision"`
+}
+type SessionControls struct {
+	SessionID  string   `json:"sessionId"`
+	Revision   string   `json:"revision"`
+	State      string   `json:"state"`
+	PositionMs int64    `json:"positionMs"`
+	Actions    []string `json:"actions"`
+}
+
+func controlsOf(r row) SessionControls {
+	actions := []string{}
+	if r.ended == 0 {
+		actions = []string{"pause", "resume", "seek", "stop"}
+	}
+	return SessionControls{r.id, strconv.Itoa(r.revision), r.state, r.position, actions}
+}
+func (s *Service) AdminControls(ctx context.Context, id string) (SessionControls, error) {
+	r, err := loadRow(ctx, s.DB, id)
+	if err != nil {
+		return SessionControls{}, err
+	}
+	r = s.expireIfLapsed(ctx, r)
+	return controlsOf(r), nil
+}
+
+// AdminControl is deliberately limited to transport. It cannot change tracks,
+// versions, policy or the viewer associated with a playback session.
+func (s *Service) AdminControl(ctx context.Context, id string, in ControlCommand) (SessionControls, error) {
+	r, err := loadRow(ctx, s.DB, id)
+	if err != nil {
+		return SessionControls{}, err
+	}
+	if in.ExpectedRevision == "" {
+		return SessionControls{}, ErrRevisionRequired
+	}
+	var change Change
+	switch in.Action {
+	case "pause":
+		change.State = "paused"
+	case "resume":
+		change.State = "playing"
+	case "seek":
+		if in.PositionMs == nil {
+			return SessionControls{}, &FieldError{Path: "positionMs"}
+		}
+		change.Seek = &SeekRequest{PositionMs: *in.PositionMs, ID: "admin-" + strconv.Itoa(r.revision+1)}
+	default:
+		return SessionControls{}, &FieldError{Path: "action"}
+	}
+	// The edge has authorized an administrator. Apply the transport to the
+	// session's device using the normal CAS, conversion seek and event pipeline.
+	c := Caller{DeviceID: r.device, Principal: identity.Principal{Viewer: identity.Viewer{AccountID: r.account, ProfileID: r.profile, Authority: r.authority}}}
+	_, err = s.Patch(ctx, c, id, in.ExpectedRevision, change)
+	if err != nil {
+		return SessionControls{}, err
+	}
+	return s.AdminControls(ctx, id)
+}
+
+type RemotePlayback struct {
+	SessionControls
+	Device AdminName  `json:"device"`
+	Item   *AdminItem `json:"item,omitempty"`
+	Kind   string     `json:"kind"`
+}
+type RemoteControlsDocument struct {
+	Items      []RemotePlayback `json:"items"`
+	NextCursor string           `json:"nextCursor"`
+}
+
+// RemoteControls is one document for this profile's playback on all its devices,
+// including paired receivers. It grants no control of another viewer's session.
+func (s *Service) RemoteControls(ctx context.Context, c Caller, cursor string, limit int) (RemoteControlsDocument, error) {
+	out := RemoteControlsDocument{Items: []RemotePlayback{}}
+	if limit == 0 {
+		limit = 50
+	}
+	if limit < 1 || limit > 100 || len(cursor) > 160 {
+		return out, &FieldError{Path: "limit"}
+	}
+	rows, err := s.DB.QueryContext(ctx, `SELECT id FROM playback_v1_sessions WHERE authority=? AND account_id=? AND profile_id=? AND ended_ms=0 AND lease_expires_ms>? AND id>? ORDER BY id LIMIT ?`, c.Principal.Authority, c.Principal.AccountID, c.Principal.ProfileID, s.now().UnixMilli(), cursor, limit+1)
+	if err != nil {
+		return out, err
+	}
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err = rows.Scan(&id); err != nil {
+			rows.Close()
+			return out, err
+		}
+		ids = append(ids, id)
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return out, err
+	}
+	if len(ids) > limit {
+		ids = ids[:limit]
+		out.NextCursor = ids[len(ids)-1]
+	}
+	for _, id := range ids {
+		r, e := loadRow(ctx, s.DB, id)
+		if e != nil {
+			return out, e
+		}
+		item := (*AdminItem)(nil)
+		if r.item != "" {
+			var title string
+			if e = s.DB.QueryRowContext(ctx, `SELECT title FROM catalog_entities WHERE public_id=pid_blob(?)`, r.item).Scan(&title); e != nil {
+				return out, e
+			}
+			item = &AdminItem{r.item, title}
+		}
+		device := AdminName{ID: r.device, Name: r.device}
+		_ = s.DB.QueryRowContext(ctx, `SELECT name FROM identity_devices WHERE id=?`, r.device).Scan(&device.Name)
+		out.Items = append(out.Items, RemotePlayback{controlsOf(r), device, item, r.kind})
+	}
+	return out, nil
+}

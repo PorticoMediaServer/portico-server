@@ -63,7 +63,7 @@ func (s *Service) Inventory(ctx context.Context, r AdminRequest, source, state s
 	if err := s.read().QueryRowContext(ctx, `SELECT revision FROM library_configuration WHERE library_id=?`, r.LibraryID).Scan(&out.Revision); err != nil {
 		return out, err
 	}
-	scope := cursorScope{Profile: r.Profile, Viewer: r.ViewerFence, Library: r.LibraryID, View: "inventory", Entity: source, Category: state, Limit: r.Limit}
+	scope := cursorScope{Profile: r.Profile, Viewer: r.ViewerFence, Library: r.LibraryID, View: "inventory", Entity: source, Category: state + ":" + r.AssetID, Limit: r.Limit}
 	rev := ContentRevision{Catalog: out.Revision}
 	after := ""
 	if r.Cursor != "" {
@@ -78,6 +78,13 @@ func (s *Service) Inventory(ctx context.Context, r AdminRequest, source, state s
 	if source != "" {
 		where += ` AND s.id=?`
 		args = append(args, source)
+	}
+	if r.AssetID != "" {
+		if len(r.AssetID) > 160 {
+			return out, ErrAdminQuery
+		}
+		where += ` AND o.asset_id=?`
+		args = append(args, r.AssetID)
 	}
 	switch state {
 	case "missing":
@@ -296,6 +303,15 @@ func (s *Service) SeparateInventoryVersion(ctx context.Context, library, object,
 	if err = tx.QueryRowContext(ctx, `SELECT path FROM catalog_assets WHERE id=?`, assetID).Scan(&path); err != nil {
 		return "", err
 	}
+
+	link := compactcatalog.Link{}
+	var end sql.NullFloat64
+	if err = tx.QueryRowContext(ctx, `SELECT part_index,start_seconds,end_seconds,edition FROM catalog_asset_links WHERE entity_id=? AND asset_id=?`, current, assetID).Scan(&link.Part, &link.Start, &end, &link.Edition); err != nil {
+		return "", err
+	}
+	if end.Valid {
+		link.End = &end.Float64
+	}
 	if err = compactcatalog.UnlinkAssetTx(ctx, tx, current, assetID); err != nil {
 		return "", err
 	}
@@ -316,7 +332,10 @@ func (s *Service) SeparateInventoryVersion(ctx context.Context, library, object,
 			return "", err
 		}
 	}
-	if err = compactcatalog.LinkAssetTx(ctx, tx, separate, assetID, compactcatalog.Link{}); err != nil {
+	if err = moveDownloadClaimsTx(ctx, tx, current, separate, asset); err != nil {
+		return "", err
+	}
+	if err = compactcatalog.LinkAssetTx(ctx, tx, separate, assetID, link); err != nil {
 		return "", err
 	}
 	if err = compactcatalog.TouchEntityTx(ctx, tx, separate); err != nil {
