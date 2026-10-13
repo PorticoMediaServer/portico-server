@@ -57,7 +57,7 @@ type Editing = {kind: 'add'} | {kind: 'rename'; profile: ManagedProfile} | {kind
  * reorder, protect with a PIN and delete profiles, and change pictures; every profile can reach
  * its own limits and recover a forgotten PIN. Other profiles see the list and a note.
  */
-export function LocalProfiles({onLimits}: {onLimits: (profile: {id: string; name: string}) => void}) {
+export function LocalProfiles({onLimits}: {onLimits: (profile: {id: string; name: string; readOnly?: boolean}) => void}) {
   const {t} = useI18n();
   const session = useSession();
   const {api} = session;
@@ -157,7 +157,7 @@ export function LocalProfiles({onLimits}: {onLimits: (profile: {id: string; name
               else if (id === 'changePin') setEditing({kind: 'pin', profile: p});
               else if (id === 'removePin') setRemovingPin(p);
               else if (id === 'forgotPin') setRecovering({id: p.id, name: p.name});
-              else if (id === 'limits') onLimits({id: p.id, name: p.name});
+              else if (id === 'limits') onLimits({id: p.id, name: p.name, readOnly: !manage});
               else if (id === 'up') move(p, -1);
               else if (id === 'down') move(p, 1);
               else if (id === 'delete') void startDelete(p);

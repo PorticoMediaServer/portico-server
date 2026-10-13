@@ -44,7 +44,8 @@ const permissions = (t: I18n['t']): {key: 'allowDownloads' | 'allowLiveTv' | 'al
 
 /** What one profile may see and do. C45: the signed-in account session is the authority (the server
  * refuses a profile session), so saving asks for no password. */
-export function ProfileRestrictionsDialog({profile, onClose}: {profile: {id: string; name: string}; onClose: () => void}) {
+export function ProfileRestrictionsDialog({profile, onClose}: {profile: {id: string; name: string; /** This viewer may look but not change (a profile opening its own limits). */ readOnly?: boolean}; onClose: () => void}) {
+  const readOnly = !!profile.readOnly;
   const {t} = useI18n();
   const identity = useIdentity();
   const systems = useLoaded<readonly RatingSystem[]>(s => identity.ratingSystems(s), [identity], 'profiles');
@@ -68,12 +69,14 @@ export function ProfileRestrictionsDialog({profile, onClose}: {profile: {id: str
   return (
     <>
       <Dialog open onOpenChange={o => !o && onClose()} title={t('limits.title', {name: profile.name})} description={t('limits.subtitle')} width={560}
-        actions={<><Button variant="ghost" label={t('action.cancel')} onClick={onClose} /><Button variant="primary" label={t('limits.save')} disabled={!dirty} loading={busy} onClick={() => void save()} /></>}>
+        actions={readOnly ? <Button variant="primary" label={t('action.close')} onClick={onClose} /> : <><Button variant="ghost" label={t('action.cancel')} onClick={onClose} /><Button variant="primary" label={t('limits.save')} disabled={!dirty} loading={busy} onClick={() => void save()} /></>}>
+        {readOnly ? <Notice tone="info" compact>{t('limits.readOnly')}</Notice> : null}
         {failure ? <Notice tone="error" compact>{failure}</Notice> : null}
         {(current.error || systems.error) && !draft ? <Notice tone="error" action={{label: t('action.tryAgain'), onClick: () => { current.reload(); systems.reload(); }}}>{current.error || systems.error}</Notice> : null}
         {!draft && !current.error ? <Loading label={t('limits.loading')} /> : null}
         {draft ? (
-          <div style={{display: 'flex', flexDirection: 'column', gap: 16}}>
+          // Looking without changing: every control is there to be read, none can be operated.
+          <fieldset disabled={readOnly} style={{display: 'flex', flexDirection: 'column', gap: 16, border: 0, padding: 0, margin: 0, minWidth: 0}}>
             <SettingsGroup title={t('limits.content')}>
               <SettingsRow label={t('limits.ratingSystem')} control={<Select hideLabel label={t('limits.ratingSystem')} value={draft.ratingSystem} onChange={e => setDraft({...draft, ratingSystem: e.target.value, maximumAgeRating: ''})} options={(systems.value ?? []).map(s => ({value: s.id, label: t('web.limits.systemOption', {name: s.name, region: s.region})}))} />} />
               <SettingsRow label={t('limits.highestRating')} help={t('limits.highestRatingHelp')} control={<Select hideLabel label={t('limits.highestRating')} value={draft.maximumAgeRating} onChange={e => setDraft({...draft, maximumAgeRating: e.target.value})} options={[{value: '', label: t('limits.noLimit')}, ...(system?.values ?? []).map(v => ({value: v.code, label: t('web.limits.ratingOption', {label: v.label, age: v.minimumAge})}))]} />} />
@@ -83,7 +86,7 @@ export function ProfileRestrictionsDialog({profile, onClose}: {profile: {id: str
             <SettingsGroup title={t('limits.features')}>
               {permissions(t).map(p => <SettingsRow key={p.key} label={p.label} help={p.help} control={<Switch checked={draft[p.key]} onCheckedChange={v => setDraft({...draft, [p.key]: v})} label={p.label} />} />)}
             </SettingsGroup>
-          </div>
+          </fieldset>
         ) : null}
       </Dialog>
     </>

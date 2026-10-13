@@ -714,6 +714,7 @@ export const enUS = {
   'limits.confirmTitle': 'Confirm it’s you',
   'limits.confirmBody': 'Enter this account’s password to change a profile’s limits.',
   'limits.save': 'Save limits',
+  'limits.readOnly': 'These are the limits set for this profile. Only the main profile can change them.',
   'limits.saved': 'Limits saved for {name}',
   'limits.loading': 'Loading limits',
 
