@@ -4017,6 +4017,9 @@
             ],
             "type": "object"
           },
+          "replan": {
+            "type": "boolean"
+          },
           "seek": {
             "properties": {
               "id": {
@@ -237581,6 +237584,9 @@
                       "mode"
                     ],
                     "type": "object"
+                  },
+                  "replan": {
+                    "type": "boolean"
                   },
                   "seek": {
                     "properties": {

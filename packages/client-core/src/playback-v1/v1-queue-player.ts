@@ -400,7 +400,7 @@ export class V1QueuePlayer implements QueueController {
     const session = this.session;
     if (this.disposed || !session || this.nativeOwns()) return;
     if (choices.quality && !('step' in choices.quality && choices.quality.step)) this.qualityOverride = choices.quality;
-    const change: SessionChange = {...(choices.quality ? {quality: choices.quality} : {}), ...(choices.versionId ? {versionId: choices.versionId} : {}), ...(choices.audioTrackId ? {audio: {trackId: choices.audioTrackId}} : {}),
+    const change: SessionChange = {...(choices.replan ? {replan: true} : {}), ...(choices.quality ? {quality: choices.quality} : {}), ...(choices.versionId ? {versionId: choices.versionId} : {}), ...(choices.audioTrackId ? {audio: {trackId: choices.audioTrackId}} : {}),
       ...(choices.subtitleTrackId !== undefined ? {subtitles: {trackId: choices.subtitleTrackId, ...(choices.subtitleTrackId !== null && choices.subtitleDelivery ? {delivery: choices.subtitleDelivery} : {})}} : {}),
       ...(choices.subtitleTrackId && choices.subtitleOffsetMs !== undefined && Number.isFinite(choices.subtitleOffsetMs) ? {subtitleOffsetMs: Math.round(choices.subtitleOffsetMs)} : {}), ...(choices.throughputKbps !== undefined ? {throughputKbps: choices.throughputKbps} : {})};
     if (!Object.keys(change).length) return;

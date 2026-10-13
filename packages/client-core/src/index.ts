@@ -956,7 +956,8 @@ export class PlaybackService {
   changePlayback(choices:PlaybackChoices):Promise<void>{
     const itemId=this.snapshot.itemId,session=this.snapshot.session;
     if(!itemId||!session||this.snapshot.channel||this.lastPlay?.local||!this.queue?.changePlayback)return Promise.resolve();
-    this.lastPlay={...(this.lastPlay?.itemId===itemId?this.lastPlay:{itemId}),choices:{...(this.lastPlay?.itemId===itemId?this.lastPlay.choices:undefined),...choices}};
+    const {replan: _replan, ...remembered}=choices;
+    this.lastPlay={...(this.lastPlay?.itemId===itemId?this.lastPlay:{itemId}),choices:{...(this.lastPlay?.itemId===itemId?this.lastPlay.choices:undefined),...remembered}};
     return this.queue.changePlayback(choices);
   }
   /** The choices the current title was started or last changed with. */

@@ -45,6 +45,8 @@ export type StartOptions = Readonly<{
 }>;
 
 export type SessionChange = Readonly<{
+  /** Re-read this device's capability document and plan again, keeping this occurrence's choices. */
+  replan?: boolean;
   state?: 'playing' | 'paused';
   versionId?: string;
   partIndex?: number;
@@ -63,7 +65,7 @@ export type SessionChange = Readonly<{
 }>;
 
 /** Whether a change makes the server plan the presentation again (so the player's position should travel with it). */
-const replans = (c: SessionChange) => c.versionId !== undefined || c.partIndex !== undefined || c.audio !== undefined || c.quality !== undefined || c.subtitles !== undefined || c.failure !== undefined;
+const replans = (c: SessionChange) => c.replan === true || c.versionId !== undefined || c.partIndex !== undefined || c.audio !== undefined || c.quality !== undefined || c.subtitles !== undefined || c.failure !== undefined;
 
 export type Timers = Readonly<{now?: () => number; setTimer?: (fn: () => void, ms: number) => unknown; clearTimer?: (t: unknown) => void}>;
 

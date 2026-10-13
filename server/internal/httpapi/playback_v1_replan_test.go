@@ -339,3 +339,47 @@ func TestPlaybackV1CapabilityOverridesAndEngines(t *testing.T) {
 		t.Fatalf("an old document version: %d %s", w.Code, w.Body.String())
 	}
 }
+
+// Publishing a player-setting change can re-plan the current occurrence instead
+// of starting the queue entry again and dropping its quality/audio choices.
+func TestPlaybackV1ReplanUsesCurrentCapabilitiesAndKeepsChoices(t *testing.T) {
+	f := replanFixtureV1(t, 2)
+	filmStreams(t, f, 0, 12_000_000)
+	var created playbackv1.QueueReply
+	f.call("POST", "/v1/queues", map[string]string{"Idempotency-Key": "capability-replan-queue"}, map[string]any{"owner": "device", "segments": []any{map[string]any{"source": queueItems(f.items...)}}, "startPlayback": map[string]any{"state": "playing"}}, 201, &created)
+	if created.Session == nil || created.Session.Queue == nil {
+		t.Fatal("queue start lost its session")
+	}
+	original := *created.Session
+	path := "/v1/playback/sessions/" + original.ID
+	var chosen playbackv1.SessionView
+	f.call("PATCH", path, map[string]string{"If-Match": original.Revision}, map[string]any{"quality": map[string]any{"mode": "fixed", "id": "720p"}, "audio": map[string]any{"trackId": "a2"}, "versionId": f.records[0].Token, "subtitles": map[string]any{"trackId": "off"}, "state": "paused", "positionMs": 42_000}, 200, &chosen)
+
+	caps := webCapabilities()
+	mpv := map[string]any{}
+	for key, value := range nativeEngine(caps) {
+		mpv[key] = value
+	}
+	mpv["name"] = "mpv"
+	caps["engines"].(map[string]any)["mpv"] = mpv
+	caps["engineSetting"] = "mpv"
+	f.call("PUT", "/v1/me/devices/current/capabilities", nil, caps, 204, nil)
+
+	var replanned playbackv1.SessionView
+	f.call("PATCH", path, map[string]string{"If-Match": chosen.Revision}, map[string]any{"replan": true, "positionMs": 61_000}, 200, &replanned)
+	if replanned.ID != original.ID || replanned.Queue == nil || *replanned.Queue != *original.Queue || replanned.State != "paused" || replanned.VersionID != chosen.VersionID {
+		t.Fatalf("re-plan replaced the occurrence/queue/state: %+v", replanned)
+	}
+	p := replanned.Presentation
+	if p.Engine != playback.EngineMPV || p.Generation != chosen.Presentation.Generation+1 || p.StartPositionMs != 61_000 || p.Quality == nil || p.Quality.Mode != "fixed" || p.Quality.ID != "720p" || p.AudioTrackID != "a2" {
+		t.Fatalf("re-plan lost current capabilities, position or choices: %+v", p)
+	}
+	var stored string
+	if err := f.db.QueryRow(`SELECT request FROM playback_v1_sessions WHERE id=?`, original.ID).Scan(&stored); err != nil {
+		t.Fatal(err)
+	}
+	var request map[string]any
+	if err := json.Unmarshal([]byte(stored), &request); err != nil || request["subtitles"].(map[string]any)["trackId"] != "off" || request["replan"] != nil {
+		t.Fatalf("stored choices/action: %s %v", stored, err)
+	}
+}

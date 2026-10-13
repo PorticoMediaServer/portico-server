@@ -3804,6 +3804,9 @@ export const schemas = {
         ],
         "type": "object"
       },
+      "replan": {
+        "type": "boolean"
+      },
       "seek": {
         "properties": {
           "id": {

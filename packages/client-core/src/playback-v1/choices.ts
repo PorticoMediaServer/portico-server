@@ -11,6 +11,8 @@ import {qualityLadder, type QualityId, type QualityInForce, type QualityRequest}
 
 /** Choices that travel with a start or a change of the live session. Absent fields are left as they are. */
 export type PlaybackChoices = Readonly<{
+  /** Plan from the newly published device capabilities without starting another occurrence. One request only. */
+  replan?: boolean;
   quality?: QualityRequest;
   /** The version of the title to play (an edition, another copy). */
   versionId?: string;

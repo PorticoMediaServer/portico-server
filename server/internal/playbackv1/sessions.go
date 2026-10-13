@@ -96,6 +96,9 @@ type StartRequest struct {
 
 // Change is PATCH /v1/playback/sessions/{id} (spec §5.7).
 type Change struct {
+	// Replan applies the playing device's current capability document without
+	// replacing the occurrence or its saved version, quality and track choices.
+	Replan           bool             `json:"replan,omitempty"`
 	State            string           `json:"state,omitempty"`
 	VersionID        string           `json:"versionId,omitempty"`
 	PartIndex        *int             `json:"partIndex,omitempty"`

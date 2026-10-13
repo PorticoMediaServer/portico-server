@@ -92,6 +92,9 @@ func (s *Service) Patch(ctx context.Context, c Caller, id, ifMatch string, chang
 		return SessionView{}, &RevisionError{Current: s.view(r), Revision: int64(r.revision)}
 	}
 	if isChannel(r) {
+		if change.Replan {
+			return SessionView{}, &FieldError{Path: "replan"}
+		}
 		return s.patchChannel(ctx, c, r, change)
 	}
 	if c.DeviceID != r.device {
@@ -112,7 +115,7 @@ func (s *Service) Patch(ctx context.Context, c Caller, id, ifMatch string, chang
 		next.State = change.State
 	}
 	presentation := r.presentationView()
-	bytes := false
+	bytes := change.Replan
 	if change.VersionID != "" && change.VersionID != r.version {
 		next.VersionID, bytes = change.VersionID, true
 	}

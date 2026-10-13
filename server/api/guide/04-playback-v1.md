@@ -143,3 +143,12 @@ configuration uses `PORTICO_OPENSUBTITLES_API_KEY`, optional
 `PORTICO_OPENSUBTITLES_USER_AGENT`. Username/password enable login and renewal;
 credentials and tokens never appear in subtitle responses. The former immutable
 `PORTICO_OPENSUBTITLES_TOKEN` input is removed.
+
+
+After publishing a changed device capability document, request
+`PATCH /v1/playback/sessions/{id}` with `{"replan":true,"positionMs":61000}`
+and the session's current `If-Match`. The new presentation uses the playing
+device's current capabilities while retaining the session, queue entry, state,
+version, quality and track choices. The action is not saved as a preference or
+replayed on the next title. Live channel sessions reject this action; their
+wall-clock transport has its own controls.
