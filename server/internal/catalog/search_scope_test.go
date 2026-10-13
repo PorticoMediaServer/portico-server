@@ -85,3 +85,15 @@ func TestAggregatePagingBeyondTwoHundred(t *testing.T) {
 		t.Fatalf("range %+v %v", direct, err)
 	}
 }
+
+func TestSearchContainerYears(t *testing.T) {
+	c := catalogtest.Open(t)
+	library := c.Library("tv", "TV", "tv", "/tv")
+	newer := c.Show(library, "Harbor New", 2025)
+	c.Show(library, "Harbor Old", 2000)
+	c.Drain()
+	out, err := New(c.DB).Search(context.Background(), SearchRequest{Viewer: Viewer{Profile: "p", Fence: "f", Libraries: []string{"tv"}}, Q: "Harbor", Group: "shows", Sort: "releaseYear", Direction: "desc", Limit: 10})
+	if err != nil || len(out.Groups) != 1 || len(out.Groups[0].Items) != 2 || out.Groups[0].Items[0].ID != newer.Public {
+		t.Fatalf("container year order %+v %v", out, err)
+	}
+}
