@@ -63,6 +63,7 @@ func (s *Service) applySubtitles(ctx context.Context, p identity.Principal, item
 			m.Mode, m.ResourceID, m.ResourceRevision = "track", chosen.ID, chosen.Revision
 			m.OffsetUS = strconv.FormatInt(offsetMs*1000, 10)
 		}
+		priorGeneration := plan.Generation
 		if plan, err = s.Subtitles.Select(ctx, p, item, media, m); err != nil {
 			if errors.Is(err, subtitles.ErrUnsupported) {
 				return out, playback.ErrTranscodingDisabled
@@ -73,7 +74,9 @@ func (s *Service) applySubtitles(ctx context.Context, p identity.Principal, item
 			}
 			return out, &FieldError{Path: "subtitles.trackId"}
 		}
-		out.replaced = plan.Presentation
+		if plan.Generation != priorGeneration {
+			out.replaced = plan.Presentation
+		}
 	}
 	if plan.Selected != nil && plan.DocumentURL != "" && plan.Renderer == "external_text" {
 		out.files = append(out.files, SubtitleFile{TrackID: plan.Selected.ID, Format: "webvtt", URL: plan.DocumentURL + ".vtt"})

@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"io"
-	"strconv"
 
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/mediaartifact"
@@ -135,13 +134,6 @@ func deliveries(base, format string) []Delivery {
 		if out[i].Format == "vobsub" {
 			out[i].CompanionURL = base + "/original.sub"
 		}
-	}
-	return out
-}
-func FontURLs(base string, a RenderAsset) FontFiles {
-	out := FontFiles{Fonts: []FontFile{}, SkippedCount: a.SkippedFonts}
-	for i, f := range a.Fonts {
-		out.Fonts = append(out.Fonts, FontFile{Name: f.Name, URL: base + "/fonts/" + strconv.Itoa(i)})
 	}
 	return out
 }

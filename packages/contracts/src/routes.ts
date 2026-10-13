@@ -264,7 +264,16 @@ export const routes = [
       "not_permitted",
       "not_found",
       "invalid_request",
-      "internal"
+      "internal",
+      "subtitle_unavailable",
+      "subtitle_not_found",
+      "subtitle_renderer_platform_unsupported",
+      "subtitle_renderer_configuration",
+      "subtitle_conflict",
+      "subtitle_operation_conflict",
+      "subtitle_capacity",
+      "subtitle_unsupported",
+      "subtitle_invalid_input"
     ],
     "status": 200
   },
@@ -785,7 +794,16 @@ export const routes = [
       "not_permitted",
       "not_found",
       "invalid_request",
-      "internal"
+      "internal",
+      "subtitle_unavailable",
+      "subtitle_not_found",
+      "subtitle_renderer_platform_unsupported",
+      "subtitle_renderer_configuration",
+      "subtitle_conflict",
+      "subtitle_operation_conflict",
+      "subtitle_capacity",
+      "subtitle_unsupported",
+      "subtitle_invalid_input"
     ],
     "status": 200,
     "responseContentType": "image/jpeg"
@@ -807,7 +825,16 @@ export const routes = [
       "not_permitted",
       "not_found",
       "invalid_request",
-      "internal"
+      "internal",
+      "subtitle_unavailable",
+      "subtitle_not_found",
+      "subtitle_renderer_platform_unsupported",
+      "subtitle_renderer_configuration",
+      "subtitle_conflict",
+      "subtitle_operation_conflict",
+      "subtitle_capacity",
+      "subtitle_unsupported",
+      "subtitle_invalid_input"
     ],
     "status": 200
   },
@@ -828,7 +855,16 @@ export const routes = [
       "not_permitted",
       "not_found",
       "invalid_request",
-      "internal"
+      "internal",
+      "subtitle_unavailable",
+      "subtitle_not_found",
+      "subtitle_renderer_platform_unsupported",
+      "subtitle_renderer_configuration",
+      "subtitle_conflict",
+      "subtitle_operation_conflict",
+      "subtitle_capacity",
+      "subtitle_unsupported",
+      "subtitle_invalid_input"
     ],
     "status": 200
   },
@@ -849,7 +885,16 @@ export const routes = [
       "not_permitted",
       "not_found",
       "invalid_request",
-      "internal"
+      "internal",
+      "subtitle_unavailable",
+      "subtitle_not_found",
+      "subtitle_renderer_platform_unsupported",
+      "subtitle_renderer_configuration",
+      "subtitle_conflict",
+      "subtitle_operation_conflict",
+      "subtitle_capacity",
+      "subtitle_unsupported",
+      "subtitle_invalid_input"
     ],
     "status": 200,
     "responseContentType": "image/jpeg"
@@ -871,7 +916,16 @@ export const routes = [
       "not_permitted",
       "not_found",
       "invalid_request",
-      "internal"
+      "internal",
+      "subtitle_unavailable",
+      "subtitle_not_found",
+      "subtitle_renderer_platform_unsupported",
+      "subtitle_renderer_configuration",
+      "subtitle_conflict",
+      "subtitle_operation_conflict",
+      "subtitle_capacity",
+      "subtitle_unsupported",
+      "subtitle_invalid_input"
     ],
     "status": 200
   },
@@ -892,7 +946,16 @@ export const routes = [
       "not_permitted",
       "not_found",
       "invalid_request",
-      "internal"
+      "internal",
+      "subtitle_unavailable",
+      "subtitle_not_found",
+      "subtitle_renderer_platform_unsupported",
+      "subtitle_renderer_configuration",
+      "subtitle_conflict",
+      "subtitle_operation_conflict",
+      "subtitle_capacity",
+      "subtitle_unsupported",
+      "subtitle_invalid_input"
     ],
     "status": 200
   },
@@ -913,7 +976,16 @@ export const routes = [
       "not_permitted",
       "not_found",
       "invalid_request",
-      "internal"
+      "internal",
+      "subtitle_unavailable",
+      "subtitle_not_found",
+      "subtitle_renderer_platform_unsupported",
+      "subtitle_renderer_configuration",
+      "subtitle_conflict",
+      "subtitle_operation_conflict",
+      "subtitle_capacity",
+      "subtitle_unsupported",
+      "subtitle_invalid_input"
     ],
     "status": 200,
     "responseContentType": "font/ttf"
@@ -935,7 +1007,16 @@ export const routes = [
       "not_permitted",
       "not_found",
       "invalid_request",
-      "internal"
+      "internal",
+      "subtitle_unavailable",
+      "subtitle_not_found",
+      "subtitle_renderer_platform_unsupported",
+      "subtitle_renderer_configuration",
+      "subtitle_conflict",
+      "subtitle_operation_conflict",
+      "subtitle_capacity",
+      "subtitle_unsupported",
+      "subtitle_invalid_input"
     ],
     "status": 200,
     "responseContentType": "text/x-ssa"
@@ -957,7 +1038,16 @@ export const routes = [
       "not_permitted",
       "not_found",
       "invalid_request",
-      "internal"
+      "internal",
+      "subtitle_unavailable",
+      "subtitle_not_found",
+      "subtitle_renderer_platform_unsupported",
+      "subtitle_renderer_configuration",
+      "subtitle_conflict",
+      "subtitle_operation_conflict",
+      "subtitle_capacity",
+      "subtitle_unsupported",
+      "subtitle_invalid_input"
     ],
     "status": 200,
     "responseContentType": "text/plain"
@@ -979,7 +1069,16 @@ export const routes = [
       "not_permitted",
       "not_found",
       "invalid_request",
-      "internal"
+      "internal",
+      "subtitle_unavailable",
+      "subtitle_not_found",
+      "subtitle_renderer_platform_unsupported",
+      "subtitle_renderer_configuration",
+      "subtitle_conflict",
+      "subtitle_operation_conflict",
+      "subtitle_capacity",
+      "subtitle_unsupported",
+      "subtitle_invalid_input"
     ],
     "status": 200,
     "responseContentType": "application/octet-stream"
@@ -1001,7 +1100,16 @@ export const routes = [
       "not_permitted",
       "not_found",
       "invalid_request",
-      "internal"
+      "internal",
+      "subtitle_unavailable",
+      "subtitle_not_found",
+      "subtitle_renderer_platform_unsupported",
+      "subtitle_renderer_configuration",
+      "subtitle_conflict",
+      "subtitle_operation_conflict",
+      "subtitle_capacity",
+      "subtitle_unsupported",
+      "subtitle_invalid_input"
     ],
     "status": 200,
     "responseContentType": "text/x-ssa"
@@ -1023,7 +1131,16 @@ export const routes = [
       "not_permitted",
       "not_found",
       "invalid_request",
-      "internal"
+      "internal",
+      "subtitle_unavailable",
+      "subtitle_not_found",
+      "subtitle_renderer_platform_unsupported",
+      "subtitle_renderer_configuration",
+      "subtitle_conflict",
+      "subtitle_operation_conflict",
+      "subtitle_capacity",
+      "subtitle_unsupported",
+      "subtitle_invalid_input"
     ],
     "status": 200,
     "responseContentType": "application/octet-stream"
@@ -1045,7 +1162,16 @@ export const routes = [
       "not_permitted",
       "not_found",
       "invalid_request",
-      "internal"
+      "internal",
+      "subtitle_unavailable",
+      "subtitle_not_found",
+      "subtitle_renderer_platform_unsupported",
+      "subtitle_renderer_configuration",
+      "subtitle_conflict",
+      "subtitle_operation_conflict",
+      "subtitle_capacity",
+      "subtitle_unsupported",
+      "subtitle_invalid_input"
     ],
     "status": 200,
     "responseContentType": "application/octet-stream"
@@ -1067,7 +1193,16 @@ export const routes = [
       "not_permitted",
       "not_found",
       "invalid_request",
-      "internal"
+      "internal",
+      "subtitle_unavailable",
+      "subtitle_not_found",
+      "subtitle_renderer_platform_unsupported",
+      "subtitle_renderer_configuration",
+      "subtitle_conflict",
+      "subtitle_operation_conflict",
+      "subtitle_capacity",
+      "subtitle_unsupported",
+      "subtitle_invalid_input"
     ],
     "status": 200,
     "responseContentType": "text/vtt"
@@ -1089,7 +1224,16 @@ export const routes = [
       "not_permitted",
       "not_found",
       "invalid_request",
-      "internal"
+      "internal",
+      "subtitle_unavailable",
+      "subtitle_not_found",
+      "subtitle_renderer_platform_unsupported",
+      "subtitle_renderer_configuration",
+      "subtitle_conflict",
+      "subtitle_operation_conflict",
+      "subtitle_capacity",
+      "subtitle_unsupported",
+      "subtitle_invalid_input"
     ],
     "status": 200,
     "responseContentType": "font/ttf"
@@ -1111,7 +1255,16 @@ export const routes = [
       "not_permitted",
       "not_found",
       "invalid_request",
-      "internal"
+      "internal",
+      "subtitle_unavailable",
+      "subtitle_not_found",
+      "subtitle_renderer_platform_unsupported",
+      "subtitle_renderer_configuration",
+      "subtitle_conflict",
+      "subtitle_operation_conflict",
+      "subtitle_capacity",
+      "subtitle_unsupported",
+      "subtitle_invalid_input"
     ],
     "status": 200,
     "responseContentType": "text/x-ssa"
@@ -1133,7 +1286,16 @@ export const routes = [
       "not_permitted",
       "not_found",
       "invalid_request",
-      "internal"
+      "internal",
+      "subtitle_unavailable",
+      "subtitle_not_found",
+      "subtitle_renderer_platform_unsupported",
+      "subtitle_renderer_configuration",
+      "subtitle_conflict",
+      "subtitle_operation_conflict",
+      "subtitle_capacity",
+      "subtitle_unsupported",
+      "subtitle_invalid_input"
     ],
     "status": 200,
     "responseContentType": "text/plain"
@@ -1155,7 +1317,16 @@ export const routes = [
       "not_permitted",
       "not_found",
       "invalid_request",
-      "internal"
+      "internal",
+      "subtitle_unavailable",
+      "subtitle_not_found",
+      "subtitle_renderer_platform_unsupported",
+      "subtitle_renderer_configuration",
+      "subtitle_conflict",
+      "subtitle_operation_conflict",
+      "subtitle_capacity",
+      "subtitle_unsupported",
+      "subtitle_invalid_input"
     ],
     "status": 200,
     "responseContentType": "application/octet-stream"
@@ -1177,7 +1348,16 @@ export const routes = [
       "not_permitted",
       "not_found",
       "invalid_request",
-      "internal"
+      "internal",
+      "subtitle_unavailable",
+      "subtitle_not_found",
+      "subtitle_renderer_platform_unsupported",
+      "subtitle_renderer_configuration",
+      "subtitle_conflict",
+      "subtitle_operation_conflict",
+      "subtitle_capacity",
+      "subtitle_unsupported",
+      "subtitle_invalid_input"
     ],
     "status": 200,
     "responseContentType": "text/x-ssa"
@@ -1199,7 +1379,16 @@ export const routes = [
       "not_permitted",
       "not_found",
       "invalid_request",
-      "internal"
+      "internal",
+      "subtitle_unavailable",
+      "subtitle_not_found",
+      "subtitle_renderer_platform_unsupported",
+      "subtitle_renderer_configuration",
+      "subtitle_conflict",
+      "subtitle_operation_conflict",
+      "subtitle_capacity",
+      "subtitle_unsupported",
+      "subtitle_invalid_input"
     ],
     "status": 200,
     "responseContentType": "application/octet-stream"
@@ -1221,7 +1410,16 @@ export const routes = [
       "not_permitted",
       "not_found",
       "invalid_request",
-      "internal"
+      "internal",
+      "subtitle_unavailable",
+      "subtitle_not_found",
+      "subtitle_renderer_platform_unsupported",
+      "subtitle_renderer_configuration",
+      "subtitle_conflict",
+      "subtitle_operation_conflict",
+      "subtitle_capacity",
+      "subtitle_unsupported",
+      "subtitle_invalid_input"
     ],
     "status": 200,
     "responseContentType": "application/octet-stream"
@@ -1477,7 +1675,16 @@ export const routes = [
       "not_permitted",
       "not_found",
       "invalid_request",
-      "internal"
+      "internal",
+      "subtitle_unavailable",
+      "subtitle_not_found",
+      "subtitle_renderer_platform_unsupported",
+      "subtitle_renderer_configuration",
+      "subtitle_conflict",
+      "subtitle_operation_conflict",
+      "subtitle_capacity",
+      "subtitle_unsupported",
+      "subtitle_invalid_input"
     ],
     "status": 200
   },
@@ -1498,7 +1705,16 @@ export const routes = [
       "not_permitted",
       "not_found",
       "invalid_request",
-      "internal"
+      "internal",
+      "subtitle_unavailable",
+      "subtitle_not_found",
+      "subtitle_renderer_platform_unsupported",
+      "subtitle_renderer_configuration",
+      "subtitle_conflict",
+      "subtitle_operation_conflict",
+      "subtitle_capacity",
+      "subtitle_unsupported",
+      "subtitle_invalid_input"
     ],
     "status": 200
   },
@@ -1519,7 +1735,16 @@ export const routes = [
       "not_permitted",
       "not_found",
       "invalid_request",
-      "internal"
+      "internal",
+      "subtitle_unavailable",
+      "subtitle_not_found",
+      "subtitle_renderer_platform_unsupported",
+      "subtitle_renderer_configuration",
+      "subtitle_conflict",
+      "subtitle_operation_conflict",
+      "subtitle_capacity",
+      "subtitle_unsupported",
+      "subtitle_invalid_input"
     ],
     "status": 200
   },
@@ -1540,7 +1765,16 @@ export const routes = [
       "not_permitted",
       "not_found",
       "invalid_request",
-      "internal"
+      "internal",
+      "subtitle_unavailable",
+      "subtitle_not_found",
+      "subtitle_renderer_platform_unsupported",
+      "subtitle_renderer_configuration",
+      "subtitle_conflict",
+      "subtitle_operation_conflict",
+      "subtitle_capacity",
+      "subtitle_unsupported",
+      "subtitle_invalid_input"
     ],
     "status": 200
   },
@@ -1561,7 +1795,16 @@ export const routes = [
       "not_permitted",
       "not_found",
       "invalid_request",
-      "internal"
+      "internal",
+      "subtitle_unavailable",
+      "subtitle_not_found",
+      "subtitle_renderer_platform_unsupported",
+      "subtitle_renderer_configuration",
+      "subtitle_conflict",
+      "subtitle_operation_conflict",
+      "subtitle_capacity",
+      "subtitle_unsupported",
+      "subtitle_invalid_input"
     ],
     "status": 200
   },
@@ -1582,7 +1825,16 @@ export const routes = [
       "not_permitted",
       "not_found",
       "invalid_request",
-      "internal"
+      "internal",
+      "subtitle_unavailable",
+      "subtitle_not_found",
+      "subtitle_renderer_platform_unsupported",
+      "subtitle_renderer_configuration",
+      "subtitle_conflict",
+      "subtitle_operation_conflict",
+      "subtitle_capacity",
+      "subtitle_unsupported",
+      "subtitle_invalid_input"
     ],
     "status": 200
   },
@@ -1722,7 +1974,16 @@ export const routes = [
       "not_permitted",
       "not_found",
       "invalid_request",
-      "internal"
+      "internal",
+      "subtitle_unavailable",
+      "subtitle_not_found",
+      "subtitle_renderer_platform_unsupported",
+      "subtitle_renderer_configuration",
+      "subtitle_conflict",
+      "subtitle_operation_conflict",
+      "subtitle_capacity",
+      "subtitle_unsupported",
+      "subtitle_invalid_input"
     ],
     "status": 200
   },
@@ -1743,7 +2004,16 @@ export const routes = [
       "not_permitted",
       "not_found",
       "invalid_request",
-      "internal"
+      "internal",
+      "subtitle_unavailable",
+      "subtitle_not_found",
+      "subtitle_renderer_platform_unsupported",
+      "subtitle_renderer_configuration",
+      "subtitle_conflict",
+      "subtitle_operation_conflict",
+      "subtitle_capacity",
+      "subtitle_unsupported",
+      "subtitle_invalid_input"
     ],
     "status": 200
   },

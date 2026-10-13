@@ -144,6 +144,12 @@ func manifestDocumentTx(ctx context.Context, tx *sql.Tx, p identity.Principal, i
 	if e != nil || !visible(r, p) || r.SourceID != scope.source || r.sourceSize != scope.size || r.sourceModified != scope.modified {
 		return Resource{}, 0, identity.ErrUnauthorized
 	}
+	if r.sourceEvidence != "" {
+		var expected string
+		if e = tx.QueryRowContext(ctx, `SELECT evidence FROM subtitle_remote_sessions WHERE session_id=?`, session).Scan(&expected); e != nil || expected != r.sourceEvidence {
+			return Resource{}, 0, identity.ErrUnauthorized
+		}
+	}
 	if r.Renderer != "external_text" {
 		var ok bool
 		if e = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM subtitle_original_files WHERE resource_id=? AND revision=? AND part='text')`, id, revision).Scan(&ok); e != nil || !ok {

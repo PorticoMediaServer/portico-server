@@ -31,7 +31,7 @@ export type SubtitleCatalog = Readonly<{
 /** `italic` and `top` are the two presentation facts every player can honour:
  * a cue that is wholly italic, and a cue authored at the top of the picture. */
 export type SubtitleCue=Readonly<{startUs:string;endUs:string;text:string;italic?:boolean;top?:boolean}>;
-export type SubtitleDocument=Readonly<{version:1;timeDomain:'source-relative';cues:readonly SubtitleCue[]}>;
+export type SubtitleDocument=Readonly<{version:1;timeDomain:'source-relative';cues:readonly SubtitleCue[];skippedCues?:number}>;
 export type SubtitleCandidate=Readonly<{id:string;language:string;title:string;attribution:string}>;
 export type SubtitleReceipt=Readonly<{operationId:string;resourceId:string;revision:number;catalogRevision:number;deleted?:boolean}>;
 const record=(v:unknown):v is Record<string,unknown>=>!!v&&typeof v==='object'&&!Array.isArray(v);
@@ -57,6 +57,7 @@ function resource(v:unknown):SubtitleResource{
 }
 function discovery(v:unknown):SubtitleDiscovery{
  if(!record(v)||!id(v.id)||!id(v.sourceId)||!integer(v.revision)||!['sidecar','embedded'].includes(String(v.origin))||!text(v.format,64)||!text(v.language,64)||!text(v.title,160)||typeof v.default!=='boolean'||typeof v.forced!=='boolean'||typeof v.enabled!=='boolean'||v.reason!==undefined&&!text(v.reason,128))invalid();
+ if(v.hearingImpaired!==undefined&&typeof v.hearingImpaired!=='boolean')invalid();
  return Object.freeze({...v}) as SubtitleDiscovery;
 }
 export function validateSubtitlePlan(v:unknown):SubtitlePlan{
@@ -90,6 +91,7 @@ export function validateSubtitleCatalog(v:unknown):SubtitleCatalog{
  * what is really a broken response. */
 export function validateSubtitleDocument(v:unknown):SubtitleDocument{
  if(!record(v)||v.version!==1||v.timeDomain!=='source-relative'||!Array.isArray(v.cues)||v.cues.length>20000)invalid();
+ if(v.skippedCues!==undefined&&(!integer(v.skippedCues,0)||v.skippedCues>4194304))invalid();
  const day=86_400_000_000;let total=0,ordered=true,previous=-1;
  const cues:{startUs:string;endUs:string;text:string;italic?:boolean;top?:boolean;at:number}[]=[];
  for(const c of v.cues as unknown[]){
@@ -105,7 +107,7 @@ export function validateSubtitleDocument(v:unknown):SubtitleDocument{
  }
  if(!cues.length&&v.cues.length)invalid();
  if(!ordered)cues.sort((a,b)=>a.at-b.at);
- return Object.freeze({version:1,timeDomain:'source-relative',cues:Object.freeze(cues.map(({at:_,...cue})=>Object.freeze(cue)))});
+ return Object.freeze({version:1,timeDomain:'source-relative',cues:Object.freeze(cues.map(({at:_,...cue})=>Object.freeze(cue))),...(v.skippedCues===undefined?{}:{skippedCues:v.skippedCues as number})});
 }
 /** One authorised read of the active subtitle document.
  *
@@ -165,7 +167,7 @@ export class SubtitleService {
   try{const result=await this.api.request<unknown>(path,method,body,c.signal);if(!this.active||life!==this.life)throw new Error('Subtitle scope retired.');return result;}finally{clearTimeout(timer);this.controllers.delete(c);}
  }
  private acceptPlan(raw:unknown){const p=validateSubtitlePlan(raw);if(this.target.generation===undefined||p.sessionId!==this.target.sessionId||p.generation<this.target.generation)invalid();
- if(p.presentation){if(!this.transport||!this.transport.install(p.presentation))throw new Error('Subtitle playback scope retired.');}
+ if(p.presentation&&p.generation!==this.target.generation){if(!this.transport||!this.transport.install(p.presentation))throw new Error('Subtitle playback scope retired.');}
  if(p.generation!==this.target.generation){if(!p.presentation)invalid();this.target={itemId:this.target.itemId,sessionId:p.sessionId,generation:p.generation};}if(this.state.plan&&p.revision<this.state.plan.revision)return this.state.plan;this.publish({plan:p});return p;}
  private async plan(){return this.acceptPlan(await this.request(this.selectionPath()));}
  private fail(e:unknown){

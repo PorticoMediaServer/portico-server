@@ -97,6 +97,48 @@ func TestDiscoveredTracksAreImmediatelySelectableAndAutoSelectable(t *testing.T)
 		t.Fatal("revoked reader", e)
 	}
 }
+func TestRemoteDiscoveryAutomaticChoiceAndManifestRequireSessionEvidence(t *testing.T) {
+	for _, expected := range []string{"representation", "replaced"} {
+		t.Run(expected, func(t *testing.T) {
+			f := newSubtitleFixture(t)
+			persistDiscovered(t, f, []Track{{Origin: "embedded", StreamIndex: 3, Format: "srt", Language: "en"}})
+			catalog, e := f.s.List(context.Background(), f.p, f.item.Public)
+			if e != nil {
+				t.Fatal(e)
+			}
+			tx, e := f.db.Begin()
+			if e != nil {
+				t.Fatal(e)
+			}
+			defer tx.Rollback()
+			if _, e = tx.Exec(`UPDATE subtitle_render_revisions SET source_evidence='representation'; INSERT INTO subtitle_remote_sessions VALUES('session',?)`, expected); e != nil {
+				t.Fatal(e)
+			}
+			if e = AutoSelectTx(context.Background(), tx, "session", 1, f.item.Public, f.item.Token, actor(f.p), AutoChoice{Enabled: true, Languages: []string{"en"}}); e != nil {
+				t.Fatal(e)
+			}
+			var selected string
+			if e = tx.QueryRow(`SELECT resource_id FROM playback_subtitle_state WHERE session_id='session'`).Scan(&selected); e != nil {
+				t.Fatal(e)
+			}
+			matched := expected == "representation"
+			if (selected != "") != matched {
+				t.Fatal("incorrect automatic evidence match", selected)
+			}
+			// Even a retained manifest pin must not bypass representation fencing.
+			if _, e = tx.Exec(`INSERT OR IGNORE INTO playback_subtitle_pins VALUES('session',?,1)`, catalog.Resources[0].ID); e != nil {
+				t.Fatal(e)
+			}
+			if e = tx.Commit(); e != nil {
+				t.Fatal(e)
+			}
+			e = f.s.CheckManifestDocument(context.Background(), f.p, f.item.Public, "session", catalog.Resources[0].ID, 1)
+			if matched && e != nil || !matched && !errors.Is(e, identity.ErrUnauthorized) {
+				t.Fatal("incorrect manifest evidence match", e)
+			}
+		})
+	}
+}
 func TestCacheFillSurvivesFirstReaderCancellation(t *testing.T) {
 	f := newSubtitleFixture(t)
 	persistDiscovered(t, f, []Track{{Origin: "embedded", StreamIndex: 3, Format: "srt", Language: "en"}})

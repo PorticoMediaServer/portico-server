@@ -289,6 +289,60 @@ export const errors = [
     "retry": "same_request"
   },
   {
+    "code": "subtitle_capacity",
+    "status": 422,
+    "message": "This subtitle exceeds the supported size, track or cue limit.",
+    "retry": "never"
+  },
+  {
+    "code": "subtitle_conflict",
+    "status": 409,
+    "message": "Subtitles changed. Refresh before applying this edit.",
+    "retry": "after_refresh"
+  },
+  {
+    "code": "subtitle_invalid_input",
+    "status": 400,
+    "message": "Check the subtitle request and try again.",
+    "retry": "never"
+  },
+  {
+    "code": "subtitle_not_found",
+    "status": 404,
+    "message": "This subtitle is not available.",
+    "retry": "never"
+  },
+  {
+    "code": "subtitle_operation_conflict",
+    "status": 409,
+    "message": "This request was already used for a different subtitle edit.",
+    "retry": "never"
+  },
+  {
+    "code": "subtitle_renderer_configuration",
+    "status": 422,
+    "message": "Ask the owner to finish setting up subtitle rendering.",
+    "retry": "never"
+  },
+  {
+    "code": "subtitle_renderer_platform_unsupported",
+    "status": 422,
+    "message": "This server cannot render this subtitle. Choose a text track or a player that supports it.",
+    "retry": "never"
+  },
+  {
+    "code": "subtitle_unavailable",
+    "status": 503,
+    "message": "Subtitles are temporarily unavailable. Try again.",
+    "retry": "same_request"
+  },
+  {
+    "code": "subtitle_unsupported",
+    "status": 422,
+    "message": "This subtitle format or timing cannot be used by this player.",
+    "retry": "never"
+  },
+  {
     "code": "transcode_not_allowed",
     "status": 403,
     "message": "This title needs converting, and converting is turned off for this account.",

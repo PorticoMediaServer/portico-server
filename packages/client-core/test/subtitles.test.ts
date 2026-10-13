@@ -1,11 +1,20 @@
 import {unreadableServerResponse} from '../src/server-messages.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {SubtitleService, validateSubtitlePlan, validateSubtitleCatalog, validateSubtitleDocument, readSubtitleDocument} from '../src/subtitles.ts';
+import {SubtitleService, validateSubtitlePlan, validateSubtitleCatalog, validateSubtitleDocument, validateSubtitleDelivery, readSubtitleDocument} from '../src/subtitles.ts';
 import type {SubtitlePlan,SubtitleResource} from '../src/subtitles.ts';
 import type {LibraryContentApi} from '../src/library-content.ts';
 
 const resource:SubtitleResource={id:'sub',sourceId:'source',revision:1,scope:'personal',language:'en',title:'English',format:'vtt',origin:'upload',rights:'Own transcript',offsetUs:'0',canManage:true,enabled:true};
+test('original delivery contracts retain grant paths, companion files and skipped cue facts',()=>{
+ const base='/v1/media/grant/subtitles/sub/1';
+ assert.equal(validateSubtitleDelivery({format:'ass',url:base+'/original.ssa',fontsUrl:base+'/fonts'}).fontsUrl,base+'/fonts');
+ assert.equal(validateSubtitleDelivery({format:'vobsub',url:base+'/original.idx',companionUrl:base+'/original.sub'}).companionUrl,base+'/original.sub');
+ for(const url of ['https://origin.invalid/sub.ass',base+'/../../private',base+'/original.exe'])assert.throws(()=>validateSubtitleDelivery({format:'ass',url}));
+ const envelope={version:1,timeDomain:'source-relative',cues:[{startUs:'0',endUs:'1',text:'{LAUGHS}'}],skippedCues:2};
+ const doc=validateSubtitleDocument(envelope);assert.equal(doc.skippedCues,2);assert.equal(doc.cues[0].text,'{LAUGHS}');
+ assert.throws(()=>validateSubtitleDocument({...envelope,skippedCues:-1}));
+});
 const target={itemId:'item',sessionId:'session',generation:1};
 function plan(revision=1,selected:SubtitleResource|null=null):SubtitlePlan{return {version:1,sessionId:'session',generation:1,sourceId:'source',revision,catalogRevision:1,renderer:'external_text',mode:selected?'track':'off',offAvailable:true,offsetUs:'0',selected:selected?{...selected,pinned:true}:null,...(selected?{documentUrl:`/v1/media/grant/subtitles/${selected.id}/${selected.revision}`} :{}),resources:[resource],discovered:[]};}
 function catalog(){return {version:1,itemId:'item',revision:1,canShare:false,sources:[{id:'source',durationUs:'100000000',inventoryRevision:1,available:true,timingKnown:true}],resources:[resource],discovered:[],provider:{id:'opensubtitles',enabled:false,reason:'provider_not_configured'}};}

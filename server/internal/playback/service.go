@@ -429,6 +429,11 @@ func (s *Service) create(ctx context.Context, p identity.Principal, item, qualit
 	if pinRows != 1 {
 		return Session{}, ErrStaleOffer
 	}
+	if mode == "remote" && prepared.subtitleEvidence != "" {
+		if _, e = tx.Exec(`INSERT INTO subtitle_remote_sessions VALUES(?,?)`, id, prepared.subtitleEvidence); e != nil {
+			return Session{}, e
+		}
+	}
 	if e = subtitles.AutoSelectTx(ctx, tx, id, generation, item, aid, subtitles.ViewerKey(p.Authority, p.AccountID, p.ProfileID, p.ServerID), automaticSubtitles(values, delivery.Trace)); e != nil {
 		return Session{}, e
 	}
@@ -442,11 +447,6 @@ func (s *Service) create(ctx context.Context, p identity.Principal, item, qualit
 		return Session{}, e
 	}
 	if mode == "remote" {
-		if prepared.subtitleEvidence != "" {
-			if _, e = tx.Exec(`INSERT INTO subtitle_remote_sessions VALUES(?,?)`, id, prepared.subtitleEvidence); e != nil {
-				return Session{}, e
-			}
-		}
 		if _, e = tx.Exec(`INSERT INTO remote_playback VALUES(?,?,?)`, id, prepared.descriptorDigest, prepared.networkRevision); e != nil {
 			return Session{}, e
 		}

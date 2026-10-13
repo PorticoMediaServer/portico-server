@@ -53,7 +53,7 @@ func registerSubtitleRaw[Req, Resp any](registry *apikit.Registry, pattern strin
 	}
 
 	identifier := strings.NewReplacer("/", "_", "{", "", "}", "", "-", "_", ".", "_").Replace(strings.ToLower(method) + path)
-	return apikit.RegisterRaw(registry, apikit.RawRoute[Req, Resp]{Metadata: apikit.Metadata{ID: identifier, Method: method, Path: path, Summary: "Read or change authorized subtitles", Access: access, Lane: lane, Cost: apikit.Constant, BodyLimit: body, Query: []string{"segment"}, Status: 200, ResponseContentType: contentType, Errors: []string{"unauthorized", "not_permitted", "not_found", "invalid_request", "internal"}}, Serve: handler})
+	return apikit.RegisterRaw(registry, apikit.RawRoute[Req, Resp]{Metadata: apikit.Metadata{ID: identifier, Method: method, Path: path, Summary: "Read or change authorized subtitles", Access: access, Lane: lane, Cost: apikit.Constant, BodyLimit: body, Query: []string{"segment"}, Status: 200, ResponseContentType: contentType, Errors: subtitleRouteErrors()}, Serve: handler})
 }
 func (d Dependencies) originalSubtitleRoute(w http.ResponseWriter, r *http.Request) {
 	subtitleHeaders(w)

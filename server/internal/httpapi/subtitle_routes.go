@@ -15,6 +15,7 @@ import (
 	"unicode/utf8"
 
 	"portico.local/apikit"
+	"portico.local/apikit/apierror"
 	"portico.local/server/internal/decoder"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/playback"
@@ -44,36 +45,36 @@ func sessionNotVisible(e error) error {
 }
 
 func subtitleFailure(w http.ResponseWriter, e error) {
-	status, code, message := 503, "subtitle_unavailable", "Subtitles are unavailable. Refresh and try again."
+	code := "subtitle_unavailable"
 	switch {
-	// CD-51: a refused but valid session is 403 (or a hidden 404), never 401.
 	case errors.Is(e, identity.ErrNotVisible):
-		status, code, message = 404, "not_found", publicErrorMessage("not_found")
+		code = "not_found"
 	case errors.Is(e, identity.ErrForbidden):
-		status, code, message = 403, "forbidden", identity.ErrForbidden.Error()
+		code = "not_permitted"
 	case errors.Is(e, identity.ErrUnauthorized):
-		status, code, message = 401, "unauthorized", "Authentication is required."
+		code = "unauthorized"
 	case errors.Is(e, sql.ErrNoRows):
-		status, code, message = 404, "subtitle_not_found", "The subtitle resource was not found."
+		code = "subtitle_not_found"
 	case errors.Is(e, decoder.ErrConfinementUnavailable):
-		status, code, message = 422, "subtitle_renderer_platform_unsupported", "This server platform has no configured confined decoder backend. Text subtitle delivery remains available."
+		code = "subtitle_renderer_platform_unsupported"
 	case errors.Is(e, subtitles.ErrRendererConfiguration), errors.Is(e, decoder.ErrInvalidConfiguration):
-		status, code, message = 422, "subtitle_renderer_configuration", "Configure the server FFmpeg, FFprobe and confined decoder dependencies before rendering this subtitle."
+		code = "subtitle_renderer_configuration"
 	case errors.Is(e, subtitles.ErrConflict):
-		status, code, message = 409, "subtitle_conflict", "Subtitles changed. Refresh before applying this edit."
+		code = "subtitle_conflict"
 	case errors.Is(e, subtitles.ErrOperation):
-		status, code, message = 409, "subtitle_operation_conflict", "This operation identifier belongs to a different edit."
+		code = "subtitle_operation_conflict"
 	case errors.Is(e, subtitles.ErrCapacity):
-		status, code, message = 422, "subtitle_capacity", "The subtitle exceeds the supported size, track or cue limit."
+		code = "subtitle_capacity"
 	case errors.Is(e, subtitles.ErrUnsupported), errors.Is(e, subtitles.ErrText), errors.Is(e, subtitles.ErrTiming):
-		status, code, message = 422, "subtitle_unsupported", "The subtitle format or timing cannot be rendered by this playback configuration. SRT, WebVTT, ASS/SSA, PGS and paired VobSub are supported within the documented limits."
+		code = "subtitle_unsupported"
 	case errors.Is(e, subtitles.ErrInput):
-		status, code, message = 400, "subtitle_invalid_input", "The subtitle request is invalid."
+		code = "subtitle_invalid_input"
 	}
-	if status == 503 {
-		w.Header().Set("Retry-After", "2")
+	seconds := 0
+	if code == "subtitle_unavailable" {
+		seconds = 2
 	}
-	write(w, status, map[string]any{"error": map[string]any{"code": code, "message": message, "retryable": status == 503}})
+	policyErrors.Write(w, w.Header().Get("X-Request-Id"), &apierror.Error{Code: code, RetryAfterSeconds: seconds})
 }
 func subtitleDecode(w http.ResponseWriter, r *http.Request, out any) error {
 	typ, params, e := mime.ParseMediaType(r.Header.Get("Content-Type"))
