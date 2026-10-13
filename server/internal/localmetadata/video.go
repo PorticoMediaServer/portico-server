@@ -4,6 +4,8 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
+	"os"
 	"path/filepath"
 	"portico.local/server/internal/assets"
 	"strings"
@@ -30,6 +32,8 @@ func (s *Service) VideoNFO(ctx context.Context, library, root, path, kind string
 			candidates = append(candidates, filepath.Join(parent, "tvshow.nfo"))
 		}
 	}
+	candidates = append(candidates, filepath.Join(filepath.Dir(path), filepath.Base(filepath.Dir(path))+".nfo"))
+	complete := true
 	seen := map[string]bool{}
 	for _, side := range candidates {
 		if seen[side] {
@@ -45,6 +49,9 @@ func (s *Service) VideoNFO(ctx context.Context, library, root, path, kind string
 		}
 		before, e := s.storage.Stat(ctx, library, side)
 		if e != nil {
+			if !errors.Is(e, os.ErrNotExist) {
+				complete = false
+			}
 			continue
 		}
 		if before.Directory || before.Size > 256<<10 {
@@ -77,8 +84,14 @@ func (s *Service) VideoNFO(ctx context.Context, library, root, path, kind string
 				f.LocalMetadataIssue = "video_nfo_kind_conflict"
 				continue
 			}
+			if len(v.Issues) > 0 {
+				f.LocalMetadataIssue = "video_nfo_fields_skipped"
+			}
 			f.VideoMetadata = append(f.VideoMetadata, *v)
 		}
+		f.VideoMetadataStatus = "observed"
+	}
+	if complete && f.LocalMetadataIssue == "" {
 		f.VideoMetadataStatus = "observed"
 	}
 	return f

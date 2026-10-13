@@ -15,8 +15,7 @@ import (
 // for, and a count of foreign objects is how an owner finds out that is what
 // they have. Nothing is ever dropped automatically: a build that does not define
 // a table cannot know what removing it would cost.
-const knownSchemaObjects = `
-index access_api_keys_page
+const knownSchemaObjects = `index access_api_keys_page
 index access_devices_account
 index access_devices_page
 index access_invitation_page
@@ -389,6 +388,7 @@ index saved_resource_entries_item_id_fk
 index saved_resource_owner
 index saved_resource_shared
 index saved_resource_visibility
+index screen_metadata_attention_library
 index screen_metadata_candidate_target
 index screen_metadata_children
 index screen_metadata_due
@@ -974,6 +974,7 @@ table saved_resources
 table scan_queue
 table schema_migrations
 table screen_anime_seasons
+table screen_metadata_attention
 table screen_metadata_candidates
 table screen_metadata_consent
 table screen_metadata_fields
@@ -1608,6 +1609,8 @@ trigger saved_resources_revision_DELETE
 trigger saved_resources_revision_INSERT
 trigger saved_resources_revision_UPDATE
 trigger screen_asset_change
+trigger screen_attention_insert
+trigger screen_attention_update
 trigger screen_configuration_change
 trigger screen_episode_create
 trigger screen_episode_identity_change
@@ -1688,8 +1691,7 @@ view authorization_access
 view inventory_asset_availability
 view inventory_item_availability
 view inventory_library_availability
-view listening_book_context
-`
+view listening_book_context`
 
 // subsystemSchemaObjects is empty: the guardrail finds no runtime schema
 // declarations outside persistence. Persistence's own legacy installers need

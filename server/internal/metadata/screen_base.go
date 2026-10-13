@@ -16,7 +16,7 @@ import (
 	"portico.local/server/internal/metadataprovider"
 )
 
-const screenAlgorithm = "screen-title-year-margin-v1"
+const screenAlgorithm = "screen-evidence-confidence-v2"
 
 var ErrScreenConflict = errors.New("screen metadata state changed; refresh before selecting")
 var errScreenStale = errors.New("screen publication authority changed")
@@ -42,6 +42,8 @@ type screenBase struct {
 	Entity int64
 	// ParentEntity is the integer row of an episode's show.
 	ParentEntity                                                                                    int64
+	RuntimeMinutes                                                                                  float64
+	Evidence                                                                                        []MatchEvidence
 	Year                                                                                            int
 	Revision, Selection, Generation                                                                 int64
 	Provider, ProviderType, ProviderID, Mode, Order, Requested, Accepted, Parent, ParentPublication string
@@ -270,6 +272,21 @@ func readScreenBase(ctx context.Context, tx *sql.Tx, kind, id string) (screenBas
 		rows.Close()
 		if err != nil {
 			return b, err
+		}
+	}
+	if b.ItemKind == "movie" {
+		if err = tx.QueryRowContext(ctx, `SELECT COALESCE(max(a.duration),0)/60 FROM catalog_assets a JOIN catalog_asset_links l ON l.asset_id=a.id WHERE l.entity_id=? AND a.available=1`, entity).Scan(&b.RuntimeMinutes); err != nil {
+			return b, err
+		}
+	}
+	if b.Accepted != "" {
+		var payload string
+		if err = tx.QueryRowContext(ctx, `SELECT payload FROM screen_metadata_publications WHERE id=?`, b.Accepted).Scan(&payload); err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return b, err
+		}
+		var r metadataprovider.ScreenRecord
+		if json.Unmarshal([]byte(payload), &r) == nil {
+			b.Existing = append(b.Existing, r.Crosswalk...)
 		}
 	}
 	b.SourceDigest = hex.EncodeToString(h.Sum(nil))

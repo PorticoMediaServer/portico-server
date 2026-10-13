@@ -435,9 +435,19 @@ func (s *Service) acquireScreen(ctx context.Context, p *screenClaim) ([]screenCa
 				return nil, -1, "", &metadataprovider.Error{Provider: id.Provider, Code: "order_unavailable"}
 			}
 		}
-		c := scoreScreen(r, names, year, true)
+		c := scoreScreenEvidence(r, names, year, true, b)
 		c.SourceKind = "accepted_identity"
 		c.Reasons = []string{"accepted_identity_preserved"}
+		// Reusing an automatic identity does not turn a tentative guess into certainty.
+		if b.Mode != "owner" && b.Mode != "legacy" && b.Accepted != "" {
+			var reasons string
+			if e := dbwork.QueryRow(ctx, s.db, `SELECT confidence,reasons FROM screen_metadata_publications WHERE id=?`, b.Accepted).Scan(&c.Confidence, &reasons); e != nil {
+				return nil, -1, "", e
+			}
+			if e := json.Unmarshal([]byte(reasons), &c.Reasons); e != nil {
+				return nil, -1, "", e
+			}
+		}
 		return []screenCandidate{c}, 0, "matched", nil
 	}
 	candidates := []screenCandidate{}
@@ -484,7 +494,7 @@ func (s *Service) acquireScreen(ctx context.Context, p *screenClaim) ([]screenCa
 			if r.Identity != id {
 				return nil, -1, "", &metadataprovider.Error{Provider: name, Code: "identity_mismatch"}
 			}
-			c := scoreScreen(r, names, year, true)
+			c := scoreScreenEvidence(r, names, year, true, b)
 			if len(exacts) > 1 {
 				c.Contradiction = true
 				c.Reasons = append(c.Reasons, "local_identifiers_conflict")
@@ -500,7 +510,7 @@ func (s *Service) acquireScreen(ctx context.Context, p *screenClaim) ([]screenCa
 				if err := s.screenBeforeRequest(ctx, p, name); err != nil {
 					return nil, -1, "", err
 				}
-				rows, err := provider.SearchScreen(ctx, typ, q, year, b.Language, b.Region)
+				rows, err := provider.SearchScreen(ctx, typ, q, 0, b.Language, b.Region)
 				if err != nil {
 					lastError = err
 					if e := s.screenRememberCooldown(ctx, name, err); e != nil {
@@ -520,7 +530,7 @@ func (s *Service) acquireScreen(ctx context.Context, p *screenClaim) ([]screenCa
 						return nil, -1, "", err
 					}
 					if !seen[r.Identity] {
-						c := scoreScreen(r, names, year, false)
+						c := scoreScreenEvidence(r, names, year, false, b)
 						candidates = append(candidates, c)
 						seen[r.Identity] = true
 					}
@@ -558,12 +568,14 @@ func (s *Service) acquireScreen(ctx context.Context, p *screenClaim) ([]screenCa
 			if r.Identity != id {
 				return nil, -1, "", &metadataprovider.Error{Provider: name, Code: "identity_mismatch"}
 			}
-			*c = scoreScreen(r, names, year, false)
+			*c = scoreScreenEvidence(r, names, year, false, b)
 			c.DetailsVerified = true
 		}
 		if screenLocalYearConflict(b) {
 			for i := range candidates {
-				candidates[i].Contradiction = true
+				if candidates[i].SourceKind != "typed_identifier" {
+					candidates[i].Confidence = max(0, candidates[i].Confidence-.03)
+				}
 				candidates[i].Reasons = append(candidates[i].Reasons, "local_release_years_conflict")
 			}
 		}

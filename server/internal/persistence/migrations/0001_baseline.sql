@@ -2104,6 +2104,31 @@ CREATE TABLE screen_metadata_publications(
  selection_revision INTEGER NOT NULL,generation INTEGER NOT NULL,previous_id TEXT NOT NULL DEFAULT '',
  decision TEXT NOT NULL CHECK(decision IN('accepted','superseded')),
  FOREIGN KEY(target_kind,target_id) REFERENCES screen_metadata_work(target_kind,target_id) ON DELETE CASCADE) STRICT;
+-- A bounded owner repair projection. Dismissal lasts until input changes.
+CREATE TABLE screen_metadata_attention(
+ entity_id INTEGER PRIMARY KEY REFERENCES catalog_entities(id) ON DELETE CASCADE,
+ target_kind TEXT NOT NULL,library_id TEXT NOT NULL REFERENCES libraries(id) ON DELETE CASCADE,
+ reason TEXT NOT NULL,confidence REAL NOT NULL DEFAULT 0,generation INTEGER NOT NULL,
+ dismissed_generation INTEGER NOT NULL DEFAULT -1,
+ FOREIGN KEY(target_kind,entity_id) REFERENCES screen_metadata_work(target_kind,target_id) ON DELETE CASCADE) STRICT;
+CREATE INDEX screen_metadata_attention_library ON screen_metadata_attention(library_id,entity_id) WHERE dismissed_generation<>generation;
+CREATE TRIGGER screen_attention_insert AFTER INSERT ON screen_metadata_work BEGIN
+ INSERT INTO screen_metadata_attention(entity_id,target_kind,library_id,reason,generation)
+ VALUES(NEW.target_id,NEW.target_kind,NEW.library_id,NEW.status,NEW.generation);
+END;
+CREATE TRIGGER screen_attention_update AFTER UPDATE OF status,accepted_publication,generation ON screen_metadata_work BEGIN
+ INSERT INTO screen_metadata_attention(entity_id,target_kind,library_id,reason,confidence,generation)
+ SELECT NEW.target_id,NEW.target_kind,NEW.library_id,
+ CASE WHEN NEW.accepted_publication<>'' AND NEW.selection_mode NOT IN('owner','legacy') AND COALESCE(p.confidence,1)<0.9 THEN 'low_confidence' ELSE NEW.status END,
+ COALESCE(p.confidence,0),NEW.generation
+ FROM (SELECT 1) LEFT JOIN screen_metadata_publications p ON p.id=NEW.accepted_publication
+ WHERE NEW.accepted_publication='' OR NEW.status NOT IN('matched','matched_work','pending_children','delegated_tvdb')
+ OR (NEW.selection_mode NOT IN('owner','legacy') AND COALESCE(p.confidence,1)<0.9)
+ ON CONFLICT(entity_id) DO UPDATE SET reason=excluded.reason,confidence=excluded.confidence,generation=excluded.generation;
+ DELETE FROM screen_metadata_attention WHERE entity_id=NEW.target_id AND NEW.accepted_publication<>''
+ AND NEW.status IN('matched','matched_work','pending_children','delegated_tvdb')
+ AND (NEW.selection_mode IN('owner','legacy') OR COALESCE((SELECT confidence FROM screen_metadata_publications WHERE id=NEW.accepted_publication),1)>=0.9);
+END;
 CREATE TABLE screen_metadata_fields(
  target_kind TEXT NOT NULL,target_id INTEGER NOT NULL,field TEXT NOT NULL,value TEXT NOT NULL,
  provider TEXT NOT NULL,source_kind TEXT NOT NULL,source_url TEXT NOT NULL,confidence REAL NOT NULL,

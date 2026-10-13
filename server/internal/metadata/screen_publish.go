@@ -869,6 +869,25 @@ func (s *Service) applyScreenLocal(ctx context.Context, tx *sql.Tx, b screenBase
 				put(k, v)
 			}
 		}
+		if len(n.Tags) > 0 {
+			tags := []metadataprovider.ScreenName{}
+			for _, tag := range n.Tags {
+				tags = append(tags, metadataprovider.ScreenName{ID: screenDigest(tag), Name: tag})
+			}
+			put("tags", tags)
+		}
+		if n.Rating != nil {
+			put("rating", n.Rating)
+		}
+		if len(n.Countries) > 0 {
+			put("countries", n.Countries)
+		}
+		if n.Status != "" {
+			put("status", n.Status)
+		}
+		if n.Trailer != "" {
+			put("trailer", n.Trailer)
+		}
 		if n.Year > 0 {
 			put("year", n.Year)
 		}
@@ -887,6 +906,48 @@ func (s *Service) applyScreenLocal(ctx context.Context, tx *sql.Tx, b screenBase
 		}
 		if n.AdvisoryRuntimeMinutes != nil {
 			put("advisoryRuntimeMinutes", *n.AdvisoryRuntimeMinutes)
+		}
+	}
+	// Remove only ownership for fields no longer supplied. Last-good display
+	// values survive until the provider can replace them; owner locks still win.
+	rows, err := tx.QueryContext(ctx, `SELECT field FROM screen_metadata_fields WHERE target_kind=? AND target_id=? AND source_kind='nfo'`, b.TargetKind, b.Entity)
+	if err != nil {
+		return err
+	}
+	retired := []string{}
+	for rows.Next() {
+		var field string
+		if err = rows.Scan(&field); err != nil {
+			rows.Close()
+			return err
+		}
+		if _, ok := values[field]; !ok && field != "localConflicts" {
+			retired = append(retired, field)
+		}
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return err
+	}
+	for _, field := range retired {
+		if _, err = tx.ExecContext(ctx, `DELETE FROM screen_metadata_fields WHERE target_kind=? AND target_id=? AND field=? AND source_kind='nfo'`, b.TargetKind, b.Entity, field); err != nil {
+			return err
+		}
+		if field == "credits" {
+			if err = compactcatalog.SetCreditsTx(ctx, tx, b.Entity, "nfo", nil); err != nil {
+				return err
+			}
+		}
+		if field == "genres" {
+			if err = compactcatalog.SetTermsTx(ctx, tx, b.Entity, compactcatalog.VocabGenre, "nfo", nil); err != nil {
+				return err
+			}
+		}
+		if field == "tags" {
+			if _, err = tx.ExecContext(ctx, `DELETE FROM metadata_tags WHERE entity_kind=? AND entity_id=? AND provider='nfo'`, b.TargetKind, b.Entity); err != nil {
+				return err
+			}
 		}
 	}
 	stamp := tvdbStamp(s.publicationTime())
