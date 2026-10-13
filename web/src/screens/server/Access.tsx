@@ -75,7 +75,7 @@ function ViewingHours({limits, onChange}: {limits: MemberLimits; onChange: (next
   return (
     <SettingsGroup title={t('server.people.hours')} description={t('server.people.hoursLede')} action={<Button size="sm" variant="secondary" icon="plus" label={t('server.people.hoursAdd')} disabled={windows.length >= VIEWING_HOURS_MAX} onClick={() => set([...windows, newViewingHours()])} />}>
       {windows.map((w, i) => (
-        <SettingsRow key={i} stack label={<Select hideLabel label={t('server.people.hoursDays')} value={dayChoiceOf(w.days)} options={dayOptions(w.days)} onChange={e => change(i, {days: daysOfChoice(e.target.value as DayChoice, w.days)})} />}
+        <SettingsRow key={i} stack start label={<Select hideLabel label={t('server.people.hoursDays')} value={dayChoiceOf(w.days)} options={dayOptions(w.days)} onChange={e => change(i, {days: daysOfChoice(e.target.value as DayChoice, w.days)})} />}
           control={<div style={{display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center'}}>
             <Text variant="caption" tone="tertiary">{t('server.windows.from')}</Text>
             <Input hideLabel label={t('server.people.hoursFrom')} type="time" value={clockText(w.startMinute)} onChange={e => change(i, {startMinute: clockMinutes(e.target.value)})} style={{width: 120}} />
