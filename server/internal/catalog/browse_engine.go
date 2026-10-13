@@ -937,8 +937,12 @@ func (s *Service) browseListColumns(rows []browseRow) (map[int64]browseListColum
 	return out, dates.Err()
 }
 
+// nullableString is a row's text, or nil when the row has none. The browse
+// rows are selected with an empty string standing in for "no date", and a row
+// with no added date (an author, a grouping) says null on the wire, never an
+// empty string a client would try to read as a date.
 func nullableString(value sql.NullString) *string {
-	if !value.Valid {
+	if !value.Valid || value.String == "" {
 		return nil
 	}
 	copied := value.String
@@ -975,24 +979,32 @@ func (s *Service) browseAggregate(request BrowseRequest, pivot browsePivot) (Bro
 		return out, err
 	}
 	out.PageInfo.Revision = revision
+	// A grouping is listed by title, in either direction. The published sorts
+	// are one list for the whole library, so a screen that carries the
+	// viewer's chosen order (year, date added) onto a grouping is not making a
+	// mistake: it gets the grouping in title order, and `applied` says so. A
+	// title sort with a direction that is not one is still refused.
 	sorts := append([]BrowseSortSelection{}, pivot.DefaultSort...)
-	if len(request.Sort) > 0 {
-		if len(request.Sort) != 1 || request.Sort[0].Field != "title" || (request.Sort[0].Direction != "" && request.Sort[0].Direction != "asc" && request.Sort[0].Direction != "desc") {
+	if len(request.Sort) == 1 && request.Sort[0].Field == "title" {
+		switch request.Sort[0].Direction {
+		case "", "asc":
+			sorts = []BrowseSortSelection{{Field: "title", Direction: "asc"}}
+		case "desc":
+			sorts = []BrowseSortSelection{{Field: "title", Direction: "desc"}}
+		default:
 			return out, browseIssue("sort", "this grouping sorts by title")
 		}
-		sorts = request.Sort
-		if sorts[0].Direction == "" {
-			sorts = []BrowseSortSelection{{Field: "title", Direction: "asc"}}
-		}
 	}
+	request.Sort = sorts
 	out.Applied.Sort = sorts
 	request.Limit = pageLimit(request.Limit)
 	if request.Cursor != "" && request.Range != nil {
 		return out, browseIssue("range", "a direct range cannot include a cursor")
 	}
-	if request.Seek != nil {
-		return out, browseIssue("seek", "this grouping does not support letter seeking")
-	}
+	// A grouping has no letter index (its position index is empty), so a
+	// letter jump has nowhere to land: the list is answered from where it
+	// would otherwise start, and `applied` carries no seek.
+	request.Seek = nil
 	revision, err = s.browseRevision(request, pivot, sorts)
 	if err != nil {
 		return out, err

@@ -205,6 +205,9 @@ func (w *Worker) Run(ctx context.Context) {
 	})
 }
 
+// startupFailures bounds how many set-aside titles a start reads back.
+const startupFailures = 20000
+
 // prepare records every registered domain and starts a rebuild of any whose
 // code version is newer than the one its data was built with. Rows only; the
 // rebuild itself runs in later Steps.
@@ -232,7 +235,11 @@ func (w *Worker) prepare(ctx context.Context) error {
 				return err
 			}
 		}
-		rows, err := tx.QueryContext(ctx, `SELECT domain,entity_id FROM catalog_derivation_failures`)
+		// The titles set aside after failing, newest first and no more than
+		// startupFailures of them: a start never reads a table that could have
+		// a row per title. One left out is simply tried again and set aside
+		// again if it still fails.
+		rows, err := tx.QueryContext(ctx, `SELECT domain,entity_id FROM catalog_derivation_failures ORDER BY failed_ms DESC LIMIT ?`, startupFailures)
 		if err != nil {
 			return err
 		}

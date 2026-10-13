@@ -50,7 +50,7 @@ func listeningSectionVisibility(kind string, viewer Viewer) (string, []any) {
 	case "book":
 		return `EXISTS(SELECT 1 FROM catalog_entities book JOIN catalog_book_files member ON member.book_id=book.id JOIN catalog_entities i ON i.id=member.entity_id WHERE book.id=projected.entity_id AND ` + item + `)`, args
 	case "disc":
-		return `EXISTS(SELECT 1 FROM catalog_entities album JOIN catalog_songs member ON member.album_id=album.id JOIN catalog_entities i ON i.id=member.entity_id WHERE album.id=projected.entity_id AND COALESCE(member.disc_number,0)=projected.disc_number AND ` + item + `)`, args
+		return `EXISTS(SELECT 1 FROM catalog_entities album JOIN catalog_songs member ON member.album_id=album.id JOIN catalog_entities i ON i.id=member.entity_id WHERE album.id=projected.entity_id AND COALESCE(member.disc_number,1)=projected.disc_number AND ` + item + `)`, args
 	case "author", "book_series", "context":
 		return `EXISTS(SELECT 1 FROM catalog_book_groups g JOIN catalog_book_group_members m ON m.group_id=g.id JOIN catalog_book_files member ON member.book_id=m.book_id JOIN catalog_entities i ON i.id=member.entity_id WHERE g.token=projected.id AND g.retired=0 AND ` + item + `)`, args
 	}
@@ -169,7 +169,7 @@ func (s *Service) listeningContent(r ContentRequest, lib Library) (ContentEnvelo
 		}
 	}
 	sections := []listeningSection{}
-	musicItems := `SELECT pid(i.public_id) id,i.id entity_id,i.title,ar.title subtitle,printf('%08d:%08d:%020d',COALESCE(s.disc_number,0),COALESCE(s.track_number,0),i.id) ordering,0 n,0 chapter_index FROM catalog_songs s JOIN catalog_entities i ON i.id=s.entity_id JOIN catalog_entities a ON a.id=s.album_id JOIN catalog_albums al ON al.entity_id=a.id JOIN catalog_entities ar ON ar.id=al.artist_id JOIN catalog_libraries l ON l.id=i.library_id WHERE l.library_id=? AND i.retired=0 AND a.retired=0`
+	musicItems := `SELECT pid(i.public_id) id,i.id entity_id,i.title,ar.title subtitle,printf('%08d:%08d:%020d',COALESCE(s.disc_number,1),COALESCE(s.track_number,0),i.id) ordering,0 n,0 chapter_index FROM catalog_songs s JOIN catalog_entities i ON i.id=s.entity_id JOIN catalog_entities a ON a.id=s.album_id JOIN catalog_albums al ON al.entity_id=a.id JOIN catalog_entities ar ON ar.id=al.artist_id JOIN catalog_libraries l ON l.id=i.library_id WHERE l.library_id=? AND i.retired=0 AND a.retired=0`
 	books := `SELECT pid(b.public_id) id,b.id entity_id,b.title,details.author subtitle,printf('%020.6f:%s',CASE WHEN context.series_index>0 THEN context.series_index ELSE 999999 END,b.title) ordering,0 n,0 chapter_index FROM catalog_book_context context JOIN catalog_entities b ON b.id=context.book_id JOIN catalog_books details ON details.entity_id=b.id JOIN catalog_libraries l ON l.id=context.library_id WHERE l.library_id=? AND context.has_file=1 AND b.retired=0`
 	albums := `SELECT pid(a.public_id) id,a.id entity_id,a.title,ar.title||CASE WHEN a.year>0 THEN ' · '||a.year ELSE '' END subtitle,a.sort_key ordering,0 n,a.year year,0 chapter_index FROM catalog_albums details JOIN catalog_entities a ON a.id=details.entity_id JOIN catalog_entities ar ON ar.id=details.artist_id JOIN catalog_libraries l ON l.id=a.library_id WHERE l.library_id=? AND a.retired=0 AND ar.retired=0 AND EXISTS(SELECT 1 FROM catalog_songs s WHERE s.album_id=a.id)`
 	target := ListeningTarget{lib.ID, "library", lib.ID}
@@ -259,13 +259,13 @@ func (s *Service) listeningContent(r ContentRequest, lib Library) (ContentEnvelo
 		} else {
 			if r.View == "album" {
 				visible, visibleArgs := r.Viewer.itemVisibilitySQL("i.id")
-				query := `SELECT pid(album.public_id)||':disc:'||COALESCE(s.disc_number,0) id,album.id entity_id,COALESCE(s.disc_number,0) disc_number,CASE WHEN s.disc_number IS NULL THEN 'Unnumbered disc' ELSE 'Disc '||s.disc_number END title,'' subtitle,printf('%08d',COALESCE(s.disc_number,0)) ordering,count(*) n,0 chapter_index FROM catalog_songs s JOIN catalog_entities i ON i.id=s.entity_id JOIN catalog_entities album ON album.id=s.album_id WHERE album.public_id=pid_blob(?) AND ` + visible + ` GROUP BY album.id,COALESCE(s.disc_number,0)`
+				query := `SELECT pid(album.public_id)||':disc:'||COALESCE(s.disc_number,1) id,album.id entity_id,COALESCE(s.disc_number,1) disc_number,'Disc '||COALESCE(s.disc_number,1) title,'' subtitle,printf('%08d',COALESCE(s.disc_number,1)) ordering,count(*) n,0 chapter_index FROM catalog_songs s JOIN catalog_entities i ON i.id=s.entity_id JOIN catalog_entities album ON album.id=s.album_id WHERE album.public_id=pid_blob(?) AND ` + visible + ` GROUP BY album.id,COALESCE(s.disc_number,1)`
 				sections = append(sections, listeningSection{"discs", "Discs", "list", "disc", "disc", query, append([]any{entity}, visibleArgs...), false, ""})
 			}
 			where := musicItems + ` AND a.public_id=pid_blob(?)`
 			args := []any{lib.ID, entity}
 			if r.View == "disc" {
-				where += ` AND COALESCE(s.disc_number,0)=?`
+				where += ` AND COALESCE(s.disc_number,1)=?`
 				args = append(args, disc)
 			}
 			sections = append(sections, listeningSection{"songs", "Songs", "list", "song", "item", where, args, true, ""})
@@ -320,8 +320,8 @@ func (s *Service) listeningContent(r ContentRequest, lib Library) (ContentEnvelo
 		} else if e != sql.ErrNoRows {
 			return out, e
 		}
-		sections = append(sections, listeningSection{"chapters", "Chapters", "list", "chapter", "item", `SELECT pid(file.public_id)||':'||c.chapter_index id,file.id entity_id,c.chapter_index,pid(file.public_id) subtitle,c.title title,printf('%08d:%08d:%020d:%08d',COALESCE(f.disc_number,0),COALESCE(f.part_number,0),file.id,c.chapter_index) ordering,0 n FROM catalog_book_chapters c JOIN catalog_entities file ON file.id=c.file_id JOIN catalog_book_files f ON f.entity_id=file.id JOIN catalog_entities book ON book.id=f.book_id WHERE book.public_id=pid_blob(?) AND book.retired=0 AND file.retired=0`, []any{r.EntityID}, false, ""})
-		sections = append(sections, listeningSection{"files", "Book parts", "list", "audiobook_file", "item", `SELECT pid(file.public_id) id,file.id entity_id,file.title,'' subtitle,printf('%08d:%08d:%020d',COALESCE(f.disc_number,0),COALESCE(f.part_number,0),file.id) ordering,0 n,0 chapter_index FROM catalog_entities book JOIN catalog_book_files f ON f.book_id=book.id JOIN catalog_entities file ON file.id=f.entity_id WHERE book.public_id=pid_blob(?) AND book.retired=0 AND file.retired=0`, []any{r.EntityID}, true, ""})
+		sections = append(sections, listeningSection{"chapters", "Chapters", "list", "chapter", "item", `SELECT pid(file.public_id)||':'||c.chapter_index id,file.id entity_id,c.chapter_index,pid(file.public_id) subtitle,c.title title,printf('%08d:%08d:%020d:%08d',COALESCE(f.disc_number,1),COALESCE(f.part_number,0),file.id,c.chapter_index) ordering,0 n FROM catalog_book_chapters c JOIN catalog_entities file ON file.id=c.file_id JOIN catalog_book_files f ON f.entity_id=file.id JOIN catalog_entities book ON book.id=f.book_id WHERE book.public_id=pid_blob(?) AND book.retired=0 AND file.retired=0`, []any{r.EntityID}, false, ""})
+		sections = append(sections, listeningSection{"files", "Book parts", "list", "audiobook_file", "item", `SELECT pid(file.public_id) id,file.id entity_id,file.title,'' subtitle,printf('%08d:%08d:%020d',COALESCE(f.disc_number,1),COALESCE(f.part_number,0),file.id) ordering,0 n,0 chapter_index FROM catalog_entities book JOIN catalog_book_files f ON f.book_id=book.id JOIN catalog_entities file ON file.id=f.entity_id WHERE book.public_id=pid_blob(?) AND book.retired=0 AND file.retired=0`, []any{r.EntityID}, true, ""})
 		sections = append(sections, listeningSection{"context", "Author & series", "list", "context", "", `SELECT g.token id,g.id entity_id,g.name title,CASE g.kind WHEN 1 THEN 'author' ELSE 'book_series' END subtitle,g.name ordering,0 n,0 chapter_index FROM catalog_entities book JOIN catalog_book_group_members m ON m.book_id=book.id JOIN catalog_book_groups g ON g.id=m.group_id AND g.retired=0 WHERE book.public_id=pid_blob(?)`, []any{r.EntityID}, false, ""})
 	default:
 		return out, requestinput.New("unknown listening view")

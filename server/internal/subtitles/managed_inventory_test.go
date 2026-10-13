@@ -41,7 +41,7 @@ func (m *managedFixtureObject) OpenRange(_ context.Context, offset, length int64
 func (m *managedFixtureObject) Close() error { return nil }
 func TestManagedSidecarsRequireCommittedCompletePhysicalDirectory(t *testing.T) {
 	f := newSubtitleFixture(t)
-	for _, q := range []string{`INSERT INTO library_sources(id,library_id,configured_root,root,incarnation) VALUES('remote','library','/remote','/remote','v1')`, `INSERT INTO jobs(id,library_id,status,created_at) VALUES('scan','library','running','now')`, `INSERT INTO inventory_runs(job_id,source_id,source_generation,root_incarnation,root_identity,policy_revision) VALUES('scan','remote',1,'v1','',1)`, `INSERT INTO inventory_directories(job_id,relative_path,state) VALUES('scan','','pending')`} {
+	for _, q := range []string{`INSERT INTO library_sources(id,library_id,configured_root,root,incarnation) VALUES('remote','library','/remote','/remote','v1')`, `INSERT INTO jobs(id,library_id,status,created_at) VALUES('scan','library','running','now')`, `INSERT INTO inventory_runs(job_id,source_id,source_generation,root_incarnation,root_identity,policy_revision) VALUES('scan','remote',1,'v1','',1)`, `INSERT INTO inventory_directories(job_id,relative_path,state) VALUES('scan','.','pending')`} {
 		if _, e := f.db.Exec(q); e != nil {
 			t.Fatal(e)
 		}

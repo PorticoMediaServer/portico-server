@@ -3600,7 +3600,7 @@ paths:
                     type: array
                     items:
                       type: object
-                      required: [id, user, accountId, kind, title, libraryId, startedAt, positionSeconds, durationSeconds, completed]
+                      required: [id, user, accountId, kind, title, libraryId, startedAt, positionMs, durationMs, completed]
                       properties:
                         id: { type: string }
                         user: { type: string, description: The account's name when the play was recorded. }
@@ -3616,8 +3616,8 @@ paths:
                         device: { type: string }
                         platform: { type: string }
                         startedAt: { type: string, format: date-time }
-                        positionSeconds: { type: number, description: The furthest point reached. }
-                        durationSeconds: { type: number }
+                        positionMs: { type: integer, format: int64, minimum: 0, description: 'The furthest point reached, in milliseconds.' }
+                        durationMs: { type: integer, format: int64, minimum: 0, description: Milliseconds. }
                         completed: { type: boolean }
         default: { $ref: '#/components/responses/Error' }
       x-error-codes: [unauthorized, forbidden, invalid_cursor]
@@ -3640,12 +3640,12 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [period, plays, people, watchedSeconds, converted, mostPlayed, mostActive]
+                required: [period, plays, people, watchedMs, converted, mostPlayed, mostActive]
                 properties:
                   period: { type: string }
                   plays: { type: integer, format: int64 }
                   people: { type: integer, format: int64, description: Distinct profiles that played something. }
-                  watchedSeconds: { type: integer, format: int64 }
+                  watchedMs: { type: integer, format: int64, minimum: 0, description: Milliseconds. }
                   converted: { type: integer, format: int64, description: Plays the server converted (picture or sound). }
                   mostPlayed:
                     type: array
@@ -5291,19 +5291,19 @@ components:
     Item:
       type: object
       description: catalog.Item
-      required: [id, libraryId, title, kind, duration, progressSeconds, available, addedAt]
+      required: [id, libraryId, title, kind, durationMs, progressMs, available, addedAt]
       properties:
         id: { type: string }
         libraryId: { type: string }
         title: { type: string }
         kind: { type: string, enum: [movie, episode, song, audiobook_file, extra], description: Media kind. }
         year: { type: integer }
-        duration: { type: number, format: double, description: Seconds. }
+        durationMs: { type: integer, format: int64, minimum: 0, description: Milliseconds. }
         overview: { type: string }
         posterUrl: { type: string }
         backdropUrl: { type: string }
         stillUrl: { type: string, description: 'An episode item''s own still (episode still candidates only). Absent when the episode has none; never inherited season or show art — clients draw the placeholder.' }
-        progressSeconds: { type: number, format: double, description: This viewer's resume position. }
+        progressMs: { type: integer, format: int64, minimum: 0, description: "This viewer's resume position, in milliseconds." }
         available: { type: boolean }
         watched: { type: [boolean, 'null'] }
         addedAt: { type: [string, 'null'], format: date-time }
@@ -5403,14 +5403,14 @@ components:
     BookChapter:
       type: object
       description: catalog.BookChapter
-      required: [id, itemId, index, title, startSeconds, endSeconds]
+      required: [id, itemId, index, title, startMs, endMs]
       properties:
         id: { type: string }
         itemId: { type: string }
         index: { type: integer }
         title: { type: string }
-        startSeconds: { type: number, format: double }
-        endSeconds: { type: number, format: double }
+        startMs: { type: integer, format: int64, minimum: 0, description: Milliseconds. }
+        endMs: { type: integer, format: int64, minimum: 0, description: Milliseconds. }
     Category:
       type: object
       description: catalog.Category
@@ -5439,7 +5439,7 @@ components:
       type: object
       description: >-
         catalog.ContentEntry — one row or entity on a composed surface. Album
-        entities carry year, duration (the track total in seconds), the
+        entities carry year, durationMs (the track total in milliseconds), the
         album-artist link, label, albumType and MusicBrainz genres; artist
         entities carry overview (biography, with overviewSource/Url), country,
         active years and top local genres; artist releases carry role
@@ -5448,7 +5448,7 @@ components:
         popularTracks section with the viewer's top 5 songs by play count.
       required: [id, kind, title]
       properties:
-        userRating: {type: integer, minimum: 0, maximum: 10, description: "The viewer's own rating in half steps, on item rows the viewer has rated; absent otherwise."}
+        userRating: {type: integer, minimum: 0, maximum: 10, description: "The viewer's own rating from 0 to 10 (two points to a star), on item rows the viewer has rated; absent otherwise."}
         plays: {type: integer, minimum: 1, description: "How many times the viewer has played a song to the end; song entries only, absent when never played."}
         id: { type: string }
         kind: { type: string }
@@ -5474,8 +5474,8 @@ components:
         addedAt: { type: [string, 'null'] }
         available: { type: boolean }
         watched: { type: boolean }
-        duration: { type: number }
-        progressSeconds: { type: number }
+        durationMs: { type: integer, format: int64, minimum: 0, description: Milliseconds. }
+        progressMs: { type: integer, format: int64, minimum: 0, description: Milliseconds. }
         count: { type: integer }
         year: { type: integer, description: Release year; album entities only, absent when unknown. }
         artist:
@@ -5497,7 +5497,7 @@ components:
           type: object
           properties:
             itemId: { type: string }
-            startSeconds: { type: number }
+            startMs: { type: integer, format: int64, minimum: 0, description: Milliseconds. }
     ContentFilter:
       type: object
       description: >-
@@ -5583,7 +5583,7 @@ components:
         nextCursor: { type: string, description: 'Absent on the last page.' }
     DetailAction:
       type: object
-      description: catalog.DetailAction — a server-authored action for the detail screen. Resume startSeconds is bounded by the current item duration, including audiobook files.
+      description: catalog.DetailAction — a server-authored action for the detail screen. Resume startMs is bounded by the current item duration, including audiobook files.
       required: [id, labelKey, enabled]
       properties:
         id: { type: string }
@@ -5596,27 +5596,27 @@ components:
     Marker:
       type: object
       description: segmentmarkers.Marker
-      required: [id, kind, startSeconds, endSeconds, automaticSafe]
+      required: [id, kind, startMs, endMs, automaticSafe]
       properties:
         id: { type: string }
         kind: { type: string, enum: [recap, intro, outro, credits, commercial] }
-        startSeconds: { type: number, format: double }
-        endSeconds: { type: number, format: double }
+        startMs: { type: integer, format: int64, minimum: 0, description: Milliseconds. }
+        endMs: { type: integer, format: int64, minimum: 0, description: Milliseconds. }
         automaticSafe: { type: boolean, description: Server-decided from detection confidence and owner approval. A client must not skip automatically when this is false. }
     PersonalState:
       type: object
       description: catalog.PersonalState
-      required: [watched, progressSeconds, lastPlayedAt, status, conflicts, watchlisted, favorite, rating, revision]
+      required: [watched, progressMs, lastPlayedAt, status, conflicts, watchlisted, favorite, rating, revision]
       properties:
         watched: { type: boolean }
-        progressSeconds: { type: number, format: double }
+        progressMs: { type: integer, format: int64, minimum: 0, description: Milliseconds. }
         lastPlayedAt: { type: string }
         status: { type: string }
         conflicts: { type: array, items: { type: object, additionalProperties: true } }
         watchlisted: { type: boolean }
         favorite: { type: boolean }
         notInterested: { type: boolean, description: 'The viewer marked this title "Not interested": it is never recommended, and similar titles rank a little lower. Absent means false.' }
-        rating: { type: [number, 'null'], format: double }
+        rating: { type: [integer, 'null'], minimum: 0, maximum: 10, description: 'The viewer''s rating from 0 to 10, two points to a star; null when not rated.' }
         revision: { type: integer, format: int64, description: Optimistic-concurrency fence for personal-state writes. }
     PersonalMutation:
       type: object
@@ -5626,11 +5626,11 @@ components:
         operationId: { type: string, description: Idempotency key; a retry returns the original receipt. }
         expectedRevision: { type: integer, format: int64, description: Mandatory optimistic-concurrency fence. }
         watched: { type: [boolean, 'null'] }
-        progressSeconds: { type: [number, 'null'], format: double }
+        progressMs: { type: [integer, 'null'], format: int64, minimum: 0, description: Milliseconds. }
         watchlisted: { type: [boolean, 'null'] }
         favorite: { type: [boolean, 'null'] }
         notInterested: { type: [boolean, 'null'], description: 'Hide the title from recommendations (true), or undo that (false).' }
-        rating: { description: 'A number to set the rating, or null to clear it; omit to leave unchanged.' }
+        rating: { description: 'A whole number from 0 to 10 to set the rating, or null to clear it; omit to leave unchanged.' }
         offline: { type: [object, 'null'], additionalProperties: true, description: Evidence captured while the client was offline. }
         resolution: { type: [object, 'null'], additionalProperties: true, description: How to resolve a previously reported conflict. }
       additionalProperties: false

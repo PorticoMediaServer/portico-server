@@ -15,12 +15,13 @@ Two things are kept apart throughout, and a client must keep them apart too:
   the retention period, when the file is replaced, when a converted copy is deleted, or when the
   title leaves the library.
 - The **receipt** is the viewer's permission to play a copy already on a device. It ends only when
-  the server's owner takes something away from the viewer: downloads are turned off for the
+  the server's owner takes something away from the viewer, the receipt is revoked,
+or its thirty-day validity is not renewed: downloads are turned off for the
   profile, the account is switched off, the title or its library is closed to them, or the receipt
   is withdrawn.
 
-The server tidying up never ends a receipt. A copy on a device stays playable until its viewer
-removes it or loses access.
+The server tidying up never ends a receipt. A device copy stays playable while
+its receipt is valid and its viewer retains access; reconnect to renew it.
 
 ---
 
@@ -209,7 +210,7 @@ withdrawn, by sequence.
 `POST /v1/downloads/progress` takes up to 100 entries, one per *play*:
 
 ```json
-{"playId": "…", "itemId": "…", "positionSeconds": 1432.5, "ended": false, "observedAt": "2026-10-13T09:12:00Z"}
+{"playId": "…", "itemId": "…", "positionMs": 1432500, "ended": false, "observedAt": "2026-10-13T09:12:00Z"}
 ```
 
 `playId` is the device's own name for one play and stays the same while later positions of that
@@ -227,7 +228,7 @@ dismissed it from Continue Watching afterwards (`superseded_online`). A viewer w
 history gets `history_paused`: the owner's record of plays is kept, nothing of the viewer's own is
 written.
 
-Each result carries `positionSeconds` and `watched` as the server now holds them, whatever became
+Each result carries `positionMs` and `watched` as the server now holds them, whatever became
 of the entry. Use them as the copy's resume point.
 
 ## Whole shows, seasons, albums, books and playlists

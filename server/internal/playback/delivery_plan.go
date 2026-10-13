@@ -129,8 +129,11 @@ type DeliveryPlan struct {
 	VideoBitrateBPS     int                       `json:"videoBitrateBps,omitempty"`
 	AudioBitrateBPS     int                       `json:"audioBitrateBps,omitempty"`
 	ToneMap             bool                      `json:"toneMap"`
-	ToneMapAlgorithm    string                    `json:"toneMapAlgorithm,omitempty"`
-	HardwareBackend     string                    `json:"hardwareBackend"`
+	// ToneMapOff says the picture is an HDR one converted without tone
+	// mapping because the owner turned tone mapping off.
+	ToneMapOff       bool   `json:"toneMapOff,omitempty"`
+	ToneMapAlgorithm string `json:"toneMapAlgorithm,omitempty"`
+	HardwareBackend  string `json:"hardwareBackend"`
 	// AudioStream is the absolute source stream index the session plays, -1 when
 	// the source has no audio or the plan predates track choice.
 	AudioStream    int     `json:"audioStream"`
@@ -602,9 +605,9 @@ func planDelivery(in DeliveryInput) (p DeliveryPlan, err error) {
 			hardware.NativeFilters = false
 		}
 		converted := audioOutputFor(audio, client, in.Target, carrier, outputs)
-		if hdr && picture.Range == assets.RangeSDR && !cfg.ToneMapping {
-			rejections = append(rejections, RouteRejection{ReasonHDRNotAllowed, "tone mapping disabled"})
-		}
+		// The owner's tone mapping switch does not take a title away: with it
+		// off an HDR picture is still converted for a device that needs a
+		// standard one, unmapped, and the plan's trace says why it looks flat.
 		if video != nil && video.DynamicRange == assets.RangeDolbyVision && dolbyVisionFallback(video) == "" && (in.Server == nil || !in.Server.VulkanAvailable) {
 			rejections = append(rejections, RouteRejection{RejectDolbyVision, "no qualified reshape route"})
 		}
@@ -830,6 +833,7 @@ func planDelivery(in DeliveryInput) (p DeliveryPlan, err error) {
 		if cfg.ToneMapping {
 			p.ToneMap = true
 		} else {
+			p.ToneMapOff = true
 			trace.Notes = append(trace.Notes, NoteToneMapOwnerOff)
 		}
 	}
@@ -1030,7 +1034,7 @@ func (p DeliveryPlan) conversionGraph(burn *decoder.BurnIn) (decoder.ConversionG
 	if request.ConvertVideo && p.Trace != nil && p.Trace.Video != nil && p.Trace.Video.DolbyVisionProfile > 0 {
 		t := request.Target
 		if t == nil {
-			t = &decoder.ConversionTarget{VideoCodec: p.OutputVideoCodec, BitDepth: 8, DynamicRange: "sdr", ToneMap: p.ToneMap, Width: p.TargetWidth, Height: p.TargetHeight, FrameRate: p.MaxFrameRate, VideoBitrateBPS: p.VideoBitrateBPS, AudioCodec: p.OutputAudioCodec, AudioChannels: p.AudioChannels, AudioSampleRate: p.AudioSampleRate, AudioBitrateBPS: p.AudioBitrateBPS, Packaging: p.OutputContainer}
+			t = &decoder.ConversionTarget{VideoCodec: p.OutputVideoCodec, BitDepth: 8, DynamicRange: "sdr", ToneMap: p.ToneMap, Unmapped: p.ToneMapOff, Width: p.TargetWidth, Height: p.TargetHeight, FrameRate: p.MaxFrameRate, VideoBitrateBPS: p.VideoBitrateBPS, AudioCodec: p.OutputAudioCodec, AudioChannels: p.AudioChannels, AudioSampleRate: p.AudioSampleRate, AudioBitrateBPS: p.AudioBitrateBPS, Packaging: p.OutputContainer}
 		}
 		copy := *t
 		copy.DolbyVisionProfile = p.Trace.Video.DolbyVisionProfile
@@ -1044,7 +1048,7 @@ func (p DeliveryPlan) conversionGraph(burn *decoder.BurnIn) (decoder.ConversionG
 		if p.MaxFrameRate > 0 {
 			rate = min(rate, p.MaxFrameRate)
 		}
-		request.Target = &decoder.ConversionTarget{VideoCodec: "h264", BitDepth: 8, DynamicRange: "sdr", ToneMap: p.ToneMap, Width: p.TargetWidth, Height: p.TargetHeight, FrameRate: p.MaxFrameRate, VideoBitrateBPS: p.VideoBitrateBPS, VideoLevel: decoder.H264OutputLevel(w, h, rate), AudioCodec: p.OutputAudioCodec, AudioChannels: p.AudioChannels, AudioSampleRate: p.AudioSampleRate, AudioBitrateBPS: p.AudioBitrateBPS, Packaging: p.OutputContainer}
+		request.Target = &decoder.ConversionTarget{VideoCodec: "h264", BitDepth: 8, DynamicRange: "sdr", ToneMap: p.ToneMap, Unmapped: p.ToneMapOff, Width: p.TargetWidth, Height: p.TargetHeight, FrameRate: p.MaxFrameRate, VideoBitrateBPS: p.VideoBitrateBPS, VideoLevel: decoder.H264OutputLevel(w, h, rate), AudioCodec: p.OutputAudioCodec, AudioChannels: p.AudioChannels, AudioSampleRate: p.AudioSampleRate, AudioBitrateBPS: p.AudioBitrateBPS, Packaging: p.OutputContainer}
 	}
 	if request.Target != nil && (request.Target.VideoCodec == "hevc" || request.Target.VideoCodec == "h264") && request.Target.VideoLevel == 0 {
 		target := *request.Target

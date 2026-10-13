@@ -1,10 +1,12 @@
 # Notifications and viewer feedback
 
 A guide for third-party client authors. The normative contract is
-`notifications.openapi.yaml`; this file explains how to use it well.
+the notification handlers and generated registry contract; this file explains
+how to use them. The hand-written YAML is historical.
 
-Everything needs `Authorization: Bearer <access token>`. Routes under
-`/v1/admin/` need an owner session.
+Requests need `Authorization: Bearer <access token or scoped credential>`.
+Owner administration routes require owner authority and the route’s scope;
+session-only operations still refuse keys and tokens.
 
 ## Revisions and stream positions
 
@@ -360,7 +362,7 @@ If the same profile already opened a report with the same kind, category and
 item, whose message normalises to the same text, within 24 hours, you get that
 report back:
 
-```json
+```text
 { "data": { "report": { "id": "b31d…", "duplicates": 1, … },
             "duplicate": true, "created": false, "duplicateOf": "b31d…" } }
 ```

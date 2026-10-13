@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"net/url"
 	"reflect"
+	"slices"
 	"sort"
 	"strings"
 
@@ -459,6 +460,12 @@ func Register[Request, Response any](r *Registry, route Route[Request, Response]
 	if route.RawHandler != nil && (!m.SSE || m.Method != "GET" || m.BodyLimit != 0) || route.RawHandler == nil && m.SSE {
 		return errors.New("streaming route must be a bodyless GET with a raw handler")
 	}
+	// A change to something that exists names the revision it was made
+	// against. The route says so in its contract without having to remember to.
+	fenced := route.RawHandler == nil && revisionFenced(m.Method, reflect.TypeFor[Request]())
+	if fenced && !slices.Contains(m.Errors, "revision_required") {
+		m.Errors = append(append([]string{}, m.Errors...), "revision_required")
+	}
 	if err := r.define(m, reflect.TypeFor[Request](), reflect.TypeFor[Response](), true); err != nil {
 		return err
 	}
@@ -491,6 +498,10 @@ func Register[Request, Response any](r *Registry, route Route[Request, Response]
 			}
 			if err = decodeStrict(raw, &request); err != nil {
 				fail(&apierror.Error{Code: "invalid_request", Cause: err})
+				return
+			}
+			if fenced && !revisionSent(raw) {
+				fail(&apierror.Error{Code: "revision_required"})
 				return
 			}
 		} else if m.BodyLimit == 0 && !empty {
@@ -540,6 +551,37 @@ func Register[Request, Response any](r *Registry, route Route[Request, Response]
 		_, _ = w.Write(raw)
 	})
 	return nil
+}
+
+// revisionFenced reports whether a body of this type, sent with this method,
+// changes something that already exists at a numbered revision: a PUT, PATCH
+// or DELETE whose body has an integer expectedRevision. A POST shares body
+// types with creations and is not fenced by this rule.
+func revisionFenced(method string, body reflect.Type) bool {
+	if method != "PUT" && method != "PATCH" && method != "DELETE" {
+		return false
+	}
+	for body != nil && body.Kind() == reflect.Pointer {
+		body = body.Elem()
+	}
+	if body == nil || body.Kind() != reflect.Struct {
+		return false
+	}
+	field, ok := body.FieldByName("ExpectedRevision")
+	return ok && field.Type.Kind() == reflect.Int64 && strings.Split(field.Tag.Get("json"), ",")[0] == "expectedRevision"
+}
+
+// revisionSent reports whether the body names its expected revision. Leaving
+// it out, or sending null, must never be read as revision 0: that would let a
+// request that knows nothing about the current state replace it. An explicit
+// 0 is a revision like any other.
+func revisionSent(raw []byte) bool {
+	var body map[string]json.RawMessage
+	if json.Unmarshal(raw, &body) != nil {
+		return false
+	}
+	revision, ok := body["expectedRevision"]
+	return ok && !bytes.Equal(bytes.TrimSpace(revision), []byte("null"))
 }
 func marshalResponse(v any) ([]byte, error) {
 	raw, err := json.Marshal(v)

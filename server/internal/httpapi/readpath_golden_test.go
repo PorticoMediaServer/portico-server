@@ -42,6 +42,18 @@ import (
 // diff on a named case rather than a silent difference nobody looks at. The
 // golden file is regenerated only by running with PORTICO_GOLDEN_UPDATE=1, and
 // regenerating it is the thing this workstream is not allowed to do.
+//
+// It was recorded again on 13 October 2026, after the wire itself was changed
+// on purpose, and only once every kind of difference from the earlier
+// recording had been accounted for: media times in whole milliseconds
+// (durationMs, progressMs, startMs) and ratings from 0 to 10; the `missing`
+// flag on titles; `seeAll` on Home rows; `total` on facets; `discNumber` on
+// songs; search by accent-folded prefix with Collections and Authors groups,
+// cast names in a title's text, and title order by sort key; and groupings
+// (genres, decades, series) paged, honouring a range, and listed by title in
+// the direction asked. What did not change, and was checked case by case: the
+// members and counts of every grouping, every total a restricted viewer is
+// given, and every status code.
 
 // volatileKeys are the JSON keys whose values cannot be stable across two runs
 // of the same catalogue: they carry a session hash, an HMAC signature, a wall

@@ -70,6 +70,7 @@ index catalog_book_files_listening_order
 index catalog_book_files_order
 index catalog_book_group_members_book
 index catalog_book_group_visible_edges_pair
+index catalog_book_groups_every
 index catalog_book_groups_key
 index catalog_book_groups_library
 index catalog_book_position_contrib_asset
@@ -156,6 +157,7 @@ index catalog_personal_sort_member_item_id
 index catalog_personal_sort_member_last
 index catalog_personal_sort_member_rating
 index catalog_personal_sort_row_entity
+index catalog_personal_visibility_sort_bucket_class
 index catalog_personal_visibility_sort_edge_class
 index catalog_personal_visibility_sort_edge_entity
 index catalog_playlist_entries_item
@@ -250,6 +252,7 @@ index identity_refresh_receipts_expiry
 index identity_refresh_receipts_family
 index identity_unknown_attempts_age
 index inventory_analysis_pending
+index inventory_artwork_sources_entity
 index inventory_artwork_sources_role
 index inventory_changes_source
 index inventory_directories_pending
@@ -389,6 +392,7 @@ index playback_personal_fences_item_id_fk
 index playback_sessions_asset_id_fk
 index playback_sessions_item_id_fk
 index playback_sessions_session_hash
+index playback_track_memory_item
 index playback_v1_prepared_age
 index playback_v1_prepared_queue
 index playback_v1_prepared_session
@@ -1460,6 +1464,8 @@ trigger dvr_preserve_recording_dependency
 trigger dvr_retire_disabled_rule_dependency
 trigger dvr_retirement_catalog_revision
 trigger enrichment_external_ids_insert
+trigger history_observation_hint_insert
+trigger history_observation_hint_update
 trigger hosted_member_link_delete
 trigger hosted_member_link_insert
 trigger hosted_member_link_update
@@ -1691,6 +1697,7 @@ trigger profile_show_personal_update
 trigger profile_show_progress_insert
 trigger profile_show_progress_update
 trigger progress_observation_update
+trigger progress_replay_membership
 trigger rec_data_external_delete
 trigger rec_data_external_insert
 trigger rec_data_similar_delete

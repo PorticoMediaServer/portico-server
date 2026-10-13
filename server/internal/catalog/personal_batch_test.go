@@ -210,22 +210,22 @@ func TestPersonalHistoryPeriodAndLibraryFilters(t *testing.T) {
 		t.Fatal(e)
 	}
 	libraries := []string{"m", "other"}
-	all, e := s.History("s", "f", "p", "", "all", "", libraries, 40, Viewer{Profile:"p",Libraries:libraries})
+	all, e := s.History("s", "f", "p", "", "all", "", libraries, 40, Viewer{Profile: "p", Libraries: libraries})
 	if e != nil || len(all.Entries) != 3 {
 		t.Fatal("all", all, e)
 	}
-	recent, e := s.History("s", "f", "p", "", "24h", "", libraries, 40, Viewer{Profile:"p",Libraries:libraries})
+	recent, e := s.History("s", "f", "p", "", "24h", "", libraries, 40, Viewer{Profile: "p", Libraries: libraries})
 	if e != nil || len(recent.Entries) != 2 || recent.Period != "24h" {
 		t.Fatal("period window", recent, e)
 	}
-	scoped, e := s.History("s", "f", "p", "", "all", "m", libraries, 40, Viewer{Profile:"p",Libraries:libraries})
+	scoped, e := s.History("s", "f", "p", "", "all", "m", libraries, 40, Viewer{Profile: "p", Libraries: libraries})
 	if e != nil || len(scoped.Entries) != 2 || scoped.LibraryID != "m" {
 		t.Fatal("library scope", scoped, e)
 	}
-	if _, e = s.History("s", "f", "p", "", "all", "forbidden", libraries, 40, Viewer{Profile:"p",Libraries:libraries}); !errors.Is(e, identity.ErrUnauthorized) {
+	if _, e = s.History("s", "f", "p", "", "all", "forbidden", libraries, 40, Viewer{Profile: "p", Libraries: libraries}); !errors.Is(e, identity.ErrUnauthorized) {
 		t.Fatal("unauthorized library accepted", e)
 	}
-	if _, e = s.History("s", "f", "p", "", "eternity", "", libraries, 40, Viewer{Profile:"p",Libraries:libraries}); !errors.Is(e, ErrCursor) {
+	if _, e = s.History("s", "f", "p", "", "eternity", "", libraries, 40, Viewer{Profile: "p", Libraries: libraries}); !errors.Is(e, ErrCursor) {
 		t.Fatal("unknown period accepted", e)
 	}
 }

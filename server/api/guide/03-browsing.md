@@ -1,180 +1,59 @@
-# 3. Browsing
+# 3. Browsing and search
 
-All browsing is already scoped to the viewer: the server filters libraries,
-rows, and entries through the membership policy before composing, so a client
-must never re-filter. Render the server's `defaultView`, row order, sorts, and
-filters rather than choosing its own.
+Browse as the signed-in viewer or a scoped key/token. The server applies library
+access and content restrictions. Render its headings, navigation, row order,
+sorts and filters; do not build a second client-side visibility rule.
 
-## Libraries
+| Read | Purpose |
+| --- | --- |
+| `GET /v1/libraries` | Libraries visible to this viewer, with the default view. |
+| `GET /v1/libraries/{id}/content` | A composed library screen; `view` and `entityId` select its sub-surface. |
+| `GET /v1/content` | Composed global screens such as saved content. |
+| `GET /v1/home` | Home rows, hero, layout and per-row paging. |
+| `GET /v1/home/rows/{id}` | Continue a row without loading the whole library. |
+| `GET /v1/items/{id}` | One item with the viewer's state. |
+| `GET /v1/items/{id}/detail` | Details, files, metadata and available actions. |
+| `GET /v1/libraries/{id}/browse-capabilities` | The library's fields, operators, sorts, quick filters and bounds. |
+| `GET /v1/libraries/{id}/facets` | Available facet values and counts. |
+| `POST /v1/libraries/{id}/browse` | Structured browse expressions and ordered, paged entries. |
 
-`GET /v1/libraries (openapi.yaml, operationId listLibraries)` lists the
-libraries this viewer may see. (The same `operationId` is also declared in
-`browse.openapi.yaml`; the `openapi.yaml` entry below is the reference.)
+For structured browse, read capabilities first. An example request:
 
-<!-- example: browsing-libraries-response file=openapi.yaml operationId=listLibraries direction=response status=200 schema=@response /v1/libraries get 200 -->
 ```json
-{
-  "items": [
-    { "id": "lib_movies", "name": "Movies", "kind": "movie", "defaultView": "grid" },
-    { "id": "lib_shows", "name": "Shows", "kind": "tv", "defaultView": "grid" }
-  ]
-}
+{"limit":40,"query":{"field":"title","operator":"contains","value":"harbor"}}
 ```
 
-`kind` is `movie|tv|anime|music|audiobook`. Per-library vocabulary (fields,
-operators, sorts, quick filters, `queryLimits` including `maximumLimit`) is
-published by `GET /v1/libraries/{id}/browse-capabilities (browse.openapi.yaml,
-operationId getBrowseCapabilities)`; facet counts come from `GET
-/v1/libraries/{id}/facets (browse.openapi.yaml, operationId getLibraryFacets)`.
+The response has `entries`, the applied query, `pageInfo` and optional letter
+anchors in `positionIndex`. Use `pageInfo.nextCursor` for the next page or the
+returned revision with a positional range. Do not use a page index from another
+revision. Source: `internal/httpapi/browse_routes.go` and the browse engine.
 
-## Browse and content
-
-Two browse spellings exist. The structured one is `POST
-/v1/libraries/{id}/browse (browse.openapi.yaml, operationId browseLibrary)`,
-which takes the typed expression tree (`all|any|not` or a
-`field`/`operator`/`value` predicate), sorts, `limit` (1–100), `cursor`, and
-windowed `range`/`seek`:
-
-<!-- example: browsing-browse-request file=browse.openapi.yaml operationId=browseLibrary direction=request schema=@request /v1/libraries/{id}/browse post -->
-```json
-{
-  "limit": 40,
-  "query": { "field": "title", "operator": "contains", "value": "harbor" }
-}
-```
-
-The legacy cursor-paged row read `GET /v1/libraries/{id}/browse (openapi.yaml,
-operationId browseLibrary)` (same `operationId`, different method and
-query-param shape) is still registered; prefer the `POST` spelling for
-filtered queries.
-
-The response carries the resolved query, entries, page info, and letter anchors:
-
-<!-- example: browsing-browse-result file=browse.openapi.yaml operationId=browseLibrary direction=response status=200 schema=@response /v1/libraries/{id}/browse post 200 -->
-```json
-{
-  "pivot": "items",
-  "applied": {
-    "query": { "field": "title", "operator": "contains", "value": "harbor" },
-    "sort": []
-  },
-  "entries": [
-    { "id": "item_0001", "kind": "movie", "title": "Harbor Lights" }
-  ],
-  "pageInfo": {
-    "start": 0,
-    "total": 1,
-    "revision": "rev_42",
-    "hasMore": false,
-    "nextCursor": ""
-  },
-  "positionIndex": [
-    { "key": "H", "index": 0 }
-  ]
-}
-```
-
-For screens a person looks at, prefer the server-composed surfaces — one
-request per screen: `GET /v1/libraries/{id}/content (openapi.yaml, operationId
-getLibraryContent)` (heading, tabs, sorts, filters, sections; `view` and
-`entityId` select grid, show, album, artist, and other sub-surfaces), `GET
-/v1/content (openapi.yaml, operationId getGlobalContent)` (`view=home`,
-`watchlist`, `favorites`, `playlists`; `view=home` requires exactly
-`limit=12`), `GET /v1/items (openapi.yaml, operationId listItems)` (flat
-cursor-paged items), `GET /v1/items/{id} (openapi.yaml, operationId getItem)`
-(one row with this viewer's watched flag and resume position), and `GET
-/v1/items/{id}/detail (openapi.yaml, operationId getItemDetail)` (item,
-personal state, action list, metadata blocks, markers; `related=all` opts
-non-movie kinds into related rows):
-
-<!-- example: browsing-item-response file=openapi.yaml operationId=getItem direction=response status=200 schema=#/components/schemas/Item -->
-```json
-{
-  "id": "item_0001",
-  "libraryId": "lib_movies",
-  "title": "Harbor Lights",
-  "kind": "movie",
-  "duration": 6540.0,
-  "progressSeconds": 0.0,
-  "available": true,
-  "addedAt": "2026-09-01T12:00:00.000Z"
-}
-```
-
-The composed content envelope is the same shape everywhere:
-
-<!-- example: browsing-content-response file=openapi.yaml operationId=getGlobalContent direction=response status=200 schema=@response /v1/content get 200 -->
-```json
-{
-  "heading": {},
-  "scope": {},
-  "revision": {},
-  "navigation": [],
-  "query": {},
-  "sorts": [],
-  "filters": [],
-  "sections": []
-}
-```
-
-A universal `filter` grammar, `POST …:query` collection reads, `sort=field`,
-`q=`, and single-vocabulary booleans are **not specified**: each family keeps
-its own filter spelling, and only browse publishes a typed grammar.
-
-## Position anchors
-
-Windowed collections expose random access. In `POST
-/v1/libraries/{id}/browse (browse.openapi.yaml, operationId browseLibrary)`,
-`range` pins a `start` index against the `pageInfo.revision` the client last
-saw, `seek` jumps by prefix, and `positionIndex` returns letter anchors (`key`
-is the uppercase first letter, `#` otherwise) present only when the first sort
-is title ascending. Home rows carry their own `revision`, `start`, `anchorId`,
-and cursor paging (section below). A `start` against a stale revision answers
-`409`. Cross-collection `positionIndex` anchors and published sort ladders are
-**not specified**.
+Content screens publish their allowed sort/filter choices, including grouped
+screens. Use those choices for genres, collections, series, people and other
+subgroups instead of forcing title order. Keep visible content while a scan or
+projection refresh runs; use the [event feed](06-events.md) to reread quietly.
 
 ## Search
 
-`GET /v1/search (openapi.yaml, operationId search)` searches exactly the
-libraries this viewer may see under a three-second server deadline (timeout
-answers `503 search_unavailable`, never a partial page). Only `q`, `group`,
-`cursor`, `limit` (1–40), and `record` are accepted; pass `record=1` on a
-committed search — a submit or result open, never a keystroke or continuation.
-Canonical people search is `GET /v1/people (search-people.openapi.yaml,
-operationId searchPeople)` (`q` 2–128 chars, `limit` 1–100) with credits at
-`GET /v1/people/{id} (search-people.openapi.yaml, operationId readPerson)`
-(`role=cast|crew|all`, cursor-paged). Search history scoping and recording
-rules beyond the `record` flag are per-operation behavior; a unified
-search-capabilities document is **not specified** in the cited response
-schemas.
+`GET /v1/search?q=harbor&limit=20` returns grouped results. Accepted parameters
+are `q`, `group`, `groups`, `cursor`, `limit`, `sort`, `direction`, `libraryIds`
+and `record`. The allowed search groups and sort values come from the search
+contract; an unknown value is refused. Limit is 1–40. Set `record=1` only when
+a person commits a search, not on every keystroke or continuation.
 
-## Home and layout
+`GET /v1/search/history` and DELETE on the same address read/clear the viewer's
+search history. `GET /v1/people` searches people; `GET /v1/people/{id}` reads
+credits. Source: `internal/httpapi/search.go`, `search_sort_routes.go` and
+`people_routes.go`.
 
-`GET /v1/home (home.openapi.yaml, operationId getHome)` returns the composed
-home document (`serverId`, `viewerFence`, up to 64 populated `rows` in
-configured order, `hero`, `layout`, `revision`, `generatedAt`). `hero` names the
-entry Home opens with (`rowId`, `entryId`): the first entry of Continue Watching
-or of Continue Listening, whichever was played more recently; it is absent when
-nothing is in progress. Rows declare their own
-`kind` (`continue|ondeck|saved|recommendation|community|recent|related`),
-`artworkShape` (`poster|square|landscape`), policy state, paging (`entries`,
-`total`, `start`, `limit`, `hasMore`, `nextCursor`, `anchorId`, `revision`),
-and endpoints. `GET /v1/home/rows/{id} (home.openapi.yaml, operationId
-getHomeRow)` pages one row. Layout customization is `GET /v1/home/layout
-(home.openapi.yaml, operationId getHomeLayout)`, `PUT /v1/home/layout
-(home.openapi.yaml, operationId putHomeLayout)` (body fenced by
-`expectedRevision` with an `idempotencyKey`), and `POST
-/v1/home/layout/reset (home.openapi.yaml, operationId resetHomeLayout)`:
+For indexing by title or provider ID, use [GET /v1/titles](08-for-tools.md),
+which is bounded separately from the composed-screen query grammar.
 
-<!-- example: browsing-layout-request file=home.openapi.yaml operationId=putHomeLayout direction=request schema=@request /v1/home/layout put -->
-```json
-{
-  "expectedRevision": 7,
-  "rowOrder": ["continue", "watchlist", "recent_lib_movies"],
-  "hiddenRowIds": ["trending"],
-  "idempotencyKey": "layout-0001"
-}
-```
+## Artwork and ordering
 
-Localisable row titles (`{code, params}` plus English `fallback`), capability
-gating (`GET /v1/capabilities`), and a bootstrap bundle are **not specified**.
+Returned artwork URLs may carry `v` (digest) and `w=400`, `800` or `1920`.
+Use the returned URL. Versioned bytes have an ETag and immutable cache headers;
+unversioned bytes require revalidation. A replaced version answers 410 rather
+than different bytes under its old address. Authentication still applies.
+Titles sort by stored Unicode-folded keys, taking an explicit sort title first
+and otherwise handling leading articles according to metadata language.

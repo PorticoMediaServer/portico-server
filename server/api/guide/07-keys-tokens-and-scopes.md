@@ -8,7 +8,7 @@ sign in the way an app does. It carries a credential that somebody made for it:
 | **API key** | the owner | the console, or `POST /v1/admin/api-keys (portico.openapi.json, operationId create_api_key)` | `pk.` |
 | **Personal access token** | any member, for themselves | their settings, or `POST /v1/me/access-tokens (portico.openapi.json, operationId create_access_token)` | `pat.` |
 
-Both are used the same way, on any route:
+Both are used the same way, on routes their scopes and role allow:
 
 ```
 Authorization: Bearer pk.3q2-7w...
@@ -52,6 +52,10 @@ Refusals:
 
 ## Creating and revoking
 
+Credential-management routes require a signed-in session. A key or token, even
+with `admin`, cannot list, create or revoke credentials. In the web app, owners
+use Server → Integrations; other members use Personal access tokens in settings.
+
 `POST /v1/admin/api-keys (portico.openapi.json, operationId create_api_key)`
 and `POST /v1/me/access-tokens (portico.openapi.json, operationId
 create_access_token)` take the same body:
@@ -65,7 +69,7 @@ create_access_token)` take the same body:
 }
 ```
 
-`expiresAt` is optional; leave it out for a credential that lasts until it is
+`expiresAt` is at most ten years ahead and is optional; leave it out for a credential that lasts until it is
 revoked. `operationId` identifies the request: sending the same one again does
 not make a second credential.
 
@@ -129,8 +133,8 @@ A key or token has a lifetime of its own. It stops working only when:
 
 It does **not** stop when its member changes their password, signs out
 everywhere, or signs out a device, and it does not stop when the owner changes
-the member's library access. Those end the member's signed-in sessions and
-leave what they have connected working.
+the member's library access. Password changes and sign-out end signed-in sessions. Permission changes apply
+live. All leave what the member has connected working, under current permissions.
 
 A key or token always acts as its member **as they are now**. If the member's
 role is lowered it can no longer do what that role allowed (the calls answer
@@ -169,3 +173,9 @@ your limit; retry after the stated delay.
 A key or token is a bearer secret. Do not put one in a web page other people can
 load. Requests from a browser page on another origin are refused unless the
 server's operator has listed that origin.
+
+To allow a separate browser app, set `PORTICO_ALLOWED_ORIGINS` to its exact
+origin (comma-separated for several) before starting the server. This adds to
+built-in first-party origins. It is not needed for the bundled same-origin web
+app and does not allow cross-origin first-run setup. CORS permission does not
+replace authentication, scopes or library restrictions.

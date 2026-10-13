@@ -139,10 +139,13 @@ func TestProductionStatementsPrepareAgainstTheBaseline(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer spool.Close()
-	file, err := parser.ParseFile(token.NewFileSet(), filepath.Join("..", "livechannels", "programme_spool.go"), nil, 0)
+	spoolFile := filepath.Join("..", "livechannels", "programme_spool.go")
+	file, err := parser.ParseFile(token.NewFileSet(), spoolFile, nil, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
+	spoolDDL := regexp.MustCompile(`(?i)^CREATE\s+(?:TABLE|INDEX)\s`)
+	spoolStatements := 0
 	ast.Inspect(file, func(node ast.Node) bool {
 		expression, ok := node.(ast.Expr)
 		if !ok {
@@ -152,19 +155,23 @@ func TestProductionStatementsPrepareAgainstTheBaseline(t *testing.T) {
 		if !ok {
 			return true
 		}
-		if strings.HasPrefix(text, "CREATE TABLE programmes(") || strings.HasPrefix(text, "CREATE INDEX programmes_") {
+		if spoolDDL.MatchString(text) {
+			spoolStatements++
 			if _, err := spool.Exec(text); err != nil {
 				t.Fatal(err)
 			}
 		}
 		return false
 	})
+	if spoolStatements == 0 {
+		t.Fatalf("%s no longer says what its spool holds", spoolFile)
+	}
 	missing := regexp.MustCompile(`no such (table|column|function)`)
 	name := regexp.MustCompile(`no such (table|column|function): (?:\w+\.)?(\w+)`)
 	checked := 0
 	for _, s := range statements {
 		target := db
-		if strings.HasPrefix(s.where, "internal/livechannels/programme_spool.go:") {
+		if strings.HasPrefix(filepath.ToSlash(s.where), "internal/livechannels/programme_spool.go:") {
 			target = spool
 		}
 		stmt, err := target.Prepare(s.text)
@@ -183,6 +190,7 @@ func TestProductionStatementsPrepareAgainstTheBaseline(t *testing.T) {
 				continue
 			}
 		}
+
 		if m := name.FindStringSubmatch(err.Error()); m != nil && m[1] != "column" && transient[m[1]+":"+strings.ToLower(m[2])] {
 			continue
 		}

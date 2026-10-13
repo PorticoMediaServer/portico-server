@@ -195,7 +195,7 @@ func (h *Hub) Read(ctx context.Context, p identity.Principal, owner bool, after 
 	if !supplied {
 		return out, gate.Commit()
 	}
-	if after > maximum || minimum > 0 && after < minimum-1 {
+	if after > maximum || minimum > 0 && after < minimum-1 || minimum == 0 && after < maximum {
 		out.Events = append(out.Events, Event{ID: out.NextAfter, Type: "stream.resync", At: time.Now().UTC().Format("2006-01-02T15:04:05.000Z"), Resource: Resource{Kind: "stream", ID: "all"}, Revision: out.NextAfter})
 		return out, gate.Commit()
 	}
