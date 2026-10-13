@@ -108,7 +108,7 @@ export function DetailScreen() {
     for (const group of detail.more) {
       group.actions.forEach((action, i) => items.push({
         // Follow-up: Rate shows its state (Rated N stars vs Rate…), as Apple did before.
-        id: action.id, label: (action.id as string) === 'rate' ? (personal?.rating != null ? t('title.rated', {stars: t('title.stars', {count: personal.rating})}) : t('entry.rate')) : t(action.label), icon: (action.id as string) === 'rate' ? (personal?.rating != null ? 'starFilled' : 'star') : action.icon, 
+        id: action.id, label: (action.id as string) === 'rate' ? (personal?.rating != null ? t('title.rated', {stars: t('title.stars', {count: personal.rating / 2})}) : t('entry.rate')) : t(action.label), icon: (action.id as string) === 'rate' ? (personal?.rating != null ? 'starFilled' : 'star') : action.icon, 
         ...(i === 0 && items.length ? {separatorBefore: true} : {}),
       }));
     }
@@ -283,7 +283,7 @@ export function DetailScreen() {
         </Dialog>
       ) : null}
       {splitting && item ? <SplitVersionDialog libraryId={item.libraryId} title={item.title} file={splitting.file} summary={splitting.summary} onClose={() => setSplitting(undefined)} /> : null}
-      {ratingOpen && item ? <RatingDialog title={item.title} value={personal?.rating ?? null} onClose={() => setRatingOpen(false)} onRate={value => { mutate({action: 'rating', value}); setRatingOpen(false); }} /> : null}
+      {ratingOpen && item ? <RatingDialog title={item.title} value={personal?.rating != null ? personal.rating / 2 : null} onClose={() => setRatingOpen(false)} onRate={stars => { mutate({action: 'rating', value: stars == null ? null : Math.round(stars * 2)}); setRatingOpen(false); }} /> : null}
       <AnchoredMenu open={!!organise} anchor={organise?.anchor} onOpenChange={open => !open && setOrganise(undefined)} label={organise?.mode === 'playlist' ? t('entry.sheet.addToPlaylist') : t('entry.sheet.addToCollection')}>
         {item && organise ? (organise.mode === 'playlist'
           ? <PlaylistPicker key={item.id} itemId={item.id} itemTitles={[item.title]} onDone={notice => { setOrganiseNotice(notice); setOrganise(undefined); }} />
@@ -356,8 +356,9 @@ export function keyCrew<T extends {personId?: string; name: string; department: 
 }
 
 /**
- * WEB-DETAIL-02: your rating, 0.5–5 stars in half steps (the server's scale).
+ * WEB-DETAIL-02: your rating, 0.5–5 stars in half steps.
  * Click the left half of a star for a half; arrow keys step by a half.
+ * It works in stars; a rating is kept as a whole number from 0 to 10, two to a star.
  */
 function RatingDialog({title, value, onRate, onClose}: {title: string; value: number | null; onRate: (value: number | null) => void; onClose: () => void}) {
   const {t} = useI18n();
