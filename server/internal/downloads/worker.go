@@ -164,18 +164,21 @@ func (s *Service) tidy(ctx context.Context) error {
 	}
 	now := s.millis()
 	deadline := now - int64(retentionDays)*24*60*60*1000
-	type ending struct{ query, state, reason string }
+	type ending struct {
+		query, state, reason string
+		args                 []any
+	}
 	endings := []ending{
-		{`SELECT id FROM download_preparations WHERE state='ready' AND (CASE WHEN used_ms>0 THEN used_ms ELSE ready_ms END)<? ORDER BY updated_ms LIMIT 64`, StateExpired, ReasonRetention},
-		{`SELECT id FROM download_preparations WHERE state IN('queued','running','paused','ready','failed') AND ?>0 AND ` + titleGone + ` ORDER BY updated_ms LIMIT 64`, StateUnavailable, ReasonItemDeleted},
-		{`SELECT id FROM download_preparations WHERE state='ready' AND ?>0 AND artifact_kind='prepared' AND NOT EXISTS(SELECT 1 FROM prepared_media_versions v WHERE v.id=download_preparations.artifact_ref AND v.digest=download_preparations.artifact_digest AND v.state='published') ORDER BY updated_ms LIMIT 64`, StateUnavailable, ReasonNotOptimized},
-		{`SELECT id FROM download_preparations WHERE state='ready' AND ?>0 AND artifact_kind='source' AND NOT EXISTS(SELECT 1 FROM catalog_asset_links link JOIN catalog_assets a ON a.id=link.asset_id WHERE link.entity_id=download_preparations.item_id AND a.token=download_preparations.artifact_ref AND a.size=download_preparations.bytes_total AND a.modified_ns=download_preparations.source_modified_ns) ORDER BY updated_ms LIMIT 64`, StateUnavailable, ReasonSourceChanged},
+		{`SELECT id FROM download_preparations WHERE state='ready' AND (CASE WHEN used_ms>0 THEN used_ms ELSE ready_ms END)<? ORDER BY updated_ms LIMIT 64`, StateExpired, ReasonRetention, []any{deadline}},
+		{`SELECT id FROM download_preparations WHERE state IN('queued','running','paused','ready','failed') AND ` + titleGone + ` ORDER BY updated_ms LIMIT 64`, StateUnavailable, ReasonItemDeleted, nil},
+		{`SELECT id FROM download_preparations WHERE state='ready' AND artifact_kind='prepared' AND NOT EXISTS(SELECT 1 FROM prepared_media_versions v WHERE v.id=download_preparations.artifact_ref AND v.digest=download_preparations.artifact_digest AND v.state='published') ORDER BY updated_ms LIMIT 64`, StateUnavailable, ReasonNotOptimized, nil},
+		{`SELECT id FROM download_preparations WHERE state='ready' AND artifact_kind='source' AND NOT EXISTS(SELECT 1 FROM catalog_asset_links link JOIN catalog_assets a ON a.id=link.asset_id WHERE link.entity_id=download_preparations.item_id AND a.token=download_preparations.artifact_ref AND a.size=download_preparations.bytes_total AND a.modified_ns=download_preparations.source_modified_ns) ORDER BY updated_ms LIMIT 64`, StateUnavailable, ReasonSourceChanged, nil},
 	}
 	type ended struct{ id, state, reason string }
 	due := []ended{}
 	seen := map[string]bool{}
 	for _, c := range endings {
-		rows, e := s.db.QueryContext(ctx, c.query, deadline)
+		rows, e := s.db.QueryContext(ctx, c.query, c.args...)
 		if e != nil {
 			return e
 		}
