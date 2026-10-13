@@ -306,6 +306,17 @@ func (s *Service) SaveSource(ctx context.Context, library, id string, input Sour
 		next = now.Add(time.Duration(input.IntervalSeconds) * time.Second).Format(time.RFC3339Nano)
 	}
 	if id == "" {
+		// A folder that was removed from this library and is added again is the
+		// same folder: it comes back with its files (still marked missing until
+		// the next scan finds them) rather than being refused as a duplicate.
+		var removed string
+		err = tx.QueryRowContext(ctx, `SELECT id FROM library_sources WHERE library_id=? AND root=? AND enabled=0`, library, observed.Path).Scan(&removed)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return result, err
+		}
+		id = removed
+	}
+	if id == "" {
 		if err = tx.QueryRowContext(ctx, `SELECT count(*) FROM library_sources WHERE library_id=?`, library).Scan(&count); err != nil {
 			return result, err
 		}
