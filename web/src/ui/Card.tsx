@@ -15,6 +15,8 @@ export type CardProps = {
   progress?: number;
   watched?: boolean;
   unavailable?: boolean;
+  /** The title's files are gone from disk (it stays in the library and comes back if they return): said as Missing rather than Unavailable. */
+  missing?: boolean;
   onOpen?: () => void;
   onPlay?: () => void;
   /** Opens the actions menu from the anchor the gesture supplies (control box, or pointer for right-click and long press). */
@@ -35,10 +37,11 @@ export type CardProps = {
  * The name of a card's focus target: the title, then what the art shows about it (the watched
  * tick, the progress bar), which are otherwise seen but never heard.
  */
-export function cardName(title: string, state: {watched?: boolean; progress?: number; unavailable?: boolean}): string {
+export function cardName(title: string, state: {watched?: boolean; progress?: number; unavailable?: boolean; missing?: boolean}): string {
   const i18n = uiI18n();
   let name = title;
-  if (state.unavailable) name = i18n.t('card.nameWithState', {name, state: i18n.t('card.unavailable')});
+  if (state.missing) name = i18n.t('card.nameWithState', {name, state: i18n.t('title.missing')});
+  else if (state.unavailable) name = i18n.t('card.nameWithState', {name, state: i18n.t('card.unavailable')});
   if (state.watched) name = i18n.t('card.nameWithState', {name, state: i18n.t('card.watched')});
   if (state.progress && state.progress > 0) name = i18n.t('card.nameWithState', {name, state: i18n.t('card.progress', {progress: i18n.percent(Math.min(1, state.progress))})});
   return name;
@@ -50,7 +53,7 @@ export function cardName(title: string, state: {watched?: boolean; progress?: nu
  * remain reachable through the context menu on touch.
  */
 /** Memoised; the section passes stable handlers now that player intents are a stable context. */
-export const Card = React.memo(function Card({title, caption, path, shape = 'poster', icon, progress, watched, unavailable, onOpen, onPlay, onMore, href, className, hideCopy, selectable, selected, onSelect, fit}: CardProps) {
+export const Card = React.memo(function Card({title, caption, path, shape = 'poster', icon, progress, watched, unavailable, onOpen, onPlay, onMore, href, className, hideCopy, selectable, selected, onSelect, fit, missing}: CardProps) {
   const stop = (fn?: () => void) => (e: React.MouseEvent) => {
     e.stopPropagation();
     e.preventDefault();
@@ -86,7 +89,7 @@ export const Card = React.memo(function Card({title, caption, path, shape = 'pos
     onOpen?.();
   };
   return (
-    <div className={cx(s.card, unavailable && s.unavailable, shape === 'circle' && s.person, selectable && s.selecting, selected && s.selected, className)} role="group">
+    <div className={cx(s.card, (unavailable || missing) && s.unavailable, shape === 'circle' && s.person, selectable && s.selecting, selected && s.selected, className)} role="group">
       <div className={s.art}>
         {React.createElement(
           link ? 'a' : 'button',
@@ -101,7 +104,7 @@ export const Card = React.memo(function Card({title, caption, path, shape = 'pos
             onPointerCancel: pressEnd,
             // A link is dragged by the browser; the card is not a drag source.
             draggable: link ? false : undefined,
-            'aria-label': cardName(title, {watched, progress, unavailable}),
+            'aria-label': cardName(title, {watched, progress, unavailable, missing}),
             'aria-pressed': selectable ? !!selected : undefined,
             onKeyDown: onKey,
             'aria-describedby': onMore || onPlay ? 'card-keyboard-hint' : undefined,
@@ -112,7 +115,7 @@ export const Card = React.memo(function Card({title, caption, path, shape = 'pos
             the shortcut description lives once in the shell instead (`#card-keyboard-hint`). */}
         <div className={s.badges}>{onSelect ? <button type="button" className={cx(s.checkbox, selected && s.checked, selectable && s.checkboxLive)} role="checkbox" tabIndex={selectable ? 0 : -1} aria-checked={!!selected} aria-label={uiI18n().t('card.select', {title})} onClick={e => { e.stopPropagation(); onSelect({range: e.shiftKey}); }}>{selected ? <Icon name="check" size={14} strokeWidth={2.4} /> : null}</button> : <span />}{watched ? <span className={s.watched} title={uiI18n().t('status.watched')} aria-hidden><Icon name="check" size={14} strokeWidth={2.2} /></span> : null}</div>
         {/* A title whose files can't be played says so in words; the dimmed art alone is easy to miss. */}
-        {unavailable ? <span className={s.unavailableMark} aria-hidden>{uiI18n().t('card.unavailable')}</span> : null}
+        {unavailable || missing ? <span className={s.unavailableMark} aria-hidden>{uiI18n().t(missing ? 'title.missing' : 'card.unavailable')}</span> : null}
         {(onPlay || onMore) && !selectable ? (
           <div className={s.overlay}>
             {onPlay ? <button type="button" className={s.playButton} tabIndex={-1} onClick={stop(onPlay)} aria-label={uiI18n().t('card.play', {title})}><Icon name="play" size={18} /></button> : <span />}

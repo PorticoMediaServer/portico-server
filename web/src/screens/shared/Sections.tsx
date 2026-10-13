@@ -292,6 +292,7 @@ export const EntryCard = React.memo(function EntryCard({entry, siblings, inShow,
       progress={progressFor(entry)}
       watched={entry.watched === true && entry.kind !== 'category' && entry.kind !== 'collection'}
       unavailable={entry.available === false}
+      missing={entry.missing === true}
       onOpen={onOpen}
       href={hrefOf(entry, libraryId)}
       selectable={selectable}

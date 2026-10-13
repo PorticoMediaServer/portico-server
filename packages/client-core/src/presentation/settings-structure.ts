@@ -84,7 +84,7 @@ export type CompositeId =
 export type SettingsActionId = 'signOut' | 'resetRecommendations' | 'linkTV';
 export type SettingsCustomId =
   | 'identity' | 'profiles' | 'password' | 'twoStep' | 'devices' | 'porticoAccount' | 'servers'
-  | 'subtitlePreview' | 'deviceName' | 'downloadsStorage' | 'about' | 'accessTokens' | 'privacyNote'
+  | 'subtitlePreview' | 'deviceName' | 'downloadsStorage' | 'about' | 'accessTokens' | 'privacyNote' | 'remoteControls'
   // The Server heading's panels: each is drawn natively by the client.
   | 'server.nowPlaying' | 'server.alerts' | 'server.health' | 'server.activity' | 'server.statistics'
   | 'server.playHistory'
@@ -97,7 +97,8 @@ export type SettingsCustomId =
   | 'server.diskUsage' | 'server.retention' | 'server.remoteSources' | 'server.backups' | 'server.missingTitles'
   | 'server.windows' | 'server.jobs'
   | 'server.logs' | 'server.detailWindow' | 'server.records' | 'server.capabilities' | 'server.supportExport' | 'server.feedback' | 'server.stateFolder'
-  | 'server.identity' | 'server.updates' | 'server.restart' | 'server.clientReports';
+  | 'server.identity' | 'server.updates' | 'server.restart' | 'server.clientReports'
+  | 'server.setAsideTitles' | 'server.backgroundPause' | 'server.ffmpegStatus' | 'server.resourceUsage' | 'server.storageStatus' | 'server.downloadUsage';
 
 type RowCopy = Readonly<{
   label: MessageId;
@@ -315,6 +316,8 @@ const accountPages: readonly AuthoredPage[] = [
         {kind: 'composite', id: 'receiveFromDevices', storage: 'device', label: 'settings.row.receiveFromDevices', help: 'settings.help.receiveFromDevices', scope: 'device', platforms: ['tv'], control: {type: 'switch'}},
         custom('downloadsStorage', 'settings.row.downloadsStorage', {platforms: ['phone'], needs: c => !!c.downloads}),
       ]},
+      // What this profile is playing on its other devices, to pause, resume or stop from here.
+      {id: 'remote', rows: [custom('remoteControls', 'remote.title')], platforms: ['web']},
       {id: 'servers', title: 'settings.section.servers', rows: [custom('servers', 'settings.section.servers')]},
     ],
   },
@@ -428,7 +431,8 @@ const serverPages: readonly AuthoredPage[] = [
       setting('runtime', 'temporaryDirectory', 'settings.server.tempFolder', {type: 'text', mono: true}, {help: 'settings.server.tempFolderHelp'}),
       // Shown in GB; stored in MiB.
       setting('runtime', 'sessionStorageMiB', 'settings.server.sessionSpace', {type: 'number', min: 1, max: 1024, unit: 'settings.unit.gb', scale: 1024}, {help: 'settings.server.sessionSpaceHelp'}),
-      setting('runtime', 'ffmpegPath', 'settings.server.ffmpegPath', {type: 'text', mono: true, example: '/usr/local/bin/ffmpeg'}, {help: 'settings.server.ffmpegOwnHelp'}),
+      setting('runtime', 'ffmpegPath', 'settings.server.ffmpegPath', {type: 'text', mono: true, example: '/usr/local/bin/ffmpeg'}, {help: 'settings.server.ffmpegChosenHelp'}),
+      custom('server.ffmpegStatus'),
     ]},
     {id: 'capacity', title: 'web.transcoding.capacity', description: 'web.transcoding.capacityLede', rows: [
       setting('runtime', 'serverCap', 'web.transcoding.serverCap', {type: 'number', min: 1, max: 1000000, empty: unlimited}, {help: 'web.transcoding.serverCapHelp'}),
@@ -507,6 +511,10 @@ const serverPages: readonly AuthoredPage[] = [
       setting('maintenance', 'backupKeepCount', 'web.maintenance.backupsToKeep', {type: 'number', min: 1, max: 365}),
       custom('server.retention'),
     ]},
+    // Where the server keeps things, what is in use against the limits, and what downloads take, person by person.
+    panel('usage', 'server.resourceUsage', 'server.usage.title', {platforms: ['web']}),
+    panel('places', 'server.storageStatus', 'server.places.title', {platforms: ['web']}),
+    panel('downloadUsage', 'server.downloadUsage', 'server.downloadUsage.title', {platforms: ['web']}),
     panel('sources', 'server.remoteSources', 'settings.server.remoteSources'),
     panel('backups', 'server.backups', 'settings.server.backups'),
     {id: 'missing', title: 'settings.server.missingTitles', description: 'settings.server.missingTitlesLede', rows: [
@@ -521,6 +529,7 @@ const serverPages: readonly AuthoredPage[] = [
     {id: 'priority', rows: [
       // One named choice in place of rates and worker counts: how hard matching and artwork work.
       setting('maintenance', 'backgroundSpeed', 'metadata.settings.backgroundSpeed', {type: 'choice', choices: [{value: 'gentle', label: 'metadata.settings.gentle'}, {value: 'normal', label: 'metadata.settings.normal'}, {value: 'fast', label: 'metadata.settings.fast'}]}, {help: 'settings.server.backgroundSpeedHelp'}),
+      custom('server.backgroundPause', 'settings.server.pauseBackground'),
     ]},
   ]},
   {id: 'troubleshooting', title: 'settings.server.troubleshooting', icon: 'wrench', sections: [
@@ -530,6 +539,8 @@ const serverPages: readonly AuthoredPage[] = [
     panel('records', 'server.records', 'settings.server.records'),
     panel('capabilities', 'server.capabilities', 'settings.server.capabilities'),
     // Logs an app sent after something went wrong: to read, download and delete.
+    // Titles a rebuild could not finish, with why: present only while there are any.
+    panel('setAside', 'server.setAsideTitles', 'server.setAside.title', {platforms: ['web']}),
     panel('clientReports', 'server.clientReports', 'web.diagnostics.clientReports', {platforms: ['web']}),
     panel('export', 'server.supportExport', 'settings.server.supportExport'),
     panel('feedback', 'server.feedback', 'settings.server.feedback'),
