@@ -287,75 +287,6 @@ paths:
         "401": {$ref: "#/components/responses/Unauthorized"}
         "404": {$ref: "#/components/responses/NotFound"}
         "409": {$ref: "#/components/responses/Conflict"}
-  /v1/admin/access/api-keys:
-    get:
-      tags: [access]
-      operationId: listAccessAPIKeys
-      summary: List API keys.
-      description: Owner only. Secrets are never returned; `hint` is the last six characters.
-      parameters:
-        - {name: cursor, in: query, required: false, schema: {type: string}}
-        - {name: limit, in: query, required: false, schema: {type: integer, minimum: 1, maximum: 100}}
-      responses:
-        "200":
-          description: A page of keys.
-          content:
-            application/json:
-              schema: {$ref: "#/components/schemas/APIKeyPage"}
-        "400": {$ref: "#/components/responses/Invalid"}
-        "401": {$ref: "#/components/responses/Unauthorized"}
-    post:
-      tags: [access]
-      operationId: createAccessAPIKey
-      summary: Issue an API key.
-      description: |
-        Owner only. The key is bound to the calling account and never exceeds its
-        tier. `secret` appears only in this response. A key authenticates like a
-        bearer token (`Authorization: Bearer pk_…`) and resolves to the `api-key`
-        authority, which is a distinct principal type from a session.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [operationId, name, scope]
-              properties:
-                operationId: {type: string, minLength: 8, maxLength: 128}
-                name: {type: string, maxLength: 80}
-                scope: {type: string, enum: [read-only, playback, library-management, full]}
-      responses:
-        "201":
-          description: The key, with its secret.
-          content:
-            application/json:
-              schema: {$ref: "#/components/schemas/APIKey"}
-        "400": {$ref: "#/components/responses/Invalid"}
-        "401": {$ref: "#/components/responses/Unauthorized"}
-        "429": {$ref: "#/components/responses/Capacity"}
-  /v1/admin/access/api-keys/{id}/revoke:
-    post:
-      tags: [access]
-      operationId: revokeAccessAPIKey
-      summary: Revoke an API key.
-      description: Owner only. A revoked key stops authenticating immediately.
-      parameters:
-        - {name: id, in: path, required: true, schema: {type: string}}
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: {$ref: "#/components/schemas/RevokeRequest"}
-      responses:
-        "200":
-          description: The key after the change.
-          content:
-            application/json:
-              schema: {$ref: "#/components/schemas/APIKey"}
-        "400": {$ref: "#/components/responses/Invalid"}
-        "401": {$ref: "#/components/responses/Unauthorized"}
-        "404": {$ref: "#/components/responses/NotFound"}
-        "409": {$ref: "#/components/responses/Conflict"}
   /v1/admin/logs:
     get:
       tags: [diagnostics]
@@ -1104,27 +1035,6 @@ components:
         nextCursor: {type: string}
         approvalRequired: {type: boolean}
         items: {type: array, items: {$ref: "#/components/schemas/Device"}}
-    APIKey:
-      type: object
-      required: [id, name, scope, accountId, hint, createdAt, revoked, revision]
-      properties:
-        id: {type: string}
-        name: {type: string}
-        scope: {type: string, enum: [read-only, playback, library-management, full]}
-        accountId: {type: string}
-        hint: {type: string, description: "The last six characters of the secret."}
-        createdAt: {type: string, format: date-time}
-        lastUsedAt: {type: string, format: date-time}
-        revoked: {type: boolean}
-        revision: {type: integer, format: int64}
-        secret: {type: string, description: "Present only in the response that creates the key."}
-    APIKeyPage:
-      type: object
-      required: [limit, items]
-      properties:
-        limit: {type: integer}
-        nextCursor: {type: string}
-        items: {type: array, items: {$ref: "#/components/schemas/APIKey"}}
     LogRecord:
       type: object
       required: [sequence, at, level, category, message]

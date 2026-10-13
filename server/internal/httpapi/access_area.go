@@ -44,7 +44,7 @@ func (d Dependencies) tierAuthorityTx(ctx context.Context, tx *sql.Tx, p identit
 		return p, err
 	}
 	switch p.Authority {
-	case "local", "api-key":
+	case "local":
 		role, err := access.Role(tx, p.AccountID)
 		if err != nil {
 			return p, err
@@ -82,8 +82,9 @@ func (d Dependencies) administrator(r *http.Request) (identity.Principal, error)
 	return d.tierAuthorityTx(r.Context(), tx, p, identity.TierAdmin)
 }
 
-// bearerPrincipal accepts only a device-bound session family while legacy API
-// keys are disabled. No key may bypass the recovery or live-session checks.
+// bearerPrincipal resolves the caller's session. An API key or personal access
+// token arrives here like any session, already held to its scopes by the
+// credential gate, and gets the same recovery and live-session checks.
 func (d Dependencies) bearerPrincipal(r *http.Request) (identity.Principal, error) {
 	headers := r.Header.Values("Authorization")
 	if d.Identity == nil || d.DB == nil || len(headers) != 1 || !strings.HasPrefix(headers[0], "Bearer ") {
