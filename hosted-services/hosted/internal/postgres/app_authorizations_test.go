@@ -12,6 +12,7 @@ import (
 	"portico.local/hosted/internal/directory"
 	"portico.local/hosted/internal/httpapi"
 	"portico.local/hosted/internal/identity"
+	"portico.local/hosted/internal/postgres"
 	"portico.local/hosted/internal/security"
 	"strings"
 	"sync"
@@ -235,5 +236,53 @@ func TestAppAuthorizationHTTPConsentAndOutsideExchange(t *testing.T) {
 	json.Unmarshal(w.Body.Bytes(), &grant)
 	if len(grant) != 1 || grant["assertion"] == nil || w.Header().Get("Set-Cookie") != "" {
 		t.Fatal("broader grant", grant, w.Header())
+	}
+}
+
+// Review and decision look the browser session up by whatever cookie the
+// caller sends, before anything is authenticated. That lookup must cost the
+// same however many sessions exist.
+func TestAppAuthorizationSessionLookupDoesNotScanEverySession(t *testing.T) {
+	f := setup(t)
+	s := appBrowser(t, f)
+	if _, e := f.store.DB.Exec(`INSERT INTO session_families(id,account_id,mode,current_refresh_hash,account_epoch,absolute_expires_at,idle_expires_at) SELECT 'fam_bulk_'||n,$1,'browser',sha256(('bulk'||n)::bytea),0,now()+interval '1 day',now()+interval '1 day' FROM generate_series(1,4000) n`, s.Account.ID); e != nil {
+		t.Fatal(e)
+	}
+	if _, e := f.store.DB.Exec(`INSERT INTO refresh_tokens(token_hash,family_id,generation) SELECT current_refresh_hash,id,0 FROM session_families WHERE id LIKE 'fam_bulk_%'; ANALYZE session_families; ANALYZE refresh_tokens`); e != nil {
+		t.Fatal(e)
+	}
+	for name, hash := range map[string][]byte{"unknown cookie": security.Hash("not a session"), "signed-in cookie": security.Hash(s.RefreshToken)} {
+		var raw []byte
+		if e := f.store.DB.QueryRow(`EXPLAIN (ANALYZE,FORMAT JSON) `+postgres.AppBrowserFamilySQLForTest, hash).Scan(&raw); e != nil {
+			t.Fatal(e)
+		}
+		var nodes []struct{ Plan map[string]any }
+		if e := json.Unmarshal(raw, &nodes); e != nil || len(nodes) != 1 {
+			t.Fatal("bad explain", e)
+		}
+		examined := float64(0)
+		var walk func(map[string]any)
+		walk = func(node map[string]any) {
+			loops, _ := node["Actual Loops"].(float64)
+			for _, key := range []string{"Actual Rows", "Rows Removed by Filter", "Rows Removed by Join Filter"} {
+				n, _ := node[key].(float64)
+				examined += n * loops
+			}
+			children, _ := node["Plans"].([]any)
+			for _, child := range children {
+				walk(child.(map[string]any))
+			}
+		}
+		walk(nodes[0].Plan)
+		if examined > 8 {
+			t.Fatalf("%s: lookup examined %.0f rows", name, examined)
+		}
+	}
+	// The lookup still finds the session, and only its current cookie.
+	if _, e := f.store.ReviewAppAuthorization(context.Background(), security.Hash(s.RefreshToken), appRequest(f.server)); e != nil {
+		t.Fatal(e)
+	}
+	if _, e := f.store.ReviewAppAuthorization(context.Background(), security.Hash("not a session"), appRequest(f.server)); !errors.Is(e, identity.ErrCredentials) {
+		t.Fatal("unknown cookie", e)
 	}
 }

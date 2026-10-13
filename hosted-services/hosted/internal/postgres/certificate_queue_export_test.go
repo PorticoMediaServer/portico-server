@@ -13,3 +13,5 @@ var RetireServerTxForTest = retireServerTx
 var Install0001TxForTest = install0001Tx
 
 var CustodyReleasedTxForTest = custodyReleasedTx
+
+const AppBrowserFamilySQLForTest = appBrowserFamilySQL

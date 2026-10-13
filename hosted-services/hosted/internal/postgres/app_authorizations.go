@@ -35,6 +35,11 @@ CREATE INDEX app_authorizations_account ON app_authorizations(account_id,created
 CREATE INDEX app_authorizations_expiry ON app_authorizations(expires_at);
 `
 
+// The cookie is looked up through refresh_tokens, whose primary key is the
+// token hash. session_families has no index on its current hash, and this runs
+// for whatever cookie an unauthenticated caller sends.
+const appBrowserFamilySQL = `SELECT f.account_id,f.id FROM refresh_tokens t JOIN session_families f ON f.id=t.family_id WHERE t.token_hash=$1 AND f.mode='browser' AND f.current_refresh_hash=$1`
+
 type appFamily struct {
 	account        identity.Account
 	id             string
@@ -49,7 +54,7 @@ func appBrowserFamilyTx(ctx context.Context, tx *sql.Tx, hash []byte) (appFamily
 	if len(hash) != 32 {
 		return f, identity.ErrCredentials
 	}
-	e := tx.QueryRowContext(ctx, `SELECT account_id,id FROM session_families WHERE current_refresh_hash=$1 AND mode='browser'`, hash).Scan(&f.account.ID, &f.id)
+	e := tx.QueryRowContext(ctx, appBrowserFamilySQL, hash).Scan(&f.account.ID, &f.id)
 	if e != nil {
 		return f, currentFamilyError(ctx, e)
 	}
