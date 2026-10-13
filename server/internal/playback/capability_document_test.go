@@ -57,33 +57,37 @@ func TestPublishedProfileDecidesDeliveryAndIsExplained(t *testing.T) {
 	}
 
 	// An Apple TV publishes its document and the same file plays as it is.
-	raw, _ := json.Marshal(appleTVProfile())
-	profile, err := s.PublishClientProfile(ctx, p, raw)
-	if err != nil || profile.Revision == "" {
+	raw, _ := json.Marshal(documentOf(appleTVProfile()))
+	document, err := s.PublishCapabilities(ctx, p, raw)
+	if err != nil || document.Revision == "" {
 		t.Fatal(err)
 	}
-	if again, _ := s.PublishClientProfile(ctx, p, raw); again.Revision != profile.Revision {
+	if again, _ := s.PublishCapabilities(ctx, p, raw); again.Revision != document.Revision {
 		t.Fatal("republishing the same document changed its revision")
 	}
-	if held := s.ClientProfileFor(ctx, p); held.Revision != profile.Revision || held.Client.Family != "apple" {
-		t.Fatal("the stored document was not read back", held.Summary())
+	var writes int
+	if err = db.QueryRow(`SELECT revision FROM playback_device_capabilities`).Scan(&writes); err != nil || writes != 1 {
+		t.Fatal("republishing an equal document wrote again", writes, err)
+	}
+	if held := s.CapabilityDocumentFor(ctx, p); held.Revision != document.Revision || held.Client.Family != "apple" {
+		t.Fatal("the stored document was not read back", held.Profile(EngineNative).Summary())
 	}
 	session, err = s.Create(p, item, "auto", "apple")
 	if err != nil || session.Mode != "direct" {
 		t.Fatal(session, err)
 	}
 	plan, err = loadDeliveryPlan(db, session.ID)
-	if err != nil || plan.Strategy != DeliveryOriginal || plan.AudioStream != 1 || plan.Trace.Client.Revision != profile.Revision || plan.Trace.Video.DynamicRange != assets.RangeHDR10 {
+	if err != nil || plan.Strategy != DeliveryOriginal || plan.Engine != EngineNative || plan.AudioStream != 1 || plan.Trace.Client.Revision != document.Revision || plan.Trace.Client.Engine != EngineNative || plan.Trace.Video.DynamicRange != assets.RangeHDR10 {
 		t.Fatal(plan, err)
 	}
 
 	// Another sign-in has published nothing and is unaffected.
 	other := p
 	other.Hash = "someone-else"
-	if held := s.ClientProfileFor(ctx, other); held.Evidence != EvidenceBuiltin {
-		t.Fatal("a profile leaked across sign-ins", held.Summary())
+	if held := s.CapabilityDocumentFor(ctx, other); held.Engines.Native.Evidence != EvidenceBuiltin {
+		t.Fatal("a document leaked across sign-ins", held.Client)
 	}
-	if _, err = s.PublishClientProfile(ctx, p, []byte(`{"version":9}`)); !errors.Is(err, ErrClientProfileVersion) {
+	if _, err = s.PublishCapabilities(ctx, p, []byte(`{"version":9}`)); !errors.Is(err, ErrCapabilityDocumentVersion) {
 		t.Fatal(err)
 	}
 }
@@ -98,8 +102,8 @@ func TestReportedRouteFailureEscalatesTheNextPlan(t *testing.T) {
 	if err != nil || first.Mode != "direct" {
 		t.Fatal(first, err)
 	}
-	out, err := s.ReportRouteFailure(ctx, p, RouteFailureReport{SessionID: first.ID, Code: "decode_error", Detail: "MEDIA_ERR_DECODE at 12.4s"})
-	if err != nil || out.Route != string(DeliveryOriginal) || !out.Escalates {
+	out, err := s.RecordRouteFailure(ctx, p, first.ID, "decode_error", "MEDIA_ERR_DECODE at 12.4s")
+	if err != nil || out.Route != string(DeliveryOriginal) || out.Engine != EngineNative || !out.Escalates {
 		t.Fatal(out, err)
 	}
 	second, err := s.Create(p, item, "auto", "second")
@@ -112,7 +116,7 @@ func TestReportedRouteFailureEscalatesTheNextPlan(t *testing.T) {
 	}
 	// Reports climb: repackaging fails too, then converting the audio.
 	for _, id := range []string{second.ID} {
-		if _, err = s.ReportRouteFailure(ctx, p, RouteFailureReport{SessionID: id, Code: "source_not_supported"}); err != nil {
+		if _, err = s.RecordRouteFailure(ctx, p, id, "source_not_supported", ""); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -123,7 +127,7 @@ func TestReportedRouteFailureEscalatesTheNextPlan(t *testing.T) {
 	if plan, _ = loadDeliveryPlan(db, third.ID); plan.Strategy != DeliveryAudioConversion {
 		t.Fatal(plan.Strategy)
 	}
-	if _, err = s.ReportRouteFailure(ctx, p, RouteFailureReport{SessionID: third.ID, Code: "decode_error"}); err != nil {
+	if _, err = s.RecordRouteFailure(ctx, p, third.ID, "decode_error", ""); err != nil {
 		t.Fatal(err)
 	}
 	fourth, err := s.Create(p, item, "auto", "fourth")
@@ -134,15 +138,15 @@ func TestReportedRouteFailureEscalatesTheNextPlan(t *testing.T) {
 		t.Fatal(plan.Strategy)
 	}
 	// The last resort has nothing above it.
-	if out, err = s.ReportRouteFailure(ctx, p, RouteFailureReport{SessionID: fourth.ID, Code: "decode_error"}); err != nil || out.Escalates {
+	if out, err = s.RecordRouteFailure(ctx, p, fourth.ID, "decode_error", ""); err != nil || out.Escalates {
 		t.Fatal(out, err)
 	}
 	// Somebody else's session cannot be reported on, and junk is refused.
 	stranger := identity.Principal{Hash: "stranger", Viewer: identity.Viewer{AccountID: "other", ProfileID: "other", Authority: "local", Role: "member"}}
-	if _, err = s.ReportRouteFailure(ctx, stranger, RouteFailureReport{SessionID: first.ID, Code: "decode_error"}); !errors.Is(err, identity.ErrUnauthorized) {
+	if _, err = s.RecordRouteFailure(ctx, stranger, first.ID, "decode_error", ""); !errors.Is(err, identity.ErrUnauthorized) {
 		t.Fatal("a stranger reported on this session", err)
 	}
-	if _, err = s.ReportRouteFailure(ctx, p, RouteFailureReport{SessionID: first.ID, Code: "Not A Code!"}); !errors.Is(err, ErrRouteFailure) {
+	if _, err = s.RecordRouteFailure(ctx, p, first.ID, "Not A Code!", ""); !errors.Is(err, ErrRouteFailure) {
 		t.Fatal(err)
 	}
 }

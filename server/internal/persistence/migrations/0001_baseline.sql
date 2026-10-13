@@ -2634,21 +2634,30 @@ CREATE TABLE inventory_directory_cache(
  incarnation TEXT NOT NULL,relative_path TEXT NOT NULL,parent_path TEXT NOT NULL,
  parent_revision TEXT NOT NULL DEFAULT '',identity TEXT NOT NULL DEFAULT '',revision TEXT NOT NULL DEFAULT '',
  PRIMARY KEY(source_id,incarnation,relative_path)) STRICT;
-CREATE TABLE playback_client_profiles(
- session_hash TEXT PRIMARY KEY REFERENCES authorization_family_tokens(token_hash) ON DELETE CASCADE,
- account_id TEXT NOT NULL,profile_id TEXT NOT NULL,
- revision TEXT NOT NULL,family TEXT NOT NULL,
- document TEXT NOT NULL CHECK(length(document)<=65536),
- updated_at_ms INTEGER NOT NULL
- ) STRICT;
+-- A route a device's player could not play, per file and per player engine
+-- (native or mpv): the next plan for that engine skips it.
 CREATE TABLE playback_route_failures(
  session_hash TEXT NOT NULL REFERENCES authorization_family_tokens(token_hash) ON DELETE CASCADE,
  asset_id TEXT NOT NULL,
+ engine TEXT NOT NULL DEFAULT 'native' CHECK(engine IN ('native','mpv')),
  route TEXT NOT NULL CHECK(route IN ('original','copy_remux','audio_conversion')),
  code TEXT NOT NULL,detail TEXT NOT NULL DEFAULT '',
  reported_at_ms INTEGER NOT NULL,
- PRIMARY KEY(session_hash,asset_id,route)
+ PRIMARY KEY(session_hash,asset_id,engine,route)
  ) STRICT;
+-- The audio and subtitle choice a profile last made for a show (item_id is the
+-- show, for every episode of it) or a film, kept as languages so it carries
+-- from one file to the next. subtitle_mode: '' nothing remembered, 'off'
+-- subtitles were turned off, 'on' a track in subtitle_language was chosen.
+CREATE TABLE playback_track_memory(
+ profile_id TEXT NOT NULL,
+ item_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,
+ audio_language TEXT NOT NULL DEFAULT '',
+ subtitle_mode TEXT NOT NULL DEFAULT '' CHECK(subtitle_mode IN ('','off','on')),
+ subtitle_language TEXT NOT NULL DEFAULT '',
+ updated_ms INTEGER NOT NULL,
+ PRIMARY KEY(profile_id,item_id)
+ ) WITHOUT ROWID, STRICT;
 CREATE TABLE identity_refresh_credentials(
  family_id TEXT PRIMARY KEY REFERENCES authorization_session_families(id) ON DELETE CASCADE,
  device_id TEXT NOT NULL REFERENCES identity_devices(id),
@@ -2877,14 +2886,16 @@ CREATE TABLE "artwork_variants"(
  digest TEXT NOT NULL REFERENCES artwork_objects(digest),
  PRIMARY KEY(source_digest,width)
 ) STRICT;
+-- A device's capability document (playback.CapabilityDocument), as published:
+-- the one description of what its player engines can play.
 CREATE TABLE playback_device_capabilities(
  device_id TEXT PRIMARY KEY REFERENCES identity_devices(id) ON DELETE CASCADE,
  account_id TEXT NOT NULL,
  profile_id TEXT NOT NULL,
  revision INTEGER NOT NULL,
- document TEXT NOT NULL,
+ document TEXT NOT NULL CHECK(length(document)<=131072),
  updated_at_ms INTEGER NOT NULL
-, planner_profile TEXT NOT NULL DEFAULT '') STRICT;
+ ) STRICT;
 CREATE TABLE playback_v1_sessions(
  id TEXT PRIMARY KEY,
  device_id TEXT NOT NULL,
@@ -3827,7 +3838,6 @@ CREATE INDEX artwork_previews_digest ON artwork_previews(digest);
 CREATE INDEX artwork_objects_created ON artwork_objects(created_at);
 CREATE INDEX artwork_uploads_digest ON artwork_uploads(digest);
 CREATE INDEX artwork_uploads_thumbnail ON artwork_uploads(thumbnail_digest);
-CREATE INDEX playback_client_profiles_age ON playback_client_profiles(updated_at_ms);
 CREATE INDEX identity_refresh_device ON identity_refresh_credentials(device_id);
 CREATE INDEX identity_refresh_receipts_expiry ON identity_refresh_receipts(expires_at);
 CREATE INDEX mount_operations_retention ON mount_operations(created_at);

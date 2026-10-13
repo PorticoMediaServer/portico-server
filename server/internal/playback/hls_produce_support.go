@@ -200,29 +200,28 @@ func (h *HLS) downgradeCopyPlan(ctx context.Context, id string, plan *DeliveryPl
 	if plan.Policy != nil {
 		policy = *plan.Policy
 	}
-	height := 0
-	if source.Video != nil {
-		height = source.Video.Height
-	}
 	current, err := h.fallbackCeilings(ctx, tx, plan, p.AccountID)
 	if err != nil {
 		return nil, err
 	}
-	target, replanned, err := replanTarget(ctx, tx, id, plan, QualityOffers(height, true, true, policy), policy, cfg, height, current, false)
+	target, replanned, err := replanTarget(plan, cfg, current, false)
 	if err != nil {
 		return nil, err
 	}
-	excluded, err := routeFailuresTx(ctx, tx, p, plan.SourceID)
+	failures, err := routeFailuresTx(ctx, tx, p, plan.SourceID)
 	if err != nil {
 		return nil, err
 	}
-	if excluded == nil {
-		excluded = map[DeliveryStrategy]RouteRejection{}
+	// The presentation is already playing in one engine; its re-plan stays there.
+	client := capabilityDocumentFor(ctx, tx, p).Profile(plan.Engine)
+	excluded := map[DeliveryStrategy]RouteRejection{}
+	for route, rejection := range failures[client.Engine] {
+		excluded[route] = rejection
 	}
 	for _, route := range []DeliveryStrategy{DeliveryOriginal, DeliveryCopyRemux, DeliveryAudioConversion} {
 		excluded[route] = RouteRejection{Code: ReasonCopyTimelineUnavailable}
 	}
-	next, err := planDelivery(DeliveryInput{SourceID: source.ID, Source: &source, Client: clientProfileFor(ctx, tx, p), Server: decoder.CurrentToolchain(), Policy: policy, Target: target, Config: cfg, TranscodingEnabled: true, AudioStream: plan.AudioStream, HasAudioChoice: plan.AudioStream >= 0, Excluded: excluded, BurnIn: plan.BurnIn != nil, Remote: source.Container == "strm"})
+	next, err := planDelivery(DeliveryInput{SourceID: source.ID, Source: &source, Client: client, Server: decoder.CurrentToolchain(), Policy: policy, Target: target, Config: cfg, TranscodingEnabled: true, AudioStream: plan.AudioStream, HasAudioChoice: plan.AudioStream >= 0, Excluded: excluded, BurnIn: plan.BurnIn != nil, Remote: source.Container == "strm"})
 	if err != nil {
 		return nil, err
 	}

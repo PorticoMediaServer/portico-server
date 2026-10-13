@@ -19,12 +19,27 @@ type V1Choice struct {
 	AssetID string
 	// AudioStream is the absolute source stream index the viewer chose.
 	AudioStream *int
-	// Limit is false for {mode: original}. The ceilings are the client's
-	// {mode: limit} values; zero means none.
+	// Limit is false for the original. The ceilings are the chosen quality's
+	// (a fixed quality's own, or the client's custom limit); zero means none.
 	Limit              bool
 	MaxVideoBitrateBPS int
 	MaxAudioBitrateBPS int
 	MaxVideoHeight     int
+	// QualityID names the quality the viewer is on, for the stored plan:
+	// "original", a ladder id, "limit", or "automatic" with its current step.
+	QualityID string
+	// SubtitleKind is the kind of the subtitle the viewer chose (ass, pgs,
+	// vobsub, dvb); empty for none and for text delivered beside the stream.
+	SubtitleKind string
+	// SubtitleBesideStream says that subtitle can be handed to the device as it
+	// is beside a stream (see DeliveryInput.SubtitleBesideStream).
+	SubtitleBesideStream bool
+	// Engine pins the player engine (a re-plan of a playing presentation whose
+	// engine must not change under the viewer); empty lets planning choose.
+	Engine string
+	// RememberedAudioLanguage is the audio language this profile last chose
+	// for the show or film; it is tried before the preferred languages.
+	RememberedAudioLanguage string
 	// AdminMaxVideoBitrateBPS is the member's remote bitrate cap from access
 	// admission (spec §5.3); zero means none.
 	AdminMaxVideoBitrateBPS int
@@ -61,6 +76,9 @@ func (c *V1Choice) target(policy ResolvedDeliveryPolicy, cfg DeliveryConfigurati
 		out.RungID = "limit"
 		out.MaxVideoBitrateBPS, out.MaxAudioBitrateBPS, out.MaxVideoHeight = c.MaxVideoBitrateBPS, c.MaxAudioBitrateBPS, c.MaxVideoHeight
 	}
+	if c.QualityID != "" {
+		out.RungID = c.QualityID
+	}
 	if c.remote(policy) {
 		// The server-wide limit is a remote-connection limit (delivery settings
 		// adapter); a LAN viewer is never capped by it.
@@ -72,7 +90,7 @@ func (c *V1Choice) target(policy ResolvedDeliveryPolicy, cfg DeliveryConfigurati
 }
 
 func (c *V1Choice) remote(policy ResolvedDeliveryPolicy) bool {
-	return c.Remote || policy.NetworkClass == NetworkRemote || policy.NetworkClass == NetworkCellular
+	return c.Remote || policy.NetworkClass == NetworkRemote
 }
 
 // AdminCapped reports whether the admin cap, not the client's own request, set
@@ -105,7 +123,7 @@ func (s *Service) SelectedAsset(ctx context.Context, item string, v1 *V1Choice) 
 // for a v1 session. A replacement ends the previous presentation atomically and
 // takes its slot, which is how a track or quality change mints a new generation.
 func (s *Service) CreateV1(ctx context.Context, p identity.Principal, item, request string, choice V1Choice, replacement *SessionReplacement) (Session, error) {
-	return s.create(ctx, p, item, "auto", request, replacement, &choice)
+	return s.create(ctx, p, item, request, replacement, &choice)
 }
 
 // PlanV1 is what CreateV1 would decide for this device, with no side effects
@@ -129,7 +147,7 @@ func (s *Service) PlanV1(ctx context.Context, p identity.Principal, item string,
 		// A remote source is played as-is once it has been prepared at start.
 		return DeliveryPlan{SourceID: aid, Mode: "remote", Strategy: DeliveryOriginal, VideoAction: "copy", AudioAction: "copy", AudioStream: -1, Duration: duration}, nil
 	}
-	inputs, e := s.planInputsTx(ctx, tx, p, aid, container, video, audio, duration, false, true, "auto", choice.AudioStream, &choice)
+	inputs, e := s.planInputsTx(ctx, tx, p, aid, container, video, audio, duration, false, true, choice.AudioStream, &choice)
 	if e != nil {
 		return DeliveryPlan{}, e
 	}

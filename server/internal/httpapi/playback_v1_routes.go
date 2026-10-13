@@ -202,7 +202,32 @@ func (d Dependencies) v1ServiceCaller(q *http.Request, c v1Caller) playbackv1.Ca
 	}, Ceiling: func(ctx context.Context, session string) (int, error) {
 		ceilings, err := d.replanCeilings(q.WithContext(ctx), c.Principal, session)
 		return ceilings.MaxVideoBitrateBPS, err
+	}, SavedQuality: func(ctx context.Context) (string, error) {
+		return d.savedQuality(q.WithContext(ctx), c.Principal)
 	}}
+}
+
+// savedQuality is the viewer's saved default quality for the connection a
+// request arrives on: quality.home inside the owner's home networks,
+// quality.remote outside them.
+func (d Dependencies) savedQuality(q *http.Request, p identity.Principal) (string, error) {
+	if d.DB == nil {
+		return playback.QualityOriginal, nil
+	}
+	tx, done, err := dbwork.BeginRead(q.Context(), d.DB)
+	if err != nil {
+		return "", err
+	}
+	defer done()
+	values, _, _, err := operations.EffectivePreferences(tx, p.Viewer, deviceClassHeader(q))
+	if err != nil {
+		return "", err
+	}
+	key := "quality." + playback.QualityHome
+	if d.requestIsRemote(q) {
+		key = "quality." + playback.QualityRemote
+	}
+	return values.Text(key), nil
 }
 
 // replanCeilings is what admission would allow this caller's connection right
@@ -248,7 +273,10 @@ func (d Dependencies) v1Remote(q *http.Request) bool {
 // v1Reach is a preview's reach: the same remote flag and member cap a start
 // from this connection would get, read without admitting anything.
 func (d Dependencies) v1Reach(q *http.Request, p identity.Principal) playbackv1.Reach {
-	reach := playbackv1.Reach{Remote: d.v1Remote(q)}
+	reach := playbackv1.Reach{Remote: d.v1Remote(q), DeviceID: callerFrom(q.Context()).DeviceID}
+	if saved, err := d.savedQuality(q, p); err == nil {
+		reach.SavedQuality = saved
+	}
 	if !reach.Remote || d.Access.Access == nil || d.DB == nil {
 		return reach
 	}
@@ -272,7 +300,7 @@ func registerPlaybackV1Sessions(r *apikit.Registry, d Dependencies) {
 	sessionErrors := []string{"invalid_request", "unauthorized", "not_found", "session_ended", "revision_required", "revision_mismatch"}
 	v1Route(r, apikit.Metadata{ID: "start_playback_session", Method: "POST", Path: "/v1/playback/sessions", Summary: "Start playback (201), or report that it is being prepared (202)",
 		Access: apikit.Device, Lane: apikit.Media, Cost: apikit.Constant, BodyLimit: 8 << 10, Status: 201,
-		Errors: []string{"invalid_request", "unauthorized", "not_found", "idempotency_key_required", "idempotency_key_reused", "stream_limit_reached", "transcode_not_allowed", "source_unavailable", "unsupported_media", "feature_restricted", "no_tuner_available", "queue_building"}},
+		Errors: []string{"invalid_request", "unauthorized", "not_found", "idempotency_key_required", "idempotency_key_reused", "stream_limit_reached", "transcode_not_allowed", "source_unavailable", "unsupported_media", "connection_too_slow", "feature_restricted", "no_tuner_available", "queue_building"}},
 		func(ctx context.Context, q *http.Request, in playbackv1.StartRequest) (playbackv1.SessionView, error) {
 			c := d.v1ServiceCaller(q, callerFrom(ctx))
 			v, preparing, err := d.playbackV1().Start(ctx, c, q.Header.Get("Idempotency-Key"), in)
@@ -295,9 +323,9 @@ func registerPlaybackV1Sessions(r *apikit.Registry, d Dependencies) {
 			}
 			return v, err
 		})
-	v1Route(r, apikit.Metadata{ID: "change_playback_session", Method: "PATCH", Path: "/v1/playback/sessions/{id}", Summary: "Change tracks, quality, version or state; a change to the bytes starts a new generation",
+	v1Route(r, apikit.Metadata{ID: "change_playback_session", Method: "PATCH", Path: "/v1/playback/sessions/{id}", Summary: "Change tracks, quality, version or state, or report that the player failed; a change to the bytes re-plans the same session as a new generation and keeps its queue",
 		Access: apikit.Device, Lane: apikit.Media, Cost: apikit.Constant, BodyLimit: 4 << 10, Status: 200,
-		Errors: append(sessionErrors, "stream_limit_reached", "transcode_not_allowed", "unsupported_media")},
+		Errors: append(sessionErrors, "stream_limit_reached", "transcode_not_allowed", "unsupported_media", "connection_too_slow")},
 		func(ctx context.Context, q *http.Request, in playbackv1.Change) (playbackv1.SessionView, error) {
 			v, err := d.playbackV1().Patch(ctx, d.v1ServiceCaller(q, callerFrom(ctx)), q.PathValue("id"), q.Header.Get("If-Match"), in)
 			if err == nil {
@@ -326,10 +354,10 @@ func registerPlaybackV1Sessions(r *apikit.Registry, d Dependencies) {
 }
 
 func registerPlaybackV1Options(r *apikit.Registry, d Dependencies) {
-	v1Route(r, apikit.Metadata{ID: "put_device_capabilities", Method: "PUT", Path: "/v1/me/devices/current/capabilities", Summary: "Replace this device's playback capability profile",
-		Access: apikit.Device, Lane: apikit.Default, Cost: apikit.Constant, BodyLimit: 32 << 10, Status: 204,
+	v1Route(r, apikit.Metadata{ID: "put_device_capabilities", Method: "PUT", Path: "/v1/me/devices/current/capabilities", Summary: "Replace this device's capability document: what each of its player engines can play, the viewer's player setting and overrides",
+		Access: apikit.Device, Lane: apikit.Default, Cost: apikit.Constant, BodyLimit: playback.MaxCapabilityDocumentBytes, Status: 204,
 		Errors: []string{"invalid_request", "unauthorized", "revision_mismatch"}},
-		func(ctx context.Context, q *http.Request, in playbackv1.Capabilities) (noBody, error) {
+		func(ctx context.Context, q *http.Request, in playback.CapabilityDocument) (noBody, error) {
 			c := callerFrom(ctx)
 			revision, err := d.playbackV1().PutCapabilities(ctx, c.Principal, c.DeviceID, q.Header.Get("If-Match"), in)
 			if err == nil {
@@ -337,7 +365,7 @@ func registerPlaybackV1Options(r *apikit.Registry, d Dependencies) {
 			}
 			return noBody{}, err
 		})
-	v1Route(r, apikit.Metadata{ID: "get_device_capabilities", Method: "GET", Path: "/v1/me/devices/current/capabilities", Summary: "Read this device's playback capability profile",
+	v1Route(r, apikit.Metadata{ID: "get_device_capabilities", Method: "GET", Path: "/v1/me/devices/current/capabilities", Summary: "Read this device's capability document",
 		Access: apikit.Device, Lane: apikit.Default, Cost: apikit.Constant, Status: 200,
 		Errors: []string{"unauthorized", "not_found"}},
 		func(ctx context.Context, _ *http.Request, _ noBody) (playbackv1.CapabilitiesDocument, error) {
@@ -349,7 +377,7 @@ func registerPlaybackV1Options(r *apikit.Registry, d Dependencies) {
 		})
 	v1Route(r, apikit.Metadata{ID: "get_playback_options", Method: "GET", Path: "/v1/items/{itemId}/playback-options", Summary: "Read what a title offers and what this device would get",
 		Access: apikit.ViewerItem, Lane: apikit.Media, Cost: apikit.Constant, Status: 200,
-		Query:  []string{"versionId", "partId", "audioId", "subtitleId", "quality", "maxVideoBitrateKbps", "maxHeight", "maxAudioBitrateKbps"},
+		Query:  []string{"versionId", "partId", "audioId", "subtitleId", "quality", "qualityId", "maxVideoBitrateKbps", "maxHeight", "maxAudioBitrateKbps"},
 		Errors: []string{"invalid_request", "unauthorized", "not_found"}},
 		func(ctx context.Context, q *http.Request, _ noBody) (playbackv1.Options, error) {
 			c := callerFrom(ctx)
@@ -364,7 +392,7 @@ func registerPlaybackV1Options(r *apikit.Registry, d Dependencies) {
 // previewFrom reads the options preview query (plan §7 item 15).
 func previewFrom(q *http.Request) (playbackv1.Preview, error) {
 	v := q.URL.Query()
-	p := playbackv1.Preview{VersionID: v.Get("versionId"), PartID: v.Get("partId"), AudioID: v.Get("audioId"), SubtitleID: v.Get("subtitleId"), Quality: playbackv1.Quality{Mode: v.Get("quality")}}
+	p := playbackv1.Preview{VersionID: v.Get("versionId"), PartID: v.Get("partId"), AudioID: v.Get("audioId"), SubtitleID: v.Get("subtitleId"), Quality: playbackv1.Quality{Mode: v.Get("quality"), ID: v.Get("qualityId")}}
 	number := func(key string) (int, error) {
 		raw := v.Get(key)
 		if raw == "" {
@@ -387,7 +415,7 @@ func previewFrom(q *http.Request) (playbackv1.Preview, error) {
 		return p, err
 	}
 	if p.Quality.Mode == "" {
-		if p.Quality.MaxVideoBitrateKbps+p.Quality.MaxHeight+p.Quality.MaxAudioBitrateKbps > 0 {
+		if p.Quality.MaxVideoBitrateKbps+p.Quality.MaxHeight+p.Quality.MaxAudioBitrateKbps > 0 || p.Quality.ID != "" {
 			return p, &playbackv1.FieldError{Path: "quality"}
 		}
 		return p, nil

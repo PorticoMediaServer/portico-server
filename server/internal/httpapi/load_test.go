@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"portico.local/server/internal/playbackv1"
 	"sort"
 	"strings"
 	"sync"
@@ -71,8 +72,7 @@ type performanceTier struct {
 	// mediaPath, when set, is a real media file the fixture's one playable item
 	// is backed by, so a test can stream actual bytes through the media routes
 	// rather than sixteen placeholder ones.
-	mediaPath  string
-	playbackV1 bool
+	mediaPath string
 	// gated turns the audit's budgets into hard gates. The smoke tier reports
 	// them; the tiers that make a capacity claim assert them.
 	gated bool
@@ -257,7 +257,7 @@ func newLoadFixture(t *testing.T, tier performanceTier) *loadFixture {
 			t.Fatal(issueErr)
 		}
 		viewerEnvelopes = append(viewerEnvelopes, envelope)
-		if tier.playbackV1 {
+		{
 			payload, _ := json.Marshal(webCapabilities())
 			request := httptest.NewRequest("PUT", "/v1/me/devices/current/capabilities", bytes.NewReader(payload))
 			request.Header.Set("Authorization", "Bearer "+envelope.AccessToken)
@@ -618,12 +618,22 @@ func runBulkWriter(ctx context.Context, db *sql.DB, name string, write func(cont
 }
 
 func (f *loadFixture) callTimed(token, method, path string, body any) (int, time.Duration, string) {
+	return f.callTimedHeaders(token, method, path, nil, body)
+}
+
+func (f *loadFixture) callTimedHeaders(token, method, path string, headers map[string]string, body any) (int, time.Duration, string) {
 	var data []byte
 	if body != nil {
 		data, _ = json.Marshal(body)
 	}
 	r := httptest.NewRequest(method, path, bytes.NewReader(data))
 	r.Header.Set("Authorization", "Bearer "+token)
+	if body != nil {
+		r.Header.Set("Content-Type", "application/json")
+	}
+	for name, value := range headers {
+		r.Header.Set(name, value)
+	}
 	w := httptest.NewRecorder()
 	start := time.Now()
 	f.handler.ServeHTTP(w, r)
@@ -700,18 +710,18 @@ func (f *loadFixture) runViewer(tier performanceTier, index int) viewerResult {
 		call("personal-state", "PUT", "/v1/items/"+item+"/personal-state", map[string]any{"favorite": iteration%2 == 0, "expectedRevision": int64(iteration), "operationId": fmt.Sprintf("personal-%d-%d", index, iteration)})
 
 		label = "playback-create"
-		code, elapsed, body := f.callTimed(token, "POST", "/v1/playback/sessions", map[string]string{"itemId": f.playable, "quality": "auto", "requestId": fmt.Sprintf("viewer-%d-%d", index, iteration)})
+		code, elapsed, body := f.callTimedHeaders(token, "POST", "/v1/playback/sessions", map[string]string{"Idempotency-Key": fmt.Sprintf("load-viewer-%06d-%06d", index, iteration)}, map[string]string{"itemId": f.playable, "startFrom": "beginning"})
 		record(code, elapsed)
 		if code != 201 {
 			continue
 		}
 		// The rest of the lifecycle a real client performs: report progress, read
 		// the session back, then stop it.
-		var session playback.Session
+		var session playbackv1.SessionView
 		if json.Unmarshal([]byte(body), &session) != nil || session.ID == "" {
 			continue
 		}
-		call("playback-progress", "POST", "/v1/playback/sessions/"+session.ID+"/progress", map[string]any{"generation": session.Generation, "sequence": 1, "positionSeconds": 10 + iteration, "state": "playing"})
+		call("playback-progress", "POST", "/v1/playback/sessions/"+session.ID+"/timeline", map[string]any{"seq": 1, "generation": session.Presentation.Generation, "state": "playing", "positionMs": (10 + iteration) * 1000})
 		call("playback-read", "GET", "/v1/playback/sessions/"+session.ID, nil)
 		call("playback-stop", "DELETE", "/v1/playback/sessions/"+session.ID, nil)
 	}

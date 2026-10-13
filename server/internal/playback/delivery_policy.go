@@ -1,29 +1,24 @@
 package playback
 
 import (
-	"net"
-	"net/http"
-	"net/netip"
-	"portico.local/server/internal/operations"
 	"sort"
 	"strings"
 )
 
-// NetworkClass is the server's own conclusion about how far this playback has to
-// travel. It is never taken from the client: the client only declares a
-// transport, and the server decides what that means next to its own locality.
+// NetworkClass is the server's own conclusion about where this playback is
+// going: inside the owner's home networks or outside them. It is never taken
+// from the client. One rule decides it for every purpose (the owner's "home
+// networks" setting, read at the HTTP edge); nothing here looks at addresses.
 type NetworkClass string
 
 const (
-	NetworkLocal    NetworkClass = "local"
-	NetworkWiFi     NetworkClass = "wifi"
-	NetworkCellular NetworkClass = "cellular"
-	NetworkRemote   NetworkClass = "remote"
-	NetworkUnknown  NetworkClass = "unknown"
+	NetworkLocal   NetworkClass = "local"
+	NetworkRemote  NetworkClass = "remote"
+	NetworkUnknown NetworkClass = "unknown"
 )
 
-// TransportClassHeader is the optional client hint. Absent or unrecognised
-// values resolve to unknown, which is a lane of its own and never a failure.
+// TransportClassHeader is the optional client hint about the link it is on. It
+// is kept with a plan for diagnostics; it changes no decision.
 const TransportClassHeader = "X-Portico-Transport-Class"
 
 // TransportClasses is the accepted domain of the header.
@@ -44,84 +39,35 @@ func NormalizeTransportClass(raw string) string {
 	return "unknown"
 }
 
-// ServerLocality is what the server sees of the client's address.
+// ServerLocality is the same conclusion in the words the stored policy uses.
 const (
 	LocalityLocal   = "local"
 	LocalityRemote  = "remote"
 	LocalityUnknown = "unknown"
 )
 
-// RequestLocality classifies the peer address. Loopback and private/link-local
-// unicast are the LAN; a routable address is remote. A proxied request without a
-// usable forwarded address is remote, because a proxy hop is not LAN evidence.
-func RequestLocality(remoteAddr string, forwarded string, trusted bool) string {
-	candidate := remoteAddr
-	if trusted {
-		first, _, _ := strings.Cut(forwarded, ",")
-		first = strings.TrimSpace(first)
-		if first == "" {
-			return LocalityRemote
-		}
-		candidate = first
+// NetworkClassOf is the class of a request the edge has classified.
+func NetworkClassOf(remote bool) (NetworkClass, string) {
+	if remote {
+		return NetworkRemote, LocalityRemote
 	}
-	if host, _, err := net.SplitHostPort(candidate); err == nil {
-		candidate = host
-	}
-	candidate = strings.Trim(candidate, "[]")
-	address, err := netip.ParseAddr(candidate)
-	if err != nil {
-		return LocalityUnknown
-	}
-	address = address.Unmap()
-	if address.IsLoopback() || address.IsPrivate() || address.IsLinkLocalUnicast() || address.IsUnspecified() {
-		return LocalityLocal
-	}
-	return LocalityRemote
+	return NetworkLocal, LocalityLocal
 }
 
-// ResolveNetworkClass combines server locality with the client's declared
-// transport. The LAN wins over an ethernet or unknown declaration; a client that
-// says it is on cellular is believed, because only it can know that.
-func ResolveNetworkClass(locality, transport string) NetworkClass {
-	transport = NormalizeTransportClass(transport)
-	if transport == "cellular" {
-		return NetworkCellular
-	}
-	switch locality {
-	case LocalityLocal:
-		if transport == "wifi" {
-			return NetworkWiFi
-		}
-		return NetworkLocal
-	case LocalityRemote:
-		return NetworkRemote
-	}
-	return NetworkUnknown
-}
+// QualityHome and QualityRemote are the two saved quality defaults a viewer
+// has: one for the owner's home networks and one for everywhere else.
+const (
+	QualityHome   = "home"
+	QualityRemote = "remote"
+)
 
-// NetworkClassFromRequest is the whole resolution for one HTTP request.
-func NetworkClassFromRequest(r *http.Request, trusted bool) (NetworkClass, string, string) {
-	if r == nil {
-		return NetworkUnknown, LocalityUnknown, "unknown"
+// qualityLane is which saved default a network class reads. A class nobody
+// classified reads the remote one: the cautious of the two.
+func (c NetworkClass) qualityLane() string {
+	if c == NetworkLocal {
+		return QualityHome
 	}
-	transport := NormalizeTransportClass(r.Header.Get(TransportClassHeader))
-	locality := RequestLocality(r.RemoteAddr, r.Header.Get("X-Forwarded-For"), trusted)
-	return ResolveNetworkClass(locality, transport), locality, transport
-}
-
-// preferenceLane maps a network class onto the viewer preference lanes, which
-// are local, wifi, cellular and unknown. A remote class borrows the unknown lane
-// because a viewer has no way to have configured every remote network.
-func (c NetworkClass) preferenceLane() string {
-	switch c {
-	case NetworkLocal:
-		return "local"
-	case NetworkWiFi:
-		return "wifi"
-	case NetworkCellular:
-		return "cellular"
-	}
-	return "unknown"
+	return QualityRemote
 }
 
 // DeliveryClamp records one narrowing the server applied over a viewer's own
@@ -174,23 +120,18 @@ func validDeliveryMode(m string) bool {
 	return false
 }
 
-func clampInt(field string, requested, ceiling int, clamps *[]DeliveryClamp) int {
-	if ceiling <= 0 || requested <= 0 || requested <= ceiling {
-		if requested <= 0 {
-			return ceiling
-		}
-		return requested
-	}
-	*clamps = append(*clamps, DeliveryClamp{Field: field, Source: "server_clamp", Requested: int64(requested), Applied: int64(ceiling)})
-	return ceiling
-}
-
-// ResolveDeliveryPolicy combines the viewer's lane preferences with the owner's
-// clamps. Nil preferences resolve to the registry defaults for that lane, so a
-// caller that could not read preferences still gets a coherent policy.
+// ResolveDeliveryPolicy combines the viewer's delivery preferences with the
+// owner's ceilings for one network class. Nil preferences resolve to the
+// registry defaults, so a caller that could not read preferences still gets a
+// coherent policy.
+//
+// QualityMode is the viewer's saved default quality for this network class
+// (quality.home or quality.remote): what a start that names no quality gets.
+// The ceilings are the owner's alone. The video bitrate ceiling is a limit on
+// connections from outside the home networks and is absent inside them.
 func ResolveDeliveryPolicy(values DeliveryPreferenceReader, class NetworkClass, locality, transport string, cfg DeliveryConfiguration) ResolvedDeliveryPolicy {
 	cfg = cfg.Normalized()
-	lane := class.preferenceLane()
+	lane := class.qualityLane()
 	out := ResolvedDeliveryPolicy{
 		NetworkClass:   class,
 		ServerLocality: locality,
@@ -199,7 +140,7 @@ func ResolveDeliveryPolicy(values DeliveryPreferenceReader, class NetworkClass, 
 		DirectPlay:     "prefer",
 		DirectStream:   "allow",
 		Transcode:      "allow",
-		QualityMode:    "automatic",
+		QualityMode:    "original",
 		AllowHDR:       true,
 		PlanningPolicy: cfg.PlanningPolicy,
 		Clamps:         []DeliveryClamp{},
@@ -214,22 +155,16 @@ func ResolveDeliveryPolicy(values DeliveryPreferenceReader, class NetworkClass, 
 		if m := values.Text("delivery.transcode"); validDeliveryMode(m) {
 			out.Transcode = m
 		}
-		prefix := "quality." + lane + "."
-		if m := values.Text(prefix + "mode"); m != "" {
+		if m := values.Text("quality." + lane); ValidSavedQuality(m) {
 			out.QualityMode = m
 		}
-		out.MaxVideoBitrateBPS = values.Int(prefix+"maxVideoBitrateMbps") * 1_000_000
-		out.MaxAudioBitrateBPS = values.Int(prefix+"maxAudioBitrateKbps") * 1_000
-		out.MaxVideoHeight = values.Int(prefix + "maxVideoHeight")
-		if height := operations.VideoPresetHeight(values.Int(prefix + "maxVideoBitrateMbps")); height > 0 && (out.MaxVideoHeight == 0 || height < out.MaxVideoHeight) {
-			out.MaxVideoHeight = height
-		}
-		out.AllowHDR = values.Bool(prefix + "allowHDR")
 	}
-	out.MaxVideoBitrateBPS = clampInt("maxVideoBitrateBps", out.MaxVideoBitrateBPS, cfg.MaxVideoBitrateBPS, &out.Clamps)
-	out.MaxAudioBitrateBPS = clampInt("maxAudioBitrateBps", out.MaxAudioBitrateBPS, cfg.MaxAudioBitrateBPS, &out.Clamps)
-	out.MaxVideoHeight = clampInt("maxVideoHeight", out.MaxVideoHeight, cfg.MaxVideoHeight, &out.Clamps)
-	if out.AllowHDR && !cfg.AllowHDR {
+	if class == NetworkRemote {
+		out.MaxVideoBitrateBPS = cfg.MaxVideoBitrateBPS
+	}
+	out.MaxAudioBitrateBPS = cfg.MaxAudioBitrateBPS
+	out.MaxVideoHeight = cfg.MaxVideoHeight
+	if !cfg.AllowHDR {
 		out.Clamps = append(out.Clamps, DeliveryClamp{Field: "allowHDR", Source: "server_clamp", Requested: 1, Applied: 0})
 		out.AllowHDR = false
 	}
@@ -239,4 +174,23 @@ func ResolveDeliveryPolicy(values DeliveryPreferenceReader, class NetworkClass, 
 	}
 	sort.SliceStable(out.Clamps, func(i, j int) bool { return out.Clamps[i].Field < out.Clamps[j].Field })
 	return out
+}
+
+// SavedQualities is the domain of quality.home and quality.remote: the
+// original, automatic, and every step of the ladder.
+func SavedQualities() []string {
+	out := []string{QualityOriginal, QualityAutomatic}
+	for _, preset := range QualityLadder {
+		out = append(out, preset.ID)
+	}
+	return out
+}
+
+// ValidSavedQuality reports whether v is one of SavedQualities.
+func ValidSavedQuality(v string) bool {
+	if v == QualityOriginal || v == QualityAutomatic {
+		return true
+	}
+	_, ok := LadderPreset(v)
+	return ok
 }

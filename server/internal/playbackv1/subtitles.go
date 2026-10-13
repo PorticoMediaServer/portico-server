@@ -11,11 +11,14 @@ import (
 )
 
 // subtitleResult is what a subtitle selection did to a presentation: the
-// sidecar files the client loads, and, when the selection changed the bytes
-// (burn-in on, or off again), the presentation's new stream (a new grant and
-// media generation on the same playback session).
+// sidecar files the client loads, the track in force and how it reaches the
+// screen, and, when the selection changed the bytes (burn-in on, or off
+// again), the presentation's new stream (a new grant and media generation on
+// the same playback session).
 type subtitleResult struct {
 	files    []SubtitleFile
+	shown    *PresentationSubtitle
+	language string
 	replaced *subtitles.Presentation
 }
 
@@ -28,11 +31,13 @@ type subtitleResult struct {
 //   - a text track: a WebVTT sidecar URL under the presentation's grant;
 //     delivery "burn" for a text track is refused (only image and styled
 //     tracks burn).
-//   - an image or styled track: burned into the video (a transcode, and a new
-//     presentation), unless the device renders it itself (delivery
-//     embeddedClient), when nothing is selected on the server; delivery
-//     "sidecar" for such a track is refused. Burn-in needs converting allowed.
-func (s *Service) applySubtitles(ctx context.Context, p identity.Principal, item, media string, req *SubtitleRequest, offsetMs, positionMs int64, operation string) (subtitleResult, error) {
+//   - an image or styled track: drawn by the device when the engine playing
+//     the presentation draws that kind itself (draws, decided from the
+//     capability document) or the client insists (delivery embeddedClient):
+//     nothing is selected on the server then. Otherwise it is burned into the
+//     video (a conversion, and a new presentation); delivery "sidecar" for
+//     such a track is refused. Burn-in needs converting allowed.
+func (s *Service) applySubtitles(ctx context.Context, p identity.Principal, item, media string, req *SubtitleRequest, offsetMs, positionMs int64, operation string, draws bool) (subtitleResult, error) {
 	out := subtitleResult{files: []SubtitleFile{}}
 	if s.Subtitles == nil || media == "" {
 		return out, nil
@@ -54,11 +59,20 @@ func (s *Service) applySubtitles(ctx context.Context, p identity.Principal, item
 				return out, &FieldError{Path: "subtitles.trackId"}
 			}
 			burns := chosen.Renderer == "burn_in"
+			out.language = chosen.Language
 			switch {
 			case req.Delivery == "burn" && !burns, req.Delivery == "sidecar" && burns:
 				return out, &FieldError{Path: "subtitles.delivery"}
-			case burns && req.Delivery == "embeddedClient":
-				// The device draws the track from the stream itself.
+			case burns && req.Delivery != "burn" && (req.Delivery == "embeddedClient" || draws):
+				// The device draws the track from the file itself. A track that
+				// was burned in or drawn as text before is turned off on the
+				// server first, so the picture carries no second copy.
+				if plan.Mode != "off" && plan.Selected != nil {
+					if off, offErr := s.Subtitles.Select(ctx, p, item, media, m); offErr == nil {
+						out.replaced = off.Presentation
+					}
+				}
+				out.shown = &PresentationSubtitle{TrackID: chosen.ID, Kind: subtitleKindOf(chosen.Format), Delivery: "device"}
 				return out, nil
 			}
 			m.Mode, m.ResourceID, m.ResourceRevision = "track", chosen.ID, chosen.Revision
@@ -76,8 +90,15 @@ func (s *Service) applySubtitles(ctx context.Context, p identity.Principal, item
 		}
 		out.replaced = plan.Presentation
 	}
-	if plan.Selected != nil && plan.DocumentURL != "" && plan.Renderer == "external_text" {
-		out.files = append(out.files, SubtitleFile{TrackID: plan.Selected.ID, Format: "webvtt", URL: plan.DocumentURL})
+	if plan.Selected != nil {
+		out.language = plan.Selected.Language
+		switch {
+		case plan.DocumentURL != "" && plan.Renderer == "external_text":
+			out.files = append(out.files, SubtitleFile{TrackID: plan.Selected.ID, Format: "webvtt", URL: plan.DocumentURL})
+			out.shown = &PresentationSubtitle{TrackID: plan.Selected.ID, Kind: playback.SubtitleText, Delivery: "sidecar"}
+		case plan.Renderer == "burn_in":
+			out.shown = &PresentationSubtitle{TrackID: plan.Selected.ID, Kind: subtitleKindOf(plan.Selected.Format), Delivery: "burn"}
+		}
 	}
 	return out, nil
 }

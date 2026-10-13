@@ -230,17 +230,21 @@
       if (supports('video/mp4; codecs="' + pair[1] + '"', width, height, 60)) video.push({codec:pair[0],bitDepths:[8,10],maxWidth:width,maxHeight:height,maxFrameRate:60,dynamicRanges:ranges.filter(function (x) {return x !== 'dolby_vision' || pair[0] === 'hevc';}),dolbyVisionProfiles:pair[0] === 'hevc' && caps.is_dv_supported ? [5,8] : [],evidence:'probed'});
     });
     var audio = ['aac','mp3','opus','vorbis','flac'].map(function(codec){return {codec:codec,maxChannels:2,evidence:'declared'};});
-    [['ac3','ac-3'],['eac3','ec-3']].forEach(function (pair) { if (supports('audio/mp4; codecs="' + pair[1] + '"')) audio.push({codec:pair[0],maxChannels:6,passthrough:true,evidence:'probed'}); });
-    var surround=audio.some(function(a){return a.codec==='ac3'||a.codec==='eac3';});
-    var hlsAudio=audio.filter(function(a){return ['aac','mp3','ac3','eac3'].indexOf(a.codec)>=0;}).map(function(a){return a.codec;});
+    // Dolby audio is handed to the HDMI sink undecoded: it is passthrough, beside the decoders.
+    var passthrough = [];
+    [['ac3','ac-3'],['eac3','ec-3']].forEach(function (pair) { if (supports('audio/mp4; codecs="' + pair[1] + '"')) passthrough.push({codec:pair[0],maxChannels:6,evidence:'probed'}); });
+    var surround=passthrough.length>0;
+    var hlsAudio=['aac','mp3'].concat(passthrough.map(function(a){return a.codec;}));
     var names=video.map(function (v) {return v.codec;});
-    return {version:1,evidence:'mixed',client:{family:'cast',platform:'cast',engine:'caf-shaka',app:'portico-cast',model:fourK?'uhd_probed':'hd_probed'},display:{width:width,height:height,maxFrameRate:fourK||h264At60?60:30,dynamicRanges:ranges},video:video,audio:audio,audioOutput:{route:'hdmi',maxChannels:surround?6:2},transports:[{transport:'direct',containers:['mp4','m4v'],video:names.filter(function (c) {return c!=='vp9'&&c!=='vp8';}),audio:hlsAudio},{transport:'direct',containers:['webm'],video:names.filter(function(c){return c==='vp8'||c==='vp9'||c==='av1';}),audio:['opus','vorbis']},{transport:'direct',containers:['mp3','m4a','aac','flac','ogg','wav'],video:[],audio:['aac','mp3','opus','vorbis','flac']},{transport:'hls_ts',containers:['mpegts'],video:['h264'],audio:hlsAudio},{transport:'hls_fmp4',containers:['fmp4'],video:names.filter(function (c) {return c!=='vp9'&&c!=='vp8';}),audio:hlsAudio}],subtitles:{text:['vtt'],styled:[],bitmap:[]}};
+    var transports=[{transport:'direct',containers:['mp4','m4v'],video:names.filter(function (c) {return c!=='vp9'&&c!=='vp8';}),audio:hlsAudio},{transport:'direct',containers:['webm'],video:names.filter(function(c){return c==='vp8'||c==='vp9'||c==='av1';}),audio:['opus','vorbis']},{transport:'direct',containers:['mp3','m4a','aac','flac','ogg','wav'],video:[],audio:['aac','mp3','opus','vorbis','flac']},{transport:'hls_ts',containers:['mpegts'],video:['h264'],audio:hlsAudio},{transport:'hls_fmp4',containers:['fmp4'],video:names.filter(function (c) {return c!=='vp9'&&c!=='vp8';}),audio:hlsAudio}];
+    // The capability document (version 2): the device, and what its one player engine can do.
+    return {version:2,client:{family:'cast',form:'cast',platform:'cast',app:'portico-cast',model:fourK?'uhd_probed':'hd_probed'},engineSetting:'automatic',display:{width:width,height:height,maxFrameRate:fourK||h264At60?60:30,dynamicRanges:ranges},audioOutput:{route:'hdmi',maxChannels:surround?6:2},engines:{native:{name:'caf-shaka',evidence:'mixed',video:video,audio:audio,audioPassthrough:passthrough,transports:transports,subtitleRendering:['text']}}};
   }
   /** What this TV decodes, published for the session's device before anything plays. */
   async function prepareProfile() {
     if (profiled) return;
     var context = window.cast && cast.framework.CastReceiverContext.getInstance();
-    await api('/v1/playback/client-profile', {method: 'PUT', body: buildProfile(context)});
+    await api('/v1/me/devices/current/capabilities', {method: 'PUT', body: buildProfile(context)});
     profiled = true;
   }
 
@@ -488,8 +492,11 @@
     if(recovering||!playback||recoveries>=3)return;
     recovering=true;recoveries++;broadcast();notice('Reconnecting…');
     serial(async function(){var item=playback.itemId,at=position(),wasPaused=paused(),identity=meta;
-      var result=(await api('/v1/playback/route-failures',{body:{sessionId:playback.id,code:code,detail:''}})).body;
-      if(!result.escalates&&code!=='stalled_without_data')throw new Error('playback_failed');
+      // The server remembers that this way of delivering the file failed here and re-plans the
+      // same session another way, from where the picture stopped.
+      try { await change({failure:{code:code,detail:''},positionMs:Math.round(Math.max(0,at)*1000)}); return; }
+      catch (e) { if (e.code!=='unsupported_media'||code!=='stalled_without_data') throw (e.code==='unsupported_media'?new Error('playback_failed'):e); }
+      // Nothing else to try and the stream only stalled: load the same title again.
       var load=await resolvePlayback(item,at,identity);load.autoplay=!wasPaused;await manager.load(load);showPlaying();scheduleReport(0);
     }).then(function(){notice('');}).catch(function(e){notice('');showError(code==='decode_error'?'decode':e&&(e.code||e.message));}).finally(function(){recovering=false;broadcast();});
   }

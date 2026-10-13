@@ -3,7 +3,6 @@ package httpapi
 import (
 	"context"
 	"errors"
-	"io"
 	"net/http"
 	"portico.local/server/internal/dbwork"
 	"strings"
@@ -13,12 +12,17 @@ import (
 	"portico.local/server/internal/playback"
 )
 
-// deliveryContext is the edge's own observation of one request. Network class is
-// resolved here and nowhere else: the client declares a transport, the server
-// decides what that means next to the address it actually sees.
+// deliveryContext is the edge's own observation of one request: whether it
+// comes from inside the owner's home networks, and what the client says it is
+// on. Network class is resolved here and nowhere else.
 func (d Dependencies) deliveryContext(r *http.Request) playback.DeliveryContext {
-	class, locality, transport := playback.NetworkClassFromRequest(r, d.trustedProxy(r))
-	return playback.DeliveryContext{NetworkClass: class, ServerLocality: locality, TransportClass: transport, DeviceClass: deviceClassHeader(r)}
+	if r == nil {
+		return playback.DeliveryContext{NetworkClass: playback.NetworkUnknown, ServerLocality: playback.LocalityUnknown, TransportClass: "unknown"}
+	}
+	// One rule says whether a request is inside the owner's home networks, for
+	// every purpose: the same one that decides a member's remote limits.
+	class, locality := playback.NetworkClassOf(d.requestIsRemote(r))
+	return playback.DeliveryContext{NetworkClass: class, ServerLocality: locality, TransportClass: playback.NormalizeTransportClass(r.Header.Get(playback.TransportClassHeader)), DeviceClass: deviceClassHeader(r)}
 }
 
 // trustedProxy reports whether the immediate peer is a configured proxy, which
@@ -94,96 +98,7 @@ func (d Dependencies) deliveryRoutes(mux *http.ServeMux) {
 		}
 		policy := playback.ResolveDeliveryPolicy(values, edge.NetworkClass, edge.ServerLocality, edge.TransportClass, cfg)
 		w.Header().Set("Cache-Control", "no-store")
-		write(w, 200, map[string]any{"serverId": d.Identity.ID(), "policy": policy, "ladder": playback.QualityLadder, "planningPolicies": playback.PlanningPolicies, "transportClasses": playback.TransportClasses})
-	})
-
-	// PUT /v1/playback/client-profile — a device publishes what it can decode,
-	// display and output. One bounded body, one indexed read, and a write only
-	// when the document actually changed. The answer echoes the accepted revision
-	// so a client can tell a fresh publication from a no-op.
-	mux.HandleFunc("PUT /v1/playback/client-profile", func(w http.ResponseWriter, r *http.Request) {
-		p, e := d.principal(r)
-		if e != nil {
-			failure(w, e)
-			return
-		}
-		if d.Playback == nil {
-			failure(w, playback.ErrIncompatible)
-			return
-		}
-		raw, e := io.ReadAll(http.MaxBytesReader(w, r.Body, playback.MaxClientProfileBytes+1))
-		if e != nil {
-			failure(w, playback.ErrClientProfile)
-			return
-		}
-		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-		defer cancel()
-		profile, e := d.Playback.PublishClientProfile(ctx, p, raw)
-		if e != nil {
-			failure(w, e)
-			return
-		}
-		w.Header().Set("Cache-Control", "no-store")
-		write(w, 200, map[string]any{"version": playback.ClientProfileVersion, "revision": profile.Revision, "summary": profile.Summary()})
-	})
-
-	// GET /v1/playback/client-profile — what the server holds for this sign-in,
-	// or the built-in baseline it plans against when nothing has been published.
-	mux.HandleFunc("GET /v1/playback/client-profile", func(w http.ResponseWriter, r *http.Request) {
-		p, e := d.principal(r)
-		if e != nil {
-			failure(w, e)
-			return
-		}
-		if d.Playback == nil {
-			failure(w, playback.ErrIncompatible)
-			return
-		}
-		ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
-		defer cancel()
-		profile := d.Playback.ClientProfileFor(ctx, p)
-		w.Header().Set("Cache-Control", "no-store")
-		write(w, 200, map[string]any{"version": playback.ClientProfileVersion, "revision": profile.Revision, "summary": profile.Summary(), "profile": profile})
-	})
-
-	// POST /v1/playback/route-failures — a device says the route it was given
-	// failed in its engine. Recorded against the file for this sign-in, so the
-	// next plan takes the next route up. Constant cost.
-	mux.HandleFunc("POST /v1/playback/route-failures", func(w http.ResponseWriter, r *http.Request) {
-		p, e := d.principal(r)
-		if e != nil {
-			failure(w, e)
-			return
-		}
-		if d.Playback == nil {
-			failure(w, playback.ErrIncompatible)
-			return
-		}
-		var body playback.RouteFailureReport
-		if e = decode(w, r, &body); e != nil {
-			failure(w, e)
-			return
-		}
-		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-		defer cancel()
-		// A v1 client names its v1 session; the route belongs to the media
-		// session presenting it (playback_v1_presentation.go).
-		presentation, v1, e := d.resolveV1Presentation(ctx, p, body.SessionID)
-		if e != nil {
-			failure(w, e)
-			return
-		}
-		var out playback.RouteFailureResult
-		if v1 {
-			out, e = d.Playback.ReportRouteFailureV1(ctx, p, presentation.media, presentation.as(p).Hash, body)
-		} else {
-			out, e = d.Playback.ReportRouteFailure(ctx, p, body)
-		}
-		if e != nil {
-			failure(w, e)
-			return
-		}
-		write(w, 200, out)
+		write(w, 200, map[string]any{"serverId": d.Identity.ID(), "policy": policy, "ladder": playback.QualityLadder, "planningPolicies": playback.PlanningPolicies, "transportClasses": playback.TransportClasses, "savedQualities": playback.SavedQualities()})
 	})
 
 	// GET /v1/admin/transcode/capacity lives in telemetry_routes.go; its report

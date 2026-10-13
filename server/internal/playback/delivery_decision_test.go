@@ -13,8 +13,8 @@ import (
 // when this file is played on that device".
 func appleTVProfile() ClientProfile {
 	p := ClientProfile{
-		Version: ClientProfileVersion, Evidence: EvidenceMixed,
-		Client:  ClientIdentity{Family: "apple", Platform: "tvos", Engine: "avplayer", Model: "AppleTV14,1"},
+		Version: ClientProfileVersion, Evidence: EvidenceMixed, EngineName: "avplayer",
+		Client:  ClientIdentity{Family: "apple", Platform: "tvos", Model: "AppleTV14,1"},
 		Display: ClientDisplay{Width: 3840, Height: 2160, DynamicRanges: []string{"sdr", "hdr10", "hlg", "dolby_vision"}, MaxFrameRate: 60},
 		Video: []ClientVideoCodec{
 			{Codec: "h264", BitDepths: []int{8}, MaxWidth: 4096, MaxHeight: 2304, MaxFrameRate: 60, DynamicRanges: []string{"sdr"}},
@@ -31,17 +31,66 @@ func appleTVProfile() ClientProfile {
 			{Transport: TransportHLSTS, Containers: []string{"mpegts"}, Video: []string{"h264"}, Audio: []string{"aac", "mp3", "ac3", "eac3"}},
 			{Transport: TransportHLSFMP4, Containers: []string{"fmp4"}, Video: []string{"h264", "hevc"}, Audio: []string{"aac", "mp3", "ac3", "eac3", "alac", "flac"}},
 		},
+		SubtitleRendering:      []string{SubtitleText},
 		EmbeddedAudioSwitching: true,
 	}
-	p.normalize()
+	p = documentOf(p).Profile(EngineNative)
 	p.Revision = "apple-tv-test"
 	return p
 }
 
+// documentOf is the capability document a device with this native engine
+// (and, when given, this mpv engine) would publish.
+func documentOf(native ClientProfile, mpv ...ClientProfile) CapabilityDocument {
+	engine := func(p ClientProfile) *EngineCapabilities {
+		evidence := p.Evidence
+		if evidence == "" || evidence == EvidenceBuiltin {
+			evidence = EvidenceDeclared
+		}
+		return &EngineCapabilities{Name: p.EngineName, Evidence: evidence, Video: p.Video, Audio: p.Audio, AudioPassthrough: p.AudioPassthrough, Transports: p.Transports, SubtitleRendering: p.SubtitleRendering, ToneMapsHDR: p.ToneMapsHDR, EmbeddedAudioSwitching: p.EmbeddedAudioSwitching}
+	}
+	d := CapabilityDocument{Version: CapabilityDocumentVersion, Client: native.Client, Overrides: native.Overrides, Display: native.Display, AudioOutput: native.AudioOutput, MaxBitrateBPS: native.MaxBitrateBPS, AudioDecode: native.AudioDecode, Engines: CapabilityEngines{Native: engine(native)}}
+	if d.Client.Family == "" {
+		d.Client.Family = "test"
+	}
+	if len(mpv) > 0 {
+		d.Engines.MPV = engine(mpv[0])
+	}
+	if err := d.Accept(); err != nil {
+		panic(err)
+	}
+	return d
+}
+
+// mpvProfile is an mpv engine beside a device's native one: it plays any
+// container and codec in software and draws every subtitle kind.
+func mpvProfile(native ClientProfile) ClientProfile {
+	video := []string{"h264", "hevc", "vp9", "av1", "mpeg2video", "mpeg4", "vc1"}
+	audio := []string{"aac", "mp3", "ac3", "eac3", "dts", "truehd", "flac", "opus", "vorbis", "alac", "pcm"}
+	p := native
+	p.Engine, p.EngineName, p.Evidence = EngineMPV, "mpv", EvidenceDeclared
+	p.Video, p.Audio = nil, nil
+	for _, codec := range video {
+		p.Video = append(p.Video, ClientVideoCodec{Codec: codec, BitDepths: []int{8, 10}, MaxWidth: 4096, MaxHeight: 2304, DynamicRanges: []string{"sdr", "hdr10", "hlg"}, Interlaced: true})
+	}
+	for _, codec := range audio {
+		p.Audio = append(p.Audio, ClientAudioCodec{Codec: codec, MaxChannels: 8})
+	}
+	p.AudioPassthrough = nil
+	p.Transports = []ClientTransport{
+		{Transport: TransportDirect, Containers: []string{"mp4", "m4v", "mov", "mkv", "webm", "avi", "ts", "m2ts"}, Video: video, Audio: audio},
+		{Transport: TransportHLSTS, Containers: []string{"mpegts"}, Video: []string{"h264", "hevc"}, Audio: []string{"aac", "mp3", "ac3", "eac3"}},
+		{Transport: TransportHLSFMP4, Containers: []string{"fmp4"}, Video: []string{"h264", "hevc", "av1", "vp9"}, Audio: []string{"aac", "ac3", "eac3", "flac", "opus"}},
+	}
+	p.SubtitleRendering = []string{SubtitleText, SubtitleASS, SubtitlePGS, SubtitleVobSub, SubtitleDVB}
+	p.ToneMapsHDR, p.EmbeddedAudioSwitching = true, true
+	return documentOf(native, p).Profile(EngineMPV)
+}
+
 func chromeProfile() ClientProfile {
 	p := ClientProfile{
-		Version: ClientProfileVersion, Evidence: EvidenceProbed,
-		Client:  ClientIdentity{Family: "web", Platform: "chrome", Engine: "hls.js"},
+		Version: ClientProfileVersion, Evidence: EvidenceProbed, EngineName: "hls.js",
+		Client:  ClientIdentity{Family: "web", Platform: "chrome"},
 		Display: ClientDisplay{Width: 1920, Height: 1080, DynamicRanges: []string{"sdr"}, MaxFrameRate: 60},
 		Video: []ClientVideoCodec{
 			{Codec: "h264", BitDepths: []int{8}, MaxWidth: 4096, MaxHeight: 2160, MaxFrameRate: 60, DynamicRanges: []string{"sdr"}},
@@ -57,8 +106,9 @@ func chromeProfile() ClientProfile {
 			{Transport: TransportHLSTS, Containers: []string{"mpegts"}, Video: []string{"h264"}, Audio: []string{"aac", "mp3"}},
 			{Transport: TransportHLSFMP4, Containers: []string{"fmp4"}, Video: []string{"h264"}, Audio: []string{"aac", "mp3", "flac", "opus"}},
 		},
+		SubtitleRendering: []string{SubtitleText},
 	}
-	p.normalize()
+	p = documentOf(p).Profile(EngineNative)
 	p.Revision = "chrome-test"
 	return p
 }
@@ -217,7 +267,8 @@ func TestDecisionMatrixAcrossDevices(t *testing.T) {
 		detail.BitRate = 40_000_000
 		source := videoSource("mp4", "h264", detail, SourceAudio{Codec: "aac", Channels: 2})
 		cfg := DefaultDeliveryConfiguration()
-		lane := ResolveDeliveryPolicy(stubPreferences{"quality.cellular.maxVideoBitrateMbps": 8, "quality.cellular.allowHDR": true}, NetworkCellular, LocalityRemote, "cellular", cfg)
+		cfg.MaxVideoBitrateBPS = 8_000_000
+		lane := ResolveDeliveryPolicy(nil, NetworkRemote, LocalityRemote, "cellular", cfg)
 		p := decide(t, source, chromeProfile(), func(in *DeliveryInput) { in.Policy, in.Target = lane, autoTarget(lane, 1080) })
 		if p.Strategy != DeliveryVideoConversion || p.VideoBitrateBPS != 8_000_000 || !rejected(p, DeliveryOriginal, ReasonBitrateExceedsPolicy) || !contains(p.ReasonCodes, ReasonBitrateExceedsPolicy) {
 			t.Fatal(p, p.Trace.Routes)
@@ -292,55 +343,70 @@ func TestDecisionTraceIsBoundedAndPathFree(t *testing.T) {
 func TestChooseAudioLanguageFolding(t *testing.T) {
 	tracks := []SourceAudio{{Index: 1, Language: "ger"}, {Index: 2, Language: "en-US"}, {Index: 3, Language: "jpn", Default: true}}
 	for want, index := range map[string]int{"de": 1, "deu": 1, "eng": 2, "en": 2, "ja": 3} {
-		if a, by := chooseAudio(tracks, -1, []string{want}); a.Index != index || by != "preferred_language" {
+		if a, by := chooseAudio(tracks, -1, "", []string{want}); a.Index != index || by != "preferred_language" {
 			t.Fatal(want, a, by)
 		}
 	}
-	if a, by := chooseAudio(tracks, -1, []string{"sv"}); a.Index != 3 || by != "default" {
+	if a, by := chooseAudio(tracks, -1, "", []string{"sv"}); a.Index != 3 || by != "default" {
 		t.Fatal(a, by)
 	}
-	if a, by := chooseAudio(tracks, 2, []string{"de"}); a.Index != 2 || by != "explicit" {
+	if a, by := chooseAudio(tracks, 2, "", []string{"de"}); a.Index != 2 || by != "explicit" {
 		t.Fatal(a, by)
 	}
 }
 
-func TestClientProfileParsing(t *testing.T) {
-	raw, _ := json.Marshal(chromeProfile())
-	p, err := ParseClientProfile(raw)
-	if err != nil || p.Revision == "" || p.Client.Family != "web" {
-		t.Fatal(p, err)
+func TestCapabilityDocumentParsing(t *testing.T) {
+	raw, _ := json.Marshal(documentOf(chromeProfile(), mpvProfile(chromeProfile())))
+	d, err := ParseCapabilityDocument(raw)
+	if err != nil || d.Revision == "" || d.Client.Family != "web" || !d.HasEngine(EngineMPV) || d.EngineSetting != EngineSettingAutomatic {
+		t.Fatal(d, err)
 	}
-	again, _ := ParseClientProfile(raw)
-	if again.Revision != p.Revision {
+	again, _ := ParseCapabilityDocument(raw)
+	if again.Revision != d.Revision {
 		t.Fatal("equal documents produced different revisions")
 	}
+	native := `"engines":{"native":{"evidence":"probed"}}`
 	for name, body := range map[string]string{
-		"version":    `{"version":2}`,
-		"wrong type": `{"version":1,"client":{"family":"web"},"evidence":"probed","video":"everything"}`,
-		"family":     `{"version":1,"client":{"family":"Web Browser!"},"evidence":"probed"}`,
-		"evidence":   `{"version":1,"client":{"family":"web"},"evidence":"trust me"}`,
-		"range":      `{"version":1,"client":{"family":"web"},"evidence":"probed","display":{"dynamicRanges":["hdr11"]}}`,
-		"transport":  `{"version":1,"client":{"family":"web"},"evidence":"probed","transports":[{"transport":"rtsp"}]}`,
+		"version":           `{"version":1,"client":{"family":"web"},` + native + `}`,
+		"no native engine":  `{"version":2,"client":{"family":"web"},"engines":{}}`,
+		"wrong type":        `{"version":2,"client":{"family":"web"},"engines":{"native":{"evidence":"probed","video":"everything"}}}`,
+		"family":            `{"version":2,"client":{"family":"Web Browser!"},` + native + `}`,
+		"evidence":          `{"version":2,"client":{"family":"web"},"engines":{"native":{"evidence":"trust me"}}}`,
+		"builtin evidence":  `{"version":2,"client":{"family":"web"},"engines":{"native":{"evidence":"builtin"}}}`,
+		"range":             `{"version":2,"client":{"family":"web"},"display":{"dynamicRanges":["hdr11"]},` + native + `}`,
+		"transport":         `{"version":2,"client":{"family":"web"},"engines":{"native":{"evidence":"probed","transports":[{"transport":"rtsp"}]}}}`,
+		"engine setting":    `{"version":2,"client":{"family":"web"},"engineSetting":"vlc",` + native + `}`,
+		"subtitle renderer": `{"version":2,"client":{"family":"web"},"engines":{"native":{"evidence":"probed","subtitleRendering":["teletext"]}}}`,
 	} {
-		if _, err := ParseClientProfile([]byte(body)); err == nil {
-			t.Fatal("accepted an invalid profile:", name)
+		if _, err := ParseCapabilityDocument([]byte(body)); err == nil {
+			t.Fatal("accepted an invalid document:", name)
 		}
 	}
-	if _, err := ParseClientProfile([]byte(strings.Repeat(" ", MaxClientProfileBytes+1))); err == nil {
-		t.Fatal("accepted an oversized profile")
+	if _, err := ParseCapabilityDocument([]byte(strings.Repeat(" ", MaxCapabilityDocumentBytes+1))); err == nil {
+		t.Fatal("accepted an oversized document")
 	}
-	// Version 1 grows by addition: a field this server has not met is ignored.
-	if _, err := ParseClientProfile([]byte(`{"version":1,"client":{"family":"web"},"evidence":"probed","futureField":{"a":1}}`)); err != nil {
+	// The document grows by addition: a field this server has not met is ignored.
+	if _, err := ParseCapabilityDocument([]byte(`{"version":2,"client":{"family":"web"},"futureField":{"a":1},` + native + `}`)); err != nil {
 		t.Fatal("an additive field was refused", err)
 	}
+	// Synonyms fold to the names the scanner records for files.
+	folded, err := ParseCapabilityDocument([]byte(`{"version":2,"client":{"family":"web"},"engines":{"native":{"evidence":"declared","video":[{"codec":"mpeg2"},{"codec":"h265"}],"audio":[{"codec":"ec-3"}],"transports":[{"transport":"hls_ts","video":["mpeg2"],"audio":["ec-3"]}]}}}`))
+	if err != nil || folded.Engines.Native.Video[0].Codec != "mpeg2video" || folded.Engines.Native.Video[1].Codec != "hevc" || folded.Engines.Native.Audio[0].Codec != "eac3" || folded.Engines.Native.Transports[0].Video[0] != "mpeg2video" || folded.Engines.Native.Transports[0].Audio[0] != "eac3" {
+		t.Fatal(folded.Engines.Native, err)
+	}
 	// The minimal valid document plans like a device that can play nothing directly.
-	minimal, err := ParseClientProfile([]byte(`{"version":1,"client":{"family":"web"},"evidence":"declared"}`))
+	minimal, err := ParseCapabilityDocument([]byte(`{"version":2,"client":{"family":"web"},` + native + `}`))
 	if err != nil {
 		t.Fatal(err)
 	}
 	source := videoSource("mp4", "h264", avcDetail, SourceAudio{Codec: "aac", Channels: 2})
 	policy := openPolicy()
-	if _, err = planDelivery(DeliveryInput{Source: source, Client: minimal, Policy: policy, Target: autoTarget(policy, 1080), Config: DefaultDeliveryConfiguration(), TranscodingEnabled: true}); err == nil {
+	if _, err = planDelivery(DeliveryInput{Source: source, Device: &minimal, Policy: policy, Target: autoTarget(policy, 1080), Config: DefaultDeliveryConfiguration(), TranscodingEnabled: true}); err == nil {
 		t.Fatal("a device with no transports was given a route")
+	}
+	// An engine view a plan stored reads back as the same engine.
+	view, _ := json.Marshal(d.Profile(EngineMPV))
+	if back, err := ParseClientProfile(view); err != nil || back.Engine != EngineMPV || !back.RendersSubtitle(SubtitlePGS) {
+		t.Fatal(back, err)
 	}
 }

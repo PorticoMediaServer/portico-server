@@ -412,11 +412,8 @@ func failure(w http.ResponseWriter, e error) {
 	if errors.Is(e, playback.ErrTranscodingDisabled) {
 		status, code = 422, "transcoding_disabled"
 	}
-	if errors.Is(e, playback.ErrClientProfile) || errors.Is(e, playback.ErrRouteFailure) {
+	if errors.Is(e, playback.ErrCapabilityDocument) || errors.Is(e, playback.ErrRouteFailure) {
 		status, code = 400, "invalid_playback_report"
-	}
-	if errors.Is(e, playback.ErrClientProfileVersion) {
-		status, code = 422, "unsupported_profile_version"
 	}
 	var refused playback.ErrDeliveryRefused
 	if errors.As(e, &refused) {
@@ -1118,7 +1115,6 @@ func New(d Dependencies) http.Handler {
 		}
 		w.WriteHeader(204)
 	})
-	d.playbackSessionRoutes(mux)
 	d.audioDecodeRoutes(mux)
 	mux.HandleFunc("GET /v1/media/{grant}/{file}", func(w http.ResponseWriter, r *http.Request) {
 		grant := r.PathValue("grant")

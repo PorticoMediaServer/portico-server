@@ -457,9 +457,7 @@ func restrictionWriteRoutes() map[string]writeRoute {
 		"DELETE /v1/search/history":                         writeExempt(reasonOwnObject),
 		"PATCH /v1/playback/sessions/{id}":                  writeExempt(reasonGrantWrite),
 		"DELETE /v1/playback/sessions/{id}":                 writeExempt(reasonGrantWrite),
-		"POST /v1/playback/sessions/{id}/progress":          writeExempt(reasonGrantWrite),
 		"POST /v1/playback/sessions/{id}/timeline":          writeExempt(reasonGrantWrite),
-		"POST /v1/playback/route-failures":                  writeExempt(reasonGrantWrite),
 		"PATCH /v1/queues/{id}":                             writeExempt(reasonGrantWrite),
 		"DELETE /v1/queues/{id}":                            writeExempt(reasonGrantWrite),
 		"DELETE /v1/queues/{id}/entries/{entryId}":          writeExempt(reasonGrantWrite),
@@ -518,7 +516,6 @@ func restrictionWriteRoutes() map[string]writeRoute {
 		"PUT /v1/listening/preferences":           writeExempt(reasonSelfPrefs),
 		"PUT /v1/downloads/settings":              writeExempt(reasonSelfPrefs),
 		"PUT /v1/lyrics/provider":                 writeExempt("owner lyrics provider setting; no catalogue ids"),
-		"PUT /v1/playback/client-profile":         writeExempt(reasonSelfPrefs),
 		"PUT /v1/me/devices/current/capabilities": writeExempt(reasonSelfPrefs),
 		"POST /v1/diagnostics/client-logs":        writeExempt(reasonOwnSession),
 

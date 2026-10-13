@@ -30,7 +30,7 @@ func TestPreferenceRegistryIsWellFormed(t *testing.T) {
 	}
 	for _, key := range []string{
 		"playback.startedThresholdPercent", "playback.playedThresholdPercent", "delivery.transcode",
-		"quality.cellular.maxVideoHeight", "music.crossfadeSeconds", "privacy.pauseWatchHistory",
+		"quality.home", "quality.remote", "music.crossfadeSeconds", "privacy.pauseWatchHistory",
 		"search.rememberHistory", "region.hourCycle", "home.rowOrder",
 		"appearance.cardSizePercent", "notifications.badges",
 	} {
@@ -99,26 +99,34 @@ func TestPreferencePatchValidationAndClamping(t *testing.T) {
 	}
 }
 
-func TestPreferenceDeviceClassPolicyClampsCellular(t *testing.T) {
+// A viewer has two saved default qualities, one for the owner's home networks
+// and one for everywhere else. Both start at the original, take every
+// published quality, and are kept per device class.
+func TestSavedQualityDefaults(t *testing.T) {
 	s, p, a := consoleFixture(t)
 	ctx := context.Background()
-	out, e := s.ApplyPreferences(ctx, p, a, PreferenceChange{Scope: ScopeDeviceClass, DeviceClass: "television", ExpectedRevision: 1, IdempotencyKey: "tv", Values: PreferencePatch{"quality.cellular.mode": "original"}})
-	if e != nil {
-		t.Fatal(e)
+	for _, key := range []string{"quality.home", "quality.remote"} {
+		f, ok := PreferenceFieldFor(key)
+		if !ok || f.Default != "original" || len(f.AllowedValues) != len(SavedQualities) {
+			t.Fatalf("%s: %+v", key, f)
+		}
 	}
-	if out.Effective.Text("quality.cellular.mode") != "off" {
-		t.Fatalf("a television kept a cellular ladder: %+v", out.Effective)
+	for _, gone := range []string{"quality.local.mode", "quality.wifi.maxVideoBitrateMbps", "quality.cellular.allowHDR", "quality.unknown.maxVideoHeight"} {
+		if _, ok := PreferenceFieldFor(gone); ok {
+			t.Fatal("a per-network quality preset survived", gone)
+		}
 	}
-	found := false
-	for _, key := range out.ClampedFields {
-		found = found || key == "quality.cellular.mode"
+	out, e := s.ApplyPreferences(ctx, p, a, PreferenceChange{Scope: ScopeDeviceClass, DeviceClass: "television", ExpectedRevision: 1, IdempotencyKey: "tv", Values: PreferencePatch{"quality.remote": "automatic", "quality.home": "1080p"}})
+	if e != nil || out.Effective.Text("quality.remote") != "automatic" || out.Effective.Text("quality.home") != "1080p" || len(out.ClampedFields) != 0 {
+		t.Fatalf("%v %+v", e, out.Effective)
 	}
-	if !found {
-		t.Fatalf("policy clamp not published: %+v", out.ClampedFields)
+	// Another device class keeps its own.
+	mobile, e := s.Preferences(ctx, p, "mobile", a)
+	if e != nil || mobile.Effective.Text("quality.remote") != "original" {
+		t.Fatalf("a television's saved quality reached a phone: %v", e)
 	}
-	mobile, e := s.ApplyPreferences(ctx, p, a, PreferenceChange{Scope: ScopeDeviceClass, DeviceClass: "mobile", ExpectedRevision: 1, IdempotencyKey: "mobile", Values: PreferencePatch{"quality.cellular.mode": "original"}})
-	if e != nil || mobile.Effective.Text("quality.cellular.mode") != "original" {
-		t.Fatalf("a phone lost its cellular ladder: %v %+v", e, mobile.Effective)
+	if _, e = s.ApplyPreferences(ctx, p, a, PreferenceChange{Scope: ScopeDeviceClass, DeviceClass: "television", ExpectedRevision: 2, IdempotencyKey: "bad", Values: PreferencePatch{"quality.home": "900p"}}); e == nil {
+		t.Fatal("an unpublished quality was saved")
 	}
 }
 
@@ -234,8 +242,7 @@ func TestPreferenceConsumersAndSemanticDomains(t *testing.T) {
 	}{
 		{"region.locale", "fr-CA", "not_a_real_locale"},
 		{"playback.preferredAudioLanguages", []string{"en", "fr-CA"}, []string{"en", "EN"}},
-		{"quality.wifi.maxVideoBitrateMbps", 12, 13},
-		{"quality.wifi.maxAudioBitrateKbps", 320, 321},
+		{"quality.remote", "720p", "data-saver"},
 	}
 	for _, c := range cases {
 		f, _ := PreferenceFieldFor(c.key)
@@ -252,18 +259,6 @@ func TestPreferenceConsumersAndSemanticDomains(t *testing.T) {
 	for _, f := range PreferenceRegistry() {
 		if f.Type == "timeZone" {
 			t.Fatal("a viewer time zone preference is published", f.Key)
-		}
-	}
-	for _, key := range []string{"quality.wifi.maxVideoBitrateMbps", "quality.wifi.maxAudioBitrateKbps"} {
-		f, _ := PreferenceFieldFor(key)
-		for _, raw := range f.AllowedValues {
-			option, ok := raw.(PreferenceOption)
-			if !ok || option.Label == "" {
-				t.Fatal("unlabelled quality choice", raw)
-			}
-			if option.Value > 0 && key == "quality.wifi.maxVideoBitrateMbps" && option.MaxVideoHeight == 0 {
-				t.Fatal("missing implied resolution", option)
-			}
 		}
 	}
 	values := PreferenceValues{"music.gapless": false, "music.crossfadeSeconds": int64(6), "music.audioNormalization": "album"}

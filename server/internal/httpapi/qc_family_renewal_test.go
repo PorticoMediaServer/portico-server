@@ -54,19 +54,15 @@ func qcRefresh(t *testing.T, f *tl6V1Fixture, refreshToken, installation string)
 	return out
 }
 
-// qcSubtitleRead starts a legacy playback session and reads its subtitle plan,
-// both over HTTP, requiring 200. The plan authenticates the bearer, so a
-// session without a device binding fails here with 401. (A v1 session, started
-// with an Idempotency-Key, has no legacy plan row, so this uses the legacy
-// start form.)
+// qcSubtitleRead starts a playback session and reads its subtitle plan, both
+// over HTTP, requiring 200. The plan authenticates the bearer, so a session
+// without a device binding fails here with 401.
 func qcSubtitleRead(t *testing.T, f *tl6V1Fixture, accessToken, key string) {
 	t.Helper()
 	var started struct {
 		ID string `json:"id"`
 	}
-	f.callAs(accessToken, "POST", "/v1/playback/sessions", nil, map[string]string{
-		"itemId": f.items[0], "quality": "auto", "requestId": key,
-	}, 201, &started)
+	f.callAs(accessToken, "POST", "/v1/playback/sessions", map[string]string{"Idempotency-Key": (key + "-0000000000000000")[:max(16, len(key))]}, map[string]string{"itemId": f.items[0]}, 201, &started)
 	var plan subtitles.PlaybackPlan
 	f.callAs(accessToken, "GET", "/v1/items/"+f.items[0]+"/playback/"+started.ID+"/subtitles", nil, nil, 200, &plan)
 	if plan.SessionID != started.ID {

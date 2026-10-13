@@ -79,10 +79,13 @@ func TestConvertedAudioSampleRateIsBounded(t *testing.T) {
 			if p.Audio[i].Codec == "aac" {
 				p.Audio[i].MaxChannels, p.Audio[i].MaxSampleRate = 2, aacMax
 			}
-			if p.Audio[i].Codec == codec {
-				p.Audio[i].Passthrough, p.Audio[i].MaxSampleRate = true, max
+			// The device's Dolby decoders share the limit: AC-3 is the next
+			// target after E-AC-3.
+			if p.Audio[i].Codec == codec || p.Audio[i].Codec == "ac3" {
+				p.Audio[i].MaxSampleRate = max
 			}
 		}
+		p.AudioPassthrough = append(p.AudioPassthrough, ClientAudioPassthrough{Codec: codec, MaxChannels: 8})
 		return p
 	}
 	tiny := chromeProfile()

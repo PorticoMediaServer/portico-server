@@ -165,12 +165,11 @@ func TestCastReceiverCallsRegisteredRoutes(t *testing.T) {
 	}
 	source := w.Body.String()
 	calls := map[string][]string{
-		"/v1/cast/redeem":             {"POST"},
-		"/v1/cast/reconnect":          {"POST"},
-		"/v1/playback/client-profile": {"PUT"},
-		"/v1/playback/sessions":       {"POST"},
-		"/v1/playback/sessions/":      {"PATCH", "DELETE"},
-		"/v1/playback/route-failures": {"POST"},
+		"/v1/cast/redeem":                     {"POST"},
+		"/v1/cast/reconnect":                  {"POST"},
+		"/v1/me/devices/current/capabilities": {"PUT"},
+		"/v1/playback/sessions":               {"POST"},
+		"/v1/playback/sessions/":              {"PATCH", "DELETE"},
 	}
 	suffixed := map[string]string{"/v1/playback/sessions/": "/timeline"}
 	for _, m := range regexp.MustCompile(`'(/v\d+/[^'?]*)`).FindAllStringSubmatch(source, -1) {
