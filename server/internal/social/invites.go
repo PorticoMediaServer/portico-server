@@ -101,7 +101,7 @@ func (s *Store) RevokeInvite(ctx context.Context, p identity.Principal, group, i
 	}
 	tx := gated2.Tx()
 	defer gated2.Rollback()
-	m, e := loadMember(ctx, tx, group, p.Viewer)
+	m, e := loadJoinedMember(ctx, tx, group, p.Viewer)
 	if e != nil {
 		return e
 	}
@@ -196,7 +196,7 @@ func (s *Store) Join(ctx context.Context, p identity.Principal, req JoinRequest)
 			return out, errGroupFull
 		}
 		member = membership{id: token("mem_"), displayName: req.DisplayName, role: "member", state: "joined", readiness: "buffering", joinedMS: now}
-		if _, e = tx.ExecContext(ctx, `INSERT INTO social_group_members(id,group_id,authority,account_id,profile_id,display_name,role,state,readiness,readiness_at_ms,joined_at_ms) VALUES(?,?,?,?,?,?,'member','joined','buffering',?,?)`, member.id, groupID, p.Authority, p.AccountID, p.ProfileID, req.DisplayName, now, now); e != nil {
+		if _, e = tx.ExecContext(ctx, `INSERT INTO social_group_members(id,group_id,authority,account_id,profile_id,display_name,role,state,readiness,readiness_at_ms,joined_at_ms,seen_at_ms) VALUES(?,?,?,?,?,?,'member','joined','buffering',?,?,?)`, member.id, groupID, p.Authority, p.AccountID, p.ProfileID, req.DisplayName, now, now, now); e != nil {
 			return out, e
 		}
 	case e != nil:
@@ -204,7 +204,7 @@ func (s *Store) Join(ctx context.Context, p identity.Principal, req JoinRequest)
 	default:
 		// Rejoining after a leave is ordinary: the same profile keeps its member
 		// id so queue provenance and receipts stay attached to one participant.
-		if _, e = tx.ExecContext(ctx, `UPDATE social_group_members SET state='joined',display_name=?,left_at_ms=NULL,readiness='buffering',readiness_at_ms=? WHERE id=?`, req.DisplayName, now, member.id); e != nil {
+		if _, e = tx.ExecContext(ctx, `UPDATE social_group_members SET state='joined',display_name=?,left_at_ms=NULL,readiness='buffering',readiness_at_ms=?,seen_at_ms=?,readiness_revision=0 WHERE id=?`, req.DisplayName, now, now, member.id); e != nil {
 			return out, e
 		}
 		member.state, member.displayName, member.readiness = "joined", req.DisplayName, "buffering"

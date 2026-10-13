@@ -148,7 +148,7 @@ test('jitter spreads the interval across the ±20% band',async(t)=>{
  }finally{t.mock.timers.reset();}
 });
 
-test('the inbox poll pauses while the player is in the foreground and resumes after',async(t)=>{
+test('the inbox keeps polling while the player is in the foreground',async(t)=>{
  t.mock.timers.enable({apis:['setTimeout','Date']});
  try{
   const calls:{path:string;t:number}[]=[];
@@ -156,11 +156,11 @@ test('the inbox poll pauses while the player is in the foreground and resumes af
   host.start();await settleImmediate();
   host.setPlayerActive(true);
   t.mock.timers.tick(90000);await settleImmediate();
-  assert.equal(inboxAt(calls).length,1,'no inbox poll while the player is in the foreground');
+  assert.equal(inboxAt(calls).length,2,'inbox remains available while playback is in front');
   assert.ok(beats(calls).length>=1,'the heartbeat keeps the registration alive while paused');
   host.setPlayerActive(false);
   t.mock.timers.tick(30000);await settleImmediate();
-  assert.equal(inboxAt(calls).length,2,'polling resumes on the next interval');
+  assert.equal(inboxAt(calls).length,3,'polling continues on the next interval');
   host.dispose();
  }finally{t.mock.timers.reset();}
 });
@@ -178,4 +178,16 @@ test('stop ends inbox and heartbeat polling (the app-background path)',async(t)=
   assert.equal(host.getSnapshot().phase,'off');
   host.dispose();
  }finally{t.mock.timers.reset();}
+});
+
+test('after a handoff the controller can pause, resume, seek and stop the destination session',async()=>{
+ const s=server({grants:['accepted'],handoffs:[{},{outcome:'pending',revision:'2',receiverPlaybackId:'pb_tv',readyPositionUs:'90400000'}]});const calls:{id:string;change?:unknown;revision?:string}[]=[];
+ let current:any={id:'pb_tv',revision:'1',state:'playing',presentation:{generation:1}};
+ const sessions={get:async(id:string)=>{assert.equal(id,'pb_tv');return current;},patch:async(id:string,revision:string,change:any)=>{calls.push({id,revision,change});current={...current,revision:String(Number(current.revision)+1),state:change.state??current.state};return current;},stop:async(id:string)=>{calls.push({id});}};
+ const c=new HandoffController({api:s.api,device:{deviceId:'phone-1',displayName:'Phone'},requestId:()=> 'remote-seek',pollMs:5,sessions});
+ assert.equal(await c.send(tv,{playbackId:'pb_source',positionSeconds:42}),true);
+ assert.equal(c.getSnapshot().receiverPlaybackId,'pb_tv');
+ assert.equal(await c.pause(),true);assert.equal(await c.play(),true);assert.equal(await c.seek(19.5),true);assert.equal(await c.stop(),true);
+ assert.deepEqual(calls.map(x=>x.change),[{state:'paused'},{state:'playing'},{seek:{positionMs:19500,id:'remote-seek'}},undefined]);
+ assert(calls.every(x=>x.id==='pb_tv'));assert.equal(c.getSnapshot().receiverPlaybackId,undefined);c.dispose();
 });

@@ -488,6 +488,7 @@ export const webMessages = {
   'web.together.everyone': 'Everyone',
   'web.together.state.lobby': 'Waiting to start',
   'web.together.state.preparing': 'Getting ready',
+  'web.together.state.waiting': 'Waiting for everyone',
   'web.together.state.ready': 'Ready',
   'web.together.state.playing': 'Playing',
   'web.together.state.hostReconnecting': 'Host reconnecting',

@@ -3942,7 +3942,9 @@ social_group_members.profile_id
 social_group_members.readiness
 social_group_members.readiness_at_ms
 social_group_members.readiness_position_us
+social_group_members.readiness_revision
 social_group_members.role
+social_group_members.seen_at_ms
 social_group_members.state
 social_group_queue.added_at_ms
 social_group_queue.added_by
@@ -3957,6 +3959,7 @@ social_group_receipts.idempotency_key
 social_group_receipts.member_id
 social_group_receipts.response
 social_groups.account_id
+social_groups.activity_seen_ms
 social_groups.authority
 social_groups.created_at_ms
 social_groups.current_entry_id
@@ -3964,6 +3967,7 @@ social_groups.end_after_seconds
 social_groups.ended_at_ms
 social_groups.ended_reason
 social_groups.event_ordinal
+social_groups.governance_revision
 social_groups.host_authority
 social_groups.host_device_id
 social_groups.host_member_id
@@ -3986,9 +3990,12 @@ social_groups.reconnect_generation
 social_groups.repeat_mode
 social_groups.resume_state
 social_groups.revision
+social_groups.settings_revision
 social_groups.shuffle
 social_groups.state
 social_groups.updated_at_ms
+social_groups.wait_resume_state
+social_groups.wait_until_ms
 social_handoffs.account_id
 social_handoffs.authority
 social_handoffs.committed_position_us

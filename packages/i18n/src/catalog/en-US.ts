@@ -477,6 +477,8 @@ export const enUS = {
   'playOn.didNotStartInTime': '{device} didn’t start in time. Still playing here.',
   'playOn.couldNotStart': '{device} couldn’t start this. Still playing here.',
   'playOn.couldNotTakeOver': '{device} couldn’t take over. Still playing here.',
+  'playOn.controlUnavailable': 'Playback on the other device couldn’t be controlled. Try again.',
+  'together.privateViewer': 'Private viewer',
   'playOn.notReachable': 'Couldn’t reach {device}. Still playing here.',
   'playOn.failedHelp': 'That device couldn’t take over playback. Check that it’s on with Portico open, then try again.',
   'playOn.devicesUnavailable': 'Your devices couldn’t be loaded.',
