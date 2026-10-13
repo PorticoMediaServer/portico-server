@@ -5,8 +5,8 @@ import {randomId} from './random-id.ts';
  * Forgiving by design: a failed refresh keeps the list that is on screen. While anything is
  * still being prepared it polls gently; once everything has settled it stops. */
 import {serviceProblem} from './presentation/service-text.ts';
-import {downloadReasonMessage,parseDownloadBatch,parseDownloadGrant,parseDownloadOptions,parseDownloadPage,parseDownloadPreparation,parseDownloadUsage,type DownloadAction,type DownloadBatch,type DownloadGrant,type DownloadOptionsView,type DownloadPreparation,type DownloadUsage} from './downloads.ts';
-import {createDownloadRequest,getDownloadRequest,isDownloadRequestTerminal,type DownloadEpisodes,type DownloadRequest,type DownloadRequestKind} from './download-requests.ts';
+import {downloadReasonMessage,parseDownloadBatch,parseDownloadBundle,parseDownloadGrant,parseDownloadOptions,parseDownloadPage,parseDownloadPreparation,parseDownloadSettings,parseDownloadUsage,type DownloadAction,type DownloadBatch,type DownloadBundle,type DownloadGrant,type DownloadOptionsView,type DownloadPreparation,type DownloadQualityChoice,type DownloadUsage} from './downloads.ts';
+import {createDownloadRequest,getDownloadRequest,isDownloadRequestTerminal,listDownloadRequests,type DownloadEpisodes,type DownloadRequest,type DownloadRequestKind} from './download-requests.ts';
 
 export type DownloadsApi={request<T>(path:string,method?:string,body?:unknown,signal?:AbortSignal):Promise<T>};
 /** Items for one preparation batch. A whole container (show, season, album, book, playlist) is
@@ -30,6 +30,8 @@ export class DownloadsService{
  private listeners=new Set<()=>void>();private timer?:ReturnType<typeof setTimeout>;private generation=0;private disposed=false;private watching=false;
  /** Whole-container requests followed on this device, by request id. */
  private tracked=new Map<string,TrackedDownloadRequest>();
+ /** The device whose whole-container requests are found again on the server (`followDevice`). */
+ private deviceId='';
  /** Requests with a follower running. A list refresh doesn't end a follower: only disposal, the
   * request finishing or a 404 does, so a whole-season download keeps its progress current. */
  private following=new Set<string>();
@@ -126,6 +128,11 @@ export class DownloadsService{
  async options(itemId:string,signal?:AbortSignal):Promise<DownloadOptionsView>{
   return parseDownloadOptions(await this.api.request<unknown>('/v1/items/'+encodeURIComponent(itemId)+'/download-options','GET',undefined,signal),itemId);
  }
+ /** The qualities a whole show, season, album, book or playlist may be asked for: the original,
+  * and each smaller quality this server can make. The server decides; nothing is assumed here. */
+ async qualities(signal?:AbortSignal):Promise<readonly DownloadQualityChoice[]>{
+  return parseDownloadSettings(await this.api.request<unknown>('/v1/downloads/settings','GET',undefined,signal)).qualities;
+ }
  /** Asks the server to prepare one title, several, a whole season or album, or the next one.
   * A batch is partial by design: what could not be accepted is reported, the rest proceeds. */
  async request(target:DownloadTarget,quality:string):Promise<DownloadBatch>{
@@ -138,8 +145,7 @@ export class DownloadsService{
   * Starts one whole-container download (show, season, album, book or playlist)
   * and follows its request until it completes or fails. The caller keeps its
   * own operationId per intent for safe retries. Capture shows as an
-  * indeterminate state until `totalKnown` is true; a failed capture reports
-  * `selection_changed` without effects.
+  * indeterminate state until `totalKnown` is true.
   */
  async requestContainer(input:Readonly<{target:ContainerDownloadTarget;deviceId:string;quality:string;policy:ContainerDownloadPolicy;operationId?:string}>):Promise<DownloadRequest>{
   if(!input.target||input.target.kind!=='show'&&input.target.kind!=='season'&&input.target.kind!=='album'&&input.target.kind!=='book'&&input.target.kind!=='playlist'||!input.target.id)throw new Error('Whole downloads cover shows, seasons, albums, books and playlists.');
@@ -150,9 +156,28 @@ export class DownloadsService{
   void this.followRequest(request.requestId);
   return request;
  }
+ /** Names the device this service runs on. The whole-show, season, album, book and playlist
+  * downloads it started are then found again on the server whenever the list is followed, so
+  * closing the app, or signing in again, doesn't lose track of one that is still being prepared:
+  * the server keeps the request, and this is how its remaining members reach the device. */
+ followDevice(deviceId:string){
+  if(this.deviceId===deviceId)return;
+  this.deviceId=deviceId;
+  if(this.watching)void this.refreshRequests();
+ }
  /** Re-reads every followed container request (bounded: at most 20). */
  async refreshRequests():Promise<void>{
   const generation=this.generation;
+  if(this.deviceId){
+   try{
+    const listed=await listDownloadRequests(this.api,this.deviceId);
+    if(generation!==this.generation||this.disposed)return;
+    for(const summary of listed)if(!this.tracked.has(summary.requestId)){
+     // Listed, not yet read: an indeterminate request until its first read below.
+     this.tracked.set(summary.requestId,Object.freeze({title:summary.title,request:Object.freeze({requestId:summary.requestId,total:0,totalKnown:false,state:summary.state,ready:0,preparing:0,queued:0,failed:0,paused:0,items:Object.freeze([]),nextCursor:''})}));
+    }
+   }catch{/* the requests already followed are still read below */}
+  }
   const ids=[...this.tracked.keys()].slice(0,20);
   await Promise.all(ids.map(async id=>{
    try{
@@ -194,23 +219,44 @@ export class DownloadsService{
    }
   }finally{this.following.delete(requestId);}
  }
+ /** Applies one action. The server fences an action on the row's revision; when the row moved
+  * between the screen reading it and the person pressing the button, the row is read again and
+  * the action sent once more if it still applies, so a person only hears about a conflict when
+  * what they acted on has really become something else. */
  async act(preparation:DownloadPreparation,action:DownloadAction):Promise<void>{
   if(this.state.busy.includes(preparation.id))return;
   this.publish({busy:[...this.state.busy,preparation.id],error:undefined,failure:undefined});
+  const path='/v1/downloads/preparations/'+encodeURIComponent(preparation.id);
+  const send=async(revision:number)=>parseDownloadPreparation(await this.api.request<unknown>(path+'/actions','POST',{operationId:this.operationId(),action,expectedRevision:revision}));
+  const show=(next:DownloadPreparation)=>this.publish({items:action==='remove'?this.state.items.filter(p=>p.id!==next.id):this.state.items.map(p=>p.id===next.id?next:p)});
   try{
-   const raw=await this.api.request<unknown>('/v1/downloads/preparations/'+encodeURIComponent(preparation.id)+'/actions','POST',{operationId:this.operationId(),action,expectedRevision:preparation.revision});
-   const next=parseDownloadPreparation(raw);
-   this.publish({items:action==='remove'?this.state.items.filter(p=>p.id!==next.id):this.state.items.map(p=>p.id===next.id?next:p)});
+   show(await send(preparation.revision));
   }catch(e){
-   // A conflict carries the current row: show it rather than the stale one the action was made on.
-   const current=(e as {preparation?:unknown}|null)?.preparation;
-   if(current){try{const next=parseDownloadPreparation(current);this.publish({items:this.state.items.map(p=>p.id===next.id?next:p)});}catch{}}
-   this.publish({error:say(e,'downloads.error.action'),failure:e});
+   let failure:unknown=e;
+   if((e as {status?:number}|null)?.status===409){
+    try{
+     const current=parseDownloadPreparation(await this.api.request<unknown>(path));
+     if(current.actions.includes(action)){show(await send(current.revision));failure=undefined;}
+     else{
+      // It became something this action no longer applies to (it finished, or was removed
+      // elsewhere). Showing it as it is now is the answer; there is nothing to report.
+      this.publish({items:this.state.items.map(p=>p.id===current.id?current:p)});failure=undefined;
+     }
+    }catch(again){failure=again;}
+   }
+   if(failure!==undefined)this.publish({error:say(failure,'downloads.error.action'),failure});
   }finally{this.publish({busy:this.state.busy.filter(id=>id!==preparation.id)});void this.refresh();}
  }
- /** A short-lived address for the prepared file. Ask for it at the moment of download. */
- async grant(preparation:DownloadPreparation):Promise<DownloadGrant>{
-  return parseDownloadGrant(await this.api.request<unknown>('/v1/downloads/preparations/'+encodeURIComponent(preparation.id)+'/grant','POST',{operationId:this.operationId()}));
+ /** The address the prepared file is fetched from. Pass the token of the address this device
+  * already holds for the download (`renew`) to keep that same address alive; a transfer the
+  * device's own downloader is holding then carries on under it. */
+ async grant(preparation:Pick<DownloadPreparation,'id'>,renew?:string):Promise<DownloadGrant>{
+  return parseDownloadGrant(await this.api.request<unknown>('/v1/downloads/preparations/'+encodeURIComponent(preparation.id)+'/grant','POST',{operationId:this.operationId(),...(renew?{renew}:{})}));
+ }
+ /** Everything that travels with a ready download: title facts, artwork, chapters, markers,
+  * audio and subtitle tracks. The files it names are fetched under the grant's address. */
+ async bundle(preparation:Pick<DownloadPreparation,'id'>,signal?:AbortSignal):Promise<DownloadBundle>{
+  return parseDownloadBundle(await this.api.request<unknown>('/v1/downloads/preparations/'+encodeURIComponent(preparation.id)+'/bundle','GET',undefined,signal),preparation.id);
  }
  reason(preparation:DownloadPreparation):string{return preparation.reason?downloadReasonMessage(preparation.reason):'';}
 }
