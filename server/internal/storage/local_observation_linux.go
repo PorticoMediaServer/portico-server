@@ -8,12 +8,13 @@ import (
 	"syscall"
 )
 
-func observedObjectBinding(info os.FileInfo, _ string) (string, string, error) {
+func observedObjectBinding(info os.FileInfo, path string) (string, string, error) {
 	s, ok := info.Sys().(*syscall.Stat_t)
 	if !ok {
 		return "", "", ErrObservedSourceUnsupported
 	}
-	return fmt.Sprintf("dev:%d:ino:%d", s.Dev, s.Ino), fmt.Sprintf("%d:%d", s.Ctim.Sec, s.Ctim.Nsec), nil
+	object, err := directoryFilesystemIdentity(info, path, fmt.Sprintf("dev:%d:ino:%d", s.Dev, s.Ino))
+	return object, fmt.Sprintf("%d:%d", s.Ctim.Sec, s.Ctim.Nsec), err
 }
 
 func checkLocalRoot(string) error { return nil }
