@@ -67,8 +67,8 @@ func VerifyRestored(ctx context.Context, path string) error {
 // backup, the staged copy moves into place, and verification runs the ordinary
 // migrations. On failure the pre-restore copy moves back automatically and the
 // outcome is recorded for the console. Nothing staged is a no-op. The server
-// always starts afterwards; the returned error only records that the restore
-// did not apply.
+// starts afterwards only when the journal is resolved; an unresolved restore
+// must finish before serving the database.
 //
 // The current database is never deleted and never left anywhere a cleanup
 // could remove it (O3 review of be/backups). The marker names the pre-restore
@@ -352,8 +352,8 @@ func finishRollback(state, staged string, marker restoreMarker) error {
 }
 
 // finishApplied verifies the database in place. Success records "restored";
-// failure moves the pre-restore copy back, records "rolled_back", and always
-// clears the staged folder.
+// failure moves the pre-restore copy back. Completion journals the result before
+// cleanup, which can be resumed independently.
 func finishApplied(ctx context.Context, state, staged string, marker restoreMarker, verify VerifyFunc) error {
 	serverDB := filepath.Join(state, "server.sqlite")
 	if err := verify(ctx, serverDB); err != nil {
@@ -394,6 +394,15 @@ func finishCompleted(state, staged string, marker restoreMarker) error {
 			return err
 		}
 	}
+	if marker.State == markerRestored {
+		local := New(state, nil, "", "", 0)
+		if err := local.pruneRecoveryCopies(); err != nil {
+			return err
+		}
+		if err := syncDirectory(filepath.Join(state, BackupsDir)); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+	}
 	if err := os.RemoveAll(staged); err != nil {
 		return err
 	}
@@ -413,6 +422,7 @@ func renameRestoreFile(from, to string) error {
 }
 
 func syncRestoreDirectories(first, second string, files []string) error {
+	first, second = filepath.Clean(first), filepath.Clean(second)
 	dirs := map[string]bool{first: true, second: true}
 	for _, root := range []string{first, second} {
 		for _, name := range files {

@@ -244,3 +244,37 @@ func TestRestoreNamesAndLinkedManifestFilesAreRefused(t *testing.T) {
 		t.Fatal("hash verification followed an intermediate link", err)
 	}
 }
+
+func TestManualBackupCannotJoinAPruneableScheduledCopy(t *testing.T) {
+	svc, _, _ := testService(t)
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	svc.SetCopyScrubber(func(context.Context, string) error { close(entered); <-release; return nil })
+	id, err := svc.Start(context.Background(), KindScheduled, "scheduled-probe")
+	if err != nil {
+		t.Fatal(err)
+	}
+	job, _ := svc.Job(id)
+	defer func() { close(release); <-job.Done() }()
+	select {
+	case <-entered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("scheduled copy did not start")
+	}
+	if got, err := svc.Start(context.Background(), KindManual, "manual-probe"); !errors.Is(err, ErrBackupRunning) {
+		t.Fatalf("manual backup joined pruneable scheduled job %q: %v", got, err)
+	}
+}
+
+func TestWindowsBackupNamesCannotAliasParentsOrDevices(t *testing.T) {
+	for _, name := range []string{"subtitles/.. /server.sqlite", "subtitles/a.", "subtitles/a ", "subtitles/ a", "subtitles/NUL.srt", "subtitles/con", "subtitles/COM1.txt", "subtitles/LPT³.srt", "subtitles/COM².srt", "subtitles/a?b", "subtitles/a\x01b"} {
+		if safeWindowsBackupName(name) {
+			t.Fatalf("accepted Windows name alias %q", name)
+		}
+	}
+	for _, name := range []string{"subtitles/film.en.srt", "channel-logos/.hidden.png", "subtitles/Cómédie.srt", "subtitles/COM10.srt"} {
+		if !safeWindowsBackupName(name) {
+			t.Fatalf("refused ordinary Windows filename %q", name)
+		}
+	}
+}

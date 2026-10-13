@@ -128,7 +128,7 @@ func Registry() []Field {
 		field("apiRequestsPerMinute", "access", "integer", 0, bounded(0), bounded(100000), nil, "hot", "API key and access token admission", "How many requests one API key or personal access token may make each minute. 0 uses the default of 600."),
 		field("blockMemberAccessTokens", "access", "boolean", false, nil, nil, nil, "next-operation", "personal access token creation", "Stop members creating personal access tokens. Tokens that already exist keep working until they are revoked."),
 		field("logLevel", "diagnostics", "enumeration", "info", nil, nil, LogLevels, "hot", "servicelog.Recorder", "How much detail the message log keeps. A debug window raises this temporarily without changing the saved value."),
-		field("logRetention", "diagnostics", "log-retention-list", []LogRetention{}, nil, nil, LogCategories, "hot", "servicelog.Recorder prune", "Days of message log history to keep per category. A category with no entry keeps whatever the bounded ring holds."),
+		field("logRetention", "diagnostics", "log-retention-list", []LogRetention{}, nil, nil, LogCategories, "hot", "servicelog.Recorder and ClientLogStore prune", "Days of message log and client report history to keep per category. A category with no entry keeps its bounded history."),
 	}
 	// Viewer preferences are published by their own registry on GET /v1/preferences.
 	// Listing them here too would give clients two disagreeing authorities.

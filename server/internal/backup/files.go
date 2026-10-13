@@ -252,21 +252,6 @@ func (s *Service) estimate() (int64, error) {
 	return total, nil
 }
 
-// dirBytes sums the regular files under dir.
-func dirBytes(dir string) int64 {
-	var total int64
-	_ = filepath.WalkDir(dir, func(path string, entry fs.DirEntry, err error) error {
-		if err != nil || entry.IsDir() {
-			return nil
-		}
-		if info, err := entry.Info(); err == nil && info.Mode().IsRegular() {
-			total += info.Size()
-		}
-		return nil
-	})
-	return total
-}
-
 // manifestFileEntries reads the manifest's file list for hash comparison.
 func manifestFileEntries(dir string) ([]FileEntry, error) {
 	manifest, err := readManifest(dir)

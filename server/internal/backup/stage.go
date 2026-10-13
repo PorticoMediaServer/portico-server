@@ -193,7 +193,7 @@ func stateFileNames(files []FileEntry) ([]string, bool) {
 			return nil, false
 		}
 		key := name
-		if runtime.GOOS == "windows" {
+		if runtime.GOOS == "windows" || runtime.GOOS == "darwin" {
 			key = strings.ToLower(key)
 		}
 		if seen[key] {
@@ -210,7 +210,31 @@ func stateFileNames(files []FileEntry) ([]string, bool) {
 
 // Only files owned by the backup format may be installed in live state.
 func safeRelativeFile(name string) bool {
-	return name != "" && name != "." && name != ".." && path.Clean(name) == name && !strings.HasPrefix(name, "/") && !strings.HasPrefix(name, "../") && !strings.ContainsAny(name, "\\:\x00")
+	if name == "" || name == "." || name == ".." || path.Clean(name) != name || strings.HasPrefix(name, "/") || strings.HasPrefix(name, "../") || strings.ContainsAny(name, "\\:\x00") {
+		return false
+	}
+	return runtime.GOOS != "windows" || safeWindowsBackupName(name)
+}
+
+// Windows normalizes some names and reserves device names in every directory.
+// Refuse aliases before resolving a manifest entry inside the backup tree.
+func safeWindowsBackupName(name string) bool {
+	for _, part := range strings.Split(name, "/") {
+		if strings.Trim(part, " ") != part || strings.TrimRight(part, ".") != part || strings.ContainsAny(part, "<>\"\\|?*:") {
+			return false
+		}
+		for _, r := range part {
+			if r < 32 {
+				return false
+			}
+		}
+		stem, _, _ := strings.Cut(strings.ToUpper(part), ".")
+		switch stem {
+		case "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9", "COM¹", "COM²", "COM³", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9", "LPT¹", "LPT²", "LPT³":
+			return false
+		}
+	}
+	return true
 }
 
 func restorableFile(name string) bool {
@@ -241,7 +265,10 @@ func (s *Service) resolveSource(source Source) (db, dir string, files []string, 
 		if err = checkID(source.BackupID); err != nil {
 			return "", "", nil, ErrSourceInvalid
 		}
-		folder := filepath.Join(s.backupRoot(), source.BackupID)
+		folder, err := s.backupPath(source.BackupID)
+		if err != nil {
+			return "", "", nil, ErrSourceInvalid
+		}
 		manifest, err := readManifest(folder)
 		if err != nil {
 			return "", "", nil, ErrSourceInvalid

@@ -18,6 +18,7 @@ import (
 
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/persistence"
+	"portico.local/server/internal/supervise"
 )
 
 // A supervisor's health check, a browser that was already open, and a phone
@@ -216,13 +217,13 @@ func (s *startupRecovery) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func serveStartupRecovery(ctx context.Context, listener net.Listener, reporter *startupReporter) {
 	server := &http.Server{Handler: reporter, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 15 * time.Second, IdleTimeout: 5 * time.Second, MaxHeaderBytes: 32 << 10}
 	done := make(chan struct{})
-	go func() {
+	supervise.Go("cmd.recovery-stop", func() {
 		select {
 		case <-ctx.Done():
 			_ = server.Close()
 		case <-done:
 		}
-	}()
+	})
 	_ = server.Serve(capConnections(listener, consoleConnectionReserve))
 	close(done)
 }
@@ -232,6 +233,9 @@ func serveStartupRecovery(ctx context.Context, listener net.Listener, reporter *
 func serveEarlyStartupFailure(err error) {
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
+	if os.Getenv(supervise.WorkerEnvironment) == "1" {
+		supervise.WatchParent(cancel, os.Stdin)
+	}
 	listener, listenErr := net.Listen("tcp", env("PORTICO_BIND", defaultBind))
 	if listenErr != nil {
 		log.Printf("The recovery page could not bind its port: %v", listenErr)

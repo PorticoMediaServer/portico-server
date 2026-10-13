@@ -4066,6 +4066,7 @@ export const routes = [
     "errors": [
       "unauthorized",
       "invalid_request",
+      "request_in_progress",
       "insufficient_disk",
       "administration_unavailable",
       "internal"
