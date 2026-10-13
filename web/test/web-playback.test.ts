@@ -370,3 +370,28 @@ test('Automatic steps down on a sustained shortfall, says so, and asks the serve
   assert.deepEqual((patch!.body as {quality: unknown}).quality, {mode: 'limit', maxHeight: 720, maxVideoBitrateKbps: 4000});
   assert.equal(t.queues().length, 1);
 });
+
+test('a presentation the service was handed by the subtitle route loads, and the session’s lease is kept alive', async ctx => {
+  const t = setup(ctx);
+  await t.player.playItem('movie', 0);
+  await t.arrive();
+  t.video.advance(40);
+  await settle();
+  const before = t.playback.getSnapshot().session!;
+  const reports = () => t.server.session(before.id)!.reports.length;
+  // A burned-in subtitle: the same session with a new stream, as the subtitle service installs it.
+  assert.equal(t.playback.installSubtitlePresentation({sessionId: before.id, generation: before.generation + 1, streamUrl: '/v1/media/burned/master.m3u8', mode: 'hls', positionUs: '40000000'}), true);
+  await settle();
+  const hls = await t.arrive();
+  assert.match(hls.source!, /\/v1\/media\/burned\/master\.m3u8$/);
+  assert.equal(hls.config.startPosition, 40);
+  assert.equal(t.playback.getSnapshot().phase, 'ready');
+  assert.equal(t.playback.getSnapshot().pendingSeek, undefined);
+  const sent = reports();
+  t.video.advance(52);
+  t.clock.advance(11_000);
+  await settle();
+  assert.ok(reports() > sent, 'the timeline keeps reporting');
+  assert.equal(t.server.session(before.id)!.reports.at(-1)!.positionMs, 52_000);
+  assert.equal(t.server.session(before.id)!.ended, false);
+});

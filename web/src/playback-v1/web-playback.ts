@@ -194,6 +194,9 @@ export class WebPlayback implements PlaybackAdapter {
   private seekRevision?: number;
   private corrected?: number;
   private appliedIntent?: 'playing' | 'paused';
+  /** The port holds a presentation the service loaded itself; the controller is told by `observe`. */
+  private direct = false;
+  private asked?: string;
   private automatic?: AutomaticQuality;
   private automaticConfig?: AutomaticConfig;
   private automaticItem?: string;
@@ -320,8 +323,25 @@ export class WebPlayback implements PlaybackAdapter {
     if (!known) return false;
     // The controller may already hold a newer presentation of this session (a change whose
     // answer has not reached the service yet): the service catches up, nothing loads twice.
-    if (known.presentation.generation !== session.generation) return false;
-    this.controller.attach(known, {autoplay, startPositionMs});
+    if (known.presentation.generation > session.generation) return false;
+    if (known.presentation.generation === session.generation) {
+      this.direct = false;
+      this.controller.attach(known, {autoplay, startPositionMs});
+      return true;
+    }
+    // The service was handed a newer presentation than the controller has seen: a subtitle
+    // choice that re-planned the stream through the subtitle route. The server is asked for the
+    // session as it now stands, and the controller loads it when it agrees. When the session
+    // itself did not move, what the service was given is loaded as it is, and the session's
+    // timeline is kept from the service's readings so its lease does not lapse.
+    const key = `${session.id}:${session.generation}`;
+    if (this.asked !== key) {
+      this.asked = key;
+      void this.controller.sessionUpdated(session.id).catch(() => {}).then(() => { if (!this.disposed && this.service) this.apply(this.service.getSnapshot()); });
+      return false;
+    }
+    this.direct = true;
+    this.slot.load({url: session.streamUrl, generation: session.generation, mode: session.mode === 'direct' ? 'direct' : 'stream', startPositionMs, subtitles: [], autoplay, sessionId: session.id});
     return true;
   }
 
@@ -335,6 +355,8 @@ export class WebPlayback implements PlaybackAdapter {
     this.loadedKey = '';
     this.carriedSeek = this.seekRevision = this.corrected = undefined;
     this.appliedIntent = undefined;
+    this.direct = false;
+    this.asked = undefined;
   }
 
   // ── Facts from the element ──────────────────────────────────────────────
@@ -350,6 +372,7 @@ export class WebPlayback implements PlaybackAdapter {
     const now = this.current(e.observation);
     if (!now) return;
     const {service, snapshot} = now, o = e.observation, intent = snapshot.intentId, seconds = o.positionMs / 1000;
+    if (this.direct && !snapshot.channel && e.type !== 'error' && o.state !== 'idle' && o.state !== 'loading' && !this.slot.settling) this.controller.observe({state: o.state, positionMs: o.positionMs, rate: o.rate, volume: o.volume, muted: o.muted}, e.type);
     switch (e.type) {
       case 'error': this.engineError(service, intent, e.code, e.detail ?? ''); return;
       case 'seeked':
