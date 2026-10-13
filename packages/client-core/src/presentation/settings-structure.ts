@@ -55,6 +55,8 @@ export type SettingsCapabilities = Readonly<{
   playbackSpeed?: boolean;
   /** This device renders audio itself: gapless, crossfade and volume leveling. Absent: it does (a Roku's player cannot). */
   audioEffects?: boolean;
+  /** This build has mpv as a second player beside the device's own, so there is a player to choose. Absent or false: there is not (the web never has). */
+  playerEngines?: boolean;
 }>;
 
 export type SettingsContext = Readonly<{owner: boolean; platform: SettingsPlatform; capabilities: SettingsCapabilities}>;
@@ -70,7 +72,7 @@ export type SettingsControl =
 
 export type CompositeId =
   | 'quality.home' | 'quality.away' | 'quality.cellular' | 'playbackMethod' | 'hdr' | 'cardSize'
-  | 'libraryView' | 'reduceMotion' | 'textSize' | 'receiveFromDevices';
+  | 'libraryView' | 'reduceMotion' | 'textSize' | 'receiveFromDevices' | 'playerEngine';
 export type SettingsActionId = 'signOut' | 'resetRecommendations' | 'linkTV';
 export type SettingsCustomId =
   | 'identity' | 'profiles' | 'password' | 'twoStep' | 'devices' | 'porticoAccount' | 'servers'
@@ -132,6 +134,13 @@ export type SettingsTab = Readonly<{id: string; title: MessageId}>;
 export type SettingsPage = Readonly<{id: string; title: MessageId; icon: IconId; /** Sub-pages (Sources · Recording · Library Channels); each section names the one it is on. */ tabs?: readonly SettingsTab[]; sections: readonly SettingsSection[]}>;
 export type SettingsHeading = Readonly<{id: SettingsHeadingId; title: MessageId; pages: readonly SettingsPage[]}>;
 export type SettingsStructure = Readonly<{headings: readonly SettingsHeading[]}>;
+
+/** The Player setting's values, in the order shown: Automatic is the default. */
+export const PLAYER_ENGINES = ['automatic', 'native', 'mpv'] as const;
+export type PlayerEngineSetting = (typeof PLAYER_ENGINES)[number];
+const PLAYER_ENGINE_CHOICES: readonly SettingsChoice[] = [
+  {value: 'automatic', label: 'settings.player.automatic'}, {value: 'native', label: 'settings.player.native'}, {value: 'mpv', label: 'settings.player.mpv'},
+];
 
 // ── Authoring helpers ────────────────────────────────────────────────────────
 
@@ -231,6 +240,11 @@ const accountPages: readonly AuthoredPage[] = [
           {value: 'automatic', label: 'settings.playbackMethod.automatic'}, {value: 'original', label: 'settings.playbackMethod.original'}, {value: 'convert', label: 'settings.playbackMethod.convert'},
         ]}},
         {kind: 'composite', id: 'hdr', storage: 'registry', label: 'settings.row.hdr', help: 'settings.help.hdr', scope: 'deviceClass', control: {type: 'choice', choices: [{value: 'automatic', label: 'settings.hdr.automatic'}, {value: 'off', label: 'settings.hdr.off'}]}},
+        // Which player plays: Automatic (the default) uses the device's own when it can play the
+        // title as it is or with a plain repackaging, and mpv only when the alternative is
+        // converting the picture, lossy sound or burned-in subtitles. Kept by the device itself,
+        // and shown only where there is a second player to choose.
+        {kind: 'composite', id: 'playerEngine', storage: 'device', label: 'settings.row.player', help: 'settings.help.player', scope: 'device', platforms: ['phone', 'tv'], needs: c => !!c.playerEngines, control: {type: 'choice', choices: PLAYER_ENGINE_CHOICES}},
       ]},
     ],
   },

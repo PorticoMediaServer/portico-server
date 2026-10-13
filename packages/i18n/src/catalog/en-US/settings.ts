@@ -88,6 +88,12 @@ export const settingsMessages = {
   'settings.playbackMethod.convert': 'Always convert',
   'settings.row.hdr': 'HDR',
   'settings.help.hdr': 'Off converts HDR video to standard range.',
+  // The Player setting, on devices that have mpv as a second player.
+  'settings.row.player': 'Player',
+  'settings.help.player': 'Automatic uses this device’s own player when it can play a title as it is, and mpv when the title would otherwise have to be converted or have its subtitles burned in.',
+  'settings.player.automatic': 'Automatic (recommended)',
+  'settings.player.native': 'This device’s player',
+  'settings.player.mpv': 'mpv',
   'settings.hdr.automatic': 'Automatic',
   'settings.hdr.off': 'Off',
 
