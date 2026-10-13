@@ -465,7 +465,7 @@ export const webMessages = {
   'web.downloads.requestPreparing': 'Finding everything to download…',
   'web.downloads.requestProgress': '{ready} of {total} ready',
   'web.downloads.requestFailed': '{failed} couldn’t be prepared.',
-  'web.downloads.requestChanged': 'The library changed while preparing. Try again.',
+  'web.downloads.goneFromServer': 'This title is no longer on the server.',
   'web.downloads.requestsTitle': 'Whole shows and seasons',
   'web.downloads.noDevice': 'This browser session can’t start whole-show downloads. Download titles one at a time instead.',
   'web.person.lived': '{born} – {died}',

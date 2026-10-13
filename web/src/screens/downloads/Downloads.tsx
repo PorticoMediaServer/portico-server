@@ -1,7 +1,7 @@
 import {useEffect, useState} from 'react';
 import {useNavigate} from '@tanstack/react-router';
 import {useI18n, type I18n} from '../../app/i18n';
-import {downloadBytes, type DownloadAction, type DownloadPreparation} from '@core/index.ts';
+import {downloadBytes, downloadTitleLines, type DownloadAction, type DownloadPreparation} from '@core/index.ts';
 import {useDownloads} from '../../app/downloads';
 import {useSession} from '../../app/session';
 import {ErrorNotice, ErrorState, errorText} from '../../app/errors';
@@ -28,9 +28,9 @@ function actionLabel(t: I18n['t'], action: DownloadAction): string {
     case 'remove': return t('action.removeShort');
   }
 }
-/** WEB-DL-01: the preparation carries no title yet (deferred-to-contract), so the file's name
- * without its extension stands in, and the row links to the title itself. */
-const displayName = (t: I18n['t'], p: DownloadPreparation) => (p.artifact.fileName ? p.artifact.fileName.replace(/\.[a-z0-9]{2,5}$/i, '').replace(/[._]+/g, ' ').trim() : '') || t('web.downloads.untitled');
+/** The claim carries its own title: an episode under its show with its place in it, a song with
+ * its artist. It keeps reading that way after the title has left the server. */
+const displayName = (t: I18n['t'], p: DownloadPreparation) => downloadTitleLines(p.title).title || t('web.downloads.untitled');
 
 /** Titles the server has prepared for this profile. In a browser a download is a file you
  * save; the apps keep downloads inside Portico and play them without a connection. */
@@ -81,7 +81,6 @@ export function DownloadsScreen() {
                         <Badge tone={r.state === 'complete' ? 'healthy' : r.state === 'failed' ? 'warning' : 'neutral'}>{label}</Badge>
                       </div>
                       {r.failed ? <Text variant="caption" tone="warning">{t('web.downloads.requestFailed', {failed: r.failed})}</Text> : null}
-                      {r.state === 'failed' && r.errorCode === 'selection_changed' ? <Text variant="caption" tone="warning">{t('web.downloads.requestChanged')}</Text> : null}
                       {r.state === 'capturing' || r.state === 'admitting' || r.state === 'preparing' ? <ProgressBar value={r.totalKnown && r.total ? r.ready / r.total : undefined} indeterminate={!r.totalKnown} /> : null}
                     </div>
                   </div>
@@ -100,13 +99,14 @@ export function DownloadsScreen() {
                         <Text variant="bodyStrong" clamp={1}>{displayName(t, p)}</Text>
                         <Badge tone={p.state === 'ready' ? 'healthy' : p.state === 'failed' || p.state === 'unavailable' || p.state === 'expired' ? 'warning' : 'neutral'}>{stateLabel(t, p.state)}</Badge>
                       </div>
-                      <Text variant="caption" tone="tertiary">{[p.quality === 'original' ? t('web.downloads.original') : p.quality, p.artifact.bytes ? (p.artifact.estimated ? t('web.downloads.about', {size: downloadBytes(p.artifact.bytes)}) : downloadBytes(p.artifact.bytes)) : '', p.state === 'ready' && p.expiresAt ? t('web.downloads.keptUntil', {date: i18n.date(p.expiresAt, 'dayMonth')}) : '', p.state === 'running' && p.progress.etaSeconds ? t('web.downloads.minutesLeft', {count: Math.max(1, Math.round(p.progress.etaSeconds / 60))}) : ''].filter(Boolean).join(' · ')}</Text>
-                      {reason ? <Text variant="caption" tone="warning">{reason}</Text> : null}
+                      <Text variant="caption" tone="tertiary">{[downloadTitleLines(p.title).subtitle, p.quality === 'original' ? t('web.downloads.original') : p.quality, p.artifact.bytes ? (p.artifact.estimated ? t('web.downloads.about', {size: downloadBytes(p.artifact.bytes)}) : downloadBytes(p.artifact.bytes)) : '', p.state === 'ready' && p.expiresAt ? t('web.downloads.keptUntil', {date: i18n.date(p.expiresAt, 'dayMonth')}) : '', p.state === 'running' && p.progress.etaSeconds ? t('web.downloads.minutesLeft', {count: Math.max(1, Math.round(p.progress.etaSeconds / 60))}) : ''].filter(Boolean).join(' · ')}</Text>
+                      {reason && p.title.onServer ? <Text variant="caption" tone="warning">{reason}</Text> : null}
+                      {!p.title.onServer ? <Text variant="caption" tone="warning">{t('web.downloads.goneFromServer')}</Text> : null}
                       {p.state === 'running' || p.state === 'paused' ? <ProgressBar value={p.progress.percent / 100} /> : null}
                     </div>
                     <div style={{display: 'flex', gap: 8, flexWrap: 'wrap'}}>
                       {p.state === 'ready' ? <Button size="sm" variant="secondary" icon="download" label={t('web.downloads.save')} onClick={() => void save(p)} /> : null}
-                      <Button size="sm" variant="ghost" label={t('web.downloads.goToTitle')} onClick={() => void navigate({to: '/media/$itemId', params: {itemId: p.itemId}, search: {}})} />
+                      {p.title.onServer ? <Button size="sm" variant="ghost" label={t('web.downloads.goToTitle')} onClick={() => void navigate({to: '/media/$itemId', params: {itemId: p.itemId}, search: {}})} /> : null}
                       {p.actions.map(a => <Button key={a} size="sm" variant="ghost" label={actionLabel(t, a)} disabled={busy} onClick={() => act(p, a)} />)}
                     </div>
                   </div>

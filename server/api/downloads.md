@@ -1,292 +1,250 @@
 # Offline downloads
 
-How a third-party client takes Portico media offline and plays it with no server in reach.
-`downloads.openapi.yaml` is the normative contract; this page explains the model and the order
-things happen in.
+How a client takes Portico media offline and plays it with no server in reach. The typed contract
+is in `portico.openapi.json` (the operations whose ids contain `download`); this page explains the
+model and the order things happen in. The first-party apps use exactly these routes.
 
-Downloads produce no media of their own. A download is a *claim* on bytes that already exist — the
-library's own file, or a published optimization — plus a verification hash, a short-lived transfer
-handle, and a signed statement that this viewer may play those bytes offline.
+Downloads produce no media of their own and keep no copy of any. A download is a *claim* on bytes
+that already exist — the library's own file, read in place, or a converted copy the server already
+holds — plus a verification hash, an address to fetch the bytes from, and a signed statement that
+this viewer may play those bytes offline.
+
+Two things are kept apart throughout, and a client must keep them apart too:
+
+- The **claim** is the server's promise to hand the bytes over. It ends when nobody fetched it for
+  the retention period, when the file is replaced, when a converted copy is deleted, or when the
+  title leaves the library.
+- The **receipt** is the viewer's permission to play a copy already on a device. It ends only when
+  the server's owner takes something away from the viewer: downloads are turned off for the
+  profile, the account is switched off, the title or its library is closed to them, or the receipt
+  is withdrawn.
+
+The server tidying up never ends a receipt. A copy on a device stays playable until its viewer
+removes it or loses access.
 
 ---
 
-## The four steps
+## The steps
 
 ```
-GET  /v1/items/{id}/download-options        what can I take, how big, may I?
-POST /v1/downloads/preparations             claim it
-POST /v1/downloads/preparations/{id}/grant  get a transfer handle
-GET  /v1/downloads/artifacts/{grant}        move the bytes  (Range, ETag, 206)
-POST /v1/downloads/receipts                 take the offline receipt
+GET  /v1/items/{id}/download-options              what can I take, how big, may I?
+POST /v1/downloads/preparations                   claim it
+POST /v1/downloads/receipts                       take the offline receipt (as soon as the claim is ready)
+POST /v1/downloads/preparations/{id}/grant        get the address of the bytes
+GET  /v1/downloads/artifacts/{grant}              move the bytes  (Range, If-Range, ETag, 206)
+GET  /v1/downloads/preparations/{id}/bundle       everything that travels with the file
+GET  /v1/downloads/artifacts/{grant}/artwork/…    its pictures
+GET  /v1/downloads/artifacts/{grant}/subtitles/…  its subtitle tracks, as text and as authored
 ```
 
 Then, whenever the client is back in contact:
 
 ```
-POST /v1/downloads/receipts/revalidate      renew before the 30 days run out
-GET  /v1/downloads/receipts/revocations     has anything been withdrawn?
-POST /v1/downloads/progress                 hand back what was watched offline
+POST /v1/downloads/receipts/revalidate            renew the receipts it holds
+POST /v1/downloads/progress                       report the plays it made offline
 ```
 
----
+Take the receipt before moving the bytes. The server knows the file's digest as soon as the claim
+is ready, so a transfer that finishes with the app closed and no connection is already allowed to
+play.
 
 ## Qualities
 
-`quality` is either `original` or a **quality ladder rung id** — `2160p`, `1440p`, `1080p`, `720p`,
-`480p`, `360p` — the same vocabulary `/v1` playback publishes. `download-options` lists exactly the
-rungs this source supports; a rung taller than the source is omitted rather than offered as an
-upscale, and an audio item publishes one optimized rung rather than repeating the same AAC recipe
-six times.
+`download-options` lists `original` first, then each smaller quality this server can actually hand
+over for the title: one it already holds a converted copy of, or one the conversion code reports it
+can make. A quality that is only a name in the ladder is not listed, and a claim for one is refused
+with `optimized_version_unavailable`. A client keeps no list of qualities of its own; when the
+server learns to make a new one it appears in the menu.
 
-`original` is the untouched catalogue file. A rung resolves to a published prepared version from
-the optimization producer, mapped as:
+Each option carries `estimatedBytes` (exact for the original and for an existing copy, otherwise
+bitrate times duration with `estimated: true`), `available`, a `reason` when it is not, and
+`requiresPreparation` when choosing it starts a conversion. Only the server's owner can start a
+conversion; anyone may download a copy that already exists.
 
-| Source | Rung | Recipe |
-| --- | --- | --- |
-| song, audiobook file | any | `audio-aac-v3` |
-| video | each published rung | `portable-{height}-v3` (360, 480, 720, 1080, 1440, 2160) |
+For a whole show, season, album, book or playlist there is no single file to read a menu for.
+`GET /v1/downloads/settings` lists `qualities`: the original, and each smaller quality the server
+can make while conversions are switched on.
 
-Size estimates use the selected recipe’s video and audio bitrates. Offline progress submitted while `privacy.pauseWatchHistory` is enabled returns `history_paused` and does not change progress, history, or watched state.
+A title stored as several files (a film in two parts) cannot be downloaded yet and says so with
+`several_files`. A title with several versions downloads the first version that can be read.
 
-An audio item publishes exactly one optimized option — the `1080p` rung, labelled `AAC 192 kbps`,
-whose audio budget is the recipe's own. Naming another rung for an audio item resolves to the same
-recipe and the same size estimate; the published option is the one to show.
+## Claims
 
-**Conversions stay owner-authorized.** An owner asking for a rung that has not been prepared yet
-queues the conversion, and the preparation reports `running` with the conversion's own byte
-progress. Any other viewer asking for an unprepared rung gets `unavailable` with
-`optimized_version_unavailable` — downloads never widens who may order encoding work.
-`download-options` says which case you are in: `requiresPreparation: true` means asking will queue
-work, `available: false` with that reason means it will not.
+`POST /v1/downloads/preparations` takes exactly one of `mediaId`, `mediaIds` (up to 100) or
+`nextAfterMediaId` (the episode after this one), with a `quality` and an `operationId`. It is
+idempotent on `operationId`. The answer is a batch: the claims (new or already existing), per-item
+`rejected` reasons, and `accepted`, the number of new or restarted claims. Asking again for a claim
+that failed starts it again. Asking for something already claimed returns it with `accepted: 0`
+and nothing rejected.
 
-`estimated` is the honest flag on every size. It is `false` for the original (a stat of the file)
-and for a rung that is already prepared (the artifact's real size); it is `true` where the number
-is bitrate × duration + 3% container overhead.
+A claim moves through `queued → running → ready`, and can be `paused`, `failed`, `unavailable`,
+`cancelled` or `expired`. Its `actions` are exactly what its state accepts.
 
----
+Every claim carries `title`: what it is, its year and length, the show, album or book it belongs to
+with their ids, its season or disc number and its episode, track or part number, and `onServer`.
+A list of claims reads as titles, in order, with no further request, and keeps reading that way
+after the title has left the library (`onServer: false`).
 
-## Preparation lifecycle
+An original is ready as soon as the server knows the file's SHA-256. The first claim on a file
+reads it once, in place, in checkpointed windows (a pause or restart costs one window). Every later
+claim on the same unchanged file, by anyone, is ready at once.
 
-```
-queued ──► running ──► ready ──► expired
-  │           │          │
-  │           ▼          ▼
-  └────────► paused   (removed / cancelled)
-              │
-              ▼
-  failed / unavailable ──retry──► queued
-```
+Actions (`POST …/{id}/actions`) name the `revision` the client read. The revision moves only when
+the claim's state does, never for progress, so a Pause or Cancel made against a running claim is
+not refused because a byte count ticked. On `409 download_conflict` read the claim again and send
+the action once more if it is still offered.
 
-| State | Meaning |
-| --- | --- |
-| `queued` | Admitted. The worker has not picked it up yet. |
-| `running` | Bytes are being hashed (for `original`) or converted (for a rung). `progress` is real. |
-| `ready` | `artifact.sha256` is published. The claim can be granted and receipted. |
-| `paused` | The viewer stopped it. Work already done is kept. |
-| `failed` | Something went wrong; `reason` says what. `retry` is offered. |
-| `unavailable` | Nothing to do: the source, the policy or the optimization is missing. |
-| `cancelled` | The viewer gave it up. Terminal. |
-| `expired` | Retention took it. Terminal. |
-
-Each preparation publishes its own `actions` array — exactly the actions its state accepts. Render
-those; the server refuses anything else with `409 download_conflict`. Every action carries
-`expectedRevision`, and a conflict answers with the current preparation beside the error so no
-second read is needed.
-
-`pause` keeps the work. For `original`, the SHA-256 is computed in bounded windows and its state is
-checkpointed between them, so `resume` continues from where it stopped rather than rehashing a
-60 GB file from the start. The same checkpointing is why a server restart costs one window.
-
-`cancel` and `remove` also **revoke every offline receipt** issued for that claim. A receipt that
-outlived its preparation would authorize bytes the server no longer accounts for.
-
----
-
-## Batches
-
-One request, one quality, and exactly one of four target forms:
-
-```json
-{"operationId": "op-4f22", "containerId": "season_0003", "quality": "720p"}
-```
-
-`containerId` accepts a season, an album, a book or a playlist, and expands in playback order up to
-100 items. `nextAfterMediaId` resolves to exactly one item — the next episode in the season, or the
-first episode of the next season — so an auto-next download stays one episode ahead instead of
-silently pulling a whole run.
-
-Targets are admitted **independently**. One unavailable episode appears in `rejected` with a reason
-code; the rest are accepted. A target the viewer already holds a live claim on is returned in
-`items` unchanged rather than duplicated, so a client that retried a batch does not accumulate
-copies.
-
-`operationId` is a real idempotency key. Replaying it returns the original batch and answers `200`
-with `duplicate: true`. Reusing it for a *different* payload answers `operation_conflict`.
-
----
+Removing a claim ends what the server will transfer for it. It does not remove copies already on
+devices; a device removes its own copy, and tells the server with `receipts/revoke`.
 
 ## Transfers
 
-`POST /v1/downloads/preparations/{id}/grant` returns a capability URL. The token in the path is the
-whole authority — no bearer token is read on the transfer route — exactly as for playback media
-URLs. The grant names the viewer it was issued to, and that viewer's library permission is
-re-checked before a byte is served.
+`POST …/{id}/grant` returns `url` (a path on this server) and `token`. The address is the whole
+permission: no sign-in is sent with it. It stays good while it is used or renewed, and for 24 hours
+after the last of either; every request made with it rechecks that the viewer may still see the
+title and still download, and that the bytes are still the ones the claim describes. It ends with
+the claim.
 
-- TTL: **10 minutes** from issue.
-- Replay window: **10 minutes** from first use. Inside it the same grant serves as many ranged
-  requests as a resumable transfer needs. Outside it, mint a new grant.
+To keep the same address alive, send `renew` with the token already held:
 
-The response carries `Accept-Ranges: bytes`, `Content-Length`, `ETag: "sha256-<hex>"`,
-`X-Portico-Artifact-Sha256` and `Content-Disposition`. A `Range` request answers `206` with
-`Content-Range`. Use `If-Range` against the ETag so a transfer resumed across a server restart
-either continues or restarts cleanly rather than splicing two different files.
+```json
+{"operationId": "…", "renew": "<token>"}
+```
 
-**Verify the completed file against `artifact.sha256` before trusting it offline.** The receipt
-vouches for that digest and nothing else.
+When the token still belongs to this viewer, this claim and this exact file, the same `url` comes
+back with `renewed: true`, even if it had run out. Otherwise a new address is issued. Renew a
+transfer that is still unfinished every `renewAfterSeconds`. This is what lets a phone's own
+downloader, which re-requests the same address hours later, carry on.
 
----
+The file's identity is its digest, not its address. `GET` supports `Range`, and the `ETag` is
+`"sha256-<digest>"`. Continue a partial file with:
+
+```
+Range: bytes=<bytes already held>-
+If-Range: "sha256-<digest>"
+```
+
+under any address for the same claim. A `206` continues it; a `200` means the server's file is not
+the one the partial came from, and the whole body replaces it. Verify the SHA-256 of the finished
+file against the claim's `artifact.sha256` before calling it ready.
+
+Errors on the address:
+
+| Status | Code | Meaning |
+|---|---|---|
+| 401 | `invalid_download_grant` | The address has run out or was withdrawn. Renew it, or take a new one. |
+| 403 | `downloads_not_allowed` | Downloads are off for this profile. |
+| 410 | `download_unavailable` | The claim ended (file replaced, copy deleted). Claim the title again. |
+| 409 | `download_not_ready` | Not ready yet; for a picture, its smaller copy is still being made; for a subtitle file or the bundle, the track is still being read out of its file. Retry. |
+| 503 | `download_source_offline` | The library file cannot be read right now. Nothing changed; retry later. |
+
+## What travels with a download
+
+`GET /v1/downloads/preparations/{id}/bundle` (signed in, claim ready) describes everything a device
+needs to list, show and play the title with no server in reach:
+
+- `title` and `overview`;
+- `media`: the container, codecs and picture size of the downloaded file;
+- `artwork`: each picture with a `path`;
+- `chapters` and `markers` (intro, recap, credits and the like; `automatic` says the server would
+  skip it unprompted), on the file's own timeline;
+- `audio`: the audio tracks inside the file, in order;
+- `subtitles`: each track with its `files`, keyed by form. `vtt` is the track as plain text
+  (every text track, and a styled one's plain reading). `ass`, `pgs`, `vobsub` and `dvb` are the
+  track as it was authored, for a device that draws styled or picture subtitles itself; `sub` is
+  the pictures beside a VobSub index; `font0` onward are a styled script's attached fonts. A
+  picture-only track has no `vtt`.
+
+Every `path` is relative to the grant's address: fetch `<grant url>/<path>`. Pictures are sized for
+a phone or tablet (a poster 800 wide, a backdrop 1920). `404` on a picture means the title has no
+such picture, which is an ordinary answer.
 
 ## Offline receipts
 
-A receipt is an Ed25519-signed statement, good for **30 days**, that names the viewer, the item,
-the quality, the artifact's SHA-256 and size, and the key that signed it.
+`POST /v1/downloads/receipts` with up to 100 `preparationIds` returns one outcome each. `issued`
+carries a receipt: `payload` is the exact signed bytes (base64url JSON), `signature` an Ed25519
+signature over them, `keyId` the key, and `claims` the same document decoded. The claims name the
+viewer (authority, account, profile, server), the title, the quality, the file's SHA-256 and size,
+and `expiresAt` thirty days out. Verify against the keys from `GET /v1/downloads/receipt-keys`,
+remembered on the device so verification needs no connection.
 
-```json
-{
-  "receiptId": "…",
-  "algorithm": "ed25519",
-  "keyId": "…",
-  "payload": "eyJraW5kIjoicG9ydGljby5kb3dubG9hZC1yZWNlaXB0Iiw…",
-  "signature": "…",
-  "claims": {
-    "kind": "portico.download-receipt",
-    "version": "1",
-    "receiptId": "…",
-    "keyId": "…",
-    "viewer": {"authority": "local", "accountId": "…", "profileId": "…", "serverId": "…"},
-    "itemId": "item_0001",
-    "preparationId": "prep_a",
-    "quality": "1080p",
-    "qualityLabel": "1080p",
-    "artifact": {"sha256": "9f2c…", "bytes": 4183920640},
-    "issuedAt": "2026-09-16T10:00:00Z",
-    "expiresAt": "2026-10-16T10:00:00Z"
-  },
-  "revision": 1
-}
-```
-
-`payload` is the exact base64url-encoded bytes that were signed, so a verifier never has to
-reproduce this server's JSON formatting. To verify offline:
-
-1. Fetch and pin `GET /v1/downloads/receipt-keys` while online.
-2. base64url-decode `payload` and `signature`.
-3. Check `claims.kind` and `claims.version`, and that `claims.keyId` equals the envelope's `keyId`.
-4. `ed25519.Verify(publicKey, payload, signature)`.
-5. Check `claims.expiresAt` is in the future and `claims.viewer` is the signed-in viewer.
-6. Check the file's SHA-256 against `claims.artifact.sha256`.
-
-A receipt is **not transferable**: it names one viewer on one server.
+Play a downloaded file only while its receipt verifies, names the signed-in viewer and has not
+expired.
 
 ### Revalidation
 
-Send the receipt ids you hold. The server answers from its own rows, not from the envelope you
-sent — a stale envelope is exactly what a client returning from a month offline would be holding.
+`POST /v1/downloads/receipts/revalidate` with up to 100 `receiptIds` renews each for another thirty
+days. Once a day is enough; it is also how a device learns that access was withdrawn.
 
-`renewed` extends the receipt another 30 days. `refused` means stop and delete the file; the `code`
-says why:
+- `renewed` carries the new receipt, `titleOnServer` (false when the title has left the library;
+  the copy still plays, say so beside it), and `viewing`: the title's resume point and watched
+  state on the server now, so a copy resumes from where another device left off.
+- `refused` with `revoked`, `downloads_not_allowed`, `account_disabled` or `item_deleted` means the
+  viewer may no longer play the copy: remove it.
+- `refused` with `unknown_receipt` means the server has no record of the receipt (it belongs to a
+  different profile, or the server was restored from an older backup). It says nothing about the
+  copy: keep it, and ask for a new receipt for its claim. `unknown_preparation` on that request
+  means the claim is gone too: claim the title again and, when the new claim's digest equals the
+  file already held, take its receipt without transferring anything.
 
-| Code | What happened |
-| --- | --- |
-| `downloads_not_allowed` | The profile lost download permission. |
-| `account_disabled` | The account was switched off. |
-| `item_deleted` | The item is gone from the library. |
-| `retention_expired` | The preparation is no longer ready. |
-| `revoked` | Someone withdrew this receipt. |
-| `unknown_receipt` | Not a receipt this server issued to this viewer. |
+This route, and `POST /v1/downloads/progress`, answer even when downloads are switched off for the
+profile, so a device can be told to remove its copies and the plays made while it was allowed still
+count.
 
-### Revocation list
+### Revocation
 
-`GET /v1/downloads/receipts/revocations` pages on a monotonic `sequence`. Store the last sequence
-you saw and pass it as `cursor`; you get only what you missed. Poll it on reconnect and act on
-every entry, even for receipts you have not revalidated yet. An owner may pass `scope=server`.
+`POST /v1/downloads/receipts/revoke` withdraws receipts: a viewer their own, the owner anyone's
+(`allProfiles: true`). `reason` is one of the documented reason codes. A device that removes its
+own copy revokes that copy's receipt. `GET /v1/downloads/receipts/revocations` pages what has been
+withdrawn, by sequence.
 
----
+## Offline plays
 
-## Deferred progress
-
-Hand back what was watched offline:
+`POST /v1/downloads/progress` takes up to 100 entries, one per *play*:
 
 ```json
-{
-  "operationId": "op-8d01",
-  "entries": [
-    {"itemId": "item_0001", "positionSeconds": 1723.5, "observedAt": "2026-09-14T09:12:00Z"},
-    {"itemId": "item_0002", "positionSeconds": 0, "watched": true, "observedAt": "2026-09-14T10:41:00Z"}
-  ]
-}
+{"playId": "…", "itemId": "…", "positionSeconds": 1432.5, "ended": false, "observedAt": "2026-10-13T09:12:00Z"}
 ```
 
-Applied entries land in ordinary personal state — the same resume position, activity row and
-watched flag an online client writes. There is no second kind of progress.
+`playId` is the device's own name for one play and stays the same while later positions of that
+play are reported. Watching a film twice on a flight is two plays. `observedAt` is the device's
+clock at the observation. `ended` is true only when the file played to its end; whether a play that
+stopped short counts as watched is decided by the server, by the viewer's own settings and the
+title's credits, exactly as for online playback.
 
-Resolution is last-write-wins by `observedAt`, compared against **two** things: the last offline
-observation this server accepted for that viewer and item, and the last online activity it
-recorded. Losing does not mean silently dropped — every entry gets an outcome and the server's
-current value:
+Every play that really started is recorded in the server's play history and the viewer's own, and
+counted, dated to when it happened. It also moves the title's resume point and watched state when
+it is the newest thing the server knows about the viewer and the title. It is not when a later
+offline play was already accepted (`stale_observation`), or when the viewer played the title online
+afterwards, marked it (or its show, season, album or book) watched or unwatched afterwards, or
+dismissed it from Continue Watching afterwards (`superseded_online`). A viewer who has paused their
+history gets `history_paused`: the owner's record of plays is kept, nothing of the viewer's own is
+written.
 
-| `outcome` | Meaning |
-| --- | --- |
-| `applied` | Written. |
-| `stale_observation` | An offline observation you already sent was newer. |
-| `superseded_online` | The viewer was demonstrably at a server after this was recorded. |
-| `item_deleted` | No such item. |
-| `invalid_entry` | Unreadable `observedAt`, negative or non-finite position. |
-| `observation_in_future` | More than 24 hours ahead of the server's clock; refused rather than allowed to pin the item. |
+Each result carries `positionSeconds` and `watched` as the server now holds them, whatever became
+of the entry. Use them as the copy's resume point.
 
----
+## Whole shows, seasons, albums, books and playlists
+
+`POST /v1/downloads/requests` names a container, a `deviceId`, a `quality` and a policy
+(`all`, `unwatched`, or `next` with `keepNext`). The server reads the members in pages and claims
+each; there is no size limit. A library that changes while it is being read does not fail the
+request: the reading starts again, and after a few tries carries on regardless.
+`GET /v1/downloads/requests/{id}` reports counts and a page of members.
+`GET /v1/downloads/requests?deviceId=…` lists the requests a device started that are still at work
+or finished in the last day, so a device finds them again after the app was closed.
 
 ## Storage and retention
 
-`downloads.maxPreparedBytes` (default `0` = unlimited) is the ceiling the owner sets. A claim counts
-against it from the moment it is admitted, not when its bytes land — admitting work the store cannot
-hold and discovering it later would leave a viewer watching a progress bar that can only end in
-failure. Over the ceiling, new preparations answer `409 storage_full`, and a partly-fitting batch
-reports `storage_full` per rejected target.
-
-`GET /v1/downloads/usage` reports `profileBytes` and `serverBytes` as *claims*: two viewers holding
-the same prepared version each account for its bytes, because either one releasing the claim frees
-nothing while the other holds it. `distinctArtifactBytes` is what the disk actually holds.
-
-`downloads.retentionDays` (default 30) expires an unused ready claim — measured from the last
-transfer if there was one, and from the moment it became ready if there was not. Expiry revokes the
-claim's receipts, so a client learns about it through the revocation list or its next revalidation.
-
-A ready claim whose item leaves the library is retired the same way: it becomes `unavailable` with
-`item_deleted`, stops counting against the ceiling, and its receipts are revoked. A client does not
-have to notice this itself — it arrives in the revocation list.
-
----
+`downloads.maxPreparedBytes` (0 means unlimited) caps the converted copies claimed across the
+server. Originals take no room and are never refused for lack of it. A ready claim nobody fetched
+for `downloads.retentionDays` (default 30) expires; this frees the claim and nothing else.
+`GET /v1/downloads/usage` reports what a viewer, or for the owner the whole server, has claimed.
+Ended claims, finished requests and receipts nobody could still be holding are removed after a
+month.
 
 ## Policy
 
-`allowDownloads` is published per profile in `download-options.policy`. Today it answers `true`
-unless a hosted restriction has revoked the profile; the dedicated per-profile column
-(`profiles.allow_downloads`) is owned by the profile-restrictions workstream, and the server reads
-it the moment it exists with no client change. A profile that loses the permission cannot prepare,
-cannot take grants, and fails revalidation with `downloads_not_allowed`.
-
----
-
-## Polling
-
-While a preparation is `queued` or `running`, poll `GET /v1/downloads/preparations/{id}` at most
-once every 3 seconds. The worker advances in bounded passes; a tighter loop buys nothing. Prefer
-`GET /v1/downloads/preparations` with `state=running` over polling each claim separately.
-
-
-## Whole-container requests
-
-Use `POST /v1/downloads/requests` for a show, season, album, book or playlist. The full contract is in `download-requests.openapi.yaml`. Supply one stable operationId and the authenticated deviceId. Capture and admission run in durable 20-member pages; the initial response publishes totalKnown=false. GET the request for live visible-member counts and paged preparations, then use the ordinary grants and receipts for each ready artifact.
-
-The 200 limit bounds running preparation work. Queued and ready claims no longer consume an active slot. Storage reservations and retention still apply. The legacy preparations endpoint rejects containers over 100 instead of truncating them. New container requests have no 100-item ceiling.
+A profile with downloads switched off is refused on every route here except revalidation and
+offline plays. Permission is rechecked at claim, grant, every transfer request, receipt and
+renewal, and a title the viewer may not see answers exactly like one that does not exist.

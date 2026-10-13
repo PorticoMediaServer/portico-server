@@ -5,11 +5,11 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -42,9 +42,7 @@ func TestDownloadTransferSupportsRangeAndValidators(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	offline, e := downloads.New(downloads.Options{DB: db, OpenSource: func(_ context.Context, name string, _, _ int64) (io.ReadSeekCloser, error) {
-		return os.Open(name)
-	}})
+	offline, e := downloads.New(downloads.Options{DB: db, Plays: cat.AcceptPlaybackProgressAt})
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -57,6 +55,9 @@ func TestDownloadTransferSupportsRangeAndValidators(t *testing.T) {
 		r := httptest.NewRequest(method, path, bytes.NewReader(data))
 		if token != "" {
 			r.Header.Set("Authorization", "Bearer "+token)
+		}
+		if body != nil {
+			r.Header.Set("Content-Type", "application/json")
 		}
 		w := httptest.NewRecorder()
 		handler.ServeHTTP(w, r)
@@ -169,6 +170,54 @@ func TestDownloadTransferSupportsRangeAndValidators(t *testing.T) {
 	if w.Header().Get("Content-Range") != "bytes 4-7/16" {
 		t.Fatalf("content-range %q", w.Header().Get("Content-Range"))
 	}
+	// A partial file of some other artifact is never continued: a validator
+	// that is not this file's gets the whole file back, not a slice of it.
+	r = httptest.NewRequest("GET", grant.URL, nil)
+	r.Header.Set("Range", "bytes=4-7")
+	r.Header.Set("If-Range", "\"sha256-0000000000000000000000000000000000000000000000000000000000000000\"")
+	w = httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+	if w.Code != 200 || w.Body.String() != body {
+		t.Fatalf("range against another artifact %d %q", w.Code, w.Body.String())
+	}
+	// A browser saving the file is given the title's name.
+	if disposition := w.Header().Get("Content-Disposition"); !strings.Contains(disposition, "filename*=UTF-8''Film%20%282000%29.mp4") {
+		t.Fatalf("content-disposition %q", disposition)
+	}
+	// Renewing keeps the same address; the transfer the device is holding
+	// carries on under it.
+	w = request("POST", "/v1/downloads/preparations/"+preparation+"/grant", auth.AccessToken, map[string]any{"operationId": "op-http-renew", "renew": grant.Token})
+	var renewed downloads.Grant
+	if e = json.Unmarshal(w.Body.Bytes(), &renewed); e != nil || w.Code != 200 || !renewed.Renewed || renewed.URL != grant.URL {
+		t.Fatalf("renew %d %s", w.Code, w.Body.String())
+	}
+	// Everything that travels with the file is described in one document, and
+	// the claim itself reads as its title.
+	if ready.Title.Name != "Film" || ready.Title.Kind != "movie" || ready.Title.Year != 2000 || !ready.Title.OnServer {
+		t.Fatalf("claim title %+v", ready.Title)
+	}
+	w = request("GET", "/v1/downloads/preparations/"+preparation+"/bundle", auth.AccessToken, nil)
+	var bundle downloads.Bundle
+	if e = json.Unmarshal(w.Body.Bytes(), &bundle); e != nil || w.Code != 200 {
+		t.Fatalf("bundle %d %s", w.Code, w.Body.String())
+	}
+	if bundle.Title.Name != "Film" || bundle.Media.Container != "mp4" || len(bundle.Artwork) != 2 || bundle.Artwork[0].Path != "artwork/poster" {
+		t.Fatalf("bundle %+v", bundle)
+	}
+	// A title with no picture of a kind simply has none: that is an answer,
+	// not a failure of the download.
+	w = request("GET", grant.URL+"/"+bundle.Artwork[0].Path, "", nil)
+	if w.Code != 404 {
+		t.Fatalf("missing artwork %d %s", w.Code, w.Body.String())
+	}
+	w = request("GET", grant.URL+"/artwork/logo", "", nil)
+	if w.Code != 404 {
+		t.Fatalf("artwork a download does not carry %d %s", w.Code, w.Body.String())
+	}
+	w = request("GET", "/v1/downloads/artifacts/not-a-grant/artwork/poster", "", nil)
+	if w.Code != 401 {
+		t.Fatalf("artwork without an address %d %s", w.Code, w.Body.String())
+	}
 
 	// A receipt is issued, verifies against the published keys, and revalidates.
 	w = request("POST", "/v1/downloads/receipts", auth.AccessToken, map[string]any{"operationId": "op-http-3", "preparationIds": []string{preparation}})
@@ -201,7 +250,7 @@ func TestDownloadTransferSupportsRangeAndValidators(t *testing.T) {
 	// Deferred progress lands in ordinary personal state.
 	w = request("POST", "/v1/downloads/progress", auth.AccessToken, map[string]any{
 		"operationId": "op-http-4",
-		"entries":     []map[string]any{{"itemId": item.Public, "positionSeconds": 12.5, "observedAt": "2026-09-14T09:12:00Z"}},
+		"entries":     []map[string]any{{"playId": "play-http-1", "itemId": item.Public, "positionSeconds": 12.5, "observedAt": "2026-09-14T09:12:00Z"}},
 	})
 	if w.Code != 200 {
 		t.Fatalf("progress %d %s", w.Code, w.Body.String())

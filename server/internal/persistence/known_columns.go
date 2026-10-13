@@ -1311,6 +1311,7 @@ direct_profiles.pin_locked_until
 direct_profiles.pin_revision
 direct_profiles.position
 direct_profiles.revision
+download_grants.artifact_digest
 download_grants.expires_ms
 download_grants.first_use_ms
 download_grants.hash
@@ -1339,6 +1340,7 @@ download_preparations.estimated
 download_preparations.hash_state
 download_preparations.id
 download_preparations.item_id
+download_preparations.item_public
 download_preparations.library_id
 download_preparations.origin
 download_preparations.profile_id
@@ -1347,9 +1349,10 @@ download_preparations.quality
 download_preparations.ready_ms
 download_preparations.reason
 download_preparations.revision
-download_preparations.source_version_json
+download_preparations.source_modified_ns
 download_preparations.started_ms
 download_preparations.state
+download_preparations.title_json
 download_preparations.updated_ms
 download_preparations.used_ms
 download_progress_marks.item_id
@@ -1371,7 +1374,9 @@ download_receipts.expires_ms
 download_receipts.id
 download_receipts.issued_ms
 download_receipts.item_id
+download_receipts.item_public
 download_receipts.key_id
+download_receipts.library_id
 download_receipts.preparation_id
 download_receipts.profile_id
 download_receipts.profile_key
@@ -1399,6 +1404,7 @@ download_requests.principal
 download_requests.profile_key
 download_requests.quality
 download_requests.request_hash
+download_requests.restarts
 download_requests.selection_fence
 download_requests.state
 download_requests.target_id
@@ -1409,6 +1415,11 @@ download_settings.max_prepared_bytes
 download_settings.retention_days
 download_settings.revision
 download_settings.singleton
+download_source_digests.asset_id
+download_source_digests.hashed_ms
+download_source_digests.modified_ns
+download_source_digests.sha256
+download_source_digests.size
 dvr_catalog_provenance.artifact_digest
 dvr_catalog_provenance.asset_id
 dvr_catalog_provenance.captured_end_ms

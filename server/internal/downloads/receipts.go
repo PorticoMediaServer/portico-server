@@ -81,17 +81,32 @@ type ReceiptKey struct {
 	RetiredAt string `json:"retiredAt,omitempty"`
 }
 
-// ReceiptOutcome is one entry's answer from issue or revalidate.
+// ReceiptOutcome is one entry's answer from issue or revalidate. TitleOnServer
+// accompanies a receipt: false tells the device that the title has left this
+// server's library, so it can say so beside a copy that still plays.
 type ReceiptOutcome struct {
 	PreparationID string   `json:"preparationId,omitempty"`
 	ReceiptID     string   `json:"receiptId,omitempty"`
 	Outcome       string   `json:"outcome"`
 	Code          string   `json:"code,omitempty"`
 	Receipt       *Receipt `json:"receipt,omitempty"`
+	TitleOnServer *bool    `json:"titleOnServer,omitempty"`
+	// Viewing is where the viewer stands with the title on the server now, sent
+	// with a renewal so a copy on a device resumes from where another device
+	// left off, not from where this one last was.
+	Viewing *ReceiptViewing `json:"viewing,omitempty"`
 }
 
-// Outcomes. "issued" and "renewed" carry a receipt; everything else explains
-// why offline playback must stop.
+// ReceiptViewing is a title's resume point and watched state.
+type ReceiptViewing struct {
+	PositionSeconds float64 `json:"positionSeconds"`
+	Watched         bool    `json:"watched"`
+}
+
+// Outcomes. "issued" and "renewed" carry a receipt. "refused" with
+// unknown_receipt or unknown_preparation means this server has no record of
+// what was asked about and says nothing about the copy; every other refusal
+// means the viewer may no longer play it.
 const (
 	OutcomeIssued  = "issued"
 	OutcomeRenewed = "renewed"
@@ -276,15 +291,20 @@ func (s *Service) IssueReceipts(ctx context.Context, p identity.Principal, serve
 		return out, e
 	}
 	for _, id := range preparations {
-		var state, item, quality, artifactDigest string
+		var state, item, library, quality, artifactDigest string
 		var size int64
-		err := tx.QueryRowContext(ctx, `SELECT state,COALESCE((SELECT pid(public_id) FROM catalog_entities WHERE id=download_preparations.item_id),''),quality,artifact_digest,bytes_total FROM download_preparations WHERE id=? AND profile_key=?`, id, key).Scan(&state, &item, &quality, &artifactDigest, &size)
+		var present bool
+		err := tx.QueryRowContext(ctx, `SELECT state,item_public,library_id,quality,artifact_digest,bytes_total,NOT (`+titleGone+`) FROM download_preparations WHERE id=? AND profile_key=?`, id, key).Scan(&state, &item, &library, &quality, &artifactDigest, &size, &present)
 		if errors.Is(err, sql.ErrNoRows) {
-			out = append(out, ReceiptOutcome{PreparationID: id, Outcome: OutcomeRefused, Code: ReasonUnknownReceipt})
+			out = append(out, ReceiptOutcome{PreparationID: id, Outcome: OutcomeRefused, Code: ReasonUnknownPreparation})
 			continue
 		}
 		if err != nil {
 			return out, err
+		}
+		if !present {
+			out = append(out, ReceiptOutcome{PreparationID: id, Outcome: OutcomeRefused, Code: ReasonItemDeleted})
+			continue
 		}
 		if state != StateReady || !validDigest.MatchString(artifactDigest) || size <= 0 {
 			out = append(out, ReceiptOutcome{PreparationID: id, Outcome: OutcomeRefused, Code: ReasonFailed})
@@ -298,11 +318,12 @@ func (s *Service) IssueReceipts(ctx context.Context, p identity.Principal, serve
 			out = append(out, ReceiptOutcome{PreparationID: id, Outcome: OutcomeRefused, Code: ReasonItemDeleted})
 			continue
 		}
-		receiptID, receipt, err := s.storeReceipt(ctx, tx, p, serverID, keyID, secret, id, item, quality, artifactDigest, size, now)
+		receiptID, receipt, err := s.storeReceipt(ctx, tx, p, serverID, keyID, secret, id, item, library, quality, artifactDigest, size, now)
 		if err != nil {
 			return out, err
 		}
-		out = append(out, ReceiptOutcome{PreparationID: id, ReceiptID: receiptID, Outcome: OutcomeIssued, Receipt: receipt})
+		onServer := true
+		out = append(out, ReceiptOutcome{PreparationID: id, ReceiptID: receiptID, Outcome: OutcomeIssued, Receipt: receipt, TitleOnServer: &onServer})
 	}
 	if e = operations.SaveReceipt(tx, scope, operationID, digest, out, now); e != nil {
 		return out, e
@@ -310,7 +331,7 @@ func (s *Service) IssueReceipts(ctx context.Context, p identity.Principal, serve
 	return out, gated2.Commit()
 }
 
-func (s *Service) storeReceipt(ctx context.Context, tx *sql.Tx, p identity.Principal, serverID, keyID string, secret ed25519.PrivateKey, preparation, item, quality, artifactDigest string, size, now int64) (string, *Receipt, error) {
+func (s *Service) storeReceipt(ctx context.Context, tx *sql.Tx, p identity.Principal, serverID, keyID string, secret ed25519.PrivateKey, preparation, item, library, quality, artifactDigest string, size, now int64) (string, *Receipt, error) {
 	id := identity.Digest(identity.Token())
 	expires := now + int64(ReceiptTTL/time.Millisecond)
 	var sequence int64
@@ -324,8 +345,8 @@ func (s *Service) storeReceipt(ctx context.Context, tx *sql.Tx, p identity.Princ
 	if e != nil {
 		return "", nil, e
 	}
-	if _, e := tx.ExecContext(ctx, `INSERT INTO download_receipts(id,profile_key,authority,account_id,profile_id,item_id,preparation_id,quality,artifact_digest,artifact_bytes,key_id,issued_ms,expires_ms,sequence) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-		id, operations.ViewerKey(p), p.Authority, p.AccountID, p.ProfileID, entity, preparation, quality, artifactDigest, size, keyID, now, expires, sequence); e != nil {
+	if _, e := tx.ExecContext(ctx, `INSERT INTO download_receipts(id,profile_key,authority,account_id,profile_id,item_id,item_public,library_id,preparation_id,quality,artifact_digest,artifact_bytes,key_id,issued_ms,expires_ms,sequence) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		id, operations.ViewerKey(p), p.Authority, p.AccountID, p.ProfileID, entity, item, library, preparation, quality, artifactDigest, size, keyID, now, expires, sequence); e != nil {
 		return "", nil, e
 	}
 	claims := ReceiptClaims{
@@ -345,12 +366,21 @@ func (s *Service) storeReceipt(ctx context.Context, tx *sql.Tx, p identity.Princ
 	return id, &receipt, nil
 }
 
-// Revalidate renews receipts a client presents when it regains contact. A
-// renewal is refused — and the receipt revoked — when the profile lost
-// allowDownloads, the item is gone, or the account was disabled. The server
-// answers from its own rows rather than from the envelope the client sent,
-// because the envelope is exactly what a stale client would be holding.
-func (s *Service) Revalidate(ctx context.Context, p identity.Principal, serverID, operationID string, receiptIDs []string) ([]ReceiptOutcome, error) {
+// Revalidate renews receipts a client presents when it regains contact.
+//
+// A receipt answers to one question: may this viewer still play this title? It
+// is refused, and withdrawn, when the account was switched off, the profile
+// lost downloads, or the viewer may no longer see the title or its library.
+// It is renewed in every other case, and that deliberately includes the ones
+// where the server itself has tidied up: the claim ran out its retention, the
+// file was replaced, the converted copy was deleted, the title or its whole
+// library was removed. None of those is the owner taking anything away from
+// the viewer, so none of them reaches a copy already on a device. A title that
+// is gone is reported with titleOnServer false.
+//
+// The server answers from its own rows rather than from the envelope the client
+// sent, because the envelope is exactly what a stale client would be holding.
+func (s *Service) Revalidate(ctx context.Context, p identity.Principal, serverID, operationID string, receiptIDs []string, guard LibraryGuard) ([]ReceiptOutcome, error) {
 	out := []ReceiptOutcome{}
 	if !validID.MatchString(operationID) || len(receiptIDs) == 0 || len(receiptIDs) > MaxBatchTargets {
 		return out, ErrInput
@@ -378,6 +408,8 @@ func (s *Service) Revalidate(ctx context.Context, p identity.Principal, serverID
 		return out, e
 	}
 	if raw != "" {
+		// A replayed request is not a second chance at a renewal the profile
+		// has since lost the right to.
 		if !allowed {
 			return out, ErrPolicy
 		}
@@ -392,9 +424,9 @@ func (s *Service) Revalidate(ctx context.Context, p identity.Principal, serverID
 		return out, e
 	}
 	for _, id := range receiptIDs {
-		var item, preparation, quality, artifactDigest string
+		var item, library, preparation, quality, artifactDigest string
 		var size, revoked, revision int64
-		err := tx.QueryRowContext(ctx, `SELECT COALESCE((SELECT pid(public_id) FROM catalog_entities WHERE id=download_receipts.item_id),''),preparation_id,quality,artifact_digest,artifact_bytes,revoked_ms,revision FROM download_receipts WHERE id=? AND profile_key=?`, id, key).Scan(&item, &preparation, &quality, &artifactDigest, &size, &revoked, &revision)
+		err := tx.QueryRowContext(ctx, `SELECT item_public,library_id,preparation_id,quality,artifact_digest,artifact_bytes,revoked_ms,revision FROM download_receipts WHERE id=? AND profile_key=?`, id, key).Scan(&item, &library, &preparation, &quality, &artifactDigest, &size, &revoked, &revision)
 		if errors.Is(err, sql.ErrNoRows) {
 			out = append(out, ReceiptOutcome{ReceiptID: id, Outcome: OutcomeRefused, Code: ReasonUnknownReceipt})
 			continue
@@ -413,30 +445,36 @@ func (s *Service) Revalidate(ctx context.Context, p identity.Principal, serverID
 		case !allowed:
 			refuse = ReasonNotAllowed
 		}
+		onServer := false
 		if refuse == "" {
-			var exists int
-			if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM catalog_entities WHERE public_id=pid_blob(?))`, item).Scan(&exists); err != nil {
+			var current sql.NullString
+			if err = tx.QueryRowContext(ctx, `SELECT cl.library_id FROM catalog_entities e JOIN catalog_libraries cl ON cl.id=e.library_id WHERE e.public_id=pid_blob(?)`, item).Scan(&current); err != nil && !errors.Is(err, sql.ErrNoRows) {
 				return out, err
 			}
-			if exists == 0 {
-				refuse = ReasonItemDeleted
+			if onServer = err == nil; onServer {
+				// A title that moved to another library answers to that one.
+				library = current.String
+				// Renewal never withdraws a copy because a catalogue edit is
+				// still publishing: that answers retry. Only a published refusal
+				// does.
+				if err = contentaccess.VisibleKnownItemTx(ctx, tx, p, item); errors.Is(err, identity.ErrContentRestricted) {
+					refuse = ReasonItemDeleted
+				} else if err != nil {
+					return out, err
+				}
 			}
 		}
-		if refuse == "" {
-			// Renewal never revokes a copy because a catalogue edit is still
-			// publishing: that answers retry. Only a published refusal revokes.
-			if err = contentaccess.VisibleKnownItemTx(ctx, tx, p, item); errors.Is(err, identity.ErrContentRestricted) {
-				refuse = ReasonItemDeleted
-			} else if err != nil {
+		if refuse == "" && guard != nil && library != "" {
+			// The title's library is still on this server (or the title is):
+			// the viewer must still be let into it. A library that is gone
+			// altogether took its titles with it, which is the server tidying,
+			// not access being withdrawn.
+			var exists bool
+			if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM libraries WHERE id=?)`, library).Scan(&exists); err != nil {
 				return out, err
 			}
-		}
-		if refuse == "" {
-			var state string
-			if err = tx.QueryRowContext(ctx, `SELECT state FROM download_preparations WHERE id=?`, preparation).Scan(&state); err != nil && !errors.Is(err, sql.ErrNoRows) {
-				return out, err
-			} else if errors.Is(err, sql.ErrNoRows) || state != StateReady {
-				refuse = ReasonRetention
+			if exists && guard(tx, library) != nil {
+				refuse = ReasonItemDeleted
 			}
 		}
 		if refuse != "" {
@@ -447,7 +485,7 @@ func (s *Service) Revalidate(ctx context.Context, p identity.Principal, serverID
 			continue
 		}
 		expires := now + int64(ReceiptTTL/time.Millisecond)
-		if _, err = tx.ExecContext(ctx, `UPDATE download_receipts SET issued_ms=?,expires_ms=?,key_id=?,revision=revision+1 WHERE id=?`, now, expires, keyID, id); err != nil {
+		if _, err = tx.ExecContext(ctx, `UPDATE download_receipts SET issued_ms=?,expires_ms=?,key_id=?,library_id=?,revision=revision+1 WHERE id=?`, now, expires, keyID, library, id); err != nil {
 			return out, err
 		}
 		claims := ReceiptClaims{
@@ -464,7 +502,20 @@ func (s *Service) Revalidate(ctx context.Context, p identity.Principal, serverID
 		if err != nil {
 			return out, err
 		}
-		out = append(out, ReceiptOutcome{ReceiptID: id, PreparationID: preparation, Outcome: OutcomeRenewed, Receipt: &renewed})
+		present := onServer
+		outcome := ReceiptOutcome{ReceiptID: id, PreparationID: preparation, Outcome: OutcomeRenewed, Receipt: &renewed, TitleOnServer: &present}
+		if onServer {
+			entity, err := entityid.Resolve(ctx, tx, item)
+			if err != nil {
+				return out, err
+			}
+			position, watched, err := readCurrentProgress(ctx, tx, identity.PersonalKey(p.Viewer), entity)
+			if err != nil {
+				return out, err
+			}
+			outcome.Viewing = &ReceiptViewing{PositionSeconds: position, Watched: watched}
+		}
+		out = append(out, outcome)
 	}
 	if e = operations.SaveReceipt(tx, scope, operationID, digest, out, now); e != nil {
 		return out, e
@@ -483,7 +534,9 @@ func (s *Service) Revoke(ctx context.Context, p identity.Principal, operationID,
 	if reason == "" {
 		reason = ReasonRevoked
 	}
-	if !validID.MatchString(reason) {
+	// The reason is published back to clients, which accept only the reasons
+	// this server documents.
+	if !publishedReasons[reason] {
 		return out, ErrInput
 	}
 	gated4, e := dbwork.Begin(ctx, s.db, dbwork.ClassForegroundTransfer)
@@ -545,38 +598,6 @@ func revokeReceipt(tx *sql.Tx, id, reason string, now int64) error {
 	return e
 }
 
-// revokeForPreparation withdraws every live receipt that vouched for one
-// preparation. It is called wherever a claim stops being true.
-func revokeForPreparation(tx *sql.Tx, preparation, reason string, now int64) error {
-	if _, err := tx.Exec(`UPDATE download_grants SET revoked=1 WHERE preparation_id=?`, preparation); err != nil {
-		return err
-	}
-	rows, e := tx.Query(`SELECT id FROM download_receipts WHERE preparation_id=? AND revoked_ms=0 LIMIT 256`, preparation)
-	if e != nil {
-		return e
-	}
-	ids := []string{}
-	for rows.Next() {
-		var id string
-		if e = rows.Scan(&id); e != nil {
-			rows.Close()
-			return e
-		}
-		ids = append(ids, id)
-	}
-	e = rows.Err()
-	rows.Close()
-	if e != nil {
-		return e
-	}
-	for _, id := range ids {
-		if e = revokeReceipt(tx, id, reason, now); e != nil {
-			return e
-		}
-	}
-	return nil
-}
-
 // Revocations pages the revocation list. A client that was offline polls from
 // the sequence it last saw; the list is server-wide for an owner and scoped to
 // the viewer otherwise, because a revocation names a viewer's own receipt.
@@ -599,7 +620,7 @@ func (s *Service) Revocations(ctx context.Context, p identity.Principal, cursor 
 	}
 	tx := gated5.Tx()
 	defer gated5.Rollback()
-	query := `SELECT id,COALESCE((SELECT pid(public_id) FROM catalog_entities WHERE id=download_receipts.item_id),''),profile_id,revoked_reason,revoked_ms,sequence FROM download_receipts WHERE revoked_ms>0 AND sequence>?`
+	query := `SELECT id,item_public,profile_id,revoked_reason,revoked_ms,sequence FROM download_receipts WHERE revoked_ms>0 AND sequence>?`
 	args := []any{after}
 	if !anyViewer {
 		query += ` AND profile_key=?`

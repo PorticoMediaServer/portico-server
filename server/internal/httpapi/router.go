@@ -821,7 +821,6 @@ func New(d Dependencies) http.Handler {
 	d.contentHomeRoutes(mux)
 	d.browseRoutes(mux)
 	d.notificationRoutes(mux)
-	d.downloadRoutes(mux)
 	d.socialRoutes(mux)
 	mux.HandleFunc("GET /v1/attribution", func(w http.ResponseWriter, r *http.Request) {
 		write(w, 200, map[string]any{"providers": []map[string]string{{"name": "TMDB", "notice": metadata.Attribution, "url": "https://www.themoviedb.org"}, {"name": "TheTVDB", "notice": "Metadata provided by TheTVDB.", "url": "https://thetvdb.com"}, {"name": "MusicBrainz", "notice": "Music metadata provided by MusicBrainz.", "url": "https://musicbrainz.org"}, {"name": "Cover Art Archive", "notice": "Cover art provided by Cover Art Archive / MusicBrainz and Internet Archive. Images copyright their respective owners.", "url": "https://coverartarchive.org"}}})
