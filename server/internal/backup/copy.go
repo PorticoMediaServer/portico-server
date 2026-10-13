@@ -12,13 +12,7 @@ import (
 	"portico.local/server/internal/dbwork"
 )
 
-// copyDatabase writes a consistent copy of the live database to dest with
-// SQLite's online backup API while the server runs. It pins one WAL read
-// snapshot on a background-pool connection so concurrent commits cannot restart
-// the copy from page zero, steps in small increments and bounds both snapshot time and extra WAL
-// bytes so it releases checkpoint pressure during heavy writes, and never takes the write gate. progress reports
-// (PageCount-Remaining)*pageSize as the copy advances.
-var ErrBackupPressure = errors.New("backup paused because the database is changing too quickly; retry when it is quieter")
+var ErrBackupPressure = errors.New("backup database pressure limit reached")
 
 type copyLimits struct {
 	snapshotTimeout time.Duration
@@ -26,6 +20,13 @@ type copyLimits struct {
 	reportEvery     time.Duration
 }
 
+// copyDatabase writes a consistent copy of the live database to dest with
+// SQLite's online backup API while the server runs. It pins one WAL read
+// snapshot on a background-pool connection so concurrent commits cannot restart
+// the copy from page zero. Small steps and snapshot time/WAL-growth bounds
+// release checkpoint pressure during heavy writes without taking the write gate.
+// progress reports
+// (PageCount-Remaining)*pageSize as the copy advances.
 func copyDatabase(ctx context.Context, source *sql.DB, dest string, progress func(done, total int64)) error {
 	return copyDatabaseLimited(ctx, source, dest, progress, copyLimits{2 * time.Minute, 128 << 20, 200 * time.Millisecond})
 }

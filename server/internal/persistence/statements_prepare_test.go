@@ -131,11 +131,43 @@ func TestProductionStatementsPrepareAgainstTheBaseline(t *testing.T) {
 	if _, err = dataset.Exec(`ATTACH DATABASE ? AS delta`, deltaPath); err != nil {
 		t.Fatal(err)
 	}
+	// The guide producer uses a separate SQLite spool. Extract its actual
+	// literal DDL and prepare that file's queries against that schema, rather
+	// than excluding a table name from the baseline guard globally.
+	spool, err := sql.Open("sqlite", filepath.Join(t.TempDir(), "spool.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer spool.Close()
+	file, err := parser.ParseFile(token.NewFileSet(), filepath.Join("..", "livechannels", "programme_spool.go"), nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ast.Inspect(file, func(node ast.Node) bool {
+		expression, ok := node.(ast.Expr)
+		if !ok {
+			return true
+		}
+		text, ok := literal(expression)
+		if !ok {
+			return true
+		}
+		if strings.HasPrefix(text, "CREATE TABLE programmes(") || strings.HasPrefix(text, "CREATE INDEX programmes_") {
+			if _, err := spool.Exec(text); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return false
+	})
 	missing := regexp.MustCompile(`no such (table|column|function)`)
 	name := regexp.MustCompile(`no such (table|column|function): (?:\w+\.)?(\w+)`)
 	checked := 0
 	for _, s := range statements {
-		stmt, err := db.Prepare(s.text)
+		target := db
+		if strings.HasPrefix(s.where, "internal/livechannels/programme_spool.go:") {
+			target = spool
+		}
+		stmt, err := target.Prepare(s.text)
 		if err == nil {
 			stmt.Close()
 			checked++

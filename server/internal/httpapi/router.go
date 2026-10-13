@@ -596,7 +596,7 @@ func failure(w http.ResponseWriter, e error) {
 func decode(w http.ResponseWriter, r *http.Request, v any) error {
 	r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
 	raw, e := io.ReadAll(r.Body)
-	if e != nil {
+	if e != nil || bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
 		return requestinput.New("invalid JSON request")
 	}
 	d := json.NewDecoder(bytes.NewReader(raw))

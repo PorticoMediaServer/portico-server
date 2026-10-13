@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"log"
@@ -51,5 +52,15 @@ func TestFailureLogsUnknownFault(t *testing.T) {
 	failure(w, errors.New("dependency failed"))
 	if w.Code != 500 || !strings.Contains(output.String(), "dependency failed") {
 		t.Fatalf("fault was not logged: %d %q", w.Code, output.String())
+	}
+}
+
+func TestAdministrationTimeoutIsRetryable(t *testing.T) {
+	for _, err := range []error{context.DeadlineExceeded, context.Canceled} {
+		w := httptest.NewRecorder()
+		administrationFailure(w, err)
+		if w.Code != 503 || !strings.Contains(w.Body.String(), `"code":"administration_unavailable"`) || !strings.Contains(w.Body.String(), `"retryable":true`) {
+			t.Fatalf("%d %s", w.Code, w.Body.String())
+		}
 	}
 }
