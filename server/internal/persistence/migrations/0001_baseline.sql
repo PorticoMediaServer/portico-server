@@ -6219,9 +6219,16 @@ CREATE TRIGGER browse_order_update AFTER UPDATE ON catalog_browse_rows
  UPDATE library_revisions SET order_revision=order_revision+1 WHERE library_id IN(SELECT library_id FROM catalog_libraries WHERE id IN(OLD.library_id,NEW.library_id)); END;
 CREATE TRIGGER progress_observation_update AFTER UPDATE ON progress_activity BEGIN
  INSERT INTO viewer_revisions(profile_id,library_id,revision,observation_revision) VALUES(NEW.profile_id,NEW.library_id,0,1) ON CONFLICT(profile_id,library_id) DO UPDATE SET observation_revision=observation_revision+1; END;
+CREATE TRIGGER progress_replay_membership AFTER UPDATE OF playback_id ON progress
+ WHEN OLD.playback_id IS NOT NEW.playback_id AND EXISTS(SELECT 1 FROM continue_dismissals d WHERE d.profile_id=OLD.profile_id AND d.item_id=OLD.item_id AND d.playback_id=OLD.playback_id) BEGIN
+ INSERT INTO viewer_revisions(profile_id,library_id,revision) SELECT NEW.profile_id,cl.library_id,1 FROM catalog_entities e JOIN catalog_libraries cl ON cl.id=e.library_id WHERE e.id=NEW.item_id ON CONFLICT(profile_id,library_id) DO UPDATE SET revision=revision+1; END;
 
 -- Change hints are coalesced by audience and resource before entering the ring.
 CREATE TABLE api_change_pending(audience TEXT NOT NULL,type TEXT NOT NULL,resource_kind TEXT NOT NULL,resource_id TEXT NOT NULL,revision TEXT NOT NULL,data TEXT NOT NULL DEFAULT '',PRIMARY KEY(audience,type,resource_kind,resource_id)) WITHOUT ROWID, STRICT;
+CREATE TRIGGER history_observation_hint_insert AFTER INSERT ON personal_activity_revisions BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision,data) VALUES('personal:'||NEW.profile_id,'progress.changed','personal','history',CAST(NEW.revision AS TEXT),json_object('observation',CAST(NEW.revision AS TEXT))) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision,data=excluded.data; END;
+CREATE TRIGGER history_observation_hint_update AFTER UPDATE OF revision ON personal_activity_revisions WHEN OLD.revision IS NOT NEW.revision BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision,data) VALUES('personal:'||NEW.profile_id,'progress.changed','personal','history',CAST(NEW.revision AS TEXT),json_object('observation',CAST(NEW.revision AS TEXT))) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision,data=excluded.data; END;
 CREATE TRIGGER library_change_hint AFTER UPDATE OF revision,order_revision ON library_revisions BEGIN
  INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision,data) VALUES('library:'||NEW.library_id,'library.changed','library',NEW.library_id,CAST(NEW.revision AS TEXT),json_object('content',CAST(NEW.revision AS TEXT),'contentOrder',CAST(NEW.order_revision AS TEXT))) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision,data=excluded.data; END;
 CREATE TRIGGER personal_change_hint AFTER INSERT ON viewer_revisions BEGIN

@@ -1,9 +1,18 @@
 package catalog
 
-// Exact counts are cached only against both durable revisions. Progress and
-// source changes invalidate them; the FIFO cap bounds memory across viewers.
+// A Continue count depends on progress as well as semantic personal state.
+// Combining these monotonic counters is local to this cache; it never changes
+// the Home or command revision. The FIFO cap bounds memory across viewers.
+func (s *Service) continueCountRevision(library, profile string) (ContentRevision, error) {
+	var revision ContentRevision
+	err := s.read().QueryRow(`SELECT r.revision,COALESCE(v.revision,0)+COALESCE(v.observation_revision,0)
+ FROM library_revisions r LEFT JOIN viewer_revisions v ON v.library_id=r.library_id AND v.profile_id=?
+ WHERE r.library_id=?`, profile, library).Scan(&revision.Catalog, &revision.Viewer)
+	return revision, err
+}
+
 func (s *Service) continueCount(library, profile string) (int, error) {
-	revision, e := s.ContentRevision(library, profile)
+	revision, e := s.continueCountRevision(library, profile)
 	if e != nil {
 		return 0, e
 	}
@@ -16,7 +25,7 @@ func (s *Service) continueCount(library, profile string) (int, error) {
 	if e != nil {
 		return 0, e
 	}
-	after, e := s.ContentRevision(library, profile)
+	after, e := s.continueCountRevision(library, profile)
 	if e != nil {
 		return 0, e
 	}
