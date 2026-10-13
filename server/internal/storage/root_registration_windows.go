@@ -71,6 +71,8 @@ func (c *Client) RegisterRoot(setup context.Context, path, mountPath, mountIdent
 		defer input.Close()
 		defer writer.Close()
 		done <- c.Supervisor.RunOwnedCompletion(ctx, "playback:register:"+fmtReaderID(), cmd, func(out io.Reader) error {
+			// Wait also joins the stdin copier, including on a failed handshake.
+			defer writer.Close()
 			var response struct{ Handle uintptr }
 			decoder := json.NewDecoder(io.LimitReader(out, 4096))
 			decoder.DisallowUnknownFields()

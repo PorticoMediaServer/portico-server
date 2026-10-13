@@ -101,3 +101,14 @@ func TestRootRegistrationRejectsInvalidAndCanceled(t *testing.T) {
 	}
 	waitReaderExit(t, c)
 }
+
+func TestRootRegistrationFailureDoesNotWaitForTimeout(t *testing.T) {
+	c, root := registrationFixture(t)
+	c.Timeout = 5 * time.Second
+	for _, path := range []string{filepath.Join(root, "missing"), filepath.Join(root, "tiny")} {
+		registration, err := c.RegisterRoot(context.Background(), path, "", "", context.Background())
+		if registration != nil || err == nil || errors.Is(err, context.DeadlineExceeded) {
+			t.Fatalf("invalid root did not report its registration failure: %v %v", registration, err)
+		}
+	}
+}
