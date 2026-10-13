@@ -121,7 +121,7 @@ func copyOneFileContext(ctx context.Context, src, dst, name string, progress fun
 		return entry, err
 	}
 	if !info.Mode().IsRegular() {
-		return entry, nil
+		return entry, ErrSourceInvalid
 	}
 	if err = os.MkdirAll(filepath.Dir(dst), 0700); err != nil {
 		return entry, err
@@ -197,6 +197,9 @@ func writeManifest(partial string, manifest Manifest) error {
 // readManifest parses a backup folder's manifest, checking its identity.
 func readManifest(dir string) (Manifest, error) {
 	var manifest Manifest
+	if err := regularManifestFile(dir, ManifestName); err != nil {
+		return manifest, err
+	}
 	raw, err := os.ReadFile(filepath.Join(dir, ManifestName))
 	if err != nil {
 		return manifest, err
@@ -276,8 +279,11 @@ func manifestFileEntries(dir string) ([]FileEntry, error) {
 // checkManifestHashes verifies every listed file's sha256 against the tree.
 func checkManifestHashes(dir string, files []FileEntry) error {
 	for _, entry := range files {
-		if strings.Contains(entry.Name, "\\") || strings.HasPrefix(entry.Name, "/") || strings.Contains(entry.Name, "../") {
+		if !safeRelativeFile(entry.Name) {
 			return ErrSourceInvalid
+		}
+		if err := regularManifestFile(dir, entry.Name); err != nil {
+			return err
 		}
 		path := filepath.Join(dir, filepath.FromSlash(entry.Name))
 		// Streamed: a pre-restore backup lists the database itself, which can be
@@ -313,4 +319,26 @@ func durableFile(path string, data []byte) error {
 		return err
 	}
 	return closeErr
+}
+
+// Refuse links within a backup and special files before opening them. The owner
+// may choose a mounted or linked destination; its contents must be plain files.
+func regularManifestFile(root, name string) error {
+	parts := strings.Split(name, "/")
+	current := root
+	for i, part := range parts {
+		current = filepath.Join(current, part)
+		info, err := os.Lstat(current)
+		if err != nil {
+			return ErrSourceInvalid
+		}
+		if i == len(parts)-1 {
+			if !info.Mode().IsRegular() {
+				return ErrSourceInvalid
+			}
+		} else if !info.IsDir() {
+			return ErrSourceInvalid
+		}
+	}
+	return nil
 }

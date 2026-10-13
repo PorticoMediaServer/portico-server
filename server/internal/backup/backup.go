@@ -493,6 +493,14 @@ func (s *Service) createBackup(ctx context.Context, job *Job, kind Kind) (string
 		_ = os.RemoveAll(partial)
 		return "", err
 	}
+	names := make([]string, len(entries))
+	for i, entry := range entries {
+		names[i] = entry.Name
+	}
+	if err = syncRestoreDirectories(partial, partial, names); err != nil {
+		_ = os.RemoveAll(partial)
+		return "", err
+	}
 	if err = os.Rename(partial, filepath.Join(dir, id)); err != nil {
 		_ = os.RemoveAll(partial)
 		return "", err
