@@ -131,7 +131,7 @@ func (d Dependencies) detailRoutes(mux *http.ServeMux) {
 	})
 	// A title's cast or crew, complete, by cursor (the detail carries the first
 	// page of the cast and the key crew).
-	d.projectedHandle(mux, "GET /v1/items/{id}/credits", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "GET /v1/items/{id}/credits", func(w http.ResponseWriter, r *http.Request) {
 		p, library, fence, e := d.detailAccess(r)
 		if e != nil {
 			failure(w, e)

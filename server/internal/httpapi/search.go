@@ -59,7 +59,7 @@ func (d Dependencies) searchRoutes(mux *http.ServeMux) {
 	if d.registry == nil {
 		mux.HandleFunc("GET /v1/search", d.searchHandler)
 	}
-	mux.HandleFunc("GET /v1/search/history", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "GET /v1/search/history", func(w http.ResponseWriter, r *http.Request) {
 		p, e := d.principal(r)
 		if e != nil {
 			failure(w, e)
@@ -77,7 +77,7 @@ func (d Dependencies) searchRoutes(mux *http.ServeMux) {
 		w.Header().Set("Cache-Control", "no-store")
 		write(w, 200, out)
 	})
-	mux.HandleFunc("DELETE /v1/search/history", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "DELETE /v1/search/history", func(w http.ResponseWriter, r *http.Request) {
 		p, e := d.principal(r)
 		if e != nil {
 			failure(w, e)

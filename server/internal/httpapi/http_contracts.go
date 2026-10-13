@@ -32,5 +32,8 @@ func registerHTTPContracts(registry *apikit.Registry) error {
 	if err := registerLibrariesHTTPContracts(registry); err != nil {
 		return err
 	}
+	if err := registerBrowseHTTPContracts(registry); err != nil {
+		return err
+	}
 	return registerIdentityHTTPContracts(registry)
 }

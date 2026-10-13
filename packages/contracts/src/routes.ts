@@ -676,6 +676,27 @@ export const routes = [
     "status": 204
   },
   {
+    "id": "delete_search_history",
+    "method": "DELETE",
+    "path": "/v1/search/history",
+    "summary": "Delete history",
+    "access": "device",
+    "requires": "playback",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "expensive"
+  },
+  {
     "id": "delete_storage_mounts_id",
     "method": "DELETE",
     "path": "/v1/storage/mounts/{id}",
@@ -1349,6 +1370,31 @@ export const routes = [
     "status": 200
   },
   {
+    "id": "get_albums_id_songs",
+    "method": "GET",
+    "path": "/v1/albums/{id}/songs",
+    "summary": "Get songs",
+    "access": "device",
+    "requires": "read",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "cursor",
+      "limit"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
+  },
+  {
     "id": "get_api_access_options",
     "method": "GET",
     "path": "/v1/me/api-access",
@@ -1366,6 +1412,31 @@ export const routes = [
     "status": 200
   },
   {
+    "id": "get_artists_id_albums",
+    "method": "GET",
+    "path": "/v1/artists/{id}/albums",
+    "summary": "Get albums",
+    "access": "device",
+    "requires": "read",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "cursor",
+      "limit"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
+  },
+  {
     "id": "get_auth_capabilities",
     "method": "GET",
     "path": "/v1/auth/capabilities",
@@ -1379,6 +1450,56 @@ export const routes = [
       "internal"
     ],
     "status": 200
+  },
+  {
+    "id": "get_books_id_chapters",
+    "method": "GET",
+    "path": "/v1/books/{id}/chapters",
+    "summary": "Get chapters",
+    "access": "device",
+    "requires": "read",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "cursor",
+      "limit"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
+  },
+  {
+    "id": "get_books_id_files",
+    "method": "GET",
+    "path": "/v1/books/{id}/files",
+    "summary": "Get files",
+    "access": "device",
+    "requires": "read",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "cursor",
+      "limit"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
   },
   {
     "id": "get_bootstrap",
@@ -2235,6 +2356,27 @@ export const routes = [
     "status": 200
   },
   {
+    "id": "get_home_layout",
+    "method": "GET",
+    "path": "/v1/home/layout",
+    "summary": "Get layout",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
     "id": "get_home_row",
     "method": "GET",
     "path": "/v1/home/rows/{id}",
@@ -2331,6 +2473,32 @@ export const routes = [
     "status": 200
   },
   {
+    "id": "get_items_id_credits",
+    "method": "GET",
+    "path": "/v1/items/{id}/credits",
+    "summary": "Get credits",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "cursor",
+      "group",
+      "limit"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
     "id": "get_items_id_detail",
     "method": "GET",
     "path": "/v1/items/{id}/detail",
@@ -2351,6 +2519,48 @@ export const routes = [
       "internal"
     ],
     "status": 200
+  },
+  {
+    "id": "get_items_id_listening",
+    "method": "GET",
+    "path": "/v1/items/{id}/listening",
+    "summary": "Get listening",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "get_items_id_recommendations",
+    "method": "GET",
+    "path": "/v1/items/{id}/recommendations",
+    "summary": "Get recommendations",
+    "access": "device",
+    "requires": "read",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "expensive"
   },
   {
     "id": "get_items_id_source_availability",
@@ -2459,6 +2669,56 @@ export const routes = [
     "admission": "browsing"
   },
   {
+    "id": "get_libraries_id_artists",
+    "method": "GET",
+    "path": "/v1/libraries/{id}/artists",
+    "summary": "Get artists",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "cursor",
+      "limit"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "get_libraries_id_books",
+    "method": "GET",
+    "path": "/v1/libraries/{id}/books",
+    "summary": "Get books",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "cursor",
+      "limit"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
     "id": "get_libraries_id_browse",
     "method": "GET",
     "path": "/v1/libraries/{id}/browse",
@@ -2484,6 +2744,30 @@ export const routes = [
       "internal"
     ],
     "status": 200
+  },
+  {
+    "id": "get_libraries_id_browse_capabilities",
+    "method": "GET",
+    "path": "/v1/libraries/{id}/browse-capabilities",
+    "summary": "Get browse capabilities",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "query": [
+      "pivot"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
   },
   {
     "id": "get_libraries_id_content",
@@ -2534,6 +2818,31 @@ export const routes = [
       "internal"
     ],
     "status": 200
+  },
+  {
+    "id": "get_libraries_id_episode_issues",
+    "method": "GET",
+    "path": "/v1/libraries/{id}/episode-issues",
+    "summary": "Get episode issues",
+    "access": "owner",
+    "requires": "library",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "cursor",
+      "limit"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
   },
   {
     "id": "get_libraries_id_inventory_status",
@@ -2595,6 +2904,61 @@ export const routes = [
     "lane": "browsing",
     "cost": "page_sized",
     "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "get_libraries_id_show_workspace",
+    "method": "GET",
+    "path": "/v1/libraries/{id}/show-workspace",
+    "summary": "Get show workspace",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "cursor",
+      "episodeId",
+      "group",
+      "seasonCursor",
+      "seasonId",
+      "selectedSeasonId",
+      "showId"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "get_libraries_id_shows",
+    "method": "GET",
+    "path": "/v1/libraries/{id}/shows",
+    "summary": "Get shows",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "cursor",
+      "limit"
+    ],
     "errors": [
       "invalid_request",
       "unauthorized",
@@ -2700,6 +3064,27 @@ export const routes = [
     "status": 200
   },
   {
+    "id": "get_listening_preferences",
+    "method": "GET",
+    "path": "/v1/listening/preferences",
+    "summary": "Get preferences",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
     "id": "get_live_settings",
     "method": "GET",
     "path": "/v1/admin/live/settings",
@@ -2779,6 +3164,27 @@ export const routes = [
       "internal"
     ],
     "status": 200
+  },
+  {
+    "id": "get_me_library_navigation",
+    "method": "GET",
+    "path": "/v1/me/library-navigation",
+    "summary": "Get library navigation",
+    "access": "device",
+    "requires": "read",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
   },
   {
     "id": "get_metadata_attention",
@@ -2917,6 +3323,31 @@ export const routes = [
     "status": 200
   },
   {
+    "id": "get_people",
+    "method": "GET",
+    "path": "/v1/people",
+    "summary": "Get people",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "limit",
+      "q"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
     "id": "get_people_id",
     "method": "GET",
     "path": "/v1/people/{id}",
@@ -2939,6 +3370,31 @@ export const routes = [
       "internal"
     ],
     "status": 200
+  },
+  {
+    "id": "get_people_id_portrait",
+    "method": "GET",
+    "path": "/v1/people/{id}/portrait",
+    "summary": "Get portrait",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "query": [
+      "v"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "responseContentType": "image/jpeg",
+    "http": true,
+    "admission": "browsing"
   },
   {
     "id": "get_personal_history",
@@ -3174,6 +3630,27 @@ export const routes = [
     "status": 200
   },
   {
+    "id": "get_saved_pins_order",
+    "method": "GET",
+    "path": "/v1/saved-pins/order",
+    "summary": "Get order",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
     "id": "get_saved_resources_id_content",
     "method": "GET",
     "path": "/v1/saved-resources/{id}/content",
@@ -3222,6 +3699,52 @@ export const routes = [
     "status": 200
   },
   {
+    "id": "get_search_history",
+    "method": "GET",
+    "path": "/v1/search/history",
+    "summary": "Get history",
+    "access": "device",
+    "requires": "read",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "expensive"
+  },
+  {
+    "id": "get_seasons_id_episodes",
+    "method": "GET",
+    "path": "/v1/seasons/{id}/episodes",
+    "summary": "Get episodes",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "cursor",
+      "limit"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
     "id": "get_server",
     "method": "GET",
     "path": "/v1/server",
@@ -3261,6 +3784,73 @@ export const routes = [
       "internal"
     ],
     "status": 200
+  },
+  {
+    "id": "get_shows_id_episodes",
+    "method": "GET",
+    "path": "/v1/shows/{id}/episodes",
+    "summary": "Get episodes",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "cursor",
+      "limit"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "get_shows_id_recommendations",
+    "method": "GET",
+    "path": "/v1/shows/{id}/recommendations",
+    "summary": "Get recommendations",
+    "access": "device",
+    "requires": "read",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "expensive"
+  },
+  {
+    "id": "get_shows_id_seasons",
+    "method": "GET",
+    "path": "/v1/shows/{id}/seasons",
+    "summary": "Get seasons",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
   },
   {
     "id": "get_shows_screen_metadata",
@@ -3382,6 +3972,27 @@ export const routes = [
       "internal"
     ],
     "status": 200
+  },
+  {
+    "id": "get_suggestions",
+    "method": "GET",
+    "path": "/v1/suggestions",
+    "summary": "Get suggestions",
+    "access": "device",
+    "requires": "read",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "expensive"
   },
   {
     "id": "get_v1_items_id_chapters_chapter_image",
@@ -5066,6 +5677,27 @@ export const routes = [
     "status": 201
   },
   {
+    "id": "post_collections_id_items_batch",
+    "method": "POST",
+    "path": "/v1/collections/{id}/items:batch",
+    "summary": "Post items:batch",
+    "access": "owner",
+    "requires": "library",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
     "id": "post_device",
     "method": "POST",
     "path": "/v1/devices",
@@ -5493,6 +6125,27 @@ export const routes = [
     "status": 200
   },
   {
+    "id": "post_home_layout_reset",
+    "method": "POST",
+    "path": "/v1/home/layout/reset",
+    "summary": "Post reset",
+    "access": "device",
+    "requires": "playback",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
     "id": "post_libraries",
     "method": "POST",
     "path": "/v1/libraries",
@@ -5510,6 +6163,27 @@ export const routes = [
       "internal"
     ],
     "status": 201,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "post_libraries_id_episode_assignments",
+    "method": "POST",
+    "path": "/v1/libraries/{id}/episode-assignments",
+    "summary": "Post episode assignments",
+    "access": "owner",
+    "requires": "library",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
     "http": true,
     "admission": "browsing"
   },
@@ -6226,6 +6900,27 @@ export const routes = [
     "status": 200
   },
   {
+    "id": "put_home_layout",
+    "method": "PUT",
+    "path": "/v1/home/layout",
+    "summary": "Put layout",
+    "access": "device",
+    "requires": "playback",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
     "id": "put_items_id_personal_state",
     "method": "PUT",
     "path": "/v1/items/{id}/personal-state",
@@ -6306,6 +7001,48 @@ export const routes = [
     "status": 200
   },
   {
+    "id": "put_listening_preferences",
+    "method": "PUT",
+    "path": "/v1/listening/preferences",
+    "summary": "Put preferences",
+    "access": "device",
+    "requires": "playback",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "put_me_library_navigation",
+    "method": "PUT",
+    "path": "/v1/me/library-navigation",
+    "summary": "Put library navigation",
+    "access": "device",
+    "requires": "playback",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
+  },
+  {
     "id": "put_metadata_settings",
     "method": "PUT",
     "path": "/v1/admin/metadata/settings",
@@ -6323,6 +7060,27 @@ export const routes = [
       "internal"
     ],
     "status": 200
+  },
+  {
+    "id": "put_saved_pins_order",
+    "method": "PUT",
+    "path": "/v1/saved-pins/order",
+    "summary": "Put order",
+    "access": "device",
+    "requires": "playback",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
   },
   {
     "id": "put_storage_sources_webdav_id",

@@ -8,7 +8,7 @@ import (
 
 func (d Dependencies) audioRoutes(mux *http.ServeMux) {
 	d.listeningRoutes(mux)
-	mux.HandleFunc("GET /v1/libraries/{id}/artists", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "GET /v1/libraries/{id}/artists", func(w http.ResponseWriter, r *http.Request) {
 		p, err := d.principal(r)
 		if err == nil {
 			err = d.allowedLibrary(r.Context(), p, r.PathValue("id"))
@@ -30,7 +30,7 @@ func (d Dependencies) audioRoutes(mux *http.ServeMux) {
 		setGridTag(w, tag)
 		write(w, 200, map[string]any{"artists": rows, "nextCursor": next})
 	})
-	mux.HandleFunc("GET /v1/libraries/{id}/books", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "GET /v1/libraries/{id}/books", func(w http.ResponseWriter, r *http.Request) {
 		p, err := d.principal(r)
 		if err == nil {
 			err = d.allowedLibrary(r.Context(), p, r.PathValue("id"))
@@ -53,7 +53,7 @@ func (d Dependencies) audioRoutes(mux *http.ServeMux) {
 		write(w, 200, map[string]any{"books": rows, "nextCursor": next})
 	})
 	for _, route := range []struct{ pattern, kind, collection string }{{"GET /v1/artists/{id}/albums", "artist", "albums"}, {"GET /v1/albums/{id}/songs", "album", "songs"}, {"GET /v1/books/{id}/files", "book", "files"}, {"GET /v1/books/{id}/chapters", "book", "chapters"}} {
-		mux.HandleFunc(route.pattern, func(w http.ResponseWriter, r *http.Request) {
+		d.httpHandle(mux, route.pattern, func(w http.ResponseWriter, r *http.Request) {
 			p, err := d.principal(r)
 			if err != nil {
 				failure(w, err)

@@ -14,7 +14,7 @@ func (d Dependencies) listeningRoutes(mux *http.ServeMux) {
 	envelope := func(p identity.Principal, data any) any {
 		return map[string]any{"scope": map[string]string{"serverId": d.Identity.ID(), "authority": p.Authority, "accountId": p.AccountID, "profileId": p.ProfileID}, "data": data}
 	}
-	d.projectedHandle(mux, "GET /v1/listening/preferences", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "GET /v1/listening/preferences", func(w http.ResponseWriter, r *http.Request) {
 		p, e := d.principal(r)
 		if e != nil {
 			failure(w, e)
@@ -28,7 +28,7 @@ func (d Dependencies) listeningRoutes(mux *http.ServeMux) {
 		w.Header().Set("Cache-Control", "no-store")
 		write(w, 200, envelope(p, data))
 	})
-	d.projectedHandle(mux, "PUT /v1/listening/preferences", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "PUT /v1/listening/preferences", func(w http.ResponseWriter, r *http.Request) {
 		p, e := d.principal(r)
 		if e != nil {
 			failure(w, e)
@@ -94,7 +94,7 @@ func (d Dependencies) listeningRoutes(mux *http.ServeMux) {
 		w.Header().Set("Cache-Control", "no-store")
 		write(w, 200, envelope(p, data))
 	})
-	d.projectedHandle(mux, "GET /v1/items/{id}/listening", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "GET /v1/items/{id}/listening", func(w http.ResponseWriter, r *http.Request) {
 		p, libraries, fence, e := d.homeScope(r)
 		if e != nil {
 			failure(w, e)
