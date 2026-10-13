@@ -97,6 +97,10 @@ export const enUS = {
   'web.signIn.error.clock': 'This device and the server don’t agree on the time. Check the date and time on this device, then try again.',
   'signIn.plainHttp.link': 'How to turn on a secure connection',
   // A device whose saved sign-in can no longer be read (the system lost the key that protects it).
+  'signIn.cleanupUnconfirmed': 'Portico couldn’t confirm that the saved sign-in was removed.',
+  'signIn.unusedSession': 'Portico couldn’t end an unused sign-in. It will expire on its own.',
+  'signIn.chooseLocalProfile': 'Choose a profile on this server to continue.',
+  'signIn.cleanupSignedOut': 'You’re signed out. Portico couldn’t confirm that the saved sign-in was removed from this device.',
   'signIn.savedUnreadable': 'This device couldn’t read its saved sign-in. Sign in again.',
   'signIn.reset.title': 'This device can’t read its saved sign-in',
   'signIn.reset.body': 'Reset this device to sign in again.',
@@ -154,6 +158,7 @@ export const enUS = {
   'pin.wrong': 'That PIN isn’t right',
 
   // ── Errors (keys match presentError messageIds) ─────────────────
+  'error.transportUnavailable': 'This device can’t safely send sign-in details with its current software. Use another Portico app.',
   'error.offline': 'This device is offline. Check your connection, then try again.',
   'error.offlineRetrying': 'This device is offline. Portico will reconnect as soon as it can.',
   'error.unreachable': 'Portico can’t reach your server right now. Check that it’s on and connected, then try again.',

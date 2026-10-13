@@ -73,6 +73,7 @@ export class RouteConnection {
  rememberPaired(origin:string){const value=routeOrigin(origin);this.memory={...this.memory,paired:[value,...this.memory.paired.filter(v=>v!==value)].slice(0,8)};this.save();}
  install(document:VerifiedRoutes){
   if(!sameServerPin(document.document,this.pin)||this.memory.current&&!newer(document,this.memory.current))throw new RouteError('identity_mismatch','Connection evidence moved backwards or changed identity.');
+  this.promotion?.abort();this.promotion=undefined;
   const old=this.memory.current,allowed=new Set(document.document.candidates.map(c=>c.baseUrl));
   // Hosted includes its one eligible previous-verified set in the new signed
   // response. An omitted old candidate must not be resurrected by local cache.
@@ -81,7 +82,7 @@ export class RouteConnection {
   if(!old||old.document.generation!==document.document.generation||old.document.credentialGeneration!==document.document.credentialGeneration||old.document.claimGeneration!==document.document.claimGeneration)this.rejected.clear();this.save();
  }
  setForeground(value:boolean){
-  if(this.disposed)return;this.foreground=value;
+  if(this.disposed)return;this.foreground=value;if(!value){this.promotion?.abort();this.promotion=undefined;}
   if(value)this.foregroundActivity();
   else if(this.retry){clearTimeout(this.retry);this.scheduleRecovery();}
  }

@@ -136,3 +136,19 @@ test('a local proof arriving after disposal cannot promote the route', async () 
   connection.dispose(); release(); await tick();
   assert.equal(connection.getSnapshot().origin, remote);
 });
+
+test('leaving the foreground cancels a held LAN promotion and keeps the working route', async () => {
+  let local = false, release!: () => void;
+  const remote = 'https://remote.example';
+  const connection = new RouteConnection({pin, logicalOrigin: remote, memory: {paired: [remote]},
+    discover: async () => local ? [{...good, expiresAt: Date.now() + 60000}] : [],
+    probe: async origin => { if (origin !== remote) await new Promise<void>(resolve => { release = resolve; }); return pin; },
+  });
+  try {
+    await connection.resolve(); local = true;
+    connection.foregroundActivity(); await tick();
+    connection.setForeground(false); release(); await tick();
+    assert.equal(connection.getSnapshot().origin, remote);
+    assert.equal(connection.getSnapshot().phase, 'ready');
+  } finally { connection.dispose(); }
+});
