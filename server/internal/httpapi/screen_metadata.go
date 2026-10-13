@@ -26,7 +26,7 @@ func (d Dependencies) screenMetadataRoutes(mux *http.ServeMux) {
 	for _, target := range []struct{ route, kind string }{{"items", "item"}, {"shows", "show"}} {
 		kind := target.kind
 		base := "/v1/" + target.route + "/{id}/metadata/screen"
-		mux.HandleFunc("PUT "+base, func(w http.ResponseWriter, r *http.Request) {
+		d.httpHandle(mux, "PUT "+base, func(w http.ResponseWriter, r *http.Request) {
 			p, ok := owner(w, r, true)
 			if !ok {
 				return
@@ -44,7 +44,7 @@ func (d Dependencies) screenMetadataRoutes(mux *http.ServeMux) {
 			}
 			write(w, 202, map[string]any{"entityId": r.PathValue("id"), "status": "pending"})
 		})
-		mux.HandleFunc("POST "+base+"/search", func(w http.ResponseWriter, r *http.Request) {
+		d.httpHandle(mux, "POST "+base+"/search", func(w http.ResponseWriter, r *http.Request) {
 			p, ok := owner(w, r, true)
 			if !ok {
 				return
@@ -61,7 +61,7 @@ func (d Dependencies) screenMetadataRoutes(mux *http.ServeMux) {
 			}
 			write(w, 202, map[string]any{"entityId": r.PathValue("id"), "status": "pending"})
 		})
-		mux.HandleFunc("POST "+base+"/retry", func(w http.ResponseWriter, r *http.Request) {
+		d.httpHandle(mux, "POST "+base+"/retry", func(w http.ResponseWriter, r *http.Request) {
 			p, ok := owner(w, r, true)
 			if !ok {
 				return
@@ -81,7 +81,7 @@ func (d Dependencies) screenMetadataRoutes(mux *http.ServeMux) {
 			write(w, 202, map[string]any{"entityId": r.PathValue("id"), "status": "pending"})
 		})
 	}
-	mux.HandleFunc("PUT /v1/shows/{id}/metadata/screen/season", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "PUT /v1/shows/{id}/metadata/screen/season", func(w http.ResponseWriter, r *http.Request) {
 		p, ok := owner(w, r, true)
 		if !ok {
 			return
@@ -100,7 +100,7 @@ func (d Dependencies) screenMetadataRoutes(mux *http.ServeMux) {
 	})
 	// A library's metadata source ("agent"): online providers for its media
 	// kind, or local metadata only. See metadata/library_agent.go.
-	mux.HandleFunc("GET /v1/libraries/{id}/metadata/agent", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "GET /v1/libraries/{id}/metadata/agent", func(w http.ResponseWriter, r *http.Request) {
 		if _, ok := owner(w, r, false); !ok {
 			return
 		}
@@ -111,7 +111,7 @@ func (d Dependencies) screenMetadataRoutes(mux *http.ServeMux) {
 		}
 		write(w, 200, out)
 	})
-	mux.HandleFunc("PUT /v1/libraries/{id}/metadata/agent", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "PUT /v1/libraries/{id}/metadata/agent", func(w http.ResponseWriter, r *http.Request) {
 		p, ok := owner(w, r, true)
 		if !ok {
 			return
@@ -133,7 +133,7 @@ func (d Dependencies) screenMetadataRoutes(mux *http.ServeMux) {
 	})
 	// The choices before a library exists: the agents (with their languages)
 	// POST /v1/libraries accepts for this kind. No database read is needed.
-	mux.HandleFunc("GET /v1/library-kinds/{kind}/metadata-agents", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "GET /v1/library-kinds/{kind}/metadata-agents", func(w http.ResponseWriter, r *http.Request) {
 		if _, ok := owner(w, r, false); !ok {
 			return
 		}
@@ -144,7 +144,7 @@ func (d Dependencies) screenMetadataRoutes(mux *http.ServeMux) {
 		}
 		write(w, 200, map[string]any{"libraryKind": kind, "agents": metadata.LibraryAgentOptions(kind)})
 	})
-	mux.HandleFunc("GET /v1/libraries/{id}/metadata/screen", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "GET /v1/libraries/{id}/metadata/screen", func(w http.ResponseWriter, r *http.Request) {
 		if _, ok := owner(w, r, false); !ok {
 			return
 		}
@@ -159,7 +159,7 @@ func (d Dependencies) screenMetadataRoutes(mux *http.ServeMux) {
 		}
 		write(w, 200, out)
 	})
-	mux.HandleFunc("PUT /v1/libraries/{id}/metadata/screen", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "PUT /v1/libraries/{id}/metadata/screen", func(w http.ResponseWriter, r *http.Request) {
 		p, ok := owner(w, r, true)
 		if !ok {
 			return

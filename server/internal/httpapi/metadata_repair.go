@@ -29,7 +29,7 @@ func repairFailure(w http.ResponseWriter, err error) {
 func (d Dependencies) metadataRepairRoutes(mux *http.ServeMux) {
 	rate := &personalLimiter{}
 	for _, method := range []string{"GET", "POST"} {
-		mux.HandleFunc(method+" /v1/metadata/{kind}/{id}", func(w http.ResponseWriter, r *http.Request) {
+		d.httpHandle(mux, method+" /v1/metadata/{kind}/{id}", func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Cache-Control", "no-store")
 			ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 			defer cancel()
@@ -74,7 +74,7 @@ func (d Dependencies) metadataRepairRoutes(mux *http.ServeMux) {
 			write(w, 200, out)
 		})
 	}
-	mux.HandleFunc("GET /v1/metadata/{kind}/{id}/preview", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "GET /v1/metadata/{kind}/{id}/preview", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 		defer cancel()
@@ -99,7 +99,7 @@ func (d Dependencies) metadataRepairRoutes(mux *http.ServeMux) {
 		}
 		write(w, 200, out)
 	})
-	mux.HandleFunc("GET /v1/metadata/{kind}/{id}/art/{role}", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "GET /v1/metadata/{kind}/{id}/art/{role}", func(w http.ResponseWriter, r *http.Request) {
 		p, err := d.principal(r)
 		if err != nil {
 			failure(w, err)

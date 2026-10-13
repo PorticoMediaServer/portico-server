@@ -22,7 +22,7 @@ const artworkUploadEnvelope = 1 << 20
 
 func (d Dependencies) metadataEditorRoutes(mux *http.ServeMux) {
 	rate := &personalLimiter{}
-	mux.HandleFunc("POST /v1/metadata/bulk", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "POST /v1/metadata/bulk", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 		ctx, cancel := context.WithTimeout(r.Context(), 120*time.Second)
 		defer cancel()
@@ -62,10 +62,10 @@ func (d Dependencies) metadataEditorRoutes(mux *http.ServeMux) {
 		// is told exactly which targets applied and which did not.
 		write(w, 200, out)
 	})
-	mux.HandleFunc("POST /v1/metadata/{kind}/{id}/art/{role}/upload", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "POST /v1/metadata/{kind}/{id}/art/{role}/upload", func(w http.ResponseWriter, r *http.Request) {
 		d.artworkUpload(w, r, rate)
 	})
-	mux.HandleFunc("DELETE /v1/metadata/{kind}/{id}/art/{role}/upload/{candidateId}", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "DELETE /v1/metadata/{kind}/{id}/art/{role}/upload/{candidateId}", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 		defer cancel()

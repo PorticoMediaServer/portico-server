@@ -8048,6 +8048,548 @@ export const schemas = {
     "required": [],
     "type": "object"
   },
+  "DeleteMetadataKindIdArtRoleUploadCandidateIdRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "DeleteMetadataKindIdArtRoleUploadCandidateIdResponse": {
+    "properties": {
+      "artwork": {
+        "properties": {
+          "candidates": {
+            "items": {
+              "properties": {
+                "attribution": {
+                  "type": "string"
+                },
+                "current": {
+                  "type": "boolean"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "imageId": {
+                  "type": "string"
+                },
+                "locale": {
+                  "type": "string"
+                },
+                "observedAt": {
+                  "type": "string"
+                },
+                "previewUrl": {
+                  "type": "string"
+                },
+                "provider": {
+                  "type": "string"
+                },
+                "rank": {
+                  "type": "number"
+                },
+                "role": {
+                  "type": "string"
+                },
+                "subject": {
+                  "type": "string"
+                },
+                "votes": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "nullable": true,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "id",
+                "role",
+                "subject",
+                "provider",
+                "imageId",
+                "locale",
+                "rank",
+                "votes",
+                "attribution",
+                "observedAt",
+                "current"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "jobs": {
+            "items": {
+              "properties": {
+                "attempts": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "error": {
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "nextAttempt": {
+                  "type": "string"
+                },
+                "role": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string"
+                },
+                "subject": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "role",
+                "subject",
+                "status",
+                "error",
+                "attempts",
+                "nextAttempt"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "candidates",
+          "jobs"
+        ],
+        "type": "object"
+      },
+      "artworkRoles": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "candidates": {
+        "items": {
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "observedAt": {
+              "type": "string"
+            },
+            "orders": {
+              "items": {
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "name"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "previewUrl": {
+              "type": "string"
+            },
+            "provider": {
+              "type": "string"
+            },
+            "subtitle": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "year": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id",
+            "provider",
+            "title",
+            "subtitle",
+            "observedAt"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "cascades": {
+        "items": {
+          "properties": {
+            "completed": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "failed": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "id": {
+              "type": "string"
+            },
+            "intent": {
+              "type": "string"
+            },
+            "pending": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "processed": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "skipped": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "status": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "intent",
+            "status",
+            "processed",
+            "failed",
+            "completed",
+            "skipped",
+            "pending"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "history": {
+        "items": {
+          "properties": {
+            "id": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "observedAt": {
+              "type": "string"
+            },
+            "trigger": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "trigger",
+            "observedAt"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "libraryId": {
+        "type": "string"
+      },
+      "revision": {
+        "type": "string"
+      },
+      "schema": {
+        "items": {
+          "properties": {
+            "allowed": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "bulk": {
+              "type": "boolean"
+            },
+            "field": {
+              "type": "string"
+            },
+            "group": {
+              "type": "string"
+            },
+            "label": {
+              "type": "string"
+            },
+            "max": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "maxLength": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "min": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "type": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "field",
+            "label",
+            "group",
+            "type",
+            "bulk"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "serverId": {
+        "type": "string"
+      },
+      "snapshot": {
+        "properties": {
+          "artwork": {
+            "items": {
+              "properties": {
+                "attribution": {
+                  "type": "string"
+                },
+                "candidateId": {
+                  "type": "string"
+                },
+                "digest": {
+                  "type": "string"
+                },
+                "locked": {
+                  "type": "boolean"
+                },
+                "revision": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "role": {
+                  "type": "string"
+                },
+                "subject": {
+                  "type": "string"
+                },
+                "thumbnailDigest": {
+                  "type": "string"
+                },
+                "url": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "role",
+                "subject",
+                "candidateId",
+                "digest",
+                "thumbnailDigest",
+                "locked",
+                "revision",
+                "attribution",
+                "url"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "fields": {
+            "additionalProperties": {
+              "properties": {
+                "automaticValue": {
+                  "type": "string"
+                },
+                "locked": {
+                  "type": "boolean"
+                },
+                "observedAt": {
+                  "type": "string"
+                },
+                "source": {
+                  "type": "string"
+                },
+                "value": {
+                  "type": "string"
+                },
+                "values": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              },
+              "required": [
+                "value",
+                "automaticValue",
+                "locked",
+                "source"
+              ],
+              "type": "object"
+            },
+            "type": "object"
+          },
+          "identity": {
+            "properties": {
+              "engine": {
+                "type": "string"
+              },
+              "id": {
+                "type": "string"
+              },
+              "locked": {
+                "type": "boolean"
+              },
+              "order": {
+                "type": "string"
+              },
+              "provider": {
+                "type": "string"
+              },
+              "revision": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "status": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "provider",
+              "id",
+              "revision",
+              "status",
+              "locked"
+            ],
+            "type": "object"
+          },
+          "relationshipLocks": {
+            "additionalProperties": {
+              "type": "boolean"
+            },
+            "type": "object"
+          },
+          "relationships": {
+            "items": {
+              "properties": {
+                "department": {
+                  "type": "string"
+                },
+                "kind": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                },
+                "locked": {
+                  "type": "boolean"
+                },
+                "observedAt": {
+                  "type": "string"
+                },
+                "ordinal": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "provider": {
+                  "type": "string"
+                },
+                "recordId": {
+                  "type": "string"
+                },
+                "role": {
+                  "type": "string"
+                },
+                "source": {
+                  "type": "string"
+                },
+                "targetId": {
+                  "type": "string"
+                },
+                "targetKind": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "targetKind",
+                "targetId",
+                "label",
+                "ordinal",
+                "source",
+                "locked"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "relationshipLocks",
+          "fields",
+          "relationships",
+          "artwork"
+        ],
+        "type": "object"
+      },
+      "target": {
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "id"
+        ],
+        "type": "object"
+      },
+      "viewerFence": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "target",
+      "libraryId",
+      "serverId",
+      "viewerFence",
+      "revision",
+      "snapshot",
+      "candidates",
+      "history",
+      "artwork",
+      "cascades",
+      "schema",
+      "artworkRoles"
+    ],
+    "type": "object"
+  },
   "DeleteQueueRequest": {
     "properties": {},
     "required": [],
@@ -12081,6 +12623,449 @@ export const schemas = {
       "checkedAt",
       "status",
       "autoInstall"
+    ],
+    "type": "object"
+  },
+  "GetAlbumsIdMetadataMusicbrainzRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetAlbumsIdMetadataMusicbrainzResponse": {
+    "properties": {
+      "actions": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "attempts": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "attribution": {
+        "type": "string"
+      },
+      "candidates": {
+        "items": {
+          "properties": {
+            "artist": {
+              "type": "string"
+            },
+            "confidence": {
+              "type": "number"
+            },
+            "decision": {
+              "type": "string"
+            },
+            "edition": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            },
+            "observedAt": {
+              "type": "string"
+            },
+            "reasons": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "title": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "confidence",
+            "reasons",
+            "decision",
+            "id",
+            "title",
+            "artist",
+            "edition",
+            "observedAt"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "entityId": {
+        "type": "string"
+      },
+      "error": {
+        "type": "string"
+      },
+      "kind": {
+        "type": "string"
+      },
+      "libraryId": {
+        "type": "string"
+      },
+      "manual": {
+        "type": "boolean"
+      },
+      "nextAttempt": {
+        "type": "string"
+      },
+      "observation": {
+        "properties": {
+          "algorithm": {
+            "type": "string"
+          },
+          "confidence": {
+            "type": "number"
+          },
+          "fingerprintStatus": {
+            "type": "string"
+          },
+          "margin": {
+            "type": "number"
+          },
+          "providerError": {
+            "type": "string"
+          },
+          "strongSignals": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "fingerprintStatus",
+          "providerError",
+          "confidence",
+          "margin",
+          "strongSignals",
+          "algorithm"
+        ],
+        "type": "object"
+      },
+      "policy": {
+        "properties": {
+          "acoustidConfigured": {
+            "type": "boolean"
+          },
+          "acoustidEnabled": {
+            "type": "boolean"
+          },
+          "fingerprintAllowed": {
+            "type": "boolean"
+          },
+          "localMode": {
+            "type": "string"
+          },
+          "musicBrainzEnabled": {
+            "type": "boolean"
+          },
+          "revision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "revision",
+          "localMode",
+          "musicBrainzEnabled",
+          "acoustidEnabled",
+          "acoustidConfigured",
+          "fingerprintAllowed"
+        ],
+        "type": "object"
+      },
+      "published": {
+        "properties": {
+          "artist": {
+            "type": "string"
+          },
+          "country": {
+            "type": "string"
+          },
+          "date": {
+            "type": "string"
+          },
+          "details": {
+            "properties": {
+              "barcode": {
+                "type": "string"
+              },
+              "credits": {
+                "items": {
+                  "properties": {
+                    "artist": {
+                      "properties": {
+                        "disambiguation": {
+                          "type": "string"
+                        },
+                        "id": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "sort-name": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name",
+                        "sort-name",
+                        "disambiguation"
+                      ],
+                      "type": "object"
+                    },
+                    "joinphrase": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "joinphrase",
+                    "artist"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "isrcs": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "labels": {
+                "items": {
+                  "properties": {
+                    "catalog-number": {
+                      "type": "string"
+                    },
+                    "label": {
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "catalog-number"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "language": {
+                "type": "string"
+              },
+              "packaging": {
+                "type": "string"
+              },
+              "relations": {
+                "items": {
+                  "properties": {
+                    "artist": {
+                      "properties": {
+                        "disambiguation": {
+                          "type": "string"
+                        },
+                        "id": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "sort-name": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name",
+                        "sort-name",
+                        "disambiguation"
+                      ],
+                      "type": "object"
+                    },
+                    "attributes": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "direction": {
+                      "type": "string"
+                    },
+                    "target-type": {
+                      "type": "string"
+                    },
+                    "type": {
+                      "type": "string"
+                    },
+                    "type-id": {
+                      "type": "string"
+                    },
+                    "work": {
+                      "properties": {
+                        "disambiguation": {
+                          "type": "string"
+                        },
+                        "id": {
+                          "type": "string"
+                        },
+                        "title": {
+                          "type": "string"
+                        },
+                        "type": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "title"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "target-type"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "script": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "credits",
+              "labels",
+              "isrcs",
+              "relations"
+            ],
+            "type": "object"
+          },
+          "matchedTracks": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "observedAt": {
+            "type": "string"
+          },
+          "pendingTracks": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "reconciliationPending": {
+            "type": "boolean"
+          },
+          "recordingId": {
+            "type": "string"
+          },
+          "releaseGroupId": {
+            "type": "string"
+          },
+          "releaseId": {
+            "type": "string"
+          },
+          "reviewTracks": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "title": {
+            "type": "string"
+          },
+          "totalTracks": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "trackId": {
+            "type": "string"
+          },
+          "trackStatus": {
+            "type": "string"
+          },
+          "trackTitle": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "reconciliationPending",
+          "releaseId",
+          "releaseGroupId",
+          "recordingId",
+          "trackId",
+          "title",
+          "artist",
+          "date",
+          "country",
+          "observedAt",
+          "trackTitle",
+          "trackStatus",
+          "totalTracks",
+          "matchedTracks",
+          "pendingTracks",
+          "reviewTracks"
+        ],
+        "type": "object"
+      },
+      "revision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "selectedId": {
+        "type": "string"
+      },
+      "serverId": {
+        "type": "string"
+      },
+      "status": {
+        "type": "string"
+      },
+      "viewerFence": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "serverId",
+      "viewerFence",
+      "libraryId",
+      "kind",
+      "entityId",
+      "revision",
+      "status",
+      "selectedId",
+      "manual",
+      "attempts",
+      "nextAttempt",
+      "error",
+      "candidates",
+      "actions",
+      "attribution"
     ],
     "type": "object"
   },
@@ -22900,6 +23885,536 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "GetItemsIdMetadataManualRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetItemsIdMetadataManualResponse": {
+    "properties": {
+      "description": {
+        "properties": {
+          "automaticValue": {
+            "type": "string"
+          },
+          "manual": {
+            "type": "boolean"
+          },
+          "value": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "value",
+          "automaticValue",
+          "manual"
+        ],
+        "type": "object"
+      },
+      "kind": {
+        "type": "string"
+      },
+      "revision": {
+        "type": "string"
+      },
+      "scope": {
+        "properties": {
+          "itemId": {
+            "type": "string"
+          },
+          "libraryId": {
+            "type": "string"
+          },
+          "serverId": {
+            "type": "string"
+          },
+          "viewerFence": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "serverId",
+          "libraryId",
+          "itemId",
+          "viewerFence"
+        ],
+        "type": "object"
+      },
+      "title": {
+        "properties": {
+          "automaticValue": {
+            "type": "string"
+          },
+          "manual": {
+            "type": "boolean"
+          },
+          "value": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "value",
+          "automaticValue",
+          "manual"
+        ],
+        "type": "object"
+      },
+      "updatedAt": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "scope",
+      "revision",
+      "kind",
+      "title",
+      "description"
+    ],
+    "type": "object"
+  },
+  "GetItemsIdMetadataMusicbrainzRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetItemsIdMetadataMusicbrainzResponse": {
+    "properties": {
+      "actions": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "attempts": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "attribution": {
+        "type": "string"
+      },
+      "candidates": {
+        "items": {
+          "properties": {
+            "artist": {
+              "type": "string"
+            },
+            "confidence": {
+              "type": "number"
+            },
+            "decision": {
+              "type": "string"
+            },
+            "edition": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            },
+            "observedAt": {
+              "type": "string"
+            },
+            "reasons": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "title": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "confidence",
+            "reasons",
+            "decision",
+            "id",
+            "title",
+            "artist",
+            "edition",
+            "observedAt"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "entityId": {
+        "type": "string"
+      },
+      "error": {
+        "type": "string"
+      },
+      "kind": {
+        "type": "string"
+      },
+      "libraryId": {
+        "type": "string"
+      },
+      "manual": {
+        "type": "boolean"
+      },
+      "nextAttempt": {
+        "type": "string"
+      },
+      "observation": {
+        "properties": {
+          "algorithm": {
+            "type": "string"
+          },
+          "confidence": {
+            "type": "number"
+          },
+          "fingerprintStatus": {
+            "type": "string"
+          },
+          "margin": {
+            "type": "number"
+          },
+          "providerError": {
+            "type": "string"
+          },
+          "strongSignals": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "fingerprintStatus",
+          "providerError",
+          "confidence",
+          "margin",
+          "strongSignals",
+          "algorithm"
+        ],
+        "type": "object"
+      },
+      "policy": {
+        "properties": {
+          "acoustidConfigured": {
+            "type": "boolean"
+          },
+          "acoustidEnabled": {
+            "type": "boolean"
+          },
+          "fingerprintAllowed": {
+            "type": "boolean"
+          },
+          "localMode": {
+            "type": "string"
+          },
+          "musicBrainzEnabled": {
+            "type": "boolean"
+          },
+          "revision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "revision",
+          "localMode",
+          "musicBrainzEnabled",
+          "acoustidEnabled",
+          "acoustidConfigured",
+          "fingerprintAllowed"
+        ],
+        "type": "object"
+      },
+      "published": {
+        "properties": {
+          "artist": {
+            "type": "string"
+          },
+          "country": {
+            "type": "string"
+          },
+          "date": {
+            "type": "string"
+          },
+          "details": {
+            "properties": {
+              "barcode": {
+                "type": "string"
+              },
+              "credits": {
+                "items": {
+                  "properties": {
+                    "artist": {
+                      "properties": {
+                        "disambiguation": {
+                          "type": "string"
+                        },
+                        "id": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "sort-name": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name",
+                        "sort-name",
+                        "disambiguation"
+                      ],
+                      "type": "object"
+                    },
+                    "joinphrase": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "joinphrase",
+                    "artist"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "isrcs": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "labels": {
+                "items": {
+                  "properties": {
+                    "catalog-number": {
+                      "type": "string"
+                    },
+                    "label": {
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "catalog-number"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "language": {
+                "type": "string"
+              },
+              "packaging": {
+                "type": "string"
+              },
+              "relations": {
+                "items": {
+                  "properties": {
+                    "artist": {
+                      "properties": {
+                        "disambiguation": {
+                          "type": "string"
+                        },
+                        "id": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "sort-name": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name",
+                        "sort-name",
+                        "disambiguation"
+                      ],
+                      "type": "object"
+                    },
+                    "attributes": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "direction": {
+                      "type": "string"
+                    },
+                    "target-type": {
+                      "type": "string"
+                    },
+                    "type": {
+                      "type": "string"
+                    },
+                    "type-id": {
+                      "type": "string"
+                    },
+                    "work": {
+                      "properties": {
+                        "disambiguation": {
+                          "type": "string"
+                        },
+                        "id": {
+                          "type": "string"
+                        },
+                        "title": {
+                          "type": "string"
+                        },
+                        "type": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "title"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "target-type"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "script": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "credits",
+              "labels",
+              "isrcs",
+              "relations"
+            ],
+            "type": "object"
+          },
+          "matchedTracks": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "observedAt": {
+            "type": "string"
+          },
+          "pendingTracks": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "reconciliationPending": {
+            "type": "boolean"
+          },
+          "recordingId": {
+            "type": "string"
+          },
+          "releaseGroupId": {
+            "type": "string"
+          },
+          "releaseId": {
+            "type": "string"
+          },
+          "reviewTracks": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "title": {
+            "type": "string"
+          },
+          "totalTracks": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "trackId": {
+            "type": "string"
+          },
+          "trackStatus": {
+            "type": "string"
+          },
+          "trackTitle": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "reconciliationPending",
+          "releaseId",
+          "releaseGroupId",
+          "recordingId",
+          "trackId",
+          "title",
+          "artist",
+          "date",
+          "country",
+          "observedAt",
+          "trackTitle",
+          "trackStatus",
+          "totalTracks",
+          "matchedTracks",
+          "pendingTracks",
+          "reviewTracks"
+        ],
+        "type": "object"
+      },
+      "revision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "selectedId": {
+        "type": "string"
+      },
+      "serverId": {
+        "type": "string"
+      },
+      "status": {
+        "type": "string"
+      },
+      "viewerFence": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "serverId",
+      "viewerFence",
+      "libraryId",
+      "kind",
+      "entityId",
+      "revision",
+      "status",
+      "selectedId",
+      "manual",
+      "attempts",
+      "nextAttempt",
+      "error",
+      "candidates",
+      "actions",
+      "attribution"
+    ],
+    "type": "object"
+  },
   "GetItemsIdRecommendationsRequest": {
     "properties": {},
     "required": [],
@@ -28818,6 +30333,46 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "GetLibrariesIdMetadataAgentRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetLibrariesIdMetadataAgentResponse": {
+    "properties": {
+      "entityId": {
+        "type": "string"
+      },
+      "status": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "entityId",
+      "status"
+    ],
+    "type": "object"
+  },
+  "GetLibrariesIdMetadataScreenRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetLibrariesIdMetadataScreenResponse": {
+    "properties": {
+      "entityId": {
+        "type": "string"
+      },
+      "status": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "entityId",
+      "status"
+    ],
+    "type": "object"
+  },
   "GetLibrariesIdNetworkRootsRequest": {
     "properties": {},
     "required": [],
@@ -31789,6 +33344,26 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "GetLibraryKindsKindMetadataAgentsRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetLibraryKindsKindMetadataAgentsResponse": {
+    "properties": {
+      "entityId": {
+        "type": "string"
+      },
+      "status": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "entityId",
+      "status"
+    ],
+    "type": "object"
+  },
   "GetLibrarySettingsRequest": {
     "properties": {},
     "required": [],
@@ -32968,6 +34543,1098 @@ export const schemas = {
       "libraryId",
       "entries",
       "nextCursor"
+    ],
+    "type": "object"
+  },
+  "GetMetadataKindIdArtRoleRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetMetadataKindIdArtRoleResponse": {
+    "type": "string"
+  },
+  "GetMetadataKindIdPreviewRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetMetadataKindIdPreviewResponse": {
+    "properties": {
+      "artwork": {
+        "properties": {
+          "candidates": {
+            "items": {
+              "properties": {
+                "attribution": {
+                  "type": "string"
+                },
+                "current": {
+                  "type": "boolean"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "imageId": {
+                  "type": "string"
+                },
+                "locale": {
+                  "type": "string"
+                },
+                "observedAt": {
+                  "type": "string"
+                },
+                "previewUrl": {
+                  "type": "string"
+                },
+                "provider": {
+                  "type": "string"
+                },
+                "rank": {
+                  "type": "number"
+                },
+                "role": {
+                  "type": "string"
+                },
+                "subject": {
+                  "type": "string"
+                },
+                "votes": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "nullable": true,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "id",
+                "role",
+                "subject",
+                "provider",
+                "imageId",
+                "locale",
+                "rank",
+                "votes",
+                "attribution",
+                "observedAt",
+                "current"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "jobs": {
+            "items": {
+              "properties": {
+                "attempts": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "error": {
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "nextAttempt": {
+                  "type": "string"
+                },
+                "role": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string"
+                },
+                "subject": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "role",
+                "subject",
+                "status",
+                "error",
+                "attempts",
+                "nextAttempt"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "candidates",
+          "jobs"
+        ],
+        "type": "object"
+      },
+      "artworkRoles": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "candidates": {
+        "items": {
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "observedAt": {
+              "type": "string"
+            },
+            "orders": {
+              "items": {
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "name"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "previewUrl": {
+              "type": "string"
+            },
+            "provider": {
+              "type": "string"
+            },
+            "subtitle": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "year": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id",
+            "provider",
+            "title",
+            "subtitle",
+            "observedAt"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "cascades": {
+        "items": {
+          "properties": {
+            "completed": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "failed": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "id": {
+              "type": "string"
+            },
+            "intent": {
+              "type": "string"
+            },
+            "pending": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "processed": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "skipped": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "status": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "intent",
+            "status",
+            "processed",
+            "failed",
+            "completed",
+            "skipped",
+            "pending"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "history": {
+        "items": {
+          "properties": {
+            "id": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "observedAt": {
+              "type": "string"
+            },
+            "trigger": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "trigger",
+            "observedAt"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "libraryId": {
+        "type": "string"
+      },
+      "revision": {
+        "type": "string"
+      },
+      "schema": {
+        "items": {
+          "properties": {
+            "allowed": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "bulk": {
+              "type": "boolean"
+            },
+            "field": {
+              "type": "string"
+            },
+            "group": {
+              "type": "string"
+            },
+            "label": {
+              "type": "string"
+            },
+            "max": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "maxLength": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "min": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "type": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "field",
+            "label",
+            "group",
+            "type",
+            "bulk"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "serverId": {
+        "type": "string"
+      },
+      "snapshot": {
+        "properties": {
+          "artwork": {
+            "items": {
+              "properties": {
+                "attribution": {
+                  "type": "string"
+                },
+                "candidateId": {
+                  "type": "string"
+                },
+                "digest": {
+                  "type": "string"
+                },
+                "locked": {
+                  "type": "boolean"
+                },
+                "revision": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "role": {
+                  "type": "string"
+                },
+                "subject": {
+                  "type": "string"
+                },
+                "thumbnailDigest": {
+                  "type": "string"
+                },
+                "url": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "role",
+                "subject",
+                "candidateId",
+                "digest",
+                "thumbnailDigest",
+                "locked",
+                "revision",
+                "attribution",
+                "url"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "fields": {
+            "additionalProperties": {
+              "properties": {
+                "automaticValue": {
+                  "type": "string"
+                },
+                "locked": {
+                  "type": "boolean"
+                },
+                "observedAt": {
+                  "type": "string"
+                },
+                "source": {
+                  "type": "string"
+                },
+                "value": {
+                  "type": "string"
+                },
+                "values": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              },
+              "required": [
+                "value",
+                "automaticValue",
+                "locked",
+                "source"
+              ],
+              "type": "object"
+            },
+            "type": "object"
+          },
+          "identity": {
+            "properties": {
+              "engine": {
+                "type": "string"
+              },
+              "id": {
+                "type": "string"
+              },
+              "locked": {
+                "type": "boolean"
+              },
+              "order": {
+                "type": "string"
+              },
+              "provider": {
+                "type": "string"
+              },
+              "revision": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "status": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "provider",
+              "id",
+              "revision",
+              "status",
+              "locked"
+            ],
+            "type": "object"
+          },
+          "relationshipLocks": {
+            "additionalProperties": {
+              "type": "boolean"
+            },
+            "type": "object"
+          },
+          "relationships": {
+            "items": {
+              "properties": {
+                "department": {
+                  "type": "string"
+                },
+                "kind": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                },
+                "locked": {
+                  "type": "boolean"
+                },
+                "observedAt": {
+                  "type": "string"
+                },
+                "ordinal": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "provider": {
+                  "type": "string"
+                },
+                "recordId": {
+                  "type": "string"
+                },
+                "role": {
+                  "type": "string"
+                },
+                "source": {
+                  "type": "string"
+                },
+                "targetId": {
+                  "type": "string"
+                },
+                "targetKind": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "targetKind",
+                "targetId",
+                "label",
+                "ordinal",
+                "source",
+                "locked"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "relationshipLocks",
+          "fields",
+          "relationships",
+          "artwork"
+        ],
+        "type": "object"
+      },
+      "target": {
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "id"
+        ],
+        "type": "object"
+      },
+      "viewerFence": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "target",
+      "libraryId",
+      "serverId",
+      "viewerFence",
+      "revision",
+      "snapshot",
+      "candidates",
+      "history",
+      "artwork",
+      "cascades",
+      "schema",
+      "artworkRoles"
+    ],
+    "type": "object"
+  },
+  "GetMetadataKindIdRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetMetadataKindIdResponse": {
+    "properties": {
+      "artwork": {
+        "properties": {
+          "candidates": {
+            "items": {
+              "properties": {
+                "attribution": {
+                  "type": "string"
+                },
+                "current": {
+                  "type": "boolean"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "imageId": {
+                  "type": "string"
+                },
+                "locale": {
+                  "type": "string"
+                },
+                "observedAt": {
+                  "type": "string"
+                },
+                "previewUrl": {
+                  "type": "string"
+                },
+                "provider": {
+                  "type": "string"
+                },
+                "rank": {
+                  "type": "number"
+                },
+                "role": {
+                  "type": "string"
+                },
+                "subject": {
+                  "type": "string"
+                },
+                "votes": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "nullable": true,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "id",
+                "role",
+                "subject",
+                "provider",
+                "imageId",
+                "locale",
+                "rank",
+                "votes",
+                "attribution",
+                "observedAt",
+                "current"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "jobs": {
+            "items": {
+              "properties": {
+                "attempts": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "error": {
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "nextAttempt": {
+                  "type": "string"
+                },
+                "role": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string"
+                },
+                "subject": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "role",
+                "subject",
+                "status",
+                "error",
+                "attempts",
+                "nextAttempt"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "candidates",
+          "jobs"
+        ],
+        "type": "object"
+      },
+      "artworkRoles": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "candidates": {
+        "items": {
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "observedAt": {
+              "type": "string"
+            },
+            "orders": {
+              "items": {
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "name"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "previewUrl": {
+              "type": "string"
+            },
+            "provider": {
+              "type": "string"
+            },
+            "subtitle": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "year": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id",
+            "provider",
+            "title",
+            "subtitle",
+            "observedAt"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "cascades": {
+        "items": {
+          "properties": {
+            "completed": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "failed": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "id": {
+              "type": "string"
+            },
+            "intent": {
+              "type": "string"
+            },
+            "pending": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "processed": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "skipped": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "status": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "intent",
+            "status",
+            "processed",
+            "failed",
+            "completed",
+            "skipped",
+            "pending"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "history": {
+        "items": {
+          "properties": {
+            "id": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "observedAt": {
+              "type": "string"
+            },
+            "trigger": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "trigger",
+            "observedAt"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "libraryId": {
+        "type": "string"
+      },
+      "revision": {
+        "type": "string"
+      },
+      "schema": {
+        "items": {
+          "properties": {
+            "allowed": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "bulk": {
+              "type": "boolean"
+            },
+            "field": {
+              "type": "string"
+            },
+            "group": {
+              "type": "string"
+            },
+            "label": {
+              "type": "string"
+            },
+            "max": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "maxLength": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "min": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "type": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "field",
+            "label",
+            "group",
+            "type",
+            "bulk"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "serverId": {
+        "type": "string"
+      },
+      "snapshot": {
+        "properties": {
+          "artwork": {
+            "items": {
+              "properties": {
+                "attribution": {
+                  "type": "string"
+                },
+                "candidateId": {
+                  "type": "string"
+                },
+                "digest": {
+                  "type": "string"
+                },
+                "locked": {
+                  "type": "boolean"
+                },
+                "revision": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "role": {
+                  "type": "string"
+                },
+                "subject": {
+                  "type": "string"
+                },
+                "thumbnailDigest": {
+                  "type": "string"
+                },
+                "url": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "role",
+                "subject",
+                "candidateId",
+                "digest",
+                "thumbnailDigest",
+                "locked",
+                "revision",
+                "attribution",
+                "url"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "fields": {
+            "additionalProperties": {
+              "properties": {
+                "automaticValue": {
+                  "type": "string"
+                },
+                "locked": {
+                  "type": "boolean"
+                },
+                "observedAt": {
+                  "type": "string"
+                },
+                "source": {
+                  "type": "string"
+                },
+                "value": {
+                  "type": "string"
+                },
+                "values": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              },
+              "required": [
+                "value",
+                "automaticValue",
+                "locked",
+                "source"
+              ],
+              "type": "object"
+            },
+            "type": "object"
+          },
+          "identity": {
+            "properties": {
+              "engine": {
+                "type": "string"
+              },
+              "id": {
+                "type": "string"
+              },
+              "locked": {
+                "type": "boolean"
+              },
+              "order": {
+                "type": "string"
+              },
+              "provider": {
+                "type": "string"
+              },
+              "revision": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "status": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "provider",
+              "id",
+              "revision",
+              "status",
+              "locked"
+            ],
+            "type": "object"
+          },
+          "relationshipLocks": {
+            "additionalProperties": {
+              "type": "boolean"
+            },
+            "type": "object"
+          },
+          "relationships": {
+            "items": {
+              "properties": {
+                "department": {
+                  "type": "string"
+                },
+                "kind": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                },
+                "locked": {
+                  "type": "boolean"
+                },
+                "observedAt": {
+                  "type": "string"
+                },
+                "ordinal": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "provider": {
+                  "type": "string"
+                },
+                "recordId": {
+                  "type": "string"
+                },
+                "role": {
+                  "type": "string"
+                },
+                "source": {
+                  "type": "string"
+                },
+                "targetId": {
+                  "type": "string"
+                },
+                "targetKind": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "targetKind",
+                "targetId",
+                "label",
+                "ordinal",
+                "source",
+                "locked"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "relationshipLocks",
+          "fields",
+          "relationships",
+          "artwork"
+        ],
+        "type": "object"
+      },
+      "target": {
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "id"
+        ],
+        "type": "object"
+      },
+      "viewerFence": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "target",
+      "libraryId",
+      "serverId",
+      "viewerFence",
+      "revision",
+      "snapshot",
+      "candidates",
+      "history",
+      "artwork",
+      "cascades",
+      "schema",
+      "artworkRoles"
     ],
     "type": "object"
   },
@@ -41003,6 +43670,127 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "GetShowsIdMetadataTvdbRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetShowsIdMetadataTvdbResponse": {
+    "properties": {
+      "actions": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "attempts": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "attribution": {
+        "type": "string"
+      },
+      "candidates": {
+        "items": {
+          "properties": {
+            "id": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "name": {
+              "type": "string"
+            },
+            "observedAt": {
+              "type": "string"
+            },
+            "overview": {
+              "type": "string"
+            },
+            "year": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id",
+            "name",
+            "year",
+            "overview",
+            "observedAt"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "error": {
+        "type": "string"
+      },
+      "libraryId": {
+        "type": "string"
+      },
+      "nextAttempt": {
+        "type": "string"
+      },
+      "order": {
+        "type": "string"
+      },
+      "orders": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "page": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "providerId": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "revision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "serverId": {
+        "type": "string"
+      },
+      "showId": {
+        "type": "string"
+      },
+      "status": {
+        "type": "string"
+      },
+      "viewerFence": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "serverId",
+      "viewerFence",
+      "libraryId",
+      "showId",
+      "revision",
+      "status",
+      "providerId",
+      "order",
+      "page",
+      "attempts",
+      "nextAttempt",
+      "error",
+      "candidates",
+      "orders",
+      "actions",
+      "attribution"
+    ],
+    "type": "object"
+  },
   "GetShowsIdRecommendationsRequest": {
     "properties": {},
     "required": [],
@@ -48132,6 +50920,133 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "PatchItemsIdMetadataManualRequest": {
+    "properties": {
+      "description": {
+        "properties": {
+          "Present": {
+            "type": "boolean"
+          },
+          "Value": {
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "Present",
+          "Value"
+        ],
+        "type": "object"
+      },
+      "expectedRevision": {
+        "type": "string"
+      },
+      "title": {
+        "properties": {
+          "Present": {
+            "type": "boolean"
+          },
+          "Value": {
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "Present",
+          "Value"
+        ],
+        "type": "object"
+      }
+    },
+    "required": [
+      "expectedRevision",
+      "title",
+      "description"
+    ],
+    "type": "object"
+  },
+  "PatchItemsIdMetadataManualResponse": {
+    "properties": {
+      "description": {
+        "properties": {
+          "automaticValue": {
+            "type": "string"
+          },
+          "manual": {
+            "type": "boolean"
+          },
+          "value": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "value",
+          "automaticValue",
+          "manual"
+        ],
+        "type": "object"
+      },
+      "kind": {
+        "type": "string"
+      },
+      "revision": {
+        "type": "string"
+      },
+      "scope": {
+        "properties": {
+          "itemId": {
+            "type": "string"
+          },
+          "libraryId": {
+            "type": "string"
+          },
+          "serverId": {
+            "type": "string"
+          },
+          "viewerFence": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "serverId",
+          "libraryId",
+          "itemId",
+          "viewerFence"
+        ],
+        "type": "object"
+      },
+      "title": {
+        "properties": {
+          "automaticValue": {
+            "type": "string"
+          },
+          "manual": {
+            "type": "boolean"
+          },
+          "value": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "value",
+          "automaticValue",
+          "manual"
+        ],
+        "type": "object"
+      },
+      "updatedAt": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "scope",
+      "revision",
+      "kind",
+      "title",
+      "description"
+    ],
+    "type": "object"
+  },
   "PostAdminBackgroundPauseRequest": {
     "properties": {
       "operationId": {
@@ -50031,6 +52946,108 @@ export const schemas = {
     },
     "required": [
       "exposed"
+    ],
+    "type": "object"
+  },
+  "PostAlbumsIdMetadataMusicbrainzPolicyRequest": {
+    "properties": {
+      "acoustidEnabled": {
+        "type": "boolean"
+      },
+      "expectedPolicyRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "expectedRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "localMode": {
+        "type": "string"
+      },
+      "musicBrainzEnabled": {
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "expectedRevision",
+      "expectedPolicyRevision",
+      "localMode",
+      "musicBrainzEnabled",
+      "acoustidEnabled"
+    ],
+    "type": "object"
+  },
+  "PostAlbumsIdMetadataMusicbrainzPolicyResponse": {
+    "properties": {
+      "entityId": {
+        "type": "string"
+      },
+      "status": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "entityId",
+      "status"
+    ],
+    "type": "object"
+  },
+  "PostAlbumsIdMetadataMusicbrainzRetryRequest": {
+    "properties": {
+      "expectedRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "expectedRevision"
+    ],
+    "type": "object"
+  },
+  "PostAlbumsIdMetadataMusicbrainzRetryResponse": {
+    "properties": {
+      "entityId": {
+        "type": "string"
+      },
+      "status": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "entityId",
+      "status"
+    ],
+    "type": "object"
+  },
+  "PostAlbumsIdMetadataMusicbrainzSearchRequest": {
+    "properties": {
+      "expectedRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "expectedRevision"
+    ],
+    "type": "object"
+  },
+  "PostAlbumsIdMetadataMusicbrainzSearchResponse": {
+    "properties": {
+      "entityId": {
+        "type": "string"
+      },
+      "status": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "entityId",
+      "status"
     ],
     "type": "object"
   },
@@ -52797,6 +55814,208 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "PostItemsIdMetadataLocalAudioPolicyRequest": {
+    "properties": {
+      "expectedRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "libraryId": {
+        "type": "string"
+      },
+      "localMode": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "libraryId",
+      "expectedRevision",
+      "localMode"
+    ],
+    "type": "object"
+  },
+  "PostItemsIdMetadataLocalAudioPolicyResponse": {
+    "properties": {
+      "entityId": {
+        "type": "string"
+      },
+      "status": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "entityId",
+      "status"
+    ],
+    "type": "object"
+  },
+  "PostItemsIdMetadataMusicbrainzPolicyRequest": {
+    "properties": {
+      "acoustidEnabled": {
+        "type": "boolean"
+      },
+      "expectedPolicyRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "expectedRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "localMode": {
+        "type": "string"
+      },
+      "musicBrainzEnabled": {
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "expectedRevision",
+      "expectedPolicyRevision",
+      "localMode",
+      "musicBrainzEnabled",
+      "acoustidEnabled"
+    ],
+    "type": "object"
+  },
+  "PostItemsIdMetadataMusicbrainzPolicyResponse": {
+    "properties": {
+      "entityId": {
+        "type": "string"
+      },
+      "status": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "entityId",
+      "status"
+    ],
+    "type": "object"
+  },
+  "PostItemsIdMetadataMusicbrainzRetryRequest": {
+    "properties": {
+      "expectedRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "expectedRevision"
+    ],
+    "type": "object"
+  },
+  "PostItemsIdMetadataMusicbrainzRetryResponse": {
+    "properties": {
+      "entityId": {
+        "type": "string"
+      },
+      "status": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "entityId",
+      "status"
+    ],
+    "type": "object"
+  },
+  "PostItemsIdMetadataMusicbrainzSearchRequest": {
+    "properties": {
+      "expectedRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "expectedRevision"
+    ],
+    "type": "object"
+  },
+  "PostItemsIdMetadataMusicbrainzSearchResponse": {
+    "properties": {
+      "entityId": {
+        "type": "string"
+      },
+      "status": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "entityId",
+      "status"
+    ],
+    "type": "object"
+  },
+  "PostItemsIdMetadataScreenRetryRequest": {
+    "properties": {
+      "expectedRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "expectedRevision"
+    ],
+    "type": "object"
+  },
+  "PostItemsIdMetadataScreenRetryResponse": {
+    "properties": {
+      "entityId": {
+        "type": "string"
+      },
+      "status": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "entityId",
+      "status"
+    ],
+    "type": "object"
+  },
+  "PostItemsIdMetadataScreenSearchRequest": {
+    "properties": {
+      "expectedRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "provider": {
+        "type": "string"
+      },
+      "query": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "expectedRevision",
+      "provider",
+      "query"
+    ],
+    "type": "object"
+  },
+  "PostItemsIdMetadataScreenSearchResponse": {
+    "properties": {
+      "entityId": {
+        "type": "string"
+      },
+      "status": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "entityId",
+      "status"
+    ],
+    "type": "object"
+  },
   "PostLibrariesIdEpisodeAssignmentsRequest": {
     "properties": {
       "airDate": {
@@ -53055,6 +56274,1480 @@ export const schemas = {
       }
     },
     "required": [
+      "status"
+    ],
+    "type": "object"
+  },
+  "PostMetadataBulkRequest": {
+    "properties": {
+      "fields": {
+        "additionalProperties": {
+          "properties": {
+            "locked": {
+              "type": "boolean"
+            },
+            "useAutomatic": {
+              "type": "boolean"
+            },
+            "value": {
+              "type": "string"
+            },
+            "values": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "required": [],
+          "type": "object"
+        },
+        "type": "object"
+      },
+      "genres": {
+        "properties": {
+          "add": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "remove": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "lists": {
+        "additionalProperties": {
+          "properties": {
+            "add": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "remove": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "required": [],
+          "type": "object"
+        },
+        "type": "object"
+      },
+      "lockEdited": {
+        "type": "boolean"
+      },
+      "operationId": {
+        "type": "string"
+      },
+      "targets": {
+        "items": {
+          "properties": {
+            "expectedRevision": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "id",
+            "expectedRevision"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      }
+    },
+    "required": [
+      "operationId",
+      "targets"
+    ],
+    "type": "object"
+  },
+  "PostMetadataBulkResponse": {
+    "properties": {
+      "failed": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "operationId": {
+        "type": "string"
+      },
+      "results": {
+        "items": {
+          "properties": {
+            "code": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            },
+            "ok": {
+              "type": "boolean"
+            },
+            "revision": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "id",
+            "ok"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "updated": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "operationId",
+      "results",
+      "updated",
+      "failed"
+    ],
+    "type": "object"
+  },
+  "PostMetadataKindIdArtRoleUploadRequest": {
+    "properties": {
+      "expectedRevision": {
+        "type": "string"
+      },
+      "file": {
+        "type": "string"
+      },
+      "subject": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "file",
+      "subject",
+      "expectedRevision"
+    ],
+    "type": "object"
+  },
+  "PostMetadataKindIdArtRoleUploadResponse": {
+    "properties": {
+      "artwork": {
+        "properties": {
+          "candidates": {
+            "items": {
+              "properties": {
+                "attribution": {
+                  "type": "string"
+                },
+                "current": {
+                  "type": "boolean"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "imageId": {
+                  "type": "string"
+                },
+                "locale": {
+                  "type": "string"
+                },
+                "observedAt": {
+                  "type": "string"
+                },
+                "previewUrl": {
+                  "type": "string"
+                },
+                "provider": {
+                  "type": "string"
+                },
+                "rank": {
+                  "type": "number"
+                },
+                "role": {
+                  "type": "string"
+                },
+                "subject": {
+                  "type": "string"
+                },
+                "votes": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "nullable": true,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "id",
+                "role",
+                "subject",
+                "provider",
+                "imageId",
+                "locale",
+                "rank",
+                "votes",
+                "attribution",
+                "observedAt",
+                "current"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "jobs": {
+            "items": {
+              "properties": {
+                "attempts": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "error": {
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "nextAttempt": {
+                  "type": "string"
+                },
+                "role": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string"
+                },
+                "subject": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "role",
+                "subject",
+                "status",
+                "error",
+                "attempts",
+                "nextAttempt"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "candidates",
+          "jobs"
+        ],
+        "type": "object"
+      },
+      "artworkRoles": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "candidates": {
+        "items": {
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "observedAt": {
+              "type": "string"
+            },
+            "orders": {
+              "items": {
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "name"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "previewUrl": {
+              "type": "string"
+            },
+            "provider": {
+              "type": "string"
+            },
+            "subtitle": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "year": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id",
+            "provider",
+            "title",
+            "subtitle",
+            "observedAt"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "cascades": {
+        "items": {
+          "properties": {
+            "completed": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "failed": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "id": {
+              "type": "string"
+            },
+            "intent": {
+              "type": "string"
+            },
+            "pending": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "processed": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "skipped": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "status": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "intent",
+            "status",
+            "processed",
+            "failed",
+            "completed",
+            "skipped",
+            "pending"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "history": {
+        "items": {
+          "properties": {
+            "id": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "observedAt": {
+              "type": "string"
+            },
+            "trigger": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "trigger",
+            "observedAt"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "libraryId": {
+        "type": "string"
+      },
+      "revision": {
+        "type": "string"
+      },
+      "schema": {
+        "items": {
+          "properties": {
+            "allowed": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "bulk": {
+              "type": "boolean"
+            },
+            "field": {
+              "type": "string"
+            },
+            "group": {
+              "type": "string"
+            },
+            "label": {
+              "type": "string"
+            },
+            "max": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "maxLength": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "min": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "type": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "field",
+            "label",
+            "group",
+            "type",
+            "bulk"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "serverId": {
+        "type": "string"
+      },
+      "snapshot": {
+        "properties": {
+          "artwork": {
+            "items": {
+              "properties": {
+                "attribution": {
+                  "type": "string"
+                },
+                "candidateId": {
+                  "type": "string"
+                },
+                "digest": {
+                  "type": "string"
+                },
+                "locked": {
+                  "type": "boolean"
+                },
+                "revision": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "role": {
+                  "type": "string"
+                },
+                "subject": {
+                  "type": "string"
+                },
+                "thumbnailDigest": {
+                  "type": "string"
+                },
+                "url": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "role",
+                "subject",
+                "candidateId",
+                "digest",
+                "thumbnailDigest",
+                "locked",
+                "revision",
+                "attribution",
+                "url"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "fields": {
+            "additionalProperties": {
+              "properties": {
+                "automaticValue": {
+                  "type": "string"
+                },
+                "locked": {
+                  "type": "boolean"
+                },
+                "observedAt": {
+                  "type": "string"
+                },
+                "source": {
+                  "type": "string"
+                },
+                "value": {
+                  "type": "string"
+                },
+                "values": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              },
+              "required": [
+                "value",
+                "automaticValue",
+                "locked",
+                "source"
+              ],
+              "type": "object"
+            },
+            "type": "object"
+          },
+          "identity": {
+            "properties": {
+              "engine": {
+                "type": "string"
+              },
+              "id": {
+                "type": "string"
+              },
+              "locked": {
+                "type": "boolean"
+              },
+              "order": {
+                "type": "string"
+              },
+              "provider": {
+                "type": "string"
+              },
+              "revision": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "status": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "provider",
+              "id",
+              "revision",
+              "status",
+              "locked"
+            ],
+            "type": "object"
+          },
+          "relationshipLocks": {
+            "additionalProperties": {
+              "type": "boolean"
+            },
+            "type": "object"
+          },
+          "relationships": {
+            "items": {
+              "properties": {
+                "department": {
+                  "type": "string"
+                },
+                "kind": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                },
+                "locked": {
+                  "type": "boolean"
+                },
+                "observedAt": {
+                  "type": "string"
+                },
+                "ordinal": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "provider": {
+                  "type": "string"
+                },
+                "recordId": {
+                  "type": "string"
+                },
+                "role": {
+                  "type": "string"
+                },
+                "source": {
+                  "type": "string"
+                },
+                "targetId": {
+                  "type": "string"
+                },
+                "targetKind": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "targetKind",
+                "targetId",
+                "label",
+                "ordinal",
+                "source",
+                "locked"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "relationshipLocks",
+          "fields",
+          "relationships",
+          "artwork"
+        ],
+        "type": "object"
+      },
+      "target": {
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "id"
+        ],
+        "type": "object"
+      },
+      "viewerFence": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "target",
+      "libraryId",
+      "serverId",
+      "viewerFence",
+      "revision",
+      "snapshot",
+      "candidates",
+      "history",
+      "artwork",
+      "cascades",
+      "schema",
+      "artworkRoles"
+    ],
+    "type": "object"
+  },
+  "PostMetadataKindIdRequest": {
+    "properties": {
+      "action": {
+        "type": "string"
+      },
+      "candidateId": {
+        "type": "string"
+      },
+      "confirm": {
+        "type": "boolean"
+      },
+      "expectedRevision": {
+        "type": "string"
+      },
+      "fields": {
+        "additionalProperties": {
+          "properties": {
+            "locked": {
+              "type": "boolean"
+            },
+            "useAutomatic": {
+              "type": "boolean"
+            },
+            "value": {
+              "type": "string"
+            },
+            "values": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "required": [],
+          "type": "object"
+        },
+        "type": "object"
+      },
+      "historyId": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "intent": {
+        "type": "string"
+      },
+      "locked": {
+        "type": "boolean"
+      },
+      "operationId": {
+        "type": "string"
+      },
+      "order": {
+        "type": "string"
+      },
+      "provider": {
+        "type": "string"
+      },
+      "query": {
+        "type": "string"
+      },
+      "relationships": {
+        "items": {
+          "properties": {
+            "department": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string"
+            },
+            "label": {
+              "type": "string"
+            },
+            "locked": {
+              "type": "boolean"
+            },
+            "observedAt": {
+              "type": "string"
+            },
+            "ordinal": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "provider": {
+              "type": "string"
+            },
+            "recordId": {
+              "type": "string"
+            },
+            "role": {
+              "type": "string"
+            },
+            "source": {
+              "type": "string"
+            },
+            "targetId": {
+              "type": "string"
+            },
+            "targetKind": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "targetKind",
+            "targetId",
+            "label",
+            "ordinal",
+            "source",
+            "locked"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "role": {
+        "type": "string"
+      },
+      "subject": {
+        "type": "string"
+      },
+      "year": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "expectedRevision",
+      "action"
+    ],
+    "type": "object"
+  },
+  "PostMetadataKindIdResponse": {
+    "properties": {
+      "artwork": {
+        "properties": {
+          "candidates": {
+            "items": {
+              "properties": {
+                "attribution": {
+                  "type": "string"
+                },
+                "current": {
+                  "type": "boolean"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "imageId": {
+                  "type": "string"
+                },
+                "locale": {
+                  "type": "string"
+                },
+                "observedAt": {
+                  "type": "string"
+                },
+                "previewUrl": {
+                  "type": "string"
+                },
+                "provider": {
+                  "type": "string"
+                },
+                "rank": {
+                  "type": "number"
+                },
+                "role": {
+                  "type": "string"
+                },
+                "subject": {
+                  "type": "string"
+                },
+                "votes": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "nullable": true,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "id",
+                "role",
+                "subject",
+                "provider",
+                "imageId",
+                "locale",
+                "rank",
+                "votes",
+                "attribution",
+                "observedAt",
+                "current"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "jobs": {
+            "items": {
+              "properties": {
+                "attempts": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "error": {
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "nextAttempt": {
+                  "type": "string"
+                },
+                "role": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string"
+                },
+                "subject": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "role",
+                "subject",
+                "status",
+                "error",
+                "attempts",
+                "nextAttempt"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "candidates",
+          "jobs"
+        ],
+        "type": "object"
+      },
+      "artworkRoles": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "candidates": {
+        "items": {
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "observedAt": {
+              "type": "string"
+            },
+            "orders": {
+              "items": {
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "name"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "previewUrl": {
+              "type": "string"
+            },
+            "provider": {
+              "type": "string"
+            },
+            "subtitle": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "year": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id",
+            "provider",
+            "title",
+            "subtitle",
+            "observedAt"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "cascades": {
+        "items": {
+          "properties": {
+            "completed": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "failed": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "id": {
+              "type": "string"
+            },
+            "intent": {
+              "type": "string"
+            },
+            "pending": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "processed": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "skipped": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "status": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "intent",
+            "status",
+            "processed",
+            "failed",
+            "completed",
+            "skipped",
+            "pending"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "history": {
+        "items": {
+          "properties": {
+            "id": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "observedAt": {
+              "type": "string"
+            },
+            "trigger": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "trigger",
+            "observedAt"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "libraryId": {
+        "type": "string"
+      },
+      "revision": {
+        "type": "string"
+      },
+      "schema": {
+        "items": {
+          "properties": {
+            "allowed": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "bulk": {
+              "type": "boolean"
+            },
+            "field": {
+              "type": "string"
+            },
+            "group": {
+              "type": "string"
+            },
+            "label": {
+              "type": "string"
+            },
+            "max": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "maxLength": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "min": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "type": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "field",
+            "label",
+            "group",
+            "type",
+            "bulk"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "serverId": {
+        "type": "string"
+      },
+      "snapshot": {
+        "properties": {
+          "artwork": {
+            "items": {
+              "properties": {
+                "attribution": {
+                  "type": "string"
+                },
+                "candidateId": {
+                  "type": "string"
+                },
+                "digest": {
+                  "type": "string"
+                },
+                "locked": {
+                  "type": "boolean"
+                },
+                "revision": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "role": {
+                  "type": "string"
+                },
+                "subject": {
+                  "type": "string"
+                },
+                "thumbnailDigest": {
+                  "type": "string"
+                },
+                "url": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "role",
+                "subject",
+                "candidateId",
+                "digest",
+                "thumbnailDigest",
+                "locked",
+                "revision",
+                "attribution",
+                "url"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "fields": {
+            "additionalProperties": {
+              "properties": {
+                "automaticValue": {
+                  "type": "string"
+                },
+                "locked": {
+                  "type": "boolean"
+                },
+                "observedAt": {
+                  "type": "string"
+                },
+                "source": {
+                  "type": "string"
+                },
+                "value": {
+                  "type": "string"
+                },
+                "values": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              },
+              "required": [
+                "value",
+                "automaticValue",
+                "locked",
+                "source"
+              ],
+              "type": "object"
+            },
+            "type": "object"
+          },
+          "identity": {
+            "properties": {
+              "engine": {
+                "type": "string"
+              },
+              "id": {
+                "type": "string"
+              },
+              "locked": {
+                "type": "boolean"
+              },
+              "order": {
+                "type": "string"
+              },
+              "provider": {
+                "type": "string"
+              },
+              "revision": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "status": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "provider",
+              "id",
+              "revision",
+              "status",
+              "locked"
+            ],
+            "type": "object"
+          },
+          "relationshipLocks": {
+            "additionalProperties": {
+              "type": "boolean"
+            },
+            "type": "object"
+          },
+          "relationships": {
+            "items": {
+              "properties": {
+                "department": {
+                  "type": "string"
+                },
+                "kind": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                },
+                "locked": {
+                  "type": "boolean"
+                },
+                "observedAt": {
+                  "type": "string"
+                },
+                "ordinal": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "provider": {
+                  "type": "string"
+                },
+                "recordId": {
+                  "type": "string"
+                },
+                "role": {
+                  "type": "string"
+                },
+                "source": {
+                  "type": "string"
+                },
+                "targetId": {
+                  "type": "string"
+                },
+                "targetKind": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "targetKind",
+                "targetId",
+                "label",
+                "ordinal",
+                "source",
+                "locked"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "relationshipLocks",
+          "fields",
+          "relationships",
+          "artwork"
+        ],
+        "type": "object"
+      },
+      "target": {
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "id"
+        ],
+        "type": "object"
+      },
+      "viewerFence": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "target",
+      "libraryId",
+      "serverId",
+      "viewerFence",
+      "revision",
+      "snapshot",
+      "candidates",
+      "history",
+      "artwork",
+      "cascades",
+      "schema",
+      "artworkRoles"
+    ],
+    "type": "object"
+  },
+  "PostShowsIdMetadataScreenRetryRequest": {
+    "properties": {
+      "expectedRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "expectedRevision"
+    ],
+    "type": "object"
+  },
+  "PostShowsIdMetadataScreenRetryResponse": {
+    "properties": {
+      "entityId": {
+        "type": "string"
+      },
+      "status": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "entityId",
+      "status"
+    ],
+    "type": "object"
+  },
+  "PostShowsIdMetadataScreenSearchRequest": {
+    "properties": {
+      "expectedRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "provider": {
+        "type": "string"
+      },
+      "query": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "expectedRevision",
+      "provider",
+      "query"
+    ],
+    "type": "object"
+  },
+  "PostShowsIdMetadataScreenSearchResponse": {
+    "properties": {
+      "entityId": {
+        "type": "string"
+      },
+      "status": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "entityId",
+      "status"
+    ],
+    "type": "object"
+  },
+  "PostShowsIdMetadataTvdbRetryRequest": {
+    "properties": {
+      "expectedRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "expectedRevision"
+    ],
+    "type": "object"
+  },
+  "PostShowsIdMetadataTvdbRetryResponse": {
+    "properties": {
+      "showId": {
+        "type": "string"
+      },
+      "status": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "showId",
       "status"
     ],
     "type": "object"
@@ -56237,6 +60930,38 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "PutAlbumsIdMetadataMusicbrainzRequest": {
+    "properties": {
+      "expectedRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "providerId": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "expectedRevision",
+      "providerId"
+    ],
+    "type": "object"
+  },
+  "PutAlbumsIdMetadataMusicbrainzResponse": {
+    "properties": {
+      "entityId": {
+        "type": "string"
+      },
+      "status": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "entityId",
+      "status"
+    ],
+    "type": "object"
+  },
   "PutDeviceCapabilitiesRequest": {
     "properties": {
       "audioDecode": {
@@ -57321,6 +62046,74 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "PutItemsIdMetadataMusicbrainzRequest": {
+    "properties": {
+      "expectedRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "providerId": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "expectedRevision",
+      "providerId"
+    ],
+    "type": "object"
+  },
+  "PutItemsIdMetadataMusicbrainzResponse": {
+    "properties": {
+      "entityId": {
+        "type": "string"
+      },
+      "status": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "entityId",
+      "status"
+    ],
+    "type": "object"
+  },
+  "PutItemsIdMetadataScreenRequest": {
+    "properties": {
+      "candidateKey": {
+        "type": "string"
+      },
+      "expectedRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "order": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "expectedRevision",
+      "candidateKey",
+      "order"
+    ],
+    "type": "object"
+  },
+  "PutItemsIdMetadataScreenResponse": {
+    "properties": {
+      "entityId": {
+        "type": "string"
+      },
+      "status": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "entityId",
+      "status"
+    ],
+    "type": "object"
+  },
   "PutItemsIdPersonalStateRequest": {
     "properties": {
       "continueDismissed": {
@@ -57858,6 +62651,78 @@ export const schemas = {
       "updated",
       "failed",
       "receiptLifetimeSeconds"
+    ],
+    "type": "object"
+  },
+  "PutLibrariesIdMetadataAgentRequest": {
+    "properties": {
+      "candidateKey": {
+        "type": "string"
+      },
+      "expectedRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "order": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "expectedRevision",
+      "candidateKey",
+      "order"
+    ],
+    "type": "object"
+  },
+  "PutLibrariesIdMetadataAgentResponse": {
+    "properties": {
+      "entityId": {
+        "type": "string"
+      },
+      "status": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "entityId",
+      "status"
+    ],
+    "type": "object"
+  },
+  "PutLibrariesIdMetadataScreenRequest": {
+    "properties": {
+      "candidateKey": {
+        "type": "string"
+      },
+      "expectedRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "order": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "expectedRevision",
+      "candidateKey",
+      "order"
+    ],
+    "type": "object"
+  },
+  "PutLibrariesIdMetadataScreenResponse": {
+    "properties": {
+      "entityId": {
+        "type": "string"
+      },
+      "status": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "entityId",
+      "status"
     ],
     "type": "object"
   },
@@ -58756,6 +63621,116 @@ export const schemas = {
       "viewerFence",
       "revision",
       "order"
+    ],
+    "type": "object"
+  },
+  "PutShowsIdMetadataScreenRequest": {
+    "properties": {
+      "candidateKey": {
+        "type": "string"
+      },
+      "expectedRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "order": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "expectedRevision",
+      "candidateKey",
+      "order"
+    ],
+    "type": "object"
+  },
+  "PutShowsIdMetadataScreenResponse": {
+    "properties": {
+      "entityId": {
+        "type": "string"
+      },
+      "status": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "entityId",
+      "status"
+    ],
+    "type": "object"
+  },
+  "PutShowsIdMetadataScreenSeasonRequest": {
+    "properties": {
+      "candidateKey": {
+        "type": "string"
+      },
+      "expectedRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "order": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "expectedRevision",
+      "candidateKey",
+      "order"
+    ],
+    "type": "object"
+  },
+  "PutShowsIdMetadataScreenSeasonResponse": {
+    "properties": {
+      "entityId": {
+        "type": "string"
+      },
+      "status": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "entityId",
+      "status"
+    ],
+    "type": "object"
+  },
+  "PutShowsIdMetadataTvdbRequest": {
+    "properties": {
+      "expectedRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "order": {
+        "type": "string"
+      },
+      "providerId": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "expectedRevision",
+      "providerId",
+      "order"
+    ],
+    "type": "object"
+  },
+  "PutShowsIdMetadataTvdbResponse": {
+    "properties": {
+      "showId": {
+        "type": "string"
+      },
+      "status": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "showId",
+      "status"
     ],
     "type": "object"
   },

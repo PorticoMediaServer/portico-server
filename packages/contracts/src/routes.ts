@@ -660,6 +660,30 @@ export const routes = [
     "admission": "security-fence"
   },
   {
+    "id": "delete_metadata_kind_id_art_role_upload_candidateId",
+    "method": "DELETE",
+    "path": "/v1/metadata/{kind}/{id}/art/{role}/upload/{candidateId}",
+    "summary": "Delete candidateId",
+    "access": "device",
+    "requires": "library",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "query": [
+      "expectedRevision"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
     "id": "delete_queue",
     "method": "DELETE",
     "path": "/v1/queues/{id}",
@@ -1368,6 +1392,27 @@ export const routes = [
       "internal"
     ],
     "status": 200
+  },
+  {
+    "id": "get_albums_id_metadata_musicbrainz",
+    "method": "GET",
+    "path": "/v1/albums/{id}/metadata/musicbrainz",
+    "summary": "Get musicbrainz",
+    "access": "device",
+    "requires": "library",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
   },
   {
     "id": "get_albums_id_songs",
@@ -2542,6 +2587,48 @@ export const routes = [
     "admission": "browsing"
   },
   {
+    "id": "get_items_id_metadata_manual",
+    "method": "GET",
+    "path": "/v1/items/{id}/metadata/manual",
+    "summary": "Get manual",
+    "access": "device",
+    "requires": "library",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
+  },
+  {
+    "id": "get_items_id_metadata_musicbrainz",
+    "method": "GET",
+    "path": "/v1/items/{id}/metadata/musicbrainz",
+    "summary": "Get musicbrainz",
+    "access": "device",
+    "requires": "library",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
+  },
+  {
     "id": "get_items_id_recommendations",
     "method": "GET",
     "path": "/v1/items/{id}/recommendations",
@@ -2895,6 +2982,48 @@ export const routes = [
     "status": 200
   },
   {
+    "id": "get_libraries_id_metadata_agent",
+    "method": "GET",
+    "path": "/v1/libraries/{id}/metadata/agent",
+    "summary": "Get agent",
+    "access": "device",
+    "requires": "library",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 202,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "get_libraries_id_metadata_screen",
+    "method": "GET",
+    "path": "/v1/libraries/{id}/metadata/screen",
+    "summary": "Get screen",
+    "access": "device",
+    "requires": "library",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 202,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
     "id": "get_libraries_id_network_roots",
     "method": "GET",
     "path": "/v1/libraries/{id}/network-roots",
@@ -3041,6 +3170,27 @@ export const routes = [
       "internal"
     ],
     "status": 200
+  },
+  {
+    "id": "get_library_kinds_kind_metadata_agents",
+    "method": "GET",
+    "path": "/v1/library-kinds/{kind}/metadata-agents",
+    "summary": "Get metadata agents",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 202,
+    "http": true,
+    "admission": "browsing"
   },
   {
     "id": "get_library_settings",
@@ -3232,6 +3382,70 @@ export const routes = [
       "internal"
     ],
     "status": 200
+  },
+  {
+    "id": "get_metadata_kind_id",
+    "method": "GET",
+    "path": "/v1/metadata/{kind}/{id}",
+    "summary": "Get id",
+    "access": "device",
+    "requires": "library",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
+  },
+  {
+    "id": "get_metadata_kind_id_art_role",
+    "method": "GET",
+    "path": "/v1/metadata/{kind}/{id}/art/{role}",
+    "summary": "Get role",
+    "access": "device",
+    "requires": "read",
+    "lane": "media",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "responseContentType": "application/octet-stream",
+    "http": true,
+    "admission": "media"
+  },
+  {
+    "id": "get_metadata_kind_id_preview",
+    "method": "GET",
+    "path": "/v1/metadata/{kind}/{id}/preview",
+    "summary": "Get preview",
+    "access": "device",
+    "requires": "library",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
   },
   {
     "id": "get_metadata_settings",
@@ -3799,6 +4013,27 @@ export const routes = [
       "cursor",
       "limit"
     ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "get_shows_id_metadata_tvdb",
+    "method": "GET",
+    "path": "/v1/shows/{id}/metadata/tvdb",
+    "summary": "Get tvdb",
+    "access": "owner",
+    "requires": "library",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 0,
     "errors": [
       "invalid_request",
       "unauthorized",
@@ -5279,6 +5514,27 @@ export const routes = [
     "admission": "auth"
   },
   {
+    "id": "patch_items_id_metadata_manual",
+    "method": "PATCH",
+    "path": "/v1/items/{id}/metadata/manual",
+    "summary": "Patch manual",
+    "access": "device",
+    "requires": "library",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 262144,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
+  },
+  {
     "id": "post_admin_background_pause",
     "method": "POST",
     "path": "/v1/admin/maintenance/background-pause",
@@ -5577,6 +5833,69 @@ export const routes = [
     ],
     "status": 200,
     "optionalBody": true
+  },
+  {
+    "id": "post_albums_id_metadata_musicbrainz_policy",
+    "method": "POST",
+    "path": "/v1/albums/{id}/metadata/musicbrainz/policy",
+    "summary": "Post policy",
+    "access": "device",
+    "requires": "library",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 202,
+    "http": true,
+    "admission": "default"
+  },
+  {
+    "id": "post_albums_id_metadata_musicbrainz_retry",
+    "method": "POST",
+    "path": "/v1/albums/{id}/metadata/musicbrainz/retry",
+    "summary": "Post retry",
+    "access": "device",
+    "requires": "library",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 202,
+    "http": true,
+    "admission": "default"
+  },
+  {
+    "id": "post_albums_id_metadata_musicbrainz_search",
+    "method": "POST",
+    "path": "/v1/albums/{id}/metadata/musicbrainz/search",
+    "summary": "Post search",
+    "access": "device",
+    "requires": "library",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 202,
+    "http": true,
+    "admission": "default"
   },
   {
     "id": "post_auth_refresh",
@@ -6146,6 +6465,132 @@ export const routes = [
     "admission": "browsing"
   },
   {
+    "id": "post_items_id_metadata_local_audio_policy",
+    "method": "POST",
+    "path": "/v1/items/{id}/metadata/local-audio/policy",
+    "summary": "Post policy",
+    "access": "owner",
+    "requires": "library",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "post_items_id_metadata_musicbrainz_policy",
+    "method": "POST",
+    "path": "/v1/items/{id}/metadata/musicbrainz/policy",
+    "summary": "Post policy",
+    "access": "device",
+    "requires": "library",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 202,
+    "http": true,
+    "admission": "default"
+  },
+  {
+    "id": "post_items_id_metadata_musicbrainz_retry",
+    "method": "POST",
+    "path": "/v1/items/{id}/metadata/musicbrainz/retry",
+    "summary": "Post retry",
+    "access": "device",
+    "requires": "library",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 202,
+    "http": true,
+    "admission": "default"
+  },
+  {
+    "id": "post_items_id_metadata_musicbrainz_search",
+    "method": "POST",
+    "path": "/v1/items/{id}/metadata/musicbrainz/search",
+    "summary": "Post search",
+    "access": "device",
+    "requires": "library",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 202,
+    "http": true,
+    "admission": "default"
+  },
+  {
+    "id": "post_items_id_metadata_screen_retry",
+    "method": "POST",
+    "path": "/v1/items/{id}/metadata/screen/retry",
+    "summary": "Post retry",
+    "access": "device",
+    "requires": "library",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 202,
+    "http": true,
+    "admission": "default"
+  },
+  {
+    "id": "post_items_id_metadata_screen_search",
+    "method": "POST",
+    "path": "/v1/items/{id}/metadata/screen/search",
+    "summary": "Post search",
+    "access": "device",
+    "requires": "library",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 202,
+    "http": true,
+    "admission": "default"
+  },
+  {
     "id": "post_libraries",
     "method": "POST",
     "path": "/v1/libraries",
@@ -6252,6 +6697,132 @@ export const routes = [
       "internal"
     ],
     "status": 202
+  },
+  {
+    "id": "post_metadata_bulk",
+    "method": "POST",
+    "path": "/v1/metadata/bulk",
+    "summary": "Post bulk",
+    "access": "device",
+    "requires": "library",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "post_metadata_kind_id",
+    "method": "POST",
+    "path": "/v1/metadata/{kind}/{id}",
+    "summary": "Post id",
+    "access": "device",
+    "requires": "library",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
+  },
+  {
+    "id": "post_metadata_kind_id_art_role_upload",
+    "method": "POST",
+    "path": "/v1/metadata/{kind}/{id}/art/{role}/upload",
+    "summary": "Post upload",
+    "access": "device",
+    "requires": "library",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 11534336,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "post_shows_id_metadata_screen_retry",
+    "method": "POST",
+    "path": "/v1/shows/{id}/metadata/screen/retry",
+    "summary": "Post retry",
+    "access": "device",
+    "requires": "library",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 202,
+    "http": true,
+    "admission": "default"
+  },
+  {
+    "id": "post_shows_id_metadata_screen_search",
+    "method": "POST",
+    "path": "/v1/shows/{id}/metadata/screen/search",
+    "summary": "Post search",
+    "access": "device",
+    "requires": "library",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 202,
+    "http": true,
+    "admission": "default"
+  },
+  {
+    "id": "post_shows_id_metadata_tvdb_retry",
+    "method": "POST",
+    "path": "/v1/shows/{id}/metadata/tvdb/retry",
+    "summary": "Post retry",
+    "access": "owner",
+    "requires": "library",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 202,
+    "http": true,
+    "admission": "browsing"
   },
   {
     "id": "post_storage_mounts",
@@ -6794,6 +7365,27 @@ export const routes = [
     "status": 200
   },
   {
+    "id": "put_albums_id_metadata_musicbrainz",
+    "method": "PUT",
+    "path": "/v1/albums/{id}/metadata/musicbrainz",
+    "summary": "Put musicbrainz",
+    "access": "device",
+    "requires": "library",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 202,
+    "http": true,
+    "admission": "default"
+  },
+  {
     "id": "put_device_capabilities",
     "method": "PUT",
     "path": "/v1/me/devices/current/capabilities",
@@ -6921,6 +7513,48 @@ export const routes = [
     "admission": "browsing"
   },
   {
+    "id": "put_items_id_metadata_musicbrainz",
+    "method": "PUT",
+    "path": "/v1/items/{id}/metadata/musicbrainz",
+    "summary": "Put musicbrainz",
+    "access": "device",
+    "requires": "library",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 202,
+    "http": true,
+    "admission": "default"
+  },
+  {
+    "id": "put_items_id_metadata_screen",
+    "method": "PUT",
+    "path": "/v1/items/{id}/metadata/screen",
+    "summary": "Put screen",
+    "access": "device",
+    "requires": "library",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 202,
+    "http": true,
+    "admission": "default"
+  },
+  {
     "id": "put_items_id_personal_state",
     "method": "PUT",
     "path": "/v1/items/{id}/personal-state",
@@ -6957,6 +7591,48 @@ export const routes = [
       "internal"
     ],
     "status": 200
+  },
+  {
+    "id": "put_libraries_id_metadata_agent",
+    "method": "PUT",
+    "path": "/v1/libraries/{id}/metadata/agent",
+    "summary": "Put agent",
+    "access": "device",
+    "requires": "library",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 202,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "put_libraries_id_metadata_screen",
+    "method": "PUT",
+    "path": "/v1/libraries/{id}/metadata/screen",
+    "summary": "Put screen",
+    "access": "device",
+    "requires": "library",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 202,
+    "http": true,
+    "admission": "browsing"
   },
   {
     "id": "put_libraries_id_strm_analysis_policy",
@@ -7068,6 +7744,69 @@ export const routes = [
     "summary": "Put order",
     "access": "device",
     "requires": "playback",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "put_shows_id_metadata_screen",
+    "method": "PUT",
+    "path": "/v1/shows/{id}/metadata/screen",
+    "summary": "Put screen",
+    "access": "device",
+    "requires": "library",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 202,
+    "http": true,
+    "admission": "default"
+  },
+  {
+    "id": "put_shows_id_metadata_screen_season",
+    "method": "PUT",
+    "path": "/v1/shows/{id}/metadata/screen/season",
+    "summary": "Put season",
+    "access": "device",
+    "requires": "library",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 202,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "put_shows_id_metadata_tvdb",
+    "method": "PUT",
+    "path": "/v1/shows/{id}/metadata/tvdb",
+    "summary": "Put tvdb",
+    "access": "owner",
+    "requires": "library",
     "lane": "browsing",
     "cost": "constant",
     "bodyLimit": 65536,
