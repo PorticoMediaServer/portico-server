@@ -264,7 +264,10 @@ func TestArtworkSlowPublicationDoesNotBlockReadsOrPreviews(t *testing.T) {
 		t.Fatal(err)
 	}
 	integrationExec(t, db, `INSERT INTO artwork_previews SELECT c.id,s.thumbnail_digest,c.source_fence,c.observed_at FROM artwork_candidates c JOIN artwork_selections s ON s.candidate_id=c.id WHERE c.id=?`, candidate)
-	integrationExec(t, db, `UPDATE artwork_jobs SET status='pending',next_attempt='' WHERE entity_id=? AND role='poster'`, resolveArtworkTestEntity(t, db, target))
+	// The job comes round again for an image the server does not hold yet (an
+	// image it already holds from the same address is reused without asking the
+	// provider, and there would be no fetch to wait behind).
+	integrationExec(t, db, `UPDATE artwork_jobs SET status='pending',next_attempt='',origin=origin||'.again' WHERE entity_id=? AND role='poster'`, resolveArtworkTestEntity(t, db, target))
 	fetching, resume := make(chan struct{}), make(chan struct{})
 	var release sync.Once
 	defer release.Do(func() { close(resume) })

@@ -236,7 +236,13 @@ func TestMPEGTSSeekRestartsOnIndexedPacket(t *testing.T) {
 	source := filepath.Join(dir, "source.ts")
 	run := func(args []string) {
 		t.Helper()
-		cmd, err := mediaexec.CommandContext(ctx, mediaexec.Job{Executable: binary, Args: args, ReadPaths: []string{source}, WriteDirs: []string{dir}})
+		// The source is given to the tool to read only once it exists: the
+		// first run is the one that writes it, into the writable folder.
+		job := mediaexec.Job{Executable: binary, Args: args, WriteDirs: []string{dir}}
+		if _, err := os.Stat(source); err == nil {
+			job.ReadPaths = []string{source}
+		}
+		cmd, err := mediaexec.CommandContext(ctx, job)
 		if err != nil {
 			t.Fatal(err)
 		}

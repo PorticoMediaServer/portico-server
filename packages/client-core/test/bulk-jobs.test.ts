@@ -121,8 +121,10 @@ test('requests validate selectors, args and fences', () => {
     assert.deepEqual(placed.args.placement, placement);
   }
   assert.throws(() => jobRequestBody({operationId: 'op-4', command: 'playlist-add', selector: itemsSelector(['a']), args: {playlistId: 'p', expectedRevision: 0, placement: 'end'}}));
-  assert.throws(() => jobRequestBody({...base, args: {rating: 2.3}}));
-  jobRequestBody({...base, args: {rating: 2.5}});
+  // Ratings are whole numbers from 0 to 10 (two points to a star).
+  assert.throws(() => jobRequestBody({...base, args: {rating: 2.5}}));
+  assert.throws(() => jobRequestBody({...base, args: {rating: 11}}));
+  jobRequestBody({...base, args: {rating: 5}});
 });
 
 test('explicit selections chunk into one 200-item request each', () => {

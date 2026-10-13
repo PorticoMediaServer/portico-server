@@ -2,15 +2,18 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {InboxService,FeedbackService} from '../src/inbox.ts';
 
+// Instants travel as RFC 3339 text; the parsers hand the app epoch milliseconds.
+const at=(ms:number)=>new Date(ms).toISOString();
+
 const notification=(over:Record<string,unknown>={})=>({
  id:'n-1',audience:'profile',severity:'info',source:'downloads',category:'download.finished',
  title:'Download ready',body:'A title finished downloading.',arguments:{},actions:[],
- dedupeKey:'download:dl-1',revision:7,createdAt:1,updatedAt:1,expiresAt:99,
+ dedupeKey:'download:dl-1',revision:7,createdAt:at(1),updatedAt:at(1),expiresAt:at(99),
  readAt:null,archivedAt:null,read:false,archived:false,cursor:'3',...over});
 const counts=(unread:number)=>({unread,read:0,archived:0,total:unread});
 const inbox=(items:unknown[],over:Record<string,unknown>={})=>({scope:{serverId:'s',viewerFence:'f'},data:{
- revision:7,audience:'profile',audiences:['profile','account-admin'],state:'unread',counts:counts(items.length),items,nextCursor:'',observedAt:2,retentionDays:180,...over}});
-const summary=(unread:number)=>({data:{revision:7,audience:'profile',counts:counts(unread),observedAt:2}});
+ revision:7,audience:'profile',audiences:['profile','account-admin'],state:'unread',counts:counts(items.length),items,nextCursor:'',observedAt:at(2),retentionDays:180,...over}});
+const summary=(unread:number)=>({data:{revision:7,audience:'profile',counts:counts(unread),observedAt:at(2)}});
 
 function server(){
  const calls:{path:string;method:string;body?:any}[]=[];let fail:Error|undefined;let items=[notification(),notification({id:'n-2',cursor:'4'})];
@@ -58,7 +61,7 @@ test('a pushed change merges in; an old revision is ignored; a resync reloads',a
  const s=server(),service=new InboxService(s.api,()=>'op');await service.load();
  service.accept({revision:6,since:5,resync:false,items:[],counts:counts(9)});
  assert.equal(service.getSnapshot().counts.unread,2,'stale');
- service.accept({revision:9,since:7,resync:false,items:[notification({id:'n-3',cursor:'5',revision:9}) as any],counts:counts(3)});
+ service.accept({revision:9,since:7,resync:false,items:[{...notification({id:'n-3',cursor:'5',revision:9}),createdAt:1,updatedAt:1,expiresAt:99} as any],counts:counts(3)});
  assert.equal(service.getSnapshot().items.length,3);assert.equal(service.getSnapshot().revision,9);
  s.set([notification({id:'n-9'})]);service.accept({revision:10,since:9,resync:true,items:[],counts:counts(1)});
  await new Promise(r=>setTimeout(r,5));assert.deepEqual(service.getSnapshot().items.map(n=>n.id),['n-9']);
@@ -70,7 +73,7 @@ const capabilities={revision:'e1.0',canSubmit:true,kinds:[{id:'playback',label:'
  maxMessageLength:2000,minMessageLength:8,diagnosticsSupported:true,diagnosticsOptional:true,duplicateWindowHours:24,retentionDays:180,
  statuses:['open','in-progress','resolved','closed'],diagnosticsDecisions:['attached','unavailable','declined','not-requested'],
  perProfileHourlyLimit:10,reporterName:'Sam',reporterAuthority:'local'};
-const report={id:'r-1',cursor:'1',revision:1,status:'open',kind:'playback',category:'buffering',message:'It keeps pausing every minute.',createdAt:1,updatedAt:1,expiresAt:9,
+const report={id:'r-1',cursor:'1',revision:1,status:'open',kind:'playback',category:'buffering',message:'It keeps pausing every minute.',createdAt:at(1),updatedAt:at(1),expiresAt:at(9),
  reporter:{name:'Sam',authority:'local',role:'member',self:true},diagnostics:{decision:'attached',reference:'bundle-1'},duplicates:0,thread:[]};
 
 test('feedback is prefilled from the player only where the category wants it, and a failed send loses nothing',async()=>{

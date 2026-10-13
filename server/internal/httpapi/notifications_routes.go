@@ -109,9 +109,16 @@ func (d Dependencies) notificationRoutes(mux *http.ServeMux) {
 			return nil, e
 		}
 		q := r.URL.Query()
-		return d.Console.Notices(r.Context(), p, a, operations.NoticeQuery{
+		inbox, e := d.Console.Notices(r.Context(), p, a, operations.NoticeQuery{
 			Audience: q.Get("audience"), State: q.Get("state"), Cursor: q.Get("cursor"), Limit: limit,
 		})
+		if e != nil {
+			return nil, e
+		}
+		if e = d.visibleNoticeActions(r, p, inbox.Items); e != nil {
+			return nil, e
+		}
+		return inbox, nil
 	})
 	register("GET /v1/notifications/unread-count", false, []string{"audience"}, func(r *http.Request, p identity.Principal, a operations.Authorize) (any, error) {
 		return d.Console.NoticeSummary(r.Context(), p, a, r.URL.Query().Get("audience"))

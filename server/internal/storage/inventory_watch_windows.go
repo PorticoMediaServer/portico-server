@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"golang.org/x/sys/windows"
 	"path/filepath"
+	"portico.local/server/internal/supervise"
 	"sync"
 )
 
@@ -29,7 +30,7 @@ func newInventoryWatcher(r WatchRequest) (inventoryWatcher, error) {
 			continue
 		}
 		w.handles = append(w.handles, h)
-		go w.read(h, root)
+		supervise.Go("storage.inventory-watch", func() { w.read(h, root) })
 	}
 	if len(w.handles) == 0 {
 		return nil, ErrWatchUnavailable

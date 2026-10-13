@@ -235,6 +235,13 @@ func TestScanFinalSourceCheckUsesRealIsolatedRootBeforeReconciliation(t *testing
 	s.SetStorage(store)
 	s.processQuantum(context.Background(), job.ID, lib.ID)
 	j, err := s.Get(job.ID)
+	// The step that loses the folder sets it aside as unreadable, as it would
+	// any folder; the scan stops when it next looks for the library's root.
+	// What matters is below: it never finishes, and nothing is marked missing.
+	for n := 0; n < 8 && err == nil && j.Status == "running"; n++ {
+		s.processQuantum(context.Background(), job.ID, lib.ID)
+		j, err = s.Get(job.ID)
+	}
 	if err != nil || j.Status != "failed" || j.Error == "" || !removed {
 		t.Fatal(j, checks, removed, err)
 	}

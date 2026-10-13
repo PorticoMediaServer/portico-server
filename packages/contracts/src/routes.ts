@@ -110,7 +110,8 @@ export const routes = [
       "invalid_request",
       "revision_mismatch",
       "request_in_progress",
-      "internal"
+      "internal",
+      "revision_required"
     ],
     "status": 200
   },
@@ -131,7 +132,8 @@ export const routes = [
       "revision_mismatch",
       "idempotency_key_reused",
       "rate_limited",
-      "internal"
+      "internal",
+      "revision_required"
     ],
     "status": 200
   },
@@ -489,7 +491,8 @@ export const routes = [
       "invalid_request",
       "not_found",
       "revision_mismatch",
-      "internal"
+      "internal",
+      "revision_required"
     ],
     "status": 204
   },
@@ -4792,7 +4795,8 @@ export const routes = [
       "invalid_request",
       "not_found",
       "revision_mismatch",
-      "internal"
+      "internal",
+      "revision_required"
     ],
     "status": 200
   },
@@ -4833,7 +4837,8 @@ export const routes = [
       "not_found",
       "request_in_progress",
       "administration_unavailable",
-      "internal"
+      "internal",
+      "revision_required"
     ],
     "status": 200
   },
@@ -4873,7 +4878,8 @@ export const routes = [
       "not_permitted",
       "invalid_request",
       "revision_mismatch",
-      "internal"
+      "internal",
+      "revision_required"
     ],
     "status": 200
   },
@@ -4918,7 +4924,8 @@ export const routes = [
       "not_found",
       "downloads_not_allowed",
       "downloads_unavailable",
-      "internal"
+      "internal",
+      "revision_required"
     ],
     "status": 200
   },
@@ -4977,7 +4984,8 @@ export const routes = [
       "invalid_request",
       "revision_mismatch",
       "idempotency_key_reused",
-      "internal"
+      "internal",
+      "revision_required"
     ],
     "status": 200
   },
@@ -4996,7 +5004,8 @@ export const routes = [
       "not_permitted",
       "invalid_request",
       "revision_mismatch",
-      "internal"
+      "internal",
+      "revision_required"
     ],
     "status": 200
   },
@@ -5154,7 +5163,8 @@ export const routes = [
       "not_permitted",
       "not_found",
       "invalid_request",
-      "internal"
+      "internal",
+      "revision_required"
     ],
     "status": 202
   },
@@ -5198,7 +5208,8 @@ export const routes = [
       "revision_mismatch",
       "idempotency_key_reused",
       "rate_limited",
-      "internal"
+      "internal",
+      "revision_required"
     ],
     "status": 200
   },
@@ -5478,7 +5489,8 @@ export const routes = [
       "idempotency_key_reused",
       "revision_mismatch",
       "rate_limited",
-      "internal"
+      "internal",
+      "revision_required"
     ],
     "status": 200
   },
@@ -5505,7 +5517,8 @@ export const routes = [
       "source_network_policy",
       "source_credentials_required",
       "source_unavailable",
-      "internal"
+      "internal",
+      "revision_required"
     ],
     "status": 200
   },
@@ -5532,7 +5545,8 @@ export const routes = [
       "source_network_policy",
       "source_credentials_required",
       "source_unavailable",
-      "internal"
+      "internal",
+      "revision_required"
     ],
     "status": 200
   },
