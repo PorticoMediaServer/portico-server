@@ -5718,6 +5718,25 @@ CREATE INDEX subtitle_provider_candidates_item_id_fk ON subtitle_provider_candid
 CREATE INDEX subtitle_resources_source_id_fk ON subtitle_resources(source_id);
 CREATE INDEX video_nfo_status_asset_id_fk ON video_nfo_status(asset_id);
 
+CREATE TABLE playback_conversion_targets (
+ session_id TEXT PRIMARY KEY REFERENCES playback_delivery_plans(session_id) ON DELETE CASCADE,
+ generation INTEGER NOT NULL CHECK(generation>0),
+ target_json TEXT NOT NULL CHECK(length(target_json)<=8192),
+ hardware_json TEXT NOT NULL DEFAULT '' CHECK(length(hardware_json)<=8192)
+) STRICT;
+
+CREATE TABLE playback_conversion_failures (
+ sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+ session_id TEXT NOT NULL,
+ recorded_ms INTEGER NOT NULL,
+ failure_code TEXT NOT NULL,
+ diagnostic TEXT NOT NULL CHECK(length(diagnostic)<=2000),
+ strategy TEXT NOT NULL,
+ backend TEXT NOT NULL,
+ video TEXT NOT NULL,
+ audio TEXT NOT NULL
+) STRICT;
+
 CREATE TABLE queue_v1_play_spans(
  queue_id TEXT NOT NULL REFERENCES queues_v1(id) ON DELETE CASCADE,
  rank INTEGER NOT NULL,source INTEGER NOT NULL CHECK(source IN(0,1)),

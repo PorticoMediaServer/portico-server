@@ -1676,6 +1676,9 @@ export const schemas = {
           "directStreamRemux": {
             "type": "boolean"
           },
+          "ffmpegPath": {
+            "type": "string"
+          },
           "hardwareBackend": {
             "type": "string"
           },
@@ -1802,6 +1805,11 @@ export const schemas = {
             "nullable": true,
             "type": "integer"
           },
+          "sessionStorageMiB": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
           "temporaryDirectory": {
             "type": "string"
           },
@@ -1849,6 +1857,8 @@ export const schemas = {
           "throttleBufferSeconds",
           "playedRetentionSeconds",
           "temporaryDirectory",
+          "ffmpegPath",
+          "sessionStorageMiB",
           "maxConcurrentSessions",
           "maxHardwareSessions",
           "maxSoftwareSessions",
@@ -1951,6 +1961,9 @@ export const schemas = {
               "directStreamRemux": {
                 "type": "boolean"
               },
+              "ffmpegPath": {
+                "type": "string"
+              },
               "hardwareBackend": {
                 "type": "string"
               },
@@ -2077,6 +2090,11 @@ export const schemas = {
                 "nullable": true,
                 "type": "integer"
               },
+              "sessionStorageMiB": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
               "temporaryDirectory": {
                 "type": "string"
               },
@@ -2124,6 +2142,8 @@ export const schemas = {
               "throttleBufferSeconds",
               "playedRetentionSeconds",
               "temporaryDirectory",
+              "ffmpegPath",
+              "sessionStorageMiB",
               "maxConcurrentSessions",
               "maxHardwareSessions",
               "maxSoftwareSessions",
@@ -2209,6 +2229,9 @@ export const schemas = {
               "directStreamRemux": {
                 "type": "boolean"
               },
+              "ffmpegPath": {
+                "type": "string"
+              },
               "hardwareBackend": {
                 "type": "string"
               },
@@ -2335,6 +2358,11 @@ export const schemas = {
                 "nullable": true,
                 "type": "integer"
               },
+              "sessionStorageMiB": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
               "temporaryDirectory": {
                 "type": "string"
               },
@@ -2382,6 +2410,8 @@ export const schemas = {
               "throttleBufferSeconds",
               "playedRetentionSeconds",
               "temporaryDirectory",
+              "ffmpegPath",
+              "sessionStorageMiB",
               "maxConcurrentSessions",
               "maxHardwareSessions",
               "maxSoftwareSessions",
@@ -7609,6 +7639,139 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "GetConsoleRegistryRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetConsoleRegistryResponse": {
+    "properties": {
+      "data": {
+        "properties": {
+          "externalScopes": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "fields": {
+            "items": {
+              "properties": {
+                "applicationMode": {
+                  "type": "string"
+                },
+                "auditClass": {
+                  "type": "string"
+                },
+                "default": {
+                  "type": "any"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "group": {
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "max": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "min": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "options": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "overrideScopes": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "permission": {
+                  "type": "string"
+                },
+                "retentionClass": {
+                  "type": "string"
+                },
+                "runtimeConsumer": {
+                  "type": "string"
+                },
+                "saveMode": {
+                  "type": "string"
+                },
+                "scope": {
+                  "type": "string"
+                },
+                "secret": {
+                  "type": "boolean"
+                },
+                "type": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "group",
+                "scope",
+                "overrideScopes",
+                "type",
+                "default",
+                "saveMode",
+                "applicationMode",
+                "runtimeConsumer",
+                "description",
+                "permission",
+                "secret",
+                "retentionClass",
+                "auditClass"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "revision": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "revision",
+          "fields",
+          "externalScopes"
+        ],
+        "type": "object"
+      },
+      "scope": {
+        "properties": {
+          "serverId": {
+            "type": "string"
+          },
+          "viewerFence": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "serverId",
+          "viewerFence"
+        ],
+        "type": "object"
+      }
+    },
+    "required": [
+      "scope",
+      "data"
+    ],
+    "type": "object"
+  },
   "GetConsoleSettingsRequest": {
     "properties": {},
     "required": [],
@@ -7672,6 +7835,9 @@ export const schemas = {
               },
               "directStreamRemux": {
                 "type": "boolean"
+              },
+              "ffmpegPath": {
+                "type": "string"
               },
               "hardwareBackend": {
                 "type": "string"
@@ -7799,6 +7965,11 @@ export const schemas = {
                 "nullable": true,
                 "type": "integer"
               },
+              "sessionStorageMiB": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
               "temporaryDirectory": {
                 "type": "string"
               },
@@ -7846,6 +8017,8 @@ export const schemas = {
               "throttleBufferSeconds",
               "playedRetentionSeconds",
               "temporaryDirectory",
+              "ffmpegPath",
+              "sessionStorageMiB",
               "maxConcurrentSessions",
               "maxHardwareSessions",
               "maxSoftwareSessions",
@@ -7931,6 +8104,9 @@ export const schemas = {
               "directStreamRemux": {
                 "type": "boolean"
               },
+              "ffmpegPath": {
+                "type": "string"
+              },
               "hardwareBackend": {
                 "type": "string"
               },
@@ -8057,6 +8233,11 @@ export const schemas = {
                 "nullable": true,
                 "type": "integer"
               },
+              "sessionStorageMiB": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
               "temporaryDirectory": {
                 "type": "string"
               },
@@ -8104,6 +8285,8 @@ export const schemas = {
               "throttleBufferSeconds",
               "playedRetentionSeconds",
               "temporaryDirectory",
+              "ffmpegPath",
+              "sessionStorageMiB",
               "maxConcurrentSessions",
               "maxHardwareSessions",
               "maxSoftwareSessions",

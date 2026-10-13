@@ -882,6 +882,8 @@ table playback_artifacts
 table playback_audio_plans
 table playback_channel_sessions
 table playback_client_profiles
+table playback_conversion_failures
+table playback_conversion_targets
 table playback_copy_timelines
 table playback_delivery_plans
 table playback_device_capabilities

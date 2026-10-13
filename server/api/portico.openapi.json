@@ -1605,6 +1605,9 @@
                             "directStreamRemux": {
                               "type": "boolean"
                             },
+                            "ffmpegPath": {
+                              "type": "string"
+                            },
                             "hardwareBackend": {
                               "type": "string"
                             },
@@ -1731,6 +1734,11 @@
                               "nullable": true,
                               "type": "integer"
                             },
+                            "sessionStorageMiB": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
                             "temporaryDirectory": {
                               "type": "string"
                             },
@@ -1778,6 +1786,8 @@
                             "throttleBufferSeconds",
                             "playedRetentionSeconds",
                             "temporaryDirectory",
+                            "ffmpegPath",
+                            "sessionStorageMiB",
                             "maxConcurrentSessions",
                             "maxHardwareSessions",
                             "maxSoftwareSessions",
@@ -1863,6 +1873,9 @@
                             "directStreamRemux": {
                               "type": "boolean"
                             },
+                            "ffmpegPath": {
+                              "type": "string"
+                            },
                             "hardwareBackend": {
                               "type": "string"
                             },
@@ -1989,6 +2002,11 @@
                               "nullable": true,
                               "type": "integer"
                             },
+                            "sessionStorageMiB": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
                             "temporaryDirectory": {
                               "type": "string"
                             },
@@ -2036,6 +2054,8 @@
                             "throttleBufferSeconds",
                             "playedRetentionSeconds",
                             "temporaryDirectory",
+                            "ffmpegPath",
+                            "sessionStorageMiB",
                             "maxConcurrentSessions",
                             "maxHardwareSessions",
                             "maxSoftwareSessions",
@@ -2121,7 +2141,7 @@
             "description": "Success"
           }
         },
-        "summary": "Read owner settings",
+        "summary": "Read requested and effective owner settings",
         "x-access": "owner",
         "x-cost": "constant",
         "x-lane": "default",
@@ -2188,6 +2208,9 @@
                       },
                       "directStreamRemux": {
                         "type": "boolean"
+                      },
+                      "ffmpegPath": {
+                        "type": "string"
                       },
                       "hardwareBackend": {
                         "type": "string"
@@ -2315,6 +2338,11 @@
                         "nullable": true,
                         "type": "integer"
                       },
+                      "sessionStorageMiB": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
                       "temporaryDirectory": {
                         "type": "string"
                       },
@@ -2362,6 +2390,8 @@
                       "throttleBufferSeconds",
                       "playedRetentionSeconds",
                       "temporaryDirectory",
+                      "ffmpegPath",
+                      "sessionStorageMiB",
                       "maxConcurrentSessions",
                       "maxHardwareSessions",
                       "maxSoftwareSessions",
@@ -2472,6 +2502,9 @@
                             "directStreamRemux": {
                               "type": "boolean"
                             },
+                            "ffmpegPath": {
+                              "type": "string"
+                            },
                             "hardwareBackend": {
                               "type": "string"
                             },
@@ -2598,6 +2631,11 @@
                               "nullable": true,
                               "type": "integer"
                             },
+                            "sessionStorageMiB": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
                             "temporaryDirectory": {
                               "type": "string"
                             },
@@ -2645,6 +2683,8 @@
                             "throttleBufferSeconds",
                             "playedRetentionSeconds",
                             "temporaryDirectory",
+                            "ffmpegPath",
+                            "sessionStorageMiB",
                             "maxConcurrentSessions",
                             "maxHardwareSessions",
                             "maxSoftwareSessions",
@@ -2730,6 +2770,9 @@
                             "directStreamRemux": {
                               "type": "boolean"
                             },
+                            "ffmpegPath": {
+                              "type": "string"
+                            },
                             "hardwareBackend": {
                               "type": "string"
                             },
@@ -2856,6 +2899,11 @@
                               "nullable": true,
                               "type": "integer"
                             },
+                            "sessionStorageMiB": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
                             "temporaryDirectory": {
                               "type": "string"
                             },
@@ -2903,6 +2951,8 @@
                             "throttleBufferSeconds",
                             "playedRetentionSeconds",
                             "temporaryDirectory",
+                            "ffmpegPath",
+                            "sessionStorageMiB",
                             "maxConcurrentSessions",
                             "maxHardwareSessions",
                             "maxSoftwareSessions",
@@ -2988,7 +3038,7 @@
             "description": "Success"
           }
         },
-        "summary": "Save owner settings",
+        "summary": "Save a complete owner settings document",
         "x-access": "owner",
         "x-cost": "constant",
         "x-lane": "default",
@@ -6372,6 +6422,153 @@
         "x-lane": "security",
         "x-max-body-bytes": 262144,
         "x-scope": "session"
+      }
+    },
+    "/v1/console/registry": {
+      "get": {
+        "operationId": "get_console_registry",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "properties": {
+                        "externalScopes": {
+                          "additionalProperties": {
+                            "type": "string"
+                          },
+                          "type": "object"
+                        },
+                        "fields": {
+                          "items": {
+                            "properties": {
+                              "applicationMode": {
+                                "type": "string"
+                              },
+                              "auditClass": {
+                                "type": "string"
+                              },
+                              "default": {
+                                "type": "any"
+                              },
+                              "description": {
+                                "type": "string"
+                              },
+                              "group": {
+                                "type": "string"
+                              },
+                              "id": {
+                                "type": "string"
+                              },
+                              "max": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "min": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "options": {
+                                "items": {
+                                  "type": "string"
+                                },
+                                "type": "array"
+                              },
+                              "overrideScopes": {
+                                "items": {
+                                  "type": "string"
+                                },
+                                "type": "array"
+                              },
+                              "permission": {
+                                "type": "string"
+                              },
+                              "retentionClass": {
+                                "type": "string"
+                              },
+                              "runtimeConsumer": {
+                                "type": "string"
+                              },
+                              "saveMode": {
+                                "type": "string"
+                              },
+                              "scope": {
+                                "type": "string"
+                              },
+                              "secret": {
+                                "type": "boolean"
+                              },
+                              "type": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "group",
+                              "scope",
+                              "overrideScopes",
+                              "type",
+                              "default",
+                              "saveMode",
+                              "applicationMode",
+                              "runtimeConsumer",
+                              "description",
+                              "permission",
+                              "secret",
+                              "retentionClass",
+                              "auditClass"
+                            ],
+                            "type": "object"
+                          },
+                          "type": "array"
+                        },
+                        "revision": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "revision",
+                        "fields",
+                        "externalScopes"
+                      ],
+                      "type": "object"
+                    },
+                    "scope": {
+                      "properties": {
+                        "serverId": {
+                          "type": "string"
+                        },
+                        "viewerFence": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "serverId",
+                        "viewerFence"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "scope",
+                    "data"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Read the owner setting definitions",
+        "x-access": "device",
+        "x-cost": "page_sized",
+        "x-lane": "default",
+        "x-scope": "admin"
       }
     },
     "/v1/containers/{kind}/{id}/personal-state": {

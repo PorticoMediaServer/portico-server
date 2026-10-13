@@ -72,7 +72,7 @@ export const routes = [
     "id": "change_console_settings",
     "method": "PATCH",
     "path": "/v1/admin/console/settings",
-    "summary": "Save owner settings",
+    "summary": "Save a complete owner settings document",
     "access": "owner",
     "requires": "admin",
     "lane": "default",
@@ -83,7 +83,8 @@ export const routes = [
       "not_permitted",
       "invalid_request",
       "revision_mismatch",
-      "request_in_progress",
+      "idempotency_key_reused",
+      "rate_limited",
       "internal"
     ],
     "status": 200
@@ -699,10 +700,31 @@ export const routes = [
     "status": 200
   },
   {
+    "id": "get_console_registry",
+    "method": "GET",
+    "path": "/v1/console/registry",
+    "summary": "Read the owner setting definitions",
+    "access": "device",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "invalid_request",
+      "revision_mismatch",
+      "idempotency_key_reused",
+      "rate_limited",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
     "id": "get_console_settings",
     "method": "GET",
     "path": "/v1/admin/console/settings",
-    "summary": "Read owner settings",
+    "summary": "Read requested and effective owner settings",
     "access": "owner",
     "requires": "admin",
     "lane": "default",
@@ -711,6 +733,10 @@ export const routes = [
     "errors": [
       "unauthorized",
       "not_permitted",
+      "invalid_request",
+      "revision_mismatch",
+      "idempotency_key_reused",
+      "rate_limited",
       "internal"
     ],
     "status": 200

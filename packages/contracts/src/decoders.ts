@@ -36,6 +36,7 @@ export function decodeGetClientLogsResponse(input: unknown): types.GetClientLogs
 export function decodeGetConnectionResponse(input: unknown): types.GetConnectionResponse { return decode("GetConnectionResponse", input) as types.GetConnectionResponse; }
 export function decodeGetConnectivityPolicyResponse(input: unknown): types.GetConnectivityPolicyResponse { return decode("GetConnectivityPolicyResponse", input) as types.GetConnectivityPolicyResponse; }
 export function decodeGetConnectivityStatusResponse(input: unknown): types.GetConnectivityStatusResponse { return decode("GetConnectivityStatusResponse", input) as types.GetConnectivityStatusResponse; }
+export function decodeGetConsoleRegistryResponse(input: unknown): types.GetConsoleRegistryResponse { return decode("GetConsoleRegistryResponse", input) as types.GetConsoleRegistryResponse; }
 export function decodeGetConsoleSettingsResponse(input: unknown): types.GetConsoleSettingsResponse { return decode("GetConsoleSettingsResponse", input) as types.GetConsoleSettingsResponse; }
 export function decodeGetContainerPersonalStateResponse(input: unknown): types.GetContainerPersonalStateResponse { return decode("GetContainerPersonalStateResponse", input) as types.GetContainerPersonalStateResponse; }
 export function decodeGetDeviceCapabilitiesResponse(input: unknown): types.GetDeviceCapabilitiesResponse { return decode("GetDeviceCapabilitiesResponse", input) as types.GetDeviceCapabilitiesResponse; }

@@ -24,6 +24,7 @@ type TranscodeSettings struct {
 	PlanningPolicy          string
 	ThrottleBufferSeconds   int
 	PlayedRetentionSeconds  int
+	SessionStorageMiB       int
 	TemporaryDirectory      string
 	MaxConcurrentSessions   int
 	MaxHardwareSessions     int
@@ -301,6 +302,9 @@ func resolveBackend(configured string, probes []HardwareProbe) (string, string) 
 // where they have been told to. Readiness is a write test, not a path check.
 func resolveTemporaryDirectory(configured, state string) TemporaryDirectory {
 	path := configured
+	if configured != "" {
+		path = filepath.Join(configured, "portico-hls")
+	}
 	if path == "" && state != "" {
 		path = filepath.Join(state, "hls")
 	}

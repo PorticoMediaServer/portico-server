@@ -24,21 +24,20 @@ func preparedArgs(input string, r PreparedRecipe, validate bool) ([]string, erro
 	if validate {
 		return append(args, "-map", "0:v?", "-map", "0:a?", "-sn", "-dn", "-f", "null", "-"), nil
 	}
-	if r.AudioKbps != 192 {
+	if r.AudioKbps != 192 && r.AudioKbps != 96 {
 		return nil, ErrInvalidConfiguration
 	}
 	if r.AudioOnly {
 		args = append(args, "-map", "0:a", "-vn")
 	} else {
-		if !((r.Width == 1280 && r.Height == 720 && r.VideoKbps == 2500) || (r.Width == 1920 && r.Height == 1080 && r.VideoKbps == 5000)) {
+		if !validPreparedVideo(r) {
 			return nil, ErrInvalidConfiguration
 		}
 		scale := fmt.Sprintf("scale=w='max(2,trunc(min(min(iw*sar,%d),%d*dar)/2)*2)':h='max(2,trunc(min(min(ih,%d),%d/dar)/2)*2)',setsar=1", r.Width, r.Height, r.Height, r.Width)
-		args = append(args, "-map", "0:v:0", "-map", "0:a?", "-vf", scale, "-c:v", "libx264", "-preset", "medium", "-pix_fmt", "yuv420p", "-profile:v", "high", "-level:v", "4.0", "-r", "30", "-crf", "21", "-maxrate", strconv.Itoa(r.VideoKbps)+"k", "-bufsize", strconv.Itoa(r.VideoKbps*2)+"k", "-threads", "2")
+		args = append(args, "-map", "0:v:0", "-map", "0:a?", "-vf", scale, "-c:v", "libx264", "-preset", "medium", "-pix_fmt", "yuv420p", "-profile:v", "high", "-level:v", strconv.FormatFloat(float64(H264OutputLevel(r.Width, r.Height, 60))/10, 'f', 1, 64), "-fpsmax", "60", "-fps_mode", "vfr", "-crf", "21", "-maxrate", strconv.Itoa(r.VideoKbps)+"k", "-bufsize", strconv.Itoa(r.VideoKbps*2)+"k", "-threads", "2")
 	}
 	if r.DropChapters {
-		// V2 recipes omit unremapped chapter/data tracks explicitly. V1 byte
-		// recipes stay immutable for already-admitted work and provenance.
+		// Chapter positions are not copied into a derivative with a new clock.
 		args = append(args, "-map_chapters", "-1")
 	}
 	if r.BoundedFragments {
@@ -46,7 +45,7 @@ func preparedArgs(input string, r PreparedRecipe, validate bool) ([]string, erro
 		// at one-second intervals, including audio with no video keyframes.
 		args = append(args, "-frag_duration", "1000000")
 	}
-	return append(args, "-sn", "-dn", "-map_metadata", "-1", "-c:a", "aac", "-b:a", "192k", "-ac", "2", "-movflags", "+frag_keyframe+empty_moov+default_base_moof", "-f", "mp4", "pipe:1"), nil
+	return append(args, "-sn", "-dn", "-map_metadata", "-1", "-c:a", "aac", "-b:a", strconv.Itoa(r.AudioKbps)+"k", "-ac", "2", "-ar", "48000", "-movflags", "+frag_keyframe+empty_moov+default_base_moof", "-f", "mp4", "pipe:1"), nil
 }
 func preparedCommand(executable, input string, res *EndpointReservation, recipe PreparedRecipe, validate bool, libraries ...string) (*exec.Cmd, string, error) {
 	if !filepath.IsAbs(executable) || filepath.Clean(executable) != executable || len(libraries) > 256 {
@@ -79,6 +78,11 @@ func runPrepared(ctx context.Context, s *storage.Supervisor, key string, cmd *ex
 	if s == nil || key == "" || custody == nil || cmd == nil {
 		return ErrInvalidConfiguration
 	}
+	release, err := admitPreparedConversion(ctx)
+	if err != nil {
+		return err
+	}
+	defer release()
 	cmd.ExtraFiles = append(cmd.ExtraFiles, custody)
 	if !res.claim(endpoint, cmd) {
 		return ErrReservationInUse
@@ -121,4 +125,13 @@ func RunPreparedValidate(ctx context.Context, s *storage.Supervisor, key, execut
 		return e
 	}
 	return runPrepared(ctx, s, key, cmd, endpoint, res, custody, func(r io.Reader) error { _, e := io.Copy(io.Discard, r); return e })
+}
+
+func validPreparedVideo(r PreparedRecipe) bool {
+	for _, p := range [][3]int{{640, 360, 1000}, {854, 480, 2000}, {1280, 720, 2500}, {1920, 1080, 5000}, {2560, 1440, 12000}, {3840, 2160, 20000}} {
+		if r.Width == p[0] && r.Height == p[1] && r.VideoKbps == p[2] {
+			return true
+		}
+	}
+	return false
 }
