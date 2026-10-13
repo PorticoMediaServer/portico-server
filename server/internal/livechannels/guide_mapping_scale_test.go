@@ -41,3 +41,35 @@ func TestGuideChannelMappingPreservesAliasesAndExplicitChoice(t *testing.T) {
 		t.Fatal(got)
 	}
 }
+
+func TestRepeatedGuideNamesDoNotMultiplyEveryProgrammeWithoutBound(t *testing.T) {
+	var playlist, guide strings.Builder
+	playlist.WriteString("#EXTM3U\n")
+	guide.WriteString("<tv>")
+	for i := 0; i < 30; i++ {
+		fmt.Fprintf(&playlist, "#EXTINF:-1 tvg-id=\"stream%d\",Same name\nhttps://provider.invalid/%d\n", i, i)
+	}
+	for i := 0; i < 100; i++ {
+		fmt.Fprintf(&guide, `<channel id="guide%d"><display-name>Same name</display-name></channel>`, i)
+	}
+	for i := 0; i < 100; i++ {
+		fmt.Fprintf(&guide, `<programme channel="guide%d" start="20261013%02d0000" stop="20261013%02d3000"><title>Show</title></programme>`, i, i%24, i%24)
+	}
+	guide.WriteString("</tv>")
+	p, e := parse(SourceInput{Name: "Guide", Playlist: playlist.String(), Guide: guide.String()})
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer p.close()
+	if p.diagnostics.SkippedChannels == 0 || p.programmeCount() > 30*16 {
+		t.Fatal("cross-product guide aliases accepted without a bound or notice")
+	}
+}
+
+func TestGuideNameIndexUsesUnicodeFold(t *testing.T) {
+	for _, names := range [][2]string{{"ΟΣ", "ος"}, {"K", "K"}, {"  two  words ", "TWO WORDS"}} {
+		if guideName(names[0]) != guideName(names[1]) {
+			t.Fatal(names)
+		}
+	}
+}

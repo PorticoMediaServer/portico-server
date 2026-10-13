@@ -3,7 +3,9 @@ package dvr
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"portico.local/server/internal/mediaartifact"
 	"strings"
 	"testing"
@@ -144,5 +146,180 @@ func TestCancelledCaptureLeaderKeepsAuthorizedFollower(t *testing.T) {
 				t.Fatalf("capture resurrected cancelled owner: %s", state)
 			}
 		})
+	}
+}
+
+func cancelledLeader(t *testing.T, action string) (*Store, *claim, Recording) {
+	t.Helper()
+	s, c, follower := sharedClaims(t)
+	var revision int64
+	if e := s.db.QueryRow(`SELECT revision FROM dvr_recordings WHERE id=?`, c.request.Recording.ID).Scan(&revision); e != nil {
+		t.Fatal(e)
+	}
+	auth := func(context.Context, *sql.Tx, bool) (string, func(string, string) bool, error) {
+		return "owner", func(string, string) bool { return true }, nil
+	}
+	mutation := Mutation{RequestID: strings.Repeat("e", 48), ExpectedRevision: revision}
+	var e error
+	if action == "delete" {
+		_, e = s.Delete(context.Background(), auth, c.request.Owner, c.request.Recording.ID, mutation)
+	} else {
+		_, e = s.Cancel(context.Background(), auth, c.request.Owner, c.request.Recording.ID, mutation)
+	}
+	if e != nil {
+		t.Fatal(e)
+	}
+	return s, c, follower
+}
+
+func TestWithdrawnLeaderWaitsForSealAndPublishesOnlyFollower(t *testing.T) {
+	for _, action := range []string{"cancel", "delete"} {
+		t.Run(action, func(t *testing.T) {
+			s, c, follower := cancelledLeader(t, action)
+			ctx := context.Background()
+			if _, e := s.db.Exec(`UPDATE dvr_recordings SET next_attempt_ms=0 WHERE id=?`, follower.ID); e != nil {
+				t.Fatal(e)
+			}
+			if attached, found, e := s.claimNext(ctx); e != nil || !found || attached != nil {
+				t.Fatalf("unsealed leader prematurely attached: %v %v", attached, e)
+			}
+			hash := strings.Repeat("d", 64)
+			cp := CaptureCheckpoint{Object: mediaartifact.Object{Digest: hash, Size: 1880}, First: time.Now().Add(-time.Minute), Last: time.Now(), WriterRetired: true, Gaps: 1}
+			if e := s.checkpoint(ctx, c, cp); e != nil {
+				t.Fatal(e)
+			}
+			root := filepath.Join(t.TempDir(), c.request.Owner.Key())
+			result := CaptureResult{CaptureCheckpoint: cp, Root: root, Path: filepath.Join(root, "captures", c.request.Recording.ID, "objects", hash), Container: "mpegts", VideoCodec: "mpeg2video", Duration: 60}
+			if e := s.publish(ctx, c, result); e != nil {
+				t.Fatal(e)
+			}
+			var item, lease int64
+			var raw string
+			if e := s.db.QueryRow(`SELECT item_id,lease_until_ms,checkpoint_json FROM dvr_recordings WHERE id=?`, c.request.Recording.ID).Scan(&item, &lease, &raw); e != nil {
+				t.Fatal(e)
+			}
+			var saved CaptureCheckpoint
+			if e := json.Unmarshal([]byte(raw), &saved); e != nil {
+				t.Fatal(e)
+			}
+			if item != 0 || lease != 0 || !saved.SharedReady {
+				t.Fatalf("withdrawn owner got publication or no sealed readiness: %d %d %+v", item, lease, saved)
+			}
+			if _, e := s.db.Exec(`UPDATE dvr_recordings SET next_attempt_ms=0 WHERE id=?`, follower.ID); e != nil {
+				t.Fatal(e)
+			}
+			attached, found, e := s.claimNext(ctx)
+			if e != nil || !found || attached == nil || attached.sharedFrom != c.request.Recording.ID {
+				t.Fatalf("sealed leader not shared: %v %v", attached, e)
+			}
+			attached.checkpoint = saved
+			root = filepath.Join(t.TempDir(), attached.request.Owner.Key())
+			result.Root, result.Path = root, filepath.Join(root, "captures", attached.request.Recording.ID, "objects", hash)
+			if e = s.publish(ctx, attached, result); e != nil {
+				t.Fatal(e)
+			}
+			var count int
+			if e = s.db.QueryRow(`SELECT count(*) FROM dvr_catalog_provenance`).Scan(&count); e != nil || count != 1 {
+				t.Fatalf("profile publication count %d %v", count, e)
+			}
+		})
+	}
+}
+
+func TestWithdrawnLeaderCannotContinueWithoutAuthorizedFollower(t *testing.T) {
+	s, c, _ := cancelledLeader(t, "cancel")
+	s.durable = func(_ context.Context, _ *sql.Tx, o livechannels.Owner, _, _ string) error {
+		if o == c.request.Owner {
+			return nil
+		}
+		return ErrDenied
+	}
+	if e := s.renew(context.Background(), c, false); e == nil {
+		t.Fatal("capture continued without an authorized follower")
+	}
+}
+
+func TestWithdrawnLeaderUsesRemainingOwnersAuthority(t *testing.T) {
+	s, c, _ := cancelledLeader(t, "cancel")
+	s.durable = func(_ context.Context, _ *sql.Tx, o livechannels.Owner, _, _ string) error {
+		if o == c.request.Owner {
+			return ErrDenied
+		}
+		return nil
+	}
+	if e := s.renew(context.Background(), c, false); e != nil {
+		t.Fatalf("authorized remaining owner's capture cut: %v", e)
+	}
+}
+
+func TestWithdrawnSharedLeaderCanRecoverCheckpoint(t *testing.T) {
+	s, c, follower := cancelledLeader(t, "cancel")
+	ctx := context.Background()
+	cp := CaptureCheckpoint{Object: mediaartifact.Object{Size: 1880}, First: time.Now().Add(-time.Minute), Last: time.Now()}
+	if e := s.checkpoint(ctx, c, cp); e != nil {
+		t.Fatal(e)
+	}
+	now := s.now().Add(time.Minute)
+	s.now = func() time.Time { return now }
+	if _, e := s.db.Exec(`UPDATE live_allocations SET state='released' WHERE id=?`, c.request.Allocation.ID); e != nil {
+		t.Fatal(e)
+	}
+	if _, e := s.db.Exec(`UPDATE dvr_recordings SET next_attempt_ms=? WHERE id=?`, now.Add(time.Hour).UnixMilli(), follower.ID); e != nil {
+		t.Fatal(e)
+	}
+	recovered, found, e := s.claimNext(ctx)
+	if e != nil || !found || recovered == nil || !recovered.recovery || !recovered.recoveryContinues || recovered.request.Recording.ID != c.request.Recording.ID {
+		t.Fatalf("checkpoint not recoverable for follower: %+v %v", recovered, e)
+	}
+	var state string
+	if e = s.db.QueryRow(`SELECT state FROM dvr_recordings WHERE id=?`, c.request.Recording.ID).Scan(&state); e != nil {
+		t.Fatal(e)
+	}
+	if state != "cancelled" {
+		t.Fatalf("recovery resurrected owner: %s", state)
+	}
+}
+
+func TestSharedFinalizationRetriesTransientFailureWithFiniteBudget(t *testing.T) {
+	s, c, follower := sharedClaims(t)
+	ctx := context.Background()
+	cp := CaptureCheckpoint{Object: mediaartifact.Object{Digest: strings.Repeat("d", 64), Size: 1880}, WriterRetired: true}
+	body, e := json.Marshal(cp)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = s.db.Exec(`UPDATE dvr_recordings SET state='completed',checkpoint_json=? WHERE id=?`, string(body), c.request.Recording.ID); e != nil {
+		t.Fatal(e)
+	}
+	clock := s.now()
+	s.now = func() time.Time { return clock }
+	for attempt := 0; attempt < 3; attempt++ {
+		if _, e = s.db.Exec(`UPDATE dvr_recordings SET next_attempt_ms=0 WHERE id=?`, follower.ID); e != nil {
+			t.Fatal(e)
+		}
+		attached, found, e := s.claimNext(ctx)
+		if e != nil || !found || attached == nil {
+			t.Fatalf("retry %d not claimed: %v", attempt, e)
+		}
+		s.runSharedClaim(ctx, attached) // The fixture driver returns ErrUnavailable.
+		var state string
+		if e = s.db.QueryRow(`SELECT state FROM dvr_recordings WHERE id=?`, follower.ID).Scan(&state); e != nil {
+			t.Fatal(e)
+		}
+		if state != "finalizing" {
+			t.Fatalf("transient share failure became terminal on attempt %d: %s", attempt, state)
+		}
+		clock = clock.Add(4 * time.Second)
+	}
+	attached, found, e := s.claimNext(ctx)
+	if e != nil || !found || attached != nil {
+		t.Fatalf("exhausted share budget retried: %+v %v", attached, e)
+	}
+	var state string
+	if e = s.db.QueryRow(`SELECT state FROM dvr_recordings WHERE id=?`, follower.ID).Scan(&state); e != nil {
+		t.Fatal(e)
+	}
+	if state != "failed" {
+		t.Fatalf("share retry can wait forever: %s", state)
 	}
 }

@@ -30,6 +30,9 @@ type CaptureRequest struct {
 	OnRetired      func()
 }
 type CaptureCheckpoint struct {
+	// SharedReady is stamped by the scheduler after immutable validation. It
+	// lets a withdrawn leader finish for other owners without publishing its item.
+	SharedReady       bool `json:"sharedReady,omitempty"`
 	Object            mediaartifact.Object
 	First, Last       time.Time
 	Gaps              int

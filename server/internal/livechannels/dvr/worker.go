@@ -199,7 +199,7 @@ func (s *Store) claimNext(ctx context.Context) (*claim, bool, error) {
 	tx := gated.Tx()
 	defer gated.Rollback()
 	var id string
-	e = tx.QueryRowContext(ctx, `SELECT id FROM dvr_recordings WHERE next_attempt_ms<=? AND ((state IN('scheduled','conflicted','waiting-source','waiting-guide') AND start_ms<=?) OR (state IN('preparing','recording','finalizing') AND lease_until_ms<=?)) ORDER BY priority DESC,start_ms,id LIMIT 1`, s.now().UnixMilli(), s.now().UnixMilli(), s.now().UnixMilli()).Scan(&id)
+	e = tx.QueryRowContext(ctx, `SELECT id FROM dvr_recordings WHERE next_attempt_ms<=? AND ((state IN('scheduled','conflicted','waiting-source','waiting-guide') AND start_ms<=?) OR ((state IN('preparing','recording','finalizing') OR (state IN('cancelled','pending-delete') AND reason IN('owner-cancelled','owner-delete') AND lease_until_ms>0 AND EXISTS(SELECT 1 FROM dvr_recording_shares x JOIN dvr_recordings follower ON follower.id=x.recording_id WHERE x.capture_recording_id=dvr_recordings.id AND follower.state IN('scheduled','conflicted','waiting-source','waiting-guide','preparing','recording','finalizing')))) AND lease_until_ms<=?)) ORDER BY priority DESC,start_ms,id LIMIT 1`, s.now().UnixMilli(), s.now().UnixMilli(), s.now().UnixMilli()).Scan(&id)
 	if errors.Is(e, sql.ErrNoRows) {
 		return nil, false, nil
 	}
@@ -250,17 +250,30 @@ func (s *Store) claimNext(ctx context.Context) (*claim, bool, error) {
 		}
 		return nil, true, gated.Commit()
 	}
-	if e = s.durable(ctx, tx, c.request.Owner, r.Occurrence.SourceID, r.Occurrence.ChannelID); e != nil {
+	if r.State == "cancelled" || r.State == "pending-delete" {
+		e = s.sharedAuthorityTx(ctx, tx, r.ID)
+	} else {
+		e = s.durable(ctx, tx, c.request.Owner, r.Occurrence.SourceID, r.Occurrence.ChannelID)
+	}
+	if e != nil {
 		if errors.Is(e, livechannels.ErrDenied) || errors.Is(e, ErrDenied) {
 			return fail("permission-denied")
 		}
 		return later("authorization-unavailable")
 	}
+	if r.State != "cancelled" && r.State != "pending-delete" {
+		if e = programmeVisibleTx(ctx, tx, c.request.Owner, r.Programme); e != nil {
+			if errors.Is(e, ErrDenied) {
+				return fail("permission-denied")
+			}
+			return later("authorization-unavailable")
+		}
+	}
 	end, e := time.Parse(time.RFC3339Nano, r.End)
 	if e != nil {
 		return nil, false, e
 	}
-	if !capturing(r.State) {
+	if !capturing(r.State) && r.State != "cancelled" && r.State != "pending-delete" {
 		if r.RuleID != "" {
 			var enabled, deleted bool
 			var currentRevision, acceptedRevision int64
@@ -282,9 +295,12 @@ func (s *Store) claimNext(ctx context.Context) (*claim, bool, error) {
 		if waiting {
 			return later("shared-capture")
 		}
+		if recoveryAttempt >= 3 {
+			return fail("shared-capture-unavailable")
+		}
 		return c, true, gated.Commit()
 	}
-	c.recovery = capturing(r.State)
+	c.recovery = capturing(r.State) || r.State == "cancelled" || r.State == "pending-delete"
 	if c.recovery {
 		if recoveryAttempt >= 2 {
 			return fail("capture-validation-failed")
@@ -320,7 +336,6 @@ func (s *Store) claimNext(ctx context.Context) (*claim, bool, error) {
 			return nil, false, e
 		}
 	} else {
-
 		var active, state string
 		e = tx.QueryRowContext(ctx, `SELECT active_generation,state FROM live_sources WHERE id=?`, r.Occurrence.SourceID).Scan(&active, &state)
 		if e != nil {
@@ -431,8 +446,11 @@ func (s *Store) claimNext(ctx context.Context) (*claim, bool, error) {
 	state := "preparing"
 	if c.recovery {
 		state = "finalizing"
+		if r.State == "cancelled" || r.State == "pending-delete" {
+			state = r.State
+		}
 	}
-	_, e = tx.ExecContext(ctx, `UPDATE dvr_recordings SET state=?,reason='',claim_generation=?,claim_token=?,owner_instance=?,lease_until_ms=?,allocation_id=?,artifact_id=?,next_attempt_ms=0,recovery_attempt=recovery_attempt+?,revision=revision+1,updated_ms=? WHERE id=?`, state, c.request.Generation, c.token, s.instance, s.now().Add(workerTTL).UnixMilli(), c.request.Allocation.ID, c.request.ArtifactKey, c.recovery, s.now().UnixMilli(), id)
+	_, e = tx.ExecContext(ctx, `UPDATE dvr_recordings SET state=?,reason=CASE WHEN state IN('cancelled','pending-delete') THEN reason ELSE '' END,claim_generation=?,claim_token=?,owner_instance=?,lease_until_ms=?,allocation_id=?,artifact_id=?,next_attempt_ms=0,recovery_attempt=recovery_attempt+?,revision=revision+1,updated_ms=? WHERE id=?`, state, c.request.Generation, c.token, s.instance, s.now().Add(workerTTL).UnixMilli(), c.request.Allocation.ID, c.request.ArtifactKey, c.recovery, s.now().UnixMilli(), id)
 	if e != nil {
 		return nil, false, e
 	}
@@ -448,9 +466,19 @@ func (s *Store) currentClaimTx(ctx context.Context, tx *sql.Tx, c *claim) error 
 		return e
 	}
 	if !valid {
-		return ErrLease
+		err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM dvr_recordings WHERE id=? AND owner_key=? AND claim_token=? AND claim_generation=? AND lease_until_ms>? AND state IN('cancelled','pending-delete') AND reason IN('owner-cancelled','owner-delete'))`, c.request.Recording.ID, c.request.Owner.Key(), c.token, c.request.Generation, s.now().UnixMilli()).Scan(&valid)
+		if err != nil {
+			return err
+		}
+		if !valid {
+			return ErrLease
+		}
+		return s.sharedAuthorityTx(ctx, tx, c.request.Recording.ID)
 	}
-	return s.durable(ctx, tx, c.request.Owner, c.request.Recording.Occurrence.SourceID, c.request.Recording.Occurrence.ChannelID)
+	if e = s.durable(ctx, tx, c.request.Owner, c.request.Recording.Occurrence.SourceID, c.request.Recording.Occurrence.ChannelID); e != nil {
+		return e
+	}
+	return programmeVisibleTx(ctx, tx, c.request.Owner, c.request.Recording.Programme)
 }
 func (s *Store) runClaim(parent context.Context, c *claim) {
 	if c.sharedFrom != "" {
@@ -548,7 +576,7 @@ func (s *Store) renew(ctx context.Context, c *claim, released bool) error {
 	defer gated3.Rollback()
 	if e = s.currentClaimTx(ctx, tx, c); e != nil {
 		if errors.Is(e, livechannels.ErrDenied) || errors.Is(e, ErrDenied) {
-			_, _ = tx.ExecContext(ctx, `UPDATE dvr_recordings SET state='cancelled',reason='permission-denied',cancel_generation=cancel_generation+1,revision=revision+1,updated_ms=? WHERE id=? AND claim_token=?`, s.now().UnixMilli(), c.request.Recording.ID, c.token)
+			_, _ = tx.ExecContext(ctx, `UPDATE dvr_recordings SET state='cancelled',reason='permission-denied',cancel_generation=cancel_generation+1,revision=revision+1,updated_ms=? WHERE id=? AND claim_token=? AND state IN('preparing','recording','finalizing')`, s.now().UnixMilli(), c.request.Recording.ID, c.token)
 			_ = unreserveTx(ctx, tx, c.request.Recording.ID)
 			_ = touchTx(ctx, tx, c.request.Owner)
 			_ = gated3.Commit()
@@ -601,7 +629,7 @@ func (s *Store) checkpoint(ctx context.Context, c *claim, cp CaptureCheckpoint) 
 		cp.SourceFence = c.request.Input.Fence()
 	}
 	b, _ := json.Marshal(cp)
-	_, e = tx.ExecContext(ctx, `UPDATE dvr_recordings SET revision=revision+CASE WHEN state=? THEN 0 ELSE 1 END,state=?,artifact_digest=?,bytes=?,captured_start_ms=?,captured_end_ms=?,checkpoint_json=?,updated_ms=? WHERE id=? AND claim_token=?`, state, state, cp.Object.Digest, cp.Object.Size, cp.First.UnixMilli(), cp.Last.UnixMilli(), string(b), s.now().UnixMilli(), c.request.Recording.ID, c.token)
+	_, e = tx.ExecContext(ctx, `UPDATE dvr_recordings SET revision=revision+CASE WHEN state IN('cancelled','pending-delete') OR state=? THEN 0 ELSE 1 END,state=CASE WHEN state IN('cancelled','pending-delete') THEN state ELSE ? END,artifact_digest=?,bytes=?,captured_start_ms=?,captured_end_ms=?,checkpoint_json=?,updated_ms=? WHERE id=? AND claim_token=?`, state, state, cp.Object.Digest, cp.Object.Size, cp.First.UnixMilli(), cp.Last.UnixMilli(), string(b), s.now().UnixMilli(), c.request.Recording.ID, c.token)
 	if e != nil {
 		return e
 	}
@@ -630,6 +658,9 @@ func (s *Store) failWorker(c *claim, reason string, recoverable bool) {
 		return
 	}
 	n, _ := res.RowsAffected()
+	if n == 0 {
+		_, _ = tx.ExecContext(ctx, `UPDATE dvr_recordings SET lease_until_ms=0 WHERE id=? AND claim_token=? AND claim_generation=? AND state IN('cancelled','pending-delete')`, c.request.Recording.ID, c.token, c.request.Generation)
+	}
 	if n > 0 {
 		_ = unreserveTx(ctx, tx, c.request.Recording.ID)
 		_ = touchTx(ctx, tx, c.request.Owner)

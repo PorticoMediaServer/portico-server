@@ -209,6 +209,15 @@ func parse(in SourceInput) (out parsedSource, result error) {
 	for _, ch := range out.channels {
 		mapping[channelGuide[ch.key]] = append(mapping[channelGuide[ch.key]], ch.key)
 	}
+	knownMappings := map[string]map[string]bool{}
+	aliasCounts := map[string]int{}
+	for guideID, channels := range mapping {
+		knownMappings[guideID] = map[string]bool{}
+		for _, channel := range channels {
+			knownMappings[guideID][channel] = true
+			aliasCounts[channel]++
+		}
+	}
 	if in.guideFile == "" && strings.TrimSpace(in.Guide) == "" {
 		applyConfiguration(&out, in.configuration, in.guideDays)
 		return out, nil
@@ -275,15 +284,19 @@ func parse(in SourceInput) (out parsedSource, result error) {
 				if !validText(row.ID, 256) {
 					continue
 				}
+				extraMatches := false
 				for _, i := range guideLookup.match(row.ID, row.Names) {
 					ch := &out.channels[i]
-					exists := false
-					for _, key := range mapping[row.ID] {
-						if key == ch.key {
-							exists = true
+					if !knownMappings[row.ID][ch.key] {
+						if aliasCounts[ch.key] >= maxGuideAliases {
+							extraMatches = true
+							continue
 						}
-					}
-					if !exists {
+						if knownMappings[row.ID] == nil {
+							knownMappings[row.ID] = map[string]bool{}
+						}
+						knownMappings[row.ID][ch.key] = true
+						aliasCounts[ch.key]++
 						mapping[row.ID] = append(mapping[row.ID], ch.key)
 					}
 					if ch.logo == "" {
@@ -294,6 +307,10 @@ func parse(in SourceInput) (out parsedSource, result error) {
 							}
 						}
 					}
+				}
+				if extraMatches {
+					out.diagnostics.SkippedChannels++
+					out.diagnostics.note("live.import.guideMatchesLimited")
 				}
 				continue
 			}

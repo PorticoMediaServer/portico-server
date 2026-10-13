@@ -40,7 +40,16 @@ func (s *Store) CleanupOne(ctx context.Context) error {
 	if e = s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM live_allocations WHERE id=? AND state!='released')`, allocation).Scan(&allocated); e != nil {
 		return e
 	}
-	if busy || allocated {
+	snapshot, err := dbwork.BeginSnapshot(ctx, s.db)
+	if err != nil {
+		return err
+	}
+	shared, err := s.pendingSharedTx(ctx, snapshot.Tx(), id)
+	snapshot.Rollback()
+	if err != nil {
+		return err
+	}
+	if busy || allocated || shared {
 		_, e = dbwork.ExecWrite(ctx, s.db, dbwork.ClassFrom(ctx, dbwork.ClassInteractive), `UPDATE dvr_cleanup_work SET not_before_ms=? WHERE recording_id=?`, s.now().Add(2*time.Minute).UnixMilli(), id)
 		return e
 	}

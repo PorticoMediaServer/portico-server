@@ -82,6 +82,9 @@ func (s *Store) SaveRule(ctx context.Context, a livechannels.Authority, o livech
 			if e != nil {
 				return e
 			}
+			if e = programmeVisibleTx(ctx, tx, o, p); e != nil {
+				return e
+			}
 			if p.SeriesID == "" || p.SeriesID != in.Config.SeriesID {
 				return ErrInvalid
 			}
@@ -255,6 +258,10 @@ func (s *Store) PreviewRule(ctx context.Context, a livechannels.Authority, o liv
 		if e != nil {
 			return e
 		}
+		programmeAllowed, err := programmePredicateTx(ctx, tx, o)
+		if err != nil {
+			return err
+		}
 		rows, e := tx.QueryContext(ctx, programmeQuery+` WHERE p.generation_id=? AND m.series_id=? AND p.end_utc>? ORDER BY p.start_utc,p.id`, out.Generation, c.SeriesID, s.now().UTC().Format(time.RFC3339))
 		if e != nil {
 			return e
@@ -266,7 +273,7 @@ func (s *Store) PreviewRule(ctx context.Context, a livechannels.Authority, o liv
 			if e != nil {
 				return e
 			}
-			if !allowed(c.SourceID, p.ChannelID) {
+			if !allowed(c.SourceID, p.ChannelID) || !programmeAllowed(programmeRating(p)) {
 				continue
 			}
 			if c.Episodes == "new" && p.NewEvidence == "unknown" {

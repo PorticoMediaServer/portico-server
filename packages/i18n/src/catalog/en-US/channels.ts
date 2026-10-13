@@ -10,6 +10,7 @@ export const channelMessages = {
   'live.import.channelDescriptionInvalid': 'A channel description was invalid.',
   'live.import.channelAddressInvalid': 'A channel had no usable stream address.',
   'live.import.channelRepeated': 'A repeated channel identity was skipped.',
+  'live.import.guideMatchesLimited': 'Extra guide matches for a channel were skipped.',
   'live.import.channelLimit': 'The channel limit was reached.',
   'live.import.programmeInvalid': 'A program had no usable title or time.',
   'live.import.programmeRepeated': 'A contradictory repeated program was skipped.',

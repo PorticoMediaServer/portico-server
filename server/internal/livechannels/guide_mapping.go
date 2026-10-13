@@ -3,11 +3,29 @@ package livechannels
 import (
 	"sort"
 	"strings"
+	"unicode"
 )
 
 type guideChannelIndex struct{ ids, names map[string][]int }
 
-func guideName(v string) string { return strings.ToLower(strings.Join(strings.Fields(v), " ")) }
+// SimpleFold's cycle gives EqualFold-equivalent keys, including final sigma
+// and Kelvin sign, which ordinary lowercasing does not normalize together.
+func guideName(v string) string {
+	return strings.Map(func(r rune) rune {
+		key := r
+		for next := unicode.SimpleFold(r); next != r; next = unicode.SimpleFold(next) {
+			if next < key {
+				key = next
+			}
+		}
+		return key
+	}, strings.Join(strings.Fields(v), " "))
+}
+
+// One selected channel may have provider, number and multilingual aliases.
+// Repeated names must not produce a document-sized cross product of mappings.
+const maxGuideAliases = 16
+
 func indexGuideChannels(channels []parsedChannel, explicit map[string]bool) guideChannelIndex {
 	index := guideChannelIndex{ids: map[string][]int{}, names: map[string][]int{}}
 	for i, ch := range channels {

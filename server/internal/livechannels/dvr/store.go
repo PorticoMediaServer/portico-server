@@ -169,8 +169,11 @@ func (s *Store) Schedule(ctx context.Context, a livechannels.Authority, o livech
 		}
 		originalInput := in
 		replay, e := receiptTx(ctx, tx, o, in.RequestID, in, &out)
-		if e != nil || replay {
+		if e != nil {
 			return e
+		}
+		if replay {
+			return programmeVisibleTx(ctx, tx, o, out.Programme)
 		}
 		if in.UseDefaults {
 			var err error
@@ -184,6 +187,9 @@ func (s *Store) Schedule(ctx context.Context, a livechannels.Authority, o livech
 		}
 		p, e := s.live.ProgrammeTx(ctx, tx, in.Occurrence.SourceID, in.Occurrence.ChannelID, in.Occurrence.Generation, in.Occurrence.ProgrammeID)
 		if e != nil {
+			return e
+		}
+		if e = programmeVisibleTx(ctx, tx, o, p); e != nil {
 			return e
 		}
 		start, end, e := padded(p, in.Options)
@@ -318,8 +324,11 @@ func (s *Store) mutate(ctx context.Context, a livechannels.Authority, o livechan
 		// Owning a recording permits cancellation/deletion after the provider was
 		// removed. Playback and new work separately require current rights.
 		replay, e := receiptTx(ctx, tx, o, in.RequestID, input, &out)
-		if e != nil || replay {
+		if e != nil {
 			return e
+		}
+		if replay {
+			return restrictRecordingTx(ctx, tx, o, &out)
 		}
 		r, e := loadTx(ctx, tx, o, id)
 		if e != nil {
@@ -335,7 +344,10 @@ func (s *Store) mutate(ctx context.Context, a livechannels.Authority, o livechan
 		if e = touchTx(ctx, tx, o); e != nil {
 			return e
 		}
-		return saveReceiptTx(ctx, tx, o, in.RequestID, input, out, s.now())
+		if e = saveReceiptTx(ctx, tx, o, in.RequestID, input, out, s.now()); e != nil {
+			return e
+		}
+		return restrictRecordingTx(ctx, tx, o, &out)
 	})
 	return out, e
 }
