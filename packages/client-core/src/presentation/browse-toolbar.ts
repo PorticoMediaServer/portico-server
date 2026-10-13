@@ -33,9 +33,9 @@ const PROMOTED: Readonly<Record<string, readonly string[]>> = {
 const QUICK_ON_BAR = ['unwatched', 'in-progress', 'favorites'];
 
 const ACTIVITY = new Set(['playState', 'favorite', 'watchlisted', 'personalRating', 'lastPlayedAt']);
-const FILE = new Set(['resolution', 'dynamicRange', 'audioLanguage', 'durationMs', 'dateAdded', 'availability', 'entityKind']);
+const FILE = new Set(['resolution', 'dynamicRange', 'audioLanguage', 'subtitleLanguage', 'versions', 'durationMs', 'dateAdded', 'availability', 'entityKind']);
 /** Fields that are a worse version of another field on the bar, or internal. */
-const HIDDEN = new Set(['title', 'entityKind']);
+const HIDDEN = new Set(['title', 'entityKind', 'memberOf', 'person', 'list']);
 /** Decade is Year with a coarser step; the Year control offers decades as presets. */
 const FOLDED_INTO_YEAR = new Set(['decade']);
 
@@ -71,7 +71,7 @@ export type ToolbarModel = Readonly<{
 export function toolbarModel(capabilities: BrowseCapabilities, libraryKind: string, predicates: readonly ToolbarPredicate[], sort: BrowseSortSelection, options: {owner?: boolean; /** False on a television: a filter that can only be typed is left out. */ textEntry?: boolean} = {}): ToolbarModel {
   const pivot = capabilities.resolvedPivot?.id ?? '';
   const audio = /artist|album|song/.test(pivot);
-  const fields = capabilities.fields.filter(f => !HIDDEN.has(f.id) && !FOLDED_INTO_YEAR.has(f.id) && (options.owner || (f.id !== 'availability' && f.id !== 'match')) && (options.textEntry !== false || filterControlOf(f) !== 'text'));
+  const fields = capabilities.fields.filter(f => !HIDDEN.has(f.id) && !FOLDED_INTO_YEAR.has(f.id) && (options.owner || f.id !== 'match') && (options.textEntry !== false || filterControlOf(f) !== 'text'));
   const byId = new Map(fields.map(f => [f.id, f]));
   const promoted = (PROMOTED[libraryKind] ?? PROMOTED.movie!).map(id => byId.get(id)).filter((f): f is BrowseFieldCapability => !!f).slice(0, 4);
   // Music has no "watched": its quick toggles are favorites only (played/unplayed stay inside Filter).
@@ -92,7 +92,7 @@ export function nextToolbarSort(capabilities: BrowseCapabilities, sort: BrowseSo
   if (!cap) return sort;
   if (fieldId === sort.field) {
     const flipped = sort.direction === 'asc' ? 'desc' : 'asc';
-    return cap.directions.includes(flipped) ? {field: fieldId, direction: flipped} : sort;
+    return cap.directions.includes(flipped) ? {...sort, direction: flipped} : sort;
   }
   return {field: fieldId, direction: cap.defaultDirection};
 }

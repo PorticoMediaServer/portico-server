@@ -1,6 +1,7 @@
 import test from 'node:test';
+import {nextToolbarSort} from '../src/presentation/browse-toolbar.ts';
 import assert from 'node:assert/strict';
-import {parseBrowseCapabilities,parseBrowseResult,parseBrowseFacets,validateBrowseQuery,formatBrowseAnchor,BrowseQueryBuilder,BrowseQueryError,type BrowseCapabilities} from '../src/browse.ts';
+import {parseBrowseCapabilities,parseBrowseResult,parseBrowseFacets,validateBrowseQuery,formatBrowseAnchor,BrowseQueryBuilder,BrowseQueryError,browseWithin,type BrowseCapabilities} from '../src/browse.ts';
 import {parsePinOrder,parseLibraryNavigationPins,parsePinnedLibraries,pinOrderRequest,libraryNavigationRequest} from '../src/library-pins.ts';
 
 function capabilitiesPayload(changes: Record<string, unknown> = {}): any {
@@ -252,10 +253,24 @@ test('surface options and a stable random seed survive parsing and request build
   assert.deepEqual(parsed.resolvedPivot?.sorts,['title','random']);
   assert.equal(parsed.surfaces?.[0].paging,'keyset');
   assert.deepEqual(new BrowseQueryBuilder(parsed).sort('random','asc',123).build().sort,[{field:'random',direction:'asc',seed:123}]);
+  assert.deepEqual(nextToolbarSort(parsed,{field:'random',direction:'asc',seed:123},'random'),{field:'random',direction:'desc',seed:123});
   assert.throws(()=>new BrowseQueryBuilder(parsed).sort('year'),BrowseQueryError);
   assert.throws(()=>new BrowseQueryBuilder(parsed).sort('title','asc',1),BrowseQueryError);
   assert.throws(()=>new BrowseQueryBuilder(parsed).sort('random','asc',-1),BrowseQueryError);
   assert.throws(()=>new BrowseQueryBuilder(parsed).sort('random','asc',4294967296),BrowseQueryError);
   const page=parseBrowseResult(resultPayload({applied:{query:null,sort:[{field:'random',direction:'asc',seed:123}]}}));
   assert.equal(page.applied.sort[0].seed,123);
+});
+
+
+test('a container scope keeps the full sort set and adds its membership to filters',()=>{
+ const raw=capabilitiesPayload();
+ raw.fields.push({id:'memberOf',labelKey:'browse.field.memberOf',type:'identity-set',operators:['equals'],controlHint:'text',complexity:'standard',cost:'indexed-join',applicableKinds:['movie']});
+ raw.pivots[1].filters=['memberOf','year'];raw.pivots[1].sorts=['title','year'];raw.resolvedPivot={...raw.pivots[1]};
+ raw.surfaces=[{id:'container-titles',endpoint:'/v1/libraries/{id}/browse',membershipField:'memberOf',sorts:['title','year'],filters:['memberOf','year'],paging:'keyset'}];
+ const parsed=parseBrowseCapabilities(raw);
+ const body=browseWithin(parsed,'container-titles','container').where('year','at-least',2000).sort('year','desc').build();
+ assert.deepEqual(body.query,{all:[{field:'memberOf',operator:'equals',value:'container'},{field:'year',operator:'at-least',value:2000}]});
+ assert.deepEqual(body.sort,[{field:'year',direction:'desc'}]);
+ assert.throws(()=>browseWithin(parsed,'person-titles','person'),BrowseQueryError);
 });

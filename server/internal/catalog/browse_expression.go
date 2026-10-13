@@ -631,6 +631,9 @@ func (c *browseCompiler) exists(field browseField, condition func() (string, err
 }
 
 func (c *browseCompiler) itemPredicate(field browseField, node BrowseNode) (string, error) {
+	if field.ID == "favorite" || field.ID == "watchlisted" || field.ID == "personalRating" || field.ID == "lastPlayedAt" {
+		return c.personalTitlePredicate(field, node)
+	}
 	if field.ID == "subtitleLanguage" {
 		return c.subtitleLanguagePredicate(field, node)
 	}
@@ -783,6 +786,38 @@ func (c *browseCompiler) subtitleLanguagePredicate(field browseField, node Brows
 	}
 	clause := "(" + strings.Join(parts, " OR ") + ")"
 	if neg {
+		clause = "NOT " + clause
+	}
+	return clause, nil
+}
+
+// Container favourites and ratings belong to the title itself. Member state
+// remains useful for aggregate views, but cannot replace that direct intent.
+func (c *browseCompiler) personalTitlePredicate(field browseField, node BrowseNode) (string, error) {
+	negative := false
+	if field.Type == valueBoolean {
+		value, _ := node.Value.(bool)
+		negative = (node.Operator == "equals") != value
+		node.Operator = "equals"
+		node.Value = true
+	} else if node.Operator == "not-equals" || node.Operator == "not-in" || node.Operator == "is-missing" {
+		negative = true
+		node.Operator = map[string]string{"not-equals": "equals", "not-in": "in", "is-missing": "is-present"}[node.Operator]
+	}
+	c.args = append(c.args, c.profile)
+	own, err := c.comparison(field, field.Value, node.Operator, node.Value)
+	if err != nil {
+		return "", err
+	}
+	own = `EXISTS(SELECT 1 FROM personal_items pi WHERE pi.profile_id=? AND pi.item_id=e.entity_id AND ` + own + `)`
+	memberField := field
+	memberField.ID = "personal-member"
+	member, err := c.itemPredicate(memberField, node)
+	if err != nil {
+		return "", err
+	}
+	clause := "(" + own + " OR " + member + ")"
+	if negative {
 		clause = "NOT " + clause
 	}
 	return clause, nil

@@ -5,63 +5,17 @@ import (
 	"sort"
 )
 
-// Profile sorts (my rating, last played) order a pivot by a value only the
-// viewer's history holds. Descending, the rows the profile has a value for
-// come first (highest, newest), then every other row in title order;
-// ascending is the reverse split: the rest in title order, then the valued
-// rows lowest first.
-//
-// The valued rows are read from the profile's own history (personal_items by
-// its rating or last-played index, then the memberships), so they cost what
-// the history holds, never what the library holds. The rest is a title
-// position shifted past the valued rows that sort before it: with title
-// blocks that is a few block reads; under a posted query it is the query's
-// bounded offset.
+// Recommendation order uses a bounded ranked candidate set, followed by the
+// rest in title order. Scalar profile sorts use browse_indexed_sorts.go.
 
 type personalRow struct {
 	entity int64
 	title  titleKey
 }
 
-func (s *Service) personalValued(p pageShape, definition browseSort, desc bool) ([]personalRow, error) {
-	if definition.ID == "forYou" {
-		return s.recForYouValued(p)
-	}
-	value, valued, index := "max(pi.rating)", "pi.rating>0", "personal_rating_range"
-	if definition.ID == "lastPlayed" {
-		value, valued, index = "max(pi.last_played_at)", "pi.last_played_at>''", "personal_last_played"
-	}
-	direction := ""
-	if desc {
-		direction = " DESC"
-	}
-	args := append([]any{p.request.Profile}, p.args...)
-	rows, err := s.read().Query(`SELECT e.entity_id,lower(e.sort_key),`+value+` AS value
-		FROM personal_items pi INDEXED BY `+index+`
-		CROSS JOIN catalog_browse_memberships bei ON bei.item_id=pi.item_id
-		CROSS JOIN catalog_browse_rows e ON e.entity_id=bei.entity_id
-		WHERE pi.profile_id=? AND `+valued+` AND `+p.where+`
-		GROUP BY e.entity_id ORDER BY value`+direction+`,e.entity_id`+direction, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	out := []personalRow{}
-	for rows.Next() {
-		var row personalRow
-		var ignored any
-		if err = rows.Scan(&row.entity, &row.title.key, &ignored); err != nil {
-			return nil, err
-		}
-		row.title.entity = row.entity
-		out = append(out, row)
-	}
-	return out, rows.Err()
-}
-
 // personalPage reads the page of a profile sort at p.start.
-func (s *Service) personalPage(p pageShape, definition browseSort, desc bool) ([]browseRow, error) {
-	valued, err := s.personalValued(p, definition, desc)
+func (s *Service) personalPage(p pageShape, _ browseSort, desc bool) ([]browseRow, error) {
+	valued, err := s.recForYouValued(p)
 	if err != nil {
 		return nil, err
 	}

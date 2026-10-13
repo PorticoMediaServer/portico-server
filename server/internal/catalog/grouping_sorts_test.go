@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"reflect"
+	"strings"
 	"testing"
 
 	"portico.local/server/internal/catalogtest"
@@ -53,7 +54,7 @@ func TestGroupingTitleSortsUseExactKeysAndRestrictedKeysets(t *testing.T) {
 		c.Write(func(ctx context.Context, tx *sql.Tx) error {
 			return compactcatalog.SetAssetTx(ctx, tx, item.Asset, map[string]any{"size": int64(100 + i%3), "height": 480 + 240*(i%4)})
 		})
-		c.Exec(`INSERT INTO metadata_ratings(item_id,provider,value,scale,votes,source_url,observed_at) VALUES(?,'metacritic',?,10,0,'','now')`, item.ID, float64(i%5))
+		c.Exec(`INSERT INTO metadata_ratings(item_id,provider,value,scale,votes,source_url,observed_at) VALUES(?,'metacritic',?,10,0,'','now')`, item.ID, float64(i%5)+0.123456789)
 		c.Exec(`INSERT INTO personal_play_counts(profile_id,item_id,plays) VALUES('p',?,?)`, item.ID, i%7)
 	}
 	c.Exec(`INSERT INTO content_rating_ages(value_key,minimum_age) VALUES('r',17)`)
@@ -306,6 +307,10 @@ func TestGroupingSubtitleFilterReadsCurrentEvidenceAndPrivateUploads(t *testing.
 	if len(got) != 0 {
 		t.Fatal("obsolete subtitle evidence still matched")
 	}
+	page, err := s.BrowseEntities(Viewer{Profile: "p", Fence: "p", Libraries: []string{"m"}}, BrowseRequest{Library: "m", Pivot: "movies", Query: &BrowseNode{Field: "subtitleLanguage", Operator: "equals", Value: "fr"}, Limit: 1})
+	if err != nil || page.PageInfo.Total != 0 {
+		t.Fatalf("stale subtitle total %+v %v", page.PageInfo, err)
+	}
 }
 
 func TestGroupingOrderCountsAndRecentAddition(t *testing.T) {
@@ -332,5 +337,90 @@ func TestGroupingOrderCountsAndRecentAddition(t *testing.T) {
 		if !reflect.DeepEqual(got, tc.want) {
 			t.Fatalf("%s %s: %v", tc.field, tc.direction, got)
 		}
+	}
+}
+
+func TestGroupingPersonalKeyPagesUseTheirIndexes(t *testing.T) {
+	c := catalogtest.Open(t)
+	library := c.Library("m", "Movies", "movie", "/m")
+	c.Movie(library, "/m/a.mkv", "Film", 2000)
+	c.Drain()
+	for _, field := range []string{"personalRating", "lastPlayed", "playCount"} {
+		definition, _ := browseSortByID(field)
+		p := pageShape{request: BrowseRequest{Library: "m", Profile: "p"}, where: "e.library_id=(SELECT id FROM catalog_libraries WHERE library_id=?) AND e.kind=?", args: []any{"m", 1}, kind: 1, limit: 4}
+		query, args, err := personalKeyPageSQL(p, definition, true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		rows, err := c.DB.Query("EXPLAIN QUERY PLAN "+compactcatalog.ServingSQL(query), args...)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, _, index := personalSortColumn(field)
+		found := false
+		for rows.Next() {
+			var a, b, c int
+			var plan string
+			if err = rows.Scan(&a, &b, &c, &plan); err != nil {
+				t.Fatal(err)
+			}
+			if strings.Contains(plan, index) {
+				found = true
+			}
+			if strings.Contains(plan, "USE TEMP B-TREE") || strings.Contains(plan, "MATERIALIZE") {
+				t.Fatalf("%s materializes its order: %s", field, plan)
+			}
+		}
+		rows.Close()
+		if !found {
+			t.Fatalf("%s did not use profile index", field)
+		}
+	}
+}
+
+func TestGroupingPersonalOrderPublishesOnlyChangedKeys(t *testing.T) {
+	c := catalogtest.Open(t)
+	library := c.Library("m", "Movies", "movie", "/m")
+	item := c.Movie(library, "/m/a.mkv", "Film", 2000)
+	c.Exec(`INSERT INTO personal_play_counts(profile_id,item_id,plays) VALUES('p',?,1)`, item.ID)
+	c.Drain()
+	s := New(c.DB)
+	before, err := s.browseContentRevision("m", "p")
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.Exec(`UPDATE personal_play_counts SET plays=2 WHERE profile_id='p' AND item_id=?`, item.ID)
+	c.Drain()
+	after, err := s.browseContentRevision("m", "p")
+	if err != nil || after.Viewer <= before.Viewer {
+		t.Fatalf("changed count not published: %+v %+v %v", before, after, err)
+	}
+	c.Exec(`UPDATE personal_play_counts SET plays=plays WHERE profile_id='p' AND item_id=?`, item.ID)
+	c.Drain()
+	unchanged, err := s.browseContentRevision("m", "p")
+	if err != nil || unchanged.Viewer != after.Viewer {
+		t.Fatalf("unchanged count published: %+v %+v %v", after, unchanged, err)
+	}
+}
+
+func TestGroupingPersonalFiltersAndSortsIncludeContainerIntent(t *testing.T) {
+	c := catalogtest.Open(t)
+	library := c.Library("music", "Music", "music", "/music")
+	artist := c.Artist(library, "Artist")
+	album := c.Album(artist, "Album", 2000)
+	c.Song(album, 1, "/music/a.flac", "Song")
+	c.Exec(`INSERT INTO personal_items(profile_id,item_id,favorite,rating,revision,last_played_at) VALUES('p',?,1,9,1,'2026-01-01T00:00:00.000Z')`, album.ID)
+	c.Drain()
+	s := New(c.DB)
+	viewer := Viewer{Profile: "p", Fence: "f", Libraries: []string{"music"}}
+	for _, node := range []BrowseNode{{Field: "favorite", Operator: "equals", Value: true}, {Field: "personalRating", Operator: "at-least", Value: float64(8)}, {Field: "lastPlayedAt", Operator: "is-present"}} {
+		got := walkBrowse(t, s, viewer, BrowseRequest{Library: "music", Pivot: "albums", Query: &node, Sort: []BrowseSortSelection{{Field: "personalRating", Direction: "desc"}}, Limit: 1})
+		if len(got) != 1 || got[0].ID != album.Public {
+			t.Fatalf("container intent %+v: %+v", node, got)
+		}
+	}
+	var rating int
+	if err := c.DB.QueryRow(`SELECT rating FROM catalog_personal_sort_rows WHERE profile_id='p' AND entity_id=?`, album.ID).Scan(&rating); err != nil || rating != 9 {
+		t.Fatalf("container rating %d %v", rating, err)
 	}
 }

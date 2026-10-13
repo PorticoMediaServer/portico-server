@@ -6256,7 +6256,7 @@ CREATE TRIGGER browse_order_insert AFTER INSERT ON catalog_browse_rows BEGIN
 CREATE TRIGGER browse_order_delete AFTER DELETE ON catalog_browse_rows BEGIN
  UPDATE library_revisions SET order_revision=order_revision+1 WHERE library_id=(SELECT library_id FROM catalog_libraries WHERE id=OLD.library_id); END;
 CREATE TRIGGER browse_order_update AFTER UPDATE ON catalog_browse_rows
- WHEN OLD.library_id IS NOT NEW.library_id OR OLD.kind IS NOT NEW.kind OR OLD.sort_key IS NOT NEW.sort_key OR OLD.year IS NOT NEW.year OR OLD.added_text IS NOT NEW.added_text OR OLD.duration_max IS NOT NEW.duration_max OR OLD.rating_max IS NOT NEW.rating_max OR OLD.available IS NOT NEW.available OR OLD.rating_key IS NOT NEW.rating_key OR OLD.label_key IS NOT NEW.label_key BEGIN
+ WHEN OLD.library_id IS NOT NEW.library_id OR OLD.kind IS NOT NEW.kind OR OLD.sort_key IS NOT NEW.sort_key OR OLD.year IS NOT NEW.year OR OLD.added_text IS NOT NEW.added_text OR OLD.duration_max IS NOT NEW.duration_max OR OLD.rating_max IS NOT NEW.rating_max OR OLD.available IS NOT NEW.available OR OLD.rating_key IS NOT NEW.rating_key OR OLD.label_key IS NOT NEW.label_key OR OLD.release_key IS NOT NEW.release_key OR OLD.latest_aired_key IS NOT NEW.latest_aired_key OR OLD.critic_key IS NOT NEW.critic_key OR OLD.episode_count IS NOT NEW.episode_count OR OLD.album_key IS NOT NEW.album_key OR OLD.artist_key IS NOT NEW.artist_key OR OLD.track_key IS NOT NEW.track_key OR OLD.file_size IS NOT NEW.file_size OR OLD.resolution_key IS NOT NEW.resolution_key OR OLD.random_key IS NOT NEW.random_key BEGIN
  UPDATE library_revisions SET order_revision=order_revision+1 WHERE library_id IN(SELECT library_id FROM catalog_libraries WHERE id IN(OLD.library_id,NEW.library_id)); END;
 CREATE TRIGGER progress_observation_update AFTER UPDATE ON progress_activity BEGIN
  INSERT INTO viewer_revisions(profile_id,library_id,revision,observation_revision) VALUES(NEW.profile_id,NEW.library_id,0,1) ON CONFLICT(profile_id,library_id) DO UPDATE SET observation_revision=observation_revision+1; END;
@@ -6511,4 +6511,35 @@ CREATE TRIGGER catalog_personal_plays_move AFTER UPDATE OF play_count,profile_id
  UPDATE catalog_personal_play_totals SET total=max(0,total-OLD.play_count) WHERE profile_id=OLD.profile_id AND entity_id=OLD.entity_id;
  INSERT INTO catalog_personal_play_totals(profile_id,entity_id,total) VALUES(NEW.profile_id,NEW.entity_id,NEW.play_count)
  ON CONFLICT(profile_id,entity_id) DO UPDATE SET total=total+excluded.total;
+END;
+
+-- Subtitle evidence changes the exact totals of subtitle-language queries.
+CREATE TRIGGER browse_subtitle_facts_insert AFTER INSERT ON asset_subtitle_facts BEGIN
+ UPDATE library_revisions SET revision=revision+1,order_revision=order_revision+1 WHERE library_id IN(SELECT l.library_id FROM catalog_asset_links link JOIN catalog_assets asset ON asset.id=link.asset_id JOIN catalog_entities e ON e.id=link.entity_id JOIN catalog_libraries l ON l.id=e.library_id WHERE asset.token=NEW.asset_id);
+END;
+CREATE TRIGGER browse_subtitle_resources_insert AFTER INSERT ON subtitle_resources BEGIN
+ UPDATE library_revisions SET revision=revision+1,order_revision=order_revision+1 WHERE library_id=(SELECT l.library_id FROM catalog_entities e JOIN catalog_libraries l ON l.id=e.library_id WHERE e.id=NEW.item_id);
+END;
+CREATE TRIGGER browse_subtitle_facts_update AFTER UPDATE ON asset_subtitle_facts BEGIN
+ UPDATE library_revisions SET revision=revision+1,order_revision=order_revision+1 WHERE library_id IN(SELECT l.library_id FROM catalog_asset_links link JOIN catalog_assets asset ON asset.id=link.asset_id JOIN catalog_entities e ON e.id=link.entity_id JOIN catalog_libraries l ON l.id=e.library_id WHERE asset.token=NEW.asset_id);
+END;
+CREATE TRIGGER browse_subtitle_resources_update AFTER UPDATE ON subtitle_resources BEGIN
+ UPDATE library_revisions SET revision=revision+1,order_revision=order_revision+1 WHERE library_id=(SELECT l.library_id FROM catalog_entities e JOIN catalog_libraries l ON l.id=e.library_id WHERE e.id=NEW.item_id);
+END;
+CREATE TRIGGER browse_subtitle_facts_delete AFTER DELETE ON asset_subtitle_facts BEGIN
+ UPDATE library_revisions SET revision=revision+1,order_revision=order_revision+1 WHERE library_id IN(SELECT l.library_id FROM catalog_asset_links link JOIN catalog_assets asset ON asset.id=link.asset_id JOIN catalog_entities e ON e.id=link.entity_id JOIN catalog_libraries l ON l.id=e.library_id WHERE asset.token=OLD.asset_id);
+END;
+CREATE TRIGGER browse_subtitle_resources_delete AFTER DELETE ON subtitle_resources BEGIN
+ UPDATE library_revisions SET revision=revision+1,order_revision=order_revision+1 WHERE library_id=(SELECT l.library_id FROM catalog_entities e JOIN catalog_libraries l ON l.id=e.library_id WHERE e.id=OLD.item_id);
+END;
+
+-- Publish exact personal order changes, including repeated completed plays.
+CREATE TRIGGER browse_personal_order_insert AFTER INSERT ON catalog_personal_sort_rows WHEN NEW.rating>0 OR NEW.last_played_at<>'' OR NEW.play_count>0 BEGIN
+ INSERT INTO viewer_revisions(profile_id,library_id,revision) SELECT NEW.profile_id,library_id,1 FROM catalog_libraries WHERE id=NEW.library_id ON CONFLICT(profile_id,library_id) DO UPDATE SET revision=revision+1;
+END;
+CREATE TRIGGER browse_personal_order_delete AFTER DELETE ON catalog_personal_sort_rows WHEN OLD.rating>0 OR OLD.last_played_at<>'' OR OLD.play_count>0 BEGIN
+ INSERT INTO viewer_revisions(profile_id,library_id,revision) SELECT OLD.profile_id,library_id,1 FROM catalog_libraries WHERE id=OLD.library_id ON CONFLICT(profile_id,library_id) DO UPDATE SET revision=revision+1;
+END;
+CREATE TRIGGER browse_personal_order_update AFTER UPDATE OF library_id,kind,rating,last_played_at,play_count ON catalog_personal_sort_rows WHEN OLD.library_id IS NOT NEW.library_id OR OLD.kind IS NOT NEW.kind OR OLD.rating IS NOT NEW.rating OR OLD.last_played_at IS NOT NEW.last_played_at OR OLD.play_count IS NOT NEW.play_count BEGIN
+ INSERT INTO viewer_revisions(profile_id,library_id,revision) SELECT NEW.profile_id,library_id,1 FROM catalog_libraries WHERE id IN(OLD.library_id,NEW.library_id) ON CONFLICT(profile_id,library_id) DO UPDATE SET revision=revision+1;
 END;

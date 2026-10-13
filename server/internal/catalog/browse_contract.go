@@ -433,6 +433,15 @@ func (s *Service) BrowseCapabilitiesFor(library, pivot string) (BrowseCapabiliti
 		out.Pivots = append(out.Pivots, BrowsePivotCapability{ID: entry.ID, LabelKey: entry.LabelKey, EntityKinds: entry.EntityKinds, DefaultSort: entry.DefaultSort, SupportedViews: entry.SupportedViews, Browsable: entry.Browsable || entry.Aggregate != "", Aggregate: entry.Aggregate, Sorts: pivotSortIDs(lib.Kind, entry), Filters: pivotFieldIDs(lib.Kind, entry), Paging: "keyset"})
 	}
 	kindFilter := map[string]bool{}
+	if pivot == "" {
+		for _, entry := range available {
+			if entry.Browsable {
+				for _, kind := range entityKindMembers(entry) {
+					kindFilter[kind] = true
+				}
+			}
+		}
+	}
 	if pivot != "" {
 		resolved, ok := pivotForKind(lib.Kind, pivot)
 		if !ok {
@@ -511,6 +520,12 @@ func (s *Service) BrowseCapabilitiesFor(library, pivot string) (BrowseCapabiliti
 
 func pivotFilterKinds(libraryKind string, pivot browsePivot) []string {
 	if pivot.Aggregate != "" {
+		if libraryKind == "music" && pivot.Aggregate == "genre" {
+			return []string{"song"}
+		}
+		if libraryKind == "audiobook" && pivot.Aggregate == "series" {
+			return []string{"audiobook_file"}
+		}
 		p, _ := pivotForKind(libraryKind, defaultPivot(libraryKind))
 		return entityKindMembers(p)
 	}
