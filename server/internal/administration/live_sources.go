@@ -3,10 +3,13 @@ package administration
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"net"
 	"net/netip"
+	"net/url"
 	"portico.local/server/internal/livechannels"
+	"portico.local/server/internal/remotemedia"
 	"sort"
 	"strconv"
 	"strings"
@@ -70,6 +73,7 @@ type LiveSourceSettings = livechannels.LiveSourceSettings
 // DefaultLiveSourceSettings is the answer before any owner write.
 func DefaultLiveSourceSettings() LiveSourceSettings {
 	return LiveSourceSettings{
+		EnabledGroups: []string{}, EnabledChannels: []string{},
 		Kind:      "playlist",
 		Filters:   SourceFilters{FilterRule{"include", []string{}}, FilterRule{"include", []string{}}, FilterRule{"exclude", []string{}}},
 		Logos:     LogoImport{Enabled: true},
@@ -98,6 +102,12 @@ func normalizeFilter(r *FilterRule) {
 }
 
 func normalizeLiveSourceSettings(v *LiveSourceSettings) {
+	if v.EnabledGroups == nil {
+		v.EnabledGroups = []string{}
+	}
+	if v.EnabledChannels == nil {
+		v.EnabledChannels = []string{}
+	}
 	normalizeFilter(&v.Filters.Categories)
 	normalizeFilter(&v.Filters.Countries)
 	normalizeFilter(&v.Filters.Keywords)
@@ -118,6 +128,17 @@ func validateFilter(r FilterRule, field string, fields *[]string) {
 
 func validateLiveSourceSettings(v *LiveSourceSettings) error {
 	fields := []string{}
+	for _, list := range [][]string{v.EnabledGroups, v.EnabledChannels} {
+		if len(list) > 100000 {
+			fields = append(fields, "settings.enabledChannels")
+		}
+		for _, value := range list {
+			if value == "" || !safeText(value, 256) {
+				fields = append(fields, "settings.enabledChannels")
+				break
+			}
+		}
+	}
 	if !oneOf(v.Kind, LiveSourceKinds...) {
 		fields = append(fields, "settings.kind")
 	}
@@ -552,7 +573,7 @@ func (s *Service) DiscoverTuners(ctx context.Context, auth Authorize, window tim
 		if !tableExists(ctx, tx, "live_sources") {
 			return nil
 		}
-		rows, err := tx.QueryContext(ctx, `SELECT id FROM live_sources`)
+		rows, err := tx.QueryContext(ctx, `SELECT json_extract(CAST(c.sealed AS TEXT),'$.draft.locator') FROM live_remote_configs c WHERE json_extract(CAST(c.sealed AS TEXT),'$.draft.kind')='hdhomerun'`)
 		if err != nil {
 			return err
 		}
@@ -562,7 +583,9 @@ func (s *Service) DiscoverTuners(ctx context.Context, auth Authorize, window tim
 			if err = rows.Scan(&id); err != nil {
 				return err
 			}
-			configured[id] = true
+			if u, e := url.Parse(id); e == nil {
+				configured[u.Hostname()] = true
+			}
 		}
 		return rows.Err()
 	})
@@ -582,8 +605,51 @@ func (s *Service) DiscoverTuners(ctx context.Context, auth Authorize, window tim
 		out.Message = "No tuner answered on this network."
 		return out, nil
 	}
+	if len(devices) > 64 {
+		devices = devices[:64]
+	}
+	lookup, stop := context.WithTimeout(ctx, 5*time.Second)
+	defer stop()
 	for i := range devices {
-		devices[i].Configured = configured[devices[i].DeviceID]
+		device := &devices[i]
+		device.Configured = configured[device.Address]
+		root := device.BaseURL + "/"
+		u, e := url.Parse(root)
+		if e != nil || u.Hostname() != device.Address || net.ParseIP(device.Address) == nil {
+			continue
+		}
+		policy := remotemedia.Policy{Approvals: []remotemedia.Approval{{Root: root, Addresses: []string{device.Address}}}}
+		bounded, done := context.WithTimeout(lookup, 750*time.Millisecond)
+		raw, e := livechannels.ReadSource(bounded, root+"discover.json", policy, 64<<10)
+		done()
+		if e != nil {
+			continue
+		}
+		var info struct {
+			DeviceID string `json:"DeviceID"`
+			Model    string `json:"ModelNumber"`
+			Name     string `json:"FriendlyName"`
+			Firmware string `json:"FirmwareVersion"`
+			Count    int    `json:"TunerCount"`
+		}
+		if json.Unmarshal(raw, &info) != nil {
+			continue
+		}
+		if info.Count >= 0 && info.Count <= 256 {
+			device.TunerCount = info.Count
+		}
+		if safeText(info.DeviceID, 64) && info.DeviceID != "" {
+			device.DeviceID = info.DeviceID
+		}
+		if safeText(info.Model, 128) {
+			device.Model = info.Model
+		}
+		if safeText(info.Name, 256) {
+			device.FriendlyName = info.Name
+		}
+		if safeText(info.Firmware, 128) {
+			device.FirmwareVersion = info.Firmware
+		}
 	}
 	sort.Slice(devices, func(i, j int) bool { return devices[i].DeviceID < devices[j].DeviceID })
 	out.Devices = devices

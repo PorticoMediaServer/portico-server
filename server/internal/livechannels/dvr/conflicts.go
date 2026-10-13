@@ -27,35 +27,19 @@ func conflictsTx(ctx context.Context, tx *sql.Tx, r Recording) ([]livechannels.L
 	if e != nil {
 		return out, ErrUnavailable
 	}
-	rows, e := tx.QueryContext(ctx, `WITH competitors AS (
- SELECT max(start_ms,?) a,min(end_ms,?) b,
- CASE WHEN priority>? OR (priority=? AND (start_ms<? OR (start_ms=? AND id<?))) THEN 1 ELSE 0 END higher
- FROM live_reservations WHERE source_id=? AND enabled=1 AND id<>? AND start_ms<? AND end_ms>? AND NOT EXISTS(SELECT 1 FROM dvr_recordings d WHERE d.id=live_reservations.id AND d.channel_id=?)
- ), edges AS (SELECT a at,1 demand,higher FROM competitors UNION ALL SELECT b at,-1 demand,-higher FROM competitors)
- SELECT at,SUM(demand),SUM(higher) FROM edges GROUP BY at ORDER BY at`, start.UnixMilli(), end.UnixMilli(), r.Options.Priority, r.Options.Priority, start.UnixMilli(), start.UnixMilli(), r.ID, r.Occurrence.SourceID, r.ID, end.UnixMilli(), start.UnixMilli(), r.Occurrence.ChannelID)
+	all, e := livechannels.ReservationsTx(ctx, tx, r.Occurrence.SourceID, start, end)
 	if e != nil {
 		return out, e
 	}
-	defer rows.Close()
-	demand, higher := 1, 0
-	last := start.UnixMilli()
-	for rows.Next() {
-		var at int64
-		var d, h int
-		if e = rows.Scan(&at, &d, &h); e != nil {
-			return out, e
+	selected := false
+	for i := range all {
+		if all[i].ID == r.ID {
+			all[i].ChannelID = r.Occurrence.ChannelID
+			selected = true
 		}
-		if at > last && higher >= cap.Effective {
-			a, b := time.UnixMilli(last).UTC().Format(time.RFC3339Nano), time.UnixMilli(at).UTC().Format(time.RFC3339Nano)
-			if len(out) > 0 && out[len(out)-1].End == a && out[len(out)-1].Demand == demand {
-				out[len(out)-1].End = b
-			} else {
-				out = append(out, livechannels.LosingInterval{Start: a, End: b, Demand: demand, Capacity: cap.Effective})
-			}
-		}
-		demand += d
-		higher += h
-		last = at
 	}
-	return out, rows.Err()
+	if !selected {
+		all = append(all, livechannels.Reservation{ID: r.ID, ChannelID: r.Occurrence.ChannelID, Start: start, End: end, Priority: r.Options.Priority})
+	}
+	return livechannels.Conflicts(all, r.ID, cap), nil
 }

@@ -31,7 +31,7 @@ func validLocator(v string) bool {
 // Parse uploaded data only. Advertised logo URLs are recorded for the
 // background importer; parsing never fetches them.
 func parse(in SourceInput) (parsedSource, error) {
-	var out parsedSource
+	out := parsedSource{diagnostics: ImportDiagnostics{Examples: []string{}}}
 	if !validText(in.Name, 120) || len(in.Playlist) == 0 || in.TunerCount < 0 || in.TunerCount > 256 || in.ExpectedRevision < 0 {
 		return out, ErrInvalid
 	}
@@ -53,9 +53,9 @@ func parse(in SourceInput) (parsedSource, error) {
 	}
 	skip := func(reason string) { out.diagnostics.SkippedChannels++; out.diagnostics.note(reason) }
 	for {
-		raw, err := scan.ReadString('\n')
-		if len(raw) > 16384 {
-			skip("A channel line was too long.")
+		raw, long, err := playlistLine(scan)
+		if long {
+			skip("live.import.channelLineTooLong")
 			pending = false
 			if err == io.EOF {
 				break
@@ -71,7 +71,7 @@ func parse(in SourceInput) (parsedSource, error) {
 				}
 			} else if strings.HasPrefix(line, "#EXTINF:") {
 				if pending {
-					skip("A channel had no stream address.")
+					skip("live.import.channelAddressMissing")
 				}
 				pending = false
 				comma, quoted := -1, false
@@ -85,7 +85,7 @@ func parse(in SourceInput) (parsedSource, error) {
 					}
 				}
 				if comma < 0 || quoted {
-					skip("A channel description was invalid.")
+					skip("live.import.channelDescriptionInvalid")
 				} else {
 					ch = parsedChannel{name: strings.TrimSpace(line[comma+1:])}
 					for _, m := range attribute.FindAllStringSubmatch(line[:comma], -1) {
@@ -116,18 +116,21 @@ func parse(in SourceInput) (parsedSource, error) {
 						}
 					}
 					if !validText(ch.name, 256) || ch.key != "" && !validText(ch.key, 256) || ch.number != "" && !validText(ch.number, 32) || ch.group != "" && !validText(ch.group, 120) {
-						skip("A channel description was invalid.")
+						skip("live.import.channelDescriptionInvalid")
 					} else {
 						pending = true
 					}
 				}
 			} else if !strings.HasPrefix(line, "#") {
 				if !pending || !validLocator(line) {
-					skip("A channel had no usable stream address.")
+					skip("live.import.channelAddressInvalid")
 					pending = false
 				} else {
 					pending = false
 					ch.locator = line
+					if in.configuration != nil && (!filterMatch(ch.group, in.configuration.Filters.Categories) || !filterMatch(ch.country, in.configuration.Filters.Countries) || !filterMatch(ch.name, in.configuration.Filters.Keywords)) {
+						continue
+					}
 					if len(groups) > 0 && !groups[ch.group] || len(enabled) > 0 && !enabled[ch.key] {
 						continue
 					}
@@ -141,12 +144,12 @@ func parse(in SourceInput) (parsedSource, error) {
 						}
 						ch.key += "-" + id(ch.name, ch.number, ch.group)[:16]
 						if keys[ch.key] {
-							skip("A repeated channel identity was skipped.")
+							skip("live.import.channelRepeated")
 							continue
 						}
 					}
 					if len(out.channels) >= limits.Channels {
-						skip("The channel limit was reached.")
+						skip("live.import.channelLimit")
 						continue
 					}
 					keys[ch.key] = true
@@ -163,7 +166,7 @@ func parse(in SourceInput) (parsedSource, error) {
 		}
 	}
 	if pending {
-		skip("A channel had no stream address.")
+		skip("live.import.channelAddressMissing")
 	}
 	if len(out.channels) == 0 {
 		return out, ErrInvalid
@@ -231,10 +234,51 @@ func parse(in SourceInput) (parsedSource, error) {
 				return out, ErrInvalid
 			}
 			if t.Name.Local == "channel" {
-				if e = dec.Skip(); e != nil {
+				var row struct {
+					ID    string   `xml:"id,attr"`
+					Names []string `xml:"display-name"`
+					Icons []struct {
+						Src string `xml:"src,attr"`
+					} `xml:"icon"`
+				}
+				if e = dec.DecodeElement(&row, &t); e != nil {
 					return out, ErrInvalid
 				}
 				depth--
+				if !validText(row.ID, 256) {
+					continue
+				}
+				for i := range out.channels {
+					ch := &out.channels[i]
+					if mapped[ch.key] {
+						continue
+					}
+					matched := row.ID == ch.guideKey || row.ID == ch.key || row.ID == ch.number
+					for _, name := range row.Names {
+						if strings.EqualFold(strings.Join(strings.Fields(name), " "), ch.name) {
+							matched = true
+						}
+					}
+					if matched {
+						exists := false
+						for _, key := range mapping[row.ID] {
+							if key == ch.key {
+								exists = true
+							}
+						}
+						if !exists {
+							mapping[row.ID] = append(mapping[row.ID], ch.key)
+						}
+						if ch.logo == "" {
+							for _, icon := range row.Icons {
+								if validLocator(icon.Src) {
+									ch.logo = icon.Src
+									break
+								}
+							}
+						}
+					}
+				}
 				continue
 			}
 			if t.Name.Local != "programme" {
@@ -289,7 +333,7 @@ func parse(in SourceInput) (parsedSource, error) {
 			}
 			if e1 != nil || e2 != nil || !end.IsZero() && (!end.After(start) || end.Sub(start) > 7*24*time.Hour) || len(row.Title) == 0 || !validText(row.Title[0], 512) {
 				out.diagnostics.SkippedProgrammes++
-				out.diagnostics.note("A programme had no usable title or time.")
+				out.diagnostics.note("live.import.programmeInvalid")
 				continue
 			}
 			// Validate the provider document before filtering its rows. An invalid
@@ -341,6 +385,9 @@ func parse(in SourceInput) (parsedSource, error) {
 				if row.PreviouslyShown != nil {
 					p.newEvidence = "repeat"
 				}
+				if len(row.Description) > 0 {
+					row.Description[0] = strings.Join(strings.Fields(row.Description[0]), " ")
+				}
 				if len(row.Description) > 0 && validText(row.Description[0], 4096) {
 					p.description = row.Description[0]
 				}
@@ -355,7 +402,7 @@ func parse(in SourceInput) (parsedSource, error) {
 				if old, ok := seen[p.key]; ok {
 					if old != p {
 						out.diagnostics.SkippedProgrammes++
-						out.diagnostics.note("A contradictory repeated programme was skipped.")
+						out.diagnostics.note("live.import.programmeRepeated")
 					}
 					continue
 				}
@@ -395,7 +442,7 @@ func parse(in SourceInput) (parsedSource, error) {
 				out.diagnostics.AdjustedProgrammes++
 			} else {
 				out.diagnostics.SkippedProgrammes++
-				out.diagnostics.note("A programme without an end time had no following programme.")
+				out.diagnostics.note("live.import.programmeEndMissing")
 				continue
 			}
 		}
@@ -639,4 +686,25 @@ func guideCharset(name string, r io.Reader) (io.Reader, error) {
 		return r, nil
 	}
 	return nil, fmt.Errorf("unsupported guide encoding: %s", strconv.Quote(name))
+}
+
+// Discard a hostile long line in bounded fragments, then resume the next row.
+func playlistLine(r *bufio.Reader) (string, bool, error) {
+	var out []byte
+	long := false
+	for {
+		part, e := r.ReadSlice('\n')
+		if !long {
+			if len(out)+len(part) > 16384 {
+				long = true
+				out = nil
+			} else {
+				out = append(out, part...)
+			}
+		}
+		if e == bufio.ErrBufferFull {
+			continue
+		}
+		return string(out), long, e
+	}
 }

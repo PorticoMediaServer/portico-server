@@ -25,6 +25,12 @@ export const errors = [
     "retry": "never"
   },
   {
+    "code": "channel_revision_conflict",
+    "status": 409,
+    "message": "The channel source changed. Refresh before saving.",
+    "retry": "after_refresh"
+  },
+  {
     "code": "channel_unavailable",
     "status": 503,
     "message": "This channel can't be played right now.",
@@ -88,6 +94,12 @@ export const errors = [
     "code": "internal",
     "status": 500,
     "message": "The request could not be completed.",
+    "retry": "never"
+  },
+  {
+    "code": "invalid_channel_input",
+    "status": 400,
+    "message": "The playlist or guide could not be used. Check it and try again.",
     "retry": "never"
   },
   {
@@ -262,6 +274,24 @@ export const errors = [
     "code": "session_ended",
     "status": 410,
     "message": "This playback has ended.",
+    "retry": "never"
+  },
+  {
+    "code": "source_credentials_required",
+    "status": 422,
+    "message": "The provider refused these credentials. Enter them again.",
+    "retry": "never"
+  },
+  {
+    "code": "source_lan_confirmation_required",
+    "status": 422,
+    "message": "Confirm the source addresses on your local network to continue.",
+    "retry": "never"
+  },
+  {
+    "code": "source_network_policy",
+    "status": 422,
+    "message": "This source address needs confirmation before it can be reached.",
     "retry": "never"
   },
   {

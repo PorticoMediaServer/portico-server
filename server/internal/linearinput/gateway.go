@@ -175,6 +175,10 @@ func openInput(ctx context.Context, in livechannels.Input) (*Gateway, error) {
 			return nil, ErrFormat
 		}
 		g.first = data
+		entry := &cachedResource{ready: make(chan struct{}), data: data, location: finalURL, expires: time.Now().Add(500 * time.Millisecond)}
+		close(entry.ready)
+		g.cache["manifest\n"+finalURL+"\n"] = entry
+		g.cacheBytes = int64(len(data))
 		g.resources[g.secret] = resource{finalURL, 0, "manifest", "m3u8"}
 	} else {
 		// MPEG-TS framing is inspected by the qualified probe; no guessed codec facts.
@@ -222,7 +226,11 @@ func (g *Gateway) pump(r io.Reader) {
 			g.span.Bytes += int64(n)
 			g.raw = append(g.raw, buf[:n])
 			g.total += int64(n)
-			for g.total-g.base > ringBytes && len(g.raw) > 1 {
+			limit := int64(ringBytes)
+			if g.input.StreamBufferSeconds > 0 {
+				limit = min(128<<20, max(1<<20, int64(g.input.StreamBufferSeconds)*4<<20))
+			}
+			for g.total-g.base > limit && len(g.raw) > 1 {
 				g.base += int64(len(g.raw[0]))
 				g.raw = g.raw[1:]
 			}

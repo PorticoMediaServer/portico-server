@@ -108,6 +108,7 @@ func (f SourceFetcher) fetch(ctx context.Context, c remoteConfig) (SourceInput, 
 		for _, s := range streams {
 			sid, e := s.ID.Int64()
 			if e != nil || sid <= 0 {
+				text.WriteString("#EXTINF:-1,Skipped\nfile:///skipped\n")
 				continue
 			}
 			key := "xtream-" + strconv.FormatInt(sid, 10)
@@ -117,8 +118,10 @@ func (f SourceFetcher) fetch(ctx context.Context, c remoteConfig) (SourceInput, 
 			// Path components must not change route structure; URL's RawPath preserves
 			// reserved characters in credentials without exposing them to consumers.
 			stream.RawPath = strings.TrimSuffix(base.EscapedPath(), "/") + "/live/" + url.PathEscape(d.Username) + "/" + url.PathEscape(d.Password) + "/" + strconv.FormatInt(sid, 10) + ".ts"
-			if !validPlaylistText(s.Name) || !validText(s.Name, 256) {
-				return in, 0, ErrInvalid
+			s.Name = strings.ReplaceAll(s.Name, "\"", "'")
+			if !validText(s.Name, 256) {
+				text.WriteString("#EXTINF:-1,Skipped\nfile:///skipped\n")
+				continue
 			}
 			fmt.Fprintf(&text, "#EXTINF:-1 tvg-id=\"%s\" tvg-chno=\"%s\",%s\n%s\n", key, s.Number.String(), s.Name, stream.String())
 			if !hasMapping(in.Mappings, key) && s.EPG != "" {
@@ -240,7 +243,7 @@ func (s *Store) InputTx(ctx context.Context, tx *sql.Tx, sourceID, channelID, ge
 	var in Input
 	var sealed []byte
 	var active string
-	e := tx.QueryRowContext(ctx, `SELECT s.revision,s.active_generation,c.locator_sealed FROM live_sources s JOIN live_channel_versions c ON c.generation_id=s.active_generation WHERE s.id=? AND c.channel_id=? AND s.state='active'`, sourceID, channelID).Scan(&in.Revision, &active, &sealed)
+	e := tx.QueryRowContext(ctx, `SELECT s.revision,s.active_generation,c.locator_sealed FROM live_sources s JOIN live_channel_versions c ON c.generation_id=s.active_generation WHERE s.id=? AND c.channel_id=? AND s.state='active' AND NOT EXISTS(SELECT 1 FROM admin_channel_numbers n WHERE n.source_id=s.id AND n.channel_id=c.channel_id AND n.hidden=1)`, sourceID, channelID).Scan(&in.Revision, &active, &sealed)
 	if e != nil || active != generation {
 		return in, ErrConflict
 	}

@@ -4,9 +4,11 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/dbwork"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -35,7 +37,7 @@ func (s *Store) publish(ctx context.Context, c *claim, result CaptureResult) err
 	// sealed-object recovery whose original source revision was checkpointed.
 	if result.Complete {
 		expected := c.request.Input.Fence()
-		if c.recovery {
+		if c.recovery || c.sharedFrom != "" {
 			expected = c.checkpoint.SourceFence
 		}
 		var active, state string
@@ -53,9 +55,8 @@ func (s *Store) publish(ctx context.Context, c *claim, result CaptureResult) err
 	var existingLibrary, root string
 	e = tx.QueryRowContext(ctx, `SELECT d.library_id,l.root FROM dvr_private_libraries d JOIN libraries l ON l.id=d.library_id WHERE d.authority=? AND d.account_id=? AND d.profile_id=?`, c.request.Owner.Authority, c.request.Owner.AccountID, c.request.Owner.ProfileID).Scan(&existingLibrary, &root)
 	if errors.Is(e, sql.ErrNoRows) {
-		// Movie-layout catalog semantics avoid inventing season/episode numbers where
-		// the guide cannot prove them. The library and DVR surface are named Recorded
-		// TV; programme/series identity remains explicit provenance, not VOD metadata.
+		// One private library holds both films and guide-identified episodes.
+		// Its container kind is presentation, not evidence about each recording.
 		if _, e = tx.ExecContext(ctx, `INSERT INTO libraries(id,name,kind,root) VALUES(?,'Recorded TV','movie',?)`, library, result.Root); e != nil {
 			return e
 		}
@@ -79,13 +80,45 @@ func (s *Store) publish(ctx context.Context, c *claim, result CaptureResult) err
 	if result.Complete {
 		state = "completed"
 	}
-	entity, _, e := compactcatalog.UpsertEntityTx(ctx, tx, compactcatalog.Entity{
-		Library: handle,
-		Kind:    compactcatalog.Movie,
-		Key:     compactcatalog.RecordingKey(c.request.Recording.ID),
-		Title:   c.request.Recording.Programme.Title,
-		Added:   s.now().UTC().Format(time.RFC3339Nano),
-	})
+	programme := c.request.Recording.Programme
+	kind, parent, title := compactcatalog.Movie, int64(0), programme.Title
+	if programme.Episode != nil && programme.Episode.Season > 0 && programme.Episode.Number > 0 {
+		identity := programme.SeriesID
+		if identity == "" {
+			identity = digest([]string{c.request.Recording.Occurrence.SourceID, programme.Title})
+		}
+		showKey := "recorded:" + identity
+		show, _, err := compactcatalog.UpsertEntityTx(ctx, tx, compactcatalog.Entity{Library: handle, Kind: compactcatalog.Show, Key: compactcatalog.ShowKey(showKey), Title: programme.Title, Year: programme.Year})
+		if err != nil {
+			return err
+		}
+		if err = compactcatalog.SetFactsTx(ctx, tx, show, map[string]any{"local_key": showKey, "provider_match_status": "unmatched"}); err != nil {
+			return err
+		}
+		season, _, err := compactcatalog.UpsertEntityTx(ctx, tx, compactcatalog.Entity{Library: handle, Kind: compactcatalog.Season, Parent: show, Key: compactcatalog.SeasonKey(showKey, programme.Episode.Season), Title: fmt.Sprintf("Season %d", programme.Episode.Season)})
+		if err != nil {
+			return err
+		}
+		if err = compactcatalog.SetFactsTx(ctx, tx, season, map[string]any{"show_id": show, "number": programme.Episode.Season}); err != nil {
+			return err
+		}
+		kind, parent = compactcatalog.Episode, season
+		title = programme.Subtitle
+		if title == "" {
+			title = fmt.Sprintf("%s · S%d E%d", programme.Title, programme.Episode.Season, programme.Episode.Number)
+		}
+	} else if programme.Subtitle != "" {
+		title += " · " + programme.Subtitle
+	}
+	entity, _, e := compactcatalog.UpsertEntityTx(ctx, tx, compactcatalog.Entity{Library: handle, Kind: kind, Parent: parent, Key: compactcatalog.RecordingKey(c.request.Recording.ID), Title: title, Year: programme.Year, Added: s.now().UTC().Format(time.RFC3339Nano)})
+	if e == nil && kind == compactcatalog.Episode {
+		var show int64
+		if e = tx.QueryRowContext(ctx, `SELECT show_id FROM catalog_seasons WHERE entity_id=?`, parent).Scan(&show); e != nil {
+			return e
+		}
+		date, _ := strconv.Atoi(strings.ReplaceAll(strings.SplitN(programme.Start, "T", 2)[0], "-", ""))
+		e = compactcatalog.SetFactsTx(ctx, tx, entity, map[string]any{"show_id": show, "season_id": parent, "numbering": "recorded:" + c.request.Recording.ID, "number": programme.Episode.Number, "local_identity_status": "parsed", "ordering_basis": "guide", "air_date": date})
+	}
 	if e != nil {
 		return e
 	}

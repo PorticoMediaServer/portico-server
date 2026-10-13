@@ -13,6 +13,7 @@ import (
 	"unicode/utf8"
 
 	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/supervise"
 	"portico.local/server/internal/worker"
 
 	"portico.local/server/internal/remotemedia"
@@ -319,6 +320,7 @@ func (s *Store) SaveRemote(ctx context.Context, a Authority, previewID, requestI
 		return *replay, nil
 	}
 	snap.Input.RequestID = requestID
+	snap.Input.remote = true
 	raw, e := json.Marshal(snap.Config)
 	if e != nil {
 		return Source{}, ErrInvalid
@@ -420,6 +422,35 @@ func (s *Store) RefreshOne(ctx context.Context, f SourceFetcher) (bool, error) {
 	if gated.Commit() != nil {
 		return false, ErrUnavailable
 	}
+	work, cancelWork := context.WithTimeout(ctx, 20*time.Minute)
+	defer cancelWork()
+	renewalDone := make(chan struct{})
+	supervise.Go("livechannels.refresh.renew", func() {
+		defer close(renewalDone)
+		tick := time.NewTicker(20 * time.Second)
+		defer tick.Stop()
+		for {
+			select {
+			case <-work.Done():
+				return
+			case <-tick.C:
+				renew, done := context.WithTimeout(work, 5*time.Second)
+				result, err := dbwork.ExecWrite(renew, s.db, dbwork.ClassBackgroundMedia, `UPDATE live_remote_configs SET lease_until_ms=? WHERE source_id=? AND lease_token=? AND EXISTS(SELECT 1 FROM live_sources s WHERE s.id=? AND s.revision=? AND s.state='active')`, time.Now().Add(2*time.Minute).UnixMilli(), sid, lease, sid, rev)
+				done()
+				if err != nil {
+					cancelWork()
+					return
+				}
+				count, _ := result.RowsAffected()
+				if count != 1 {
+					cancelWork()
+					return
+				}
+			}
+		}
+	})
+	defer func() { cancelWork(); <-renewalDone }()
+	ctx = work
 	var c remoteConfig
 	raw, e := s.unseal(sealed, "remote:"+sid)
 	if e == nil {

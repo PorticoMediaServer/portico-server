@@ -1453,6 +1453,8 @@ dvr_recording_grants.enabled
 dvr_recording_grants.inherit_profiles
 dvr_recording_grants.profile_id
 dvr_recording_grants.revision
+dvr_recording_shares.capture_recording_id
+dvr_recording_shares.recording_id
 dvr_recordings.account_id
 dvr_recordings.allocation_id
 dvr_recordings.artifact_digest
@@ -1916,6 +1918,12 @@ live_allocations.resource_id
 live_allocations.source_id
 live_allocations.state
 live_allocations.token
+live_channel_attributes.catchup
+live_channel_attributes.catchup_days
+live_channel_attributes.catchup_source
+live_channel_attributes.channel_id
+live_channel_attributes.country
+live_channel_attributes.generation_id
 live_channel_logos.channel_id
 live_channel_logos.generation_id
 live_channel_logos.url
@@ -1955,6 +1963,11 @@ live_icon_jobs.next_attempt_ms
 live_icon_jobs.skipped
 live_icon_jobs.source_id
 live_icon_jobs.state
+live_import_diagnostics.adjusted_programmes
+live_import_diagnostics.examples
+live_import_diagnostics.generation_id
+live_import_diagnostics.skipped_channels
+live_import_diagnostics.skipped_programmes
 live_logo_failures.attempts
 live_logo_failures.retry_after_ms
 live_logo_failures.url

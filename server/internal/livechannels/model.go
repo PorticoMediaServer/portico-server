@@ -28,6 +28,7 @@ const LibraryChannel Provenance = "library-channel"
 
 type SourceInput struct {
 	configuration    *LiveSourceSettings
+	remote           bool
 	guideDays        int
 	RequestID        string           `json:"requestId"`
 	ID               string           `json:"id"`
@@ -42,19 +43,20 @@ type SourceInput struct {
 	Mappings         []ChannelMapping `json:"mappings,omitempty"`
 }
 type Source struct {
-	DeliveryValidation string `json:"deliveryValidation"`
-	CapacityKnown      bool   `json:"capacityKnown"`
-	PlanningEstimate   int    `json:"planningEstimate"`
-	ID                 string `json:"id"`
-	Name               string `json:"name"`
-	Revision           int64  `json:"revision"`
-	State              string `json:"state"`
-	TunerCount         int    `json:"tunerCount"`
-	TunerCountMode     string `json:"tunerCountMode"`
-	Generation         string `json:"generation"`
-	PublishedAt        string `json:"publishedAt"`
-	Channels           int    `json:"channels"`
-	Programmes         int    `json:"programmes"`
+	Diagnostics        ImportDiagnostics `json:"diagnostics"`
+	DeliveryValidation string            `json:"deliveryValidation"`
+	CapacityKnown      bool              `json:"capacityKnown"`
+	PlanningEstimate   int               `json:"planningEstimate"`
+	ID                 string            `json:"id"`
+	Name               string            `json:"name"`
+	Revision           int64             `json:"revision"`
+	State              string            `json:"state"`
+	TunerCount         int               `json:"tunerCount"`
+	TunerCountMode     string            `json:"tunerCountMode"`
+	Generation         string            `json:"generation"`
+	PublishedAt        string            `json:"publishedAt"`
+	Channels           int               `json:"channels"`
+	Programmes         int               `json:"programmes"`
 }
 type ImportLimits struct {
 	Bytes      int `json:"bytes"`

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 )
@@ -113,8 +114,15 @@ func (s *Store) configureInput(ctx context.Context, in *SourceInput) error {
 		return e
 	}
 	in.Limits = d.ImportLimits
-	in.EnabledGroups = v.EnabledGroups
-	in.EnabledChannels = v.EnabledChannels
+	if len(v.EnabledGroups) > 0 || in.EnabledGroups == nil {
+		in.EnabledGroups = v.EnabledGroups
+	}
+	if len(v.EnabledChannels) > 0 || in.EnabledChannels == nil {
+		in.EnabledChannels = v.EnabledChannels
+	}
+	if in.remote {
+		in.guideDays = d.GuideDays
+	}
 	in.configuration = &v
 
 	rows, e := tx.QueryContext(ctx, `SELECT c.provider_key,n.guide_channel_id FROM admin_channel_numbers n JOIN live_sources s ON s.id=n.source_id JOIN live_channel_versions c ON c.generation_id=s.active_generation AND c.channel_id=n.channel_id WHERE n.source_id=? AND n.guide_channel_id!=''`, in.ID)
@@ -140,6 +148,7 @@ func (s *Store) configureInput(ctx context.Context, in *SourceInput) error {
 	for key, guide := range mappings {
 		in.Mappings = append(in.Mappings, ChannelMapping{key, guide})
 	}
+	sort.Slice(in.Mappings, func(i, j int) bool { return in.Mappings[i].ChannelKey < in.Mappings[j].ChannelKey })
 	return nil
 }
 func applyConfiguration(data *parsedSource, v *LiveSourceSettings, days int) {
@@ -209,6 +218,7 @@ func (s *Store) fetchSource(ctx context.Context, f SourceFetcher, c remoteConfig
 		return in, count, e
 	}
 	in.guideDays = d.GuideDays
+	in.remote = true
 	if e = s.configureInput(ctx, &in); e != nil {
 		return in, count, e
 	}

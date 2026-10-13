@@ -2,6 +2,7 @@ package linearinput
 
 import (
 	"bytes"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 )
@@ -22,6 +23,7 @@ func (g *Gateway) rewrite(data []byte, base string, depth int) ([]byte, error) {
 	if len(lines) > 20000 || len(lines) == 0 || strings.TrimSpace(lines[0]) != "#EXTM3U" {
 		return nil, ErrFormat
 	}
+	lines = selectVariant(lines)
 	variant := false
 	for i, line := range lines {
 		if len(line) > 16384 {
@@ -52,8 +54,9 @@ func (g *Gateway) rewrite(data []byte, base string, depth int) ([]byte, error) {
 				return nil, ErrFormat
 			}
 			variant = true
-		case "#EXT-X-PART", "#EXT-X-PRELOAD-HINT", "#EXT-X-RENDITION-REPORT", "#EXT-X-DEFINE", "#EXT-X-CONTENT-STEERING", "#EXT-X-SESSION-DATA":
-			return nil, ErrFormat
+		case "#EXT-X-PART", "#EXT-X-PART-INF", "#EXT-X-PRELOAD-HINT", "#EXT-X-RENDITION-REPORT", "#EXT-X-DEFINE", "#EXT-X-CONTENT-STEERING", "#EXT-X-SESSION-DATA":
+			lines[i] = ""
+			continue
 		case "#EXT-X-MEDIA", "#EXT-X-I-FRAME-STREAM-INF", "#EXT-X-KEY", "#EXT-X-SESSION-KEY", "#EXT-X-MAP":
 			if !has {
 				return nil, ErrFormat
@@ -99,7 +102,7 @@ func (g *Gateway) rewrite(data []byte, base string, depth int) ([]byte, error) {
 			// Reject extension URI/path fields, even when the current FFmpeg build might
 			// ignore them. Future builds must not silently widen the network boundary.
 			if strings.Contains(strings.ToUpper(line), "URI=") || strings.Contains(strings.ToUpper(line), "URL=") {
-				return nil, ErrFormat
+				lines[i] = ""
 			}
 		}
 	}
@@ -107,4 +110,43 @@ func (g *Gateway) rewrite(data []byte, base string, depth int) ([]byte, error) {
 		return nil, ErrFormat
 	}
 	return []byte(strings.Join(lines, "\n")), nil
+}
+
+// Select one original-quality variant before any decoder sees the master.
+// Alternate tracks in that variant's groups remain available to capture.
+func selectVariant(lines []string) []string {
+	best, bits := -1, int64(-1)
+	for i, line := range lines {
+		if strings.HasPrefix(line, "#EXT-X-STREAM-INF:") {
+			a, e := parseAttributes(strings.TrimPrefix(line, "#EXT-X-STREAM-INF:"))
+			if e != nil {
+				continue
+			}
+			n, _ := strconv.ParseInt(attribute(a, "BANDWIDTH"), 10, 64)
+			if n > bits {
+				best, bits = i, n
+			}
+		}
+	}
+	if best < 0 {
+		return lines
+	}
+	kept := make([]string, 0, len(lines))
+	skip := false
+	for i, line := range lines {
+		if strings.HasPrefix(line, "#EXT-X-STREAM-INF:") {
+			skip = i != best
+			if skip {
+				continue
+			}
+		}
+		if skip && line != "" && line[0] != '#' {
+			skip = false
+			continue
+		}
+		if !skip {
+			kept = append(kept, line)
+		}
+	}
+	return kept
 }

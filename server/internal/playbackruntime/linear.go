@@ -756,7 +756,7 @@ func (l *LinearRuntime) produceLive(ctx context.Context, w playback.LinearWork, 
 		return e
 	}
 	plan.HLSInput = gateway.HLS()
-	publisher, e := entry.buffer.Publisher(linearbuffer.Producer{ID: w.ProducerOrdinal}, func() error { return l.owner.Linear.authority.CheckLinearProducer(work, w) })
+	publisher, e := entry.buffer.Publisher(linearbuffer.Producer{ID: w.ProducerOrdinal}, func() error { return l.checkProducerWithPatience(work, w) })
 	if e != nil {
 		return e
 	}
@@ -1113,4 +1113,26 @@ func linearSelectionKey(s playback.LinearSelection) string {
 		key += ":" + s.EntryID
 	}
 	return key
+}
+
+// A busy database does not invalidate a completed segment. Retry its authority
+// check within a small upload budget; explicit permission/source refusals remain immediate.
+func (l *LinearRuntime) checkProducerWithPatience(ctx context.Context, w playback.LinearWork) error {
+	until := time.Now().Add(3 * time.Second)
+	for {
+		check, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
+		e := l.owner.Linear.authority.CheckLinearProducer(check, w)
+		cancel()
+		stop, _ := linearMonitorVerdict(false, e, 0)
+		if e == nil || stop || ctx.Err() != nil || time.Now().After(until) {
+			return e
+		}
+		timer := time.NewTimer(50 * time.Millisecond)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return ctx.Err()
+		case <-timer.C:
+		}
+	}
 }

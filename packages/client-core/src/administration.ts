@@ -26,10 +26,10 @@ export type TrashPage=Readonly<{items:readonly TrashEntry[];nextCursor:string;he
 export type FilesystemRoot=Readonly<{path:string;name:string;kind:string;description:string}>;
 export type FilesystemEntry=Readonly<{name:string;path:string;kind:'directory'|'file'|'unknown';readable:boolean;symlink:boolean;bytes:number}>;
 export type FilesystemPage=Readonly<{path:string;parent:string;separator:string;platform:string;writable:boolean;truncated:boolean;roots:readonly FilesystemRoot[];entries:readonly FilesystemEntry[];nextCursor:string}>;
-export type LiveDefaults=Readonly<{streamBufferSeconds:number;retryWindowSeconds:number;userAgent:string;guideDays:number;logoImport:boolean;discoveryEnabled:boolean}>;
+export type LiveDefaults=Readonly<{importLimits:Readonly<{bytes:number;channels:number;programmes:number}>;streamBufferSeconds:number;retryWindowSeconds:number;userAgent:string;guideDays:number;logoImport:boolean;discoveryEnabled:boolean}>;
 export type FilterRule=Readonly<{mode:'include'|'exclude';values:readonly string[]}>;
 export type LiveSourceKind='playlist'|'xmltv-guide'|'hdhomerun';
-export type LiveSourceSettings=Readonly<{kind:LiveSourceKind;streamBufferSeconds:number|null;retryWindowSeconds:number|null;userAgent:string;guideSourceId:string;filters:Readonly<{categories:FilterRule;countries:FilterRule;keywords:FilterRule}>;logoImport:Readonly<{enabled:boolean;overwriteExisting:boolean}>;channelNumbering:Readonly<{mode:'source'|'sequential';startAt:number;step:number}>}>;
+export type LiveSourceSettings=Readonly<{enabledGroups:readonly string[];enabledChannels:readonly string[];kind:LiveSourceKind;streamBufferSeconds:number|null;retryWindowSeconds:number|null;userAgent:string;guideSourceId:string;filters:Readonly<{categories:FilterRule;countries:FilterRule;keywords:FilterRule}>;logoImport:Readonly<{enabled:boolean;overwriteExisting:boolean}>;channelNumbering:Readonly<{mode:'source'|'sequential';startAt:number;step:number}>}>;
 export type LiveSourceDocument=Readonly<{sourceId:string;sourceName:string;revision:number;digest:string;tunerCount:number;availableKinds:readonly LiveSourceKind[];settings:LiveSourceSettings;effective:LiveDefaults}>;
 export type ChannelMapEntry=Readonly<{channelId:string;name:string;sourceNumber:string;number:string;group:string;guideChannelId:string;hidden:boolean;position:number;overridden:boolean}>;
 export type ChannelMapPage=Readonly<{sourceId:string;generation:string;items:readonly ChannelMapEntry[];nextCursor:string}>;
@@ -222,7 +222,8 @@ export function parseFilesystemPage(v:unknown):FilesystemPage{
 
 function parseLiveDefaults(v:unknown):LiveDefaults{
  if(!object(v)||!count(v.streamBufferSeconds)||!count(v.retryWindowSeconds)||!text(v.userAgent,200)||!count(v.guideDays)||!flag(v.logoImport)||!flag(v.discoveryEnabled))invalid('live defaults');
- return Object.freeze({streamBufferSeconds:v.streamBufferSeconds,retryWindowSeconds:v.retryWindowSeconds,userAgent:v.userAgent,guideDays:v.guideDays,logoImport:v.logoImport,discoveryEnabled:v.discoveryEnabled});
+ if(!object(v.importLimits)||!count(v.importLimits.bytes)||v.importLimits.bytes>1073741824||!count(v.importLimits.channels)||v.importLimits.channels>100000||!count(v.importLimits.programmes)||v.importLimits.programmes>10000000)invalid('live import limits');
+ return Object.freeze({importLimits:Object.freeze({bytes:v.importLimits.bytes,channels:v.importLimits.channels,programmes:v.importLimits.programmes}),streamBufferSeconds:v.streamBufferSeconds,retryWindowSeconds:v.retryWindowSeconds,userAgent:v.userAgent,guideDays:v.guideDays,logoImport:v.logoImport,discoveryEnabled:v.discoveryEnabled});
 }
 /** parseLiveDefaultsDocument reads the server-wide live source settings. */
 export function parseLiveDefaultsDocument(v:unknown):Readonly<{scope:string;revision:number;digest:string;settings:LiveDefaults}>{
@@ -248,7 +249,7 @@ export function parseLiveSourceDocument(v:unknown):LiveSourceDocument{
  // A guide-only source has nothing to stream, so buffered stream tuning on one
  // would mean the client and the server disagree about what the source is.
  if(kind==='xmltv-guide'&&(buffer!==null||s.guideSourceId!==''))invalid('guide-only source');
- const settings=Object.freeze({kind,streamBufferSeconds:buffer,retryWindowSeconds:nullableCount(s.retryWindowSeconds,'live source retry window'),userAgent:s.userAgent,guideSourceId:s.guideSourceId,filters:Object.freeze({categories:parseFilter(s.filters.categories,'live source category filter'),countries:parseFilter(s.filters.countries,'live source country filter'),keywords:parseFilter(s.filters.keywords,'live source keyword filter')}),logoImport:Object.freeze({enabled:logos.enabled,overwriteExisting:logos.overwriteExisting}),channelNumbering:Object.freeze({mode:choice(numbering.mode,['source','sequential'] as const,'live source numbering mode'),startAt:numbering.startAt,step:numbering.step})});
+ const settings=Object.freeze({enabledGroups:Object.freeze(strings(s.enabledGroups,100000,"enabled groups")),enabledChannels:Object.freeze(strings(s.enabledChannels,100000,"enabled channels")),kind,streamBufferSeconds:buffer,retryWindowSeconds:nullableCount(s.retryWindowSeconds,'live source retry window'),userAgent:s.userAgent,guideSourceId:s.guideSourceId,filters:Object.freeze({categories:parseFilter(s.filters.categories,'live source category filter'),countries:parseFilter(s.filters.countries,'live source country filter'),keywords:parseFilter(s.filters.keywords,'live source keyword filter')}),logoImport:Object.freeze({enabled:logos.enabled,overwriteExisting:logos.overwriteExisting}),channelNumbering:Object.freeze({mode:choice(numbering.mode,['source','sequential'] as const,'live source numbering mode'),startAt:numbering.startAt,step:numbering.step})});
  const kinds=strings(v.availableKinds,8,'live source kinds');
  if(!kinds.every(value=>liveKinds.includes(value as LiveSourceKind)))invalid('live source kinds');
  return Object.freeze({sourceId:v.sourceId,sourceName:v.sourceName,revision:v.revision,digest:v.digest,tunerCount:v.tunerCount,availableKinds:Object.freeze(kinds as LiveSourceKind[]),settings,effective:parseLiveDefaults(v.effective)});

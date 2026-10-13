@@ -248,7 +248,11 @@ func (s *Store) DeleteOne(ctx context.Context) error {
 	s.mu.Lock()
 	_, capturingHere := s.active[id]
 	s.mu.Unlock()
-	busy = busy || capturingHere
+	sharedPending, err := s.pendingSharedTx(ctx, tx, id)
+	if err != nil {
+		return err
+	}
+	busy = busy || capturingHere || sharedPending
 	if busy {
 		_, e = tx.ExecContext(ctx, `UPDATE dvr_delete_work SET reason='active-reader-grace',not_before_ms=? WHERE recording_id=?`, s.now().Add(2*time.Minute).UnixMilli(), id)
 		if e != nil {

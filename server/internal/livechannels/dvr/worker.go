@@ -50,6 +50,7 @@ func (s *Store) ConfigureCapture(driver CaptureDriver, locks *livechannels.Physi
 func (s *Store) CaptureAvailable() bool { return s.captureAvailable }
 
 type claim struct {
+	sharedFrom        string
 	request           CaptureRequest
 	token             string
 	cancelGeneration  int64
@@ -259,6 +260,14 @@ func (s *Store) claimNext(ctx context.Context) (*claim, bool, error) {
 	if e != nil {
 		return nil, false, e
 	}
+	if shared, waiting, err := s.sharedCaptureTx(ctx, tx, c, r, generation); err != nil {
+		return nil, false, err
+	} else if shared {
+		if waiting {
+			return later("shared-capture")
+		}
+		return c, true, gated.Commit()
+	}
 	c.recovery = capturing(r.State)
 	if c.recovery {
 		if recoveryAttempt >= 2 {
@@ -381,12 +390,22 @@ func (s *Store) claimNext(ctx context.Context) (*claim, bool, error) {
 			}
 			return fail("capture-window-missed")
 		}
-		conflicts, e := conflictsTx(ctx, tx, r)
+		captureStart, captureEnd, blocked, e := s.captureWindowTx(ctx, tx, r)
 		if e != nil {
 			return nil, false, e
 		}
-		if len(conflicts) > 0 {
+		if blocked {
 			return later("tuner-conflict")
+		}
+		if captureStart.Format(time.RFC3339Nano) != r.Start || captureEnd.Format(time.RFC3339Nano) != r.End {
+			r.Start, r.End = captureStart.UTC().Format(time.RFC3339Nano), captureEnd.UTC().Format(time.RFC3339Nano)
+			c.request.Recording = r
+			if _, e = tx.ExecContext(ctx, `UPDATE dvr_recordings SET start_ms=?,end_ms=? WHERE id=?`, captureStart.UnixMilli(), captureEnd.UnixMilli(), r.ID); e != nil {
+				return nil, false, e
+			}
+			if e = reserveTx(ctx, tx, r.ID, r.Occurrence.SourceID, captureStart, captureEnd, r.Options.Priority); e != nil {
+				return nil, false, e
+			}
 		}
 		c.request.Input, e = s.live.InputTx(ctx, tx, r.Occurrence.SourceID, r.Occurrence.ChannelID, active)
 		if e != nil {
@@ -438,6 +457,10 @@ func (s *Store) currentClaimTx(ctx context.Context, tx *sql.Tx, c *claim) error 
 	return s.durable(ctx, tx, c.request.Owner, c.request.Recording.Occurrence.SourceID, c.request.Recording.Occurrence.ChannelID)
 }
 func (s *Store) runClaim(parent context.Context, c *claim) {
+	if c.sharedFrom != "" {
+		s.runSharedClaim(parent, c)
+		return
+	}
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
 	lock, e := s.locks.Lock(c.request.Allocation)
@@ -473,6 +496,7 @@ func (s *Store) runClaim(parent context.Context, c *claim) {
 		return
 	}
 	c.request.OnRetired = release
+	c.request.Checkpoint = func(cp CaptureCheckpoint) error { return s.checkpoint(ctx, c, cp) }
 	renewalDone := make(chan struct{})
 	supervise.Go("dvr.renewal", func() {
 		defer close(renewalDone)
@@ -576,8 +600,10 @@ func (s *Store) checkpoint(ctx context.Context, c *claim, cp CaptureCheckpoint) 
 	if cp.WriterRetired {
 		state = "finalizing"
 	}
-	cp.SourceRevision = c.request.Input.Revision
-	cp.SourceFence = c.request.Input.Fence()
+	if c.request.Input.Locator != "" {
+		cp.SourceRevision = c.request.Input.Revision
+		cp.SourceFence = c.request.Input.Fence()
+	}
 	b, _ := json.Marshal(cp)
 	_, e = tx.ExecContext(ctx, `UPDATE dvr_recordings SET revision=revision+CASE WHEN state=? THEN 0 ELSE 1 END,state=?,artifact_digest=?,bytes=?,captured_start_ms=?,captured_end_ms=?,checkpoint_json=?,updated_ms=? WHERE id=? AND claim_token=?`, state, state, cp.Object.Digest, cp.Object.Size, cp.First.UnixMilli(), cp.Last.UnixMilli(), string(b), s.now().UnixMilli(), c.request.Recording.ID, c.token)
 	if e != nil {

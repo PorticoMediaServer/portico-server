@@ -221,6 +221,9 @@ type TunerAllocation struct {
 
 // TunerAssignment is one recording's claim on a tuner.
 type TunerAssignment struct {
+	Kind         string `json:"kind"`
+	AccountID    string `json:"accountId"`
+	ProfileID    string `json:"profileId"`
 	RecordingID  string `json:"recordingId"`
 	ChannelID    string `json:"channelId"`
 	Title        string `json:"title"`
@@ -275,11 +278,15 @@ func (s *Service) Tuners(ctx context.Context, auth Authorize) (TunerView, error)
 		}
 		for i := range out.Sources {
 			source := &out.Sources[i]
-			if source.Active, err = assignments(ctx, tx, source.SourceID, `state IN('recording','starting') AND end_ms>?`, now); err != nil {
+			if source.Active, err = activeAssignments(ctx, tx, source.SourceID, now); err != nil {
 				return err
 			}
-			source.InUse = len(source.Active)
-			if source.Upcoming, err = assignments(ctx, tx, source.SourceID, `state IN('scheduled','pending') AND start_ms>=? AND start_ms<`+itoa(horizon), now); err != nil {
+			channels := map[string]bool{}
+			for _, a := range source.Active {
+				channels[a.ChannelID] = true
+			}
+			source.InUse = len(channels)
+			if source.Upcoming, err = assignments(ctx, tx, source.SourceID, `state IN('scheduled','conflicted','waiting-source','waiting-guide') AND start_ms>=? AND start_ms<`+itoa(horizon), now); err != nil {
 				return err
 			}
 			source.Conflicts = overlapExcess(source.Upcoming, source.TunerCount)
@@ -445,4 +452,27 @@ func (s *Service) SaveRecordingGroup(ctx context.Context, auth Authorize, id str
 }
 func (s *Service) DeleteRecordingGroup(ctx context.Context, auth Authorize, id string, revision int64, operation string) error {
 	return s.deleteRuntimeRecordingGroup(ctx, auth, id, revision, operation)
+}
+
+func activeAssignments(ctx context.Context, tx *sql.Tx, source string, now int64) ([]TunerAssignment, error) {
+	out := []TunerAssignment{}
+	rows, e := tx.QueryContext(ctx, `SELECT a.resource_id,a.channel_id,COALESCE(json_extract(r.programme_json,'$.title'),c.name,''),a.kind,a.account_id,a.profile_id,a.state,a.created_ms,a.lease_until_ms,a.id FROM live_allocations a LEFT JOIN dvr_recordings r ON a.kind='recording' AND r.id=a.resource_id LEFT JOIN live_sources s ON s.id=a.source_id LEFT JOIN live_channel_versions c ON c.generation_id=s.active_generation AND c.channel_id=a.channel_id WHERE a.source_id=? AND a.state!='released' ORDER BY a.channel_id,a.kind,a.id`, source)
+	if e != nil {
+		return out, e
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var a TunerAssignment
+		var start, end int64
+		if e = rows.Scan(&a.RecordingID, &a.ChannelID, &a.Title, &a.Kind, &a.AccountID, &a.ProfileID, &a.State, &start, &end, &a.AllocationID); e != nil {
+			return out, e
+		}
+		a.StartsAt = timeFromMilliseconds(start)
+		a.EndsAt = timeFromMilliseconds(end)
+		if end <= now {
+			a.State = "retiring"
+		}
+		out = append(out, a)
+	}
+	return out, rows.Err()
 }

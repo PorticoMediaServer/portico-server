@@ -37,6 +37,8 @@ type Driver struct {
 	supervisor            storage.Supervisor
 	available             bool
 	writeMu               sync.Mutex
+	measureMu             sync.Mutex
+	writtenTotal          int64
 	used                  int64
 	reserved              map[string]int64
 	policySource          func() dvr.StoragePolicy
@@ -268,7 +270,7 @@ func (d *Driver) Recover(ctx context.Context, in dvr.CaptureRequest, cp dvr.Capt
 		}
 		defer d.releaseReservation(in.Recording.ID)
 		cp.Gaps++
-		_, _ = d.continueCapture(ctx, in, writer, end, &cp, nil)
+		_, _ = d.continueCapture(ctx, in, writer, end, &cp, in.Checkpoint)
 		cp.WriterRetired = true
 		cp.ProducerSucceeded = false
 		cp.Object, e = writer.Checkpoint()
