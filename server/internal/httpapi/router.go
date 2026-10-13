@@ -42,6 +42,7 @@ import (
 	"portico.local/server/internal/playback"
 	"portico.local/server/internal/playbackruntime"
 	"portico.local/server/internal/playbackv1"
+ "portico.local/server/internal/social"
 	"portico.local/server/internal/preparedmedia"
 	"portico.local/server/internal/recordingaccess"
 	"portico.local/server/internal/remotemedia"
@@ -124,6 +125,7 @@ type Dependencies struct {
 	// v1 is the Playback Protocol v1 resource service (playback_v1*.go),
 	// installed by New like the caches above.
 	v1 *playbackv1.Service
+ social *social.Store
 	// registry is the typed apikit registry (foundation and playback v1).
 	registry *apikit.Registry
 }
@@ -739,6 +741,7 @@ func New(d Dependencies) http.Handler {
 		d.Downloads.SetRequestAccess(d.downloadRequestAccess)
 	}
 	d.v1 = newPlaybackV1(d)
+ d.social=d.Social()
 	if registry, err := FoundationRegistry(d); err != nil {
 		panic(err)
 	} else {

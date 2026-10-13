@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+ "time"
 
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/entityid"
@@ -33,6 +34,7 @@ type Timeline struct {
 	AnchorAt         string `json:"anchorAt"`
 	Rate             Rate   `json:"rate"`
 	QueuePosition    int    `json:"queuePosition"`
+ WaitUntil *string `json:"waitUntil"`
 }
 
 type Settings struct {
@@ -109,6 +111,7 @@ type Group struct {
 	HostMemberID        string `json:"hostMemberId"`
 	Revision            string `json:"revision"`
 	PlaybackRevision    string `json:"playbackRevision"`
+ SettingsRevision string `json:"settingsRevision"`
 	QueueRevision       string `json:"queueRevision"`
 	ReconnectGeneration string `json:"reconnectGeneration"`
 	LastCommand         string `json:"lastCommand"`
@@ -180,6 +183,8 @@ type record struct {
 	id, name, authority, accountID, profileID string
 	hostMemberID, hostAuthority, state        string
 	revision, playbackRevision, queueRevision int64
+ settingsRevision, waitUntilMS int64
+ waitResumeState string
 	reconnect, eventOrdinal                   int64
 	hostDevice                                string
 	itemID, currentEntryID                    string
@@ -195,7 +200,7 @@ type record struct {
 	createdMS, updatedMS                      int64
 }
 
-const recordColumns = `id,name,authority,account_id,profile_id,host_member_id,host_authority,state,revision,playback_revision,queue_revision,reconnect_generation,event_ordinal,COALESCE((SELECT pid(public_id) FROM catalog_entities WHERE id=social_groups.item_id),''),current_entry_id,position_us,position_updated_ms,rate_numerator,rate_denominator,queue_position,shuffle,repeat_mode,last_command,last_command_id,resume_state,host_seen_ms,pause_after_seconds,end_after_seconds,ended_reason,created_at_ms,updated_at_ms,host_device_id`
+const recordColumns = `id,name,authority,account_id,profile_id,host_member_id,host_authority,state,revision,playback_revision,queue_revision,reconnect_generation,event_ordinal,COALESCE((SELECT pid(public_id) FROM catalog_entities WHERE id=social_groups.item_id),''),current_entry_id,position_us,position_updated_ms,rate_numerator,rate_denominator,queue_position,shuffle,repeat_mode,last_command,last_command_id,resume_state,host_seen_ms,pause_after_seconds,end_after_seconds,ended_reason,created_at_ms,updated_at_ms,host_device_id,settings_revision,wait_until_ms,wait_resume_state`
 
 // resolveSocialItem maps a public item id to the integer the social tables
 // store (0 when there is none). A name that resolves to nothing stores 0; a
@@ -214,7 +219,7 @@ func resolveSocialItem(ctx context.Context, tx *sql.Tx, public string) (int64, e
 
 func scanRecord(row interface{ Scan(...any) error }) (record, error) {
 	var g record
-	e := row.Scan(&g.id, &g.name, &g.authority, &g.accountID, &g.profileID, &g.hostMemberID, &g.hostAuthority, &g.state, &g.revision, &g.playbackRevision, &g.queueRevision, &g.reconnect, &g.eventOrdinal, &g.itemID, &g.currentEntryID, &g.positionUS, &g.positionUpdatedMS, &g.rateNum, &g.rateDen, &g.queuePosition, &g.shuffle, &g.repeat, &g.lastCommand, &g.lastCommandID, &g.resumeState, &g.hostSeenMS, &g.pauseAfter, &g.endAfter, &g.endedReason, &g.createdMS, &g.updatedMS, &g.hostDevice)
+	e := row.Scan(&g.id, &g.name, &g.authority, &g.accountID, &g.profileID, &g.hostMemberID, &g.hostAuthority, &g.state, &g.revision, &g.playbackRevision, &g.queueRevision, &g.reconnect, &g.eventOrdinal, &g.itemID, &g.currentEntryID, &g.positionUS, &g.positionUpdatedMS, &g.rateNum, &g.rateDen, &g.queuePosition, &g.shuffle, &g.repeat, &g.lastCommand, &g.lastCommandID, &g.resumeState, &g.hostSeenMS, &g.pauseAfter, &g.endAfter, &g.endedReason, &g.createdMS, &g.updatedMS, &g.hostDevice, &g.settingsRevision, &g.waitUntilMS, &g.waitResumeState)
 	return g, e
 }
 
@@ -282,13 +287,17 @@ func (s *Store) CreateGroup(ctx context.Context, p identity.Principal, device st
 	}
 	tx := gated.Tx()
 	defer gated.Rollback()
+ if e = s.limit(ctx, tx, "group-create:"+viewerKey(p.Viewer), 8, time.Hour); e != nil {return out,e}
+ var live int
+ if e = tx.QueryRowContext(ctx, `SELECT count(*) FROM social_groups WHERE authority=? AND account_id=? AND profile_id=? AND state NOT IN ('ended','failed')`,p.Authority,p.AccountID,p.ProfileID).Scan(&live);e!=nil{return out,e}
+ if live>=4{return out,fault("capacity_reached",429,"You already have several groups open.")}
 	now := s.ms()
 	id, member := token("grp_"), token("mem_")
 	if _, e = tx.ExecContext(ctx, `INSERT INTO social_groups(id,name,authority,account_id,profile_id,host_member_id,host_authority,state,host_device_id,pause_after_seconds,end_after_seconds,host_seen_ms,position_updated_ms,created_at_ms,updated_at_ms) VALUES(?,?,?,?,?,?,?,'lobby',?,?,?,?,?,?,?)`,
 		id, req.Name, p.Authority, p.AccountID, p.ProfileID, member, req.HostAuthority, device, HostPauseSeconds, HostEndSeconds, now, now, now, now); e != nil {
 		return out, e
 	}
-	if _, e = tx.ExecContext(ctx, `INSERT INTO social_group_members(id,group_id,authority,account_id,profile_id,display_name,role,state,readiness,readiness_at_ms,joined_at_ms) VALUES(?,?,?,?,?,?,'host','joined','ready',?,?)`, member, id, p.Authority, p.AccountID, p.ProfileID, req.DisplayName, now, now); e != nil {
+	if _, e = tx.ExecContext(ctx, `INSERT INTO social_group_members(id,group_id,authority,account_id,profile_id,display_name,role,state,readiness,readiness_at_ms,joined_at_ms,seen_at_ms) VALUES(?,?,?,?,?,?,'host','joined','ready',?,?,?)`, member, id, p.Authority, p.AccountID, p.ProfileID, req.DisplayName, now, now, now); e != nil {
 		return out, e
 	}
 	if e = s.publish(ctx, tx, id, EventMembers, map[string]any{"revision": counter(1)}); e != nil {
@@ -315,7 +324,7 @@ func (s *Store) CreateGroup(ctx context.Context, p identity.Principal, device st
 // life the reconnect timeline is measured from; a host that returns inside the
 // pause boundary restores the group's prior playing/paused state.
 func (s *Store) Heartbeat(ctx context.Context, p identity.Principal, device, id string) (GroupResponse, error) {
-	return s.mutate(ctx, p, id, func(tx *sql.Tx, g *record, m membership) error {
+	return s.mutateTelemetry(ctx, p, id, func(tx *sql.Tx, g *record, m membership) error {
 		if m.role != "host" {
 			return nil
 		}
@@ -403,6 +412,8 @@ func (s *Store) EndGroup(ctx context.Context, p identity.Principal, id string, r
 
 func (s *Store) endGroup(ctx context.Context, tx *sql.Tx, g *record, reason string) error {
 	g.state, g.endedReason = "ended", reason
+ g.waitUntilMS=0
+ g.playbackRevision++
 	now := s.ms()
 	if _, e := tx.ExecContext(ctx, `UPDATE social_groups SET ended_at_ms=? WHERE id=?`, now, g.id); e != nil {
 		return e
@@ -454,7 +465,7 @@ func (s *Store) TransferHost(ctx context.Context, p identity.Principal, device, 
 		}
 		// Either the sitting host hands authority over, or the named member is
 		// the caller claiming a host that has passed the pause boundary.
-		selfClaim := req.MemberID == m.id && isReconnecting(g.state)
+		selfClaim := req.MemberID == m.id && isReconnecting(g.state) && s.ms()-g.hostSeenMS >= g.pauseAfter*1000
 		if m.role != "host" && !selfClaim {
 			return errHost
 		}
@@ -467,7 +478,11 @@ func (s *Store) TransferHost(ctx context.Context, p identity.Principal, device, 
 		if e != nil {
 			return e
 		}
-		if state != "joined" {
+		var ready string
+ var seenAt int64
+ if e=tx.QueryRowContext(ctx,`SELECT readiness,max(seen_at_ms,joined_at_ms) FROM social_group_members WHERE id=?`,req.MemberID).Scan(&ready,&seenAt);e!=nil{return e}
+ if ready!="ready" || s.ms()-seenAt>HostGraceSeconds*1000{return fault("participant_incompatible",409,"That member is not ready to host.")}
+ if state != "joined" {
 			return &Fault{Code: "participant_incompatible", Status: 409, Message: "That member is not in the group."}
 		}
 		if targetAuthority == p.Authority && targetAccount == p.AccountID && targetProfile == p.ProfileID && device != "" {
@@ -481,7 +496,8 @@ func (s *Store) TransferHost(ctx context.Context, p identity.Principal, device, 
 		if _, e = tx.ExecContext(ctx, `UPDATE social_group_members SET role='host' WHERE id=?`, req.MemberID); e != nil {
 			return e
 		}
-		g.hostMemberID = req.MemberID
+		g.playbackRevision++
+ g.hostMemberID = req.MemberID
 		g.hostSeenMS = s.ms()
 		g.reconnect++
 		if isReconnecting(g.state) {
@@ -580,6 +596,12 @@ func (s *Store) StreamMember(ctx context.Context, p identity.Principal, id strin
 // mutate is the one write path every group command shares: load, sweep the host
 // timeline, run the command, bump the revision, publish and commit.
 func (s *Store) mutate(ctx context.Context, p identity.Principal, id string, apply func(*sql.Tx, *record, membership) error) (GroupResponse, error) {
+ return s.mutateGroup(ctx,p,id,true,apply)
+}
+func (s *Store) mutateTelemetry(ctx context.Context, p identity.Principal, id string, apply func(*sql.Tx, *record, membership) error) (GroupResponse, error) {
+ return s.mutateGroup(ctx,p,id,false,apply)
+}
+func (s *Store) mutateGroup(ctx context.Context, p identity.Principal, id string, semantic bool, apply func(*sql.Tx, *record, membership) error) (GroupResponse, error) {
 	var out GroupResponse
 	gated4, e := s.begin(ctx)
 	if e != nil {
@@ -595,7 +617,8 @@ func (s *Store) mutate(ctx context.Context, p identity.Principal, id string, app
 	if e != nil {
 		return out, e
 	}
-	swept, e := s.sweepGroup(ctx, tx, &g)
+	before := g
+ swept, e := s.sweepGroup(ctx, tx, &g)
 	if e != nil {
 		return out, e
 	}
@@ -616,13 +639,13 @@ func (s *Store) mutate(ctx context.Context, p identity.Principal, id string, app
 	if m.state != "joined" {
 		return out, errNotMember
 	}
-	if e = apply(tx, &g, m); e != nil {
+	if _, e = tx.ExecContext(ctx, `UPDATE social_group_members SET seen_at_ms=? WHERE id=?`,s.ms(),m.id); e!=nil{return out,e}
+ if e = apply(tx, &g, m); e != nil {
 		return out, e
 	}
-	if e = s.save(ctx, tx, g, true); e != nil {
-		return out, e
-	}
-	g.revision++
+	bump := semantic || before.state!=g.state || before.reconnect!=g.reconnect
+ if e = s.save(ctx, tx, g, bump); e != nil {return out,e}
+ if bump {g.revision++}
 	m, e = loadMember(ctx, tx, id, p.Viewer)
 	if e != nil {
 		return out, e
@@ -646,8 +669,8 @@ func (s *Store) save(ctx context.Context, tx *sql.Tx, g record, bump bool) error
 	if e != nil {
 		return e
 	}
-	_, e = tx.ExecContext(ctx, `UPDATE social_groups SET name=?,host_member_id=?,host_authority=?,state=?,revision=?,playback_revision=?,queue_revision=?,reconnect_generation=?,item_id=?,current_entry_id=?,position_us=?,position_updated_ms=?,rate_numerator=?,rate_denominator=?,queue_position=?,shuffle=?,repeat_mode=?,host_device_id=?,last_command=?,last_command_id=?,resume_state=?,host_seen_ms=?,ended_reason=?,updated_at_ms=? WHERE id=?`,
-		g.name, g.hostMemberID, g.hostAuthority, g.state, revision, g.playbackRevision, g.queueRevision, g.reconnect, entity, g.currentEntryID, g.positionUS, g.positionUpdatedMS, g.rateNum, g.rateDen, g.queuePosition, g.shuffle, g.repeat, g.hostDevice, g.lastCommand, g.lastCommandID, g.resumeState, g.hostSeenMS, g.endedReason, s.ms(), g.id)
+	_, e = tx.ExecContext(ctx, `UPDATE social_groups SET name=?,host_member_id=?,host_authority=?,state=?,revision=?,playback_revision=?,queue_revision=?,reconnect_generation=?,item_id=?,current_entry_id=?,position_us=?,position_updated_ms=?,rate_numerator=?,rate_denominator=?,queue_position=?,shuffle=?,repeat_mode=?,host_device_id=?,last_command=?,last_command_id=?,resume_state=?,host_seen_ms=?,ended_reason=?,updated_at_ms=?,settings_revision=?,wait_until_ms=?,wait_resume_state=? WHERE id=?`,
+		g.name, g.hostMemberID, g.hostAuthority, g.state, revision, g.playbackRevision, g.queueRevision, g.reconnect, entity, g.currentEntryID, g.positionUS, g.positionUpdatedMS, g.rateNum, g.rateDen, g.queuePosition, g.shuffle, g.repeat, g.hostDevice, g.lastCommand, g.lastCommandID, g.resumeState, g.hostSeenMS, g.endedReason, s.ms(), g.settingsRevision, g.waitUntilMS, g.waitResumeState, g.id)
 	return e
 }
 
@@ -667,7 +690,11 @@ func (s *Store) sweepGroup(ctx context.Context, tx *sql.Tx, g *record) (bool, er
 	if g.state == "ended" || g.state == "failed" {
 		return false, nil
 	}
-	elapsed := (s.ms() - g.hostSeenMS) / 1000
+	changed,e := s.sweepMembers(ctx,tx,g)
+ if e!=nil{return false,e}
+ if released,e:=s.releaseWait(ctx,tx,g);e!=nil{return false,e}else if released{changed=true}
+ elapsed := (s.ms() - g.hostSeenMS) / 1000
+ if g.hostAuthority=="anyone" {return changed,nil}
 	switch {
 	case elapsed >= g.endAfter:
 		if e := s.endGroup(ctx, tx, g, "host-unavailable"); e != nil {
@@ -695,14 +722,14 @@ func (s *Store) sweepGroup(ctx context.Context, tx *sql.Tx, g *record) (bool, er
 		if g.state == "playing" {
 			g.resumeState, g.state = "playing", "host-reconnecting-playing"
 		} else {
-			g.resumeState, g.state = "paused", "host-reconnecting-paused"
+			g.resumeState, g.state = g.state, "host-reconnecting-paused"
 		}
 		if e := s.publish(ctx, tx, g.id, EventHost, map[string]any{"presence": "reconnecting"}); e != nil {
 			return false, e
 		}
 		return true, nil
 	}
-	return false, nil
+	return changed, nil
 }
 
 // settled is sweepGroup's arithmetic without its effects: the state a group has
@@ -724,7 +751,9 @@ func (s *Store) settled(g record) record {
 	if g.state == "ended" || g.state == "failed" {
 		return g
 	}
-	elapsed := (s.ms() - g.hostSeenMS) / 1000
+	if g.state=="waiting" && s.ms()>=g.waitUntilMS {g.state=g.waitResumeState;g.positionUpdatedMS=g.waitUntilMS;g.waitUntilMS=0}
+ if g.hostAuthority=="anyone" {return g}
+ elapsed := (s.ms() - g.hostSeenMS) / 1000
 	switch {
 	case elapsed >= g.endAfter:
 		g.state, g.endedReason = "ended", "host-unavailable"
@@ -742,7 +771,7 @@ func (s *Store) settled(g record) record {
 		if g.state == "playing" {
 			g.resumeState, g.state = "playing", "host-reconnecting-playing"
 		} else {
-			g.resumeState, g.state = "paused", "host-reconnecting-paused"
+			g.resumeState, g.state = g.state, "host-reconnecting-paused"
 		}
 	}
 	return g
@@ -786,7 +815,13 @@ func (s *Store) Sweep(ctx context.Context) error {
 	if e = rows.Err(); e != nil {
 		return e
 	}
-	for _, id := range ids {
+	staleRows,e:=dbwork.Query(ctx,s.DB,`SELECT DISTINCT group_id FROM social_group_members WHERE role='member' AND state='joined' AND max(seen_at_ms,joined_at_ms)<?`,s.ms()-MemberLeaveSeconds*1000)
+ if e!=nil{return e}
+ for staleRows.Next(){var id string;if e=staleRows.Scan(&id);e!=nil{staleRows.Close();return e};ids=append(ids,id)}
+ e=staleRows.Err();staleRows.Close();if e!=nil{return e}
+ seen:=map[string]bool{}
+ for _, id := range ids {
+ if seen[id]{continue};seen[id]=true
 		gated5, e := s.begin(ctx)
 		if e != nil {
 			return e
@@ -843,13 +878,7 @@ func (s *Store) project(ctx context.Context, tx *sql.Tx, p identity.Principal, g
 	if g.state == "ended" && g.endedReason == "host-unavailable" {
 		host.Presence = "absent"
 	}
-	visible, err := watchTogetherMember(ctx, tx, g.id, g.hostMemberID)
-	if err != nil {
-		return out, err
-	}
-	if !visible {
-		host = HostPresence{Presence: "private"}
-	}
+	
 	canControl := m.role == "host" || g.hostAuthority == "anyone"
 	// The bound device and the session it plays are the host's own equipment.
 	// Everybody else is told only what state the authority is in.
@@ -859,7 +888,7 @@ func (s *Store) project(ctx context.Context, tx *sql.Tx, p identity.Principal, g
 	}
 	out.Group = Group{
 		ID: g.id, Name: g.name, State: g.state, HostAuthority: g.hostAuthority, HostMemberID: g.hostMemberID,
-		Revision: counter(g.revision), PlaybackRevision: counter(g.playbackRevision), QueueRevision: counter(g.queueRevision),
+		Revision: counter(g.revision), PlaybackRevision: counter(g.playbackRevision), SettingsRevision: counter(g.settingsRevision), QueueRevision: counter(g.queueRevision),
 		ReconnectGeneration: counter(g.reconnect), LastCommand: g.lastCommand, LastCommandID: g.lastCommandID,
 		EndedReason: g.endedReason, EventOrdinal: counter(g.eventOrdinal), CreatedAt: stamp(g.createdMS), UpdatedAt: stamp(g.updatedMS),
 		Permissions: Permissions{IsHost: m.role == "host", CanControl: canControl, CanManageQueue: canControl},
@@ -868,7 +897,7 @@ func (s *Store) project(ctx context.Context, tx *sql.Tx, p identity.Principal, g
 		Timeline: Timeline{
 			ItemID: g.itemID, CurrentEntryID: g.currentEntryID, State: timelineState(g.state),
 			AnchorPositionUS: counter(g.positionUS), AnchorAt: stamp(g.positionUpdatedMS),
-			Rate: Rate{Numerator: counter(g.rateNum), Denominator: counter(g.rateDen)}, QueuePosition: g.queuePosition,
+			Rate: Rate{Numerator: counter(g.rateNum), Denominator: counter(g.rateDen)}, QueuePosition: g.queuePosition, WaitUntil: optionalStamp(g.waitUntilMS),
 		},
 		Settings:  Settings{Shuffle: g.shuffle, Repeat: g.repeat},
 		Sync:      defaultSync,
@@ -877,7 +906,10 @@ func (s *Store) project(ctx context.Context, tx *sql.Tx, p identity.Principal, g
 		Queue:     queue,
 		MemberID:  m.id,
 	}
-	if s.Playback != nil && g.hostDevice != "" {
+	visible,e:=s.visible(ctx,tx,p.Viewer,g.itemID)
+ if e!=nil{return out,e}
+ if !visible {out.Group.Timeline.ItemID=""}
+ if s.Playback != nil && g.hostDevice != "" {
 		session, present, e := s.Playback.DeviceSessionTx(ctx, tx, g.hostDevice)
 		if e != nil {
 			return out, e
@@ -910,7 +942,7 @@ func timelineState(state string) string {
 
 func (s *Store) members(ctx context.Context, tx *sql.Tx, g record) ([]Member, ReadinessSummary, error) {
 	summary := ReadinessSummary{Aggregate: "ready"}
-	rows, e := tx.QueryContext(ctx, `SELECT id,display_name,role,state,readiness,readiness_position_us,readiness_at_ms,joined_at_ms FROM social_group_members m WHERE group_id=? AND state IN ('invited','joined') AND `+watchTogetherVisible("m")+` ORDER BY joined_at_ms,id`, g.id)
+	rows, e := tx.QueryContext(ctx, `SELECT id,display_name,role,state,readiness,readiness_position_us,readiness_at_ms,joined_at_ms,max(seen_at_ms,joined_at_ms) FROM social_group_members m WHERE group_id=? AND state IN ('invited','joined') ORDER BY joined_at_ms,id`, g.id)
 	if e != nil {
 		return nil, summary, e
 	}
@@ -919,21 +951,21 @@ func (s *Store) members(ctx context.Context, tx *sql.Tx, g record) ([]Member, Re
 	now := s.ms()
 	for rows.Next() {
 		var m Member
-		var positionUS, reportedMS, joinedMS int64
-		if e = rows.Scan(&m.ID, &m.DisplayName, &m.Role, &m.State, &m.Readiness, &positionUS, &reportedMS, &joinedMS); e != nil {
+		var positionUS, reportedMS, joinedMS,seenMS int64
+		if e = rows.Scan(&m.ID, &m.DisplayName, &m.Role, &m.State, &m.Readiness, &positionUS, &reportedMS, &joinedMS,&seenMS); e != nil {
 			return nil, summary, e
 		}
 		m.PositionUS, m.ReportedAt, m.JoinedAt = counter(positionUS), optionalStamp(reportedMS), stamp(joinedMS)
 		stale := reportedMS <= 0 || now-reportedMS > ReadinessStaleSeconds*1000
 		switch {
-		case now-reportedMS > MemberStaleSeconds*1000:
+		case now-seenMS > MemberStaleSeconds*1000:
 			m.Presence = "disconnected"
-		case stale:
+		case now-seenMS > HostGraceSeconds*1000:
 			m.Presence = "away"
 		default:
 			m.Presence = "connected"
 		}
-		if m.State == "joined" {
+		if m.State == "joined" && m.Presence!="disconnected" {
 			summary.MemberCount++
 			switch {
 			case stale:

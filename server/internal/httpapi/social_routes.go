@@ -95,7 +95,8 @@ func socialBody(w http.ResponseWriter, r *http.Request, out any) bool {
 // Social builds the social playback store with the composition's policy seams
 // wired in. It is exported so a test can drive the same store the routes use.
 func (d Dependencies) Social() *social.Store {
-	store := social.New(d.DB)
+	if d.social!=nil{return d.social}
+ store := social.New(d.DB)
 	store.Identity = d.Identity
 	if v1 := d.playbackV1(); v1 != nil {
 		store.Playback = socialPlayback{d: d, v1: v1}
@@ -157,7 +158,8 @@ func (d Dependencies) socialRoutes(mux *http.ServeMux) {
 		_ = store.ResumeSweeperIfLive(ctx)
 	})
 	handle := func(pattern string, handler http.HandlerFunc) {
-		mux.HandleFunc(pattern, func(w http.ResponseWriter, r *http.Request) {
+		if socialRegistered[pattern]{return}
+ mux.HandleFunc(pattern, func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Cache-Control", "no-store")
 			handler(w, r)
 		})
@@ -525,7 +527,7 @@ func (d Dependencies) groupEventStream(w http.ResponseWriter, r *http.Request, s
 		return true
 	}
 	if resumed {
-		_, floor, err := store.EventsSince(r.Context(), id, after)
+		_, floor, err := store.EventsSince(r.Context(), p, id, after)
 		if err != nil {
 			return
 		}
@@ -558,7 +560,7 @@ func (d Dependencies) groupEventStream(w http.ResponseWriter, r *http.Request, s
 	// one sweep per stream per tick. See social.Store.HoldSweeper.
 	defer store.HoldSweeper()()
 	for {
-		events, _, err := store.EventsSince(r.Context(), id, after)
+		events, _, err := store.EventsSince(r.Context(), p, id, after)
 		if err != nil {
 			return
 		}
@@ -603,7 +605,9 @@ func (d Dependencies) receiverRoutes(mux *http.ServeMux, handle socialHandle, vi
 		if !socialBody(w, r, &body) {
 			return
 		}
-		out, e := store.RegisterReceiver(r.Context(), p, body)
+		body.DeviceID,_=d.deviceOf(r.Context(),p)
+ p.DeviceID=body.DeviceID
+ out, e := store.RegisterReceiver(r.Context(), p, body)
 		if e != nil {
 			socialFailure(w, e)
 			return
@@ -750,7 +754,8 @@ func (d Dependencies) receiverRoutes(mux *http.ServeMux, handle socialHandle, vi
 		if !socialBody(w, r, &body) {
 			return
 		}
-		out, e := store.RequestGrant(r.Context(), p, r.PathValue("id"), body)
+		body.ControllerDeviceID,_=d.deviceOf(r.Context(),p)
+ out, e := store.RequestGrant(r.Context(), p, r.PathValue("id"), body)
 		if e != nil {
 			socialFailure(w, e)
 			return
@@ -766,7 +771,8 @@ func (d Dependencies) receiverRoutes(mux *http.ServeMux, handle socialHandle, vi
 		if !socialBody(w, r, &body) {
 			return
 		}
-		out, e := store.DecideGrant(r.Context(), p, r.PathValue("id"), r.PathValue("grantId"), body)
+		p.DeviceID,_=d.deviceOf(r.Context(),p)
+ out, e := store.DecideGrant(r.Context(), p, r.PathValue("id"), r.PathValue("grantId"), body)
 		if e != nil {
 			socialFailure(w, e)
 			return
@@ -810,7 +816,8 @@ func (d Dependencies) receiverRoutes(mux *http.ServeMux, handle socialHandle, vi
 		if !socialBody(w, r, &body) {
 			return
 		}
-		out, e := store.ReportHandoffReadiness(r.Context(), p, r.PathValue("id"), body)
+		p.DeviceID,_=d.deviceOf(r.Context(),p)
+ out, e := store.ReportHandoffReadiness(r.Context(), p, r.PathValue("id"), body)
 		if e != nil {
 			socialFailure(w, e)
 			return

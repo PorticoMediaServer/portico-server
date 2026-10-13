@@ -3,6 +3,7 @@ package social
 import (
 	"context"
 	"database/sql"
+ "portico.local/server/internal/identity"
 	"encoding/json"
 	"portico.local/server/internal/dbwork"
 	"sync"
@@ -112,7 +113,7 @@ func (s *Store) publish(ctx context.Context, tx *sql.Tx, group, kind string, pay
 // the lowest ordinal still retained: when it is greater than after+1 the caller
 // has fallen out of the retention window and must be resynchronised with a fresh
 // snapshot rather than a partial replay.
-func (s *Store) EventsSince(ctx context.Context, group string, after int64) ([]Event, int64, error) {
+func (s *Store) EventsSince(ctx context.Context,p identity.Principal, group string, after int64) ([]Event, int64, error) {
 	// One snapshot for both statements: the ledger and its retention floor have
 	// to be read from the same state, or a caller can be told it is inside the
 	// window by one and outside it by the other.
@@ -121,7 +122,8 @@ func (s *Store) EventsSince(ctx context.Context, group string, after int64) ([]E
 		return nil, 0, e
 	}
 	defer done()
-	rows, e := tx.QueryContext(ctx, `SELECT ordinal,kind,payload FROM social_group_events WHERE group_id=? AND ordinal>? ORDER BY ordinal LIMIT ?`, group, after, MaxRetainedEvents)
+ if _,e=loadJoinedMember(ctx,tx,group,p.Viewer);e!=nil{return nil,0,e}
+ rows, e := tx.QueryContext(ctx, `SELECT ordinal,kind,payload FROM social_group_events WHERE group_id=? AND ordinal>? ORDER BY ordinal LIMIT ?`, group, after, MaxRetainedEvents)
 	if e != nil {
 		return nil, 0, e
 	}
@@ -141,6 +143,12 @@ func (s *Store) EventsSince(ctx context.Context, group string, after int64) ([]E
 	}
 	rows.Close()
 	for i := range out {
+ if out[i].Kind==EventTransport {
+ var payload map[string]any
+ if e=json.Unmarshal(out[i].Payload,&payload);e!=nil{return nil,0,e}
+ if item,ok:=payload["itemId"].(string);ok {visible,e:=s.visible(ctx,tx,p.Viewer,item);if e!=nil{return nil,0,e};if !visible{payload["itemId"]=""}}
+ out[i].Payload,e=json.Marshal(payload);if e!=nil{return nil,0,e}
+ }
 		visible, err := visibleEvent(ctx, tx, group, out[i].Kind, out[i].Payload)
 		if err != nil {
 			return nil, 0, err

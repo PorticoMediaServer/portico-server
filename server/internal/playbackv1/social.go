@@ -12,14 +12,14 @@ import (
 // session (B8a): the social store binds to devices and sessions, never to
 // controllers.
 type SocialSession struct {
-	ID, ItemID string
+	ID, ItemID, DeviceID, State string
 	Live       bool
 	Revision   int64
 	PositionUS int64
 }
 
 func socialFacts(r row) SocialSession {
-	return SocialSession{ID: r.id, ItemID: r.item, Live: r.ended == 0, Revision: int64(r.revision), PositionUS: r.position * 1000}
+	return SocialSession{ID: r.id, ItemID: r.item, DeviceID:r.device,State:r.state,Live: r.ended == 0, Revision: int64(r.revision), PositionUS: r.position * 1000}
 }
 
 func sameProfile(p identity.Principal, r row) bool {

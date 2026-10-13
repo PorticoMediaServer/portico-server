@@ -611,6 +611,7 @@ func FoundationRegistry(d Dependencies) (*apikit.Registry, error) {
 	}
 	registerBulkJobs(registry, d)
 	registerDownloadRequests(registry, d)
+ registerSocial(registry,d)
 	registerPlaylistWindows(registry, d)
 	registerCapabilityReport(registry)
 	// Lane C's /v1/events (886f5011) on the shared contextual registry.

@@ -20,6 +20,8 @@ import (
 	"regexp"
 	"strconv"
 	"time"
+ "unicode"
+ "unicode/utf8"
 
 	"portico.local/server/internal/identity"
 )
@@ -249,7 +251,11 @@ func optionalStamp(ms int64) *string {
 	return &v
 }
 
-func text(v string, max int) bool { return len(v) > 0 && len([]rune(v)) <= max }
+func text(v string, max int) bool {
+ if len(v)==0 || !utf8.ValidString(v) || len([]rune(v))>max{return false}
+ for _,r:=range v {if unicode.IsControl(r)|| r==0x061c || r==0x200e || r==0x200f || r>=0x202a&&r<=0x202e || r>=0x2066&&r<=0x2069{return false}}
+ return true
+}
 
 // --- rate limiting ----------------------------------------------------------
 
@@ -348,7 +354,7 @@ type Playback interface {
 
 // SessionFacts describe one v1 session for social playback.
 type SessionFacts struct {
-	ID, ItemID string
+	ID, ItemID, DeviceID, State string
 	Live       bool
 	Revision   int64
 	PositionUS int64

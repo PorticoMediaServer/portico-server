@@ -150,7 +150,8 @@ func (s *Store) projectQueue(ctx context.Context, tx *sql.Tx, p identity.Princip
 	if e != nil {
 		return nil, e
 	}
-	items := make([]string, 0, len(rows))
+	if m.role!="host" {people=[]participant{{id:m.id,viewer:p.Viewer}}}
+ items := make([]string, 0, len(rows))
 	for _, r := range rows {
 		items = append(items, r.itemID)
 	}
