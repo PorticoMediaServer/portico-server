@@ -255,7 +255,14 @@ func videoRateArgs(t ConversionTarget, encoder, preset string) []string {
 			}
 			rate = CodecVideoBitrate(t.VideoCodec, height)
 		}
-		out = append(out, "-b:v", strconv.Itoa(rate), "-maxrate", strconv.Itoa(rate), "-bufsize", strconv.Itoa(rate*2))
+		if encoder == "libsvtav1" {
+			// SVT accepts a maximum bitrate only in CRF mode; -b:v with -maxrate
+			// selects an unsupported CBR mode in FFmpeg. Keep the requested ceiling.
+			out = append(out, "-crf", strconv.Itoa(quality), "-b:v", "0")
+		} else {
+			out = append(out, "-b:v", strconv.Itoa(rate))
+		}
+		out = append(out, "-maxrate", strconv.Itoa(rate), "-bufsize", strconv.Itoa(rate*2))
 	}
 	return out
 }

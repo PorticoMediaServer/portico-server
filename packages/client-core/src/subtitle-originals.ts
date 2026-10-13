@@ -50,7 +50,17 @@ export function subtitleOriginals(resource: unknown): readonly SubtitleOriginal[
 
 /** The original to ask for when selecting this track on a device that draws `draws`; undefined means text (or burn-in). */
 export function drawnRenderingFor(resource: unknown, draws: readonly string[]): DrawnSubtitleFormat | undefined {
-  return subtitleOriginals(resource).find(original => draws.includes(original.format))?.format;
+  const original = subtitleOriginals(resource).find(original => draws.includes(original.format));
+  if (original) return original.format;
+  // Unselected tracks publish delivery kinds without media-grant addresses. Selection
+  // pins the track and supplies its confined URLs; capability does not need a URL yet.
+  if (!record(resource) || !Array.isArray(resource.deliveries)) return undefined;
+  for (const delivery of resource.deliveries.slice(0, 16)) {
+    if (!record(delivery) || delivery.url !== undefined || delivery.companionUrl !== undefined || delivery.fontsUrl !== undefined) continue;
+    const format = delivery.format as DrawnSubtitleFormat;
+    if (drawnSubtitleFormats.includes(format) && draws.includes(format)) return format;
+  }
+  return undefined;
 }
 
 /** The original the device is to draw now: set when the plan says the device renders the selected track. */

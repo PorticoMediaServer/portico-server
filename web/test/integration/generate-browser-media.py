@@ -5,6 +5,13 @@ from xml.sax.saxutils import escape
 root = pathlib.Path(sys.argv[1]).resolve()
 def run(args):
     subprocess.run(["ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error", "-threads", "1", "-y", *args], check=True)
+def add_version():
+    run(["-i", str(root / "movies/Browser Film (2024)/Browser Film (2024).mp4"), "-vf", "scale=1280:720", "-c:v", "libx264", "-threads", "1", "-preset", "ultrafast", "-crf", "25", "-c:a", "copy", "-metadata", "title=Browser Film", str(root / "movies/Browser Film (2024)/Browser Film (2024) 720p.mkv")])
+
+if "--add-version" in sys.argv:
+    add_version()
+    sys.exit(0)
+
 def video(rel, title, extra=""):
     file = root / rel
     file.parent.mkdir(parents=True, exist_ok=True)
@@ -16,8 +23,8 @@ video("movies/Second Film (2024)/Second Film (2024).mp4", "Second Film")
 video("tv/Browser Show/Season 1/Browser Show S01E01.mp4", "First Episode", "<season>1</season><episode>1</episode><showtitle>Browser Show</showtitle>")
 video("tv/Browser Show/Season 1/Browser Show S01E02.mp4", "Second Episode", "<season>1</season><episode>2</episode><showtitle>Browser Show</showtitle>")
 video("anime/Browser Anime/Season 1/Browser Anime S01E01.mp4", "Anime Episode", "<season>1</season><episode>1</episode><showtitle>Browser Anime</showtitle>")
-film.with_suffix(".en.srt").write_text("1\n00:00:00,000 --> 00:00:40,000\nBrowser text subtitle\n")
-film.with_suffix(".en.ass").write_text("""[Script Info]
+film.with_suffix(".en.text.srt").write_text("1\n00:00:00,000 --> 00:00:40,000\nBrowser text subtitle\n")
+film.with_suffix(".en.styled.ass").write_text("""[Script Info]
 ScriptType: v4.00+
 PlayResX: 640
 PlayResY: 360

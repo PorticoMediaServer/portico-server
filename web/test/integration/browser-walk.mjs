@@ -3,6 +3,7 @@
  * set PORTICO_BROWSER_OUTPUT to scratch, and PORTICO_BROWSER_BASE to the loopback server.
  * Uses real routes, browser rendering, and original API reads; never contacts external services.
  */
+import {libraryTabs} from '../../../packages/client-core/src/presentation/library-tabs.ts';
 import {ChromeDriver} from './chrome-driver.mjs';
 import {writeFileSync, readFileSync} from 'node:fs';
 import path from 'node:path';
@@ -16,12 +17,12 @@ const results=[];
 const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 const routes=[
  ['home','/'],['search','/search?q=Browser'],['saved','/saved'],['downloads','/downloads'],['settings','/settings'],
- ...['profile','playback','appearance','device','privacy'].map(p=>['settings-'+p,'/settings/'+p]),
+ ...['profile','playback','languages','quality','music','appearance','region','privacy','device','about'].map(p=>['settings-'+p,'/settings/'+p]),
  ...['dashboard','history','libraries','metadata','streaming','remote','storage','schedule','troubleshooting','general'].map(p=>['server-'+p,'/settings/server-'+p]),
  ...['keys','tokens','webhooks','assistants'].map(tab=>['integrations-'+tab,'/settings/server-integrations?tab='+tab]),
  ...['accounts','invitations','devices'].map(tab=>['people-'+tab,'/settings/server-people?tab='+tab]),
  ...['sources','recording','channels'].map(tab=>['live-'+tab,'/settings/server-live?tab='+tab]),
- ...libraries.flatMap(l=>(l.kind==='music'?['discover','browse','releases','songs','genres','playlists']:l.kind==='audiobook'?['discover','browse','authors','series','collections']:l.kind==='movie'?['discover','browse','collections','unmatched']:['discover','browse','aired','collections','unmatched']).map(tab=>[l.kind+'-'+tab,`/library/${l.id}?view=${tab}`])),
+ ...libraries.flatMap(l=>libraryTabs(l.kind,{owner:true,unmatched:true}).map(tab=>[l.kind+'-'+tab.id,`/library/${l.id}?view=${tab.id}`])),
 ];
 try {
  for(const [viewport,width,height] of [['desktop',1440,1000],['phone',390,844]]) {

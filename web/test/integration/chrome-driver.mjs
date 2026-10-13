@@ -24,6 +24,7 @@ export class ChromeDriver {
     this.pending = new Map();
     this.events = [];
     this.requests = new Map();
+    this.responses = new Map();
     this.ws = new WebSocket(url);
     this.ready = new Promise((resolve, reject) => { this.ws.onopen = resolve; this.ws.onerror = reject; });
     this.ws.onmessage = ({data}) => {
@@ -44,6 +45,10 @@ export class ChromeDriver {
         this.send(local ? 'Fetch.continueRequest' : 'Fetch.failRequest', local ? {requestId} : {requestId, errorReason: 'BlockedByClient'}).catch(() => {});
       }
       if (event.method === 'Network.requestWillBeSent') this.requests.set(event.params.requestId, event.params.request.url);
+      if (event.method === 'Network.loadingFinished') {
+        const url = this.requests.get(event.params.requestId);
+        if (url && /subtitles|playback-offers/.test(url) && !url.includes('/media/')) this.send('Network.getResponseBody', {requestId:event.params.requestId}).then(body=>{try{this.responses.set(url,JSON.parse(body.body));}catch{}}).catch(()=>{});
+      }
       if (event.method === 'Runtime.exceptionThrown') this.record({kind: 'exception', detail: event.params.exceptionDetails});
       if (event.method === 'Runtime.consoleAPICalled' && ['error', 'warning'].includes(event.params.type)) this.record({kind: 'console', detail: event.params});
       if (event.method === 'Log.entryAdded' && ['error', 'warning'].includes(event.params.entry.level) && event.params.entry.timestamp >= this.started) this.record({kind: 'log', detail: event.params.entry});
@@ -89,6 +94,13 @@ export class ChromeDriver {
     await new Promise(resolve => setTimeout(resolve, 120));
     await this.send('Input.dispatchMouseEvent', {type: 'mousePressed', ...point, button: 'left', clickCount: 1});
     await this.send('Input.dispatchMouseEvent', {type: 'mouseReleased', ...point, button: 'left', clickCount: 1});
+  }
+  async clickSelector(selector, index = 0) {
+    const point = await this.evaluate(`(() => {const el = [...document.querySelectorAll(${JSON.stringify(selector)})].filter(e=>e.getClientRects().length)[${index}]; if (!el) throw new Error('Control not found'); el.scrollIntoView({block:'center'});const r=el.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2};})()`);
+    await this.send('Input.dispatchMouseEvent', {type:'mouseMoved', ...point});
+    await new Promise(resolve=>setTimeout(resolve,120));
+    await this.send('Input.dispatchMouseEvent', {type:'mousePressed', ...point,button:'left',clickCount:1});
+    await this.send('Input.dispatchMouseEvent', {type:'mouseReleased', ...point,button:'left',clickCount:1});
   }
   async fill(selector, value) {
     return this.evaluate(`(() => {const el = document.querySelector(${JSON.stringify(selector)}); if (!el) throw new Error('Input not found'); const proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : el.tagName === 'SELECT' ? HTMLSelectElement.prototype : HTMLInputElement.prototype; Object.getOwnPropertyDescriptor(proto, 'value').set.call(el, ${JSON.stringify(value)}); el.dispatchEvent(new Event('input', {bubbles:true})); el.dispatchEvent(new Event('change', {bubbles:true})); return true;})()`);
