@@ -14,6 +14,7 @@ import s from './Player.module.css';
  * and falls back to ten seconds.
  */
 export function PostPlay({engine, onClose}: {engine: PlayerEngine; onClose: () => void}) {
+  const {t} = useI18n();
   const {queue, state, service} = engine;
   const queueState = useSyncExternalStore(queue?.subscribe ?? (() => () => {}), () => queue?.getSnapshot() ?? null);
   const held = queueState?.completion ?? null;
@@ -48,35 +49,35 @@ export function PostPlay({engine, onClose}: {engine: PlayerEngine; onClose: () =
   };
   if (held?.nextAvailable && next) {
     return (
-      <div className={s.postPlay} role="dialog" aria-label="Up next">
+      <div className={s.postPlay} role="dialog" aria-label={t('player.post.upNext')}>
         <div className={s.postCard}>
-          <Text variant="label" tone="tertiary">{passoutDue ? 'Still watching?' : 'Up next'}</Text>
+          <Text variant="label" tone="tertiary">{t(passoutDue ? 'player.post.stillWatching' : 'player.post.upNext')}</Text>
           <div className={s.postNext}>
             <div className={s.postArt}><Artwork path={undefined} shape={next.kind === 'episode' ? 'landscape' : 'poster'} icon={next.kind === 'episode' ? 'tv' : 'film'} alt="" /></div>
             <div className={s.postCopy}>
               <span className={s.postTitle}>{next.title}</span>
-              <span className={s.postSub}>{passoutDue ? 'Playback paused after several episodes. Confirm to keep going.' : counting ? `Playing in ${remaining}s` : 'Ready when you are'}</span>
+              <span className={s.postSub}>{passoutDue ? t('player.post.pausedAfterEpisodes') : counting ? t('player.post.playingIn', {seconds: remaining}) : t('player.post.ready')}</span>
             </div>
           </div>
           <div className={s.postActions}>
-            <Button variant="primary" icon="play" label={passoutDue ? "I'm still watching" : 'Play now'} onClick={() => void engine.advance(passoutDue ? 'still-watching' : 'manual')} />
-            {counting ? <Button variant="outline" label="Cancel" onClick={() => queue?.releaseCompletion()} /> : null}
-            <Button variant="ghost" icon="refresh" label="Replay" onClick={replay} />
-            <Button variant="ghost" label="Back" onClick={onClose} />
+            <Button variant="primary" icon="play" label={t(passoutDue ? 'player.post.stillWatchingAction' : 'player.post.playNow')} onClick={() => void engine.advance(passoutDue ? 'still-watching' : 'manual')} />
+            {counting ? <Button variant="outline" label={t('player.post.cancel')} onClick={() => queue?.releaseCompletion()} /> : null}
+            <Button variant="ghost" icon="refresh" label={t('player.post.replay')} onClick={replay} />
+            <Button variant="ghost" label={t('action.back')} onClick={onClose} />
           </div>
         </div>
       </div>
     );
   }
   return (
-    <div className={s.postPlay} role="dialog" aria-label="Finished">
+    <div className={s.postPlay} role="dialog" aria-label={t('player.post.finished')}>
       <div className={s.postCard}>
-        <Text variant="label" tone="tertiary">Finished</Text>
+        <Text variant="label" tone="tertiary">{t('player.post.finished')}</Text>
         <span className={s.postTitle}>{engine.identity.title}</span>
-        {held && !held.nextAvailable && held.reason === 'unavailable' ? <span className={s.postSub}>The next item in the queue is unavailable.</span> : null}
+        {held && !held.nextAvailable && held.reason === 'unavailable' ? <span className={s.postSub}>{t('player.post.nextUnavailable')}</span> : null}
         <div className={s.postActions}>
-          <Button variant="primary" icon="refresh" label="Replay" onClick={replay} />
-          <Button variant="outline" label="Back" onClick={onClose} />
+          <Button variant="primary" icon="refresh" label={t('player.post.replay')} onClick={replay} />
+          <Button variant="outline" label={t('action.back')} onClick={onClose} />
         </div>
         {engine.identity.kind === 'movie' && engine.identity.itemId && engine.identity.libraryId ? <FinishedMore itemId={engine.identity.itemId} libraryId={engine.identity.libraryId} title={engine.identity.title} onLeave={onClose} /> : null}
       </div>

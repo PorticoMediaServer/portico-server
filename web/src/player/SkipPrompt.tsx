@@ -2,10 +2,10 @@ import React, {useEffect, useRef, useState} from 'react';
 import type {SegmentMarker, SegmentMarkerSet} from '@core/segment-markers.ts';
 import {Button} from '../ui';
 import s from './Player.module.css';
+import {useI18n} from '../app/i18n';
 
 export type SkipMode = 'ask' | 'auto' | 'off';
 
-const verbs: Record<SegmentMarker['kind'], string> = {intro: 'Skip intro', recap: 'Skip recap', credits: 'Skip credits', commercial: 'Skip ad', outro: 'Skip outro'};
 
 /**
  * Skip prompts for detected segments. The server decides which markers exist
@@ -14,6 +14,7 @@ const verbs: Record<SegmentMarker['kind'], string> = {intro: 'Skip intro', recap
  * of the segment and records the action against the session (spec §4.2).
  */
 export function SkipPrompt({markers, position, sessionId, modes, onSeek, onSkipped}: {markers: SegmentMarkerSet | null; position: number; sessionId?: string; modes: Record<string, SkipMode>; onSeek: (seconds: number) => void; onSkipped: (markerId: string, mode: 'automatic' | 'manual', positionSeconds: number) => void}) {
+  const {t} = useI18n();
   const [dismissed, setDismissed] = useState<Set<string>>(() => new Set());
   const skipped = useRef<Set<string>>(new Set());
   useEffect(() => {
@@ -36,8 +37,8 @@ export function SkipPrompt({markers, position, sessionId, modes, onSeek, onSkipp
   if (!active) return null;
   return (
     <div className={s.skip}>
-      <Button variant="glass" icon="forward" label={verbs[active.kind]} onClick={() => skip(active, 'manual')} />
-      <Button variant="ghost" size="sm" label="Dismiss" onClick={() => setDismissed(prev => new Set(prev).add(active.id))} />
+      <Button variant="glass" icon="forward" label={t('player.skip', {kind: active.kind})} onClick={() => skip(active, 'manual')} />
+      <Button variant="ghost" size="sm" label={t('action.dismiss')} onClick={() => setDismissed(prev => new Set(prev).add(active.id))} />
     </div>
   );
 }

@@ -4,6 +4,7 @@ import {trickplayFrameAt, type TrickplaySet} from '@core/trickplay.ts';
 import {formatClock} from '@core/presentation/index.ts';
 import {cx, useArtworkUrl} from '../ui';
 import s from './Player.module.css';
+import {useI18n} from '../app/i18n';
 
 /**
  * Seek bar. Position comes from the playback service; a drag shows the
@@ -14,6 +15,7 @@ import s from './Player.module.css';
 export type TimelineMark = {start: number; end?: number; title?: string};
 
 export function Timeline({position, duration, buffered = 0, disabled, onSeek, live, onLive, programme, programmeLabel, behindLabel, trickplay, step = 10, chapters, segments}: {position: number; duration: number; buffered?: number; disabled?: boolean; onSeek: (seconds: number) => void; live?: boolean; onLive?: () => void; programme?: {start: number; end: number; title?: string}; /** MU4 FEAT-07: the programme's wall-clock times ("7:30 – 8:30 PM"). */ programmeLabel?: string; /** MU4 FEAT-07: how far behind live ("2:15 behind live"). */ behindLabel?: string; trickplay?: TrickplaySet | null; step?: number; /** FEAT-11: chapter starts, drawn as gaps in the rail. */ chapters?: readonly TimelineMark[]; /** FEAT-11: intro and credits, a subtle tint on the rail. */ segments?: readonly Required<Pick<TimelineMark, 'start' | 'end'>>[]}) {
+  const {t} = useI18n();
   const [drag, setDrag] = useState<number | null>(null);
   const [hover, setHover] = useState<number | null>(null);
   const track = useRef<HTMLDivElement>(null);
@@ -70,8 +72,8 @@ export function Timeline({position, duration, buffered = 0, disabled, onSeek, li
           step={0.5}
           value={shown}
           disabled={disabled}
-          aria-label="Playback position"
-          aria-valuetext={`${formatClock(shown)} of ${formatClock(duration)}`}
+          aria-label={t('player.position')}
+          aria-valuetext={t('player.clockOf', {position: formatClock(shown), duration: formatClock(duration)})}
           onChange={e => onSeek(Number(e.target.value))}
           onKeyDown={e => {
             if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
@@ -82,7 +84,7 @@ export function Timeline({position, duration, buffered = 0, disabled, onSeek, li
         />
       </div>
       {live ? (
-        <>{behindLabel ? <span aria-hidden>{behindLabel}</span> : null}<button type="button" className={s.live} onClick={onLive} aria-label="Go to live"><i />LIVE</button></>
+        <>{behindLabel ? <span aria-hidden>{behindLabel}</span> : null}<button type="button" className={s.live} onClick={onLive} aria-label={t('player.live.goLive')}><i />{t('player.liveBadge')}</button></>
       ) : (
         <span aria-hidden>{duration > 0 ? `-${formatClock(Math.max(0, duration - shown))}` : formatClock(duration)}</span>
       )}
