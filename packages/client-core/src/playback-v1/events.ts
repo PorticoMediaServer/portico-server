@@ -16,7 +16,7 @@ import {call, type V1Http} from './http.ts';
 import {parseEvent, type ServerEvent} from './types.ts';
 
 /** A raw SSE message (`readEventStream` in `sse.ts` produces these on web; Apple's XHR adapter too). */
-export type RawStreamEvent = Readonly<{id?: string; event?: string; data: string}>;
+export type RawStreamEvent = Readonly<{id?: string; event?: string; data: string; /** Local shared-stream invalidation, never a server cursor. */ resync?: boolean}>;
 
 /**
  * Opens the SSE stream from `lastEventId`, calls `onEvent` for each message, and resolves when the
@@ -188,6 +188,7 @@ export class EventsClient {
         this.setStatus({connected: true});
         if (signal.aborted) return;
         this.streamFailures = 0;
+        if (raw.resync) { for (const listener of [...this.resyncListeners]) listener(); return; }
         let parsed: unknown;
         try { parsed = JSON.parse(raw.data); } catch { return; }
         const event = parseEvent(parsed);

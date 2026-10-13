@@ -230,3 +230,16 @@ test('an overlapping SSE reconnect retries streaming without falling back to pol
  assert.equal(opened,2);assert.equal(polls,0);assert.equal(client.getStatus().mode,'stream');
  client.stop();await tick();
 });
+
+test('a follower joining after missed events resyncs its documents without moving its cursor',async()=>{
+ const b=browser(),stopA=new AbortController(),stopB=new AbortController();
+ let emit!:(event:RawStreamEvent)=>void;
+ const real:StreamOpener=(_last,onEvent,signal)=>new Promise<void>(resolve=>{emit=onEvent;signal.addEventListener('abort',()=>resolve(),{once:true});});
+ const a=sharedStreamOpener('feed',real,b.tab())('1',()=>{},stopA.signal);await tick();
+ emit({id:'2',data:JSON.stringify({id:'2',type:'library.changed'})});await tick();
+ const events=new EventsClient({cursor:'1',http:{send:async()=>{throw new Error('unexpected poll');}},openStream:sharedStreamOpener('feed',real,b.tab())});
+ let resyncs=0;events.onResync(()=>resyncs++);events.start();await tick();
+ try {assert.equal(resyncs,1);assert.equal(events.getStatus().cursor,'1','a local invalidation is not a received server event');
+  emit({id:'3',data:JSON.stringify({id:'3',type:'library.changed'})});await tick();assert.equal(events.getStatus().cursor,'3');
+ }finally{events.stop();stopA.abort();stopB.abort();await a;await tick();}
+});

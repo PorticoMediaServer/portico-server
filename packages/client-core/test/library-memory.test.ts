@@ -122,3 +122,35 @@ test('forgetting everything removes the saved text', () => {
   memory.forget();
   assert.equal(box.data.size, 0);
 });
+
+test('async writes stay ordered so an older write cannot undo the latest choice or Forget',async()=>{
+ const completions:(()=>void)[]=[];let saved:string|null=null;let active=0,maxActive=0;
+ const memory=new LibraryMemory({read:()=>null,write:(_k,text)=>new Promise<void>(resolve=>{active++;maxActive=Math.max(maxActive,active);completions.push(()=>{saved=text;active--;resolve();});}),remove:()=>new Promise<void>(resolve=>{active++;maxActive=Math.max(maxActive,active);completions.push(()=>{saved=null;active--;resolve();});})},scope);
+ memory.rememberTab('movies','browse');memory.rememberTab('movies','collections');memory.forget();
+ // Complete in reverse order: independent calls would leave the oldest write on disk.
+ while(completions.length){completions.pop()!();await new Promise(setImmediate);}
+ assert.equal(saved,null);assert.equal(maxActive,1);
+});
+
+test('Forget made before a slow initial read is not resurrected or persisted',async()=>{
+ let resolve!:(text:string)=>void;let saved:string|null=null;
+ const memory=new LibraryMemory({read:()=>new Promise<string>(r=>resolve=r),write:(_key,text)=>{saved=text;},remove:()=>{saved=null;}},scope);
+ memory.forget('movies');resolve(JSON.stringify({version:1,libraries:[{id:'movies',tab:'browse',tabs:{}},{id:'tv',tab:'aired',tabs:{}}]}));await memory.ready;
+ assert.equal(memory.recall('movies'),undefined);assert.equal(memory.recall('tv')?.tab,'aired');assert.equal(parseLibraryMemory(saved).has('movies'),false);
+});
+
+test('the total stored document stays readable when many tabs have sizeable filters',()=>{
+ const box=storage(),memory=new LibraryMemory(box,scope);
+ for(let i=0;i<64;i++)for(let tab=0;tab<8;tab++)memory.rememberFilters(`library${i}`,`tab${tab}`,[{field:'title',operator:'contains',value:'x'.repeat(1900)}]);
+ const saved=box.data.get(libraryMemoryKey(scope))!;
+ assert.ok(saved.length<=262144);assert.ok(parseLibraryMemory(saved).has('library63'));
+});
+
+test('an edit during the initial read preserves other tabs and honours an explicit sort reset',async()=>{
+ let resolve!:(text:string)=>void;let saved='';
+ const memory=new LibraryMemory({read:()=>new Promise<string>(r=>resolve=r),write:(_key,text)=>{saved=text;},remove:()=>{}},scope);
+ memory.rememberTab('movies','collections');memory.rememberSort('movies','browse',undefined);
+ resolve(JSON.stringify({version:1,libraries:[{id:'movies',tab:'browse',tabs:{browse:{sort:{field:'year',direction:'asc'},filters:[{field:'genre',operator:'in',value:['Drama']}]},collections:{sort:{field:'title',direction:'desc'}}}}]}));await memory.ready;
+ const recalled=parseLibraryMemory(saved).get('movies')!;
+ assert.equal(recalled.tab,'collections');assert.equal(recalled.tabs.browse?.sort,undefined);assert.equal(recalled.tabs.browse?.filters?.length,1);assert.equal(recalled.tabs.collections?.sort?.direction,'desc');
+});

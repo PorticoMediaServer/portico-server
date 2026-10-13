@@ -167,7 +167,7 @@ export class ConsoleClient {
  }
  registry(){return this.call(routePath("get_console_registry"),'GET',undefined,base);}
  async settings(){const doc=await this.call(routePath("get_console_settings"),'GET',undefined,parseSettings);this.rememberSettings(doc);return doc;}
- private rememberSettings(doc:SettingsDocument){this.settingsRead.set(doc.revision,structuredClone(doc.requested));if(this.settingsRead.size>8)this.settingsRead.delete(this.settingsRead.keys().next().value!);}
+ private rememberSettings(doc:SettingsDocument){this.settingsRead.set(doc.revision,JSON.parse(JSON.stringify(doc.requested)) as RuntimeSettings);if(this.settingsRead.size>8)this.settingsRead.delete(this.settingsRead.keys().next().value!);}
  async applySettings(expectedRevision:number,values:Partial<RuntimeSettings>,saved?:RuntimeSettings){
   const baseline=saved??this.settingsRead.get(expectedRevision), patch:Record<string,unknown>={};
   for(const [key,value] of Object.entries(values))if(!baseline||JSON.stringify(value)!==JSON.stringify((baseline as unknown as Record<string,unknown>)[key]))patch[key]=value;
