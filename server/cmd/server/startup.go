@@ -4,11 +4,16 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"html/template"
 	"log"
+	"net"
 	"net/http"
 	"os"
+	"os/signal"
+	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"portico.local/server/internal/dbwork"
@@ -33,8 +38,9 @@ type startupPhase struct {
 
 // startupReporter answers every request while the server is coming up.
 type startupReporter struct {
-	mu     sync.Mutex
-	phases []startupPhase
+	mu      sync.Mutex
+	phases  []startupPhase
+	failure *startupRecovery
 }
 
 func newStartupReporter() *startupReporter { return &startupReporter{} }
@@ -88,6 +94,13 @@ func (s *startupReporter) snapshot() []startupPhase {
 }
 
 func (s *startupReporter) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	s.mu.Lock()
+	failure := s.failure
+	s.mu.Unlock()
+	if failure != nil {
+		failure.ServeHTTP(w, r)
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Retry-After", "2")
 	w.Header().Set("Cache-Control", "no-store")
@@ -153,4 +166,79 @@ func runDeferredMaintenance(ctx context.Context, db *sql.DB) {
 	}
 	defer conn.Close()
 	_, _ = conn.ExecContext(ctx, `PRAGMA wal_checkpoint(PASSIVE)`)
+}
+
+// Recovery never opens the database, writes state, or offers an unauthenticated
+// repair button. Public replies contain an actionable category, not log errors
+// that may include media paths, URLs or credentials.
+type startupRecovery struct{ Title, Phase, Advice, Recovery, AdviceID string }
+
+var recoveryPage = template.Must(template.New("recovery").Parse(`<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{{.Title}}</title><body><main><h1>{{.Title}}</h1><p>{{.Phase}}</p><p>{{.Advice}}</p><p>{{.Recovery}}</p></main></body></html>`))
+
+func (s *startupReporter) fail(err error) {
+	phase := startupCopy["server.startup.phase"]
+	for _, p := range s.snapshot() {
+		if p.Failed != "" || p.Finished == 0 {
+			phase = p.Label
+			break
+		}
+	}
+	adviceID := "server.startup.storage"
+	text := strings.ToLower(err.Error())
+	switch {
+	case strings.Contains(text, "earlier pre-release"), strings.Contains(text, "migration"), strings.Contains(text, "schema"):
+		adviceID = "server.startup.version"
+	case strings.Contains(text, "permission"), strings.Contains(text, "access denied"):
+		adviceID = "server.startup.permissions"
+	case strings.Contains(text, "space"), strings.Contains(text, "disk full"):
+		adviceID = "server.startup.space"
+	case strings.Contains(text, "another portico"), strings.Contains(text, "already using"):
+		adviceID = "server.startup.instance"
+	}
+	s.mu.Lock()
+	s.failure = &startupRecovery{Title: startupCopy["server.startup.failed"], Phase: phase, Advice: startupCopy[adviceID], Recovery: startupCopy["server.startup.recovery"], AdviceID: adviceID}
+	s.mu.Unlock()
+}
+func (s *startupRecovery) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'")
+	if r.URL.Path == "/" && strings.Contains(r.Header.Get("Accept"), "text/html") {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_ = recoveryPage.Execute(w, s)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusServiceUnavailable)
+	_ = json.NewEncoder(w).Encode(map[string]any{"ready": false, "status": "startup_failed", "phase": s.Phase, "message": s.Advice, "messageId": s.AdviceID, "retryable": false})
+}
+func serveStartupRecovery(ctx context.Context, listener net.Listener, reporter *startupReporter) {
+	server := &http.Server{Handler: reporter, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 15 * time.Second, IdleTimeout: 5 * time.Second, MaxHeaderBytes: 32 << 10}
+	done := make(chan struct{})
+	go func() {
+		select {
+		case <-ctx.Done():
+			_ = server.Close()
+		case <-done:
+		}
+	}()
+	_ = server.Serve(capConnections(listener, consoleConnectionReserve))
+	close(done)
+}
+
+// Errors before a state directory or listener is available have no reporter in
+// run. Bind the configured port independently, without touching the bad state.
+func serveEarlyStartupFailure(err error) {
+	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer cancel()
+	listener, listenErr := net.Listen("tcp", env("PORTICO_BIND", defaultBind))
+	if listenErr != nil {
+		log.Printf("The recovery page could not bind its port: %v", listenErr)
+		return
+	}
+	defer listener.Close()
+	reporter := newStartupReporter()
+	reporter.fail(err)
+	serveStartupRecovery(ctx, listener, reporter)
 }

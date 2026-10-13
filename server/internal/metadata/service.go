@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"os"
+	"portico.local/server/internal/progressio"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -77,7 +78,7 @@ func New(db *sql.DB, token string) *Service {
 	transport.Proxy = nil
 	transport.MaxConnsPerHost = 2
 	transport.ResponseHeaderTimeout = 10 * time.Second
-	s := &Service{db: db, token: token, client: &http.Client{Transport: transport, Timeout: 15 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}, base: "https://api.themoviedb.org/3"}
+	s := &Service{db: db, token: token, client: &http.Client{Transport: progressio.Transport{Base: transport, Idle: 30 * time.Second, Overall: 15 * time.Minute}, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}, base: "https://api.themoviedb.org/3"}
 	s.tvdb, _ = metadataprovider.NewTVDB(TVDBProjectKey)
 	s.mb = metadataprovider.NewMusicBrainz()
 	s.wikidata = metadataprovider.NewWikidata()

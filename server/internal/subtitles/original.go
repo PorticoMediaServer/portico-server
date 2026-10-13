@@ -75,11 +75,11 @@ func (s *Service) OriginalAsset(ctx context.Context, p identity.Principal, item,
 		return RenderAsset{}, e
 	}
 	defer reader.Close()
-	raw, e := io.ReadAll(io.LimitReader(reader, MaxAssetBytes+1))
+	raw, e := io.ReadAll(io.LimitReader(reader, int64(AssetLimitBytes())+1))
 	if e != nil {
 		return RenderAsset{}, e
 	}
-	if len(raw) > MaxAssetBytes {
+	if len(raw) > AssetLimitBytes() {
 		return RenderAsset{}, ErrCapacity
 	}
 	var a RenderAsset

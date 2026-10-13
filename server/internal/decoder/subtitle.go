@@ -5,11 +5,12 @@ import (
 	"io"
 	"os/exec"
 	"path/filepath"
+	"portico.local/server/internal/medialimits"
 	"portico.local/server/internal/storage"
 	"strconv"
 )
 
-const MaxSubtitleOutput = 32 << 20
+const MaxSubtitleOutput = medialimits.MaxSubtitleFileMiB << 20
 
 func seconds(us int64) string { return strconv.FormatFloat(float64(us)/1e6, 'f', 6, 64) }
 func runSubtitleOwned(ctx context.Context, sup *storage.Supervisor, key string, cmd *exec.Cmd, input string, res *EndpointReservation, max int64) ([]byte, error) {
@@ -70,7 +71,7 @@ func RunSubtitleExtract(ctx context.Context, sup *storage.Supervisor, key, execu
 		res.Close()
 		return nil, err
 	}
-	limit := int64(MaxSubtitleOutput)
+	limit := int64(medialimits.SubtitleFileBytes())
 	if format == "srt" || format == "vtt" || format == "ass" || format == "ssa" {
 		limit = 4 << 20
 	}

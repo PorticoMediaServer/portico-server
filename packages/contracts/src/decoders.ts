@@ -31,6 +31,7 @@ export function decodeEmptyMissingTitlesResponse(input: unknown): types.EmptyMis
 export function decodeGetAdminAccessDevicesResponse(input: unknown): types.GetAdminAccessDevicesResponse { return decode("GetAdminAccessDevicesResponse", input) as types.GetAdminAccessDevicesResponse; }
 export function decodeGetAdminBackupsResponse(input: unknown): types.GetAdminBackupsResponse { return decode("GetAdminBackupsResponse", input) as types.GetAdminBackupsResponse; }
 export function decodeGetAdminMaintenanceSettingsResponse(input: unknown): types.GetAdminMaintenanceSettingsResponse { return decode("GetAdminMaintenanceSettingsResponse", input) as types.GetAdminMaintenanceSettingsResponse; }
+export function decodeGetAdminResourceUsageResponse(input: unknown): types.GetAdminResourceUsageResponse { return decode("GetAdminResourceUsageResponse", input) as types.GetAdminResourceUsageResponse; }
 export function decodeGetAdminUpdatesResponse(input: unknown): types.GetAdminUpdatesResponse { return decode("GetAdminUpdatesResponse", input) as types.GetAdminUpdatesResponse; }
 export function decodeGetApiAccessOptionsResponse(input: unknown): types.GetApiAccessOptionsResponse { return decode("GetApiAccessOptionsResponse", input) as types.GetApiAccessOptionsResponse; }
 export function decodeGetAuthCapabilitiesResponse(input: unknown): types.GetAuthCapabilitiesResponse { return decode("GetAuthCapabilitiesResponse", input) as types.GetAuthCapabilitiesResponse; }
@@ -129,6 +130,7 @@ export function decodeMcpStreamResponse(input: unknown): types.McpStreamResponse
 export function decodeMergeTitlesResponse(input: unknown): types.MergeTitlesResponse { return decode("MergeTitlesResponse", input) as types.MergeTitlesResponse; }
 export function decodeMoveQueueEntryResponse(input: unknown): types.MoveQueueEntryResponse { return decode("MoveQueueEntryResponse", input) as types.MoveQueueEntryResponse; }
 export function decodePatchDeviceResponse(input: unknown): types.PatchDeviceResponse { return decode("PatchDeviceResponse", input) as types.PatchDeviceResponse; }
+export function decodePostAdminBackgroundPauseResponse(input: unknown): types.PostAdminBackgroundPauseResponse { return decode("PostAdminBackgroundPauseResponse", input) as types.PostAdminBackgroundPauseResponse; }
 export function decodePostAdminBackupsResponse(input: unknown): types.PostAdminBackupsResponse { return decode("PostAdminBackupsResponse", input) as types.PostAdminBackupsResponse; }
 export function decodePostAdminBackupsRestoreResponse(input: unknown): types.PostAdminBackupsRestoreResponse { return decode("PostAdminBackupsRestoreResponse", input) as types.PostAdminBackupsRestoreResponse; }
 export function decodePostAdminRestartResponse(input: unknown): types.PostAdminRestartResponse { return decode("PostAdminRestartResponse", input) as types.PostAdminRestartResponse; }

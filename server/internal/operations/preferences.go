@@ -14,7 +14,7 @@ import (
 // PreferenceRegistryRevision changes whenever a field is added, removed, or its
 // domain moves. Clients render settings from the published registry, so the
 // revision is the only thing they have to compare between releases.
-const PreferenceRegistryRevision = "p40.Q2"
+const PreferenceRegistryRevision = "p40.Q2.B5"
 
 const (
 	HomeLayoutMaxRows        = 64

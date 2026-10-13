@@ -73,10 +73,11 @@ type Service struct {
 	// request that needs a path, because constructing this service must not touch
 	// the database: the composition root builds it while other work may hold the
 	// single connection.
-	stateMu  sync.Mutex
-	state    string
-	resolved bool
-	now      func() time.Time
+	backgroundMu sync.Mutex
+	stateMu      sync.Mutex
+	state        string
+	resolved     bool
+	now          func() time.Time
 	// files serializes operations that move bytes (trash, restore, cleanup,
 	// backup creation) so two owners cannot interleave on the same tree.
 	files       sync.Mutex

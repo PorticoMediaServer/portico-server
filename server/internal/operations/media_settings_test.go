@@ -97,3 +97,17 @@ func TestAppliedDirectoryPreservesFFmpegRestartState(t *testing.T) {
 		t.Fatal(document.RestartFields)
 	}
 }
+
+func TestConnectionLimitReportsItsAppliedStartupValue(t *testing.T) {
+	prior := startupMediaSettings.Load()
+	defer startupMediaSettings.Store(prior)
+	started := DefaultSettings()
+	started.ConnectionLimit = 100
+	startupMediaSettings.Store(&started)
+	requested := started
+	requested.ConnectionLimit = 200
+	effective, fields := effectiveMediaSettings(requested)
+	if effective.ConnectionLimit != 100 || len(fields) != 1 || fields[0] != "connectionLimit" {
+		t.Fatal("requested connection cap reported as active", effective.ConnectionLimit, fields)
+	}
+}

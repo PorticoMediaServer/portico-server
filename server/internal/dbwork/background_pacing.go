@@ -15,7 +15,7 @@ import (
 // intended for the continuous bulk/derived-data loops that can otherwise consume
 // CPU and fill the WAL as quickly as they commit.
 func PaceBackground(ctx context.Context, batchStarted time.Time) bool {
-	if ctx.Err() != nil {
+	if !WaitBackground(ctx) {
 		return false
 	}
 	if !ForegroundWorkActive() {

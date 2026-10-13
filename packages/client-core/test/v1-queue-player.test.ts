@@ -11,11 +11,17 @@ import type {V1Http} from '../src/playback-v1/http.ts';
 
 const viewer = {serverId: 'server', authority: 'local' as const, accountId: 'account', profileId: 'profile'};
 
-function setup(options: {log?: {method: string; path: string; body?: unknown}[]; server?: ConstructorParameters<typeof FakePlaybackServer>[0]} = {}) {
+function setup(options: {postPlay?: {autoplay: boolean; countdownSeconds: number; passoutCheckDue: boolean; automaticAdvances: number}; log?: {method: string; path: string; body?: unknown}[]; server?: ConstructorParameters<typeof FakePlaybackServer>[0]} = {}) {
   const server = new FakePlaybackServer(options.server);
   const inner = fakeHttp(server);
   const log = options.log ?? [];
-  const http: V1Http = {send: async r => { log.push({method: r.method, path: r.path, body: r.body}); return inner.send(r as never) as never; }};
+  const http: V1Http = {send: async r => { log.push({method: r.method, path: r.path, body: r.body}); const response = await inner.send(r as never);
+    if (options.postPlay && r.path.startsWith('/v1/queues') && response.body && typeof response.body === 'object') {
+      const body = response.body as {queue?: Record<string, unknown>; id?: string};
+      if (body.queue) body.queue.postPlay = options.postPlay;
+      else if (body.id) (body as Record<string, unknown>).postPlay = options.postPlay;
+    }
+    return response as never; }};
   const timers: {fn: () => void; ms: number}[] = [];
   let serial = 0;
   const api = new V1PlaybackApi(http, {timers: {setTimer: (fn, ms) => { timers.push({fn, ms}); return timers.length; }, clearTimer: () => {}}, key: () => `k${++serial}`});
@@ -642,6 +648,24 @@ test('a retry after the queue moved on does not start the new entry at the old t
   const start = log.filter(r => r.method === 'POST' && r.path === '/v1/playback/sessions').at(-1)!.body as Record<string, unknown>;
   assert.equal(start.startPositionMs, undefined, 'entry b starts where its own progress says');
   assert.equal(start.startFrom, 'resume');
+  stop();
+});
+
+test('the server still-watching policy holds completion and a manual Continue releases it', async () => {
+  const {player, playback, log, stop} = setup({postPlay: {autoplay: true, countdownSeconds: 5, passoutCheckDue: true, automaticAdvances: 2}});
+  await player.playEntries(['a', 'b'].map(queueItemInput));
+  playToEnd(playback);
+  await settle(); await settle();
+  const held = player.getSnapshot().completion;
+  assert.equal(held?.postPlay.passoutCheckDue, true);
+  assert.equal(held?.postPlay.countdownSeconds, 5);
+  assert.equal(held?.postPlay.automaticAdvances, 2);
+  await player.continueCompletion('automatic');
+  assert.ok(player.getSnapshot().completion, 'an automatic callback must leave the question open');
+  assert.equal(log.filter(r => r.path.endsWith(':advance')).length, 0);
+  await player.continueCompletion('still-watching');
+  assert.equal(playback.getSnapshot().itemId, 'b');
+  assert.equal((log.find(r => r.path.endsWith(':advance'))?.body as {reason: string}).reason, 'next');
   stop();
 });
 

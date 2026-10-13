@@ -176,11 +176,11 @@ func (s *Service) Select(ctx context.Context, p identity.Principal, item, sessio
 		}
 	}
 	if reader != nil {
-		raw, e := io.ReadAll(io.LimitReader(reader, MaxAssetBytes+1))
+		raw, e := io.ReadAll(io.LimitReader(reader, int64(AssetLimitBytes())+1))
 		if e != nil {
 			return PlaybackPlan{}, e
 		}
-		if len(raw) > MaxAssetBytes {
+		if len(raw) > AssetLimitBytes() {
 			return PlaybackPlan{}, ErrCapacity
 		}
 		_, e = DecodeRenderAsset(raw)

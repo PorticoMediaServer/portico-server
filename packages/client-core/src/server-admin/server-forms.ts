@@ -144,18 +144,29 @@ export const recordingForm = (deps: ServerFormDeps) => documentForm<DVRDefaults,
 // ── Maintenance: windows, background priority, what is kept and for how long ────────────────
 
 export type MaintenanceWindow = Readonly<{id: string; name: string; enabled: boolean; cadence: string; days: readonly string[]; startMinute: number; durationMinutes: number; timezone: string; tasks: readonly string[]}>;
-export type MaintenanceSettings = Readonly<{windows: readonly MaintenanceWindow[]; retention: Readonly<Record<string, number>>; backupKeepCount: number; backgroundTaskPriority: 'lower' | 'normal'; backgroundSpeed?: 'gentle' | 'normal' | 'fast'}>;
-export type MaintenanceDocument = Readonly<{revision: number; settings: MaintenanceSettings; cadences: readonly {id: string; name: string; days: readonly string[]; description: string}[]; tasks: readonly string[]; days: readonly string[]; retentionMaxima: Readonly<Record<string, number>>; storageCategories: readonly {id: string; name: string; retentionKey: string}[]}>;
+export type MaintenanceSettings = Readonly<{windows: readonly MaintenanceWindow[]; retention: Readonly<Record<string, number>>; backupKeepCount: number; backgroundSpeed?: 'gentle' | 'normal' | 'fast'}>;
+export type MaintenanceDocument = Readonly<{revision: number; pausedUntilUnixMillis: number; settings: MaintenanceSettings; cadences: readonly {id: string; name: string; days: readonly string[]; description: string}[]; tasks: readonly string[]; days: readonly string[]; retentionMaxima: Readonly<Record<string, number>>; storageCategories: readonly {id: string; name: string; retentionKey: string}[]}>;
 
 /** The document is owner configuration the server validates in full on save, so it is read structurally. */
 export function parseMaintenanceDocument(raw: unknown): MaintenanceDocument {
   const v = raw as MaintenanceDocument;
   if (!v || typeof v.revision !== 'number' || !v.settings || !Array.isArray(v.settings.windows) || !Array.isArray(v.cadences) || !Array.isArray(v.tasks)) throw new Error('The server returned maintenance settings this version cannot read.');
-  // Background work is de-prioritized, never paused: anything else reads as "lower".
-  return {...v, settings: {...v.settings, backgroundTaskPriority: v.settings.backgroundTaskPriority === 'normal' ? 'normal' : 'lower',backgroundSpeed:v.settings.backgroundSpeed==='gentle'||v.settings.backgroundSpeed==='fast'?v.settings.backgroundSpeed:'normal'}};
+  return {...v, pausedUntilUnixMillis: Number.isFinite(v.pausedUntilUnixMillis) ? v.pausedUntilUnixMillis : 0, settings: {...v.settings, backgroundSpeed:v.settings.backgroundSpeed==='gentle'||v.settings.backgroundSpeed==='fast'?v.settings.backgroundSpeed:'normal'}};
 }
 
 export const maintenanceForm = (deps: ServerFormDeps) => documentForm<MaintenanceSettings, MaintenanceDocument>(deps, '/v1/admin/maintenance/settings', parseMaintenanceDocument);
+
+/** Reuse operationId when retrying the same pause/resume action. */
+export async function pauseBackgroundWork(deps: Pick<ServerFormDeps, 'api'>, paused: boolean, operationId: string): Promise<MaintenanceDocument> {
+  return parseMaintenanceDocument(await deps.api.request('/v1/admin/maintenance/background-pause', 'POST', {paused, operationId}));
+}
+
+export type ResourceUsage = Readonly<{connections: {ordinary: number; total: number; ordinaryLimit: number; consoleReserve: number} | null; analysis: {trackedBytes: number; limitBytes: number; measured: boolean}; localArtwork: {trackedBytes: number; limitBytes: number; measured: boolean}; streams: number; streamLimit: number | null; subtitleTracksPerFile: number; subtitleFileLimitMiB: number}>;
+export async function loadResourceUsage(api: Pick<HttpLocalApi, 'request'>, signal?: AbortSignal): Promise<ResourceUsage> {
+  const value = await api.request<ResourceUsage>('/v1/admin/resource-usage', 'GET', undefined, signal);
+  if (!value || !Number.isSafeInteger(value.streams) || !Number.isSafeInteger(value.analysis?.trackedBytes) || !Number.isSafeInteger(value.analysis?.limitBytes) || !Number.isSafeInteger(value.subtitleTracksPerFile) || !Number.isSafeInteger(value.localArtwork?.trackedBytes) || !Number.isSafeInteger(value.localArtwork?.limitBytes) || typeof value.localArtwork?.measured !== 'boolean') throw new Error('The server returned resource usage this version cannot read.');
+  return value;
+}
 
 export type ScheduledJob = Readonly<{task: string; /** Names of the enabled windows that run it. */ windows: readonly string[]; /** The start of the next window that runs it, in the server window's own clock, or undefined when no enabled window does. */ nextAt?: Date}>;
 

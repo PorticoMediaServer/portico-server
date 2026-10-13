@@ -11,7 +11,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"portico.local/server/internal/identity"
 )
@@ -120,15 +119,15 @@ func (s *Service) Import(ctx context.Context, p identity.Principal, item string,
 				return Receipt{}, e
 			}
 			payload, _ := json.Marshal(req)
-			readCtx, cancel := context.WithTimeout(ctx, 90*time.Second)
+			readCtx, cancel := context.WithCancel(ctx)
 			defer cancel()
 			cmd := exec.Command(s.helper, "--portico-subtitle-helper")
 			cmd.Stdin = bytes.NewReader(payload)
 			var payloadBytes []byte
 			e = s.storage.Supervisor.Run(readCtx, "subtitle:"+src.ID, cmd, func(r io.Reader) error {
 				var e error
-				payloadBytes, e = io.ReadAll(io.LimitReader(r, MaxAssetBytes+1))
-				if len(payloadBytes) > MaxAssetBytes {
+				payloadBytes, e = io.ReadAll(io.LimitReader(r, int64(AssetLimitBytes())+1))
+				if len(payloadBytes) > AssetLimitBytes() {
 					return ErrCapacity
 				}
 				return e
@@ -216,18 +215,18 @@ func Helper(in io.Reader, out io.Writer) error {
 	if r.Origin != "sidecar" {
 		return ErrUnsupported
 	}
-	raw, e := io.ReadAll(io.LimitReader(file, MaxBinaryBytes+1))
+	raw, e := io.ReadAll(io.LimitReader(file, int64(BinaryLimitBytes())+1))
 	if e != nil {
 		return e
 	}
-	if len(raw) > MaxBinaryBytes {
+	if len(raw) > BinaryLimitBytes() {
 		return ErrCapacity
 	}
 	var companion []byte
 	if r.Format == "idx" || r.Format == "vobsub" {
 		name := strings.TrimSuffix(r.Path, filepath.Ext(r.Path)) + ".sub"
 		info, e := root.Lstat(name)
-		if e != nil || !info.Mode().IsRegular() || info.Size() > MaxBinaryBytes {
+		if e != nil || !info.Mode().IsRegular() || info.Size() > int64(BinaryLimitBytes()) {
 			return ErrInput
 		}
 		paired, e := root.Open(name)
@@ -239,7 +238,7 @@ func Helper(in io.Reader, out io.Writer) error {
 		if e != nil || !os.SameFile(info, opened) {
 			return ErrConflict
 		}
-		companion, e = io.ReadAll(io.LimitReader(paired, MaxBinaryBytes+1))
+		companion, e = io.ReadAll(io.LimitReader(paired, int64(BinaryLimitBytes())+1))
 		if e != nil {
 			return e
 		}

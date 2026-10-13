@@ -26,10 +26,7 @@
           "durationMinutes": 240,
           "timezone": "",
           "tasks": [
-            "analysis",
-            "backup",
-            "library-scan",
-            "trickplay"
+            "backup"
           ]
         }
       ],
@@ -42,13 +39,13 @@
         "trickplay": 365
       },
       "backupKeepCount": 7,
-      "backgroundTaskPriority": "lower"
+      "backgroundSpeed": "normal"
     }
   },
   "status": 200,
   "response": {
     "revision": 2,
-    "digest": "170aa20470a5fc84b08bb84ab651d5ec12c9c63756e9e2b1e8509a72d18fb7d8",
+    "digest": "d55c651c7705a821acf899132f6ad36e4443d6607430a18e4a7f7bd8f72a6cdb",
     "settings": {
       "windows": [
         {
@@ -69,10 +66,7 @@
           "durationMinutes": 240,
           "timezone": "",
           "tasks": [
-            "analysis",
-            "backup",
-            "library-scan",
-            "trickplay"
+            "backup"
           ]
         }
       ],
@@ -85,7 +79,7 @@
         "trickplay": 365
       },
       "backupKeepCount": 7,
-      "backgroundTaskPriority": "lower"
+      "backgroundSpeed": "normal"
     },
     "cadences": [
       {
@@ -139,10 +133,6 @@
       }
     ],
     "tasks": [
-      "library-scan",
-      "metadata-refresh",
-      "analysis",
-      "trickplay",
       "backup"
     ],
     "days": [
@@ -277,6 +267,7 @@
         "regenerable": false,
         "retentionKey": ""
       }
-    ]
+    ],
+    "pausedUntilUnixMillis": 0
   }
 }

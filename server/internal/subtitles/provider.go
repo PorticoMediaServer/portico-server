@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"portico.local/server/internal/progressio"
 	"strconv"
 	"strings"
 	"sync"
@@ -74,7 +75,7 @@ func ProviderFromEnvironment() Provider {
 	if agent == "" {
 		agent = "Portico v1"
 	}
-	return &OpenSubtitles{key: key, username: os.Getenv("PORTICO_OPENSUBTITLES_USERNAME"), password: os.Getenv("PORTICO_OPENSUBTITLES_PASSWORD"), host: "api.opensubtitles.com", agent: agent, gate: make(chan struct{}, 1), client: &http.Client{Transport: tr, Timeout: 20 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}
+	return &OpenSubtitles{key: key, username: os.Getenv("PORTICO_OPENSUBTITLES_USERNAME"), password: os.Getenv("PORTICO_OPENSUBTITLES_PASSWORD"), host: "api.opensubtitles.com", agent: agent, gate: make(chan struct{}, 1), client: &http.Client{Transport: progressio.Transport{Base: tr, Idle: 30 * time.Second, Overall: 15 * time.Minute}, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}
 }
 func (p *OpenSubtitles) ID() string { return "opensubtitles" }
 func (p *OpenSubtitles) request(ctx context.Context, method, path string, body, out any) error {
@@ -269,7 +270,7 @@ func (p *OpenSubtitles) Download(ctx context.Context, id int64) ([]byte, error) 
 	}
 	// Reuse the existing public-network transport: no proxy, fresh DNS admission
 	// at every dial/redirect, no private/link-local targets or TLS downgrade.
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	client, e := remotemedia.New(ctx, response.Link, remotemedia.Policy{})
 	if e != nil {
@@ -311,7 +312,7 @@ type SearchResult struct {
 }
 
 func (s *Service) Search(ctx context.Context, p identity.Principal, item string, m SearchRequest) (SearchResult, error) {
-	ctx, cancel := context.WithTimeout(ctx, 45*time.Second)
+	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	out := SearchResult{Version: 1, Candidates: []SearchCandidate{}, Page: m.Page}
 	language, e := Language(m.Language)
@@ -412,7 +413,7 @@ type ApplyRequest struct {
 }
 
 func (s *Service) Apply(ctx context.Context, p identity.Principal, item string, m ApplyRequest) (Receipt, error) {
-	ctx, cancel := context.WithTimeout(ctx, 75*time.Second)
+	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	if !validID(m.OperationID) || !validID(m.CandidateID) || (m.Scope != "personal" && m.Scope != "shared") || !textField(m.Rights, 500) {
 		return Receipt{}, ErrInput

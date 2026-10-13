@@ -9,7 +9,6 @@ import (
 	"path"
 	"regexp"
 	"strings"
-	"time"
 	"unicode/utf8"
 
 	"portico.local/server/internal/remotemedia"
@@ -36,7 +35,7 @@ func companionURL(locator, name string) (string, error) {
 	return u.String(), nil
 }
 func (r *Runtime) AcquireCompanion(ctx context.Context, item, source, name, format string) ([]byte, []byte, string, error) {
-	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	input, e := r.OpenSubtitleInput(ctx, item, source, "")
 	if e != nil {
@@ -109,7 +108,7 @@ func (r *Runtime) AcquireCompanion(ctx context.Context, item, source, name, form
 	}
 	limit := int64(subtitles.MaxInputBytes)
 	if ext == "sup" {
-		limit = subtitles.MaxBinaryBytes
+		limit = int64(subtitles.BinaryLimitBytes())
 	}
 	data, e := read(companion, limit)
 	if e != nil {
@@ -119,7 +118,7 @@ func (r *Runtime) AcquireCompanion(ctx context.Context, item, source, name, form
 	if ext == "idx" {
 		u, _ := url.Parse(companion)
 		u.Path = strings.TrimSuffix(u.Path, path.Ext(u.Path)) + ".sub"
-		paired, e = read(u.String(), subtitles.MaxBinaryBytes-int64(len(data)))
+		paired, e = read(u.String(), int64(subtitles.BinaryLimitBytes())-int64(len(data)))
 		if e != nil {
 			return nil, nil, "", e
 		}

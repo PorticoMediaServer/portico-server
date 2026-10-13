@@ -46,7 +46,7 @@ func mbArtist(credits []metadataprovider.ArtistCredit) string {
 	return b.String()
 }
 func (s *Service) MusicBrainzStep(ctx context.Context) (result error) {
-	ctx, cancel := context.WithTimeout(ctx, 65*time.Second)
+	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	defer func() {
 		// database/sql can win the cancellation race and roll back a transaction

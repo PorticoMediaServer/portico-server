@@ -11,7 +11,7 @@ import (
 // Rewrap those unchanged SPU packets in DVD private-stream packs and build the
 // corresponding index. No OCR or pixel conversion is involved.
 func VobSubOriginal(capsule []byte) ([]byte, []byte, error) {
-	if len(capsule) == 0 || len(capsule) > MaxBinaryBytes {
+	if len(capsule) == 0 || len(capsule) > BinaryLimitBytes() {
 		return nil, nil, ErrCapacity
 	}
 	type packet struct {
@@ -146,7 +146,7 @@ func VobSubOriginal(capsule []byte) ([]byte, []byte, error) {
 				pack[i] = 0xff
 			}
 			sub.Write(pack)
-			if sub.Len() > MaxBinaryBytes {
+			if sub.Len() > BinaryLimitBytes() {
 				return nil, nil, ErrCapacity
 			}
 		}

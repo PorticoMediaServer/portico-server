@@ -464,7 +464,7 @@ func TestMaintenanceRetentionMaximaAndUpdateReport(t *testing.T) {
 	}
 }
 
-func TestMaintenanceSavePreservesOmittedBackgroundPriority(t *testing.T) {
+func TestMaintenanceSavePreservesBackgroundSpeed(t *testing.T) {
 	service, _, _ := newService(t)
 	ctx := context.Background()
 	current, err := service.MaintenanceSettings(ctx, allow)
@@ -472,19 +472,19 @@ func TestMaintenanceSavePreservesOmittedBackgroundPriority(t *testing.T) {
 		t.Fatal(err)
 	}
 	settings := current.Settings
-	settings.BackgroundTaskPriority = "normal"
+	settings.BackgroundSpeed = "fast"
 	saved, err := service.SaveMaintenanceSettings(ctx, allow, Change[MaintenanceSettingsDocument]{ExpectedRevision: current.Revision, Settings: settings, OperationID: "priority-normal"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	settings = saved.Settings
-	settings.BackgroundTaskPriority = ""
+	// An unrelated edit keeps the authored speed.
 	saved, err = service.SaveMaintenanceSettings(ctx, allow, Change[MaintenanceSettingsDocument]{ExpectedRevision: saved.Revision, Settings: settings, OperationID: "retention-only"})
-	if err != nil || saved.Settings.BackgroundTaskPriority != "normal" {
+	if err != nil || saved.Settings.BackgroundSpeed != "fast" {
 		t.Fatalf("omitted priority reset: %+v, %v", saved.Settings, err)
 	}
 	loaded, err := service.MaintenanceSettings(ctx, allow)
-	if err != nil || loaded.Settings.BackgroundTaskPriority != "normal" {
+	if err != nil || loaded.Settings.BackgroundSpeed != "fast" {
 		t.Fatalf("stored priority: %+v, %v", loaded.Settings, err)
 	}
 }

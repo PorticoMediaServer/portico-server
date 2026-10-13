@@ -320,7 +320,7 @@ func (s *Service) screenBeforeRequest(ctx context.Context, p *screenClaim, provi
 	return nil
 }
 func (s *Service) screenRequestContext(parent context.Context, p *screenClaim) (context.Context, context.CancelFunc) {
-	ctx, cancel := context.WithTimeout(parent, 180*time.Second)
+	ctx, cancel := context.WithCancel(parent)
 	// Revocation/configuration and superseding owner selections cancel in-flight
 	// I/O, not merely publication. All source observations are rechecked at commit.
 	supervise.Go("metadata.screen-worker.watch", func() {

@@ -2199,6 +2199,7 @@ lyric_selections.resource_id
 lyric_selections.revision
 lyric_selections.session_id
 maintenance_policy.background_priority
+maintenance_policy.paused_until_ms
 maintenance_policy.revision
 maintenance_policy.singleton
 maintenance_window_days.day
@@ -3638,6 +3639,7 @@ queue_v1_snapshots.state
 queue_v1_snapshots.width
 queues_v1.account_id
 queues_v1.authority
+queues_v1.automatic_advances
 queues_v1.created_ms
 queues_v1.current_position
 queues_v1.id

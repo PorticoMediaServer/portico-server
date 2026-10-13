@@ -516,7 +516,7 @@ export const routes = [
     "requires": "library",
     "lane": "default",
     "cost": "constant",
-    "bodyLimit": 50331648,
+    "bodyLimit": 805306368,
     "query": [
       "segment"
     ],
@@ -651,6 +651,23 @@ export const routes = [
     "errors": [
       "unauthorized",
       "administration_unavailable",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
+    "id": "get_admin_resource_usage",
+    "method": "GET",
+    "path": "/v1/admin/resource-usage",
+    "summary": "Read current resource usage and owner limits",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
       "internal"
     ],
     "status": 200
@@ -2990,6 +3007,26 @@ export const routes = [
     "status": 200
   },
   {
+    "id": "post_admin_background_pause",
+    "method": "POST",
+    "path": "/v1/admin/maintenance/background-pause",
+    "summary": "Pause background work for an hour or resume it",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 4096,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "invalid_request",
+      "revision_mismatch",
+      "administration_unavailable",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
     "id": "post_admin_backups",
     "method": "POST",
     "path": "/v1/admin/backups",
@@ -3235,7 +3272,7 @@ export const routes = [
     "requires": "library",
     "lane": "default",
     "cost": "constant",
-    "bodyLimit": 50331648,
+    "bodyLimit": 805306368,
     "query": [
       "segment"
     ],
@@ -3266,7 +3303,7 @@ export const routes = [
     "requires": "library",
     "lane": "default",
     "cost": "constant",
-    "bodyLimit": 50331648,
+    "bodyLimit": 805306368,
     "query": [
       "segment"
     ],
@@ -3297,7 +3334,7 @@ export const routes = [
     "requires": "library",
     "lane": "default",
     "cost": "constant",
-    "bodyLimit": 50331648,
+    "bodyLimit": 805306368,
     "query": [
       "segment"
     ],
@@ -3328,7 +3365,7 @@ export const routes = [
     "requires": "library",
     "lane": "default",
     "cost": "constant",
-    "bodyLimit": 50331648,
+    "bodyLimit": 805306368,
     "query": [
       "segment"
     ],
@@ -3359,7 +3396,7 @@ export const routes = [
     "requires": "library",
     "lane": "default",
     "cost": "constant",
-    "bodyLimit": 50331648,
+    "bodyLimit": 805306368,
     "query": [
       "segment"
     ],
@@ -3390,7 +3427,7 @@ export const routes = [
     "requires": "library",
     "lane": "default",
     "cost": "constant",
-    "bodyLimit": 50331648,
+    "bodyLimit": 805306368,
     "query": [
       "segment"
     ],
@@ -3732,7 +3769,7 @@ export const routes = [
     "requires": "playback",
     "lane": "default",
     "cost": "constant",
-    "bodyLimit": 50331648,
+    "bodyLimit": 805306368,
     "query": [
       "segment"
     ],
@@ -3763,7 +3800,7 @@ export const routes = [
     "requires": "library",
     "lane": "default",
     "cost": "constant",
-    "bodyLimit": 50331648,
+    "bodyLimit": 805306368,
     "query": [
       "segment"
     ],

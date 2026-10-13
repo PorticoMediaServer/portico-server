@@ -49,8 +49,8 @@ func (s *Service) queueWrite(ctx context.Context, q queueRow, mutate func(ctx co
 			now := s.now()
 			l.q.revision++
 			l.q.updated = now.UnixMilli()
-			if _, err = tx.ExecContext(ctx, `UPDATE queues_v1 SET revision=?,current_position=?,repeat=?,shuffle_on=?,shuffle_seed=?,shuffle_lap=?,shuffle_domain=?,shuffle_first=?,session_id=?,updated_ms=? WHERE id=?`,
-				l.q.revision, l.q.current, l.q.repeat, l.q.shuffle, l.q.seed, l.q.lap, l.q.domain, l.q.first, l.q.session, l.q.updated, l.q.id); err != nil {
+			if _, err = tx.ExecContext(ctx, `UPDATE queues_v1 SET revision=?,current_position=?,repeat=?,shuffle_on=?,shuffle_seed=?,shuffle_lap=?,shuffle_domain=?,shuffle_first=?,session_id=?,updated_ms=?,automatic_advances=? WHERE id=?`,
+				l.q.revision, l.q.current, l.q.repeat, l.q.shuffle, l.q.seed, l.q.lap, l.q.domain, l.q.first, l.q.session, l.q.updated, l.q.automatic, l.q.id); err != nil {
 				return err
 			}
 			if !l.q.shuffle {
@@ -1096,6 +1096,22 @@ func (s *Service) Advance(ctx context.Context, c Caller, id, ifMatch string, req
 		return QueueReply{}, err
 	}
 	l, err := s.queueWrite(ctx, q, func(ctx context.Context, tx *sql.Tx, l *layout) (bool, error) {
+		if req.Reason == "completion" {
+			policy, err := s.postPlayPolicy(ctx, tx, c, l)
+			if err != nil {
+				return false, err
+			}
+			if policy.PassoutCheckDue {
+				return false, &TransitionError{Err: ErrPrepareNotAllowed, Reason: "passout_check_required"}
+			}
+			if currentEpisode(ctx, tx, l) {
+				l.q.automatic = min(l.q.automatic+1, 1000000)
+			} else {
+				l.q.automatic = 0
+			}
+		} else {
+			l.q.automatic = 0
+		}
 		total := l.total()
 		switch {
 		case req.Reason == "entry":

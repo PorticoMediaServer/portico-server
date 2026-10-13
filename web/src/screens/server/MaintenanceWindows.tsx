@@ -3,7 +3,7 @@ import type {Schedule} from '@core/console.ts';
 import type {LogSettings} from '@core/server-administration.ts';
 import {scheduledJobs, type LogsDraft, type MaintenanceDocument, type MaintenanceSettings, type MaintenanceWindow} from '@core/server-admin/server-forms.ts';
 import {TASK_LABELS, broadcastBody, broadcastProblem, clockMinutes, clockText, retentionRows, utf8Length} from '@core/server-admin/panel-logic.ts';
-export {backgroundPriorityOrDefault, broadcastBody, broadcastBodyBytes, broadcastProblem, broadcastTitleBytes, maintenanceSaveSettings, utf8Length, type BackgroundTaskPriority, type BroadcastProblem} from '@core/server-admin/panel-logic.ts';
+export {broadcastBody, broadcastBodyBytes, broadcastProblem, broadcastTitleBytes, maintenanceSaveSettings, utf8Length, type BroadcastProblem} from '@core/server-admin/panel-logic.ts';
 import {jobLabel, useAction, useConsole, useRead, when} from '../../admin/console';
 import {useSession} from '../../app/session';
 import {useI18n, type MessageId} from '../../app/i18n';
