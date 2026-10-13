@@ -32,6 +32,8 @@ import {useSelectionActions, useSelectionActive, useSelectionSection} from '../.
 import {useSelectionQueryTarget, type SelectionTarget} from '../../app/selection';
 import {useSelectionRefresh} from '../../app/selection';
 import {iconFor} from '@core/presentation/index.ts';
+import {libraryOpening, rememberedTab} from '@core/library-memory.ts';
+import {useLibraryMemory} from '../../app/library-memory';
 
 import type {LibraryView as Tab} from '../../app/router';
 import {ErrorNotice, ErrorState, changedError, errorText} from '../../app/errors';
@@ -61,11 +63,30 @@ export function LibraryScreen() {
   const {t} = i18n;
   const emptyCopy = useEmptyLibraryCopy();
   const {libraryId} = useParams({from: '/app/library/$libraryId'});
-  const search = useSearch({from: '/app/library/$libraryId'});
+  const address = useSearch({from: '/app/library/$libraryId'});
   const navigate = useNavigate();
   const {items: libraries} = useLibrariesContext();
   const library = libraries.find(l => l.id === libraryId);
   const {api, session, owner} = useSession();
+  // A library reopens the way this profile left it: the tab, and that tab's sort and filters.
+  // An address that names any of them (a link, a row's See all) is followed as it is; only a plain
+  // visit is answered from memory, and the address is then brought in line so it can be shared.
+  const memory = useLibraryMemory();
+  const opening = useMemo(() => {
+    if (!library) return undefined;
+    const named = {tab: address.view, sort: address.sort ? {field: address.sort, direction: address.direction ?? 'asc'} : undefined, filters: address.filters ? decodePredicates(address.filters) : undefined, other: !!(address.category || address.row)};
+    const found = libraryOpening(named, memory.recall(libraryId), libraryTabs(library.kind, {owner, unmatched: true}).map(x => x.id));
+    return found.remembered ? found : undefined;
+  }, [library, libraryId, memory, owner, address.view, address.sort, address.direction, address.filters, address.category, address.row]);
+  const search = useMemo<typeof address>(() => (opening ? {view: opening.tab as typeof address.view, ...(opening.sort ? {sort: opening.sort.field, direction: opening.sort.direction} : {}), ...(opening.filters?.length ? {filters: encodePredicates(opening.filters as readonly Predicate[])} : {})} : address), [opening, address]);
+  useEffect(() => {
+    if (opening) void navigate({to: '/library/$libraryId', params: {libraryId}, search, replace: true});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [opening, libraryId]);
+  // Whether the filters on screen were put there from memory rather than by a link or by hand just now.
+  const filtersFromMemory = useRef(false);
+  if (opening) filtersFromMemory.current = true;
+  useEffect(() => { filtersFromMemory.current = !!opening; /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [libraryId]);
   const scope = useViewerScope();
   // ONB-04: the header and empty state reflect the running scan, if any.
   const scan = useLibraryScan(api, scope.serverId, libraryId);
@@ -105,7 +126,12 @@ export function LibraryScreen() {
   // sections stay rendered.
   const appendedSections = useAppendedSections(JSON.stringify(engine ? {libraryId, view: 'discover'} : content), snapshot.pagination.cursor, snapshot.sections);
   const {capabilities, error: capabilityError} = useBrowseCapabilities(engine ? libraryId : undefined, pivot);
-  const chosenPredicates = useMemo(() => decodePredicates(search.filters), [search.filters]);
+  // A remembered filter the library no longer offers is not sent: a view remembered before a
+  // server change opens without it instead of failing every time the library is opened.
+  const chosenPredicates = useMemo(() => {
+    const asked = decodePredicates(search.filters);
+    return capabilities && filtersFromMemory.current ? asked.filter(p => capabilities.fields.some(f => f.id === p.field && f.operators.includes(p.operator))) : asked;
+  }, [search.filters, capabilities]);
   // A tab's own conditions (Unmatched) come before the viewer's and are not shown as chips.
   const predicates = useMemo(() => (active.fixedFilter ? [...(active.fixedFilter as readonly Predicate[]), ...chosenPredicates] : chosenPredicates), [active.fixedFilter, chosenPredicates]);
   const sort = useMemo<BrowseSortSelection>(() => {
@@ -207,14 +233,20 @@ export function LibraryScreen() {
         actions={<>{viewChoice ? <Segmented label={t('action.view')} size="sm" options={[{id: 'grid', icon: 'grid', label: t('web.prefs.grid')}, {id: 'list', icon: 'list', label: t('web.prefs.list')}]} value={view} onChange={setView} /> : null}{viewChoice && view === 'grid' ? <Menu label={t('settings.row.cardSize')} trigger={<Button variant="ghost" icon="sliders" aria-label={t('settings.row.cardSize')} title={t('settings.row.cardSize')} size="sm" />} items={cardSizeItems} onSelect={setCardSize} /> : null}{owner ? <Menu label={t('title.moreActions')} trigger={<Button variant="ghost" icon="more" aria-label={t('title.moreActions')} title={t('title.moreActions')} size="sm" />} items={ownerMenu} onSelect={id => { if (id === 'scan') scanLibrary(); else if (id === 'manage') void navigate({to: '/settings/$section', params: {section: 'server-libraries'}, search: {id: libraryId}}); }} /> : null}</>}
       />
       {scanNotice ? <Inset><Notice tone={scanNotice.tone}>{scanNotice.message}</Notice></Inset> : null}
-      <Tabs items={tabs} value={tab} onChange={id => setSearch({view: id as Tab, category: undefined, sort: undefined, direction: undefined, row: undefined})} size="large" label={t('web.library.viewsLabel')} />
+      <Tabs items={tabs} value={tab} onChange={id => {
+        // Choosing a tab is remembered, and the tab comes back with the sort and filters it was last left with.
+        memory.rememberTab(libraryId, id);
+        const kept = rememberedTab(memory.recall(libraryId), id);
+        filtersFromMemory.current = !!kept?.filters?.length;
+        setSearch({view: id as Tab, category: undefined, row: undefined, sort: kept?.sort?.field, direction: kept?.sort?.direction, filters: kept?.filters?.length ? encodePredicates(kept.filters as readonly Predicate[]) : undefined});
+      }} size="large" label={t('web.library.viewsLabel')} />
       {search.row ? (
         <RowView libraryId={libraryId} rowId={search.row} snapshot={snapshot} retry={retry} refresh={refresh} next={next} onBack={() => setSearch({row: undefined})} list={view === 'list'} square={square} />
       ) : (
       <>
       {engine && capabilities ? (
         <Inset>
-          <BrowseBar libraryId={libraryId} libraryKind={library?.kind ?? ''} pivot={pivot} capabilities={capabilities} predicates={chosenPredicates} onChange={next => setSearch({filters: encodePredicates(next)})} sort={sort} onSort={next => setSearch({sort: next.field, direction: next.direction})} fixedSort={!!active.fixedSort} total={browseTotal} onSave={active.fixedSort || active.fixedFilter ? undefined : () => setSavingView(true)} />
+          <BrowseBar libraryId={libraryId} libraryKind={library?.kind ?? ''} pivot={pivot} capabilities={capabilities} predicates={chosenPredicates} onChange={next => { filtersFromMemory.current = false; memory.rememberTab(libraryId, tab); memory.rememberFilters(libraryId, tab, next); setSearch({filters: encodePredicates(next)}); }} sort={sort} onSort={next => { memory.rememberTab(libraryId, tab); memory.rememberSort(libraryId, tab, next); setSearch({sort: next.field, direction: next.direction}); }} fixedSort={!!active.fixedSort} total={browseTotal} onSave={active.fixedSort || active.fixedFilter ? undefined : () => setSavingView(true)} />
           <SaveViewDialog open={savingView} onClose={() => setSavingView(false)} onSave={async name => { const service = new PersonalSavedService(api, viewerScope(session, api), () => Promise.resolve(crypto.randomUUID())); try { await service.select({view: 'views'}); await service.mutate({action: 'create', kind: 'view', name, definition: {libraryId, pivot: pivot!, query: predicates.length ? {all: predicates} : null, sort: [sort], presentation: view}}); } finally { service.dispose?.(); } }} />
         </Inset>
       ) : null}
@@ -374,6 +406,14 @@ function EngineResults({collection, onRefresh, libraryId, libraryKind, list, tra
     if (remembered) window.scrollTo(0, remembered.scrollY);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  // Where the page was last scrolled to by the person. Read at the moment of leaving, the window's
+  // own offset may already be the next page's (the router resets it), so it is followed as it changes.
+  const scrolledTo = useRef(typeof window === 'undefined' ? 0 : window.scrollY);
+  useEffect(() => {
+    const follow = () => { scrolledTo.current = window.scrollY; };
+    window.addEventListener('scroll', follow, {passive: true});
+    return () => window.removeEventListener('scroll', follow);
+  }, []);
   // Leaving the list remembers its loaded window and scroll offset.
   useEffect(() => () => {
     const snap = collection.getSnapshot();
@@ -388,7 +428,7 @@ function EngineResults({collection, onRefresh, libraryId, libraryKind, list, tra
       if (!item) break;
       items.push(item);
     }
-    saveListWindow(listKey, {first, items, total: snap.total ?? first + items.length, positionIndex: snap.positionIndex, scrollY: window.scrollY});
+    saveListWindow(listKey, {first, items, total: snap.total ?? first + items.length, positionIndex: snap.positionIndex, scrollY: scrolledTo.current});
   }, [collection, listKey]);
   // Select all covers what's on screen (a million-item library can't be held).
   const visible = useMemo(() => {
