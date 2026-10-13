@@ -961,6 +961,8 @@ catalog_libraries.library_id
 catalog_libraries.name
 catalog_libraries.retired
 catalog_libraries.root
+catalog_missing_title_counts.library_id
+catalog_missing_title_counts.total
 catalog_missing_titles.entity_id
 catalog_missing_titles.library_id
 catalog_missing_titles.missing_since_ms
@@ -4084,7 +4086,10 @@ screen_metadata_attention.entity_id
 screen_metadata_attention.generation
 screen_metadata_attention.library_id
 screen_metadata_attention.reason
+screen_metadata_attention.retired
 screen_metadata_attention.target_kind
+screen_metadata_attention_counts.library_id
+screen_metadata_attention_counts.total
 screen_metadata_candidates.candidate_key
 screen_metadata_candidates.confidence
 screen_metadata_candidates.contradiction

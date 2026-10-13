@@ -467,16 +467,23 @@ func (s *Service) MissingTitles(ctx context.Context, library, cursor string, lim
 		}
 		afterMS, afterID = ms, id
 	}
-	if err := s.read().QueryRowContext(ctx, `SELECT count(*) FROM catalog_missing_titles m JOIN catalog_libraries cl ON cl.id=m.library_id WHERE (?1='' OR cl.library_id=?1) AND cl.retired=0`, library).Scan(&out.Total); err != nil {
+	if err := s.read().QueryRowContext(ctx, `SELECT COALESCE(sum(m.total),0) FROM catalog_libraries cl LEFT JOIN catalog_missing_title_counts m ON m.library_id=cl.id WHERE (?1='' OR cl.library_id=?1) AND cl.retired=0`, library).Scan(&out.Total); err != nil {
 		return out, err
 	}
+	scope := "cl.retired=0"
+	args := []any{afterMS, afterID}
+	if library != "" {
+		scope += " AND m.library_id=(SELECT id FROM catalog_libraries WHERE library_id=?)"
+		args = append(args, library)
+	}
+	args = append(args, limit+1)
 	rows, err := s.read().QueryContext(ctx, `SELECT m.entity_id,m.missing_since_ms,pid(e.public_id),cl.library_id,k.name,e.title,e.year,
  COALESCE((SELECT sh.title FROM catalog_episodes ep JOIN catalog_entities sh ON sh.id=ep.show_id WHERE ep.entity_id=e.id),
   (SELECT al.title FROM catalog_songs so JOIN catalog_entities al ON al.id=so.album_id WHERE so.entity_id=e.id),
   (SELECT bk.title FROM catalog_book_files bf JOIN catalog_entities bk ON bk.id=bf.book_id WHERE bf.entity_id=e.id),'')
  FROM catalog_missing_titles m JOIN catalog_entities e ON e.id=m.entity_id JOIN catalog_kinds k ON k.id=e.kind JOIN catalog_libraries cl ON cl.id=m.library_id
- WHERE (?1='' OR cl.library_id=?1) AND cl.retired=0 AND (m.missing_since_ms>?2 OR m.missing_since_ms=?2 AND m.entity_id>?3)
- ORDER BY m.missing_since_ms,m.entity_id LIMIT ?4`, library, afterMS, afterID, limit+1)
+ WHERE (m.missing_since_ms,m.entity_id)>(?,?) AND `+scope+`
+ ORDER BY m.missing_since_ms,m.entity_id LIMIT ?`, args...)
 	if err != nil {
 		return out, err
 	}

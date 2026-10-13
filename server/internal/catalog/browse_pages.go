@@ -173,11 +173,11 @@ func (s *Service) ascendingFrom(p pageShape, ordering, low, count int) ([]browse
 	}
 	definition := sortForOrdering(ordering)
 	if p.summary.classKey != "" {
-		return s.classRows(p, definition, false, `(`+definition.ClassKey+`>? OR `+definition.ClassKey+`=? AND v.entity_id>=?)`, []any{value, value, entity}, count, low-before)
+		return s.classRows(p, definition, false, browseSeekPredicate(definition.ClassKey, "v.entity_id", ">="), []any{value, entity}, count, low-before)
 	}
-	args := append(append([]any{}, p.args...), value, value, entity, count, low-before)
+	args := append(append([]any{}, p.args...), value, entity, count, low-before)
 	return s.queryBrowseRows(`SELECT `+browseRowColumns+` FROM catalog_browse_rows e JOIN catalog_entities ce ON ce.id=e.entity_id WHERE `+p.where+
-		` AND (`+definition.Expression+`>? OR `+definition.Expression+`=? AND e.entity_id>=?) ORDER BY `+definition.Expression+`,e.entity_id LIMIT ? OFFSET ?`, args...)
+		` AND `+browseSeekPredicate(definition.Expression, "e.entity_id", ">=")+` ORDER BY `+definition.Expression+`,e.entity_id LIMIT ? OFFSET ?`, args...)
 }
 
 // blockAt finds the block holding ascending position position: its first
@@ -258,8 +258,8 @@ func (s *Service) classKeysetPage(p pageShape, definition browseSort, desc bool,
 	if desc {
 		operator = "<"
 	}
-	bound := `(` + definition.ClassKey + operator + `? OR ` + definition.ClassKey + `=? AND v.entity_id` + operator + `?)`
-	return s.classRows(p, definition, desc, bound, []any{key, key, anchor}, p.limit, 0)
+	bound := browseSeekPredicate(definition.ClassKey, "v.entity_id", operator)
+	return s.classRows(p, definition, desc, bound, []any{key, anchor}, p.limit, 0)
 }
 
 // asciiLower folds ASCII letters only, as SQLite's lower() and NOCASE do, so a

@@ -67,8 +67,8 @@ func (s *Service) indexedFactPage(p pageShape, definition browseSort, desc bool)
 		if err != nil {
 			return nil, ErrCursor
 		}
-		where += ` AND (` + definition.Expression + op + `? OR ` + definition.Expression + `=? AND e.entity_id` + op + `?)`
-		args = append(args, key, key, id)
+		where += ` AND ` + browseSeekPredicate(definition.Expression, "e.entity_id", op)
+		args = append(args, key, id)
 	}
 	args = append(args, p.limit)
 	return s.queryBrowseKeyRows(`SELECT `+browseRowColumns+`,`+definition.Expression+` FROM catalog_browse_rows e JOIN catalog_entities ce ON ce.id=e.entity_id WHERE `+where+` ORDER BY `+definition.Expression+` `+direction+`,e.entity_id `+direction+` LIMIT ?`, definition.ID, args...)
@@ -173,8 +173,8 @@ func personalKeyPageSQL(p pageShape, definition browseSort, desc bool) (string, 
 		if err != nil {
 			return "", nil, ErrCursor
 		}
-		where += ` AND (personal.` + column + op + `? OR personal.` + column + `=? AND personal.entity_id` + op + `?)`
-		args = append(args, key, key, id)
+		where += ` AND ` + browseSeekPredicate("personal."+column, "personal.entity_id", op)
+		args = append(args, key, id)
 	}
 	args = append(args, p.limit)
 	return `SELECT personal.entity_id,personal.` + column + ` FROM catalog_personal_sort_rows personal INDEXED BY ` + index + ` WHERE ` + where + ` ORDER BY personal.` + column + ` ` + direction + `,personal.entity_id ` + direction + ` LIMIT ?`, args, nil
@@ -277,8 +277,8 @@ func (s *Service) indexedPersonalPage(p pageShape, definition browseSort, desc b
 		where := p.where + ` AND NOT EXISTS(SELECT 1 FROM catalog_personal_sort_rows personal WHERE personal.profile_id=? AND personal.entity_id=e.entity_id AND personal.` + column + `>` + zero + `)`
 		args := append(append([]any{}, p.args...), p.request.Profile)
 		if len(p.seekKeys) > 0 {
-			where += ` AND (e.sort_key COLLATE NOCASE>? OR e.sort_key COLLATE NOCASE=? AND e.entity_id>?)`
-			args = append(args, p.seekKeys[2], p.seekKeys[2], anchor)
+			where += ` AND ` + browseSeekPredicate("e.sort_key COLLATE NOCASE", "e.entity_id", ">")
+			args = append(args, p.seekKeys[2], anchor)
 		}
 		args = append(args, p.limit-len(out))
 		rows, err := s.queryBrowseKeyRows(`SELECT `+browseRowColumns+`,`+zero+` FROM catalog_browse_rows e JOIN catalog_entities ce ON ce.id=e.entity_id WHERE `+where+` ORDER BY e.sort_key COLLATE NOCASE,e.entity_id LIMIT ?`, definition.ID, args...)

@@ -169,51 +169,30 @@ func browseKeyedSorts(selection []BrowseSortSelection) bool {
 	return len(selection) > 0
 }
 
-// browseKeysetSQL compiles "strictly after the row whose sort key is keys" for
-// the selected sorts, followed by the entity id as the final tie-break (in the
-// first sort's direction, as browseOrderSQL orders it). It is
-// the lexicographic comparison written out, because SQLite's row-value form
-// cannot carry a per-component collation.
+// browseSeekPredicate keeps the collation on the bound value. Putting COLLATE
+// on the left tuple makes SQLite lose the composite index range constraint.
+func browseSeekPredicate(expression, id, operator string) string {
+	collation := ""
+	if strings.HasSuffix(expression, " COLLATE NOCASE") {
+		expression = strings.TrimSuffix(expression, " COLLATE NOCASE")
+		collation = " COLLATE NOCASE"
+	}
+	return "(" + expression + "," + id + ")" + operator + "(?" + collation + ",?)"
+}
+
 func browseKeysetSQL(selection []BrowseSortSelection, keys []any, anchor int64) (string, []any) {
-	args := []any{}
-	clause := ""
-	for index, entry := range selection {
-		definition, ok := browseSortByID(entry.Field)
-		if !ok {
-			return "", nil
-		}
-		operator := ">"
-		if entry.Direction == "desc" {
-			operator = "<"
-		}
-		equal := ""
-		equalArgs := []any{}
-		for earlier := 0; earlier < index; earlier++ {
-			previous, _ := browseSortByID(selection[earlier].Field)
-			equal += previous.Expression + "=? AND "
-			equalArgs = append(equalArgs, keys[earlier])
-		}
-		if clause != "" {
-			clause += " OR "
-		}
-		clause += "(" + equal + definition.Expression + operator + "?)"
-		args = append(args, equalArgs...)
-		args = append(args, keys[index])
+	if len(selection) != 1 || len(keys) != 1 {
+		return "", nil
 	}
-	equal := ""
-	for index, entry := range selection {
-		definition, _ := browseSortByID(entry.Field)
-		equal += definition.Expression + "=? AND "
-		args = append(args, keys[index])
-		_ = entry
+	definition, ok := browseSortByID(selection[0].Field)
+	if !ok {
+		return "", nil
 	}
-	tie := ">"
+	operator := ">"
 	if selection[0].Direction == "desc" {
-		tie = "<"
+		operator = "<"
 	}
-	clause += " OR (" + equal + "e.entity_id" + tie + "?)"
-	args = append(args, anchor)
-	return "(" + clause + ")", args
+	return browseSeekPredicate(definition.Expression, "e.entity_id", operator), []any{keys[0], anchor}
 }
 
 // browseKeyValues types the cursor's stored key for comparison. A year is an

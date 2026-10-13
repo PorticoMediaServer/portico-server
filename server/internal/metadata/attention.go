@@ -75,14 +75,22 @@ func (s *Service) AttentionFiltered(ctx context.Context, library, cursor string,
 	if library != "" && !exists {
 		return out, sql.ErrNoRows
 	}
-	if err = tx.QueryRowContext(ctx, `SELECT count(*) FROM screen_metadata_attention a JOIN catalog_entities e ON e.id=a.entity_id JOIN catalog_libraries cl ON cl.id=e.library_id AND cl.retired=0 WHERE e.retired=0 AND (?='' OR a.library_id=?) AND a.dismissed_generation<>a.generation AND a.reason NOT IN('pending','searching','pending_search','pending_episodes','pending_children','pending_apply')`, library, library).Scan(&out.Total); err != nil {
+	if err = tx.QueryRowContext(ctx, `SELECT COALESCE(sum(a.total),0) FROM libraries l JOIN catalog_libraries cl ON cl.library_id=l.id AND cl.retired=0
+ LEFT JOIN screen_metadata_attention_counts a ON a.library_id=l.id WHERE (?='' OR l.id=?)`, library, library).Scan(&out.Total); err != nil {
 		return out, err
 	}
-	rows, err := tx.QueryContext(ctx, `SELECT a.library_id,a.entity_id,a.target_kind,e.title,w.generation,a.reason,a.confidence,k.name,COALESCE(pid(parent.public_id),''),p.enabled,c.confirmed FROM screen_metadata_attention a JOIN catalog_entities e ON e.id=a.entity_id JOIN screen_metadata_work w ON w.target_kind=a.target_kind AND w.target_id=a.entity_id
+	scope := ""
+	args := []any{after, includeInProgress}
+	if library != "" {
+		scope = " AND a.library_id=?"
+		args = append(args, library)
+	}
+	args = append(args, limit+1)
+	rows, err := tx.QueryContext(ctx, `SELECT a.library_id,a.entity_id,a.target_kind,e.title,w.generation,a.reason,a.confidence,k.name,COALESCE(pid(parent.public_id),''),p.enabled,c.confirmed,pid(e.public_id) FROM screen_metadata_attention a JOIN catalog_entities e ON e.id=a.entity_id JOIN screen_metadata_work w ON w.target_kind=a.target_kind AND w.target_id=a.entity_id
  JOIN catalog_kinds k ON k.id=e.kind LEFT JOIN catalog_entities parent ON parent.id=w.parent_id
  JOIN screen_metadata_policies p ON p.library_id=a.library_id CROSS JOIN screen_metadata_consent c
  JOIN catalog_libraries cl ON cl.id=e.library_id AND cl.retired=0
- WHERE e.retired=0 AND c.singleton=1 AND (?='' OR a.library_id=?) AND a.entity_id>? AND a.dismissed_generation<>a.generation AND (? OR a.reason NOT IN('pending','searching','pending_search','pending_episodes','pending_children','pending_apply')) ORDER BY a.entity_id LIMIT ?`, library, library, after, includeInProgress, limit+1)
+ WHERE e.retired=0 AND a.retired=0 AND c.singleton=1 AND a.entity_id>? AND a.dismissed_generation<>a.generation AND (? OR a.reason NOT IN('pending','searching','pending_search','pending_episodes','pending_children','pending_apply'))`+scope+` ORDER BY a.entity_id LIMIT ?`, args...)
 	if err != nil {
 		return out, err
 	}
@@ -91,7 +99,7 @@ func (s *Service) AttentionFiltered(ctx context.Context, library, cursor string,
 		var e AttentionEntry
 		var id int64
 		var enabled, confirmed bool
-		if err = rows.Scan(&e.LibraryID, &id, &e.Kind, &e.Title, &e.Revision, &e.Reason, &e.Confidence, &e.ItemKind, &e.ParentID, &enabled, &confirmed); err != nil {
+		if err = rows.Scan(&e.LibraryID, &id, &e.Kind, &e.Title, &e.Revision, &e.Reason, &e.Confidence, &e.ItemKind, &e.ParentID, &enabled, &confirmed, &e.EntityID); err != nil {
 			rows.Close()
 			return out, err
 		}
@@ -116,39 +124,50 @@ func (s *Service) AttentionFiltered(ctx context.Context, library, cursor string,
 	if err != nil {
 		return out, err
 	}
+	// Select only the three best candidates of each visible page entry in one
+	// statement. The driving list is bounded by the page, never the catalogue.
+	requested := make([][2]any, len(ids))
 	for i, id := range ids {
-		out.Entries[i].EntityID = entityPublic(ctx, tx, id)
-		rows, err = tx.QueryContext(ctx, `SELECT candidate_key,payload,confidence,reasons FROM screen_metadata_candidates WHERE target_kind=? AND target_id=? ORDER BY confidence DESC,candidate_key LIMIT 3`, out.Entries[i].Kind, id)
-		if err != nil {
+		requested[i] = [2]any{out.Entries[i].Kind, id}
+	}
+	raw, err := json.Marshal(requested)
+	if err != nil {
+		return out, err
+	}
+	rows, err = tx.QueryContext(ctx, `SELECT CAST(j.key AS INTEGER),c.candidate_key,c.payload,c.confidence,c.reasons
+ FROM json_each(?) j CROSS JOIN screen_metadata_candidates c
+ ON c.target_kind=json_extract(j.value,'$[0]') AND c.target_id=json_extract(j.value,'$[1]')
+ WHERE c.candidate_key IN(SELECT best.candidate_key FROM screen_metadata_candidates best
+ WHERE best.target_kind=c.target_kind AND best.target_id=c.target_id ORDER BY best.confidence DESC,best.candidate_key LIMIT 3)
+ ORDER BY CAST(j.key AS INTEGER),c.confidence DESC,c.candidate_key`, string(raw))
+	if err != nil {
+		return out, err
+	}
+	for rows.Next() {
+		var i int
+		var c AttentionCandidate
+		var payload, reasons string
+		var record metadataprovider.ScreenRecord
+		if err = rows.Scan(&i, &c.Key, &payload, &c.Confidence, &reasons); err != nil {
+			rows.Close()
 			return out, err
 		}
-		for rows.Next() {
-			var c AttentionCandidate
-			var payload, reasons string
-			var r metadataprovider.ScreenRecord
-			if err = rows.Scan(&c.Key, &payload, &c.Confidence, &reasons); err != nil {
-				rows.Close()
-				return out, err
-			}
-			if err = json.Unmarshal([]byte(payload), &r); err != nil {
-				rows.Close()
-				return out, err
-			}
-			if err = json.Unmarshal([]byte(reasons), &c.Reasons); err != nil {
-				rows.Close()
-				return out, err
-			}
-			c.Identity = r.Identity
-			c.Title = r.Title
-			c.Year = r.Year
-			c.Orders = screenRecordOrders(r)
-			out.Entries[i].Candidates = append(out.Entries[i].Candidates, c)
-		}
-		err = rows.Err()
-		rows.Close()
-		if err != nil {
+		if err = json.Unmarshal([]byte(payload), &record); err != nil {
+			rows.Close()
 			return out, err
 		}
+		if err = json.Unmarshal([]byte(reasons), &c.Reasons); err != nil {
+			rows.Close()
+			return out, err
+		}
+		c.Identity, c.Title, c.Year = record.Identity, record.Title, record.Year
+		c.Orders = screenRecordOrders(record)
+		out.Entries[i].Candidates = append(out.Entries[i].Candidates, c)
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return out, err
 	}
 	for i := range out.Entries {
 		if len(out.Entries[i].Candidates) == 0 {
@@ -344,8 +363,8 @@ type AttentionCounts struct {
 
 func (s *Service) AttentionCounts(ctx context.Context) (AttentionCounts, error) {
 	out := AttentionCounts{Libraries: []AttentionLibraryCount{}}
-	rows, err := s.db.QueryContext(ctx, `SELECT l.id,count(a.entity_id) FROM libraries l JOIN catalog_libraries cl ON cl.library_id=l.id AND cl.retired=0
- LEFT JOIN (screen_metadata_attention a JOIN catalog_entities e ON e.id=a.entity_id AND e.retired=0) ON a.library_id=l.id AND a.dismissed_generation<>a.generation AND a.reason NOT IN('pending','searching','pending_search','pending_episodes','pending_children','pending_apply') GROUP BY l.id ORDER BY l.id`)
+	rows, err := s.db.QueryContext(ctx, `SELECT l.id,COALESCE(a.total,0) FROM libraries l JOIN catalog_libraries cl ON cl.library_id=l.id AND cl.retired=0
+ LEFT JOIN screen_metadata_attention_counts a ON a.library_id=l.id ORDER BY l.id`)
 	if err != nil {
 		return out, err
 	}
