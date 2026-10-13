@@ -524,13 +524,8 @@ func TestEveryRouteDeclaresACredentialScope(t *testing.T) {
 			t.Errorf("%s %s declares no credential scope", route.Method, route.Path)
 		}
 		typed[route.Method+" "+route.Path] = route.Requires
-		if legacy, ok := routeScopes[muxPattern(route.Method, route.Path)]; ok && legacy != route.Requires && !v1SharedPatterns[muxPattern(route.Method, route.Path)] {
+		if legacy, ok := routeScopes[muxPattern(route.Method, route.Path)]; ok && legacy != route.Requires {
 			t.Errorf("%s %s: routeScopes says %s, the registry %s", route.Method, route.Path, legacy, route.Requires)
-		}
-	}
-	for pattern := range v1SharedPatterns {
-		if routeScopes[pattern] == "" {
-			t.Errorf("shared pattern %s has no scope for its hand-written handler", pattern)
 		}
 	}
 	literal := regexp.MustCompile(`"((?:GET|POST|PUT|PATCH|DELETE|HEAD) /[^"]*)"`)

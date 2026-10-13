@@ -390,6 +390,9 @@ func (c *observedConn) QueryContext(ctx context.Context, query string, args []dr
 		observe(ctx, query, time.Since(start), c.inTx)
 		return nil, err
 	}
+	// A write that returns rows (UPDATE … RETURNING) arrives here, not through
+	// ExecContext, and is as much an authority write: ending a session is one.
+	noticeAuthorityWrite(query)
 	c.changes.note(query)
 	return &observedRows{inner: out, ctx: ctx, query: query, start: start, inTx: c.inTx, release: release, reader: lease}, nil
 }

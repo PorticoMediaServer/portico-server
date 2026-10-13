@@ -67,7 +67,13 @@ func TestBurnGraphDrawsOnlyAtTheTitleClock(t *testing.T) {
 			}
 			args := []string{"-v", "error", "-nostdin", "-f", "lavfi", "-i", "color=black:s=160x90:r=24:d=5"}
 			args = append(args, graph.ExtraInput...)
-			args = append(args, graph.Video...)
+			for i := 0; i < len(graph.Video); i++ {
+				if graph.Video[i] == "-profile:v" || graph.Video[i] == "-level:v" {
+					i++
+					continue
+				}
+				args = append(args, graph.Video[i])
+			}
 			mapped := "0:v:0"
 			if graph.VideoMap != "" {
 				mapped = graph.VideoMap

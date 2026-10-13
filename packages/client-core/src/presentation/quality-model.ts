@@ -7,7 +7,7 @@
  */
 export type QualityRungLike = Readonly<{id: string; kind: string; label: string; enabled: boolean; reason?: string; targetDisplayHeight?: number; maxVideoBitrateBps?: number; maxAudioBitrateBps?: number}>;
 export type QualitySourceLike = Readonly<{qualities: readonly QualityRungLike[]}>;
-export type DeliveryPolicyLike = Readonly<{networkClass: 'local' | 'wifi' | 'cellular' | 'remote' | 'unknown' | string; maxVideoHeight?: unknown} | null | undefined>;
+export type DeliveryPolicyLike = Readonly<{networkClass: 'local' | 'remote' | 'unknown' | string; maxVideoHeight?: unknown} | null | undefined>;
 
 /** The server's ladder rungs across sources, deduplicated by id (order kept). */
 export function dedupQualityRungs(sources: readonly QualitySourceLike[] | null | undefined): QualityRungLike[] {
@@ -31,7 +31,7 @@ export function convertQualityRungs(rungs: readonly QualityRungLike[] | null | u
   return rungs.filter(q => q && q.kind !== 'automatic' && q.kind !== 'original');
 }
 
-export type QualityNetwork = 'home' | 'away' | 'wifi' | 'cellular' | null;
+export type QualityNetwork = 'home' | 'away' | null;
 export type QualityFooter = Readonly<{network: QualityNetwork; height: number | null}>;
 
 /** Footer parts from the resolved delivery policy (null policy reads as no footer). */
@@ -40,8 +40,6 @@ export function qualityNetworkFooter(policy: DeliveryPolicyLike): QualityFooter 
   const network: QualityNetwork =
     policy.networkClass === 'local' ? 'home'
     : policy.networkClass === 'remote' ? 'away'
-    : policy.networkClass === 'wifi' ? 'wifi'
-    : policy.networkClass === 'cellular' ? 'cellular'
     : null;
   const height = typeof policy.maxVideoHeight === 'number' && Number.isFinite(policy.maxVideoHeight) && policy.maxVideoHeight > 0 ? Math.floor(policy.maxVideoHeight) : null;
   return Object.freeze({network, height});

@@ -101,20 +101,29 @@ func TestPendingRatingIsUnratedUntilBackgroundClassification(t *testing.T) {
 
 func TestCompactAttributePermissionsApplyOnWrite(t *testing.T) {
 	db, s, names := tl10RestrictionFixture(t)
-	viewer := Viewer{Profile: "p", Libraries: []string{"a"}, Restrictions: identity.ContentRestrictions{MemberMaxRating: "PG"}}
+	viewer := Viewer{Profile: "p", Libraries: []string{"a"}, Restrictions: identity.ContentRestrictions{}.Narrow(8, true, nil, 0)}
 	if err := s.VisibleItem(context.Background(), viewer, names["kids"].Public); err != nil {
 		t.Fatalf("settled child-safe movie hidden: %v", err)
 	}
 	c := catalogtest.New(t, db)
-	// Facts are written synchronously: the first source's rating (G) applies
-	// at once, before and after the worker runs.
-	c.Attributes(names["kids"].ID, "contentRating", "G", "R")
+	// Facts are written synchronously: a rating applies at once, before and
+	// after the worker runs.
+	c.Attributes(names["kids"].ID, "contentRating", "G")
 	if err := s.VisibleItem(context.Background(), viewer, names["kids"].Public); err != nil {
-		t.Fatalf("first source rating G hidden before the worker ran: %v", err)
+		t.Fatalf("a G rating hidden before the worker ran: %v", err)
 	}
 	settleCompact(t, db)
 	if err := s.VisibleItem(context.Background(), viewer, names["kids"].Public); err != nil {
-		t.Fatalf("first source rating should remain G: %v", err)
+		t.Fatalf("a G rating hidden after the worker ran: %v", err)
+	}
+	// A title carrying two ratings is judged by every one of them, for an
+	// account limit exactly as for a profile's: the stricter rating decides.
+	c.Attributes(names["kids"].ID, "contentRating", "G", "R")
+	if _, err := s.ClassifyPendingRatings(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.VisibleItem(context.Background(), viewer, names["kids"].Public); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("a title rated both G and R passed a PG limit: %v", err)
 	}
 	// A tightened rating hides the item in the same write: no window in which
 	// stale derived data admits it.
@@ -233,7 +242,7 @@ func browsedIDs(t *testing.T, s *Service, names catalogtest.Names, r identity.Co
 func TestViewerScopeKeepsPositionsCountsAndDetailPrivate(t *testing.T) {
 	_, s, names := tl10RestrictionFixture(t)
 	age := 0
-	viewer := Viewer{Profile: "p", Fence: "restricted", Libraries: []string{"a"}, Restrictions: restrictionOf(ceiling(13), true, "Halloween"), MemberMaximumAge: &age}
+	viewer := Viewer{Profile: "p", Fence: "restricted", Libraries: []string{"a"}, Restrictions: restrictionOf(ceiling(13), true, "Halloween").Narrow(age, false, nil, 0)}
 	catalogtest.New(t, s.db).Drain()
 	if err := s.RebuildVisibilityClass(context.Background(), "a", viewer.EffectiveRestrictions()); err != nil {
 		t.Fatal(err)
@@ -261,7 +270,9 @@ func TestViewerScopeKeepsPositionsCountsAndDetailPrivate(t *testing.T) {
 
 func TestViewerMemberRatingLadderUnratedAndDeniedLabels(t *testing.T) {
 	_, s, names := tl10RestrictionFixture(t)
-	viewer := Viewer{Profile: "p", Fence: "member", Libraries: []string{"a"}, MemberMaxRating: "PG", MemberAllowUnrated: false, MemberDeniedLabels: []string{"Halloween"}}
+	// The account's limit arrives as an age ceiling (PG is 8), an unrated rule
+	// and a denied list, already folded into the viewer's restrictions.
+	viewer := Viewer{Profile: "p", Fence: "member", Libraries: []string{"a"}, Restrictions: identity.ContentRestrictions{}.Narrow(8, true, []string{"Halloween"}, 0)}
 	catalogtest.New(t, s.db).Drain()
 	if err := s.RebuildVisibilityClass(context.Background(), "a", viewer.EffectiveRestrictions()); err != nil {
 		t.Fatal(err)
@@ -280,7 +291,7 @@ func TestViewerMemberRatingLadderUnratedAndDeniedLabels(t *testing.T) {
 	if !equal(got, []string{"family", "kids"}) || page.PageInfo.Total != 2 {
 		t.Fatalf("member ladder, unrated and label scope: %v total=%d", got, page.PageInfo.Total)
 	}
-	viewer.MemberAllowUnrated = true
+	viewer.Restrictions = identity.ContentRestrictions{}.Narrow(8, false, []string{"Halloween"}, 0)
 	catalogtest.New(t, s.db).Drain()
 	if err := s.RebuildVisibilityClass(context.Background(), "a", viewer.EffectiveRestrictions()); err != nil {
 		t.Fatal(err)
@@ -296,7 +307,9 @@ func TestViewerMemberRatingLadderUnratedAndDeniedLabels(t *testing.T) {
 	}
 	got = names.All(ids)
 	sort.Strings(got)
-	if !equal(got, []string{"family", "foreign", "kids", "notrated", "unrated"}) || page.PageInfo.Total != 5 {
+	// "foreign" carries a rating qualified by its region ("US:PG-13"). It is
+	// judged by the age that rating stands for, not passed off as unrated.
+	if !equal(got, []string{"family", "kids", "notrated", "unrated"}) || page.PageInfo.Total != 4 {
 		t.Fatalf("member allowUnrated: %v total=%d", got, page.PageInfo.Total)
 	}
 }
@@ -528,5 +541,57 @@ func TestRecordingsSwitchFoldsIntoTheFenceOnly(t *testing.T) {
 	without.BlockRecordings = false
 	if RestrictionFence(with) == RestrictionFence(without) {
 		t.Fatal("an active fence must change with the Recordings switch")
+	}
+}
+
+// A library whose rating spellings were classified by an older rating table is
+// classified again, once, by the first build that knows a newer one: a
+// spelling the old table read as unrated gets the age the new table gives it.
+func TestRatingSpellingsAreReclassifiedOnceWhenTheTableChanges(t *testing.T) {
+	db, s, _ := tl10RestrictionFixture(t)
+	ctx := context.Background()
+	if _, err := s.ClassifyPendingRatings(ctx); err != nil {
+		t.Fatal(err)
+	}
+	// As an older table would have left them: one spelling it did not know,
+	// one it read differently, and the marker of the table that did it.
+	for key, age := range map[string]int{"tv-y7-fv": -1, "pg": 3} {
+		if _, err := db.Exec(`INSERT INTO content_rating_ages(value_key,minimum_age) VALUES(?,?) ON CONFLICT(value_key) DO UPDATE SET minimum_age=excluded.minimum_age`, key, age); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := db.Exec(`INSERT INTO configuration VALUES('rating_table_version','an-older-table') ON CONFLICT(key) DO UPDATE SET value=excluded.value`); err != nil {
+		t.Fatal(err)
+	}
+	age := func(key string) int {
+		t.Helper()
+		var v int
+		if err := db.QueryRow(`SELECT minimum_age FROM content_rating_ages WHERE value_key=?`, key).Scan(&v); err != nil {
+			t.Fatal(err)
+		}
+		return v
+	}
+	// The running process already classified once; a restart is a new service.
+	restarted := New(db)
+	if _, err := restarted.ClassifyPendingRatings(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if age("tv-y7-fv") != 7 || age("pg") != 8 {
+		t.Fatalf("after a build with a newer table started: tv-y7-fv=%d pg=%d", age("tv-y7-fv"), age("pg"))
+	}
+	var version string
+	if err := db.QueryRow(`SELECT value FROM configuration WHERE key='rating_table_version'`).Scan(&version); err != nil || version != identity.RatingTableVersion {
+		t.Fatalf("the table that classified the library is recorded as %q: %v", version, err)
+	}
+	// With the marker current, a later start leaves the ages as they are.
+	if _, err := db.Exec(`UPDATE content_rating_ages SET minimum_age=3 WHERE value_key='pg'`); err != nil {
+		t.Fatal(err)
+	}
+	again := New(db)
+	if _, err := again.ClassifyPendingRatings(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if age("pg") != 3 {
+		t.Fatalf("a start with the same table reclassified the library: pg=%d", age("pg"))
 	}
 }

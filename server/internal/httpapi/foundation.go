@@ -104,7 +104,7 @@ func foundationAuthError(err error) error {
 	if errors.Is(err, identity.ErrRestrictionInput) {
 		return &apierror.Error{Code: "invalid_request"}
 	}
-	if errors.Is(err, identity.ErrRestrictionChanged) {
+	if errors.Is(err, identity.ErrRestrictionChanged) || errors.Is(err, identity.ErrProfileChanged) {
 		return &apierror.Error{Code: "revision_mismatch"}
 	}
 	if errors.Is(err, identity.ErrBusy) {
@@ -622,17 +622,23 @@ func FoundationRegistry(d Dependencies) (*apikit.Registry, error) {
 	if err := registerBackups(registry, d); err != nil {
 		return nil, err
 	}
+	if err := registerClientReports(registry, d); err != nil {
+		return nil, err
+	}
 	registerBulkJobs(registry, d)
 	if err := registerPersonalReads(registry, d); err != nil {
 		return nil, err
 	}
 	registerDownloadRequests(registry, d)
+	registerDownloads(registry, d)
+	registerSocial(registry, d)
 	registerPlaylistWindows(registry, d)
 	registerMetadataAttention(registry, d)
 	registerMetadataSettings(registry, d)
 	registerMetadataRefresh(registry, d)
 	registerScreenMetadataReads(registry, d)
 	registerCapabilityReport(registry)
+	registerLiveContracts(registry, d)
 	registerIdentityRoutes(registry, d)
 	// Lane C's /v1/events (886f5011) on the shared contextual registry.
 	err = apikit.Register(registry, apikit.Route[struct{}, eventfeed.Page]{Metadata: apikit.Metadata{
@@ -650,6 +656,12 @@ func FoundationRegistry(d Dependencies) (*apikit.Registry, error) {
 	if err := registerDeviceRoutes(registry, d); err != nil {
 		return nil, err
 	}
+	if err := d.registerSubtitleRoutes(registry); err != nil {
+		return nil, err
+	}
+	if err := d.registerTrickplayImageRoutes(registry); err != nil {
+		return nil, err
+	}
 	if err := registerCredentialRoutes(registry, d); err != nil {
 		return nil, err
 	}
@@ -659,7 +671,16 @@ func FoundationRegistry(d Dependencies) (*apikit.Registry, error) {
 	if err := registerWebhookRoutes(registry, d); err != nil {
 		return nil, err
 	}
+	if err := registerMemberRoutes(registry, d); err != nil {
+		return nil, err
+	}
+	if err := registerRememberedAccountRoutes(registry, d); err != nil {
+		return nil, err
+	}
 	if err := registerMCP(registry, d); err != nil {
+		return nil, err
+	}
+	if err := registerConversionSettings(registry, d); err != nil {
 		return nil, err
 	}
 	registry.Freeze()

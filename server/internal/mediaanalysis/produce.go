@@ -238,16 +238,8 @@ func (s *Service) produce(ctx context.Context, b binding, stage string, input In
 				for p := 0; p < geometry.TileWidth*geometry.TileHeight; p++ {
 					img.SetRGBA(p%geometry.TileWidth, p/geometry.TileWidth, color.RGBA{frame[p*3], frame[p*3+1], frame[p*3+2], 255})
 				}
-				var data bytes.Buffer
-				if e = jpeg.Encode(&data, img, &jpeg.Options{Quality: 75}); e != nil {
-					return e
-				}
-				start := int64(count) * spec.IntervalUS
-				if start >= b.DurationUS {
+				if int64(count)*spec.IntervalUS >= b.DurationUS {
 					return ErrConflict
-				}
-				if e = add(data.Bytes(), stage, "image/jpeg", count, start, min(b.DurationUS, start+spec.IntervalUS), geometry.TileWidth, geometry.TileHeight); e != nil {
-					return e
 				}
 				sheet.place(img)
 				count++

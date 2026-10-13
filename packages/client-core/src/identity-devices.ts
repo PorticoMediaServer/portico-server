@@ -47,7 +47,9 @@ export function parseDevice(raw:unknown):Device{
  if(!obj(raw))fail('device');only(raw,deviceKeys);
  // Every device record now names the authority that signed it in; servers from before that omit it.
  if(raw.authority!==undefined&&raw.authority!=='local'&&raw.authority!=='hosted')fail('authority');
- if(!id(raw.id)||!validInstallationId(raw.installationId))fail('device identity');
+ // A device list shows an installation id only for the caller's own device: it is what a device
+ // renews its sign-in with, so every other device's comes back empty.
+ if(!id(raw.id)||!(validInstallationId(raw.installationId)||raw.installationId===''&&raw.current===false))fail('device identity');
  if(!text(raw.name,120)||raw.name==='')fail('name');
  for(const field of ['platform','app','appVersion'])if(!text(raw[field],64))fail(field);
  // The server records the peer address or nothing; it never echoes a header the

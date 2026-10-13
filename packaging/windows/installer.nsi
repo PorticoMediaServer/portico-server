@@ -1,13 +1,12 @@
 Unicode true
-!include "StrFunc.nsh"
-${StrRep}
+
 RequestExecutionLevel admin
 SetCompressor /SOLID lzma
 
 !define PRODUCT_NAME "Portico Media Server"
 !define PRODUCT_PUBLISHER "Justin Ehler"
 !define PRODUCT_WEB_SITE "https://getportico.tv"
-!define TASK_NAME "Portico Media Server"
+!define SERVICE_NAME "PorticoMediaServer"
 
 Name "${PRODUCT_NAME}"
 OutFile "${OUTPUT_FILE}"
@@ -20,10 +19,27 @@ UninstPage uninstConfirm
 UninstPage instfiles
 
 Section "Install"
-  nsExec::ExecToLog 'schtasks.exe /End /TN "${TASK_NAME}"'
+  SetShellVarContext all
+  ; Use the candidate's control command even when the installed binary predates SCM.
+  InitPluginsDir
+  SetOutPath "$PLUGINSDIR"
+  File /oname=portico-service-control.exe "${STAGE_DIR}\portico-server.exe"
+  nsExec::ExecToLog /TIMEOUT=60000 '"$PLUGINSDIR\portico-service-control.exe" --service-stop'
+  Pop $2
+  StrCmp $2 "0" service_stopped
+  MessageBox MB_ICONSTOP "Portico could not stop. Installation files have been left in place." /SD IDOK
+  SetErrorLevel 1
+  Abort
+service_stopped:
+  ; Retire the old scheduled launch rather than keeping a second startup path.
+  nsExec::ExecToLog /TIMEOUT=60000 'schtasks.exe /End /TN "Portico Media Server"'
+  Pop $2
+  nsExec::ExecToLog /TIMEOUT=60000 'schtasks.exe /Delete /TN "Portico Media Server" /F'
+  Pop $2
   SetOutPath "$INSTDIR"
   File /r "${STAGE_DIR}\*"
-  File "${__FILEDIR__}\startup-task.xml"
+  Delete "$INSTDIR\start-portico.cmd"
+  Delete "$INSTDIR\startup-task.xml"
   WriteRegStr HKLM "Software\Portico Media Server" "InstallDir" "$INSTDIR"
   WriteUninstaller "$INSTDIR\Uninstall.exe"
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Portico Media Server" "DisplayName" "${PRODUCT_NAME}"
@@ -36,50 +52,40 @@ Section "Install"
   StrCpy $0 "C:\ProgramData"
   StrCpy $0 "$0\Portico Media Server"
   CreateDirectory "$0"
-  ; The server runs at startup as a system task; FFmpeg is found beside it in third_party\ffmpeg\bin.
-  FileOpen $1 "$INSTDIR\start-portico.cmd" w
-  FileWrite $1 '@echo off$\r$\n'
-  FileWrite $1 'set "PORTICO_BIND=0.0.0.0:32500"$\r$\n'
-  FileWrite $1 'set "PORTICO_STATE_DIR=$0"$\r$\n'
-  FileWrite $1 'set "PORTICO_WEB_DIR=$INSTDIR\web"$\r$\n'
-  FileWrite $1 'set "PORTICO_LOG_STDERR=off"$\r$\n'
-  FileWrite $1 '"$INSTDIR\portico-server.exe" > "$0\server.log" 2>&1$\r$\n'
-  FileClose $1
-  ; Register XML directly: machine PowerShell script policies cannot block it.
-  ; Escape the only XML metacharacter allowed in a Windows installation path.
-  InitPluginsDir
-  ${StrRep} $3 "$INSTDIR\start-portico.cmd" "&" "&amp;"
-  FileOpen $1 "$INSTDIR\startup-task.xml" r
-  FileOpen $2 "$PLUGINSDIR\startup-task.xml" w
-  FileRead $1 $4
-  ${StrRep} $4 $4 "UTF-8" "UTF-16"
-  FileWriteUTF16LE /BOM $2 "$4"
-task_xml_line:
-  ClearErrors
-  FileRead $1 $4
-  IfErrors task_xml_done
-  ${StrRep} $4 $4 "__PORTICO_LAUNCHER__" "$3"
-  FileWriteUTF16LE $2 "$4"
-  Goto task_xml_line
-task_xml_done:
-  FileClose $1
-  FileClose $2
-  nsExec::ExecToLog 'schtasks.exe /Create /TN "${TASK_NAME}" /XML "$PLUGINSDIR\startup-task.xml" /F'
+  nsExec::ExecToLog /TIMEOUT=60000 '"$INSTDIR\portico-server.exe" --service-install'
   Pop $2
-  StrCmp $2 "0" task_registered
-  ; Keep the previous task definition if registration failed during an upgrade.
-  nsExec::ExecToLog 'schtasks.exe /Run /TN "${TASK_NAME}"'
-  MessageBox MB_ICONSTOP "Portico could not register its startup task." /SD IDOK
+  StrCmp $2 "0" 0 install_failed
+  nsExec::ExecToLog 'icacls.exe "$0" /inheritance:r /grant:r "*S-1-5-18:(OI)(CI)F" "*S-1-5-32-544:(OI)(CI)F" "NT SERVICE\${SERVICE_NAME}:(OI)(CI)F"'
+  Pop $2
+  StrCmp $2 "0" 0 install_failed
+  nsExec::ExecToLog 'netsh.exe advfirewall firewall delete rule name="Portico Media Server"'
+  Pop $2
+  nsExec::ExecToLog 'netsh.exe advfirewall firewall add rule name="Portico Media Server" dir=in action=allow program="$INSTDIR\portico-server.exe" enable=yes profile=any protocol=TCP localport=32500'
+  Pop $2
+  StrCmp $2 "0" 0 install_failed
+  nsExec::ExecToLog /TIMEOUT=60000 '"$INSTDIR\portico-server.exe" --service-start'
+  Pop $2
+  StrCmp $2 "0" service_started
+install_failed:
+  MessageBox MB_ICONSTOP "Portico could not install or start its Windows service. Your server data has been kept." /SD IDOK
+  SetErrorLevel 1
   Abort
-task_registered:
-  nsExec::ExecToLog 'schtasks.exe /Run /TN "${TASK_NAME}"'
+service_started:
   CreateDirectory "$SMPROGRAMS\Portico Media Server"
   WriteINIStr "$SMPROGRAMS\Portico Media Server\Portico Media Server.url" "InternetShortcut" "URL" "http://127.0.0.1:32500/"
 SectionEnd
 
 Section "Uninstall"
-  nsExec::ExecToLog 'schtasks.exe /End /TN "${TASK_NAME}"'
-  nsExec::ExecToLog 'schtasks.exe /Delete /TN "${TASK_NAME}" /F'
+  SetShellVarContext all
+  nsExec::ExecToLog /TIMEOUT=60000 '"$INSTDIR\portico-server.exe" --service-uninstall'
+  Pop $2
+  StrCmp $2 "0" service_removed
+  MessageBox MB_ICONSTOP "Portico could not remove its service. Installation files have been kept." /SD IDOK
+  SetErrorLevel 1
+  Abort
+service_removed:
+  nsExec::ExecToLog 'netsh.exe advfirewall firewall delete rule name="Portico Media Server"'
+  Pop $2
   RMDir /r "$SMPROGRAMS\Portico Media Server"
   DeleteRegKey HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Portico Media Server"
   DeleteRegKey HKLM "Software\Portico Media Server"

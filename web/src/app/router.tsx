@@ -39,11 +39,14 @@ const TogetherJoinScreen = split(() => import('../screens/auth/LinkRoutes').then
 const AccountReturnScreen = split(() => import('../screens/auth/AccountReturn').then(m => m.AccountReturnScreen));
 const ClaimApprovalScreen = split(() => import('../screens/auth/ClaimApproval').then(m => m.ClaimApprovalScreen));
 const DownloadsScreen = split(() => import('../screens/downloads/Downloads').then(m => m.DownloadsScreen));
-const GalleryScreen = split(() => import('../screens/dev/Gallery').then(m => m.GalleryScreen));
-const WindowedLab = split(() => import('../dev/WindowedLab').then(m => m.WindowedLab));
-const ChannelsLab = split(() => import('../dev/ChannelsLab').then(m => m.ChannelsLab));
-const BrowseLab = split(() => import('../dev/BrowseLab').then(m => m.BrowseLab));
-const FeaturesGallery = split(() => import('../screens/dev/Features').then(m => m.FeaturesGallery));
+// Developer screens exist in development only. `import.meta.env.DEV` is a constant at build time,
+// so a production build drops these imports and never emits the screens' files.
+const devOnly = (load: () => Promise<React.ComponentType<any>>) => (import.meta.env.DEV ? split(load) : NotFoundScreen);
+const GalleryScreen = devOnly(() => import('../screens/dev/Gallery').then(m => m.GalleryScreen));
+const WindowedLab = devOnly(() => import('../dev/WindowedLab').then(m => m.WindowedLab));
+const ChannelsLab = devOnly(() => import('../dev/ChannelsLab').then(m => m.ChannelsLab));
+const BrowseLab = devOnly(() => import('../dev/BrowseLab').then(m => m.BrowseLab));
+const FeaturesGallery = devOnly(() => import('../screens/dev/Features').then(m => m.FeaturesGallery));
 import {InAppNotFound, NotFoundScreen, RouteErrorScreen} from '../screens/NotFound';
 
 /**

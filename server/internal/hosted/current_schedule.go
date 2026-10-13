@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"portico.local/server/internal/dbwork"
+	trust "portico.local/server/internal/hostedtrust"
 	"portico.local/server/internal/networking"
 	"portico.local/server/internal/persistence"
 )
@@ -258,6 +259,9 @@ func (s *Service) ordinaryControlStep(ctx context.Context) (time.Time, error) {
 			MemberDigestMatches   bool        `json:"memberDigestMatches"`
 			CleanupPending        bool        `json:"cleanupPending"`
 			Departures            []Departure `json:"departures"`
+			// SigningCertificate is Hosted's current root-signed documents
+			// certificate, with every key revoked so far.
+			SigningCertificate *trust.Certificate `json:"signingCertificate"`
 		}
 		in := map[string]any{"wakeRevision": desired, "memberSequence": sync.acked, "memberDigest": digest}
 		if e := s.current.transport.CallServer(ctx, v, networking.SendHeartbeat, in, &result); e != nil {
@@ -265,6 +269,11 @@ func (s *Service) ordinaryControlStep(ctx context.Context) (time.Time, error) {
 		}
 		if result.HeartbeatAfterSeconds < 60 || result.HeartbeatAfterSeconds > maxCheckInSeconds || !result.PresenceExpiresAt.After(now) {
 			return networking.ErrInvalid
+		}
+		// Revocations first: a key Hosted has withdrawn stops admitting anyone,
+		// and what it admitted ends, before anything else in this answer is used.
+		if e := s.learnSigningCertificate(ctx, result.SigningCertificate); e != nil {
+			return e
 		}
 		// Hosted sets the cadence (weekly when it can wake this server, daily when it cannot);
 		// per-server jitter keeps a fleet from checking in together.

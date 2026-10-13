@@ -1,107 +1,83 @@
 /**
- * The client's quality request (spec §5.2). Only the client's request and admin/profile
- * ceilings decide quality: the server never lowers it on its own. "Automatic" is a client-side
- * choice made here from the viewer's `quality.<network>.*` preferences and the client's own
- * bandwidth estimate, and changed later with `PATCH` when the estimate moves decisively.
+ * Quality (spec §5.2). The default is the original file. A viewer may instead pick a fixed
+ * quality (one step of the server's ladder, a ceiling: a file already within it still plays as it
+ * is) or Automatic, which starts at the original and moves down, and back up, as the connection
+ * requires. The owner's ceilings, the member's caps and the upload budget always apply on top.
+ *
+ * A viewer has two saved defaults on the server, `quality.home` and `quality.remote` (the
+ * preference registry): a start that names no quality gets the one for where it comes from, as
+ * the server decides it from the owner's home networks. The player can name another quality for
+ * one session, at start or with a change.
+ *
+ * Automatic is driven by the client: it measures its connection and names the step the session
+ * should be on (`{mode: 'automatic', id}`; `id: 'original'` is back to the original), or asks the
+ * server for one step from where the session is (`step: 'down' | 'up'`). Each change re-plans the
+ * same session at the current position. The player-facing menu model and the measuring are in
+ * `choices.ts`; this file is the server's vocabulary.
  */
 
-export type NetworkClass = 'local' | 'remote' | 'cellular';
-/** The preference registry's per-network lanes (`quality.<lane>.*`). */
-export type QualityLane = 'local' | 'wifi' | 'cellular' | 'unknown';
-export type QualityMode = 'off' | 'automatic' | 'original' | 'high' | 'standard' | 'data-saver';
+export type QualityId = '2160p' | '1440p' | '1080p' | '720p' | '480p' | '360p';
+/** The values of the saved defaults `quality.home` and `quality.remote`. */
+export type SavedQuality = 'original' | 'automatic' | QualityId;
+export const savedQualities: readonly SavedQuality[] = Object.freeze(['original', 'automatic', '2160p', '1440p', '1080p', '720p', '480p', '360p']);
 
-export type QualityPreferences = Readonly<{
-  mode: QualityMode;
-  maxVideoHeight?: number;
-  maxVideoBitrateMbps?: number;
-  maxAudioBitrateKbps?: number;
-  allowHDR?: boolean;
-}>;
-
-/** The `quality` field of `POST /v1/playback/sessions` (spec §5.1). */
+/** The `quality` field of a start, a change and the options preview. */
 export type QualityRequest =
   | Readonly<{mode: 'original'}>
+  /** One ladder step, by id. */
+  | Readonly<{mode: 'fixed'; id: QualityId}>
+  /** Automatic. `id` names the step to be on (`'original'`: none); `step` moves one step from where the session is (a change only). */
+  | Readonly<{mode: 'automatic'; id?: QualityId | 'original'; step?: 'down' | 'up'}>
+  /** Ceilings in numbers, for a client that has its own. */
   | Readonly<{mode: 'limit'; maxVideoBitrateKbps?: number; maxHeight?: number; maxAudioBitrateKbps?: number}>;
 
-export type QualityDecision =
-  | Readonly<{allowed: false; reason: 'network_off'}>
-  | Readonly<{allowed: true; quality: QualityRequest; network: NetworkClass; rung?: number}>;
+/** The quality in force on a presentation: never a `step`; automatic's `id` is the step it is on (absent: the original). */
+export type QualityInForce = Readonly<{mode: 'original' | 'fixed' | 'automatic' | 'limit'; id?: string; maxVideoBitrateKbps?: number; maxHeight?: number; maxAudioBitrateKbps?: number}>;
 
-/** Automatic rungs, highest first: height and the video bit rate a stream at that height needs. */
-export const qualityLadder: readonly Readonly<{height: number; kbps: number}>[] = Object.freeze([
-  {height: 2160, kbps: 40_000}, {height: 1440, kbps: 20_000}, {height: 1080, kbps: 8000},
-  {height: 720, kbps: 4000}, {height: 480, kbps: 1500}, {height: 360, kbps: 800},
+/** One entry of a title's quality menu (playback options `qualities`): the original, automatic, then the ladder steps no taller than the picture. */
+export type QualityOption = Readonly<{mode: 'original' | 'automatic' | 'fixed'; id?: QualityId; maxHeight?: number; maxVideoBitrateKbps?: number; maxAudioBitrateKbps?: number}>;
+
+/** The server's ladder (`GET /v1/playback/delivery-policy` `ladder`), widest first: what each fixed quality allows. */
+export const qualityLadder: readonly Readonly<{id: QualityId; height: number; videoKbps: number; audioKbps: number}>[] = Object.freeze([
+  {id: '2160p', height: 2160, videoKbps: 20_000, audioKbps: 192},
+  {id: '1440p', height: 1440, videoKbps: 12_000, audioKbps: 192},
+  {id: '1080p', height: 1080, videoKbps: 8000, audioKbps: 192},
+  {id: '720p', height: 720, videoKbps: 4000, audioKbps: 128},
+  {id: '480p', height: 480, videoKbps: 2000, audioKbps: 96},
+  {id: '360p', height: 360, videoKbps: 1000, audioKbps: 96},
 ]);
 
-/** Which preference lane applies: the home network, Wi-Fi away from home, cellular, or unknown. */
-export function qualityLane(network: NetworkClass, onWifi?: boolean): QualityLane {
-  if (network === 'local') return 'local';
-  if (network === 'cellular') return 'cellular';
-  return onWifi === true ? 'wifi' : 'unknown';
+const isQualityId = (v: unknown): v is QualityId => qualityLadder.some(r => r.id === v);
+
+/** The request a saved default (`quality.home`, `quality.remote`) stands for. Anything unknown is the original. */
+export function savedQualityRequest(saved: string | undefined): QualityRequest {
+  if (saved === 'automatic') return Object.freeze({mode: 'automatic'});
+  if (isQualityId(saved)) return Object.freeze({mode: 'fixed', id: saved});
+  return Object.freeze({mode: 'original'});
 }
 
-/** Read one lane's preferences from the server's snapshot (`value(key, fallback)`). */
-export function qualityPreferences(value: <T>(key: string, fallback: T) => T, lane: QualityLane): QualityPreferences {
-  const p = `quality.${lane}.`;
-  const mode = value<string>(p + 'mode', 'automatic');
-  const known: readonly QualityMode[] = ['off', 'automatic', 'original', 'high', 'standard', 'data-saver'];
-  return Object.freeze({
-    mode: (known as readonly string[]).includes(mode) ? mode as QualityMode : 'automatic',
-    maxVideoHeight: value<number>(p + 'maxVideoHeight', 0) || undefined,
-    maxVideoBitrateMbps: value<number>(p + 'maxVideoBitrateMbps', 0) || undefined,
-    maxAudioBitrateKbps: value<number>(p + 'maxAudioBitrateKbps', 0) || undefined,
-    allowHDR: value<boolean>(p + 'allowHDR', true),
-  });
+/** The request that asks again for the quality in force on a presentation (what the next title of a viewing starts with). */
+export function requestInForce(inForce: QualityInForce): QualityRequest {
+  if (inForce.mode === 'fixed' && isQualityId(inForce.id)) return Object.freeze({mode: 'fixed', id: inForce.id});
+  if (inForce.mode === 'automatic') return Object.freeze(isQualityId(inForce.id) ? {mode: 'automatic', id: inForce.id} : {mode: 'automatic'});
+  if (inForce.mode === 'limit') return Object.freeze({mode: 'limit', ...(inForce.maxVideoBitrateKbps ? {maxVideoBitrateKbps: inForce.maxVideoBitrateKbps} : {}), ...(inForce.maxHeight ? {maxHeight: inForce.maxHeight} : {}), ...(inForce.maxAudioBitrateKbps ? {maxAudioBitrateKbps: inForce.maxAudioBitrateKbps} : {})});
+  return Object.freeze({mode: 'original'});
 }
 
-const min = (a: number | undefined, b: number | undefined) => (a === undefined ? b : b === undefined ? a : Math.min(a, b));
-
-function capped(prefs: QualityPreferences, height?: number, kbps?: number, audioKbps?: number): QualityRequest {
-  const maxHeight = min(prefs.maxVideoHeight, height);
-  const maxVideoBitrateKbps = min(prefs.maxVideoBitrateMbps !== undefined ? prefs.maxVideoBitrateMbps * 1000 : undefined, kbps);
-  const maxAudioBitrateKbps = min(prefs.maxAudioBitrateKbps, audioKbps);
-  return Object.freeze({mode: 'limit', ...(maxVideoBitrateKbps !== undefined ? {maxVideoBitrateKbps} : {}), ...(maxHeight !== undefined ? {maxHeight} : {}), ...(maxAudioBitrateKbps !== undefined ? {maxAudioBitrateKbps} : {})});
+/** The request a menu entry stands for. */
+export function qualityOptionRequest(option: QualityOption): QualityRequest {
+  if (option.mode === 'fixed' && option.id) return Object.freeze({mode: 'fixed', id: option.id});
+  return Object.freeze({mode: option.mode === 'automatic' ? 'automatic' : 'original'});
 }
 
-/**
- * The rung "Automatic" should use for a bandwidth estimate. Down-switches are immediate (use at
- * most 80 % of the estimate); an up-switch needs 25 % headroom over that, so a noisy estimate
- * doesn't flap between rungs. `previous` is the rung index currently in use.
- */
-export function automaticRung(estimateKbps: number, previous?: number, capHeight?: number): number {
-  const usable = estimateKbps * 0.8;
-  let rung = qualityLadder.findIndex(r => r.kbps <= usable && (capHeight === undefined || r.height <= capHeight));
-  if (rung < 0) rung = qualityLadder.length - 1;
-  if (previous !== undefined && rung < previous) {
-    // Going up: climb only while each higher rung has 25 % headroom.
-    let up = previous;
-    for (let r = previous - 1; r >= rung; r--) {
-      if (usable >= qualityLadder[r]!.kbps * 1.25) up = r;
-      else break;
-    }
-    return up;
-  }
-  return rung;
+/** Whether a menu entry is the quality in force (Automatic matches whatever step it is on). */
+export function qualityOptionSelected(option: QualityOption, inForce: QualityInForce | undefined): boolean {
+  const mode = inForce?.mode ?? 'original';
+  if (option.mode !== mode) return false;
+  return option.mode !== 'fixed' || option.id === inForce?.id;
 }
 
-/** What to ask the server for, on this network, with these preferences. */
-export function qualityDecision(prefs: QualityPreferences, network: NetworkClass, estimateKbps?: number, previousRung?: number): QualityDecision {
-  switch (prefs.mode) {
-    case 'off': return Object.freeze({allowed: false, reason: 'network_off'});
-    case 'original': return Object.freeze({allowed: true, quality: Object.freeze({mode: 'original'}), network});
-    case 'high': return Object.freeze({allowed: true, quality: capped(prefs), network});
-    case 'standard': return Object.freeze({allowed: true, quality: capped(prefs, 1080, 8000), network});
-    case 'data-saver': return Object.freeze({allowed: true, quality: capped(prefs, 480, 1500, 128), network});
-    case 'automatic': {
-      if (estimateKbps === undefined || !(estimateKbps > 0)) return Object.freeze({allowed: true, quality: capped(prefs), network});
-      const rung = automaticRung(estimateKbps, previousRung, prefs.maxVideoHeight);
-      const r = qualityLadder[rung]!;
-      return Object.freeze({allowed: true, quality: capped(prefs, r.height, r.kbps), network, rung});
-    }
-  }
-}
-
-/** Whether two requests differ (so the client should `PATCH` the session). */
+/** Whether two requests are the same request (so a change would do nothing). */
 export function sameQuality(a: QualityRequest, b: QualityRequest): boolean {
   return JSON.stringify(a) === JSON.stringify(b);
 }

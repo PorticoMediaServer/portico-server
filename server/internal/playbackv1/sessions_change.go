@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"reflect"
+	"regexp"
 	"strconv"
 	"sync"
 	"time"
@@ -19,10 +20,7 @@ import (
 func (r row) stored() storedRequest {
 	var out storedRequest
 	_ = json.Unmarshal([]byte(r.request), &out)
-	if out.Quality.Mode == "" {
-		out.Quality.Mode = "original"
-	}
-	return out
+	return out.normalized()
 }
 
 func (r row) presentationView() Presentation {
@@ -45,9 +43,13 @@ func (p Presentation) converting() bool {
 	return false
 }
 
-// Patch is PATCH /v1/playback/sessions/{id} with If-Match (spec §5.7). A change
-// that alters bytes starts a new presentation (a new generation, a new URL, at
-// the current position); other changes keep the generation.
+// Patch is PATCH /v1/playback/sessions/{id} with If-Match (spec §5.7): the one
+// operation that changes a session while it plays. A change of version, audio
+// track, quality or part, a subtitle track that changes what the picture or
+// the engine has to be, and a reported player failure each re-plan the same
+// session: a new presentation (a new generation, a new URL, possibly another
+// engine) at the current position. The session keeps its id, its queue and
+// its place in it. Other changes keep the generation.
 func (s *Service) Patch(ctx context.Context, c Caller, id, ifMatch string, change Change) (SessionView, error) {
 	if err := validateTracks(change.Audio, change.Subtitles); err != nil {
 		return SessionView{}, err
@@ -65,6 +67,15 @@ func (s *Service) Patch(ctx context.Context, c Caller, id, ifMatch string, chang
 	}
 	if change.Seek != nil && (change.Seek.PositionMs < 0 || change.Seek.PositionMs > maxStartPositionMs) {
 		return SessionView{}, &FieldError{Path: "seek.positionMs"}
+	}
+	if change.PositionMs != nil && (*change.PositionMs < 0 || *change.PositionMs > maxStartPositionMs) {
+		return SessionView{}, &FieldError{Path: "positionMs"}
+	}
+	if change.ThroughputKbps != nil && (*change.ThroughputKbps < 0 || *change.ThroughputKbps > 10_000_000) {
+		return SessionView{}, &FieldError{Path: "throughputKbps"}
+	}
+	if f := change.Failure; f != nil && (!failureCodePattern.MatchString(f.Code) || len(f.Detail) > 512) {
+		return SessionView{}, &FieldError{Path: "failure"}
 	}
 	r, err := s.session(ctx, c, id)
 	if err != nil {
@@ -84,6 +95,7 @@ func (s *Service) Patch(ctx context.Context, c Caller, id, ifMatch string, chang
 	}
 	stored := r.stored()
 	next := stored
+	presentation := r.presentationView()
 	bytes := false
 	if change.VersionID != "" && change.VersionID != r.version {
 		next.VersionID, bytes = change.VersionID, true
@@ -91,34 +103,80 @@ func (s *Service) Patch(ctx context.Context, c Caller, id, ifMatch string, chang
 	if change.Audio != nil && (stored.Audio == nil || !reflect.DeepEqual(*change.Audio, *stored.Audio)) {
 		next.Audio, bytes = change.Audio, true
 	}
-	if change.Quality != nil && *change.Quality != stored.Quality {
-		next.Quality, bytes = *change.Quality, true
+	if change.Quality != nil {
+		wanted := *change.Quality
+		if wanted.Mode == QualityAutomatic {
+			// Automatic is a place on the ladder the session moves along. A step
+			// moves from where it is; naming a step jumps there ("original"
+			// is back on no step); naming neither keeps the place an
+			// automatic session already has.
+			here := Quality{Mode: QualityAutomatic}
+			if stored.Quality.Mode == QualityAutomatic {
+				here.ID = stored.Quality.ID
+			}
+			switch {
+			case wanted.Step != "":
+				plan, _ := s.Playback.SessionPlan(ctx, r.media)
+				wanted = stepAutomatic(here, wanted.Step, sourceFactsOf(plan))
+			case wanted.ID == QualityOriginal:
+				wanted.ID = ""
+			case wanted.ID == "":
+				wanted = here
+			}
+		}
+		wanted.Step = ""
+		if wanted != stored.Quality {
+			next.Quality, bytes = wanted, true
+		}
 	}
 	if change.PartIndex != nil && *change.PartIndex != r.partIndex {
 		bytes = true
 	}
 	if change.Subtitles != nil {
-		// Burn-in changes the bytes, but on the same playback session: the
-		// subtitle selection re-plans it (below), rather than a new presentation.
 		next.Subtitles = change.Subtitles
+		// A text track drawn beside the stream changes no bytes. A styled or
+		// image track can: it may need the picture converted, or another
+		// engine that draws it; and leaving one can undo either. Those are
+		// planned again from the start, as one presentation.
+		if s.subtitleReplans(ctx, c, r, presentation, change.Subtitles) {
+			bytes = true
+		}
 	}
 	if change.SubtitleOffsetMs != nil {
 		next.SubtitleOffsetMs = *change.SubtitleOffsetMs
 	}
-	presentation := r.presentationView()
 	generation, media, mediaGeneration := r.generation, r.media, r.mediaGeneration
 	position := r.position
+	if change.PositionMs != nil {
+		position = *change.PositionMs
+	}
 	if change.Seek != nil {
 		position = change.Seek.PositionMs
 	}
-	// A re-plan (quality, version, audio track or part change) re-admits like a
-	// start, so the remote bitrate cap and the schedule and item policy apply
-	// mid-session. It already holds its stream, so its own slot is not counted
-	// again: a member at their stream limit can still change quality.
+	if f := change.Failure; f != nil {
+		// The player could not play what it was given. Remember that for this
+		// file on this device, and plan the next way up in the same session.
+		result, err := s.Playback.RecordRouteFailure(ctx, c.Principal, r.media, f.Code, f.Detail)
+		if err != nil {
+			return SessionView{}, &FieldError{Path: "failure"}
+		}
+		if !result.Escalates {
+			return SessionView{}, playback.ErrIncompatible
+		}
+		bytes = true
+	}
+	// A re-plan re-admits like a start, so the remote bitrate cap and the
+	// schedule and item policy apply mid-session. It already holds its stream,
+	// so its own slot is not counted again: a member at their stream limit can
+	// still change quality.
 	if bytes {
 		if err := c.admit(WithReplan(ctx, id, ""), r.item); err != nil {
 			return SessionView{}, err
 		}
+	}
+	throughput := 0
+	if change.ThroughputKbps != nil {
+		throughput = *change.ThroughputKbps
 	}
 	switch {
 	case bytes:
@@ -128,33 +186,50 @@ func (s *Service) Patch(ctx context.Context, c Caller, id, ifMatch string, chang
 		}
 		op := "v1-" + r.id + "-" + strconv.Itoa(r.generation+1)
 		part := changedPart(r, change, version)
-		newMedia, view, err := s.present(ctx, c, presentationTarget{item: r.item, version: version, part: part, request: next, startMs: position,
-			replacing: &playback.SessionReplacement{ID: r.media, Generation: r.mediaGeneration}, requestID: "v1." + r.id + "." + strconv.Itoa(r.generation+1), subtitleOp: op})
+		target := presentationTarget{item: r.item, version: version, part: part, request: next, startMs: position,
+			replacing: &playback.SessionReplacement{ID: r.media, Generation: r.mediaGeneration}, requestID: "v1." + r.id + "." + strconv.Itoa(r.generation+1), subtitleOp: op,
+			rememberAudio: change.Audio != nil, rememberSubtitle: change.Subtitles != nil}
+		if change.Quality != nil {
+			// Only a quality asked for now is checked against the connection.
+			target.throughputKbps = throughput
+		}
+		newMedia, view, err := s.present(ctx, c, target)
 		if errors.Is(err, identity.ErrUnauthorized) {
 			_ = s.Playback.StopV1(ctx, r.media)
-			newMedia, view, err = s.present(ctx, c, presentationTarget{item: r.item, version: version, part: part, request: next, startMs: position, requestID: "v1." + r.id + "." + strconv.Itoa(r.generation+1) + ".r", subtitleOp: op + "-r"})
+			target.replacing, target.requestID, target.subtitleOp = nil, target.requestID+".r", op+"-r"
+			newMedia, view, err = s.present(ctx, c, target)
 		}
 		if err != nil {
 			return SessionView{}, err
 		}
 		presentation, media, mediaGeneration, generation = view, newMedia.ID, newMedia.Generation, r.generation+1
+		if view.Quality != nil {
+			next.Quality = *view.Quality
+		}
 		if plan, _ := s.Playback.SessionPlan(ctx, newMedia.ID); plan != nil {
 			next.VersionID = plan.SourceID
 		}
 	case change.Subtitles != nil || change.SubtitleOffsetMs != nil:
-		// A sidecar switch keeps the bytes and the generation. A burn-in does
-		// not: it is planned under what this caller is allowed right now.
+		// A sidecar switch keeps the bytes and the generation.
 		current, err := c.replanContext(ctx, r.id)
 		if err != nil {
 			return SessionView{}, err
 		}
-		result, err := s.applySubtitles(current, c.Principal, r.item, r.media, next.Subtitles, next.SubtitleOffsetMs, position, "v1-"+r.id+"-r"+strconv.Itoa(r.revision+1))
+		result, err := s.applySubtitles(current, c.Principal, r.item, r.media, next.Subtitles, next.SubtitleOffsetMs, position, "v1-"+r.id+"-r"+strconv.Itoa(r.revision+1), false)
 		if err != nil {
 			return SessionView{}, err
 		}
-		presentation.Subtitles = result.files
+		presentation.Subtitles, presentation.Subtitle = result.files, result.shown
+		if change.Subtitles != nil {
+			mode := "off"
+			if result.shown != nil {
+				mode = "on"
+			}
+			s.rememberTracks(ctx, c.Principal, r.item, nil, mode, result.language)
+		}
 		if result.replaced != nil {
-			// Burn-in on or off: new bytes from the position, a new generation.
+			// The stream changed after all (an offset moved a converted
+			// stream's subtitles): new bytes from the position.
 			s.adoptReplaced(ctx, &presentation, r.media, result.replaced, playback.V1Choice{AdminMaxVideoBitrateBPS: c.AdminMaxVideoBitrateBPS, Remote: c.Remote})
 			presentation.StartPositionMs = position
 			mediaGeneration, generation = result.replaced.Generation, r.generation+1
@@ -174,6 +249,10 @@ func (s *Service) Patch(ctx context.Context, c Caller, id, ifMatch string, chang
 	if change.State != "" && state != "preparing" {
 		state = change.State
 	}
+	bandwidth := r.bandwidth
+	if change.ThroughputKbps != nil {
+		bandwidth = int64(throughput)
+	}
 	requestJSON, _ := json.Marshal(next)
 	presentationJSON, _ := json.Marshal(presentation)
 	now := s.now()
@@ -183,8 +262,8 @@ func (s *Service) Patch(ctx context.Context, c Caller, id, ifMatch string, chang
 	}
 	part := changedPart(r, change, version)
 	err = dbwork.WithWriteTxContext(ctx, s.DB, dbwork.ClassEstablishedPlayback, func(ctx context.Context, tx *sql.Tx) error {
-		res, err := tx.ExecContext(ctx, `UPDATE playback_v1_sessions SET state=?,version_id=?,part_index=?,request=?,media_session_id=?,media_generation=?,presentation=?,generation=?,position_ms=?,start_position_ms=?,revision=revision+1,updated_ms=?,`+pausedSinceUpdate+` WHERE id=? AND revision=? AND ended_ms=0`,
-			state, version, part, string(requestJSON), media, mediaGeneration, string(presentationJSON), generation, position, presentation.StartPositionMs, now.UnixMilli(), state, now.UnixMilli(), r.id, r.revision)
+		res, err := tx.ExecContext(ctx, `UPDATE playback_v1_sessions SET state=?,version_id=?,part_index=?,request=?,media_session_id=?,media_generation=?,presentation=?,generation=?,position_ms=?,start_position_ms=?,bandwidth_kbps=?,revision=revision+1,updated_ms=?,`+pausedSinceUpdate+` WHERE id=? AND revision=? AND ended_ms=0`,
+			state, version, part, string(requestJSON), media, mediaGeneration, string(presentationJSON), generation, position, presentation.StartPositionMs, bandwidth, now.UnixMilli(), state, now.UnixMilli(), r.id, r.revision)
 		if err != nil {
 			return err
 		}
@@ -192,7 +271,7 @@ func (s *Service) Patch(ctx context.Context, c Caller, id, ifMatch string, chang
 			return ErrRevision
 		}
 		r.state, r.version, r.partIndex, r.request, r.media, r.mediaGeneration = state, version, part, string(requestJSON), media, mediaGeneration
-		r.presentation, r.generation, r.position, r.startPosition, r.revision, r.updated = string(presentationJSON), generation, position, presentation.StartPositionMs, r.revision+1, now.UnixMilli()
+		r.presentation, r.generation, r.position, r.startPosition, r.revision, r.updated, r.bandwidth = string(presentationJSON), generation, position, presentation.StartPositionMs, r.revision+1, now.UnixMilli(), bandwidth
 		return s.sessionEventsTx(ctx, tx, r, now, false)
 	})
 	if errors.Is(err, ErrRevision) {
@@ -204,6 +283,36 @@ func (s *Service) Patch(ctx context.Context, c Caller, id, ifMatch string, chang
 	}
 	s.hub.wake()
 	return s.view(r), nil
+}
+
+var failureCodePattern = regexp.MustCompile(`^[a-z0-9_]{1,48}$`)
+
+// subtitleReplans reports whether a subtitle change has to plan the
+// presentation again: the track asked for is a styled or image one (it weighs
+// in the engine choice and may need the picture converted), or the track now
+// in force is drawn by the engine or burned in (leaving it frees both).
+func (s *Service) subtitleReplans(ctx context.Context, c Caller, r row, current Presentation, req *SubtitleRequest) bool {
+	if shown := current.Subtitle; shown != nil && shown.Delivery != "sidecar" {
+		// A track the client asked to draw itself, from the original handed
+		// over beside the stream, never weighed in the plan (subtitleWeight):
+		// the picture and the engine were chosen without it, so leaving it
+		// changes neither. Anything else burned in or drawn by the engine does.
+		asked := r.stored().Subtitles
+		if !(shown.Delivery == "device" && asked != nil && asked.Delivery == "embeddedClient" && len(current.Subtitles) > 0) {
+			return true
+		}
+	}
+	if d := current.Decision.Video; d != nil && d.Action == "burn" {
+		return true
+	}
+	if req == nil || req.TrackID == TrackOff || req.TrackID == "" || r.version == "" {
+		return false
+	}
+	asset, err := s.partAsset(ctx, r.item, r.version, r.partIndex)
+	if err != nil {
+		return false
+	}
+	return subtitleWeight(resourceByID(s.subtitleResources(ctx, c.Principal, r.item, asset), string(req.TrackID)), req) != ""
 }
 
 // Stop is DELETE /v1/playback/sessions/{id} (spec §5.8): idempotent; a final
@@ -328,6 +437,18 @@ func (s *Service) Timeline(ctx context.Context, c Caller, id string, report Repo
 		legacy = "paused"
 	case "ended":
 		legacy = "ended"
+		if !s.endedNearEnd(ctx, r.media, report.PositionMs) {
+			// The player stopped far short of the end (a truncated file, a
+			// stream that broke off): the session ends, but the title is not
+			// finished. It keeps its place instead of being marked watched.
+			legacy = "paused"
+		}
+	case "error":
+		// What the player could not play is remembered for this file on this
+		// device, so the next start or re-plan takes another way.
+		if e := report.Error; e != nil && r.media != "" && engineFailureCodes[e.Code] && len(e.Detail) <= 512 {
+			_, _ = s.Playback.RecordRouteFailure(ctx, c.Principal, r.media, e.Code, e.Detail)
+		}
 	}
 	if r.media != "" {
 		// Resume, played threshold, watch history (respecting pause-history) and
@@ -380,6 +501,21 @@ func (s *Service) Timeline(ctx context.Context, c Caller, id string, report Repo
 		after(ctx, r, report)
 	}
 	return s.reportEvery(state), nil
+}
+
+// engineFailureCodes are the timeline error codes that mean the player itself
+// could not play what it was given (as opposed to the network failing).
+var engineFailureCodes = map[string]bool{"decode_error": true, "source_not_supported": true, "audio_decode_error": true, "manifest_incompatible": true, "engine_error": true}
+
+// endedNearEnd reports whether a player that says it reached the end did so
+// within the last fifth of the title. A title whose length is unknown is
+// taken at its word.
+func (s *Service) endedNearEnd(ctx context.Context, media string, positionMs int64) bool {
+	var duration float64
+	if media == "" || dbwork.QueryRow(ctx, s.DB, `SELECT duration FROM playback_sessions WHERE id=?`, media).Scan(&duration) != nil || duration <= 0 {
+		return true
+	}
+	return float64(positionMs) >= duration*1000*0.8
 }
 
 // EndReasonPausedTimeout is why a video session paused longer than the

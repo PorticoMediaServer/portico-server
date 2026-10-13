@@ -1,5 +1,6 @@
 import type {HttpLocalApi} from './index.ts';
 import {routeOrigin} from './route-identity.ts';
+import {keepReadable} from './tolerant.ts';
 /**
  * Owner remote-access settings. A save sends the whole object back, so fields a server added
  * (lanSharing, ipv6Open) must round-trip: dropping one would reset it to false. Older servers
@@ -17,9 +18,10 @@ export function parseRemoteAccess(v:unknown):RemoteAccess{
  if(!object(v)||typeof v.authorityId!=='string'||v.authorityId.length>1024||!counter(v.generation)||typeof v.state!=='string'||!object(v.config)||!object(v.topology)||!Array.isArray(v.candidates)||v.candidates.length>16||!Array.isArray(v.mappings)||v.mappings.length>32)throw new Error('The remote-access response was incomplete.');
  const c=v.config;if(!counter(c.revision)||['enabled','mapping','pcp','natpmp','upnp'].some(k=>typeof c[k]!=='boolean')||['lanSharing','ipv6Open'].some(k=>c[k]!==undefined&&typeof c[k]!=='boolean')||(v.ipv6!==undefined&&(typeof v.ipv6!=='string'||v.ipv6.length>32))||!Number.isInteger(c.publicPort)||Number(c.publicPort)<1||Number(c.publicPort)>65535||typeof c.gateway!=='string'||c.gateway.length>64)throw new Error('The remote-access configuration was incomplete.');
  for(const key of ['lan','public'])if(!Array.isArray(v.topology[key])||(v.topology[key] as unknown[]).length>8||(v.topology[key] as unknown[]).some(x=>typeof x!=='string'||x.length>64))throw new Error('The topology response was incomplete.');
- for(const row of v.candidates){if(!object(row)||typeof row.baseUrl!=='string'||routeOrigin(row.baseUrl)!==row.baseUrl||!['lan','public','manual'].includes(String(row.class))||typeof row.state!=='string')throw new Error('The remote route response was incomplete.');}
- for(const row of v.mappings)if(!object(row)||typeof row.protocol!=='string'||typeof row.state!=='string'||!Number.isInteger(row.externalPort)||typeof row.expiresAt!=='string')throw new Error('The gateway mapping response was incomplete.');
- return v as unknown as RemoteAccess;
+ // An address or a gateway mapping this app cannot read is left out alone: a route of a class it does not know is never shown as another class.
+ const candidates=keepReadable('remote-access','candidates',v.candidates,row=>{if(!object(row)||typeof row.baseUrl!=='string'||routeOrigin(row.baseUrl)!==row.baseUrl||!['lan','public','manual'].includes(String(row.class))||typeof row.state!=='string')throw new Error('The remote route response was incomplete.');return row;});
+ const mappings=keepReadable('remote-access','mappings',v.mappings,row=>{if(!object(row)||typeof row.protocol!=='string'||typeof row.state!=='string'||!Number.isInteger(row.externalPort)||typeof row.expiresAt!=='string')throw new Error('The gateway mapping response was incomplete.');return row;});
+ return {...v,candidates,mappings} as unknown as RemoteAccess;
 }
 export async function loadRemoteAccess(api:HttpLocalApi,signal?:AbortSignal){return parseRemoteAccess(await api.request('/v1/networking/remote','GET',undefined,signal));}
 export async function saveRemoteAccess(api:HttpLocalApi,status:RemoteAccess,config:RemoteConfiguration,signal?:AbortSignal){

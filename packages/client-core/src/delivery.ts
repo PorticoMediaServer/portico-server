@@ -5,12 +5,13 @@ import {unreadableServerResponse} from './server-messages.ts';
  * clamps and reason codes are all the server's conclusions, and a payload that
  * does not match the published shape is rejected rather than repaired. */
 
-export type NetworkClass='local'|'wifi'|'cellular'|'remote'|'unknown';
+/** Where a request comes from, as the server decided it from the owner's home networks. */
+export type NetworkClass='local'|'remote'|'unknown';
 export type TransportClass='wifi'|'cellular'|'ethernet'|'unknown';
 export type DeliveryMode='allow'|'prefer'|'never'|'require';
 import type {PlanningPolicy} from './console.ts';
 
-export const networkClasses:readonly NetworkClass[]=Object.freeze(['local','wifi','cellular','remote','unknown'] as const);
+export const networkClasses:readonly NetworkClass[]=Object.freeze(['local','remote','unknown'] as const);
 export const transportClasses:readonly TransportClass[]=Object.freeze(['wifi','cellular','ethernet','unknown'] as const);
 const deliveryModes:readonly DeliveryMode[]=Object.freeze(['allow','prefer','never','require'] as const);
 const planningPolicies:readonly PlanningPolicy[]=Object.freeze(['maximum_fidelity','maximum_compatibility','minimize_server_work'] as const);
@@ -20,7 +21,9 @@ const planningPolicies:readonly PlanningPolicy[]=Object.freeze(['maximum_fidelit
 export type DeliveryClamp=Readonly<{field:string;source:string;requested:number;applied:number}>;
 
 export type ResolvedDeliveryPolicy=Readonly<{
- networkClass:NetworkClass;serverLocality:'local'|'remote'|'unknown';transportClass:TransportClass;preferenceLane:'local'|'wifi'|'cellular'|'unknown';
+ networkClass:NetworkClass;serverLocality:'local'|'remote'|'unknown';transportClass:TransportClass;
+ /** Which saved default quality applies here: `quality.home` or `quality.remote`. `qualityMode` is its value. */
+ preferenceLane:'home'|'remote';
  directPlay:DeliveryMode;directStream:DeliveryMode;transcode:DeliveryMode;qualityMode:string;
  maxVideoBitrateBps:number;maxAudioBitrateBps:number;maxVideoHeight:number;allowHDR:boolean;
  planningPolicy:PlanningPolicy;clamps:readonly DeliveryClamp[];
@@ -61,7 +64,7 @@ export type RouteEvaluation=Readonly<{route:DeliveryStrategy;transport?:string;a
 export type DecisionTrace=Readonly<{
  client:Readonly<{family:string;platform?:string;model?:string;engine?:string;evidence:string;revision:string;published:boolean}>;
  container:string;bitRate?:number;
- video?:Readonly<{codec:string;profile?:string;level?:number;bitDepth?:number;width?:number;height?:number;frameRate?:number;interlaced?:boolean;dynamicRange?:string;dolbyVisionProfile?:number;bitRate?:number}>;
+ video?:Readonly<{rotation?:number;sampleAspectRatio?:string;codec:string;profile?:string;level?:number;bitDepth?:number;width?:number;height?:number;frameRate?:number;interlaced?:boolean;dynamicRange?:string;dolbyVisionProfile?:number;bitRate?:number}>;
  audio?:Readonly<{streamIndex:number;codec:string;channels?:number;language?:string;objectAudio?:string;chosenBy:string;tracks:number}>;
  routes:readonly RouteEvaluation[];notes:readonly string[];
 }>;
@@ -84,10 +87,10 @@ function clamp(v:unknown):DeliveryClamp{
 export function parseResolvedDeliveryPolicy(raw:unknown):ResolvedDeliveryPolicy{
  if(!obj(raw))invalid();
  const networkClass=oneOf(raw.networkClass,networkClasses);
- const preferenceLane=oneOf(raw.preferenceLane,['local','wifi','cellular','unknown'] as const);
- // The lane a remote client lands in is the unknown lane: no viewer configures
- // every network they might visit.
- const expected=networkClass==='remote'?'unknown':networkClass;
+ const preferenceLane=oneOf(raw.preferenceLane,['home','remote'] as const);
+ // Inside the owner's home networks the home default applies; everywhere else,
+ // and wherever the server could not tell, the remote one.
+ const expected=networkClass==='local'?'home':'remote';
  if(preferenceLane!==expected)invalid();
  if(typeof raw.allowHDR!=='boolean')invalid();
  if(!count(raw.maxVideoBitrateBps)||!count(raw.maxAudioBitrateBps)||!count(raw.maxVideoHeight,4320))invalid();
@@ -154,8 +157,8 @@ export function parseDecisionTrace(raw:unknown):DecisionTrace|undefined{
   let video:DecisionTrace['video'];
   if(raw.video!==undefined){
    const v=raw.video;
-   if(!obj(v)||!text(v.codec,32)||!optionalText(v.profile)||!optionalCount(v.level,1000)||!optionalCount(v.bitDepth,16)||!optionalCount(v.width,65536)||!optionalCount(v.height,65536)||!optionalNumber(v.frameRate)||!optionalText(v.dynamicRange,16)||!optionalCount(v.dolbyVisionProfile,31)||!optionalCount(v.bitRate))return undefined;
-   video=Object.freeze({codec:v.codec,profile:v.profile as string|undefined,level:v.level as number|undefined,bitDepth:v.bitDepth as number|undefined,width:v.width as number|undefined,height:v.height as number|undefined,frameRate:v.frameRate as number|undefined,interlaced:v.interlaced===true,dynamicRange:v.dynamicRange as string|undefined,dolbyVisionProfile:v.dolbyVisionProfile as number|undefined,bitRate:v.bitRate as number|undefined});
+   if(!obj(v)||!text(v.codec,32)||!optionalCount(v.rotation,360)||!optionalText(v.sampleAspectRatio,24)||!optionalText(v.profile)||!optionalCount(v.level,1000)||!optionalCount(v.bitDepth,16)||!optionalCount(v.width,65536)||!optionalCount(v.height,65536)||!optionalNumber(v.frameRate)||!optionalText(v.dynamicRange,16)||!optionalCount(v.dolbyVisionProfile,31)||!optionalCount(v.bitRate))return undefined;
+   video=Object.freeze({rotation:v.rotation as number|undefined,sampleAspectRatio:v.sampleAspectRatio as string|undefined,codec:v.codec,profile:v.profile as string|undefined,level:v.level as number|undefined,bitDepth:v.bitDepth as number|undefined,width:v.width as number|undefined,height:v.height as number|undefined,frameRate:v.frameRate as number|undefined,interlaced:v.interlaced===true,dynamicRange:v.dynamicRange as string|undefined,dolbyVisionProfile:v.dolbyVisionProfile as number|undefined,bitRate:v.bitRate as number|undefined});
   }
   let audio:DecisionTrace['audio'];
   if(raw.audio!==undefined){

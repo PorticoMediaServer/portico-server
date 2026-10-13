@@ -56,6 +56,32 @@ func MergeTitlesTx(ctx context.Context, tx *sql.Tx, from, into int64) error {
 // absorbTx moves everything that hangs off one entity onto another of the
 // same kind and deletes the first. Children must already have been moved.
 func absorbTx(ctx context.Context, tx *sql.Tx, from, into int64, kind compactcatalog.Kind) error {
+	rows, err := tx.QueryContext(ctx, `SELECT provider,provider_kind,provider_id FROM catalog_external_ids WHERE entity_id=? ORDER BY provider,provider_kind,provider_id`, from)
+	if err != nil {
+		return err
+	}
+	var identities []compactcatalog.ProviderIdentity
+	for rows.Next() {
+		var p compactcatalog.ProviderIdentity
+		if err = rows.Scan(&p.Provider, &p.Kind, &p.ID); err != nil {
+			rows.Close()
+			return err
+		}
+		identities = append(identities, p)
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return err
+	}
+	for _, p := range identities {
+		if err := compactcatalog.RecordProviderIdentityTx(ctx, tx, into, p); err != nil {
+			if errors.Is(err, compactcatalog.ErrIdentityConflict) {
+				return fmt.Errorf("%w: provider identities differ", ErrNotMergeable)
+			}
+			return err
+		}
+	}
 	if err := moveFilesTx(ctx, tx, from, into); err != nil {
 		return err
 	}

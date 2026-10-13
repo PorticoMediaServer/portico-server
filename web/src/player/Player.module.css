@@ -5,6 +5,8 @@
 /* Fill the screen: the picture is cropped to cover it (letterboxed films on a wide screen, 4:3 on 16:9). */
 .video.fill { object-fit: cover; }
 .stage.audio .video { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+/* Styled and image subtitles are drawn here, over the picture and under everything the viewer can press. Its box is set by the overlay. */
+.subtitleCanvas { position: absolute; left: 0; top: 0; display: none; pointer-events: none; }
 .tap { position: absolute; inset: 0; cursor: default; }
 .hidden { cursor: none; }
 .chrome { position: absolute; inset: 0; pointer-events: none; opacity: 1; transition: opacity var(--motion-standard) var(--ease-out); }
@@ -122,6 +124,11 @@
 @media (max-width: 720px) { .postCard { padding: 16px; } .postArt { width: 84px; } }
 
 /* Skip prompt: bottom right, above the transport shadow, never over the timeline. */
+/* Up next while the credits run: a small card in the corner the skip button uses. */
+.upNext { position: absolute; right: max(24px, env(safe-area-inset-right)); bottom: clamp(150px, 24vh, 220px); display: flex; flex-direction: column; gap: 8px; width: min(340px, calc(100vw - 32px)); padding: 14px 16px; border-radius: var(--radius-surface); background: color-mix(in srgb, var(--color-ink) 88%, transparent); border: 1px solid var(--line-soft); }
+.upNextTitle { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.upNextActions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+@media (max-width: 720px) { .upNext { bottom: clamp(140px, 26vh, 200px); right: 16px; } }
 .skip { position: absolute; right: max(24px, env(safe-area-inset-right)); bottom: clamp(150px, 24vh, 220px); display: flex; align-items: center; gap: 6px; }
 @media (max-width: 720px) { .skip { bottom: clamp(140px, 26vh, 200px); right: 16px; } }
 /* Trickplay preview above the hovered position. */

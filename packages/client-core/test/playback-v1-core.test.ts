@@ -7,6 +7,7 @@ import {
   type MediaPlayer, type PlayerEvent, type PlayerObservation, type PlayerSource, type ServerEvent,
 } from '../src/playback-v1/index.ts';
 import {FakePlaybackServer, fakeHttp} from '../src/playback-v1/testing/fake-server.ts';
+import {androidDeclaredProfile, withMpvEngine, withViewerSettings} from '../src/client-profile.ts';
 
 const settle = async () => { for (let i = 0; i < 12; i++) await new Promise(setImmediate); };
 
@@ -76,11 +77,23 @@ test('options: tolerant parse, plan summary, default selection, markers and prev
   assert.equal(s.kind, 'convert');
   assert.equal(s.convertsVideo, true);
   assert.equal(s.convertsAudio, false);
-  // Capabilities go up only when they change.
+  // The quality menu, the saved default and the engine come with the options.
+  assert.deepEqual(o.qualities.map(q => q.mode === 'fixed' ? q.id : q.mode), ['original', 'automatic', '2160p', '1080p', '720p']);
+  assert.equal(o.preferred?.quality.mode, 'original');
+  assert.equal(o.preferred?.subtitlesOff, false);
+  assert.equal(o.plan?.engine, 'native');
+  assert.equal(o.plan?.streams[1]?.to, 'eac3');
+  const fixed = await client.options('movie-1', {quality: {mode: 'fixed', id: '720p'}});
+  assert.deepEqual(fixed.plan?.quality, {mode: 'fixed', id: '720p'});
+  assert.equal(summarizePlan(fixed.plan!, sel.version).convertsVideo, true);
+  // The capability document goes up only when it changes, and never when the server would refuse it.
   const publisher = new CapabilityPublisher(fakeHttp(server));
-  const profile = {containers: ['mp4'], video: [], audio: [], subtitles: [], hdr: [], maxResolution: {width: 1920, height: 1080}} as never;
-  assert.equal(await publisher.publish(profile), true);
-  assert.equal(await publisher.publish(profile), false);
+  const document = withMpvEngine(androidDeclaredProfile({television: true}));
+  assert.equal(await publisher.publish(document), true);
+  assert.equal(await publisher.publish(document), false);
+  assert.equal(await publisher.publish(withViewerSettings(document, {engine: 'mpv', overrides: {forceStereo: true}})), true);
+  assert.equal(await publisher.publish({...document, version: 1} as never), false, 'a document the server would refuse is not sent');
+  assert.deepEqual((server.capabilities.get('device-1') as {overrides?: unknown} | undefined)?.overrides ?? (([...server.capabilities.values()][0]) as {overrides?: unknown}).overrides, {forceStereo: true, disablePassthrough: false, disableHdr: false});
   assert.equal(server.capabilities.size, 1);
 });
 
@@ -370,7 +383,7 @@ test('transfer: the source keeps playing until the target reports playing, then 
 test('events: one stream, prefix subscriptions, reconnect from the cursor after stream.closed, no duplicates', async () => {
   const c = clockwork();
   const server = new FakePlaybackServer({now: c.now, setTimer: c.setTimer, clearTimer: c.clearTimer});
-  const events = new EventsClient({http: fakeHttp(server), openStream: server.openStream, setTimer: c.setTimer, clearTimer: c.clearTimer});
+  const events = new EventsClient({http: fakeHttp(server), openStream: server.openStream, random: () => 0, setTimer: c.setTimer, clearTimer: c.clearTimer});
   const seen: string[] = [];
   events.on('queue.', e => seen.push(e.type + '#' + e.id));
   events.on('session.updated', e => seen.push(e.type + '#' + e.id));

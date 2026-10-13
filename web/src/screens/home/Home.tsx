@@ -13,13 +13,15 @@ import {NoLibraries} from '../shared/NoLibraries';
 import {useLibrariesContext} from '../../app/libraries';
 import s from './Home.module.css';
 import {ErrorNotice, ErrorState} from '../../app/errors';
-import {currentI18n} from '../../app/i18n';
 import {useNavigate} from '@tanstack/react-router';
 import {CONTINUE_REMOVED, type ContinueRemoval} from '../../app/continue-watching';
 import {isRecommendationRow} from '@core/recommendation-feedback.ts';
-import {homeViewResourceId} from '@core/home.ts';
 import {useNotInterested} from '../../app/not-interested-notice';
 import {withoutHidden} from '../../app/not-interested';
+import {useI18n} from '../../app/i18n';
+import {encodePredicates} from '../../app/browse';
+import {homeRowSeeAll} from '../../app/see-all';
+import type {LibraryView} from '../../app/router';
 
 /**
  * Home: what the viewer was last in the middle of as a hero, then every row the
@@ -28,6 +30,7 @@ import {withoutHidden} from '../../app/not-interested';
  * pages rows and lets the viewer arrange them.
  */
 export function HomeScreen() {
+  const {t} = useI18n();
   const {state, refresh, more, saveLayout, resetLayout, loadLayout} = useHome();
   useSelectionRefresh(refresh);
   const {system, owner} = useSession();
@@ -37,11 +40,15 @@ export function HomeScreen() {
   const [customise, setCustomise] = useState(false);
   const document = state.document;
   const navigate = useNavigate();
-  // WEB-HOME-03: a row from one library continues in that library (recent rows by date added).
-  const seeAll = (row: HomeRow) => void navigate({to: '/library/$libraryId', params: {libraryId: row.libraryId!}, search: /recent|added/i.test(row.kind + row.id) ? {view: 'browse', sort: 'added', direction: 'desc'} : {}});
-  // P7: a recommendation row with no library of its own (Recommended, Trending now, Picks for
-  // you) opens as its own paged page.
-  const seeAllRow = (row: HomeRow) => void navigate({to: '/home/rows/$rowId', params: {rowId: row.id}});
+  // WEB-HOME-03: a row from one library continues where the server says it does (the library's
+  // browse on the row's own pivot, conditions and sort), or as the row's own page.
+  const seeAll = (row: HomeRow) => {
+    const destination = homeRowSeeAll(row, libraries.items.find(l => l.id === (row.seeAll?.type === 'library' ? row.seeAll.libraryId : row.libraryId))?.kind);
+    if (destination?.to === 'browse') void navigate({to: '/library/$libraryId', params: {libraryId: destination.libraryId}, search: {view: destination.tab as LibraryView, ...(destination.sort ? {sort: destination.sort.field, direction: destination.sort.direction} : {}), ...(destination.filters.length ? {filters: encodePredicates(destination.filters)} : {})}});
+    else if (destination?.to === 'row') void navigate({to: '/home/rows/$rowId', params: {rowId: destination.rowId}});
+    else if (destination?.to === 'saved_view') seeAllView(destination.resourceId, row);
+    else if (destination) void navigate({to: '/library/$libraryId', params: {libraryId: destination.libraryId}, search: {}});
+  };
   // P6: a saved view's row opens the view's own page (the complete list, its filters and sort).
   const seeAllView = (resourceId: string, row: HomeRow) => void navigate({to: '/saved/$kind/$resourceId', params: {kind: 'view', resourceId}, search: {title: row.title}});
   // X-12: a title removed from Continue Watching leaves the row at once; Undo puts it back.
@@ -51,7 +58,7 @@ export function HomeScreen() {
     const on = (e: Event) => {
       const r = (e as CustomEvent<ContinueRemoval>).detail;
       setHidden(prev => { const next = new Set(prev); if (r.phase === 'failed') next.delete(r.itemId); else next.add(r.itemId); return next; });
-      setRemoval(r.phase === 'failed' ? {...r, error: currentI18n().t('web.continue.failed', {title: r.title})} : r);
+      setRemoval(r.phase === 'failed' ? {...r, error: t('web.continue.failed', {title: r.title})} : r);
     };
     window.addEventListener(CONTINUE_REMOVED, on);
     return () => window.removeEventListener(CONTINUE_REMOVED, on);
@@ -65,39 +72,39 @@ export function HomeScreen() {
   const notInterested = useNotInterested();
   const undo = (r: ContinueRemoval) => {
     setRemoval(undefined);
-    r.undo().then(() => { setHidden(prev => { const next = new Set(prev); next.delete(r.itemId); return next; }); refresh(); }, () => setRemoval({...r, phase: 'failed', error: currentI18n().t('web.continue.undoFailed', {title: r.title})}));
+    r.undo().then(() => { setHidden(prev => { const next = new Set(prev); next.delete(r.itemId); return next; }); refresh(); }, () => setRemoval({...r, phase: 'failed', error: t('web.continue.undoFailed', {title: r.title})}));
   };
   // The hero is the server's choice (the newer of the two Continue rows' first entries); a title
   // just removed from Continue Watching leaves the hero with the row.
-  const hero = useMemo(() => homeHero(document, currentI18n().t, {duration: formatDuration, hidden}), [document, hidden]);
+  const hero = useMemo(() => homeHero(document, t, {duration: formatDuration, hidden}), [document, hidden, t]);
   // WEB-HOME-02: the eyebrow is the row's name, never the server name.
   const heroEyebrow = hero ? homeRowTitle(hero.row.id, hero.row.title, libraryName, hero.row.titleText) : undefined;
   const rows = useMemo(() => (document?.rows ?? []).map(r => (hidden.size && r.id === 'continue' ? {...r, entries: r.entries.filter(e => !hidden.has(e.id))} : isRecommendationRow(r) ? withoutHidden(r, notInterested.hidden) : r)).filter(r => r.entries.length), [document, hidden, notInterested.hidden]);
   return (
     // Home's heading is the featured title, so the page names itself for the document title.
-    <div style={{position: 'relative'}} data-page-title={currentI18n().t('web.shell.home')}>
+    <div style={{position: 'relative'}} data-page-title={t('web.shell.home')}>
       {hero ? <Backdrop path={hero.entry.backdropUrl ?? hero.entry.posterUrl} height="min(72vh, 760px)" opacity={hero.art === 'backdrop' ? 0.8 : 0.45} className={hero.art === 'cover' ? s.soft : undefined} /> : null}
       <Page>
         {hero ? (
           <Hero hero={hero} eyebrow={heroEyebrow} onPlay={() => open(hero.entry, 'play')} onDetails={() => open(hero.entry)} />
         ) : (
-          <PageHeader eyebrow={system?.name ?? currentI18n().t('web.home.serverFallback')} title={currentI18n().t('web.shell.home')} />
+          <PageHeader eyebrow={system?.name ?? t('web.home.serverFallback')} title={t('web.shell.home')} />
         )}
         <div className={s.body}>
           {/* WEB-HOME-04: Customize sits where people look for it, above the rows. */}
-          {document ? <Inset><div className={s.customize}><Button variant="ghost" size="sm" icon="sliders" label={currentI18n().t('home.customize.action')} onClick={() => setCustomise(true)} /></div></Inset> : null}
+          {document ? <Inset><div className={s.customize}><Button variant="ghost" size="sm" icon="sliders" label={t('home.customize.action')} onClick={() => setCustomise(true)} /></div></Inset> : null}
           {removal ? (
             <Inset>
               {removal.error ? <Notice tone="error" compact>{removal.error}</Notice> : (
-                <Notice tone="info" compact action={{label: currentI18n().t('web.continue.undo'), onClick: () => undo(removal), loading: removal.phase === 'pending'}}>{currentI18n().t('web.continue.removed', {title: removal.title})}</Notice>
+                <Notice tone="info" compact action={{label: t('web.continue.undo'), onClick: () => undo(removal), loading: removal.phase === 'pending'}}>{t('web.continue.removed', {title: removal.title})}</Notice>
               )}
             </Inset>
           ) : null}
           {state.phase === 'loading' && !document ? <LoadingShelves /> : null}
           {state.phase === 'error' && !document ? <ErrorState error={state.error} context="home" retry={refresh} refresh={refresh} /> : null}
           {state.phase === 'error' && document ? <Inset><ErrorNotice error={state.error} context="home" retry={refresh} refresh={refresh} /></Inset> : null}
-          {rows.map(row => <SectionView key={row.id} section={sectionOf(row, libraryName)} libraryId={row.libraryId} onMore={row.nextCursor && !state.paging.has(row.id) ? () => void more(row.id) : undefined} onSeeAll={homeViewResourceId(row.id) ? () => seeAllView(homeViewResourceId(row.id)!, row) : row.libraryId ? () => seeAll(row) : isRecommendationRow(row) ? () => seeAllRow(row) : undefined} alwaysSeeAll={!!homeViewResourceId(row.id)} noSelect origin={isRecommendationRow(row) ? 'recommendation' : undefined} />)}
-          {document && !rows.length && !hero ? (!libraries.items.length && !libraries.loading ? <NoLibraries where="home" /> : <StateView icon="home" title={currentI18n().t('web.empty.homeTitle')} body={currentI18n().t(owner ? 'web.empty.homeOwnerBody' : 'web.empty.homeMemberBody')} />) : null}
+          {rows.map(row => <SectionView key={row.id} section={sectionOf(row, libraryName)} libraryId={row.libraryId} onMore={row.nextCursor && !state.paging.has(row.id) ? () => void more(row.id) : undefined} onSeeAll={row.seeAll || row.libraryId || isRecommendationRow(row) ? () => seeAll(row) : undefined} alwaysSeeAll={row.seeAll?.type === 'saved_view'} noSelect origin={isRecommendationRow(row) ? 'recommendation' : undefined} />)}
+          {document && !rows.length && !hero ? (!libraries.items.length && !libraries.loading ? <NoLibraries where="home" /> : <StateView icon="home" title={t('web.empty.homeTitle')} body={t(owner ? 'web.empty.homeOwnerBody' : 'web.empty.homeMemberBody')} />) : null}
         </div>
       </Page>
       {document ? <CustomiseHome open={customise} onClose={() => setCustomise(false)} onSave={saveLayout} onReset={resetLayout} loadLayout={loadLayout} /> : null}
@@ -111,6 +118,7 @@ function sectionOf(row: HomeRow, libraryName: (id: string) => string | undefined
 
 /** Home's hero. Every word on it comes from `homeHero` (client-core), so each client says the same. */
 export function Hero({hero, eyebrow, onPlay, onDetails}: {hero: HomeHero; eyebrow?: string; onPlay: () => void; onDetails: () => void}) {
+  const {t} = useI18n();
   const {entry} = hero;
   return (
     <section className={cx(s.hero, hero.art === 'cover' && s.withCover)} aria-label={hero.title}>
@@ -124,7 +132,7 @@ export function Hero({hero, eyebrow, onPlay, onDetails}: {hero: HomeHero; eyebro
         {hero.progress > 0 ? <div className={s.progress}><ProgressBar value={hero.progress} thin label={hero.title} /></div> : null}
         <div className={s.actions}>
           {entry.playback ? <Button variant="primary" size="lg" icon="play" label={hero.playLabel} onClick={onPlay} /> : null}
-          <Button variant="secondary" size="lg" icon="info" label={currentI18n().t('web.home.details')} onClick={onDetails} />
+          <Button variant="secondary" size="lg" icon="info" label={t('web.home.details')} onClick={onDetails} />
         </div>
       </div>
     </section>

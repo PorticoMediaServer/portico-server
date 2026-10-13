@@ -3,7 +3,11 @@ import type {LocalSession,Viewer} from './index.ts';
 
 /** This record is an expiring server credential, never an account credential. */
 export type SelectedViewerRecord=Readonly<{version:1;serverUrl:string;session:LocalSession}>;
-export interface SelectedViewerStorage {read():Promise<SelectedViewerRecord|null>;write(record:SelectedViewerRecord|null):Promise<void>}
+export interface SelectedViewerStorage {
+ read():Promise<SelectedViewerRecord|null>;write(record:SelectedViewerRecord|null):Promise<void>;
+ /** Removes the saved record only when it is the given sign-in's, as one step where the store can. Absent: read, compare, then write. */
+ clearIfFamily?(sessionFamilyId:string):Promise<void>;
+}
 export type SelectionHandoff={
  current():SelectedViewerRecord|null;
  /** Fence playback, asynchronous reads, subscriptions and private UI before returning. */
@@ -83,11 +87,24 @@ export class ViewerSelectionCommit {
    if(published&&old&&old.session.accessToken!==candidate.session.accessToken){const prior=old;void h.revoke(prior).catch(()=>h.cleanupFailed?.(prior));}
   }
  }
- /** Linearizes sign-out after any in-flight storage write. */
- async clear():Promise<void>{
+ /** Linearizes sign-out after any in-flight storage write.
+  * `retiring` is the sign-in that is ending here. The saved record is shared by every tab of the
+  * browser: when another tab has since chosen a different profile, the record is that tab's, and
+  * an old tab finding its own sign-in ended must not erase it. Without `retiring` (nothing was
+  * signed in here, or the person asked to forget the server) the record is removed whatever it is.
+  */
+ async clear(retiring?:Readonly<{sessionFamilyId:string}>):Promise<void>{
   if(this.clearing)return this.clearing;
   ++this.generation;this.abort?.abort();const pending=this.serial;
-  const task=(async()=>{await pending;await this.storage.write(null);})();this.clearing=task;
+  const task=(async()=>{
+   await pending;
+   if(!retiring){await this.storage.write(null);return;}
+   if(this.storage.clearIfFamily){await this.storage.clearIfFamily(retiring.sessionFamilyId);return;}
+   let saved:SelectedViewerRecord|null=null,readable=true;
+   try{saved=await this.storage.read();}catch{readable=false;}
+   // A record that cannot be read is no use to any tab: it goes, as before.
+   if(!readable||saved?.session.sessionFamilyId===retiring.sessionFamilyId)await this.storage.write(null);
+  })();this.clearing=task;
   try{await task;}finally{if(this.clearing===task)this.clearing=undefined;}
  }
 }

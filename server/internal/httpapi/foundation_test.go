@@ -178,7 +178,8 @@ func TestFoundationContractAndReplay(t *testing.T) {
 	var updateDocument struct {
 		State string `json:"state"`
 	}
-	if err := json.Unmarshal(updates.Body.Bytes(), &updateDocument); err != nil || updateDocument.State != "unconfigured" {
+	// The default release feed is configured, but this fixture has no fetcher.
+	if err := json.Unmarshal(updates.Body.Bytes(), &updateDocument); err != nil || updateDocument.State != "unavailable" {
 		t.Fatalf("owner updates document: %+v %v", updateDocument, err)
 	}
 	conditionalUpdates := httptest.NewRequest("GET", "/v1/admin/updates", nil)
@@ -473,8 +474,10 @@ func TestTypedProfileRestrictionsAuthorityRevisionAndContract(t *testing.T) {
 	if w := put(path, owner.AccessToken, edit); w.Code != 412 {
 		t.Fatalf("stale restrictions: %d %s", w.Code, w.Body.String())
 	}
-	if w := logoutHTTPRequest(h, "GET", path, child.Session.AccessToken); w.Code != 401 {
-		t.Fatalf("old child family survived policy change: %d %s", w.Code, w.Body.String())
+	// The change applies live: the child's device stays signed in and reads
+	// the new document on its next request.
+	if w := logoutHTTPRequest(h, "GET", path, child.Session.AccessToken); w.Code != 200 || !strings.Contains(w.Body.String(), `"maximumAge":13`) {
+		t.Fatalf("the child's session after a restriction change: %d %s", w.Code, w.Body.String())
 	}
 	primary := put("/v1/direct/profiles/profile/restrictions", owner.AccessToken, edit)
 	if primary.Code != 200 {

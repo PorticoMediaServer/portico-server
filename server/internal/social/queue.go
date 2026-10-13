@@ -95,8 +95,8 @@ type participant struct {
 	viewer          identity.Viewer
 }
 
-func joinedParticipants(ctx context.Context, tx *sql.Tx, group string) ([]participant, error) {
-	rows, e := tx.QueryContext(ctx, `SELECT id,display_name,authority,account_id,profile_id FROM social_group_members WHERE group_id=? AND state='joined' ORDER BY joined_at_ms,id`, group)
+func joinedParticipants(ctx context.Context, tx *sql.Tx, group string, activeSince int64) ([]participant, error) {
+	rows, e := tx.QueryContext(ctx, `SELECT id,display_name,authority,account_id,profile_id,`+watchTogetherVisible("m")+` FROM social_group_members m WHERE group_id=? AND state='joined' AND max(seen_at_ms,joined_at_ms)>? ORDER BY joined_at_ms,id`, group, activeSince)
 	if e != nil {
 		return nil, e
 	}
@@ -104,8 +104,12 @@ func joinedParticipants(ctx context.Context, tx *sql.Tx, group string) ([]partic
 	var out []participant
 	for rows.Next() {
 		var p participant
-		if e = rows.Scan(&p.id, &p.displayName, &p.viewer.Authority, &p.viewer.AccountID, &p.viewer.ProfileID); e != nil {
+		var public bool
+		if e = rows.Scan(&p.id, &p.displayName, &p.viewer.Authority, &p.viewer.AccountID, &p.viewer.ProfileID, &public); e != nil {
 			return nil, e
+		}
+		if !public {
+			p.displayName = "Viewer"
 		}
 		out = append(out, p)
 	}
@@ -146,9 +150,12 @@ func (s *Store) projectQueue(ctx context.Context, tx *sql.Tx, p identity.Princip
 	if e != nil {
 		return nil, e
 	}
-	people, e := joinedParticipants(ctx, tx, g.id)
+	people, e := joinedParticipants(ctx, tx, g.id, s.ms()-MemberStaleSeconds*1000)
 	if e != nil {
 		return nil, e
+	}
+	if m.role != "host" {
+		people = []participant{{id: m.id, viewer: p.Viewer}}
 	}
 	items := make([]string, 0, len(rows))
 	for _, r := range rows {

@@ -19,7 +19,7 @@ test('subtitle rendition handoff preserves occurrence, pause, pending seek and e
 });
 test('burn-in wire plans never expose private assets as text documents or origin URLs',()=>{
  const valid=plan(2,true);assert.equal(validateSubtitlePlan(valid).renderer,'burn_in');
- for(const change of [(p:any)=>p.documentUrl='/v1/media/grant/subtitles/sub/1',(p:any)=>p.presentation.streamUrl='https://origin.invalid/private',(p:any)=>p.presentation.generation=3,(p:any)=>p.selected.renderer='external_text']){const p=structuredClone(valid);change(p);assert.throws(()=>validateSubtitlePlan(p));}
+ for(const change of [(p:any)=>p.documentUrl='/v1/media/subtitles/grant/sub/1',(p:any)=>p.presentation.streamUrl='https://origin.invalid/private',(p:any)=>p.presentation.generation=3,(p:any)=>p.selected.renderer='external_text']){const p=structuredClone(valid);change(p);assert.throws(()=>validateSubtitlePlan(p));}
 });
 test('lost burn-in acknowledgement replays the same CAS operation and installs only committed generations',async()=>{
  let current=plan(),failed=false;const writes:any[]=[];const installs:any[]=[];
@@ -31,4 +31,10 @@ test('rejected preparation does not suppress the currently burned subtitle video
  const api:LibraryContentApi={request:async(path:string,method='GET')=>{if(method==='GET')return (path.includes('/playback/')?plan(2,true):catalog) as any;throw Object.assign(new Error('preparation failed'),{status:503});}};
  const service=new SubtitleService(api,{itemId:'movie',sessionId:'session',generation:2},()=> 'retry',{positionUs:()=> '2000000',install:()=>true});
  service.start();await flush();await service.choose(null);assert.equal(service.getSnapshot().plan?.renderer,'burn_in');assert.equal(service.getSnapshot().suppressed,false);assert.equal(service.getSnapshot().canRetry,true);service.stop();
+});
+test('reading an unchanged subtitle generation never replays a historical presentation',async()=>{
+ let installs=0;
+ const api:LibraryContentApi={request:async(path:string)=> (path.includes('/playback/')?plan(2,true):catalog) as any};
+ const service=new SubtitleService(api,{itemId:'movie',sessionId:'session',generation:2},()=> 'same',{positionUs:()=> '42000000',install:()=>{installs++;return true;}});
+ service.start();await flush();assert.equal(service.getSnapshot().plan?.generation,2);assert.equal(installs,0);service.stop();
 });

@@ -27,6 +27,10 @@ type Invitation struct {
 	AcceptedAt       string   `json:"acceptedAt,omitempty"`
 	AccountID        string   `json:"accountId,omitempty"`
 	Revision         int64    `json:"revision"`
+	// PorticoUsername, when set, is the one Portico Account this invitation is
+	// for: only that account can accept it, and it cannot be used to create a
+	// password account. Empty means whoever holds the code.
+	PorticoUsername string `json:"porticoUsername,omitempty"`
 	// Code is present only on the response that creates the invitation.
 	Code string `json:"code,omitempty"`
 }
@@ -42,6 +46,8 @@ type InvitationRequest struct {
 	Role             string   `json:"role"`
 	AllowedLibraries []string `json:"allowedLibraries"`
 	ExpiresInHours   int      `json:"expiresInHours"`
+	// PorticoUsername binds the invitation to one Portico Account (optional).
+	PorticoUsername string `json:"porticoUsername,omitempty"`
 }
 
 // InvitationPreview contains only what the unauthenticated join page needs.
@@ -52,6 +58,10 @@ type InvitationPreview struct {
 	ExpiresAt    string `json:"expiresAt"`
 	Role         string `json:"role"`
 	LibraryCount int    `json:"libraryCount"`
+	// ForPorticoAccount says the invitation is for one particular Portico
+	// Account, so the join page offers that sign-in and not a new password
+	// account. Which account is not said.
+	ForPorticoAccount bool `json:"forPorticoAccount,omitempty"`
 }
 
 type InvitationPreviewRequest struct {
@@ -59,6 +69,22 @@ type InvitationPreviewRequest struct {
 }
 
 var ErrInvitationNotFound = errors.New("invitation not found")
+
+// ErrInvitationRecipient is an invitation presented by someone other than the
+// account it was made for.
+var ErrInvitationRecipient = errors.New("This invitation is for a different account.")
+
+// boundUsername normalises the Portico Account username an invitation is for.
+func boundUsername(raw string) (string, bool) {
+	v := strings.ToLower(strings.TrimSpace(raw))
+	if v == "" {
+		return "", true
+	}
+	if len(v) > 64 || !safeText(v, 64) || strings.ContainsAny(v, " \t\r\n") {
+		return "", false
+	}
+	return v, true
+}
 
 func maskedInvitationEmail(email string) string {
 	if email == "" {
@@ -79,9 +105,9 @@ func (s *Store) Preview(ctx context.Context, code string) (out InvitationPreview
 		return out, ErrInvitationNotFound
 	}
 	err = s.snapshot(ctx, nil, func(tx *sql.Tx) error {
-		var email, libraries string
+		var email, libraries, bound string
 		var expiry int64
-		e := tx.QueryRowContext(ctx, `SELECT email,role,allowed_libraries,expires_ms FROM access_invitations WHERE code_hash=? AND state='pending' AND expires_ms>?`, digest(code), s.now()).Scan(&email, &out.Role, &libraries, &expiry)
+		e := tx.QueryRowContext(ctx, `SELECT email,role,allowed_libraries,expires_ms,bound_username FROM access_invitations WHERE code_hash=? AND state='pending' AND expires_ms>?`, digest(code), s.now()).Scan(&email, &out.Role, &libraries, &expiry, &bound)
 		if errors.Is(e, sql.ErrNoRows) {
 			return ErrInvitationNotFound
 		}
@@ -95,6 +121,7 @@ func (s *Store) Preview(ctx context.Context, code string) (out InvitationPreview
 		out.Email = maskedInvitationEmail(email)
 		out.ExpiresAt = time.UnixMilli(expiry).UTC().Format(time.RFC3339)
 		out.LibraryCount = len(ids)
+		out.ForPorticoAccount = bound != ""
 		return nil
 	})
 	return
@@ -122,7 +149,7 @@ func invitationRow(row interface{ Scan(...any) error }) (Invitation, error) {
 	var created, expires int64
 	var accepted sql.NullInt64
 	var account sql.NullString
-	if e := row.Scan(&v.ID, &v.Email, &v.Role, &libraries, &v.State, &created, &expires, &accepted, &account, &v.Revision); e != nil {
+	if e := row.Scan(&v.ID, &v.Email, &v.Role, &libraries, &v.State, &created, &expires, &accepted, &account, &v.Revision, &v.PorticoUsername); e != nil {
 		return v, e
 	}
 	if e := json.Unmarshal([]byte(libraries), &v.AllowedLibraries); e != nil {
@@ -142,7 +169,7 @@ func invitationRow(row interface{ Scan(...any) error }) (Invitation, error) {
 	return v, nil
 }
 
-const invitationColumns = `id,email,role,allowed_libraries,state,created_ms,expires_ms,accepted_ms,account_id,revision`
+const invitationColumns = `id,email,role,allowed_libraries,state,created_ms,expires_ms,accepted_ms,account_id,revision,bound_username`
 
 // Invite creates a pending invitation. actor is the caller's tier: an admin may
 // invite members only, because identity.ManagesTier forbids creating a peer.
@@ -157,6 +184,10 @@ func (s *Store) Invite(ctx context.Context, auth Authorize, actor identity.Princ
 			return out, invalid("email")
 		}
 	}
+	bound, ok := boundUsername(q.PorticoUsername)
+	if !ok {
+		return out, invalid("porticoUsername")
+	}
 	if q.Role == "" {
 		q.Role = identity.TierMember
 	}
@@ -164,7 +195,7 @@ func (s *Store) Invite(ctx context.Context, auth Authorize, actor identity.Princ
 		return out, invalid("role")
 	}
 	if !identity.ManagesTier(actor.Role, q.Role) {
-		return out, identity.ErrUnauthorized
+		return out, identity.ErrForbidden
 	}
 	if q.AllowedLibraries == nil {
 		q.AllowedLibraries = []string{}
@@ -221,8 +252,8 @@ func (s *Store) Invite(ctx context.Context, auth Authorize, actor identity.Princ
 		libraries, _ := json.Marshal(q.AllowedLibraries)
 		id := token()[:22]
 		expires := now + int64(q.ExpiresInHours)*int64(time.Hour/time.Millisecond)
-		if _, e = tx.ExecContext(ctx, `INSERT INTO access_invitations(id,email,code_hash,role,allowed_libraries,state,created_ms,expires_ms,created_by,revision) VALUES(?,?,?,?,?,'pending',?,?,?,1)`,
-			id, email, digest(code), q.Role, string(libraries), now, expires, actor.AccountID); e != nil {
+		if _, e = tx.ExecContext(ctx, `INSERT INTO access_invitations(id,email,code_hash,role,allowed_libraries,state,created_ms,expires_ms,created_by,revision,bound_username) VALUES(?,?,?,?,?,'pending',?,?,?,1,?)`,
+			id, email, digest(code), q.Role, string(libraries), now, expires, actor.AccountID, bound); e != nil {
 			return e
 		}
 		if out, e = invitationRow(tx.QueryRowContext(ctx, `SELECT `+invitationColumns+` FROM access_invitations WHERE id=?`, id)); e != nil {
@@ -358,9 +389,9 @@ func (s *Store) Accept(ctx context.Context, q Acceptance, hash []byte) (out Memb
 		return out, invalid("name")
 	}
 	err = s.transaction(ctx, nil, func(tx *sql.Tx) error {
-		var id, email, role, libraries string
+		var id, email, role, libraries, bound string
 		var expires int64
-		e := tx.QueryRowContext(ctx, `SELECT id,email,role,allowed_libraries,expires_ms FROM access_invitations WHERE code_hash=? AND state='pending'`, digest(code)).Scan(&id, &email, &role, &libraries, &expires)
+		e := tx.QueryRowContext(ctx, `SELECT id,email,role,allowed_libraries,expires_ms,bound_username FROM access_invitations WHERE code_hash=? AND state='pending'`, digest(code)).Scan(&id, &email, &role, &libraries, &expires, &bound)
 		if errors.Is(e, sql.ErrNoRows) {
 			return ErrExpired
 		}
@@ -370,6 +401,11 @@ func (s *Store) Accept(ctx context.Context, q Acceptance, hash []byte) (out Memb
 		now := s.now()
 		if expires <= now {
 			return ErrExpired
+		}
+		// An invitation made for one Portico Account cannot become a password
+		// account for whoever happens to hold the code.
+		if bound != "" {
+			return ErrInvitationRecipient
 		}
 		var taken bool
 		if e = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM accounts WHERE username=?)`, username).Scan(&taken); e != nil {
@@ -415,7 +451,8 @@ type PorticoAcceptance struct {
 // AcceptPortico is Accept for a Portico Account. A Hosted account that is
 // already a member keeps its account. An invitation only grants access where
 // there is none: it sets the tier and libraries of the membership it creates,
-// and restores a disabled membership with exactly its own tier and libraries.
+// and restores a turned-off membership with exactly its own tier and
+// libraries, provided the invitation is newer than the turning off.
 // An active member (and always the owner) is returned unchanged, because a
 // link opened by the wrong account must neither demote nor promote it; the
 // owner changes an active member through member management.
@@ -436,9 +473,9 @@ func (s *Store) AcceptPortico(ctx context.Context, q PorticoAcceptance, signIn f
 		name = username
 	}
 	err = s.transaction(ctx, nil, func(tx *sql.Tx) error {
-		var id, role, libraries string
-		var expires int64
-		e := tx.QueryRowContext(ctx, `SELECT id,role,allowed_libraries,expires_ms FROM access_invitations WHERE code_hash=? AND state='pending'`, digest(code)).Scan(&id, &role, &libraries, &expires)
+		var id, role, libraries, bound string
+		var expires, invited int64
+		e := tx.QueryRowContext(ctx, `SELECT id,role,allowed_libraries,expires_ms,created_ms,bound_username FROM access_invitations WHERE code_hash=? AND state='pending'`, digest(code)).Scan(&id, &role, &libraries, &expires, &invited, &bound)
 		if errors.Is(e, sql.ErrNoRows) {
 			return ErrExpired
 		}
@@ -448,6 +485,9 @@ func (s *Store) AcceptPortico(ctx context.Context, q PorticoAcceptance, signIn f
 		now := s.now()
 		if expires <= now {
 			return ErrExpired
+		}
+		if bound != "" && bound != strings.ToLower(strings.TrimSpace(q.Username)) {
+			return ErrInvitationRecipient
 		}
 		var account string
 		created := 0
@@ -481,6 +521,20 @@ func (s *Store) AcceptPortico(ctx context.Context, q PorticoAcceptance, signIn f
 			}
 		} else if e != nil {
 			return e
+		} else {
+			// The account is already here. If it is turned off, this invitation
+			// brings it back only when it was made after the account was turned
+			// off: a later decision (the owner turning someone off, or the
+			// person leaving) is not undone by an older invitation that
+			// happened to be lying around. Inviting them again does it.
+			var disabled bool
+			var disabledMs int64
+			if e = tx.QueryRowContext(ctx, `SELECT disabled,disabled_ms FROM direct_memberships WHERE account_id=?`, account).Scan(&disabled, &disabledMs); e != nil {
+				return e
+			}
+			if disabled && invited < disabledMs {
+				return ErrExpired
+			}
 		}
 		if _, e = tx.ExecContext(ctx, `UPDATE direct_memberships SET role=?,allowed_libraries=?,disabled=0,revision=revision+1 WHERE account_id=? AND role<>'owner' AND (?<>0 OR disabled<>0)`, role, libraries, account, created); e != nil {
 			return e
@@ -508,4 +562,46 @@ func HashPassword(password string) ([]byte, error) {
 		return nil, invalid("password")
 	}
 	return bcrypt.GenerateFromPassword([]byte(password), identity.PasswordCost)
+}
+
+// RedeemForRegistrationTx spends a member invitation for an account that
+// self-registration has just created, inside the registration's transaction,
+// and returns the libraries it grants. It runs after the username was found
+// free, so a name clash never costs the invitee their code. Self-registration
+// only ever creates plain members, so an administrator's invitation, and one
+// made for a particular Portico Account, are refused here and stay usable
+// through the invitation link.
+func RedeemForRegistrationTx(ctx context.Context, tx *sql.Tx, code, account string, now int64) ([]string, error) {
+	code = strings.TrimSpace(code)
+	if len(code) < 32 || len(code) > 128 || !validID(account) {
+		return nil, identity.ErrRegistrationInvite
+	}
+	var id, role, libraries, bound string
+	var expires int64
+	e := tx.QueryRowContext(ctx, `SELECT id,role,allowed_libraries,expires_ms,bound_username FROM access_invitations WHERE code_hash=? AND state='pending'`, digest(code)).Scan(&id, &role, &libraries, &expires, &bound)
+	if errors.Is(e, sql.ErrNoRows) {
+		return nil, identity.ErrRegistrationInvite
+	}
+	if e != nil {
+		return nil, e
+	}
+	if expires <= now || role != identity.TierMember || bound != "" {
+		return nil, identity.ErrRegistrationInvite
+	}
+	var ids []string
+	if e = json.Unmarshal([]byte(libraries), &ids); e != nil {
+		return nil, e
+	}
+	if _, e = tx.ExecContext(ctx, `UPDATE access_invitations SET state='accepted',accepted_ms=?,account_id=?,revision=revision+1 WHERE id=? AND state='pending'`, now, account, id); e != nil {
+		return nil, e
+	}
+	return ids, nil
+}
+
+// RegistrationRedeemer is RedeemForRegistrationTx in the shape the identity
+// service installs (identity.Service.RedeemInvitation).
+func (s *Store) RegistrationRedeemer() identity.InvitationRedeemer {
+	return func(ctx context.Context, tx *sql.Tx, code, account string) ([]string, error) {
+		return RedeemForRegistrationTx(ctx, tx, code, account, s.now())
+	}
 }

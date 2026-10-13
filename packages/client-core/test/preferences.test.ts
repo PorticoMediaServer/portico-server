@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {parsePreferenceSnapshot,currentPreferenceSnapshot,preferenceValue,preferenceGroups,validatePreferencePatch,type PreferenceSnapshot} from '../src/preferences.ts';
+import {resetSkippedParts,skippedParts} from '../src/tolerant.ts';
 
 const digest='a'.repeat(64);
 const fields=[
@@ -50,10 +51,56 @@ test('the parser refuses a shape the server would not publish',()=>{
  assert.throws(()=>parsePreferenceSnapshot(snapshot({documents:[snapshot().documents[0],snapshot().documents[0]]})));
  assert.throws(()=>parsePreferenceSnapshot(snapshot({documents:[{...snapshot().documents[0],digest:'invalid'},snapshot().documents[1]]})));
  assert.throws(()=>parsePreferenceSnapshot(snapshot({documents:[{...snapshot().documents[0],activeRevision:9},snapshot().documents[1]]})));
- // a registry field whose default is outside its own published domain
- assert.throws(()=>parsePreferenceSnapshot(snapshot({registry:{revision:'p39.A1',fields:[{...fields[1],default:3.5}]}})));
- // a label key that does not name its field
- assert.throws(()=>parsePreferenceSnapshot(snapshot({registry:{revision:'p39.A1',fields:[{...fields[0],labelKey:'preferences.other'}]}})));
+ // a document revision that is missing, zero or not a number, or a document that is missing
+ assert.throws(()=>parsePreferenceSnapshot(snapshot({documents:[{...snapshot().documents[0],revision:0,activeRevision:0},snapshot().documents[1]]})));
+ assert.throws(()=>parsePreferenceSnapshot(snapshot({documents:[{...snapshot().documents[0],revision:'1',activeRevision:'1'},snapshot().documents[1]]})));
+ assert.throws(()=>parsePreferenceSnapshot(snapshot({documents:[snapshot().documents[0]]})));
+ assert.throws(()=>parsePreferenceSnapshot(snapshot({documents:[snapshot().documents[0],{...snapshot().documents[1],scope:'account'}]})));
+ // more fields than a registry carries, or none at all
+ assert.throws(()=>parsePreferenceSnapshot(snapshot({registry:{revision:'p39.A1',fields:Array.from({length:501},()=>fields[0])}})));
+ assert.throws(()=>parsePreferenceSnapshot(snapshot({registry:{revision:'p39.A1',fields:[]}})));
+ assert.throws(()=>parsePreferenceSnapshot(snapshot({registry:{revision:'p39.A1',fields:{}}})));
+});
+
+test('a field whose definition cannot be read is left out with its values, and the rest of the snapshot is kept',()=>{
+ const unreadable:Record<string,unknown>[]=[
+  {...fields[1],default:3.5},                                   // a default outside its own published domain
+  {...fields[0],labelKey:'preferences.other'},                   // a label key that does not name its field
+  {...fields[3],scopes:['profile-server','account']},            // a scope this client does not know
+  {...fields[4],allowedValues:[]},                               // an option list with nothing in it
+  {...fields[5],min:2,max:1},                                    // limits that contradict each other
+  {...fields[2],group:''},                                       // no group to show it under
+ ];
+ for(const bad of unreadable){
+  resetSkippedParts();
+  const parsed=parsePreferenceSnapshot(snapshot({registry:{revision:'p39.A1',fields:fields.map(field=>field.key===bad.key?bad:field)},futureField:1}));
+  assert.deepEqual(parsed.registry.fields.map(field=>field.key),fields.filter(field=>field.key!==bad.key).map(field=>field.key));
+  assert.equal(bad.key as string in parsed.effective,false);
+  assert.equal(bad.key as string in parsed.effectiveSource,false);
+  assert.equal(parsed.clampedFields.includes(bad.key as string),false);
+  for(const document of parsed.documents)assert.equal(bad.key as string in document.values,false);
+  assert.throws(()=>preferenceValue(parsed,bad.key as string));
+  assert.deepEqual(parsed.documents.map(document=>document.revision),[1,1]);
+  assert.deepEqual(skippedParts(),[{document:'preferences',part:'registry.fields',count:1}]);
+ }
+ // Entries that are not fields at all, and a field under a key this client cannot address, go the same way.
+ const odd=parsePreferenceSnapshot(snapshot({registry:{revision:'p39.A1',fields:[null,'field',{type:'boolean'},{...fields[3],key:'Search_History',labelKey:'preferences.Search_History'},...fields]},
+  effective:{...snapshot().effective,'Search_History':true},effectiveSource:{...snapshot().effectiveSource,'Search_History':'default'}}));
+ assert.equal(odd.registry.fields.length,fields.length);
+ assert.equal('Search_History' in odd.effective,false);
+});
+
+test('a key published twice keeps its first field',()=>{
+ const twice=parsePreferenceSnapshot(snapshot({registry:{revision:'p39.A1',fields:[...fields,{...fields[0],default:80}]}}));
+ assert.equal(twice.registry.fields.length,fields.length);
+ assert.equal(twice.registry.fields[0].default,95);
+ // An unreadable first field is not replaced by a later one under the same key.
+ const hidden=parsePreferenceSnapshot(snapshot({registry:{revision:'p39.A1',fields:[{...fields[0],type:'colour'},...fields]}}));
+ assert.equal(hidden.registry.fields.some(field=>field.key===fields[0].key),false);
+ assert.equal(fields[0].key in hidden.effective,false);
+ // A readable first field keeps its values when a later repeat is unreadable.
+ const kept=parsePreferenceSnapshot(snapshot({registry:{revision:'p39.A1',fields:[...fields,{...fields[0],type:'colour'}]}}));
+ assert.equal(kept.effective[fields[0].key],95);
 });
 
 test('late preference reads cannot regress a newer applied revision in the same scope',()=>{
@@ -103,5 +150,7 @@ test('the server’s semantic types and labelled options parse; a type this clie
  assert.deepEqual(parsed.registry.fields.find(f=>f.key==='quality.wifi.maxVideoBitrateMbps')!.allowedValues,[0,20]);
  assert.equal(parsed.registry.fields.some(f=>f.key==='future.thing'),false,'an unknown type is left out');
  assert.equal('future.thing' in parsed.effective,false);
- assert.throws(()=>parsePreferenceSnapshot(snapshot({registry:{revision:'p39.A1',fields:[...fields,{...extra[3],default:5}]},effective:{...snapshot().effective,'quality.wifi.maxVideoBitrateMbps':0},effectiveSource:{...snapshot().effectiveSource,'quality.wifi.maxVideoBitrateMbps':'default'}})),'a default outside the labelled options is still refused');
+ const outside=parsePreferenceSnapshot(snapshot({registry:{revision:'p39.A1',fields:[...fields,{...extra[3],default:5}]},effective:{...snapshot().effective,'quality.wifi.maxVideoBitrateMbps':0},effectiveSource:{...snapshot().effectiveSource,'quality.wifi.maxVideoBitrateMbps':'default'}}));
+ assert.equal(outside.registry.fields.some(f=>f.key==='quality.wifi.maxVideoBitrateMbps'),false,'a field whose default is outside its labelled options is left out');
+ assert.equal(outside.registry.fields.length,fields.length);
 });

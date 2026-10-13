@@ -70,7 +70,7 @@ func TestViewerMarkersProjectSkipDecisionAndHideDismissedAndOwnerKinds(t *testin
 	for _, m := range set.Markers {
 		safe[m.ID] = m.AutomaticSafe
 	}
-	if len(set.Markers) != 4 {
+	if len(set.Markers) != 3 {
 		t.Fatalf("projected markers=%+v", set.Markers)
 	}
 	if _, ok := safe["dismissed-outro"]; ok {
@@ -79,7 +79,10 @@ func TestViewerMarkersProjectSkipDecisionAndHideDismissedAndOwnerKinds(t *testin
 	if _, ok := safe["owner-chapter"]; ok {
 		t.Fatal("an owner-only kind reached the viewer path")
 	}
-	for id, want := range map[string]bool{"approved-intro": true, "measured-credits": true, "weak-commercial": false, "titled-recap": false} {
+	if _, ok := safe["weak-commercial"]; ok {
+		t.Fatal("an unreviewed scene guess reached the viewer")
+	}
+	for id, want := range map[string]bool{"approved-intro": true, "measured-credits": true, "titled-recap": false} {
 		if got, ok := safe[id]; !ok || got != want {
 			t.Fatalf("%s automaticSafe=%v present=%v want %v", id, got, ok, want)
 		}

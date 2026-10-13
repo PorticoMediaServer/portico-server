@@ -2,7 +2,6 @@ package backup
 
 import (
 	"context"
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -34,6 +33,8 @@ type StageResult struct {
 // restoreMarker is restore-staged/restore.json: the one staged-restore marker.
 // Its states and how each resumes after a crash are described on ApplyStaged.
 type restoreMarker struct {
+	OperationID   string   `json:"operationId,omitempty"`
+	JobID         string   `json:"jobId,omitempty"`
 	State         string   `json:"state"`
 	Source        Source   `json:"source"`
 	SchemaVersion int      `json:"schemaVersion"`
@@ -60,6 +61,9 @@ func (s *Service) Stage(ctx context.Context, source Source) (StageResult, error)
 	if (source.BackupID == "") == (source.Path == "") {
 		return out, ErrSourceInvalid
 	}
+	if s.restoreUnavailable {
+		return out, ErrRestoreLockUnavailable
+	}
 	s.stageMu.Lock()
 	defer s.stageMu.Unlock()
 	// Staging replaces restore-staged; never while it holds a restore that has
@@ -67,6 +71,7 @@ func (s *Service) Stage(ctx context.Context, source Source) (StageResult, error)
 	if RestoreUnresolved(s.state) {
 		return out, ErrRestorePending
 	}
+	s.restoreProgress("verify-files", 0, 0)
 	srcDB, srcDir, files, err := s.resolveSource(source)
 	if err != nil {
 		return out, err
@@ -107,27 +112,37 @@ func (s *Service) Stage(ctx context.Context, source Source) (StageResult, error)
 			_ = os.RemoveAll(incoming)
 		}
 	}()
-	if _, err = copyOneFile(srcDB, filepath.Join(incoming, DatabaseName), DatabaseName); err != nil {
+	if _, err = copyOneFileContext(ctx, srcDB, filepath.Join(incoming, DatabaseName), DatabaseName, func(done, total int64) { s.restoreProgress("copy", done, total) }); err != nil {
 		return out, ErrSourceInvalid
 	}
-	if _, err = os.Stat(srcDB + "-wal"); err == nil {
-		_, _ = copyOneFile(srcDB+"-wal", filepath.Join(incoming, DatabaseName+"-wal"), DatabaseName+"-wal")
+	if wal, statErr := os.Lstat(srcDB + "-wal"); statErr == nil {
+		if !wal.Mode().IsRegular() {
+			return out, ErrSourceInvalid
+		}
+		if _, err = copyOneFileContext(ctx, srcDB+"-wal", filepath.Join(incoming, DatabaseName+"-wal"), DatabaseName+"-wal", nil); err != nil {
+			return out, ErrSourceInvalid
+		}
+	} else if !os.IsNotExist(statErr) {
+		return out, ErrSourceInvalid
 	}
 	for _, name := range files {
 		if _, err = copyOneFile(filepath.Join(srcDir, filepath.FromSlash(name)), filepath.Join(incoming, filepath.FromSlash(name)), name); err != nil {
 			return out, ErrSourceInvalid
 		}
 	}
+	s.restoreProgress("integrity", estimate, estimate)
 	schemaVersion, err := persistence.InspectCandidate(ctx, filepath.Join(incoming, DatabaseName))
 	if err != nil {
 		return out, err
 	}
 	marker := restoreMarker{State: markerStaged, Source: source, SchemaVersion: schemaVersion, Files: files}
-	raw, err := json.MarshalIndent(marker, "", "  ")
-	if err != nil {
-		return out, err
+	if progress := s.RestoreProgress(); progress != nil {
+		marker.JobID = progress.JobID
+		s.mu.Lock()
+		marker.OperationID = s.restoreOperation
+		s.mu.Unlock()
 	}
-	if err = os.WriteFile(filepath.Join(incoming, RestoreMarkerFile), append(raw, '\n'), 0600); err != nil {
+	if err = writeMarker(incoming, marker); err != nil {
 		return out, err
 	}
 	if err = os.MkdirAll(filepath.Dir(staged), 0700); err != nil {
@@ -144,6 +159,9 @@ func (s *Service) Stage(ctx context.Context, source Source) (StageResult, error)
 	}
 	if err = os.Rename(complete, staged); err != nil {
 		_ = os.RemoveAll(complete)
+		return out, err
+	}
+	if err = syncDirectory(s.state); err != nil {
 		return out, err
 	}
 	failed = false
@@ -179,7 +197,7 @@ func (s *Service) resolveSource(source Source) (db, dir string, files []string, 
 		if err = checkID(source.BackupID); err != nil {
 			return "", "", nil, ErrSourceInvalid
 		}
-		folder := filepath.Join(s.state, BackupsDir, source.BackupID)
+		folder := filepath.Join(s.backupRoot(), source.BackupID)
 		manifest, err := readManifest(folder)
 		if err != nil {
 			return "", "", nil, ErrSourceInvalid

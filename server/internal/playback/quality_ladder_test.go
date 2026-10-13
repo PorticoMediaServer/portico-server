@@ -83,7 +83,9 @@ func TestQualityLadderRespectsOwnerAndPolicy(t *testing.T) {
 
 	// A lane ceiling disables the rungs above it but still publishes them, so a
 	// client can say why the menu is short instead of inventing an explanation.
-	constrained := ResolveDeliveryPolicy(stubPreferences{"quality.cellular.maxVideoHeight": 720, "quality.cellular.maxVideoBitrateMbps": 8}, NetworkCellular, LocalityRemote, "cellular", DefaultDeliveryConfiguration())
+	limited := DefaultDeliveryConfiguration()
+	limited.MaxVideoHeight, limited.MaxVideoBitrateBPS = 720, 8_000_000
+	constrained := ResolveDeliveryPolicy(nil, NetworkRemote, LocalityRemote, "cellular", limited)
 	rungs := QualityOffers(2160, true, true, constrained)
 	for _, r := range rungs {
 		if r.Kind != QualityFixed {
@@ -117,7 +119,9 @@ func TestQualityOffersRevisionFencesSelection(t *testing.T) {
 		t.Fatal("revision is not stable for an unchanged ladder")
 	}
 	// The same ladder under a different lane is a different ladder.
-	other := ResolveDeliveryPolicy(stubPreferences{"quality.cellular.maxVideoHeight": 720}, NetworkCellular, LocalityRemote, "cellular", DefaultDeliveryConfiguration())
+	capped := DefaultDeliveryConfiguration()
+	capped.MaxVideoHeight = 720
+	other := ResolveDeliveryPolicy(nil, NetworkRemote, LocalityRemote, "cellular", capped)
 	if OffersRevision("asset", QualityOffers(1080, true, true, other), other) == revision {
 		t.Fatal("revision ignored the resolved policy")
 	}
@@ -138,7 +142,9 @@ func TestQualityOffersRevisionFencesSelection(t *testing.T) {
 }
 
 func TestQualityTargetNarrowsToTheStricterCeiling(t *testing.T) {
-	lane := ResolveDeliveryPolicy(stubPreferences{"quality.cellular.maxVideoHeight": 720, "quality.cellular.maxVideoBitrateMbps": 3, "quality.cellular.maxAudioBitrateKbps": 128}, NetworkCellular, LocalityRemote, "cellular", DefaultDeliveryConfiguration())
+	owner := DefaultDeliveryConfiguration()
+	owner.MaxVideoHeight, owner.MaxVideoBitrateBPS, owner.MaxAudioBitrateBPS = 720, 3_000_000, 128_000
+	lane := ResolveDeliveryPolicy(nil, NetworkRemote, LocalityRemote, "cellular", owner)
 	// A rung asking for more than the lane allows is narrowed to the lane.
 	wide := QualityRung{ID: "1080p", Kind: QualityFixed, TargetDisplayHeight: 1080, MaxVideoBitrateBPS: 8_000_000, MaxAudioBitrateBPS: 192_000}.Target(lane, 2160)
 	if wide.MaxVideoHeight != 720 || wide.MaxVideoBitrateBPS != 3_000_000 || wide.MaxAudioBitrateBPS != 128_000 {

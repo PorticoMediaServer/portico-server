@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { LibraryContentService, type ContentProjection, type ContentRoute, type LibraryContentApi } from '../src/library-content.ts';
+import { resetSkippedParts, skippedParts } from '../src/tolerant.ts';
 const scope = { viewerId: JSON.stringify(['hosted','account','profile']), serverId: 'server' };
 const route: ContentRoute = { libraryId: 'movies', view: 'browse' };
 function entry(id = 'item') { return { id, kind: 'movie', title: `Server title ${id}`, navigation: { view: 'item', entityId: id } }; }
@@ -44,19 +45,30 @@ test('provider synopsis line breaks survive the library projection boundary', as
   }
 });
 
-test('synopsis support does not relax unsafe controls or structural fields', async () => {
-  for (const fields of [{overview:'Unsafe\u0000text'}, {overview:'Unsafe\u000btext'}, {overview:'Unsafe\u007ftext'}, {overview:'x'.repeat(16385)}, {overview:42}, {overview:'Valid\r\ntext',title:'Invalid\nname'}, {overview:'Valid\ntext',posterUrl:'https://example.test/\nimage'}]) {
+test('synopsis support does not relax unsafe controls: unsafe text is never shown, and only its own part is left out', async () => {
+  const read = async (fields: Record<string, unknown>) => {
     const nav = service(async path => {
       const result = projection(path);
-      Object.assign(result.sections[0].entries[0], fields);
+      result.sections[0].entries = [{...entry('unsafe'), ...fields}, entry('safe')];
+      result.sections[0].totalCount = 2;
       return result;
     });
     await nav.select(route);
-    assert.equal(nav.getSnapshot().phase, 'error');
-    assert.equal(nav.getSnapshot().error?.code, 'invalid_projection');
-    assert.equal(nav.getSnapshot().sections.length, 0);
+    assert.equal(nav.getSnapshot().phase, 'ready');
+    const entries = nav.getSnapshot().sections[0].entries;
     nav.dispose();
+    return entries;
+  };
+  // An optional field that cannot be read is left out and its entry is kept.
+  for (const fields of [{overview:'Unsafe\u0000text'}, {overview:'Unsafe\u000btext'}, {overview:'Unsafe\u007ftext'}, {overview:'x'.repeat(16385)}, {overview:42}]) {
+    const entries = await read(fields);
+    assert.deepEqual(entries.map(e => e.id), ['unsafe', 'safe']);
+    assert.equal(entries[0].overview, undefined);
   }
+  const art = await read({overview:'Valid\ntext',posterUrl:'https://example.test/\nimage'});
+  assert.deepEqual([art[0].overview, art[0].posterUrl], ['Valid\ntext', undefined]);
+  // A title with a control character is never shown: that entry alone is left out.
+  assert.deepEqual((await read({overview:'Valid\r\ntext',title:'Invalid\nname'})).map(e => e.id), ['safe']);
 });
 
 test('publishes exact server semantic rows, order, metadata and chapter playback intent', async () => {
@@ -186,19 +198,65 @@ test('client rejects successful continuation with mismatched revision or viewer 
   }
 });
 
-test('rejects wrong scope, oversized rows, duplicate IDs, malformed metadata and wrong continuation section', async () => {
+test('rejects wrong scope, oversized lists, a wrong revision and a wrong continuation section', async () => {
   for (const mutate of [
-    (d: any) => { d.scope.libraryId = 'wrong'; }, (d: any) => { d.scope.serverId = 'wrong'; },
+    (d: any) => { d.scope.libraryId = 'wrong'; }, (d: any) => { d.scope.serverId = 'wrong'; }, (d: any) => { d.scope.viewerFence = ''; },
     (d: any) => { d.sections[0].entries = Array.from({ length: 101 }, (_, i) => entry(String(i))); d.sections[0].totalCount = 101; },
-    (d: any) => { d.sections[0].entries = [entry(), entry()]; d.sections[0].totalCount = 2; },
-    (d: any) => { d.sections = Array(5).fill(d.sections[0]); }, (d: any) => { d.navigation = null; },
-    (d: any) => { d.revision.catalog = -1; }, (d: any) => { d.sections[0].entries[0].duration = Number.NaN; },
+    (d: any) => { d.sections = Array.from({ length: 25 }, (_, i) => ({ ...d.sections[0], id: 's' + i })); }, (d: any) => { d.sections = null; },
+    (d: any) => { d.navigation = Array.from({ length: 17 }, (_, i) => ({ id: 'n' + i, labelKey: 'k', view: 'browse' })); },
+    (d: any) => { d.revision.catalog = -1; }, (d: any) => { d.query.limit = 1000; }, (d: any) => { d.query.sort = 'other'; },
   ]) {
-    const nav = service(async p => { const data = projection(p); mutate(data); return data; }); await nav.select(route);
+    const nav = service(async p => { const data = projection(p); mutate(data); return data; }); await nav.select({ ...route, sort: 'title' });
     assert.equal(nav.getSnapshot().phase, 'error'); assert.equal(nav.getSnapshot().error!.code, 'invalid_projection'); assert.equal(nav.getSnapshot().sections.length, 0);
   }
   const nav = service(async p => { const d = projection(p); d.sections[0].nextCursor = 'next'; if (p.includes('cursor=')) d.sections[0].id = 'wrong-section'; return d; });
   await nav.select(route); await nav.next('server-grid'); assert.equal(nav.getSnapshot().error!.code, 'invalid_projection');
+});
+
+test('one unreadable row of a projection is left out and the rest of the page is kept', async () => {
+  const read = async (mutate: (d: any) => void) => {
+    const nav = service(async p => { const data = projection(p); mutate(data); return data; }); await nav.select(route);
+    assert.equal(nav.getSnapshot().phase, 'ready'); const result = nav.getSnapshot().projection!; nav.dispose(); return result;
+  };
+  resetSkippedParts();
+  // Entries: a broken one, a repeated id, one of another library and one whose destination this app does not know.
+  const rows = await read(d => { d.sections[0].entries = [entry('a'), entry('a'), { id: 'broken' }, { ...entry('b'), libraryId: 'other' }, { ...entry('c'), navigation: { view: 'hologram' } }, { ...entry('d'), duration: Number.NaN, year: 0 }, entry('e')]; d.sections[0].totalCount = 2; });
+  assert.deepEqual(rows.sections[0].entries.map(e => e.id), ['a', 'd', 'e']);
+  assert.equal(rows.sections[0].entries[1].duration, undefined);
+  assert.equal(rows.sections[0].totalCount, 3, 'the count is at least the entries kept');
+  assert.deepEqual(skippedParts().filter(part => part.part === 'entries'), [{ document: 'content', part: 'entries', count: 4 }]);
+  // A page none of whose sections can be read is refused rather than shown as empty.
+  const none = service(async p => { const d = projection(p); d.sections = [{ ...d.sections[0], id: '' }, 'nope']; return d; }); await none.select(route);
+  assert.equal(none.getSnapshot().error?.code, 'invalid_projection'); none.dispose();
+  // Sections: a repeated id keeps the first, a broken one is left out, and a layout this app does not know is a grid.
+  const sections = await read(d => { const s = d.sections[0]; d.sections = [s, { ...s, heading: { key: 'x', fallback: 'Second' } }, { ...s, id: '' }, { ...s, id: 'cursor', nextCursor: 7 }, { ...s, id: 'mosaic', type: 'mosaic', heading: 7 }, 'nope']; });
+  assert.deepEqual(sections.sections.map(s => [s.id, s.type, s.heading.fallback]), [['server-grid', 'grid', 'Server-selected heading'], ['mosaic', 'grid', '']]);
+  // Tabs, sorts, filters and their options.
+  const menus = await read(d => {
+    d.navigation = [...d.navigation, { id: 'future', labelKey: 'library.future', view: 'hologram' }, { id: 'browse', labelKey: 'again', view: 'browse' }, null];
+    d.sorts = [{ id: 'title', labelKey: 'sort.title', directions: ['asc', 'sideways'] }, { id: 'bad' }, { id: 'long', labelKey: 'x', directions: ['asc', 'desc', 'asc'] }, { id: 'title', labelKey: 'again', directions: ['desc'] }];
+    d.filters = [{ id: 'category', labelKey: 'filter.category', options: [{ id: 'a', label: 'A', count: 1 }, { id: 'a', label: 'Again', count: 2 }, { id: 'b' }, { label: 'no id' }] }, { id: 'broken', labelKey: 'x', options: 'nope' }];
+  });
+  assert.deepEqual(menus.navigation.map(n => n.id), ['discover', 'browse']);
+  assert.deepEqual(menus.sorts, [{ id: 'title', labelKey: 'sort.title', directions: ['asc'] }]);
+  assert.deepEqual(menus.filters, [{ id: 'category', labelKey: 'filter.category', options: [{ id: 'a', label: 'A', count: 1 }, { id: 'b', label: '', count: 0 }] }]);
+  // Lists the server leaves out read as empty.
+  const bare = await read(d => { d.navigation = null; delete d.sorts; delete d.filters; });
+  assert.deepEqual([bare.navigation.length, bare.sorts.length, bare.filters.length, bare.sections.length], [0, 0, 0, 1]);
+});
+
+test('an unknown search mode, an unreadable heading and unknown fields do not spoil the page', async () => {
+  const nav = service(async p => { const d = projection(p); d.query.searchMode = 'semantic'; d.heading = { key: '' }; d.empty = 'nothing'; d.listening = { target: 7 }; d.future = { a: 1 }; d.sections[0].future = true; d.sections[0].entries[0].future = [1]; d.sections[0].seeAll = { pivot: '' }; return d; });
+  await nav.select(route);
+  assert.equal(nav.getSnapshot().phase, 'ready');
+  const result = nav.getSnapshot().projection!;
+  assert.equal(result.query.searchMode, 'none');
+  assert.deepEqual(result.heading, { key: 'browse', fallback: '' });
+  assert.equal(result.empty, undefined);
+  assert.equal(result.listening, undefined);
+  assert.equal(result.sections[0].seeAll, undefined);
+  assert.equal('future' in result || 'future' in result.sections[0] || 'future' in result.sections[0].entries[0], false);
+  nav.dispose();
 });
 
 test('timeout and cancel settle locally even with permanently hung transport', async () => {
@@ -274,7 +332,7 @@ test('entity identity and art are independent of page rows and fenced to the req
  for(const change of [null,{id:'other'},{libraryId:'private'},{kind:'book'},{playback:{itemId:'track'}}]){
   const nav=service(async path=>projection(path,{entity:{id:'release',libraryId:'music',kind:'album',title:'Release',subtitle:'Artist',posterUrl:'/cover',backdropUrl:'/backdrop',count:205,...change},sections:[]}));
   await nav.select(target);
-  if(change===null){assert.equal(nav.getSnapshot().phase,'ready');assert.equal(nav.getSnapshot().projection?.entity?.count,205);assert.equal(nav.getSnapshot().projection?.entity?.backdropUrl,'/backdrop');}
+  if(change===null||'playback' in change){assert.equal(nav.getSnapshot().phase,'ready');assert.equal(nav.getSnapshot().projection?.entity?.count,205);assert.equal(nav.getSnapshot().projection?.entity?.backdropUrl,'/backdrop');assert.equal(nav.getSnapshot().projection?.entity?.playback,undefined,'the page\'s own entity never plays');}
   else assert.equal(nav.getSnapshot().phase,'error');
   nav.dispose();
  }

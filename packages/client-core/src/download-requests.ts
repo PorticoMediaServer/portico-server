@@ -1,24 +1,30 @@
 import {unreadableServerResponse} from './server-messages.ts';
 import {parseDownloadPreparation,type DownloadPreparation} from './downloads.ts';
+import {firstOfEach,keepReadable,noteSkipped,oneOf} from './tolerant.ts';
 /**
- * Whole-container download requests
- * (`server/api/download-requests.openapi.yaml`):
+ * Whole-container download requests (`create_download_request`,
+ * `get_download_request` and `list_download_requests` in
+ * `server/api/portico.openapi.json`):
  * one `POST /v1/downloads/requests` for a show, season, album, book or
  * playlist — never TV — with a policy choosing which episodes to take, then
- * `GET /v1/downloads/requests/{id}?limit=&cursor=` for request progress.
+ * `GET /v1/downloads/requests/{id}?limit=&cursor=` for request progress, and
+ * `GET /v1/downloads/requests?deviceId=` to find a device's requests again.
  *
  * Admission returns 202 with `totalKnown:false` while the worker captures
  * visible membership; the client shows an indeterminate capture state until
- * `totalKnown` is true. `ready` means server preparation completed: the client
- * still transfers and verifies the artifact through the existing
- * per-preparation grant, verification and offline receipt flow.
+ * `totalKnown` is true. A library that changes while it is being read does not
+ * fail the request: the server reads it again. `ready` means server
+ * preparation completed: the client still transfers and verifies the artifact
+ * through the per-preparation grant, verification and offline receipt flow.
  */
 
 export type DownloadRequestKind='show'|'season'|'album'|'book'|'playlist';
 export type DownloadEpisodes='all'|'unwatched'|'next';
 export type DownloadRequestPolicy=Readonly<{episodes:DownloadEpisodes;keepNext?:number}>;
 export type DownloadRequestState='capturing'|'admitting'|'preparing'|'complete'|'failed';
-export type DownloadRequestErrorCode='selection_changed'|'authority_revoked'|'target_not_found';
+export type DownloadRequestErrorCode='authority_revoked'|'target_not_found';
+/** One request as a device lists it to find the ones it started. */
+export type DownloadRequestSummary=Readonly<{requestId:string;state:DownloadRequestState;target:Readonly<{kind:DownloadRequestKind;id:string}>;title:string;quality:string;createdAt:string}>;
 export type DownloadRequestItem=Readonly<{itemId:string;reason?:string;preparation?:DownloadPreparation}>;
 export type DownloadRequest=Readonly<{
  requestId:string;total:number;totalKnown:boolean;state:DownloadRequestState;
@@ -36,7 +42,8 @@ export const isDownloadRequestTerminal=(state:DownloadRequestState):boolean=>sta
 const object=(v:unknown):v is Record<string,unknown>=>!!v&&typeof v==='object'&&!Array.isArray(v);
 const id=(v:unknown):v is string=>typeof v==='string'&&/^[A-Za-z0-9_-]{1,160}$/.test(v);
 const count=(v:unknown):v is number=>typeof v==='number'&&Number.isSafeInteger(v)&&v>=0;
-const requestErrorCodes:readonly string[]=Object.freeze(['selection_changed','authority_revoked','target_not_found']);
+const requestErrorCodes:readonly DownloadRequestErrorCode[]=Object.freeze(['authority_revoked','target_not_found'] as const);
+const requestKinds:readonly string[]=Object.freeze(['show','season','album','book','playlist']);
 
 function invalid():never{throw new Error(unreadableServerResponse);}
 
@@ -54,26 +61,27 @@ export function parseDownloadRequest(raw:unknown):DownloadRequest{
  if(!object(raw)||!id(raw.requestId))invalid();
  if(!count(raw.total)||typeof raw.totalKnown!=='boolean')invalid();
  if(!downloadRequestStates.includes(String(raw.state) as DownloadRequestState))invalid();
- if(raw.errorCode!==undefined&&!requestErrorCodes.includes(String(raw.errorCode)))invalid();
- if(raw.errorCode!==undefined&&raw.state!=='failed')invalid();
+ // An error code this app does not know, or one on a request that has not failed, is left out.
+ const errorCode=raw.state==='failed'?oneOf(raw.errorCode,requestErrorCodes):undefined;
+ if(raw.errorCode!==undefined&&errorCode===undefined)noteSkipped('download-request','errorCode');
  for(const key of ['ready','preparing','queued','failed','paused'] as const)if(!count(raw[key]))invalid();
  if(!Array.isArray(raw.items)||raw.items.length>100)invalid();
- const items=Object.freeze(raw.items.map(entry=>{
+ // One member that cannot be read, or is listed twice, is left out and the rest are kept. A reason
+ // or a preparation is only shown: one that cannot be read is left out and its member is kept.
+ const items=Object.freeze(firstOfEach('download-request','items',keepReadable('download-request','items',raw.items,entry=>{
   if(!object(entry)||!id(entry.itemId))invalid();
-  if(Object.keys(entry).some(k=>k!=='itemId'&&k!=='reason'&&k!=='preparation'))invalid();
-  if(entry.reason!==undefined&&typeof entry.reason!=='string')invalid();
+  if(entry.reason!==undefined&&typeof entry.reason!=='string')noteSkipped('download-request','item.reason');
   return Object.freeze({
    itemId:entry.itemId as string,
-   ...(entry.reason===undefined?{}:{reason:entry.reason as string}),
-   ...(entry.preparation===undefined?{}:{preparation:parseDownloadPreparation(entry.preparation)}),
+   ...(typeof entry.reason==='string'?{reason:entry.reason}:{}),
+   ...(entry.preparation===undefined?{}:keepReadable('download-request','item.preparation',[entry.preparation],v=>({preparation:parseDownloadPreparation(v)}))[0]),
   });
- }));
- if(new Set(items.map(i=>i.itemId)).size!==items.length)invalid();
+ }),i=>i.itemId));
  if(raw.nextCursor!==undefined&&typeof raw.nextCursor!=='string')invalid();
  return Object.freeze({
   requestId:raw.requestId as string,total:raw.total as number,totalKnown:raw.totalKnown as boolean,
   state:raw.state as DownloadRequestState,
-  ...(raw.errorCode===undefined?{}:{errorCode:raw.errorCode as DownloadRequestErrorCode}),
+  ...(errorCode===undefined?{}:{errorCode}),
   ready:raw.ready as number,preparing:raw.preparing as number,queued:raw.queued as number,
   failed:raw.failed as number,paused:raw.paused as number,
   items,nextCursor:String(raw.nextCursor??''),
@@ -111,6 +119,26 @@ export async function createDownloadRequest(api:DownloadRequestsApi,input:Downlo
  }
 }
 
+export function parseDownloadRequestList(raw:unknown):readonly DownloadRequestSummary[]{
+ if(!object(raw)||!Array.isArray(raw.requests)||raw.requests.length>20)invalid();
+ const out=raw.requests.map(entry=>{
+  if(!object(entry)||!id(entry.requestId)||!downloadRequestStates.includes(String(entry.state) as DownloadRequestState))invalid();
+  const target=entry.target;
+  if(!object(target)||!requestKinds.includes(String(target.kind))||!id(target.id))invalid();
+  if(typeof entry.title!=='string'||entry.title.length>1024||!id(entry.quality)||typeof entry.createdAt!=='string'||entry.createdAt.length>64)invalid();
+  return Object.freeze({requestId:entry.requestId as string,state:entry.state as DownloadRequestState,target:Object.freeze({kind:target.kind as DownloadRequestKind,id:target.id as string}),title:entry.title as string,quality:entry.quality as string,createdAt:entry.createdAt as string});
+ });
+ if(new Set(out.map(r=>r.requestId)).size!==out.length)invalid();
+ return Object.freeze(out);
+}
+
+/** The whole-container requests this device started that are still at work, or finished in the
+ * last day. The server keeps them, so a device finds them again after the app was closed. */
+export async function listDownloadRequests(api:DownloadRequestsApi,deviceId:string,signal?:AbortSignal):Promise<readonly DownloadRequestSummary[]>{
+ if(!id(deviceId))throw new Error('A download request needs the authenticated device id.');
+ return parseDownloadRequestList(await api.request<unknown>(DOWNLOAD_REQUESTS_PATH+'?'+new URLSearchParams({deviceId}),'GET',undefined,signal));
+}
+
 /** Reads live visible-member counts plus one keyset page of preparations. */
 export async function getDownloadRequest(api:DownloadRequestsApi,requestId:string,options:Readonly<{cursor?:string;limit?:number;signal?:AbortSignal}>={}):Promise<DownloadRequest>{
  if(!id(requestId))throw new Error('A download request id is required.');
@@ -124,7 +152,7 @@ export async function getDownloadRequest(api:DownloadRequestsApi,requestId:strin
  return parsed;
 }
 
-/** Polls until the request completes or fails. A failed capture reports `selection_changed` without effects. */
+/** Polls until the request completes or fails. */
 export async function pollDownloadRequest(api:DownloadRequestsApi,requestId:string,options:Readonly<{intervalMs?:number;timeoutMs?:number;signal?:AbortSignal}>={}):Promise<DownloadRequest>{
  const intervalMs=options.intervalMs??2000,timeoutMs=options.timeoutMs??1800000;
  if(!Number.isFinite(intervalMs)||intervalMs<500||intervalMs>15000)throw new Error('Invalid download poll interval.');

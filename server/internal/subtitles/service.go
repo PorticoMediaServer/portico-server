@@ -22,7 +22,13 @@ import (
 
 type Authorize func(context.Context, *sql.Tx, identity.Principal, string) (identity.Principal, error)
 type Service struct {
-	scanTextSlot     chan struct{}
+	life         context.Context
+	cancel       context.CancelFunc
+	cacheMu      sync.Mutex
+	cacheFills   map[string]*cacheFill
+	cacheWorkers chan struct{}
+	cacheDone    sync.WaitGroup
+
 	ControlSelection func(context.Context, *dbwork.Write, identity.Principal, string, SelectRequest, bool) (int64, error)
 	db               *sql.DB
 	objects          *mediaartifact.Store
@@ -60,9 +66,16 @@ func New(o Options) (*Service, error) {
 		return nil, e
 	}
 	ffmpeg, _ := exec.LookPath(o.FFmpeg)
-	return &Service{scanTextSlot: make(chan struct{}, 1), db: o.DB, objects: objects, storage: o.Storage, authorize: o.Authorize, helper: o.HelperBinary, ffmpeg: ffmpeg, provider: o.Provider}, nil
+	life, cancel := context.WithCancel(context.Background())
+	return &Service{life: life, cancel: cancel, cacheFills: map[string]*cacheFill{}, cacheWorkers: make(chan struct{}, 2), db: o.DB, objects: objects, storage: o.Storage, authorize: o.Authorize, helper: o.HelperBinary, ffmpeg: ffmpeg, provider: o.Provider}, nil
 }
 func (s *Service) Close() error {
+	if s.cancel != nil {
+		s.cacheMu.Lock()
+		s.cancel()
+		s.cacheMu.Unlock()
+		s.cacheDone.Wait()
+	}
 	s.publication.Lock()
 	defer s.publication.Unlock()
 	if s.inventory != nil {
@@ -114,15 +127,7 @@ func (s *Service) readTx(ctx context.Context, p identity.Principal, item string)
 func (s *Service) authorized(ctx context.Context, gated *dbwork.Write, p identity.Principal, item string) (*dbwork.Write, identity.Principal, error) {
 	var e error
 	tx := gated.Tx()
-	if scan, ok := ctx.Value(scanTextAuthorityKey{}).(scanTextAuthority); ok {
-		if scan.item != item || scan.check == nil {
-			e = identity.ErrUnauthorized
-		} else {
-			e = scan.check(ctx, tx)
-		}
-	} else {
-		p, e = s.authorize(ctx, tx, p, item)
-	}
+	p, e = s.authorize(ctx, tx, p, item)
 	if e != nil {
 		gated.Rollback()
 		return nil, p, e
@@ -153,28 +158,30 @@ func sourceQuery(ctx context.Context, q query, item, source string) (Source, err
 }
 
 type Resource struct {
-	ManifestName                                  string `json:"manifestName,omitempty"`
-	ID                                            string `json:"id"`
-	SourceID                                      string `json:"sourceId"`
-	Revision                                      int64  `json:"revision"`
-	Scope                                         string `json:"scope"`
-	Language                                      string `json:"language"`
-	Title                                         string `json:"title"`
-	Format                                        string `json:"format"`
-	Origin                                        string `json:"origin"`
-	Provider                                      string `json:"provider,omitempty"`
-	Attribution                                   string `json:"attribution,omitempty"`
-	Rights                                        string `json:"rights"`
-	OffsetUS                                      string `json:"offsetUs"`
-	CanManage                                     bool   `json:"canManage"`
-	Pinned                                        bool   `json:"pinned,omitempty"`
-	Retired                                       bool   `json:"retired,omitempty"`
-	DiscoveryID                                   string `json:"discoveryId,omitempty"`
-	Enabled                                       bool   `json:"enabled"`
-	Reason                                        string `json:"reason,omitempty"`
-	Renderer                                      string `json:"renderer"`
-	Default                                       bool   `json:"default"`
-	Forced                                        bool   `json:"forced"`
+	Deliveries                                    []Delivery `json:"deliveries"`
+	ManifestName                                  string     `json:"manifestName,omitempty"`
+	ID                                            string     `json:"id"`
+	SourceID                                      string     `json:"sourceId"`
+	Revision                                      int64      `json:"revision"`
+	Scope                                         string     `json:"scope"`
+	Language                                      string     `json:"language"`
+	Title                                         string     `json:"title"`
+	Format                                        string     `json:"format"`
+	Origin                                        string     `json:"origin"`
+	Provider                                      string     `json:"provider,omitempty"`
+	Attribution                                   string     `json:"attribution,omitempty"`
+	Rights                                        string     `json:"rights"`
+	OffsetUS                                      string     `json:"offsetUs"`
+	CanManage                                     bool       `json:"canManage"`
+	Pinned                                        bool       `json:"pinned,omitempty"`
+	Retired                                       bool       `json:"retired,omitempty"`
+	DiscoveryID                                   string     `json:"discoveryId,omitempty"`
+	Enabled                                       bool       `json:"enabled"`
+	Reason                                        string     `json:"reason,omitempty"`
+	Renderer                                      string     `json:"renderer"`
+	Default                                       bool       `json:"default"`
+	HearingImpaired                               bool       `json:"hearingImpaired"`
+	Forced                                        bool       `json:"forced"`
 	sourceEvidence                                string
 	digest                                        string
 	size, sourceSize, sourceModified, sourceFacts int64
@@ -186,15 +193,17 @@ const resourceColumns = `r.id,r.source_id,v.revision,r.scope,r.owner,r.deleted,r
  COALESCE((SELECT renderer FROM subtitle_render_revisions rr WHERE rr.resource_id=r.id AND rr.revision=v.revision),'external_text'),
  COALESCE((SELECT is_default FROM subtitle_render_revisions rr WHERE rr.resource_id=r.id AND rr.revision=v.revision),0),
  COALESCE((SELECT is_forced FROM subtitle_render_revisions rr WHERE rr.resource_id=r.id AND rr.revision=v.revision),0),
- COALESCE((SELECT source_evidence FROM subtitle_render_revisions rr WHERE rr.resource_id=r.id AND rr.revision=v.revision),'')`
+ COALESCE((SELECT source_evidence FROM subtitle_render_revisions rr WHERE rr.resource_id=r.id AND rr.revision=v.revision),''),
+ COALESCE((SELECT hearing_impaired FROM subtitle_render_revisions rr WHERE rr.resource_id=r.id AND rr.revision=v.revision),0)`
 
 type rowScanner interface{ Scan(...any) error }
 
 func scanResource(row rowScanner) (Resource, error) {
 	var r Resource
 	var offset int64
-	e := row.Scan(&r.ID, &r.SourceID, &r.Revision, &r.Scope, &r.resourceOwner, &r.deleted, &r.DiscoveryID, &r.Language, &r.Title, &r.Format, &r.Origin, &r.Provider, &r.Attribution, &r.Rights, &offset, &r.digest, &r.size, &r.sourceSize, &r.sourceModified, &r.sourceFacts, &r.Renderer, &r.Default, &r.Forced, &r.sourceEvidence)
+	e := row.Scan(&r.ID, &r.SourceID, &r.Revision, &r.Scope, &r.resourceOwner, &r.deleted, &r.DiscoveryID, &r.Language, &r.Title, &r.Format, &r.Origin, &r.Provider, &r.Attribution, &r.Rights, &offset, &r.digest, &r.size, &r.sourceSize, &r.sourceModified, &r.sourceFacts, &r.Renderer, &r.Default, &r.Forced, &r.sourceEvidence, &r.HearingImpaired)
 	r.OffsetUS = strconv.FormatInt(offset, 10)
+	r.Deliveries = deliveryFormats(r.Format)
 	r.Enabled = !r.deleted
 	r.Retired = r.deleted
 	return r, e
@@ -216,6 +225,7 @@ type Discovery struct {
 	Title           string `json:"title"`
 	Default         bool   `json:"default"`
 	Forced          bool   `json:"forced"`
+	HearingImpaired bool   `json:"hearingImpaired"`
 	Enabled         bool   `json:"enabled"`
 	Reason          string `json:"reason,omitempty"`
 	locator, digest string
@@ -234,7 +244,7 @@ type Catalog struct {
 }
 
 func (s *Service) List(ctx context.Context, p identity.Principal, item string) (Catalog, error) {
-	gated, p, e := s.tx(ctx, p, item)
+	gated, p, e := s.readTx(ctx, p, item)
 	if e != nil {
 		return Catalog{}, e
 	}
@@ -306,13 +316,13 @@ func (s *Service) ListTx(ctx context.Context, tx *sql.Tx, p identity.Principal, 
 	if e != nil {
 		return out, e
 	}
-	rows, e = tx.QueryContext(ctx, `SELECT t.id,t.asset_id,f.revision,t.origin,t.format,t.language,t.title,t.is_default,t.is_forced,t.reason,t.locator,t.stream_index,COALESCE(sc.size,0),COALESCE(sc.modified_ns,0),COALESCE(sc.digest,'') FROM asset_subtitles t JOIN asset_subtitle_facts f ON f.asset_id=t.asset_id JOIN catalog_assets a ON a.token=t.asset_id JOIN catalog_asset_links link ON link.asset_id=a.id LEFT JOIN subtitle_sidecars sc ON sc.id=t.sidecar_id WHERE link.entity_id=(SELECT id FROM catalog_entities WHERE public_id=pid_blob(?)) AND f.size=a.size AND f.modified_ns=a.modified_ns AND (?='' OR a.token=?) ORDER BY t.asset_id,t.id`, item, filter, filter)
+	rows, e = tx.QueryContext(ctx, `SELECT t.id,t.asset_id,f.revision,t.origin,t.format,t.language,t.title,t.is_default,t.is_forced,t.reason,t.locator,t.stream_index,COALESCE(sc.size,0),COALESCE(sc.modified_ns,0),COALESCE(sc.digest,''),t.hearing_impaired FROM asset_subtitles t JOIN asset_subtitle_facts f ON f.asset_id=t.asset_id JOIN catalog_assets a ON a.token=t.asset_id JOIN catalog_asset_links link ON link.asset_id=a.id LEFT JOIN subtitle_sidecars sc ON sc.id=t.sidecar_id WHERE link.entity_id=(SELECT id FROM catalog_entities WHERE public_id=pid_blob(?)) AND f.size=a.size AND f.modified_ns=a.modified_ns AND (?='' OR a.token=?) ORDER BY t.asset_id,t.id`, item, filter, filter)
 	if e != nil {
 		return out, e
 	}
 	for rows.Next() {
 		var t Discovery
-		if e = rows.Scan(&t.ID, &t.SourceID, &t.Revision, &t.Origin, &t.Format, &t.Language, &t.Title, &t.Default, &t.Forced, &t.Reason, &t.locator, &t.index, &t.size, &t.modified, &t.digest); e != nil {
+		if e = rows.Scan(&t.ID, &t.SourceID, &t.Revision, &t.Origin, &t.Format, &t.Language, &t.Title, &t.Default, &t.Forced, &t.Reason, &t.locator, &t.index, &t.size, &t.modified, &t.digest, &t.HearingImpaired); e != nil {
 			rows.Close()
 			return out, e
 		}
@@ -346,21 +356,21 @@ func (s *Service) ListTx(ctx context.Context, tx *sql.Tx, p identity.Principal, 
 // Mutation is a replacement of exactly one subtitle resource, not filesystem
 // write authority and not a change to any source media timeline.
 type Mutation struct {
-	OperationID      string  `json:"operationId"`
-	ResourceID       string  `json:"resourceId,omitempty"`
-	SourceID         string  `json:"sourceId"`
-	ExpectedRevision int64   `json:"expectedRevision"`
-	Scope            string  `json:"scope"`
-	Format           string  `json:"format"`
-	Language         string  `json:"language"`
-	Title            string  `json:"title"`
-	Rights           string  `json:"rights"`
-	OffsetUS         string  `json:"offsetUs"`
-	Content          *string `json:"content,omitempty"`
-	Data             []byte  `json:"data,omitempty"`
-	Companion        []byte  `json:"companion,omitempty"`
-	Default          *bool   `json:"default,omitempty"`
-	Forced           *bool   `json:"forced,omitempty"`
+	OperationID      string      `json:"operationId"`
+	ResourceID       string      `json:"resourceId,omitempty"`
+	SourceID         string      `json:"sourceId"`
+	ExpectedRevision int64       `json:"expectedRevision"`
+	Scope            string      `json:"scope"`
+	Format           string      `json:"format"`
+	Language         string      `json:"language"`
+	Title            string      `json:"title"`
+	Rights           string      `json:"rights"`
+	OffsetUS         string      `json:"offsetUs"`
+	Content          *string     `json:"content,omitempty"`
+	Data             Base64Bytes `json:"data,omitempty"`
+	Companion        Base64Bytes `json:"companion,omitempty"`
+	Default          *bool       `json:"default,omitempty"`
+	Forced           *bool       `json:"forced,omitempty"`
 	// Render is "text" (default) or "styled"; see ImportRequest.Render.
 	Render string `json:"render,omitempty"`
 }
@@ -375,9 +385,14 @@ type publication struct {
 	object                                                   mediaartifact.Object
 	origin, provider, attribution, originalDigest, discovery string
 	discoveryRevision                                        int64
+	cacheResource                                            string
+	cacheRevision                                            int64
 	source                                                   Source
 	renderer, evidence                                       string
 	defaultTrack, forcedTrack                                bool
+	originalAsset                                            []byte
+	hearingImpaired                                          bool
+	copyOriginalRevision                                     int64
 }
 
 func requestDigest(v any) string { b, _ := json.Marshal(v); return digestBytes(b) }
@@ -478,9 +493,11 @@ func (s *Service) Mutate(ctx context.Context, p identity.Principal, item string,
 			pub.evidence = r.sourceEvidence
 			pub.defaultTrack = r.Default
 			pub.forcedTrack = r.Forced
+			pub.hearingImpaired = r.HearingImpaired
 			pub.provider = r.Provider
 			pub.attribution = r.Attribution
 			m.Format = r.Format
+			pub.copyOriginalRevision = r.Revision
 			pub.originalDigest = ""
 			if e = tx.QueryRowContext(ctx, `SELECT original_digest FROM subtitle_revisions WHERE resource_id=? AND revision=?`, r.ID, r.Revision).Scan(&pub.originalDigest); e != nil {
 				return Receipt{}, e
@@ -498,10 +515,11 @@ func (s *Service) Mutate(ctx context.Context, p identity.Principal, item string,
 		if m.Content != nil {
 			input = []byte(*m.Content)
 		}
-		raw, e = CanonicalAsset(input, m.Companion, m.Format, int64(src.duration*1e6))
+		raw, e = CanonicalAssetWithLanguage(input, m.Companion, m.Format, int64(src.duration*1e6), m.Language)
 		if e != nil {
 			return Receipt{}, e
 		}
+		pub.originalAsset = raw
 		raw = renderChoice(raw, m.Render, int64(src.duration*1e6))
 		pub.originalDigest = requestDigest([]any{input, m.Companion})
 	}
@@ -544,6 +562,37 @@ func (s *Service) publish(ctx context.Context, p identity.Principal, item string
 			return Receipt{}, e
 		}
 	}
+	var originalObject mediaartifact.Object
+	var originalFiles []originalFile
+	var originalHeader struct {
+		SkippedFonts int `json:"skippedFonts"`
+	}
+	if len(pub.originalAsset) > 0 {
+		_ = json.Unmarshal(pub.originalAsset, &originalHeader)
+	}
+	if len(pub.originalAsset) > 0 && originalArchive(pub.originalAsset) {
+		w, e := s.objects.Begin(MaxAssetBytes)
+		if e != nil {
+			return Receipt{}, e
+		}
+		defer w.Abort()
+		if _, e = w.Write(pub.originalAsset); e != nil {
+			return Receipt{}, e
+		}
+		originalObject, e = w.Seal(ctx)
+		if e != nil {
+			return Receipt{}, e
+		}
+	}
+
+	if originalObject.Size > 0 {
+		var e error
+		originalFiles, e = s.sealOriginalFiles(ctx, pub.originalAsset, int64(pub.source.duration*1e6))
+		if e != nil {
+			return Receipt{}, e
+		}
+	}
+
 	gated3, p, e := s.tx(ctx, p, item)
 	if e != nil {
 		return Receipt{}, e
@@ -567,6 +616,29 @@ func (s *Service) publish(ctx context.Context, p identity.Principal, item string
 	if pub.discovery != "" && src.InventoryRevision != pub.discoveryRevision {
 		return Receipt{}, ErrConflict
 	}
+	if pub.cacheResource != "" {
+		result, err := tx.ExecContext(ctx, `UPDATE subtitle_revisions SET digest=?,size=?,original_digest=? WHERE resource_id=? AND revision=? AND digest='' AND size=0 AND source_size=? AND source_modified_ns=?`, pub.object.Digest, pub.object.Size, pub.originalDigest, pub.cacheResource, pub.cacheRevision, src.size, src.modified)
+		if err != nil {
+			return Receipt{}, err
+		}
+		n, _ := result.RowsAffected()
+		if n != 0 {
+			if _, err = tx.ExecContext(ctx, `UPDATE subtitle_render_revisions SET renderer=?,source_evidence=? WHERE resource_id=? AND revision=?`, pub.renderer, pub.evidence, pub.cacheResource, pub.cacheRevision); err != nil {
+				return Receipt{}, err
+			}
+		}
+		if originalObject.Size > 0 {
+			if _, err = tx.ExecContext(ctx, `INSERT OR IGNORE INTO subtitle_original_revisions VALUES(?,?,?,?,?)`, pub.cacheResource, pub.cacheRevision, originalObject.Digest, originalObject.Size, originalHeader.SkippedFonts); err != nil {
+				return Receipt{}, err
+			}
+		}
+		if e := publishOriginalFiles(ctx, tx, pub.cacheResource, pub.cacheRevision, originalFiles); e != nil {
+			return Receipt{}, e
+		}
+		out := Receipt{OperationID: m.OperationID, ResourceID: pub.cacheResource, Revision: pub.cacheRevision}
+		return out, gated3.Commit()
+	}
+
 	if m.Scope == "shared" && !owner(p) {
 		return Receipt{}, identity.ErrUnauthorized
 	}
@@ -630,9 +702,27 @@ func (s *Service) publish(ctx context.Context, p identity.Principal, item string
 	if m.Forced != nil {
 		pub.forcedTrack = *m.Forced
 	}
-	if _, e = tx.ExecContext(ctx, `INSERT INTO subtitle_render_revisions VALUES(?,?,?,?,?,?)`, id, rev, pub.renderer, pub.defaultTrack, pub.forcedTrack, pub.evidence); e != nil {
+	if _, e = tx.ExecContext(ctx, `INSERT INTO subtitle_render_revisions VALUES(?,?,?,?,?,?,?)`, id, rev, pub.renderer, pub.defaultTrack, pub.forcedTrack, pub.evidence, pub.hearingImpaired); e != nil {
 		return Receipt{}, e
 	}
+	if originalObject.Size > 0 {
+		if _, e = tx.ExecContext(ctx, `INSERT INTO subtitle_original_revisions VALUES(?,?,?,?,?)`, id, rev, originalObject.Digest, originalObject.Size, originalHeader.SkippedFonts); e != nil {
+			return Receipt{}, e
+		}
+	}
+
+	if e := publishOriginalFiles(ctx, tx, id, rev, originalFiles); e != nil {
+		return Receipt{}, e
+	}
+	if pub.copyOriginalRevision > 0 {
+		if _, e = tx.ExecContext(ctx, `INSERT INTO subtitle_original_revisions SELECT resource_id,?,digest,size,skipped_fonts FROM subtitle_original_revisions WHERE resource_id=? AND revision=?`, rev, id, pub.copyOriginalRevision); e != nil {
+			return Receipt{}, e
+		}
+		if _, e = tx.ExecContext(ctx, `INSERT INTO subtitle_original_files SELECT resource_id,?,part,name,format,encoding,digest,size FROM subtitle_original_files WHERE resource_id=? AND revision=?`, rev, id, pub.copyOriginalRevision); e != nil {
+			return Receipt{}, e
+		}
+	}
+
 	out := Receipt{OperationID: m.OperationID, ResourceID: id, Revision: rev}
 	if _, e = tx.ExecContext(ctx, `INSERT INTO subtitle_collections(item_id,revision) SELECT id,2 FROM catalog_entities WHERE public_id=pid_blob(?) ON CONFLICT(item_id) DO UPDATE SET revision=revision+1`, item); e != nil {
 		return out, e
@@ -757,10 +847,10 @@ func (s *Service) Cleanup(ctx context.Context) error {
 	}
 	for _, r := range stale {
 		var refs int
-		if e = s.db.QueryRowContext(ctx, `SELECT count(*) FROM subtitle_revisions WHERE digest=?`, r.object.Digest).Scan(&refs); e != nil {
+		if e = s.db.QueryRowContext(ctx, `SELECT (SELECT count(*) FROM subtitle_revisions WHERE digest=?1)+(SELECT count(*) FROM subtitle_original_revisions WHERE digest=?1)+(SELECT count(*) FROM subtitle_original_files WHERE digest=?1)`, r.object.Digest).Scan(&refs); e != nil {
 			return e
 		}
-		if refs == 0 {
+		if refs == 0 && r.object.Size > 0 {
 			e = s.objects.Remove(r.object)
 			if e != nil && !errors.Is(e, mediaartifact.ErrLeased) {
 				return e
@@ -785,7 +875,7 @@ func (s *Service) Cleanup(ctx context.Context) error {
 			continue
 		}
 		var references int
-		if e = s.db.QueryRowContext(ctx, `SELECT count(*) FROM subtitle_revisions WHERE digest=?`, candidate.Object.Digest).Scan(&references); e != nil {
+		if e = s.db.QueryRowContext(ctx, `SELECT (SELECT count(*) FROM subtitle_revisions WHERE digest=?1)+(SELECT count(*) FROM subtitle_original_revisions WHERE digest=?1)+(SELECT count(*) FROM subtitle_original_files WHERE digest=?1)`, candidate.Object.Digest).Scan(&references); e != nil {
 			return e
 		}
 		if references == 0 {

@@ -73,10 +73,11 @@ type DownloadOptionsView struct {
 	Storage DownloadStorage   `json:"storage"`
 }
 
-// Options publishes the download menu for one item. owner says whether this
-// viewer can order the conversion a rung needs; a viewer who cannot sees the
-// rung as unavailable rather than being allowed to queue work that will never
-// start.
+// Options publishes the download menu for one item: the original, and each
+// smaller quality this server either already holds a copy of or can make.
+// owner says whether this viewer can order the conversion a rung needs; a
+// viewer who cannot sees the rung as unavailable rather than being allowed to
+// queue work that will never start.
 func (s *Service) Options(ctx context.Context, p identity.Principal, item string, owner bool) (DownloadOptionsView, error) {
 	out := DownloadOptionsView{ItemID: item, Options: []QualityOption{}}
 	if !validID.MatchString(item) {
@@ -101,7 +102,7 @@ func (s *Service) Options(ctx context.Context, p identity.Principal, item string
 		return out, e
 	}
 	var committed sql.NullInt64
-	if e = tx.QueryRowContext(ctx, `SELECT sum(bytes_total) FROM download_preparations WHERE state IN `+committedStates).Scan(&committed); e != nil {
+	if e = tx.QueryRowContext(ctx, `SELECT sum(bytes_total) FROM download_preparations WHERE state IN `+storedClaims).Scan(&committed); e != nil {
 		return out, e
 	}
 	out.Storage = DownloadStorage{MaxPreparedBytes: settings.MaxPreparedBytes, CommittedBytes: committed.Int64, RetentionDays: settings.RetentionDays}
@@ -120,7 +121,7 @@ func (s *Service) Options(ctx context.Context, p identity.Principal, item string
 		return out, err
 	}
 	out.Kind = found.Kind
-	out.Source = SourceDescription{Container: found.Container, VideoCodec: found.VideoCodec, AudioCodec: found.AudioCodec, Height: found.Height, DurationSeconds: found.Duration, Bytes: found.Size, Available: found.Available && found.Parts == 1}
+	out.Source = SourceDescription{Container: found.Container, VideoCodec: found.VideoCodec, AudioCodec: found.AudioCodec, Height: found.Height, DurationSeconds: found.Duration, Bytes: found.Size, Available: sourceReason(found, nil) == ""}
 	transcoding := false
 	if e = tx.QueryRowContext(ctx, `SELECT transcoding_enabled FROM playback_owner_policy WHERE singleton=1`).Scan(&transcoding); e != nil && !errors.Is(e, sql.ErrNoRows) {
 		return out, e
@@ -150,7 +151,10 @@ func (s *Service) Options(ctx context.Context, p identity.Principal, item string
 
 	original := QualityOption{Quality: QualityOriginal, Label: "Original", Kind: "source", Bytes: found.Size, Available: out.Source.Available && allowed, TargetHeight: found.Height}
 	if !out.Source.Available {
-		original.Reason = ReasonSourceMissing
+		original.Reason = sourceReason(found, nil)
+		if original.Reason == "" {
+			original.Reason = ReasonSourceMissing
+		}
 	} else if !allowed {
 		original.Reason = ReasonNotAllowed
 	}
@@ -179,9 +183,17 @@ func (s *Service) Options(ctx context.Context, p identity.Principal, item string
 		}
 		option.Bytes, option.Estimated = estimateBytes(preset.ID, found)
 		version := selectableVersion(versions, option.PreparedProfileID)
+		// The menu is what this server can hand over, not the ladder: a rung
+		// with no finished copy that the conversion code cannot make is left
+		// out. When the conversion code learns a recipe, its rung appears here
+		// with nothing else to change.
+		producible := preparedmedia.Producible(option.PreparedProfileID)
+		if version == nil && !producible {
+			continue
+		}
 		switch {
 		case !out.Source.Available:
-			option.Reason = ReasonSourceMissing
+			option.Reason = original.Reason
 		case !allowed:
 			option.Reason = ReasonNotAllowed
 		case version != nil:

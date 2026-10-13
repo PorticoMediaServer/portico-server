@@ -1,18 +1,19 @@
 import {useEffect, useState} from 'react';
 import {recordingOwnerKey, recordingOwnerLabel} from '../../admin/recording-policy';
 import {parseEnvelope, parseTunerView} from '@core/administration.ts';
+import {tunerStatus, tunerUseLine} from '@core/server-admin/live-words.ts';
 import {useAction, useRead} from '../../admin/console';
 import {useSession} from '../../app/session';
 import {useI18n} from '../../app/i18n';
 import {Button, Notice, Select, SettingsGroup, SettingsRow, Status, Switch, Text} from '../../ui';
 
 function useServerId() { const {system, session} = useSession(); return system?.id ?? session?.viewer.serverId ?? ''; }
-const time = (iso: string) => new Date(iso).toLocaleString(undefined, {weekday: 'short', hour: 'numeric', minute: '2-digit'});
 
 /** Which tuner is doing what, now and soon, and where two recordings will collide. */
 export function TunersGroup() {
   const {api} = useSession();
-  const {t} = useI18n();
+  const i18n = useI18n();
+  const {t} = i18n;
   const serverId = useServerId();
   const read = useRead(async () => parseEnvelope(await api.request<unknown>('/v1/admin/dvr/tuners'), serverId, parseTunerView).result, [api, serverId], {every: 60000});
   const view = read.data;
@@ -21,8 +22,8 @@ export function TunersGroup() {
       {read.error ? <div style={{padding: 12}}><Notice tone={view ? 'warning' : 'error'} compact action={{label: t('action.tryAgain'), onClick: read.reload}}>{read.error}</Notice></div> : null}
       {view?.sources.map(src => (
         <SettingsRow key={src.sourceId} icon="live" label={src.sourceName} stack
-          state={<Status tone={src.conflicts ? 'danger' : src.inUse >= src.tunerCount && src.tunerCount > 0 ? 'warning' : 'healthy'}>{src.conflicts ? `${src.conflicts} clash${src.conflicts === 1 ? '' : 'es'}` : `${src.inUse} of ${src.tunerCount} in use`}</Status>}
-          control={src.active.length || src.upcoming.length ? <div style={{display: 'flex', flexDirection: 'column', gap: 4}}>{[...src.active, ...src.upcoming.slice(0, 6)].map(a => <Text key={a.allocationId || a.recordingId} variant="caption" tone="secondary">{a.state === 'recording' ? 'Recording now' : time(a.startsAt)} · {a.title}</Text>)}</div> : <Text variant="caption" tone="tertiary">{t('web.dvrSettings.nothingScheduled')}</Text>} />
+          state={<Status tone={tunerStatus(t, src).tone}>{tunerStatus(t, src).text}</Status>}
+          control={src.active.length || src.upcoming.length ? <div style={{display: 'flex', flexDirection: 'column', gap: 4}}>{[...src.active, ...src.upcoming.slice(0, 6)].map((a, n) => <Text key={a.allocationId || a.recordingId || n} variant="caption" tone="secondary">{tunerUseLine(t, a, iso => i18n.formatDate(iso, {weekday: 'short', hour: 'numeric', minute: '2-digit'}))}</Text>)}</div> : <Text variant="caption" tone="tertiary">{t('web.dvrSettings.nothingScheduled')}</Text>} />
       ))}
       {view && !view.sources.length ? <div style={{padding: 16}}><Text variant="caption" tone="tertiary">{t('web.dvrSettings.noTuners')}</Text></div> : null}
     </SettingsGroup>

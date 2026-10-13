@@ -82,16 +82,30 @@ func TestOpenEvaluatesWindows(t *testing.T) {
 	if workpolicy.Open(night, "backup", at(friday, 21, 0)) {
 		t.Fatal("midnight crosser open before its start day")
 	}
-	// A nonexistent DST wall time admits nothing (America/Toronto springs
+	// A nonexistent DST wall time moves to the first real minute (America/Toronto springs
 	// forward on 2026-03-08: 02:00–03:00 does not exist).
 	dst := window([]string{"sunday"}, 2*60+30, 30, "America/Toronto", "backup")
 	sunday := time.Date(2026, 3, 8, 7, 0, 0, 0, time.UTC)
-	if workpolicy.Open(dst, "backup", sunday) {
-		t.Fatal("nonexistent DST hour open")
+	if !workpolicy.Open(dst, "backup", sunday) {
+		t.Fatal("spring-forward backup was skipped")
 	}
 	// A bad timezone never opens.
 	bad := window(days, 0, 1440, "No/Such-Zone", "backup")
 	if workpolicy.Open(bad, "backup", at(friday, 12, 0)) {
 		t.Fatal("bad timezone open")
+	}
+}
+
+func TestBackupWindowUsesWallTimeAfterClockChange(t *testing.T) {
+	zone, err := time.LoadLocation("America/Toronto")
+	if err != nil {
+		t.Fatal(err)
+	}
+	policy := workpolicy.Policy{Windows: []workpolicy.Window{{Enabled: true, Days: []string{"sunday"}, Tasks: []string{"backup"}, StartMinute: 12 * 60, DurationMinutes: 30, Timezone: "America/Toronto"}}}
+	for _, date := range []time.Time{time.Date(2026, 3, 8, 12, 5, 0, 0, zone), time.Date(2026, 11, 1, 12, 5, 0, 0, zone)} {
+		start, ok := workpolicy.OccurrenceStart(policy, "backup", date)
+		if !ok || start.Hour() != 12 || start.Minute() != 0 {
+			t.Fatal(date, start, ok)
+		}
 	}
 }

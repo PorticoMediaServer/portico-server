@@ -20,10 +20,17 @@ test('private connection body is never retained; lost response recovery reads on
  assert.equal(ids,1);assert.equal(calls.filter(c=>c.method==='POST').length,1);assert.equal(calls.find(c=>c.method==='POST')?.body && (calls.find(c=>c.method==='POST')!.body as any).password,input.password);
  assert(calls.some(c=>c.path.endsWith('/source-operations/'+op)&&c.method==='GET'&&c.body===undefined));service.dispose();
 });
-test('unsafe source responses and changed owner fences fail closed',async()=>{
- for(const row of [source({password:'secret'}),source({root:'https://private/'}),source({origin:'https://user:secret@private.example'}),source({rangeSupport:'invented'})]){
-  const service=new RemoteSourceService(api(async()=>list([row])),scope,async()=>op);await service.load();assert.equal(service.getSnapshot().sources.length,0);assert(service.getSnapshot().error);service.dispose();
+test('an unsafe source is never listed, and oversized lists and changed owner fences fail closed',async()=>{
+ for(const row of [source({password:'secret'}),source({root:'https://private/'}),source({origin:'https://user:secret@private.example'}),source({kind:'ftp'}),source({generation:0})]){
+  const service=new RemoteSourceService(api(async()=>list([row,source({id:'other'})])),scope,async()=>op);await service.load();assert.deepEqual(service.getSnapshot().sources.map(s=>s.id),['other']);assert(!JSON.stringify(service.getSnapshot()).includes('secret'));service.dispose();
  }
+ for(const raw of [list(new Array(17).fill(source())),{...list(),sources:{}},{...list(),mountSupported:'yes'},{...list(),scope:{...wire,serverId:'other'}}]){
+  const service=new RemoteSourceService(api(async()=>raw),scope,async()=>op);await service.load();assert.equal(service.getSnapshot().sources.length,0);assert(service.getSnapshot().error);service.dispose();
+ }
+ // A state this app does not know is kept as the server named it, unknown range support reads as unknown,
+ // an error code it does not know is left off, and a repeated source keeps its first row.
+ const newer=new RemoteSourceService(api(async()=>({...list([source({state:'warming_up',rangeSupport:'invented',errorCode:'solar_flare',futureField:1}),source({name:'Again'})]),futureField:true})),scope,async()=>op);
+ await newer.load();assert.equal(newer.getSnapshot().error,'');assert.deepEqual(newer.getSnapshot().sources,[{...source({state:'warming_up',rangeSupport:'unknown'})}]);newer.dispose();
  let changed=false;
  const service=new RemoteSourceService(api(async()=>changed?{...list(),scope:{...wire,viewerFence:'changed'}}:list()),scope,async()=>op);
  await service.load();assert.equal(service.getSnapshot().sources.length,1);changed=true;await service.load();assert.equal(service.getSnapshot().sources.length,0);service.dispose();
@@ -54,8 +61,11 @@ test('STRM requested opt-in remains distinct from effective File List Only polic
  const policy={libraryId:'lib',revision:3,enabled:true,effective:false,scanTier:'file_list_only'};
  const service=new RemoteSourceService(api(async()=>({scope:wire,policy})),scope,async()=>op);
  const got=await service.policy('lib');assert.equal(got.enabled,true);assert.equal(got.effective,false);assert.equal(got.scanTier,'file_list_only');service.dispose();
- for(const patch of [{effective:'yes'},{scanTier:'unbounded'}]){
+ for(const patch of [{effective:'yes'},{revision:-1},{libraryId:'other'}]){
   const bad=new RemoteSourceService(api(async()=>({scope:wire,policy:{...policy,...patch}})),scope,async()=>op);
   await assert.rejects(bad.policy('lib'));bad.dispose();
  }
+ // A scan tier this app does not know is left off; the policy and its revision are kept.
+ const newer=new RemoteSourceService(api(async()=>({scope:wire,policy:{...policy,scanTier:'unbounded'}})),scope,async()=>op);
+ assert.deepEqual(await newer.policy('lib'),{libraryId:'lib',enabled:true,revision:3,effective:false});newer.dispose();
 });

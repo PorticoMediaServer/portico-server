@@ -60,14 +60,15 @@ func TestDeviceRegistrationRecordsThePeerNotTheClaim(t *testing.T) {
 
 func TestOwnerApprovalHoldsANewDeviceAndDenyingItSignsItOut(t *testing.T) {
 	ctx := context.Background()
-	s, db, login := directFixture(t)
+	s, owner, _, login := memberWithSession(t)
+	db := s.db
 	if e := s.SetDeviceApprovalPolicy(DeviceApprovalOwner); e != nil {
 		t.Fatal(e)
 	}
 	installation := Token()
 	device, e := s.RegisterDevice(ctx, login.AccountToken, registration(installation), "198.51.100.4:9")
 	if !errors.Is(e, ErrDevicePending) {
-		t.Fatalf("a new device was admitted under owner approval: %v", e)
+		t.Fatalf("a member's new device was admitted under owner approval: %v", e)
 	}
 	if device.ApprovalState != "pending" {
 		t.Fatalf("state %q", device.ApprovalState)
@@ -81,7 +82,11 @@ func TestOwnerApprovalHoldsANewDeviceAndDenyingItSignsItOut(t *testing.T) {
 	if e = s.BindDeviceFamily(ctx, login.AccountToken, installation, selected.Session.SessionFamilyID); !errors.Is(e, ErrDevicePending) {
 		t.Fatalf("a pending device bound a session: %v", e)
 	}
-	approved, e := s.ApproveDevice(ctx, login.AccountToken, device.ID, true)
+	// The member cannot approve their own device; the owner can.
+	if _, e = s.ApproveDevice(ctx, login.AccountToken, device.ID, true); !errors.Is(e, ErrForbidden) {
+		t.Fatalf("a member approved their own device: %v", e)
+	}
+	approved, e := s.ApproveDevice(ctx, owner.AccountToken, device.ID, true)
 	if e != nil || approved.ApprovalState != "approved" {
 		t.Fatalf("approval: %+v %v", approved, e)
 	}
@@ -89,13 +94,13 @@ func TestOwnerApprovalHoldsANewDeviceAndDenyingItSignsItOut(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	approvedLogin, e := s.DirectLoginFrom(approvedCtx, "owner", "Testing1!", true)
+	approvedLogin, e := s.DirectLoginFrom(approvedCtx, "member", "Testing2!", true)
 	if e != nil || approvedLogin.Session == nil {
 		t.Fatal("approved device could not sign in", e)
 	}
 	// Denying the device must also end the session it already holds, or turning
 	// the policy on would leave the very device the owner objects to signed in.
-	if _, e = s.ApproveDevice(ctx, login.AccountToken, device.ID, false); e != nil {
+	if _, e = s.ApproveDevice(ctx, owner.AccountToken, device.ID, false); e != nil {
 		t.Fatal(e)
 	}
 	if _, e = s.Authenticate(approvedLogin.Session.AccessToken); !errors.Is(e, ErrUnauthorized) {
@@ -107,6 +112,11 @@ func TestOwnerApprovalHoldsANewDeviceAndDenyingItSignsItOut(t *testing.T) {
 	}
 	if _, e = s.Authenticate(selected.Session.AccessToken); e != nil {
 		t.Fatal("another device lost its session", e)
+	}
+	// The owner's own new device is never held: the owner is the one who approves.
+	ownDevice, e := s.RegisterDevice(ctx, owner.AccountToken, registration(Token()), "198.51.100.4:9")
+	if e != nil || ownDevice.ApprovalState != "approved" {
+		t.Fatalf("the owner's new device under the policy: %+v %v", ownDevice, e)
 	}
 }
 

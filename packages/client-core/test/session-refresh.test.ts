@@ -126,7 +126,7 @@ function setup(t: import('node:test').TestContext, options: {session?: LocalSess
   const tab = () => {
     const api = new HttpLocalApi(ORIGIN, session.accessToken, server.fetch);
     const {refreshToken: _r, ...visible} = session;
-    const refresher = new LocalSessionRefresher({env, api, session: visible, onRotated: s => events.rotated.push(s), onSignedOut: e => events.signedOut.push(e.code), setTimer: timers.setTimer, clearTimer: timers.clearTimer});
+    const refresher = new LocalSessionRefresher({env, api, session: visible, onRotated: s => events.rotated.push(s), onSignedOut: e => events.signedOut.push(e.code), setTimer: timers.setTimer, clearTimer: timers.clearTimer, random: () => 0});
     return {api, refresher};
   };
   t.after(() => setInstallationIdentity(undefined));
@@ -225,11 +225,21 @@ test('a 403 that is not this server ending the sign-in keeps the stored credenti
   assert.equal(server.rotations, 1);
 });
 
-test('a renewal the server revokes for an access limit ends the sign-in', async t => {
+test('a renewal refused outside the account’s allowed hours keeps the sign-in and renews when the hours return', async t => {
   const {server, store, env} = setup(t);
-  server.refreshAnswers.push(() => new Response(JSON.stringify({error: {code: 'access_limit', message: 'Not available right now.', retryable: false}}), {status: 403, headers: {'Content-Type': 'application/json'}}));
-  await assert.rejects(refreshDirectly(env, server), (e: unknown) => (e as {signOut?: boolean}).signOut === true && (e as {code?: string}).code === 'refresh_refused');
-  assert.equal(store.peek(), undefined, 'stored sign-in removed');
+  server.refreshAnswers.push(() => new Response(JSON.stringify({error: {code: 'outside_allowed_hours', message: 'This account cannot be used at this time of day.', retryable: false}}), {status: 403, headers: {'Content-Type': 'application/json'}}));
+  await assert.rejects(refreshDirectly(env, server), (e: unknown) => (e as {signOut?: boolean}).signOut === false && (e as {code?: string}).code === 'outside_allowed_hours' && (e as {status?: number}).status === 403);
+  assert.equal(store.peek()!.session.refreshToken, 'refresh_000000000001', 'credential kept');
+  const next = await refreshDirectly(env, server);
+  assert.equal(next.accessToken, 'access_2', 'the kept credential renews once the server allows it');
+  assert.equal(server.rotations, 1);
+});
+
+test('no 403 ends a sign-in, whatever its code', async t => {
+  const {server, store, env} = setup(t);
+  server.refreshAnswers.push(() => new Response(JSON.stringify({error: {code: 'access_limit', message: 'Not permitted.', retryable: false}}), {status: 403, headers: {'Content-Type': 'application/json'}}));
+  await assert.rejects(refreshDirectly(env, server), kept);
+  assert.equal(store.peek()!.session.refreshToken, 'refresh_000000000001', 'credential kept');
 });
 
 test('a protected store that cannot be read right now keeps the sign-in and renews once it can', async t => {
@@ -397,4 +407,25 @@ test('device-bound envelopes parse; the refresh credential stays out of viewer r
   assert.equal(viewers.getSnapshot().generation, generation, 'rotation is not a new viewer');
   assert.equal(viewers.rotate({...renewed, sessionFamilyId: 'other'}), false);
   assert.equal(viewers.rotate({...renewed, tokenGeneration: '1'}), false, 'never rolls back');
+});
+
+test('two tabs with no lock between them (plain HTTP) send one renewal request id, so the server never sees a reused credential', async t => {
+  const {server, store, env} = setup(t);
+  // No cross-tab lock: each tab's "lock" lets its own work straight through, as a tab-local lock does for another tab.
+  setCredentialLock((_name, work) => work());
+  t.after(() => setCredentialLock(undefined));
+  server.expireAccess();
+  const ids: string[] = [];
+  const fetch: typeof globalThis.fetch = async (input, init) => {
+    if (String(input).endsWith('/v1/auth/refresh')) ids.push((JSON.parse(String(init?.body)) as {requestId: string}).requestId);
+    return server.fetch(input, init);
+  };
+  const tab = () => refreshStoredSession({env, api: new HttpLocalApi(ORIGIN, 'access_1', fetch), family: {sessionFamilyId: 'family_1', serverId: 'srv'}, rejected: 'access_1'});
+  const [a, b] = await Promise.all([tab(), tab()]);
+  assert.equal(a.accessToken, 'access_2');
+  assert.equal(b.accessToken, 'access_2', 'the second tab gets the same renewed sign-in, not a refusal');
+  assert.equal(server.rotations, 1);
+  assert.equal(new Set(ids).size, 1, 'both tabs named the same request');
+  assert.equal(store.peek()!.session.refreshToken, 'refresh_000000000002');
+  assert.equal(store.peek()!.pendingRefresh, undefined);
 });

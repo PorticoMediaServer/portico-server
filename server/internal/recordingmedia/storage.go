@@ -29,21 +29,32 @@ func (d *Driver) checkRoot() error {
 	return nil
 }
 func (d *Driver) Measure(ctx context.Context) (dvr.StorageMeasurement, error) {
+	d.measureMu.Lock()
+	defer d.measureMu.Unlock()
 	d.writeMu.Lock()
-	defer d.writeMu.Unlock()
+	at := d.writtenTotal
+	d.writeMu.Unlock()
 	var out dvr.StorageMeasurement
 	if e := d.checkRoot(); e != nil {
+		d.writeMu.Lock()
 		d.writeHealthy = false
+		d.writeMu.Unlock()
 		return out, e
 	}
 	free, e := freeBytes(d.root)
 	if e != nil {
+		d.writeMu.Lock()
 		d.writeHealthy = false
+		d.writeMu.Unlock()
 		return out, e
 	}
 	var used int64
+	objects := map[string][]os.FileInfo{}
 	e = filepath.WalkDir(d.root, func(path string, entry fs.DirEntry, e error) error {
 		if e != nil {
+			if os.IsNotExist(e) {
+				return nil
+			}
 			return e
 		}
 		if e = ctx.Err(); e != nil {
@@ -55,17 +66,36 @@ func (d *Driver) Measure(ctx context.Context) (dvr.StorageMeasurement, error) {
 		if !entry.IsDir() {
 			info, e := entry.Info()
 			if e != nil {
+				if os.IsNotExist(e) {
+					return nil
+				}
 				return e
 			}
 			if !info.Mode().IsRegular() {
 				return mediaartifact.ErrPrivate
+			}
+			if filepath.Base(filepath.Dir(path)) == "objects" {
+				key := filepath.Base(path)
+				same := false
+				for _, prior := range objects[key] {
+					if os.SameFile(prior, info) {
+						same = true
+						break
+					}
+				}
+				if same {
+					return nil
+				}
+				objects[key] = append(objects[key], info)
 			}
 			used += info.Size()
 		}
 		return nil
 	})
 	if e != nil {
+		d.writeMu.Lock()
 		d.writeHealthy = false
+		d.writeMu.Unlock()
 		return out, e
 	}
 	// An actual create/sync/remove probe checks permissions and a read-only/full
@@ -85,6 +115,11 @@ func (d *Driver) Measure(ctx context.Context) (dvr.StorageMeasurement, error) {
 			e = e2
 		}
 	}
+	d.writeMu.Lock()
+	defer d.writeMu.Unlock()
+	// Concurrent writes may already appear in the walk; adding the full delta
+	// is conservative, so a scan never loses bytes written after it started.
+	used += d.writtenTotal - at
 	d.used = used
 	d.writeHealthy = e == nil
 	out = dvr.StorageMeasurement{FreeBytes: free, UsedBytes: used, WriteHealthy: d.writeHealthy, MeasuredAt: time.Now().UTC().Format(time.RFC3339Nano)}
@@ -150,6 +185,7 @@ func (d *Driver) writeCapture(id string, w *mediaartifact.Writer, b []byte) (int
 	}
 	n, e := w.Write(b)
 	d.used += int64(n)
+	d.writtenTotal += int64(n)
 	d.reserved[id] = max(int64(0), d.reserved[id]-int64(n))
 	d.writeHealthy = e == nil
 	if e != nil {

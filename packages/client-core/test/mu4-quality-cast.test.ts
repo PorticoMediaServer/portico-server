@@ -18,8 +18,8 @@ test('MU4 CON-26: the same policy gives the same footer on both platforms', () =
   // "Home network · up to 1080p" / "Away from home · up to 1080p" parts.
   assert.deepEqual(qualityNetworkFooter({networkClass: 'local', maxVideoHeight: 1080}), {network: 'home', height: 1080});
   assert.deepEqual(qualityNetworkFooter({networkClass: 'remote', maxVideoHeight: 1080}), {network: 'away', height: 1080});
-  assert.deepEqual(qualityNetworkFooter({networkClass: 'wifi', maxVideoHeight: 720}), {network: 'wifi', height: 720});
-  assert.deepEqual(qualityNetworkFooter({networkClass: 'cellular', maxVideoHeight: 480}), {network: 'cellular', height: 480});
+  // There are two places: at home and away. A transport is not a place.
+  assert.deepEqual(qualityNetworkFooter({networkClass: 'wifi', maxVideoHeight: 720}), {network: null, height: 720});
   assert.deepEqual(qualityNetworkFooter({networkClass: 'unknown', maxVideoHeight: 1080}), {network: null, height: 1080});
   assert.deepEqual(qualityNetworkFooter(null), {network: null, height: null});
   assert.equal(hasQualityFooter({network: 'home', height: 1080}), true);

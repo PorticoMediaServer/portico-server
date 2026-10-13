@@ -368,6 +368,7 @@ func (s *Service) EmptyMissing(ctx context.Context, library string, cutoff time.
 		titles, err := scanInt64s(tx.QueryContext(ctx, `SELECT m.entity_id FROM catalog_missing_titles m JOIN catalog_libraries cl ON cl.id=m.library_id
  WHERE (?1='' OR cl.library_id=?1) AND m.missing_since_ms<=?2
  AND NOT EXISTS(SELECT 1 FROM inventory_source_active a JOIN library_sources src ON src.id=a.source_id WHERE src.library_id=cl.library_id)
+ AND NOT EXISTS(SELECT 1 FROM library_sources src WHERE src.library_id=cl.library_id AND src.health IN('offline','root_changed','inventory_running'))
  ORDER BY m.library_id,m.missing_since_ms,m.entity_id LIMIT ?3`, library, cutoff.UnixMilli(), missingBatch+1))
 		if err != nil {
 			return err

@@ -78,8 +78,8 @@ func TestLongAudiobookFinalSegmentUsesSourceTimestamp(t *testing.T) {
 	s.ConfigureHLS(h)
 	s.ConfigureDelivery(nil, nil, nil, "")
 	p := identity.Principal{Hash: "login", Viewer: identity.Viewer{AccountID: "owner", ProfileID: "profile", Authority: "local", Role: "owner"}, Epoch: 1}
-	raw, _ := json.Marshal(chromeProfile())
-	if _, err = s.PublishClientProfile(ctx, p, raw); err != nil {
+	raw, _ := json.Marshal(documentOf(chromeProfile()))
+	if _, err = s.PublishCapabilities(ctx, p, raw); err != nil {
 		t.Fatal(err)
 	}
 	session, err := s.Create(p, item, "auto", "long-book")

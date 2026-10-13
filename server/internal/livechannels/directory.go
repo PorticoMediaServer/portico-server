@@ -123,13 +123,14 @@ type DirectorySummary struct {
 // the Go boundary to apply their selected-library policy. Count, source summary
 // and global sort/paging use this same authorized, filtered relation.
 const directoryEligibleSQL = `WITH candidates AS (
- SELECT c.channel_id,s.id source_id,'live-source' provenance,c.name,c.number,c.group_name,s.active_generation generation,'' logo_path,
+ SELECT c.channel_id,s.id source_id,'live-source' provenance,c.name,COALESCE(NULLIF(n.number,''),c.number) number,c.group_name,s.active_generation generation,'' logo_path,
  COALESCE(p.favorite,0) favorite,COALESCE(p.hidden,0) hidden,COALESCE(p.revision,0) preference_revision,
- s.name source_name,s.published_at,c.available_start,c.available_end,COALESCE(r.state,'manual') refresh_state,0 source_position,c.position channel_position,s.revision config_revision
+ s.name source_name,s.published_at,c.available_start,c.available_end,COALESCE(r.state,'manual') refresh_state,0 source_position,c.position channel_position,s.revision+COALESCE(n.updated_ms,0) config_revision
  FROM live_sources s JOIN live_channel_versions c ON c.generation_id=s.active_generation
  LEFT JOIN live_channel_preferences p ON p.authority=? AND p.account_id=? AND p.profile_id=? AND p.source_id=s.id AND p.channel_id=c.channel_id
  LEFT JOIN live_remote_configs r ON r.source_id=s.id
- WHERE s.state='active' AND s.id IN (SELECT value FROM json_each(?))
+ LEFT JOIN admin_channel_numbers n ON n.source_id=s.id AND n.channel_id=c.channel_id
+ WHERE s.state='active' AND COALESCE(n.hidden,0)=0 AND s.id IN (SELECT value FROM json_each(?))
  UNION ALL
  SELECT json_extract(value,'$.channel.id'),json_extract(value,'$.channel.sourceId'),'library-channel',json_extract(value,'$.channel.name'),json_extract(value,'$.channel.number'),json_extract(value,'$.channel.group'),json_extract(value,'$.channel.generation'),COALESCE(json_extract(value,'$.channel.logoPath'),''),
  json_extract(value,'$.channel.favorite'),json_extract(value,'$.channel.hidden'),json_extract(value,'$.channel.preferenceRevision'),json_extract(value,'$.source.name'),json_extract(value,'$.source.publishedAt'),json_extract(value,'$.source.availableStart'),json_extract(value,'$.source.availableEnd'),json_extract(value,'$.source.refreshState'),json_extract(value,'$.position'),json_extract(value,'$.position'),json_extract(value,'$.revision') FROM json_each(?)

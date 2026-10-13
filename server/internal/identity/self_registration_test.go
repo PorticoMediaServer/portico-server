@@ -2,6 +2,7 @@ package identity
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"testing"
 )
@@ -91,11 +92,20 @@ func TestInviteOnlyRegistrationRefusesWithoutARedeemedInvitation(t *testing.T) {
 		t.Fatalf("invite-only accepted a code with no redeemer: %v", e)
 	}
 	refusal := errors.New("no such invitation")
-	s.RedeemInvitation = func(_ context.Context, code string) ([]string, error) {
+	spent := 0
+	s.RedeemInvitation = func(_ context.Context, tx *sql.Tx, code, account string) ([]string, error) {
+		if tx == nil || account == "" {
+			t.Fatalf("the redeemer was called outside the registration: tx=%v account=%q", tx != nil, account)
+		}
 		if code != "good" {
 			return nil, refusal
 		}
+		spent++
 		return []string{"library-one"}, nil
+	}
+	// A name that is already taken is refused before the invitation is looked at.
+	if _, e := s.Register(ctx, SelfRegistrationRequest{Username: "owner", Password: "Testing1!", InvitationCode: "good"}, true); !errors.Is(e, ErrRegistrationTaken) || spent != 0 {
+		t.Fatalf("a taken username: %v, invitation spent %d times", e, spent)
 	}
 	if _, e := s.Register(ctx, SelfRegistrationRequest{Username: "guest", Password: "Testing1!"}, true); !errors.Is(e, ErrRegistrationInvite) {
 		t.Fatal("invite-only accepted an empty code")

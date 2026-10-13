@@ -64,7 +64,7 @@ func AnalysisOperations() []AnalysisOperation {
 		{"trickplay", "Trickplay tiles", "decode", "Decodes evenly spaced frames into scrubbing tiles. Storage grows with interval and tile width.", video, false, []string{"probe"}, true, false},
 		{"chapter_images", "Chapter images", "decode", "Decodes one frame per chapter for the chapter list.", video, false, []string{"probe"}, true, false},
 		{"video_preview", "Video preview", "decode", "Encodes a short silent preview clip used when browsing.", video, false, []string{"probe"}, true, false},
-		{"segment_detection", "Intro and recap detection", "decode", "Compares episodes within a season to find repeated openings so they can be skipped.", []string{"show", "episode"}, false, []string{"probe"}, true, false},
+		{"segment_detection", "Intro and recap detection", "decode", "Suggests segments from chapter names and scene changes. Review uncertain suggestions before viewers can skip them.", []string{"show", "episode"}, false, []string{"probe"}, true, false},
 		{"credits_detection", "Credits detection", "decode", "Finds where the end credits begin so playback can offer the next episode.", video, false, []string{"probe"}, true, false},
 		{"subtitle_download", "Subtitle download", "network", "Asks the configured subtitle provider for tracks the file does not carry.", video, false, []string{"subtitle_discovery"}, true, true},
 		{"lyrics", "Lyrics", "network", "Fetches timed lyrics for tracks that have none.", []string{"music"}, false, []string{"probe"}, true, true},

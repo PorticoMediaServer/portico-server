@@ -10,6 +10,11 @@
  * - Atomic: the next access and refresh credential are stored in one change of the protected
  *   connection store (web: encrypted IndexedDB; Apple: Keychain), with the request id persisted
  *   before sending so an interrupted refresh replays instead of burning the credential.
+ * - Patient: after a failed renewal nothing renews again before its retry is due, however many
+ *   requests find the token expired in the meantime, and never before the wait the server asked
+ *   for (`Retry-After`). Retries are spread with a little randomness so devices told the same
+ *   thing do not all come back at once. Coming back to the foreground may retry early, but still
+ *   not inside the server's wait.
  * - Refusal (reuse, revocation, device unapproved, expired sign-in) ends the sign-in: the store
  *   is cleared and `onSignedOut` runs. Transient failures keep the credential and retry: that
  *   includes a store that cannot be read right now. A stored sign-in the store reports as damaged
@@ -40,6 +45,8 @@ export type LocalSessionRefresherOptions = Readonly<{
   leadMs?: number;
   /** Backoff after transient failures. */
   retryMs?: readonly number[];
+  /** Spreads retries: each waits up to a quarter longer, at random. Tests pass a fixed value. */
+  random?: () => number;
   now?: () => number;
   setTimer?: (fn: () => void, ms: number) => unknown;
   clearTimer?: (timer: unknown) => void;
@@ -53,6 +60,10 @@ export class LocalSessionRefresher implements AuthRecovery {
   private flight?: Promise<LocalSession>;
   private timer?: unknown;
   private failures = 0;
+  /** No renewal before this, from the app's own backoff (a return to the foreground may go sooner). */
+  private retryAt = 0;
+  /** No renewal before this at all: the server said how long to wait. */
+  private serverWaitUntil = 0;
   private state: RefresherSnapshot;
   private listeners = new Set<() => void>();
   private now: () => number;
@@ -85,18 +96,28 @@ export class LocalSessionRefresher implements AuthRecovery {
     if (this.done) return current;
     if (current !== this.session.accessToken) return this.session.accessToken;
     if (this.expiresIn() > REFRESH_MIN_VALID_MS) return current;
+    if (this.waiting()) return current;
     try { return (await this.run()).accessToken; } catch { return this.session.accessToken; }
   };
 
   recover = async (rejected: string): Promise<string | undefined> => {
     if (this.done) return undefined;
     if (rejected !== this.session.accessToken) return this.session.accessToken;
+    // A renewal just failed and its retry is not due: this request does not start another.
+    if (this.waiting()) return undefined;
     try { return (await this.run(rejected)).accessToken; } catch { return undefined; }
   };
+
+  /** A renewal failed and the next try is not due yet (a renewal already in flight is joined, not blocked). */
+  private waiting(): boolean {
+    return !this.flight && this.now() < Math.max(this.retryAt, this.serverWaitUntil);
+  }
 
   /** Check now (app returned to the foreground, network came back). */
   wake(): void {
     if (this.done) return;
+    // Things changed (foreground, network): the app's own backoff may be cut short, the server's wait may not.
+    if (this.now() < this.serverWaitUntil) return;
     if (this.expiresIn() <= this.lead) void this.run().catch(() => {});
     else this.schedule();
   }
@@ -132,6 +153,8 @@ export class LocalSessionRefresher implements AuthRecovery {
   private adopt(next: LocalSession) {
     if (this.done) return;
     this.failures = 0;
+    this.retryAt = 0;
+    this.serverWaitUntil = 0;
     const {refreshToken: _secret, ...visible} = next;
     const changed = visible.accessToken !== this.session.accessToken;
     this.session = Object.freeze(visible);
@@ -153,6 +176,9 @@ export class LocalSessionRefresher implements AuthRecovery {
       return;
     }
     this.failures++;
+    const asked = (e as {retryAfterSeconds?: unknown} | null)?.retryAfterSeconds;
+    // Bounded: a server cannot park renewal for longer than an hour with one header.
+    if (typeof asked === 'number' && Number.isFinite(asked) && asked > 0) this.serverWaitUntil = this.now() + Math.min(asked, 3600) * 1000;
     this.publish({phase: 'retrying', failures: this.failures, error});
     this.schedule();
   }
@@ -168,6 +194,12 @@ export class LocalSessionRefresher implements AuthRecovery {
       // An old server without the endpoint never expires tokens this way; check rarely.
       if (this.state.error?.code === 'refresh_unsupported') delay = Math.max(delay, 15 * 60_000);
       if (this.state.error?.code === 'refresh_unavailable') { const left = this.expiresIn(); if (left <= 0) return; delay = left + 1_000; }
+      else {
+        // Never before the server's wait, then spread: up to a quarter longer, at random.
+        delay = Math.max(delay, this.serverWaitUntil - this.now());
+        delay += Math.round(delay * 0.25 * Math.min(1, Math.max(0, (this.o.random ?? Math.random)())));
+      }
+      this.retryAt = this.now() + delay;
     } else delay = Math.max(0, this.expiresIn() - this.lead);
     this.timer = this.setTimer(() => { this.timer = undefined; void this.run().catch(() => {}); }, Math.min(delay, 2_147_000_000));
   }

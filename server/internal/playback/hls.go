@@ -80,6 +80,7 @@ type HLS struct {
 	// what orders eviction under the global byte budget; see hls_sweep.go.
 	usage       map[string]*hlsUsage
 	budgetSwept time.Time
+	orphanAfter string
 	// producers joins every produce goroutine, so shutdown can wait for the
 	// converters it just cancelled instead of leaving them to be killed with the
 	// process and orphan their ffmpeg children.
@@ -325,6 +326,7 @@ func (h *HLS) produce(ctx context.Context, id string, from int) {
 		h.failed(ctx, id)
 		return
 	}
+	h.selectOutputBackend(ctx, id, delivery)
 	input, remoteInput, e := h.openWindowInput(ctx, id, delivery)
 	if e != nil {
 		h.failed(ctx, id)
@@ -390,6 +392,8 @@ func (h *HLS) produce(ctx context.Context, id string, from int) {
 			return
 		}
 		position = timeline.Boundaries[from]
+	}
+	if timeline != nil || grid && delivery != nil && delivery.OutputContainer == "fmp4_hls" {
 		staging = filepath.Join(dir, "window-"+strconv.Itoa(from))
 		_ = os.RemoveAll(staging)
 		if e = os.MkdirAll(staging, 0700); e != nil {
@@ -398,12 +402,13 @@ func (h *HLS) produce(ctx context.Context, id string, from int) {
 		}
 		defer os.RemoveAll(staging)
 	}
-	burn, cleanupBurn, burnErr := h.prepareBurnInput(ctx, id, dir, position, delivery)
+	burn, cleanupBurn, burnErr := h.prepareBurnInput(ctx, id, dir, position, delivery, input, remoteInput)
 	if burnErr != nil {
 		h.failedWith(ctx, id, FailureConverter, "subtitle input unavailable")
 		return
 	}
 	defer cleanupBurn()
+	fragmentClock := &convertedFragmentClock{}
 	build := func(plan *DeliveryPlan) ([]string, []decoder.HardwareStage, error) {
 		offset := strconv.FormatFloat(position, 'f', 6, 64)
 		protocols := "file,pipe"
@@ -411,6 +416,9 @@ func (h *HLS) produce(ctx context.Context, id string, from int) {
 			protocols = "http,tcp"
 		}
 		args := []string{"-nostdin", "-hide_banner", "-loglevel", "error", "-y", "-protocol_whitelist", protocols}
+		if plan != nil && plan.VideoAction == "copy" {
+			args = append(args, "-fflags", "+genpts+discardcorrupt")
+		}
 		if grid && from > 0 {
 			// Input-side seek, so the decoder skips rather than decodes-and-drops.
 			// A copy window seeks a hair past its keyframe: the demuxer lands on
@@ -478,21 +486,39 @@ func (h *HLS) produce(ctx context.Context, id string, from int) {
 				}
 			}
 		}
+		if plan != nil && plan.AudioAction == "copy" && (plan.OutputAudioCodec == "truehd" || plan.OutputAudioCodec == "flac") {
+			args = append(args, "-strict", "-2")
+		}
+		if plan != nil && plan.VideoAction == "convert" && plan.AudioAction == "copy" && grid && from > 0 {
+			args = append(args, "-bsf:a", "noise=drop='lt(pts*tb,0)'")
+		}
 		args = append(args, "-max_muxing_queue_size", "1024")
 		if timeline != nil {
 			args = append(args, "-muxdelay", "0", "-muxpreload", "0")
 			return append(args, copySegmentArgs(timeline, from, staging, fragmented)...), stages, nil
 		}
-		ext := "ts"
+		packaging := "mpegts_hls"
 		if fragmented {
-			ext = "m4s"
-			args = append(args, "-hls_segment_type", "fmp4", "-hls_fmp4_init_filename", "init-"+strconv.Itoa(from)+".mp4")
+			packaging = "fmp4_hls"
 		}
+		initName := "init-" + strconv.Itoa(from) + ".mp4"
+		if !grid {
+			initName = "init.mp4"
+		}
+		outputArgs, ext, err := decoder.HLSPackagingArgs(packaging, initName)
+		if err != nil {
+			return nil, nil, err
+		}
+		args = append(args, outputArgs...)
 		args = append(args, "-f", "hls", "-hls_time", strconv.Itoa(HLSSegmentSeconds), "-hls_list_size", "0", "-hls_flags", "independent_segments+temp_file")
+		outputDir := dir
+		if fragmented && staging != "" {
+			outputDir = staging
+		}
 		if grid {
 			// Absolute source timestamps and a grid-aligned start number are what
 			// make a restarted window continuous with everything already produced.
-			args = append(args, "-output_ts_offset", offset, "-muxdelay", "0", "-muxpreload", "0", "-start_number", strconv.Itoa(from), "-hls_segment_filename", filepath.Join(dir, "segment-%06d."+ext), filepath.Join(dir, "window.m3u8"))
+			args = append(args, "-output_ts_offset", offset, "-muxdelay", "0", "-muxpreload", "0", "-start_number", strconv.Itoa(from), "-hls_segment_filename", filepath.Join(outputDir, "segment-%06d."+ext), filepath.Join(outputDir, "window.m3u8"))
 		} else {
 			args = append(args, "-hls_playlist_type", "event", "-hls_segment_filename", filepath.Join(dir, "segment-%06d."+ext), filepath.Join(dir, "master.m3u8"))
 		}
@@ -510,7 +536,7 @@ func (h *HLS) produce(ctx context.Context, id string, from int) {
 		}
 		supervise.Go("playback.hls.watch-window", func() {
 			defer close(watchDone)
-			h.watchWindow(watchCtx, id, dir, staging, from, limit, cancel, delivery, timeline)
+			h.watchWindow(watchCtx, id, dir, staging, from, limit, cancel, delivery, timeline, fragmentClock)
 		})
 	} else {
 		close(watchDone)
@@ -530,7 +556,7 @@ func (h *HLS) produce(ctx context.Context, id string, from int) {
 
 		args, stages, err := build(plan)
 		if err != nil {
-			return err, ""
+			return err, sanitizeConverterOutput(err.Error(), h.root)
 		}
 		if len(stages) > 0 {
 			h.recordStages(ctx, id, plan, stages)
@@ -589,6 +615,7 @@ func (h *HLS) produce(ctx context.Context, id string, from int) {
 			_ = os.RemoveAll(staging)
 			_ = os.MkdirAll(staging, 0700)
 		}
+		fragmentClock = &convertedFragmentClock{}
 		beforeRetry := highestProducedSegment(dir, from)
 		h.mu.Lock()
 		if w := h.windows[id]; w != nil && w.start == from {
@@ -600,7 +627,7 @@ func (h *HLS) produce(ctx context.Context, id string, from int) {
 		if grid {
 			supervise.Go("playback.hls.watch-software-window", func() {
 				defer close(watchDone)
-				h.watchWindow(watchCtx, id, dir, staging, from, -1, cancel, delivery, timeline)
+				h.watchWindow(watchCtx, id, dir, staging, from, -1, cancel, delivery, timeline, fragmentClock)
 			})
 		} else {
 			close(watchDone)
@@ -649,14 +676,18 @@ func (h *HLS) produce(ctx context.Context, id string, from int) {
 			produced = promoteCopySegments(staging, dir, from, e == nil)
 		}
 	} else if grid {
-		produced = highestProducedSegment(dir, from)
 		if delivery != nil && delivery.OutputContainer == "fmp4_hls" {
-			if err := promoteConvertedInit(dir, from); err != nil {
-				h.fragmentedFailure(ctx, id, delivery, position, err)
+			var publishErr error
+			produced, publishErr = promoteConvertedFragments(staging, dir, "init-"+strconv.Itoa(from)+".mp4", from, nil, fragmentClock)
+			if publishErr != nil {
+				h.fragmentedFailure(ctx, id, delivery, position, publishErr)
 				return
 			}
+		} else {
+			produced = highestProducedSegment(dir, from)
 		}
 	}
+
 	_, _ = dbwork.ExecWrite(ctx, h.db, dbwork.ClassEstablishedPlayback, `UPDATE playback_hls_windows SET status=?,highest_produced=max(highest_produced,?) WHERE session_id=? AND start_index=?`, status, produced, id, from)
 	if e == nil && (timeline == nil || produced >= timeline.count()-1) {
 		_, _ = dbwork.ExecWrite(ctx, h.db, dbwork.ClassEstablishedPlayback, `UPDATE playback_artifacts SET status='complete' WHERE session_id=?`, id)
@@ -667,7 +698,7 @@ func (h *HLS) produce(ctx context.Context, id string, from int) {
 // run far enough ahead of the viewer is stopped rather than paused: a stopped
 // converter costs nothing, and the fixed grid means the next demand restarts it
 // exactly where the viewer is instead of where it left off.
-func (h *HLS) watchWindow(ctx context.Context, id, dir, staging string, from, limit int, cancel context.CancelFunc, plan *DeliveryPlan, timeline *copyTimeline) {
+func (h *HLS) watchWindow(ctx context.Context, id, dir, staging string, from, limit int, cancel context.CancelFunc, plan *DeliveryPlan, timeline *copyTimeline, fragmentClock *convertedFragmentClock) {
 	cfg := h.configuration()
 	interval := 500 * time.Millisecond
 	if staging != "" {
@@ -687,7 +718,11 @@ func (h *HLS) watchWindow(ctx context.Context, id, dir, staging string, from, li
 		if staging != "" {
 			if plan != nil && plan.OutputContainer == "fmp4_hls" {
 				var err error
-				produced, err = promoteFMP4Segments(staging, dir, timeline, from, false)
+				if timeline != nil {
+					produced, err = promoteFMP4Segments(staging, dir, timeline, from, false)
+				} else {
+					produced, err = promoteConvertedFragments(staging, dir, "init-"+strconv.Itoa(from)+".mp4", from, nil, fragmentClock)
+				}
 				if err != nil {
 					h.publicationFailed(id, err)
 					cancel()
@@ -698,13 +733,6 @@ func (h *HLS) watchWindow(ctx context.Context, id, dir, staging string, from, li
 			}
 		} else {
 			produced = highestProducedSegment(dir, from)
-			if plan != nil && plan.OutputContainer == "fmp4_hls" {
-				if err := promoteConvertedInit(dir, from); err != nil && !os.IsNotExist(err) {
-					h.publicationFailed(id, err)
-					cancel()
-					return
-				}
-			}
 		}
 		h.mu.Lock()
 		window := h.windows[id]
@@ -839,7 +867,7 @@ func (h *HLS) Ready(ctx context.Context, id string) error {
 	}
 }
 
-var artifactName = regexp.MustCompile(`^(master\.m3u8|video\.m3u8|text-[0-9]{1,2}\.m3u8|audio-[0-9]{1,2}\.m3u8|init\.mp4|segment-[0-9]{6}\.(?:ts|m4s)|audio-[0-9]{1,2}-[0-9]{6}\.ts)$`)
+var artifactName = regexp.MustCompile(`^(master\.m3u8|video\.m3u8|text-[0-9]{1,2}\.m3u8|audio-[0-9]{1,2}\.m3u8|init\.mp4|segment-[0-9]{6}\.(?:ts|m4s)|audio-[0-9]{1,2}-init\.mp4|audio-[0-9]{1,2}-[0-9]{6}\.(?:ts|m4s))$`)
 
 func (h *HLS) File(grant, name string) (string, error) {
 	return h.FileContext(context.Background(), grant, name)

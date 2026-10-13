@@ -96,7 +96,8 @@ func within(value, ceiling int) bool { return ceiling <= 0 || value <= ceiling }
 
 // A v1 presentation stored before plans kept their ceilings cannot be planned
 // again: what it started under is not recoverable, and it must not be planned
-// under no ceiling at all. A legacy session still names its rung.
+// under no ceiling at all. A presentation started by a named quality stores
+// its ceilings like any other.
 func TestReplanRefusesAV1PresentationWhoseCeilingsWereNotStored(t *testing.T) {
 	for _, test := range []struct {
 		name   string
@@ -132,7 +133,7 @@ func TestReplanRefusesAV1PresentationWhoseCeilingsWereNotStored(t *testing.T) {
 		if err = f.subtitle(context.Background(), session.ID, styledSubtitle); err != nil {
 			t.Fatalf("a legacy session's burn-in re-plan: %v", err)
 		}
-		if plan := f.plan(session.ID); plan.BurnIn == nil || plan.Target != nil || plan.QualityID != "auto" {
+		if plan := f.plan(session.ID); plan.BurnIn == nil || plan.Target == nil || plan.QualityID != "original" {
 			t.Fatalf("legacy re-plan: %+v", plan)
 		}
 	})
@@ -416,8 +417,8 @@ func TestLegacySubtitleReplanAppliesCurrentCeilings(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if plan := f.plan(session.ID); plan.Target != nil {
-			t.Fatalf("a legacy session stored a v1 target: %+v", plan.Target)
+		if plan := f.plan(session.ID); plan.Target == nil {
+			t.Fatalf("a presentation started by a named quality stored no target: %+v", plan)
 		}
 		return session
 	}
@@ -430,7 +431,7 @@ func TestLegacySubtitleReplanAppliesCurrentCeilings(t *testing.T) {
 				if err := f.subtitle(claimsLocal, session.ID, resource); err != nil {
 					t.Fatal(err)
 				}
-				if plan := f.plan(session.ID); plan.VideoAction != "convert" || plan.VideoBitrateBPS < 1 || plan.VideoBitrateBPS > 1_000_000 || plan.QualityID != quality || plan.Target != nil {
+				if plan := f.plan(session.ID); plan.VideoAction != "convert" || plan.VideoBitrateBPS < 1 || plan.VideoBitrateBPS > 1_000_000 || plan.QualityID != "original" || plan.Target == nil {
 					t.Fatalf("a legacy re-plan (burn-in %v) planned %s at %d bit/s (%s) above the member's 1000000", resource != nil, plan.VideoAction, plan.VideoBitrateBPS, plan.QualityID)
 				}
 			}

@@ -30,7 +30,26 @@ test('current deletion status on replay does not resurrect a previously created 
 });
 test('viewer permissions and opaque member validation fail closed',async()=>{
  let writes=0;const s=setup(async(p,m)=>{if(m!=='GET')writes++;return content(resource({role:'viewer',actions:['pin']}));});await s.select({view:'resource',resourceId:'collection'});await assert.rejects(()=>s.mutate({action:'entries',addItemIds:['item']}),/not currently/);assert.equal(writes,0);s.dispose();
- for(const entries of [[{id:'hidden',hidden:true,media:media()}],[{id:'same',hidden:true},{id:'same',hidden:true}]]){const bad=setup(async()=>content(resource(),entries));await bad.select({view:'resource',resourceId:'collection'});assert.equal(bad.getSnapshot().error?.code,'invalid_saved');assert.equal(bad.getSnapshot().entries.length,0);bad.dispose();}
+ // A hidden member stays opaque whatever else its row carries, and a repeated member keeps its first row.
+ for(const entries of [[{id:'hidden',hidden:true,media:media()}],[{id:'hidden',hidden:true},{id:'hidden',hidden:true}]]){const opaque=setup(async()=>content(resource(),entries));await opaque.select({view:'resource',resourceId:'collection'});assert.equal(opaque.getSnapshot().error,null);assert.deepEqual(opaque.getSnapshot().entries,[{id:'hidden',hidden:true}]);opaque.dispose();}
+});
+test('one member, history row or resource this app cannot read is left out and the rest is kept',async()=>{
+ const members=setup(async()=>({...content(resource(),[{id:'one',hidden:false,media:media('one')},{id:'broken',hidden:false,media:{id:'x'}},{hidden:false},'nonsense',{id:'two',hidden:false,media:media('two'),futureField:[1]}]),futureField:true}));
+ await members.select({view:'resource',resourceId:'collection'});assert.equal(members.getSnapshot().error,null);assert.deepEqual(members.getSnapshot().entries.map(e=>e.id),['one','two']);members.dispose();
+ const row=(id:string,patch:any={})=>({id,media:media(id),updatedAt:'2026-09-06T12:00:00Z',positionSeconds:30,completed:false,...patch});
+ const history=setup(async()=>({serverId:'server',viewerFence:'fence',revision:4,entries:[row('one'),row('bad',{positionSeconds:-1}),row('one',{completed:true}),row('two')],nextCursor:''}));
+ await history.select({view:'history'});assert.equal(history.getSnapshot().error,null);assert.deepEqual(history.getSnapshot().entries.map(e=>[e.id,e.completed]),[['one',false],['two',false]]);assert.equal(history.getSnapshot().revision,4);history.dispose();
+ const listed=setup(async()=>directory([resource(),resource({id:'smart',kind:'smart-shelf'}),resource({id:'review',status:'archived'}),resource({id:'other',actions:['pin','teleport'],shares:[{authority:'local',accountId:'a',profileId:'p',role:'viewer',displayName:'Second'},{authority:'local',accountId:'a',profileId:'q',role:'curator',displayName:'Third'}]}),resource()]));
+ await listed.select({view:'collections'});assert.equal(listed.getSnapshot().error,null);assert.deepEqual(listed.getSnapshot().resources.map(r=>r.id),['collection','other']);
+ assert.deepEqual(listed.getSnapshot().resources[1].actions,['pin']);assert.deepEqual(listed.getSnapshot().resources[1].shares.map(s=>[s.profileId,s.role]),[['p','viewer'],['q','viewer']]);listed.dispose();
+});
+test('sizes, scope, fences, revisions, roles and cursors still refuse the whole document',async()=>{
+ for(const page of [directory(Array.from({length:101},(_,i)=>resource({id:'c'+i}))),directory([resource(),resource({id:'two',viewerFence:'other'})]),directory([resource({serverId:'other'})]),{...directory(),serverId:'other'},{...directory(),revision:-1},{...directory(),nextCursor:7},{...directory(),resources:{}}]){
+  const s=setup(async()=>page);await s.select({view:'collections'});assert.equal(s.getSnapshot().error?.code,'invalid_saved');assert.equal(s.getSnapshot().resources.length,0);s.dispose();
+ }
+ for(const patch of [{role:'curator'},{role:'viewer'},{role:'editor',actions:['pin','delete']},{revision:'1'},{pinRevision:-1},{visibility:'everyone'},{viewerFence:''},{id:'another'},{actions:new Array(9).fill('pin')}]){
+  const s=setup(async()=>content(resource(patch)));await s.select({view:'resource',resourceId:'collection'});assert.equal(s.getSnapshot().error?.code,'invalid_saved',JSON.stringify(patch));assert.equal(s.getSnapshot().resource,null);s.dispose();
+ }
 });
 test('late reads and writes cannot publish into another resource or disposed scope',async()=>{
  const late=deferred();let body:any;const s=setup(async(p,m,b)=>{if(m==='GET')return p.includes('/content')?content():directory();body=b;return late.promise;});await s.select({view:'resource',resourceId:'collection'});const change=s.mutate({action:'delete'});await tick();await s.select({view:'views'});await change;late.resolve({serverId:'server',viewerFence:'fence',receipt:{operationId:body.operationId,resourceId:'collection',revision:2,deleted:true}});await tick();assert.equal(s.getSnapshot().route?.view,'views');assert.equal(s.getSnapshot().result,null);s.dispose();

@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"portico.local/server/internal/playback"
 	"testing"
 
 	"portico.local/apikit/contract"
@@ -87,12 +88,8 @@ func TestPlaybackV1PlannerUsesTheDeviceDocument(t *testing.T) {
 		t.Fatalf("baseline plan %+v", before.Plan)
 	}
 	mkvOnly := webCapabilities()
-	mkvOnly["containers"] = []map[string]any{{"container": "mkv", "direct": true}}
-	mkvOnly["streaming"] = map[string]any{"hls": map[string]any{"fmp4": false, "ts": false}, "progressive": true}
+	nativeEngine(mkvOnly)["transports"] = []map[string]any{{"transport": "direct", "containers": []string{"mkv"}, "video": []string{"h264"}, "audio": []string{"aac", "mp3"}}}
 	f.call("PUT", "/v1/me/devices/current/capabilities", nil, mkvOnly, 204, nil)
-	if _, err := f.db.Exec(`DELETE FROM playback_client_profiles`); err != nil {
-		t.Fatal(err)
-	}
 	var after playbackv1.Options
 	f.call("GET", options, nil, nil, 200, &after)
 	if after.Plan != nil && after.Plan.Mode == "direct" {
@@ -104,17 +101,18 @@ func TestPlaybackV1PlannerUsesTheDeviceDocument(t *testing.T) {
 	if device == "" {
 		t.Fatal("no device for the owner token")
 	}
+	// One document is stored: the one the device published, as planning reads it.
 	var planner string
-	_ = f.db.QueryRow(`SELECT planner_profile FROM playback_device_capabilities WHERE device_id=?`, device).Scan(&planner)
-	if planner == "" {
-		t.Fatal("planner profile not stored with the document")
+	_ = f.db.QueryRow(`SELECT document FROM playback_device_capabilities WHERE device_id=?`, device).Scan(&planner)
+	if stored, err := playback.ParseCapabilityDocument([]byte(planner)); err != nil || len(stored.Engines.Native.Transports) != 1 {
+		t.Fatalf("the published document is not what is stored: %v %s", err, planner)
 	}
 	// A refused write (stale If-Match) changes nothing (review P3).
 	f.call("PUT", "/v1/me/devices/current/capabilities", map[string]string{"If-Match": `"9"`}, webCapabilities(), 412, nil)
 	var still string
-	_ = f.db.QueryRow(`SELECT planner_profile FROM playback_device_capabilities WHERE device_id=?`, device).Scan(&still)
+	_ = f.db.QueryRow(`SELECT document FROM playback_device_capabilities WHERE device_id=?`, device).Scan(&still)
 	if still != planner {
-		t.Fatal("a 412 changed the planner profile")
+		t.Fatal("a 412 changed the stored document")
 	}
 }
 

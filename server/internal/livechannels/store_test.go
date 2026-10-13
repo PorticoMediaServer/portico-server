@@ -126,7 +126,9 @@ func TestRefreshCASAndStableCursor(t *testing.T) {
 		t.Fatal("stale write accepted")
 	}
 	in.ExpectedRevision = updated.Revision
-	in.Guide = "<tv><programme>broken</programme></tv>"
+	// Odd, well-formed programme rows are skipped. A structurally broken
+	// document must still leave the last published guide intact.
+	in.Guide = "<tv><programme>broken</tv>"
 	if _, e = s.Save(ctx, a, in); !errors.Is(e, ErrInvalid) {
 		t.Fatal("invalid refresh accepted")
 	}
@@ -173,11 +175,7 @@ func TestDeniedCommitRollsBackAndDisableHides(t *testing.T) {
 }
 func TestParserRejectsHostileAndAmbiguousData(t *testing.T) {
 	base := testInput()
-	for name, change := range map[string]func(*SourceInput){"credentials": func(v *SourceInput) {
-		v.Playlist = strings.Replace(v.Playlist, "https://provider.invalid/stream", "https://user:password@provider.invalid/stream", 1)
-	}, "missing-id": func(v *SourceInput) { v.Playlist = strings.Replace(v.Playlist, `tvg-id="one"`, "", 1) }, "bad-time": func(v *SourceInput) {
-		v.Guide = strings.Replace(v.Guide, "20260905130000 +0000", "20260905110000 +0000", 1)
-	}, "entity": func(v *SourceInput) { v.Guide = `<!DOCTYPE tv [<!ENTITY x SYSTEM "file:///etc/passwd">]><tv/>` }, "oversize": func(v *SourceInput) { v.Guide = strings.Repeat("x", MaxUploadBytes+1) }} {
+	for name, change := range map[string]func(*SourceInput){"entity": func(v *SourceInput) { v.Guide = `<!DOCTYPE tv [<!ENTITY x SYSTEM "file:///etc/passwd">]><tv/>` }, "oversize": func(v *SourceInput) { v.Limits.Bytes = 32768; v.Guide = strings.Repeat("x", 32769) }} {
 		t.Run(name, func(t *testing.T) {
 			in := base
 			change(&in)

@@ -3,6 +3,7 @@ import {unreadableServerResponse} from './server-messages.ts';
 import type {ChannelApi} from './channel-guide';
 import {boundedText,envelope,isRecord,safeCounter,utcInstant,LINEAR_PROTOCOL} from './linear-api.ts';
 import {parseBrowseNode,type BrowseNode} from './browse.ts';
+import {keepReadable} from './tolerant.ts';
 /** What a rule plays (Spec — Custom Channels Builder §1). `filter` is the library browse
  * expression, evaluated against the movie or the show; `text` matches title and summary words;
  * pinned ids are movies, episodes or shows (a show pins all its episodes). `genres` and
@@ -54,8 +55,11 @@ export function parseLibraryChannel(v:unknown):LibraryChannel{
  return {...v,config} as LibraryChannel;
 }
 function response(v:unknown,serverId:string){const r=envelope(v,serverId);if(r.protocolVersion!==LINEAR_PROTOCOL)invalid();return r}
-export async function readLibraryChannels(api:ChannelApi,serverId:string,signal?:AbortSignal):Promise<LibraryChannel[]>{const r=response(await api.request('/v1/admin/library-channels','GET',undefined,signal),serverId);if(!Array.isArray(r.channels)||r.channels.length>64)invalid();return r.channels.map(parseLibraryChannel)}
-export async function readLibraryTemplates(api:ChannelApi,serverId:string,signal?:AbortSignal):Promise<LibraryChannelTemplate[]>{const r=response(await api.request('/v1/admin/library-channels/templates','GET',undefined,signal),serverId);if(!Array.isArray(r.templates)||r.templates.length>64)invalid();return r.templates.map(v=>{if(!isRecord(v)||!id(v.id)||!boundedText(v.name,120)||!boundedText(v.description,2048)||!safeCounter(v.minimumCandidates,1000000)||typeof v.applicable!=='boolean'||!boundedText(v.reason,512))invalid();return {...v,config:parseLibraryChannelConfig(v.config)} as LibraryChannelTemplate})}
+export async function readLibraryChannels(api:ChannelApi,serverId:string,signal?:AbortSignal):Promise<LibraryChannel[]>{const r=response(await api.request('/v1/admin/library-channels','GET',undefined,signal),serverId);if(!Array.isArray(r.channels)||r.channels.length>64)invalid();
+ // A channel is edited and saved whole, so its settings stay exact: one this app cannot read (a
+ // setting from a newer server) is left out of the list alone, and the others can still be managed.
+ return keepReadable('library-channels','channels',r.channels,parseLibraryChannel)}
+export async function readLibraryTemplates(api:ChannelApi,serverId:string,signal?:AbortSignal):Promise<LibraryChannelTemplate[]>{const r=response(await api.request('/v1/admin/library-channels/templates','GET',undefined,signal),serverId);if(!Array.isArray(r.templates)||r.templates.length>64)invalid();return keepReadable('library-channels','templates',r.templates,v=>{if(!isRecord(v)||!id(v.id)||!boundedText(v.name,120)||!boundedText(v.description,2048)||!safeCounter(v.minimumCandidates,1000000)||typeof v.applicable!=='boolean'||!boundedText(v.reason,512))invalid();return {...v,config:parseLibraryChannelConfig(v.config)} as LibraryChannelTemplate})}
 export async function previewLibraryChannel(api:ChannelApi,serverId:string,config:LibraryChannelConfig,signal?:AbortSignal):Promise<LibraryChannelPreview>{const r=response(await api.request('/v1/admin/library-channels/preview','POST',config,signal),serverId);const v=r.preview;if(!isRecord(v)||!boundedText(v.catalogFence,32768)||!boundedText(v.boundaryPolicy,256)||!Array.isArray(v.blocks)||v.blocks.length>768||!list(v.rules,16,r=>isRecord(r)&&id(r.ruleId)&&safeCounter(r.eligible)&&safeCounter(r.unresolved)&&safeCounter(r.semanticLimit,1000000)&&list(r.sample,8,s=>isRecord(s)&&id(s.itemId)&&boundedText(s.title,512)&&safeCounter(s.durationMs)&&(s.showTitle===undefined||boundedText(s.showTitle,512)))))invalid();
  // Builder fields (older servers omit them: counts were then complete and there was no first day).
  for(const rule of v.rules as Record<string,unknown>[]){if(!safeCounter(rule.durationMs??0)||typeof(rule.complete??true)!=='boolean')invalid();rule.durationMs??=0;rule.complete??=true;rule.scanned??=0;}

@@ -9,7 +9,7 @@ test: test-go test-clients
 
 test-go:
 	cd apikit && go test ./... && go vet ./...
-	cd server && go test ./... && go vet ./...
+	cd server && go test ./... && ../scripts/vet-go.sh
 
 test-clients:
 	npm run test:core

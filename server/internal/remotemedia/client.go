@@ -14,6 +14,7 @@ import (
 )
 
 type Client struct {
+	userAgent     string
 	authorization string
 	url           string
 	client        *http.Client
@@ -77,7 +78,15 @@ func New(ctx context.Context, locator string, policy Policy) (*Client, error) {
 		}
 		return nil
 	}}
-	return &Client{url: u.String(), client: client}, nil
+	agent := policy.UserAgent
+	if agent == "" {
+		agent = "Portico/1"
+	}
+	if len(agent) > 200 || strings.ContainsAny(agent, "\x00\r\n") {
+		transport.CloseIdleConnections()
+		return nil, ErrPolicy
+	}
+	return &Client{url: u.String(), client: client, userAgent: agent}, nil
 }
 func (c *Client) Close() { c.client.CloseIdleConnections() }
 func (c *Client) Open(ctx context.Context, method, rangeHeader string) (*http.Response, error) {
@@ -95,7 +104,7 @@ func (c *Client) Open(ctx context.Context, method, rangeHeader string) (*http.Re
 		r.Header.Set("Authorization", c.authorization)
 	}
 	r.Header.Set("Accept-Encoding", "identity")
-	r.Header.Set("User-Agent", "Portico/1")
+	r.Header.Set("User-Agent", c.userAgent)
 	if rangeHeader != "" {
 		r.Header.Set("Range", rangeHeader)
 	}

@@ -1,4 +1,5 @@
 import {serviceProblem, serviceText} from './presentation/service-text.ts';
+import {firstOfEach, keepReadable} from './tolerant.ts';
 /** Review one account's sign-in families. No credentials or device guesses in state. */
 export interface AccountSessionReviewApi {request<T>(path:string,method?:string,body?:unknown,signal?:AbortSignal):Promise<T>}
 export type AccountSessionScope=Readonly<{accountId:string;familyId:string}>;
@@ -13,9 +14,17 @@ class Failure extends Error{code:string;retryable:boolean;constructor(code:strin
 function invalid():never{throw new Failure('invalid_session_review','The account service returned invalid session information.');}
 function errorInfo(e:unknown):AccountSessionError{const v=e as {code?:unknown;retryable?:unknown};return Object.freeze({code:id(v?.code)?v.code:'request_failed',message:serviceProblem(e,'account','accountSessions.error.load','load'),retryable:v?.retryable===true});}
 function parse(value:unknown,scope:AccountSessionScope){
- if(!object(value)||value.accountId!==scope.accountId||value.currentFamilyId!==scope.familyId||!date(value.observedAt)||!text(value.nextCursor,2048)||Object.keys(value).some(key=>!['accountId','currentFamilyId','observedAt','items','nextCursor'].includes(key))||!Array.isArray(value.items)||value.items.length>40)invalid();
- const items=value.items.map(raw=>{if(!object(raw)||!id(raw.id)||!['browser','native'].includes(raw.mode as string)||!['active','expired','revoked'].includes(raw.status as string)||!date(raw.createdAt)||!date(raw.expiresAt)||raw.revokedAt!==undefined&&!date(raw.revokedAt)||typeof raw.current!=='boolean'||raw.current!==(raw.id===scope.familyId)||raw.current&&raw.status!=='active'||raw.revokedAt!==undefined&&raw.status!=='revoked')invalid();return Object.freeze({id:raw.id,mode:raw.mode,createdAt:raw.createdAt,expiresAt:raw.expiresAt,...(raw.revokedAt?{revokedAt:raw.revokedAt}:{}),status:raw.status,current:raw.current}) as AccountSessionRow;});
- if(new Set(items.map(row=>row.id)).size!==items.length||value.nextCursor&&items.length!==40)invalid();
+ // A field this app does not know is ignored. The retired `legacySessionsPresent` field is known: it marks an older review this list cannot stand in for, so it is still refused.
+ if(!object(value)||value.accountId!==scope.accountId||value.currentFamilyId!==scope.familyId||!date(value.observedAt)||!text(value.nextCursor,2048)||'legacySessionsPresent' in value||!Array.isArray(value.items)||value.items.length>40)invalid();
+ // Another sign-in's row that cannot be read is left out. This sign-in's own row, and any row whose `current` mark is not plainly false, has to be exact or the whole list is refused.
+ let own=false;
+ const rows=keepReadable('account-sessions','items',value.items,given=>{if(!object(given))return undefined;
+  // This list is where someone looks for a sign-in they do not recognise, so another sign-in is never hidden for being of a kind this
+  // app does not know: an unknown kind reads as an app's, and an unknown state as still active (so it is shown and can be ended).
+  const raw:Record<string,unknown>=given.id===scope.familyId?given:{...given,mode:['browser','native'].includes(given.mode as string)?given.mode:typeof given.mode==='string'?'native':given.mode,status:['active','expired','revoked'].includes(given.status as string)?given.status:typeof given.status==='string'?(given.revokedAt!==undefined?'revoked':'active'):given.status};
+  if(!id(raw.id)||!['browser','native'].includes(raw.mode as string)||!['active','expired','revoked'].includes(raw.status as string)||!date(raw.createdAt)||!date(raw.expiresAt)||raw.revokedAt!==undefined&&!date(raw.revokedAt)||typeof raw.current!=='boolean'||raw.current!==(raw.id===scope.familyId)||raw.current&&raw.status!=='active'||raw.revokedAt!==undefined&&raw.status!=='revoked'){if(raw.id===scope.familyId||raw.current!==false)own=true;return undefined;}return Object.freeze({id:raw.id,mode:raw.mode,createdAt:raw.createdAt,expiresAt:raw.expiresAt,...(raw.revokedAt?{revokedAt:raw.revokedAt}:{}),status:raw.status,current:raw.current}) as AccountSessionRow;});
+ if(own||rows.filter(row=>row.current).length>1||value.nextCursor&&value.items.length!==40)invalid();
+ const items=firstOfEach('account-sessions','items',rows,row=>row.id);
  return {items:Object.freeze(items),observedAt:value.observedAt,nextCursor:value.nextCursor};
 }
 export class AccountSessionReviewService{

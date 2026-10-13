@@ -704,6 +704,9 @@ func (l *LinearRuntime) produceLive(ctx context.Context, w playback.LinearWork, 
 		}
 		result = errors.Join(result, e)
 	}()
+	if e = entry.buffer.SetLiveDelay(input.StreamBufferSeconds); e != nil {
+		return e
+	}
 	lock, e := l.locks.Lock(allocation)
 	if e != nil {
 		return e
@@ -756,7 +759,7 @@ func (l *LinearRuntime) produceLive(ctx context.Context, w playback.LinearWork, 
 		return e
 	}
 	plan.HLSInput = gateway.HLS()
-	publisher, e := entry.buffer.Publisher(linearbuffer.Producer{ID: w.ProducerOrdinal}, func() error { return l.owner.Linear.authority.CheckLinearProducer(work, w) })
+	publisher, e := entry.buffer.Publisher(linearbuffer.Producer{ID: w.ProducerOrdinal}, func() error { return l.checkProducerWithPatience(work, w) })
 	if e != nil {
 		return e
 	}
@@ -831,7 +834,7 @@ func (l *LinearRuntime) produceLibrary(ctx context.Context, w playback.LinearWor
 	plan.SeekUS = max(int64(0), w.Selection.SourceOffsetMS+now-w.Selection.EntryStartMS) * 1000
 	plan.ClipEndUS = (w.Selection.SourceOffsetMS + w.Selection.EntryEndMS - w.Selection.EntryStartMS) * 1000
 	publisher, e := entry.buffer.Publisher(linearbuffer.Producer{ID: w.ProducerOrdinal, Scheduled: true, TimelineBaseMS: w.Selection.EntryStartMS - w.Selection.SourceOffsetMS, EndMS: w.Selection.EntryEndMS}, func() error {
-		if e := l.owner.Linear.authority.CheckLinearProducer(ctx, w); e != nil {
+		if e := l.checkProducerWithPatience(ctx, w); e != nil {
 			return e
 		}
 		_, e := borrow.Validate(ctx)
@@ -1113,4 +1116,26 @@ func linearSelectionKey(s playback.LinearSelection) string {
 		key += ":" + s.EntryID
 	}
 	return key
+}
+
+// A busy database does not invalidate a completed segment. Retry its authority
+// check within a small upload budget; explicit permission/source refusals remain immediate.
+func (l *LinearRuntime) checkProducerWithPatience(ctx context.Context, w playback.LinearWork) error {
+	until := time.Now().Add(3 * time.Second)
+	for {
+		check, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
+		e := l.owner.Linear.authority.CheckLinearProducer(check, w)
+		cancel()
+		stop, _ := linearMonitorVerdict(false, e, 0)
+		if e == nil || stop || ctx.Err() != nil || time.Now().After(until) {
+			return e
+		}
+		timer := time.NewTimer(50 * time.Millisecond)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return ctx.Err()
+		case <-timer.C:
+		}
+	}
 }

@@ -3,6 +3,7 @@ package playback
 import (
 	"context"
 	"errors"
+	"time"
 )
 
 var ErrDeliveryDiagnosticsBusy = errors.New("playback diagnostics temporarily unavailable")
@@ -96,9 +97,8 @@ func (s *Service) DeliveryDiagnostics(ctx context.Context) (DeliveryDiagnostics,
 	out.HardwareFallbacks = h.hardwareFailures.Load()
 	out.FragmentedOutput = h.fragmentedOutput()
 	out.RecentFailures = []ConversionFailureRecord{}
-	// Bounded, and read only while the generated output still exists: the rows
-	// are reclaimed with the session directory.
-	rows, err := s.db.QueryContext(ctx, `SELECT a.session_id,a.failure_code,a.diagnostic,COALESCE(d.strategy,''),COALESCE(d.hardware_backend,''),COALESCE(d.source_video,''),COALESCE(d.source_audio,'') FROM playback_artifacts a LEFT JOIN playback_delivery_plans d ON d.session_id=a.session_id WHERE a.failure_code!='' ORDER BY a.rowid DESC LIMIT 20`)
+	// Bounded history survives output reclamation and session retirement.
+	rows, err := s.db.QueryContext(ctx, `SELECT session_id,failure_code,diagnostic,strategy,backend,video,audio FROM playback_conversion_failures WHERE recorded_ms>? ORDER BY sequence DESC LIMIT 20`, time.Now().Add(-30*24*time.Hour).UnixMilli())
 	if err != nil {
 		return out, nil
 	}

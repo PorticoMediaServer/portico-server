@@ -25,19 +25,10 @@ import (
 // watched state and resume point that go with it) stops while they have paused
 // it.
 func (s *Service) AcceptPlaybackProgress(tx *sql.Tx, v identity.Viewer, playbackID, item string, sequence int64, position, duration float64, state string, canonical bool) error {
-	return s.acceptPlaybackProgress(tx, v, playbackID, item, sequence, position, duration, state, canonical, time.Now().UTC())
+	return acceptPlaybackProgress(tx, v, playbackID, item, sequence, position, duration, state, canonical, time.Now().UTC())
 }
 
-// AcceptPlaybackProgressAt accepts a verified occurrence timestamp from an
-// offline journal. Authentication and replay/order checks remain with its caller.
-func (s *Service) AcceptPlaybackProgressAt(tx *sql.Tx, v identity.Viewer, playbackID, item string, sequence int64, position, duration float64, state string, canonical bool, clock time.Time) error {
-	if clock.IsZero() || clock.After(time.Now().Add(24*time.Hour)) {
-		return jobInvalid("invalid playback time")
-	}
-	return s.acceptPlaybackProgress(tx, v, playbackID, item, sequence, position, duration, state, canonical, clock.UTC())
-}
-
-func (s *Service) acceptPlaybackProgress(tx *sql.Tx, v identity.Viewer, playbackID, item string, sequence int64, position, duration float64, state string, canonical bool, clock time.Time) error {
+func acceptPlaybackProgress(tx *sql.Tx, v identity.Viewer, playbackID, item string, sequence int64, position, duration float64, state string, canonical bool, clock time.Time) error {
 	// Match the timeline's millisecond bound even when no runtime is known.
 	const maximumSeconds = float64(int64(1)<<40) / 1000
 	if math.IsNaN(position) || math.IsInf(position, 0) || position < 0 || position > maximumSeconds || math.IsNaN(duration) || math.IsInf(duration, 0) || duration < 0 || duration > maximumSeconds || sequence < 0 || sequence > 9007199254740991 || (state != "playing" && state != "paused" && state != "ended") {
