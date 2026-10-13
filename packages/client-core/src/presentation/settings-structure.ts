@@ -61,6 +61,8 @@ export type SettingsCapabilities = Readonly<{
   audioPassthrough?: boolean;
   /** This device or its display can show HDR. Absent: it can. */
   hdr?: boolean;
+  /** This member makes personal access tokens for their own scripts. Absent or false: not offered (the owner makes API keys on the Server pages instead). */
+  accessTokens?: boolean;
 }>;
 
 export type SettingsContext = Readonly<{owner: boolean; platform: SettingsPlatform; capabilities: SettingsCapabilities}>;
@@ -82,15 +84,16 @@ export type CompositeId =
 export type SettingsActionId = 'signOut' | 'resetRecommendations' | 'linkTV';
 export type SettingsCustomId =
   | 'identity' | 'profiles' | 'password' | 'twoStep' | 'devices' | 'porticoAccount' | 'servers'
-  | 'subtitlePreview' | 'deviceName' | 'downloadsStorage' | 'about'
+  | 'subtitlePreview' | 'deviceName' | 'downloadsStorage' | 'about' | 'accessTokens'
   // The Server heading's panels: each is drawn natively by the client.
   | 'server.nowPlaying' | 'server.alerts' | 'server.health' | 'server.activity' | 'server.statistics'
   | 'server.playHistory'
   | 'server.libraries'
   | 'server.liveSources' | 'server.tuners' | 'server.recordingRules' | 'server.recordingStorage' | 'server.channels'
-  | 'server.accounts' | 'server.invitations' | 'server.apiKeys'
+  | 'server.accounts' | 'server.invitations' | 'server.apiKeys' | 'server.memberTokens' | 'server.webhooks' | 'server.assistants'
+  | 'server.metadataSettings'
   | 'server.transcodeStatus'
-  | 'server.remoteStatus' | 'server.accountConnection' | 'server.certificateStatus' | 'server.addresses'
+  | 'server.remoteStatus' | 'server.accountConnection' | 'server.certificateStatus' | 'server.addresses' | 'server.connection' | 'server.ownCertificateStatus'
   | 'server.diskUsage' | 'server.retention' | 'server.remoteSources' | 'server.backups' | 'server.missingTitles'
   | 'server.windows' | 'server.jobs'
   | 'server.logs' | 'server.detailWindow' | 'server.records' | 'server.capabilities' | 'server.supportExport' | 'server.feedback' | 'server.stateFolder'
@@ -182,6 +185,8 @@ const accountPages: readonly AuthoredPage[] = [
       // What the Portico Account itself manages, and this server's link to it; a client with nothing to say draws nothing.
       {id: 'porticoAccount', rows: [custom('porticoAccount', 'settings.row.porticoAccount')]},
       {id: 'devices', title: 'settings.section.devices', rows: [custom('devices', 'settings.section.devices')], needs: c => !!c.localAccount},
+      // For a member's own scripts and apps: kept out of the way until asked for. The owner makes API keys under Server › Integrations.
+      {id: 'tokens', title: 'api.tokens.title', advanced: true, rows: [custom('accessTokens', 'api.tokens.title')], platforms: ['web'], needs: c => !!c.accessTokens},
       {id: 'session', rows: [{kind: 'action', id: 'signOut', label: 'action.signOut', icon: 'signOut', destructive: true}]},
     ],
   },
@@ -313,7 +318,7 @@ const accountPages: readonly AuthoredPage[] = [
 ];
 
 // ── Server (owners) ─────────────────────────────────────────────────────────
-// Ten pages in place of the console's fifteen sections; each duplicated concept has one home.
+// A dozen pages in place of the console's fifteen sections; each duplicated concept has one home.
 // Status is at the top of a page and settings below it. Plain settings are `server-setting`
 // rows, written once for the web and the iPhone app; the rest are panels each client draws.
 // Television shows the Dashboard only (who is watching, alerts, health).
@@ -338,6 +343,9 @@ const serverPages: readonly AuthoredPage[] = [
   // Every play on the server, with filters: the owner's record (a viewer's own History is under Saved).
   {id: 'history', title: 'settings.server.playHistory', icon: 'clock', sections: [panel('plays', 'server.playHistory')]},
   {id: 'libraries', title: 'settings.server.libraries', icon: 'library', sections: [panel('libraries', 'server.libraries')]},
+  // What every library shares when it looks titles up: the owner's own provider keys and how much local artwork is kept.
+  // Which provider a library uses is that library's own setting (Libraries › a library › Metadata).
+  {id: 'metadata', title: 'settings.server.metadata', icon: 'image', platforms: ['web'], sections: [panel('settings', 'server.metadataSettings', 'settings.server.metadata')]},
   {id: 'live', title: 'settings.server.live', icon: 'live', needs: c => c.liveTV !== false,
     tabs: [{id: 'sources', title: 'settings.server.liveSources'}, {id: 'recording', title: 'settings.server.recording'}, {id: 'channels', title: 'settings.server.libraryChannels'}],
     sections: [
@@ -373,7 +381,25 @@ const serverPages: readonly AuthoredPage[] = [
     sections: [
       panel('accounts', 'server.accounts', undefined, {tab: 'accounts'}),
       panel('invitations', 'server.invitations', undefined, {tab: 'invitations'}),
-      panel('apiKeys', 'server.apiKeys', undefined, {tab: 'keys'}),
+      // The web has a page for keys, tokens, webhooks and assistants; the phone keeps its keys list here.
+      panel('apiKeys', 'server.apiKeys', undefined, {tab: 'keys', platforms: ['phone']}),
+    ]},
+  // Everything another program uses to work with this server, in one place: the owner's keys, members' own tokens,
+  // messages sent out when something happens, and the address an assistant connects to.
+  {id: 'integrations', title: 'settings.server.integrations', icon: 'link', platforms: ['web'],
+    tabs: [{id: 'keys', title: 'settings.server.apiKeys'}, {id: 'tokens', title: 'settings.server.memberTokens'}, {id: 'webhooks', title: 'api.webhooks.title'}, {id: 'assistants', title: 'settings.server.assistants'}],
+    sections: [
+      panel('apiKeys', 'server.apiKeys', 'settings.server.apiKeys', {tab: 'keys'}),
+      {id: 'apiLimits', tab: 'keys', title: 'settings.server.apiLimits', rows: [
+        setting('runtime', 'apiRequestsPerMinute', 'settings.server.apiRate', {type: 'number', min: 1, max: 100000, unit: 'settings.unit.perMinute', empty: {stores: 0, placeholder: 'settings.server.apiRateUsual'}}, {help: 'settings.server.apiRateHelp'}),
+      ]},
+      panel('memberTokens', 'server.memberTokens', 'settings.server.memberTokens', {tab: 'tokens'}),
+      {id: 'tokenRules', tab: 'tokens', rows: [
+        // Stored as "blocked"; asked the way a person thinks of it.
+        setting('runtime', 'blockMemberAccessTokens', 'settings.server.memberTokensMay', {type: 'choice', choices: [{value: false, label: 'settings.server.memberTokensMay.yes'}, {value: true, label: 'settings.server.memberTokensMay.no'}]}, {help: 'settings.server.memberTokensMayHelp'}),
+      ]},
+      panel('webhooks', 'server.webhooks', 'api.webhooks.title', {tab: 'webhooks'}),
+      panel('assistants', 'server.assistants', 'settings.server.assistants', {tab: 'assistants'}),
     ]},
   {id: 'streaming', title: 'settings.server.playback', icon: 'transcode', sections: [
     panel('status', 'server.transcodeStatus'),
@@ -415,14 +441,25 @@ const serverPages: readonly AuthoredPage[] = [
       on('certificate', 'enabled', 'web.network.certRequest', 'web.network.certRequestHelp'),
       setting('certificate', 'publicPort', 'web.network.publicPort', {type: 'number', min: 1, max: 65535}, {when: {key: 'enabled', equals: true}}),
     ]},
+    // The one list that decides home or away for every device, with where the owner is connected from right now.
+    {id: 'home', title: 'settings.server.homeNetwork', description: 'settings.server.homeNetworkLede', rows: [
+      custom('server.connection', 'settings.server.yourConnection'),
+      setting('connectivity', 'lanNetworks', 'web.connectivity.homeNetworks', {type: 'lines', example: '192.168.2.0/24'}, {help: 'settings.server.homeNetworksHelp'}),
+      on('connectivity', 'lanDiscoveryEnabled', 'web.connectivity.discovery', 'settings.server.discoveryHelp'),
+      custom('server.addresses'),
+    ]},
     {id: 'outside', title: 'web.connectivity.outside', description: 'web.connectivity.outsideLede', rows: [
       setting('connectivity', 'remoteSignInPolicy', 'web.connectivity.whoMaySignIn', {type: 'choice', choices: choices('settings.server.signIn', ['allow', 'owner-only', 'off'])}),
+      setting('connectivity', 'advertiseUrl', 'web.connectivity.advertiseUrl', {type: 'text', mono: true, example: 'https://media.example.com', maxLength: 300}, {help: 'settings.server.advertiseUrlHelp'}),
+      setting('connectivity', 'accessUrls', 'web.connectivity.extraAddresses', {type: 'lines', example: 'https://media.example.com'}, {help: 'settings.server.extraAddressesHelp'}),
+      setting('connectivity', 'trustedProxies', 'web.connectivity.trustedProxies', {type: 'lines', example: '127.0.0.1'}, {help: 'settings.server.trustedProxiesHelp'}),
     ]},
-    {id: 'home', title: 'settings.server.homeNetwork', rows: [
-      on('connectivity', 'lanDiscoveryEnabled', 'web.connectivity.discovery', 'settings.server.discoveryHelp'),
-      setting('connectivity', 'lanNetworks', 'web.connectivity.homeNetworks', {type: 'lines', example: '192.168.2.0/24'}, {help: 'web.connectivity.homeNetworksHelp'}),
-      setting('connectivity', 'accessUrls', 'web.connectivity.extraAddresses', {type: 'lines', example: 'https://media.example.com'}, {help: 'web.connectivity.extraAddressesHelp'}),
-      custom('server.addresses'),
+    // For an owner with a domain and no reverse proxy: where the files are, and whether the server is using them.
+    {id: 'ownCertificate', title: 'web.connectivity.customCert', description: 'settings.server.ownCertificateLede', rows: [
+      custom('server.ownCertificateStatus', 'web.connectivity.customCert'),
+      setting('connectivity', 'customCertificateDomain', 'web.connectivity.customCertDomain', {type: 'text', mono: true, example: 'media.example.com'}),
+      setting('connectivity', 'customCertificatePath', 'web.connectivity.customCertPath', {type: 'text', mono: true, example: '/etc/letsencrypt/live/media.example.com/fullchain.pem'}),
+      setting('connectivity', 'customCertificateKeyPath', 'web.connectivity.customCertKey', {type: 'text', mono: true, example: '/etc/letsencrypt/live/media.example.com/privkey.pem'}),
     ]},
     {id: 'advanced', title: 'settings.section.advanced', advanced: true, rows: [
       on('remote', 'mapping', 'web.network.mappingTitle', 'web.network.mappingHelp'),
@@ -431,11 +468,9 @@ const serverPages: readonly AuthoredPage[] = [
       on('remote', 'upnp', 'settings.server.mapping.upnp', undefined, {key: 'mapping', equals: true}),
       setting('remote', 'publicPort', 'web.network.publicPort', {type: 'number', min: 1, max: 65535}),
       setting('remote', 'gateway', 'web.network.gateway', {type: 'text', mono: true, example: '192.168.1.1'}, {help: 'web.network.gatewayHelp'}),
-      setting('connectivity', 'trustedProxies', 'web.connectivity.trustedProxies', {type: 'lines', example: '127.0.0.1'}, {help: 'web.connectivity.trustedProxiesHelp'}),
       setting('connectivity', 'advertisedInterface', 'web.connectivity.interface', {type: 'choiceFrom', source: 'interfaces'}, {help: 'web.connectivity.interfaceHelp'}),
-      setting('connectivity', 'customCertificateDomain', 'settings.server.customCertDomain', {type: 'text', mono: true, example: 'media.example.com'}, {help: 'web.connectivity.customCertHelp'}),
-      setting('connectivity', 'customCertificatePath', 'web.connectivity.customCertPath', {type: 'text', mono: true, example: '/etc/letsencrypt/live/media.example.com/fullchain.pem'}),
-      setting('connectivity', 'customCertificateKeyPath', 'web.connectivity.customCertKey', {type: 'text', mono: true, example: '/etc/letsencrypt/live/media.example.com/privkey.pem'}),
+      // An empty field is the server's own limit, worked out from its memory; a change waits for a restart.
+      setting('connectivity', 'connectionLimit', 'web.connectivity.connectionLimit', {type: 'number', min: 1, max: 65536, empty: {stores: 0, placeholder: 'settings.server.automatic'}}, {help: 'settings.server.connectionLimitHelp'}),
     ]},
   ]},
   {id: 'storage', title: 'settings.server.storage', icon: 'storage', sections: [
@@ -463,6 +498,8 @@ const serverPages: readonly AuthoredPage[] = [
     panel('windows', 'server.windows', 'settings.server.windows', {description: 'settings.server.windowsLede'}),
     {id: 'priority', rows: [
       setting('maintenance', 'backgroundTaskPriority', 'web.maintenance.backgroundPriority', {type: 'choice', choices: [{value: 'lower', label: 'web.maintenance.backgroundLower'}, {value: 'normal', label: 'web.maintenance.backgroundNormal'}]}, {help: 'web.maintenance.backgroundPriorityHelp'}),
+      // One named choice in place of rates and worker counts: how hard matching and artwork work.
+      setting('maintenance', 'backgroundSpeed', 'metadata.settings.backgroundSpeed', {type: 'choice', choices: [{value: 'gentle', label: 'metadata.settings.gentle'}, {value: 'normal', label: 'metadata.settings.normal'}, {value: 'fast', label: 'metadata.settings.fast'}]}, {help: 'settings.server.backgroundSpeedHelp'}),
     ]},
   ]},
   {id: 'troubleshooting', title: 'settings.server.troubleshooting', icon: 'wrench', sections: [
