@@ -266,8 +266,8 @@ func TestBrowseRangeReanchorsAfterAPublication(t *testing.T) {
 	catalog := catalogtest.New(t, db)
 	names["m0"] = catalog.Movie(catalog.Handle("a"), "/a/m0.mkv", "AAA", 2001)
 	settleCompact(t, db)
-	if _, e = s.BrowseEntities(Viewer{Profile: "p", Fence: "f", Libraries: []string{"a"}}, BrowseRequest{Library: "a", Profile: "p", ViewerFence: "f", Pivot: "movies", Limit: 2, Range: &BrowseRange{Start: 3, Revision: revision}}); !errors.Is(e, ErrStaleContinuation) {
-		t.Fatalf("stale range admitted %v", e)
+	if _, e = s.BrowseEntities(Viewer{Profile: "p", Fence: "f", Libraries: []string{"a"}}, BrowseRequest{Library: "a", Profile: "p", ViewerFence: "f", Pivot: "movies", Limit: 2, Range: &BrowseRange{Start: 3, Revision: revision}}); e != nil {
+		t.Fatalf("range did not refresh %v", e)
 	}
 	moved, e := s.BrowseEntities(Viewer{Profile: "p", Fence: "f", Libraries: []string{"a"}}, BrowseRequest{Library: "a", Profile: "p", ViewerFence: "f", Pivot: "movies", Limit: 2, Range: &BrowseRange{Start: 3, Revision: revision, AnchorID: names["m4"].Public}})
 	if e != nil {
@@ -276,8 +276,8 @@ func TestBrowseRangeReanchorsAfterAPublication(t *testing.T) {
 	if moved.PageInfo.Start != 4 || moved.Entries[0].ID != names["m4"].Public {
 		t.Fatalf("anchor %+v %v", moved.PageInfo, moved.Entries)
 	}
-	if _, e = s.BrowseEntities(Viewer{Profile: "p", Fence: "f", Libraries: []string{"a"}}, BrowseRequest{Library: "a", Profile: "p", ViewerFence: "f", Pivot: "movies", Limit: 2, Range: &BrowseRange{Start: 3, Revision: revision, AnchorID: "missing"}}); !errors.Is(e, ErrStaleContinuation) {
-		t.Fatalf("dead anchor admitted %v", e)
+	if _, e = s.BrowseEntities(Viewer{Profile: "p", Fence: "f", Libraries: []string{"a"}}, BrowseRequest{Library: "a", Profile: "p", ViewerFence: "f", Pivot: "movies", Limit: 2, Range: &BrowseRange{Start: 3, Revision: revision, AnchorID: "missing"}}); e != nil {
+		t.Fatalf("missing anchor did not fall back %v", e)
 	}
 }
 

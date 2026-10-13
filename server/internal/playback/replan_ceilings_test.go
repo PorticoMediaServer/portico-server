@@ -470,8 +470,12 @@ func TestLegacySubtitleReplanAppliesCurrentCeilings(t *testing.T) {
 		if err := f.subtitle(context.Background(), session.ID, styledSubtitle); err != nil {
 			t.Fatal(err)
 		}
-		if plan := f.plan(session.ID); plan.BurnIn == nil || plan.VideoBitrateBPS <= 1_000_000 {
-			t.Fatalf("a LAN legacy re-plan was held to a remote ceiling: %d bit/s", plan.VideoBitrateBPS)
+		// With no ceiling the picture is encoded to a quality, not to a rate:
+		// no bit rate at all is planned, which is the opposite of being capped.
+		plan := f.plan(session.ID)
+		uncapped := plan.VideoBitrateBPS == 0 && plan.VideoAction == "convert"
+		if plan.BurnIn == nil || !uncapped && plan.VideoBitrateBPS <= 1_000_000 {
+			t.Fatalf("a LAN legacy re-plan was held to a remote ceiling: %d bit/s (%s)", plan.VideoBitrateBPS, plan.VideoAction)
 		}
 	})
 }

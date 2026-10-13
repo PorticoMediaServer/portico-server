@@ -5,10 +5,10 @@ import {SOCIAL_PROTOCOL} from '../src/social-playback.ts';
 
 const T0 = Date.parse('2026-09-16T20:00:00Z');
 const sync = {noCorrectionUnderMs: 750, rateCorrectionMinimum: '0.90', rateCorrectionMaximum: '1.10', rateCorrectionMaxMs: 4000, seekAtOrOverMs: 3000};
-const timeline = {itemId: 'item', currentEntryId: 'ent_1', state: 'playing', anchorPositionUs: '10000000', anchorAt: '2026-09-16T20:00:00Z', rate: {numerator: '1', denominator: '1'}, queuePosition: 0};
-const host = {id: 'mem_1', displayName: 'Host', role: 'host', state: 'joined', readiness: 'ready', positionUs: '0', reportedAt: '2026-09-16T20:00:00Z', presence: 'connected', joinedAt: '2026-09-16T19:59:00Z'};
+const timeline = {itemId: 'item', currentEntryId: 'ent_1', state: 'playing', anchorPositionUs: '10000000', anchorAt: '2026-09-16T20:00:00Z', rate: {numerator: '1', denominator: '1'}, queuePosition: 0, waitUntil: null};
+const host = {id: 'mem_1', displayName: 'Host', private: false, role: 'host', state: 'joined', readiness: 'ready', positionUs: '0', reportedAt: '2026-09-16T20:00:00Z', presence: 'connected', joinedAt: '2026-09-16T19:59:00Z'};
 const group = (over: Record<string, unknown> = {}) => ({
-  id: 'grp_1', name: 'Night', state: 'playing', hostAuthority: 'host-only', hostMemberId: 'mem_1', revision: '7', playbackRevision: '3', queueRevision: '2', reconnectGeneration: '1',
+  id: 'grp_1', name: 'Night', state: 'playing', hostAuthority: 'host-only', hostMemberId: 'mem_1', revision: '7', playbackRevision: '3', settingsRevision: '1', governanceRevision: '1', queueRevision: '2', reconnectGeneration: '1',
   lastCommand: 'play', lastCommandId: 'p', endedReason: '', eventOrdinal: '9', createdAt: '2026-09-16T19:59:00Z', updatedAt: '2026-09-16T20:00:00Z',
   permissions: {isHost: true, canControl: true, canManageQueue: true}, authority: {deviceId: 'dev_1', playbackId: 'pb1', state: 'bound'},
   host: {presence: 'connected', lastSeenAt: '2026-09-16T20:00:00Z', pauseAt: null, endAt: null}, timeline, settings: {shuffleEnabled: false, repeatMode: 'none'}, sync,
@@ -32,7 +32,7 @@ function server() {
         return queueDoc as T;
       }
       if (path.endsWith('/transport')) {
-        return {protocolVersion: SOCIAL_PROTOCOL, groupId: 'grp_1', idempotencyKey: (body as {idempotencyKey: string}).idempotencyKey, disposition: 'accepted', command: (body as {command: string}).command, revision: '8', queueRevision: '3', serverTime: '2026-09-16T20:00:01Z', recordedAt: '2026-09-16T20:00:01Z', timeline: {...timeline, state: 'playing'}, settings: {shuffleEnabled: false, repeatMode: 'none'}, override: null} as T;
+        return {protocolVersion: SOCIAL_PROTOCOL, groupId: 'grp_1', idempotencyKey: (body as {idempotencyKey: string}).idempotencyKey, disposition: 'accepted', groupState: 'playing', playbackRevision: '4', command: (body as {command: string}).command, revision: '8', queueRevision: '3', serverTime: '2026-09-16T20:00:01Z', recordedAt: '2026-09-16T20:00:01Z', timeline: {...timeline, state: 'playing'}, settings: {shuffleEnabled: false, repeatMode: 'none'}, override: null} as T;
       }
       if (path.endsWith('/leave') || path.endsWith('/end') || path.endsWith('/readiness')) return {} as T;
       return current as T;
@@ -53,7 +53,7 @@ test('settings, queue remove and move send fenced revisions', async () => {
   try {
     await service.open('grp_1');
     assert.equal(await service.settings({shuffleEnabled: true}), true);
-    assert.deepEqual(posts(s.calls, '/settings').at(-1)!.body, {protocolVersion: SOCIAL_PROTOCOL, idempotencyKey: 'key-1', expectedRevision: '7', shuffleEnabled: true});
+    assert.deepEqual(posts(s.calls, '/settings').at(-1)!.body, {protocolVersion: SOCIAL_PROTOCOL, idempotencyKey: 'key-1', expectedRevision: '1', shuffleEnabled: true});
     assert.equal(await service.queueRemove('ent_1'), true);
     assert.deepEqual(posts(s.calls, '/queue').at(-1)!.body, {protocolVersion: SOCIAL_PROTOCOL, idempotencyKey: 'key-2', expectedRevision: '2', operation: 'remove', entryId: 'ent_1'});
     assert.equal(await service.queueMove('ent_1', 'ent_2', 'before'), true);

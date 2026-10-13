@@ -14,8 +14,10 @@ import (
 
 // NEW-26 on existing libraries: sources the old reader left with a naming
 // issue are read once more by the current ParseEpisode after an upgrade. A
-// title with "(Part 1)" becomes its episode; a genuine stacked part keeps its
-// issue; a manual assignment is never touched; the second run does nothing.
+// title with "(Part 1)" becomes its episode; a genuine stacked part is now
+// attached to its episode as that part (reader version 4: stacked parts can be
+// attached, where the older catalogue left them for the owner to assign); a
+// manual assignment is never touched; the second run does nothing.
 func TestReparseEpisodicIssuesOnceAfterAParserChange(t *testing.T) {
 	db, err := persistence.Open(filepath.Join(t.TempDir(), "reparse.sqlite"))
 	if err != nil {
@@ -60,8 +62,9 @@ func TestReparseEpisodicIssuesOnceAfterAParserChange(t *testing.T) {
 	if err = db.QueryRow(`SELECT e.number,sh.title FROM catalog_asset_links ia JOIN catalog_assets a ON a.id=ia.asset_id JOIN catalog_episodes e ON e.entity_id=ia.entity_id JOIN catalog_entities sh ON sh.id=e.show_id WHERE a.token=?`, tokens["jazz"]).Scan(&number, &show); err != nil || number != 12 || show != "Cowboy Bebop" || issue("jazz") != "" {
 		t.Fatalf("the (Part 1) title didn't become S01E12: %d %q %q (%v)", number, show, issue("jazz"), err)
 	}
-	if issue("stack") != "multipart_episode_requires_assignment" {
-		t.Fatalf("a genuine stacked part lost its issue: %q", issue("stack"))
+	var part int
+	if err = db.QueryRow(`SELECT e.number,ia.part_index FROM catalog_asset_links ia JOIN catalog_assets a ON a.id=ia.asset_id JOIN catalog_episodes e ON e.entity_id=ia.entity_id WHERE a.token=?`, tokens["stack"]).Scan(&number, &part); err != nil || number != 5 || part != 1 || issue("stack") != "" {
+		t.Fatalf("a stacked part was not attached as part 1 of S01E05: episode %d part %d issue %q (%v)", number, part, issue("stack"), err)
 	}
 	if issue("manual") != "multipart_episode_requires_assignment" {
 		t.Fatal("a manual source was read again")

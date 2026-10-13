@@ -1,19 +1,19 @@
 import test from 'node:test';import assert from 'node:assert/strict';
 import {parseSegmentMarkers,parseSegmentMarkerSet,canSkipAutomatically,parseQueuePostPlay,passoutCheckRequired} from '../src/index.ts';
-const marker=(over:Record<string,unknown>={})=>({id:'marker-a',kind:'intro',startSeconds:5,endSeconds:35,automaticSafe:true,...over});
+const marker=(over:Record<string,unknown>={})=>({id:'marker-a',kind:'intro',startMs:5000,endMs:35000,automaticSafe:true,...over});
 const postPlay=(over:Record<string,unknown>={})=>({nextEntryId:'entry-b',available:true,reason:'ready',countdownSeconds:10,autoplay:true,passoutCheckDue:false,automaticAdvances:0,...over});
 test('markers keep the server skip decision and reject invented fields or orders',()=>{
- const markers=parseSegmentMarkers([marker(),marker({id:'marker-b',kind:'credits',startSeconds:80,endSeconds:100,automaticSafe:false})],120);
+ const markers=parseSegmentMarkers([marker(),marker({id:'marker-b',kind:'credits',startMs:80000,endMs:100000,automaticSafe:false})],120);
  assert.equal(markers.length,2);
  assert.equal(canSkipAutomatically(markers[0]),true);
  assert.equal(canSkipAutomatically(markers[1]),false);
  assert.throws(()=>parseSegmentMarkers([marker({confidence:.9})]));
  assert.throws(()=>parseSegmentMarkers([marker({kind:'chapter'})]));
  assert.throws(()=>parseSegmentMarkers([marker({automaticSafe:'yes'})]));
- assert.throws(()=>parseSegmentMarkers([marker({endSeconds:5})]));
- assert.throws(()=>parseSegmentMarkers([marker(),marker({id:'marker-b',startSeconds:1,endSeconds:2})]));
+ assert.throws(()=>parseSegmentMarkers([marker({endMs:5000})]));
+ assert.throws(()=>parseSegmentMarkers([marker(),marker({id:'marker-b',startMs:1000,endMs:2000})]));
  assert.throws(()=>parseSegmentMarkers([marker(),marker()]));
- assert.throws(()=>parseSegmentMarkers([marker({endSeconds:200})],120));
+ assert.throws(()=>parseSegmentMarkers([marker({endMs:200000})],120));
 });
 test('a marker set is refused when it belongs to another source',()=>{
  const set=parseSegmentMarkerSet({sourceId:'asset','revision':'rev1',markers:[marker()]},'asset',120);

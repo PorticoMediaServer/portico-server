@@ -40,7 +40,7 @@ func (s *Service) listeningEntity(r ContentRequest, title string) (*ContentEntry
 			if kind == "disc" {
 				discFilter = disc
 			}
-			e = s.read().QueryRow(`SELECT count(*) FROM (SELECT s.entity_id AS song FROM catalog_songs s JOIN catalog_entities a ON a.id=s.album_id WHERE a.public_id=pid_blob(?) AND (?<0 OR COALESCE(s.disc_number,0)=?)) counted WHERE `+visible,
+			e = s.read().QueryRow(`SELECT count(*) FROM (SELECT s.entity_id AS song FROM catalog_songs s JOIN catalog_entities a ON a.id=s.album_id WHERE a.public_id=pid_blob(?) AND (?<0 OR COALESCE(s.disc_number,1)=?)) counted WHERE `+visible,
 				append([]any{artID, discFilter, disc}, visibleArgs...)...).Scan(&n)
 		}
 		if e == nil {
@@ -51,7 +51,7 @@ func (s *Service) listeningEntity(r ContentRequest, title string) (*ContentEntry
 			durationWhere := `a.public_id=pid_blob(?)`
 			durationArgs := []any{artID}
 			if kind == "disc" {
-				durationWhere += ` AND COALESCE(s.disc_number,0)=?`
+				durationWhere += ` AND COALESCE(s.disc_number,1)=?`
 				durationArgs = append(durationArgs, disc)
 			}
 			var total float64

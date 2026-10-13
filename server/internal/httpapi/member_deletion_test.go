@@ -41,7 +41,8 @@ func TestMemberDeletionRoutes(t *testing.T) {
 	if w = f.raw("DELETE", path, f.owner.AccessToken, nil, map[string]any{"expectedRevision": preview.Revision + 5}); w.Code != 412 || v1Code(w) != "revision_mismatch" {
 		t.Fatalf("a stale confirmation: %d %s", w.Code, w.Body.String())
 	}
-	if w = f.raw("DELETE", path, f.owner.AccessToken, nil, map[string]any{}); w.Code != 400 {
+	// A change that names no revision is refused the same way on every route.
+	if w = f.raw("DELETE", path, f.owner.AccessToken, nil, map[string]any{}); w.Code != 428 || v1Code(w) != "revision_required" {
 		t.Fatalf("a confirmation with no revision: %d %s", w.Code, w.Body.String())
 	}
 	if w = f.raw("DELETE", "/v1/direct/members/"+f.owner.Viewer.AccountID, f.owner.AccessToken, nil, map[string]any{"expectedRevision": 1}); w.Code != 403 {

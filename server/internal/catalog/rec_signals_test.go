@@ -1,6 +1,7 @@
 package catalog
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"reflect"
@@ -8,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"portico.local/server/internal/compactcatalog"
 )
 
 func TestRecLargeProfileSignalsStayCandidateSized(t *testing.T) {
@@ -126,7 +129,8 @@ func TestRecNextBookLoadsSeriesSignals(t *testing.T) {
 		w.c.Exec(`INSERT INTO audio_tag_evidence(library_id,asset_id,field,source,value) VALUES('books',?,'series','embedded','Story'),('books',?,'series_index','embedded',?)`, token, token, fmt.Sprint(i+1))
 		public = append(public, book.Public)
 		if i == 0 {
-			w.personal("p", book, "watched", 1)
+			// Watched is the viewer's recorded intent, as marking a book finished writes it.
+			w.c.Exec(`INSERT INTO personal_watched_intents(profile_id,item_id,watched,authored_at) VALUES('p',?,1,'2026-09-01T00:00:00.000000000Z')`, book.ID)
 		}
 		if i == 1 {
 			w.personal("p", book, "not_interested", 1)
@@ -308,6 +312,23 @@ func TestRecForYouMemoStillPlacesWatchedLast(t *testing.T) {
 			first = ranked
 		} else if !reflect.DeepEqual(first, ranked) {
 			t.Fatal("memo changes browse personalized ordering")
+		}
+	}
+}
+
+// A rating is kept from 0 to 10 and read as stars out of five: three stars is
+// neutral, more adds to a title's weight and fewer takes away.
+func TestRecSignalReadsRatingsAsStars(t *testing.T) {
+	w := newRecWorld(t)
+	for i, c := range []struct {
+		rating int
+		weight float64
+	}{{10, 1.6}, {6, 0}, {2, -1.6}, {0, -2.4}} {
+		work := w.romance[i]
+		w.personal("p", work, "rating", c.rating)
+		got, err := compactcatalog.RecSignalFor(context.Background(), w.c.DB, "p", work.ID, time.Now())
+		if err != nil || math.Abs(got.Weight-c.weight) > 1e-9 || !got.Engaged {
+			t.Fatalf("rating %d: weight %v, want %v (%v)", c.rating, got.Weight, c.weight, err)
 		}
 	}
 }

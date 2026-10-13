@@ -51,7 +51,7 @@ func TestTitleCursorSeeksSortIndex(t *testing.T) {
 					if query.Cursor != "" {
 						found := false
 						for _, sql := range []string{statement} {
-							if !strings.Contains(sql, "FROM catalog_browse_rows e JOIN catalog_entities ce") {
+							if !strings.Contains(sql, "FROM catalog_browse_rows_serving e JOIN catalog_entities ce") {
 								continue
 							}
 							found = true
@@ -60,7 +60,12 @@ func TestTitleCursorSeeksSortIndex(t *testing.T) {
 							if err != nil {
 								t.Fatal(err)
 							}
-							seek := false
+							// The page is read from the serving rows: the current
+							// generation and, during a rebuild, the one it replaces.
+							// Each is entered at the cursor's sort key through its
+							// order index, and the two are walked together in order,
+							// so a page costs its own rows however large the library.
+							seek, retained, sorted := false, false, false
 							for rows.Next() {
 								var id, parent, unused int
 								var detail string
@@ -69,8 +74,15 @@ func TestTitleCursorSeeksSortIndex(t *testing.T) {
 									t.Fatal(err)
 								}
 								t.Log(detail)
-								if strings.Contains(detail, "SEARCH e USING INDEX catalog_browse_") && strings.Contains(detail, "kind=? AND") && (strings.Contains(detail, ">?") || strings.Contains(detail, "<?")) {
+								ranged := strings.Contains(detail, "kind=? AND") && (strings.Contains(detail, ">?") || strings.Contains(detail, "<?"))
+								if strings.Contains(detail, "SEARCH r USING INDEX catalog_browse_") && ranged {
 									seek = true
+								}
+								if strings.Contains(detail, "SEARCH p USING INDEX catalog_browse_") && strings.Contains(detail, "_previous") && ranged {
+									retained = true
+								}
+								if strings.Contains(detail, "USE TEMP B-TREE") || strings.HasPrefix(detail, "SCAN ") || strings.Contains(detail, "CO-ROUTINE") {
+									sorted = true
 								}
 							}
 							err = rows.Err()
@@ -78,8 +90,11 @@ func TestTitleCursorSeeksSortIndex(t *testing.T) {
 							if err != nil {
 								t.Fatal(err)
 							}
-							if !seek {
+							if !seek || !retained {
 								t.Error("cursor query scans earlier library rows instead of seeking to its sort key")
+							}
+							if sorted {
+								t.Error("cursor query builds and sorts every later row instead of reading its page in order")
 							}
 						}
 						if !found {
@@ -125,7 +140,7 @@ type titleQueryCapture struct {
 }
 
 func (c *titleQueryCapture) QueryContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Rows, error) {
-	if strings.Contains(query, "FROM catalog_browse_rows e JOIN catalog_entities ce") {
+	if strings.Contains(query, "FROM catalog_browse_rows_serving e JOIN catalog_entities ce") {
 		*c.statement = query
 	}
 	return c.Conn.(driver.QueryerContext).QueryContext(ctx, query, args)
