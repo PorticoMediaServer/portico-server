@@ -137,19 +137,8 @@ const TitleRow = React.memo(function TitleRow({entry, rowIndex, libraryId, track
   );
 });
 
-/** Music › Genres: genres only, each with covers from it. A genre opens Albums filtered to it. */
-export function GenresGrid({libraryId, pivot, onOpen}: {libraryId: string; pivot: string; onOpen: (genre: string) => void}) {
-  const {api} = useSession();
-  const {t} = useI18n();
-  const read = useRead(async () => parseBrowseResult(await api.request<unknown>(`/v1/libraries/${encodeURIComponent(libraryId)}/browse`, 'POST', {pivot, limit: 200})).entries, [api, libraryId, pivot]);
-  if (read.error && !read.data) return <Inset><Notice tone="error" action={{label: t('action.tryAgain'), onClick: read.reload}}>{read.error}</Notice></Inset>;
-  if (!read.data) return <Grid density="square">{Array.from({length: 12}).map((_, i) => <Skeleton key={i} style={{aspectRatio: '1 / 1', width: '100%'}} />)}</Grid>;
-  if (!read.data.length) return <StateView icon="category" title={t('library.genres.empty')} body={t('library.genres.emptyBody')} />;
-  return <Grid density="square">{read.data.map(entry => <GenreCard key={entry.id} libraryId={libraryId} entry={entry} onOpen={() => onOpen(entry.title)} />)}</Grid>;
-}
-
-/** One genre. Its covers are read when the card comes into view: the cost is the cards on screen. */
-function GenreCard({libraryId, entry, onOpen}: {libraryId: string; entry: ContentEntry; onOpen: () => void}) {
+/** Music › Genres: one genre, with covers from it. A genre opens Albums filtered to it. Its covers are read when the card comes into view: the cost is the cards on screen. */
+export function GenreCard({libraryId, entry, onOpen}: {libraryId: string; entry: ContentEntry; onOpen: () => void}) {
   const {api} = useSession();
   const {t} = useI18n();
   const node = useRef<HTMLButtonElement>(null);

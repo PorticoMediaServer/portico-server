@@ -1849,7 +1849,7 @@ export const enUS = {
   'lib.optionsLoadFailed': 'This library’s filters couldn’t load',
   'lib.scanHint': 'Scan this library on your server to add titles.',
   'lib.collectionsHint': 'Collections you or the server’s owner create appear here.',
-  'lib.count': '{count, plural, one {# {pivot, select, movies {movie} shows {show} artists {artist} albums {album} songs {song} books {book} collections {collection} episodes {episode} authors {author} other {title}}} other {# {pivot, select, movies {movies} shows {shows} artists {artists} albums {albums} songs {songs} books {books} collections {collections} episodes {episodes} authors {authors} other {titles}}}}',
+  'lib.count': '{count, plural, one {# {pivot, select, movies {movie} shows {show} artists {artist} albums {album} songs {song} books {book} collections {collection} episodes {episode} authors {author} genres {genre} series {series} other {title}}} other {# {pivot, select, movies {movies} shows {shows} artists {artists} albums {albums} songs {songs} books {books} collections {collections} episodes {episodes} authors {authors} genres {genres} series {series} other {titles}}}}',
   'lib.filtersCount': 'Filters · {count}',
   'lib.sortChip': '{field} · {direction}',
   'lib.order': 'Order',

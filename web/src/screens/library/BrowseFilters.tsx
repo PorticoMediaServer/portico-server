@@ -1,9 +1,9 @@
 import React, {useEffect, useMemo, useState} from 'react';
 import type {BrowseCapabilities, BrowseFacetValue, BrowseFieldCapability, BrowsePositionAnchor, BrowseSortSelection} from '@core/browse.ts';
 import {formatBrowseAnchor} from '@core/browse.ts';
-import {fieldLabel, predicateLabel, useFacets, type Predicate} from '../../app/browse';
+import {fieldLabel, predicateLabel, reshuffle, useFacets, type Predicate} from '../../app/browse';
 import {useSession} from '../../app/session';
-import {activeRangePreset, browseValueLabel, fieldSelectionSummary, filterControlOf, filterValuesField, nextToolbarSort, orderFilterValues, rangePresets, toolbarModel, type ToolbarGroupId, type ToolbarModel} from '@core/presentation/index.ts';
+import {activeRangePreset, browseValueLabel, fieldSelectionSummary, filterControlOf, filterValuesField, nextToolbarSort, orderFilterValues, rangePresets, sortDirectionKind, toolbarModel, type ToolbarGroupId, type ToolbarModel} from '@core/presentation/index.ts';
 import {browseCountLabel, quickFilterLabelForKind} from '../../app/content';
 import {Button, Checkbox, Chip, Chips, Icon, Input, Menu, Popover, Spinner, Text, cx, useCompact, type MenuItem} from '../../ui';
 import s from './BrowseFilters.module.css';
@@ -15,7 +15,7 @@ import {useI18n, type I18n} from '../../app/i18n';
  * quick toggles, "+ Filter" with everything else in three groups, and the applied filters as
  * removable chips on a second line. The same shape on every grid; Apple draws the same model.
  */
-export function BrowseBar({libraryId, capabilities, predicates, onChange, sort, onSort, fixedSort, total, onSave, libraryKind, pivot}: {/** The tab orders itself (Recently aired): no Sort control. */ fixedSort?: boolean; libraryId: string; capabilities: BrowseCapabilities; predicates: readonly Predicate[]; onChange: (next: readonly Predicate[]) => void; sort: BrowseSortSelection; onSort: (next: BrowseSortSelection) => void; total?: number; onSave?: () => void; libraryKind: string; pivot?: string}) {
+export function BrowseBar({libraryId, capabilities, predicates, onChange, sort, onSort, defaultSort: openingSort, ownOrder, total, onSave, libraryKind, pivot}: {/** The order this list opens in, when it is not the server's default for the pivot (Recently aired). */ defaultSort?: BrowseSortSelection; /** A group's own order (the playlist's, the collection's), offered first in the Sort menu. */ ownOrder?: Readonly<{label: string; selected: boolean; onSelect: () => void}>; libraryId: string; capabilities: BrowseCapabilities; predicates: readonly Predicate[]; onChange: (next: readonly Predicate[]) => void; sort: BrowseSortSelection; onSort: (next: BrowseSortSelection) => void; total?: number; onSave?: () => void; libraryKind: string; pivot?: string}) {
   const {t} = useI18n();
   const compact = useCompact();
   const {owner} = useSession();
@@ -29,18 +29,30 @@ export function BrowseBar({libraryId, capabilities, predicates, onChange, sort, 
   const mineOf = (field: BrowseFieldCapability) => predicates.filter(p => owns(field, p));
   const setField = (field: BrowseFieldCapability, mine: readonly Predicate[]) => onChange([...predicates.filter(p => !owns(field, p)), ...mine]);
   const sortCap = capabilities.sorts.find(x => x.id === sort.field);
+  const own = !!ownOrder?.selected;
+  // Random has no direction to read: choosing it again draws another shuffle.
+  const directed = (id: string) => id !== 'random';
   const sortItems: MenuItem[] = [
-    ...model.sorts.map(x => ({id: x.id, label: fieldLabel(x.id, x.labelKey), selected: x.id === sort.field, icon: x.id === sort.field ? (sort.direction === 'desc' ? 'chevronDown' as const : 'chevronUp' as const) : undefined, meta: x.expensive ? t('web.filters.slower') : undefined})),
+    ...(ownOrder ? [{id: OWN_ORDER, label: ownOrder.label, selected: own}] : []),
+    ...model.sorts.map((x, index) => ({id: x.id, label: fieldLabel(x.id, x.labelKey), selected: !own && x.id === sort.field, icon: !own && x.id === sort.field && directed(x.id) ? (sort.direction === 'desc' ? 'chevronDown' as const : 'chevronUp' as const) : undefined, meta: x.expensive ? t('web.filters.slower') : undefined, separatorBefore: !!ownOrder && index === 0})),
   ];
-  const sortLabel = model.sort.flippable ? t('lib.sortChip', {field: fieldLabel(sort.field, sortCap?.labelKey), direction: directionLabel(t, sort.field, sort.direction)}) : fieldLabel(sort.field, sortCap?.labelKey);
+  const sortLabel = own ? ownOrder!.label : model.sort.flippable && directed(sort.field) ? t('lib.sortChip', {field: fieldLabel(sort.field, sortCap?.labelKey), direction: directionLabel(t, sort.field, sort.direction)}) : fieldLabel(sort.field, sortCap?.labelKey);
+  const chooseSort = (id: string) => {
+    if (id === OWN_ORDER) { ownOrder?.onSelect(); return; }
+    const cap = capabilities.sorts.find(x => x.id === id);
+    if (!cap) return;
+    if (id === 'random' && !own && sort.field === 'random') { reshuffle(); return; }
+    // From the group's own order a sort starts in its usual direction; the one already chosen flips.
+    onSort(own || id === 'random' ? {field: id, direction: cap.defaultDirection} : nextToolbarSort(capabilities, sort, id));
+  };
   const [adding, setAdding] = useState(false);
   const [openField, setOpenField] = useState<string | null>(null);
-  const defaultSort = capabilities.resolvedPivot?.defaultSort[0];
+  const defaultSort = openingSort ?? capabilities.resolvedPivot?.defaultSort[0];
   const canSave = !!onSave && (predicates.length > 0 || sort.field !== (defaultSort?.field ?? 'title') || sort.direction !== (defaultSort?.direction ?? 'asc'));
   return (
     <div className={s.toolbar}>
       <div className={s.bar}>
-        {fixedSort ? null : <Menu label={t('web.filters.sort')} align="start" trigger={<Chip label={sortLabel} icon="sort" aria-label={t('web.filters.sortBy')} />} items={sortItems} onSelect={id => onSort(nextToolbarSort(capabilities, sort, id))} />}
+        <Menu label={t('web.filters.sort')} align="start" trigger={<Chip label={sortLabel} icon="sort" aria-label={t('web.filters.sortBy')} />} items={sortItems} onSelect={chooseSort} />
         {compact ? null : model.quick.map(f => <Chip key={f.id} label={quickFilterLabelForKind(f.labelKey, libraryKind)} pressed={isQuickOn(f.id)} onClick={() => toggleQuick(f.id)} />)}
         {compact ? null : model.promoted.map(f => (
           <FieldMenu key={f.id} libraryId={libraryId} field={f} predicates={mineOf(f)} open={openField === f.id} onOpenChange={o => setOpenField(o ? f.id : null)} onChange={mine => setField(f, mine)} />
@@ -62,9 +74,11 @@ export function BrowseBar({libraryId, capabilities, predicates, onChange, sort, 
   );
 }
 
+/** The Sort menu's entry for a group's own order: never a server sort id. */
+const OWN_ORDER = ' own';
+
 function directionLabel(t: I18n['t'], field: string, direction: 'asc' | 'desc'): string {
-  const kind = /title|name|artist|album|author/.test(field) ? 'alpha' : /added|date|year|release|played|last/.test(field) ? 'date' : /rating/.test(field) ? 'rating' : /duration|length/.test(field) ? 'duration' : 'other';
-  return t('web.filters.direction', {kind, dir: direction});
+  return t('web.filters.direction', {kind: sortDirectionKind(field), dir: direction});
 }
 
 /** A promoted field on the bar: a chip that names the field and its current selection, opening its control. */

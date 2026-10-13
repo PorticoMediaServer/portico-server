@@ -27,12 +27,13 @@ function sortValueFor(entry: ContentEntry, sortField: string): unknown {
  * index clamped to the new total. Pure (no React/session) so node:test can
  * exercise it without session.tsx.
  */
-export function browsePageSource(api: {request<T>(path: string, method?: string, body?: unknown, signal?: AbortSignal): Promise<T>}, input: {libraryId: string; pivot: string; predicates: readonly Predicate[]; sort?: BrowseSortSelection}): FetchPage<ContentEntry> {
+export function browsePageSource(api: {request<T>(path: string, method?: string, body?: unknown, signal?: AbortSignal): Promise<T>}, input: {libraryId: string; pivot: string; /** What the list is of (a collection's titles, an album's songs): always applied, ahead of the viewer's own filters. */ base?: readonly BrowseNode[]; predicates: readonly Predicate[]; sort?: BrowseSortSelection}): FetchPage<ContentEntry> {
   const sortField = input.sort?.field ?? 'title';
   let revision: string | undefined;
   const firstEntries = new Map<number, ContentEntry>();
   const loadRange = async (start: number, count: number, signal: AbortSignal, rev: string | undefined) => {
-    const body: BrowseRequestBody = {pivot: input.pivot, ...(input.predicates.length ? {query: {all: input.predicates}} : {}), ...(input.sort ? {sort: [input.sort]} : {}), limit: count, range: {start, ...(rev ? {revision: rev} : {})}};
+    const conditions: readonly BrowseNode[] = input.base?.length ? [...input.base, ...input.predicates] : input.predicates;
+    const body: BrowseRequestBody = {pivot: input.pivot, ...(conditions.length ? {query: {all: conditions}} : {}), ...(input.sort ? {sort: [input.sort]} : {}), limit: count, range: {start, ...(rev ? {revision: rev} : {})}};
     return parseBrowseResult(await api.request<unknown>(`/v1/libraries/${encodeURIComponent(input.libraryId)}/browse`, 'POST', body, signal));
   };
   const toPage = (result: ReturnType<typeof parseBrowseResult>, start: number) => {

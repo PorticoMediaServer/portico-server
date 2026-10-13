@@ -70,7 +70,7 @@ export type ToolbarModel = Readonly<{
 
 export function toolbarModel(capabilities: BrowseCapabilities, libraryKind: string, predicates: readonly ToolbarPredicate[], sort: BrowseSortSelection, options: {owner?: boolean; /** False on a television: a filter that can only be typed is left out. */ textEntry?: boolean} = {}): ToolbarModel {
   const pivot = capabilities.resolvedPivot?.id ?? '';
-  const audio = /artist|album|song/.test(pivot);
+  const audio = libraryKind === 'music' || /artist|album|song/.test(pivot);
   const fields = capabilities.fields.filter(f => !HIDDEN.has(f.id) && !FOLDED_INTO_YEAR.has(f.id) && (options.owner || f.id !== 'match') && (options.textEntry !== false || filterControlOf(f) !== 'text'));
   const byId = new Map(fields.map(f => [f.id, f]));
   const promoted = (PROMOTED[libraryKind] ?? PROMOTED.movie!).map(id => byId.get(id)).filter((f): f is BrowseFieldCapability => !!f).slice(0, 4);
@@ -84,6 +84,39 @@ export function toolbarModel(capabilities: BrowseCapabilities, libraryKind: stri
     .filter(g => g.fields.length > 0);
   const directions = capabilities.sorts.find(s => s.id === sort.field)?.directions ?? ['asc', 'desc'];
   return Object.freeze({promoted, quick, groups, sorts: capabilities.sorts, sort: Object.freeze({field: sort.field, direction: sort.direction, flippable: directions.length > 1}), applied});
+}
+
+/** Server ids whose catalogue name is filed under another word (`filter.field.*`). */
+const FIELD_NAME_ALIASES: Readonly<Record<string, string>> = {durationMs: 'duration', durationSeconds: 'duration', personalRating: 'yourRating', lastPlayedAt: 'lastPlayed', communityRating: 'audienceRating', added: 'dateAdded'};
+/** Sorts with a catalogue name of their own (`sort.*`). `sort.title` is the menu's heading, never a field's name. */
+const SORT_OWN_NAMES: ReadonlySet<string> = new Set(['sort.forYou', 'sort.releaseDate', 'sort.criticRating', 'sort.episodeCount', 'sort.album', 'sort.artist', 'sort.trackNumber', 'sort.fileSize', 'sort.resolution', 'sort.random', 'sort.playCount', 'sort.count', 'sort.recentActivity']);
+
+/**
+ * The catalogue id that names a filter field or a sort, the same on every client. The field's own
+ * id is tried before the server's label key (a show's "Latest episode" sort borrows the episode
+ * sort's key), then the names the catalogue files under another word. Undefined when the catalogue
+ * has no name for it; the caller then shows the id as words.
+ */
+export function browseNameId(id: string, labelKey: string | undefined, has: (messageId: string) => boolean): string | undefined {
+  const key = (labelKey ?? '').replace(/^browse\.field\./, '').replace(/^sort\./, '');
+  for (const word of [FIELD_NAME_ALIASES[id], id, FIELD_NAME_ALIASES[key], key]) {
+    if (word && has('filter.field.' + word)) return 'filter.field.' + word;
+  }
+  if (labelKey && (SORT_OWN_NAMES.has(labelKey) || labelKey.startsWith('browse.field.')) && has(labelKey)) return labelKey;
+  return undefined;
+}
+
+/** How a sort's two directions read ("A–Z", "Newest first", "Most first"): the kind the direction words are chosen by. */
+export type SortDirectionKind = 'alpha' | 'date' | 'rating' | 'duration' | 'count' | 'size' | 'order' | 'other';
+export function sortDirectionKind(field: string): SortDirectionKind {
+  if (/count/i.test(field)) return 'count';
+  if (/size/i.test(field)) return 'size';
+  if (/tracknumber|^track$|^episode$/i.test(field)) return 'order';
+  if (/title|name|artist|album|author/i.test(field)) return 'alpha';
+  if (/added|date|year|release|played|last|aired|recent/i.test(field)) return 'date';
+  if (/rating|resolution/i.test(field)) return 'rating';
+  if (/duration|length/i.test(field)) return 'duration';
+  return 'other';
 }
 
 /** The next sort when a menu item is chosen: the current field flips, another starts at its default. */

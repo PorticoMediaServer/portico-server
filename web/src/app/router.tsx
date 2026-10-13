@@ -85,19 +85,24 @@ const oneOf = <T extends string>(v: unknown, allowed: readonly T[]): T | undefin
 const libraryViews = ['discover', 'browse', 'aired', 'collections', 'releases', 'songs', 'genres', 'playlists', 'authors', 'series', 'unmatched'] as const;
 export type LibraryView = (typeof libraryViews)[number];
 export type LibrarySearch = {view?: LibraryView; sort?: string; direction?: 'asc' | 'desc'; category?: string; filters?: string; row?: string};
+/** A group page's own sort and filters (a collection, a season, a person's titles): in the address, like a library tab's. */
+export type GroupSearch = {sort?: string; direction?: 'asc' | 'desc'; filters?: string};
+const filtersParam = (raw: unknown): string | undefined => (typeof raw === 'string' && raw.length <= 2048 ? raw : Array.isArray(raw) && JSON.stringify(raw).length <= 2048 ? JSON.stringify(raw) : undefined);
+const groupSearch = (raw: Record<string, unknown>): GroupSearch => ({sort: str(raw.sort), direction: oneOf(raw.direction, ['asc', 'desc'] as const), filters: filtersParam(raw.filters)});
 export const home = createRoute({getParentRoute: () => app, path: '/', component: HomeScreen});
 /** A Home row's See all (Recommended, Trending now, a personal row): the row as a paged grid. */
 export const homeRow = createRoute({getParentRoute: () => app, path: '/home/rows/$rowId', component: HomeRowPageScreen});
 export const library = createRoute({
   getParentRoute: () => app,
   path: '/library/$libraryId',
-  validateSearch: (raw: Record<string, unknown>): LibrarySearch => ({view: oneOf(raw.view, libraryViews), sort: str(raw.sort), direction: oneOf(raw.direction, ['asc', 'desc'] as const), category: str(raw.category), row: str(raw.row), filters: typeof raw.filters === 'string' && raw.filters.length <= 2048 ? raw.filters : Array.isArray(raw.filters) && JSON.stringify(raw.filters).length <= 2048 ? JSON.stringify(raw.filters) : undefined}),
+  validateSearch: (raw: Record<string, unknown>): LibrarySearch => ({view: oneOf(raw.view, libraryViews), sort: str(raw.sort), direction: oneOf(raw.direction, ['asc', 'desc'] as const), category: str(raw.category), row: str(raw.row), filters: filtersParam(raw.filters)}),
   component: LibraryScreen,
 });
 export const entity = createRoute({
   getParentRoute: () => app,
   path: '/library/$libraryId/$view/$entityId',
-  validateSearch: (raw: Record<string, unknown>): {title?: string} => ({title: str(raw.title)}),
+  // An artist's page lists two things, each with its own choices: its albums (`sort`, `filters`) and its songs (`song…`).
+  validateSearch: (raw: Record<string, unknown>): {title?: string; songSort?: string; songDirection?: 'asc' | 'desc'; songFilters?: string} & GroupSearch => ({title: str(raw.title), ...groupSearch(raw), songSort: str(raw.songSort), songDirection: oneOf(raw.songDirection, ['asc', 'desc'] as const), songFilters: filtersParam(raw.songFilters)}),
   component: EntityScreen,
 });
 export const media = createRoute({
@@ -109,21 +114,21 @@ export const media = createRoute({
 export const show = createRoute({
   getParentRoute: () => app,
   path: '/show/$showId',
-  validateSearch: (raw: Record<string, unknown>): {library?: string; season?: string; episode?: string; title?: string} => ({library: str(raw.library), season: str(raw.season), episode: str(raw.episode), title: str(raw.title)}),
+  validateSearch: (raw: Record<string, unknown>): {library?: string; season?: string; episode?: string; title?: string} & GroupSearch => ({library: str(raw.library), season: str(raw.season), episode: str(raw.episode), title: str(raw.title), ...groupSearch(raw)}),
   component: ShowScreen,
 });
 /** The episode panel over its show (Spec — Title Pages §3); a direct visit opens the show with the panel open. */
 export const showEpisode = createRoute({
   getParentRoute: () => app,
   path: '/show/$showId/episode/$episodeId',
-  validateSearch: (raw: Record<string, unknown>): {library?: string; season?: string; episode?: string; title?: string} => ({library: str(raw.library), season: str(raw.season), episode: str(raw.episode), title: str(raw.title)}),
+  validateSearch: (raw: Record<string, unknown>): {library?: string; season?: string; episode?: string; title?: string} & GroupSearch => ({library: str(raw.library), season: str(raw.season), episode: str(raw.episode), title: str(raw.title), ...groupSearch(raw)}),
   component: ShowScreen,
 });
 /** A search is linkable: the words and the type chip are in the address. */
 export type SearchAddress = {q?: string; type?: string};
 export const search = createRoute({getParentRoute: () => app, path: '/search', component: SearchScreen, validateSearch: (raw: Record<string, unknown>): SearchAddress => ({q: str(raw.q), type: oneOf(raw.type, ['movies', 'shows', 'episodes', 'people', 'artists', 'albums', 'songs', 'books', 'live-tv'] as const)})});
 const unknown = createRoute({getParentRoute: () => app, path: '$', component: InAppNotFound});
-export const person = createRoute({getParentRoute: () => app, path: '/person/$personId', component: PersonScreen});
+export const person = createRoute({getParentRoute: () => app, path: '/person/$personId', validateSearch: (raw: Record<string, unknown>): {library?: string} & GroupSearch => ({library: str(raw.library), ...groupSearch(raw)}), component: PersonScreen});
 export const saved = createRoute({
   getParentRoute: () => app,
   path: '/saved',
@@ -133,7 +138,7 @@ export const saved = createRoute({
 export const savedResource = createRoute({
   getParentRoute: () => app,
   path: '/saved/$kind/$resourceId',
-  validateSearch: (raw: Record<string, unknown>): {title?: string} => ({title: str(raw.title)}),
+  validateSearch: (raw: Record<string, unknown>): {title?: string; library?: string} & GroupSearch => ({title: str(raw.title), library: str(raw.library), ...groupSearch(raw)}),
   component: SavedResourceScreen,
 });
 /** Live TV became Channels (Spec — Channels and Guide §2): old links land on the matching entry. */

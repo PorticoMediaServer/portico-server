@@ -18,8 +18,8 @@ export type LibraryTab = Readonly<{
   pivot?: string;
   /** How the tab is drawn: Discover's rows, a browsable grid (or the list table), the songs table, genre cards, or the viewer's playlists. */
   shows: 'rows' | 'titles' | 'tracks' | 'genres' | 'playlists';
-  /** The tab's own order, which the viewer does not change (Recently aired). No Sort control and no letter rail. */
-  fixedSort?: LibraryTabSort;
+  /** The order the tab opens in (Recently aired: the latest episode first). A starting point only: the viewer may choose any sort the server offers, and the choice is remembered for the tab. */
+  defaultSort?: LibraryTabSort;
   /** Conditions the tab always applies (Unmatched). */
   fixedFilter?: readonly LibraryTabPredicate[];
   /** An aggregate pivot: its entries are groups (genres, series) that open another tab filtered. */
@@ -31,7 +31,7 @@ const collections: LibraryTab = {id: 'collections', label: 'library.tab.collecti
 
 const TABS: Readonly<Record<string, readonly LibraryTab[]>> = {
   movie: [discover, {id: 'browse', label: 'library.tab.movies', pivot: 'movies', shows: 'titles'}, collections],
-  tv: [discover, {id: 'browse', label: 'library.tab.shows', pivot: 'shows', shows: 'titles'}, {id: 'aired', label: 'library.tab.aired', pivot: 'shows', shows: 'titles', fixedSort: {field: 'latestAired', direction: 'desc'}}, collections],
+  tv: [discover, {id: 'browse', label: 'library.tab.shows', pivot: 'shows', shows: 'titles'}, {id: 'aired', label: 'library.tab.aired', pivot: 'shows', shows: 'titles', defaultSort: {field: 'latestAired', direction: 'desc'}}, collections],
   music: [
     discover,
     {id: 'browse', label: 'library.tab.artists', pivot: 'artists', shows: 'titles'},
@@ -44,7 +44,7 @@ const TABS: Readonly<Record<string, readonly LibraryTab[]>> = {
     discover,
     {id: 'browse', label: 'library.tab.books', pivot: 'books', shows: 'titles'},
     {id: 'authors', label: 'library.tab.authors', pivot: 'authors', shows: 'titles'},
-    {id: 'series', label: 'library.tab.series', pivot: 'series', shows: 'titles'},
+    {id: 'series', label: 'library.tab.series', pivot: 'series', shows: 'titles', opens: {tab: 'browse', field: 'series'}},
   ],
 };
 
@@ -65,7 +65,31 @@ export function libraryTab(kind: string, id: string | undefined, options?: Param
 
 /** The tab that browses a pivot in a library of this kind (a row's "See all" names a pivot). */
 export function libraryTabForPivot(kind: string, pivot: string): LibraryTab | undefined {
-  return libraryTabs(kind).find(tab => tab.pivot === pivot && !tab.fixedSort && !tab.fixedFilter);
+  return libraryTabs(kind).find(tab => tab.pivot === pivot && !tab.defaultSort && !tab.fixedFilter);
+}
+
+/** The order a tab opens in when the viewer has chosen none: the tab's own when the server offers it, else the server's default for the pivot. */
+export function libraryTabSort(tab: LibraryTab, offered: readonly Readonly<{id: string}>[] | undefined, pivotDefault: LibraryTabSort | undefined): LibraryTabSort {
+  const own = tab.defaultSort && (!offered || offered.some(sort => sort.id === tab.defaultSort!.field)) ? tab.defaultSort : undefined;
+  return own ?? pivotDefault ?? {field: 'title', direction: 'asc'};
+}
+
+/**
+ * Where a category link leads ("genre:Drama", "decade:1990", "studio:Pixar", "series:Dune"): the
+ * library tab that lists those titles, with the category as one ordinary filter. The viewer then
+ * has every sort and filter the tab has, and can take the category off like any other filter.
+ * Undefined for a category this app does not know.
+ */
+export function categoryDestination(kind: string, category: string): Readonly<{tab: LibraryTabId; predicate: LibraryTabPredicate}> | undefined {
+  const at = category.indexOf(':');
+  if (at <= 0 || at === category.length - 1) return undefined;
+  const field = category.slice(0, at), value = category.slice(at + 1);
+  if (field !== 'genre' && field !== 'decade' && field !== 'studio' && field !== 'series') return undefined;
+  if (field === 'decade' && !/^\d{4}$/.test(value)) return undefined;
+  const group = libraryTabs(kind).find(tab => tab.opens?.field === field);
+  // The same condition the filter's own control writes, so the control shows it ticked.
+  const operator = field === 'genre' || field === 'series' ? 'contains-any' : 'in';
+  return {tab: group?.opens?.tab ?? 'browse', predicate: {field, operator, value: [field === 'decade' ? Number(value) : value]}};
 }
 
 /** An artist's releases by type, in the order the page shows them. A type with nothing is left out. */
