@@ -108,6 +108,8 @@ Run cases 1, 2, 7, 8, 9, 10 first, in order. Stop a destructive case if isolatio
 
 **Route to:** conversion-outputs, limits-settings, review-playback-pipeline.
 
+## Intel
+
 ### 7. Intel — QSV and VAAPI — smoke
 
 1. Select QSV then Linux VAAPI on the explicit render node; repeat common cases with HEVC8/10, quality/bitrate, interlacing, rotation and anamorphic samples.
@@ -118,6 +120,8 @@ Run cases 1, 2, 7, 8, 9, 10 first, in order. Stop a destructive case if isolatio
 **Failure:** Device mis-selected, fake nativeFilters, broken VPP graph, wrong mastering assumptions or failed unsupported-quality recovery.
 
 **Route to:** conversion-outputs, planner-wiring, review-playback-pipeline; fix-pass hardware-conversion.
+
+## AMD
 
 ### 8. AMD — VAAPI and AMF — smoke
 
@@ -130,6 +134,8 @@ Run cases 1, 2, 7, 8, 9, 10 first, in order. Stop a destructive case if isolatio
 
 **Route to:** conversion-outputs, planner-wiring, review-playback-pipeline; fix-pass hardware-conversion.
 
+## NVIDIA
+
 ### 9. NVIDIA — NVENC and CUDA — smoke
 
 1. Select NVENC and repeat common output/seek/failure cases; inspect hevc_nvenc cq/forced_idr and separately qualify CUDA scale.
@@ -141,6 +147,8 @@ Run cases 1, 2, 7, 8, 9, 10 first, in order. Stop a destructive case if isolatio
 **Failure:** CUDA scale mistaken for HDR support, device initialization failure instead of bounded fallback, new /proc/source grants or DV colour falsely accepted.
 
 **Route to:** conversion-outputs, planner-wiring, review-playback-pipeline; fix-pass hardware-conversion.
+
+## Apple
 
 ### 10. Apple — VideoToolbox — smoke
 

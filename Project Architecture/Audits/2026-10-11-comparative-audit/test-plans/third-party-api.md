@@ -157,3 +157,28 @@ Run cases 1, 2, 4, 6, 7 first, in order. Stop a destructive case if isolation is
 **Failure:** All keys silently replaced, live person sessions restored, saved grant reads wrong post-merge source or receipt bypasses withdrawal.
 
 **Route to:** ops-packaging, accounts-security, downloads, server-followups.
+
+### 11. Generated paths, nullable unions and analysis job replies
+
+1. After native package sync call current route builders with raw.., encoded%2e%2e, pre-encoded delimiters/control/malformed percent; also valid Unicode/slash/percent/punctuation intended as a SINGLE segment. Inspect dispatch count.
+2. Decode device subtitle command string/null and profile library policy list/null; reject number/object/wrong-list types while retaining additive/optional response tolerance.
+3. On actual candidate GET /v1/items/ID/analysis with advertised sourceId/sourceRevision/mappingRevision/sessionId/generation/positionUS, POST analysis/jobs, control pause/resume/cancel/retry; library lyrics fetch. Compare served status/body with generated union schemas and owner/member/restricted/absent boundaries.
+4. During actual startup without DB request readiness; require503 {ready:false,status:starting}, Retry-After2 then200 when ready.
+
+**Expected:** Unsafe path rejected before transport; valid raw segment exactly once encoded, current grant-bound subtitle/font routes still accepted. Meaningful null retained, branch validation exact; queue/retry202job and pause/resume/cancel200status, owner mutation authority unchanged; lyrics202scheduler rejects undeclared query parameters.
+
+**Failure:** Destination-changing builder sends request, null dropped/coerced, wrong job/status branch loses fields, member mutates analysis or readiness503 forced into ordinary error parser.
+
+**Route to:** review-registry, registry, native-health.
+
+### 12. Natural credential expiry, guide images and diagnostics
+
+1. Warm credential cache under short valid test expiry then let it expire WITHOUT any DB write; use Read/Playback keys against admin listing/control/terminate and administrative MCP, plus own allowed controls/events.
+2. Refresh guide with shared source/one allowed and one over-ceiling programme; request projected programme-bound images, withdraw ratings/source access then switch active generation and retry known URLs.
+3. Send test error/report with FAKE short named passwords/factor seeds/auth-cookie headers/signed URL params; inspect downloaded report/rotating logs/service stderr and readable ordinary title/status information.
+
+**Expected:** Calls reject exactly at natural expiry, scope-admin403/hidden tools while personal allowed controls remain; read events carry no owner outbox. Allowed image loads, hidden/stale generation/withdrawn URLs fail, no raw external URL/retired digest. Marked fake secrets redact in every diagnostic channel.
+
+**Failure:** Cache survives expiry, playback/read gains admin access, image URL leaks forbidden programme or short secret survives downloaded/stderr log.
+
+**Route to:** security-sweep, api-platform, accounts-security, livetv, console.

@@ -78,12 +78,13 @@ Run cases 1 first, in order. Stop a destructive case if isolation is lost; keep 
 1. After qualified transport play H264/HEVC MKV AAC remux, unsupported MPEG2/VC1 conversion and trustedHTTPS directMP4; sameMP4 overHTTP follows admitted remux policy. Resume/seek20min/back.
 2. Play AC3/EAC3 surround and HDR10: honest stereo conversion/SDR tone-map. Start Original then720p/Automatic, throttle3Mbps on20Mbps, restore and inspect throughput facts/session/generation/queue.
 3. Home/return video and music, network loss20s,20min playback/performance and bounded error/earlyEOF.
+4. After safe transport exists, hold seek, inject clamped landed position/out-of-order binding/retired seek and rate≠1; clock/play stays held until supported half-second landed acknowledgement or bounded error. Cancel SSE before headers: pending open rejects once, not stuck.
 
 **Expected:** Conditional: supported remux/direct/conversion matches plan, correct SDR/stereo, resume retained, native quality replans same queue; video pauses/background music continues if declared. Current transport refusal blocks these cases.
 
 **Failure:** Black/grey/silent output, zero-position restart, fake throughput adaptation, false watched after disconnect or unqualified HDR/receiver behavior.
 
-**Route to:** vega, playback-core, planner-wiring.
+**Route to:** vega, playback-core, planner-wiring, review-native-js.
 
 ### 5. Subtitles, Live TV, Together and Play on — conditional
 

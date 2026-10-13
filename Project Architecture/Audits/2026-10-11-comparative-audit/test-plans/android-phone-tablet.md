@@ -56,7 +56,7 @@ No Gradle command was run by this documentation lane. These are commands for the
 
 ## Smoke subset
 
-Run cases 1, 2, 5, 14 first, in order. Stop a destructive case if isolation is lost; keep running independent cases. Smoke success establishes a starting point; all remaining cases still need results.
+Run cases 1, 2, 6, 9 first, in order. Stop a destructive case if isolation is lost; keep running independent cases. Smoke success establishes a starting point; all remaining cases still need results.
 
 ## Test cases
 
@@ -72,19 +72,71 @@ Run cases 1, 2, 5, 14 first, in order. Stop a destructive case if isolation is l
 
 **Route to:** native-playback, native-app, playback-core, apple-mpv-review, android-native-review.
 
-### 2. Native/mpv handoff preserves the real queue — smoke
+### 2. Download pause, background, verification and races — smoke
+
+1. Download >2GB MKV and season on Wi-Fi; interrupt2min, Pause15min/Continue, force-kill/reopen, queue season/lock until completion then Airplane Mode BEFORE first reopen.
+2. Toggle Wi-Fi-only during mobile-enabled transfer, continue while cellular, wait30min closed for Wi-Fi; also wait>24h before reconnecting. Repeated Pause/Continue, URL renewal, Remove/immediate same-ID re-add and delayed extras/old callbacks; kill at each phase.
+3. Force-kill at100% during large hash (20+GB qualification sample when space permits); compare final hash/count, partial custody and latest artwork/subtitle extras. Unknown-length/oversized/short/malformed metadata batch uses existing native downloader regression; physical fault injection needs qualification harness.
+4. On source regression/private instrumented device hold grant renewal, switch viewer, then release; change grant while downloading must update actual native URL only for current owner. Use same-millisecond newer offline observation and incomplete receipt: only exactly acknowledged submitted play/item may be cleared. Test transient container enrollment retry, backlog bound across requests and same-ID request on another viewer/server.
+
+**Expected:** Identified allowed partials resume, no concurrent writer/stale callback overwrites new files; ready only after exact verification and local durable extras/receipt, no online finalization needed to play cold offline. Policy changes stop disallowed bytes (changed policy may restart0), known >24h grant expiry restart gap recorded. Hash survives process death/reconciles. Invalid batch atomic, hostile response never ready. No latest progress lost by same-timestamp ack, incomplete receipt retains unacknowledged journal; enrollment retries transient failures without unbounded queue or viewer collision.
+
+**Failure:** Restarts0 unnecessarily, final file lost at hash, old extras delete new file, wrong policy resumes cellular or season requires initial online opening.
+
+**Route to:** downloads, review-downloads, apple-native-review, android-native-review, review-native-js.
+
+### 3. Offline bundle, expiry, authorization and progress
+
+1. Cold signed-out Watch downloads/Airplane Mode for MP4/SRT and MKV/embedded/external ASS/VobSub: inspect show poster/episode order, chapter/intro marker/art/subtitles and private local paths.
+2. Set server claim retention1day on isolated clock, expire or delete source title then reconnect and go offline again; separately disable profile downloads/withdraw library access and replay old claim/receipt operations.
+3. Play one minute offline then sync, including per-part book/multi-episode occurrences, A→newerB→still-newerA, skewed future/backward device clock and a newer manual watched mark. Sign out/switch profiles and explicitly reclaim other-viewer bytes.
+4. Submit downloads for versions A/B; make only A unavailable and retry A. Use the existing collision regression with a pending playlist request whose ID equals a merged show ID; read target/membership/claim after merge.
+
+**Expected:** Self-contained copies survive ordinary expiry/source tidying with unavailable note; actual revocation removes/conceals online authority. Offline subtitle/media symlink escape refuses. Original watch time/one occurrence/count and newest authorized state preserved, private copies never named to another profile. Signed-out Android MKV/extras gap must be recorded if still present, never marked pass from signed-in playback. Retry stays on requested version/same-source successor; unrelated playlist target/membership survives coincident entity ID.
+
+**Failure:** Ordinary tidying deletes device copy, auth revoked yet transfer/receipt served, wrong profile art/name, per-part progress missing or skewed old evidence overrides newer state.
+
+**Route to:** downloads, review-downloads, personal-state, server-followups, native-playback, review-server-late.
+
+### 4. Keystore loss and ambiguous failures
+
+1. Use disposable Android7–11/FireOS install and Android12+ separately. Sign in/save queue/preferences/profile and downloads where supported; force-stop and remove only tv.getportico.portico.records.v1 with an in-process debug instrumentation helper, retain encrypted files.
+2. On older provider read ambiguity require Reset this device/Try again; restore key before confirmed Reset as a negative control. On confirmed permanent loss/newer recovery relaunch/sign in/relaunch/token renewal15min. Corrupt one ciphertext and temporarily lock/unavailable Keystore separately.
+3. Interrupt cleanup after pending marker/during deletion and repeat bridge reload; inspect no plaintext credential files. Without the instrumentation helper mark injected variants Blocked; run secure-store regression file for source coverage, not physical proof.
+
+**Expected:** Older ambiguous missing-key state requires explicit reset UI, Retry does not erase; restored key leaves original bytes/sign-in. Confirmed loss finishes cleanup before new writes/notice once and establishes new installation; generic locked/corrupt-one-record failures preserve originals. Retained download files private, no old credentials revived.
+
+**Failure:** Automatic destructive reset on ambiguous Keystore error, stuck blank activation, old bridge invalidates new, cleanup interruption restores auth or plaintext secrets.
+
+**Route to:** native-app, android-native-review; fix-pass native-platform.
+
+### 5. Pending cold links, viewer fence and damaged saved connection
+
+1. Set saved sign-in on a server taking>2s to restore; force-quit and cold-launch TopShelf/Spotlight/Siri/universal or Android/Fire WatchNext card and `portico://item/ID`/play as applicable. During restore send A thenB using xcrun simctl openurl booted URL (simulator) or adb shell am start -a android.intent.action.VIEW -d URL (Android).
+2. After delivery switch profile/server/sign-out/in and ensure no replay. With server unreachable choose different viewer then reconnect/switch back; repeat offline11min and5min, signed-out sign-in<10min, running-connected immediate link and handheld portico://device.
+3. On disposable saved connection use existing storage regression/instrumentation to corrupt a connection record or wrong encryption key and delay storage temporarily; sign in again/relaunch. Do not edit native encrypted files by guess.
+4. Hold saved-session restore/profile/QuickConnect credential lookup then Sign out/Use another/profile/server switch; release old answer. Same-family renewed token restore must send no current-session DELETE. Hold old account-directory lookup through account switch: no request uses replacement account bearer under retired watcher.
+
+**Expected:** Destination opens exactly once after restore, only latest pending link accepted, no replay/cross-viewer link. Ten-minute item-link fence separate from30min invitation fence. Confirmed damaged connection ends only affected sign-in and can save anew; ambiguous storage preserves originals. Late restore/selection never revives signed-out viewer; directory/extra-title caches scoped to current API/server; same-family renewal cannot revoke itself.
+
+**Failure:** Cold link lost/duplicates, old viewer link opens after switch/expiry, endless Cannot reach for damaged connection or wrong record erased on transient storage error.
+
+**Route to:** native-app, leftovers-native; fix-pass native, web-client-core, review-native-js.
+
+### 6. Native/mpv handoff preserves the real queue — smoke
 
 1. Play episode 2 in three-item queue, seek to 60s, switch native→mpv→native and Automatic repeatedly while playing, paused, loading and closing. Include rapid double preference changes.
 2. Use MP4 eligible for native and MKV/DTS or PGS/ASS requiring mpv under Automatic; change quality 720p/Original and audio track; inspect session/generation/queue/current entry.
 3. Close engine and allow another app’s audio to resume; repeat bridge reload/title switches with thread/memory instruments.
+4. Delay play preflight/localMedia lookup and queue-start response, then offline play/live tune/new title/leave; release old success or failure and stale Dolby confirmation. Only latest intent remains; no uncertain queue response triggers a second unkeyed start.
 
 **Expected:** Native for direct/plain-remux eligible files; mpv where avoiding conversion/lossy audio/burn. One audible engine, queue/entry preserved, position within 0.5s and pause intent retained; last setting wins, lease ends after teardown.
 
 **Failure:** Black picture with sound, double engine, old callback replaces current, empty Up Next/new queue, lost sound or growing render threads.
 
-**Route to:** native-playback, playback-core, review-playback-core, apple-mpv-review, android-native-review.
+**Route to:** native-playback, playback-core, review-playback-core, apple-mpv-review, android-native-review, review-native-js.
 
-### 3. Seek, EOF and genuine failures
+### 7. Seek, EOF and genuine failures
 
 1. Resume cueless MKV/TS, repeated forward/back paused/playing seeks, deep and beyond-end positions, seek backward after EOF; use speed 1.5x and two audio tracks.
 2. Use empty/corrupt/unsupported codec fixture and a truncated file with longer catalogue duration. Inject segment 404/403/410/503, reset/TLS failure and unspecified I/O via private proxy; Android also reclaimed codec/AudioTrack and behind-live-window.
@@ -96,7 +148,7 @@ Run cases 1, 2, 5, 14 first, in order. Stop a destructive case if isolation is l
 
 **Route to:** native-playback, apple-mpv-review, android-native-review, review-playback-core, personal-state; fix-pass native-platform.
 
-### 4. Quality, throughput, memory and receiver policy
+### 8. Quality, throughput, memory and receiver policy
 
 1. Start Original, explicitly Automatic on 20 Mbps title then throttle ~3 Mbps/restore; compare throughputKbps facts/down/up generation changes and retained queue.
 2. Play 4K HEVC 20min on oldest supported device plus software VC1/VP9/AV1/Hi10P and interlaced MPEG2; record frames/thermal/memory.
@@ -108,7 +160,7 @@ Run cases 1, 2, 5, 14 first, in order. Stop a destructive case if isolation is l
 
 **Route to:** native-playback, playback-core, planner-wiring, apple-mpv, android-mpv.
 
-### 5. Captions, fonts, offsets and late responses — smoke
+### 9. Captions, fonts, offsets and late responses — smoke
 
 1. Play SRT/VTT/server cues, embedded/external ASS with fonts, PGS/SUP/VobSub companions/DVB. Change Portico/system size/foreground/background while paused; test italic/top/no-background then authored ASS.
 2. Switch track/off while font/subtitle download delayed, set ±0.5s timing, rotate/resize where supported, use Arabic/Hebrew/Indic/Thai/CJK and mixed/untagged attachments.
@@ -120,7 +172,7 @@ Run cases 1, 2, 5, 14 first, in order. Stop a destructive case if isolation is l
 
 **Route to:** native-playback, apple-native-review, android-native-review, subtitles-text; fix-pass native-platform.
 
-### 6. HTTP, TLS, HLS relay and credential scope
+### 10. HTTP, TLS, HLS relay and credential scope
 
 1. Connect to trusted/untrusted HTTPS plus private/Tailscale/global HTTP, IPv6 bare/bracketed/scoped; choose text and embedded-language subtitles.
 2. Use a private controlled HLS source with relative/absolute variant/audio/map/segment/key references and redirect/out-of-origin/out-of-grant URIs. Inspect server/proxy request paths and zero capture-origin requests.
@@ -132,7 +184,7 @@ Run cases 1, 2, 5, 14 first, in order. Stop a destructive case if isolation is l
 
 **Route to:** native-sync, leftovers-native, apple-mpv-review, android-native-review, networking.
 
-### 7. Lifecycle, focus, media session and remote queue
+### 11. Lifecycle, focus, media session and remote queue
 
 1. Start queued video, press Home/screen-off then return; repeat native PiP/AirPlay only if supported and music listening in background.
 2. Test call/Siri/transient/permanent audio focus/ducking, headphone removal, media-services reset/activity recreation and play/pause/seek from headset/lock screen/TV remote.
@@ -144,7 +196,7 @@ Run cases 1, 2, 5, 14 first, in order. Stop a destructive case if isolation is l
 
 **Route to:** apple-mpv, apple-native-review, android-mpv, android-native-review, native-playback; fix-pass native.
 
-### 8. Freshness, renewal and deep-list focus
+### 12. Freshness, renewal and deep-list focus
 
 1. Keep Home/library/title/Saved/History open >15min through renewal with a download if supported; from second device mark/play/scan/delete and edit untouched owner setting.
 2. Scroll ~2000th library item, focus fifth card/300th audio track, hold Right during updates then leave remote still >1/3s. Push title over Home, Back twice, switch root tabs and background2min.
@@ -156,7 +208,7 @@ Run cases 1, 2, 5, 14 first, in order. Stop a destructive case if isolation is l
 
 **Route to:** native-app, freshness-clients, freshness-server, native-sync, leftovers-native.
 
-### 9. Saved lists, remembered views, search and sorting
+### 13. Saved lists, remembered views, search and sorting
 
 1. Use 300 History/500 playlist entries and a short first page; traverse all Saved tabs/pages, reorder/remove via Menu/long press/accessibility, Clear history and refresh.
 2. Play/Shuffle a saved view of120 without scrolling; repeat600, disconnect or leave mid-read. Set tab/sort/filter/late-letter jump, rail/See all/group link/profile switch/relaunch and delayed library capability read.
@@ -168,7 +220,7 @@ Run cases 1, 2, 5, 14 first, in order. Stop a destructive case if isolation is l
 
 **Route to:** native-app, native-health, native-sync, search-sort, grouping-sorts.
 
-### 10. Resource revisions, dates, personal state and Undo
+### 14. Resource revisions, dates, personal state and Undo
 
 1. Use private proxy to return one 428 revision_required to setting/container/queue mutation, then real reread; test repeated428,403/malformed reread/repeated cursor/abort.
 2. Rate five stars, play/seek120s, sync offline progress if supported; inspect rating10, position120000ms and UTC timestamps. Mark mixed-progress show/season/album/book, Undo <30s and retry after newer playback/membership/expiry.
@@ -180,7 +232,7 @@ Run cases 1, 2, 5, 14 first, in order. Stop a destructive case if isolation is l
 
 **Route to:** native-health, personal-state, review-freshness, registry, downloads.
 
-### 11. Accessibility, unavailable titles and account controls
+### 15. Accessibility, unavailable titles and account controls
 
 1. Use VoiceOver/TalkBack arrival/back/refresh/covered page; read watched/42% cards, Actions rotor/menu for More/reorder, empty list and sheet title; largest text long book late-letter jump.
 2. Play missing/restricted/nonconverting-unsupported file and transient network/expired paused lease; on TV verify Close focus/remote play disabled only for permanent failure.
@@ -192,7 +244,7 @@ Run cases 1, 2, 5, 14 first, in order. Stop a destructive case if isolation is l
 
 **Route to:** native-app, native-sync, server-followups, accounts-security.
 
-### 12. Together and Play on
+### 16. Together and Play on
 
 1. Join two profiles, one converted member taking1–2/8/19s seeks; host seek/pause/title change while member seek pending including final30s, log120s revisions/landings/readiness.
 2. Background host/guest; test takeover at30s denied/2min only fresh-ready member and10min departure, activity-private viewer and restricted item with retained position clock.
@@ -204,7 +256,7 @@ Run cases 1, 2, 5, 14 first, in order. Stop a destructive case if isolation is l
 
 **Route to:** social, leftovers-server-b, native-sync, native-app; fix-pass social-downloads, web-client-core.
 
-### 13. TV activation outage, feedback and sign-out
+### 17. TV activation outage, feedback and sign-out
 
 1. On code screen block Hosted with503/Retry-After120 and then date-valued delay, compare two devices’ attempt times. Require device approval and approve from phone; show actual receiving device name/platform.
 2. Send report via Settings > About, force a debug fatal JS error/relaunch and send again; hit1MiB daily account budget. Check redacted reports in owner console.
@@ -216,31 +268,7 @@ Run cases 1, 2, 5, 14 first, in order. Stop a destructive case if isolation is l
 
 **Route to:** native-sync, native-app, leftovers-native, console; fix-pass web-client-core.
 
-### 14. Download pause, background, verification and races — smoke
-
-1. Download >2GB MKV and season on Wi-Fi; interrupt2min, Pause15min/Continue, force-kill/reopen, queue season/lock until completion then Airplane Mode BEFORE first reopen.
-2. Toggle Wi-Fi-only during mobile-enabled transfer, continue while cellular, wait30min closed for Wi-Fi; also wait>24h before reconnecting. Repeated Pause/Continue, URL renewal, Remove/immediate same-ID re-add and delayed extras/old callbacks; kill at each phase.
-3. Force-kill at100% during large hash (20+GB qualification sample when space permits); compare final hash/count, partial custody and latest artwork/subtitle extras. Unknown-length/oversized/short/malformed metadata batch uses existing native downloader regression; physical fault injection needs qualification harness.
-
-**Expected:** Identified allowed partials resume, no concurrent writer/stale callback overwrites new files; ready only after exact verification and local durable extras/receipt, no online finalization needed to play cold offline. Policy changes stop disallowed bytes (changed policy may restart0), known >24h grant expiry restart gap recorded. Hash survives process death/reconciles. Invalid batch atomic, hostile response never ready.
-
-**Failure:** Restarts0 unnecessarily, final file lost at hash, old extras delete new file, wrong policy resumes cellular or season requires initial online opening.
-
-**Route to:** downloads, review-downloads, apple-native-review, android-native-review.
-
-### 15. Offline bundle, expiry, authorization and progress
-
-1. Cold signed-out Watch downloads/Airplane Mode for MP4/SRT and MKV/embedded/external ASS/VobSub: inspect show poster/episode order, chapter/intro marker/art/subtitles and private local paths.
-2. Set server claim retention1day on isolated clock, expire or delete source title then reconnect and go offline again; separately disable profile downloads/withdraw library access and replay old claim/receipt operations.
-3. Play one minute offline then sync, including per-part book/multi-episode occurrences, A→newerB→still-newerA, skewed future/backward device clock and a newer manual watched mark. Sign out/switch profiles and explicitly reclaim other-viewer bytes.
-
-**Expected:** Self-contained copies survive ordinary expiry/source tidying with unavailable note; actual revocation removes/conceals online authority. Offline subtitle/media symlink escape refuses. Original watch time/one occurrence/count and newest authorized state preserved, private copies never named to another profile. Signed-out Android MKV/extras gap must be recorded if still present, never marked pass from signed-in playback.
-
-**Failure:** Ordinary tidying deletes device copy, auth revoked yet transfer/receipt served, wrong profile art/name, per-part progress missing or skewed old evidence overrides newer state.
-
-**Route to:** downloads, review-downloads, personal-state, server-followups, native-playback.
-
-### 16. Gapless, gain, audiobook rewind and compressed targets
+### 18. Gapless, gain, audiobook rewind and compressed targets
 
 1. Generate audio extras, preserve original measured corpus; run apps/native/test/audio-gain-tests.kt with production gain source, Media3 1.10.1 dependencies, Android headers, Kotlin stdlib/Guava (main tv.getportico.portico.native.Audio_gain_testsKt); then physical +6dB/0.25peak and peak-limited playback.
 2. Use LC/HE-AAC/edit-list/iTunSMPB/AAC conversion/ALAC/FLAC/MP3, exact joins/deep seeks at first/packet/EOF with reference PCM; 44.1/48/96k output, speaker/Bluetooth/HDMI/AirPlay where available. Pause book at120s with native threads running/JS suspended, wait5min/1h and headset Play; repeat explicit paused seek/timer/new session.
@@ -252,19 +280,7 @@ Run cases 1, 2, 5, 14 first, in order. Stop a destructive case if isolation is l
 
 **Route to:** audio-engines, music-audiobooks, native-playback, apple-native-review, android-native-review.
 
-### 17. Keystore loss and ambiguous failures
-
-1. Use disposable Android7–11/FireOS install and Android12+ separately. Sign in/save queue/preferences/profile/downloads; force-stop and remove only tv.getportico.portico.records.v1 with an in-process debug instrumentation helper, retain encrypted files.
-2. On older provider read ambiguity require Reset this device/Try again; restore key before confirmed Reset as a negative control. On confirmed permanent loss/newer recovery relaunch/sign in/relaunch/token renewal15min. Corrupt one ciphertext and temporarily lock/unavailable Keystore separately.
-3. Interrupt cleanup after pending marker/during deletion and repeat bridge reload; inspect no plaintext credential files. Without the instrumentation helper mark injected variants Blocked; run secure-store regression file for source coverage, not physical proof.
-
-**Expected:** Older ambiguous missing-key state requires explicit reset UI, Retry does not erase; restored key leaves original bytes/sign-in. Confirmed loss finishes cleanup before new writes/notice once and establishes new installation; generic locked/corrupt-one-record failures preserve originals. Retained download files private, no old credentials revived.
-
-**Failure:** Automatic destructive reset on ambiguous Keystore error, stuck blank activation, old bridge invalidates new, cleanup interruption restores auth or plaintext secrets.
-
-**Route to:** native-app, android-native-review; fix-pass native-platform.
-
-### 18. Native event routes and no mutation replay
+### 19. Native event routes and no mutation replay
 
 1. Use private recording proxy with two proven routes. Record an unkeyed POST/PATCH/PUT/DELETE application then reset connection before reply; repeat408/503 Retry-After0, body/no body. GET/HEAD connect-before-send failures separately.
 2. Join group/enable receiver, make logical route fail but proven B available; open/read/background/cancel/reload/EOF and redirect301/302/307/308 capture. Split Unicode bytes/oversize stream, hold read>60s, rotate healthy feed.
@@ -276,7 +292,7 @@ Run cases 1, 2, 5, 14 first, in order. Stop a destructive case if isolation is l
 
 **Route to:** android-native-review, leftovers-native; fix-pass native-platform.
 
-### 19. Downloader service and notification constraints
+### 20. Downloader service and notification constraints
 
 1. Download large file on Wi-Fi-only, switch mobile/return Wi-Fi in background, pull network30s then restore; inspect partial.part under no_backup/Downloads/ID and notification.
 2. On Android15 run background long enough for dataSync allowance timeout then foreground; on actual Fire tablet repeat with Fire OS background restrictions.
@@ -288,7 +304,7 @@ Run cases 1, 2, 5, 14 first, in order. Stop a destructive case if isolation is l
 
 **Route to:** downloads, android-native-review, native-app.
 
-### 20. Handheld layout, PiP and rotation
+### 21. Handheld layout, PiP and rotation
 
 1. Rotate phone/tablet, change font scale, deep-scroll with largest type. On wide tablet enter Downloads then narrow layout; play native video and enter PiP only if FEATURE_PICTURE_IN_PICTURE/API26+.
 2. Choose mpv and unsupported/PiP-less model; background video/music then recreate activity with actual device rotation/process pressure.
@@ -298,3 +314,26 @@ Run cases 1, 2, 5, 14 first, in order. Stop a destructive case if isolation is l
 **Failure:** TV layout on phone, unsupported PiP button, density reset or activity recreation restarts queue.
 
 **Route to:** native-app, leftovers-native, android-native-review.
+
+### 22. Autoplay, credits and continuous-play protection
+
+1. Enable video continuous-play protection with count2 then3, play consecutive short episodes to that count and Continue. Disable and repeat; separately autoplay off/countdown variants.
+2. Use episode with credits marker/next entry: Play now, Watch credits and credits auto-skip; film with empty queue should offer no next card. Repeat audio queue without inheriting video protection.
+
+**Expected:** Question appears at selected count only when on; Continue counts correctly, autoplay/countdown obey preference. Authored/high-confidence chapter markers work, weak luminance marker never offered before approval; credits/card/skip behavior correct, listening keeps its own policy.
+
+**Failure:** Dead settings, protection every title/never, weak unapproved marker shown, next card with no queue or video protection interrupts album.
+
+**Route to:** limits-settings, web-subtitles, subtitles-text, native-playback.
+
+### 23. Google handheld Cast and receiver autonomy
+
+1. On eligible Google handheld with registered receiver/Cast ID start film then lock/turn off Wi-Fi/force-kill>10min. Reopen, receiver switch and bridge reload; repeat failed controller storage/identical friendly names.
+2. Disconnect receiver near EOF/final report, revoke receiver pairing unattended and return controller; remove Cast configuration. Fire/tablet/TV or non-Google build must hide unsupported Cast.
+3. Check real receiver token cannot GET /v1/libraries (403) but selected media/art/subtitle routes continue to work; paused/seek controls from sender change television.
+
+**Expected:** One controller channel, same playback on reconnect/no re-pair or restart, receiver autonomy until actual end/revocation; final-report failure does not prevent idle. Cast target retains narrow authority, unsupported feature hidden.
+
+**Failure:** Phone departure stops TV, old session cancels replacement, receiver browser gains library access or Cast promises unavailable platform.
+
+**Route to:** social, native-sync, accounts-security, android-native-review; fix-pass web-client-core.

@@ -87,12 +87,13 @@ Run cases 1, 2, 3, 4, 5 first, in order. Stop a destructive case if isolation is
 1. Enable deletion in the fixture library. Watch a film with two versions; preview Delete this version, replace that file without scanning, then confirm using the typed title. Repeat with the unchanged version.
 2. Preview a show/season deletion; add an episode/version after preview, make one original file non-removable using service-account ACLs, then confirm. Retry/cancel after partial failure.
 3. Replace a parent with an outside-root symlink/junction between preview and confirmation. Also attempt deletion with deletion disabled.
+4. After physical unlink use the source review-server-late regression’s second authorization callback to rename the title/demote the actor before final catalogue mutation; runtime timing requires a qualification hook. Check deleted bytes are unavailable even if later mutation is refused.
 
-**Expected:** Changed/outside-root/newly attached files remain; unchanged approved version alone disappears on disk, retained title ID/progress stays. Partial results identify retained files and reasons; no trash copy/folder is created; disabled deletion cannot proceed.
+**Expected:** Changed/outside-root/newly attached files remain; unchanged approved version alone disappears on disk, retained title ID/progress stays. Partial results identify retained files and reasons; no trash copy/folder is created; disabled deletion cannot proceed. Physically deleted files reconcile as unavailable despite a later conflict/refusal, without gaining authority to unlink anything else.
 
 **Failure:** An outside/new/replaced file removed, whole title erased after one failed unlink, disk bytes copied into trash, or retry deleting a newly added member.
 
-**Route to:** identity, review-identity, server-followups, console.
+**Route to:** identity, review-identity, server-followups, console, review-server-late.
 
 ### 5. Missing titles, unmounted drives and library removal — smoke
 
@@ -164,3 +165,51 @@ Run cases 1, 2, 3, 4, 5 first, in order. Stop a destructive case if isolation is
 **Failure:** Missing tools/web, state placed in calling directory or claimed hardware output without an actual device stage.
 
 **Route to:** ops-packaging, conversion-outputs, planner-wiring.
+
+### 11. Naming, versions, releases, ignores and tolerant tags
+
+1. Use fresh fixture roots and filenames from server/internal/naming/testdata/corpus.json. Make generic movie filenames with folder year/IDs, meaningful conflicting filenames, S02E01 in Season1, E01/01 in Season2, seasonless/flat/absolute anime, episode0, editions/parts/extras, BDMV/VIDEO_TS and sample/system files. Scan and inspect exact title/coordinates/extra owner.
+2. Add nested ignore file/change it/rescan; put Film(2020).mkv plus same-stem SRT directly in root and >4096 unrelated flat-folder entries. Use resolution tag1920x1080 and title1917/2001, NFC/NFD names and malformed optional NFO/tag/chapter values.
+3. Scan two copies of same MusicBrainz release across artist/year/folders, partial IDs and differing release/edition/narration IDs; retag one version to contradictory release and re-add watched music/book under new path. NFO directors/writers/tags/ratings/runtime/trailing URL then remove plot/NFO and reanalyse.
+
+**Expected:** File/embedded evidence wins conflict; correct stacks/coordinates/extras, no disc stream mistaken for poster, samples/hidden entries excluded without stalled pages. Useful fields retained with named skips, root sidecar no false warning. True releases share, contradictions separate and former title personal state remains; owner locks/undo preserved, unlocked removed NFO fields return to provider.
+
+**Failure:** Wrong season from resolution, empty numeric title search, duplicate/split true release or contradictory version steals title, one bad optional field blocks all import, inherited ignores mark offline roots missing.
+
+**Route to:** naming, scan-loop, review-scan, providers-matching, music-audiobooks, base-health; fix-pass scanning-metadata.
+
+### 12. Real metadata providers, locale, artwork and outage recovery
+
+1. On private libraries choose default TMDB then TheTVDB with authorized test keys; import yearless/misspelled/numeric titles and absolute anime spanning seasons. Fix match/history/undo, alternate group/offset order and explicit refresh; record actual request counts.
+2. Change language/country/provider with crosswalk evidence; inspect seasonNN-poster/show/episode thumbs, source/shared actor image download dedup and TheTVDB companyType/companyTypeName Network/Studio filters. Compare NFC/NFD transferred macOS folders.
+3. Set local-only and repeat with no provider traffic. Under controlled provider proxy inject429 Retry-After/prolonged outage then restore; speed gentle/normal/fast and immediate manual search. Lower/raise local and provider artwork quotas; duplicate image bytes count once.
+
+**Expected:** Decent-confidence matches rather than arbitrary unmatched; correct provider/order/locale/roles and manual selections stay pinned. Local-only zero remote traffic, retained source/images reused; capacity warning then recovery, useful live company fields. Retry floor/concurrency bounds and ≤five-minute idle safety wake honored; UI stays reachable.
+
+**Failure:** Fake provider-only test claimed live schema proof, wrong episode still/order, silent overwrite of locked art, quota charges wrong category, outage never recovers or expired token/login loop.
+
+**Route to:** providers-matching, scan-loop, leftovers-server-a, server-followups; fix-pass scanning-metadata.
+
+### 13. Rebuild, poison title, retained generations and bounded scale
+
+1. On a private qualification copy run `GOFLAGS=-p=2 go -C server run ./internal/catalog/scalebench -dir .scratch/accept-scale -items 10000 -samples 5 -profile -explain title`. Preserve emitted query/latency/hold/RSS evidence; scale 200000/2000000 only on a dedicated capacity host. No benchmark was executed by this lane.
+2. Use existing compactcatalog generation/poison/retry fixtures for deterministic version change/restart; physical copy needs explicit test hook. While actual populated rebuild/import runs browse/search owner/restricted clients, remove library and run second generation/FTS integrity plus orphan dictionary/event/history pruning.
+3. On weak hardware run watcher storms/blocking proof helper/slow NAS and 200 real subscriptions/100 direct consumers; record p95/p99 waits, DB statement/write-gate max holds, dispatch delay, WAL and foreground response compared with scan paused.
+
+**Expected:** Previous content always answers (no preparing), poison isolated/reason durable/fix retry, current generation/reference integrity. Work/checkpoints/candidate/absence proof shared two-second budget bounded; indexed page cost stable, console reachable and private progress audience isolated. Report measured capacity rather than assuming target met.
+
+**Failure:** Copied startup whole catalogue, blank old generation, poison stalls all workers, full-inventory joins/temp sorts, false claim that two-million-row index proof equals mixed catalogue/device capacity.
+
+**Route to:** freshness-server, review-freshness, review-scan, search-sort, grouping-sorts, scale-check, leftovers-server-a; fix-pass catalogue-playback.
+
+### 14. Owner broadcasts, watchdog and recovery at scale
+
+1. Create >500 disposable profiles using supported setup fixture, send same owner broadcast operation/body, cancel between pages then restart/replay; send changed body same key and revoke owner between pages.
+2. In dedicated debug qualification harness hold actual write gate>20s with strict panic OFF; watch degraded health/one holder-class log then release. Run actual long backup/import and correlate class-specific holds rather than multiplying drain time.
+3. Save short report retention/restart/maintenance and inspect global cap/dated cursors/redaction/1MiB daily budget.
+
+**Expected:** One notice per traversed inbox and cumulative receipt, changed key body refused/revocation stops later pages. Watchdog reports/recovery truthful, no production panic. Report pruning bounded/current budget intact with exact millisecond dates and private diagnostic contents.
+
+**Failure:** Duplicate broadcast on restart, continuing after authority lost, runaway watchdog logging/panic or unrelated process halt treated as measured write-gate problem.
+
+**Route to:** leftovers-server-b, leftovers-server-a, ops-packaging, console.

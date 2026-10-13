@@ -87,12 +87,13 @@ Run cases 1, 2, 3, 4, 5 first, in order. Stop a destructive case if isolation is
 1. Enable deletion in the fixture library. Watch a film with two versions; preview Delete this version, replace that file without scanning, then confirm using the typed title. Repeat with the unchanged version.
 2. Preview a show/season deletion; add an episode/version after preview, make one original file non-removable using service-account ACLs, then confirm. Retry/cancel after partial failure.
 3. Replace a parent with an outside-root symlink/junction between preview and confirmation. Also attempt deletion with deletion disabled.
+4. After physical unlink use the source review-server-late regression’s second authorization callback to rename the title/demote the actor before final catalogue mutation; runtime timing requires a qualification hook. Check deleted bytes are unavailable even if later mutation is refused.
 
-**Expected:** Changed/outside-root/newly attached files remain; unchanged approved version alone disappears on disk, retained title ID/progress stays. Partial results identify retained files and reasons; no trash copy/folder is created; disabled deletion cannot proceed.
+**Expected:** Changed/outside-root/newly attached files remain; unchanged approved version alone disappears on disk, retained title ID/progress stays. Partial results identify retained files and reasons; no trash copy/folder is created; disabled deletion cannot proceed. Physically deleted files reconcile as unavailable despite a later conflict/refusal, without gaining authority to unlink anything else.
 
 **Failure:** An outside/new/replaced file removed, whole title erased after one failed unlink, disk bytes copied into trash, or retry deleting a newly added member.
 
-**Route to:** identity, review-identity, server-followups, console.
+**Route to:** identity, review-identity, server-followups, console, review-server-late.
 
 ### 5. Missing titles, unmounted drives and library removal — smoke
 
@@ -140,3 +141,15 @@ Run cases 1, 2, 3, 4, 5 first, in order. Stop a destructive case if isolation is
 **Failure:** A successful unconfined run claimed as sandbox proof, privileged bypass, wrong vendor packages on arm64 or black/green output.
 
 **Route to:** ops-packaging, conversion-outputs, planner-wiring; fix-pass hardware-conversion.
+
+### 9. Release source, bundle and final-artifact custody
+
+1. In isolated scratch repository/CI run manual release tagA while dispatch branch pointsB; inspect resolved checkout/test/build/artifact SHA and move tag after resolution on a separate fixture.
+2. Verify both qualified amd64/arm64 bundle hashes and architecture in buildx stage, package completeness, independently pinned public key and required media/performance gates.
+3. Alter final server/web/package/update-feed bytes separately and run final-artifact signature/custody verification; preserve original signed copy. Do not publish/deploy to production.
+
+**Expected:** All jobs/artifacts follow resolvedA, moved tag refuses publication, wrong architecture/bundle and tampered final artifact fail; derivative macOS seal retains approved source provenance, update reader can follow permitted real HTTPS asset chain. Scratch CI evidence only.
+
+**Failure:** DispatchB tested for tagA, unpinned supplied key self-verifies artifact, package/web tamper accepted or publication performed without authorization.
+
+**Route to:** ops-packaging, review-ops, server-docs; fix-pass identity-ops-live, hosted.

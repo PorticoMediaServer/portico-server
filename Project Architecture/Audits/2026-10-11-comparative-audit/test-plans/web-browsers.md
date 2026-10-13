@@ -67,12 +67,13 @@ Run cases 1, 2, 3, 6 first, in order. Stop a destructive case if isolation is lo
 1. Resume a half-watched remux; inspect first segment at resume rather than seg0. From episode 2 change to 720p, audio track 2, Original and force one actual decode failure.
 2. Check network/session/queue after each action; replay at episode 3 end. Send invalid track/stale If-Match via isolated proxy and retry actual mutation.
 3. On a nonconverting profile play unsupported media; separately delete/miss a file and retry a paused expired lease.
+4. Delay a session GET/PATCH in private proxy, change titles twice, release old replies then close/reload; repeat paused and lease recovery. Current title/queue remains current and old session retires within bounded lease/request failure fallback.
 
 **Expected:** Same session/queue/current entry, replacement generation and position; one bounded decode fallback, old stream/progress survives rejected replan, replay preserves next entry. Permanent refusal shows specific plain reason; expired lease/network use recovery.
 
 **Failure:** New queue/empty Up Next, resets to zero, progress writer stops on rejected command, remembered network incompatibility or endless fallback.
 
-**Route to:** web-player, playback-core, review-playback-core, planner-wiring.
+**Route to:** web-player, playback-core, review-playback-core, planner-wiring, review-web-logic.
 
 ### 4. Original buffering, Automatic and sleep/restart
 
@@ -115,12 +116,13 @@ Run cases 1, 2, 3, 6 first, in order. Stop a destructive case if isolation is lo
 1. Choose ASS then PGS; pause/seek, play 0.5x/2x five minutes, frame-step and starve buffer. G/H offsets must apply/reload persist.
 2. Resize/fullscreen/fill-fit/density-screen/rotate iPad. Test 1920x800 image with 1920x1080 subtitle canvas and 4:3 VobSub.
 3. Play embedded/sidecar SUP, idx/sub and real DVB TS with forced/multi-position/fade cues; seek for ten minutes and inspect memory. Switch ASS→PGS→SRT→Off→next episode.
+4. Use the review-web-logic bounded DVB fixture containing256 large region definitions; retained valid content renders without memory growth. Rapid seeks/rates/track changes must release retired worker.
 
 **Expected:** Within a frame or two, proper letterbox/authored positions, colour/fades/both interlace rows, no memory climb/stale cues; one worker maximum, none after Off. Repackaged/converted resume retains subtitle origin.
 
 **Failure:** Stretched/shifted cues, pink/green pixels, alternating missing rows, timing runs ahead while stalled or old track over next title.
 
-**Route to:** web-subtitles, subtitles-text, conversion-outputs, review-playback-pipeline.
+**Route to:** web-subtitles, subtitles-text, conversion-outputs, review-playback-pipeline, review-web-logic.
 
 ### 8. Caption appearance and device limits
 
@@ -139,6 +141,7 @@ Run cases 1, 2, 3, 6 first, in order. Stop a destructive case if isolation is lo
 1. Open Home and deep library page (~2000th title); mark watched/play/scan/remove on second device. Keep an unsaved owner field while dropping/restoring network.
 2. Back through Home/library/title; hide tab/background two minutes, edit elsewhere, foreground. Over HTTPS open two tabs then close stream leader; repeat HTTP long-poll.
 3. Stop server >15s, visit an uncached library, restart; trim retained events then reconnect from old cursor.
+4. Keep tabA visible, hide tabB>30s until its feed stops, change metadata/watchedA then revealB; exactly one quiet refetch, repeat HTTP long-poll.
 
 **Expected:** One shared healthy HTTPS feed, updates ≤30s (watched normally ~5s, Continue ~20s), at most one Home read/15s during ticks; covered/hidden screens quiet, mounted page/edit/scroll retained. Background feed closes ~30s, cursor resumes, failure line delayed and no focus; stale cursor resyncs.
 
@@ -163,6 +166,7 @@ Run cases 1, 2, 3, 6 first, in order. Stop a destructive case if isolation is lo
 1. In each video/music/book library and every genre/series/category/collection/person/tab choose each advertised sort/filter both directions; use 205+ grouping values, stable random seed and restricted/private/shared lists.
 2. Set library tab/sort/filter, go Home/rail/back; open See all and genre link, then rail; switch profile/reload. Rename artist/album/subtitle evidence during page.
 3. Use Rocky 2/10, articles/punctuation/accents/CJK/Cyrillic and # jumps; search spiderman, wall e, MASH, X, middle CJK substrings, casts/directors/authors/narrators and alternative titles.
+4. Type search without Enter: address remains /search; Enter/reload records Recent searches; Clear/reload removes, disabled-recents setting stores none. Owner title menu offers Delete/Play next/Add to queue after playback and Download only if enabled; test rights for member.
 
 **Expected:** Same broad options across scopes, server-advertised pivot vocabulary honored; no duplicate/skip/hidden context, count/filter/sort exact and stable. Rail remembers per-profile library choice; scoped link does not overwrite it; Back preserves position. Exact titles precede context.
 
@@ -259,12 +263,13 @@ Run cases 1, 2, 3, 6 first, in order. Stop a destructive case if isolation is lo
 1. Change speed Normal→Fast; pause background hour/resume; disable Watch for library changes and add sample.mkv/broken symlink then scan, inspect skip sentences and Last scan live counts.
 2. Set working space 4→8GB, nonexistent/incompatible/qualified FFmpeg path; observe requested/effective/inUse before/after restart. Configure home ranges/external address/cert/connectionLimit and inspect immediate versus restart effects.
 3. Inspect storage three folders/space/recovery-copy delete, streams/connections, prepared download usage by profile; remove one profile’s downloads. Turn update checks off/on, use controlled current/newer public feed. Edit setting elsewhere while this page has one unsaved field.
+4. Edit Name inA and Connection limit/Home networks inB, saveB thenA: both survive; edit same field: genuine conflict retains draft. Drop response after rebased save and Retry with exact same operation key/body; one receipt. Forget choices after slow initial storage, restart and verify forget persists.
 
 **Expected:** All controls persist/take effect as described, monitoring off prevents automatic scan; background work pauses between chunks. Custom tool qualification refuses bad path and changes only after restart. Usage/retention/copy operations exact; edits kept while quiet refresh updates untouched rows; no automatic update installation.
 
 **Failure:** Dead saved control, setting takes unintended instant effect, old stream switches tools, unsaved edit lost, inaccurate usage or update silently installs.
 
-**Route to:** console, limits-settings, networking, ops-packaging, server-followups.
+**Route to:** console, limits-settings, networking, ops-packaging, server-followups, review-web-logic.
 
 ### 20. Live guide and recording console
 
@@ -283,24 +288,26 @@ Run cases 1, 2, 3, 6 first, in order. Stop a destructive case if isolation is lo
 1. Claim film/large MKV/whole season with external subtitles and multiple versions; reload and Save. Delete title then inspect claim; expire claim while phone retained copy.
 2. Withdraw library access and replay old operation IDs; poll 350 claims and finish an older row. Inspect preparation request count.
 3. Select lower version then add better copy, split/merge title and download; compare bytes/hash and profile usage.
+4. Submit downloads for versions A/B; make only A unavailable and retry A. Use the existing collision regression with a pending playlist request whose ID equals a merged show ID; read target/membership/claim after merge.
 
-**Expected:** Human names/output filenames, persisted whole-season request/quality list and selected version; deleted-title note, retained-authorized copy renews but withdrawn access conceals/refuses. At most three list polls per round, old row settles ≤two polls; shared prepared bytes count once, originals zero.
+**Expected:** Human names/output filenames, persisted whole-season request/quality list and selected version; deleted-title note, retained-authorized copy renews but withdrawn access conceals/refuses. At most three list polls per round, old row settles ≤two polls; shared prepared bytes count once, originals zero. Retry stays on requested version/same-source successor; unrelated playlist target/membership survives coincident entity ID.
 
 **Failure:** IDs exposed as names, wrong version, per-row polling, revoked grant served or ordinary expiration deletes offline copy.
 
-**Route to:** downloads, review-downloads, server-followups, console.
+**Route to:** downloads, review-downloads, server-followups, console, review-server-late.
 
 ### 22. Audio conformance, listening and lyrics
 
 1. On private Vite conformance host set AUDIO_REPORT_DIR and open /audio-conformance.html in each browser. Use original/extras HE-AAC/PS/Vorbis/MP3/FLAC corpus; compare frame count/lag/tolerance and supported qualifiedCodecs.
 2. Play gapless tone at 44.1→48k output, deep-seek one/two-hour FLAC/MP3 on slow link, >100 chapters, 2.5x/3x audiobook and pause 5min/1h comfort rewind. Test optional renderer failure and queue shuffle/play-next/remove/move/Previous/repeat-all.
 3. On iPhone Safari silent switch/lock/call/media keys. Scan embedded WEBP, mixed-case Cover.WEBP, local LRC/TXT/embedded lyrics; retag/duration-change and wrong LRCLIB/429 Retry-After fixture.
+4. On fault proxy ignore Range or return wrong Content-Range; own engine falls back cleanly with bounded memory. Deliver chunks for>30s then pause/seek during prepared-track load: progressing read lives, cancellation settles.
 
 **Expected:** Admitted codec exact trim/no audible joins, prompt bounded deep seeks (no whole prefix), pitch and 15/30s rewind correct with explicit paused seek winning; ordinary fallback retains session. Local useful tags/art/lyrics survive, wrong provider lyrics not auto-published, no-lyrics/private access honored.
 
 **Failure:** Extra priming/tail/drift, clicks/prefix download, stuck paused seek, wrong gain/credits/chapters, playback broken by optional decoder or private lyrics leaked.
 
-**Route to:** audio-engines, music-audiobooks, web-player, web-subtitles.
+**Route to:** audio-engines, music-audiobooks, web-player, web-subtitles, review-web-logic.
 
 ### 23. Together, Play on and Cast autonomy
 
@@ -325,3 +332,14 @@ Run cases 1, 2, 3, 6 first, in order. Stop a destructive case if isolation is lo
 **Failure:** Same stale-chunk loop, test pages shipped, broken vendor assets or whole page crashes on unknown row.
 
 **Route to:** web-app, web-subtitles; fix-pass web-client-core, catalogue-playback.
+
+### 25. Autoplay, credits and continuous-play protection
+
+1. Enable video continuous-play protection with count2 then3, play consecutive short episodes to that count and Continue. Disable and repeat; separately autoplay off/countdown variants.
+2. Use episode with credits marker/next entry: Play now, Watch credits and credits auto-skip; film with empty queue should offer no next card. Repeat audio queue without inheriting video protection.
+
+**Expected:** Question appears at selected count only when on; Continue counts correctly, autoplay/countdown obey preference. Authored/high-confidence chapter markers work, weak luminance marker never offered before approval; credits/card/skip behavior correct, listening keeps its own policy.
+
+**Failure:** Dead settings, protection every title/never, weak unapproved marker shown, next card with no queue or video protection interrupts album.
+
+**Route to:** limits-settings, web-subtitles, subtitles-text, native-playback.

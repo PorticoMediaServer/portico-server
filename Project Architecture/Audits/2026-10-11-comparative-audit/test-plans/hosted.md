@@ -58,7 +58,7 @@ Common first failures: uncached pgx/OIDC/DNS/oauth dependencies require locked m
 
 ## Smoke subset
 
-Run cases 1, 2 first, in order. Stop a destructive case if isolation is lost; keep running independent cases. Smoke success establishes a starting point; all remaining cases still need results.
+Run cases 1, 2, 8 first, in order. Stop a destructive case if isolation is lost; keep running independent cases. Smoke success establishes a starting point; all remaining cases still need results.
 
 ## Test cases
 
@@ -145,3 +145,15 @@ Run cases 1, 2 first, in order. Stop a destructive case if isolation is lost; ke
 **Failure:** Database-only restore claimed complete, external traffic during drill, wrong seal silently repairs rows, unqualified provider or release deployed during acceptance.
 
 **Route to:** hosted, hosted-followups, review-hosted, ops-packaging.
+
+### 8. Real Hosted/local-server driver and immediate claim admission — smoke
+
+1. On qualification internal candidate containing e2e-hosted run `python3 hosted-services/hosted/dev/e2ehosted/run.py --server-tree /absolute/candidate-server --scratch /private/e2e-hosted --pg-bin /absolute/postgresql/bin`. Need Go cached modules, PostgreSQL17/18 server tools, Node TypeScript stripping and Python cryptography; inspect driver ownership/private teardown first.
+2. Require16 backend checks pass, inspect its real activation-adapter networkRequestsWhileGateOpen result separately. With claim installed/acknowledged IMMEDIATELY try correctly signed owner identity admission before any owner-link readback wait; record0/403 versus accepted session.
+3. Use public isolated HTTPS endpoint to prove automatic queue-leased signed wake/endpoint proof without loopback fixture injection; shipping TV grant decryption/OS callback and provider acceptance remain physical cases.
+
+**Expected:** Driver owns fresh cluster/processes/private keys and tears down only its children; admitted sessions survive Hosted outage, terminal signer revocation arrives through actual check-in. Desired activation shared gate prevents automatic network attempt; current e2e report confirms B-22.26 bypass and an owner-link admission race, so record their actual failure rather than passing because gate unit test/readback wait succeeds. Public automatic wake needs separate real proof.
+
+**Failure:** Private/loopback egress denial bypassed, injected wake claimed public delivery, adapter gap hidden in16-pass headline or delayed admission claimed immediate readiness.
+
+**Route to:** e2e-hosted, hosted-followups, native-sync, accounts-security.

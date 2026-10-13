@@ -76,12 +76,13 @@ Run cases 1, 2, 4 first, in order. Stop a destructive case if isolation is lost;
 1. Serve30000+ M3U channels/200+MiB expanded guide through controlled gzip/chunked slow origin; include one bad EXTINF/missingURL/duplicateID/rotating query token/BOM/legacy text/harmlessDOCTYPE/missing stop/unknown element.
 2. Preview/save/refresh while browsing old guide; select News-only then picker-search Sports/choose two/Bring all; lower Most channels/guide rows/expanded MiB, refresh then raise.
 3. Use separate copies with entity/internal subset, deep nesting, giant field, gzip expansion overflow and repeated Unicode aliases; test explicit mapping authoritative and stale generation cursor refusal.
+4. Make allowed DVR channels occur after >256 excluded entries. Follow all picker continuations, including empty pages; change guide generation and send malformed cursor on separate requests.
 
-**Expected:** Good rows retained with skip/limit reasons, old guide available through checkpoint publication, selection correct/choice pages not limited to currently enabled groups. Harmless data tolerated; hostile whole document fails bounded/no external entity access; alias work bounded.
+**Expected:** Good rows retained with skip/limit reasons, old guide available through checkpoint publication, selection correct/choice pages not limited to currently enabled groups. Harmless data tolerated; hostile whole document fails bounded/no external entity access; alias work bounded. Picker examines at most256 candidates/page and returns≤30 visible choices; all permitted channels exactly once and no excluded-ID cursor disclosure.
 
 **Failure:** One odd row rejects all, expanded-size unbounded, partial guide visible, alias cross product, hidden omitted groups or old cursor accepted.
 
-**Route to:** livetv, review-livetv, limits-settings, server-followups, console.
+**Route to:** livetv, review-livetv, limits-settings, server-followups, console, review-server-late.
 
 ### 5. Live codec/HDR/transport and slow reader isolation
 
