@@ -10,11 +10,13 @@ export function decodeCreateApiKeyResponse(input: unknown): types.CreateApiKeyRe
 export function decodeCreateDownloadRequestResponse(input: unknown): types.CreateDownloadRequestResponse { return decode("CreateDownloadRequestResponse", input) as types.CreateDownloadRequestResponse; }
 export function decodeCreateJobResponse(input: unknown): types.CreateJobResponse { return decode("CreateJobResponse", input) as types.CreateJobResponse; }
 export function decodeCreateQueueResponse(input: unknown): types.CreateQueueResponse { return decode("CreateQueueResponse", input) as types.CreateQueueResponse; }
+export function decodeCreateWebhookResponse(input: unknown): types.CreateWebhookResponse { return decode("CreateWebhookResponse", input) as types.CreateWebhookResponse; }
 export function decodeDeleteAdminBackupResponse(input: unknown): types.DeleteAdminBackupResponse { return decode("DeleteAdminBackupResponse", input) as types.DeleteAdminBackupResponse; }
 export function decodeDeleteDeviceResponse(input: unknown): types.DeleteDeviceResponse { return decode("DeleteDeviceResponse", input) as types.DeleteDeviceResponse; }
 export function decodeDeleteDeviceSessionsResponse(input: unknown): types.DeleteDeviceSessionsResponse { return decode("DeleteDeviceSessionsResponse", input) as types.DeleteDeviceSessionsResponse; }
 export function decodeDeleteDirectSessionResponse(input: unknown): types.DeleteDirectSessionResponse { return decode("DeleteDirectSessionResponse", input) as types.DeleteDirectSessionResponse; }
 export function decodeDeleteQueueResponse(input: unknown): types.DeleteQueueResponse { return decode("DeleteQueueResponse", input) as types.DeleteQueueResponse; }
+export function decodeDeleteWebhookResponse(input: unknown): types.DeleteWebhookResponse { return decode("DeleteWebhookResponse", input) as types.DeleteWebhookResponse; }
 export function decodeGetAdminBackupsResponse(input: unknown): types.GetAdminBackupsResponse { return decode("GetAdminBackupsResponse", input) as types.GetAdminBackupsResponse; }
 export function decodeGetAdminMaintenanceSettingsResponse(input: unknown): types.GetAdminMaintenanceSettingsResponse { return decode("GetAdminMaintenanceSettingsResponse", input) as types.GetAdminMaintenanceSettingsResponse; }
 export function decodeGetAdminUpdatesResponse(input: unknown): types.GetAdminUpdatesResponse { return decode("GetAdminUpdatesResponse", input) as types.GetAdminUpdatesResponse; }
@@ -48,6 +50,8 @@ export function decodeListAdminSessionsResponse(input: unknown): types.ListAdmin
 export function decodeListApiKeysResponse(input: unknown): types.ListApiKeysResponse { return decode("ListApiKeysResponse", input) as types.ListApiKeysResponse; }
 export function decodeListMemberAccessTokensResponse(input: unknown): types.ListMemberAccessTokensResponse { return decode("ListMemberAccessTokensResponse", input) as types.ListMemberAccessTokensResponse; }
 export function decodeListQueueEntriesResponse(input: unknown): types.ListQueueEntriesResponse { return decode("ListQueueEntriesResponse", input) as types.ListQueueEntriesResponse; }
+export function decodeListWebhookDeliveriesResponse(input: unknown): types.ListWebhookDeliveriesResponse { return decode("ListWebhookDeliveriesResponse", input) as types.ListWebhookDeliveriesResponse; }
+export function decodeListWebhooksResponse(input: unknown): types.ListWebhooksResponse { return decode("ListWebhooksResponse", input) as types.ListWebhooksResponse; }
 export function decodeMoveQueueEntryResponse(input: unknown): types.MoveQueueEntryResponse { return decode("MoveQueueEntryResponse", input) as types.MoveQueueEntryResponse; }
 export function decodePatchDeviceResponse(input: unknown): types.PatchDeviceResponse { return decode("PatchDeviceResponse", input) as types.PatchDeviceResponse; }
 export function decodePostAdminBackupsResponse(input: unknown): types.PostAdminBackupsResponse { return decode("PostAdminBackupsResponse", input) as types.PostAdminBackupsResponse; }
@@ -64,8 +68,10 @@ export function decodePutAdminMaintenanceSettingsResponse(input: unknown): types
 export function decodePutDeviceCapabilitiesResponse(input: unknown): types.PutDeviceCapabilitiesResponse { return decode("PutDeviceCapabilitiesResponse", input) as types.PutDeviceCapabilitiesResponse; }
 export function decodePutDirectProfileRestrictionsResponse(input: unknown): types.PutDirectProfileRestrictionsResponse { return decode("PutDirectProfileRestrictionsResponse", input) as types.PutDirectProfileRestrictionsResponse; }
 export function decodePutDirectRegistrationPolicyResponse(input: unknown): types.PutDirectRegistrationPolicyResponse { return decode("PutDirectRegistrationPolicyResponse", input) as types.PutDirectRegistrationPolicyResponse; }
+export function decodeQueryTitlesResponse(input: unknown): types.QueryTitlesResponse { return decode("QueryTitlesResponse", input) as types.QueryTitlesResponse; }
 export function decodeRemoveQueueEntryResponse(input: unknown): types.RemoveQueueEntryResponse { return decode("RemoveQueueEntryResponse", input) as types.RemoveQueueEntryResponse; }
 export function decodeReorderPlaylistWindowResponse(input: unknown): types.ReorderPlaylistWindowResponse { return decode("ReorderPlaylistWindowResponse", input) as types.ReorderPlaylistWindowResponse; }
+export function decodeReportChangedPathsResponse(input: unknown): types.ReportChangedPathsResponse { return decode("ReportChangedPathsResponse", input) as types.ReportChangedPathsResponse; }
 export function decodeReportPlaybackTimelineResponse(input: unknown): types.ReportPlaybackTimelineResponse { return decode("ReportPlaybackTimelineResponse", input) as types.ReportPlaybackTimelineResponse; }
 export function decodeRevokeAccessTokenResponse(input: unknown): types.RevokeAccessTokenResponse { return decode("RevokeAccessTokenResponse", input) as types.RevokeAccessTokenResponse; }
 export function decodeRevokeApiKeyResponse(input: unknown): types.RevokeApiKeyResponse { return decode("RevokeApiKeyResponse", input) as types.RevokeApiKeyResponse; }
@@ -75,4 +81,6 @@ export function decodeSetContainerPersonalStateResponse(input: unknown): types.S
 export function decodeStartPlaybackSessionResponse(input: unknown): types.StartPlaybackSessionResponse { return decode("StartPlaybackSessionResponse", input) as types.StartPlaybackSessionResponse; }
 export function decodeStopPlaybackSessionResponse(input: unknown): types.StopPlaybackSessionResponse { return decode("StopPlaybackSessionResponse", input) as types.StopPlaybackSessionResponse; }
 export function decodeTerminateAdminSessionResponse(input: unknown): types.TerminateAdminSessionResponse { return decode("TerminateAdminSessionResponse", input) as types.TerminateAdminSessionResponse; }
+export function decodeTestWebhookResponse(input: unknown): types.TestWebhookResponse { return decode("TestWebhookResponse", input) as types.TestWebhookResponse; }
 export function decodeUpdateQueueResponse(input: unknown): types.UpdateQueueResponse { return decode("UpdateQueueResponse", input) as types.UpdateQueueResponse; }
+export function decodeUpdateWebhookResponse(input: unknown): types.UpdateWebhookResponse { return decode("UpdateWebhookResponse", input) as types.UpdateWebhookResponse; }

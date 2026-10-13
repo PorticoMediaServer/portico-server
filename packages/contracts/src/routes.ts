@@ -215,6 +215,28 @@ export const routes = [
     "status": 201
   },
   {
+    "id": "create_webhook",
+    "method": "POST",
+    "path": "/v1/admin/webhooks",
+    "summary": "Add a webhook; its signing secret is shown once",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 8192,
+    "errors": [
+      "webhook_limit",
+      "body_too_large",
+      "unauthorized",
+      "not_permitted",
+      "insufficient_scope",
+      "invalid_request",
+      "administration_unavailable",
+      "internal"
+    ],
+    "status": 201
+  },
+  {
     "id": "delete_admin_backup",
     "method": "DELETE",
     "path": "/v1/admin/backups/{id}",
@@ -304,6 +326,27 @@ export const routes = [
     "errors": [
       "unauthorized",
       "not_found"
+    ],
+    "status": 204
+  },
+  {
+    "id": "delete_webhook",
+    "method": "DELETE",
+    "path": "/v1/admin/webhooks/{id}",
+    "summary": "Remove a webhook with its queue and its log",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "errors": [
+      "not_found",
+      "unauthorized",
+      "not_permitted",
+      "insufficient_scope",
+      "invalid_request",
+      "administration_unavailable",
+      "internal"
     ],
     "status": 204
   },
@@ -969,6 +1012,51 @@ export const routes = [
     "status": 200
   },
   {
+    "id": "list_webhook_deliveries",
+    "method": "GET",
+    "path": "/v1/admin/webhooks/{id}/deliveries",
+    "summary": "Read a webhook's delivery log, newest first",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "cursor",
+      "limit"
+    ],
+    "errors": [
+      "not_found",
+      "unauthorized",
+      "not_permitted",
+      "insufficient_scope",
+      "invalid_request",
+      "administration_unavailable",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
+    "id": "list_webhooks",
+    "method": "GET",
+    "path": "/v1/admin/webhooks",
+    "summary": "List webhooks and the events they can be sent",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "insufficient_scope",
+      "invalid_request",
+      "administration_unavailable",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
     "id": "move_queue_entry",
     "method": "POST",
     "path": "/v1/queues/{id}/entries/{entryId}:move",
@@ -1296,6 +1384,40 @@ export const routes = [
     "status": 200
   },
   {
+    "id": "query_titles",
+    "method": "GET",
+    "path": "/v1/titles",
+    "summary": "List titles of one kind in one library, or find a title by its provider id",
+    "access": "viewer_library",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "library",
+      "kind",
+      "sort",
+      "order",
+      "yearFrom",
+      "yearTo",
+      "addedAfter",
+      "addedBefore",
+      "provider",
+      "providerId",
+      "cursor",
+      "limit"
+    ],
+    "errors": [
+      "unauthorized",
+      "invalid_request",
+      "invalid_cursor",
+      "cursor_expired",
+      "not_found",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
     "id": "remove_queue_entry",
     "method": "DELETE",
     "path": "/v1/queues/{id}/entries/{entryId}",
@@ -1338,6 +1460,26 @@ export const routes = [
       "internal"
     ],
     "status": 200
+  },
+  {
+    "id": "report_changed_paths",
+    "method": "POST",
+    "path": "/v1/libraries/paths-changed",
+    "summary": "Report paths that were added, changed or removed, and scan only those folders",
+    "access": "owner",
+    "requires": "library",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 1048576,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "invalid_request",
+      "body_too_large",
+      "administration_unavailable",
+      "internal"
+    ],
+    "status": 202
   },
   {
     "id": "report_playback_timeline",
@@ -1533,6 +1675,28 @@ export const routes = [
     "optionalBody": true
   },
   {
+    "id": "test_webhook",
+    "method": "POST",
+    "path": "/v1/admin/webhooks/{id}/test",
+    "summary": "Send a test event to a webhook; the result appears in its delivery log",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "errors": [
+      "webhook_limit",
+      "not_found",
+      "unauthorized",
+      "not_permitted",
+      "insufficient_scope",
+      "invalid_request",
+      "administration_unavailable",
+      "internal"
+    ],
+    "status": 202
+  },
+  {
     "id": "update_queue",
     "method": "PATCH",
     "path": "/v1/queues/{id}",
@@ -1551,6 +1715,28 @@ export const routes = [
       "unsupported_selector",
       "queue_too_large",
       "queue_building"
+    ],
+    "status": 200
+  },
+  {
+    "id": "update_webhook",
+    "method": "PATCH",
+    "path": "/v1/admin/webhooks/{id}",
+    "summary": "Change a webhook, turn it on or off, or replace its secret",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 8192,
+    "errors": [
+      "body_too_large",
+      "not_found",
+      "unauthorized",
+      "not_permitted",
+      "insufficient_scope",
+      "invalid_request",
+      "administration_unavailable",
+      "internal"
     ],
     "status": 200
   }

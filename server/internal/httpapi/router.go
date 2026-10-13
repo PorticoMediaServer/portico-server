@@ -48,6 +48,7 @@ import (
 	"portico.local/server/internal/remotesources"
 	"portico.local/server/internal/storage"
 	"portico.local/server/internal/subtitles"
+	"portico.local/server/internal/webhooks"
 )
 
 type Dependencies struct {
@@ -104,6 +105,8 @@ type Dependencies struct {
 	TrustedProxies    []netip.Prefix
 	// Access carries the people, diagnostics and connectivity seams (workstream G2).
 	Access AccessArea
+	// Webhooks is the owner's outbound webhooks; nil answers them as unavailable.
+	Webhooks *webhooks.Store
 	// Watchdog reports database health. Nil leaves the server reporting healthy,
 	// which is the right default for a test that does not run one.
 	Watchdog *dbwork.Watchdog

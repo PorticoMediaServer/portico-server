@@ -9,6 +9,13 @@ package httpapi
 // /v1/downloads/settings is an ordinary read while /v1/downloads/artifacts/{grant}
 // is a byte stream — and a prefix rule cannot tell them apart.
 var routeLanes = map[string]string{
+	// Outbound webhooks (webhook_routes.go).
+	"GET /v1/admin/webhooks":                 laneAdmin,
+	"POST /v1/admin/webhooks":                laneAdmin,
+	"PATCH /v1/admin/webhooks/{id}":          laneAdmin,
+	"DELETE /v1/admin/webhooks/{id}":         laneAdmin,
+	"GET /v1/admin/webhooks/{id}/deliveries": laneAdmin,
+	"POST /v1/admin/webhooks/{id}/test":      laneAdmin,
 	// Routes for outside tools (platform_routes.go).
 	"GET /v1/titles":                   laneBrowsing,
 	"POST /v1/libraries/paths-changed": laneDefault,

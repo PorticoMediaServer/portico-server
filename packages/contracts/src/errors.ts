@@ -365,5 +365,11 @@ export const errors = [
     "status": 503,
     "message": "The web app is temporarily unavailable.",
     "retry": "same_request"
+  },
+  {
+    "code": "webhook_limit",
+    "status": 409,
+    "message": "There are too many of these already. Remove one you no longer use.",
+    "retry": "never"
   }
 ] as const;

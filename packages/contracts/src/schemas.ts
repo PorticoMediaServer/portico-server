@@ -4682,6 +4682,105 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "CreateWebhookRequest": {
+    "properties": {
+      "enabled": {
+        "type": "boolean"
+      },
+      "events": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "name": {
+        "type": "string"
+      },
+      "secret": {
+        "type": "string"
+      },
+      "url": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "name",
+      "url",
+      "events"
+    ],
+    "type": "object"
+  },
+  "CreateWebhookResponse": {
+    "properties": {
+      "secret": {
+        "type": "string"
+      },
+      "webhook": {
+        "properties": {
+          "createdAt": {
+            "type": "string"
+          },
+          "dropped": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "events": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "failing": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "secretHint": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "waiting": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "url",
+          "events",
+          "enabled",
+          "secretHint",
+          "createdAt",
+          "updatedAt",
+          "waiting",
+          "failing",
+          "dropped"
+        ],
+        "type": "object"
+      }
+    },
+    "required": [
+      "webhook"
+    ],
+    "type": "object"
+  },
   "DeleteAdminBackupRequest": {
     "properties": {},
     "required": [],
@@ -4728,6 +4827,16 @@ export const schemas = {
     "type": "object"
   },
   "DeleteQueueResponse": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "DeleteWebhookRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "DeleteWebhookResponse": {
     "properties": {},
     "required": [],
     "type": "object"
@@ -8750,6 +8859,170 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "ListWebhookDeliveriesRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "ListWebhookDeliveriesResponse": {
+    "properties": {
+      "items": {
+        "items": {
+          "properties": {
+            "attempts": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "createdAt": {
+              "type": "string"
+            },
+            "durationMs": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "error": {
+              "type": "string"
+            },
+            "event": {
+              "type": "string"
+            },
+            "finishedAt": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            },
+            "nextAttemptAt": {
+              "type": "string"
+            },
+            "state": {
+              "type": "string"
+            },
+            "status": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id",
+            "event",
+            "state",
+            "attempts",
+            "createdAt",
+            "status",
+            "durationMs"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "limit": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "nextCursor": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "items",
+      "limit"
+    ],
+    "type": "object"
+  },
+  "ListWebhooksRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "ListWebhooksResponse": {
+    "properties": {
+      "events": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "items": {
+        "items": {
+          "properties": {
+            "createdAt": {
+              "type": "string"
+            },
+            "dropped": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "enabled": {
+              "type": "boolean"
+            },
+            "events": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "failing": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "id": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "secretHint": {
+              "type": "string"
+            },
+            "updatedAt": {
+              "type": "string"
+            },
+            "url": {
+              "type": "string"
+            },
+            "waiting": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id",
+            "name",
+            "url",
+            "events",
+            "enabled",
+            "secretHint",
+            "createdAt",
+            "updatedAt",
+            "waiting",
+            "failing",
+            "dropped"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "maximum": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "items",
+      "events",
+      "maximum"
+    ],
+    "type": "object"
+  },
   "MoveQueueEntryRequest": {
     "properties": {
       "after": {
@@ -11158,6 +11431,82 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "QueryTitlesRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "QueryTitlesResponse": {
+    "properties": {
+      "items": {
+        "items": {
+          "properties": {
+            "addedAt": {
+              "type": "string"
+            },
+            "available": {
+              "type": "boolean"
+            },
+            "durationSeconds": {
+              "type": "number"
+            },
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string"
+            },
+            "libraryId": {
+              "type": "string"
+            },
+            "posterUrl": {
+              "type": "string"
+            },
+            "providerIds": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "rating": {
+              "type": "number"
+            },
+            "title": {
+              "type": "string"
+            },
+            "year": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id",
+            "kind",
+            "title",
+            "libraryId",
+            "available",
+            "providerIds"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "limit": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "nextCursor": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "items",
+      "limit"
+    ],
+    "type": "object"
+  },
   "RemoveQueueEntryRequest": {
     "properties": {},
     "required": [],
@@ -11914,6 +12263,121 @@ export const schemas = {
       "playlistId",
       "revision",
       "deleted"
+    ],
+    "type": "object"
+  },
+  "ReportChangedPathsRequest": {
+    "properties": {
+      "paths": {
+        "items": {
+          "properties": {
+            "change": {
+              "type": "string"
+            },
+            "path": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "path"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      }
+    },
+    "required": [
+      "paths"
+    ],
+    "type": "object"
+  },
+  "ReportChangedPathsResponse": {
+    "properties": {
+      "jobs": {
+        "items": {
+          "properties": {
+            "analyzed": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "error": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            },
+            "jobs": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "phase": {
+              "type": "string"
+            },
+            "processed": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "scanMode": {
+              "type": "string"
+            },
+            "sourceId": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string"
+            },
+            "warnings": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id",
+            "status",
+            "processed",
+            "analyzed",
+            "warnings"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "paths": {
+        "items": {
+          "properties": {
+            "folder": {
+              "type": "string"
+            },
+            "libraryId": {
+              "type": "string"
+            },
+            "path": {
+              "type": "string"
+            },
+            "sourceId": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "path",
+            "status"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      }
+    },
+    "required": [
+      "paths",
+      "jobs"
     ],
     "type": "object"
   },
@@ -12971,6 +13435,61 @@ export const schemas = {
     "required": [],
     "type": "object"
   },
+  "TestWebhookRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "TestWebhookResponse": {
+    "properties": {
+      "attempts": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "createdAt": {
+        "type": "string"
+      },
+      "durationMs": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "error": {
+        "type": "string"
+      },
+      "event": {
+        "type": "string"
+      },
+      "finishedAt": {
+        "type": "string"
+      },
+      "id": {
+        "type": "string"
+      },
+      "nextAttemptAt": {
+        "type": "string"
+      },
+      "state": {
+        "type": "string"
+      },
+      "status": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "id",
+      "event",
+      "state",
+      "attempts",
+      "createdAt",
+      "status",
+      "durationMs"
+    ],
+    "type": "object"
+  },
   "UpdateQueueRequest": {
     "properties": {
       "repeat": {
@@ -13676,6 +14195,104 @@ export const schemas = {
     },
     "required": [
       "queue"
+    ],
+    "type": "object"
+  },
+  "UpdateWebhookRequest": {
+    "properties": {
+      "enabled": {
+        "type": "boolean"
+      },
+      "events": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "name": {
+        "type": "string"
+      },
+      "rotateSecret": {
+        "type": "boolean"
+      },
+      "secret": {
+        "type": "string"
+      },
+      "url": {
+        "type": "string"
+      }
+    },
+    "required": [],
+    "type": "object"
+  },
+  "UpdateWebhookResponse": {
+    "properties": {
+      "secret": {
+        "type": "string"
+      },
+      "webhook": {
+        "properties": {
+          "createdAt": {
+            "type": "string"
+          },
+          "dropped": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "events": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "failing": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "secretHint": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "waiting": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "url",
+          "events",
+          "enabled",
+          "secretHint",
+          "createdAt",
+          "updatedAt",
+          "waiting",
+          "failing",
+          "dropped"
+        ],
+        "type": "object"
+      }
+    },
+    "required": [
+      "webhook"
     ],
     "type": "object"
   }

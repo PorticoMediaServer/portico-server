@@ -657,3 +657,19 @@ func SortedEvents() []string {
 	sort.Strings(out)
 	return out
 }
+
+// State reads a small value the dispatcher's helpers keep between runs (the
+// last update that was announced). A missing key is "".
+func (s *Store) State(ctx context.Context, key string) (string, error) {
+	var value string
+	err := dbwork.QueryRow(ctx, s.DB, `SELECT value FROM webhook_state WHERE key=?`, key).Scan(&value)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	return value, err
+}
+
+func (s *Store) SetState(ctx context.Context, key, value string) error {
+	_, err := dbwork.ExecWrite(ctx, s.DB, dbwork.ClassMaintenance, `INSERT INTO webhook_state(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, key, value)
+	return err
+}

@@ -29,6 +29,7 @@ import (
 	"portico.local/server/internal/operations"
 	"portico.local/server/internal/persistence"
 	"portico.local/server/internal/servicelog"
+	"portico.local/server/internal/webhooks"
 )
 
 type administrationFixture struct {
@@ -80,6 +81,7 @@ func administrationFixtureNew(t *testing.T) administrationFixture {
 	deps := Dependencies{DB: db, Identity: ident, Catalog: catalog.New(db), Hosted: control, Console: operations.New(db),
 		Access: AccessArea{Access: access.New(db), Logs: recorder, ClientLogs: servicelog.NewClientLogStore(db), Advertiser: connectivity.NewAdvertiser(connectivity.AdvertiserOptions{})}}
 	deps.credentials = newCredentialGate()
+	deps.Webhooks = webhooks.New(db)
 	return administrationFixture{handler: New(deps), owner: ownerToken.AccessToken, admin: adminToken.AccessToken, member: memberToken.AccessToken, memberDevice: memberToken.DeviceID, recorder: recorder, deps: deps}
 }
 
