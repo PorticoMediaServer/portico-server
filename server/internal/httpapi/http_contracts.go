@@ -53,7 +53,15 @@ func registerHTTPContracts(registry *apikit.Registry) error {
 	if err := registerSetupHTTPContracts(registry); err != nil {
 		return err
 	}
-	return registerIdentityHTTPContracts(registry)
+	if err := registerIdentityHTTPContracts(registry); err != nil {
+		return err
+	}
+	for _, register := range devContracts {
+		if err := register(registry); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // httpRegistrar lets a service bind handlers through the same typed registry.

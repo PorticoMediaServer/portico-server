@@ -5,6 +5,9 @@ package httpapi
 import (
 	"net/http"
 	"net/netip"
+
+	"portico.local/apikit"
+	"portico.local/server/internal/identity"
 )
 
 // The development e2e owner, the server-side counterpart of Hosted's
@@ -18,10 +21,20 @@ import (
 //	GET  /v1/dev/e2e          {"username": "e2e-owner"}, or 404
 //	POST /v1/dev/e2e/sign-in  {"username": "e2e-owner"} → the direct sign-in answer
 func init() {
+	devContracts = append(devContracts, func(registry *apikit.Registry) error {
+		if err := apikit.RegisterHTTP[struct{}, struct {
+			Username string `json:"username"`
+		}](registry, apikit.Metadata{ID: "get_dev_e2e", Method: "GET", Path: "/v1/dev/e2e", Summary: "Read the development test owner", Access: apikit.Public, Requires: apikit.ScopeSession, Lane: apikit.Security, Admission: laneAuth, Cost: apikit.Constant, Status: 200, Errors: []string{"not_found", "internal"}}); err != nil {
+			return err
+		}
+		return apikit.RegisterHTTP[struct {
+			Username string `json:"username"`
+		}, identity.DirectSignIn](registry, apikit.Metadata{ID: "post_dev_e2e_sign_in", Method: "POST", Path: "/v1/dev/e2e/sign-in", Summary: "Sign in as the development test owner", Access: apikit.Public, Requires: apikit.ScopeSession, Lane: apikit.Security, Admission: laneAuth, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "not_found", "unauthorized", "internal"}})
+	})
 	routeLanes["GET /v1/dev/e2e"] = laneAuth
 	routeLanes["POST /v1/dev/e2e/sign-in"] = laneAuth
 	devRoutes = append(devRoutes, func(d Dependencies, mux *http.ServeMux) {
-		mux.HandleFunc("GET /v1/dev/e2e", func(w http.ResponseWriter, r *http.Request) {
+		d.httpHandle(mux, "GET /v1/dev/e2e", func(w http.ResponseWriter, r *http.Request) {
 			name, ok := d.Identity.DevE2EUsername()
 			if !ok || !devE2ELoopbackPeer(r) {
 				devE2ENotFound(w)
@@ -29,7 +42,7 @@ func init() {
 			}
 			write(w, 200, map[string]string{"username": name})
 		})
-		mux.HandleFunc("POST /v1/dev/e2e/sign-in", func(w http.ResponseWriter, r *http.Request) {
+		d.httpHandle(mux, "POST /v1/dev/e2e/sign-in", func(w http.ResponseWriter, r *http.Request) {
 			if _, ok := d.Identity.DevE2EUsername(); !ok || !devE2ELoopbackPeer(r) {
 				devE2ENotFound(w)
 				return
