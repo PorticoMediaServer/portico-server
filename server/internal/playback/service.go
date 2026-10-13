@@ -129,6 +129,8 @@ func (s *Service) CreateContext(ctx context.Context, p identity.Principal, item,
 type SessionReplacement struct {
 	ID         string `json:"id"`
 	Generation int    `json:"generation"`
+	// Deferred keeps the old presentation live until the resource layer commits.
+	Deferred bool `json:"-"`
 }
 
 func (s *Service) CreateReplacingContext(ctx context.Context, p identity.Principal, item, quality, request string, replacement *SessionReplacement) (Session, error) {
@@ -370,8 +372,9 @@ func (s *Service) create(ctx context.Context, p identity.Principal, item, reques
 	}
 
 	replacing := ""
-	private := v1.PrivateFor != ""
-	if private {
+	deferred := replacement != nil && replacement.Deferred
+	private := v1.PrivateFor != "" || deferred
+	if private && !deferred {
 		// A private presentation shares its owner's slot, and the owner plays on.
 		var valid int
 		if e = tx.QueryRowContext(ctx, `SELECT count(*) FROM playback_sessions WHERE id=? AND account_id=? AND profile_id=? AND state NOT IN('stopped','ended','failed')`, v1.PrivateFor, p.AccountID, p.ProfileID).Scan(&valid); e != nil {
@@ -383,7 +386,13 @@ func (s *Service) create(ctx context.Context, p identity.Principal, item, reques
 		replacing = v1.PrivateFor
 	} else if replacement != nil {
 		var valid int
-		if e = tx.QueryRowContext(ctx, `SELECT count(*) FROM playback_sessions WHERE id=? AND generation=? AND account_id=? AND profile_id=? AND `+sessionFamilyMatch+` AND state NOT IN('stopped','ended','failed')`, replacement.ID, replacement.Generation, p.AccountID, p.ProfileID, p.Hash, p.Hash).Scan(&valid); e != nil {
+		query := `SELECT count(*) FROM playback_sessions WHERE id=? AND generation=? AND account_id=? AND profile_id=? AND state NOT IN('stopped','ended','failed')`
+		args := []any{replacement.ID, replacement.Generation, p.AccountID, p.ProfileID}
+		if !deferred {
+			query += ` AND ` + sessionFamilyMatch
+			args = append(args, p.Hash, p.Hash)
+		}
+		if e = tx.QueryRowContext(ctx, query, args...).Scan(&valid); e != nil {
 			return Session{}, e
 		}
 		if valid != 1 {
@@ -487,8 +496,10 @@ func (s *Service) create(ctx context.Context, p identity.Principal, item, reques
 	if itemKind != "audiobook_file" && resume >= duration-3 {
 		resume = 0
 	}
-	if e = claimSessionProgress(tx, p, item, id, resume); e != nil {
-		return Session{}, e
+	if !private {
+		if e = claimSessionProgress(tx, p, item, id, resume); e != nil {
+			return Session{}, e
+		}
 	}
 	streamURL := "/v1/media/" + grant
 	if mode == "hls" {
@@ -500,7 +511,11 @@ func (s *Service) create(ctx context.Context, p identity.Principal, item, reques
 	}
 	result := Session{ID: id, Generation: generation, StreamURL: streamURL, Mode: responseMode, Duration: duration, ResumeSeconds: resume, State: "starting"}
 	if private {
-		if _, e = tx.ExecContext(ctx, `INSERT INTO playback_private_presentations(session_id,owner_session_id,expires_ms) VALUES(?,?,?)`, id, v1.PrivateFor, v1.PrivateUntilMs); e != nil {
+		owner, until := v1.PrivateFor, v1.PrivateUntilMs
+		if deferred {
+			owner, until = replacement.ID, time.Now().Add(time.Minute).UnixMilli()
+		}
+		if _, e = tx.ExecContext(ctx, `INSERT INTO playback_private_presentations(session_id,owner_session_id,expires_ms) VALUES(?,?,?)`, id, owner, until); e != nil {
 			return Session{}, e
 		}
 	}

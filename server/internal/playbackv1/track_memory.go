@@ -135,3 +135,32 @@ func rememberedSubtitle(memory TrackMemory, plan subtitles.PlaybackPlan) *Subtit
 	}
 	return &SubtitleRequest{TrackID: TrackRef(best)}
 }
+
+// rememberPresentationTracks records only a successfully published choice.
+func (s *Service) rememberPresentationTracks(ctx context.Context, p identity.Principal, item, media string, view Presentation, audio, subtitle bool) {
+	if !audio && !subtitle {
+		return
+	}
+	plan, err := s.Playback.SessionPlan(ctx, media)
+	if err != nil || plan == nil {
+		return
+	}
+	var audioLanguage *string
+	if audio && plan.Trace != nil && plan.Trace.Audio != nil {
+		audioLanguage = &plan.Trace.Audio.Language
+	}
+	mode, language := "", ""
+	if subtitle {
+		mode = "off"
+		if view.Subtitle != nil {
+			mode = "on"
+			for _, resource := range s.subtitleResources(ctx, p, item, plan.SourceID) {
+				if resource.ID == view.Subtitle.TrackID {
+					language = resource.Language
+					break
+				}
+			}
+		}
+	}
+	s.rememberTracks(ctx, p, item, audioLanguage, mode, language)
+}

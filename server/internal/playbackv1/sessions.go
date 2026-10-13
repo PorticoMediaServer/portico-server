@@ -217,6 +217,8 @@ type PresentationSubtitle struct {
 type Caller struct {
 	Principal identity.Principal
 	DeviceID  string
+	// AuthorizeItem checks visibility without taking a stream slot.
+	AuthorizeItem func(context.Context, string) error
 	// AdminMaxVideoBitrateBPS is the member's remote cap when this request is remote.
 	AdminMaxVideoBitrateBPS int
 	Remote                  bool
@@ -257,7 +259,11 @@ type replanKey struct{}
 // Replan names what an admission continues: the v1 session it re-plans or
 // replaces, and a prepared entry's media session that already exists. Neither
 // is a new stream, so the stream limit doesn't count them.
-type Replan struct{ Session, Media string }
+type Replan struct {
+	Session, Media string
+	// Remote retains the playing connection for a controller on another device.
+	Remote bool
+}
 
 // WithReplan marks an admission as continuing an existing stream.
 func WithReplan(ctx context.Context, session, media string) context.Context {
@@ -292,6 +298,10 @@ func (c *Caller) replanContext(ctx context.Context, session string) (context.Con
 	if c.Ceiling == nil {
 		return ctx, nil
 	}
+	ctx = WithReplan(ctx, session, "")
+	r := ReplanOf(ctx)
+	r.Remote = c.Remote
+	ctx = context.WithValue(ctx, replanKey{}, r)
 	limit, err := c.Ceiling(ctx, session)
 	if err != nil {
 		return ctx, err
@@ -433,9 +443,9 @@ func (s *Service) view(r row) SessionView {
 }
 
 // owns reports whether the caller may see and control a session: its own
-// device, or another device signed in to the same profile (spec §9.1).
+// profile, on its playing device or a controller device (spec §9.1).
 func owns(c Caller, r row) bool {
-	return r.device == c.DeviceID || r.account == c.Principal.AccountID && r.profile == c.Principal.ProfileID && r.authority == c.Principal.Authority
+	return r.account == c.Principal.AccountID && r.profile == c.Principal.ProfileID && r.authority == c.Principal.Authority
 }
 
 var keyPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{16,128}$`)
@@ -730,7 +740,7 @@ func (s *Service) present(ctx context.Context, c Caller, t presentationTarget) (
 	}
 	if a := request.Audio; a != nil && plan != nil && plan.AudioStream >= 0 && streamID("a", plan.AudioStream) != a.TrackID {
 		// The chosen track doesn't exist in this version.
-		_ = s.Playback.StopV1(ctx, media.ID)
+		_ = s.Playback.StopV1(context.WithoutCancel(ctx), media.ID)
 		return media, Presentation{}, &FieldError{Path: "audio.trackId"}
 	}
 	// Whether the engine the plan named draws the chosen track itself.
@@ -749,7 +759,7 @@ func (s *Service) present(ctx context.Context, c Caller, t presentationTarget) (
 		result, err = s.applySubtitles(admitted, c.Principal, t.item, media.ID, nil, request.SubtitleOffsetMs, t.startMs, t.subtitleOp+"-n", false)
 	}
 	if err != nil {
-		_ = s.Playback.StopV1(ctx, media.ID)
+		_ = s.Playback.StopV1(context.WithoutCancel(ctx), media.ID)
 		return media, Presentation{}, err
 	}
 	view.Subtitles, view.Subtitle = result.files, result.shown
@@ -759,21 +769,8 @@ func (s *Service) present(ctx context.Context, c Caller, t presentationTarget) (
 		media.StreamURL, media.Generation = result.replaced.StreamURL, result.replaced.Generation
 		s.adoptReplaced(ctx, &view, media.ID, result.replaced, choice)
 	}
-	if video {
-		var audioLanguage *string
-		if t.rememberAudio && plan != nil && plan.Trace != nil && plan.Trace.Audio != nil {
-			audioLanguage = &plan.Trace.Audio.Language
-		}
-		mode, language := "", ""
-		if t.rememberSubtitle && request.Subtitles != nil {
-			mode = "off"
-			if chosen != nil {
-				mode, language = "on", chosen.Language
-			} else if request.Subtitles.TrackID != TrackOff && request.Subtitles.TrackID != "" && result.shown != nil {
-				mode, language = "on", result.language
-			}
-		}
-		s.rememberTracks(ctx, c.Principal, t.item, audioLanguage, mode, language)
+	if video && (t.replacing == nil || !t.replacing.Deferred) {
+		s.rememberPresentationTracks(ctx, c.Principal, t.item, media.ID, view, t.rememberAudio, t.rememberSubtitle)
 	}
 	return media, view, nil
 }
@@ -786,7 +783,7 @@ func (s *Service) describe(view *Presentation, plan playback.DeliveryPlan, choic
 		view.Engine = playback.EngineNative
 	}
 	view.Decision = decisions(plan, choice, plan.SourceVideoCodec != "")
-	view.BitrateKbps = (plan.VideoBitrateBPS + plan.AudioBitrateBPS) / 1000
+	view.BitrateKbps = planKbps(plan)
 	view.Container = plan.OutputContainer
 	if plan.AudioStream >= 0 {
 		view.AudioTrackID = streamID("a", plan.AudioStream)
@@ -884,6 +881,9 @@ func (s *Service) Start(ctx context.Context, c Caller, key string, req StartRequ
 	want := digest(req)
 	existing, err := scanRow(s.DB.QueryRowContext(ctx, `SELECT `+rowSelect+` FROM playback_v1_sessions WHERE device_id=? AND start_key=?`, c.DeviceID, key))
 	if err == nil {
+		if !owns(c, existing) {
+			return SessionView{}, false, ErrNotFound
+		}
 		if existing.startDigest != want {
 			return SessionView{}, false, ErrIdempotencyMismatch
 		}
@@ -919,6 +919,9 @@ func (s *Service) startOther(ctx context.Context, c Caller, key, digest string, 
 
 // replayStart answers a repeated start: 202 until the presentation is ready.
 func (s *Service) replayStart(ctx context.Context, c Caller, r row) (SessionView, bool, error) {
+	if err := c.authorizeSession(ctx, r); err != nil {
+		return SessionView{}, false, err
+	}
 	r = s.expireIfLapsed(ctx, r)
 	if r.state != "preparing" || r.ended > 0 {
 		return s.view(r), false, nil
@@ -1003,26 +1006,28 @@ func (s *Service) startItem(ctx context.Context, c Caller, key, startDigest stri
 // startPresentation creates the first presentation of a new session and
 // records it. base carries the kind, role, target and links.
 func (s *Service) startPresentation(ctx context.Context, c Caller, key, startDigest string, req StartRequest, base row, stored storedRequest) (SessionView, bool, error) {
+	release := s.admission.hold(c.Principal.AccountID)
+	defer release()
 	id := newID("ps_")
 	var replacing *playback.SessionReplacement
 	var old row
 	if req.ReplacesSessionID != "" {
 		var err error
 		old, err = loadRow(ctx, s.DB, req.ReplacesSessionID)
-		if err != nil || old.device != c.DeviceID {
+		if err != nil || old.device != c.DeviceID || !owns(c, old) {
 			return SessionView{}, false, &FieldError{Path: "replacesSessionId"}
 		}
 		if old.ended == 0 && old.media != "" {
-			replacing = &playback.SessionReplacement{ID: old.media, Generation: old.mediaGeneration}
+			if err := dbwork.QueryRow(ctx, s.DB, `SELECT generation FROM playback_sessions WHERE id=? AND account_id=? AND profile_id=? AND state NOT IN('stopped','ended','failed')`, old.media, old.account, old.profile).Scan(&old.mediaGeneration); err != nil {
+				return SessionView{}, false, err
+			}
+			replacing = &playback.SessionReplacement{ID: old.media, Generation: old.mediaGeneration, Deferred: true}
 		}
 	}
 	admitCtx := ctx
 	if req.ReplacesSessionID != "" && old.ended == 0 {
 		admitCtx = WithReplan(ctx, old.id, "")
 	}
-	// Admitted and made countable under one gate per account (admission_gate.go).
-	release := s.admission.hold(c.Principal.AccountID)
-	defer release()
 	if err := c.admit(admitCtx, base.item); err != nil {
 		return SessionView{}, false, err
 	}
@@ -1033,14 +1038,11 @@ func (s *Service) startPresentation(ctx context.Context, c Caller, key, startDig
 	target := presentationTarget{item: base.item, version: base.version, part: base.partIndex, request: stored, startMs: startMs, replacing: replacing, requestID: "v1." + id + ".1", subtitleOp: "v1-" + id + "-1",
 		throughputKbps: req.ThroughputKbps, fitThroughput: true, rememberAudio: req.Audio != nil, rememberSubtitle: req.Subtitles != nil}
 	media, view, err := s.present(ctx, c, target)
-	if errors.Is(err, identity.ErrUnauthorized) && replacing != nil {
-		// The session being replaced belongs to an earlier sign-in of this device:
-		// end it, then start without taking its slot.
-		_ = s.Playback.StopV1(ctx, old.media)
-		target.replacing = nil
-		media, view, err = s.present(ctx, c, target)
-	}
+
 	if err != nil {
+		if media.ID != "" {
+			_ = s.Playback.StopV1(context.WithoutCancel(ctx), media.ID)
+		}
 		return SessionView{}, false, err
 	}
 	if req.StartPositionMs == nil && (req.StartFrom == "" || req.StartFrom == "resume") {
@@ -1048,7 +1050,7 @@ func (s *Service) startPresentation(ctx context.Context, c Caller, key, startDig
 	}
 	ready, err := s.ready(ctx, media)
 	if err != nil {
-		_ = s.Playback.StopV1(ctx, media.ID)
+		_ = s.Playback.StopV1(context.WithoutCancel(ctx), media.ID)
 		return SessionView{}, false, err
 	}
 	state := "playing"
@@ -1092,6 +1094,11 @@ func (s *Service) startPresentation(ctx context.Context, c Caller, key, startDig
 			r.id, r.device, r.account, r.profile, r.authority, r.startKey, r.startDigest, r.kind, r.role, r.state, r.item, r.version, r.channel, r.queueID, r.entryID, r.transfer, r.group, r.request, r.media, r.presentation, r.audioTrack, r.subtitleTrack, r.location, r.endReason, r.message, r.partIndex, r.revision, r.generation, r.mediaGeneration, r.startPosition, r.position, r.lastSeq, r.bandwidth, r.lease, r.created, r.updated, r.ended, r.pausedSince); err != nil {
 			return err
 		}
+		if replacing != nil {
+			if err := s.Playback.CommitReplacementTx(ctx, tx, c.Principal, *replacing, media.ID, view.StartPositionMs); err != nil {
+				return err
+			}
+		}
 		if old.id != "" && old.ended == 0 {
 			if err := s.endTx(ctx, tx, old, now, "replaced", ""); err != nil {
 				return err
@@ -1100,7 +1107,7 @@ func (s *Service) startPresentation(ctx context.Context, c Caller, key, startDig
 		return s.sessionEventsTx(ctx, tx, r, now, true)
 	})
 	if err != nil {
-		_ = s.Playback.StopV1(ctx, media.ID)
+		_ = s.Playback.StopV1(context.WithoutCancel(ctx), media.ID)
 		// A concurrent start with the same key won: replay it.
 		if existing, e := scanRow(s.DB.QueryRowContext(ctx, `SELECT `+rowSelect+` FROM playback_v1_sessions WHERE device_id=? AND start_key=?`, c.DeviceID, key)); e == nil {
 			if existing.startDigest != startDigest {
@@ -1109,6 +1116,10 @@ func (s *Service) startPresentation(ctx context.Context, c Caller, key, startDig
 			return s.replayStart(ctx, c, existing)
 		}
 		return SessionView{}, false, err
+	}
+	if replacing != nil {
+		_ = s.Playback.StopV1(context.WithoutCancel(ctx), old.media)
+		s.rememberPresentationTracks(ctx, c.Principal, base.item, media.ID, view, req.Audio != nil, req.Subtitles != nil)
 	}
 	s.hub.wake()
 	s.sweep.kick(s)
@@ -1221,6 +1232,16 @@ func (s *Service) expireIfLapsed(ctx context.Context, r row) row {
 	return r
 }
 
+func (c Caller) authorizeSession(ctx context.Context, r row) error {
+	if !owns(c, r) {
+		return ErrNotFound
+	}
+	if r.item != "" && c.AuthorizeItem != nil {
+		return c.AuthorizeItem(ctx, r.item)
+	}
+	return nil
+}
+
 // session loads a session the caller may see.
 func (s *Service) session(ctx context.Context, c Caller, id string) (row, error) {
 	r, err := loadRow(ctx, s.DB, id)
@@ -1229,6 +1250,9 @@ func (s *Service) session(ctx context.Context, c Caller, id string) (row, error)
 	}
 	if !owns(c, r) {
 		return r, ErrNotFound
+	}
+	if err := c.authorizeSession(ctx, r); err != nil {
+		return r, err
 	}
 	return s.expireIfLapsed(ctx, r), nil
 }

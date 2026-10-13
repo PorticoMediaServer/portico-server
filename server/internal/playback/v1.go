@@ -261,3 +261,32 @@ var (
 	// ErrSourceChanged: the file behind a presentation changed since it was planned.
 	ErrSourceChanged = errors.New("source changed")
 )
+
+// CommitReplacementTx publishes a fully prepared replacement and transfers its
+// progress writer in the same transaction as the resource pointing to it. A
+// refused or stale change never retires the old grant or claims its progress.
+func (s *Service) CommitReplacementTx(ctx context.Context, tx *sql.Tx, p identity.Principal, old SessionReplacement, next string, positionMs int64) error {
+	var item string
+	err := tx.QueryRowContext(ctx, `SELECT pid(e.public_id) FROM playback_private_presentations pp JOIN playback_sessions n ON n.id=pp.session_id JOIN catalog_entities e ON e.id=n.item_id JOIN playback_sessions o ON o.id=pp.owner_session_id
+ WHERE n.id=? AND o.id=? AND o.generation=? AND o.account_id=? AND o.profile_id=? AND n.account_id=? AND n.profile_id=? AND n.state NOT IN('stopped','ended','failed') AND o.state NOT IN('stopped','ended','failed') AND pp.expires_ms>?`, next, old.ID, old.Generation, p.AccountID, p.ProfileID, p.AccountID, p.ProfileID, time.Now().UnixMilli()).Scan(&item)
+	if err != nil {
+		return err
+	}
+	if s.AuthorityTx != nil {
+		if _, err = s.AuthorityTx(ctx, tx, p, item); err != nil {
+			return err
+		}
+	}
+	ordinal, err := inheritedPersonalIntent(tx, p, old.ID)
+	if err != nil {
+		return err
+	}
+	if err = activatePersonalWriter(tx, p, item, next, float64(positionMs)/1000, ordinal); err != nil {
+		return err
+	}
+	if err = terminateControlOccurrence(ctx, tx, old.ID, "stopped"); err != nil {
+		return err
+	}
+	_, err = tx.ExecContext(ctx, `DELETE FROM playback_private_presentations WHERE session_id=?`, next)
+	return err
+}
