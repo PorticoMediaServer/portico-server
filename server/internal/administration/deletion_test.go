@@ -1,0 +1,175 @@
+package administration
+
+import (
+	"context"
+	"database/sql"
+	"errors"
+	"os"
+	"path/filepath"
+	"testing"
+
+	"portico.local/server/internal/catalogtest"
+)
+
+// deletionFixture is a film with two files in a library that allows deleting.
+// The catalogue's size and time for each file are what is on disk, as a scan
+// would have left them.
+func deletionFixture(t *testing.T) (*Service, *sql.DB, string, string, []string) {
+	t.Helper()
+	s, db, root := newService(t)
+	library, item, files := seedLibrary(t, db, root)
+	for _, path := range files {
+		info, err := os.Stat(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err = db.Exec(`UPDATE catalog_assets SET size=?,modified_ns=? WHERE path=?`, info.Size(), info.ModTime().UnixNano(), path); err != nil {
+			t.Fatal(err)
+		}
+	}
+	doc, err := s.LibrarySettingsFor(context.Background(), allow, library)
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc.Settings.AllowMediaDeletion = true
+	if _, err = s.SaveLibrarySettings(context.Background(), allow, library, Change[LibrarySettings]{ExpectedRevision: doc.Revision, Settings: doc.Settings, OperationID: "test-policy-key-1"}); err != nil {
+		t.Fatal(err)
+	}
+	return s, db, root, item, files
+}
+
+func deleteItem(t *testing.T, s *Service, item, operation string) (DeleteResult, error) {
+	t.Helper()
+	p, err := s.PreviewDelete(context.Background(), allow, []string{item})
+	if err != nil {
+		return DeleteResult{}, err
+	}
+	return s.Delete(context.Background(), allow, "test-owner", DeleteRequest{ItemIDs: []string{item}, DeleteFiles: true, Confirmation: p.Confirmation, ExpectedRevision: p.Revision, OperationID: operation})
+}
+
+func TestDeleteIsRefusedUntilTheLibraryAllowsItAndTheOwnerConfirms(t *testing.T) {
+	service, db, root := newService(t)
+	library, item, paths := seedLibrary(t, db, root)
+	ctx := context.Background()
+	preview, err := service.PreviewDelete(ctx, allow, []string{item})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(preview.Blocked) != 1 || preview.Confirmation != "The Lighthouse" || preview.ConfirmationKind != "title" {
+		t.Fatalf("preview %+v", preview)
+	}
+	if len(preview.Targets[0].Files) != 2 || !preview.Targets[0].Files[0].Present || preview.Targets[0].Titles != 1 {
+		t.Fatalf("preview must list both present files: %+v", preview.Targets[0])
+	}
+	request := DeleteRequest{ItemIDs: []string{item}, DeleteFiles: true, Confirmation: "The Lighthouse", ExpectedRevision: preview.Revision, OperationID: "test-policy-key-8"}
+	if _, err = service.Delete(ctx, allow, "local:a:b", request); !errors.Is(err, ErrDenied) {
+		t.Fatalf("delete error %v, want denied while the library forbids it", err)
+	}
+	settings := DefaultLibrarySettings()
+	settings.AllowMediaDeletion = true
+	if _, err = service.SaveLibrarySettings(ctx, allow, library, Change[LibrarySettings]{ExpectedRevision: 1, Settings: settings, OperationID: "test-policy-key-9"}); err != nil {
+		t.Fatal(err)
+	}
+	preview, err = service.PreviewDelete(ctx, allow, []string{item})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wrong := DeleteRequest{ItemIDs: []string{item}, DeleteFiles: true, Confirmation: "the lighthouse", ExpectedRevision: preview.Revision, OperationID: "test-policy-key-10"}
+	if _, err = service.Delete(ctx, allow, "local:a:b", wrong); !errors.Is(err, ErrConfirmation) {
+		t.Fatalf("delete error %v, want a confirmation mismatch", err)
+	}
+	stale := DeleteRequest{ItemIDs: []string{item}, DeleteFiles: true, Confirmation: "The Lighthouse", ExpectedRevision: preview.Revision + 99, OperationID: "test-policy-key-11"}
+	if _, err = service.Delete(ctx, allow, "local:a:b", stale); !errors.Is(err, ErrConflict) {
+		t.Fatalf("delete error %v, want a revision conflict", err)
+	}
+	for _, path := range paths {
+		if _, err := os.Stat(path); err != nil {
+			t.Fatalf("a refused delete touched %s: %v", path, err)
+		}
+	}
+}
+
+func TestDeleteRemovesTheFilesFromDiskAndKeepsNoCopy(t *testing.T) {
+	s, db, root, item, paths := deletionFixture(t)
+	ctx := context.Background()
+	result, err := deleteItem(t, s, item, "delete-one")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Removed != 1 || result.Failed != 0 || result.Receipts[0].FilesDeleted != 2 || result.BytesDeleted != 22 {
+		t.Fatalf("result %+v", result)
+	}
+	for _, path := range paths {
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Fatalf("%s is still on disk: %v", path, err)
+		}
+	}
+	// Nothing was put aside anywhere under the server's own folder.
+	if _, err := os.Stat(filepath.Join(root, "trash")); !os.IsNotExist(err) {
+		t.Fatalf("a trash folder exists: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "file-operations")); !os.IsNotExist(err) {
+		t.Fatalf("a file-operation journal exists: %v", err)
+	}
+	var titles, files int
+	if err = db.QueryRow(`SELECT (SELECT COUNT(*) FROM catalog_entities WHERE public_id=pid_blob(?)),(SELECT COUNT(*) FROM catalog_assets)`, item).Scan(&titles, &files); err != nil || titles != 0 || files != 0 {
+		t.Fatalf("catalogue still holds the title or its files: %d %d %v", titles, files, err)
+	}
+	// Replaying the same operation identifier returns the first outcome.
+	replay, err := s.Delete(ctx, allow, "test-owner", DeleteRequest{ItemIDs: []string{item}, DeleteFiles: true, Confirmation: "The Lighthouse", ExpectedRevision: 1, OperationID: "delete-one"})
+	if err == nil && replay.Removed != 1 {
+		t.Fatalf("replay %+v", replay)
+	}
+}
+
+func TestDeleteLeavesAFileThatIsNotTheOneInTheLibrary(t *testing.T) {
+	s, db, _, item, paths := deletionFixture(t)
+	// Something else has taken the first file's place since the last scan.
+	if err := os.WriteFile(paths[0], []byte("a different, longer file"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	result, err := deleteItem(t, s, item, "delete-changed")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Removed != 0 || result.Failed != 1 || result.Receipts[0].Code != "file_changed" {
+		t.Fatalf("result %+v", result)
+	}
+	if _, err = os.Stat(paths[0]); err != nil {
+		t.Fatalf("the replacement file was removed: %v", err)
+	}
+	var titles int
+	if err = db.QueryRow(`SELECT COUNT(*) FROM catalog_entities WHERE public_id=pid_blob(?)`, item).Scan(&titles); err != nil || titles != 1 {
+		t.Fatalf("the title must stay when its file could not be removed: %d %v", titles, err)
+	}
+}
+
+func TestDeleteWithoutFilesLeavesThemAndKeepsEachProfilesState(t *testing.T) {
+	s, db, _, item, paths := deletionFixture(t)
+	ctx := context.Background()
+	c := catalogtest.New(t, db)
+	if _, err := db.Exec(`INSERT INTO personal_items(profile_id,item_id,watchlisted,favorite,rating,revision,watched,last_played_at,not_interested) VALUES('p1',?,0,1,4.5,1,1,'2026-10-01T00:00:00Z',0)`, c.ID(item)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO personal_watched_intents(profile_id,item_id,watched,authored_at) VALUES('p1',?,1,'2026-10-01T00:00:00.000000000Z')`, c.ID(item)); err != nil {
+		t.Fatal(err)
+	}
+	p, err := s.PreviewDelete(ctx, allow, []string{item})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := s.Delete(ctx, allow, "test-owner", DeleteRequest{ItemIDs: []string{item}, DeleteFiles: false, Confirmation: p.Confirmation, ExpectedRevision: p.Revision, OperationID: "record-only-1"})
+	if err != nil || result.Removed != 1 || !result.FilesRetained || result.Receipts[0].FilesDeleted != 0 {
+		t.Fatalf("result %+v %v", result, err)
+	}
+	for _, path := range paths {
+		if _, err := os.Stat(path); err != nil {
+			t.Fatalf("%s should still be on disk: %v", path, err)
+		}
+	}
+	var favorite, watched bool
+	var rating float64
+	if err = db.QueryRow(`SELECT favorite,watched,rating FROM retained_title_state WHERE profile_id='p1'`).Scan(&favorite, &watched, &rating); err != nil || !favorite || !watched || rating != 4.5 {
+		t.Fatalf("kept state: favorite=%v watched=%v rating=%v err=%v", favorite, watched, rating, err)
+	}
+}

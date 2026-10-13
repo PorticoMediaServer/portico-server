@@ -171,7 +171,7 @@ func (c *Client) retainedInventoryPage(ctx context.Context, key string, r Invent
 	}
 	defer s.call.Unlock()
 	validate := func(p InventoryPage) (InventoryPage, error) {
-		if r.RootIdentity != "" && p.RootIdentity != r.RootIdentity || r.DirectoryRevision != "" && p.DirectoryRevision != r.DirectoryRevision {
+		if r.RootIdentity != "" && !SameRoot(r.RootIdentity, p.RootIdentity) || r.DirectoryRevision != "" && p.DirectoryRevision != r.DirectoryRevision {
 			s.cancel()
 			return empty, ErrInventoryChanged
 		}

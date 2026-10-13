@@ -188,7 +188,6 @@ export function LibrarySettingsSections({library, tab}: {library: {id: string; n
           </SettingsGroup> : null}
           {tab === 'advanced' ? <SettingsGroup title={t('web.librarySettings.deleting')} description={t('web.librarySettings.deletingLede')}>
             <SettingsRow label={t('web.librarySettings.allowDelete')} control={<Switch checked={draft.allowMediaDeletion} onCheckedChange={v => setDraft({...draft, allowMediaDeletion: v})} label={t('web.librarySettings.allowDelete')} />} />
-            <SettingsRow label={t('web.librarySettings.keepDeleted')} help={t('web.librarySettings.keepDeletedHelp')} control={<Input hideLabel label={t('web.librarySettings.keepDeletedLabel')} type="number" min={0} max={3650} value={draft.trashRetentionDays} disabled={!draft.allowMediaDeletion} onChange={e => setDraft({...draft, trashRetentionDays: Math.max(0, Number(e.target.value) || 0)})} style={{width: 90}} />} />
           </SettingsGroup> : null}
         </div>
       ) : null}

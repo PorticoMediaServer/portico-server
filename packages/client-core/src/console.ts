@@ -21,7 +21,9 @@ export type TranscodingSettings={
  x264Preset:X264Preset;directStreamRemux:boolean;planningPolicy:PlanningPolicy;
  throttleBufferSeconds:number;playedRetentionSeconds:number;temporaryDirectory:string;
  maxConcurrentSessions:number;maxHardwareSessions:number;maxSoftwareSessions:number;maxBackgroundSessions:number};
-export type RuntimeSettings=TranscodingSettings&{name:string;transcodingEnabled:boolean;perAccountCap:number|null;serverCap:number|null;diagnosticDays:number;notificationDays:number;jobDays:number;/** How long the play history is kept; 0 keeps everything. Absent on a server without the setting. */playHistoryDays?:number;'home.communityActivityEnabled'?:boolean};
+export type RuntimeSettings=TranscodingSettings&{name:string;transcodingEnabled:boolean;perAccountCap:number|null;serverCap:number|null;diagnosticDays:number;notificationDays:number;jobDays:number;/** How long the play history is kept; 0 keeps everything. Absent on a server without the setting. */playHistoryDays?:number;'home.communityActivityEnabled'?:boolean;/** When a title whose files are gone from disk is removed from the library. */'library.missingTitles'?:MissingTitlesRule;/** Days a missing title is kept under the `after_days` rule. */'library.missingTitlesDays'?:number};
+export type MissingTitlesRule='immediately'|'after_days'|'never';
+export const MISSING_TITLES_RULES:readonly MissingTitlesRule[]=Object.freeze(['immediately','after_days','never']);
 export type SettingsDocument={revision:number;digest:string;requested:RuntimeSettings;effective:RuntimeSettings;activeRevision:number;restartFields:string[];registryRevision:string};
 export type Diagnostic={platform:'web'|'ios'|'tvos';state:'idle'|'starting'|'playing'|'paused'|'buffering'|'failed'|'unknown';online:boolean};
 export type FeedbackStatus='open'|'in-progress'|'resolved'|'closed';
@@ -46,7 +48,7 @@ function base(v:unknown):Record<string,any>{if(!obj(v))invalid();return v;}
 function revision(v:Record<string,any>){if(!integer(v.revision)||v.revision<1)invalid();}
 export function parseSettings(v:unknown):SettingsDocument{
  const d=base(v);revision(d);if(!/^[a-f0-9]{64}$/.test(d.digest)||!integer(d.activeRevision)||!Array.isArray(d.restartFields))invalid();
- for(const key of ['requested','effective']){const s=base(d[key]);if(!text(s.name,100)||typeof s.transcodingEnabled!=='boolean')invalid();for(const key of ['serverCap','perAccountCap'])if(s[key]!==null&&(!integer(s[key])||s[key]<1||s[key]>1000000))invalid(); for(const key of ['diagnosticDays','notificationDays','jobDays'])if(!integer(s[key])||s[key]<1||s[key]>(key==='notificationDays'?180:30))invalid();if(s.playHistoryDays!==undefined&&(!integer(s.playHistoryDays)||s.playHistoryDays<0||s.playHistoryDays>36500))invalid();checkTranscoding(s);if(s['home.communityActivityEnabled']!==undefined&&typeof s['home.communityActivityEnabled']!=='boolean')invalid();}
+ for(const key of ['requested','effective']){const s=base(d[key]);if(!text(s.name,100)||typeof s.transcodingEnabled!=='boolean')invalid();for(const key of ['serverCap','perAccountCap'])if(s[key]!==null&&(!integer(s[key])||s[key]<1||s[key]>1000000))invalid(); for(const key of ['diagnosticDays','notificationDays','jobDays'])if(!integer(s[key])||s[key]<1||s[key]>(key==='notificationDays'?180:30))invalid();if(s.playHistoryDays!==undefined&&(!integer(s.playHistoryDays)||s.playHistoryDays<0||s.playHistoryDays>36500))invalid();if(s['library.missingTitles']!==undefined&&!MISSING_TITLES_RULES.includes(s['library.missingTitles']))invalid();if(s['library.missingTitlesDays']!==undefined&&(!integer(s['library.missingTitlesDays'])||s['library.missingTitlesDays']<1||s['library.missingTitlesDays']>3650))invalid();checkTranscoding(s);if(s['home.communityActivityEnabled']!==undefined&&typeof s['home.communityActivityEnabled']!=='boolean')invalid();}
  return d as SettingsDocument;
 }
 /** Transcoding values are rejected outside the bounds the registry publishes,

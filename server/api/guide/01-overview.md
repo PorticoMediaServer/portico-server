@@ -181,5 +181,7 @@ unavailable and the request is worth retrying (`search_unavailable`,
 }
 ```
 
-`RateLimit` / `RateLimit-Policy` headers, per-`(client_id, principal)` limits,
-published limit tables, and operation-counted quotas are **not specified**.
+Requests made with an API key or personal access token are also limited per
+credential, and carry `RateLimit` and `RateLimit-Policy` headers; the numbers
+are in `07-keys-tokens-and-scopes.md`. Per-session limit headers and
+operation-counted quotas are **not specified**.

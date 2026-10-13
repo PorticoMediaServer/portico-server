@@ -36,6 +36,6 @@ test('a list page keeps its items as data and its cursor for Next; a malformed c
   assert.equal(list.canNext, true);
   assert.equal(mod.nextCursorOf({nextCursor: 42}), '');
   assert.equal(mod.nextCursorOf({nextCursor: 'x'.repeat(5000)}), '');
-  assert.equal(mod.withCursor('/v1/admin/trash?limit=100', 'a b'), '/v1/admin/trash?limit=100&cursor=a%20b');
+  assert.equal(mod.withCursor('/v1/admin/missing-titles?limit=100', 'a b'), '/v1/admin/missing-titles?limit=100&cursor=a%20b');
   assert.equal(mod.withCursor('/v1/admin/backups', ''), '/v1/admin/backups');
 });

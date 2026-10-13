@@ -6,6 +6,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"portico.local/server/internal/httpapi"
 	"portico.local/server/internal/networking"
 	"strings"
 	"sync"
@@ -179,6 +180,12 @@ func (l *cappedListener) protectConsole(next http.Handler) http.Handler {
 		console := !strings.HasPrefix(r.URL.Path, "/v1/") || strings.HasPrefix(r.URL.Path, "/v1/admin/") || strings.HasPrefix(r.URL.Path, "/v1/auth/") || strings.HasPrefix(r.URL.Path, "/v1/direct/") || r.URL.Path == "/v1/server" || r.URL.Path == "/v1/system" || r.URL.Path == "/v1/capabilities" || r.URL.Path == "/v1/readiness" || strings.HasPrefix(r.URL.Path, "/v1/sessions") || r.URL.Path == "/v1/networking/connection" || strings.HasPrefix(r.URL.Path, "/v1/setup")
 		if !console && l.ownerRequest != nil {
 			console = l.ownerRequest(r)
+		}
+		// The reserve is for a person at the console. A script with an API key
+		// or access token takes an ordinary connection whatever it asks for, so
+		// no number of keys can use up the owner's way in.
+		if console && httpapi.CarriesAPICredential(r) {
+			console = false
 		}
 		if c != nil && console && r.ProtoMajor < 2 {
 			c.mu.Lock()

@@ -41,12 +41,18 @@ export type TitleFileTrack = Readonly<{ language?: string; codec: string; title?
 /** One file of a title with every track in it (the page's Files list). `path` is sent to owners only. */
 export type TitleFile = Readonly<{
   id: string; path?: string; size: number; container: string; duration: number; bitRate?: number; available: boolean;
+  /** 0 for a whole title. Files with the same part are versions of one another; the first listed is played when none is chosen. */
+  partIndex?: number;
+  /** The version's edition label, where its name or local metadata gave one. */
+  edition?: string;
   video?: Readonly<{ codec: string; width: number; height: number; dynamicRange?: string; hdr10Plus?: boolean; frameRate?: number; bitDepth?: number; bitRate?: number }>;
   audio: readonly TitleFileTrack[]; subtitles: readonly TitleFileTrack[];
 }>;
 export type DetailProjection = Readonly<{
   facts?: TitleFacts;
   files?: readonly TitleFile[];
+  /** When the title's last file went from disk (RFC 3339). Present only while the title has no file: it is shown, cannot be played, and comes back when a file that is the same title appears. */
+  missingSince?: string;
   scope: Readonly<{ serverId: string; libraryId: string; itemId: string; viewerFence: string }>;
   revision: Readonly<{ catalog: number; viewer: number }>;
   item: Readonly<DetailItem>;
@@ -116,7 +122,7 @@ function titleFile(value: unknown): TitleFile {
     if (!obj(v) || !str(v.codec, 64) || !integer(v.width) || !integer(v.height)) invalid();
     return Object.freeze({ codec: v.codec, width: v.width, height: v.height, ...(str(v.dynamicRange, 32) && v.dynamicRange ? { dynamicRange: v.dynamicRange } : {}), ...(v.hdr10Plus === true ? { hdr10Plus: true } : {}), ...(finite(v.frameRate) && v.frameRate > 0 ? { frameRate: v.frameRate } : {}), ...(integer(v.bitDepth) && v.bitDepth > 0 ? { bitDepth: v.bitDepth } : {}), ...(integer(v.bitRate) && v.bitRate > 0 ? { bitRate: v.bitRate } : {}) });
   });
-  return Object.freeze({ id: value.id, ...(path ? { path } : {}), size: integer(value.size) ? value.size : 0, container: (value.container ?? '') as string, duration: finite(value.duration) ? value.duration : 0, ...(integer(value.bitRate) && value.bitRate > 0 ? { bitRate: value.bitRate } : {}), available: value.available === true, ...(video ? { video } : {}), audio: Object.freeze(keepReadable('detail', 'file.audio', array(value.audio ?? [], 128), fileTrack)), subtitles: Object.freeze(keepReadable('detail', 'file.subtitles', array(value.subtitles ?? [], 256), fileTrack)) });
+  return Object.freeze({ id: value.id, ...(path ? { path } : {}), size: integer(value.size) ? value.size : 0, container: (value.container ?? '') as string, duration: finite(value.duration) ? value.duration : 0, ...(integer(value.bitRate) && value.bitRate > 0 ? { bitRate: value.bitRate } : {}), available: value.available === true, ...(integer(value.partIndex) ? { partIndex: value.partIndex } : {}), ...(str(value.edition, 512) && value.edition ? { edition: value.edition } : {}), ...(video ? { video } : {}), audio: Object.freeze(keepReadable('detail', 'file.audio', array(value.audio ?? [], 128), fileTrack)), subtitles: Object.freeze(keepReadable('detail', 'file.subtitles', array(value.subtitles ?? [], 256), fileTrack)) });
 }
 function checkScope(value: DetailScope): DetailScope {
   if (!obj(value) || !id(value.serverId) || !str(value.viewerId, 1024) || !value.viewerId) throw new Error('A bound detail viewer/server scope is required.');
@@ -224,9 +230,10 @@ function projection(raw: unknown, scope: DetailScope, target: DetailTarget): Det
   let facts: TitleFacts | undefined;
   if (obj(raw.facts)) { const f: {-readonly [K in keyof TitleFacts]: TitleFacts[K]} = {}; for (const key of ['contentRating','studio','network','tagline','releaseDate','originalTitle','country','edition'] as const) { const v = raw.facts[key]; if (str(v, 2048) && v) f[key] = v; } if (Object.keys(f).length) facts = Object.freeze(f); }
   const files = raw.files === undefined || raw.files === null ? undefined : Object.freeze(keepReadable('detail', 'files', array(raw.files, 64), titleFile));
+  const missingSince = str(raw.missingSince, 64) && raw.missingSince ? raw.missingSince : undefined;
   const related = part('related', raw.related, value => validateRelatedMovies(value, {...target,kind:media.kind}));
   const extra = part('extras', raw.extras, value => extras(value, target));
-  return Object.freeze({ ...(facts ? { facts } : {}), ...(files?.length ? { files } : {}), markers, scope: Object.freeze({ serverId: scope.serverId, libraryId: target.libraryId, itemId: target.itemId, viewerFence: s.viewerFence }), revision: Object.freeze({ catalog: r.catalog, viewer: r.viewer }), item: Object.freeze(media), personal: personal(raw.personal), actions: Object.freeze(actions), ...(related?{related}:{}), ...(extra?{extras:extra}:{}), metadata: Object.freeze({ ...(m.sources===undefined?{}:{sources:Object.freeze(sources)}), ...(m.attributions===undefined?{}:{attributions:Object.freeze(attributions)}),status, ratings: Object.freeze(ratings), genres: Object.freeze(genres), credits: Object.freeze(credits), ...(creditTotals?{creditTotals}:{}) }) });
+  return Object.freeze({ ...(facts ? { facts } : {}), ...(files?.length ? { files } : {}), ...(missingSince ? { missingSince } : {}), markers, scope: Object.freeze({ serverId: scope.serverId, libraryId: target.libraryId, itemId: target.itemId, viewerFence: s.viewerFence }), revision: Object.freeze({ catalog: r.catalog, viewer: r.viewer }), item: Object.freeze(media), personal: personal(raw.personal), actions: Object.freeze(actions), ...(related?{related}:{}), ...(extra?{extras:extra}:{}), metadata: Object.freeze({ ...(m.sources===undefined?{}:{sources:Object.freeze(sources)}), ...(m.attributions===undefined?{}:{attributions:Object.freeze(attributions)}),status, ratings: Object.freeze(ratings), genres: Object.freeze(genres), credits: Object.freeze(credits), ...(creditTotals?{creditTotals}:{}) }) });
 }
 function receipt(raw: unknown, operationId: string, data: DetailProjection): Receipt {
   if (!obj(raw) || raw.operationId !== operationId || raw.serverId !== data.scope.serverId || raw.libraryId !== data.scope.libraryId || raw.itemId !== data.scope.itemId || raw.viewerFence !== data.scope.viewerFence) invalid();

@@ -224,7 +224,8 @@ func (s *Service) adminLibraries(ctx context.Context, r AdminRequest) (AdminLibr
 		return out, e
 	}
 	out.Revision = rev.Catalog
-	where := "1=1"
+	// A library being removed is gone as far as anyone can see.
+	where := "NOT EXISTS(SELECT 1 FROM catalog_libraries gone WHERE gone.library_id=l.id AND gone.retired=1)"
 	args := []any{}
 	if r.LibraryID != "" {
 		where += " AND l.id=?"
@@ -345,7 +346,7 @@ func (s *Service) OrderLibraries(ctx context.Context, ids []string, authorize fu
 	if e = authorize(tx); e != nil {
 		return e
 	}
-	rows, e := tx.QueryContext(ctx, `SELECT id FROM libraries ORDER BY position,name,id`)
+	rows, e := tx.QueryContext(ctx, `SELECT id FROM libraries WHERE NOT EXISTS(SELECT 1 FROM catalog_libraries gone WHERE gone.library_id=libraries.id AND gone.retired=1) ORDER BY position,name,id`)
 	if e != nil {
 		return e
 	}

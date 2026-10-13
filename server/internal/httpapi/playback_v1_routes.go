@@ -158,7 +158,7 @@ type AdminTerminateRequest struct {
 // terminate, for administrators. admin.sessions events say when to refetch.
 func registerPlaybackV1Admin(r *apikit.Registry, d Dependencies) {
 	v1Route(r, apikit.Metadata{ID: "list_admin_sessions", Method: "GET", Path: "/v1/admin/sessions", Summary: "Active playback sessions: who, what, how it's delivered and from where",
-		Access: apikit.Admin, Scope: "playback", Lane: apikit.Default, Cost: apikit.PageSized, Query: []string{"limit", "cursor"}, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted"}},
+		Access: apikit.Admin, Requires: apikit.ScopePlayback, AdminScope: "playback", Lane: apikit.Default, Cost: apikit.PageSized, Query: []string{"limit", "cursor"}, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted"}},
 		func(ctx context.Context, q *http.Request, _ noBody) (playbackv1.AdminSessionPage, error) {
 			limit := 0
 			if text := q.URL.Query().Get("limit"); text != "" {
@@ -171,7 +171,7 @@ func registerPlaybackV1Admin(r *apikit.Registry, d Dependencies) {
 			return d.playbackV1().AdminSessions(ctx, limit, q.URL.Query().Get("cursor"))
 		})
 	v1Route(r, apikit.Metadata{ID: "terminate_admin_session", Method: "POST", Path: "/v1/admin/sessions/{id}:terminate", Summary: "End a viewer's playback, showing them an optional message; idempotent",
-		Access: apikit.Admin, Scope: "playback", Lane: apikit.Default, Cost: apikit.Constant, BodyLimit: 4 << 10, OptionalBody: true, Status: 204, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found"}},
+		Access: apikit.Admin, Requires: apikit.ScopePlayback, AdminScope: "playback", Lane: apikit.Default, Cost: apikit.Constant, BodyLimit: 4 << 10, OptionalBody: true, Status: 204, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found"}},
 		func(ctx context.Context, q *http.Request, in AdminTerminateRequest) (noBody, error) {
 			return noBody{}, d.playbackV1().Terminate(ctx, q.PathValue("id"), in.Message)
 		})
@@ -271,7 +271,7 @@ func registerPlaybackV1Sessions(r *apikit.Registry, d Dependencies) {
 	timelineRate := newTimelineLimiter()
 	sessionErrors := []string{"invalid_request", "unauthorized", "not_found", "session_ended", "revision_required", "revision_mismatch"}
 	v1Route(r, apikit.Metadata{ID: "start_playback_session", Method: "POST", Path: "/v1/playback/sessions", Summary: "Start playback (201), or report that it is being prepared (202)",
-		Access: apikit.Device, Lane: apikit.Media, Cost: apikit.Constant, BodyLimit: 8 << 10, Status: 201,
+		Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Media, Cost: apikit.Constant, BodyLimit: 8 << 10, Status: 201,
 		Errors: []string{"invalid_request", "unauthorized", "not_found", "idempotency_key_required", "idempotency_key_reused", "stream_limit_reached", "transcode_not_allowed", "source_unavailable", "unsupported_media", "feature_restricted", "no_tuner_available", "queue_building"}},
 		func(ctx context.Context, q *http.Request, in playbackv1.StartRequest) (playbackv1.SessionView, error) {
 			c := d.v1ServiceCaller(q, callerFrom(ctx))
@@ -287,7 +287,7 @@ func registerPlaybackV1Sessions(r *apikit.Registry, d Dependencies) {
 			return v, nil
 		})
 	v1Route(r, apikit.Metadata{ID: "get_playback_session", Method: "GET", Path: "/v1/playback/sessions/{id}", Summary: "Read a playback session",
-		Access: apikit.Device, Lane: apikit.Media, Cost: apikit.Constant, Status: 200, Errors: []string{"unauthorized", "not_found"}},
+		Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Media, Cost: apikit.Constant, Status: 200, Errors: []string{"unauthorized", "not_found"}},
 		func(ctx context.Context, q *http.Request, _ noBody) (playbackv1.SessionView, error) {
 			v, err := d.playbackV1().Get(ctx, d.v1ServiceCaller(q, callerFrom(ctx)), q.PathValue("id"))
 			if err == nil {
@@ -296,7 +296,7 @@ func registerPlaybackV1Sessions(r *apikit.Registry, d Dependencies) {
 			return v, err
 		})
 	v1Route(r, apikit.Metadata{ID: "change_playback_session", Method: "PATCH", Path: "/v1/playback/sessions/{id}", Summary: "Change tracks, quality, version or state; a change to the bytes starts a new generation",
-		Access: apikit.Device, Lane: apikit.Media, Cost: apikit.Constant, BodyLimit: 4 << 10, Status: 200,
+		Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Media, Cost: apikit.Constant, BodyLimit: 4 << 10, Status: 200,
 		Errors: append(sessionErrors, "stream_limit_reached", "transcode_not_allowed", "unsupported_media")},
 		func(ctx context.Context, q *http.Request, in playbackv1.Change) (playbackv1.SessionView, error) {
 			v, err := d.playbackV1().Patch(ctx, d.v1ServiceCaller(q, callerFrom(ctx)), q.PathValue("id"), q.Header.Get("If-Match"), in)
@@ -306,12 +306,12 @@ func registerPlaybackV1Sessions(r *apikit.Registry, d Dependencies) {
 			return v, err
 		})
 	v1Route(r, apikit.Metadata{ID: "stop_playback_session", Method: "DELETE", Path: "/v1/playback/sessions/{id}", Summary: "Stop playback; idempotent",
-		Access: apikit.Device, Lane: apikit.Media, Cost: apikit.Constant, BodyLimit: 1 << 10, OptionalBody: true, Status: 204, Errors: []string{"invalid_request", "unauthorized", "not_found"}},
+		Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Media, Cost: apikit.Constant, BodyLimit: 1 << 10, OptionalBody: true, Status: 204, Errors: []string{"invalid_request", "unauthorized", "not_found"}},
 		func(ctx context.Context, q *http.Request, in playbackv1.StopRequest) (noBody, error) {
 			return noBody{}, d.playbackV1().Stop(ctx, d.v1ServiceCaller(q, callerFrom(ctx)), q.PathValue("id"), in.PositionMs)
 		})
 	v1Route(r, apikit.Metadata{ID: "report_playback_timeline", Method: "POST", Path: "/v1/playback/sessions/{id}/timeline", Summary: "Report progress; renews the lease",
-		Access: apikit.Device, Lane: apikit.Media, Cost: apikit.Constant, BodyLimit: 4 << 10, Status: 204, Errors: append(sessionErrors, "rate_limited")},
+		Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Media, Cost: apikit.Constant, BodyLimit: 4 << 10, Status: 204, Errors: append(sessionErrors, "rate_limited")},
 		func(ctx context.Context, q *http.Request, in playbackv1.Report) (noBody, error) {
 			caller := callerFrom(ctx)
 			if !timelineRate.allow(caller, time.Now()) {
@@ -327,7 +327,7 @@ func registerPlaybackV1Sessions(r *apikit.Registry, d Dependencies) {
 
 func registerPlaybackV1Options(r *apikit.Registry, d Dependencies) {
 	v1Route(r, apikit.Metadata{ID: "put_device_capabilities", Method: "PUT", Path: "/v1/me/devices/current/capabilities", Summary: "Replace this device's playback capability profile",
-		Access: apikit.Device, Lane: apikit.Default, Cost: apikit.Constant, BodyLimit: 32 << 10, Status: 204,
+		Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Default, Cost: apikit.Constant, BodyLimit: 32 << 10, Status: 204,
 		Errors: []string{"invalid_request", "unauthorized", "revision_mismatch"}},
 		func(ctx context.Context, q *http.Request, in playbackv1.Capabilities) (noBody, error) {
 			c := callerFrom(ctx)
@@ -338,7 +338,7 @@ func registerPlaybackV1Options(r *apikit.Registry, d Dependencies) {
 			return noBody{}, err
 		})
 	v1Route(r, apikit.Metadata{ID: "get_device_capabilities", Method: "GET", Path: "/v1/me/devices/current/capabilities", Summary: "Read this device's playback capability profile",
-		Access: apikit.Device, Lane: apikit.Default, Cost: apikit.Constant, Status: 200,
+		Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Default, Cost: apikit.Constant, Status: 200,
 		Errors: []string{"unauthorized", "not_found"}},
 		func(ctx context.Context, _ *http.Request, _ noBody) (playbackv1.CapabilitiesDocument, error) {
 			doc, err := d.playbackV1().Capabilities(ctx, callerFrom(ctx).DeviceID)
@@ -348,7 +348,7 @@ func registerPlaybackV1Options(r *apikit.Registry, d Dependencies) {
 			return doc, err
 		})
 	v1Route(r, apikit.Metadata{ID: "get_playback_options", Method: "GET", Path: "/v1/items/{itemId}/playback-options", Summary: "Read what a title offers and what this device would get",
-		Access: apikit.ViewerItem, Lane: apikit.Media, Cost: apikit.Constant, Status: 200,
+		Access: apikit.ViewerItem, Requires: apikit.ScopeRead, Lane: apikit.Media, Cost: apikit.Constant, Status: 200,
 		Query:  []string{"versionId", "partId", "audioId", "subtitleId", "quality", "maxVideoBitrateKbps", "maxHeight", "maxAudioBitrateKbps"},
 		Errors: []string{"invalid_request", "unauthorized", "not_found"}},
 		func(ctx context.Context, q *http.Request, _ noBody) (playbackv1.Options, error) {
@@ -440,14 +440,14 @@ func registerPlaybackV1Queues(r *apikit.Registry, d Dependencies) {
 		return d.v1ServiceCaller(q, callerFrom(ctx))
 	}
 	v1Route(r, apikit.Metadata{ID: "create_queue", Method: "POST", Path: "/v1/queues", Summary: "Play: replace this device's queue from selectors, optionally starting the first session",
-		Access: apikit.Device, Lane: apikit.Media, Cost: apikit.SelectionAsync, BodyLimit: 64 << 10, Status: 201,
+		Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Media, Cost: apikit.SelectionAsync, BodyLimit: 64 << 10, Status: 201,
 		Errors: append(command, "idempotency_key_required", "idempotency_key_reused", "stream_limit_reached", "transcode_not_allowed", "unsupported_media", "source_unavailable")},
 		func(ctx context.Context, q *http.Request, in playbackv1.CreateQueueRequest) (playbackv1.QueueReply, error) {
 			out, err := d.playbackV1().CreateQueue(ctx, caller(ctx, q), q.Header.Get("Idempotency-Key"), in)
 			return reply(ctx, out, err)
 		})
 	v1Route(r, apikit.Metadata{ID: "get_queue", Method: "GET", Path: "/v1/queues/{id}", Summary: "Read a queue's header",
-		Access: apikit.Device, Lane: apikit.Browsing, Cost: apikit.Constant, Status: 200, Errors: []string{"unauthorized", "not_found"}},
+		Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Cost: apikit.Constant, Status: 200, Errors: []string{"unauthorized", "not_found"}},
 		func(ctx context.Context, q *http.Request, _ noBody) (playbackv1.QueueView, error) {
 			out, err := d.playbackV1().Queue(ctx, caller(ctx, q), q.PathValue("id"))
 			if err == nil {
@@ -467,7 +467,7 @@ func registerPlaybackV1Queues(r *apikit.Registry, d Dependencies) {
 		return n, nil
 	}
 	v1Route(r, apikit.Metadata{ID: "get_queue_window", Method: "GET", Path: "/v1/queues/{id}/window", Summary: "Read the entries around the current one (at most 200)",
-		Access: apikit.Device, Lane: apikit.Browsing, Cost: apikit.PageSized, Query: []string{"around", "before", "after"}, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_found"}},
+		Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Cost: apikit.PageSized, Query: []string{"around", "before", "after"}, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_found"}},
 		func(ctx context.Context, q *http.Request, _ noBody) (playbackv1.EntryPage, error) {
 			if around := q.URL.Query().Get("around"); around != "" && around != "current" {
 				return playbackv1.EntryPage{}, &playbackv1.FieldError{Path: "around"}
@@ -483,7 +483,7 @@ func registerPlaybackV1Queues(r *apikit.Registry, d Dependencies) {
 			return d.playbackV1().Window(ctx, caller(ctx, q), q.PathValue("id"), before, after)
 		})
 	v1Route(r, apikit.Metadata{ID: "list_queue_entries", Method: "GET", Path: "/v1/queues/{id}/entries", Summary: "Read a page of entries from a position (at most 200)",
-		Access: apikit.Device, Lane: apikit.Browsing, Cost: apikit.PageSized, Query: []string{"from", "limit", "cursor"}, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_found"}},
+		Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Cost: apikit.PageSized, Query: []string{"from", "limit", "cursor"}, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_found"}},
 		func(ctx context.Context, q *http.Request, _ noBody) (playbackv1.EntryPage, error) {
 			from, err := number(q, "from", 0)
 			if err != nil {
@@ -502,59 +502,59 @@ func registerPlaybackV1Queues(r *apikit.Registry, d Dependencies) {
 			return d.playbackV1().Entries(ctx, caller(ctx, q), q.PathValue("id"), from, int(limit))
 		})
 	v1Route(r, apikit.Metadata{ID: "add_queue_segment", Method: "POST", Path: "/v1/queues/{id}/segments", Summary: "Play next, add to the queue, or insert after an entry",
-		Access: apikit.Device, Lane: apikit.Media, Cost: apikit.SelectionAsync, BodyLimit: 32 << 10, Status: 200, Errors: command},
+		Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Media, Cost: apikit.SelectionAsync, BodyLimit: 32 << 10, Status: 200, Errors: command},
 		func(ctx context.Context, q *http.Request, in playbackv1.AddSegmentRequest) (playbackv1.QueueReply, error) {
 			out, err := d.playbackV1().AddSegment(ctx, caller(ctx, q), q.PathValue("id"), q.Header.Get("If-Match"), in)
 			return reply(ctx, out, err)
 		})
 	v1Route(r, apikit.Metadata{ID: "remove_queue_entry", Method: "DELETE", Path: "/v1/queues/{id}/entries/{entryId}", Summary: "Remove one entry",
-		Access: apikit.Device, Lane: apikit.Default, Cost: apikit.Constant, Status: 200, Errors: command},
+		Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Default, Cost: apikit.Constant, Status: 200, Errors: command},
 		func(ctx context.Context, q *http.Request, _ noBody) (playbackv1.QueueReply, error) {
 			out, err := d.playbackV1().RemoveEntry(ctx, caller(ctx, q), q.PathValue("id"), q.Header.Get("If-Match"), q.PathValue("entryId"))
 			return reply(ctx, out, err)
 		})
 	v1Route(r, apikit.Metadata{ID: "move_queue_entry", Method: "POST", Path: "/v1/queues/{id}/entries/{entryId}:move", Summary: "Move one entry before or after another",
-		Access: apikit.Device, Lane: apikit.Default, Cost: apikit.Constant, BodyLimit: 1 << 10, Status: 200, Errors: command},
+		Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Default, Cost: apikit.Constant, BodyLimit: 1 << 10, Status: 200, Errors: command},
 		func(ctx context.Context, q *http.Request, in playbackv1.MoveRequest) (playbackv1.QueueReply, error) {
 			out, err := d.playbackV1().MoveEntry(ctx, caller(ctx, q), q.PathValue("id"), q.Header.Get("If-Match"), q.PathValue("entryId"), in)
 			return reply(ctx, out, err)
 		})
 	v1Route(r, apikit.Metadata{ID: "update_queue", Method: "PATCH", Path: "/v1/queues/{id}", Summary: "Set repeat, or shuffle on or off",
-		Access: apikit.Device, Lane: apikit.Default, Cost: apikit.Constant, BodyLimit: 1 << 10, Status: 200, Errors: command},
+		Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Default, Cost: apikit.Constant, BodyLimit: 1 << 10, Status: 200, Errors: command},
 		func(ctx context.Context, q *http.Request, in playbackv1.QueueChange) (playbackv1.QueueReply, error) {
 			out, err := d.playbackV1().UpdateQueue(ctx, caller(ctx, q), q.PathValue("id"), q.Header.Get("If-Match"), in)
 			return reply(ctx, out, err)
 		})
 	v1Route(r, apikit.Metadata{ID: "advance_queue", Method: "POST", Path: "/v1/queues/{id}:advance", Summary: "Move to the next, previous or a chosen entry; starts its session when one is playing",
-		Access: apikit.Device, Lane: apikit.Media, Cost: apikit.Constant, BodyLimit: 1 << 10, Status: 200,
+		Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Media, Cost: apikit.Constant, BodyLimit: 1 << 10, Status: 200,
 		Errors: append(command, "queue_ended", "stream_limit_reached", "transcode_not_allowed", "unsupported_media")},
 		func(ctx context.Context, q *http.Request, in playbackv1.AdvanceRequest) (playbackv1.QueueReply, error) {
 			out, err := d.playbackV1().Advance(ctx, caller(ctx, q), q.PathValue("id"), q.Header.Get("If-Match"), in)
 			return reply(ctx, out, err)
 		})
 	v1Route(r, apikit.Metadata{ID: "prepare_queue_next", Method: "POST", Path: "/v1/queues/{id}:prepare-next", Summary: "Prepare the next entry's audio before the current one ends (spec §18.2; private until committed)",
-		Access: apikit.Device, Lane: apikit.Media, Cost: apikit.Constant, BodyLimit: 1 << 10, Status: 200,
+		Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Media, Cost: apikit.Constant, BodyLimit: 1 << 10, Status: 200,
 		Errors: append(command, "idempotency_key_required", "idempotency_key_reused", "queue_ended", "prepare_not_allowed", "not_implemented")},
 		func(ctx context.Context, q *http.Request, in playbackv1.PrepareNextRequest) (playbackv1.PreparedNext, error) {
 			out, err := d.playbackV1().PrepareNext(ctx, caller(ctx, q), q.PathValue("id"), q.Header.Get("If-Match"), q.Header.Get("Idempotency-Key"), in)
 			return out, v1Error(err)
 		})
 	v1Route(r, apikit.Metadata{ID: "commit_queue_next", Method: "POST", Path: "/v1/queues/{id}:commit-next", Summary: "Commit the prepared next entry at the audio boundary: a new session inheriting state, rate, quality and track (spec §18.3)",
-		Access: apikit.Device, Lane: apikit.Media, Cost: apikit.Constant, BodyLimit: 1 << 10, Status: 200,
+		Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Media, Cost: apikit.Constant, BodyLimit: 1 << 10, Status: 200,
 		Errors: append(command, "prepared_expired", "prepared_canceled", "not_implemented")},
 		func(ctx context.Context, q *http.Request, in playbackv1.CommitNextRequest) (playbackv1.QueueReply, error) {
 			out, err := d.playbackV1().CommitNext(ctx, caller(ctx, q), q.PathValue("id"), in)
 			return reply(ctx, out, err)
 		})
 	v1Route(r, apikit.Metadata{ID: "save_queue_as_playlist", Method: "POST", Path: "/v1/queues/{id}:save-as-playlist", Summary: "Save the queue, in play order, as a new playlist; a long queue is copied in the background and a replay of the key reports progress",
-		Access: apikit.Device, Lane: apikit.Default, Cost: apikit.Constant, BodyLimit: 8 << 10, Status: 201,
+		Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Default, Cost: apikit.Constant, BodyLimit: 8 << 10, Status: 201,
 		Errors: append(command, "idempotency_key_required", "idempotency_key_reused")},
 		func(ctx context.Context, q *http.Request, in playbackv1.SaveAsPlaylistRequest) (playbackv1.SavedPlaylist, error) {
 			out, err := d.playbackV1().SaveQueueAsPlaylist(ctx, caller(ctx, q), q.PathValue("id"), q.Header.Get("If-Match"), q.Header.Get("Idempotency-Key"), in)
 			return out, v1Error(err)
 		})
 	v1Route(r, apikit.Metadata{ID: "delete_queue", Method: "DELETE", Path: "/v1/queues/{id}", Summary: "Clear the queue; idempotent",
-		Access: apikit.Device, Lane: apikit.Default, Cost: apikit.Constant, Status: 204, Errors: []string{"unauthorized", "not_found"}},
+		Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Default, Cost: apikit.Constant, Status: 204, Errors: []string{"unauthorized", "not_found"}},
 		func(ctx context.Context, q *http.Request, _ noBody) (noBody, error) {
 			return noBody{}, d.playbackV1().DeleteQueue(ctx, caller(ctx, q), q.PathValue("id"))
 		})

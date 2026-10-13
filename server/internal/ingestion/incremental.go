@@ -56,6 +56,11 @@ func (s *Service) skipUnchangedDirectory(ctx context.Context, job string, source
 	if cursor != "" && !strings.HasPrefix(cursor, "skip:") {
 		return false, nil
 	}
+	// A run limited to reported folders lists every folder it visits: the report
+	// is the evidence that they changed (targeted.go).
+	if limited, e := s.targeted(ctx, job); e != nil || limited {
+		return false, e
+	}
 	req := storage.InventoryRequest{Root: source.ResolvedPath, RootIdentity: source.RootIdentity, RelativePath: relative, FollowSymlinks: source.FollowSymlinks}
 	var current storage.Snapshot
 	if s.storage != nil {

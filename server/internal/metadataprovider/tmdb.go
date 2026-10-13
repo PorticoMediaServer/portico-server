@@ -10,12 +10,16 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 )
 
 type TMDB struct {
-	http  *transport
-	token string
-	cache screenCache
+	credentialMu sync.RWMutex
+	includeAdult atomic.Bool
+	http         *transport
+	token        string
+	cache        screenCache
 }
 
 func NewTMDB(token string) (*TMDB, error) {
@@ -47,11 +51,18 @@ func NewTMDBAt(token, origin string) (*TMDB, error) {
 // API origin and client the HTTP client when set, so an application that owns a
 // configured client still has one paced path to TMDB rather than two.
 func (s *TMDB) Raw(ctx context.Context, client *http.Client, base, route string, budget int64) ([]byte, error) {
-	return s.http.raw(ctx, client, base, route, s.token, budget)
+	return s.http.raw(ctx, client, base, route, s.credential(), budget)
 }
 
 func (s *TMDB) get(ctx context.Context, route string, out any) error {
-	return s.cache.get(ctx, route, out, func() (any, error) { var v any; e := s.http.request(ctx, "GET", route, s.token, nil, &v); return v, e })
+	if isFreshRequest(ctx) {
+		return s.http.request(ctx, "GET", route, s.credential(), nil, out)
+	}
+	return s.cache.get(ctx, route, out, func() (any, error) {
+		var v any
+		e := s.http.request(ctx, "GET", route, s.credential(), nil, &v)
+		return v, e
+	})
 }
 
 type tmdbName struct {
@@ -66,33 +77,34 @@ type tmdbCredit struct {
 	Department string `json:"department"`
 }
 type tmdbScreen struct {
-	ID            int64      `json:"id"`
-	Title         string     `json:"title"`
-	Name          string     `json:"name"`
-	OriginalTitle string     `json:"original_title"`
-	OriginalName  string     `json:"original_name"`
-	ReleaseDate   string     `json:"release_date"`
-	FirstAirDate  string     `json:"first_air_date"`
-	AirDate       string     `json:"air_date"`
-	Overview      string     `json:"overview"`
-	Tagline       string     `json:"tagline"`
-	Status        string     `json:"status"`
-	Language      string     `json:"original_language"`
-	Poster        string     `json:"poster_path"`
-	Backdrop      string     `json:"backdrop_path"`
-	Still         string     `json:"still_path"`
-	IMDb          string     `json:"imdb_id"`
-	Adult         *bool      `json:"adult"`
-	Runtime       *int       `json:"runtime"`
-	EpisodeCount  *int       `json:"number_of_episodes"`
-	Season        int        `json:"season_number"`
-	Episode       int        `json:"episode_number"`
-	Average       float64    `json:"vote_average"`
-	Votes         int        `json:"vote_count"`
-	Genres        []tmdbName `json:"genres"`
-	Companies     []tmdbName `json:"production_companies"`
-	Networks      []tmdbName `json:"networks"`
-	Collection    *struct {
+	ID             int64      `json:"id"`
+	Title          string     `json:"title"`
+	Name           string     `json:"name"`
+	OriginalTitle  string     `json:"original_title"`
+	OriginalName   string     `json:"original_name"`
+	ReleaseDate    string     `json:"release_date"`
+	FirstAirDate   string     `json:"first_air_date"`
+	AirDate        string     `json:"air_date"`
+	Overview       string     `json:"overview"`
+	Tagline        string     `json:"tagline"`
+	Status         string     `json:"status"`
+	Language       string     `json:"original_language"`
+	Poster         string     `json:"poster_path"`
+	Backdrop       string     `json:"backdrop_path"`
+	Still          string     `json:"still_path"`
+	IMDb           string     `json:"imdb_id"`
+	Adult          *bool      `json:"adult"`
+	Runtime        *int       `json:"runtime"`
+	EpisodeRuntime []int      `json:"episode_run_time"`
+	EpisodeCount   *int       `json:"number_of_episodes"`
+	Season         int        `json:"season_number"`
+	Episode        int        `json:"episode_number"`
+	Average        float64    `json:"vote_average"`
+	Votes          int        `json:"vote_count"`
+	Genres         []tmdbName `json:"genres"`
+	Companies      []tmdbName `json:"production_companies"`
+	Networks       []tmdbName `json:"networks"`
+	Collection     *struct {
 		ID   int64  `json:"id"`
 		Name string `json:"name"`
 	} `json:"belongs_to_collection"`
@@ -112,6 +124,23 @@ type tmdbScreen struct {
 		Cast []tmdbCredit `json:"cast"`
 		Crew []tmdbCredit `json:"crew"`
 	} `json:"credits"`
+	Aggregate struct {
+		Cast []struct {
+			ID    int64  `json:"id"`
+			Name  string `json:"name"`
+			Roles []struct {
+				Character string `json:"character"`
+			} `json:"roles"`
+		} `json:"cast"`
+		Crew []struct {
+			ID   int64  `json:"id"`
+			Name string `json:"name"`
+			Jobs []struct {
+				Job        string `json:"job"`
+				Department string `json:"department"`
+			} `json:"jobs"`
+		} `json:"crew"`
+	} `json:"aggregate_credits"`
 	Keywords struct {
 		Keywords []tmdbName `json:"keywords"`
 		Results  []tmdbName `json:"results"`
@@ -164,7 +193,7 @@ func (s *TMDB) SearchScreen(ctx context.Context, kind, title string, year int, l
 	if strings.TrimSpace(title) == "" || len(title) > 512 || year < 0 || year > 9999 {
 		return nil, errors.New("invalid TMDB search")
 	}
-	q := url.Values{"query": {title}, "include_adult": {"true"}, "page": {"1"}}
+	q := url.Values{"query": {title}, "include_adult": {strconv.FormatBool(s.includeAdult.Load())}, "page": {"1"}}
 	if year > 0 {
 		if kind == "movie" {
 			q.Set("year", strconv.Itoa(year))
@@ -190,8 +219,9 @@ func (s *TMDB) SearchScreen(ctx context.Context, kind, title string, year int, l
 	out := []ScreenRecord{}
 	for _, v := range page.Results {
 		r := v.record(kind)
+		r = BoundScreenRecord(r)
 		if e = ValidateScreenRecord(r); e != nil {
-			return nil, e
+			continue
 		}
 		out = append(out, r)
 	}
@@ -204,7 +234,7 @@ func (s *TMDB) SearchScreen(ctx context.Context, kind, title string, year int, l
 // of similar titles, in the same request.
 func tmdbDetailParts(kind string) string {
 	if kind == "show" {
-		return "external_ids,alternative_titles,credits,content_ratings,episode_groups,keywords,recommendations"
+		return "external_ids,alternative_titles,aggregate_credits,content_ratings,episode_groups,keywords,recommendations"
 	}
 	return "external_ids,alternative_titles,credits,release_dates,keywords,recommendations"
 }
@@ -228,6 +258,7 @@ func (s *TMDB) ScreenDetails(ctx context.Context, kind, id, language, region str
 	if r.Identity.ID != id {
 		return r, &Error{Provider: "tmdb", Code: "identity_mismatch"}
 	}
+	r = BoundScreenRecord(r)
 	return r, ValidateScreenRecord(r)
 }
 func (v tmdbScreen) record(kind string) ScreenRecord {
@@ -239,6 +270,13 @@ func (v tmdbScreen) record(kind string) ScreenRecord {
 		title, original, date = v.Name, "", v.AirDate
 	}
 	r := ScreenRecord{Identity: ScreenID{"tmdb", kind, numberID(v.ID)}, Title: title, OriginalTitle: original, Date: date, Year: screenYear(date), Overview: v.Overview, Tagline: v.Tagline, Language: v.Language, Status: v.Status, Adult: v.Adult, AdvisoryRuntimeMinutes: v.Runtime, EpisodeCount: v.EpisodeCount, PosterPath: v.Poster, BackdropPath: v.Backdrop}
+	r.FieldLanguages = map[string]string{"originalTitle": r.Language}
+	if r.Title == r.OriginalTitle && r.OriginalTitle != "" {
+		r.FieldLanguages["title"] = r.Language
+	}
+	if kind == "show" && r.AdvisoryRuntimeMinutes == nil && len(v.EpisodeRuntime) > 0 && v.EpisodeRuntime[0] > 0 {
+		r.AdvisoryRuntimeMinutes = &v.EpisodeRuntime[0]
+	}
 	if kind == "episode" {
 		r.StillPath = v.Still
 	}
@@ -296,6 +334,22 @@ func (v tmdbScreen) record(kind string) ScreenRecord {
 	for _, k := range v.Keywords.Results {
 		addKeyword(numberID(k.ID), k.Name)
 	}
+	if kind == "show" && (len(v.Aggregate.Cast) > 0 || len(v.Aggregate.Crew) > 0) {
+		v.Credits.Cast = nil
+		v.Credits.Crew = nil
+		for _, c := range v.Aggregate.Cast {
+			role := ""
+			if len(c.Roles) > 0 {
+				role = c.Roles[0].Character
+			}
+			v.Credits.Cast = append(v.Credits.Cast, tmdbCredit{ID: c.ID, Name: c.Name, Character: role})
+		}
+		for _, c := range v.Aggregate.Crew {
+			for _, j := range c.Jobs {
+				v.Credits.Crew = append(v.Credits.Crew, tmdbCredit{ID: c.ID, Name: c.Name, Job: j.Job, Department: j.Department})
+			}
+		}
+	}
 	credits := []ScreenCredit{}
 	addCredit := func(c tmdbCredit, department, role string) {
 		credits = append(credits, ScreenCredit{numberID(c.ID), c.Name, role, department, 0})
@@ -348,7 +402,7 @@ func (v tmdbScreen) record(kind string) ScreenRecord {
 			}
 		}
 	}
-	return r
+	return BoundScreenRecord(r)
 }
 func validTMDBGroup(id string) bool {
 	if len(id) == 0 || len(id) > 128 {
@@ -425,6 +479,7 @@ func (s *TMDB) ScreenEpisode(ctx context.Context, show string, season, episode i
 	}
 	r.Coordinates = &ScreenCoordinates{ShowID: show, Season: &season, Episode: episode, Order: order, OriginalSeason: &originalSeason, OriginalEpisode: &originalEpisode}
 	r.Relations = append(r.Relations, ScreenRelation{"show", ScreenID{"tmdb", "show", show}, ""})
+	r = BoundScreenRecord(r)
 	return r, ValidateScreenRecord(r)
 }
 
@@ -579,7 +634,7 @@ func (s *TMDB) ScreenDetailsConditional(ctx context.Context, kind, id, language,
 	if language != "" {
 		q.Set("language", language)
 	}
-	raw, out, e := s.http.rawConditional(ctx, nil, "", "/"+route+"/"+id+"?"+q.Encode(), s.token, 4<<20, in)
+	raw, out, e := s.http.rawConditional(ctx, nil, "", "/"+route+"/"+id+"?"+q.Encode(), s.credential(), 4<<20, in)
 	if e != nil {
 		return ScreenRecord{}, out, e
 	}
@@ -592,4 +647,76 @@ func (s *TMDB) ScreenDetailsConditional(ctx context.Context, kind, id, language,
 		return r, out, &Error{Provider: "tmdb", Code: "identity_mismatch"}
 	}
 	return r, out, ValidateScreenRecord(r)
+}
+
+func (s *TMDB) SetBackgroundSpeed(speed string) { s.http.setSpeed(speed) }
+
+func (s *TMDB) credential() string {
+	s.credentialMu.RLock()
+	defer s.credentialMu.RUnlock()
+	return s.token
+}
+func (s *TMDB) SetCredential(token string) {
+	s.credentialMu.Lock()
+	defer s.credentialMu.Unlock()
+	changed := s.token != token
+	s.token = token
+	if changed {
+		s.cache.invalidate()
+	}
+}
+func (s *TMDB) SetIncludeAdult(include bool) { s.includeAdult.Store(include) }
+
+// ScreenAbsoluteEpisode counts through official non-special seasons. Local
+// numbering is preserved; original coordinates record exactly what was fetched.
+func (s *TMDB) ScreenAbsoluteEpisode(ctx context.Context, show string, absolute int, order, language string) (ScreenRecord, error) {
+	if !ValidScreenID(ScreenID{"tmdb", "show", show}) || absolute < 1 || absolute > 1000000 || order != "official" {
+		return ScreenRecord{}, &Error{Provider: "tmdb", Code: "order_unavailable"}
+	}
+	var series struct {
+		ID      int64 `json:"id"`
+		Seasons []struct {
+			Number int `json:"season_number"`
+			Count  int `json:"episode_count"`
+		} `json:"seasons"`
+	}
+	q := url.Values{"language": {language}}
+	if e := s.get(ctx, "/tv/"+show+"?"+q.Encode(), &series); e != nil {
+		return ScreenRecord{}, e
+	}
+	if numberID(series.ID) != show || len(series.Seasons) > 1000 {
+		return ScreenRecord{}, &Error{Provider: "tmdb", Code: "invalid_episode_order"}
+	}
+	sort.SliceStable(series.Seasons, func(i, j int) bool { return series.Seasons[i].Number < series.Seasons[j].Number })
+	number := absolute
+	last := 0
+	for _, season := range series.Seasons {
+		if season.Number == 0 {
+			continue
+		}
+		if season.Number < 0 || season.Number > 9999 || season.Number <= last || season.Count < 0 || season.Count > 1000000 {
+			return ScreenRecord{}, &Error{Provider: "tmdb", Code: "invalid_episode_order"}
+		}
+		last = season.Number
+		if number > season.Count {
+			number -= season.Count
+			continue
+		}
+		r, e := s.ScreenEpisode(ctx, show, season.Number, number, order, language)
+		if e != nil {
+			return r, e
+		}
+		r.Coordinates.Season = nil
+		r.Coordinates.Episode = absolute
+		r.Coordinates.Absolute = &absolute
+		return r, nil
+	}
+	return ScreenRecord{}, &Error{Provider: "tmdb", Code: "episode_outside_order"}
+}
+
+func (s *TMDB) ScreenEpisodeFresh(ctx context.Context, show string, season, episode int, order, language string) (ScreenRecord, error) {
+	return s.ScreenEpisode(freshRequest(ctx), show, season, episode, order, language)
+}
+func (s *TMDB) ScreenAbsoluteEpisodeFresh(ctx context.Context, show string, episode int, order, language string) (ScreenRecord, error) {
+	return s.ScreenAbsoluteEpisode(freshRequest(ctx), show, episode, order, language)
 }

@@ -343,9 +343,6 @@ func run() error {
 		return livechannels.ReadSource(ctx, locator, remotemedia.Policy{ReadTimeout: 10 * time.Second}, adminops.LogoUploadBytes)
 	}
 	adminOperations.Fetch = adminops.FetchReleaseFeed
-	if e = adminOperations.RecoverFileOperations(context.Background()); e != nil {
-		return e
-	}
 	// One bounded barrier for every long-lived loop, registered here so it runs
 	// before the database closes and after the HTTP server has stopped accepting.
 	drain := &drainBarrier{}
@@ -437,6 +434,7 @@ func run() error {
 	if e != nil {
 		return e
 	}
+	localMeta.ArtworkLimit = func(ctx context.Context) int64 { return metadata.LocalArtworkLimit(ctx, db) }
 	scanner.LocalMetadata = localMeta
 	lyricProvider, e := lyrics.NewLRCLIB(env("PORTICO_LYRICS_PROVIDER_ORIGIN", "https://lrclib.net"))
 	if e != nil {
@@ -804,7 +802,17 @@ func run() error {
 		unregister := dbwork.WakeOnCommit(wake)
 		defer unregister()
 		lastArtwork := time.Time{}
+		lastMissing := time.Time{}
 		worker.Run(ctx, "cmd.minute-cleanup", wake, func(ctx context.Context) time.Duration {
+			// Missing titles follow the owner's rule (immediately, after a number
+			// of days, never). A short, bounded pass; a long list is worked off
+			// over several passes so nothing else waits on it.
+			if time.Since(lastMissing) >= 30*time.Second {
+				lastMissing = time.Now()
+				pass, cancel := context.WithTimeout(dbwork.WithClass(ctx, dbwork.ClassMaintenance), 2*time.Second)
+				_, _ = cat.EmptyMissingDue(pass)
+				cancel()
+			}
 			_ = player.Cleanup()
 			_ = cat.CleanupPersonalReceipts()
 			_ = cat.CleanupBulkJobs(dbwork.WithClass(ctx, dbwork.ClassMaintenance), 250*time.Millisecond)
@@ -936,7 +944,8 @@ func run() error {
 	if manager := claimHandler.Remote(); manager != nil {
 		manager.SetAccessURLs(accessURLsProvider(console, manager))
 	}
-	handler := httpapi.New(httpapi.Dependencies{ListeningPort: listener.Addr().(*net.TCPAddr).Port, Events: events, Administration: adminOperations, Backups: backupService, Access: administration, SettingsApplied: func(ctx context.Context) {
+	outboundWebhooks := startWebhooks(ctx, db, ident, backupService, adminOperations, console)
+	handler := httpapi.New(httpapi.Dependencies{ListeningPort: listener.Addr().(*net.TCPAddr).Port, Events: events, Administration: adminOperations, Backups: backupService, Access: administration, Webhooks: outboundWebhooks, SettingsApplied: func(ctx context.Context) {
 		control.NotifySettingsChanged(ctx)
 		supervise.Go("delivery-settings.refresh", func() { deliverySettings.Refresh(ctx) })
 		claimHandler.Remote().Wake()
@@ -952,6 +961,7 @@ func run() error {
 	// answered with an honest 500 when nothing has reached the client yet.
 	handlerSwitch.set(supervise.HandlerMiddleware(measurements.Wrap(handler)))
 	serverReadyHook()
+	supervise.Go("cmd.started-notice", func() { announceStarted(ctx, outboundWebhooks) })
 	supervise.Supervise(ctx, "cmd.visibility-rebuilder", cat.RunVisibilityRebuilder)
 	supervise.Supervise(ctx, "cmd.compact-catalogue", compactcatalog.NewWorker(db).Run)
 	server := &http.Server{Addr: bind, Handler: handlerSwitch, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 32 << 10, HTTP2: serverHTTP2Policy()}

@@ -22,7 +22,7 @@ type Template struct {
 func (s *Store) Templates(ctx context.Context, a Authority) ([]Template, error) {
 	out := []Template{}
 	e := s.snapshot(ctx, a, true, func(tx *sql.Tx, scope Scope) error {
-		rows, e := tx.QueryContext(ctx, `SELECT id,kind FROM libraries WHERE kind IN('movie','tv','anime') ORDER BY id`)
+		rows, e := tx.QueryContext(ctx, `SELECT id,kind FROM libraries WHERE kind IN('movie','tv','anime') AND NOT EXISTS(SELECT 1 FROM catalog_libraries gone WHERE gone.library_id=libraries.id AND gone.retired=1) ORDER BY id`)
 		if e != nil {
 			return unavailable(e)
 		}

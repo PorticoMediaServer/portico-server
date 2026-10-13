@@ -20,35 +20,33 @@ var ErrSourceChanged = errors.New("source root changed; explicitly accept the re
 
 // Source settings are owner-only. Viewer projections never include these paths.
 type LibrarySource struct {
-	IdentityConfirmed   bool   `json:"identityConfirmed"`
-	ID                  string `json:"id"`
-	LibraryID           string `json:"libraryId"`
-	Kind                string `json:"kind"`
-	Name                string `json:"name"`
-	Path                string `json:"path"`
-	ResolvedPath        string `json:"resolvedPath"`
-	Classification      string `json:"classification"`
-	Generation          int64  `json:"generation"`
-	Health              string `json:"health"`
-	Enabled             bool   `json:"enabled"`
-	FollowSymlinks      bool   `json:"followSymlinks"`
-	MissingGraceSeconds int64  `json:"missingGraceSeconds"`
-	IntervalSeconds     int64  `json:"intervalSeconds"`
-	NextScanAt          string `json:"nextScanAt"`
-	LastCompleteAt      string `json:"lastCompleteAt"`
-	LastProgressAt      string `json:"lastProgressAt"`
-	RootIdentity        string `json:"-"`
-	Incarnation         string `json:"-"`
+	IdentityConfirmed bool   `json:"identityConfirmed"`
+	ID                string `json:"id"`
+	LibraryID         string `json:"libraryId"`
+	Kind              string `json:"kind"`
+	Name              string `json:"name"`
+	Path              string `json:"path"`
+	ResolvedPath      string `json:"resolvedPath"`
+	Classification    string `json:"classification"`
+	Generation        int64  `json:"generation"`
+	Health            string `json:"health"`
+	Enabled           bool   `json:"enabled"`
+	FollowSymlinks    bool   `json:"followSymlinks"`
+	IntervalSeconds   int64  `json:"intervalSeconds"`
+	NextScanAt        string `json:"nextScanAt"`
+	LastCompleteAt    string `json:"lastCompleteAt"`
+	LastProgressAt    string `json:"lastProgressAt"`
+	RootIdentity      string `json:"-"`
+	Incarnation       string `json:"-"`
 }
 type SourceSettings struct {
-	Name                string `json:"name"`
-	Path                string `json:"path"`
-	Classification      string `json:"classification"`
-	FollowSymlinks      bool   `json:"followSymlinks"`
-	MissingGraceSeconds int64  `json:"missingGraceSeconds"`
-	IntervalSeconds     int64  `json:"intervalSeconds"`
-	ExpectedRevision    int64  `json:"expectedRevision"`
-	AcceptReplacement   bool   `json:"acceptReplacement"`
+	Name              string `json:"name"`
+	Path              string `json:"path"`
+	Classification    string `json:"classification"`
+	FollowSymlinks    bool   `json:"followSymlinks"`
+	IntervalSeconds   int64  `json:"intervalSeconds"`
+	ExpectedRevision  int64  `json:"expectedRevision"`
+	AcceptReplacement bool   `json:"acceptReplacement"`
 }
 type ScanPolicy struct {
 	Tier       string            `json:"tier"`
@@ -171,11 +169,11 @@ func ScanPolicyTx(ctx context.Context, tx *sql.Tx, library string) (ScanPolicy, 
 	return scanScanPolicy(tx.QueryRowContext(ctx, `SELECT `+scanPolicyColumns+` FROM library_scan_policies WHERE library_id=?`, library))
 }
 
-const sourceColumns = `id,library_id,kind,name,configured_root,root,classification,generation,health,enabled,follow_symlinks,missing_grace_seconds,interval_seconds,next_scan_at,last_complete_at,last_progress_at,root_identity,incarnation,identity_confirmed`
+const sourceColumns = `id,library_id,kind,name,configured_root,root,classification,generation,health,enabled,follow_symlinks,interval_seconds,next_scan_at,last_complete_at,last_progress_at,root_identity,incarnation,identity_confirmed`
 
 func scanLibrarySource(row interface{ Scan(...any) error }) (LibrarySource, error) {
 	var v LibrarySource
-	err := row.Scan(&v.ID, &v.LibraryID, &v.Kind, &v.Name, &v.Path, &v.ResolvedPath, &v.Classification, &v.Generation, &v.Health, &v.Enabled, &v.FollowSymlinks, &v.MissingGraceSeconds, &v.IntervalSeconds, &v.NextScanAt, &v.LastCompleteAt, &v.LastProgressAt, &v.RootIdentity, &v.Incarnation, &v.IdentityConfirmed)
+	err := row.Scan(&v.ID, &v.LibraryID, &v.Kind, &v.Name, &v.Path, &v.ResolvedPath, &v.Classification, &v.Generation, &v.Health, &v.Enabled, &v.FollowSymlinks, &v.IntervalSeconds, &v.NextScanAt, &v.LastCompleteAt, &v.LastProgressAt, &v.RootIdentity, &v.Incarnation, &v.IdentityConfirmed)
 	return v, err
 }
 func (s *Service) LibrarySources(ctx context.Context, library string) ([]LibrarySource, error) {
@@ -236,12 +234,12 @@ func configurationFence(ctx context.Context, tx *sql.Tx, library string, expecte
 func (s *Service) SaveSource(ctx context.Context, library, id string, input SourceSettings, authorize func(*sql.Tx) error) (LibrarySource, error) {
 	var result LibrarySource
 	input.Name = strings.TrimSpace(input.Name)
-	if input.Name == "" || len(input.Name) > 100 || !utf8.ValidString(input.Name) || strings.IndexFunc(input.Name, unicode.IsControl) >= 0 || input.Classification != "local" && input.Classification != "network" || input.MissingGraceSeconds < 0 || input.MissingGraceSeconds > 90*86400 || input.Classification == "network" && input.MissingGraceSeconds < 3600 || input.IntervalSeconds != 0 && (input.IntervalSeconds < 900 || input.IntervalSeconds > 365*86400) {
+	if input.Name == "" || len(input.Name) > 100 || !utf8.ValidString(input.Name) || strings.IndexFunc(input.Name, unicode.IsControl) >= 0 || input.Classification != "local" && input.Classification != "network" || input.IntervalSeconds != 0 && (input.IntervalSeconds < 900 || input.IntervalSeconds > 365*86400) {
 		return result, ErrAdminQuery
 	}
 	if s.storage.IsRemote(input.Path) {
 		input.Classification = "network"
-		if input.FollowSymlinks || input.MissingGraceSeconds < 3600 {
+		if input.FollowSymlinks {
 			return result, ErrAdminQuery
 		}
 	}
@@ -308,6 +306,17 @@ func (s *Service) SaveSource(ctx context.Context, library, id string, input Sour
 		next = now.Add(time.Duration(input.IntervalSeconds) * time.Second).Format(time.RFC3339Nano)
 	}
 	if id == "" {
+		// A folder that was removed from this library and is added again is the
+		// same folder: it comes back with its files (still marked missing until
+		// the next scan finds them) rather than being refused as a duplicate.
+		var removed string
+		err = tx.QueryRowContext(ctx, `SELECT id FROM library_sources WHERE library_id=? AND root=? AND enabled=0`, library, observed.Path).Scan(&removed)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return result, err
+		}
+		id = removed
+	}
+	if id == "" {
 		if err = tx.QueryRowContext(ctx, `SELECT count(*) FROM library_sources WHERE library_id=?`, library).Scan(&count); err != nil {
 			return result, err
 		}
@@ -315,7 +324,7 @@ func (s *Service) SaveSource(ctx context.Context, library, id string, input Sour
 			return result, ErrAdminQuery
 		}
 		id = identity.Token()
-		_, err = tx.ExecContext(ctx, `INSERT INTO library_sources(id,library_id,name,configured_root,root,classification,root_identity,follow_symlinks,missing_grace_seconds,interval_seconds,next_scan_at,identity_confirmed) VALUES(?,?,?,?,?,?,?,?,?,?,?,1)`, id, library, input.Name, input.Path, observed.Path, input.Classification, rootID, input.FollowSymlinks, input.MissingGraceSeconds, input.IntervalSeconds, next)
+		_, err = tx.ExecContext(ctx, `INSERT INTO library_sources(id,library_id,name,configured_root,root,classification,root_identity,follow_symlinks,interval_seconds,next_scan_at,identity_confirmed) VALUES(?,?,?,?,?,?,?,?,?,?,1)`, id, library, input.Name, input.Path, observed.Path, input.Classification, rootID, input.FollowSymlinks, input.IntervalSeconds, next)
 	} else {
 		old, e := scanLibrarySource(tx.QueryRowContext(ctx, `SELECT `+sourceColumns+` FROM library_sources WHERE id=? AND library_id=?`, id, library))
 		if e != nil {
@@ -331,7 +340,7 @@ func (s *Service) SaveSource(ctx context.Context, library, id string, input Sour
 		if busy != 0 {
 			return result, ErrSourceBusy
 		}
-		replacement := old.RootIdentity != "" && old.RootIdentity != rootID
+		replacement := old.RootIdentity != "" && !storage.SameRoot(old.RootIdentity, rootID)
 		if replacement && !input.AcceptReplacement {
 			return result, ErrSourceChanged
 		}
@@ -345,7 +354,7 @@ func (s *Service) SaveSource(ctx context.Context, library, id string, input Sour
 			incarnation = identity.Token()
 
 		}
-		_, err = tx.ExecContext(ctx, `UPDATE library_sources SET name=?,configured_root=?,root=?,classification=?,generation=generation+1,last_complete_job='',last_complete_at='',incarnation=?,root_identity=?,identity_confirmed=1,health='ready',enabled=1,follow_symlinks=?,missing_grace_seconds=?,interval_seconds=?,next_scan_at=? WHERE id=?`, input.Name, input.Path, observed.Path, input.Classification, incarnation, rootID, input.FollowSymlinks, input.MissingGraceSeconds, input.IntervalSeconds, next, id)
+		_, err = tx.ExecContext(ctx, `UPDATE library_sources SET name=?,configured_root=?,root=?,classification=?,generation=generation+1,last_complete_job='',last_complete_at='',incarnation=?,root_identity=?,identity_confirmed=1,health='ready',enabled=1,follow_symlinks=?,interval_seconds=?,next_scan_at=? WHERE id=?`, input.Name, input.Path, observed.Path, input.Classification, incarnation, rootID, input.FollowSymlinks, input.IntervalSeconds, next, id)
 
 		// Keep the original primary root as a compatibility projection. Preparation
 		// selects the exact source below; it never widens to a common ancestor.
@@ -389,7 +398,11 @@ func (s *Service) SetSourceHealth(ctx context.Context, id, health string) error 
 
 	return gated2.Commit()
 }
-func (s *Service) RemoveSource(ctx context.Context, library, id string, expected int64, authorize func(*sql.Tx) error) error {
+
+// RemoveSource takes a folder out of a library. Scanning of it stops at once;
+// enqueue (when given) queues the background work that marks its files
+// missing, after which their titles follow the owner's rule for missing titles.
+func (s *Service) RemoveSource(ctx context.Context, library, id string, expected int64, authorize func(*sql.Tx) error, enqueue func(context.Context, *sql.Tx, string, string) error) error {
 	gated3, err := dbwork.Begin(ctx, s.db, dbwork.ClassFrom(ctx, dbwork.ClassInteractive))
 	if err != nil {
 		return err
@@ -415,7 +428,11 @@ func (s *Service) RemoveSource(ctx context.Context, library, id string, expected
 	if _, err = tx.ExecContext(ctx, `UPDATE library_sources SET enabled=0,health='removing',generation=generation+1,next_scan_at='' WHERE id=?`, id); err != nil {
 		return err
 	}
-
+	if enqueue != nil {
+		if err = enqueue(ctx, tx, folderRemovalKind, id); err != nil {
+			return err
+		}
+	}
 	return gated3.Commit()
 }
 func (s *Service) UpdateScanPolicy(ctx context.Context, library string, p ScanPolicy, expected int64, authorize func(*sql.Tx) error) (ScanPolicy, error) {
@@ -442,4 +459,25 @@ func (s *Service) UpdateScanPolicy(ctx context.Context, library string, p ScanPo
 		return p, err
 	}
 	return s.ScanPolicy(ctx, library)
+}
+
+// AdoptRootIdentity records the identity a source's root has on this boot when
+// it is the same folder under a renumbered device (storage.SameRoot). Nothing
+// about the source changes: it keeps its incarnation, its files and their
+// analysis. The running scan is moved to the new identity with it.
+func (s *Service) AdoptRootIdentity(ctx context.Context, job string, source LibrarySource, observed string) error {
+	if !storage.SameRoot(source.RootIdentity, observed) {
+		return ErrSourceChanged
+	}
+	return dbwork.WithWriteTx(ctx, s.db, dbwork.ClassFrom(ctx, dbwork.ClassBackgroundMedia), func(tx *sql.Tx) error {
+		res, err := tx.ExecContext(ctx, `UPDATE library_sources SET root_identity=? WHERE id=? AND generation=? AND root_identity=?`, observed, source.ID, source.Generation, source.RootIdentity)
+		if err != nil {
+			return err
+		}
+		if n, _ := res.RowsAffected(); n != 1 {
+			return ErrSourceChanged
+		}
+		_, err = tx.ExecContext(ctx, `UPDATE inventory_runs SET root_identity=? WHERE job_id=? AND root_identity=?`, observed, job, source.RootIdentity)
+		return err
+	})
 }

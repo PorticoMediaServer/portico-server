@@ -2,8 +2,8 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {
  parseAccessMember,parseAccessMemberPage,parseLimitsDocument,parseMemberLimits,parseInvitation,parseInvitationPage,
- parseAccessDevicePage,parseAccessAPIKey,parseLogPage,parseLogSettings,parseLogEvent,parseClientLogUploadPage,
- parseConnectivityPolicy,parseConnectivityStatus,grantsTier,managesTier,isAPIKeySecret,apiKeyPrefix,
+ parseAccessDevicePage,parseLogPage,parseLogSettings,parseLogEvent,parseClientLogUploadPage,
+ parseConnectivityPolicy,parseConnectivityStatus,grantsTier,managesTier,
 } from '../src/server-administration.ts';
 
 const limits={maxStreams:1,remoteBitrateKbps:4000,maxContentRating:'PG-13',allowUnrated:true,
@@ -93,20 +93,6 @@ test('a device page carries the approval policy that governs it', () => {
   assert.throws(() => parseAccessDevicePage({limit: 25, approvalRequired: 'yes', items: []}));
 });
 
-test('an API key secret must carry the key prefix, and a listing must not carry one', () => {
-  const created = parseAccessAPIKey({id: 'k', name: 'Automation', scope: 'playback', accountId: 'a', hint: 'abc123',
-    createdAt: '2026-09-16T12:00:00Z', revoked: false, revision: 1, secret: apiKeyPrefix + 'xyz'});
-  assert.equal(created.secret, apiKeyPrefix + 'xyz');
-  assert.ok(isAPIKeySecret(created.secret!));
-  assert.ok(!isAPIKeySecret('session-token'));
-  // A "secret" that is not a key is a response this client will not trust.
-  assert.throws(() => parseAccessAPIKey({id: 'k', name: 'n', scope: 'full', accountId: 'a', hint: 'h', createdAt: '2026-09-16T12:00:00Z', revoked: false, revision: 1, secret: 'plain'}));
-  assert.throws(() => parseAccessAPIKey({id: 'k', name: 'n', scope: 'god-mode', accountId: 'a', hint: 'h', createdAt: '2026-09-16T12:00:00Z', revoked: false, revision: 1}));
-  const listed = parseAccessAPIKey({id: 'k', name: 'n', scope: 'read-only', accountId: 'a', hint: 'h',
-    createdAt: '2026-09-16T12:00:00Z', lastUsedAt: '2026-09-16T13:00:00Z', revoked: true, revision: 2});
-  assert.equal(listed.secret, undefined);
-  assert.equal(listed.lastUsedAt, '2026-09-16T13:00:00Z');
-});
 
 test('log records keep their sequence as a string so a long-running server does not lose precision', () => {
   const page = parseLogPage({level: 'warn', effectiveLevel: 'debug', limit: 100, nextCursor: '9007199254740993',

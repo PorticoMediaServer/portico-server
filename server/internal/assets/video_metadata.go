@@ -4,7 +4,23 @@ import "portico.local/server/internal/metadataprovider"
 
 // VideoNFO is bounded descriptive evidence, never probe facts or source identity.
 // Locator is an opaque sidecar digest, not a client-visible filesystem path.
+type NFOActorThumbnail struct {
+	Name string `json:"name"`
+	URL  string `json:"url"`
+}
 type VideoNFO struct {
+	Issues                 []string                        `json:"issues,omitempty"`
+	Tags                   []string                        `json:"tags,omitempty"`
+	Countries              []string                        `json:"countries,omitempty"`
+	Status                 string                          `json:"status,omitempty"`
+	Trailer                string                          `json:"trailer,omitempty"`
+	Rating                 *metadataprovider.ScreenRating  `json:"rating,omitempty"`
+	ActorThumbnails        []NFOActorThumbnail             `json:"actorThumbnails,omitempty"`
+	DisplaySeason          *int                            `json:"displaySeason,omitempty"`
+	DisplayEpisode         *int                            `json:"displayEpisode,omitempty"`
+	DateAdded              string                          `json:"dateAdded,omitempty"`
+	CollectionOverview     string                          `json:"collectionOverview,omitempty"`
+	LockData               bool                            `json:"lockData,omitempty"`
 	Kind                   string                          `json:"kind"`
 	Locator                string                          `json:"locator"`
 	Digest                 string                          `json:"digest"`

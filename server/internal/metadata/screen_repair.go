@@ -87,7 +87,7 @@ func repairScreenCandidates(ctx context.Context, tx *sql.Tx, t RepairTarget) ([]
 }
 
 func setScreenOwnerIntent(ctx context.Context, tx *sql.Tx, b screenBase, id metadataprovider.ScreenID, order string, actor MBActor, restoring bool) error {
-	if !metadataprovider.ValidScreenID(id) {
+	if !metadataprovider.ValidScreenID(id) || len(order) > 160 {
 		return ErrRepairInput
 	}
 	if !restoring && (!b.Confirmed || !b.Enabled || !screenProviderEnabled(b, id.Provider)) {
@@ -146,7 +146,7 @@ func queueScreenRepair(ctx context.Context, tx *sql.Tx, t RepairTarget, m Repair
 		if !b.Confirmed || !b.Enabled || !screenProviderEnabled(b, provider) {
 			return errors.New("confirm and enable the selected provider first")
 		}
-		if len(m.Query) > 512 || !screenQuerySafe(m.Query) || m.Query != "" && strings.TrimSpace(m.Query) == "" {
+		if len(m.Query) > 512 || !screenSearchSafe(m.Query) || m.Query != "" && strings.TrimSpace(m.Query) == "" {
 			return ErrRepairInput
 		}
 		// A supplied year narrows this search only. It is an interactive override,

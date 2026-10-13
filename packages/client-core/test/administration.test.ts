@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {AdministrationError,analysisSelectionComplete,backupProgressFraction,deletionAllowed,folderTemplateProblems,folderTemplateTokens,isRestoreRefusalCode,isStatePermissionsAlert,parseAnalysisMatrix,parseBackupsDocument,parseChannelMapPage,parseDVRDocument,parseDeletePreview,parseDeleteResult,parseEnvelope,parseFailure,parseFilesystemPage,parseLibraryDocument,parseLiveSourceDocument,parseRestoreStaged,parseStatePermissionsItem,parseStorageReport,parseTrashPage,parseTunerView,parseUpdateReport} from '../src/administration.ts';
+import {AdministrationError,analysisSelectionComplete,backupProgressFraction,deletionAllowed,folderTemplateProblems,folderTemplateTokens,isRestoreRefusalCode,isStatePermissionsAlert,parseAnalysisMatrix,parseBackupsDocument,parseChannelMapPage,parseDVRDocument,parseDeletePreview,parseDeleteResult,parseEnvelope,parseFailure,parseFilesystemPage,parseLibraryDocument,parseLiveSourceDocument,parseRestoreStaged,parseStatePermissionsItem,parseStorageReport,parseTunerView,parseUpdateReport} from '../src/administration.ts';
 
 const matrix={costClasses:[{id:'metadata-only',name:'Metadata only',description:'One read.',order:1},{id:'decode',name:'Decodes the video',description:'Expensive.',order:3}],operations:[{id:'probe',name:'Media probe',costClass:'metadata-only',description:'Reads facts.',mediaKinds:['movie'],defaultEnabled:true,requires:null,producesArtifacts:false,network:false},{id:'trickplay',name:'Trickplay tiles',costClass:'decode',description:'Decodes frames.',mediaKinds:['movie'],defaultEnabled:false,requires:['probe'],producesArtifacts:true,network:false}]};
 const navigation={trickplayIntervalSeconds:10,trickplayTileWidth:320,trickplayMaxTiles:400,chapterThumbnailMode:'generated',videoPreviewEnabled:false,videoPreviewSeconds:30};
-function libraryDocument(overrides:Record<string,unknown>={}){return {libraryId:'lib',libraryName:'Films',libraryKind:'movie',revision:2,digest:'d',settings:{allowMediaDeletion:true,trashRetentionDays:30,providers:[{mediaKind:'movie',provider:'tmdb',apiKey:'',apiKeySet:true,language:'en',region:'GB'}],analysis:['probe','trickplay'],navigation},analysisMatrix:matrix,availableProviders:[{id:'tmdb',name:'TMDB',mediaKinds:['movie'],supportsApiKey:true,supportsLocale:true,attributionNote:'Metadata provided by TMDB.'}],enumerations:{chapterThumbnailMode:['none','embedded','generated']},sources:[{id:'src',name:'Films',root:'/mnt/media/Films',classification:'local',enabled:true}],...overrides};}
+function libraryDocument(overrides:Record<string,unknown>={}){return {libraryId:'lib',libraryName:'Films',libraryKind:'movie',revision:2,digest:'d',settings:{allowMediaDeletion:true,providers:[{mediaKind:'movie',provider:'tmdb',apiKey:'',apiKeySet:true,language:'en',region:'GB'}],analysis:['probe','trickplay'],navigation},analysisMatrix:matrix,availableProviders:[{id:'tmdb',name:'TMDB',mediaKinds:['movie'],supportsApiKey:true,supportsLocale:true,attributionNote:'Metadata provided by TMDB.'}],enumerations:{chapterThumbnailMode:['none','embedded','generated']},sources:[{id:'src',name:'Films',root:'/mnt/media/Films',classification:'local',enabled:true}],...overrides};}
 
 test('the envelope is checked and a response from another server is refused',()=>{
  const value=parseEnvelope({protocolVersion:'1.0',serverId:'srv-1',result:libraryDocument()},'srv-1',parseLibraryDocument);
@@ -20,7 +20,7 @@ test('a validation refusal keeps the fields the server named',()=>{
 });
 
 test('a returned provider API key is refused rather than held',()=>{
- const leaking=libraryDocument({settings:{allowMediaDeletion:true,trashRetentionDays:30,providers:[{mediaKind:'movie',provider:'tmdb',apiKey:'secret',apiKeySet:true,language:'en',region:'GB'}],analysis:['probe'],navigation}});
+ const leaking=libraryDocument({settings:{allowMediaDeletion:true,providers:[{mediaKind:'movie',provider:'tmdb',apiKey:'secret',apiKeySet:true,language:'en',region:'GB'}],analysis:['probe'],navigation}});
  assert.throws(()=>parseLibraryDocument(leaking),(e:unknown)=>e instanceof AdministrationError&&e.code==='provider_key_disclosed');
 });
 
@@ -53,31 +53,29 @@ test('a library document keeps its settings exact and leaves out a folder, a pro
 });
 
 test('a delete preview confirms by title for one target and by count for several',()=>{
- const target={itemId:'item-1',title:'The Lighthouse',kind:'movie',libraryId:'lib',libraryName:'Films',allowMediaDeletion:true,trashRetentionDays:30,bytes:10,files:[{assetId:'a',path:'/media/one.mkv',bytes:10,present:true,shared:false}],dependents:[{kind:'collection',count:1,description:'collections that list this item'}]};
- const single=parseDeletePreview({revision:7,confirmation:'The Lighthouse',confirmationKind:'title',totalBytes:10,totalFiles:1,totalBytesText:'10 B',blocked:[],trashRetentionDays:30,targets:[target]});
+ const target={itemId:'item-1',title:'The Lighthouse',kind:'movie',libraryId:'lib',libraryName:'Films',allowMediaDeletion:true,titles:1,bytes:10,files:[{assetId:'a',path:'/media/one.mkv',bytes:10,present:true,shared:false}],dependents:[{kind:'collection',count:1,description:'collections that list this item'}]};
+ const single=parseDeletePreview({revision:7,confirmation:'The Lighthouse',confirmationKind:'title',totalBytes:10,totalFiles:1,totalBytesText:'10 B',blocked:[],targets:[target]});
  assert.equal(single.confirmation,'The Lighthouse');
  assert(deletionAllowed(single));
- const bulk=parseDeletePreview({revision:7,confirmation:'2',confirmationKind:'count',totalBytes:20,totalFiles:2,totalBytesText:'20 B',blocked:['other'],trashRetentionDays:14,targets:[target,{...target,itemId:'item-2'}]});
+ const bulk=parseDeletePreview({revision:7,confirmation:'2',confirmationKind:'count',totalBytes:20,totalFiles:2,totalBytesText:'20 B',blocked:['other'],targets:[target,{...target,itemId:'item-2'}]});
  assert.equal(deletionAllowed(bulk),false);
  // A count that does not match the targets would prompt for the wrong text.
- assert.throws(()=>parseDeletePreview({revision:7,confirmation:'3',confirmationKind:'count',totalBytes:20,totalFiles:2,totalBytesText:'20 B',blocked:[],trashRetentionDays:14,targets:[target,{...target,itemId:'item-2'}]}));
- assert.throws(()=>parseDeletePreview({revision:7,confirmation:'The Lighthouse',confirmationKind:'title',totalBytes:20,totalFiles:2,totalBytesText:'20 B',blocked:[],trashRetentionDays:14,targets:[target,{...target,itemId:'item-2'}]}));
+ assert.throws(()=>parseDeletePreview({revision:7,confirmation:'3',confirmationKind:'count',totalBytes:20,totalFiles:2,totalBytesText:'20 B',blocked:[],targets:[target,{...target,itemId:'item-2'}]}));
+ assert.throws(()=>parseDeletePreview({revision:7,confirmation:'The Lighthouse',confirmationKind:'title',totalBytes:20,totalFiles:2,totalBytesText:'20 B',blocked:[],targets:[target,{...target,itemId:'item-2'}]}));
 });
 
 test('a delete result counts what was removed from its receipts',()=>{
- const receipt={itemId:'item-1',title:'The Lighthouse',removed:true,trashEntryId:'entry',filesMoved:2,filesKept:0,bytes:10,code:''};
- const result=parseDeleteResult({revision:8,removed:1,failed:0,bytesTrashed:10,filesRetained:false,receipts:[receipt]});
- assert.equal(result.receipts[0].trashEntryId,'entry');
- assert.equal(parseDeleteResult({revision:8,removed:2,failed:0,bytesTrashed:10,filesRetained:false,receipts:[receipt],futureField:1}).removed,1);
+ const receipt={itemId:'item-1',title:'The Lighthouse',removed:true,filesDeleted:2,filesKept:0,bytes:10,code:''};
+ const result=parseDeleteResult({revision:8,removed:1,failed:0,bytesDeleted:10,filesRetained:false,receipts:[receipt]});
+ assert.equal(result.receipts[0].filesDeleted,2);
+ const disagreeing=parseDeleteResult({revision:8,removed:2,failed:3,bytesDeleted:10,filesRetained:false,receipts:[receipt],futureField:1});
+ assert.deepEqual([disagreeing.removed,disagreeing.failed],[1,0]);
  // Each receipt is an outcome the owner must see: an unreadable one, or an unreadable revision, still refuses the result.
- assert.throws(()=>parseDeleteResult({revision:8,removed:1,failed:0,bytesTrashed:10,filesRetained:false,receipts:[receipt,{itemId:'item-2'}]}));
- assert.throws(()=>parseDeleteResult({revision:'8',removed:1,failed:0,bytesTrashed:10,filesRetained:false,receipts:[receipt]}));
+ assert.throws(()=>parseDeleteResult({revision:8,removed:1,failed:0,bytesDeleted:10,filesRetained:false,receipts:[receipt,{itemId:'item-2'}]}));
+ assert.throws(()=>parseDeleteResult({revision:'8',removed:1,failed:0,bytesDeleted:10,filesRetained:false,receipts:[receipt]}));
 });
 
-test('the trash page and the folder picker parse into frozen projections',()=>{
- const trash=parseTrashPage({items:[{id:'entry',libraryId:'lib',itemId:'item-1',title:'The Lighthouse',kind:'movie',fileCount:1,bytes:10,bytesText:'10 B',trashedAt:'2026-09-16T20:11:04Z',expiresAt:'2026-10-16T20:11:04Z',state:'held',expired:false,files:[{originalPath:'/media/one.mkv',bytes:10}]}],nextCursor:'',heldBytes:10,heldCount:1});
- assert.equal(trash.items[0].state,'held');
- assert(Object.isFrozen(trash.items));
+test('the folder picker parses into frozen projections',()=>{
  const page=parseFilesystemPage({path:'/mnt/media',parent:'/mnt',separator:'/',platform:'linux',writable:true,truncated:false,roots:[{path:'/',name:'/',kind:'root',description:'The root filesystem'}],entries:[{name:'Films',path:'/mnt/media/Films',kind:'directory',readable:true,symlink:false}],nextCursor:'next'});
  assert.equal(page.entries[0].bytes,0);
  assert.equal(page.nextCursor,'next');
@@ -87,12 +85,6 @@ test('the trash page and the folder picker parse into frozen projections',()=>{
   assert.equal(mixed.roots.length,1);
   assert.throws(()=>parseFilesystemPage({...page,nextCursor:7}));
   assert.throws(()=>parseFilesystemPage({...page,entries:Array.from({length:201},()=>page.entries[0])}));
-  const held=trash.items[0];
-  const pageOfTrash=parseTrashPage({items:[held,{...held,id:'future',state:'archived'},{...held,id:'short',bytes:-1},{...held,title:'Again'},{...held,id:'files',files:[{originalPath:'/media/one.mkv',bytes:10},{bytes:1}]}],nextCursor:'',heldBytes:10,heldCount:1});
-  assert.deepEqual(pageOfTrash.items.map(entry=>[entry.id,entry.title,entry.files.length]),[['entry','The Lighthouse',1],['files','The Lighthouse',1]]);
-  assert.throws(()=>parseTrashPage({items:[held],nextCursor:7,heldBytes:10,heldCount:1}));
-  assert.throws(()=>parseTrashPage({items:[{...held,files:new Array(513).fill(held.files[0])}],nextCursor:'',heldBytes:10,heldCount:1}));
-  assert.throws(()=>parseTrashPage({items:Array.from({length:201},()=>held),nextCursor:'',heldBytes:10,heldCount:1}));
 });
 
 test('CD-43: a capped 64-root page parses as truncated; a 65th root still refuses',()=>{
@@ -150,16 +142,16 @@ test('the tuner view keeps the server\'s in-use count and leaves out a recording
 });
 
 test('storage and updates parse, and a server claiming auto-install is refused',()=>{
- const report=parseStorageReport({stateDirectory:'/var/lib/portico',totalBytes:100,totalBytesText:'100 B',observedAt:'2026-09-16T20:11:04Z',truncated:false,categories:[{id:'trash',name:'Trash',description:'Held files.',directories:['trash'],cleanable:true,regenerable:false,retentionKey:'trash',bytes:100,bytesText:'100 B',fileCount:2,paths:['/var/lib/portico/trash'],present:true,oldestDays:0,entries:1}]});
- assert.equal(report.categories[0].entries,1);
+ const report=parseStorageReport({stateDirectory:'/var/lib/portico',totalBytes:100,totalBytesText:'100 B',observedAt:'2026-09-16T20:11:04Z',truncated:false,categories:[]});
  const current={version:'1.2.0',buildId:'b1',sourceDigest:'d',builtAt:''};
  const update=parseUpdateReport({current,channel:'stable',feedConfigured:true,latest:{...current,version:'1.3.0',notes:'Faster scans'},updateAvailable:true,checkedAt:'2026-09-16T20:11:04Z',status:'update-available',message:'',autoInstall:false});
  assert.equal(update.latest?.version,'1.3.0');
  // A status this app does not know reads as an update when one is described, and otherwise as unavailable.
  assert.equal(parseUpdateReport({current,channel:'stable',feedConfigured:true,latest:{...current,version:'1.3.0'},updateAvailable:true,checkedAt:'',status:'staged-rollout',message:'',autoInstall:false}).status,'update-available');
  assert.equal(parseUpdateReport({current,channel:'stable',feedConfigured:true,latest:null,updateAvailable:false,checkedAt:'',status:'staged-rollout',message:'',autoInstall:false,futureField:1}).status,'unavailable');
- const category=report.categories[0];
- assert.deepEqual(parseStorageReport({stateDirectory:'/var/lib/portico',totalBytes:100,totalBytesText:'100 B',observedAt:'',truncated:false,categories:[category,{...category,id:'broken',bytes:-1},{...category,name:'Again'}]}).categories.map(entry=>entry.name),['Trash']);
+ assert.deepEqual([...report.categories],[]);
+ const category={id:'previews',name:'Previews',description:'Scrubbing previews.',directories:['previews'],cleanable:true,regenerable:true,retentionKey:'previews',bytes:100,bytesText:'100 B',fileCount:2,paths:['/var/lib/portico/previews'],present:true,oldestDays:0,entries:1};
+ assert.deepEqual(parseStorageReport({stateDirectory:'/var/lib/portico',totalBytes:100,totalBytesText:'100 B',observedAt:'',truncated:false,categories:[category,{...category,id:'broken',bytes:-1},{...category,name:'Again'}]}).categories.map(entry=>entry.name),['Previews']);
  assert.throws(()=>parseStorageReport({stateDirectory:'/var/lib/portico',totalBytes:100,totalBytesText:'100 B',observedAt:'',truncated:false,categories:[{...category,paths:new Array(17).fill('/x')}]}));
  assert.throws(()=>parseUpdateReport({current,channel:'stable',feedConfigured:true,latest:null,updateAvailable:true,checkedAt:'',status:'update-available',message:'',autoInstall:false}));
   assert.throws(()=>parseUpdateReport({current,channel:'stable',feedConfigured:false,latest:null,updateAvailable:false,checkedAt:'',status:'no-feed',message:'',autoInstall:true}),(e:unknown)=>e instanceof AdministrationError&&e.code==='unexpected_auto_install');

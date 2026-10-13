@@ -138,7 +138,7 @@ type ConnectivityStatusDocument struct {
 
 func registerConnectivity(registry *apikit.Registry, d Dependencies) error {
 	err := apikit.Register(registry, apikit.Route[struct{}, ConnectionDocument]{Metadata: apikit.Metadata{
-		ID: "get_connection", Method: "GET", Path: "/v1/networking/connection", Summary: "Read the current connection and advertised addresses", Access: apikit.Public, Lane: apikit.Default, Cost: apikit.Constant, Status: 200, Errors: []string{"internal"},
+		ID: "get_connection", Method: "GET", Path: "/v1/networking/connection", Summary: "Read the current connection and advertised addresses", Access: apikit.Public, Requires: apikit.ScopeOpen, Lane: apikit.Default, Cost: apikit.Constant, Status: 200, Errors: []string{"internal"},
 	}, Handler: func(ctx context.Context, r *http.Request, _ struct{}) (ConnectionDocument, error) {
 		return d.connectionDocument(r), nil
 	}})
@@ -146,7 +146,7 @@ func registerConnectivity(registry *apikit.Registry, d Dependencies) error {
 		return err
 	}
 	err = apikit.Register(registry, apikit.Route[struct{}, connectivity.Policy]{Metadata: apikit.Metadata{
-		ID: "get_connectivity_policy", Method: "GET", Path: "/v1/admin/connectivity/policy", Summary: "Read home networks and connection settings", Access: apikit.Owner, Lane: apikit.Default, Cost: apikit.Constant, Status: 200, Errors: []string{"unauthorized", "not_permitted", "internal"},
+		ID: "get_connectivity_policy", Method: "GET", Path: "/v1/admin/connectivity/policy", Summary: "Read home networks and connection settings", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Cost: apikit.Constant, Status: 200, Errors: []string{"unauthorized", "not_permitted", "internal"},
 	}, Handler: func(ctx context.Context, r *http.Request, _ struct{}) (connectivity.Policy, error) {
 		document, err := d.settingsDocument(ctx)
 		if err != nil {
@@ -158,7 +158,7 @@ func registerConnectivity(registry *apikit.Registry, d Dependencies) error {
 		return err
 	}
 	err = apikit.Register(registry, apikit.Route[ConnectivityChange, connectivity.Policy]{Metadata: apikit.Metadata{
-		ID: "change_connectivity_policy", Method: "PATCH", Path: "/v1/admin/connectivity/policy", Summary: "Set home networks and connection settings", Access: apikit.Owner, Lane: apikit.Default, Cost: apikit.Constant, Status: 200, BodyLimit: 32768, Errors: []string{"unauthorized", "not_permitted", "invalid_request", "revision_mismatch", "request_in_progress", "internal"},
+		ID: "change_connectivity_policy", Method: "PATCH", Path: "/v1/admin/connectivity/policy", Summary: "Set home networks and connection settings", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Cost: apikit.Constant, Status: 200, BodyLimit: 32768, Errors: []string{"unauthorized", "not_permitted", "invalid_request", "revision_mismatch", "request_in_progress", "internal"},
 	}, Handler: func(ctx context.Context, r *http.Request, body ConnectivityChange) (connectivity.Policy, error) {
 		out, err := d.changeConnectivity(r, body)
 		if err != nil {
@@ -170,7 +170,7 @@ func registerConnectivity(registry *apikit.Registry, d Dependencies) error {
 		return err
 	}
 	return apikit.Register(registry, apikit.Route[struct{}, ConnectivityStatusDocument]{Metadata: apikit.Metadata{
-		ID: "get_connectivity_status", Method: "GET", Path: "/v1/admin/connectivity/status", Summary: "Read certificates and observed connection addresses", Access: apikit.Admin, Scope: "connectivity", Lane: apikit.Default, Cost: apikit.Constant, Status: 200, Errors: []string{"unauthorized", "not_permitted", "internal"},
+		ID: "get_connectivity_status", Method: "GET", Path: "/v1/admin/connectivity/status", Summary: "Read certificates and observed connection addresses", Access: apikit.Admin, Requires: apikit.ScopeAdmin, AdminScope: "connectivity", Lane: apikit.Default, Cost: apikit.Constant, Status: 200, Errors: []string{"unauthorized", "not_permitted", "internal"},
 	}, Handler: func(ctx context.Context, r *http.Request, _ struct{}) (ConnectivityStatusDocument, error) {
 		document, err := d.settingsDocument(ctx)
 		if err != nil {
@@ -218,7 +218,7 @@ type IdentityProofResponse struct {
 
 func registerIdentityProof(registry *apikit.Registry, d Dependencies) error {
 	return apikit.RegisterRaw(registry, apikit.RawRoute[IdentityProofRequest, IdentityProofResponse]{Metadata: apikit.Metadata{
-		ID: "prove_network_identity", Method: "POST", Path: "/v1/networking/identity-proof", Summary: "Prove this server's pinned identity on the requested origin", Access: apikit.Public, Lane: apikit.Security, Cost: apikit.Constant, BodyLimit: 4096, Status: 200, Errors: []string{"invalid_request", "rate_limited", "internal"},
+		ID: "prove_network_identity", Method: "POST", Path: "/v1/networking/identity-proof", Summary: "Prove this server's pinned identity on the requested origin", Access: apikit.Public, Requires: apikit.ScopeSession, Lane: apikit.Security, Cost: apikit.Constant, BodyLimit: 4096, Status: 200, Errors: []string{"invalid_request", "rate_limited", "internal"},
 	}, Serve: func(w http.ResponseWriter, r *http.Request) {
 		if d.RouteIdentity == nil {
 			failure(w, identity.ErrUnauthorized)

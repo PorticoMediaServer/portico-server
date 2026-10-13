@@ -51,7 +51,7 @@ func TestSharedSourceDeletionPreservesSiblingAndBytes(t *testing.T) {
 	c.Write(func(ctx context.Context, tx *sql.Tx) error {
 		return compactcatalog.LinkAssetTx(ctx, tx, sibling.ID, asset, compactcatalog.Link{})
 	})
-	if e = s.Delete(items[0].ID); e != nil {
+	if e = s.RemoveTitle(context.Background(), items[0].ID); e != nil {
 		t.Fatal(e)
 	}
 	c.Drain()

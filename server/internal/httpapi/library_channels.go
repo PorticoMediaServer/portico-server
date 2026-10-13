@@ -36,7 +36,7 @@ func (d Dependencies) libraryAuthority(expected identity.Principal) librarychann
 		if e = d.allowedLibraryTx(ctx, p, "", tx); e != nil {
 			return librarychannels.Scope{}, livechannels.ErrDenied
 		}
-		rows, e := tx.QueryContext(ctx, `SELECT id FROM libraries ORDER BY id`)
+		rows, e := tx.QueryContext(ctx, `SELECT id FROM libraries WHERE NOT EXISTS(SELECT 1 FROM catalog_libraries gone WHERE gone.library_id=libraries.id AND gone.retired=1) ORDER BY id`)
 		if e != nil {
 			return librarychannels.Scope{}, librarychannels.ErrUnavailable
 		}

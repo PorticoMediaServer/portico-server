@@ -1,25 +1,26 @@
+// Deleting media. Deleting from Portico deletes the file on disk: nothing is
+// moved into the server's own folders and nothing is kept for later. What a
+// delete will take is shown first (PreviewDelete) and the owner types back the
+// title, or the count, before anything goes.
 package administration
 
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
-	"portico.local/server/internal/catalog"
-	"portico.local/server/internal/compactcatalog"
 	"sort"
 	"strconv"
-	"strings"
+
+	"portico.local/server/internal/catalog"
 )
 
 // MaxDeleteTargets bounds one bulk delete. A larger sweep is a scan-driven
 // operation, not a page action.
 const MaxDeleteTargets = 200
 
-// DeleteFile is one file a delete would move or remove.
+// DeleteFile is one file a delete would remove.
 type DeleteFile struct {
 	AssetID string `json:"assetId"`
 	Path    string `json:"path"`
@@ -27,9 +28,12 @@ type DeleteFile struct {
 	// Present is false when the file is already gone from storage; the catalog
 	// row is still removed.
 	Present bool `json:"present"`
-	// Shared is true when another item also uses this file, so the delete keeps
-	// the bytes and removes only this item's claim on them.
+	// Shared is true when a title outside this delete also uses the file, so
+	// the delete keeps the file and removes only this title's claim on it.
 	Shared bool `json:"shared"`
+	// What the catalogue last saw at this path. A file that no longer matches
+	// is some other file and is never removed.
+	size, modifiedNS int64
 }
 
 // Dependent is something that refers to the item and will change when it goes.
@@ -39,18 +43,20 @@ type Dependent struct {
 	Description string `json:"description"`
 }
 
-// DeleteTarget is one item's share of a preview.
+// DeleteTarget is one item's share of a preview. A show, season, album, artist
+// or book lists the files of everything that plays beneath it.
 type DeleteTarget struct {
-	ItemID             string       `json:"itemId"`
-	Title              string       `json:"title"`
-	Kind               string       `json:"kind"`
-	LibraryID          string       `json:"libraryId"`
-	LibraryName        string       `json:"libraryName"`
-	AllowMediaDeletion bool         `json:"allowMediaDeletion"`
-	TrashRetentionDays int          `json:"trashRetentionDays"`
-	Files              []DeleteFile `json:"files"`
-	Bytes              int64        `json:"bytes"`
-	Dependents         []Dependent  `json:"dependents"`
+	ItemID             string `json:"itemId"`
+	Title              string `json:"title"`
+	Kind               string `json:"kind"`
+	LibraryID          string `json:"libraryId"`
+	LibraryName        string `json:"libraryName"`
+	AllowMediaDeletion bool   `json:"allowMediaDeletion"`
+	// Titles is how many playable titles go with this item (1 for a film).
+	Titles     int          `json:"titles"`
+	Files      []DeleteFile `json:"files"`
+	Bytes      int64        `json:"bytes"`
+	Dependents []Dependent  `json:"dependents"`
 	// entityID is the catalogue integer the SQL statements use. It never
 	// leaves the server: public ids stay the API's only identifier.
 	entityID int64
@@ -68,13 +74,11 @@ type DeletePreview struct {
 	TotalFiles       int      `json:"totalFiles"`
 	TotalBytesText   string   `json:"totalBytesText"`
 	Blocked          []string `json:"blocked"`
-	// TrashRetentionDays is the shortest retention among the targets, which is
-	// how long the bytes are recoverable for.
-	TrashRetentionDays int `json:"trashRetentionDays"`
 }
 
-// DeleteRequest is the delete form. deleteFiles false removes the catalog
-// entries and leaves the bytes in place; the next scan readopts them.
+// DeleteRequest is the delete form. deleteFiles false removes the titles from
+// the library and leaves the files where they are; the next scan finds them
+// again and each profile gets its state back.
 type DeleteRequest struct {
 	ItemIDs          []string `json:"itemIds"`
 	DeleteFiles      bool     `json:"deleteFiles"`
@@ -88,20 +92,22 @@ type DeleteReceipt struct {
 	ItemID       string `json:"itemId"`
 	Title        string `json:"title"`
 	Removed      bool   `json:"removed"`
-	TrashEntryID string `json:"trashEntryId,omitempty"`
-	FilesMoved   int    `json:"filesMoved"`
+	FilesDeleted int    `json:"filesDeleted"`
 	FilesKept    int    `json:"filesKept"`
 	Bytes        int64  `json:"bytes"`
-	Code         string `json:"code,omitempty"`
+	// Code says why an item was not removed: file_not_removed (storage refused
+	// or the file is read-only) or file_changed (the file at that path is no
+	// longer the one in the library).
+	Code string `json:"code,omitempty"`
 }
 
 // DeleteResult is the whole operation's outcome.
 type DeleteResult struct {
-	Revision   int64           `json:"revision"`
-	Receipts   []DeleteReceipt `json:"receipts"`
-	Removed    int             `json:"removed"`
-	Failed     int             `json:"failed"`
-	BytesMoved int64           `json:"bytesTrashed"`
+	Revision     int64           `json:"revision"`
+	Receipts     []DeleteReceipt `json:"receipts"`
+	Removed      int             `json:"removed"`
+	Failed       int             `json:"failed"`
+	BytesDeleted int64           `json:"bytesDeleted"`
 	// FilesRetained is true when the caller asked to keep the files, so the page
 	// can say the bytes are still on disk.
 	FilesRetained bool `json:"filesRetained"`
@@ -174,49 +180,125 @@ func dependents(ctx context.Context, tx *sql.Tx, item string) ([]Dependent, erro
 }
 
 func targetFor(ctx context.Context, tx *sql.Tx, item string) (DeleteTarget, error) {
-	return targetFactsFor(ctx, tx, item, true)
-}
-
-func targetFactsFor(ctx context.Context, tx *sql.Tx, item string, statFiles bool) (DeleteTarget, error) {
 	t := DeleteTarget{ItemID: item, Files: []DeleteFile{}, Dependents: []Dependent{}}
-	err := tx.QueryRowContext(ctx, `SELECT e.id,e.title,k.name,cl.library_id,l.name FROM catalog_entities e JOIN catalog_kinds k ON k.id=e.kind JOIN catalog_libraries cl ON cl.id=e.library_id JOIN libraries l ON l.id=cl.library_id WHERE e.public_id=pid_blob(?)`, item).Scan(&t.entityID, &t.Title, &t.Kind, &t.LibraryID, &t.LibraryName)
+	err := tx.QueryRowContext(ctx, `SELECT e.id,e.title,k.name,cl.library_id,l.name FROM catalog_entities e JOIN catalog_kinds k ON k.id=e.kind JOIN catalog_libraries cl ON cl.id=e.library_id JOIN libraries l ON l.id=cl.library_id WHERE e.public_id=pid_blob(?) AND cl.retired=0`, item).Scan(&t.entityID, &t.Title, &t.Kind, &t.LibraryID, &t.LibraryName)
 	if errors.Is(err, sql.ErrNoRows) {
 		return t, ErrNotFound
 	}
 	if err != nil {
 		return t, err
 	}
-	if t.AllowMediaDeletion, t.TrashRetentionDays, err = deletionPolicy(ctx, tx, t.LibraryID); err != nil {
+	if t.AllowMediaDeletion, err = deletionPolicy(ctx, tx, t.LibraryID); err != nil {
 		return t, err
 	}
-	rows, err := tx.QueryContext(ctx, `SELECT a.token,a.path,a.size,(EXISTS(SELECT 1 FROM catalog_asset_links o WHERE o.asset_id=a.id AND o.entity_id<>al.entity_id) OR EXISTS(SELECT 1 FROM item_extras x WHERE x.asset_id=a.token AND x.item_id<>e.id) OR EXISTS(SELECT 1 FROM playback_sessions p WHERE p.asset_id=a.token AND p.item_id<>e.id) OR EXISTS(SELECT 1 FROM lyric_resources r WHERE r.asset_id=a.token AND r.item_id<>e.id) OR EXISTS(SELECT 1 FROM lyric_candidates c WHERE c.asset_id=a.token AND c.item_id<>e.id) OR EXISTS(SELECT 1 FROM subtitle_resources r WHERE r.source_id=a.token AND r.item_id<>e.id) OR EXISTS(SELECT 1 FROM dvr_catalog_provenance p WHERE p.asset_id=a.token AND p.item_id<>e.id)) FROM catalog_entities e JOIN catalog_asset_links al ON al.entity_id=e.id JOIN catalog_assets a ON a.id=al.asset_id WHERE e.public_id=pid_blob(?) ORDER BY al.part_index,a.id`, item)
+	members, err := catalog.TitleMembersTx(ctx, tx, t.entityID)
+	if errors.Is(err, catalog.ErrTooManyMembers) {
+		return t, ErrInput
+	}
 	if err != nil {
 		return t, err
 	}
-	defer rows.Close()
+	t.Titles = len(members)
+	inside := map[int64]bool{t.entityID: true}
+	for _, member := range members {
+		inside[member] = true
+	}
+	// Only a file under one of the library's own folders is ever removed.
+	roots := []string{}
+	rows, err := tx.QueryContext(ctx, `SELECT root FROM library_sources WHERE library_id=?`, t.LibraryID)
+	if err != nil {
+		return t, err
+	}
 	for rows.Next() {
-		var f DeleteFile
-		var others int
-		if err = rows.Scan(&f.AssetID, &f.Path, &f.Bytes, &others); err != nil {
+		var root string
+		if err = rows.Scan(&root); err != nil {
+			rows.Close()
 			return t, err
 		}
-		f.Shared = others > 0
-		if statFiles {
-			if info, statErr := os.Stat(f.Path); statErr == nil && !info.IsDir() {
-				f.Present = true
-				f.Bytes = info.Size()
-			}
-		}
-		if !f.Shared {
-			t.Bytes += f.Bytes
-		}
-		t.Files = append(t.Files, f)
+		roots = append(roots, root)
 	}
-	if err = rows.Err(); err != nil {
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
 		return t, err
+	}
+	seen := map[string]bool{}
+	for _, member := range members {
+		files, err := tx.QueryContext(ctx, `SELECT a.id,a.token,a.path,a.size,a.modified_ns FROM catalog_asset_links al JOIN catalog_assets a ON a.id=al.asset_id WHERE al.entity_id=? ORDER BY al.part_index,a.id`, member)
+		if err != nil {
+			return t, err
+		}
+		type row struct {
+			id int64
+			f  DeleteFile
+		}
+		var batch []row
+		for files.Next() {
+			var r row
+			if err = files.Scan(&r.id, &r.f.AssetID, &r.f.Path, &r.f.size, &r.f.modifiedNS); err != nil {
+				files.Close()
+				return t, err
+			}
+			batch = append(batch, r)
+		}
+		err = files.Err()
+		files.Close()
+		if err != nil {
+			return t, err
+		}
+		for _, r := range batch {
+			if seen[r.f.AssetID] {
+				continue
+			}
+			seen[r.f.AssetID] = true
+			f := r.f
+			f.Bytes = f.size
+			// Another title's file, or a file something else still needs, stays.
+			users, err := tx.QueryContext(ctx, `SELECT entity_id FROM catalog_asset_links INDEXED BY catalog_asset_links_asset WHERE asset_id=?1
+ UNION SELECT item_id FROM item_extras WHERE asset_id=?2 UNION SELECT item_id FROM playback_sessions WHERE asset_id=?2
+ UNION SELECT item_id FROM lyric_resources WHERE asset_id=?2 UNION SELECT item_id FROM lyric_candidates WHERE asset_id=?2
+ UNION SELECT item_id FROM subtitle_resources WHERE source_id=?2 UNION SELECT item_id FROM dvr_catalog_provenance WHERE asset_id=?2`, r.id, f.AssetID)
+			if err != nil {
+				return t, err
+			}
+			for users.Next() {
+				var user int64
+				if err = users.Scan(&user); err != nil {
+					users.Close()
+					return t, err
+				}
+				if !inside[user] {
+					f.Shared = true
+				}
+			}
+			err = users.Err()
+			users.Close()
+			if err != nil {
+				return t, err
+			}
+			if underAny(roots, f.Path) {
+				if info, statErr := os.Lstat(f.Path); statErr == nil && info.Mode().IsRegular() {
+					f.Present = true
+					f.Bytes = info.Size()
+				}
+			}
+			if !f.Shared {
+				t.Bytes += f.Bytes
+			}
+			t.Files = append(t.Files, f)
+		}
 	}
 	t.Dependents, err = dependents(ctx, tx, item)
 	return t, err
+}
+
+func underAny(roots []string, path string) bool {
+	for _, root := range roots {
+		if rel, err := filepath.Rel(root, path); err == nil && filepath.IsLocal(rel) {
+			return true
+		}
+	}
+	return false
 }
 
 func validTargets(ids []string) error {
@@ -241,7 +323,6 @@ func (s *Service) PreviewDelete(ctx context.Context, auth Authorize, ids []strin
 	}
 	err := s.snapshot(ctx, auth, func(tx *sql.Tx) error {
 		libraries := []string{}
-		retention := -1
 		for _, id := range ids {
 			target, err := targetFor(ctx, tx, id)
 			if err != nil {
@@ -250,18 +331,11 @@ func (s *Service) PreviewDelete(ctx context.Context, auth Authorize, ids []strin
 			if !target.AllowMediaDeletion {
 				out.Blocked = append(out.Blocked, target.LibraryID)
 			}
-			if retention < 0 || target.TrashRetentionDays < retention {
-				retention = target.TrashRetentionDays
-			}
 			libraries = append(libraries, target.LibraryID)
 			out.TotalBytes += target.Bytes
 			out.TotalFiles += len(target.Files)
 			out.Targets = append(out.Targets, target)
 		}
-		if retention < 0 {
-			retention = 0
-		}
-		out.TrashRetentionDays = retention
 		fence, err := deleteFence(ctx, tx, libraries)
 		out.Revision = fence
 		return err
@@ -288,34 +362,39 @@ func (s *Service) PreviewDelete(ctx context.Context, auth Authorize, ids []strin
 	return out, nil
 }
 
-type trashedFile struct {
-	Path    string `json:"path"`
-	Stored  string `json:"stored"`
-	Bytes   int64  `json:"bytes"`
-	AssetID string `json:"assetId"`
+// removeMediaFile deletes one catalogued file from disk. The file must still
+// be the one the catalogue saw (same size and modified time): a different
+// file that has taken the path is left alone. A file already gone is done.
+func removeMediaFile(f DeleteFile) (removed bool, code string) {
+	info, err := os.Lstat(f.Path)
+	if errors.Is(err, os.ErrNotExist) {
+		return false, ""
+	}
+	if err != nil {
+		return false, "file_not_removed"
+	}
+	if !info.Mode().IsRegular() || info.Size() != f.size || info.ModTime().UnixNano() != f.modifiedNS {
+		return false, "file_changed"
+	}
+	if err = os.Remove(f.Path); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return false, "file_not_removed"
+	}
+	return true, ""
 }
 
-// trashRoot is where trashed bytes live. It is inside the server state
-// directory so it is on the same volume as nothing in particular: a move that
-// crosses a volume falls back to a copy.
-func (s *Service) trashRoot() (string, error) {
-	if s.StateDirectory() == "" {
-		return "", ErrUnavailable
-	}
-	root := filepath.Join(s.StateDirectory(), "trash")
-	if err := durableMkdirAll(root, 0700); err != nil {
-		return "", ErrUnavailable
-	}
-	return root, nil
-}
+// deleteMemberBatch is how many titles one write transaction removes, so a
+// long delete never holds the database for long.
+const deleteMemberBatch = 40
 
-// moveFile renames when it can and copies when the rename crosses a filesystem,
-// which is the normal case for a library on a separate volume.
-func moveFile(from, to string) error { return moveFileContext(context.Background(), from, to) }
-
-// Delete removes catalog entries for the named items and, when asked, moves
-// their files into the trash. Every removal is fenced on the preview's revision
-// and on the typed-back confirmation.
+// Delete removes titles and, when asked, their files from disk.
+//
+// It checks everything first with the owner re-verified (permission per
+// library, the revision the preview was made against, the typed confirmation),
+// then removes the files with no database writer held, then removes the titles
+// in short transactions and records the outcome. Each profile's state for a
+// removed title is kept under the title's identity, so the same title added
+// again later gets it back. A file that cannot be removed leaves its title in
+// the library and says so.
 func (s *Service) Delete(ctx context.Context, auth Authorize, actor string, request DeleteRequest) (DeleteResult, error) {
 	out := DeleteResult{Receipts: []DeleteReceipt{}, FilesRetained: !request.DeleteFiles}
 	if err := validTargets(request.ItemIDs); err != nil {
@@ -324,35 +403,23 @@ func (s *Service) Delete(ctx context.Context, auth Authorize, actor string, requ
 	if !validOperationID(request.OperationID) || !safeText(request.Confirmation, 400) {
 		return out, ErrInput
 	}
-	if s.StateDirectory() == "" {
-		return out, ErrUnavailable
-	}
 	s.files.Lock()
 	defer s.files.Unlock()
-	scope := "media-delete"
+	const scope = "media-delete"
 	digest := digestOf(request)
-	if request.OperationID == "" {
-		var err error
-		request.OperationID, err = identifier()
-		if err != nil {
-			return out, err
-		}
-	}
-	if err := s.recoverFileOperations(ctx); err != nil {
-		return out, err
-	}
-	journal := s.fileJournal(scope, request.OperationID, digest)
-	err := s.transaction(ctx, auth, func(tx *sql.Tx) error {
-		stored, replayed, err := receipt[DeleteResult](ctx, tx, scope, request.OperationID, digest)
+	var targets []DeleteTarget
+	libraries := []string{}
+	replayed := false
+	err := s.snapshot(ctx, auth, func(tx *sql.Tx) error {
+		stored, found, err := receipt[DeleteResult](ctx, tx, scope, request.OperationID, digest)
 		if err != nil {
 			return err
 		}
-		if replayed {
-			out = stored
+		if found {
+			out, replayed = stored, true
 			return nil
 		}
-		targets := make([]DeleteTarget, 0, len(request.ItemIDs))
-		libraries := []string{}
+		targets, libraries = targets[:0], libraries[:0]
 		for _, id := range request.ItemIDs {
 			target, err := targetFor(ctx, tx, id)
 			if err != nil {
@@ -378,427 +445,84 @@ func (s *Service) Delete(ctx context.Context, auth Authorize, actor string, requ
 		if request.Confirmation != expected {
 			return ErrConfirmation
 		}
-		at := s.milliseconds()
-		for _, target := range targets {
-			result, err := s.removeTarget(ctx, tx, actor, target, request, at, journal)
-			if err != nil {
-				return err
-			}
-			out.Receipts = append(out.Receipts, result)
-			if result.Removed {
-				out.Removed++
-				out.BytesMoved += result.Bytes
-			} else {
-				out.Failed++
-			}
-		}
-		if out.Revision, err = deleteFence(ctx, tx, libraries); err != nil {
-			return err
-		}
-		return saveReceipt(ctx, tx, scope, request.OperationID, digest, out, at)
+		return nil
 	})
-	return out, s.settleFileOperation(journal, err)
-}
-
-func (s *Service) removeTarget(ctx context.Context, tx *sql.Tx, actor string, target DeleteTarget, request DeleteRequest, at int64, journal *fileOperation) (DeleteReceipt, error) {
-	out := DeleteReceipt{ItemID: target.ItemID, Title: target.Title}
-	var held bool
-	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM admin_trash WHERE item_id=? AND state='held')`, target.entityID).Scan(&held); err != nil {
+	if err != nil || replayed {
 		return out, err
 	}
-	if held {
-		return out, ErrConflict
-	}
-	entryID, err := identifier()
-	if err != nil {
-		return out, err
-	}
-	moved := []trashedFile{}
-	if request.DeleteFiles {
-		root, err := s.trashRoot()
-		if err != nil {
-			return out, err
-		}
-		root = filepath.Join(root, entryID)
-		for index, file := range target.Files {
-			if file.Shared {
-				out.FilesKept++
+	receipts := make([]DeleteReceipt, len(targets))
+	for i, target := range targets {
+		r := DeleteReceipt{ItemID: target.ItemID, Title: target.Title, Removed: true}
+		for _, file := range target.Files {
+			if file.Shared || !request.DeleteFiles {
+				if file.Shared {
+					r.FilesKept++
+				}
 				continue
 			}
 			if !file.Present {
 				continue
 			}
-			stored := fmt.Sprintf("%03d-%s", index, filepath.Base(file.Path))
-			if err = journal.move(ctx, file.Path, filepath.Join(root, stored)); err != nil {
+			if err = ctx.Err(); err != nil {
 				return out, err
 			}
-			moved = append(moved, trashedFile{Path: file.Path, Stored: stored, Bytes: file.Bytes, AssetID: file.AssetID})
-			out.FilesMoved++
-			out.Bytes += file.Bytes
+			removed, code := removeMediaFile(file)
+			if code != "" {
+				r.Removed, r.Code = false, code
+				r.FilesKept++
+				break
+			}
+			if removed {
+				r.FilesDeleted++
+				r.Bytes += file.Bytes
+			}
 		}
-		if target.TrashRetentionDays > 0 {
-			// Retain the original catalog identity and every metadata/artwork reference,
-			// even for an already-missing item or one whose bytes are shared.
-			raw, _ := json.Marshal(moved)
-			expires := at + int64(target.TrashRetentionDays)*86400000
-			if _, err = tx.ExecContext(ctx, `INSERT INTO admin_trash VALUES(?,?,?,?,?,?,?,?,?,?,'held',?,?)`, entryID, target.LibraryID, target.entityID, target.Title, target.Kind, string(raw), len(moved), out.Bytes, at, expires, actor, request.OperationID); err != nil {
-				return out, err
-			}
-			out.TrashEntryID = entryID
-			for _, file := range target.Files {
-				if !file.Shared {
-					assetID, err := compactcatalog.AssetByTokenTx(ctx, tx, file.AssetID)
-					if err != nil {
-						return out, err
-					}
-					if assetID != 0 {
-						if err = compactcatalog.SetAssetAvailableTx(ctx, tx, assetID, false); err != nil {
-							return out, err
-						}
-					}
-					if _, err = tx.ExecContext(ctx, `UPDATE inventory_objects SET state='trashed',trashed_at=? WHERE asset_id=? AND source_id IN(SELECT id FROM library_sources WHERE library_id=?)`, timeFromMilliseconds(at), file.AssetID, target.LibraryID); err != nil {
-						return out, err
-					}
+		receipts[i] = r
+	}
+	// The files are gone; the catalogue follows. Each title goes in short
+	// transactions, and a title whose file could not be removed stays.
+	for i, target := range targets {
+		if !receipts[i].Removed {
+			continue
+		}
+		for {
+			remaining := 0
+			err = s.transaction(ctx, auth, func(tx *sql.Tx) error {
+				var e error
+				remaining, e = catalog.DeleteTitleMembersTx(ctx, tx, target.ItemID, deleteMemberBatch)
+				if e != nil {
+					return e
 				}
-			}
-		} else {
-			// Even zero-retention deletion first moves to a reversible private stage.
-			// Permanent unlink is forbidden until the catalog/receipt transaction commits.
-			if err = catalog.PurgeItemTx(ctx, tx, target.ItemID); err != nil {
-				return out, err
-			}
-			if err = journal.removeAfterCommit(root); err != nil {
-				return out, err
-			}
-		}
-	} else if err = catalog.PurgeItemTx(ctx, tx, target.ItemID); err != nil {
-		return out, err
-	}
-	if _, err = tx.ExecContext(ctx, `UPDATE library_revisions SET revision=revision+1 WHERE library_id=?`, target.LibraryID); err != nil {
-		return out, err
-	}
-	out.Removed = true
-	return out, nil
-}
-
-func assetIDs(target DeleteTarget) string {
-	ids := make([]string, 0, len(target.Files))
-	for _, f := range target.Files {
-		ids = append(ids, f.AssetID)
-	}
-	raw, _ := json.Marshal(ids)
-	return string(raw)
-}
-
-// TrashEntry is one held deletion.
-type TrashEntry struct {
-	ID        string              `json:"id"`
-	LibraryID string              `json:"libraryId"`
-	ItemID    string              `json:"itemId"`
-	Title     string              `json:"title"`
-	Kind      string              `json:"kind"`
-	FileCount int                 `json:"fileCount"`
-	Bytes     int64               `json:"bytes"`
-	BytesText string              `json:"bytesText"`
-	TrashedAt string              `json:"trashedAt"`
-	ExpiresAt string              `json:"expiresAt"`
-	State     string              `json:"state"`
-	Expired   bool                `json:"expired"`
-	Files     []trashedFilePublic `json:"files"`
-}
-
-type trashedFilePublic struct {
-	Path  string `json:"originalPath"`
-	Bytes int64  `json:"bytes"`
-}
-
-// TrashPage is one page of the trash listing.
-type TrashPage struct {
-	Items      []TrashEntry `json:"items"`
-	NextCursor string       `json:"nextCursor"`
-	HeldBytes  int64        `json:"heldBytes"`
-	HeldCount  int64        `json:"heldCount"`
-}
-
-func millisecondsToRFC3339(ms int64) string {
-	if ms <= 0 {
-		return ""
-	}
-	return timeFromMilliseconds(ms)
-}
-
-// Trash pages held deletions newest first.
-func (s *Service) Trash(ctx context.Context, auth Authorize, state, token string, limit int) (TrashPage, error) {
-	out := TrashPage{Items: []TrashEntry{}}
-	size, err := pageSize(limit)
-	if err != nil {
-		return out, err
-	}
-	if state == "" {
-		state = "held"
-	}
-	if !oneOf(state, "held", "restored", "purged", "all") {
-		return out, ErrInput
-	}
-	c, err := decodeCursor("trash", token)
-	if err != nil {
-		return out, err
-	}
-	now := s.milliseconds()
-	err = s.snapshot(ctx, auth, func(tx *sql.Tx) error {
-		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*),COALESCE(SUM(bytes),0) FROM admin_trash WHERE state='held'`).Scan(&out.HeldCount, &out.HeldBytes); err != nil {
-			return err
-		}
-		rows, err := tx.QueryContext(ctx, `SELECT t.id,t.library_id,COALESCE(pid(e.public_id),''),t.title,t.kind,t.files_json,t.file_count,t.bytes,t.trashed_ms,t.expires_ms,t.state FROM admin_trash t LEFT JOIN catalog_entities e ON e.id=t.item_id WHERE (?='all' OR t.state=?) AND (?=0 OR t.trashed_ms<? OR (t.trashed_ms=? AND t.id<?)) ORDER BY t.trashed_ms DESC,t.id DESC LIMIT ?`, state, state, c.Order, c.Order, c.Order, c.ID, size+1)
-		if err != nil {
-			return err
-		}
-		defer rows.Close()
-		orders := []int64{}
-		for rows.Next() {
-			var e TrashEntry
-			var files string
-			var trashed, expires int64
-			if err = rows.Scan(&e.ID, &e.LibraryID, &e.ItemID, &e.Title, &e.Kind, &files, &e.FileCount, &e.Bytes, &trashed, &expires, &e.State); err != nil {
-				return err
-			}
-			var stored []trashedFile
-			_ = json.Unmarshal([]byte(files), &stored)
-			e.Files = make([]trashedFilePublic, 0, len(stored))
-			for _, f := range stored {
-				e.Files = append(e.Files, trashedFilePublic{f.Path, f.Bytes})
-			}
-			e.BytesText = formatBytes(e.Bytes)
-			e.TrashedAt, e.ExpiresAt = millisecondsToRFC3339(trashed), millisecondsToRFC3339(expires)
-			e.Expired = e.State == "held" && expires > 0 && expires <= now
-			out.Items = append(out.Items, e)
-			orders = append(orders, trashed)
-		}
-		if err = rows.Err(); err != nil {
-			return err
-		}
-		if len(out.Items) > size {
-			out.Items = out.Items[:size]
-			out.NextCursor = encodeCursor("trash", orders[size-1], out.Items[size-1].ID)
-		}
-		return nil
-	})
-	return out, err
-}
-
-// RestoreResult reports what a restore put back.
-type RestoreResult struct {
-	EntryID   string   `json:"entryId"`
-	Restored  int      `json:"restored"`
-	Skipped   int      `json:"skipped"`
-	Conflicts []string `json:"conflicts"`
-	// Reindex says the files are back on disk but the catalog rows are not: the
-	// next scan of the library readopts them.
-	Reindex bool `json:"reindexRequired"`
-}
-
-// RestoreFromTrash puts an entry's files back where they came from. A path that
-// is occupied again is reported rather than overwritten.
-func (s *Service) RestoreFromTrash(ctx context.Context, auth Authorize, id, operationID string) (RestoreResult, error) {
-	out := RestoreResult{EntryID: id, Conflicts: []string{}, Reindex: false}
-	if !validOperationID(operationID) || !safeText(id, 128) || id == "" {
-		return out, ErrInput
-	}
-	root, err := s.trashRoot()
-	if err != nil {
-		return out, err
-	}
-	s.files.Lock()
-	defer s.files.Unlock()
-	scope := "trash-restore"
-	digest := digestOf([]string{id, operationID})
-	if operationID == "" {
-		operationID, err = identifier()
-		if err != nil {
-			return out, err
-		}
-	}
-	if err = s.recoverFileOperations(ctx); err != nil {
-		return out, err
-	}
-	journal := s.fileJournal(scope, operationID, digest)
-	err = s.transaction(ctx, auth, func(tx *sql.Tx) error {
-		stored, replayed, err := receipt[RestoreResult](ctx, tx, scope, operationID, digest)
-		if err != nil {
-			return err
-		}
-		if replayed {
-			out = stored
-			return nil
-		}
-		var files, state, library string
-		var item int64
-		if err = tx.QueryRowContext(ctx, `SELECT files_json,state,library_id,item_id FROM admin_trash WHERE id=?`, id).Scan(&files, &state, &library, &item); errors.Is(err, sql.ErrNoRows) {
-			return ErrNotFound
-		} else if err != nil {
-			return err
-		}
-		if state != "held" {
-			return ErrConflict
-		}
-		var entries []trashedFile
-		if json.Unmarshal([]byte(files), &entries) != nil {
-			return ErrUnavailable
-		}
-		var exists bool
-		if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM catalog_entities WHERE id=?)`, item).Scan(&exists); err != nil {
-			return err
-		}
-		out.Reindex = !exists // Legacy trash from before catalog retention still needs a scan.
-		for _, f := range entries {
-			source := filepath.Join(root, id, f.Stored)
-			if !safeTrashName(id) || !safeTrashName(f.Stored) {
-				return ErrUnavailable
-			}
-			// Existing originals are conflicts, never an overwrite or a claimed restore.
-			if _, err := os.Lstat(f.Path); err == nil {
-				return ErrConflict
-			} else if !errors.Is(err, os.ErrNotExist) {
-				return err
-			}
-			if err = journal.move(ctx, source, f.Path); err != nil {
-				return err
-			}
-			assetID, err := compactcatalog.AssetByTokenTx(ctx, tx, f.AssetID)
+				_, e = tx.ExecContext(ctx, `UPDATE library_revisions SET revision=revision+1 WHERE library_id=?`, target.LibraryID)
+				return e
+			})
 			if err != nil {
-				return err
+				return out, err
 			}
-			if assetID != 0 {
-				if err = compactcatalog.SetAssetAvailableTx(ctx, tx, assetID, true); err != nil {
-					return err
-				}
-			}
-			if _, err = tx.ExecContext(ctx, `UPDATE inventory_objects SET state='available',trashed_at='',missing_since='',missing_observations=0 WHERE asset_id=? AND source_id IN(SELECT id FROM library_sources WHERE library_id=?) AND retired=0`, f.AssetID, library); err != nil {
-				return err
-			}
-			out.Restored++
-		}
-		at := s.milliseconds()
-		if out.Skipped == 0 {
-			if err = journal.removeAfterCommit(filepath.Join(root, id)); err != nil {
-				return err
-			}
-			if _, err = tx.ExecContext(ctx, `UPDATE admin_trash SET state='restored' WHERE id=?`, id); err != nil {
-				return err
+			if remaining == 0 {
+				break
 			}
 		}
-		if _, err = tx.ExecContext(ctx, `UPDATE library_revisions SET revision=revision+1 WHERE library_id=?`, library); err != nil {
-			return err
-		}
-		return saveReceipt(ctx, tx, scope, operationID, digest, out, at)
-	})
-	return out, s.settleFileOperation(journal, err)
-}
-
-// EmptyTrashRequest empties the trash. expiredOnly keeps entries whose retention
-// has not run out; confirmation is the number of entries being purged.
-type EmptyTrashRequest struct {
-	ExpiredOnly  bool   `json:"expiredOnly"`
-	Confirmation string `json:"confirmation"`
-	OperationID  string `json:"operationId"`
-}
-
-// EmptyTrashResult reports the purge.
-type EmptyTrashResult struct {
-	Purged     int    `json:"purged"`
-	BytesFreed int64  `json:"bytesFreed"`
-	BytesText  string `json:"bytesFreedText"`
-	Remaining  int64  `json:"remaining"`
-	Incomplete int    `json:"incomplete"`
-}
-
-// EmptyTrash permanently removes held entries. Nothing here is recoverable
-// afterwards, which is why it takes a typed-back count.
-func (s *Service) EmptyTrash(ctx context.Context, auth Authorize, request EmptyTrashRequest) (EmptyTrashResult, error) {
-	out := EmptyTrashResult{}
-	if !validOperationID(request.OperationID) || !safeText(request.Confirmation, 40) {
-		return out, ErrInput
 	}
-	root, err := s.trashRoot()
-	if err != nil {
-		return out, err
-	}
-	s.files.Lock()
-	defer s.files.Unlock()
-	scope := "trash-empty"
-	digest := digestOf(request)
-	if request.OperationID == "" {
-		request.OperationID, err = identifier()
-		if err != nil {
-			return out, err
-		}
-	}
-	if err = s.recoverFileOperations(ctx); err != nil {
-		return out, err
-	}
-	journal := s.fileJournal(scope, request.OperationID, digest)
-	now := s.milliseconds()
 	err = s.transaction(ctx, auth, func(tx *sql.Tx) error {
-		stored, replayed, err := receipt[EmptyTrashResult](ctx, tx, scope, request.OperationID, digest)
-		if err != nil {
-			return err
-		}
-		if replayed {
-			out = stored
-			return nil
-		}
-		rows, err := tx.QueryContext(ctx, `SELECT id,bytes FROM admin_trash WHERE state='held' AND (?=0 OR (expires_ms>0 AND expires_ms<=?)) ORDER BY trashed_ms,id`, boolToInt(request.ExpiredOnly), now)
-		if err != nil {
-			return err
-		}
-		ids, bytes := []string{}, int64(0)
-		for rows.Next() {
-			var id string
-			var size int64
-			if err = rows.Scan(&id, &size); err != nil {
-				rows.Close()
-				return err
+		out.Receipts, out.Removed, out.Failed, out.BytesDeleted = out.Receipts[:0], 0, 0, 0
+		for _, r := range receipts {
+			out.Receipts = append(out.Receipts, r)
+			if r.Removed {
+				out.Removed++
+				out.BytesDeleted += r.Bytes
+			} else {
+				out.Failed++
 			}
-			ids = append(ids, id)
-			bytes += size
 		}
-		err = rows.Err()
-		rows.Close()
-		if err != nil {
-			return err
+		var e error
+		if out.Revision, e = deleteFence(ctx, tx, libraries); e != nil {
+			return e
 		}
-		if request.Confirmation != strconv.Itoa(len(ids)) {
-			return ErrConfirmation
-		}
-		for _, id := range ids {
-			if !safeTrashName(id) {
-				return ErrUnavailable
-			}
-			var item sql.NullString
-			if err = tx.QueryRowContext(ctx, `SELECT pid(e.public_id) FROM admin_trash t LEFT JOIN catalog_entities e ON e.id=t.item_id WHERE t.id=?`, id).Scan(&item); err != nil {
-				return err
-			}
-			if item.Valid {
-				if err = catalog.PurgeItemTx(ctx, tx, item.String); err != nil {
-					return err
-				}
-			}
-			if err = journal.removeAfterCommit(filepath.Join(root, id)); err != nil {
-				return err
-			}
-			if _, err := tx.ExecContext(ctx, `UPDATE admin_trash SET state='purged',files_json='[]',bytes=0,file_count=0 WHERE id=?`, id); err != nil {
-				return err
-			}
-			out.Purged++
-		}
-		out.BytesFreed = bytes
-		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM admin_trash WHERE state='held'`).Scan(&out.Remaining); err != nil {
-			return err
-		}
-		out.BytesText = formatBytes(out.BytesFreed)
-		return saveReceipt(ctx, tx, scope, request.OperationID, digest, out, now)
+		return saveReceipt(ctx, tx, scope, request.OperationID, digest, out, s.milliseconds())
 	})
-	return out, s.settleFileOperation(journal, err)
+	_ = actor
+	return out, err
 }
 
 func boolToInt(v bool) int {
@@ -806,15 +530,4 @@ func boolToInt(v bool) int {
 		return 1
 	}
 	return 0
-}
-
-// trashBytes measures what the trash currently holds, for the storage page.
-func (s *Service) trashBytes(ctx context.Context, tx *sql.Tx) (int64, int64, error) {
-	var count, bytes int64
-	err := tx.QueryRowContext(ctx, `SELECT COUNT(*),COALESCE(SUM(bytes),0) FROM admin_trash WHERE state='held'`).Scan(&count, &bytes)
-	return count, bytes, err
-}
-
-func safeTrashName(name string) bool {
-	return name != "" && name != "." && name != ".." && filepath.Base(name) == name && !strings.ContainsAny(name, "/\\")
 }

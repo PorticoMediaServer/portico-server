@@ -352,11 +352,7 @@ func (s *Service) CreateBulkJob(ctx context.Context, p identity.Principal, v Vie
 		if e = s.createBulkDestination(tx, id, p, in.Command, in.Args); e != nil {
 			return e
 		}
-		kind := "personal-state"
-		if in.Command == "trash" {
-			kind = "bulk-trash"
-		}
-		if _, e = scheduler.EnqueueDomainTx(ctx, tx, kind, id, profile); e != nil {
+		if _, e = scheduler.EnqueueDomainTx(ctx, tx, "personal-state", id, profile); e != nil {
 			return e
 		}
 		return bulkEvent(tx, p, id)
@@ -442,9 +438,6 @@ func (s *Service) AdvanceBulkJob(ctx context.Context, id string, access BulkAcce
 	}
 	if state == "building" {
 		return s.bulkCaptureStep(ctx, id)
-	}
-	if command == "trash" && (state == "queued" || state == "running") {
-		return s.bulkTrashStep(ctx, id, access)
 	}
 
 	err = dbwork.WithWriteTx(ctx, s.db, dbwork.ClassBackgroundMedia, func(tx *sql.Tx) error {
@@ -666,12 +659,4 @@ func (s *Service) failBulkJob(ctx context.Context, id, code string) (out BulkJob
 		return bulkEvent(tx, p, id)
 	})
 	return
-}
-
-func (s *Service) BulkTrashAdapter(access BulkAccess) operations.Adapter {
-	adapter := s.BulkAdapter(access)
-	adapter.Kind = "bulk-trash"
-	adapter.AsyncStep = true
-	adapter.Resource = operations.LaneBackground
-	return adapter
 }

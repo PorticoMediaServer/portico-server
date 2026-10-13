@@ -56,7 +56,7 @@ const i18n = {t: (id: string) => names[id] ?? id, has: (id: string) => id in nam
 const docWithLanguage = (language: string) => ({
   revision: 1,
   settings: {
-    allowMediaDeletion: false, trashRetentionDays: 30,
+    allowMediaDeletion: false,
     providers: [{mediaKind: 'movie', provider: 'tmdb', apiKeySet: false, language, region: 'US'}],
     analysis: [], navigation: {trickplayIntervalSeconds: 5, trickplayTileWidth: 160, chapterThumbnailMode: 'embedded', videoPreviewEnabled: false, videoPreviewSeconds: 0},
   },

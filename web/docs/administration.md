@@ -20,7 +20,7 @@ rules and words the panels share are in `packages/client-core/src/server-admin/`
 | `/settings/server-people` | People | Who can use this server and what may they see? | Accounts · Invitations · API keys |
 | `/settings/server-streaming` | Playback | May the server convert media, how, and how much at once? | |
 | `/settings/server-remote` | Remote access | How do devices reach this server from outside the home? | |
-| `/settings/server-storage` | Storage & backups | Which storage is attached, what is in the trash, and are backups healthy? | |
+| `/settings/server-storage` | Storage & backups | Which storage is attached, which titles are missing, and are backups healthy? | |
 | `/settings/server-schedule` | Schedule | What runs in the background, and when may heavy work run? | |
 | `/settings/server-troubleshooting` | Troubleshooting | What happened, and how do I send it to support? | |
 | `/settings/server-general` | General | What is this server called, and which account owns it? | |
