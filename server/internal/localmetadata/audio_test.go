@@ -2,6 +2,7 @@ package localmetadata
 
 import (
 	"bytes"
+	"encoding/base64"
 	"image"
 	"image/png"
 	"testing"
@@ -38,4 +39,31 @@ func TestLocalArtworkRejectsUnboundedOrNonImageContent(t *testing.T) {
 		t.Fatal(mime, err)
 	}
 	file.Close()
+}
+
+func TestWebPCoverRetainsOriginalAndMime(t *testing.T) {
+	raw, err := base64.StdEncoding.DecodeString("UklGRjwAAABXRUJQVlA4IDAAAADQAQCdASoCAAIAAgA0JaACdLoB+AADsAD+8Oj3/yC5YXXI1/8gP+QH/ID/+PIAAAA=")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, err := New(t.TempDir(), "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	key, err := s.store(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f, mime, err := s.Open(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	if mime != "image/webp" {
+		t.Fatal(mime)
+	}
+	got := make([]byte, len(raw))
+	if _, err = f.Read(got); err != nil || !bytes.Equal(got, raw) {
+		t.Fatal("original image changed", err)
+	}
 }

@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	_ "golang.org/x/image/webp"
 	"image"
 	_ "image/jpeg"
 	_ "image/png"
@@ -62,7 +63,7 @@ func (s *Service) PrepareKind(ctx context.Context, library, kind, path string, f
 			}
 		}
 	}
-	for _, name := range []string{"cover.jpg", "folder.jpg", "front.jpg", "album.jpg", "cover.jpeg", "folder.jpeg", "cover.png", "folder.png", "front.png", "Cover.JPG", "Folder.jpg"} {
+	for _, name := range []string{"cover.jpg", "folder.jpg", "front.jpg", "album.jpg", "cover.jpeg", "folder.jpeg", "cover.webp", "folder.webp", "front.webp", "cover.png", "folder.png", "front.png", "Cover.JPG", "Folder.jpg"} {
 		if unlisted(ctx, filepath.Join(filepath.Dir(path), name)) {
 			continue
 		}
@@ -139,7 +140,7 @@ func (s *Service) store(raw []byte) (string, error) {
 		return "", errors.New("artwork exceeds limit")
 	}
 	config, format, err := image.DecodeConfig(bytes.NewReader(raw))
-	if err != nil || (format != "jpeg" && format != "png") || config.Width <= 0 || config.Height <= 0 || config.Width > 8192 || config.Height > 8192 || int64(config.Width)*int64(config.Height) > 16_000_000 {
+	if err != nil || (format != "jpeg" && format != "png" && format != "webp") || config.Width <= 0 || config.Height <= 0 || config.Width > 8192 || config.Height > 8192 || int64(config.Width)*int64(config.Height) > 16_000_000 {
 		return "", errors.New("invalid local artwork")
 	}
 	digest := sha256.Sum256(raw)

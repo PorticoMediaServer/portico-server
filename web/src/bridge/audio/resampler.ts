@@ -104,6 +104,25 @@ export class Resampler {
     return {channels, frames: channels[0]?.length ?? 0};
   }
 
+  /** Continue on the same sample grid, carrying the filter history and fractional phase.
+   * `lookahead` belongs to the next track; it completes this track's last filter taps.
+   * It is not counted as this track's input and will be fed once by the successor. */
+  continue(lookahead: readonly Float32Array[], frames: number): {tail: {channels: Float32Array[]; frames: number}; next: Resampler; origin: number} {
+    const saved = this.history, produced = this.produced;
+    this.history = saved.map((h, ch) => {
+      const joined = new Float32Array(h.length + frames);
+      joined.set(h); joined.set(lookahead[ch]!.subarray(0, frames), h.length);
+      return joined;
+    });
+    const tail = this.flush();
+    this.history = saved;
+    const next = new Resampler(this.inRate, this.outRate, this.channels);
+    next.history = saved.map(h => h.slice());
+    next.base = this.base; next.consumed = this.consumed; next.produced = this.produced;
+    this.produced = produced; // preparation does not commit the outgoing tail
+    return {tail, next, origin: this.consumed};
+  }
+
   /** The last output frames, up to exactly `outputFrames(total input)`. */
   flush(): {channels: Float32Array[]; frames: number} {
     const total = Resampler.outputFrames(this.consumed, this.inRate, this.outRate);

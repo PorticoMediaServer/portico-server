@@ -108,3 +108,22 @@ test('a damaged MP4 sample count fails cleanly instead of allocating from it', a
   new DataView(bytes.buffer).setUint32(at + 12, 40_000_000);
   await assert.rejects(openMp4(fileReader(bytes)), /Damaged MP4 sample sizes/);
 });
+
+test('resampler carries history and fractional phase across several nonaligned track boundaries', async () => {
+  const {Resampler} = await import('../src/bridge/audio/resampler.ts');
+  for (const [from, to] of [[44100, 48000], [96000, 48000], [48000, 44100]]) {
+    const sizes = [10001, 11003, 12007];
+    const input = Float32Array.from({length: sizes.reduce((a,b) => a+b,0)}, (_,i) => 0.3*Math.sin(i*0.057)+0.1*Math.cos(i*0.137));
+    const whole = new Resampler(from!, to!, 1);
+    const expected = [...whole.process([input],input.length).channels[0]!, ...whole.flush().channels[0]!];
+    let split = new Resampler(from!, to!, 1), offset = 0;
+    const actual: number[] = [];
+    for (let i=0;i<sizes.length;i++) {
+      const n=sizes[i]!;
+      actual.push(...split.process([input.subarray(offset,offset+n)],n).channels[0]!); offset+=n;
+      if(i+1<sizes.length){const carry=split.continue([input.subarray(offset,offset+64)],64);actual.push(...carry.tail.channels[0]!);split=carry.next;}
+      else actual.push(...split.flush().channels[0]!);
+    }
+    assert.deepEqual(actual,expected,`${from} → ${to}: filtering the album equals filtering its tracks continuously`);
+  }
+});

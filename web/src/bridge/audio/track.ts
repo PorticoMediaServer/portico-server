@@ -32,6 +32,12 @@ export const WEBCODECS_SKIP: Readonly<Record<BrowserEngine, Readonly<Record<stri
   other: {},
 };
 
+/** Only the runtime probe writes new alignment evidence for the current browser. */
+export function recordDecoderSkip(engine: BrowserEngine, family: string, skip: number) {
+  if (!Number.isSafeInteger(skip) || skip < 0 || skip > 4096) return;
+  (WEBCODECS_SKIP[engine] as Record<string, number | 'preskip'>)[family] = skip;
+}
+
 /** Packets a decoder must see before the one it should output from, after a seek. */
 const PREROLL: Record<string, number> = {mp3: 3, aac: 2, opus: 4, vorbis: 2};
 
@@ -83,10 +89,18 @@ export class TrackStream {
   static async open(plan: TrackPlan, reader: ByteReader, fromFrame = 0, signal?: AbortSignal, o: {pad?: boolean} = {}): Promise<TrackStream | undefined> {
     const demuxer = await openDemuxer(plan.container, reader);
     if (demuxer.config.sampleRate !== plan.sampleRate) throw new DemuxError('The file’s sample rate isn’t the plan’s.');
+    // Unindexed compressed streams cannot locate an exact deep frame without fetching the
+    // prefix. The ordinary player owns those seeks (including its codec preroll and VBR index).
+    if (fromFrame > plan.sampleRate * 30 && !demuxer.seek) return undefined;
     const choice = await chooseDecoder(demuxer.config);
     if (!choice) return undefined;
     const target = plan.trim.startFrames + Math.max(0, Math.min(fromFrame, plan.durationFrames));
-    const {packets, rawStart} = await startAt(demuxer, target - choice.skip, PREROLL[demuxer.config.family] ?? 0, signal);
+    let packets: AsyncGenerator<Packet>, rawStart: number;
+    try {
+      ({packets, rawStart} = demuxer.config.family === 'vorbis'
+        ? {packets: demuxer.packets(signal), rawStart: 0}
+        : await startAt(demuxer, target - choice.skip, PREROLL[demuxer.config.family] ?? 0, signal));
+    } catch (e) { choice.decoder.close(); throw e; }
     return new TrackStream({plan, choice, packets, rawStart, fromFrame: Math.max(0, fromFrame), pad: o.pad !== false});
   }
 

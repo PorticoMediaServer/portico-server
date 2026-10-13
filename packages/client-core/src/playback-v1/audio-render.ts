@@ -116,7 +116,8 @@ export function audioGainLinear(plan: AudioRenderV2 | undefined, mode: Normaliza
   const peak = album ? (g.albumPeak ?? g.trackPeak) : g.trackPeak;
   let linear = Math.pow(10, (db + preampDb) / 20);
   if (peak !== undefined && peak * linear > 1) linear = 1 / peak;
-  return linear;
+  // A gain without a measured peak may attenuate, but cannot safely amplify.
+  return Math.max(0, Math.min(linear, peak === undefined ? 1 : 32));
 }
 
 /**

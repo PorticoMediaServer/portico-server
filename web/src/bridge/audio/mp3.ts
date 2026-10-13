@@ -51,19 +51,36 @@ export function afterId3(b: Uint8Array, o: number): number {
 }
 
 export async function openMp3(reader: ByteReader): Promise<Demuxer> {
-  const head = await reader.read(0, 1 << 16);
-  let o = afterId3(head, 0);
-  // Tags larger than the first block: read from after them.
-  const probe = o + 8192 > head.length ? await reader.read(o, 8192) : head.subarray(o);
-  const base = o;
-  let first: Mp3Header | undefined, at = 0;
-  for (; at + 4 <= probe.length; at++) {
-    const h = mp3Header(probe, at);
-    // A header is real when the next frame's header agrees with it.
-    if (h && h.length > 4) {
-      const next = mp3Header(probe, at + h.length);
-      if (next && next.sampleRate === h.sampleRate && next.layer === h.layer && next.version === h.version) { first = h; break; }
+  // Search in bounded windows, skipping repeated ID3 tags without fetching their payload.
+  // A 1 MiB synchronization budget tolerates padding while keeping hostile files bounded.
+  let base = 0, searched = 0, metadata = 0, first: Mp3Header | undefined, at = 0;
+  let probe: Uint8Array = new Uint8Array(0);
+  while (searched < 1 << 20) {
+    probe = await reader.read(base, 65536);
+    if (probe.length < 4) break;
+    const after = afterId3(probe, 0);
+    if (after > 0) {
+      if (after > 24 << 20 || base + after > (reader.size ?? Number.MAX_SAFE_INTEGER)) break;
+      metadata += after; if (metadata > 24 << 20) break;
+      base += after; searched += 10; continue;
     }
+    for (at = 0; at + 4096 < probe.length || at + 4 <= probe.length && probe.length < 65536; at++) {
+      const h = mp3Header(probe, at);
+      if (h && h.length > 4) {
+        const next = mp3Header(probe, at + h.length);
+        if (next && next.sampleRate === h.sampleRate && next.layer === h.layer && next.version === h.version) { first = h; break; }
+      }
+      if (ascii(probe, at, 3) === 'ID3' && afterId3(probe, at) > at) {
+        const end = afterId3(probe, at);
+        if (end - at > 24 << 20) throw new DemuxError('The audio metadata exceeds its limit.');
+        metadata += end - at; if (metadata > 24 << 20) throw new DemuxError('The audio metadata exceeds its limit.');
+        base += end; searched += at + 10; at = -1; break;
+      }
+    }
+    if (first) break;
+    if (at === -1) continue;
+    if (probe.length < 65536) break;
+    base += at; searched += at;
   }
   if (!first) throw new DemuxError('No MPEG audio frames were found.');
   const start = base + at;

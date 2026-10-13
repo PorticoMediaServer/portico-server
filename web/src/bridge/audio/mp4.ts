@@ -1,3 +1,4 @@
+import {aacConfig} from './aac-config';
 import {ascii, DemuxError, u16be, u32be, type ByteReader, type Demuxer, type Packet, type TrackConfig} from './types';
 
 /**
@@ -86,12 +87,9 @@ export async function openMp4(reader: ByteReader): Promise<Demuxer & {table: Sam
     const esds = sub.find(x => x.type === 'esds');
     const asc = esds && esdsConfig(moov, esds.start + esds.header + 4, esds.start + esds.size);
     if (!asc || asc.length < 2) throw new DemuxError('AAC configuration is missing.');
-    const objectType = asc[0]! >> 3;
-    const rateIndex = ((asc[0]! & 7) << 1) | (asc[1]! >> 7);
-    const rates = [96000, 88200, 64000, 48000, 44100, 32000, 24000, 22050, 16000, 12000, 11025, 8000, 7350];
-    if (rateIndex < rates.length) sampleRate = rates[rateIndex]!;
-    const chan = (asc[1]! >> 3) & 0xf;
-    if (chan) channels = chan;
+    const aac = aacConfig(asc), objectType = aac.objectType;
+    sampleRate = aac.sampleRate;
+    if (aac.channels) channels = aac.channels;
     config = {codec: `mp4a.40.${objectType}`, family: 'aac', sampleRate, numberOfChannels: channels, description: asc};
   } else if (fourcc === 'alac') {
     const alac = sub.find(x => x.type === 'alac');

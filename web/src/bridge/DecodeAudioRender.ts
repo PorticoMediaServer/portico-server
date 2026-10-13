@@ -61,7 +61,10 @@ export class DecodeAudioRender {
     this.service = service; this.url = url; this.element = element; this.sameAlbum = sameAlbum;
     this.snapshot = service.getSnapshot();
     const rate = playableAudio(this.snapshot.session?.audio) ? this.snapshot.session!.audio!.sampleRate! : undefined;
+    const audioSession = (navigator as Navigator & {audioSession?: {type: string}}).audioSession;
+    if (audioSession) { try { audioSession.type = 'playback'; } catch { /* optional browser API */ } }
     this.context = createContext(rate);
+    this.context.addEventListener('statechange', this.contextChanged);
     this.master = this.context.createGain();
     this.master.connect(this.context.destination);
     this.volume();
@@ -71,6 +74,10 @@ export class DecodeAudioRender {
     this.timer = setInterval(() => this.tick(), 50);
   }
 
+  private contextChanged = () => {
+    if (!this.disposed && this.context.state === 'running') this.tick();
+    else if (!this.disposed) this.service.audioRenderStatus?.(0, false);
+  };
   private volume = () => { this.master.gain.setTargetAtTime(this.element.muted ? 0 : this.element.volume, this.context.currentTime, 0.01); };
   private gesture = () => {
     queueMicrotask(() => {
@@ -104,7 +111,7 @@ export class DecodeAudioRender {
     if (!stream) return undefined;
     const frames = plan.durationFrames - fromFrame;
     const source = speed === 1 ? stream : new Stretch(stream, speed, frames);
-    return new Deck(this.context, this.master, source, {frames: speed === 1 ? frames : (source as Stretch).outputFrames, gain: this.gainFor(plan), label});
+    return new Deck(this.context, this.master, source, {frames: speed === 1 ? frames : (source as Stretch).outputFrames, gain: this.gainFor(plan), label, holdTail: this.snapshot.audioEffects.settings.gapless || this.snapshot.audioEffects.settings.crossfadeSeconds === 0});
   }
 
   /** A candidate cancelled before its deck opened has no deck yet; its reader still closes. */
@@ -142,7 +149,7 @@ export class DecodeAudioRender {
 
   private transport(s: PlaybackSnapshot) {
     if (s.intent === 'paused' || s.seekError) { void this.context.suspend(); return; }
-    if (this.context.state === 'suspended' && !this.starting && !this.askedForGesture) {
+    if ((this.context.state as string === 'suspended' || this.context.state as string === 'interrupted') && !this.starting && !this.askedForGesture) {
       // An autoplay denial needs a gesture: say so rather than failing.
       this.askedForGesture = true;
       void this.context.resume().then(() => {
@@ -192,6 +199,14 @@ export class DecodeAudioRender {
         if (!deck) throw new Error('No decoder.');
         if (this.candidate !== pending || revision !== this.revision) { deck.close(); return; }
         pending.deck = deck;
+        const previous = this.primary;
+        const joins = previous && previous.speed === 1 && speed === 1
+          && (s.audioEffects.settings.crossfadeSeconds === 0 || !!prepared.itemId && this.sameAlbum(s.itemId, prepared.itemId));
+        if (joins) {
+          await previous.deck.pump(AHEAD_SECONDS);
+          if (this.candidate !== pending || revision !== this.revision) { deck.close(); return; }
+          deck.continueFrom(previous.deck);
+        }
         await deck.pump(PREPARE_SECONDS);
         if (this.candidate !== pending) return;
         if (deck.failure) throw deck.failure;
@@ -247,6 +262,7 @@ export class DecodeAudioRender {
     void p.deck.pump(AHEAD_SECONDS);
     if (this.incoming && this.incoming.deck.startFrame !== undefined && frame >= this.incoming.edge - AHEAD_SECONDS * this.context.sampleRate) void this.incoming.deck.pump(AHEAD_SECONDS);
     const end = p.deck.endFrame ?? Infinity;
+    if (!this.candidate && !this.incoming && (end - frame) / this.context.sampleRate < COMMIT_BEFORE) p.deck.finishTail();
     const playing = s.intent === 'playing' && this.context.state === 'running' && p.deck.startFrame !== undefined && frame >= p.deck.startFrame;
     const starving = playing && !p.deck.complete && p.deck.aheadSeconds < 0.05;
     this.service.audioRenderStatus?.(playing && !starving ? s.audioEffects.rate : 0, starving);
@@ -273,6 +289,7 @@ export class DecodeAudioRender {
     document.removeEventListener('click', this.gesture);
     document.removeEventListener('keydown', this.gesture);
     this.element.removeEventListener('volumechange', this.volume);
+    this.context.removeEventListener('statechange', this.contextChanged);
     this.master.disconnect();
     void this.context.close();
   }

@@ -150,14 +150,14 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
   const trickplay = useTrickplay(api, scope, item, offers.data?.current?.sourceId, !isAudio && !state.channel);
   const subtitles = usePlayerSubtitles(api, scope, service, video, resourceKey, isAudio);
   // Fetched with the session (one small read) so Chapters only appears when the title has them.
-  const chapters = usePlayerChapters(api, scope, item, service, !isAudio);
+  const chapters = usePlayerChapters(api, scope, item, service, !isAudio || identity.kind === 'audiobook_file');
   // FEAT-11: chapter starts and intro/credits on the seek bar.
   const chapterList = chapters.data?.status === 'available' ? chapters.data.chapters : undefined;
   const chapterMarks = useMemo(() => chapterList?.map(c => ({start: c.startSeconds, title: c.title})), [chapterList]);
   const markerList = offers.data?.markers?.markers;
   const segmentMarks = useMemo(() => markerList?.filter(m => m.kind === 'intro' || m.kind === 'credits' || m.kind === 'outro' || m.kind === 'recap').map(m => ({start: m.startSeconds, end: m.endSeconds})), [markerList]);
   const listening = useSyncExternalStore(queue?.listening.subscribe ?? (() => () => {}), () => queue?.listening.getSnapshot() ?? null);
-  useSystemListening(service, state, video, identity.item ?? {id: identity.itemId ?? '', libraryId: identity.libraryId ?? '', title: identity.title, kind: identity.kind ?? '', duration: state.duration, progressSeconds: state.positionSeconds, available: true, posterUrl: identity.posterUrl}, queue, api, currentAccessToken);
+  useSystemListening(service, state, video, identity.item ?? {id: identity.itemId ?? '', libraryId: identity.libraryId ?? '', title: identity.title, kind: identity.kind ?? '', duration: state.duration, progressSeconds: state.positionSeconds, available: true, posterUrl: identity.posterUrl}, queue, api, currentAccessToken, chapterList);
   useEffect(() => {
     const el = video.current;
     if (!el) return;

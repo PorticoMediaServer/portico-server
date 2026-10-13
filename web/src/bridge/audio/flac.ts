@@ -1,4 +1,4 @@
-import {ascii, Cursor, DemuxError, u16be, type ByteReader, type Demuxer, type Packet, type TrackConfig} from './types';
+import {ascii, Cursor, DemuxError, u16be, u32be, type ByteReader, type Demuxer, type Packet, type TrackConfig} from './types';
 
 /**
  * Native FLAC (`fLaC` stream). Frames are found by their sync code and confirmed by the header's
@@ -75,10 +75,10 @@ export async function openFlac(reader: ByteReader): Promise<Demuxer & {info: Str
       info = {minBlock: u16be(body, 0), maxBlock: u16be(body, 2), maxFrame: (body[7]! << 16) | (body[8]! << 8) | body[9]!, sampleRate: rate, channels, bits, totalFrames: total, body: body.slice(0, 34)};
     } else if (type === 3) {
       for (let i = 0; i + 18 <= length; i += 18) {
-        const hi = ((body[i]! << 24) >>> 0) * 2 ** 32 + ((body[i + 4]! << 24) >>> 0) + (body[i + 5]! << 16) + (body[i + 6]! << 8) + body[i + 7]!;
+        const hi = u32be(body, i) * 2 ** 32 + u32be(body, i + 4);
         if (body[i] === 0xff && body[i + 1] === 0xff) continue; // placeholder point
-        const off = ((body[i + 8]! << 24) >>> 0) * 2 ** 32 + ((body[i + 12]! << 24) >>> 0) + (body[i + 13]! << 16) + (body[i + 14]! << 8) + body[i + 15]!;
-        seekTable.push({sample: hi, offset: off, frames: u16be(body, i + 16)});
+        const off = u32be(body, i + 8) * 2 ** 32 + u32be(body, i + 12);
+        if (Number.isSafeInteger(hi) && Number.isSafeInteger(off) && hi < (info?.totalFrames ?? Number.MAX_SAFE_INTEGER) && (reader.size === undefined || off < reader.size) && seekTable.length < 65536) seekTable.push({sample: hi, offset: off, frames: u16be(body, i + 16)});
       }
     }
     c.skip(length);
@@ -94,6 +94,11 @@ export async function openFlac(reader: ByteReader): Promise<Demuxer & {info: Str
   const streamInfo = info;
   return {
     config, info, seekTable, firstFrame,
+    seek(target, preroll, signal) {
+      const wanted = Math.max(0, target - preroll * streamInfo.maxBlock);
+      const point = [...seekTable].sort((a, b) => a.sample - b.sample).filter(p => p.sample <= wanted).at(-1);
+      return {packets: flacFrames(reader, firstFrame + (point?.offset ?? 0), streamInfo, signal), rawStart: point?.sample ?? 0};
+    },
     packets: (signal?: AbortSignal) => flacFrames(reader, firstFrame, streamInfo, signal),
   };
 }
