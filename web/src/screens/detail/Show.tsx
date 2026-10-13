@@ -19,10 +19,10 @@ import {EpisodeCard, EpisodePlaceholder, EpisodeRow, episodeCode, episodeListKey
 import {GenreLinks} from './GenreLinks';
 import {EpisodePanel} from './EpisodePanel';
 import s from './Show.module.css';
-import {currentI18n} from '../../app/i18n';
 import {useViewerScope} from '../../app/viewer-scope';
 import {useContainerWatched} from '../shared/container-watched';
 import {getContainerState} from '@core/container-state.ts';
+import {useI18n, type I18n} from '../../app/i18n';
 
 type ShowSearch = {library?: string; season?: string; episode?: string; title?: string};
 /** Up to this many seasons show as tabs; beyond it, a menu (Spec — Title Pages §2). */
@@ -48,7 +48,7 @@ function writeLayout(v: EpisodeLayout) { try { localStorage.setItem(LAYOUT_KEY, 
  * show, From its creator…), each named by its titleText; then Details.
  */
 export function ShowScreen() {
-  const t = currentI18n().t;
+  const {t} = useI18n();
   const params = useParams({strict: false}) as {showId: string; episodeId?: string};
   const search = useSearch({strict: false}) as ShowSearch;
   const navigate = useNavigate();
@@ -193,7 +193,7 @@ export function ShowScreen() {
     show.genres?.length ? [t('title.genres'), <GenreLinks key="genres" libraryId={show.libraryId} genres={dedupeNames(show.genres, 20)} />] : null,
   ] as ([string, string] | null)[]).filter((r): r is [string, string] => !!r) : [];
   const seasonMenu: MenuItem[] = [
-    ...(firstEpisode?.playback ? [{id: 'play-season', label: selectedSeason ? t('title.playSeasonNamed', {season: seasonName(selectedSeason)}) : t('title.playSeason'), icon: 'play' as const}] : []),
+    ...(firstEpisode?.playback ? [{id: 'play-season', label: selectedSeason ? t('title.playSeasonNamed', {season: seasonName(t, selectedSeason)}) : t('title.playSeason'), icon: 'play' as const}] : []),
     ...(selected?.seasonId ? [{id: 'season-watched', label: t(seasonWatched.state?.watched ? 'entry.markSeasonUnwatched' : 'entry.markSeasonWatched'), icon: (seasonWatched.state?.watched ? 'watched' : 'check') as 'watched' | 'check'}] : []),
   ];
   if (owner && show) seasonMenu.push({id: 'show-settings', label: t('title.showSettings'), icon: 'settings', separatorBefore: seasonMenu.length > 0});
@@ -218,7 +218,7 @@ export function ShowScreen() {
           badge={show?.contentRating}
           synopsis={show?.overview}
           credits={creditLines}
-          primary={nextUp?.playback ? {label: episodeCode(nextUp) ? t(resuming ? 'title.resumeEpisode' : 'title.playEpisode', {code: episodeCode(nextUp)}) : t(resuming ? 'entry.resume' : 'action.play'), onClick: () => playNextUp(nextUp), progress: resuming && nextUp.duration ? (nextUp.progressSeconds ?? 0) / nextUp.duration : undefined} : undefined}
+          primary={nextUp?.playback ? {label: episodeCode(t, nextUp) ? t(resuming ? 'title.resumeEpisode' : 'title.playEpisode', {code: episodeCode(t, nextUp)}) : t(resuming ? 'entry.resume' : 'action.play'), onClick: () => playNextUp(nextUp), progress: resuming && nextUp.duration ? (nextUp.progressSeconds ?? 0) / nextUp.duration : undefined} : undefined}
           secondary={show ? (
             <div className={s.heroActions}>
               {/* The same row as a movie (Justin, 2 Oct 2026): Watchlist · Favorite · Watched · ⋯. The flags are the show's own, on the container route. */}
@@ -268,7 +268,7 @@ export function ShowScreen() {
                 columnMin={layout === 'grid' ? 'clamp(240px, 24vw, 320px)' : undefined}
                 estimateRowHeight={layout === 'grid' ? 240 : 112}
                 className={layout === 'list' ? s.episodeList : undefined}
-                label={selectedSeason ? `${seasonName(selectedSeason)} · ${t('title.episodes')}` : t('title.episodes')}
+                label={selectedSeason ? `${seasonName(t, selectedSeason)} · ${t('title.episodes')}` : t('title.episodes')}
                 renderItem={episode => layout === 'grid'
                   ? <EpisodeCard episode={episode} onPlay={playEpisode} onOpen={openEpisode} selected={episode.id === episodeId} />
                   : <EpisodeRow episode={episode} onPlay={playEpisode} onOpen={openEpisode} onMore={(e, el) => player.more(e, anchorOf(el))} selected={episode.id === episodeId} />}
@@ -312,26 +312,27 @@ function SeasonSwitcher({seasons, selectedId, groups, selectedGroup, morePreviou
   seasons: readonly WorkspaceSeason[]; selectedId: string | null; groups: readonly {id: string; title: string; count: number}[]; selectedGroup?: string;
   morePrevious: boolean; moreNext: boolean; onSeason: (season: WorkspaceSeason) => void; onGroup: (id: string) => void; onPrevious: () => void; onNext: () => void;
 }) {
+  const {t} = useI18n();
   if (!seasons.length && !groups.length) return <span />;
   const tabs = seasons.length + groups.length <= MAX_SEASON_TABS && !morePrevious && !moreNext;
   if (tabs) {
     return (
-      <div className={s.seasonTabs} role="tablist" aria-label={currentI18n().t('title.seasons')}>
-        {seasons.map(season => <button key={season.id} type="button" role="tab" className={s.seasonTab} aria-selected={!selectedGroup && season.id === selectedId} onClick={() => onSeason(season)}>{seasonName(season)}</button>)}
+      <div className={s.seasonTabs} role="tablist" aria-label={t('title.seasons')}>
+        {seasons.map(season => <button key={season.id} type="button" role="tab" className={s.seasonTab} aria-selected={!selectedGroup && season.id === selectedId} onClick={() => onSeason(season)}>{seasonName(t, season)}</button>)}
         {groups.map(group => <button key={group.id} type="button" role="tab" className={s.seasonTab} aria-selected={selectedGroup === group.id} onClick={() => onGroup(group.id)}>{group.id === 'unassigned_absolute' ? `${group.title} (${group.count})` : group.title}</button>)}
       </div>
     );
   }
   const value = selectedGroup ? `group:${selectedGroup}` : selectedId ?? '';
   const options = [
-    ...(morePrevious ? [{value: 'seasons:previous', label: currentI18n().t('title.earlierSeasons')}] : []),
-    ...seasons.map(season => ({value: season.id, label: seasonName(season)})),
+    ...(morePrevious ? [{value: 'seasons:previous', label: t('title.earlierSeasons')}] : []),
+    ...seasons.map(season => ({value: season.id, label: seasonName(t, season)})),
     ...groups.map(group => ({value: `group:${group.id}`, label: group.id === 'unassigned_absolute' ? `${group.title} (${group.count})` : group.title})),
-    ...(moreNext ? [{value: 'seasons:next', label: currentI18n().t('title.laterSeasons')}] : []),
+    ...(moreNext ? [{value: 'seasons:next', label: t('title.laterSeasons')}] : []),
   ];
   return (
     <div style={{minWidth: 220}}>
-      <Select hideLabel label={currentI18n().t('title.seasonMenu')} value={value} options={options} onChange={e => {
+      <Select hideLabel label={t('title.seasonMenu')} value={value} options={options} onChange={e => {
         const v = e.target.value;
         if (v === 'seasons:previous') onPrevious();
         else if (v === 'seasons:next') onNext();
@@ -342,9 +343,9 @@ function SeasonSwitcher({seasons, selectedId, groups, selectedGroup, morePreviou
   );
 }
 
-function seasonName(season: WorkspaceSeason): string {
-  if (season.number === 0) return season.title || currentI18n().t('title.specials');
-  return season.title || currentI18n().t('title.season', {number: season.number});
+function seasonName(t: I18n['t'], season: WorkspaceSeason): string {
+  if (season.number === 0) return season.title || t('title.specials');
+  return season.title || t('title.season', {number: season.number});
 }
 /** Specials (season 0) go last. */
 function orderSeasons(list: readonly WorkspaceSeason[]): WorkspaceSeason[] {
@@ -363,8 +364,8 @@ function findResident(collection: ReturnType<typeof useEpisodes>, id: string): {
 
 /** The owner's four settings for one show. They change the list for everyone, so they are saved explicitly. */
 function ShowSettingsDialog({libraryId, showId, settings, onClose, onSaved}: {libraryId: string; showId: string; settings: ShowSettings; onClose: () => void; onSaved: () => void}) {
+  const {t} = useI18n();
   const {api} = useSession();
-  const t = currentI18n().t;
   const [draft, setDraft] = useState(settings);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');

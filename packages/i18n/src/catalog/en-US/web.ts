@@ -2171,4 +2171,6 @@ export const webMessages = {
   'web.library.categoryChip': 'Category: {category}',
   'web.library.titlesLabel': 'Titles',
   'web.metadata.votes': '{count, plural, one {# vote} other {# votes}}',
+  'web.episode.previousNamed': 'Previous episode: {episode}',
+  'web.episode.nextNamed': 'Next episode: {episode}',
 } as const satisfies Record<string, string>;

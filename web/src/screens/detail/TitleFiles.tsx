@@ -1,8 +1,8 @@
 import type {TitleFile} from '@core/detail.ts';
 import {titleFileLines} from '@core/presentation/index.ts';
-import {currentI18n} from '../../app/i18n';
 import {KeyValue, Text} from '../../ui';
 import s from './Detail.module.css';
+import {useI18n} from '../../app/i18n';
 
 /**
  * The Files list that closes a title page and an episode panel (Spec — Page Content §0.3): per
@@ -10,13 +10,14 @@ import s from './Detail.module.css';
  * subtitle track, and where it lives (owners only). The lines come from the shared model.
  */
 export function TitleFiles({files}: {files: readonly TitleFile[]}) {
-  const t = currentI18n().t;
+  const i18n = useI18n();
+  const {t} = i18n;
   if (!files.length) return null;
   return (
     <div className={s.files}>
       <Text variant="label" tone="tertiary">{t('title.files')}</Text>
       {files.map((file, i) => {
-        const lines = titleFileLines(file, t, languageName);
+        const lines = titleFileLines(file, t, i18n.languageName);
         const rows: [string, React.ReactNode][] = [];
         if (lines.audio.length) rows.push([t('mediaInfo.audio'), <span className={s.fileLines}>{lines.audio.map((line, n) => <span key={n}>{line}</span>)}</span>]);
         if (lines.subtitles.length) rows.push([t('mediaInfo.subtitles'), <span className={s.fileLines}>{lines.subtitles.map((line, n) => <span key={n}>{line}</span>)}</span>]);
@@ -35,9 +36,4 @@ export function TitleFiles({files}: {files: readonly TitleFile[]}) {
       })}
     </div>
   );
-}
-
-/** "en" → "English", in the viewer's language; an unknown code stays as it is. */
-export function languageName(code: string): string {
-  try { return new Intl.DisplayNames(undefined, {type: 'language'}).of(code) ?? code; } catch { return code; }
 }
