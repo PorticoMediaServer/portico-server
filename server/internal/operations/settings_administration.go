@@ -3,6 +3,7 @@ package operations
 import (
 	"net/netip"
 	"net/url"
+	"strconv"
 	"strings"
 )
 
@@ -21,11 +22,16 @@ func validateAdministration(v *Settings) []string {
 	if !oneOf(v.RemoteSignInPolicy, RemoteSignInPolicies) {
 		fields = append(fields, "values.remoteSignInPolicy")
 	}
-	if v.SecureConnectionsPolicy == "" {
-		v.SecureConnectionsPolicy = "preferred"
+	if v.ConnectionLimit < 0 || v.ConnectionLimit > 65536 {
+		fields = append(fields, "values.connectionLimit")
 	}
-	if !oneOf(v.SecureConnectionsPolicy, SecureConnectionPolicies) {
-		fields = append(fields, "values.secureConnectionsPolicy")
+	if v.AdvertiseURL != "" {
+		normalized, ok := AccessOrigin(v.AdvertiseURL)
+		if !ok {
+			fields = append(fields, "values.advertiseUrl")
+		} else {
+			v.AdvertiseURL = normalized
+		}
 	}
 	if v.LogLevel == "" {
 		v.LogLevel = "info"
@@ -50,20 +56,18 @@ func validateAdministration(v *Settings) []string {
 	if v.AccessURLs == nil {
 		v.AccessURLs = []string{}
 	}
-	// Access URLs are published to members as routes, and Hosted carries at most
-	// twelve candidates, so the list is short and HTTPS origins only (an app
-	// never sends a credential over plain HTTP outside the LAN).
+	// Access URLs are bounded origins for local clients. Hosted publication
+	// filters this list to HTTPS; it never advertises plaintext routes.
 	if len(v.AccessURLs) > MaxAccessURLs {
 		fields = append(fields, "values.accessUrls")
 	}
 	for i, raw := range v.AccessURLs {
-		trimmed := strings.TrimRight(strings.TrimSpace(raw), "/")
-		parsed, e := url.Parse(trimmed)
-		if e != nil || parsed.Host == "" || parsed.Scheme != "https" || parsed.User != nil || parsed.Path != "" || parsed.RawQuery != "" || parsed.Fragment != "" || len(trimmed) > 300 || !SafeText(trimmed, 300) {
+		normalized, ok := AccessOrigin(raw)
+		if !ok {
 			fields = append(fields, "values.accessUrls")
 			break
 		}
-		v.AccessURLs[i] = strings.ToLower(trimmed)
+		v.AccessURLs[i] = normalized
 	}
 	if v.TrustedProxies == nil {
 		v.TrustedProxies = []string{}
@@ -199,4 +203,23 @@ func hostName(name string) bool {
 		}
 	}
 	return true
+}
+
+// AccessOrigin validates owner-supplied HTTP or HTTPS origins without paths.
+func AccessOrigin(raw string) (string, bool) {
+	trimmed := strings.TrimRight(strings.TrimSpace(raw), "/")
+	u, err := url.Parse(trimmed)
+	if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") || u.User != nil || u.Path != "" || u.RawPath != "" || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" || u.Opaque != "" || len(trimmed) > 300 || !SafeText(trimmed, 300) || strings.ContainsAny(trimmed, "\\\r\n\t ") {
+		return "", false
+	}
+	if u.Hostname() == "" {
+		return "", false
+	}
+	if u.Port() != "" {
+		n, err := strconv.Atoi(u.Port())
+		if err != nil || n < 1 || n > 65535 {
+			return "", false
+		}
+	}
+	return strings.ToLower(trimmed), true
 }

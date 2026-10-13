@@ -9,6 +9,8 @@ package httpapi
 // /v1/downloads/settings is an ordinary read while /v1/downloads/artifacts/{grant}
 // is a byte stream — and a prefix rule cannot tell them apart.
 var routeLanes = map[string]string{
+	"GET /v1/admin/console/settings":                laneAdmin,
+	"PATCH /v1/admin/console/settings":              laneAdmin,
 	"PUT /v1/playlists/{id}/order":                  laneDefault,
 	"POST /v1/downloads/requests":                   laneDefault,
 	"GET /v1/downloads/requests/{id}":               laneBrowsing,
@@ -18,6 +20,7 @@ var routeLanes = map[string]string{
 	"PUT /v1/containers/{kind}/{id}/personal-state": laneDefault,
 	"GET /v1/containers/{kind}/{id}/personal-state": laneBrowsing,
 	"POST /v1/auth/refresh":                         laneAuth,
+	"GET /v1/networking/connection":                 laneDefault,
 	"GET /v1/server":                                laneDefault,
 	"GET /v1/capabilities":                          laneDefault,
 	"GET /v1/bootstrap":                             laneBrowsing,
@@ -319,9 +322,9 @@ var routeLanes = map[string]string{
 	"POST /v1/admin/library-channels/{id}/delete":                     laneAdmin,
 	"POST /v1/admin/library-channels/{id}/logo":                       laneAdmin,
 	"POST /v1/admin/library-channels/{id}/regenerate":                 laneAdmin,
-	"POST /v1/admin/live-sources":                                     laneAdmin,
+	"POST /v1/admin/live-sources":                                     laneUpload,
 	"POST /v1/admin/live-sources/discover":                            laneAdmin,
-	"POST /v1/admin/live-sources/preview":                             laneAdmin,
+	"POST /v1/admin/live-sources/preview":                             laneUpload,
 	"POST /v1/admin/live-sources/remote/preview":                      laneAdmin,
 	"POST /v1/admin/live-sources/remote/save":                         laneAdmin,
 	"POST /v1/admin/live-sources/{id}/enabled":                        laneAdmin,
@@ -339,7 +342,7 @@ var routeLanes = map[string]string{
 	"POST /v1/auth/two-factor/challenge":                              laneSecurityFence,
 	"POST /v1/channels/preferences":                                   laneBrowsing,
 	"POST /v1/collections/{id}/items:batch":                           laneBrowsing,
-	"POST /v1/diagnostics/client-logs":                                laneDefault,
+	"POST /v1/diagnostics/client-logs":                                laneUpload,
 	"POST /v1/devices":                                                laneAuth,
 	"POST /v1/devices/{id}/approval":                                  laneAuth,
 	"POST /v1/devices/{id}/sessions/bind":                             laneAuth,

@@ -12,6 +12,7 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"portico.local/server/internal/networkpolicy"
 	"strconv"
 	"strings"
 	"sync"
@@ -51,9 +52,7 @@ import (
 )
 
 type Dependencies struct {
-	// HTTPSRoute may attest an externally terminated HTTPS route. The default
-	// uses the installed certificate manager; an access URL alone is not proof.
-	HTTPSRoute func(context.Context) (string, bool, error)
+	ListeningPort int
 	// SettingsApplied runs after an owner saves console settings so snapshot
 	// readers (delivery configuration) refresh off the request path.
 	SettingsApplied func(context.Context)
@@ -119,8 +118,8 @@ type Dependencies struct {
 	// access is the library-authority cache, kept on the same terms.
 	access *accessCache
 	// restrictions is the viewer content-restriction cache, kept on the same terms.
-	restrictions *restrictionCache
-	securePolicy *securePolicyCache
+	restrictions     *restrictionCache
+	connectionPolicy *connectionPolicyCache
 	// v1 is the Playback Protocol v1 resource service (playback_v1*.go),
 	// installed by New like the caches above.
 	v1 *playbackv1.Service
@@ -690,7 +689,7 @@ func New(d Dependencies) http.Handler {
 	d.principals = newPrincipalCache()
 	d.access = newAccessCache()
 	d.restrictions = newRestrictionCache()
-	d.securePolicy = &securePolicyCache{}
+	d.connectionPolicy = &connectionPolicyCache{}
 	// The typed registry captures d, so everything its handlers read must be
 	// installed first.
 	if d.Console == nil && d.DB != nil {
@@ -747,12 +746,10 @@ func New(d Dependencies) http.Handler {
 	d.installationRoutes(mux)
 	d.foundationRoutes(mux)
 	d.consoleRoutes(mux)
-	if d.RouteIdentity != nil {
-		mux.Handle("POST /v1/networking/identity-proof", d.RouteIdentity)
-	}
 	d.directIdentityRoutes(mux)
 	d.identityRoutes(mux)
 	if d.Networking != nil {
+		d.Networking.SetRequestAuthorizer(NetworkingClaimAuthorizer(d.Identity, d.Origins, d))
 		d.Networking.SetManagementAuthorizer(func(r *http.Request) (networking.ClaimRequestGuard, error) {
 			p, err := d.owner(r)
 			if err != nil {
@@ -816,23 +813,6 @@ func New(d Dependencies) http.Handler {
 	mux.HandleFunc("GET /v1/system", func(w http.ResponseWriter, r *http.Request) {
 		write(w, 200, map[string]any{"id": d.Identity.ID(), "name": d.Identity.Name(), "setupRequired": d.Identity.SetupRequired(), "hostedConfigured": d.Hosted.Configured(), "hostedAttached": d.Identity.Hosted(), "version": buildinfo.Info()["version"], "buildId": buildinfo.Info()["buildId"], "sourceDigest": buildinfo.Info()["sourceDigest"], "builtAt": buildinfo.Info()["builtAt"]})
 	})
-	mux.HandleFunc("POST /v1/setup", func(w http.ResponseWriter, r *http.Request) {
-		var body identity.SetupOptions
-		if e := decode(w, r, &body); e != nil {
-			failure(w, e)
-			return
-		}
-		if e := d.Identity.SetupLimit(r.Context(), setupPeerSubject(r), "setup", 10); e != nil {
-			setupFailure(w, e)
-			return
-		}
-		result, e := d.Identity.SetupWithOptions(r.Context(), body, d.privateSetupPeer(r))
-		if e != nil {
-			failure(w, e)
-			return
-		}
-		writeAuth(w, r, 201, result)
-	})
 	mux.HandleFunc("POST /v1/sessions", func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
 			Username string `json:"username"`
@@ -842,7 +822,7 @@ func New(d Dependencies) http.Handler {
 			failure(w, e)
 			return
 		}
-		if e := d.Identity.SetupLimit(r.Context(), setupPeerSubject(r), "login", 20); e != nil {
+		if e := d.Identity.SetupLimit(r.Context(), d.setupPeerSubject(r), "login", 20); e != nil {
 			setupFailure(w, e)
 			return
 		}
@@ -1247,11 +1227,14 @@ func New(d Dependencies) http.Handler {
 		w.Header().Set("Cache-Control", "no-store")
 		origin := r.Header.Get("Origin")
 		if origin != "" {
-			allowed := sameRequestOrigin(r, origin)
+			allowed := d.sameRequestOrigin(r, origin)
 			for _, v := range d.Origins {
 				if origin == v {
 					allowed = true
 				}
+			}
+			if r.URL.Path == "/v1/setup" || r.URL.Path == "/v1/setup/browser" {
+				allowed = d.sameRequestOrigin(r, origin)
 			}
 			if !allowed {
 				write(w, http.StatusForbidden, map[string]any{"error": map[string]any{"code": "origin_not_allowed", "message": "This origin is not permitted.", "retryable": false}})
@@ -1270,16 +1253,10 @@ func New(d Dependencies) http.Handler {
 			w.Header().Set("Access-Control-Max-Age", "86400")
 		}
 		if r.Method == "OPTIONS" {
-			if d.enforceSecureConnections(w, r) {
-				return
-			}
 			w.WriteHeader(204)
 			return
 		}
-		if d.enforceSecureConnections(w, r) {
-			return
-		}
-		r = r.WithContext(identity.WithSignInSource(r.Context(), d.signInPeer(r)))
+		r = r.WithContext(identity.WithSignInSource(networkpolicy.WithHome(r.Context(), !d.requestIsRemote(r)), d.signInPeer(r)))
 		if installation := r.Header.Get("X-Portico-Installation-Id"); installation != "" {
 			claim := identity.DeviceRegistration{
 				InstallationID: installation,

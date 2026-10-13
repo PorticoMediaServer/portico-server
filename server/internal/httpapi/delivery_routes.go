@@ -17,7 +17,12 @@ import (
 // resolved here and nowhere else: the client declares a transport, the server
 // decides what that means next to the address it actually sees.
 func (d Dependencies) deliveryContext(r *http.Request) playback.DeliveryContext {
-	class, locality, transport := playback.NetworkClassFromRequest(r, d.trustedProxy(r))
+	transport := playback.NormalizeTransportClass(r.Header.Get(playback.TransportClassHeader))
+	locality := playback.LocalityLocal
+	if d.requestIsRemote(r) {
+		locality = playback.LocalityRemote
+	}
+	class := playback.ResolveNetworkClass(locality, transport)
 	return playback.DeliveryContext{NetworkClass: class, ServerLocality: locality, TransportClass: transport, DeviceClass: deviceClassHeader(r)}
 }
 

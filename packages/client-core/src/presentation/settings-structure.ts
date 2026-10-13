@@ -389,12 +389,10 @@ const serverPages: readonly AuthoredPage[] = [
     ]},
     {id: 'outside', title: 'web.connectivity.outside', description: 'web.connectivity.outsideLede', rows: [
       setting('connectivity', 'remoteSignInPolicy', 'web.connectivity.whoMaySignIn', {type: 'choice', choices: choices('settings.server.signIn', ['allow', 'owner-only', 'off'])}),
-      setting('connectivity', 'secureConnectionsPolicy', 'web.connectivity.encrypted', {type: 'choice', choices: choices('settings.server.secure', ['required', 'preferred', 'lan-plain-allowed'])}, {help: 'web.connectivity.encryptedHelp'}),
     ]},
     {id: 'home', title: 'settings.server.homeNetwork', rows: [
       on('connectivity', 'lanDiscoveryEnabled', 'web.connectivity.discovery', 'settings.server.discoveryHelp'),
       setting('connectivity', 'lanNetworks', 'web.connectivity.homeNetworks', {type: 'lines', example: '192.168.2.0/24'}, {help: 'web.connectivity.homeNetworksHelp'}),
-      on('connectivity', 'treatWanAsLan', 'web.connectivity.wanAsLan', 'web.connectivity.wanAsLanHelp'),
       setting('connectivity', 'accessUrls', 'web.connectivity.extraAddresses', {type: 'lines', example: 'https://media.example.com'}, {help: 'web.connectivity.extraAddressesHelp'}),
       custom('server.addresses'),
     ]},

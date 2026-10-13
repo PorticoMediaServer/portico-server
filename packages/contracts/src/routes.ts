@@ -47,6 +47,44 @@ export const routes = [
     "status": 200
   },
   {
+    "id": "change_connectivity_policy",
+    "method": "PATCH",
+    "path": "/v1/admin/connectivity/policy",
+    "summary": "Set home networks and connection settings",
+    "access": "owner",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 32768,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "invalid_request",
+      "revision_mismatch",
+      "request_in_progress",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
+    "id": "change_console_settings",
+    "method": "PATCH",
+    "path": "/v1/admin/console/settings",
+    "summary": "Save owner settings",
+    "access": "owner",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "invalid_request",
+      "revision_mismatch",
+      "request_in_progress",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
     "id": "change_playback_session",
     "method": "PATCH",
     "path": "/v1/playback/sessions/{id}",
@@ -355,6 +393,69 @@ export const routes = [
     "errors": [
       "unauthorized",
       "not_permitted"
+    ],
+    "status": 200
+  },
+  {
+    "id": "get_connection",
+    "method": "GET",
+    "path": "/v1/networking/connection",
+    "summary": "Read the current connection and advertised addresses",
+    "access": "public",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "internal"
+    ],
+    "status": 200
+  },
+  {
+    "id": "get_connectivity_policy",
+    "method": "GET",
+    "path": "/v1/admin/connectivity/policy",
+    "summary": "Read home networks and connection settings",
+    "access": "owner",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
+    "id": "get_connectivity_status",
+    "method": "GET",
+    "path": "/v1/admin/connectivity/status",
+    "summary": "Read certificates and observed connection addresses",
+    "access": "admin_scope",
+    "scope": "connectivity",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
+    "id": "get_console_settings",
+    "method": "GET",
+    "path": "/v1/admin/console/settings",
+    "summary": "Read owner settings",
+    "access": "owner",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "internal"
     ],
     "status": 200
   },
@@ -1025,6 +1126,22 @@ export const routes = [
     "status": 200
   },
   {
+    "id": "prove_network_identity",
+    "method": "POST",
+    "path": "/v1/networking/identity-proof",
+    "summary": "Prove this server's pinned identity on the requested origin",
+    "access": "public",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 4096,
+    "errors": [
+      "invalid_request",
+      "rate_limited",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
     "id": "put_admin_maintenance_settings",
     "method": "PUT",
     "path": "/v1/admin/maintenance/settings",
@@ -1201,6 +1318,42 @@ export const routes = [
       "idempotency_key_reused",
       "revision_mismatch",
       "rate_limited",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
+    "id": "setup_server",
+    "method": "POST",
+    "path": "/v1/setup",
+    "summary": "Create the first owner",
+    "access": "public",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "unauthorized",
+      "invalid_request",
+      "rate_limited",
+      "setup_already_complete",
+      "internal"
+    ],
+    "status": 201
+  },
+  {
+    "id": "start_browser_setup",
+    "method": "POST",
+    "path": "/v1/setup/browser",
+    "summary": "Start first-run setup from this origin",
+    "access": "public",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 4096,
+    "errors": [
+      "unauthorized",
+      "invalid_request",
+      "rate_limited",
+      "setup_already_complete",
       "internal"
     ],
     "status": 200

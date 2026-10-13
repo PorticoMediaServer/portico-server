@@ -5,6 +5,12 @@
  * to a shared area in `en-US.ts` (and rename it) when both platforms use it.
  */
 export const webMessages = {
+  'web.setup.alreadyComplete': 'This server is already set up.',
+  'web.connectivity.httpOutsideHome': 'This connection uses HTTP outside your home networks.',
+  'web.connectivity.connectionLimit': 'Connection limit',
+  'web.connectivity.connectionLimitHelp': 'Use 0 for the default based on available memory. Restart the server after changing this number.',
+  'web.connectivity.advertiseUrl': 'External address',
+  'web.connectivity.advertiseUrlHelp': 'The HTTP or HTTPS address clients can use to reach this server. Use a hostname with no path.',
   'web.account.title.hosted': 'Portico Account',
   'web.account.title.local': 'Server account',
   'web.account.fallbackName': 'This server’s account',

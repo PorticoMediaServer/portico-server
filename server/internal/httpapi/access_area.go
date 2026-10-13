@@ -29,7 +29,6 @@ type AccessArea struct {
 func (d Dependencies) accessAreaRoutes(mux *http.ServeMux) {
 	d.accessRoutes(mux)
 	d.diagnosticsRoutes(mux)
-	d.connectivityRoutes(mux)
 }
 
 // tierAuthorityTx is the administration counterpart of ownerAuthorityTx. It

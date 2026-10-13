@@ -25,7 +25,7 @@ test('signed secure LAN aliases preserve the LAN and public candidates',async()=
  assert.equal(verified.document.candidates[0].class,'lan');
  assert.equal(verified.document.candidates[1].baseUrl,'https://media.example:32500');
  assert.equal(privateRouteHost(alias),false);
- assert.throws(()=>routeOrigin('http://'+alias+':32500'));
+ assert.equal(routeOrigin('http://'+alias+':32500'),'http://'+alias+':32500');
 });
 test('signed LAN aliases require the exact dedicated HTTPS name',async()=>{
  for(const origin of [
@@ -46,4 +46,9 @@ test('signed LAN aliases require the exact dedicated HTTPS name',async()=>{
  const evidence=signedLAN('https://'+alias+':32500');
  await assert.rejects(verifyRoutes(evidence,key,{...expected,accountId:'other'}));
  await assert.rejects(verifyRoutes({...evidence,signature:'A'.repeat(86)},key,expected));
+});
+
+test('explicit HTTP origins work on public, overlay and IPv6 addresses',()=>{
+ for(const origin of ['http://media.example:32500','http://100.64.1.2:32500','http://203.0.113.9:32500','http://[2001:db8::9]:32500']) assert.equal(routeOrigin(origin),origin);
+ for(const origin of ['http://user:secret@media.example','http://media.example/path','http://media.example?secret=x']) assert.throws(()=>routeOrigin(origin));
 });

@@ -1,9 +1,13 @@
 package main
 
 import (
+	"context"
+	"io"
 	"log"
 	"net"
+	"net/http"
 	"portico.local/server/internal/networking"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -30,7 +34,9 @@ const maximumConnections = 2048
 // cappedListener bounds accepted connections.
 type cappedListener struct {
 	net.Listener
-	slots chan struct{}
+	slots        chan struct{}
+	ordinary     chan struct{}
+	ownerRequest func(*http.Request) bool
 	// held is published so the diagnostics and the log can say how close to the
 	// ceiling the server is running.
 	held      atomic.Int64
@@ -111,13 +117,22 @@ func (l *cappedListener) Held() (int64, uint64) { return l.held.Load(), l.deferr
 // cappedConn returns its slot exactly once, whatever closes it.
 type cappedConn struct {
 	net.Conn
-	listener *cappedListener
-	once     sync.Once
+	listener     *cappedListener
+	once         sync.Once
+	mu           sync.Mutex
+	ordinaryHeld bool
+	closed       bool
 }
 
 func (c *cappedConn) Close() error {
 	err := c.Conn.Close()
 	c.once.Do(func() {
+		c.mu.Lock()
+		c.closed = true
+		if c.ordinaryHeld {
+			<-c.listener.ordinary
+		}
+		c.mu.Unlock()
 		c.listener.held.Add(-1)
 		select {
 		case c.listener.slots <- struct{}{}:
@@ -135,3 +150,88 @@ func (c *cappedConn) Close() error {
 func (c *cappedConn) SetDeadline(t time.Time) error      { return c.Conn.SetDeadline(t) }
 func (c *cappedConn) SetReadDeadline(t time.Time) error  { return c.Conn.SetReadDeadline(t) }
 func (c *cappedConn) SetWriteDeadline(t time.Time) error { return c.Conn.SetWriteDeadline(t) }
+
+// consoleConnectionReserve is separate from the owner's ordinary connection
+// budget. Requests reveal their route only after TLS and HTTP headers arrive,
+// so these bounded slots let the console reach authorization even at capacity.
+const consoleConnectionReserve = 32
+
+type connectionKey struct{}
+
+func consoleConnections(inner net.Listener, limit int) *cappedListener {
+	l := capConnections(inner, limit+consoleConnectionReserve)
+	l.ordinary = make(chan struct{}, limit)
+	return l
+}
+
+func (l *cappedListener) context(ctx context.Context, conn net.Conn) context.Context {
+	if c, ok := networking.RawConnection(conn).(*cappedConn); ok {
+		return context.WithValue(ctx, connectionKey{}, c)
+	}
+	return ctx
+}
+
+func (l *cappedListener) protectConsole(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		c, _ := r.Context().Value(connectionKey{}).(*cappedConn)
+		// Route authorization still runs normally. The reserve also carries the
+		// console shell and sign-in, so an owner without a warm session can enter.
+		console := !strings.HasPrefix(r.URL.Path, "/v1/") || strings.HasPrefix(r.URL.Path, "/v1/admin/") || strings.HasPrefix(r.URL.Path, "/v1/auth/") || strings.HasPrefix(r.URL.Path, "/v1/direct/") || r.URL.Path == "/v1/server" || r.URL.Path == "/v1/system" || r.URL.Path == "/v1/capabilities" || r.URL.Path == "/v1/readiness" || strings.HasPrefix(r.URL.Path, "/v1/sessions") || r.URL.Path == "/v1/networking/connection" || strings.HasPrefix(r.URL.Path, "/v1/setup")
+		if !console && l.ownerRequest != nil {
+			console = l.ownerRequest(r)
+		}
+		if c != nil && console && r.ProtoMajor < 2 {
+			c.mu.Lock()
+			ordinary := c.ordinaryHeld
+			c.mu.Unlock()
+			if !ordinary {
+				w.Header().Set("Connection", "close")
+			}
+		}
+		if c != nil && !console && !c.admitOrdinary() {
+			w.Header().Set("Connection", "close")
+			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("Retry-After", "1")
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = io.WriteString(w, `{"error":{"code":"server_busy","message":"The server is busy. Try again shortly.","retryable":true}}`)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func (c *cappedConn) admitOrdinary() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.ordinaryHeld || c.listener.ordinary == nil {
+		return true
+	}
+	if c.closed {
+		return false
+	}
+	select {
+	case c.listener.ordinary <- struct{}{}:
+		c.ordinaryHeld = true
+		return true
+	default:
+		return false
+	}
+}
+
+// Idle reserve sockets are released promptly, so page loads and sign-in probes
+// cannot occupy all console slots for the normal keep-alive interval.
+func (l *cappedListener) state(conn net.Conn, state http.ConnState) {
+	if state != http.StateIdle {
+		return
+	}
+	c, ok := networking.RawConnection(conn).(*cappedConn)
+	if !ok {
+		return
+	}
+	c.mu.Lock()
+	ordinary := c.ordinaryHeld
+	c.mu.Unlock()
+	if !ordinary {
+		_ = conn.Close()
+	}
+}

@@ -52,10 +52,10 @@ function signedLANOrigin(origin:string):boolean {
  const u=new URL(origin);
  return privateRouteHost(u.hostname)||(u.protocol==='https:'&&/^l-[0-9a-f]{32}\.ptc-[a-z2-7]{19}[aq]\.direct\.getportico\.tv$/.test(u.hostname));
 }
-/** Origin only. No userinfo, path trick, query, IDNA ambiguity, or public HTTP. */
+/** Origin only. No userinfo, path trick, query, IDNA ambiguity, or ambiguous host spellings. */
 export function routeOrigin(raw:string):string {
- if(typeof raw!=='string'||raw.length>300||/[\\\s\x00-\x1f\x7f]/.test(raw)||!/^https?:\/\//i.test(raw))throw new RouteError('invalid_address','Enter an HTTPS server address or a private LAN address.');
- const u=new URL(raw);if(u.username||u.password||u.search||u.hash||u.pathname!=='/'||!u.hostname||u.hostname.endsWith('.')||u.hostname.includes('%')||!/^https?:$/.test(u.protocol)||(u.protocol==='http:'&&!privateRouteHost(u.hostname)))throw new RouteError('invalid_address','Public server addresses require HTTPS.');
+ if(typeof raw!=='string'||raw.length>300||/[\\\s\x00-\x1f\x7f]/.test(raw)||!/^https?:\/\//i.test(raw))throw new RouteError('invalid_address','Enter an HTTP or HTTPS server address.');
+ const u=new URL(raw);if(u.username||u.password||u.search||u.hash||u.pathname!=='/'||!u.hostname||u.hostname.endsWith('.')||u.hostname.includes('%')||!/^https?:$/.test(u.protocol))throw new RouteError('invalid_address','Enter a server address with no path.');
  // URL accepts legacy decimal/octal/hex IPv4. Do not silently reinterpret it.
  const authority=raw.slice(raw.indexOf('://')+3).replace(/\/$/,'');const host=authority.startsWith('[')?authority.slice(0,authority.indexOf(']')+1):authority.split(':')[0];
  if(host.toLowerCase()!==u.hostname)throw new RouteError('invalid_address','Use a canonical server address.');return u.origin;

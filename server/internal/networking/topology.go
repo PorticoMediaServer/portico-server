@@ -170,6 +170,9 @@ func observeTopology(ctx context.Context, bind, gateway, advertisedInterface str
 	if e != nil {
 		return out, e
 	}
+	if host == "" {
+		host = "::"
+	}
 	bound, e := netip.ParseAddr(host)
 	if e != nil {
 		return out, e
@@ -258,14 +261,9 @@ func observeTopology(ctx context.Context, bind, gateway, advertisedInterface str
 					if iface.Name != effectiveAdvertised {
 						continue
 					}
-				} else if VirtualInterface(iface.Name) && iface.Name != gatewayIface {
-					continue
 				}
 				out.LAN = append(out.LAN, ip.String())
 			} else if publicAddress(ip) {
-				if effectiveAdvertised == "" && VirtualInterface(iface.Name) && iface.Name != gatewayIface {
-					continue
-				}
 				out.Public = append(out.Public, ip.String())
 			}
 		}
