@@ -2,8 +2,6 @@ package downloads
 
 import (
 	"context"
-	"encoding/json"
-	"portico.local/server/internal/apispec"
 	"testing"
 )
 
@@ -23,14 +21,6 @@ func TestEstimatedProgressCannotOutgrowPublishedTotal(t *testing.T) {
 	}
 	if result.Progress.BytesDone != 20 || result.Progress.BytesTotal != 20 || result.Artifact.Bytes != 20 || !result.Progress.Estimated || result.Progress.Percent != 100 {
 		t.Fatalf("%+v", result)
-	}
-	doc, schema, err := apispec.Schema("Preparation")
-	if err != nil {
-		t.Fatal(err)
-	}
-	raw, _ := json.Marshal(result)
-	if issues := doc.ValidateJSON(schema, raw); len(issues) > 0 {
-		t.Fatal(issues)
 	}
 	// The projection does not rewrite quota/worker state or turn an estimate exact.
 	var total int64

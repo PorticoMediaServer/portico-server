@@ -652,6 +652,7 @@ table download_receipts
 table download_request_items
 table download_requests
 table download_settings
+table download_source_digests
 table dvr_catalog_provenance
 table dvr_catalog_retirements
 table dvr_cleanup_work

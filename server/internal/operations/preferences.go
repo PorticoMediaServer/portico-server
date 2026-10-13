@@ -114,6 +114,8 @@ var (
 	skipModes      = []string{"ask", "auto", "off"}
 	deliveryModes  = []string{"allow", "prefer", "never", "require"}
 	playbackSpeeds = []float64{0.5, 0.75, 1, 1.25, 1.5, 1.75, 2}
+	// Speech stays clear well past the speed at which video and music are worth watching or hearing.
+	audiobookSpeeds = []float64{0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.5, 3}
 )
 
 // SavedQualities is the domain of the two saved quality defaults: the
@@ -146,7 +148,7 @@ var preferenceRegistry = func() []PreferenceField {
 		prefEnum("playback.recapSkip", "ask", skipModes, ScopeProfileServer),
 		prefNumberEnum("playback.defaultSpeed", 1, playbackSpeeds, ScopeProfileServer),
 		prefNumberEnum("music.defaultSpeed", 1, playbackSpeeds, ScopeProfileServer),
-		prefNumberEnum("audiobooks.defaultSpeed", 1, playbackSpeeds, ScopeProfileServer),
+		prefNumberEnum("audiobooks.defaultSpeed", 1, audiobookSpeeds, ScopeProfileServer),
 		prefIntEnum("playback.sleepTimerMinutes", 0, []int{0, 30, 60, 90, 120}, ScopeProfileServer),
 		prefInt("playback.startedThresholdPercent", 5, 1, 25, ScopeProfileServer),
 		prefInt("playback.playedThresholdPercent", 95, 75, 100, ScopeProfileServer),

@@ -26,6 +26,11 @@ func metadataAttentionError(err error) error {
 	}
 	return bulkError(err)
 }
+
+// errMetadataUnavailable is what these routes answer on a server running
+// without the metadata service.
+func errMetadataUnavailable() error { return &apierror.Error{Code: "metadata_unavailable"} }
+
 func registerMetadataAttention(registry *apikit.Registry, d Dependencies) {
 	failures := []string{"unauthorized", "not_permitted", "not_found", "invalid_request", "revision_mismatch", "rate_limited", "internal"}
 	rate := &personalLimiter{}
@@ -40,6 +45,9 @@ func registerMetadataAttention(registry *apikit.Registry, d Dependencies) {
 				return metadata.AttentionPage{}, &apierror.Error{Code: "invalid_request"}
 			}
 			limit = n
+		}
+		if d.Metadata == nil {
+			return metadata.AttentionPage{}, errMetadataUnavailable()
 		}
 		out, e := d.Metadata.Attention(ctx, r.PathValue("id"), r.URL.Query().Get("cursor"), limit)
 		if e != nil {
@@ -56,6 +64,9 @@ func registerMetadataAttention(registry *apikit.Registry, d Dependencies) {
 		if !rate.allow(viewerScope(p)) {
 			return attentionReceipt{}, &apierror.Error{Code: "rate_limited"}
 		}
+		if d.Metadata == nil {
+			return attentionReceipt{}, errMetadataUnavailable()
+		}
 		e = d.Metadata.AttentionAction(ctx, r.PathValue("id"), in, metadata.MBActor{Authority: p.Authority, AccountID: p.AccountID, ProfileID: p.ProfileID}, func(tx *sql.Tx) error { return d.resourceAuthorize(tx, p, "") })
 		return attentionReceipt{Status: "accepted"}, metadataAttentionError(e)
 	})
@@ -66,6 +77,9 @@ func registerMetadataSettings(registry *apikit.Registry, d Dependencies) {
 	v1Route(registry, apikit.Metadata{ID: "get_metadata_settings", Method: "GET", Path: "/v1/admin/metadata/settings", Summary: "Read provider credentials status and artwork storage limit", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Cost: apikit.Constant, Status: 200, Errors: failures}, func(ctx context.Context, r *http.Request, _ noBody) (metadata.MetadataSettings, error) {
 		if _, e := d.owner(r); e != nil {
 			return metadata.MetadataSettings{}, e
+		}
+		if d.Metadata == nil {
+			return metadata.MetadataSettings{}, errMetadataUnavailable()
 		}
 		out, e := d.Metadata.MetadataSettings(ctx)
 		if e != nil {
@@ -78,6 +92,9 @@ func registerMetadataSettings(registry *apikit.Registry, d Dependencies) {
 		p, e := d.owner(r)
 		if e != nil {
 			return metadata.MetadataSettings{}, e
+		}
+		if d.Metadata == nil {
+			return metadata.MetadataSettings{}, errMetadataUnavailable()
 		}
 		out, e := d.Metadata.UpdateMetadataSettings(ctx, in, func(tx *sql.Tx) error { return d.resourceAuthorize(tx, p, "") })
 		return out, metadataAttentionError(e)
@@ -104,6 +121,9 @@ func registerMetadataRefresh(registry *apikit.Registry, d Dependencies) {
 			if e = d.resourceAuthorize(write.Tx(), p, ""); e != nil {
 				return refreshReceipt{}, e
 			}
+			if d.Metadata == nil {
+				return refreshReceipt{}, errMetadataUnavailable()
+			}
 			e = d.Metadata.QueueRefreshTx(ctx, write.Tx(), r.PathValue("id"))
 			if e != nil {
 				return refreshReceipt{}, metadataAttentionError(e)
@@ -119,6 +139,9 @@ func registerScreenMetadataReads(registry *apikit.Registry, d Dependencies) {
 		v1Route(registry, apikit.Metadata{ID: "get_" + target.route + "_screen_metadata", Method: "GET", Path: "/v1/" + target.route + "/{id}/metadata/screen", Summary: "Read match evidence, field provenance and provider candidates", Access: apikit.Owner, Requires: apikit.ScopeLibrary, Lane: apikit.Browsing, Cost: apikit.PageSized, Status: 200, Errors: []string{"unauthorized", "not_permitted", "not_found", "internal"}}, func(ctx context.Context, r *http.Request, _ noBody) (metadata.ScreenState, error) {
 			if _, e := d.owner(r); e != nil {
 				return metadata.ScreenState{}, e
+			}
+			if d.Metadata == nil {
+				return metadata.ScreenState{}, errMetadataUnavailable()
 			}
 			out, e := d.Metadata.ScreenState(ctx, kind, r.PathValue("id"))
 			if e != nil {

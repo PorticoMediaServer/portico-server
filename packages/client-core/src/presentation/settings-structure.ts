@@ -159,7 +159,9 @@ type AuthoredSection = Readonly<{id: string; title?: MessageId; description?: Me
 type AuthoredPage = Readonly<{id: string; title: MessageId; icon: IconId; tabs?: readonly SettingsTab[]; sections: readonly AuthoredSection[]}> & Only;
 
 const seconds = (...values: number[]): SettingsChoice[] => values.map(value => ({value, label: 'pref.unit.seconds', labelValues: {count: value}}));
-const speeds: SettingsChoice[] = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2].map(value => (value === 1 ? {value, label: 'pref.unit.speedNormal'} : {value, label: 'pref.unit.speed', labelValues: {value}}));
+const speedChoice = (value: number): SettingsChoice => (value === 1 ? {value, label: 'pref.unit.speedNormal'} : {value, label: 'pref.unit.speed', labelValues: {value}});
+const speeds: SettingsChoice[] = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2].map(speedChoice);
+const audiobookSpeeds: SettingsChoice[] = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.5, 3].map(speedChoice);
 const skipChoices = (key: string): SettingsChoice[] => (['ask', 'auto', 'off'] as const).map(value => ({value, label: `pref.value.${key}.${value}` as MessageId}));
 /** The saved default qualities (`quality.home`, `quality.remote`): the original, automatic, then the server's ladder. */
 const qualityChoices: SettingsChoice[] = [
@@ -208,7 +210,7 @@ const accountPages: readonly AuthoredPage[] = [
       // No music speed: a song plays at the speed it was recorded.
       {id: 'speed', title: 'settings.section.speed', needs: c => c.playbackSpeed !== false, rows: [
         pref('playback.defaultSpeed', 'settings.row.videoSpeed', {type: 'choice', choices: speeds}),
-        pref('audiobooks.defaultSpeed', 'settings.row.audiobookSpeed', {type: 'choice', choices: speeds}),
+        pref('audiobooks.defaultSpeed', 'settings.row.audiobookSpeed', {type: 'choice', choices: audiobookSpeeds}),
       ]},
       {id: 'advanced', title: 'settings.section.advanced', advanced: true, rows: [
         pref('playback.playedThresholdPercent', 'settings.row.watchedThreshold', {type: 'choice', choices: [80, 85, 90, 95, 100].map(value => ({value, label: 'pref.unit.percent' as MessageId, labelValues: {value}}))}, {help: 'pref.help.playback.playedThresholdPercent'}),

@@ -60,16 +60,20 @@ func TestTheWebAppPolicyNamesOnlyTheCastSendersScripts(t *testing.T) {
 }
 
 func TestADownloadsNameIsQuotedSafely(t *testing.T) {
-	for name, want := range map[string]string{
-		"Film (2020).mkv":   `attachment; filename="Film (2020).mkv"; filename*=UTF-8''Film%20%282020%29.mkv`,
-		`He said "no".mkv`:  `attachment; filename="He said _no_.mkv"; filename*=UTF-8''He%20said%20%22no%22.mkv`,
-		"a\\b/c.mkv":        `attachment; filename="a_b_c.mkv"; filename*=UTF-8''a%5Cb%2Fc.mkv`,
-		"Amélie.mkv":        `attachment; filename="Am_lie.mkv"; filename*=UTF-8''Am%C3%A9lie.mkv`,
-		"line\r\nbreak.mkv": `attachment; filename="line__break.mkv"; filename*=UTF-8''line%0D%0Abreak.mkv`,
-		"":                  `attachment; filename="download"; filename*=UTF-8''`,
+	for _, c := range []struct{ readable, plain, want string }{
+		{"", "Film (2020).mkv", `attachment; filename="Film (2020).mkv"`},
+		{"", `He said "no".mkv`, `attachment; filename="He said _no_.mkv"; filename*=UTF-8''He%20said%20%22no%22.mkv`},
+		{"", "a\\b/c.mkv", `attachment; filename="a_b_c.mkv"; filename*=UTF-8''a%5Cb%2Fc.mkv`},
+		{"", "Amélie.mkv", `attachment; filename="Am_lie.mkv"; filename*=UTF-8''Am%C3%A9lie.mkv`},
+		{"", "line\r\nbreak.mkv", `attachment; filename="line__break.mkv"; filename*=UTF-8''line%0D%0Abreak.mkv`},
+		{"", "", `attachment; filename="download"`},
+		// A readable name beside a plain one: the readable one is only ever encoded.
+		{"Amélie (2001).mkv", "dl_abc.mkv", `attachment; filename="dl_abc.mkv"; filename*=UTF-8''Am%C3%A9lie%20%282001%29.mkv`},
+		{"He said \"no\"\r\nX-Injected: 1", "dl\"\r\n.mkv", `attachment; filename="dl___.mkv"; filename*=UTF-8''He%20said%20%22no%22%0D%0AX-Injected%3A%201`},
+		{"dl_abc.mkv", "dl_abc.mkv", `attachment; filename="dl_abc.mkv"`},
 	} {
-		if got := attachmentDisposition(name); got != want {
-			t.Errorf("%q:\n got  %s\n want %s", name, got, want)
+		if got := contentDisposition(c.readable, c.plain); got != c.want {
+			t.Errorf("%q, %q:\n got  %s\n want %s", c.readable, c.plain, got, c.want)
 		}
 	}
 }

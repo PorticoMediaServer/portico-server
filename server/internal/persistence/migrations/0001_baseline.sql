@@ -2635,7 +2635,8 @@ CREATE TABLE download_receipt_keys(
 CREATE TABLE download_preparations(
  id TEXT PRIMARY KEY,
  profile_key TEXT NOT NULL, authority TEXT NOT NULL, account_id TEXT NOT NULL, profile_id TEXT NOT NULL,
- item_id INTEGER NOT NULL, library_id TEXT NOT NULL,
+ item_id INTEGER NOT NULL, item_public TEXT NOT NULL DEFAULT '', library_id TEXT NOT NULL,
+ title_json TEXT NOT NULL DEFAULT '',
  quality TEXT NOT NULL, origin TEXT NOT NULL CHECK(origin IN('item','items','container','next')),
  batch_id TEXT NOT NULL DEFAULT '',
  state TEXT NOT NULL CHECK(state IN('queued','running','ready','paused','failed','unavailable','cancelled','expired')),
@@ -2643,7 +2644,7 @@ CREATE TABLE download_preparations(
  artifact_kind TEXT NOT NULL DEFAULT '' CHECK(artifact_kind IN('','source','prepared')),
  artifact_ref TEXT NOT NULL DEFAULT '', artifact_digest TEXT NOT NULL DEFAULT '',
  artifact_container TEXT NOT NULL DEFAULT '',
- source_version_json TEXT NOT NULL DEFAULT '',
+ source_modified_ns INTEGER NOT NULL DEFAULT 0,
  hash_state BLOB,
  bytes_done INTEGER NOT NULL DEFAULT 0 CHECK(bytes_done>=0),
  bytes_total INTEGER NOT NULL DEFAULT 0 CHECK(bytes_total>=0),
@@ -2655,13 +2656,15 @@ CREATE TABLE download_grants(
  hash TEXT PRIMARY KEY,
  preparation_id TEXT NOT NULL REFERENCES download_preparations(id) ON DELETE CASCADE,
  profile_key TEXT NOT NULL, item_id INTEGER NOT NULL,
+ artifact_digest TEXT NOT NULL DEFAULT '',
  issued_ms INTEGER NOT NULL, expires_ms INTEGER NOT NULL,
  first_use_ms INTEGER NOT NULL DEFAULT 0, uses INTEGER NOT NULL DEFAULT 0,
  revoked INTEGER NOT NULL DEFAULT 0) STRICT;
 CREATE TABLE download_receipts(
  id TEXT PRIMARY KEY,
  profile_key TEXT NOT NULL, authority TEXT NOT NULL, account_id TEXT NOT NULL, profile_id TEXT NOT NULL,
- item_id INTEGER NOT NULL, preparation_id TEXT NOT NULL, quality TEXT NOT NULL,
+ item_id INTEGER NOT NULL, item_public TEXT NOT NULL DEFAULT '', library_id TEXT NOT NULL DEFAULT '',
+ preparation_id TEXT NOT NULL, quality TEXT NOT NULL,
  artifact_digest TEXT NOT NULL, artifact_bytes INTEGER NOT NULL CHECK(artifact_bytes>0),
  key_id TEXT NOT NULL REFERENCES download_receipt_keys(id),
  issued_ms INTEGER NOT NULL, expires_ms INTEGER NOT NULL,
@@ -2671,6 +2674,12 @@ CREATE TABLE download_receipt_sequence(singleton INTEGER PRIMARY KEY CHECK(singl
 CREATE TABLE download_progress_marks(
  profile_key TEXT NOT NULL, item_id INTEGER NOT NULL, observed_ms INTEGER NOT NULL,
  PRIMARY KEY(profile_key,item_id)) STRICT;
+-- The SHA-256 of a library file, remembered for as long as the file keeps the
+-- size and modified time it was read at. Every viewer's original download of
+-- that file shares it, so the file is read once, in place, and never copied.
+CREATE TABLE download_source_digests(
+ asset_id TEXT PRIMARY KEY, size INTEGER NOT NULL CHECK(size>0), modified_ns INTEGER NOT NULL,
+ sha256 TEXT NOT NULL, hashed_ms INTEGER NOT NULL) STRICT;
 CREATE TABLE admin_documents(scope TEXT PRIMARY KEY,revision INTEGER NOT NULL CHECK(revision>0),body TEXT NOT NULL,updated_ms INTEGER NOT NULL) STRICT;
 CREATE TABLE admin_receipts(scope TEXT NOT NULL,operation_id TEXT NOT NULL,digest TEXT NOT NULL,result TEXT NOT NULL,created_ms INTEGER NOT NULL,PRIMARY KEY(scope,operation_id)) STRICT;
 CREATE TABLE admin_dvr_groups(
@@ -3692,6 +3701,7 @@ CREATE TABLE download_requests(
  state TEXT NOT NULL DEFAULT 'capturing',error_code TEXT NOT NULL DEFAULT '',
  selection_fence TEXT NOT NULL,cursor_key TEXT NOT NULL DEFAULT '',cursor_id TEXT NOT NULL DEFAULT '',
  total INTEGER NOT NULL DEFAULT 0,admitted INTEGER NOT NULL DEFAULT 0,
+ restarts INTEGER NOT NULL DEFAULT 0,
  created_ms INTEGER NOT NULL,updated_ms INTEGER NOT NULL,
  UNIQUE(profile_key,operation_id)
 ) STRICT;

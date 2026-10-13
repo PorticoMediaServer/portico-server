@@ -613,12 +613,12 @@ func run() (runErr error) {
 	defer preparedVersions.Close()
 	donePrepared(nil)
 	player.Prepared = preparedVersions
-	// Offline downloads read original bytes through the same isolated media
-	// process playback uses, and prepared bytes through the producer that owns
-	// them. It produces nothing itself.
-	offlineDownloads, e := downloads.New(downloads.Options{DB: db, SourceSnapshotRoot: filepath.Join(state, "downloads", "source-snapshots"), OpenSource: func(ctx context.Context, path string, size, modified int64) (io.ReadSeekCloser, error) {
+	// Offline downloads read original bytes, in place, through the same isolated
+	// media process playback uses, and prepared bytes through the producer that
+	// owns them. It produces nothing itself and copies nothing.
+	offlineDownloads, e := downloads.New(downloads.Options{DB: db, OpenSource: func(ctx context.Context, path string, size, modified int64) (io.ReadSeekCloser, error) {
 		return storeIO.OpenPlayback(ctx, path, size, modified)
-	}, Artifacts: preparedVersions, Optimizer: preparedVersions})
+	}, Artifacts: preparedVersions, Optimizer: preparedVersions, Plays: cat.AcceptPlaybackProgressAt})
 	if e != nil {
 		return e
 	}

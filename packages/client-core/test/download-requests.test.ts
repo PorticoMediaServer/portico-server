@@ -1,12 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createDownloadRequest, getDownloadRequest, isDownloadRequestTerminal, parseDownloadRequest, pollDownloadRequest} from '../src/download-requests.ts';
+import {createDownloadRequest, getDownloadRequest, isDownloadRequestTerminal, parseDownloadRequest, parseDownloadRequestList, pollDownloadRequest} from '../src/download-requests.ts';
 import {resetSkippedParts, skippedParts} from '../src/tolerant.ts';
 
 const sha = 'b'.repeat(64);
 function preparation(id: string): any {
   return {
     id: 'prep-' + id, itemId: id, libraryId: 'lib', profileId: 'profile', quality: 'original', origin: 'container',
+    title: {kind: 'episode', title: 'Episode ' + id, onServer: true},
     batchId: 'batch', state: 'ready', reason: '',
     artifact: {kind: 'prepared', ref: 'version', sha256: sha, bytes: 4096, estimated: false, container: 'mp4', contentType: 'video/mp4', fileName: id + '.mp4'},
     progress: {bytesDone: 4096, bytesTotal: 4096, bytesTotalEstimated: false, percent: 100, etaSeconds: null},
@@ -75,9 +76,21 @@ test('polling ends complete and reports a failed capture without effects', async
   const api = fakeApi({'GET /v1/downloads/requests/req-1': () => (++polls < 2 ? request({state: 'capturing'}) : request({state: 'complete', total: 1, totalKnown: true, ready: 1, items: [{itemId: 'e1', preparation: preparation('e1')}]}))});
   const done = await pollDownloadRequest(api, 'req-1', {intervalMs: 500, timeoutMs: 10000});
   assert.equal(done.state, 'complete');
-  const failed = fakeApi({'GET /v1/downloads/requests/req-9': () => request({requestId: 'req-9', state: 'failed', total: 0, totalKnown: true, errorCode: 'selection_changed'})});
+  const failed = fakeApi({'GET /v1/downloads/requests/req-9': () => request({requestId: 'req-9', state: 'failed', total: 0, totalKnown: true, errorCode: 'authority_revoked'})});
   const gone = await pollDownloadRequest(failed, 'req-9', {intervalMs: 500});
-  assert.equal(gone.errorCode, 'selection_changed');
+  assert.equal(gone.errorCode, 'authority_revoked');
+});
+
+test('a device lists only its own requests, and duplicate rows are a contract break', () => {
+  const summary = {requestId: 'req-1', state: 'preparing', target: {kind: 'season', id: 's-1'}, title: 'Season 1', quality: 'original', createdAt: '2026-09-16T10:00:00Z'};
+  const listed = parseDownloadRequestList({requests: [summary]});
+  assert.equal(listed[0].requestId, 'req-1');
+  assert.equal(listed[0].target.kind, 'season');
+  assert.equal(listed[0].title, 'Season 1');
+  // The same request cannot appear twice in the list a device reconciles against.
+  assert.throws(() => parseDownloadRequestList({requests: [summary, {...summary}]}));
+  assert.throws(() => parseDownloadRequestList({requests: [{...summary, state: 'lost'}]}));
+  assert.throws(() => parseDownloadRequestList({requests: [{...summary, target: {kind: 'episode', id: 'e-1'}}]}));
 });
 
 test('a repeated member is read once, and an error code that cannot be read is left out', () => {
