@@ -47,9 +47,14 @@ test('a field this app does not know is ignored and never kept',async()=>{
 });
 test('another sign-in that cannot be read is left out and the rest of the list is kept',async()=>{
  resetSkippedParts();
- const snapshot=await review(page([current,{...row,id:'tv',mode:'television'},{...row,id:'paused',status:'suspended'},{...row,id:'undated',createdAt:'yesterday'},'not a row',{...row,id:'revoked',status:'active',revokedAt:'2026-09-06T10:00:00Z'},{...row,id:''},row,{...row,status:'expired'}]));
+ const snapshot=await review(page([current,{...row,id:'undated',createdAt:'yesterday'},'not a row',{...row,id:'revoked',status:'active',revokedAt:'2026-09-06T10:00:00Z'},{...row,id:''},row,{...row,status:'expired'}]));
  assert.equal(snapshot.phase,'ready');assert.deepEqual(snapshot.items.map(item=>item.id),['current','other']);assert.equal(snapshot.items[1].status,'active');
- assert.deepEqual(skippedParts(),[{document:'account-sessions',part:'items',count:7}]);
+ assert.deepEqual(skippedParts(),[{document:'account-sessions',part:'items',count:5}]);
+});
+test('another sign-in is never hidden for being of a kind or in a state this app does not know',async()=>{
+ const snapshot=await review(page([current,{...row,id:'tv',mode:'television'},{...row,id:'paused',status:'suspended'},{...row,id:'ended',status:'withdrawn',revokedAt:'2026-09-06T10:00:00Z'}]));
+ assert.equal(snapshot.phase,'ready');
+ assert.deepEqual(snapshot.items.map(item=>[item.id,item.mode,item.status]),[['current','browser','active'],['tv','native','active'],['paused','native','active'],['ended','native','revoked']]);
 });
 test('this sign-in is never left out or guessed at: its row is exact or the list is refused',async()=>{
  for(const items of [[{...current,mode:'television'},row],[{...current,status:'expired'},row],[{...current,current:false},row],[{...current,createdAt:'yesterday'},row],[current,{...row,current:'yes'}],[current,{...row,current:undefined}],[current,{...row,id:'',current:true}],[current,current,row]]){
@@ -62,6 +67,6 @@ test('the page size, continuation and observation time are still exact',async()=
   const snapshot=await review(raw);assert.equal(snapshot.error?.code,'invalid_session_review');assert.equal(snapshot.items.length,0);
  }
  // A full page keeps its continuation even when one of its rows was left out.
- const snapshot=await review(page([...forty.slice(1),{...row,id:'tv',mode:'television'}],'next-page'));
+ const snapshot=await review(page([...forty.slice(1),{...row,id:'undated',createdAt:'yesterday'}],'next-page'));
  assert.equal(snapshot.phase,'ready');assert.equal(snapshot.items.length,39);assert.equal(snapshot.nextCursor,'next-page');
 });
