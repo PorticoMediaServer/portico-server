@@ -49,6 +49,8 @@ export type SettingsCapabilities = Readonly<{
   deviceName?: boolean;
   /** Password and two-step verification can be changed here. Absent: a server account that is not a Portico Account member. */
   manageSignIn?: boolean;
+  /** This viewer may manage the account's devices. Absent: a local account. */
+  manageDevices?: boolean;
   /** The server offers Live TV. */
   liveTV?: boolean;
   /** This device's player can change playback speed. Absent: it can (a Roku's player cannot). */
@@ -187,7 +189,7 @@ const accountPages: readonly AuthoredPage[] = [
       {id: 'signIn', title: 'settings.section.signIn', rows: [custom('password', 'settings.row.password'), custom('twoStep', 'settings.row.twoStep')], platforms: ['web', 'phone'], needs: c => c.manageSignIn ?? (!!c.localAccount && !c.porticoMember)},
       // What the Portico Account itself manages, and this server's link to it; a client with nothing to say draws nothing.
       {id: 'porticoAccount', rows: [custom('porticoAccount', 'settings.row.porticoAccount')]},
-      {id: 'devices', title: 'settings.section.devices', rows: [custom('devices', 'settings.section.devices')], needs: c => !!c.localAccount},
+      {id: 'devices', title: 'settings.section.devices', rows: [custom('devices', 'settings.section.devices')], needs: c => c.manageDevices ?? !!c.localAccount},
       // For a member's own scripts and apps: kept out of the way until asked for. The owner makes API keys under Server › Integrations.
       {id: 'tokens', title: 'api.tokens.title', advanced: true, rows: [custom('accessTokens', 'api.tokens.title')], platforms: ['web'], needs: c => !!c.accessTokens},
       {id: 'session', rows: [{kind: 'action', id: 'signOut', label: 'action.signOut', icon: 'signOut', destructive: true}]},

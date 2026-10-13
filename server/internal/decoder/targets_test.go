@@ -377,3 +377,38 @@ func TestHDRBitmapBurnKeepsTenBitPlane(t *testing.T) {
 	args = append(args, "-map", graph.VideoMap, "-frames:v", "24", "-an", filepath.Join(dir, "burn.mp4"))
 	runTinyMedia(t, ctx, binary, args, dir)
 }
+
+func TestSVTFixedQualityUsesACappedQualityMode(t *testing.T) {
+	target := ConversionTarget{VideoCodec: "av1", RateControl: "bitrate", VideoBitrateBPS: 900000}
+	args := videoRateArgs(target, "libsvtav1", "medium")
+	if argValue(args, "-crf") != "28" || argValue(args, "-b:v") != "0" || argValue(args, "-maxrate") != "900000" || argValue(args, "-bufsize") != "1800000" {
+		t.Fatal(args)
+	}
+}
+
+func TestSVTFixedQualityEncodesUnderABitrateCeiling(t *testing.T) {
+	binary := decodertest.QualifiedFFmpeg(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	facts, err := ProbeToolchain(ctx, binary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !facts.Encoders["libsvtav1"] {
+		t.Skip("SVT AV1 is not available")
+	}
+	target := ConversionTarget{VideoCodec: "av1", RateControl: "bitrate", VideoBitrateBPS: 900000, Width: 160, Height: 90}
+	graph, err := BuildConversion(ConversionRequest{Target: &target, ConvertVideo: true, Toolchain: &facts})
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	output := filepath.Join(dir, "sample.mp4")
+	args := []string{"-nostdin", "-v", "error", "-f", "lavfi", "-i", "testsrc2=s=160x90:r=24:d=1"}
+	args = append(args, graph.Video...)
+	args = append(args, "-an", "-f", "mp4", output)
+	runTinyMedia(t, ctx, binary, args, dir)
+	if info, err := os.Stat(output); err != nil || info.Size() == 0 {
+		t.Fatal("empty conversion", err)
+	}
+}

@@ -2,6 +2,8 @@ import React, {useEffect, useMemo, useState, useSyncExternalStore} from 'react';
 import {PlayerOffersService, type PlayerOffersData, type PlayerOfferedStream} from '@core/player-offers.ts';
 import type {PreparedChoice} from '@core/prepared-media.ts';
 import {fixedQualities, heightClass, qualityRequest, type PlaybackChoices as StartChoices} from '@core/playback-v1/choices.ts';
+import {dependsOn} from '@core/freshness-hub.ts';
+import {useFreshDocument} from '../../app/freshness';
 import {useSession} from '../../app/session';
 import {useViewerScope} from '../../app/viewer-scope';
 import {Select} from '../../ui';
@@ -31,11 +33,21 @@ export function PlaybackChoices({libraryId, itemId, onChange, compact, editions}
   const snapshot = useSyncExternalStore(service.subscribe, service.getSnapshot);
   useEffect(() => { void service.select({libraryId, itemId}).catch(() => {}); return () => { try { service.cancel(); } catch { /* disposed */ } }; }, [service, libraryId, itemId]);
   const data = snapshot.data;
+  useFreshDocument([dependsOn.content(libraryId)], async () => {
+    await service.refresh({quiet: true});
+    const current = service.getSnapshot();
+    if (current.error) throw current.error;
+  }, () => !!service.getSnapshot().data);
   const i18n = useI18n();
   const {t} = i18n;
   const [version, setVersion] = useState<string>('');
   const [audio, setAudio] = useState<string>('');
   const [subtitle, setSubtitle] = useState<string>('');
+  useEffect(() => {
+    if (data && version && !data.sources.some(s => s.id === version) && !data.preparedVersions.some(v => `prepared:${v.id}` === version && v.selectable)) {
+      setVersion(''); setAudio(''); setSubtitle('');
+    }
+  }, [data, version]);
   // Defaults from the offers: the current (or first available) source, its default audio stream, subtitles off.
   const source = useMemo(() => data ? (data.sources.find(x => x.id === (version || data.current?.sourceId)) ?? data.sources.find(x => x.available) ?? data.sources[0]) : undefined, [data, version]);
   const audioStreams = useMemo(() => source?.streams.filter(x => x.type === 'audio' && x.enabled) ?? [], [source]);

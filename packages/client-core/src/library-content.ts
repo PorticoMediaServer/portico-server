@@ -289,7 +289,7 @@ function projection(raw: unknown, expected: ContentRoute, bound: ContentScope, p
   if (!sections.length && (raw.sections as unknown[]).length) invalid();
   let entity: ContentEntry | undefined;
   // The page's own entity is exact (it is what was asked for); it never plays, so playback on it is ignored.
-  if(raw.entity!==undefined && raw.entity!==null && !unknownContentEntryKind(raw.entity)){entity=entry(raw.entity);if(!['artist','album','book','disc'].includes(expected.view)||entity.kind!==expected.view||entity.id!==expected.entityId||entity.libraryId!==expected.libraryId)invalid();if(entity.playback!==undefined){const{playback:_ignored,...rest}=entity;entity=Object.freeze(rest);}}
+  if(raw.entity!==undefined && raw.entity!==null && !unknownContentEntryKind(raw.entity)){entity=entry(raw.entity);if(!['artist','album','book','disc','author','book_series'].includes(expected.view)||entity.kind!==expected.view||entity.id!==expected.entityId||entity.libraryId!==expected.libraryId)invalid();if(entity.playback!==undefined){const{playback:_ignored,...rest}=entity;entity=Object.freeze(rest);}}
   // The listening actions and the empty-state words are optional: unreadable ones are left out.
   let listening: ListeningJourney | undefined;
   if (raw.listening !== undefined && raw.listening !== null) { try { listening = parseListeningJourney(raw.listening, s.libraryId as string); } catch { noteSkipped('content', 'listening'); } }

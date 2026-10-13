@@ -69,7 +69,7 @@ export type DirectPending = {api: HttpLocalApi; snapshot?: DirectSnapshot; accou
 /** A direct sign-in that needs one more answer: a two-step code, a new password, or the owner's approval. */
 export type DirectStep = {kind: 'code' | 'new-password' | 'device-pending'};
 /** `hostedAccountId`: a Portico Account member of this server; its password and two-step verification live at the Portico Account. */
-export type LocalAccount = {username: string; hostedAccountId?: string; /** INT M6: the owner is a Portico Account but Hosted's custody of the server's registration isn't with it yet. */ custodyPending?: boolean; profiles: readonly {id: string; name: string; art: string; primary: boolean; pinRequired: boolean}[]};
+export type LocalAccount = {username: string; canManage: boolean; managementFamily: string; hostedAccountId?: string; /** INT M6: the owner is a Portico Account but Hosted's custody of the server's registration isn't with it yet. */ custodyPending?: boolean; profiles: readonly {id: string; name: string; art: string; primary: boolean; pinRequired: boolean}[]};
 export type AccountState = ReturnType<ReturnType<typeof browserAccount>['service']['getSnapshot']>;
 
 export type SessionValue = {
@@ -477,9 +477,9 @@ export function SessionProvider({children}: {children: React.ReactNode}) {
           .catch(() => {});
         if (record.session.viewer.authority === 'local')
           void local
-            .request<{account: {username: string; hostedAccountId?: string}; custodyPending?: boolean; profiles: {id: string; name: string; art: string; primary: boolean; pinRequired: boolean}[]}>('/v1/direct')
+            .request<{canManage: boolean; account: {username: string; hostedAccountId?: string}; custodyPending?: boolean; profiles: {id: string; name: string; art: string; primary: boolean; pinRequired: boolean}[]}>('/v1/direct')
             .then(snap => {
-              if (viewer.getSnapshot().session?.accessToken === record.session.accessToken) setLocal({username: snap.account.username, hostedAccountId: snap.account.hostedAccountId, custodyPending: snap.custodyPending === true, profiles: snap.profiles.map(p => ({id: p.id, name: p.name, art: p.art, primary: p.primary, pinRequired: p.pinRequired}))});
+              if (viewer.getSnapshot().session?.accessToken === record.session.accessToken) setLocal({canManage: snap.canManage, managementFamily: record.session.sessionFamilyId, username: snap.account.username, hostedAccountId: snap.account.hostedAccountId, custodyPending: snap.custodyPending === true, profiles: snap.profiles.map(p => ({id: p.id, name: p.name, art: p.art, primary: p.primary, pinRequired: p.pinRequired}))});
               const profile = snap.profiles.find(p => p.id === record.session.viewer.profileId);
               if (profile) void knownServers.setProfile(record.session.viewer.serverId, {id: profile.id, name: profile.name}).catch(() => {});
             })
@@ -658,7 +658,7 @@ export function SessionProvider({children}: {children: React.ReactNode}) {
       return 'step';
     }
     const {snapshot, session} = result;
-    setLocal({username: snapshot.account.username, hostedAccountId: snapshot.account.hostedAccountId, custodyPending: snapshot.custodyPending === true, profiles: snapshot.profiles.map(p => ({id: p.id, name: p.name, art: p.art, primary: p.primary, pinRequired: p.pinRequired}))});
+    setLocal({canManage: snapshot.canManage, managementFamily: session.sessionFamilyId, username: snapshot.account.username, hostedAccountId: snapshot.account.hostedAccountId, custodyPending: snapshot.custodyPending === true, profiles: snapshot.profiles.map(p => ({id: p.id, name: p.name, art: p.art, primary: p.primary, pinRequired: p.pinRequired}))});
     if (result.passwordChangeRequired) {
       stepRef.current = {connected, username, password, session, again, hosted};
       setDirectStep({kind: 'new-password'});

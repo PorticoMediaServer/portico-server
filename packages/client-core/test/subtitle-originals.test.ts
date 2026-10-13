@@ -75,3 +75,16 @@ test('the font list: numbered fonts under the same track only', async () => {
   const many = JSON.stringify({fonts: Array.from({length: 80}, (_, i) => ({name: 'f', url: root + '/fonts/' + i}))});
   assert.equal((await readSubtitleFontList(fetching(response(many)), 'u', root + '/fonts', new AbortController().signal)).length, 32);
 });
+
+test('an unselected manifest advertises rendering before a media grant is pinned', () => {
+  for (const format of ['ass', 'pgs', 'vobsub', 'dvb'] as const) {
+    const resource = {deliveries: [{format}]};
+    assert.equal(drawnRenderingFor(resource, ['text', format]), format);
+    assert.equal(drawnRenderingFor(resource, ['text']), undefined);
+    assert.deepEqual(subtitleOriginals(resource), [], 'a rendering offer grants no file access');
+    assert.equal(selectedSubtitleOriginal({renderer: 'client', mode: 'track', selected: resource}), null, 'a selected plan still needs valid media addresses');
+  }
+  for (const entry of [{format: 'unknown'}, {format: 'pgs', url: ''}, {format: 'pgs', url: 'https://elsewhere.example/sub.sup'}, {format: 'vobsub', companionUrl: '/elsewhere'}, {format: 'ass', fontsUrl: '/elsewhere'}]) {
+    assert.equal(drawnRenderingFor({deliveries: [entry]}, ['ass', 'pgs', 'vobsub', 'dvb']), undefined);
+  }
+});

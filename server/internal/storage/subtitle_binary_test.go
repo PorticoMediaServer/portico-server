@@ -25,9 +25,17 @@ func TestSubtitleBinaryReaderDoesNotChangeMetadataLimit(t *testing.T) {
 		t.Fatal(got, e)
 	}
 	rooted := WithScanInput(context.Background(), client, "source", InventoryRequest{Root: filepath.Dir(path)})
-	got, e = client.ReadSubtitleBinary(rooted, "rooted-subtitle", path, 32<<20)
-	if e != nil || !bytes.Equal(got, content) {
-		t.Fatal("rooted subtitle", got, e)
+	for _, limit := range []int64{32 << 20, 128 << 20, 512 << 20} {
+		got, e = client.ReadSubtitleBinary(rooted, "rooted-subtitle", path, limit)
+		if e != nil || !bytes.Equal(got, content) {
+			t.Fatal("rooted subtitle", limit, got, e)
+		}
+	}
+	if _, e = client.ReadSubtitleBinary(rooted, "rooted-subtitle", path, 513<<20); e == nil {
+		t.Fatal("rooted subtitle binary bound widened")
+	}
+	if _, e = client.ReadSmall(rooted, "rooted-metadata", path, 128<<20); e == nil {
+		t.Fatal("rooted metadata accepted the subtitle binary bound")
 	}
 
 	if _, e = client.ReadSmall(context.Background(), "metadata", path, 32<<20); e == nil {

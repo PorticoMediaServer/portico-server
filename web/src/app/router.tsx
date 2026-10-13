@@ -41,12 +41,11 @@ const ClaimApprovalScreen = split(() => import('../screens/auth/ClaimApproval').
 const DownloadsScreen = split(() => import('../screens/downloads/Downloads').then(m => m.DownloadsScreen));
 // Developer screens exist in development only. `import.meta.env.DEV` is a constant at build time,
 // so a production build drops these imports and never emits the screens' files.
-const devOnly = (load: () => Promise<React.ComponentType<any>>) => (import.meta.env.DEV ? split(load) : NotFoundScreen);
-const GalleryScreen = devOnly(() => import('../screens/dev/Gallery').then(m => m.GalleryScreen));
-const WindowedLab = devOnly(() => import('../dev/WindowedLab').then(m => m.WindowedLab));
-const ChannelsLab = devOnly(() => import('../dev/ChannelsLab').then(m => m.ChannelsLab));
-const BrowseLab = devOnly(() => import('../dev/BrowseLab').then(m => m.BrowseLab));
-const FeaturesGallery = devOnly(() => import('../screens/dev/Features').then(m => m.FeaturesGallery));
+const GalleryScreen = import.meta.env.DEV ? split(() => import('../screens/dev/Gallery').then(m => m.GalleryScreen)) : NotFoundScreen;
+const WindowedLab = import.meta.env.DEV ? split(() => import('../dev/WindowedLab').then(m => m.WindowedLab)) : NotFoundScreen;
+const ChannelsLab = import.meta.env.DEV ? split(() => import('../dev/ChannelsLab').then(m => m.ChannelsLab)) : NotFoundScreen;
+const BrowseLab = import.meta.env.DEV ? split(() => import('../dev/BrowseLab').then(m => m.BrowseLab)) : NotFoundScreen;
+const FeaturesGallery = import.meta.env.DEV ? split(() => import('../screens/dev/Features').then(m => m.FeaturesGallery)) : NotFoundScreen;
 import {InAppNotFound, NotFoundScreen, RouteErrorScreen} from '../screens/NotFound';
 
 /**
