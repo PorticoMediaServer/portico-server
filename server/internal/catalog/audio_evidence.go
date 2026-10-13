@@ -154,6 +154,9 @@ func audioNames(tags map[string]string, multi, single string) []string {
 }
 func bookLocalMetadata(tags, sources map[string]string) LocalBookMetadata {
 	out := LocalBookMetadata{Authors: audioNames(tags, "authors", "author"), Narrators: audioNames(tags, "narrators", "narrator"), Edition: tags["edition"], Publisher: tags["publisher"], Language: tags["language"], Sources: map[string]string{}, Series: []AudioSeries{}, Identifiers: []AudioIdentifier{}}
+	if len(out.Narrators) == 0 {
+		out.Narrators = audioNames(tags, "composers", "composer")
+	}
 	if json.Unmarshal([]byte(tags["series_list"]), &out.Series) != nil || out.Series == nil || len(out.Series) > 64 {
 		out.Series = []AudioSeries{}
 	}

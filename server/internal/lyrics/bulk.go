@@ -6,8 +6,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 	"time"
+	"unicode"
 
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/entityid"
@@ -314,6 +316,17 @@ func (b *Bulk) pending(ctx context.Context, library, cursor string, limit int) (
 // fetchOne acquires one song through the provider client and publishes the
 // first candidate whose timing fits the selected source. It returns the run
 // counter to advance: published, missing or skipped.
+func matchText(s string) string {
+	return strings.Map(func(r rune) rune {
+		if unicode.IsLetter(r) || unicode.IsNumber(r) {
+			return unicode.ToLower(r)
+		}
+		return -1
+	}, s)
+}
+func sameRecording(v acquired, title, artist string, duration float64) bool {
+	return title != "" && artist != "" && matchText(v.title) == matchText(title) && matchText(v.artist) == matchText(artist) && v.duration > 0 && !math.IsNaN(v.duration) && !math.IsInf(v.duration, 0) && math.Abs(v.duration-duration) <= 2
+}
 func (b *Bulk) fetchOne(ctx context.Context, run, item string, providerRevision int64) (string, error) {
 	gated, e := dbwork.BeginSnapshot(ctx, b.Service.DB)
 	if e != nil {
@@ -347,10 +360,11 @@ func (b *Bulk) fetchOne(ctx context.Context, run, item string, providerRevision 
 		return "skipped", nil
 	}
 	src := all[0]
-	var query string
-	if e = tx.QueryRowContext(ctx, `SELECT i.title||' '||COALESCE((SELECT ar.title FROM catalog_song_artists sa JOIN catalog_entities ar ON ar.id=sa.artist_id WHERE sa.song_id=i.id ORDER BY ar.id LIMIT 1),'') FROM catalog_entities i WHERE i.public_id=pid_blob(?)`, item).Scan(&query); e != nil {
+	var title, artist string
+	if e = tx.QueryRowContext(ctx, `SELECT i.title,COALESCE((SELECT ar.title FROM catalog_song_artists sa JOIN catalog_entities ar ON ar.id=sa.artist_id WHERE sa.song_id=i.id ORDER BY ar.id LIMIT 1),'') FROM catalog_entities i WHERE i.public_id=pid_blob(?)`, item).Scan(&title, &artist); e != nil {
 		return "", e
 	}
+	query := title + " " + artist
 	gated.Rollback()
 	query = strings.TrimSpace(query)
 	if query == "" {
@@ -368,6 +382,9 @@ func (b *Bulk) fetchOne(ctx context.Context, run, item string, providerRevision 
 	}
 	var chosen *acquired
 	for i := range found {
+		if !sameRecording(found[i], title, artist, src.SourceDuration) {
+			continue
+		}
 		if validateTiming(found[i].doc, found[i].doc.EmbeddedOffsetMS, src.SourceDuration) != nil {
 			continue
 		}

@@ -152,7 +152,7 @@ func sources(ctx context.Context, tx *sql.Tx, a Access, entity int64) ([]Source,
 		if !finite(v.SourceDuration) || !finite(v.StartSeconds) || !finite(v.Duration) || v.Duration <= 0 || v.SourceDuration <= 0 || v.StartSeconds < 0 || end > v.SourceDuration+.1 {
 			return nil, ErrSource
 		}
-		v.Version = digest([]any{a.ItemID, a.LibraryID, v.ID, v.Size, v.ModifiedNS, v.SourceDuration, v.StartSeconds, end})
+		v.Version = digest([]any{a.ItemID, a.LibraryID, v.ID, v.SourceDuration, v.StartSeconds, end})
 		out = append(out, v)
 	}
 	if len(out) > 32 {
@@ -258,6 +258,9 @@ func selection(ctx context.Context, tx *sql.Tx, a Access, entity int64, src *Sou
 	return out, nil
 }
 func (s *Service) View(ctx context.Context, a Access, t Target) (View, error) {
+	if err := s.discoverLocal(ctx, a, t); err != nil {
+		return View{}, err
+	}
 	out := View{Scope: Scope{ServerID: a.ServerID, LibraryID: a.LibraryID, ItemID: a.ItemID, ViewerFence: a.ViewerFence, SessionID: t.SessionID}, Sources: []Source{}, Resources: []Revision{}, CanShare: a.Actor.Owner}
 	gated, entity, e := s.begin(ctx, a)
 	if e != nil {
@@ -305,6 +308,14 @@ func (s *Service) View(ctx context.Context, a Access, t Target) (View, error) {
 				return out, e
 			}
 			out.Resources = append(out.Resources, r)
+		}
+		// Choose a local/default library lyric only when the viewer has never
+		// selected or explicitly cleared one for this session.
+		if t.SessionID != "" {
+			_, e = tx.ExecContext(ctx, `INSERT INTO lyric_selections(session_id,revision,resource_id,lyric_revision) SELECT ?,1,r.id,r.revision FROM lyric_resources r JOIN lyric_revisions v ON v.resource_id=r.id AND v.revision=r.revision WHERE r.item_id=? AND r.asset_id=? AND r.source_version=? AND r.scope='library' AND r.deleted=0 ORDER BY CASE WHEN json_extract(v.document,'$.format')='lrc' THEN 0 ELSE 1 END,r.id LIMIT 1 ON CONFLICT(session_id) DO NOTHING`, t.SessionID, entity, out.Source.ID, out.Source.Version)
+			if e != nil {
+				return out, e
+			}
 		}
 		out.Selection, e = selection(ctx, tx, a, entity, out.Source, t.SessionID)
 		if e != nil {

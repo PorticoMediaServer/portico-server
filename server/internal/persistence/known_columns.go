@@ -3513,6 +3513,11 @@ queue_v1_create_receipts.device_id
 queue_v1_create_receipts.digest
 queue_v1_create_receipts.queue_id
 queue_v1_create_receipts.response
+queue_v1_play_spans.count
+queue_v1_play_spans.queue_id
+queue_v1_play_spans.rank
+queue_v1_play_spans.source
+queue_v1_play_spans.start
 queue_v1_removals.ordinal
 queue_v1_removals.snapshot_id
 queue_v1_saves.caller

@@ -52,7 +52,17 @@ func (s *Service) PrepareKind(ctx context.Context, library, kind, path string, f
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
 	f = s.prepareAudioEvidence(ctx, library, kind, path, f)
-	for _, name := range []string{"cover.jpg", "folder.jpg", "cover.png", "folder.png"} {
+	if s.storage != nil {
+		if raw, e := s.storage.ReadAudioCover(ctx, library, path); e == nil {
+			if key, e := s.store(raw); e == nil {
+				f.ArtworkKey = key
+				return f
+			} else {
+				f.LocalMetadataIssue = "invalid_local_cover"
+			}
+		}
+	}
+	for _, name := range []string{"cover.jpg", "folder.jpg", "front.jpg", "album.jpg", "cover.jpeg", "folder.jpeg", "cover.png", "folder.png", "front.png", "Cover.JPG", "Folder.jpg"} {
 		if unlisted(ctx, filepath.Join(filepath.Dir(path), name)) {
 			continue
 		}

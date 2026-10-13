@@ -179,7 +179,7 @@ CREATE TABLE catalog_songs(
  provider_title TEXT NOT NULL DEFAULT '',
  provider_artist TEXT NOT NULL DEFAULT '') STRICT;
 CREATE INDEX catalog_songs_album_order ON catalog_songs(album_id,disc_number,track_number,entity_id);
-CREATE INDEX catalog_songs_listening_order ON catalog_songs(album_id,COALESCE(disc_number,0),COALESCE(track_number,0),entity_id);
+CREATE INDEX catalog_songs_listening_order ON catalog_songs(album_id,COALESCE(disc_number,1),COALESCE(track_number,0),entity_id);
 CREATE TABLE catalog_song_artists(
  song_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,
  artist_id INTEGER NOT NULL REFERENCES catalog_entities(id),
@@ -206,7 +206,7 @@ CREATE TABLE catalog_book_files(
  disc_number INTEGER,
  part_number INTEGER) STRICT;
 CREATE INDEX catalog_book_files_order ON catalog_book_files(book_id,disc_number,part_number,entity_id);
-CREATE INDEX catalog_book_files_listening_order ON catalog_book_files(book_id,COALESCE(disc_number,0),COALESCE(part_number,0),entity_id);
+CREATE INDEX catalog_book_files_listening_order ON catalog_book_files(book_id,COALESCE(disc_number,1),COALESCE(part_number,0),entity_id);
 CREATE TABLE catalog_book_chapters(
  id INTEGER PRIMARY KEY,
  file_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,
@@ -5651,3 +5651,14 @@ CREATE INDEX saved_resource_entries_item_id_fk ON saved_resource_entries(item_id
 CREATE INDEX subtitle_provider_candidates_item_id_fk ON subtitle_provider_candidates(item_id);
 CREATE INDEX subtitle_resources_source_id_fk ON subtitle_resources(source_id);
 CREATE INDEX video_nfo_status_asset_id_fk ON video_nfo_status(asset_id);
+
+CREATE TABLE queue_v1_play_spans(
+ queue_id TEXT NOT NULL REFERENCES queues_v1(id) ON DELETE CASCADE,
+ rank INTEGER NOT NULL,source INTEGER NOT NULL CHECK(source IN(0,1)),
+ start INTEGER NOT NULL CHECK(start>=0),count INTEGER NOT NULL CHECK(count>0),
+ PRIMARY KEY(queue_id,rank)) STRICT;
+
+CREATE TABLE audio_render_fact_requests(
+ asset_id TEXT PRIMARY KEY REFERENCES catalog_assets(token) ON DELETE CASCADE,
+ item_id TEXT NOT NULL,requested_ms INTEGER NOT NULL) STRICT;
+CREATE INDEX audio_render_fact_requests_order ON audio_render_fact_requests(requested_ms);

@@ -3,6 +3,7 @@ package lyrics
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"portico.local/server/internal/catalogtest"
@@ -101,7 +102,7 @@ func TestBulkLyricFetchPublishesMissingAndSkipsPresent(t *testing.T) {
 	}
 	bulk.provider = func(_ context.Context, query string) ([]acquired, error) {
 		asked = append(asked, query)
-		return []acquired{{doc: document, language: "en", provenance: Provenance{Origin: "lrclib", ProviderID: "7", Label: "Alpha", Rights: "LRCLIB record."}}}, nil
+		return []acquired{{doc: document, language: "en", title: strings.Fields(query)[0], artist: "Fixture Artist", duration: 5400, provenance: Provenance{Origin: "lrclib", ProviderID: "7", Label: "Alpha", Rights: "LRCLIB record."}}}, nil
 	}
 	tx, e := db.Begin()
 	if e != nil {

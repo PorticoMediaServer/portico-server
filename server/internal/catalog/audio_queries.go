@@ -174,16 +174,17 @@ func (s *Service) AudioItems(profile, parent, kind, cursor string, limit int) ([
 	}
 	limit = pageLimit(limit)
 	disc, track := 0, 0
+	afterName := ""
 	var after int64
 	if cursor != "" {
-		if err := s.read().QueryRow(`SELECT COALESCE(d.disc_number,0),COALESCE(d.`+number+`,0),item.id FROM `+table+` d JOIN catalog_entities item ON item.id=d.entity_id JOIN catalog_entities p ON p.id=d.`+parentColumn+` WHERE p.public_id=pid_blob(?) AND item.public_id=pid_blob(?)`, parent, cursor).Scan(&disc, &track, &after); err != nil {
+		if err := s.read().QueryRow(`SELECT COALESCE(d.disc_number,1),COALESCE(d.`+number+`,0),item.sort_key,item.id FROM `+table+` d JOIN catalog_entities item ON item.id=d.entity_id JOIN catalog_entities p ON p.id=d.`+parentColumn+` WHERE p.public_id=pid_blob(?) AND item.public_id=pid_blob(?)`, parent, cursor).Scan(&disc, &track, &afterName, &after); err != nil {
 			return nil, "", errors.New("invalid audio cursor")
 		}
 	}
 	rows, err := s.read().Query(`SELECT pid(item.public_id) FROM `+table+` d JOIN catalog_entities item ON item.id=d.entity_id JOIN catalog_entities p ON p.id=d.`+parentColumn+`
  WHERE p.public_id=pid_blob(?) AND p.retired=0 AND item.retired=0
- AND (COALESCE(d.disc_number,0),COALESCE(d.`+number+`,0),item.id)>(?,?,?)
- ORDER BY COALESCE(d.disc_number,0),COALESCE(d.`+number+`,0),item.id LIMIT ?`, parent, disc, track, after, limit+1)
+ AND (COALESCE(d.disc_number,1),COALESCE(d.`+number+`,0),item.sort_key,item.id)>(?,?,?,?)
+ ORDER BY COALESCE(d.disc_number,1),COALESCE(d.`+number+`,0),item.sort_key,item.id LIMIT ?`, parent, disc, track, afterName, after, limit+1)
 	if err != nil {
 		return nil, "", err
 	}

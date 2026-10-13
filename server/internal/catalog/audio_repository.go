@@ -89,7 +89,7 @@ type BookChapter struct {
 	EndSeconds   float64 `json:"endSeconds"`
 }
 
-var discFolderPattern = regexp.MustCompile(`(?i)^(disc|disk|cd)[ ._-]*([0-9]{1,3})$`)
+var discFolderPattern = regexp.MustCompile(`(?i)^(disc|disk|cd|vol|volume|part|act|digital media)[ ._-]*([0-9]{1,3})(?:$|[ ._()-].*)`)
 var leadingNumber = regexp.MustCompile(`^([0-9]{1,3})[ ._-]`)
 
 // partWordNumber is a number that follows "part", "chapter" or "track" (or
@@ -334,6 +334,12 @@ func (s *Service) commitAudio(ctx context.Context, tx *sql.Tx, library, kind, ro
 		}
 	}
 	fields := map[string]any{"title": title}
+	if value := firstTag(f.Tags, "title_sort"); value != "" {
+		fields["sort_title"] = value
+	}
+	if kind == "audiobook" {
+		fields["sort_title"] = naturalAudioName(path)
+	}
 	if f.ArtworkKey != "" {
 		fields["poster_url"] = "local:" + f.ArtworkKey
 	}
@@ -356,6 +362,9 @@ func (s *Service) commitAudio(ctx context.Context, tx *sql.Tx, library, kind, ro
 				albumArtist = "Various Artists"
 			}
 		}
+		if f.Tags["compilation"] == "1" || strings.EqualFold(f.Tags["compilation"], "true") {
+			albumArtist = "Various Artists"
+		}
 		if _, err = s.artist(ctx, tx, handle, performer); err != nil {
 			return err
 		}
@@ -363,14 +372,25 @@ func (s *Service) commitAudio(ctx context.Context, tx *sql.Tx, library, kind, ro
 		if err != nil {
 			return err
 		}
+		if sortName := firstTag(f.Tags, "album_artist_sort"); sortName != "" {
+			if err = compactcatalog.SetFieldsTx(ctx, tx, albumArtistID, compactcatalog.Automatic, map[string]any{"sort_title": sortName}); err != nil {
+				return err
+			}
+		}
 		year := 0
 		value := firstTag(f.Tags, "date", "year")
 		if len(value) >= 4 {
 			year, _ = strconv.Atoi(value[:4])
 		}
 		var album int64
+		groupKey := albumIdentityKey(f.Tags, albumArtist, albumTitle, year)
 		if e := tx.QueryRow(`SELECT x.album_id FROM catalog_songs x JOIN mb_jobs j ON j.kind='album' AND j.entity_id=x.album_id AND j.manual=1 WHERE x.entity_id=?`, item).Scan(&album); e != nil && !errors.Is(e, sql.ErrNoRows) {
 			return e
+		}
+		if album == 0 {
+			if e := tx.QueryRow(`SELECT a.id FROM catalog_entities a JOIN catalog_albums d ON d.entity_id=a.id WHERE a.library_id=? AND d.local_key=?`, handle, groupKey).Scan(&album); e != nil && !errors.Is(e, sql.ErrNoRows) {
+				return e
+			}
 		}
 		if album == 0 && (firstTag(f.Tags, "album") == "" || firstTag(f.Tags, "album_artist", "artist") == "" || strings.HasPrefix(f.LocalMetadataIssue, "invalid_")) {
 			if e := tx.QueryRow(`SELECT album_id FROM catalog_songs WHERE entity_id=?`, item).Scan(&album); e != nil && !errors.Is(e, sql.ErrNoRows) {
@@ -394,7 +414,7 @@ func (s *Service) commitAudio(ctx context.Context, tx *sql.Tx, library, kind, ro
 				if e != nil {
 					return e
 				}
-				if !compatible {
+				if !compatible && !strings.HasPrefix(groupKey, "musicbrainz:") {
 					album = 0
 				}
 			}
@@ -403,7 +423,7 @@ func (s *Service) commitAudio(ctx context.Context, tx *sql.Tx, library, kind, ro
 			// Missing per-track edition tags do not split one physical album.
 			// Require the same folder/local identity and exactly one compatible
 			// edition; conflicting known evidence still creates a separate album.
-			prefix := localKey(folder + "|" + albumTitle + "|" + albumArtist + "|" + strconv.Itoa(year) + "|")
+			prefix := groupKey + "|"
 			rows, e := tx.Query(`SELECT a.id,d.edition_key FROM catalog_albums d INDEXED BY catalog_albums_artist JOIN catalog_entities a ON a.id=d.entity_id
  WHERE d.artist_id=? AND a.library_id=? AND a.title=? AND a.year=? AND substr(d.local_key,1,length(?))=?`, albumArtistID, handle, albumTitle, year, prefix, prefix)
 			if e != nil {
@@ -437,7 +457,7 @@ func (s *Service) commitAudio(ctx context.Context, tx *sql.Tx, library, kind, ro
 			}
 		}
 		if album == 0 {
-			key := localKey(folder + "|" + albumTitle + "|" + albumArtist + "|" + strconv.Itoa(year) + "|" + audioEdition(f.Tags))
+			key := groupKey
 			var created bool
 			if album, created, err = compactcatalog.EnsureEntityTx(ctx, tx, compactcatalog.Entity{Library: handle, Kind: compactcatalog.Album, Parent: albumArtistID, Key: compactcatalog.AlbumKey(key), Title: albumTitle, Year: year}); err != nil {
 				return err
@@ -446,6 +466,11 @@ func (s *Service) commitAudio(ctx context.Context, tx *sql.Tx, library, kind, ro
 				if err = compactcatalog.SetFactsTx(ctx, tx, album, map[string]any{"artist_id": albumArtistID, "local_key": key, "edition_key": audioEdition(f.Tags)}); err != nil {
 					return err
 				}
+			}
+		}
+		if sortName := firstTag(f.Tags, "album_sort"); sortName != "" {
+			if err = compactcatalog.SetFieldsTx(ctx, tx, album, compactcatalog.Automatic, map[string]any{"sort_title": sortName}); err != nil {
+				return err
 			}
 		}
 		var previous int64

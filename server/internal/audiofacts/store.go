@@ -79,20 +79,10 @@ func Ensure(ctx context.Context, db *sql.DB, measure Measure, item, asset string
 	if failed, err := Failed(ctx, db, asset); err != nil || failed || measure == nil {
 		return Facts{}, false, err
 	}
-	bounded, cancel := context.WithTimeout(ctx, budget)
-	defer cancel()
-	f, err := measure(bounded, item, asset)
-	if err != nil {
-		if bounded.Err() == nil && ctx.Err() == nil {
-			log.Printf("Audio facts: %s couldn't be measured (%s): %v", asset, code(err), err)
-			_ = Fail(ctx, db, asset, code(err))
-		}
-		return Facts{}, false, nil
-	}
-	if err = Save(ctx, db, asset, f); err != nil {
-		return Facts{}, false, err
-	}
-	return f, true, nil
+	// A foreground start queues facts instead of repeatedly throwing away a
+	// full decode when its short request deadline expires.
+	_, err := dbwork.ExecWrite(ctx, db, dbwork.ClassInteractive, `INSERT INTO audio_render_fact_requests(asset_id,item_id,requested_ms)VALUES(?,?,?) ON CONFLICT(asset_id)DO UPDATE SET item_id=excluded.item_id`, asset, item, time.Now().UnixMilli())
+	return Facts{}, false, err
 }
 
 func code(err error) string {
@@ -184,6 +174,30 @@ func (b *Backfill) Step(ctx context.Context) time.Duration {
 			return time.Minute
 		}
 		b.retried = true
+	}
+	// Recently requested listening files run ahead of the library backfill.
+	var requestedAsset, requestedItem string
+	if e := b.DB.QueryRowContext(ctx, `SELECT r.asset_id,r.item_id FROM audio_render_fact_requests r JOIN catalog_assets a ON a.token=r.asset_id WHERE a.available=1 ORDER BY r.requested_ms LIMIT 1`).Scan(&requestedAsset, &requestedItem); e == nil {
+		if _, ok, readErr := Read(ctx, b.DB, requestedAsset); readErr != nil {
+			return time.Second
+		} else if !ok && b.Measure != nil {
+			bounded, cancel := context.WithTimeout(ctx, 10*time.Minute)
+			f, err := b.Measure(bounded, requestedItem, requestedAsset)
+			cancel()
+			if ctx.Err() != nil {
+				return 0
+			}
+			if err == nil {
+				err = Save(ctx, b.DB, requestedAsset, f)
+			} else if !errors.Is(err, context.DeadlineExceeded) {
+				_ = Fail(ctx, b.DB, requestedAsset, code(err))
+			}
+			if err != nil && errors.Is(err, context.Canceled) {
+				return time.Second
+			}
+		}
+		_, _ = dbwork.ExecWrite(ctx, b.DB, dbwork.ClassBackgroundMedia, `DELETE FROM audio_render_fact_requests WHERE asset_id=?`, requestedAsset)
+		return time.Millisecond
 	}
 	if !b.passing {
 		if !b.finished.IsZero() && time.Since(b.finished) < rest {

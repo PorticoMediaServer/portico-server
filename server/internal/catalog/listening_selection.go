@@ -355,7 +355,7 @@ func (s *Service) ListeningItem(viewer Viewer, id string) (ListeningItem, error)
 		}
 		partVisibility, partBound := viewer.itemVisibilitySQL("x.id")
 		partArgs := append(append([]any{}, partBound...), id)
-		e = s.read().QueryRow(`SELECT pid(book.public_id),COALESCE((SELECT pid(x.public_id) FROM catalog_book_files part INDEXED BY catalog_book_files_listening_order JOIN catalog_entities x ON x.id=part.entity_id WHERE part.book_id=f.book_id AND x.retired=0 AND `+partVisibility+` ORDER BY COALESCE(part.disc_number,0) DESC,COALESCE(part.part_number,0) DESC,part.entity_id DESC LIMIT 1),'') FROM catalog_entities i JOIN catalog_book_files f ON f.entity_id=i.id JOIN catalog_entities book ON book.id=f.book_id WHERE i.public_id=pid_blob(?) AND book.retired=0`, partArgs...).Scan(&out.BookID, &out.LastBookItemID)
+		e = s.read().QueryRow(`SELECT pid(book.public_id),COALESCE((SELECT pid(x.public_id) FROM catalog_book_files part INDEXED BY catalog_book_files_listening_order JOIN catalog_entities x ON x.id=part.entity_id WHERE part.book_id=f.book_id AND x.retired=0 AND `+partVisibility+` ORDER BY COALESCE(part.disc_number,1) DESC,COALESCE(part.part_number,0) DESC,x.sort_key DESC,part.entity_id DESC LIMIT 1),'') FROM catalog_entities i JOIN catalog_book_files f ON f.entity_id=i.id JOIN catalog_entities book ON book.id=f.book_id WHERE i.public_id=pid_blob(?) AND book.retired=0`, partArgs...).Scan(&out.BookID, &out.LastBookItemID)
 	}
 	if e == nil && out.Kind == "audiobook_file" {
 		var available bool

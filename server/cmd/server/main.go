@@ -761,7 +761,7 @@ func run() error {
 	// time; a play measures a missing one itself (bounded).
 	supervise.Supervise(ctx, "cmd.audio-facts", func(life context.Context) {
 		wake := worker.NewSignal()
-		unregister := dbwork.WakeOnTables(wake, "assets", "item_assets")
+		unregister := dbwork.WakeOnTables(wake, "catalog_assets", "catalog_asset_links", "audio_render_fact_requests")
 		defer unregister()
 		backfill := &audiofacts.Backfill{DB: db, Measure: subtitleRenderer.MeasureAudio}
 		worker.Run(life, "cmd.audio-facts", wake, backfill.Step)

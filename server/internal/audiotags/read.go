@@ -379,6 +379,8 @@ func (p *reader) frames(b []byte, ver byte, depth int, globalUnsync bool) {
 				_, rest := splitText(v[4:], enc)
 				p.lyric(string(v[1:4]), text(rest, enc))
 			}
+		case "RVA2":
+			p.relativeVolume(v)
 		case "SYLT", "SLT":
 			p.sylt(v)
 		case "APIC", "PIC":
@@ -394,11 +396,10 @@ func (p *reader) frames(b []byte, ver byte, depth int, globalUnsync bool) {
 				start := float64(binary.BigEndian.Uint32(rest)) / 1000
 				end := float64(binary.BigEndian.Uint32(rest[4:])) / 1000
 				title := ""
-				before := len(p.out.Values["title"])
-				p.frames(rest[16:], ver, depth+1, false)
-				if len(p.out.Values["title"]) > before {
-					title = p.out.Values["title"][before]
-					p.out.Values["title"] = p.out.Values["title"][:before]
+				child := &reader{out: Tags{Values: map[string][]string{}}}
+				child.frames(rest[16:], ver, depth+1, false)
+				if len(child.out.Values["title"]) > 0 {
+					title = child.out.Values["title"][0]
 				}
 				p.chapter(title, start, end)
 			}
@@ -722,6 +723,14 @@ func (t Tags) JSONValues() map[string]string {
 			b, _ := json.Marshal(v)
 			out["album_artists"] = string(b)
 			out[k] = strings.Join(v, " / ")
+		case "author", "narrator", "composer":
+			b, _ := json.Marshal(v)
+			out[k+"s"] = string(b)
+			out[k] = strings.Join(v, " / ")
+		case "musicbrainz_artistid", "musicbrainz_albumartistid":
+			b, _ := json.Marshal(v)
+			out[k+"s"] = string(b)
+			out[k] = v[0]
 		case "genre":
 			b, _ := json.Marshal(v)
 			out["genres"] = string(b)
@@ -731,4 +740,33 @@ func (t Tags) JSONValues() map[string]string {
 		}
 	}
 	return out
+}
+
+func (p *reader) relativeVolume(v []byte) {
+	id, rest := splitText(v, 0)
+	scope := "track"
+	if strings.Contains(strings.ToLower(id), "album") {
+		scope = "album"
+	}
+	for len(rest) >= 4 {
+		channel := rest[0]
+		gain := float64(int16(binary.BigEndian.Uint16(rest[1:3]))) / 512
+		bits := int(rest[3])
+		n := (bits + 7) / 8
+		if n > len(rest)-4 {
+			return
+		}
+		if channel == 1 {
+			p.add("replaygain_"+scope+"_gain", strconv.FormatFloat(gain, 'f', 6, 64)+" dB")
+			if bits > 0 && bits <= 32 {
+				var peak uint64
+				for _, b := range rest[4 : 4+n] {
+					peak = peak<<8 | uint64(b)
+				}
+				p.add("replaygain_"+scope+"_peak", strconv.FormatFloat(float64(peak)/float64(uint64(1)<<bits), 'f', 9, 64))
+			}
+			return
+		}
+		rest = rest[4+n:]
+	}
 }
