@@ -74,6 +74,12 @@ type Span struct {
 // For HLS, every nested URI is replaced by an opaque private route and independently
 // passes the same DNS-pinned policy. No source URL escapes in an error/header.
 type Gateway struct {
+	shared      *Gateway
+	release     func()
+	closeOnce   sync.Once
+	input       livechannels.Input
+	cache       map[string]*cachedResource
+	cacheBytes  int64
 	output      *privateoutput.Route
 	closing     bool
 	ctx         context.Context
@@ -107,9 +113,9 @@ func token() (string, error) {
 	}
 	return hex.EncodeToString(b[:]), nil
 }
-func Open(ctx context.Context, in livechannels.Input) (*Gateway, error) {
+func openInput(ctx context.Context, in livechannels.Input) (*Gateway, error) {
 	child, cancel := context.WithCancel(ctx)
-	g := &Gateway{ctx: child, cancel: cancel, policy: in.Policy, resources: map[string]resource{}, reverse: map[string]string{}, clients: map[*remotemedia.Client]bool{}, bodies: map[io.ReadCloser]bool{}, changed: make(chan struct{})}
+	g := &Gateway{input: in, cache: map[string]*cachedResource{}, ctx: child, cancel: cancel, policy: in.Policy, resources: map[string]resource{}, reverse: map[string]string{}, clients: map[*remotemedia.Client]bool{}, bodies: map[io.ReadCloser]bool{}, changed: make(chan struct{})}
 	var e error
 	g.secret, e = token()
 	if e != nil {
@@ -129,6 +135,8 @@ func Open(ctx context.Context, in livechannels.Input) (*Gateway, error) {
 		return nil, ErrUnavailable
 	}
 	g.address = "http://127.0.0.1:" + strconv.Itoa(port)
+	acquisitionDeadline := time.AfterFunc(30*time.Second, cancel)
+	defer acquisitionDeadline.Stop()
 	client, response, e := g.fetch(child, in.Locator, "")
 	if e != nil {
 		g.Close()
@@ -179,7 +187,7 @@ func Open(ctx context.Context, in livechannels.Input) (*Gateway, error) {
 			g.pump(reader)
 		})
 	}
-	g.http = &http.Server{Handler: http.HandlerFunc(g.serve), ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 10 * time.Second, MaxHeaderBytes: 8 << 10}
+	g.http = &http.Server{Handler: http.HandlerFunc(g.serve), ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 10 * time.Second, MaxHeaderBytes: 8 << 10, BaseContext: func(net.Listener) context.Context { return child }}
 	g.wg.Add(2)
 	supervise.Go("linearinput.gateway.serve4", func() { defer g.wg.Done(); _ = g.http.Serve(g.v4) })
 	supervise.Go("linearinput.gateway.serve6", func() { defer g.wg.Done(); _ = g.http.Serve(g.v6) })
@@ -219,17 +227,61 @@ func (g *Gateway) pump(r io.Reader) {
 				g.raw = g.raw[1:]
 			}
 		}
-		if e != nil {
-			g.done = true
-			g.span.Ended = true
-			if !errors.Is(e, io.EOF) {
-				g.failure = ErrUnavailable
-			}
-		}
 		g.signal()
 		g.mu.Unlock()
 		if e != nil {
-			return
+			if g.ctx.Err() != nil {
+				return
+			}
+			g.mu.Lock()
+			for b := range g.bodies {
+				_ = b.Close()
+				delete(g.bodies, b)
+			}
+			for c := range g.clients {
+				c.Close()
+				delete(g.clients, c)
+			}
+			g.span.Gaps++
+			g.mu.Unlock()
+			until := time.Now().Add(time.Duration(g.input.RetryWindowSeconds) * time.Second)
+			if g.input.RetryWindowSeconds <= 0 {
+				until = time.Now().Add(time.Minute)
+			}
+			recovered := false
+			for delay := time.Second; time.Now().Before(until); delay = min(5*time.Second, delay*2) {
+				timer := time.NewTimer(delay)
+				select {
+				case <-g.ctx.Done():
+					timer.Stop()
+					return
+				case <-timer.C:
+				}
+				client, response, err := g.fetch(g.ctx, g.input.Locator, "")
+				if err != nil {
+					continue
+				}
+				next := bufio.NewReaderSize(response.Body, 4096)
+				prefix, err := next.Peek(1)
+				if err != nil || len(prefix) != 1 || prefix[0] != 0x47 {
+					response.Body.Close()
+					client.Close()
+					g.untrack(client, response.Body)
+					continue
+				}
+				r = next
+				recovered = true
+				break
+			}
+			if !recovered {
+				g.mu.Lock()
+				g.done = true
+				g.span.Ended = true
+				g.failure = ErrUnavailable
+				g.signal()
+				g.mu.Unlock()
+				return
+			}
 		}
 	}
 }
@@ -306,7 +358,7 @@ func (g *Gateway) serve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	g.mu.Lock()
-	if g.active >= 4 {
+	if g.active >= 16 {
 		g.mu.Unlock()
 		http.Error(w, "Busy", 503)
 		return
@@ -320,7 +372,11 @@ func (g *Gateway) serve(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		w.Header().Set("Content-Type", "video/mp2t")
-		g.serveRaw(w, r)
+		if g.shared != nil {
+			g.shared.serveRawFor(w, r, g)
+		} else {
+			g.serveRawFor(w, r, g)
+		}
 		return
 	}
 	g.mu.Lock()
@@ -354,32 +410,16 @@ func (g *Gateway) serve(w http.ResponseWriter, r *http.Request) {
 		if res.kind != "media" {
 			rng = ""
 		}
-		client, resp, e := g.fetch(ctx, res.url, rng)
+		owner := g
+		if g.shared != nil {
+			owner = g.shared
+		}
+		fetched, e := owner.resourceBytes(ctx, res, rng)
 		if e != nil {
 			http.Error(w, "Source unavailable", 502)
 			return
 		}
-		defer client.Close()
-		defer resp.Body.Close()
-		defer g.untrack(client, resp.Body)
-		limit := int64(maxSegment)
-		if res.kind == "manifest" {
-			limit = maxManifest
-		}
-		if res.kind == "key" {
-			limit = 16
-		}
-		data, e = io.ReadAll(io.LimitReader(resp.Body, limit+1))
-		if e != nil || int64(len(data)) > limit {
-			http.Error(w, "Invalid source", 502)
-			return
-		}
-		if resp.Request != nil && resp.Request.URL != nil {
-			location = resp.Request.URL.String()
-		}
-		if resp.StatusCode == 206 && res.kind == "media" {
-			contentRange = resp.Header.Get("Content-Range")
-		}
+		data, location, contentRange = fetched.data, fetched.location, fetched.contentRange
 	}
 	if res.kind == "manifest" {
 		rewritten, e := g.rewrite(data, location, res.depth)
@@ -416,7 +456,7 @@ func (g *Gateway) serve(w http.ResponseWriter, r *http.Request) {
 	}
 	_, _ = w.Write(data)
 }
-func (g *Gateway) serveRaw(w http.ResponseWriter, r *http.Request) {
+func (g *Gateway) serveRawFor(w http.ResponseWriter, r *http.Request, reader *Gateway) {
 	g.mu.Lock()
 	offset := g.base
 	g.mu.Unlock()
@@ -439,6 +479,16 @@ func (g *Gateway) serveRaw(w http.ResponseWriter, r *http.Request) {
 		g.mu.Unlock()
 		if len(data) > 0 {
 			n, e := w.Write(data)
+			gaps := g.Snapshot().Gaps
+			reader.mu.Lock()
+			now := time.Now()
+			if reader.span.First.IsZero() {
+				reader.span.First = now
+			}
+			reader.span.Last = now
+			reader.span.Bytes += int64(n)
+			reader.span.Gaps = gaps
+			reader.mu.Unlock()
 			offset += int64(n)
 			if f, ok := w.(http.Flusher); ok {
 				f.Flush()
@@ -478,6 +528,10 @@ func (g *Gateway) StopInput() {
 	}
 }
 func (g *Gateway) Close() error {
+	g.closeOnce.Do(g.close)
+	return nil
+}
+func (g *Gateway) close() {
 	g.mu.Lock()
 	g.closing = true
 	g.mu.Unlock()
@@ -501,7 +555,9 @@ func (g *Gateway) Close() error {
 		c.Close()
 	}
 	g.wg.Wait()
-	return nil
+	if g.release != nil {
+		g.release()
+	}
 }
 func (g *Gateway) child(raw, base, kind string, depth int) (string, error) {
 	if depth > 6 || raw == "" || len(raw) > 8192 || strings.ContainsAny(raw, "\x00\r\n") {

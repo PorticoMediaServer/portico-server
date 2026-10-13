@@ -30,9 +30,9 @@ func conflictsTx(ctx context.Context, tx *sql.Tx, r Recording) ([]livechannels.L
 	rows, e := tx.QueryContext(ctx, `WITH competitors AS (
  SELECT max(start_ms,?) a,min(end_ms,?) b,
  CASE WHEN priority>? OR (priority=? AND (start_ms<? OR (start_ms=? AND id<?))) THEN 1 ELSE 0 END higher
- FROM live_reservations WHERE source_id=? AND enabled=1 AND id<>? AND start_ms<? AND end_ms>?
+ FROM live_reservations WHERE source_id=? AND enabled=1 AND id<>? AND start_ms<? AND end_ms>? AND NOT EXISTS(SELECT 1 FROM dvr_recordings d WHERE d.id=live_reservations.id AND d.channel_id=?)
  ), edges AS (SELECT a at,1 demand,higher FROM competitors UNION ALL SELECT b at,-1 demand,-higher FROM competitors)
- SELECT at,SUM(demand),SUM(higher) FROM edges GROUP BY at ORDER BY at`, start.UnixMilli(), end.UnixMilli(), r.Options.Priority, r.Options.Priority, start.UnixMilli(), start.UnixMilli(), r.ID, r.Occurrence.SourceID, r.ID, end.UnixMilli(), start.UnixMilli())
+ SELECT at,SUM(demand),SUM(higher) FROM edges GROUP BY at ORDER BY at`, start.UnixMilli(), end.UnixMilli(), r.Options.Priority, r.Options.Priority, start.UnixMilli(), start.UnixMilli(), r.ID, r.Occurrence.SourceID, r.ID, end.UnixMilli(), start.UnixMilli(), r.Occurrence.ChannelID)
 	if e != nil {
 		return out, e
 	}

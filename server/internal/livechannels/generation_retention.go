@@ -19,7 +19,7 @@ import (
 const (
 	// supersededGenerationGrace keeps a replaced generation long enough for any
 	// request that resolved it just before the swap to finish, with a wide margin.
-	supersededGenerationGrace = 24 * time.Hour
+	supersededGenerationGrace = 5 * time.Minute
 	// retentionBatchRows bounds one gated delete so the writer is held for
 	// milliseconds, not for the length of a guide.
 	retentionBatchRows = 2000

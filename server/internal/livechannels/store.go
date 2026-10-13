@@ -206,6 +206,9 @@ func (s *Store) save(ctx context.Context, a Authority, in SourceInput, refresh b
 	if !opaque(in.ID) || !opaque(in.RequestID) {
 		return Source{}, ErrInvalid
 	}
+	if e := s.configureInput(ctx, &in); e != nil {
+		return Source{}, e
+	}
 	data, e := parse(in)
 	if e != nil {
 		return Source{}, e

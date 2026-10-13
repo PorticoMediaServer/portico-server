@@ -35,7 +35,8 @@ type CaptureCheckpoint struct {
 	WriterRetired     bool
 	ProducerSucceeded bool
 	BoundaryReached   bool
-	SourceRevision    int64 // stamped by the scheduler, never accepted from a client
+	SourceFence       string `json:"sourceFence"`
+	SourceRevision    int64  // stamped by the scheduler, never accepted from a client
 }
 type CaptureResult struct {
 	CaptureCheckpoint

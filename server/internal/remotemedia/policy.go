@@ -27,6 +27,7 @@ type Approval struct {
 	Addresses []string `json:"addresses"`
 }
 type Policy struct {
+	UserAgent   string
 	ReadTimeout time.Duration
 	Approvals   []Approval
 	Resolver    Resolver

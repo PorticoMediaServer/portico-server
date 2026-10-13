@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net"
 	"net/netip"
+	"portico.local/server/internal/livechannels"
 	"sort"
 	"strconv"
 	"strings"
@@ -14,20 +15,11 @@ import (
 
 // LiveDefaults are the server-wide live source settings every source inherits
 // until it overrides them.
-type LiveDefaults struct {
-	StreamBufferSeconds int    `json:"streamBufferSeconds"`
-	RetryWindowSeconds  int    `json:"retryWindowSeconds"`
-	UserAgent           string `json:"userAgent"`
-	GuideDays           int    `json:"guideDays"`
-	// LogoImport turns on fetching channel logos the source advertises.
-	LogoImport bool `json:"logoImport"`
-	// DiscoveryEnabled allows the HDHomeRun search to send packets on the LAN.
-	DiscoveryEnabled bool `json:"discoveryEnabled"`
-}
+type LiveDefaults = livechannels.LiveDefaults
 
 // DefaultLiveDefaults is the answer before any owner write.
 func DefaultLiveDefaults() LiveDefaults {
-	return LiveDefaults{StreamBufferSeconds: 8, RetryWindowSeconds: 60, UserAgent: "Portico/1.0", GuideDays: 7, LogoImport: true, DiscoveryEnabled: true}
+	return LiveDefaults{ImportLimits: livechannels.ImportLimits{Bytes: livechannels.MaxUploadBytes, Channels: livechannels.MaxChannels, Programmes: livechannels.MaxProgrammes}, StreamBufferSeconds: 8, RetryWindowSeconds: 60, UserAgent: "Portico/1.0", GuideDays: 7, LogoImport: true, DiscoveryEnabled: true}
 }
 
 func validateLiveDefaults(v *LiveDefaults) error {
@@ -37,6 +29,18 @@ func validateLiveDefaults(v *LiveDefaults) error {
 	clampInt(&v.StreamBufferSeconds, 0, 120)
 	clampInt(&v.RetryWindowSeconds, 5, 3600)
 	clampInt(&v.GuideDays, 1, 14)
+	if v.ImportLimits.Bytes == 0 {
+		v.ImportLimits.Bytes = livechannels.MaxUploadBytes
+	}
+	if v.ImportLimits.Channels == 0 {
+		v.ImportLimits.Channels = livechannels.MaxChannels
+	}
+	if v.ImportLimits.Programmes == 0 {
+		v.ImportLimits.Programmes = livechannels.MaxProgrammes
+	}
+	clampInt(&v.ImportLimits.Bytes, 1<<20, 1<<30)
+	clampInt(&v.ImportLimits.Channels, 1, 100000)
+	clampInt(&v.ImportLimits.Programmes, 1, 10000000)
 	return nil
 }
 
@@ -46,48 +50,22 @@ func validateLiveDefaults(v *LiveDefaults) error {
 var LiveSourceKinds = []string{"playlist", "xmltv-guide", "hdhomerun"}
 
 // FilterRule is one include/exclude list applied to a source's channels.
-type FilterRule struct {
-	Mode   string   `json:"mode"`
-	Values []string `json:"values"`
-}
+type FilterRule = livechannels.FilterRule
 
 // SourceFilters narrows what a source contributes. Empty value lists mean the
 // filter is not applied at all, whatever the mode says.
-type SourceFilters struct {
-	Categories FilterRule `json:"categories"`
-	Countries  FilterRule `json:"countries"`
-	Keywords   FilterRule `json:"keywords"`
-}
+type SourceFilters = livechannels.SourceFilters
 
 // LogoImport controls pulling channel logos out of the source.
-type LogoImport struct {
-	Enabled           bool `json:"enabled"`
-	OverwriteExisting bool `json:"overwriteExisting"`
-}
+type LogoImport = livechannels.LogoImport
 
 // ChannelNumbering renumbers a source's channels. "source" keeps what the
 // source published; "sequential" assigns startAt, startAt+step, and so on in
 // the source's own order.
-type ChannelNumbering struct {
-	Mode    string `json:"mode"`
-	StartAt int    `json:"startAt"`
-	Step    int    `json:"step"`
-}
+type ChannelNumbering = livechannels.ChannelNumbering
 
 // LiveSourceSettings is one source's configuration document.
-type LiveSourceSettings struct {
-	Kind string `json:"kind"`
-	// Null-able overrides: a nil value inherits the server default.
-	StreamBufferSeconds *int             `json:"streamBufferSeconds"`
-	RetryWindowSeconds  *int             `json:"retryWindowSeconds"`
-	UserAgent           string           `json:"userAgent"`
-	Filters             SourceFilters    `json:"filters"`
-	Logos               LogoImport       `json:"logoImport"`
-	Numbering           ChannelNumbering `json:"channelNumbering"`
-	// GuideSourceID names the XMLTV source that supplies this source's guide,
-	// which is how a standalone guide is attached to a streaming playlist.
-	GuideSourceID string `json:"guideSourceId"`
-}
+type LiveSourceSettings = livechannels.LiveSourceSettings
 
 // DefaultLiveSourceSettings is the answer before any owner write.
 func DefaultLiveSourceSettings() LiveSourceSettings {

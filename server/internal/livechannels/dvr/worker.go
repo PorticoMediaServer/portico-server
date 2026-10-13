@@ -50,11 +50,12 @@ func (s *Store) ConfigureCapture(driver CaptureDriver, locks *livechannels.Physi
 func (s *Store) CaptureAvailable() bool { return s.captureAvailable }
 
 type claim struct {
-	request          CaptureRequest
-	token            string
-	cancelGeneration int64
-	recovery         bool
-	checkpoint       CaptureCheckpoint
+	request           CaptureRequest
+	token             string
+	cancelGeneration  int64
+	recovery          bool
+	recoveryContinues bool
+	checkpoint        CaptureCheckpoint
 }
 
 // Run owns startup recovery, bounded/fair due work and physical worker lifetime.
@@ -274,6 +275,21 @@ func (s *Store) claimNext(ctx context.Context) (*claim, bool, error) {
 		if json.Unmarshal([]byte(checkpoint), &c.checkpoint) != nil || c.checkpoint.Object.Size <= 0 {
 			return fail("capture-no-media")
 		}
+		if end.After(s.now()) {
+			var active string
+			if e = tx.QueryRowContext(ctx, `SELECT active_generation FROM live_sources WHERE id=? AND state='active'`, r.Occurrence.SourceID).Scan(&active); e != nil {
+				return later("source-disabled")
+			}
+			c.request.Input, e = s.live.InputTx(ctx, tx, r.Occurrence.SourceID, r.Occurrence.ChannelID, active)
+			if e != nil {
+				return nil, false, e
+			}
+			c.request.Allocation, e = livechannels.AcquireTx(ctx, tx, livechannels.Allocation{SourceID: r.Occurrence.SourceID, ChannelID: r.Occurrence.ChannelID, ResourceID: id, Kind: "recording", Owner: c.request.Owner}, s.now())
+			if e != nil {
+				return later("tuner-retiring")
+			}
+			c.recoveryContinues = true
+		}
 		c.request.Generation = generation + 1
 		if e = tx.QueryRowContext(ctx, `SELECT artifact_id FROM dvr_recordings WHERE id=?`, id).Scan(&c.request.ArtifactKey); e != nil {
 			return nil, false, e
@@ -306,7 +322,8 @@ func (s *Store) claimNext(ctx context.Context) (*claim, bool, error) {
 		currentProgramme, lookupError := s.live.ProgrammeTx(ctx, tx, r.Occurrence.SourceID, r.Occurrence.ChannelID, active, r.Occurrence.ProgrammeID)
 		e = lookupError
 		if errors.Is(e, livechannels.ErrConflict) {
-			return later("programme-unavailable")
+			currentProgramme = r.Programme
+			e = nil
 		}
 		if e != nil {
 			return nil, false, e
@@ -369,7 +386,7 @@ func (s *Store) claimNext(ctx context.Context) (*claim, bool, error) {
 			return nil, false, e
 		}
 		if len(conflicts) > 0 {
-			return fail("tuner-conflict")
+			return later("tuner-conflict")
 		}
 		c.request.Input, e = s.live.InputTx(ctx, tx, r.Occurrence.SourceID, r.Occurrence.ChannelID, active)
 		if e != nil {
@@ -466,7 +483,7 @@ func (s *Store) runClaim(parent context.Context, c *claim) {
 			case <-ctx.Done():
 				return
 			case <-tick.C:
-				if e := s.renew(ctx, c, retired.Load() || c.recovery); e != nil {
+				if e := s.renew(ctx, c, retired.Load() || c.recovery && !c.recoveryContinues); e != nil {
 					cancel()
 					return
 				}
@@ -518,14 +535,17 @@ func (s *Store) renew(ctx context.Context, c *claim, released bool) error {
 		}
 		return e
 	}
-	if !released && !c.recovery {
-		var revision int64
-		var state string
-		e = tx.QueryRowContext(ctx, `SELECT revision,state FROM live_sources WHERE id=?`, c.request.Input.SourceID).Scan(&revision, &state)
+	if !released && (!c.recovery || c.recoveryContinues) {
+		var active, state string
+		e = tx.QueryRowContext(ctx, `SELECT active_generation,state FROM live_sources WHERE id=?`, c.request.Input.SourceID).Scan(&active, &state)
 		if e != nil {
 			return e
 		}
-		if state != "active" || revision != c.request.Input.Revision {
+		if state != "active" {
+			return ErrLease
+		}
+		input, e := s.live.InputTx(ctx, tx, c.request.Input.SourceID, c.request.Input.ChannelID, active)
+		if e != nil || input.Fence() != c.request.Input.Fence() {
 			return ErrLease
 		}
 		if _, e = livechannels.RenewAllocationTx(ctx, tx, c.request.Allocation, s.now()); e != nil {
@@ -557,6 +577,7 @@ func (s *Store) checkpoint(ctx context.Context, c *claim, cp CaptureCheckpoint) 
 		state = "finalizing"
 	}
 	cp.SourceRevision = c.request.Input.Revision
+	cp.SourceFence = c.request.Input.Fence()
 	b, _ := json.Marshal(cp)
 	_, e = tx.ExecContext(ctx, `UPDATE dvr_recordings SET revision=revision+CASE WHEN state=? THEN 0 ELSE 1 END,state=?,artifact_digest=?,bytes=?,captured_start_ms=?,captured_end_ms=?,checkpoint_json=?,updated_ms=? WHERE id=? AND claim_token=?`, state, state, cp.Object.Digest, cp.Object.Size, cp.First.UnixMilli(), cp.Last.UnixMilli(), string(b), s.now().UnixMilli(), c.request.Recording.ID, c.token)
 	if e != nil {

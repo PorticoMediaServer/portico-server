@@ -34,17 +34,17 @@ func (s *Store) publish(ctx context.Context, c *claim, result CaptureResult) err
 	// renewal and publication. Preserve validated bytes as incomplete, including
 	// sealed-object recovery whose original source revision was checkpointed.
 	if result.Complete {
-		expected := c.request.Input.Revision
+		expected := c.request.Input.Fence()
 		if c.recovery {
-			expected = c.checkpoint.SourceRevision
+			expected = c.checkpoint.SourceFence
 		}
-		var revision int64
-		var state string
-		e = tx.QueryRowContext(ctx, `SELECT revision,state FROM live_sources WHERE id=?`, c.request.Recording.Occurrence.SourceID).Scan(&revision, &state)
+		var active, state string
+		e = tx.QueryRowContext(ctx, `SELECT active_generation,state FROM live_sources WHERE id=?`, c.request.Recording.Occurrence.SourceID).Scan(&active, &state)
 		if e != nil && !errors.Is(e, sql.ErrNoRows) {
 			return e
 		}
-		if expected <= 0 || e != nil || state != "active" || revision != expected {
+		input, lookup := s.live.InputTx(ctx, tx, c.request.Recording.Occurrence.SourceID, c.request.Recording.Occurrence.ChannelID, active)
+		if expected == "" || e != nil || state != "active" || lookup != nil || input.Fence() != expected {
 			result.Complete = false
 			result.Reason = "source-changed"
 		}

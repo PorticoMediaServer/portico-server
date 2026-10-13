@@ -75,7 +75,10 @@ type RemoteStatus struct {
 	Failures    int    `json:"failures"`
 }
 
-type SourceFetcher struct{ Resolver remotemedia.Resolver }
+type SourceFetcher struct {
+	Resolver remotemedia.Resolver
+	defaults LiveDefaults
+}
 
 // maxSealed bounds a stored payload the server wrote itself. A remote preview's snapshot holds the
 // fetched playlist and guide (up to MaxUploadBytes together) as JSON, which escapes the guide's
@@ -142,7 +145,7 @@ func (s *Store) PreviewRemote(ctx context.Context, a Authority, f SourceFetcher,
 	if e != nil {
 		return out, e
 	}
-	input, physical, e := f.fetch(ctx, c)
+	input, physical, e := s.fetchSource(ctx, f, c)
 	if e != nil {
 		return out, e
 	}
@@ -437,7 +440,7 @@ func (s *Store) RefreshOne(ctx context.Context, f SourceFetcher) (bool, error) {
 		var in SourceInput
 		var physical int
 		fetchCtx, cancel := context.WithTimeout(ctx, 75*time.Second)
-		in, physical, e = f.fetch(fetchCtx, c)
+		in, physical, e = s.fetchSource(fetchCtx, f, c)
 		cancel()
 		if e == nil {
 			in.ID = sid

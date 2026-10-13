@@ -22,7 +22,7 @@ func (o Owner) Key() string { return id(o.Authority, o.AccountID, o.ProfileID) }
 
 const AllocationTTL = 20 * time.Second
 
-var ErrCapacity = errors.New("The source has reached its confirmed tuner limit.")
+var ErrCapacity = errors.New("All tuners are in use.")
 var ErrPreemptPending = errors.New("A live tuner is being released for a protected recording.")
 var ErrReservation = errors.New("A protected recording requires this tuner now.")
 var ErrLease = errors.New("This source allocation is no longer valid.")
@@ -72,7 +72,7 @@ type Allocation struct {
 }
 
 func reservationsTx(ctx context.Context, tx *sql.Tx, sid string, start, end time.Time) ([]Reservation, error) {
-	rows, e := tx.QueryContext(ctx, `SELECT id,start_ms,end_ms,priority FROM live_reservations WHERE source_id=? AND enabled=1 AND start_ms<? AND end_ms>? ORDER BY start_ms,id`, sid, end.UnixMilli(), start.UnixMilli())
+	rows, e := tx.QueryContext(ctx, `SELECT r.id,r.start_ms,r.end_ms,r.priority,COALESCE(d.channel_id,r.id) FROM live_reservations r LEFT JOIN dvr_recordings d ON d.id=r.id WHERE r.source_id=? AND r.enabled=1 AND r.start_ms<? AND r.end_ms>? ORDER BY r.start_ms,r.id`, sid, end.UnixMilli(), start.UnixMilli())
 	if e != nil {
 		return nil, ErrUnavailable
 	}
@@ -81,7 +81,7 @@ func reservationsTx(ctx context.Context, tx *sql.Tx, sid string, start, end time
 	for rows.Next() {
 		var r Reservation
 		var a, b int64
-		if rows.Scan(&r.ID, &a, &b, &r.Priority) != nil {
+		if rows.Scan(&r.ID, &a, &b, &r.Priority, &r.ChannelID) != nil {
 			return nil, ErrUnavailable
 		}
 		r.Start = time.UnixMilli(a)
@@ -118,28 +118,26 @@ func AcquireTx(ctx context.Context, tx *sql.Tx, want Allocation, now time.Time) 
 		return want, ErrUnavailable
 	}
 	var active int
-	if tx.QueryRowContext(ctx, `SELECT count(*) FROM live_allocations WHERE source_id=? AND state!='released'`, want.SourceID).Scan(&active) != nil {
+	if tx.QueryRowContext(ctx, `SELECT count(DISTINCT CASE WHEN channel_id='' THEN id ELSE channel_id END) FROM live_allocations WHERE source_id=? AND state!='released'`, want.SourceID).Scan(&active) != nil {
 		return want, ErrUnavailable
 	}
 	reservations, e := reservationsTx(ctx, tx, want.SourceID, now, now.Add(7*24*time.Hour))
 	if e != nil {
 		return want, e
 	}
-	if cap.Known {
-		if want.Kind == "recording" {
-			activeReservations := []Reservation{}
-			for _, r := range reservations {
-				if !now.Before(r.Start) && now.Before(r.End) {
-					activeReservations = append(activeReservations, r)
-				}
-			}
-			sort.Slice(activeReservations, func(i, j int) bool { return reservationBefore(activeReservations[i], activeReservations[j]) })
-			for n, r := range activeReservations {
-				if r.ID == want.ResourceID && n >= cap.Effective {
-					return want, ErrCapacity
-				}
-			}
+	var shared bool
+	if e = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM live_allocations WHERE source_id=? AND channel_id=? AND state='active' AND lease_until_ms>?)`, want.SourceID, want.ChannelID, now.UnixMilli()).Scan(&shared); e != nil {
+		return want, ErrUnavailable
+	}
+	filtered := reservations[:0]
+	for _, r := range reservations {
+		if r.ChannelID != want.ChannelID {
+			filtered = append(filtered, r)
 		}
+	}
+	reservations = filtered
+	if cap.Known && !shared {
+
 		if active >= cap.Effective {
 			if want.Kind == "recording" {
 				// A newly submitted recording cannot silently kill an active viewer.
@@ -165,7 +163,7 @@ func AcquireTx(ctx context.Context, tx *sql.Tx, want Allocation, now time.Time) 
 			// Active recording leases already consume capacity; count only live leases
 			// plus protected reservations, so a recording is never counted twice.
 			var liveCount int
-			if tx.QueryRowContext(ctx, `SELECT count(*) FROM live_allocations WHERE source_id=? AND kind='live' AND state!='released'`, want.SourceID).Scan(&liveCount) != nil {
+			if tx.QueryRowContext(ctx, `SELECT count(DISTINCT CASE WHEN channel_id='' THEN id ELSE channel_id END) FROM live_allocations a WHERE source_id=? AND kind='live' AND state!='released' AND NOT EXISTS(SELECT 1 FROM live_allocations b WHERE b.source_id=a.source_id AND b.channel_id=a.channel_id AND b.kind='recording' AND b.state!='released')`, want.SourceID).Scan(&liveCount) != nil {
 				return want, ErrUnavailable
 			}
 			at, blocked := protectedBoundary(reservations, now, cap.Effective-liveCount-1)

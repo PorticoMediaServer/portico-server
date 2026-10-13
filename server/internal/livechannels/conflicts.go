@@ -13,6 +13,7 @@ type Capacity struct {
 }
 
 type Reservation struct {
+	ChannelID  string
 	ID         string
 	Start, End time.Time
 	Priority   int
@@ -57,7 +58,7 @@ func Conflicts(all []Reservation, target string, capacity Capacity) []LosingInte
 	}
 	edges := []edge{}
 	for _, r := range all {
-		if r.ID == target || !r.Start.Before(selected.End) || !r.End.After(selected.Start) {
+		if r.ID == target || selected.ChannelID != "" && r.ChannelID == selected.ChannelID || !r.Start.Before(selected.End) || !r.End.After(selected.Start) {
 			continue
 		}
 		a, b := r.Start, r.End
