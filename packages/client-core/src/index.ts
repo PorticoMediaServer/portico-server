@@ -146,6 +146,44 @@ function statusOf(error: unknown): number {
   const status = (error as { status?: unknown } | null)?.status;
   return typeof status === "number" ? status : 0;
 }
+/**
+ * A request the server accepted and then never answered. It is a failure the person can retry,
+ * never a cancellation: the screen that asked stops waiting and says so.
+ */
+export class RequestTimeoutError extends Error {
+  readonly code = 'request_timeout';
+  readonly retryable = true;
+  constructor() { super('The server did not answer in time.'); this.name = 'TimeoutError'; }
+}
+/**
+ * How long a request may go unanswered. A long poll waits as long as it asked the server to
+ * hold it, plus a margin; a read gets half a minute; a change gets a minute, and an owner's
+ * console change two (some do real work before they answer). Media, downloads and event streams
+ * do not come through here and have no such limit.
+ */
+export function requestDeadlineMs(path: string, method: string): number {
+  const held = /[?&]waitSeconds=(\d{1,4})(?:&|$)/.exec(path);
+  if (held) return (Math.min(Number(held[1]), 600) + 15) * 1000;
+  if (method === 'GET' || method === 'HEAD') return 30_000;
+  return path.startsWith('/v1/admin/') ? 120_000 : 60_000;
+}
+/** Runs `work` under the request's deadline and the caller's own cancellation. A caller's cancel stays a cancel; the deadline is a timeout. */
+async function withinDeadline<T>(ms: number, signal: AbortSignal | undefined, work: (signal: AbortSignal) => Promise<T>): Promise<T> {
+  const controller = new AbortController();
+  let timedOut = false;
+  const cancel = () => controller.abort();
+  if (signal?.aborted) cancel(); else signal?.addEventListener('abort', cancel, {once: true});
+  const timer = setTimeout(() => { timedOut = true; controller.abort(); }, ms);
+  try {
+    return await work(controller.signal);
+  } catch (error) {
+    if (timedOut && !signal?.aborted) throw new RequestTimeoutError();
+    throw error;
+  } finally {
+    clearTimeout(timer);
+    signal?.removeEventListener('abort', cancel);
+  }
+}
 export class ApiError extends Error {
   code: string;
   retryable: boolean;
@@ -374,15 +412,17 @@ export class HttpLocalApi implements PlaybackApi {
    * `ETag`, `Report-Every-Ms`). Rejects only when there is no response (offline, aborted).
    */
   async requestRaw(path: string, method: string, options: Readonly<{headers?: Readonly<Record<string, string>>; body?: unknown; signal?: AbortSignal}> = {}): Promise<{status: number; headers: Record<string, string>; body?: unknown}> {
-    const response = await this.exchange(path, method, options.body, options.signal, options.headers);
-    const headers: Record<string, string> = {};
-    response.headers.forEach((value, key) => { headers[key] = value; });
-    let body: unknown;
-    if (response.status !== 204 && response.status !== 205 && response.status !== 304) {
-      const text = await response.text();
-      if (text) { try { body = JSON.parse(text); } catch { body = undefined; } }
-    }
-    return {status: response.status, headers, body};
+    return withinDeadline(requestDeadlineMs(path, method), options.signal, async signal => {
+      const response = await this.exchange(path, method, options.body, signal, options.headers);
+      const headers: Record<string, string> = {};
+      response.headers.forEach((value, key) => { headers[key] = value; });
+      let body: unknown;
+      if (response.status !== 204 && response.status !== 205 && response.status !== 304) {
+        const text = await response.text();
+        if (text) { try { body = JSON.parse(text); } catch { body = undefined; } }
+      }
+      return {status: response.status, headers, body};
+    });
   }
   async request<T>(
     path: string,
@@ -390,6 +430,10 @@ export class HttpLocalApi implements PlaybackApi {
     body?: unknown,
     signal?: AbortSignal
   ): Promise<T> {
+    // No request waits for ever: one the server never answers fails as timed out (see `requestDeadlineMs`).
+    return withinDeadline(requestDeadlineMs(path, method), signal, bounded => this.answered<T>(path, method, body, bounded));
+  }
+  private async answered<T>(path: string, method: string, body: unknown, signal: AbortSignal): Promise<T> {
     // A 401 means the server did not act on the request, so one retry with a renewed token is safe for any method.
     const response = await this.exchange(path, method, body, signal);
     if (!response.ok) {
