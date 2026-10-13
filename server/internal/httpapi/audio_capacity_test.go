@@ -32,3 +32,32 @@ func TestPlaybackV1ConversionCapacityUsesRetryableEnvelope(t *testing.T) {
 		t.Fatal(w.Code, w.Header(), w.Body.String())
 	}
 }
+
+func TestEveryConversionCreatingOperationDeclaresCapacityRefusal(t *testing.T) {
+	registry, err := FoundationRegistry(Dependencies{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	needed := map[string]bool{
+		"start_playback_session":  false,
+		"change_playback_session": false,
+		"create_queue":            false,
+		"advance_queue":           false,
+		"prepare_queue_next":      false,
+	}
+	for _, operation := range registry.Definitions() {
+		if _, ok := needed[operation.ID]; !ok {
+			continue
+		}
+		for _, code := range operation.Errors {
+			if code == "conversion_capacity" {
+				needed[operation.ID] = true
+			}
+		}
+	}
+	for operation, declared := range needed {
+		if !declared {
+			t.Errorf("%s cannot publish its ordinary capacity refusal", operation)
+		}
+	}
+}

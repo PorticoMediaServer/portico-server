@@ -70,7 +70,7 @@ func TestPlaybackV1QualityDefaultsAndAutomaticSteps(t *testing.T) {
 	const home, away = "192.168.1.20:51000", "93.184.216.34:51000"
 	start := func(peer, key string) playbackv1.SessionView {
 		t.Helper()
-		w := f.rawFrom(peer, "POST", "/v1/playback/sessions", f.owner.AccessToken, map[string]string{"Idempotency-Key": key, "X-Portico-Device-Class": "web"}, startBody(f.items[0], nil))
+		w := f.rawFrom(peer, "POST", "/v1/playback/sessions", f.owner.AccessToken, map[string]string{"Idempotency-Key": key, "X-Portico-Device-Class": "web"}, startBody(f.items[0], map[string]any{"throughputKbps": 5000}))
 		var out playbackv1.SessionView
 		if w.Code != 201 || json.Unmarshal(w.Body.Bytes(), &out) != nil {
 			t.Fatalf("start from %s: %d %s", peer, w.Code, w.Body.String())
@@ -154,7 +154,8 @@ func TestPlaybackV1QualityDefaultsAndAutomaticSteps(t *testing.T) {
 }
 
 // A start the measured connection plainly cannot carry is refused with the
-// quality that would fit; automatic lands on that quality instead.
+// quality that would fit. Automatic starts at Original, then follows the
+// client's explicit requests as the connection requires.
 func TestPlaybackV1ThroughputEstimate(t *testing.T) {
 	f := replanFixtureV1(t, 1)
 	filmStreams(t, f, 0, 20_000_000)
@@ -177,14 +178,21 @@ func TestPlaybackV1ThroughputEstimate(t *testing.T) {
 	var s playbackv1.SessionView
 	f.call("POST", "/v1/playback/sessions", map[string]string{"Idempotency-Key": "throughput-start-002"}, startBody(f.items[0], map[string]any{"throughputKbps": 17_000}), 201, &s)
 	f.call("DELETE", "/v1/playback/sessions/"+s.ID, nil, nil, 204, nil)
-	// Automatic with the same estimate starts on the step that fits.
+	// Automatic with the same estimate still starts at Original.
 	f.call("POST", "/v1/playback/sessions", map[string]string{"Idempotency-Key": "throughput-start-003"}, startBody(f.items[0], map[string]any{"throughputKbps": 5000, "quality": map[string]any{"mode": "automatic"}}), 201, &s)
-	if q := s.Presentation.Quality; q.Mode != "automatic" || q.ID != "480p" || s.Presentation.Mode != "stream" {
+	if q := s.Presentation.Quality; q.Mode != "automatic" || q.ID != "" || s.Presentation.Mode != "direct" {
 		t.Fatalf("automatic on a 5 Mb/s connection: %+v", q)
 	}
+	// The client can then move down using its measured connection.
+	path := "/v1/playback/sessions/" + s.ID
+	var down playbackv1.SessionView
+	f.call("PATCH", path, map[string]string{"If-Match": s.Revision}, map[string]any{"quality": map[string]any{"mode": "automatic", "id": "480p"}, "throughputKbps": 5000, "positionMs": 61_000}, 200, &down)
+	if q := down.Presentation.Quality; q.Mode != "automatic" || q.ID != "480p" || down.Presentation.Mode != "stream" || down.ID != s.ID || down.Presentation.StartPositionMs != 61_000 {
+		t.Fatalf("automatic change on a 5 Mb/s connection: %+v", down)
+	}
+	s = down
 	// Asking for the original on that connection mid-play is refused, and the
 	// session plays on as it was.
-	path := "/v1/playback/sessions/" + s.ID
 	w = f.raw("PATCH", path, f.owner.AccessToken, map[string]string{"If-Match": s.Revision}, map[string]any{"quality": map[string]any{"mode": "original"}, "throughputKbps": 5000})
 	if w.Code != 422 || v1Code(w) != "connection_too_slow" {
 		t.Fatalf("original over a slow connection mid-play: %d %s", w.Code, w.Body.String())
@@ -329,5 +337,49 @@ func TestPlaybackV1CapabilityOverridesAndEngines(t *testing.T) {
 	caps["version"] = 1
 	if w := f.raw("PUT", "/v1/me/devices/current/capabilities", f.owner.AccessToken, nil, caps); w.Code != 400 {
 		t.Fatalf("an old document version: %d %s", w.Code, w.Body.String())
+	}
+}
+
+// Publishing a player-setting change can re-plan the current occurrence instead
+// of starting the queue entry again and dropping its quality/audio choices.
+func TestPlaybackV1ReplanUsesCurrentCapabilitiesAndKeepsChoices(t *testing.T) {
+	f := replanFixtureV1(t, 2)
+	filmStreams(t, f, 0, 12_000_000)
+	var created playbackv1.QueueReply
+	f.call("POST", "/v1/queues", map[string]string{"Idempotency-Key": "capability-replan-queue"}, map[string]any{"owner": "device", "segments": []any{map[string]any{"source": queueItems(f.items...)}}, "startPlayback": map[string]any{"state": "playing"}}, 201, &created)
+	if created.Session == nil || created.Session.Queue == nil {
+		t.Fatal("queue start lost its session")
+	}
+	original := *created.Session
+	path := "/v1/playback/sessions/" + original.ID
+	var chosen playbackv1.SessionView
+	f.call("PATCH", path, map[string]string{"If-Match": original.Revision}, map[string]any{"quality": map[string]any{"mode": "fixed", "id": "720p"}, "audio": map[string]any{"trackId": "a2"}, "versionId": f.records[0].Token, "subtitles": map[string]any{"trackId": "off"}, "state": "paused", "positionMs": 42_000}, 200, &chosen)
+
+	caps := webCapabilities()
+	mpv := map[string]any{}
+	for key, value := range nativeEngine(caps) {
+		mpv[key] = value
+	}
+	mpv["name"] = "mpv"
+	caps["engines"].(map[string]any)["mpv"] = mpv
+	caps["engineSetting"] = "mpv"
+	f.call("PUT", "/v1/me/devices/current/capabilities", nil, caps, 204, nil)
+
+	var replanned playbackv1.SessionView
+	f.call("PATCH", path, map[string]string{"If-Match": chosen.Revision}, map[string]any{"replan": true, "positionMs": 61_000}, 200, &replanned)
+	if replanned.ID != original.ID || replanned.Queue == nil || *replanned.Queue != *original.Queue || replanned.State != "paused" || replanned.VersionID != chosen.VersionID {
+		t.Fatalf("re-plan replaced the occurrence/queue/state: %+v", replanned)
+	}
+	p := replanned.Presentation
+	if p.Engine != playback.EngineMPV || p.Generation != chosen.Presentation.Generation+1 || p.StartPositionMs != 61_000 || p.Quality == nil || p.Quality.Mode != "fixed" || p.Quality.ID != "720p" || p.AudioTrackID != "a2" {
+		t.Fatalf("re-plan lost current capabilities, position or choices: %+v", p)
+	}
+	var stored string
+	if err := f.db.QueryRow(`SELECT request FROM playback_v1_sessions WHERE id=?`, original.ID).Scan(&stored); err != nil {
+		t.Fatal(err)
+	}
+	var request map[string]any
+	if err := json.Unmarshal([]byte(stored), &request); err != nil || request["subtitles"].(map[string]any)["trackId"] != "off" || request["replan"] != nil {
+		t.Fatalf("stored choices/action: %s %v", stored, err)
 	}
 }

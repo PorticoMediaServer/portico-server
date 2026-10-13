@@ -36,7 +36,6 @@ export function parseGuideSourceSummaries(raw:unknown,serverId:string):GuideSour
  });
  return {viewerFence:raw.viewerFence,revision:raw.revision,sources};
 }
-export function guideEndpointUnsupported(error:unknown):boolean{return object(error)&&(error.status===404||error.status===405);}
 export async function fetchGuideSourceSummaries(api:ChannelApi,serverId:string,timezone:string,signal?:AbortSignal):Promise<GuideSourceSummaries>{
  return parseGuideSourceSummaries(await api.request(routePath("get_guide_sources") + "?" + (new URLSearchParams({timezone})),'GET',undefined,signal),serverId);
 }

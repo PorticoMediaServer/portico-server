@@ -4017,6 +4017,9 @@
             ],
             "type": "object"
           },
+          "replan": {
+            "type": "boolean"
+          },
           "seek": {
             "properties": {
               "id": {
@@ -237670,6 +237673,9 @@
                     ],
                     "type": "object"
                   },
+                  "replan": {
+                    "type": "boolean"
+                  },
                   "seek": {
                     "properties": {
                       "id": {
@@ -250279,6 +250285,7 @@
           "idempotency_key_reused",
           "queue_ended",
           "prepare_not_allowed",
+          "conversion_capacity",
           "not_implemented"
         ],
         "x-lane": "media",

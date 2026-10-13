@@ -11410,6 +11410,7 @@ export const routes = [
       "idempotency_key_reused",
       "queue_ended",
       "prepare_not_allowed",
+      "conversion_capacity",
       "not_implemented"
     ],
     "status": 200,

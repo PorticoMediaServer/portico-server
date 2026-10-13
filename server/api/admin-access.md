@@ -1,7 +1,7 @@
 # Administration: people, diagnostics and connectivity
 
 Companion to the current administration handlers and `portico.openapi.json`;
-the hand-written `admin-access.openapi.yaml` is historical.
+the generated registry is the API contract.
 This page explains the rules behind it and says where each one is enforced.
 
 ## Access tiers

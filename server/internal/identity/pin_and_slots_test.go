@@ -103,37 +103,38 @@ func TestAPasswordCheckWaitsBrieflyForAHashingSlot(t *testing.T) {
 	<-s.hashSlots
 }
 
-// Wrong PINs count against the profile across devices. Signing in again as a
-// new device no longer resets the count.
-func TestWrongPINsCountAgainstAProfileAcrossDevices(t *testing.T) {
+// A device's wrong PINs never lock a profile out on other devices. The
+// offending device still has its persisted retry delay.
+func TestWrongPINsDoNotLockOtherDevicesOut(t *testing.T) {
 	ctx := context.Background()
 	s, _, profile := profileWithPIN(t)
+	var firstToken, firstDevice string
 	attempt := func(n int, pin string) error {
 		t.Helper()
-		// Each attempt comes from a device the server has not seen before.
 		login, err := s.DirectLogin(onDevice(t, "installation-pin-guess-"+string(rune('a'+n%26))+string(rune('a'+n/26))+"-000000000000000000", "Borrowed phone"), "member", "Testing2!")
 		if err != nil || login.Session == nil {
 			t.Fatalf("attempt %d sign-in: %v", n, err)
 		}
+		if n == 0 {
+			firstToken, firstDevice = login.AccountToken, login.DeviceID
+		}
 		_, err = s.SelectDirectProfile(ctx, login.AccountToken, profile.ID, DirectSelection{PIN: pin})
 		return err
 	}
-	for n := 0; n < PINFailuresAcrossDevices; n++ {
+	for n := 0; n < 25; n++ {
 		if err := attempt(n, "0000"); !errors.Is(err, ErrProfilePIN) {
 			t.Fatalf("wrong PIN %d from a new device: %v", n+1, err)
 		}
 	}
-	// One more device, and now even the right PIN waits.
-	if err := attempt(PINFailuresAcrossDevices, "4821"); !errors.Is(err, ErrProfileLocked) {
-		t.Fatalf("the profile after %d wrong PINs across devices: %v", PINFailuresAcrossDevices, err)
+	// No elapsed-time allowance: the right PIN works immediately elsewhere.
+	if err := attempt(25, "4821"); err != nil {
+		t.Fatalf("wrong PINs on other devices blocked the right PIN: %v", err)
 	}
-	// Once the cool-off after the last wrong PIN has passed, the right PIN works.
-	past := time.Now().Add(-PINProfileCooloff - time.Minute).UnixMilli()
-	if _, err := s.db.Exec(`UPDATE direct_profile_pin_attempts SET last_failed_ms=?,locked_until_ms=0 WHERE profile_id=?`, past, profile.ID); err != nil {
+	if _, err := s.db.Exec(`UPDATE direct_profile_pin_attempts SET locked_until_ms=? WHERE profile_id=? AND device_id=?`, time.Now().Add(time.Minute).UnixMilli(), profile.ID, firstDevice); err != nil {
 		t.Fatal(err)
 	}
-	if err := attempt(PINFailuresAcrossDevices+1, "4821"); err != nil {
-		t.Fatalf("the right PIN after the cool-off: %v", err)
+	if _, err := s.SelectDirectProfile(ctx, firstToken, profile.ID, DirectSelection{PIN: "4821"}); !errors.Is(err, ErrProfileLocked) {
+		t.Fatalf("the offending device lost its retry delay: %v", err)
 	}
 }
 

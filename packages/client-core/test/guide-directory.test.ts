@@ -54,15 +54,28 @@ test('directory and summary responses fail closed on foreign membership or unexp
  assert.throws(()=>parseGuideDirectory({...value,serverId:'other'},'s',0,1));
 });
 
-test('legacy fallback shares a directory walk, and the last viewport abort reaches the server',async()=>{
- let requests=0,transport:AbortSignal|undefined;
- const api:ChannelApi={async request<T>(path:string,_method?:string,_body?:unknown,signal?:AbortSignal):Promise<T>{
-  if(!path.startsWith('/v1/guide?'))throw Object.assign(new Error('not found'),{status:404});
-  requests++;transport=signal;return new Promise<T>((_resolve,reject)=>signal!.addEventListener('abort',()=>reject(new Error('aborted')),{once:true}));
+test('absent directory or summaries never trigger compatibility enumeration',async()=>{
+ for(const status of [404,405]){
+  const requests:string[]=[];
+  const unavailable=Object.assign(new Error('unavailable'),{status});
+  const api:ChannelApi={async request(path){requests.push(path);throw unavailable;}};
+  const source=legacyGuideSource(api,'s',{kind:'live-source',sourceId:'',timezone:'UTC'});
+  await assert.rejects(source.channels(0,10,new AbortController().signal),e=>e===unavailable);
+  await assert.rejects(legacyChannelSources(api,'s','UTC','Library Channels',NOW),e=>e===unavailable);
+  await assert.rejects(legacyGuideCatalog(api,'s',{kind:'all',sourceId:'',timezone:'UTC'}),e=>e===unavailable);
+  assert.equal(requests.length,3);
+  assert.ok(requests.every(p=>p.startsWith('/v1/guide/channels?')||p.startsWith('/v1/guide/sources?')));
+ }
+});
+
+test('bounded directory reads pass each viewport cancellation to its own transport',async()=>{
+ const signals:AbortSignal[]=[];
+ const api:ChannelApi={async request<T>(_path:string,_method?:string,_body?:unknown,signal?:AbortSignal):Promise<T>{
+  signals.push(signal!);return new Promise<T>((_resolve,reject)=>signal!.addEventListener('abort',()=>reject(new Error('aborted')),{once:true}));
  }};
- const source=legacyGuideSource(api,'s',{kind:'live-source',sourceId:'',timezone:'UTC'});const a=new AbortController(),b=new AbortController();
- const first=source.channels(0,10,a.signal).catch(()=>undefined),second=source.channels(10,10,b.signal).catch(()=>undefined);await settle();assert.equal(requests,1);
- a.abort();await first;assert.equal(transport?.aborted,false,'another viewport still needs the shared walk');b.abort();await second;assert.equal(transport?.aborted,true);assert.equal(requests,1);
+ const source=legacyGuideSource(api,'s',{kind:'live-source',sourceId:'',timezone:'UTC'}),a=new AbortController(),b=new AbortController();
+ const first=source.channels(0,10,a.signal).catch(()=>undefined),second=source.channels(10,10,b.signal).catch(()=>undefined);
+ assert.equal(signals.length,2);a.abort();await first;assert.equal(signals[1].aborted,false);b.abort();await second;assert.equal(signals[1].aborted,true);
 });
 
 test('transient modern API failure remains a retryable failure instead of starting a full legacy walk',async()=>{
