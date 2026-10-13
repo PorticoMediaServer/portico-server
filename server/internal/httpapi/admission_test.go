@@ -64,8 +64,10 @@ func TestEveryRegisteredRouteHasALane(t *testing.T) {
 	}
 	for _, route := range registry.Definitions() {
 		key := route.Method + " " + route.Path
-		if _, ok := routeLanes[key]; !ok {
+		if lane, ok := routeLanes[key]; !ok {
 			missing = append(missing, key)
+		} else if lane != route.Admission {
+			t.Errorf("%s: generated admission %q differs from registry %q", key, lane, route.Admission)
 		}
 	}
 	if len(missing) > 0 {

@@ -9377,7 +9377,7 @@ export const routes = [
     "lane": "security",
     "cost": "constant",
     "bodyLimit": 65536,
-    "query": [
+    "headers": [
       "X-Portico-Installation-Id"
     ],
     "errors": [
@@ -9401,7 +9401,7 @@ export const routes = [
     "lane": "security",
     "cost": "constant",
     "bodyLimit": 65536,
-    "query": [
+    "headers": [
       "X-Portico-Installation-Id"
     ],
     "errors": [
@@ -9446,7 +9446,7 @@ export const routes = [
     "lane": "security",
     "cost": "constant",
     "bodyLimit": 65536,
-    "query": [
+    "headers": [
       "X-Portico-Installation-Id"
     ],
     "errors": [
@@ -9606,7 +9606,7 @@ export const routes = [
     "lane": "security",
     "cost": "constant",
     "bodyLimit": 65536,
-    "query": [
+    "headers": [
       "X-Portico-Installation-Id"
     ],
     "errors": [
@@ -9818,6 +9818,7 @@ export const routes = [
     "lane": "security",
     "cost": "constant",
     "bodyLimit": 65536,
+    "noResponseBody": true,
     "errors": [
       "invalid_request",
       "unauthorized",

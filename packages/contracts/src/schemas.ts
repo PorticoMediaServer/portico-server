@@ -53819,9 +53819,8 @@ export const schemas = {
     "type": "object"
   },
   "GetProfilesIdAvatarResponse": {
-    "properties": {},
-    "required": [],
-    "type": "object"
+    "format": "binary",
+    "type": "string"
   },
   "GetQueueRequest": {
     "properties": {},
@@ -70843,6 +70842,7 @@ export const schemas = {
         "type": "string"
       },
       "file": {
+        "format": "binary",
         "type": "string"
       },
       "operationId": {
@@ -79984,6 +79984,7 @@ export const schemas = {
         "type": "string"
       },
       "file": {
+        "format": "binary",
         "type": "string"
       },
       "subject": {

@@ -1166,7 +1166,6 @@ export const routes = [
     "status": 200
   }
 ] as const;
-
 export const routePaths = {
   "account_create": "/v1/accounts",
   "account_deletion_accept": "/v1/account/deletion",

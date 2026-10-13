@@ -15,3 +15,11 @@ Each operation publishes its credential scope (`x-scope`), access class (`x-acce
 Plain HTTP and direct access remain supported. Optional features still depend on the services configured by the owner. Read the operation's response schema and error envelope, respect `Retry-After`, and retain opaque cursors and revisions exactly as returned.
 
 For external automation, see the [tool integration guide](guide/README.md). Old hand-authored specifications and retired playback documentation are no longer published.
+
+Hosted account/connectivity contracts live in `packages/contracts/src/hosted`. After regenerating the Hosted registry in its own checkout, sync its generated contract directory with:
+
+```sh
+node packages/contracts/scripts/sync-hosted.mjs <hosted-generated-contract-directory>
+```
+
+This reads the Hosted artifacts and applies the same shared builder template; it writes only the local contract package. The local server generator does not describe Hosted endpoints.

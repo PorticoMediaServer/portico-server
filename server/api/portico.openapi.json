@@ -55974,9 +55974,8 @@
         "type": "object"
       },
       "GetProfilesIdAvatarResponse": {
-        "properties": {},
-        "required": [],
-        "type": "object"
+        "format": "binary",
+        "type": "string"
       },
       "GetQueueRequest": {
         "properties": {},
@@ -74735,6 +74734,7 @@
             "type": "string"
           },
           "file": {
+            "format": "binary",
             "type": "string"
           },
           "operationId": {
@@ -83924,6 +83924,7 @@
             "type": "string"
           },
           "file": {
+            "format": "binary",
             "type": "string"
           },
           "subject": {
@@ -137659,6 +137660,7 @@
                     "type": "string"
                   },
                   "file": {
+                    "format": "binary",
                     "type": "string"
                   },
                   "operationId": {
@@ -161138,7 +161140,7 @@
         "operationId": "post_direct_ownership",
         "parameters": [
           {
-            "in": "query",
+            "in": "header",
             "name": "X-Portico-Installation-Id",
             "required": false,
             "schema": {
@@ -161295,7 +161297,7 @@
         "operationId": "post_direct_ownership_custody",
         "parameters": [
           {
-            "in": "query",
+            "in": "header",
             "name": "X-Portico-Installation-Id",
             "required": false,
             "schema": {
@@ -161603,7 +161605,7 @@
         "operationId": "post_direct_portico_challenge",
         "parameters": [
           {
-            "in": "query",
+            "in": "header",
             "name": "X-Portico-Installation-Id",
             "required": false,
             "schema": {
@@ -164302,7 +164304,7 @@
         "operationId": "post_direct_sign_in",
         "parameters": [
           {
-            "in": "query",
+            "in": "header",
             "name": "X-Portico-Installation-Id",
             "required": false,
             "schema": {
@@ -189151,15 +189153,6 @@
         },
         "responses": {
           "202": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "properties": {},
-                  "required": [],
-                  "type": "object"
-                }
-              }
-            },
             "description": "Success"
           },
           "default": {
@@ -226710,6 +226703,7 @@
                     "type": "string"
                   },
                   "file": {
+                    "format": "binary",
                     "type": "string"
                   },
                   "subject": {
@@ -242308,9 +242302,8 @@
             "content": {
               "application/octet-stream": {
                 "schema": {
-                  "properties": {},
-                  "required": [],
-                  "type": "object"
+                  "format": "binary",
+                  "type": "string"
                 }
               }
             },

@@ -129,6 +129,8 @@ type Metadata struct {
 	Cost                Cost     `json:"cost"`
 	BodyLimit           int64    `json:"bodyLimit"`
 	Query               []string `json:"query,omitempty"`
+	Headers             []string `json:"headers,omitempty"`
+	NoResponseBody      bool     `json:"noResponseBody,omitempty"`
 	Errors              []string `json:"errors"`
 	Status              int      `json:"status"`
 	ResponseContentType string   `json:"responseContentType,omitempty"`

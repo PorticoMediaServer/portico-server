@@ -23,7 +23,7 @@ export function pathLiterals(source) {
   const quote=source[i];if(!['"',"'",'`'].includes(quote))continue;
   const start=i++;let value='';
   for(;i<source.length;i++){if(source[i]==='\\'){value+=source[i]+(source[++i]??'');continue;}if(source[i]===quote)break;value+=source[i];}
-  if(value.startsWith('/v1/'))paths.push({value,line:source.slice(0,start).split('\n').length});
+  if(value.includes('/v1/'))paths.push({value,line:source.slice(0,start).split('\n').length});
  }
  return paths;
 }

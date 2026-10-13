@@ -13,9 +13,9 @@ func registerMetadataHTTPContracts(registry *apikit.Registry) error {
 	}
 	// internal/httpapi/metadata_editor.go:65
 	if err := apikit.RegisterHTTP[struct {
-		File             string `json:"file"`
-		Subject          string `json:"subject"`
-		ExpectedRevision string `json:"expectedRevision"`
+		File             SubtitleBytesContract `json:"file"`
+		Subject          string                `json:"subject"`
+		ExpectedRevision string                `json:"expectedRevision"`
 	}, metadata.RepairState](registry, apikit.Metadata{ID: "post_metadata_kind_id_art_role_upload", Method: "POST", Path: "/v1/metadata/{kind}/{id}/art/{role}/upload", RequestContentTypes: []string{"multipart/form-data"}, Summary: "Run metadata art upload", Access: apikit.Owner, Requires: apikit.ScopeLibrary, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, BodyLimit: 11534336, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}

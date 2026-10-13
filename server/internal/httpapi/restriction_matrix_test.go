@@ -28,6 +28,7 @@ import (
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/livechannels"
 	"portico.local/server/internal/livechannels/dvr"
+	"portico.local/server/internal/lyrics"
 	"portico.local/server/internal/mediaanalysis"
 	"portico.local/server/internal/metadata"
 	"portico.local/server/internal/operations"
@@ -176,6 +177,9 @@ func refusedStatus(token string) int {
 // nonSessionCredential are the GET routes authenticated by something other than
 // the session, so a session bearer there is rightly "not a credential" (401).
 var nonSessionCredential = map[string]string{
+	"GET /v1/downloads/artifacts/{grant}/artwork/{role}":                         "download grant",
+	"GET /v1/downloads/artifacts/{grant}/subtitles/{resource}/{revision}.vtt":    "download grant",
+	"GET /v1/downloads/artifacts/{grant}/subtitles/{resource}/{revision}/{file}": "download grant",
 	"GET /v1/topshelf":                                                   "Top Shelf device token",
 	"GET /v1/topshelf/art/{id}":                                          "Top Shelf device token",
 	"GET /v1/media/{grant}":                                              "media grant",
@@ -257,6 +261,64 @@ const (
 // restrictionRoutes classifies every GET route the router registers.
 func restrictionRoutes() map[string]restrictionRoute {
 	return map[string]restrictionRoute{
+		// Operations newly exposed by the complete generated route table.
+		"GET /v1/admin/attention":                                                    exempt(reasonAdmin),
+		"GET /v1/admin/catalogue/failures":                                           exempt(reasonAdmin),
+		"GET /v1/admin/console/accounts":                                             exempt(reasonAdmin),
+		"GET /v1/admin/console/alerts":                                               exempt(reasonAdmin),
+		"GET /v1/admin/console/diagnostics/{lane}":                                   exempt(reasonAdmin),
+		"GET /v1/admin/console/exports/{id}":                                         exempt(reasonAdmin),
+		"GET /v1/admin/console/job-kinds":                                            exempt(reasonAdmin),
+		"GET /v1/admin/console/jobs":                                                 exempt(reasonAdmin),
+		"GET /v1/admin/console/panels/{panel}":                                       exempt(reasonAdmin),
+		"GET /v1/admin/console/schedules":                                            exempt(reasonAdmin),
+		"GET /v1/admin/console/stream-options":                                       exempt(reasonAdmin),
+		"GET /v1/admin/feedback":                                                     exempt(reasonAdmin),
+		"GET /v1/admin/feedback/reports":                                             exempt(reasonAdmin),
+		"GET /v1/admin/feedback/reports/{id}":                                        exempt(reasonAdmin),
+		"GET /v1/admin/feedback/{id}":                                                exempt(reasonAdmin),
+		"GET /v1/admin/jobs":                                                         exempt(reasonAdmin),
+		"GET /v1/admin/libraries":                                                    exempt(reasonAdmin),
+		"GET /v1/admin/libraries/{id}":                                               exempt(reasonAdmin),
+		"GET /v1/admin/libraries/{id}/scans/{job}/issues":                            exempt(reasonAdmin),
+		"GET /v1/admin/notifications/settings":                                       exempt(reasonAdmin),
+		"GET /v1/admin/playback-operations/{operationId}":                            exempt(reasonAdmin),
+		"GET /v1/admin/playback-sessions":                                            exempt(reasonAdmin),
+		"GET /v1/admin/playback/history":                                             exempt(reasonAdmin),
+		"GET /v1/admin/resource-usage":                                               exempt(reasonAdmin),
+		"GET /v1/admin/telemetry":                                                    exempt(reasonAdmin),
+		"GET /v1/admin/telemetry/now":                                                exempt(reasonAdmin),
+		"GET /v1/admin/transcode/capacity":                                           exempt(reasonAdmin),
+		"GET /v1/albums/{id}/metadata/musicbrainz":                                   exempt("owner-only metadata state; member refused before catalogue access (manual_metadata_test, musicbrainz_test)"),
+		"GET /v1/albums/{id}/songs":                                                  perEntity("/v1/albums/", "album", "/songs"),
+		"GET /v1/artists/{id}/albums":                                                perEntity("/v1/artists/", "artist", "/albums"),
+		"GET /v1/books/{id}/chapters":                                                perEntity("/v1/books/", "book", "/chapters"),
+		"GET /v1/books/{id}/files":                                                   perEntity("/v1/books/", "book", "/files"),
+		"GET /v1/console/registry":                                                   exempt(reasonNoTitles),
+		"GET /v1/downloads/artifacts/{grant}/artwork/{role}":                         exempt(reasonGrant),
+		"GET /v1/downloads/artifacts/{grant}/subtitles/{resource}/{revision}.vtt":    exempt(reasonGrant),
+		"GET /v1/downloads/artifacts/{grant}/subtitles/{resource}/{revision}/{file}": exempt(reasonGrant),
+		"GET /v1/downloads/preparations/{id}/bundle":                                 exempt(reasonGrant),
+		"GET /v1/downloads/requests":                                                 static("/v1/downloads/requests"),
+		"GET /v1/feedback":                                                           exempt("caller-authored feedback and reports; no catalogue lookup, scoped to the caller (notifications_routes_test)"),
+		"GET /v1/feedback/capabilities":                                              exempt("caller-authored feedback and reports; no catalogue lookup, scoped to the caller (notifications_routes_test)"),
+		"GET /v1/feedback/reports":                                                   exempt("caller-authored feedback and reports; no catalogue lookup, scoped to the caller (notifications_routes_test)"),
+		"GET /v1/feedback/reports/{id}":                                              exempt("caller-authored feedback and reports; no catalogue lookup, scoped to the caller (notifications_routes_test)"),
+		"GET /v1/feedback/{id}":                                                      exempt("caller-authored feedback and reports; no catalogue lookup, scoped to the caller (notifications_routes_test)"),
+		"GET /v1/items/{id}/analysis":                                                perItem("/analysis"),
+		"GET /v1/items/{id}/analysis/artifacts/{artifact}":                           perItem("/analysis/artifacts/unknown"),
+		"GET /v1/items/{id}/lyrics":                                                  perItem("/lyrics"),
+		"GET /v1/items/{id}/lyrics/{resource}/revisions/{revision}":                  perItem("/lyrics/unknown/revisions/1"),
+		"GET /v1/items/{id}/metadata/manual":                                         exempt("owner-only metadata state; member refused before catalogue access (manual_metadata_test, musicbrainz_test)"),
+		"GET /v1/items/{id}/metadata/musicbrainz":                                    exempt("owner-only metadata state; member refused before catalogue access (manual_metadata_test, musicbrainz_test)"),
+		"GET /v1/items/{id}/prepared-versions":                                       perItem("/prepared-versions"),
+		"GET /v1/metadata/{kind}/{id}":                                               exempt("owner-only metadata state; member refused before catalogue access (manual_metadata_test, musicbrainz_test)"),
+		"GET /v1/notifications":                                                      static("/v1/notifications"),
+		"GET /v1/notifications/capabilities":                                         static("/v1/notifications/capabilities"),
+		"GET /v1/notifications/inbox":                                                static("/v1/notifications/inbox"),
+		"GET /v1/notifications/unread-count":                                         static("/v1/notifications/unread-count"),
+		"GET /v1/preferences":                                                        exempt(reasonNoTitles),
+
 		"GET /v1/networking/connection":                                      exempt(reasonNoTitles),
 		"GET /v1/me/api-access":                                              exempt(reasonNoTitles),
 		"GET /v1/me/access-tokens":                                           exempt("the caller's credentials, not catalogue content"),
@@ -736,7 +798,7 @@ func buildRestrictionMatrix(t *testing.T) *restrictionEnv {
 		t.Fatal(err)
 	}
 	scheduler := operations.NewScheduler(operations.New(db))
-	handler := New(Dependencies{Scheduler: scheduler, DB: db, Identity: ident, Catalog: cat, Hosted: host, Playback: playback.New(db), Downloads: offline, Metadata: metadata.New(db, ""), Analysis: analysis, LiveChannels: live, DVR: recordings})
+	handler := New(Dependencies{Scheduler: scheduler, DB: db, Identity: ident, Catalog: cat, Hosted: host, Playback: playback.New(db), Downloads: offline, Metadata: metadata.New(db, ""), Analysis: analysis, Lyrics: &lyrics.Service{DB: db}, LiveChannels: live, DVR: recordings})
 
 	all := []string{libraries.Movies, libraries.Shows, libraries.Music, libraries.Books}
 	allJSON, _ := json.Marshal(all)

@@ -218,9 +218,9 @@ func registerAdministrationHTTPContracts(registry *apikit.Registry) error {
 	}
 	// internal/httpapi/administration.go:425
 	if err := apikit.RegisterHTTP[struct {
-		File             string `json:"file"`
-		ExpectedRevision string `json:"expectedRevision"`
-		OperationID      string `json:"operationId"`
+		File             SubtitleBytesContract `json:"file"`
+		ExpectedRevision string                `json:"expectedRevision"`
+		OperationID      string                `json:"operationId"`
 	}, LiveOwnerResult[administration.ChannelLogo]](registry, apikit.Metadata{ID: "post_admin_library_channels_id_logo", Method: "POST", Path: "/v1/admin/library-channels/{id}/logo", RequestContentTypes: []string{"multipart/form-data"}, Summary: "Run server library channels logo", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.Constant, BodyLimit: 11534336, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}

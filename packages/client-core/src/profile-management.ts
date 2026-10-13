@@ -133,28 +133,40 @@ export function trustScopeKey(scope:ProfileScope&{profileId:string;installationI
 export class ManagedProfilesClient {
  readonly api:ProfileAPI;readonly scope:ProfileScope;
  constructor(api:ProfileAPI,scope:ProfileScope){if(!text(scope.accountId,128)||!['local','hosted'].includes(scope.authority)||(scope.authority==='local'&&!text(scope.serverId,128)))throw new Error('An account profile scope is required.');this.api=api;this.scope=Object.freeze({...scope});}
- private path(profileId?:string):string{return(this.scope.authority==='local'?routePath("get_direct_account"):hostedRoutePath("account_get"))+'/profiles'+(profileId?'/'+encodeURIComponent(profileId):'');}
+ private path(profileId?:string,action:'list'|'create'|'edit'|'delete'|'order'|'preview'='list'):string{
+  if(this.scope.authority==='local'){
+   if(action==='list')return routePath("get_direct_account");
+   if(action==='create')return routePath("post_direct_profiles");
+   if(action==='order')return routePath("put_direct_profiles_order");
+   if(!profileId)throw new Error('A profile is required.');
+   if(action==='edit')return routePath("patch_direct_profiles_id",{id:profileId});
+   if(action==='delete')return routePath("delete_direct_profiles_id",{id:profileId});
+   return routePath("get_direct_profiles_id_deletion_preview",{id:profileId});
+  }
+  const path=hostedRoutePath("account_get")+'/profiles'+(profileId?'/'+encodeURIComponent(profileId):'');
+  return path+(action==='order'?'/order':action==='preview'?'/deletion-preview':'');
+ }
  async list(signal?:AbortSignal):Promise<readonly ManagedProfile[]>{const raw=await this.api.request<RouteResponse<"get_direct_account"> & Record<string,unknown>>(this.scope.authority==='local'?routePath("get_direct_account"):this.path(),'GET',undefined,signal);if(this.scope.authority==='local')return parseDirectSnapshot(raw,this.scope,true).profiles;if(!obj(raw)||raw.accountId!==this.scope.accountId||raw.maxProfiles!==8)invalid();return parseManagedProfiles(raw.profiles,true);}
- async create(name:string,art:ProfileArt='blue',signal?:AbortSignal):Promise<void>{if(!text(name.trim(),120)||!PROFILE_ART.includes(art))throw new Error('Enter a profile name.');await this.api.request(this.path(),'POST',{name:name.trim(),art},signal);}
+ async create(name:string,art:ProfileArt='blue',signal?:AbortSignal):Promise<void>{if(!text(name.trim(),120)||!PROFILE_ART.includes(art))throw new Error('Enter a profile name.');await this.api.request(this.path(undefined,'create'),'POST',{name:name.trim(),art},signal);}
  async edit(profile:ManagedProfile,change:{name?:string;art?:ProfileArt;pin?:string;policy?:ProfilePolicy},signal?:AbortSignal):Promise<void>{
   if(change.pin!==undefined&&change.pin!==''&&!/^\d{4}$/.test(change.pin))throw new Error('Use exactly four numeric digits for the profile PIN.');
   if(change.name!==undefined&&!text(change.name.trim(),120))throw new Error('Enter a profile name.');
   if(change.policy){if(this.scope.authority==='local'&&change.policy.serverId!==this.scope.serverId)throw new Error('This profile belongs to a different server.');if(change.policy.allowedLibraries!==null)ids(change.policy.allowedLibraries);}
   const policy=change.policy?(this.scope.authority==='local'?{allowedLibraries:change.policy.allowedLibraries}:change.policy):undefined;
-  await this.api.request(this.path(profile.id),'PATCH',{...change,...(policy?{policy}:{}),expectedRevision:profile.revision},signal);
+  await this.api.request(this.path(profile.id,'edit'),'PATCH',{...change,...(policy?{policy}:{}),expectedRevision:profile.revision},signal);
  }
- async order(profiles:readonly ManagedProfile[],signal?:AbortSignal):Promise<void>{await this.api.request(this.path()+'/order','PUT',{profiles:profiles.map(p=>({id:p.id,revision:p.revision}))},signal);}
+ async order(profiles:readonly ManagedProfile[],signal?:AbortSignal):Promise<void>{await this.api.request(this.path(undefined,'order'),'PUT',{profiles:profiles.map(p=>({id:p.id,revision:p.revision}))},signal);}
  async forgetTrust(profileId:string,signal?:AbortSignal):Promise<void>{await this.api.request(this.scope.authority==='local'?routePath("delete_direct_trust"):this.path(profileId)+'/trust','DELETE',this.scope.authority==='local'?{profileId}:undefined,signal);}
  async policies(profileId:string,signal?:AbortSignal):Promise<readonly ProfilePolicy[]>{
   if(this.scope.authority==='local'){const rows=await this.list(signal);const p=rows.find(v=>v.id===profileId);if(!p)invalid();return[{serverId:this.scope.serverId!,allowedLibraries:p.allowedLibraries??null}];}
   const raw=await this.api.request<unknown>(this.path(profileId)+'/policies','GET',undefined,signal);if(!obj(raw)||!Array.isArray(raw.items)||raw.items.length>1000)invalid();return raw.items.map(v=>{if(!obj(v)||!text(v.serverId,128))invalid();return Object.freeze({serverId:v.serverId,allowedLibraries:v.allowedLibraries===null?null:ids(v.allowedLibraries)});});
  }
  async previewDelete(profile:ManagedProfile,signal?:AbortSignal):Promise<ProfileDeletion>{
-  if(profile.primary)throw new Error('The primary profile is managed through account settings.');const raw=await this.api.request<unknown>(this.path(profile.id)+'/deletion-preview','GET',undefined,signal);
+  if(profile.primary)throw new Error('The primary profile is managed through account settings.');const raw=await this.api.request<unknown>(this.path(profile.id,'preview'),'GET',undefined,signal);
   if(!obj(raw)||raw.profileId!==profile.id||!revision(raw.revision)||raw.primary!==false)invalid();return raw as ProfileDeletion;
  }
  async delete(preview:ProfileDeletion,signal?:AbortSignal):Promise<ProfileDeletion|undefined>{
-  if(preview.primary||!revision(preview.revision))throw new Error('Preview this profile deletion first.');return this.api.request<ProfileDeletion|undefined>(this.path(preview.profileId),'DELETE',{expectedRevision:preview.revision,deleteSavedResources:true},signal);
+  if(preview.primary||!revision(preview.revision))throw new Error('Preview this profile deletion first.');return this.api.request<ProfileDeletion|undefined>(this.path(preview.profileId,'delete'),'DELETE',{expectedRevision:preview.revision,deleteSavedResources:true},signal);
  }
  async deletionStatus(id:string,signal?:AbortSignal):Promise<ProfileDeletion>{if(this.scope.authority!=='hosted'||!text(id,128))invalid();const raw=await this.api.request<ProfileDeletion>('/v1/account/profile-deletions/'+encodeURIComponent(id),'GET',undefined,signal);if(raw.id!==id)invalid();return raw;}
 }

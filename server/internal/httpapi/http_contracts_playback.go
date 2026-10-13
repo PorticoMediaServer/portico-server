@@ -181,7 +181,7 @@ func registerPlaybackHTTPContracts(registry *apikit.Registry) error {
 		return err
 	}
 	// internal/httpapi/router.go:868
-	if err := apikit.RegisterHTTP[hosted.Signed, struct{}](registry, apikit.Metadata{ID: "post_hosted_wake", Method: "POST", Path: "/v1/hosted/wake", Summary: "Run hosted wake", Access: apikit.Public, Requires: apikit.ScopeSession, Lane: apikit.Security, Admission: laneAuth, Cost: apikit.Constant, BodyLimit: 65536, Status: 202, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[hosted.Signed, struct{}](registry, apikit.Metadata{ID: "post_hosted_wake", NoResponseBody: true, Method: "POST", Path: "/v1/hosted/wake", Summary: "Run hosted wake", Access: apikit.Public, Requires: apikit.ScopeSession, Lane: apikit.Security, Admission: laneAuth, Cost: apikit.Constant, BodyLimit: 65536, Status: 202, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/router.go:1018

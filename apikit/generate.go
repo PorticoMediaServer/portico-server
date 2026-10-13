@@ -306,14 +306,17 @@ func GenerateWith(definitions []Definition, options Options) (Artifacts, error) 
 		for _, key := range d.Query {
 			parameters = append(parameters, map[string]any{"name": key, "in": "query", "required": false, "schema": map[string]any{"type": "string"}})
 		}
+		for _, key := range d.Headers {
+			parameters = append(parameters, map[string]any{"name": key, "in": "header", "required": false, "schema": map[string]any{"type": "string"}})
+		}
 		if len(parameters) > 0 {
 			operation["parameters"] = parameters
 		}
 		operation["x-error-codes"] = d.Errors
 		operation["responses"].(map[string]any)["default"] = map[string]any{"description": "Request refused or unavailable", "content": map[string]any{"application/json": map[string]any{"schema": map[string]any{"type": "object", "required": []string{"error"}, "properties": map[string]any{"error": map[string]any{"type": "object", "required": []string{"code", "message"}, "properties": map[string]any{"code": map[string]any{"type": "string"}, "message": map[string]any{"type": "string"}}}}}}}}
 		operation["x-admission"] = d.Admission
-		if d.Status == 204 {
-			operation["responses"].(map[string]any)["204"] = map[string]any{"description": "Success"}
+		if d.Status == 204 || d.NoResponseBody {
+			operation["responses"].(map[string]any)[fmt.Sprint(d.Status)] = map[string]any{"description": "Success"}
 		}
 		if d.SSE {
 			field, ok := d.Response.FieldByName("Events")
@@ -328,7 +331,7 @@ func GenerateWith(definitions []Definition, options Options) (Artifacts, error) 
 		}
 		for _, status := range append(append([]int{}, d.SuccessStatuses...), d.ResponseStatuses...) {
 			reply := map[string]any{"description": "Success"}
-			if status != 204 {
+			if status != 204 && !d.NoResponseBody {
 				reply["content"] = map[string]any{contentType: map[string]any{"schema": response}}
 			}
 			operation["responses"].(map[string]any)[fmt.Sprint(status)] = reply

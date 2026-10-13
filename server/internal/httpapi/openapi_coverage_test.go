@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -8,16 +9,16 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"portico.local/apikit"
 )
 
 // The published API document must describe every route this package registers.
 // Standing principle 2a.1 of the Feature Depth Program requires third parties to
 // be able to build players and automations against a documented endpoint for
 // everything a first-party client can do, so an undocumented route is a defect
-// rather than an omission. This test reads server/api/openapi.yaml as
-// text — the module has no YAML dependency and does not need one for a document
-// whose path keys are a two-space-indented block — and fails when the code and
-// the document drift apart.
+// rather than an omission. This test reads the generated JSON artifact and
+// fails when the live registry, source bindings and published document drift.
 
 const openAPIPath = "../../api/portico.openapi.json"
 
@@ -27,9 +28,6 @@ var (
 	// A bare path literal that some handlers concatenate a method onto, or
 	// compare r.URL.Path against.
 	pathLiteral = regexp.MustCompile(`"(/(?:v[0-9]+|health)/[^"]*)"`)
-	// Path keys in the document's paths: block.
-	specPathKey = regexp.MustCompile(`^  (/\S*):\s*$`)
-	specMethod  = regexp.MustCompile(`^    (get|post|put|patch|delete|head|options):\s*$`)
 )
 
 // composedRoutes are registered from fragments joined at run time, so a source
@@ -230,5 +228,28 @@ func report(t *testing.T, missing map[string]string, message string) {
 	sort.Strings(keys)
 	for _, key := range keys {
 		t.Errorf("%s: %q (%s)", message, key, missing[key])
+	}
+}
+
+// Published schemas and policy metadata must change together with the router.
+func TestPublishedOpenAPIMatchesRegistry(t *testing.T) {
+	registry, err := FoundationRegistry(Dependencies{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	components, wire, err := PublishedSchemas()
+	if err != nil {
+		t.Fatal(err)
+	}
+	generated, err := apikit.GenerateWith(registry.Definitions(), apikit.Options{Errors: registry.ErrorDefinitions(), Components: components, WireSchemas: wire})
+	if err != nil {
+		t.Fatal(err)
+	}
+	published, err := os.ReadFile(openAPIPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(generated.OpenAPI, published) {
+		t.Fatal("published API differs from the registry; regenerate with go run ./cmd/apigen")
 	}
 }

@@ -14,7 +14,7 @@ func registerIdentityHTTPContracts(registry *apikit.Registry) error {
 		Challenge string            `json:"challenge"`
 		ExpiresAt string            `json:"expiresAt"`
 		Proof     map[string]string `json:"proof"`
-	}](registry, apikit.Metadata{ID: "post_direct_portico_challenge", Method: "POST", Path: "/v1/direct/portico-challenge", Summary: "Request a signed account sign-in challenge", Access: apikit.Public, Requires: apikit.ScopeSession, Lane: apikit.Security, Admission: laneAuth, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Query: []string{"X-Portico-Installation-Id"}, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	}](registry, apikit.Metadata{ID: "post_direct_portico_challenge", Method: "POST", Path: "/v1/direct/portico-challenge", Summary: "Request a signed account sign-in challenge", Access: apikit.Public, Requires: apikit.ScopeSession, Lane: apikit.Security, Admission: laneAuth, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Headers: []string{"X-Portico-Installation-Id"}, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/direct_identity.go:66
@@ -22,7 +22,7 @@ func registerIdentityHTTPContracts(registry *apikit.Registry) error {
 		Username        string         "json:\"username\""
 		Password        string         "json:\"password\""
 		PorticoIdentity *hosted.Signed "json:\"porticoIdentity,omitempty\""
-	}, identity.DirectSignIn](registry, apikit.Metadata{ID: "post_direct_sign_in", Method: "POST", Path: "/v1/direct/sign-in", Summary: "Sign in to this server", Access: apikit.Public, Requires: apikit.ScopeSession, Lane: apikit.Security, Admission: laneAuth, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Query: []string{"X-Portico-Installation-Id"}, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	}, identity.DirectSignIn](registry, apikit.Metadata{ID: "post_direct_sign_in", Method: "POST", Path: "/v1/direct/sign-in", Summary: "Sign in to this server", Access: apikit.Public, Requires: apikit.ScopeSession, Lane: apikit.Security, Admission: laneAuth, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Headers: []string{"X-Portico-Installation-Id"}, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/direct_identity.go:106
@@ -89,7 +89,7 @@ func registerIdentityHTTPContracts(registry *apikit.Registry) error {
 	// internal/httpapi/direct_identity.go:253
 	if err := apikit.RegisterHTTP[struct {
 		PorticoIdentity *hosted.Signed "json:\"porticoIdentity\""
-	}, struct{}](registry, apikit.Metadata{ID: "post_direct_ownership_custody", Method: "POST", Path: "/v1/direct/ownership/custody", Summary: "Run account ownership custody", Access: apikit.Device, Requires: apikit.ScopeSession, Lane: apikit.Security, Admission: laneAuth, Cost: apikit.Constant, BodyLimit: 65536, Status: 204, Query: []string{"X-Portico-Installation-Id"}, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	}, struct{}](registry, apikit.Metadata{ID: "post_direct_ownership_custody", Method: "POST", Path: "/v1/direct/ownership/custody", Summary: "Run account ownership custody", Access: apikit.Device, Requires: apikit.ScopeSession, Lane: apikit.Security, Admission: laneAuth, Cost: apikit.Constant, BodyLimit: 65536, Status: 204, Headers: []string{"X-Portico-Installation-Id"}, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/direct_identity.go:275
@@ -98,7 +98,7 @@ func registerIdentityHTTPContracts(registry *apikit.Registry) error {
 		CurrentPassword  string         "json:\"currentPassword\""
 		ExpectedRevision int64          "json:\"expectedRevision\""
 		PorticoIdentity  *hosted.Signed "json:\"porticoIdentity,omitempty\""
-	}, struct{}](registry, apikit.Metadata{ID: "post_direct_ownership", Method: "POST", Path: "/v1/direct/ownership", Summary: "Run account ownership", Access: apikit.Device, Requires: apikit.ScopeSession, Lane: apikit.Security, Admission: laneAuth, Cost: apikit.Constant, BodyLimit: 65536, Status: 204, Query: []string{"X-Portico-Installation-Id"}, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	}, struct{}](registry, apikit.Metadata{ID: "post_direct_ownership", Method: "POST", Path: "/v1/direct/ownership", Summary: "Run account ownership", Access: apikit.Device, Requires: apikit.ScopeSession, Lane: apikit.Security, Admission: laneAuth, Cost: apikit.Constant, BodyLimit: 65536, Status: 204, Headers: []string{"X-Portico-Installation-Id"}, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/identity_routes.go:35
@@ -112,7 +112,7 @@ func registerIdentityHTTPContracts(registry *apikit.Registry) error {
 		return err
 	}
 	// internal/httpapi/identity_routes.go:79
-	if err := apikit.RegisterHTTP[struct{}, struct{}](registry, apikit.Metadata{ID: "get_profiles_id_avatar", Method: "GET", Path: "/v1/profiles/{id}/avatar", Summary: "Read profile avatar", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Default, Admission: laneDefault, Cost: apikit.Constant, BodyLimit: 0, Status: 200, Query: []string{"v"}, ResponseContentType: "application/octet-stream", Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[struct{}, SubtitleBytesContract](registry, apikit.Metadata{ID: "get_profiles_id_avatar", Method: "GET", Path: "/v1/profiles/{id}/avatar", Summary: "Read profile avatar", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Default, Admission: laneDefault, Cost: apikit.Constant, BodyLimit: 0, Status: 200, Query: []string{"v"}, ResponseContentType: "application/octet-stream", Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/identity_routes.go:155

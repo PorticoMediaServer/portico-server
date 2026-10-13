@@ -7,6 +7,8 @@ test('client source admits no new hand-written API path', () => {
  assert.deepEqual(checkGeneratedRoutes(), []);
  assert.equal(pathLiterals(`const path='/v1/new-action';`).length, 1);
  assert.equal(pathLiterals('const path=`/v1/items/${id}/new-action`;').length, 1);
+ assert.equal(pathLiterals('const path=`${origin}/v1/new-action`;').length, 1);
+ assert.equal(pathLiterals("const path='https://example.test/v1/new-action';").length, 1);
  assert.deepEqual(pathLiterals(`// '/v1/comment'\n/* '/v1/comment' */\nconst label='A library';`), []);
 });
 test('generated builders encode raw parameters once and preserve existing encodings', () => {
