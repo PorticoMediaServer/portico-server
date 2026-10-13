@@ -180,6 +180,14 @@ const codeBodies: Record<string, MessageId> = {
   webhook_limit: 'error.webhookLimit',
   // What was typed to confirm is not what the server asked for (removing a library).
   confirmation_mismatch: 'error.confirmationMismatch',
+  // Live TV sources: what is wrong with an address, a sign-in or a tuner, in a sentence of its own.
+  invalid_channel_input: 'error.live.invalidInput',
+  source_has_dependencies: 'error.live.hasDependencies',
+  source_network_policy: 'error.live.networkPolicy',
+  source_credentials_required: 'error.live.credentials',
+  source_unavailable: 'error.live.unavailable',
+  channel_revision_conflict: 'error.live.previewExpired',
+  source_capacity_unavailable: 'error.live.tunersBusy',
   // Playback that ended before a control sent to it arrived (the owner's Pause, a remote's Stop).
   session_ended: 'error.sessionEnded',
 };
