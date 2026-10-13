@@ -91,7 +91,9 @@ export function validateBulkReceipt(raw: unknown, edit: BulkEdit): BulkReceipt {
     if (!obj(row) || row.kind !== target.kind || row.id !== target.id || typeof row.ok !== 'boolean') bad();
     if (row.ok && !hash(row.revision)) bad();
     if (!row.ok && (!str(row.code, 64) || !row.code || !str(row.message, 2048))) bad();
-    if (row.ok && (row.code !== undefined || row.message !== undefined)) bad();
+    // A receipt says what happened to each change that was sent, so every row stays exact: a row
+    // that cannot be read would leave an outcome unknown. Only what a success carries beyond its
+    // revision (a field this app does not use) is ignored.
     return Object.freeze({
       kind: row.kind as string, id: row.id as string, ok: row.ok as boolean,
       ...(row.ok ? {revision: row.revision as string} : {code: row.code as string, message: row.message as string}),

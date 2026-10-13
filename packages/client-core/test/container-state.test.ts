@@ -36,9 +36,20 @@ test('a stale revision fails as revision_mismatch so the caller rereads', async 
   await assert.rejects(setContainerState(api, 'album', 'a-1', {expectedRevision: 2, watched: true}), (e: any) => e.code === 'revision_mismatch' && e.code === CONTAINER_REVISION_MISMATCH);
 });
 
-test('container state rejects unknown kinds and count-less reads', async () => {
+test('container state rejects unknown kinds; a read without counts shows none', async () => {
   const api = fakeApi({});
   await assert.rejects(getContainerState(api, 'episode' as any, 'e-1'));
   const missing = fakeApi({'GET /v1/containers/book/b-1/personal-state': () => ({revision: 1, watched: false, watermark: ''})});
-  await assert.rejects(getContainerState(missing, 'book', 'b-1'));
+  assert.deepEqual(await getContainerState(missing, 'book', 'b-1'), {revision: 1, watched: false, watermark: '', watchlisted: false, favorite: false, watchedCount: 0, unwatchedCount: 0});
+});
+
+test('a field this app does not know, or a flag or count it cannot read, never loses the state', async () => {
+  const api = fakeApi({'GET /v1/containers/show/s-1/personal-state': () => ({revision: 4, watched: true, watermark: 'w', watchlisted: 'yes', favorite: true, watchedCount: 'many', unwatchedCount: 3, libraryId: 7, rating: 5})});
+  assert.deepEqual(await getContainerState(api, 'show', 's-1'), {revision: 4, watched: true, watermark: 'w', watchlisted: false, favorite: true, watchedCount: 0, unwatchedCount: 3});
+});
+
+test('what the next change is sent against stays exact', async () => {
+  for (const bad of [{watched: true, watermark: ''}, {revision: -1, watched: true, watermark: ''}, {revision: 1, watched: 'true', watermark: ''}, {revision: 1, watched: true}, {revision: 1, watched: true, watermark: 'x'.repeat(200)}, 'nope']) {
+    await assert.rejects(getContainerState(fakeApi({'GET /v1/containers/show/s-1/personal-state': () => bad}), 'show', 's-1'));
+  }
 });

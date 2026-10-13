@@ -4,13 +4,13 @@ import {HomeRowPager} from '@core/home-row-page.ts';
 import {homeRowTitle} from '../../app/home';
 import {useSession} from '../../app/session';
 import {useLibrariesContext} from '../../app/libraries';
-import {currentI18n} from '../../app/i18n';
 import {ErrorNotice, ErrorState} from '../../app/errors';
 import {useNotInterested} from '../../app/not-interested-notice';
 import {RECOMMENDATIONS_RESET, recommendationViewer, withoutHidden} from '../../app/not-interested';
 import {useViewerScope} from '../../app/viewer-scope';
 import {Inset, Page, PageHeader} from '../../ui';
 import {LoadingGrid, SectionView} from '../shared/Sections';
+import {useI18n} from '../../app/i18n';
 
 /**
  * A Home row's See all (Recommendations P7): Recommended, Trending now or one of the Picks for
@@ -19,6 +19,7 @@ import {LoadingGrid, SectionView} from '../shared/Sections';
  * Not interested and leave the grid when turned down.
  */
 export function HomeRowPageScreen() {
+  const {t} = useI18n();
   const {rowId} = useParams({from: '/app/home/rows/$rowId'});
   const navigate = useNavigate();
   const {api} = useSession();
@@ -40,7 +41,7 @@ export function HomeRowPageScreen() {
   const entries = withoutHidden({entries: state.entries}, notInterested.hidden).entries;
   return (
     <Page>
-      <PageHeader title={title || ' '} onBack={back} backLabel={currentI18n().t('action.back')} />
+      <PageHeader title={title || ' '} onBack={back} backLabel={t('action.back')} />
       {state.phase === 'loading' && !state.entries.length ? <LoadingGrid density={row?.artworkShape === 'square' ? 'square' : 'poster'} /> : null}
       {state.phase === 'error' && !row ? <ErrorState error={state.error} context="home" retry={() => void pager.load()} refresh={() => void pager.load()} /> : null}
       {state.error && row ? <Inset><ErrorNotice error={state.error} context="home" retry={() => void pager.more()} refresh={() => void pager.load()} /></Inset> : null}

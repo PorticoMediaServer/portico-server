@@ -114,3 +114,31 @@ for (const boundary of ['read', 'write', 'verify', 'prepare'] as const) {
   assert.deepEqual(f.revoked,['candidate']);assert.ok(!f.events.includes('publish'));
  });
 }
+
+test('a tab whose own sign-in ended does not erase the profile another tab has chosen since',async()=>{
+ // The browser's saved record is now the other tab's new profile.
+ const mine=record('previous'),theirs=record('candidate');
+ let saved:SelectedViewerRecord|null=theirs;
+ const storage:SelectedViewerStorage={read:async()=>saved,write:async value=>{saved=value;}};
+ await new ViewerSelectionCommit(storage).clear(mine.session);
+ assert.equal(saved,theirs,'the newer sign-in stays saved for the next reload');
+ // The same tab signing out of the sign-in that is saved removes it.
+ await new ViewerSelectionCommit(storage).clear(theirs.session);
+ assert.equal(saved,null);
+});
+test('clearing with no sign-in of its own, or over a record that cannot be read, removes the record',async()=>{
+ let saved:SelectedViewerRecord|null=record('candidate');
+ const storage:SelectedViewerStorage={read:async()=>saved,write:async value=>{saved=value;}};
+ await new ViewerSelectionCommit(storage).clear();
+ assert.equal(saved,null);
+ saved=record('candidate');
+ const unreadable:SelectedViewerStorage={read:async()=>{throw new Error('damaged');},write:async value=>{saved=value;}};
+ await new ViewerSelectionCommit(unreadable).clear(record('previous').session);
+ assert.equal(saved,null);
+});
+test('a store that can compare and remove in one step is asked to',async()=>{
+ const asked:string[]=[];
+ const storage:SelectedViewerStorage={read:async()=>{throw new Error('not used');},write:async()=>{throw new Error('not used');},clearIfFamily:async family=>{asked.push(family);}};
+ await new ViewerSelectionCommit(storage).clear(record('previous').session);
+ assert.deepEqual(asked,['family-previous']);
+});

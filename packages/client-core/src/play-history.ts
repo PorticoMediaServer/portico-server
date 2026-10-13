@@ -1,4 +1,5 @@
 import {unreadableServerResponse} from './server-messages.ts';
+import {firstOfEach, keepReadable, noteSkipped} from './tolerant.ts';
 import type {I18n, MessageId} from '../../i18n/src/index.ts';
 
 /**
@@ -50,8 +51,10 @@ function invalid(): never {
 
 export function parsePlayHistory(value: unknown): PlayHistoryPage {
   if (!object(value) || !Array.isArray(value.entries) || value.entries.length > 200 || !text(value.nextCursor, 256)) invalid();
-  if (value.total !== undefined && !whole(value.total)) invalid();
-  const entries = value.entries.map(raw => {
+  const total = whole(value.total) ? value.total : undefined;
+  if (value.total !== undefined && total === undefined) noteSkipped('play-history', 'total');
+  // A play this app cannot read is left out alone; an optional detail it cannot read is left off its play.
+  const entries = firstOfEach('play-history', 'entries', keepReadable('play-history', 'entries', value.entries, raw => {
     if (!object(raw) || !text(raw.id, 64) || !raw.id || !text(raw.user) || !text(raw.accountId, 256) || !text(raw.kind, 64) || !text(raw.title) || !text(raw.libraryId, 256)) invalid();
     if (!text(raw.startedAt, 64) || !Number.isFinite(Date.parse(raw.startedAt)) || !amount(raw.positionSeconds) || !amount(raw.durationSeconds) || typeof raw.completed !== 'boolean') invalid();
     const entry: {-readonly [K in keyof PlayHistoryEntry]: PlayHistoryEntry[K]} = {
@@ -61,18 +64,18 @@ export function parsePlayHistory(value: unknown): PlayHistoryPage {
     for (const field of ['profile', 'parentTitle', 'itemId', 'device', 'platform'] as const) {
       const v = raw[field];
       if (v === undefined || v === '') continue;
-      if (!text(v)) invalid();
+      if (!text(v)) { noteSkipped('play-history', 'entry.' + field); continue; }
       entry[field] = v;
     }
     for (const field of ['season', 'episode'] as const) {
       const v = raw[field];
       if (v === undefined) continue;
-      if (!whole(v)) invalid();
+      if (!whole(v)) { noteSkipped('play-history', 'entry.' + field); continue; }
       entry[field] = v;
     }
     return Object.freeze(entry);
-  });
-  return Object.freeze({entries: Object.freeze(entries), ...(value.total === undefined ? {} : {total: value.total}), nextCursor: value.nextCursor});
+  }), entry => entry.id);
+  return Object.freeze({entries: Object.freeze(entries), ...(total === undefined ? {} : {total}), nextCursor: value.nextCursor});
 }
 
 export async function fetchPlayHistory(api: PlayHistoryApi, filters: PlayHistoryFilters, cursor = '', signal?: AbortSignal): Promise<PlayHistoryPage> {
@@ -103,7 +106,7 @@ export function parsePlaySummary(value: unknown): PlaySummary {
   if (!object(value) || !whole(value.plays) || !whole(value.people) || !whole(value.watchedSeconds) || !whole(value.converted)) invalid();
   const counts = (raw: unknown): readonly PlayCount[] => {
     if (!Array.isArray(raw) || raw.length > 50) invalid();
-    return Object.freeze(raw.map(row => {
+    return Object.freeze(keepReadable('play-summary', 'counts', raw, row => {
       if (!object(row) || !text(row.name) || !whole(row.plays)) invalid();
       return Object.freeze({name: row.name, plays: row.plays});
     }));

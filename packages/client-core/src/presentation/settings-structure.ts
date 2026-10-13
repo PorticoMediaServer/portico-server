@@ -26,8 +26,13 @@ import type {ServerFormId} from '../server-admin/server-forms.ts';
 
 export type SettingsPlatform = 'web' | 'phone' | 'tv';
 export type SettingsHeadingId = 'account' | 'server';
-/** Whose the value is: the profile's on this server (it follows them), or this device's. Said on the row. */
-export type SettingsScope = 'profile' | 'device';
+/**
+ * Whose the value is, said on the row. `profile`: the profile's on this server (it follows them
+ * everywhere; the rule, so the row says nothing). `deviceClass`: the profile's for every device of
+ * this kind — the server keeps one value for all web browsers, one for all phones and tablets and
+ * one for all TVs. `device`: kept by this one device and nowhere else.
+ */
+export type SettingsScope = 'profile' | 'deviceClass' | 'device';
 
 export type SettingsCapabilities = Readonly<{
   /** Registry keys this server publishes; a `preference` row whose key is missing is left out. Absent: all are assumed. */
@@ -50,8 +55,8 @@ export type SettingsCapabilities = Readonly<{
   playbackSpeed?: boolean;
   /** This device renders audio itself: gapless, crossfade and volume leveling. Absent: it does (a Roku's player cannot). */
   audioEffects?: boolean;
-  /** This device carries the mpv player beside its own (the capability document has an `mpv` engine). */
-  mpvPlayer?: boolean;
+  /** This build has mpv as a second player beside the device's own, so there is a player to choose (the capability document then has an `mpv` engine). Absent or false: there is not (the web never has). */
+  playerEngines?: boolean;
   /** This device can hand sound to a receiver undecoded (the capability document lists `audioPassthrough`). */
   audioPassthrough?: boolean;
   /** This device or its display can show HDR. Absent: it can. */
@@ -94,7 +99,7 @@ export type SettingsCustomId =
 type RowCopy = Readonly<{
   label: MessageId;
   help?: MessageId;
-  /** Shown as "This device" on the row. Profile settings say nothing: they are the rule. */
+  /** Named on the row by `settingsScopeLabel` ("All TVs", "This device"). Profile settings say nothing: they are the rule. */
   scope?: SettingsScope;
   /** Shown only while another preference has this value (the countdown, while auto-play is on). */
   when?: Readonly<{key: string; equals: PreferenceValue}>;
@@ -135,6 +140,13 @@ export type SettingsTab = Readonly<{id: string; title: MessageId}>;
 export type SettingsPage = Readonly<{id: string; title: MessageId; icon: IconId; /** Sub-pages (Sources · Recording · Library Channels); each section names the one it is on. */ tabs?: readonly SettingsTab[]; sections: readonly SettingsSection[]}>;
 export type SettingsHeading = Readonly<{id: SettingsHeadingId; title: MessageId; pages: readonly SettingsPage[]}>;
 export type SettingsStructure = Readonly<{headings: readonly SettingsHeading[]}>;
+
+/** The Player setting's values, in the order shown: Automatic is the default. */
+export const PLAYER_ENGINES = ['automatic', 'native', 'mpv'] as const;
+export type PlayerEngineSetting = (typeof PLAYER_ENGINES)[number];
+const PLAYER_ENGINE_CHOICES: readonly SettingsChoice[] = [
+  {value: 'automatic', label: 'settings.player.automatic'}, {value: 'native', label: 'settings.player.native'}, {value: 'mpv', label: 'settings.player.mpv'},
+];
 
 // ── Authoring helpers ────────────────────────────────────────────────────────
 
@@ -226,13 +238,14 @@ const accountPages: readonly AuthoredPage[] = [
       ]},
       {id: 'method', rows: [
         // One choice in place of three four-way policies; it writes a combination that makes sense.
-        {kind: 'composite', id: 'playbackMethod', storage: 'registry', label: 'settings.row.playbackMethod', help: 'settings.help.playbackMethod', scope: 'device', control: {type: 'choice', choices: [
+        {kind: 'composite', id: 'playbackMethod', storage: 'registry', label: 'settings.row.playbackMethod', help: 'settings.help.playbackMethod', scope: 'deviceClass', control: {type: 'choice', choices: [
           {value: 'automatic', label: 'settings.playbackMethod.automatic'}, {value: 'original', label: 'settings.playbackMethod.original'}, {value: 'convert', label: 'settings.playbackMethod.convert'},
         ]}},
-        // Only where the app carries a second player.
-        {kind: 'composite', id: 'playerEngine', storage: 'device', label: 'settings.row.playerEngine', help: 'settings.help.playerEngine', scope: 'device', needs: c => c.mpvPlayer === true, control: {type: 'choice', choices: [
-          {value: 'automatic', label: 'settings.playerEngine.automatic'}, {value: 'native', label: 'settings.playerEngine.native'}, {value: 'mpv', label: 'settings.playerEngine.mpv'},
-        ]}},
+        // Which player plays: Automatic (the default) uses the device's own when it can play the
+        // title as it is or with a plain repackaging, and mpv only when the alternative is
+        // converting the picture, lossy sound or burned-in subtitles. Kept by the device itself,
+        // and shown only where there is a second player to choose.
+        {kind: 'composite', id: 'playerEngine', storage: 'device', label: 'settings.row.player', help: 'settings.help.player', scope: 'device', platforms: ['phone', 'tv'], needs: c => !!c.playerEngines, control: {type: 'choice', choices: PLAYER_ENGINE_CHOICES}},
       ]},
       // The short list for when detection is wrong. Each narrows what the server plans this device as.
       {id: 'fixes', title: 'settings.section.playbackFixes', description: 'settings.section.playbackFixesHelp', rows: [
@@ -255,9 +268,9 @@ const accountPages: readonly AuthoredPage[] = [
   {
     id: 'appearance', title: 'settings.page.appearance', icon: 'sliders', sections: [
       {id: 'look', rows: [
-        {kind: 'composite', id: 'cardSize', storage: 'registry', label: 'settings.row.cardSize', scope: 'device', platforms: ['web'], control: {type: 'choice', choices: [{value: 'small', label: 'settings.cardSize.small'}, {value: 'medium', label: 'settings.cardSize.medium'}, {value: 'large', label: 'settings.cardSize.large'}]}},
-        toggle('appearance.showBackdrops', 'pref.label.appearance.showBackdrops', {scope: 'device', help: 'settings.help.backdrops', platforms: ['web']}),
-        toggle('appearance.reduceMotion', 'pref.label.appearance.reduceMotion', {scope: 'device', help: 'pref.help.appearance.reduceMotion.web', platforms: ['web']}),
+        {kind: 'composite', id: 'cardSize', storage: 'registry', label: 'settings.row.cardSize', scope: 'deviceClass', platforms: ['web'], control: {type: 'choice', choices: [{value: 'small', label: 'settings.cardSize.small'}, {value: 'medium', label: 'settings.cardSize.medium'}, {value: 'large', label: 'settings.cardSize.large'}]}},
+        toggle('appearance.showBackdrops', 'pref.label.appearance.showBackdrops', {scope: 'deviceClass', help: 'settings.help.backdrops', platforms: ['web']}),
+        toggle('appearance.reduceMotion', 'pref.label.appearance.reduceMotion', {scope: 'deviceClass', help: 'pref.help.appearance.reduceMotion.web', platforms: ['web']}),
         // Apple keeps this on the device, beside the system's own Reduce Motion.
         {kind: 'composite', id: 'reduceMotion', storage: 'device', label: 'pref.label.appearance.reduceMotion', help: 'settings.help.reduceMotionDevice', scope: 'device', platforms: ['phone', 'tv'], control: {type: 'switch'}},
         {kind: 'composite', id: 'textSize', storage: 'device', label: 'settings.row.textSize', scope: 'device', platforms: ['tv'], control: {type: 'choice', choices: [{value: 'standard', label: 'settings.textSize.standard'}, {value: 'large', label: 'settings.textSize.large'}]}},
@@ -502,6 +515,17 @@ function resolve(pages: readonly AuthoredPage[], context: SettingsContext): Sett
     if (sections.length) out.push({id: authored.id, title: authored.title, icon: authored.icon, ...(tabs && tabs.length > 1 ? {tabs} : {}), sections});
   }
   return out;
+}
+
+/**
+ * The words a row carries for whose its value is, or undefined when it says nothing. A value the
+ * server keeps per kind of device names the kind plainly, so nobody takes it for a setting of the
+ * one device in their hand.
+ */
+export function settingsScopeLabel(scope: SettingsScope | undefined, platform: SettingsPlatform): MessageId | undefined {
+  if (scope === 'device') return 'settings.thisDevice';
+  if (scope === 'deviceClass') return platform === 'web' ? 'settings.scope.allBrowsers' : platform === 'tv' ? 'settings.scope.allTVs' : 'settings.scope.allPhones';
+  return undefined;
 }
 
 /** The Settings screen for this viewer on this device: Account for everyone, Server for owners. */

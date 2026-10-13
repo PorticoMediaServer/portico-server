@@ -7,7 +7,6 @@ import (
 	"go/token"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -22,7 +21,21 @@ import (
 //
 // Test files are exempt: a test is allowed to model a caller that does not
 // contain its panics, which is exactly what the containment has to survive.
-var bareGo = regexp.MustCompile(`^\s*go\s+(func\b|[A-Za-z_][A-Za-z0-9_.]*\()`)
+func bareGoLines(relative string, data []byte) (map[int]bool, error) {
+	positions := token.NewFileSet()
+	file, err := parser.ParseFile(positions, relative, data, 0)
+	if err != nil {
+		return nil, err
+	}
+	lines := map[int]bool{}
+	ast.Inspect(file, func(node ast.Node) bool {
+		if statement, ok := node.(*ast.GoStmt); ok {
+			lines[positions.Position(statement.Go).Line] = true
+		}
+		return true
+	})
+	return lines, nil
+}
 
 // The maintained upstream driver already owns this cancellation watcher's
 // lifetime through its returned cleanup function. Permit exactly its one
@@ -92,9 +105,13 @@ func TestEveryGoroutineIsStartedThroughThisPackage(t *testing.T) {
 			if exceptionErr != nil {
 				return exceptionErr
 			}
-			for index, line := range strings.Split(string(data), "\n") {
-				if bareGo.MatchString(line) && !exceptions[index+1] {
-					offenders = append(offenders, relative+":"+strconv.Itoa(index+1)+": "+strings.TrimSpace(line))
+			lines, parseErr := bareGoLines(relative, data)
+			if parseErr != nil {
+				return parseErr
+			}
+			for line := range lines {
+				if !exceptions[line] {
+					offenders = append(offenders, relative+":"+strconv.Itoa(line))
 				}
 			}
 			return nil
@@ -133,5 +150,12 @@ func TestUpstreamInterruptExceptionIsLimitedToOneFunctionAndGoroutine(t *testing
 		if _, err := upstreamInterruptGoLines(path, []byte(invalid)); err == nil {
 			t.Fatal("accepted changed upstream goroutine shape")
 		}
+	}
+}
+
+func TestGoroutineGuardFindsInlineAndMultilineStatements(t *testing.T) {
+	lines, err := bareGoLines("app.go", []byte("package app\nfunc f(){ if true { go worker() }; go func(\n){}() }\n"))
+	if err != nil || len(lines) != 1 || !lines[2] {
+		t.Fatal(lines, err)
 	}
 }

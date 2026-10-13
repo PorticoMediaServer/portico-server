@@ -5,12 +5,11 @@ import {davCommandSucceeded, davConfiguration, mountCommandSucceeded, stableStor
 export {davCommandSucceeded, davConfiguration, mountCommandSucceeded, stableStorageOperationId, storageOperationId, type WebDavDraft} from '@core/server-admin/panel-logic.ts';
 import {problem, sentence, useAction} from '../../admin/console';
 import {useService} from '../../app/content';
-import {formatBytes} from '@core/presentation/index.ts';
 import {useSession} from '../../app/session';
 import {useViewerScope} from '../../app/viewer-scope';
-import {currentI18n} from '../../app/i18n';
 import {Badge, Button, Checkbox, ConfirmDialog, Dialog, Input, Loading, Menu, Notice, PasswordInput, SettingsGroup, SettingsRow, Text, TextArea, type MenuItem} from '../../ui';
 import {SectionHeader} from './Server';
+import {useI18n} from '../../app/i18n';
 
 const mountTone = (m: StorageMount): 'healthy' | 'warning' | 'danger' | 'neutral' => (m.observedState === 'mounted' ? 'healthy' : m.observedState === 'failed' || m.observedState === 'quarantined' ? 'danger' : m.observedState === 'starting' || m.observedState === 'stopping' ? 'warning' : 'neutral');
 
@@ -20,6 +19,8 @@ const mountTone = (m: StorageMount): 'healthy' | 'warning' | 'danger' | 'neutral
  * with one Add dialog and one card style.
  */
 export function RemoteSourcesPanel() {
+  const i18n = useI18n();
+  const {t} = i18n;
   const {api} = useSession();
   const scope = useViewerScope();
   // CD-09: one operation ID per logical command, reused across its retries; released once the
@@ -60,7 +61,6 @@ export function RemoteSourcesPanel() {
   }, done);
   const m = mounts.snapshot;
   const d = dav.snapshot;
-  const t = currentI18n().t;
   const list = m.data?.mounts ?? [];
   const davs = d.sources.filter(x => x.kind === 'webdav');
   return (
@@ -88,7 +88,7 @@ export function RemoteSourcesPanel() {
               if (x.actions.includes('stop')) items.push({id: 'stop', label: t('web.storage.unmount'), icon: 'stop'});
               if (x.actions.includes('restart')) items.push({id: 'restart', label: t('web.storage.restart'), icon: 'refresh'});
               if (x.actions.includes('delete')) items.push({id: 'delete', label: t('action.removeShort'), icon: 'trash', destructive: true, separatorBefore: true});
-              return <SettingsRow key={x.id} icon="storage" label={x.name} help={<><span style={{fontFamily: 'var(--font-mono)', fontSize: 12}}>{x.mountPath}</span>{x.cacheBytes ? ` · cache ${formatBytes(x.cacheBytes)}` : ''}{x.error ? ` · ${x.error}` : ''}{x.removalPending ? ' · Removal pending' : ''}</>} meta={<Badge tone={mountTone(x)} dot live={x.observedState === 'starting'}>{sentence(x.observedState)}</Badge>} control={items.length ? <Menu label={x.name} trigger={<Button size="sm" variant="ghost" icon="more" aria-label={t('web.storage.actions')} />} items={items} onSelect={id => (id === 'delete' ? setRemove({kind: 'mount', mount: x}) : void runMount(() => mounts.service.act(x.id, id as 'start' | 'stop' | 'restart', x.controlRevision)))} /> : undefined} />;
+              return <SettingsRow key={x.id} icon="storage" label={x.name} help={<><span style={{fontFamily: 'var(--font-mono)', fontSize: 12}}>{x.mountPath}</span>{x.cacheBytes ? ` · ${t('web.storage.cacheSize', {size: i18n.bytes(x.cacheBytes)})}` : ''}{x.error ? ` · ${x.error}` : ''}{x.removalPending ? ` · ${t('server.storage.removalPending')}` : ''}</>} meta={<Badge tone={mountTone(x)} dot live={x.observedState === 'starting'}>{sentence(x.observedState)}</Badge>} control={items.length ? <Menu label={x.name} trigger={<Button size="sm" variant="ghost" icon="more" aria-label={t('web.storage.actions')} />} items={items} onSelect={id => (id === 'delete' ? setRemove({kind: 'mount', mount: x}) : void runMount(() => mounts.service.act(x.id, id as 'start' | 'stop' | 'restart', x.controlRevision)))} /> : undefined} />;
             })}
           </SettingsGroup>
         ) : null}
@@ -102,7 +102,7 @@ export function RemoteSourcesPanel() {
 }
 
 function WebDavDialog({open, source, onClose, onSave, busy}: {open: boolean; source: RemoteSource | null; onClose: () => void; onSave: (id: string | null, input: DAVConfiguration) => void; busy: boolean}) {
-  const t = currentI18n().t;
+  const {t} = useI18n();
   const [draft, setDraft] = useState<WebDavDraft>({name: '', root: '', username: '', password: '', insecureLocal: false});
   useEffect(() => {
     // CD-09: the address starts empty on edit too — it is never reconstructed from the server's
@@ -112,7 +112,7 @@ function WebDavDialog({open, source, onClose, onSave, busy}: {open: boolean; sou
   return (
     <Dialog open={open} onOpenChange={o => !o && onClose()} title={source ? t('web.storage.editDav') : t('web.storage.addDav')} description={t('web.storage.davPasswordKept')} actions={<><Button variant="ghost" label={t('action.cancel')} onClick={onClose} /><Button variant="primary" label={source ? t('action.save') : t('web.storage.addShare')} loading={busy} disabled={!draft.name.trim() || (!source && !draft.root.trim())} onClick={() => onSave(source?.id ?? null, davConfiguration(source, draft))} /></>}>
       <Input label={t('profile.name')} value={draft.name} onChange={e => setDraft({...draft, name: e.target.value})} maxLength={100} autoFocus />
-      <Input label={t('web.claim.address')} value={draft.root} onChange={e => setDraft({...draft, root: e.target.value})} placeholder="https://cloud.example.com/remote.php/dav/files/me/Media" mono autoCapitalize="off" spellCheck={false} help={source && !draft.root.trim() && source.origin ? currentI18n().t('web.storage.webdavKeepConnection', {origin: source.origin}) : undefined} />
+      <Input label={t('web.claim.address')} value={draft.root} onChange={e => setDraft({...draft, root: e.target.value})} placeholder="https://cloud.example.com/remote.php/dav/files/me/Media" mono autoCapitalize="off" spellCheck={false} help={source && !draft.root.trim() && source.origin ? t('web.storage.webdavKeepConnection', {origin: source.origin}) : undefined} />
       <Input label={t('web.direct.username')} optional value={draft.username} onChange={e => setDraft({...draft, username: e.target.value})} autoCapitalize="off" spellCheck={false} />
       <PasswordInput label={t('web.account.password')} optional value={draft.password} onChange={e => setDraft({...draft, password: e.target.value})} help={source?.credentialPresent ? t('web.storage.keepSavedPassword') : undefined} />
       <Checkbox checked={draft.insecureLocal} onCheckedChange={v => setDraft({...draft, insecureLocal: v})} label={t('web.storage.insecureLocal')} help={t('web.storage.insecureLocalHelp')} />
@@ -121,7 +121,7 @@ function WebDavDialog({open, source, onClose, onSave, busy}: {open: boolean; sou
 }
 
 function RcloneDialog({open, onClose, onSave, busy}: {open: boolean; onClose: () => void; onSave: (input: {name: string; executable: string; remote: string; config: string}) => void; busy: boolean}) {
-  const t = currentI18n().t;
+  const {t} = useI18n();
   const [draft, setDraft] = useState({name: '', executable: '/opt/homebrew/bin/rclone', remote: '', config: ''});
   useEffect(() => {
     if (open) setDraft(d => ({...d, name: '', remote: '', config: ''}));

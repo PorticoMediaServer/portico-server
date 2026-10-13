@@ -14,6 +14,23 @@ test('manual edit projection whitelists nested scope and accepts source values a
  assert.throws(()=>validateMetadataEdit({...raw,title:{...raw.title,value:'t'.repeat(2049)}},scope,target));
  assert.throws(()=>validateMetadataEdit({...raw,description:{...raw.description,value:'d'.repeat(65537)}},scope,target));
 });
+test('a kind this app does not know and an optional date it cannot read are left off, not refused',()=>{
+ const raw=response();
+ const parsed=validateMetadataEdit({...raw,kind:'holo-sim',updatedAt:'not a date with PRIVATE'},scope,target);
+ assert.equal(parsed.kind,undefined);assert.equal(parsed.updatedAt,undefined);
+ assert.equal(parsed.title.value,raw.title.value);assert.equal(parsed.revision,raw.revision);
+ assert.equal(validateMetadataEdit({...raw,updatedAt:'2026-09-24T02:00:00Z'},scope,target).updatedAt,'2026-09-24T02:00:00Z');
+});
+test('a projection for another server, library or item, or without a fence or revision, is refused',()=>{
+ const raw=response();
+ for(const patch of [
+  {scope:{...raw.scope,serverId:'other'}},
+  {scope:{...raw.scope,libraryId:'other'}},
+  {scope:{...raw.scope,itemId:'other'}},
+  {scope:{...raw.scope,viewerFence:'not-a-fence'}},
+  {revision:'not-a-fence'},
+ ])assert.throws(()=>validateMetadataEdit({...raw,...patch},scope,target));
+});
 test('title-only patch omits long untouched description and null releases long automatic backup',async()=>{
  let raw=response();raw.description.value=raw.description.automaticValue='d'.repeat(20001);const requests:any[]=[];
  const service=new MetadataEditorService({scope,api:{async request(_path,method,body){requests.push({method,body});if(method==='PATCH'){const patch=body as any;raw={...raw,revision:'c'.repeat(64),title:patch.title===null?{value:raw.title.automaticValue,automaticValue:raw.title.automaticValue,manual:false}:{value:patch.title,automaticValue:raw.title.automaticValue,manual:true}};}return raw as any;}}});

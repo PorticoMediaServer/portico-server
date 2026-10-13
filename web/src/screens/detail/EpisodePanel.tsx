@@ -12,7 +12,7 @@ import {episodeCode, formatAirDate} from './EpisodeCard';
 import {PlaybackChoices, type PlaybackChoice} from './PlaybackChoices';
 import {setPendingTrackChoice} from '../../player/pending-choice';
 import s from './Show.module.css';
-import {currentI18n} from '../../app/i18n';
+import {useI18n} from '../../app/i18n';
 
 /**
  * The episode view (Spec — Title Pages §3): a panel over the show page, never
@@ -35,13 +35,15 @@ export function EpisodePanel({libraryId, showId, episodeId, preview, previous, n
   /** Plays within the season's resident episodes so Up Next continues in order. */
   playList?: (episode: ContentEntry, startSeconds: number) => void;
 }) {
+  const i18n = useI18n();
+  const {t} = i18n;
   const player = usePlayerActions();
   const target = useMemo(() => ({libraryId, itemId: episodeId}), [libraryId, episodeId]);
   const {snapshot, mutate, retry} = useDetail(target);
   const data = snapshot.data;
   const item = data?.item;
-  const title = item?.title ?? preview?.title ?? currentI18n().t('title.episodeFallback');
-  const code = item?.episode ? episodeCode({seasonNumber: item.episode.seasonNumber ?? undefined, episodeNumber: item.episode.number}) : preview ? episodeCode(preview) : '';
+  const title = item?.title ?? preview?.title ?? t('title.episodeFallback');
+  const code = item?.episode ? episodeCode(t, {seasonNumber: item.episode.seasonNumber ?? undefined, episodeNumber: item.episode.number}) : preview ? episodeCode(t, preview) : '';
   const actions = data?.actions.filter(a => a.enabled) ?? [];
   const play = actions.find(a => a.playback && a.id !== 'start_over');
   const restart = actions.find(a => a.id === 'start_over');
@@ -73,32 +75,32 @@ export function EpisodePanel({libraryId, showId, episodeId, preview, previous, n
   const names = (list: typeof credits, withRole = false, all = false) => [...new Map(list.map(c => [c.personId ?? c.name, withRole && c.role ? `${c.name} (${c.role})` : c.name])).values()].slice(0, all ? undefined : 12).join(', ');
   // M26: the episode's own still, else the styled placeholder — never the show backdrop.
   const still = episodeArt({stillUrl: item?.stillUrl ?? preview?.stillUrl});
-  const rows = [guests.length ? [currentI18n().t('title.cast'), allCast ? names(castPages.credits, true, true) : names(guests, true)] : null].filter((r): r is [string, string] => !!r);
-  const crewLines = [directors.length ? currentI18n().t('title.directedBy', {names: names(directors)}) : null, writers.length ? currentI18n().t('title.writtenBy', {names: names(writers)}) : null].filter((l): l is string => !!l);
+  const rows = [guests.length ? [t('title.cast'), allCast ? names(castPages.credits, true, true) : names(guests, true)] : null].filter((r): r is [string, string] => !!r);
+  const crewLines = [directors.length ? t('title.directedBy', {names: names(directors)}) : null, writers.length ? t('title.writtenBy', {names: names(writers)}) : null].filter((l): l is string => !!l);
   return (
-    <Dialog open onOpenChange={open => !open && onClose()} title={title} description={[code, item?.duration ? formatDuration(item.duration) : preview?.duration ? formatDuration(preview.duration) : undefined, preview?.airDate ? currentI18n().t('title.airedOn', {date: formatAirDate(preview.airDate)}) : undefined].filter(Boolean).join(' · ') || undefined} placement="side" width={480}>
+    <Dialog open onOpenChange={open => !open && onClose()} title={title} description={[code, item?.duration ? formatDuration(item.duration) : preview?.duration ? formatDuration(preview.duration) : undefined, preview?.airDate ? t('title.airedOn', {date: formatAirDate(i18n, preview.airDate)}) : undefined].filter(Boolean).join(' · ') || undefined} placement="side" width={480}>
       {still.kind === 'still' ? <Artwork path={still.path} shape="landscape" icon="tv" className={s.panelStill} alt="" progress={item && item.duration ? item.progressSeconds / item.duration : undefined} /> : <div className={s.panelStillPlaceholder} style={placeholderTint(showId)} aria-hidden><span>{code}</span></div>}
       {snapshot.phase === 'error' && !data ? <ErrorNotice error={snapshot.error} context="detail" retry={retry} /> : null}
-      {!data && snapshot.phase !== 'error' ? <Loading label={currentI18n().t('title.loadingEpisode', {title})} /> : null}
+      {!data && snapshot.phase !== 'error' ? <Loading label={t('title.loadingEpisode', {title})} /> : null}
       {item?.overview ?? preview?.overview ? <Text as="p" variant="body" tone="secondary">{item?.overview ?? preview?.overview}</Text> : null}
       {item && play?.playback ? <PlaybackChoices compact libraryId={libraryId} itemId={play.playback.itemId} onChange={setChoice} /> : null}
       {item ? (
         <div style={{display: 'flex', flexWrap: 'wrap', gap: 8}}>
-          {play?.playback ? <Button variant="primary" icon="play" label={resume ? currentI18n().t('title.resumeRemaining', {remaining: formatDuration(item.duration - item.progressSeconds)}) : currentI18n().t('action.play')} onClick={() => start(play.playback!.startSeconds ?? 0)} /> : null}
-          {restart?.playback && resume ? <Button variant="secondary" icon="restart" label={currentI18n().t('title.playFromStart')} onClick={() => start(0)} /> : null}
-          {canWatched ? <Button variant="secondary" icon={data?.personal.watched ? 'watched' : 'check'} label={currentI18n().t(data?.personal.watched ? 'title.markUnwatched' : 'title.markWatched')} selected={data?.personal.watched} onClick={() => mutate({action: 'watched', value: !data?.personal.watched})} /> : null}
-          <Button variant="secondary" icon="more" aria-label={currentI18n().t('title.moreActions')} title={currentI18n().t('title.moreActions')} onClick={(e: React.MouseEvent<HTMLElement>) => player.more(preview ?? entryOf(item), anchorOf(e.currentTarget))} />
+          {play?.playback ? <Button variant="primary" icon="play" label={resume ? t('title.resumeRemaining', {remaining: formatDuration(item.duration - item.progressSeconds)}) : t('action.play')} onClick={() => start(play.playback!.startSeconds ?? 0)} /> : null}
+          {restart?.playback && resume ? <Button variant="secondary" icon="restart" label={t('title.playFromStart')} onClick={() => start(0)} /> : null}
+          {canWatched ? <Button variant="secondary" icon={data?.personal.watched ? 'watched' : 'check'} label={t(data?.personal.watched ? 'title.markUnwatched' : 'title.markWatched')} selected={data?.personal.watched} onClick={() => mutate({action: 'watched', value: !data?.personal.watched})} /> : null}
+          <Button variant="secondary" icon="more" aria-label={t('title.moreActions')} title={t('title.moreActions')} onClick={(e: React.MouseEvent<HTMLElement>) => player.more(preview ?? entryOf(item), anchorOf(e.currentTarget))} />
         </div>
       ) : null}
       {snapshot.mutationError ? <ErrorNotice error={snapshot.mutationError} context="detail" operation="save" /> : null}
       {rows.length ? <KeyValue rows={rows} /> : null}
-      {castTotal > 12 && !(allCast && castPages.done) ? <div><Button variant="link" label={currentI18n().t(allCast ? 'title.moreCast' : 'title.allCast')} onClick={() => { setAllCast(true); castPages.more(); }} /></div> : null}
+      {castTotal > 12 && !(allCast && castPages.done) ? <div><Button variant="link" label={t(allCast ? 'title.moreCast' : 'title.allCast')} onClick={() => { setAllCast(true); castPages.more(); }} /></div> : null}
       {crewLines.map(line => <Text key={line} as="p" variant="caption" tone="secondary">{line}</Text>)}
       {data?.files?.length ? <TitleFiles files={data.files} /> : null}
       {previous || next ? (
         <div className={s.panelNav}>
-          {previous ? <Button variant="ghost" size="sm" icon="back" label={episodeCode(previous) || previous.title} aria-label={`${currentI18n().t('title.previousEpisode')}: ${episodeCode(previous)} ${previous.title}`} onClick={() => onOpenEpisode(previous)} /> : <span />}
-          {next ? <Button variant="ghost" size="sm" iconAfter="forward" label={episodeCode(next) || next.title} aria-label={`${currentI18n().t('title.nextEpisode')}: ${episodeCode(next)} ${next.title}`} onClick={() => onOpenEpisode(next)} /> : null}
+          {previous ? <Button variant="ghost" size="sm" icon="back" label={episodeCode(t, previous) || previous.title} aria-label={t('web.episode.previousNamed', {episode: [episodeCode(t, previous), previous.title].filter(Boolean).join(' ')})} onClick={() => onOpenEpisode(previous)} /> : <span />}
+          {next ? <Button variant="ghost" size="sm" iconAfter="forward" label={episodeCode(t, next) || next.title} aria-label={t('web.episode.nextNamed', {episode: [episodeCode(t, next), next.title].filter(Boolean).join(' ')})} onClick={() => onOpenEpisode(next)} /> : null}
         </div>
       ) : null}
     </Dialog>

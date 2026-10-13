@@ -6,8 +6,8 @@ import {useSession} from '../../app/session';
 import {activeRangePreset, browseValueLabel, fieldSelectionSummary, filterControlOf, filterValuesField, nextToolbarSort, orderFilterValues, rangePresets, toolbarModel, type ToolbarGroupId, type ToolbarModel} from '@core/presentation/index.ts';
 import {browseCountLabel, quickFilterLabelForKind} from '../../app/content';
 import {Button, Checkbox, Chip, Chips, Icon, Input, Menu, Popover, Spinner, Text, cx, useCompact, type MenuItem} from '../../ui';
-import {currentI18n} from '../../app/i18n';
 import s from './BrowseFilters.module.css';
+import {useI18n, type I18n} from '../../app/i18n';
 
 /**
  * The browse toolbar, drawn from the shared model (`toolbarModel` in client-core): one Sort
@@ -16,7 +16,7 @@ import s from './BrowseFilters.module.css';
  * removable chips on a second line. The same shape on every grid; Apple draws the same model.
  */
 export function BrowseBar({libraryId, capabilities, predicates, onChange, sort, onSort, fixedSort, total, onSave, libraryKind, pivot}: {/** The tab orders itself (Recently aired): no Sort control. */ fixedSort?: boolean; libraryId: string; capabilities: BrowseCapabilities; predicates: readonly Predicate[]; onChange: (next: readonly Predicate[]) => void; sort: BrowseSortSelection; onSort: (next: BrowseSortSelection) => void; total?: number; onSave?: () => void; libraryKind: string; pivot?: string}) {
-  const t = currentI18n().t;
+  const {t} = useI18n();
   const compact = useCompact();
   const {owner} = useSession();
   const model = useMemo(() => toolbarModel(capabilities, libraryKind, predicates, sort, {owner}), [capabilities, libraryKind, predicates, sort, owner]);
@@ -32,7 +32,7 @@ export function BrowseBar({libraryId, capabilities, predicates, onChange, sort, 
   const sortItems: MenuItem[] = [
     ...model.sorts.map(x => ({id: x.id, label: fieldLabel(x.id, x.labelKey), selected: x.id === sort.field, icon: x.id === sort.field ? (sort.direction === 'desc' ? 'chevronDown' as const : 'chevronUp' as const) : undefined, meta: x.expensive ? t('web.filters.slower') : undefined})),
   ];
-  const sortLabel = `${fieldLabel(sort.field, sortCap?.labelKey)}${model.sort.flippable ? ` · ${directionLabel(sort.field, sort.direction)}` : ''}`;
+  const sortLabel = model.sort.flippable ? t('lib.sortChip', {field: fieldLabel(sort.field, sortCap?.labelKey), direction: directionLabel(t, sort.field, sort.direction)}) : fieldLabel(sort.field, sortCap?.labelKey);
   const [adding, setAdding] = useState(false);
   const [openField, setOpenField] = useState<string | null>(null);
   const defaultSort = capabilities.resolvedPivot?.defaultSort[0];
@@ -62,15 +62,14 @@ export function BrowseBar({libraryId, capabilities, predicates, onChange, sort, 
   );
 }
 
-function directionLabel(field: string, direction: 'asc' | 'desc'): string {
-  const t = currentI18n().t;
+function directionLabel(t: I18n['t'], field: string, direction: 'asc' | 'desc'): string {
   const kind = /title|name|artist|album|author/.test(field) ? 'alpha' : /added|date|year|release|played|last/.test(field) ? 'date' : /rating/.test(field) ? 'rating' : /duration|length/.test(field) ? 'duration' : 'other';
   return t('web.filters.direction', {kind, dir: direction});
 }
 
 /** A promoted field on the bar: a chip that names the field and its current selection, opening its control. */
 function FieldMenu({libraryId, field, predicates, open, onOpenChange, onChange}: {libraryId: string; field: BrowseFieldCapability; predicates: readonly Predicate[]; open: boolean; onOpenChange: (o: boolean) => void; onChange: (mine: readonly Predicate[]) => void}) {
-  const t = currentI18n().t;
+  const {t} = useI18n();
   const label = fieldLabel(field.id, field.labelKey);
   // The chip names the field and is lit while it filters; what it selects is said once, on the applied line below.
   return (
@@ -90,7 +89,7 @@ function FieldMenu({libraryId, field, predicates, open, onOpenChange, onChange}:
  * filter is one more click. On phones the quick toggles live here too.
  */
 function AddFilterPanel({libraryId, model, predicates, mineOf, quickOn, toggleQuick, onChange, onClear, onDone, compact, libraryKind}: {libraryId: string; model: ToolbarModel; predicates: readonly Predicate[]; mineOf: (field: BrowseFieldCapability) => readonly Predicate[]; quickOn: (id: string) => boolean; toggleQuick: (id: string) => void; onChange: (field: BrowseFieldCapability, mine: readonly Predicate[]) => void; onClear: () => void; onDone: () => void; compact: boolean; libraryKind: string}) {
-  const t = currentI18n().t;
+  const {t} = useI18n();
   const [expanded, setExpanded] = useState<string | null>(null);
   const titles: Record<ToolbarGroupId, string> = {title: t('web.filters.group.title'), activity: t('web.filters.group.activity'), file: t('web.filters.group.file')};
   return (
@@ -133,7 +132,8 @@ function AddFilterPanel({libraryId, model, predicates, mineOf, quickOn, toggleQu
  * two number boxes. Reused by the Library Channels builder (one condition's value editor).
  */
 export function FieldControl({libraryId, field, predicates, onChange}: {libraryId: string; field: BrowseFieldCapability; predicates: readonly Predicate[]; onChange: (mine: readonly Predicate[]) => void}) {
-  const t = currentI18n().t;
+  const i18n = useI18n();
+  const {t} = i18n;
   const facets = useFacets(libraryId);
   const control = filterControlOf(field);
   const target = filterValuesField(field);
@@ -167,7 +167,7 @@ export function FieldControl({libraryId, field, predicates, onChange}: {libraryI
           {loading && !values ? <div className={s.loading}><Spinner /></div> : null}
           {options.map(o => (
             <div key={o.value} className={s.option}>
-              <Checkbox checked={chosen.has(o.value)} onCheckedChange={on => { const next = new Set(chosen); if (on) next.add(o.value); else next.delete(o.value); set(next); }} label={<span className={s.optionLabel}><span>{o.label && o.label !== o.value ? o.label : valueLabel(o.value)}</span>{counted && o.count ? <span className={s.optionCount}>{o.count.toLocaleString()}</span> : null}</span>} />
+              <Checkbox checked={chosen.has(o.value)} onCheckedChange={on => { const next = new Set(chosen); if (on) next.add(o.value); else next.delete(o.value); set(next); }} label={<span className={s.optionLabel}><span>{o.label && o.label !== o.value ? o.label : valueLabel(o.value)}</span>{counted && o.count ? <span className={s.optionCount}>{i18n.number(o.count)}</span> : null}</span>} />
             </div>
           ))}
           {values && !options.length && !loading ? <Text variant="caption" tone="tertiary">{t('web.filters.nothing')}</Text> : null}
@@ -206,12 +206,13 @@ export function FieldControl({libraryId, field, predicates, onChange}: {libraryI
  * jump is one request. Labels read from the anchor key under the current sort ("2019",
  * "1990s", "Sep 2026", "8★", "1h 30m"); an empty key reads the catalogue "No value". */
 export function AlphabetRail({index, current, onJump, sortField}: {index: readonly BrowsePositionAnchor[]; current?: string; onJump: (key: string) => void; /** Engine sort the anchors were computed under; labels format from it. */ sortField?: string}) {
+  const {t} = useI18n();
   if (index.length < 4) return null;
-  const noValue = currentI18n().t('library.anchorNoValue');
+  const noValue = t('library.anchorNoValue');
   const label = (key: string) => formatBrowseAnchor(key, sortField ?? 'title', noValue);
   return (
-    <nav className={s.rail} aria-label={currentI18n().t('web.filters.jumpTo')}>
-      {index.map(a => { const text = label(a.key); return <button key={a.key} type="button" className={cx(s.railKey)} aria-current={current === a.key ? 'true' : undefined} onClick={() => onJump(a.key)} title={currentI18n().t('web.filters.jumpToKey', {key: text})}>{text}</button>; })}
+    <nav className={s.rail} aria-label={t('web.filters.jumpTo')}>
+      {index.map(a => { const text = label(a.key); return <button key={a.key} type="button" className={cx(s.railKey)} aria-current={current === a.key ? 'true' : undefined} onClick={() => onJump(a.key)} title={t('web.filters.jumpToKey', {key: text})}>{text}</button>; })}
     </nav>
   );
 }

@@ -175,3 +175,20 @@ test('CON-25: labels are catalogue IDs and glyphs are registry IDs', () => {
     assert.ok(!enUS[q.label].includes('Favourite'), enUS[q.label]);
   }
 });
+
+test('the title page offers what its card offers: queue, group, download and delete follow the same answers', () => {
+  const page = (viewer: Parameters<typeof detailActions>[1]) => detailActions({
+    item: {id: 'm1', kind: 'movie', libraryId: 'lib', duration: 6000, progressSeconds: 0},
+    personal: personal(),
+    actions: [action('play', {playback: {itemId: 'm1'}})],
+  } as Parameters<typeof detailActions>[0], viewer).more.flatMap(group => group.actions.map(a => a.id as string));
+  // A client that says nothing keeps what the page offered before.
+  assert.deepEqual(page({platform: 'web'}).filter(id => ['playNext', 'addToQueue', 'watchWithGroup', 'addToGroupQueue', 'download', 'delete'].includes(id)), ['download']);
+  const full = page({platform: 'web', owner: true, queue: true, group: true, downloads: true, canDelete: true});
+  for (const id of ['playNext', 'addToQueue', 'watchWithGroup', 'addToGroupQueue', 'download', 'delete']) assert.ok(full.includes(id), id);
+  // Downloads switched off on the server, or nothing to download for this title: no Download.
+  assert.equal(page({platform: 'web', downloads: false}).includes('download'), false);
+  // A TV never offers Download or Delete.
+  const tv = page({platform: 'tv', owner: true, downloads: true, canDelete: true});
+  assert.equal(tv.includes('download') || tv.includes('delete'), false);
+});

@@ -131,19 +131,28 @@ export type I18n = Readonly<{
   has: (id: string) => id is MessageId;
   number: (value: number, options?: Intl.NumberFormatOptions) => string;
   percent: (ratio: number, fractionDigits?: number) => string;
-  /** Binary units (1 KB = 1024 B), locale number format: "1.4 GB". */
+  /** Binary sizes (1024 steps) with the locale's own number format and unit: "1.4 GB", "1,4 Go". */
   bytes: (bytes: number | undefined) => string;
   date: (value: Date | number | string, style?: DateStyle) => string;
   time: (value: Date | number | string) => string;
+  /** Date and time together, joined the way the locale joins them. */
   dateTime: (value: Date | number | string) => string;
+  /**
+   * A date or time with fields the named styles do not cover ("Tue, Sep 22, 3:05 PM"), in the
+   * profile's locale and clock. `timeZone` defaults to the device's; pass one to show another
+   * zone's wall clock (a guide's, or `UTC` for a plain calendar date).
+   */
+  formatDate: (value: Date | number | string, options: Intl.DateTimeFormatOptions) => string;
+  /** A language's name in the viewer's language ("French" for `fr`); the code itself when unknown. */
+  languageName: (code: string) => string;
   /** "1h 42m" (short) or "1 hour 42 minutes" (long). Empty for 0/invalid. */
   duration: (seconds: number | undefined, style?: DurationStyle) => string;
   /** Media counter: "1:02:03" / "4:05". */
   clock: (seconds: number) => string;
   /** "Just now", "5 minutes ago", "3 hours ago", "Yesterday", "4 days ago", then a date. */
   relativeTime: (value: Date | number | string, now?: number) => string;
-  /** "A, B and C" in the UI locale. */
-  list: (items: readonly string[]) => string;
+  /** "A, B and C" in the UI locale; `'or'` gives "A, B or C". */
+  list: (items: readonly string[], type?: 'and' | 'or') => string;
 }>;
 
 const toDate = (value: Date | number | string): Date => (value instanceof Date ? value : new Date(value));
@@ -168,20 +177,33 @@ export function createI18n(region: ResolvedRegion = resolveRegion(undefined, {lo
       default: return {dateStyle: style};
     }
   };
-  const date = (value: Date | number | string, style: DateStyle = 'medium') => {
-    const d = toDate(value);
-    if (!Number.isFinite(d.getTime())) return '';
-    return safe(() => new Intl.DateTimeFormat(region.formatLocale, {...dateOptions(style), timeZone: region.timeZone}).format(d), d.toDateString());
+  // One Intl formatter per distinct set of options: a guide ruler formats hundreds of times a render.
+  const dateFormats = new Map<string, Intl.DateTimeFormat>();
+  const dateFormat = (options: Intl.DateTimeFormatOptions): Intl.DateTimeFormat => {
+    const clocked = options.hour !== undefined || options.timeStyle !== undefined;
+    const resolved: Intl.DateTimeFormatOptions = {timeZone: region.timeZone, ...(clocked && region.hour12 !== undefined ? {hour12: region.hour12} : {}), ...options};
+    const key = JSON.stringify(resolved);
+    let made = dateFormats.get(key);
+    if (!made) dateFormats.set(key, made = new Intl.DateTimeFormat(region.formatLocale, resolved));
+    return made;
   };
-  const time = (value: Date | number | string) => {
+  const formatDate = (value: Date | number | string, options: Intl.DateTimeFormatOptions, fallback: (d: Date) => string = d => d.toISOString()) => {
     const d = toDate(value);
     if (!Number.isFinite(d.getTime())) return '';
-    return safe(() => new Intl.DateTimeFormat(region.formatLocale, {hour: 'numeric', minute: '2-digit', timeZone: region.timeZone, ...(region.hour12 !== undefined ? {hour12: region.hour12} : {})}).format(d), d.toTimeString().slice(0, 5));
+    return safe(() => dateFormat(options).format(d), fallback(d));
   };
-  const dateTime = (value: Date | number | string) => {
-    const d = toDate(value);
-    if (!Number.isFinite(d.getTime())) return '';
-    return `${date(d, 'medium')}, ${time(d)}`;
+  const date = (value: Date | number | string, style: DateStyle = 'medium') => formatDate(value, dateOptions(style), d => d.toDateString());
+  const time = (value: Date | number | string) => formatDate(value, {hour: 'numeric', minute: '2-digit'}, d => d.toTimeString().slice(0, 5));
+  // One formatter for both halves, so the locale supplies what goes between them.
+  const dateTime = (value: Date | number | string) => formatDate(value, {dateStyle: 'medium', timeStyle: 'short'}, d => `${d.toDateString()} ${d.toTimeString().slice(0, 5)}`);
+  let languageNames: {of(code: string): string | undefined} | null | undefined;
+  const languageName = (code: string) => {
+    if (languageNames === undefined) {
+      const DisplayNames = (Intl as {DisplayNames?: new (l: string, o: object) => {of(code: string): string | undefined}}).DisplayNames;
+      languageNames = DisplayNames ? safe(() => new DisplayNames(region.uiLocale, {type: 'language'}), null) : null;
+    }
+    const names = languageNames;
+    return names ? safe(() => names.of(code), undefined) ?? code : code;
   };
   const duration = (seconds: number | undefined, style: DurationStyle = 'short') => {
     if (!seconds || !Number.isFinite(seconds) || seconds <= 0) return '';
@@ -212,24 +234,40 @@ export function createI18n(region: ResolvedRegion = resolveRegion(undefined, {lo
     if (days < 7) return t('relative.daysAgo', {count: days});
     return date(d, new Date(now).getFullYear() === d.getFullYear() ? 'dayMonth' : 'medium');
   };
-  const list = (items: readonly string[]) => {
+  const list = (items: readonly string[], type: 'and' | 'or' = 'and') => {
     const ListFormat = (Intl as {ListFormat?: new (l: string, o: object) => {format(x: readonly string[]): string}}).ListFormat;
-    if (ListFormat) return safe(() => new ListFormat(region.uiLocale, {style: 'long', type: 'conjunction'}).format(items), items.join(', '));
+    if (ListFormat) return safe(() => new ListFormat(region.uiLocale, {style: 'long', type: type === 'or' ? 'disjunction' : 'conjunction'}).format(items), items.join(', '));
     if (items.length <= 1) return items[0] ?? '';
+    if (type === 'or') return items.join(', ');
     return t('list.and', {first: items.slice(0, -1).join(', '), second: items[items.length - 1]!});
   };
+  // The locale words the unit ("GB", "Go") where the runtime knows byte units; an engine that
+  // does not keeps the English abbreviations.
+  const byteUnits = [['byte', 'B'], ['kilobyte', 'KB'], ['megabyte', 'MB'], ['gigabyte', 'GB'], ['terabyte', 'TB']] as const;
+  let localizedUnits: boolean | undefined;
   const bytes = (value: number | undefined) => {
     if (value == null || !Number.isFinite(value) || value < 0) return '—';
-    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
     let v = value, i = 0;
-    while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
-    return `${number(v, {maximumFractionDigits: v < 10 && i > 0 ? 1 : 0})} ${units[i]}`;
+    while (v >= 1024 && i < byteUnits.length - 1) { v /= 1024; i++; }
+    const maximumFractionDigits = v < 10 && i > 0 ? 1 : 0;
+    const [unit, abbreviation] = byteUnits[i]!;
+    if (localizedUnits !== false) {
+      try {
+        // Whole bytes are spelled out ("512 bytes"): the short form in English is the bare word "byte".
+        const text = new Intl.NumberFormat(region.formatLocale, {style: 'unit', unit, unitDisplay: i === 0 ? 'long' : 'short', maximumFractionDigits}).format(v);
+        localizedUnits = true;
+        return text;
+      } catch {
+        localizedUnits = false;
+      }
+    }
+    return `${number(v, {maximumFractionDigits})} ${abbreviation}`;
   };
   const percent = (ratio: number, fractionDigits = 0) => number(ratio, {style: 'percent', maximumFractionDigits: fractionDigits});
   return Object.freeze({
     region, locale: region.uiLocale, t,
     has: (id: string): id is MessageId => Object.prototype.hasOwnProperty.call(enUS, id),
-    number, percent, bytes, date, time, dateTime, duration, clock, relativeTime, list,
+    number, percent, bytes, date, time, dateTime, formatDate, languageName, duration, clock, relativeTime, list,
   });
 }
 

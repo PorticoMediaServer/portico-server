@@ -2,6 +2,8 @@
  * saying two titles are one, and removing a library. Owner only. These routes
  * are on the typed registry, so their answers are plain JSON (no envelope). */
 
+import {firstOfEach,keepReadable,oneOfOr} from './tolerant.ts';
+
 export type TitleIdentityApi=Readonly<{request<T>(path:string,method?:string,body?:unknown,signal?:AbortSignal):Promise<T>}>;
 
 /** When missing titles are removed: `immediately`, `after_days` (see `days`) or `never`. */
@@ -20,15 +22,20 @@ const count=(v:unknown):v is number=>typeof v==='number'&&Number.isSafeInteger(v
 const rules:readonly MissingRule[]=['immediately','after_days','never'];
 function invalid(what:string):never{throw new Error('Unreadable server response: '+what);}
 
+/**
+ * The page size, the cursor and the total stay exact: the total is what the owner types to remove
+ * them all. A title this app cannot read is left out of the list alone and a repeated one keeps its
+ * first row. A rule this app does not know reads as `never`; each row still says when it goes.
+ */
 export function parseMissingTitlesPage(v:unknown):MissingTitlesPage{
- if(!obj(v)||!Array.isArray(v.items)||v.items.length>200||!count(v.total)||!rules.includes(v.rule as MissingRule)||!count(v.days))invalid('missing titles');
+ if(!obj(v)||!Array.isArray(v.items)||v.items.length>200||!count(v.total)||!count(v.days))invalid('missing titles');
  if(v.nextCursor!==undefined&&!text(v.nextCursor,256))invalid('missing titles cursor');
- const items=v.items.map(entry=>{
+ const items=firstOfEach('missing-titles','items',keepReadable('missing-titles','items',v.items,entry=>{
   if(!obj(entry)||!id(entry.id)||!id(entry.libraryId)||!id(entry.kind)||!text(entry.title)||!text(entry.missingSince,64)||!entry.missingSince)invalid('missing title');
   if(entry.parentTitle!==undefined&&!text(entry.parentTitle)||entry.year!==undefined&&!count(entry.year)||entry.removedAt!==undefined&&!text(entry.removedAt,64))invalid('missing title');
   return Object.freeze({id:entry.id,libraryId:entry.libraryId,kind:entry.kind,title:entry.title,...(entry.parentTitle?{parentTitle:entry.parentTitle as string}:{}),...(entry.year?{year:entry.year as number}:{}),missingSince:entry.missingSince,...(entry.removedAt?{removedAt:entry.removedAt as string}:{})});
- });
- return Object.freeze({items:Object.freeze(items),...(v.nextCursor?{nextCursor:v.nextCursor as string}:{}),total:v.total,rule:v.rule as MissingRule,days:v.days});
+ }),entry=>entry.id);
+ return Object.freeze({items:Object.freeze(items),...(v.nextCursor?{nextCursor:v.nextCursor as string}:{}),total:v.total,rule:oneOfOr('missing-titles','rule',v.rule,rules,'never'),days:v.days});
 }
 export function parseMissingEmptied(v:unknown):MissingEmptied{
  if(!obj(v)||!count(v.titles)||!count(v.files)||typeof v.more!=='boolean')invalid('emptied missing titles');

@@ -11,19 +11,22 @@ import s from './StillCard.module.css';
  * details. Leading number, title, one meta line, a two-line synopsis,
  * progress and a watched tick.
  */
-export const StillCard = React.memo(function StillCard({still, placeholder, icon = 'tv', number, title, meta, synopsis, progress, watched, selected, playLabel, openLabel, onPlay, onOpen}: {
+export const StillCard = React.memo(function StillCard({still, placeholder, icon = 'tv', number, title, meta, synopsis, progress, watched, selected, playLabel, openLabel, moreLabel, onPlay, onOpen, onMore}: {
   still?: string; /** Shown large on the neutral placeholder when there is no still (the episode code). */ placeholder?: string; icon?: IconName; number?: number | string; title: string; meta?: string; synopsis?: string; progress?: number; watched?: boolean; selected?: boolean;
   /** Accessible names for the two targets, e.g. "Play S1 E4, Pilot". */
   playLabel: string; openLabel: string;
   onPlay?: () => void; onOpen: () => void;
+  /** Opens the card's actions from the element given (the ⋯ button, or the card itself on a right-click). Needs `moreLabel`. */
+  moreLabel?: string; onMore?: (anchor: Element) => void;
 }) {
   return (
-    <div className={s.card} data-selected={selected || undefined}>
+    <div className={s.card} data-selected={selected || undefined} onContextMenu={onMore ? e => { e.preventDefault(); onMore(e.currentTarget); } : undefined}>
       <div className={s.still}>
         <button type="button" className={s.stillButton} onClick={onPlay ?? onOpen} aria-label={onPlay ? playLabel : openLabel}>
           {still ? <Artwork path={still} shape="landscape" icon={icon} progress={progress} alt="" /> : <span className={s.stillPlaceholder} aria-hidden>{placeholder}</span>}
           {onPlay ? <span className={s.play} aria-hidden><Icon name="play" size={18} /></span> : null}
         </button>
+        {onMore ? <button type="button" className={s.more} aria-label={moreLabel} aria-haspopup="menu" onClick={e => onMore(e.currentTarget)}><Icon name="more" size={18} /></button> : null}
         {watched ? <span className={s.watched} title={uiI18n().t('status.watched')}><Icon name="check" size={14} strokeWidth={2.2} /><span className="visually-hidden">{uiI18n().t('status.watched')}</span></span> : null}
       </div>
       <button type="button" className={s.copy} onClick={onOpen} aria-haspopup="dialog" aria-label={openLabel}>

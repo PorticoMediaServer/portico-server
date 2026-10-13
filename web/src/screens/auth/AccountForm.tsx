@@ -16,7 +16,7 @@ const email = (v: string) => /^\S+@\S+\.\S+$/.test(v.trim());
 
 import {GoogleMark, AppleMark, providerStyle} from '../../ui/ProviderIdentity';
 import {signInFailure, type SignInStep} from '../../app/sign-in-errors';
-import {currentI18n} from '../../app/i18n';
+import {currentI18n, useI18n} from '../../app/i18n';
 export {GoogleMark, AppleMark, providerStyle} from '../../ui/ProviderIdentity';
 
 /**
@@ -25,7 +25,7 @@ export {GoogleMark, AppleMark, providerStyle} from '../../ui/ProviderIdentity';
  * device or another page.
  */
 export function AccountForm({onSignedIn, onTitle}: {onSignedIn: (session: HostedSession) => void; onTitle?: (title: string, lede?: string) => void}) {
-  const t = currentI18n().t;
+  const {t} = useI18n();
   const central = useMemo(browserAccount, []);
   const client = useMemo(accountSecurityClient, []);
   const ids = useRef(new AccountAttemptIds(async () => crypto.randomUUID()));
@@ -60,8 +60,8 @@ export function AccountForm({onSignedIn, onTitle}: {onSignedIn: (session: Hosted
       signin: mfa ? ['Enter your verification code'] : ['Welcome home.', 'Sign in with your Portico Account to access servers shared with you.'],
       create: ['Create your account', 'One Portico Account reaches every server you own or that someone shares with you.'],
       verify: ['Check your email', registration ? `We sent a code to ${registration.maskedAddress}.` : undefined],
-      forgot: [currentI18n().t('auth.forgotPasswordTitle'), currentI18n().t('auth.resetLinkLedeEmail')],
-      sent: [currentI18n().t('auth.checkEmail'), note],
+      forgot: [t('auth.forgotPasswordTitle'), t('auth.resetLinkLedeEmail')],
+      sent: [t('auth.checkEmail'), note],
     };
     onTitle?.(...titles[mode]);
   }, [mode, mfa, registration, note, onTitle]);
@@ -92,7 +92,7 @@ export function AccountForm({onSignedIn, onTitle}: {onSignedIn: (session: Hosted
   const request = () => run(async () => {
     // MAIL-04: email only — the server accepts an empty username, and answers the same either way.
     const out = (await client.request('/v1/account/recovery/request', 'POST', recoveryRequestBody(address, await ids.current.for('recover', {address})))) as {message?: string} | undefined;
-    setNote(out?.message ?? currentI18n().t('auth.resetLinkSent'));
+    setNote(out?.message ?? t('auth.resetLinkSent'));
     go('sent');
   });
   const strong = passwordStrength(password).acceptable;
@@ -128,7 +128,7 @@ export function AccountForm({onSignedIn, onTitle}: {onSignedIn: (session: Hosted
       <form className={s.stack} onSubmit={e => { e.preventDefault(); void request(); }}>
         {error ? <Notice tone="error">{error}</Notice> : null}
         <Input label={t('auth.email')} type="email" autoComplete="email" value={address} onChange={e => setAddress(e.target.value)} required autoFocus />
-        <Button variant="primary" type="submit" size="lg" label={currentI18n().t('auth.resetLinkAction')} loading={busy} disabled={!email(address)} block />
+        <Button variant="primary" type="submit" size="lg" label={t('auth.resetLinkAction')} loading={busy} disabled={!email(address)} block />
         <Text variant="caption" tone="tertiary">{t('auth.privacySameAnswer')}</Text>
         <div className={s.links}>{back}</div>
       </form>

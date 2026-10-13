@@ -43,7 +43,32 @@ export class BrowserProtectedStore<RecordType> {
   try{return JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(clear));}catch{throw this.damaged();}finally{new Uint8Array(clear).fill(0);}
  }
  read(){return this.exclusive(async()=>this.decode(await this.values()));}
+ /** The whole read, decision and write in one database transaction. Where the page has no
+  * `crypto.subtle` it has no Web Locks either (plain HTTP), so `exclusive` only orders work
+  * inside this tab; the database's own transactions are what order two tabs. Nothing here needs
+  * to wait on anything but the database, because the record is plain JSON in that case, so the
+  * transaction stays open from the read to the write and another tab's change cannot fall between. */
+ private changeInOneTransaction(update:(current:RecordType|undefined)=>RecordType|undefined):Promise<void>{
+  return this.transaction<void>('readwrite',(store,done)=>{
+   const read=store.get('selected');
+   read.onsuccess=()=>{
+    try{
+     const record=read.result as Vault|undefined;
+     // An encrypted record cannot be opened here, and a plain one that does not parse is damaged:
+     // both read as absent, exactly as `decode` and `change` treat them.
+     let current:RecordType|undefined;
+     if(record?.version===2&&typeof record.plain==='string'&&record.plain.length<=196608){try{current=JSON.parse(record.plain);}catch{current=undefined;}}
+     const next=update(current);
+     if(next===current){done();return;}
+     if(!next){store.delete('selected');done();return;}
+     const plain=JSON.stringify(next);if(new TextEncoder().encode(plain).length>192000)throw new Error('Saved server routes exceeded their limit.');
+     store.put({version:2,plain} satisfies Vault,'selected');done();
+    }catch{try{store.transaction.abort();}catch{}}
+   };
+  });
+ }
  change(update:(current:RecordType|undefined)=>RecordType|undefined):Promise<void>{return this.exclusive(async()=>{
+  if(!canEncrypt())return this.changeInOneTransaction(update);
   const values=await this.values();
   // A damaged record is treated as absent: a save replaces it, and an update that saves nothing
   // (a cache update, forgetting a sign-in that is not there) leaves it exactly as it is.
@@ -53,7 +78,6 @@ export class BrowserProtectedStore<RecordType> {
   if(next===current)return;
   if(!next){await this.transaction<void>('readwrite',(store,done)=>{store.delete('selected');done();});return;}
   const bytes=new TextEncoder().encode(JSON.stringify(next));if(bytes.length>192000)throw new Error('Saved server routes exceeded their limit.');
-  if(!canEncrypt()){const plain=new TextDecoder().decode(bytes);await this.transaction<void>('readwrite',(store,done)=>{store.put({version:2,plain} satisfies Vault,'selected');done();});return;}
   let key=this.usable(values.key)?values.key:undefined;if(!key){if(values.record&&!damaged)throw new Error('The credential encryption key is missing.');key=await crypto.subtle.generateKey({name:'AES-GCM',length:256},false,['encrypt','decrypt']);}
   const iv=crypto.getRandomValues(new Uint8Array(12));let cipher:ArrayBuffer;try{cipher=await crypto.subtle.encrypt({name:'AES-GCM',iv,additionalData:new TextEncoder().encode(this.databaseName)},key,bytes);}finally{bytes.fill(0);}
   await this.transaction<void>('readwrite',(store,done)=>{if(key!==values.key)store.put(key,'key');store.put({version:1,iv,cipher} satisfies Vault,'selected');done();});

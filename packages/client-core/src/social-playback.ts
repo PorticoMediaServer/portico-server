@@ -11,7 +11,7 @@ export const SOCIAL_PROTOCOL='1.0';
 
 export type SocialCounter=string;
 export type GroupHostAuthority='host-only'|'anyone';
-export type GroupState='creating'|'lobby'|'preparing'|'ready'|'playing'|'paused'|'host-reconnecting-playing'|'host-reconnecting-paused'|'degraded'|'ending'|'ended'|'failed';
+export type GroupState='creating'|'lobby'|'preparing'|'ready'|'waiting'|'playing'|'paused'|'host-reconnecting-playing'|'host-reconnecting-paused'|'degraded'|'ending'|'ended'|'failed';
 export type GroupTimelineState='idle'|'playing'|'paused'|'stopped';
 export type GroupReadiness='buffering'|'ready'|'lagging';
 export type GroupMemberPresence='connected'|'away'|'disconnected';
@@ -20,7 +20,7 @@ export type GroupRepeatMode='none'|'one'|'all';
 export type GroupTransportCommand='play'|'pause'|'stop'|'seek'|'next'|'previous'|'load'|'set-queue-position';
 
 export type SocialRate=Readonly<{numerator:SocialCounter;denominator:SocialCounter}>;
-export type GroupTimeline=Readonly<{itemId:string;currentEntryId:string;state:GroupTimelineState;anchorPositionUs:SocialCounter;anchorAt:string;rate:SocialRate;queuePosition:number}>;
+export type GroupTimeline=Readonly<{itemId:string;currentEntryId:string;state:GroupTimelineState;anchorPositionUs:SocialCounter;anchorAt:string;rate:SocialRate;queuePosition:number;waitUntil:string|null}>;
 export type GroupSync=Readonly<{noCorrectionUnderMs:number;rateCorrectionMinimum:string;rateCorrectionMaximum:string;rateCorrectionMaxMs:number;seekAtOrOverMs:number}>;
 export type GroupSettings=Readonly<{shuffleEnabled:boolean;repeatMode:GroupRepeatMode}>;
 export type GroupPermissions=Readonly<{isHost:boolean;canControl:boolean;canManageQueue:boolean}>;
@@ -29,20 +29,20 @@ export type GroupPermissions=Readonly<{isHost:boolean;canControl:boolean;canMana
  * `retired` once the device is signed out. */
 export type GroupAuthority=Readonly<{deviceId:string;playbackId:string|null;state:'fresh'|'bound'|'retired'}>;
 export type GroupHostPresence=Readonly<{presence:GroupHostPresenceState;lastSeenAt:string;pauseAt:string|null;endAt:string|null}>;
-export type GroupMember=Readonly<{id:string;displayName:string;role:'host'|'member';state:'invited'|'joined'|'left'|'removed';readiness:GroupReadiness;positionUs:SocialCounter;reportedAt:string|null;presence:GroupMemberPresence;joinedAt:string}>;
+export type GroupMember=Readonly<{id:string;displayName:string;private:boolean;role:'host'|'member';state:'invited'|'joined'|'left'|'removed';readiness:GroupReadiness;positionUs:SocialCounter;reportedAt:string|null;presence:GroupMemberPresence;joinedAt:string}>;
 export type GroupReadinessSummary=Readonly<{aggregate:GroupReadiness;ready:number;buffering:number;lagging:number;stale:number;memberCount:number}>;
 export type GroupQueueEntry=Readonly<{entryId:string;position:number;itemId:string|null;unavailable:boolean;addedBy:string}>;
 export type GroupQueueEligibility=Readonly<{blockedEntries:number;currentEntryBlocked:boolean;members:readonly Readonly<{memberId:string;displayName:string;blockedEntryIds:readonly string[]}>[]}>;
 export type GroupQueue=Readonly<{revision:SocialCounter;position:number;entries:readonly GroupQueueEntry[];eligibility:GroupQueueEligibility|null}>;
 export type Group=Readonly<{
  id:string;name:string;state:GroupState;hostAuthority:GroupHostAuthority;hostMemberId:string;
- revision:SocialCounter;playbackRevision:SocialCounter;queueRevision:SocialCounter;reconnectGeneration:SocialCounter;
+ revision:SocialCounter;playbackRevision:SocialCounter;settingsRevision:SocialCounter;governanceRevision:SocialCounter;queueRevision:SocialCounter;reconnectGeneration:SocialCounter;
  lastCommand:string;lastCommandId:string;endedReason:string;eventOrdinal:SocialCounter;createdAt:string;updatedAt:string;
  permissions:GroupPermissions;authority:GroupAuthority;host:GroupHostPresence;timeline:GroupTimeline;
  settings:GroupSettings;sync:GroupSync;readiness:GroupReadinessSummary;members:readonly GroupMember[];
  queue:GroupQueue|null;viewerMemberId:string}>;
 export type GroupSnapshot=Readonly<{protocolVersion:string;serverTime:string;group:Group}>;
-export type GroupTransportReceipt=Readonly<{protocolVersion:string;groupId:string;idempotencyKey:string;disposition:'accepted'|'duplicate';command:GroupTransportCommand;revision:SocialCounter;queueRevision:SocialCounter;recordedAt:string;timeline:GroupTimeline;settings:GroupSettings;override:Readonly<{reason:string;blockedMemberIds:readonly string[]}>|null}>;
+export type GroupTransportReceipt=Readonly<{protocolVersion:string;groupId:string;idempotencyKey:string;disposition:'accepted'|'duplicate';command:GroupTransportCommand;groupState:GroupState;revision:SocialCounter;playbackRevision:SocialCounter;queueRevision:SocialCounter;recordedAt:string;timeline:GroupTimeline;settings:GroupSettings;override:Readonly<{reason:string;blockedMemberIds:readonly string[]}>|null}>;
 export type GroupInvite=Readonly<{id:string;groupId:string;code:string;expiresAt:string;maxUses:number;uses:number;recipientProfileId:string}>;
 
 export type HandoffState='prepared'|'committing'|'committed'|'rolled_back'|'expired'|'failed';
@@ -82,8 +82,8 @@ function parseRate(v:unknown):SocialRate{
 }
 
 function parseTimeline(v:unknown):GroupTimeline{
- if(!obj(v)||!text(v.itemId,128)||!text(v.currentEntryId,128)||!oneOf(v.state,['idle','playing','paused','stopped'] as const)||!counter(v.anchorPositionUs)||!text(v.anchorAt,64)||!index(v.queuePosition))fail('group timeline');
- return Object.freeze({itemId:v.itemId,currentEntryId:v.currentEntryId,state:v.state,anchorPositionUs:v.anchorPositionUs,anchorAt:v.anchorAt,rate:parseRate(v.rate),queuePosition:v.queuePosition});
+ if(!obj(v)||!text(v.itemId,128)||!text(v.currentEntryId,128)||!oneOf(v.state,['idle','playing','paused','stopped'] as const)||!counter(v.anchorPositionUs)||!text(v.anchorAt,64)||!index(v.queuePosition)||!stampOrNull(v.waitUntil))fail('group timeline');
+ return Object.freeze({itemId:v.itemId,currentEntryId:v.currentEntryId,state:v.state,anchorPositionUs:v.anchorPositionUs,anchorAt:v.anchorAt,rate:parseRate(v.rate),queuePosition:v.queuePosition,waitUntil:v.waitUntil});
 }
 
 function parseSync(v:unknown):GroupSync{
@@ -100,14 +100,14 @@ function parseSettings(v:unknown):GroupSettings{
 }
 
 function parseMember(v:unknown):GroupMember{
- if(!obj(v)||!id(v.id)||!text(v.displayName,256)||!oneOf(v.role,['host','member'] as const)||!oneOf(v.state,['invited','joined','left','removed'] as const)||!oneOf(v.readiness,['buffering','ready','lagging'] as const)||!counter(v.positionUs)||!stampOrNull(v.reportedAt)||!oneOf(v.presence,['connected','away','disconnected'] as const)||!text(v.joinedAt,64))fail('group member');
- return Object.freeze({id:v.id,displayName:v.displayName,role:v.role,state:v.state,readiness:v.readiness,positionUs:v.positionUs,reportedAt:v.reportedAt,presence:v.presence,joinedAt:v.joinedAt});
+ if(!obj(v)||!id(v.id)||!text(v.displayName,256)||typeof v.private!=='boolean'||!oneOf(v.role,['host','member'] as const)||!oneOf(v.state,['invited','joined','left','removed'] as const)||!oneOf(v.readiness,['buffering','ready','lagging'] as const)||!counter(v.positionUs)||!stampOrNull(v.reportedAt)||!oneOf(v.presence,['connected','away','disconnected'] as const)||!text(v.joinedAt,64))fail('group member');
+ return Object.freeze({id:v.id,displayName:v.displayName,private:v.private,role:v.role,state:v.state,readiness:v.readiness,positionUs:v.positionUs,reportedAt:v.reportedAt,presence:v.presence,joinedAt:v.joinedAt});
 }
 
 function parseReadinessSummary(v:unknown,members:readonly GroupMember[]):GroupReadinessSummary{
  const count=(x:unknown)=>Number.isSafeInteger(x)&&Number(x)>=0&&Number(x)<=1024;
  if(!obj(v)||!oneOf(v.aggregate,['ready','buffering','lagging'] as const)||!count(v.ready)||!count(v.buffering)||!count(v.lagging)||!count(v.stale)||!count(v.memberCount))fail('group readiness');
- const joined=members.filter(m=>m.state==='joined').length;
+ const joined=members.filter(m=>m.state==='joined'&&m.presence!=='disconnected').length;
  if(Number(v.memberCount)!==joined)fail('group readiness');
  if(Number(v.ready)+Number(v.buffering)+Number(v.lagging)+Number(v.stale)!==joined)fail('group readiness');
  // The aggregate is the worst state present; a server that claims `ready` while
@@ -148,9 +148,9 @@ export function parseGroupQueue(raw:unknown):GroupQueue{
 
 export function parseGroup(raw:unknown):Group{
  if(!obj(raw))fail('group');
- if(!id(raw.id)||!text(raw.name,512)||!oneOf(raw.state,['creating','lobby','preparing','ready','playing','paused','host-reconnecting-playing','host-reconnecting-paused','degraded','ending','ended','failed'] as const))fail('group');
+ if(!id(raw.id)||!text(raw.name,512)||!oneOf(raw.state,['creating','lobby','preparing','ready','waiting','playing','paused','host-reconnecting-playing','host-reconnecting-paused','degraded','ending','ended','failed'] as const))fail('group');
  if(!oneOf(raw.hostAuthority,['host-only','anyone'] as const)||!id(raw.hostMemberId))fail('group');
- for(const key of ['revision','playbackRevision','queueRevision','reconnectGeneration','eventOrdinal'])if(!counter(raw[key]))fail('group');
+ for(const key of ['revision','playbackRevision','settingsRevision','governanceRevision','queueRevision','reconnectGeneration','eventOrdinal'])if(!counter(raw[key]))fail('group');
  if(!text(raw.lastCommand,64)||!text(raw.lastCommandId,128)||!text(raw.endedReason,64)||!text(raw.createdAt,64)||!text(raw.updatedAt,64)||!text(raw.viewerMemberId,128))fail('group');
  const permissions=raw.permissions;
  if(!obj(permissions)||typeof permissions.isHost!=='boolean'||typeof permissions.canControl!=='boolean'||typeof permissions.canManageQueue!=='boolean')fail('group permissions');
@@ -170,7 +170,7 @@ export function parseGroup(raw:unknown):Group{
  if(timeline.state!==expected)fail('group');
  return Object.freeze({
   id:raw.id,name:raw.name,state:raw.state,hostAuthority:raw.hostAuthority,hostMemberId:raw.hostMemberId,
-  revision:raw.revision as string,playbackRevision:raw.playbackRevision as string,queueRevision:raw.queueRevision as string,
+  revision:raw.revision as string,playbackRevision:raw.playbackRevision as string,settingsRevision:raw.settingsRevision as string,governanceRevision:raw.governanceRevision as string,queueRevision:raw.queueRevision as string,
   reconnectGeneration:raw.reconnectGeneration as string,lastCommand:raw.lastCommand,lastCommandId:raw.lastCommandId,
   endedReason:raw.endedReason,eventOrdinal:raw.eventOrdinal as string,createdAt:raw.createdAt,updatedAt:raw.updatedAt,
   permissions:Object.freeze({isHost:permissions.isHost,canControl:permissions.canControl,canManageQueue:permissions.canManageQueue}),
@@ -196,14 +196,14 @@ export function parseGroupList(raw:unknown):readonly Group[]{
 
 export function parseGroupTransportReceipt(raw:unknown):GroupTransportReceipt{
  const v=envelope(raw,'group transport receipt');
- if(!id(v.groupId)||!text(v.idempotencyKey,120)||!oneOf(v.disposition,['accepted','duplicate'] as const)||!oneOf(v.command,['play','pause','stop','seek','next','previous','load','set-queue-position'] as const)||!counter(v.revision)||!counter(v.queueRevision)||!text(v.recordedAt,64))fail('group transport receipt');
+ if(!oneOf(v.groupState,['lobby','preparing','ready','waiting','playing','paused','host-reconnecting-playing','host-reconnecting-paused'] as const)||!id(v.groupId)||!text(v.idempotencyKey,120)||!oneOf(v.disposition,['accepted','duplicate'] as const)||!oneOf(v.command,['play','pause','stop','seek','next','previous','load','set-queue-position'] as const)||!counter(v.revision)||!counter(v.playbackRevision)||!counter(v.queueRevision)||!text(v.recordedAt,64))fail('group transport receipt');
  let override:GroupTransportReceipt['override']=null;
  if(v.override!==null&&v.override!==undefined){
   const o=v.override;
   if(!obj(o)||!text(o.reason,64)||!Array.isArray(o.blockedMemberIds)||o.blockedMemberIds.some(x=>!id(x)))fail('group transport receipt');
   override=Object.freeze({reason:o.reason,blockedMemberIds:Object.freeze([...o.blockedMemberIds as string[]])});
  }
- return Object.freeze({protocolVersion:SOCIAL_PROTOCOL,groupId:v.groupId,idempotencyKey:v.idempotencyKey,disposition:v.disposition,command:v.command,revision:v.revision,queueRevision:v.queueRevision,recordedAt:v.recordedAt,timeline:parseTimeline(v.timeline),settings:parseSettings(v.settings),override});
+ return Object.freeze({protocolVersion:SOCIAL_PROTOCOL,groupId:v.groupId,idempotencyKey:v.idempotencyKey,disposition:v.disposition,command:v.command,groupState:v.groupState as GroupState,revision:v.revision,playbackRevision:v.playbackRevision,queueRevision:v.queueRevision,recordedAt:v.recordedAt,timeline:parseTimeline(v.timeline),settings:parseSettings(v.settings),override});
 }
 
 export function parseGroupInvite(raw:unknown):GroupInvite{

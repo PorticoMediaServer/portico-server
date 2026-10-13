@@ -21,11 +21,11 @@
  * A different sender that pairs while something is playing doesn't interrupt
  * it: the TV shows who is asking, the controller is asked, and the TV switches
  * only if the controller allows it, stops, or has left (then after 10 seconds).
- * The same Portico account on the same server switches straight away. The old
+ * The same profile on the same server switches straight away. The old
  * pairing is kept until the new one is adopted, and nothing is sent to other
  * senders but "busy".
  *
- * Sender protocol additions (all optional, backwards compatible):
+ * Sender protocol:
  *   pair  {displayName}                         → paired | pair-pending | pair-failed {code: 'tv_busy' | …}
  *   load  {title, subtitle, seriesTitle, season, episode, kind, artworkPath}
  *   controller receives takeover-requested {requester} and replies takeover {allow}
@@ -503,6 +503,7 @@
 
   // --- Control: who may drive this TV (SEC-14, CAST-04, D-FEAT-10) ------------
 
+  var controllerToken = '';
   var controllerSender = null;   // the sender that paired in this session
   var controllerPresent = false; // still connected
   var pendingPair = null;        // {senderId, requester, origin, result, timer}
@@ -520,9 +521,12 @@
     text('takeover-body', controllerHere ? 'Waiting for the person watching now to allow it.' : 'Switching in a few seconds.');
     visible('takeover', true);
   }
+  function discardPair(p) {
+    if(p&&p.result&&p.result.device&&p.result.device.id&&p.result.session)request('/v1/cast/devices/'+encodeURIComponent(p.result.device.id),{method:'DELETE',origin:p.origin,bearer:p.result.session.accessToken,headers:{'If-Match':p.result.device.generation}}).catch(function(){});
+  }
   function denyPending(code) {
     var p = pendingPair; if (!p) return;
-    pendingPair = null; clearTimeout(p.timer); hideTakeover();
+    pendingPair = null; clearTimeout(p.timer); hideTakeover();discardPair(p);
     send(p.senderId, {type: 'pair-failed', code: code || 'tv_busy', message: pairingMessage({code: code || 'tv_busy'})});
   }
   function allowPending() {
@@ -537,7 +541,8 @@
     await switchTo(result, origin);
     controllerSender = senderId; controllerPresent = true;
     if (previous && previous !== senderId) send(previous, {type: 'replaced'});
-    send(senderId, {type: 'paired'});
+    controllerToken=token(24);
+    send(senderId, {type: 'paired', controlToken:controllerToken});
   }
   /** A pair request: redeem first (keeping the current pairing), then decide whether to switch now or ask. */
   function handlePair(senderId, message) {
@@ -546,7 +551,7 @@
     var requester = requesterName(message, senderId);
     var code = String(message.code || '').trim().toUpperCase();
     redeemAt(named, code).then(function (result) {
-      var sameViewer = !!(scope && result.scope && result.scope.accountId === scope.accountId && named === base);
+      var sameViewer = !!(scope && result.scope && result.scope.accountId === scope.accountId && result.scope.profileId===scope.profileId && result.scope.authority===scope.authority && named === base);
       var busy = !!playback && controllerSender !== senderId && !sameViewer;
       if (!busy) return serial(function () { return takeControl(senderId, named, result); });
       if (pendingPair) denyPending('tv_busy');
@@ -590,7 +595,7 @@
     var types=cast.framework.messages.MessageType;
     // Media-channel commands from a sender that isn't the controller: pause and stop are allowed
     // (anyone in the room can do that with the remote); load, play and seek are not.
-    function fromOther(request) { return !!controllerSender && !!request && !!request.senderId && request.senderId !== controllerSender; }
+    function fromOther(request) { return !request || !isController(request.senderId); }
     // A LOAD carries only a Portico item id in customData. It never carries a
     // media URL, a bearer or a media grant: the receiver resolves everything
     // itself with its own credential.
@@ -619,6 +624,10 @@
       if (typeof message === 'string') { try { message = JSON.parse(message); } catch (e) { message = {}; } }
       var senderId = event.senderId;
       var reply = function (body) { send(senderId, body); };
+      if(message.type==='status'&&session&&controllerToken&&typeof message.controlToken==='string'&&message.controlToken.length===48&&message.controlToken===controllerToken){
+        controllerSender=senderId;controllerPresent=true;
+        if(pendingPair){clearTimeout(pendingPair.timer);askTakeover(pendingPair.requester,true);pendingPair.timer=setTimeout(function(){denyPending('tv_busy');},TAKEOVER_ASK_MS);}
+      }
       if (message.type === 'pair') { handlePair(senderId, message); return; }
       if (message.type === 'takeover') {
         if (isController(senderId) && pendingPair) { if (message.allow === true) allowPending(); else denyPending('tv_busy'); }
@@ -631,6 +640,7 @@
         reply(controllerSender ? {type: 'busy'} : {type: 'pair-required'});
         return;
       }
+      controllerPresent=true;
       switch (message.type) {
         case 'load':
           startPlayback(String(message.itemId || ''), typeof message.startSeconds === 'number' ? message.startSeconds : undefined, displayMeta(message)).then(function () {
@@ -666,10 +676,10 @@
         // Someone was waiting for the controller's answer: with the controller gone, the TV says who is taking over, then switches.
         if (pendingPair) { clearTimeout(pendingPair.timer); askTakeover(pendingPair.requester, false); pendingPair.timer = setTimeout(allowPending, TAKEOVER_ABSENT_MS); }
       }
-      if (pendingPair && e && e.senderId === pendingPair.senderId) { clearTimeout(pendingPair.timer); pendingPair = null; hideTakeover(); }
+      if (pendingPair && e && e.senderId === pendingPair.senderId) { clearTimeout(pendingPair.timer); discardPair(pendingPair);pendingPair = null; hideTakeover(); }
       // Nobody is connected: the TV has no controller, but it goes on playing. A phone that sleeps or
       // leaves Wi-Fi drops its connection; only Stop, the end of the title or the server ends playback.
-      if(context.getSenders().length===0){controllerSender=null;controllerPresent=false;}
+      if(context.getSenders().length===0){controllerPresent=false;}
     });
     setInterval(function(){if(playback)broadcast();},2000);
     // The standard idle timeout closes the app when nothing is playing and nobody is connected (CAST-01 §5).

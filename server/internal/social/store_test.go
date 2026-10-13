@@ -183,7 +183,7 @@ func TestSocialReadsDoNotTakeTheWriteGate(t *testing.T) {
 		if _, e = store.ReadQueue(ctx, p, id); e != nil {
 			t.Fatal(e)
 		}
-		if _, _, e = store.EventsSince(ctx, id, 0); e != nil {
+		if _, _, e = store.EventsSince(ctx, p, id, 0); e != nil {
 			t.Fatal(e)
 		}
 		if _, e = store.ListReceivers(ctx, p); e != nil {

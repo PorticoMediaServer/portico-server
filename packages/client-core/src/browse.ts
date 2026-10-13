@@ -4,6 +4,7 @@ import {unreadableServerResponse} from './server-messages.ts';
  * query the published capabilities cannot execute. No client-side filtering,
  * sorting or facet inference lives here. */
 import {validateContentEntry,type ContentEntry} from './library-content.ts';
+import {firstOfEach,keepReadable,noteSkipped,oneOfOr} from './tolerant.ts';
 
 export type BrowseValueType='string'|'enum'|'number'|'date'|'boolean'|'identity-set';
 export type BrowseControlHint='toggle'|'select'|'number-range'|'date-range'|'facet-multi-select'|'text';
@@ -49,7 +50,8 @@ const count=(v:unknown):v is number=>typeof v==='number'&&Number.isSafeInteger(v
 const finite=(v:unknown):v is number=>typeof v==='number'&&Number.isFinite(v);
 function bad(message=unreadableServerResponse):never{throw Object.assign(new Error(message),{code:'invalid_browse'});}
 function rows(v:unknown,max:number):unknown[]{if(!Array.isArray(v)||v.length>max)bad();return v;}
-function strings(v:unknown,max:number,allowed?:readonly string[]):string[]{return rows(v,max).map(entry=>{if(!id(entry)||(allowed&&!allowed.includes(entry)))bad();return entry;});}
+/** The names in a published list that this app can read (and knows, when `allowed` is given), each once. The list's bound is exact; a list the server leaves out is empty. */
+function known(part:string,v:unknown,max:number,allowed?:readonly string[]):string[]{return [...new Set(keepReadable('browse',part,rows(v??[],max),entry=>id(entry)&&(!allowed||allowed.includes(entry))?entry:undefined))];}
 function freeze<T>(v:T):T{if(v&&typeof v==='object'){for(const child of Object.values(v))freeze(child);Object.freeze(v);}return v;}
 
 /** Thrown when a query names something the capabilities do not publish. The path
@@ -65,7 +67,9 @@ function sortSelection(v:unknown):BrowseSortSelection{
 }
 
 /** Nodes are re-validated on the way in: a malformed tree is never handed to a
- * caller as if the server had blessed it. */
+ * caller as if the server had blessed it. A node is a query this app may send back,
+ * so it stays exact: one with an operator or a key this app does not know is refused,
+ * and whatever carries it (a quick filter, a See all destination) is left out. */
 export function parseBrowseNode(v:unknown,depth=0,path='query'):BrowseNode{
  if(!obj(v)||depth>16)bad();
  if('field' in v){
@@ -92,53 +96,71 @@ export function parseBrowseNode(v:unknown,depth=0,path='query'):BrowseNode{
  return bad();
 }
 
+/**
+ * What a library can be browsed by. The library, the query limits and the resolved pivot are
+ * exact. A pivot, filter, sort or quick filter this app cannot read is not offered and the rest
+ * are kept: a filter whose value type or control it does not know cannot be drawn, an operator or
+ * direction it does not know is left out of its list, and a repeated id keeps its first appearance.
+ */
 export function parseBrowseCapabilities(raw:unknown):BrowseCapabilities{
  if(!obj(raw)||!obj(raw.library)||!obj(raw.queryLimits))bad();
  const library=raw.library;
- if(!id(library.id)||!str(library.name,512)||!id(library.kind)||!str(library.defaultView,64))bad();
+ if(!id(library.id)||!str(library.name??'',512)||!id(library.kind)||!str(library.defaultView??'',64))bad();
  const limits=raw.queryLimits;
  for(const key of ['maximumDepth','maximumClauses','maximumBytes','maximumSorts','defaultLimit','maximumLimit','cursorTtlSeconds'])if(!count(limits[key]))bad();
  if((limits.defaultLimit as number)<1||(limits.maximumLimit as number)<(limits.defaultLimit as number))bad();
  const pivot=(v:unknown):BrowsePivotCapability=>{
-  if(!obj(v)||!id(v.id)||!id(v.labelKey)||typeof v.browsable!=='boolean')bad();
-  return {id:v.id,labelKey:v.labelKey,entityKinds:strings(v.entityKinds,32),defaultSort:rows(v.defaultSort,3).map(sortSelection),supportedViews:strings(v.supportedViews,8),browsable:v.browsable,...(v.aggregate===undefined?{}:{aggregate:id(v.aggregate)?v.aggregate:bad()})};
+  if(!obj(v)||!id(v.id)||!id(v.labelKey))bad();
+  // A pivot that does not say it can be queried is not queried.
+  return {id:v.id,labelKey:v.labelKey,entityKinds:known('pivot.entityKinds',v.entityKinds,32),defaultSort:keepReadable('browse','pivot.defaultSort',rows(v.defaultSort??[],3),sortSelection),supportedViews:known('pivot.supportedViews',v.supportedViews,8),browsable:v.browsable===true,...(v.aggregate===undefined?{}:{aggregate:id(v.aggregate)?v.aggregate:bad()})};
  };
- const pivots=rows(raw.pivots,32).map(pivot);
- if(new Set(pivots.map(p=>p.id)).size!==pivots.length)bad();
- const fields=rows(raw.fields,128).map(v=>{
-  if(!obj(v)||!id(v.id)||!id(v.labelKey)||!str(v.type,32)||!types.includes(v.type)||!str(v.controlHint,32)||!hints.includes(v.controlHint)||!['quick','standard','advanced'].includes(v.complexity as string)||!['indexed','indexed-join'].includes(v.cost as string))bad();
+ const pivots=firstOfEach('browse','pivots',keepReadable('browse','pivots',rows(raw.pivots,32),pivot),p=>p.id);
+ const fields=firstOfEach('browse','fields',keepReadable('browse','fields',rows(raw.fields,128),v=>{
+  if(!obj(v)||!id(v.id)||!id(v.labelKey)||!str(v.type,32)||!types.includes(v.type)||!str(v.controlHint,32)||!hints.includes(v.controlHint))bad();
   const facet=v.facetSource===undefined?undefined:(obj(v.facetSource)&&str(v.facetSource.endpoint,256)&&id(v.facetSource.field)?{endpoint:v.facetSource.endpoint,field:v.facetSource.field}:bad());
-  return {id:v.id,labelKey:v.labelKey,type:v.type as BrowseValueType,operators:strings(v.operators,32,operators) as BrowseOperator[],controlHint:v.controlHint as BrowseControlHint,complexity:v.complexity as BrowseComplexity,cost:v.cost as BrowseCost,applicableKinds:strings(v.applicableKinds,64),...(v.allowedValues===undefined?{}:{allowedValues:strings(v.allowedValues,256)}),...(facet?{facetSource:facet}:{})};
- });
- if(new Set(fields.map(f=>f.id)).size!==fields.length)bad();
- const sorts=rows(raw.sorts,64).map(v=>{
-  if(!obj(v)||!id(v.id)||!id(v.labelKey)||typeof v.expensive!=='boolean'||(v.defaultDirection!=='asc'&&v.defaultDirection!=='desc'))bad();
-  const directions=strings(v.directions,2,['asc','desc']) as BrowseDirection[];
-  if(!directions.includes(v.defaultDirection))bad();
-  return {id:v.id,labelKey:v.labelKey,directions,defaultDirection:v.defaultDirection as BrowseDirection,expensive:v.expensive,applicableKinds:strings(v.applicableKinds,64)};
- });
- const quickFilters=rows(raw.quickFilters,32).map(v=>{
+  const offered=known('field.operators',v.operators,32,operators) as BrowseOperator[];
+  // A filter none of whose operators this app knows cannot be used.
+  if(!offered.length&&Array.isArray(v.operators)&&v.operators.length)bad();
+  // How prominent and how costly a filter is are hints: unknown ones read as the least prominent and the costliest.
+  return {id:v.id,labelKey:v.labelKey,type:v.type as BrowseValueType,operators:offered,controlHint:v.controlHint as BrowseControlHint,complexity:oneOfOr('browse','field.complexity',v.complexity,['quick','standard','advanced'] as const,'advanced'),cost:oneOfOr('browse','field.cost',v.cost,['indexed','indexed-join'] as const,'indexed-join'),applicableKinds:known('field.applicableKinds',v.applicableKinds,64),...(v.allowedValues===undefined?{}:{allowedValues:known('field.allowedValues',v.allowedValues,256)}),...(facet?{facetSource:facet}:{})};
+ }),f=>f.id);
+ const sorts=firstOfEach('browse','sorts',keepReadable('browse','sorts',rows(raw.sorts,64),v=>{
+  if(!obj(v)||!id(v.id)||!id(v.labelKey))bad();
+  const directions=known('sort.directions',v.directions,2,['asc','desc']) as BrowseDirection[];
+  // A sort with no direction this app knows is not offered; a default it does not know is the first direction offered.
+  if(!directions.length)bad();
+  const defaultDirection=directions.includes(v.defaultDirection as BrowseDirection)?v.defaultDirection as BrowseDirection:directions[0];
+  return {id:v.id,labelKey:v.labelKey,directions,defaultDirection,expensive:v.expensive===true,applicableKinds:known('sort.applicableKinds',v.applicableKinds,64)};
+ }),v=>v.id);
+ const quickFilters=keepReadable('browse','quickFilters',rows(raw.quickFilters??[],32),v=>{
   if(!obj(v)||!id(v.id)||!id(v.labelKey))bad();
   return {id:v.id,labelKey:v.labelKey,query:parseBrowseNode(v.query)};
  });
+ // The fields and sorts describe the resolved pivot, so it must be one this app could read.
  const resolved=raw.resolvedPivot===undefined||raw.resolvedPivot===null?null:pivot(raw.resolvedPivot);
  if(resolved&&!pivots.some(p=>p.id===resolved.id))bad();
  return freeze({
-  library:{id:library.id,name:library.name,kind:library.kind,defaultView:library.defaultView,pinned:library.pinned===true},
+  library:{id:library.id,name:(library.name??'') as string,kind:library.kind,defaultView:(library.defaultView??'') as string,pinned:library.pinned===true},
   pivots,resolvedPivot:resolved,fields,sorts,quickFilters,
   queryLimits:{maximumDepth:limits.maximumDepth as number,maximumClauses:limits.maximumClauses as number,maximumBytes:limits.maximumBytes as number,maximumSorts:limits.maximumSorts as number,defaultLimit:limits.defaultLimit as number,maximumLimit:limits.maximumLimit as number,cursorTtlSeconds:limits.cursorTtlSeconds as number},
  });
 }
 
+/**
+ * One page of a browse. The pivot, the revision, the cursor, what was applied and the bound of
+ * 200 entries are exact. An entry that cannot be read is left out alone (a page none of whose
+ * entries can be read is refused), a repeated entry keeps its first appearance, and the total and
+ * `hasMore` are reckoned from where the page starts and how many rows the server sent.
+ */
 export function parseBrowseResult(raw:unknown):BrowseResult{
  if(!obj(raw)||!id(raw.pivot)||!obj(raw.applied)||!obj(raw.pageInfo))bad();
  const info=raw.pageInfo;
- if(!count(info.start)||!count(info.total)||!id(info.revision)||typeof info.hasMore!=='boolean'||!str(info.nextCursor,4096))bad();
- if(info.start>info.total)bad();
- const entries=rows(raw.entries,200).map(validateContentEntry);
- if(new Set(entries.map(e=>e.id)).size!==entries.length)bad();
-  if(info.hasMore!==(info.start+entries.length<info.total))bad();
-  const positionIndex=parsePositionIndex(raw.positionIndex,info.total as number);
+ if(!count(info.start)||!count(info.total)||!id(info.revision)||!str(info.nextCursor??'',4096))bad();
+ const sent=rows(raw.entries,200);
+ const entries=firstOfEach('browse','entries',keepReadable('browse','entries',sent,validateContentEntry),e=>e.id);
+ if(sent.length&&!entries.length)bad();
+ const total=Math.max(info.total,sent.length?info.start+sent.length:0);
+  const positionIndex=parsePositionIndex(raw.positionIndex,total);
  const applied=raw.applied;
  return freeze({
   pivot:raw.pivot,
@@ -148,7 +170,7 @@ export function parseBrowseResult(raw:unknown):BrowseResult{
    seek:applied.seek===undefined||applied.seek===null?null:(obj(applied.seek)&&str(applied.seek.prefix,8)&&applied.seek.prefix?{prefix:applied.seek.prefix}:bad()),
   },
   entries,
-  pageInfo:{start:info.start,total:info.total,revision:info.revision,hasMore:info.hasMore,nextCursor:info.nextCursor},
+  pageInfo:{start:info.start,total,revision:info.revision,hasMore:info.start+sent.length<total,nextCursor:(info.nextCursor??'') as string},
   positionIndex,
  });
 }
@@ -157,9 +179,8 @@ export function parseBrowseResult(raw:unknown):BrowseResult{
  * title (either direction), years (decades past 240 anchors) for year, months (years
  * past 240) for added and lastPlayed, whole points for the ratings, half hours in
  * minutes for duration, and an empty key for rows without a value. The field is
- * optional and best-effort: a missing index, or an entry whose shape is unknown, is
- * dropped rather than failing the page. Well-shaped but incoherent anchors (out of
- * order, past the total) still fail, as before. */
+ * optional and best-effort: a missing index, an entry whose shape is unknown, or an
+ * anchor that is out of order or past the total is dropped rather than failing the page. */
 function parsePositionIndex(v:unknown,total:number):BrowsePositionAnchor[]{
  if(v===undefined||v===null)return [];
  if(!Array.isArray(v))return [];
@@ -168,7 +189,7 @@ function parsePositionIndex(v:unknown,total:number):BrowsePositionAnchor[]{
  for(const entry of v.slice(0,256)){
   if(!obj(entry)||!str(entry.key,8)||!count(entry.index))continue;
   const index=entry.index as number;
-  if(index<=previous||index>=Math.max(total,1))bad();
+  if(index<=previous||index>=Math.max(total,1)){noteSkipped('browse','positionIndex');continue;}
   previous=index;
   out.push({key:entry.key as string,index});
  }
@@ -206,13 +227,13 @@ export function formatBrowseAnchor(key:string,sortField:string,noValue=''):strin
  return key;
 }
 
+/** The values of one facet. The field asked for and the bound of 200 are exact; a value that cannot be read is left out alone, a repeated one keeps its first appearance, a value without a label is labelled by itself, and a missing count is 0. */
 export function parseBrowseFacets(raw:unknown,expected?:string):BrowseFacetPage{
  if(!obj(raw)||!id(raw.field)||(expected!==undefined&&raw.field!==expected))bad();
- const values=rows(raw.values,200).map(v=>{
-  if(!obj(v)||!id(v.value)||!str(v.label,512)||!v.label||!count(v.count)||v.count<1)bad();
-  return {value:v.value,label:v.label,count:v.count};
- });
- if(new Set(values.map(v=>v.value)).size!==values.length)bad();
+ const values=firstOfEach('browse','facets',keepReadable('browse','facets',rows(raw.values,200),v=>{
+  if(!obj(v)||!id(v.value)||!str(v.label??'',512))bad();
+  return {value:v.value,label:(v.label||v.value) as string,count:count(v.count)?v.count:0};
+ }),v=>v.value);
  return freeze({field:raw.field,values});
 }
 

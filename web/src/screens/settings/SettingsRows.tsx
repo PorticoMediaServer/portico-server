@@ -1,6 +1,6 @@
 import React from 'react';
 import {useNavigate} from '@tanstack/react-router';
-import {addLanguage, availableLanguages, compositePatch, languageName, localeChoices, MAX_LANGUAGES, moveLanguage, preferenceValueLabel, readComposite, removeLanguage, type SettingsChoice, type SettingsRow as StructureRow} from '@core/presentation/index.ts';
+import {addLanguage, availableLanguages, compositePatch, languageName, localeChoices, MAX_LANGUAGES, moveLanguage, preferenceValueLabel, readComposite, removeLanguage, settingsScopeLabel, type SettingsChoice, type SettingsRow as StructureRow} from '@core/presentation/index.ts';
 import type {PreferencePatch, PreferenceValue} from '@core/preferences.ts';
 import {useSession} from '../../app/session';
 import {useI18n, type MessageId} from '../../app/i18n';
@@ -25,7 +25,8 @@ export function RowView({row, anchor, save}: {row: Row; anchor: string; save: (p
   const session = useSession();
   const navigate = useNavigate();
   const text = t(row.label);
-  const label = row.scope === 'device' ? <>{text}<Badge>{t('settings.thisDevice')}</Badge></> : text;
+  const scopeLabel = settingsScopeLabel(row.scope, 'web');
+  const label = scopeLabel ? <>{text}<Badge>{t(scopeLabel)}</Badge></> : text;
   const help = row.help ? t(row.help) : undefined;
   if (row.kind === 'action') {
     if (row.id === 'resetRecommendations') return <ResetRecommendationsRow />;

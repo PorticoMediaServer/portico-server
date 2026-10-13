@@ -98,7 +98,7 @@ func Registry() []Field {
 		field("playHistoryDays", "retention", "integer", 0, bounded(0), bounded(36500), nil, "hot", "operations.Prune", "How long the server's play history is kept. 0 keeps every play since the server was set up. Play counts are kept either way."),
 		field("home.communityActivityEnabled", "home", "boolean", false, nil, nil, nil, "hot", "catalog home trending row", "Publish a server-wide popular-this-week row built from aggregated play counts across profiles. Off by default."),
 		field("updates.releaseChannel", "updates", "enumeration", "stable", nil, nil, UpdateChannels, "hot", "administration updates report", "Which release channel the updates page reports against. Nothing is ever installed automatically."),
-		field("updates.feedUrl", "updates", "string", "", nil, nil, nil, "hot", "administration updates report", "Optional release feed this server may read to report whether a newer build exists. Empty means the server only reports the build it is running."),
+		field("updates.feedUrl", "updates", "string", DefaultUpdateFeedURL, nil, nil, nil, "hot", "administration updates report", "Release feed checked for newer versions. Clear the address to turn update checks off."),
 		field("library.missingTitles", "library", "enumeration", "after_days", nil, nil, MissingTitleRules, "hot", "catalog missing titles", "When a title whose files are no longer on disk is removed from the library: immediately, after a number of days, or never. Until then it stays, marked missing, and a file that comes back restores it. Each profile's watch state is kept either way."),
 		field("library.missingTitlesDays", "library", "integer", 30, bounded(1), bounded(3650), nil, "hot", "catalog missing titles", "How many days a missing title is kept when the rule is after a number of days."),
 		field("remoteSignInPolicy", "connectivity", "enumeration", "allow", nil, nil, RemoteSignInPolicies, "next-operation", "sign-in admission", "Who may sign in from outside this network. Owner-only still allows existing remote sessions to finish."),
@@ -124,6 +124,8 @@ func Registry() []Field {
 	// Viewer preferences are published by their own registry on GET /v1/preferences.
 	// Listing them here too would give clients two disagreeing authorities.
 }
+
+const DefaultUpdateFeedURL = "https://github.com/PorticoMediaServer/portico-server/releases/latest/download/portico-update-manifest.json"
 
 type Settings struct {
 	Name               string `json:"name"`
@@ -208,7 +210,7 @@ type LogRetention struct {
 // DefaultSettings is the registry's own answer before any owner write, so a
 // fresh database and a document saved before these fields existed agree.
 func DefaultSettings() Settings {
-	return Settings{Name: "Portico", TranscodingEnabled: true, HardwareBackend: "auto", HDRToneMappingAlgorithm: "hable", X264Preset: "veryfast", DirectStreamRemux: true, PlanningPolicy: "maximum_fidelity", ThrottleBufferSeconds: 60, PlayedRetentionSeconds: 180, DiagnosticDays: 30, NotificationDays: 180, JobDays: 30, UpdateChannel: "stable", MissingTitles: "after_days", MissingTitlesDays: 30,
+	return Settings{Name: "Portico", TranscodingEnabled: true, HardwareBackend: "auto", HDRToneMappingAlgorithm: "hable", X264Preset: "veryfast", DirectStreamRemux: true, PlanningPolicy: "maximum_fidelity", ThrottleBufferSeconds: 60, PlayedRetentionSeconds: 180, DiagnosticDays: 30, NotificationDays: 180, JobDays: 30, UpdateChannel: "stable", UpdateFeedURL: DefaultUpdateFeedURL, MissingTitles: "after_days", MissingTitlesDays: 30,
 		RemoteSignInPolicy: "allow", LANNetworks: networkpolicy.DefaultHomeNetworks(), AccessURLs: []string{}, LANDiscoveryEnabled: true, TrustedProxies: []string{}, LogLevel: "info", LogRetention: []LogRetention{}}
 }
 
@@ -254,19 +256,32 @@ func readSettings(tx *sql.Tx) (SettingsDocument, error) {
 		return SettingsDocument{}, e
 	}
 	b, _ := json.Marshal(v)
-	return SettingsDocument{revision, Hash(string(b)), v, v, revision, restartFields(v), RegistryRevision}, nil
+	return SettingsDocument{revision, Hash(string(b)), v, v, revision, []string{}, RegistryRevision}, nil
 }
 
-// restartFields names saved values the running process has not adopted. The
-// document is applied atomically, so a value is never half-saved; what a client
-// needs instead is the registry's applicationMode, which says which fields only
-// take effect after a restart. This stays empty rather than guessing at what
-// the process adopted at startup, which no table records.
-func restartFields(Settings) []string { return []string{} }
 func (s *Store) Settings(ctx context.Context, auth Authorize) (out SettingsDocument, e error) {
 	e = s.snapshot(ctx, auth, "", func(tx *sql.Tx) error { var err error; out, err = readSettings(tx); return err })
+	if e == nil {
+		s.projectAppliedSettings(&out)
+	}
 	return
 }
+
+// projectAppliedSettings uses the startup value held by the running consumer.
+// The stored requested document remains the single settings authority.
+func (s *Store) projectAppliedSettings(document *SettingsDocument) {
+	if s.AppliedTemporaryDirectory == nil {
+		return
+	}
+	applied := *s.AppliedTemporaryDirectory
+	document.Effective.TemporaryDirectory = applied
+	if document.Requested.TemporaryDirectory != applied {
+		document.RestartFields = []string{"temporaryDirectory"}
+	} else {
+		document.RestartFields = []string{}
+	}
+}
+
 func validCap(n *int) bool { return n == nil || *n >= 1 && *n <= 1000000 }
 
 // clamp keeps a numeric transcoding control inside its published bounds rather
@@ -420,6 +435,9 @@ func (s *Store) ApplySettings(ctx context.Context, p identity.Principal, auth Au
 		}
 		return SaveReceipt(tx, scope, c.IdempotencyKey, digest, out, s.now())
 	})
+	if e == nil {
+		s.projectAppliedSettings(&out)
+	}
 	return
 }
 

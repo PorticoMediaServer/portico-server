@@ -128,20 +128,28 @@ export function useShowRecommendations(showId: string | undefined): Recommendati
  */
 export function useCreditPages(itemId: string | undefined, group: 'cast' | 'crew', initial: readonly DetailCredit[], total: number) {
   const {api} = useSession();
-  const [state, setState] = useState<{itemId?: string; credits: readonly DetailCredit[]; cursor?: string; started: boolean}>({credits: [], started: false});
-  const busy = useRef(false);
-  useEffect(() => { setState({itemId, credits: [], started: false}); busy.current = false; }, [itemId, group]);
+  const [state, setState] = useState<{itemId?: string; credits: readonly DetailCredit[]; cursor?: string; started: boolean; failed?: boolean}>({credits: [], started: false});
+  // The request in flight, and which title and group it is for. A request for a title that has
+  // since been left neither blocks the new title's first page nor adds to it when it answers.
+  const flight = useRef<{of: number} | undefined>(undefined);
+  const subject = useRef(0);
+  useEffect(() => { subject.current++; flight.current = undefined; setState({itemId, credits: [], started: false}); }, [itemId, group]);
   const current = state.itemId === itemId && state.started ? state.credits : initial;
   const done = state.itemId === itemId && state.started ? !state.cursor : initial.length >= total;
   const more = useCallback(() => {
-    if (!itemId || busy.current || done) return;
-    busy.current = true;
+    if (!itemId || flight.current || done) return;
+    const mine = {of: subject.current};
+    flight.current = mine;
     const cursor = state.itemId === itemId && state.started ? state.cursor : undefined;
     const path = `/v1/items/${encodeURIComponent(itemId)}/credits?group=${group}` + (cursor ? `&cursor=${encodeURIComponent(cursor)}` : '');
     api.request<unknown>(path, 'GET').then(raw => {
+      if (mine.of !== subject.current) return;
       const page = parseCreditPage(raw, itemId, group);
       setState(prev => prev.itemId !== itemId ? prev : {itemId, credits: [...(prev.started ? prev.credits : []), ...page.credits], cursor: page.nextCursor, started: true});
-    }, () => {}).finally(() => { busy.current = false; });
+    }).catch(() => {
+      // The list keeps what it has and says so; asking again repeats the same page.
+      if (mine.of === subject.current) setState(prev => (prev.itemId !== itemId ? prev : {...prev, failed: true}));
+    }).finally(() => { if (flight.current === mine) flight.current = undefined; });
   }, [api, itemId, group, done, state]);
-  return {credits: current, more, done};
+  return {credits: current, more, done, /** The last request for more did not succeed; `more()` tries it again. */ failed: state.itemId === itemId && !!state.failed};
 }

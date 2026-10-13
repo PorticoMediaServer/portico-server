@@ -622,8 +622,12 @@ func FoundationRegistry(d Dependencies) (*apikit.Registry, error) {
 	if err := registerBackups(registry, d); err != nil {
 		return nil, err
 	}
+	if err := registerClientReports(registry, d); err != nil {
+		return nil, err
+	}
 	registerBulkJobs(registry, d)
 	registerDownloadRequests(registry, d)
+	registerSocial(registry, d)
 	registerPlaylistWindows(registry, d)
 	registerMetadataAttention(registry, d)
 	registerMetadataSettings(registry, d)

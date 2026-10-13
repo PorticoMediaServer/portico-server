@@ -1,5 +1,5 @@
 import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
-import {defaultI18n} from '@i18n';
+import {useI18n} from '../../app/i18n';
 import {AVATAR_MAX_BYTES, IdentityClient, type PINRecoveryMethods, type ProfileAvatar} from '@core/index.ts';
 import {ManagedProfilesClient, PROFILE_ART, parseDirectSnapshot, type DirectSnapshot, type ManagedProfile, type ProfileArt, type ProfileDeletion} from '@core/profile-management.ts';
 import {profileActions} from '@core/presentation/index.ts';
@@ -8,8 +8,6 @@ import {ErrorNotice, errorText} from '../../app/errors';
 import {Button, ConfirmDialog, Dialog, Input, Loading, Menu, Notice, PasswordInput, SettingsGroup, SettingsRow, Spinner, Text, type MenuItem, PasswordStrength} from '../../ui';
 import {Avatar} from '../../ui';
 import {passwordStrength} from '@core/password-strength.ts';
-
-const t = defaultI18n.t;
 
 export function useIdentity() {
   const {api, session} = useSession();
@@ -59,7 +57,8 @@ type Editing = {kind: 'add'} | {kind: 'rename'; profile: ManagedProfile} | {kind
  * reorder, protect with a PIN and delete profiles, and change pictures; every profile can reach
  * its own limits and recover a forgotten PIN. Other profiles see the list and a note.
  */
-export function LocalProfiles({onLimits}: {onLimits: (profile: {id: string; name: string}) => void}) {
+export function LocalProfiles({onLimits}: {onLimits: (profile: {id: string; name: string; readOnly?: boolean}) => void}) {
+  const {t} = useI18n();
   const session = useSession();
   const {api} = session;
   const viewer = session.session!.viewer;
@@ -158,7 +157,7 @@ export function LocalProfiles({onLimits}: {onLimits: (profile: {id: string; name
               else if (id === 'changePin') setEditing({kind: 'pin', profile: p});
               else if (id === 'removePin') setRemovingPin(p);
               else if (id === 'forgotPin') setRecovering({id: p.id, name: p.name});
-              else if (id === 'limits') onLimits({id: p.id, name: p.name});
+              else if (id === 'limits') onLimits({id: p.id, name: p.name, readOnly: !manage});
               else if (id === 'up') move(p, -1);
               else if (id === 'down') move(p, 1);
               else if (id === 'delete') void startDelete(p);
@@ -184,6 +183,7 @@ export function LocalProfiles({onLimits}: {onLimits: (profile: {id: string; name
 
 /** Add or rename: a `form` dialog with Cancel and one primary. */
 function ProfileForm({editing, onClose, save}: {editing: {kind: 'add'} | {kind: 'rename'; profile: ManagedProfile}; onClose: () => void; save: (name: string, art: ProfileArt) => Promise<void>}) {
+  const {t} = useI18n();
   const [name, setName] = useState(editing.kind === 'rename' ? editing.profile.name : '');
   const [art, setArt] = useState<ProfileArt>(editing.kind === 'rename' ? editing.profile.art : 'blue');
   const [busy, setBusy] = useState(false);
@@ -211,6 +211,7 @@ function ProfileForm({editing, onClose, save}: {editing: {kind: 'add'} | {kind: 
 }
 
 function PinForm({profile, onClose, save}: {profile: ManagedProfile; onClose: () => void; save: (pin: string) => Promise<void>}) {
+  const {t} = useI18n();
   const [pin, setPin] = useState('');
   const [again, setAgain] = useState('');
   const [busy, setBusy] = useState(false);
@@ -235,6 +236,7 @@ function PinForm({profile, onClose, save}: {profile: ManagedProfile; onClose: ()
 
 /** Change password on a direct account (WEB-SET-01). */
 export function PasswordGroup() {
+  const {t} = useI18n();
   const identity = useIdentity();
   const {owner} = useSession();
   const [open, setOpen] = useState(false);
@@ -251,6 +253,7 @@ export function PasswordGroup() {
 const strong = (value: string) => passwordStrength(value).acceptable;
 
 function PasswordDialog({identity, onClose, onDone}: {identity: IdentityClient; onClose: () => void; onDone: () => void}) {
+  const {t} = useI18n();
   const [current, setCurrent] = useState('');
   const [next, setNext] = useState('');
   const [again, setAgain] = useState('');
@@ -287,6 +290,7 @@ function PasswordDialog({identity, onClose, onDone}: {identity: IdentityClient; 
 /** C45: the signed-in account session resets a profile PIN (no password or code prompt; those
  * are asked only in the email, password and two-step forms). */
 function PINRecoveryDialog({profile, identity, onClose}: {profile: {id: string; name: string}; identity: IdentityClient; onClose: () => void}) {
+  const {t} = useI18n();
   const [methods, setMethods] = useState<PINRecoveryMethods>();
   const [pin, setPin] = useState('');
   const [busy, setBusy] = useState(false);

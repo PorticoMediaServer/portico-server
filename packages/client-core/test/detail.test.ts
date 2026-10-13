@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { DetailService, type DetailApi, type PersonalState } from '../src/detail.ts';
+import { DetailService, parseCreditPage, type DetailApi, type PersonalState } from '../src/detail.ts';
 const scope = { serverId: 'server', viewerId: JSON.stringify(['local','account','profile']) };
 const target = { libraryId: 'library', itemId: 'item' };
 const personal = (revision = 0): PersonalState => ({ watchlisted: false, favorite: false, rating: null, revision,watched:false,progressSeconds:0,lastPlayedAt:'',status:'current',conflicts:[] });
@@ -106,12 +106,34 @@ test('rating clear is explicit null and unsupported or malformed intents do not 
  assert.throws(()=>sparse.mutate({action:'favorite',value:true}),/not currently available/);assert.deepEqual(sparse.getSnapshot().data!.metadata.credits,[]);
 });
 
-test('wrong-scope receipts, malformed detail and overlarge metadata fail closed',async()=>{
- for(const alter of [(d:any)=>{d.scope.itemId='other';},(d:any)=>{d.metadata.credits=Array(201).fill({});},(d:any)=>{d.personal.rating=8;},(d:any)=>{d.actions[3].playback.itemId='other';}]){
+test('wrong-scope receipts, a wrong item or revision and overlarge lists fail closed',async()=>{
+ for(const alter of [(d:any)=>{d.scope.itemId='other';},(d:any)=>{d.scope.viewerFence='';},(d:any)=>{d.item.id='other';},(d:any)=>{d.item.libraryId='other';},(d:any)=>{d.revision.catalog=-1;},(d:any)=>{d.personal.revision=-1;},(d:any)=>{delete d.personal;},(d:any)=>{d.metadata.credits=Array(10001).fill({});},(d:any)=>{d.actions=Array(33).fill(d.actions[0]);},(d:any)=>{d.metadata.ratings='nope';}]){
   const service=setup(async()=>{const d=data();alter(d);return d;});await service.select(target);assert.equal(service.getSnapshot().phase,'error');assert.equal(service.getSnapshot().data,null);
  }
  const service=setup(async(_p,m,b)=>m==='GET'?data():{...receipt(b,{...personal(1),favorite:true}),viewerFence:'other'});await service.select(target);await service.mutate({action:'favorite',value:true});
  assert.equal(service.getSnapshot().mutationError!.code,'invalid_detail');assert.equal(service.getSnapshot().data!.personal.favorite,false);
+});
+
+test('one part of a title page that cannot be read is left out and the page is kept',async()=>{
+ const read=async(alter:(d:any)=>void)=>{const service=setup(async()=>{const d=data();alter(d);return d;});await service.select(target);assert.equal(service.getSnapshot().phase,'ready');const result=service.getSnapshot().data!;service.dispose();return result;};
+ // Actions: one that plays another item, a broken one and a repeated one are not offered.
+ const actions=await read(d=>{d.actions[3].playback.itemId='other';d.actions.push({id:'favorite',labelKey:'again',enabled:false},{labelKey:'no id'},'nope',{id:'share',labelKey:'action.share',min:'low',future:true});});
+ assert.deepEqual(actions.actions.map(a=>a.id),['watchlist','favorite','rating','start_over','share']);
+ assert.deepEqual(actions.actions.at(-1),{id:'share',labelKey:'action.share',enabled:false});
+ // Credits, ratings and genres: a row that cannot be read is left out; a portrait from elsewhere is not shown.
+ const metadata=await read(d=>{d.metadata.credits=[{},{id:'2',name:'Writer',provider:'tmdb',portraitUrl:'https://elsewhere.test/p.jpg',personId:7},...d.metadata.credits];d.metadata.ratings=[{provider:'tmdb',value:11,max:10},...d.metadata.ratings];d.metadata.genres=[...d.metadata.genres,{name:'No id'}];d.metadata.status='partial';d.metadata.creditTotals={cast:'many'};});
+ assert.deepEqual(metadata.metadata.credits,[{id:'2',name:'Writer',role:'',department:'',provider:'tmdb'},{id:'1',name:'Actor',role:'Role',department:'Acting',provider:'tmdb'}]);
+ assert.deepEqual([metadata.metadata.ratings.length,metadata.metadata.genres.length,metadata.metadata.status,metadata.metadata.creditTotals],[1,1,'available',undefined]);
+ // What the page is only drawn with reads neutrally; fields this app does not know are ignored.
+ const bare=await read(d=>{d.item={id:'item',libraryId:'library',kind:'hologram',year:-1,overview:42,posterUrl:'bad\nurl',future:1};d.personal={revision:4,rating:8,status:'syncing',conflicts:[{id:'c'},{id:'c1',field:'rating',baseRevision:1,choices:[{operationId:'o',deviceId:'d',authoredAt:'t',value:1},{}]}]};delete d.metadata;d.actions=undefined;d.future={a:1};d.markers='nope';});
+ assert.deepEqual(bare.item,{id:'item',libraryId:'library',title:'',kind:'hologram',duration:0,progressSeconds:0,available:false});
+ assert.deepEqual(bare.personal,{watchlisted:false,favorite:false,rating:null,revision:4,watched:false,progressSeconds:0,lastPlayedAt:'',status:'current',conflicts:[{id:'c1',field:'rating',baseRevision:1,baseValue:undefined,choices:[{operationId:'o',deviceId:'d',authoredAt:'t',value:1}]}]});
+ assert.deepEqual([bare.metadata,bare.actions,bare.markers,'future' in bare],[{status:'unavailable',ratings:[],genres:[],credits:[]},[],[],false]);
+ // Related rows this app cannot read are left out whole.
+ assert.equal((await read(d=>{d.related={version:2};})).related,undefined);
+ // Files: a file without an id and a track without a codec name are handled alone.
+ const files=await read(d=>{d.files=[{size:1},{id:'f1',size:'big',video:{codec:7},audio:[{codec:'aac',channels:2},'nope',{language:'en'}],subtitles:null}];});
+ assert.deepEqual(files.files,[{id:'f1',size:0,container:'',duration:0,available:false,audio:[{codec:'aac',channels:2},{codec:'',language:'en'}],subtitles:[]}]);
 });
 
 test('bounded queue, cancellation and disposal settle pending commands without late publication',async()=>{
@@ -128,7 +150,9 @@ test('bounded episode/song/bookFile source metadata and unknown boundaries survi
   assert.equal(service.getSnapshot().phase,'ready');assert.deepEqual((service.getSnapshot().data!.item as any)[field],value);
   assert.equal(service.getSnapshot().data!.item.sources![0].duration,100);assert.match(service.getSnapshot().data!.item.overview!,/\n\n/);
  }
- const bad=setup(async()=>{const d=data();d.item.episode={...fields.episode,showTitle:'x'.repeat(2049)};return d;});await bad.select(target);assert.equal(bad.getSnapshot().error!.code,'invalid_detail');
+ // Facts that cannot be read are left out whole; a fact the server stops sending reads as empty.
+ const bad=setup(async()=>{const d=data();d.item.episode={...fields.episode,showTitle:'x'.repeat(2049)};return d;});await bad.select(target);assert.equal(bad.getSnapshot().phase,'ready');assert.equal(bad.getSnapshot().data!.item.episode,undefined);
+ const loose=setup(async()=>{const d=data();const {orderingBasis:_gone,...rest}=fields.episode;d.item.episode={...rest,seasonNumber:'one'};return d;});await loose.select(target);const {seasonNumber:_unread,...kept}=fields.episode;assert.deepEqual(loose.getSnapshot().data!.item.episode,{...kept,orderingBasis:''});
 });
 
 test('watched and favorite actions use current reconciliation state without changing independent sets',async()=>{
@@ -152,10 +176,18 @@ test('CD-24: audiobook part with progress past duration opens with a bounded res
  assert.equal(s.getSnapshot().data!.item.progressSeconds,150);
  assert.equal(s.getSnapshot().data!.actions.find(a=>a.id==='resume')!.playback!.startSeconds,100);
  s.dispose();
- // An unbounded resume past duration fails closed.
+ // A resume past the duration is not offered; the rest of the page is kept.
  const bad=data();
  bad.actions=bad.actions.map((a:any)=>a.id==='resume'?{...a,playback:{itemId:'item',startSeconds:150}}:a);
  const t=setup(async()=>bad);await t.select(target);
- assert.equal(t.getSnapshot().phase,'error');
+ assert.equal(t.getSnapshot().phase,'ready');
+ assert.deepEqual(t.getSnapshot().data!.actions.filter(a=>a.playback).map(a=>a.id),['start_over']);
  t.dispose();
+});
+
+test('a page of credits keeps the credits it can read; the group asked for, the cursor and the bound stay exact',()=>{
+ const credit=(id:string)=>({id,name:'Name '+id,role:'Role',department:'Acting',provider:'tmdb'});
+ const page=parseCreditPage({group:'cast',total:1,future:true,credits:[credit('1'),{name:'No id'},'nope',{...credit('2'),portraitUrl:'/v1/metadata/item/other/art/portrait?v=1',future:1}],nextCursor:'next'},'item','cast');
+ assert.deepEqual(page,{group:'cast',credits:[credit('1'),credit('2')],total:2,nextCursor:'next'});
+ for(const broken of [{group:'crew',total:0,credits:[]},{group:'cast',total:0,credits:'nope'},{group:'cast',total:0,credits:[],nextCursor:7},{group:'cast',total:0,credits:Array(10001).fill(credit('1'))}])assert.throws(()=>parseCreditPage(broken,'item','cast'),{code:'invalid_detail'});
 });
