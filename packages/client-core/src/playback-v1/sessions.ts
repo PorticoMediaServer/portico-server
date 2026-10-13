@@ -267,6 +267,7 @@ export class PlaybackSessionController {
       url: session.presentation.url, generation: session.presentation.generation, mode: session.presentation.mode,
       startPositionMs: startPositionMs !== undefined ? Math.max(0, Math.round(startPositionMs)) : session.presentation.startPositionMs, subtitles: session.presentation.subtitles, autoplay,
       sessionId: session.id, ...(session.itemId ? {itemId: session.itemId} : {}),
+      ...(session.presentation.bitrateKbps ? {bitrateKbps: session.presentation.bitrateKbps} : {}),
     });
   }
 
@@ -382,7 +383,11 @@ export class PlaybackSessionController {
           updated = await this.client.patch((e.current as Session).id, (e.current as Session).revision, change);
         }
         if (this.state.session?.id !== session.id) return undefined; // replaced meanwhile
-        this.adopt(updated, this.autoplay(updated));
+        // The old stream kept playing while the server prepared the new one: the new one starts
+        // where the picture is now, not where it was when the change was asked for.
+        const now = this.player.observe();
+        const resume = !change.seek && this.gate.accepts(now.generation) && now.state !== 'idle' && now.state !== 'error' ? now.positionMs : undefined;
+        this.adopt(updated, this.autoplay(updated), resume);
         return updated;
       } catch (e) {
         if (e instanceof PlaybackApiError && (e.status === 404 || e.status === 410)) { void this.serverEnded(); return undefined; }

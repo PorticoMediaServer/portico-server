@@ -105,6 +105,8 @@ export type AutomaticOptions = Readonly<{
   steps: readonly FixedQuality[];
   /** The bit rate of the original, when known: what Original needs from the connection. */
   originalKbps?: number;
+  /** The step already in force when this title starts (the queue carried it from the title before). */
+  startAt?: FixedQuality;
   now?: () => number;
   /** A shortfall must last this long before stepping down. */
   shortfallMs?: number;
@@ -157,6 +159,7 @@ export class AutomaticQuality {
     this.stallWindowMs = options.stallWindowMs ?? 30_000;
     this.holdMs = options.holdMs ?? 15_000;
     this.upHoldMs = this.headroomMs;
+    if (options.startAt) this.index = this.steps.findIndex(s => s.id === options.startAt!.id);
   }
 
   /** The step in force: undefined is Original. */

@@ -1,7 +1,8 @@
 /**
- * Plays Playback Protocol v1 sessions through today's `PlaybackService` and its engines (web
- * `<video>` + hls.js, Apple AVPlayer), so the player screens don't change while the apps move to
- * v1 (Plan — Client Playback Migration, core step). `V1PlaybackApi` is the `PlaybackApi` the
+ * Plays Playback Protocol v1 sessions through `PlaybackService` and the native engines (Apple
+ * AVPlayer, Android). The web no longer uses this file: it runs on `PlaybackSessionController`
+ * (see the web app's `playback-v1/web-playback.ts`), and this bridge goes when the native apps
+ * make the same move. `V1PlaybackApi` is the `PlaybackApi` the
  * service calls for a session's progress and stop, spoken as v1: the timeline (with its own
  * monotonic `seq`, generation and a lease keepalive while paused) and `DELETE` with the last
  * position. `toPlaybackSession` turns a v1 session into the service's session shape.
@@ -12,21 +13,9 @@ import {PlaybackOptionsClient} from './options.ts';
 import {SessionsClient, type SessionChange, type StartOptions, type StartTarget, type Timers} from './sessions.ts';
 import type {TimelineReport, TimelineState} from './timeline.ts';
 import {parseSessionEnd, type Session, type SessionEnd} from './types.ts';
+import {toPlaybackSession} from './session-shape.ts';
 
-/** The service's session for a v1 session: stream mode is HLS, direct stays direct. */
-export function toPlaybackSession(session: Session, durationSeconds: number, resumeSeconds?: number): PlaybackSession {
-  return {
-    id: session.id,
-    generation: session.presentation.generation,
-    streamUrl: session.presentation.url,
-    mode: session.presentation.mode === 'stream' ? 'hls' : 'direct',
-    duration: Math.max(0, durationSeconds),
-    resumeSeconds: resumeSeconds ?? session.presentation.startPositionMs / 1000,
-    protocol: 'v1',
-    // §18.1 version 2: the device decodes the file itself.
-    ...(session.presentation.audio ? {audio: session.presentation.audio} : {}),
-  };
-}
+export {toPlaybackSession};
 
 type PendingReport = {seq?: number; body: Omit<TimelineReport, 'seq'>; at: number; promise: Promise<void>; resolve: () => void; reject: (error: unknown) => void};
 const MAX_PENDING_REPORT_FACTS = 64;

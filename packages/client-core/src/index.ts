@@ -336,10 +336,11 @@ export class HttpLocalApi implements PlaybackApi {
   private auth?: AuthRecovery;
   /** Keep this transport's access token alive: refresh before expiry and once on a 401. */
   setAuthRecovery(auth: AuthRecovery | undefined) { this.auth = auth; }
-  private send(path: string, method: string, body: unknown, signal: AbortSignal | undefined, token: string, extra?: Readonly<Record<string, string>>) {
+  private send(path: string, method: string, body: unknown, signal: AbortSignal | undefined, token: string, extra?: Readonly<Record<string, string>>, keepalive = false) {
     return this.fetcher(this.baseUrl + path, {
       method,
       signal,
+      ...(keepalive ? {keepalive: true} : {}),
       // Credential/profile proof exchanges must never follow an HTTP redirect.
       ...(/^\/v1\/(?:direct(?:\/|$)|auth\/|hosted\/(?:attach|profiles\/offline-select))/.test(path)?{redirect:'error' as const,credentials:'omit' as const}:{}),
       headers: {
@@ -369,6 +370,15 @@ export class HttpLocalApi implements PlaybackApi {
       if (next && next !== token) { void response.body?.cancel().catch(() => {}); response = await this.send(path, method, body, signal, next, extra); }
     }
     return response;
+  }
+  /**
+   * A last word as the page goes away (a stop with the final position): sent at once with the
+   * token in hand and `keepalive`, so the browser delivers it after the page has gone. Nothing is
+   * awaited, renewed or retried; the server's own time limits cover a message that never arrives.
+   */
+  farewell(path: string, method: string, body?: unknown): void {
+    if (!path.startsWith("/v1/") || provesIdentity(path, method)) return;
+    try { void this.send(path, method, body, undefined, this.token, undefined, true).then(r => { void r.body?.cancel().catch(() => {}); }, () => {}); } catch { /* the page is going away */ }
   }
   /**
    * Any status, with headers and the parsed body (playback v1's `V1Http` seam: 202, 412 `current`,

@@ -40,7 +40,7 @@ import type {PreparedChoice} from '../prepared-media.ts';
 import type {CompletionPolicy, HeldCompletion, QueueController, QueuePlaybackView, QueuePlayerState, QueueWorkspaceService} from '../queue-controller.ts';
 import type {QueueEntry as LegacyEntry, QueueIntent, QueueItemInput, QueueScope, QueueSnapshot, QueueState} from '../queues.ts';
 import {PlaybackApiError, call, idempotencyKey, type V1Http} from './http.ts';
-import {toPlaybackSession} from './legacy-bridge.ts';
+import {toPlaybackSession} from './session-shape.ts';
 import {audioTrackId, type PlaybackChoices} from './choices.ts';
 import type {QualityRequest} from './quality.ts';
 import type {SessionChange, StartOptions, StartTarget} from './sessions.ts';
