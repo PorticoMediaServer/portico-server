@@ -13,6 +13,7 @@ import (
 	"portico.local/apikit"
 	"portico.local/apikit/apierror"
 	"portico.local/hosted/claimweb"
+	"portico.local/hosted/internal/appauth"
 	"portico.local/hosted/internal/appstore"
 	"portico.local/hosted/internal/buildinfo"
 	"portico.local/hosted/internal/certificates"
@@ -135,6 +136,12 @@ func Definitions() []apikit.Definition {
 		route[NoBody, NoBody]("POST", "/v1/sessions/logout-all", "session_logout_all", "Sign out every session of the account.", AccountSession, 204).lane(security),
 		route[NoBody, sessions.ReviewPage]("GET", "/v1/account/sessions", "account_sessions_list", "List the account's sessions.", AccountSession, 200).lane(security).paged("cursor"),
 		route[NoBody, sessions.ReviewRevocation]("DELETE", "/v1/account/sessions/{family}", "account_session_delete", "End one of the account's sessions.", AccountSession, 200).lane(security),
+
+		// Public-client sign-in. The Hosted browser cookie plus CSRF authorizes
+		// review/decision; no Hosted credential is returned to the app.
+		route[appauth.Request, appauth.Review]("POST", "/v1/app-authorizations", "app_authorization_review", "Review sign-in to one server for an unregistered app.", Public, 201).lane(security),
+		route[appauth.Decision, appauth.Return]("POST", "/v1/app-authorizations/{id}/decision", "app_authorization_decide", "Approve or deny the reviewed app sign-in.", Public, 200).lane(security),
+		route[appauth.Exchange, appauth.Grant]("POST", "/v1/app-authorizations/token", "app_authorization_exchange", "Exchange a one-time PKCE code for one server identity assertion.", Public, 200).lane(security),
 
 		// Device and TV authorization.
 		route[device.Start, device.Authorization]("POST", "/v1/device-authorizations", "device_authorization_create", "Start a device authorization.", Public, 201).lane(security),

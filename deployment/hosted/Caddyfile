@@ -46,7 +46,7 @@ web.getportico.tv {
 	import security
 	encode zstd gzip
 	import /etc/caddy/portico-web.caddy
-	@account_api path /v1/* /auth/sso/google/callback /auth/sso/apple/callback
+	@account_api path /v1/* /auth/apps/* /auth/sso/google/callback /auth/sso/apple/callback
 	handle @account_api {
 		import hosted_api
 	}

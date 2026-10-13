@@ -24,6 +24,7 @@ import (
 )
 
 type Handler struct {
+	AppAuthorizations  *AppAuthorizations
 	AccessLog          func(string)
 	requests           atomic.Uint64
 	rejections         atomic.Uint64
@@ -51,6 +52,7 @@ type Handler struct {
 func (h *Handler) Routes() http.Handler {
 	mux := http.NewServeMux()
 	h.oidcRoutes(mux)
+	h.appAuthorizationRoutes(mux)
 	h.appleNotificationRoutes(mux)
 	h.securityRoutes(mux)
 	h.RegisterDirectRoutes(mux, h.DirectRoutes)
@@ -166,7 +168,13 @@ func (h *Handler) Routes() http.Handler {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("Referrer-Policy", "no-referrer")
 		origin := r.Header.Get("Origin")
-		if origin != "" && !h.oidcCallback(r) {
+		if appExchange(r) {
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+			w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+			w.Header().Set("Access-Control-Expose-Headers", "Retry-After")
+			w.Header().Set("Access-Control-Max-Age", "86400")
+		} else if origin != "" && !h.oidcCallback(r) {
 			if origin == "*" || origin == "null" || !h.Origins[origin] {
 				fail(w, 403, "origin_denied", "Origin is not permitted.", false)
 				return
@@ -189,7 +197,7 @@ func (h *Handler) Routes() http.Handler {
 			w.WriteHeader(204)
 			return
 		}
-		if r.URL.RawQuery != "" && !h.oidcCallback(r) && !(r.Method == "GET" && r.URL.Path == "/v1/servers" && len(r.URL.Query()) == 1 && r.URL.Query().Get("include") == "dormant") && !sessionReviewQueryAllowed(r) && !notificationQueryAllowed(r) && !(r.Method == http.MethodGet && r.URL.Path == "/v1/dns/addresses") && !(r.Method == http.MethodGet && devQueryPaths[r.URL.Path]) {
+		if r.URL.RawQuery != "" && !h.oidcCallback(r) && !appAuthorizationQueryAllowed(r) && !(r.Method == "GET" && r.URL.Path == "/v1/servers" && len(r.URL.Query()) == 1 && r.URL.Query().Get("include") == "dormant") && !sessionReviewQueryAllowed(r) && !notificationQueryAllowed(r) && !(r.Method == http.MethodGet && r.URL.Path == "/v1/dns/addresses") && !(r.Method == http.MethodGet && devQueryPaths[r.URL.Path]) {
 			fail(w, 400, "query_not_supported", "Query parameters are not supported.", false)
 			return
 		}
@@ -274,12 +282,16 @@ func bearer(r *http.Request) string {
 }
 func (h *Handler) account(next func(http.ResponseWriter, *http.Request, identity.Viewer)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if !h.allowCredentialLookup(w, r, "account") {
+			return
+		}
 		v, e := h.Identity.Authenticate(r.Context(), bearer(r))
 		if e != nil {
 			failure(w, e)
 			return
 		}
 		if !h.allowAttempt("account:"+v.Account.ID, 240) {
+			w.Header().Set("Retry-After", "60")
 			fail(w, 429, "rate_limited", "Try again shortly.", true)
 			return
 		}
@@ -288,6 +300,9 @@ func (h *Handler) account(next func(http.ResponseWriter, *http.Request, identity
 }
 func (h *Handler) server(next func(http.ResponseWriter, *http.Request, directory.ServerAuthority)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if !h.allowCredentialLookup(w, r, "server") {
+			return
+		}
 		authority, e := h.Directory.CaptureServerAuthority(r.Context(), bearer(r))
 		if e != nil {
 			failure(w, e)
@@ -298,6 +313,7 @@ func (h *Handler) server(next func(http.ResponseWriter, *http.Request, directory
 			return
 		}
 		if !h.allowAttempt("server:"+authority.ServerID, 120) {
+			w.Header().Set("Retry-After", "60")
 			fail(w, 429, "rate_limited", "Try again shortly.", true)
 			return
 		}
@@ -337,6 +353,10 @@ func fail(w http.ResponseWriter, status int, code, message string, retry bool) {
 	write(w, status, map[string]any{"error": map[string]any{"code": code, "message": message, "retryable": retry}})
 }
 func failure(w http.ResponseWriter, e error) {
+	if appGrantError(e) {
+		fail(w, 400, "invalid_grant", "Sign-in expired or could not be verified. Start again in the app.", false)
+		return
+	}
 	if errors.Is(e, postgres.ErrPreferenceInput) {
 		fail(w, 400, "invalid_request", "Those preferences are not valid.", false)
 		return

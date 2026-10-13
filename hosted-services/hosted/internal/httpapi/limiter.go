@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"hash/maphash"
+	"net/http"
 	"net/netip"
 	"strings"
 	"sync"
@@ -91,4 +92,17 @@ func budgetNetwork(raw string) string {
 		return netip.PrefixFrom(ip, 48).Masked().String()
 	}
 	return netip.PrefixFrom(ip, 24).Masked().String()
+}
+
+// Cheap credential admission runs before any database lookup. The class is
+// shared across route IDs so varying server IDs or paths cannot reset it.
+func (h *Handler) allowCredentialLookup(w http.ResponseWriter, r *http.Request, class string) bool {
+	address := h.allowAttempt("credential:"+class+":"+budgetIP(peer(r)), 240)
+	network := h.allowAttempt("credentialnet:"+class+":"+budgetNetwork(peer(r)), 2400)
+	if address && network {
+		return true
+	}
+	w.Header().Set("Retry-After", "60")
+	fail(w, http.StatusTooManyRequests, "rate_limited", "Try again shortly.", true)
+	return false
 }

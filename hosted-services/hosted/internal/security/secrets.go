@@ -153,3 +153,22 @@ func (k *Keys) Open(value []byte, context string) (string, error) {
 	}
 	return "", errors.New("unknown sealing key version")
 }
+
+// ValidateSigner applies the offline-root contract at use time, not just at
+// startup. An expired or revoked online certificate must stop issuing claims.
+func (k *Keys) ValidateSigner(now time.Time) error {
+	if k == nil || len(k.PrivateKey) != ed25519.PrivateKeySize || k.Certificate == nil || k.KeyID != k.Certificate.KeyID {
+		return trust.ErrTrust
+	}
+	public, e := k.Certificate.Verify(k.RootPublicKey, "documents", now)
+	if e != nil || !public.Equal(k.PrivateKey.Public()) {
+		return trust.ErrTrust
+	}
+	return nil
+}
+func (k *Keys) Sign(raw []byte) (trust.Envelope, error) {
+	if e := k.ValidateSigner(time.Now()); e != nil {
+		return trust.Envelope{}, e
+	}
+	return trust.Sign(k.PrivateKey, k.Certificate, raw)
+}

@@ -50,6 +50,13 @@ func InitializeCurrentHostedSchemaTx(ctx context.Context, tx *sql.Tx) error {
 		if count != version || latest != version {
 			return errors.New("unsupported Hosted migration history")
 		}
+		var apps bool
+		if err := tx.QueryRowContext(ctx, `SELECT to_regclass(current_schema()||'.app_authorizations') IS NOT NULL`).Scan(&apps); err != nil {
+			return err
+		}
+		if !apps {
+			return errors.New("Hosted sign-in schema missing; reset pre-release schema")
+		}
 		return runHostedMigrations(ctx, tx, version)
 	}
 	var occupied bool
@@ -67,7 +74,7 @@ func InitializeCurrentHostedSchemaTx(ctx context.Context, tx *sql.Tx) error {
 
 // install0001Tx installs migration 0001 on an empty schema and records it.
 func install0001Tx(ctx context.Context, tx *sql.Tx) error {
-	if _, err := tx.ExecContext(ctx, schema+deletionSchema+sessionReviewSchema); err != nil {
+	if _, err := tx.ExecContext(ctx, schema+deletionSchema+sessionReviewSchema+appAuthorizationSchema); err != nil {
 		return err
 	}
 	if err := InstallIdentitySchemaTx(ctx, tx); err != nil {

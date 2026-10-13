@@ -1733,6 +1733,191 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "AppAuthorizationDecideRequest": {
+    "properties": {
+      "accountId": {
+        "type": "string"
+      },
+      "approve": {
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "accountId",
+      "approve"
+    ],
+    "type": "object"
+  },
+  "AppAuthorizationDecideResponse": {
+    "properties": {
+      "location": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "location"
+    ],
+    "type": "object"
+  },
+  "AppAuthorizationExchangeRequest": {
+    "properties": {
+      "code": {
+        "type": "string"
+      },
+      "redirectUri": {
+        "type": "string"
+      },
+      "verifier": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "code",
+      "verifier",
+      "redirectUri"
+    ],
+    "type": "object"
+  },
+  "AppAuthorizationExchangeResponse": {
+    "properties": {
+      "assertion": {
+        "properties": {
+          "certificate": {
+            "properties": {
+              "keyId": {
+                "type": "string"
+              },
+              "notAfter": {
+                "format": "date-time",
+                "type": "string"
+              },
+              "notBefore": {
+                "format": "date-time",
+                "type": "string"
+              },
+              "publicKey": {
+                "type": "string"
+              },
+              "purpose": {
+                "type": "string"
+              },
+              "revision": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "revoked": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "signature": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "keyId",
+              "publicKey",
+              "purpose",
+              "notBefore",
+              "notAfter",
+              "revision",
+              "revoked",
+              "signature"
+            ],
+            "type": "object"
+          },
+          "keyId": {
+            "type": "string"
+          },
+          "payload": {
+            "type": "string"
+          },
+          "signature": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "payload",
+          "signature",
+          "keyId"
+        ],
+        "type": "object"
+      }
+    },
+    "required": [
+      "assertion"
+    ],
+    "type": "object"
+  },
+  "AppAuthorizationReviewRequest": {
+    "properties": {
+      "appName": {
+        "type": "string"
+      },
+      "challenge": {
+        "type": "string"
+      },
+      "codeChallenge": {
+        "type": "string"
+      },
+      "redirectUri": {
+        "type": "string"
+      },
+      "serverId": {
+        "type": "string"
+      },
+      "state": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "serverId",
+      "challenge",
+      "redirectUri",
+      "state",
+      "appName",
+      "codeChallenge"
+    ],
+    "type": "object"
+  },
+  "AppAuthorizationReviewResponse": {
+    "properties": {
+      "accountId": {
+        "type": "string"
+      },
+      "accountName": {
+        "type": "string"
+      },
+      "appName": {
+        "type": "string"
+      },
+      "expiresAt": {
+        "format": "date-time",
+        "type": "string"
+      },
+      "id": {
+        "type": "string"
+      },
+      "redirectUri": {
+        "type": "string"
+      },
+      "serverName": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "id",
+      "accountId",
+      "accountName",
+      "serverName",
+      "appName",
+      "redirectUri",
+      "expiresAt"
+    ],
+    "type": "object"
+  },
   "AppstoreNotificationRequest": {
     "properties": {
       "signedPayload": {

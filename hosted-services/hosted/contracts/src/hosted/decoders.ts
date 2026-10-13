@@ -28,6 +28,9 @@ export function decodeAccountSecurityMfaConfirmResponse(input: unknown): types.A
 export function decodeAccountSecurityProofResponse(input: unknown): types.AccountSecurityProofResponse { return decode("AccountSecurityProofResponse", input) as types.AccountSecurityProofResponse; }
 export function decodeAccountSessionDeleteResponse(input: unknown): types.AccountSessionDeleteResponse { return decode("AccountSessionDeleteResponse", input) as types.AccountSessionDeleteResponse; }
 export function decodeAccountSessionsListResponse(input: unknown): types.AccountSessionsListResponse { return decode("AccountSessionsListResponse", input) as types.AccountSessionsListResponse; }
+export function decodeAppAuthorizationDecideResponse(input: unknown): types.AppAuthorizationDecideResponse { return decode("AppAuthorizationDecideResponse", input) as types.AppAuthorizationDecideResponse; }
+export function decodeAppAuthorizationExchangeResponse(input: unknown): types.AppAuthorizationExchangeResponse { return decode("AppAuthorizationExchangeResponse", input) as types.AppAuthorizationExchangeResponse; }
+export function decodeAppAuthorizationReviewResponse(input: unknown): types.AppAuthorizationReviewResponse { return decode("AppAuthorizationReviewResponse", input) as types.AppAuthorizationReviewResponse; }
 export function decodeAppstoreNotificationResponse(input: unknown): types.AppstoreNotificationResponse { return decode("AppstoreNotificationResponse", input) as types.AppstoreNotificationResponse; }
 export function decodeDeviceAuthorizationCancelResponse(input: unknown): types.DeviceAuthorizationCancelResponse { return decode("DeviceAuthorizationCancelResponse", input) as types.DeviceAuthorizationCancelResponse; }
 export function decodeDeviceAuthorizationCreateResponse(input: unknown): types.DeviceAuthorizationCreateResponse { return decode("DeviceAuthorizationCreateResponse", input) as types.DeviceAuthorizationCreateResponse; }

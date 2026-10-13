@@ -17,6 +17,7 @@ import (
 	"portico.local/hosted/internal/httpapi"
 	"portico.local/hosted/internal/identity"
 	"portico.local/hosted/internal/security"
+	"portico.local/hosted/trust"
 )
 
 type claimJourney struct {
@@ -45,7 +46,20 @@ func currentClaimJourney(t *testing.T) claimJourney {
 		t.Fatal(e)
 	}
 	hosted := ed25519.NewKeyFromSeed(bytes.Repeat([]byte{1}, 32))
-	service, e := claims.New(f.store, &security.Keys{PrivateKey: hosted, KeyID: "hosted_fixture", SealKey: bytes.Repeat([]byte{2}, 32)}, "https://hosted.example")
+	keys, e := fixtureKeys()
+	if e != nil {
+		t.Fatal(e)
+	}
+	keys.PrivateKey = hosted
+	keys.KeyID = "hosted_fixture"
+	root := ed25519.NewKeyFromSeed(bytes.Repeat([]byte{3}, 32))
+	keys.RootPublicKey = root.Public().(ed25519.PublicKey)
+	keys.Certificate, e = trust.Certify(root, hosted.Public().(ed25519.PublicKey), keys.KeyID, "documents", time.Now().Add(-time.Hour), time.Now().Add(time.Hour), 1, nil)
+	if e != nil {
+		t.Fatal(e)
+	}
+	keys.SealKey = bytes.Repeat([]byte{2}, 32)
+	service, e := claims.New(f.store, keys, "https://hosted.example")
 	if e != nil {
 		t.Fatal(e)
 	}

@@ -11,6 +11,9 @@ func (h *Handler) deviceRoutes(mux *http.ServeMux) {
 		return
 	}
 	mux.HandleFunc("POST /v1/device-authorizations", func(w http.ResponseWriter, r *http.Request) {
+		if !h.allowCredentialLookup(w, r, "device") {
+			return
+		}
 		var q device.Start
 		if !decode(w, r, &q) {
 			return
@@ -52,6 +55,9 @@ func (h *Handler) deviceRoutes(mux *http.ServeMux) {
 		w.WriteHeader(204)
 	}))
 	mux.HandleFunc("POST /v1/device-authorizations/token", func(w http.ResponseWriter, r *http.Request) {
+		if !h.allowCredentialLookup(w, r, "device") {
+			return
+		}
 		var q DeviceTokenRequest
 		if !decode(w, r, &q) {
 			return
@@ -70,6 +76,9 @@ func (h *Handler) deviceRoutes(mux *http.ServeMux) {
 		h.sessionResponse(w, r, 200, out)
 	})
 	mux.HandleFunc("POST /v1/tv-authorizations/token", func(w http.ResponseWriter, r *http.Request) {
+		if !h.allowCredentialLookup(w, r, "device") {
+			return
+		}
 		var q DeviceCodeRequest
 		if !decode(w, r, &q) {
 			return
@@ -83,6 +92,9 @@ func (h *Handler) deviceRoutes(mux *http.ServeMux) {
 		write(w, 200, out)
 	})
 	mux.HandleFunc("POST /v1/device-authorizations/cancel", func(w http.ResponseWriter, r *http.Request) {
+		if !h.allowCredentialLookup(w, r, "device") {
+			return
+		}
 		var q DeviceCodeRequest
 		if !decode(w, r, &q) {
 			return

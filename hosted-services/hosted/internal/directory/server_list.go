@@ -310,7 +310,7 @@ func (s *Service) IssueIdentity(accountID, username, displayName, server, challe
 	if e != nil {
 		return SignedPolicy{}, e
 	}
-	return SignedPolicy{Payload: base64.RawURLEncoding.EncodeToString(raw), Signature: base64.RawURLEncoding.EncodeToString(ed25519.Sign(s.keys.PrivateKey, raw)), KeyID: s.keys.KeyID, Certificate: s.keys.Certificate}, nil
+	return s.keys.Sign(raw)
 }
 
 // validServerID is the shape of a server id: "srv_" and 43 base64url

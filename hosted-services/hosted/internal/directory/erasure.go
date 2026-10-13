@@ -2,8 +2,6 @@ package directory
 
 import (
 	"context"
-	"crypto/ed25519"
-	"encoding/base64"
 	"encoding/json"
 	"time"
 )
@@ -39,7 +37,11 @@ func (s *Service) Erasures(ctx context.Context, server string) ([]SignedPolicy, 
 		if e != nil {
 			return nil, e
 		}
-		out = append(out, SignedPolicy{Payload: base64.RawURLEncoding.EncodeToString(raw), Signature: base64.RawURLEncoding.EncodeToString(ed25519.Sign(s.keys.PrivateKey, raw)), KeyID: s.keys.KeyID, Certificate: s.keys.Certificate})
+		signed, e := s.keys.Sign(raw)
+		if e != nil {
+			return nil, e
+		}
+		out = append(out, signed)
 	}
 	return out, nil
 }

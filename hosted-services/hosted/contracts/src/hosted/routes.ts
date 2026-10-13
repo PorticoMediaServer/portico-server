@@ -331,6 +331,42 @@ export const routes = [
     "status": 200
   },
   {
+    "id": "app_authorization_decide",
+    "method": "POST",
+    "path": "/v1/app-authorizations/{id}/decision",
+    "summary": "Approve or deny the reviewed app sign-in.",
+    "access": "public",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [],
+    "status": 200
+  },
+  {
+    "id": "app_authorization_exchange",
+    "method": "POST",
+    "path": "/v1/app-authorizations/token",
+    "summary": "Exchange a one-time PKCE code for one server identity assertion.",
+    "access": "public",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [],
+    "status": 200
+  },
+  {
+    "id": "app_authorization_review",
+    "method": "POST",
+    "path": "/v1/app-authorizations",
+    "summary": "Review sign-in to one server for an unregistered app.",
+    "access": "public",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [],
+    "status": 201
+  },
+  {
     "id": "appstore_notification",
     "method": "POST",
     "path": "/v1/appstore/notifications",

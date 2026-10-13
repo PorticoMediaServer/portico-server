@@ -2293,6 +2293,269 @@
         "x-max-body-bytes": 65536
       }
     },
+    "/v1/app-authorizations": {
+      "post": {
+        "operationId": "app_authorization_review",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "appName": {
+                    "type": "string"
+                  },
+                  "challenge": {
+                    "type": "string"
+                  },
+                  "codeChallenge": {
+                    "type": "string"
+                  },
+                  "redirectUri": {
+                    "type": "string"
+                  },
+                  "serverId": {
+                    "type": "string"
+                  },
+                  "state": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "serverId",
+                  "challenge",
+                  "redirectUri",
+                  "state",
+                  "appName",
+                  "codeChallenge"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "accountId": {
+                      "type": "string"
+                    },
+                    "accountName": {
+                      "type": "string"
+                    },
+                    "appName": {
+                      "type": "string"
+                    },
+                    "expiresAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "redirectUri": {
+                      "type": "string"
+                    },
+                    "serverName": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "accountId",
+                    "accountName",
+                    "serverName",
+                    "appName",
+                    "redirectUri",
+                    "expiresAt"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Review sign-in to one server for an unregistered app.",
+        "x-access": "public",
+        "x-cost": "constant",
+        "x-lane": "security",
+        "x-max-body-bytes": 65536
+      }
+    },
+    "/v1/app-authorizations/token": {
+      "post": {
+        "operationId": "app_authorization_exchange",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "code": {
+                    "type": "string"
+                  },
+                  "redirectUri": {
+                    "type": "string"
+                  },
+                  "verifier": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "code",
+                  "verifier",
+                  "redirectUri"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "assertion": {
+                      "properties": {
+                        "certificate": {
+                          "properties": {
+                            "keyId": {
+                              "type": "string"
+                            },
+                            "notAfter": {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            "notBefore": {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            "publicKey": {
+                              "type": "string"
+                            },
+                            "purpose": {
+                              "type": "string"
+                            },
+                            "revision": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "revoked": {
+                              "items": {
+                                "type": "string"
+                              },
+                              "type": "array"
+                            },
+                            "signature": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "keyId",
+                            "publicKey",
+                            "purpose",
+                            "notBefore",
+                            "notAfter",
+                            "revision",
+                            "revoked",
+                            "signature"
+                          ],
+                          "type": "object"
+                        },
+                        "keyId": {
+                          "type": "string"
+                        },
+                        "payload": {
+                          "type": "string"
+                        },
+                        "signature": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "payload",
+                        "signature",
+                        "keyId"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "assertion"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Exchange a one-time PKCE code for one server identity assertion.",
+        "x-access": "public",
+        "x-cost": "constant",
+        "x-lane": "security",
+        "x-max-body-bytes": 65536
+      }
+    },
+    "/v1/app-authorizations/{id}/decision": {
+      "post": {
+        "operationId": "app_authorization_decide",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "accountId": {
+                    "type": "string"
+                  },
+                  "approve": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "accountId",
+                  "approve"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "location": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "location"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Approve or deny the reviewed app sign-in.",
+        "x-access": "public",
+        "x-cost": "constant",
+        "x-lane": "security",
+        "x-max-body-bytes": 65536
+      }
+    },
     "/v1/appstore/notifications": {
       "post": {
         "operationId": "appstore_notification",

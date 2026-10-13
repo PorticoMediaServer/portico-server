@@ -340,7 +340,7 @@ func run() error {
 		fmt.Fprintln(os.Stderr, "server list versions not loaded yet:", e)
 	}
 	loadCancel()
-	api := &httpapi.Handler{AccessLog: func(line string) { fmt.Fprintln(os.Stderr, line) }, Certificates: certificateService, DirectRoutes: direct, OIDC: login, Security: accountSecurity, AccountOrigin: oidcConfig.WebOrigin, Claims: claimHandler, Sessions: sessions.New(store, keys, *accessLifetime), DevelopmentCookies: *allowLoopback, TrustedProxies: trustedProxies, Devices: devices, Identity: accountService, Directory: servers, Origins: allowed, Ready: ready, AppStore: appStore}
+	api := &httpapi.Handler{AppAuthorizations: &httpapi.AppAuthorizations{Store: store, Directory: servers}, AccessLog: func(line string) { fmt.Fprintln(os.Stderr, line) }, Certificates: certificateService, DirectRoutes: direct, OIDC: login, Security: accountSecurity, AccountOrigin: oidcConfig.WebOrigin, Claims: claimHandler, Sessions: sessions.New(store, keys, *accessLifetime), DevelopmentCookies: *allowLoopback, TrustedProxies: trustedProxies, Devices: devices, Identity: accountService, Directory: servers, Origins: allowed, Ready: ready, AppStore: appStore}
 	handler := api.Routes()
 	// Start each worker exactly once, after all configuration has validated.
 	// Cancel and join them before the deferred database close, including when

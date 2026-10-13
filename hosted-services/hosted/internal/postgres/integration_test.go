@@ -24,6 +24,7 @@ import (
 	"portico.local/hosted/internal/postgres"
 	"portico.local/hosted/internal/security"
 	"portico.local/hosted/internal/wake"
+	"portico.local/hosted/trust"
 )
 
 func database(t *testing.T) *postgres.Store {
@@ -454,5 +455,14 @@ func fixtureKeys() (*security.Keys, error) {
 	if _, err = rand.Read(seal); err != nil {
 		return nil, err
 	}
-	return &security.Keys{PrivateKey: private, SealKey: seal, KeyID: security.RandomID("test_")}, nil
+	rootPublic, root, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		return nil, err
+	}
+	id := security.RandomID("test_")
+	cert, err := trust.Certify(root, private.Public().(ed25519.PublicKey), id, "documents", time.Now().Add(-time.Hour), time.Now().Add(24*time.Hour), 1, nil)
+	if err != nil {
+		return nil, err
+	}
+	return &security.Keys{RootPublicKey: rootPublic, Certificate: cert, PrivateKey: private, SealKey: seal, KeyID: id}, nil
 }

@@ -60,8 +60,14 @@ func New(repo ConsumerRepository, keys *security.Keys, audience string) (*Servic
 	return &Service{repo: repo, keys: &copyKeys, audience: audience, now: time.Now}, nil
 }
 func (s *Service) Approve(ctx context.Context, authority identity.CurrentFamilyExpectation, in ApprovalInput) (Envelope, error) {
+	if e := s.keys.ValidateSigner(s.now()); e != nil {
+		return Envelope{}, e
+	}
 	a, e := s.repo.ApproveClaim(ctx, authority, in, s.audience)
 	if e != nil {
+		return Envelope{}, e
+	}
+	if e := s.keys.ValidateSigner(s.now()); e != nil {
 		return Envelope{}, e
 	}
 	return SignApproval(a, s.keys.PrivateKey, s.keys.KeyID, s.keys.Certificate)
@@ -131,5 +137,8 @@ func (s *Service) Cancel(ctx context.Context, payload, signature []byte) (Cancel
 }
 
 func (s *Service) SignWebApproval(a Approval) (Envelope, error) {
+	if e := s.keys.ValidateSigner(s.now()); e != nil {
+		return Envelope{}, e
+	}
 	return SignApproval(a, s.keys.PrivateKey, s.keys.KeyID, s.keys.Certificate)
 }

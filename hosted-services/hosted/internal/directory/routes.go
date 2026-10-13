@@ -3,7 +3,6 @@ package directory
 // P09 routes are location evidence, not membership or playback authority.
 import (
 	"context"
-	"crypto/ed25519"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
@@ -148,8 +147,11 @@ func (s *Service) signRoutes(account string, server Server, set RouteSet) (*Sign
 	if e != nil {
 		return nil, e
 	}
-	out := &SignedPolicy{Payload: base64.RawURLEncoding.EncodeToString(raw), Signature: base64.RawURLEncoding.EncodeToString(ed25519.Sign(s.keys.PrivateKey, raw)), KeyID: s.keys.KeyID, Certificate: s.keys.Certificate}
-	return out, nil
+	out, e := s.keys.Sign(raw)
+	if e != nil {
+		return nil, e
+	}
+	return &out, nil
 }
 func (s *Service) Routes(ctx context.Context, account, serverID string) (*SignedPolicy, error) {
 	// List performs the current account/membership/restriction projection. A route

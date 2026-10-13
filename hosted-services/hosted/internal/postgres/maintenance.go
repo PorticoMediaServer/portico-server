@@ -69,6 +69,7 @@ func (s *Store) pruneExpiredOnce(ctx context.Context, limit int) (bool, error) {
 	most, err := s.pruneStatementsCounted(ctx, []string{
 		`DELETE FROM account_exports WHERE id IN(SELECT id FROM account_exports WHERE expires_at<clock_timestamp() ORDER BY expires_at LIMIT $1)`,
 		`UPDATE refresh_receipts SET ciphertext=NULL WHERE (family_id,request_id) IN (SELECT family_id,request_id FROM refresh_receipts WHERE ciphertext IS NOT NULL AND expires_at<now() ORDER BY expires_at LIMIT $1)`,
+		`DELETE FROM app_authorizations WHERE id IN(SELECT id FROM app_authorizations WHERE expires_at<clock_timestamp() ORDER BY expires_at LIMIT $1)`,
 		`DELETE FROM device_rate_limits WHERE (subject_hash,kind) IN (SELECT subject_hash,kind FROM device_rate_limits WHERE window_start<now()-interval '1 day' ORDER BY window_start LIMIT $1)`,
 		`UPDATE device_authorizations SET session_cipher=NULL,tv_grant=NULL WHERE id IN (SELECT id FROM device_authorizations WHERE recovery_until<now() AND session_cipher IS NOT NULL LIMIT $1)`,
 		`UPDATE device_authorizations SET user_hash=NULL WHERE id IN (SELECT id FROM device_authorizations WHERE expires_at<now() AND user_hash IS NOT NULL LIMIT $1)`,
