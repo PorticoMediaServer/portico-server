@@ -45,6 +45,7 @@ type Listener = (event: ServerEvent) => void;
 export class EventsClient {
   private readonly o: EventsClientOptions;
   private listeners = new Map<string, Set<Listener>>();
+  private anyListeners = new Set<Listener>();
   private resyncListeners = new Set<() => void>();
   private statusListeners = new Set<() => void>();
   private recent: string[] = [];
@@ -76,6 +77,9 @@ export class EventsClient {
     return () => { set!.delete(listener); };
   }
 
+  /** Every event the feed delivers, whatever its type (the freshness hub reads them all). Stream control frames are not events. */
+  onAny(listener: Listener): () => void { this.anyListeners.add(listener); return () => { this.anyListeners.delete(listener); }; }
+
   /** Refetch what you show: the server couldn't deliver everything since the cursor. */
   onResync(listener: () => void): () => void { this.resyncListeners.add(listener); return () => { this.resyncListeners.delete(listener); }; }
 
@@ -101,6 +105,8 @@ export class EventsClient {
     this.recent.push(event.id); this.recentSet.add(event.id);
     if (this.recent.length > 512) this.recentSet.delete(this.recent.shift()!);
     this.setStatus({cursor: event.id});
+    if (event.type.startsWith('stream.')) return;
+    for (const l of [...this.anyListeners]) l(event);
     const exact = this.listeners.get(event.type);
     if (exact) for (const l of [...exact]) l(event);
     for (const [key, set] of this.listeners) {
