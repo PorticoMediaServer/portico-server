@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"errors"
 	"os"
+	"path/filepath"
+	"portico.local/server/internal/diskspace"
 	"time"
 
 	sqlite "portico.local/server/internal/thirdparty/sqlite"
@@ -28,10 +30,24 @@ type copyLimits struct {
 // progress reports
 // (PageCount-Remaining)*pageSize as the copy advances.
 func copyDatabase(ctx context.Context, source *sql.DB, dest string, progress func(done, total int64)) error {
-	return copyDatabaseLimited(ctx, source, dest, progress, copyLimits{2 * time.Minute, 128 << 20, 200 * time.Millisecond})
+	return copyDatabaseLimited(ctx, source, dest, progress, defaultCopyLimits())
+}
+
+func defaultCopyLimits() copyLimits {
+	return copyLimits{snapshotTimeout: 2 * time.Minute, maxWALGrowth: 64 << 20, reportEvery: 200 * time.Millisecond}
 }
 
 func copyDatabaseLimited(ctx context.Context, source *sql.DB, dest string, progress func(done, total int64), limits copyLimits) error {
+	return copyDatabaseGuardedLimited(ctx, source, dest, progress, limits, nil)
+}
+
+// The optional guard lets an embedding abort a copy at a page boundary. Built-in
+// time, WAL and disk budgets apply regardless of whether a guard was supplied.
+func copyDatabaseGuarded(ctx context.Context, source *sql.DB, dest string, progress func(done, total int64), guard func(done, total int64) error) error {
+	return copyDatabaseGuardedLimited(ctx, source, dest, progress, defaultCopyLimits(), guard)
+}
+
+func copyDatabaseGuardedLimited(ctx context.Context, source *sql.DB, dest string, progress func(done, total int64), limits copyLimits, guard func(done, total int64) error) error {
 	if source == nil || dest == "" {
 		return errors.New("backup: no database to copy")
 	}
@@ -90,6 +106,7 @@ func copyDatabaseLimited(ctx context.Context, source *sql.DB, dest string, progr
 		}
 		var copyErr error
 		lastReport := time.Now()
+		lastDiskCheck := time.Time{}
 		for {
 			if ctx.Err() != nil {
 				copyErr = ctx.Err()
@@ -107,6 +124,36 @@ func copyDatabaseLimited(ctx context.Context, source *sql.DB, dest string, progr
 			more, err := backup.Step(16)
 			copied := int64(backup.PageCount()-backup.Remaining()) * pageSize
 			total := int64(backup.PageCount()) * pageSize
+			if lastDiskCheck.IsZero() || time.Since(lastDiskCheck) >= 250*time.Millisecond {
+				lastDiskCheck = time.Now()
+				if sourcePath != "" {
+					free, err := diskspace.Free(filepath.Dir(sourcePath))
+					if err != nil {
+						copyErr = err
+						break
+					}
+					if free < 128<<20 {
+						copyErr = ErrInsufficientDisk
+						break
+					}
+				}
+				free, err := diskspace.Free(filepath.Dir(dest))
+				if err != nil {
+					copyErr = err
+					break
+				}
+				remaining := max(total-copied, 0)
+				if remaining > free || free-remaining < 128<<20 {
+					copyErr = ErrInsufficientDisk
+					break
+				}
+			}
+			if guard != nil {
+				if err := guard(copied, total); err != nil {
+					copyErr = err
+					break
+				}
+			}
 			if progress != nil && (time.Since(lastReport) >= limits.reportEvery || !more && err == nil) {
 				progress(copied, total)
 				lastReport = time.Now()

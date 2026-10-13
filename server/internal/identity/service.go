@@ -69,7 +69,7 @@ type Principal struct {
 	DeviceID string `json:"-"`
 	// Grant narrows what the session may be used for, whatever its role: empty
 	// for an ordinary session, GrantCastTarget for a screen paired as a Cast
-	// target (playback only), GrantViewerOnly for a viewing-only device.
+	// target (playback only).
 	Grant string `json:"-"`
 }
 

@@ -77,10 +77,10 @@ func (s *Service) RecordRouteFailure(ctx context.Context, p identity.Principal, 
 	switch DeliveryStrategy(strategy) {
 	case DeliveryOriginal, DeliveryCopyRemux, DeliveryAudioConversion:
 		out.Escalates = true
+	case DeliveryVideoConversion:
+		// No further conversion route exists, but its failure remains visible.
 	default:
-		// A full conversion is already the most compatible thing this server can
-		// produce; there is nothing above it to escalate to.
-		return out, nil
+		return out, ErrRouteFailure
 	}
 	_, err = dbwork.ExecWrite(ctx, s.db, dbwork.ClassEstablishedPlayback, `INSERT INTO playback_route_failures(session_hash,asset_id,engine,route,code,detail,reported_at_ms) VALUES(?,?,?,?,?,?,?) ON CONFLICT(session_hash,asset_id,engine,route) DO UPDATE SET code=excluded.code,detail=excluded.detail,reported_at_ms=excluded.reported_at_ms`, p.Hash, asset, engine, strategy, code, publicAudioText(detail, 200), time.Now().UnixMilli())
 	return out, err
@@ -93,7 +93,7 @@ func routeFailuresTx(ctx context.Context, tx *sql.Tx, p identity.Principal, asse
 	if p.Hash == "" {
 		return nil, nil
 	}
-	rows, err := tx.QueryContext(ctx, `SELECT engine,route,code FROM (SELECT engine,route,code,ROW_NUMBER() OVER(PARTITION BY engine,route ORDER BY reported_at_ms DESC) AS rank FROM playback_route_failures WHERE (session_hash=? OR session_hash IN(SELECT original.token_hash FROM authorization_family_tokens original JOIN authorization_family_tokens caller ON caller.family_id=original.family_id WHERE caller.token_hash=?)) AND asset_id=? AND reported_at_ms>CASE WHEN code IN(`+certainRouteFailures+`) THEN ? ELSE ? END) WHERE rank=1 LIMIT 8`, p.Hash, p.Hash, asset, time.Now().Add(-routeFailureTTL).UnixMilli(), time.Now().Add(-uncertainRouteFailureTTL).UnixMilli())
+	rows, err := tx.QueryContext(ctx, `SELECT engine,route,code FROM (SELECT engine,route,code,ROW_NUMBER() OVER(PARTITION BY engine,route ORDER BY reported_at_ms DESC) AS rank FROM playback_route_failures WHERE (session_hash=? OR session_hash IN(SELECT original.token_hash FROM authorization_family_tokens original JOIN authorization_family_tokens caller ON caller.family_id=original.family_id WHERE caller.token_hash=?)) AND asset_id=? AND route<>'video_conversion' AND reported_at_ms>CASE WHEN code IN(`+certainRouteFailures+`) THEN ? ELSE ? END) WHERE rank=1 LIMIT 8`, p.Hash, p.Hash, asset, time.Now().Add(-routeFailureTTL).UnixMilli(), time.Now().Add(-uncertainRouteFailureTTL).UnixMilli())
 	if err != nil {
 		return nil, err
 	}
@@ -113,4 +113,51 @@ func routeFailuresTx(ctx context.Context, tx *sql.Tx, p identity.Principal, asse
 		out[engine][DeliveryStrategy(route)] = RouteRejection{Code: code}
 	}
 	return out, rows.Err()
+}
+
+// RememberedRouteFailure contains no credential or session hash.
+type RememberedRouteFailure struct {
+	SourceID     string `json:"sourceId"`
+	Engine       string `json:"engine"`
+	Route        string `json:"route"`
+	Code         string `json:"code"`
+	Detail       string `json:"detail"`
+	ReportedAtMS int64  `json:"reportedAtMs"`
+	ExpiresAtMS  int64  `json:"expiresAtMs"`
+}
+type RouteFailurePage struct {
+	Items []RememberedRouteFailure `json:"items"`
+	More  bool                     `json:"more"`
+}
+
+// RouteFailureMemory is a bounded owner diagnostic of active failure memory.
+// HTTP admission supplies owner authorization; no viewer credential is exposed.
+func (s *Service) RouteFailureMemory(ctx context.Context) (RouteFailurePage, error) {
+	out := RouteFailurePage{Items: []RememberedRouteFailure{}}
+	rows, err := dbwork.Query(ctx, s.db, `SELECT asset_id,engine,route,code,detail,reported_at_ms,reported_at_ms+CASE WHEN code IN(`+certainRouteFailures+`) THEN ? ELSE ? END FROM playback_route_failures WHERE reported_at_ms>CASE WHEN code IN(`+certainRouteFailures+`) THEN ? ELSE ? END ORDER BY reported_at_ms DESC,asset_id,engine,route LIMIT 101`, routeFailureTTL.Milliseconds(), uncertainRouteFailureTTL.Milliseconds(), time.Now().Add(-routeFailureTTL).UnixMilli(), time.Now().Add(-uncertainRouteFailureTTL).UnixMilli())
+	if err != nil {
+		return out, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var v RememberedRouteFailure
+		if err = rows.Scan(&v.SourceID, &v.Engine, &v.Route, &v.Code, &v.Detail, &v.ReportedAtMS, &v.ExpiresAtMS); err != nil {
+			return out, err
+		}
+		if len(out.Items) == 100 {
+			out.More = true
+			break
+		}
+		out.Items = append(out.Items, v)
+	}
+	return out, rows.Err()
+}
+
+// ClearRouteFailureMemory lets an owner retry a file after a client or driver fix.
+func (s *Service) ClearRouteFailureMemory(ctx context.Context, source string) error {
+	if !validControlID(source) {
+		return ErrRouteFailure
+	}
+	_, err := dbwork.ExecWrite(ctx, s.db, dbwork.ClassInteractive, `DELETE FROM playback_route_failures WHERE asset_id=?`, source)
+	return err
 }

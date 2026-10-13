@@ -12974,6 +12974,103 @@
         "x-scope": "admin"
       }
     },
+    "/v1/admin/playback/route-failures": {
+      "get": {
+        "operationId": "list_playback_failure_memory",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "items": {
+                      "items": {
+                        "properties": {
+                          "code": {
+                            "type": "string"
+                          },
+                          "detail": {
+                            "type": "string"
+                          },
+                          "engine": {
+                            "type": "string"
+                          },
+                          "expiresAtMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "reportedAtMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "route": {
+                            "type": "string"
+                          },
+                          "sourceId": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "sourceId",
+                          "engine",
+                          "route",
+                          "code",
+                          "detail",
+                          "reportedAtMs",
+                          "expiresAtMs"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "more": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "items",
+                    "more"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Read active remembered playback failures",
+        "x-access": "owner",
+        "x-cost": "page_sized",
+        "x-lane": "default",
+        "x-scope": "admin"
+      }
+    },
+    "/v1/admin/playback/route-failures/{sourceId}": {
+      "delete": {
+        "operationId": "clear_playback_failure_memory",
+        "responses": {
+          "204": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {},
+                  "required": [],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Forget remembered failures for a media file",
+        "x-access": "owner",
+        "x-cost": "constant",
+        "x-lane": "default",
+        "x-scope": "admin"
+      }
+    },
     "/v1/admin/resource-usage": {
       "get": {
         "operationId": "get_admin_resource_usage",

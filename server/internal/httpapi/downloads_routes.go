@@ -91,7 +91,7 @@ func (d Dependencies) downloadViewer(r *http.Request) (identity.Principal, bool,
 	if e != nil {
 		return p, false, e
 	}
-	return p, p.Role == "owner" && (p.Authority == "local" || p.Authority == "hosted"), nil
+	return p, p.Role == "owner" && p.Authority == "local", nil
 }
 
 type downloadGrantBody struct {

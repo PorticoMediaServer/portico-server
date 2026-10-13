@@ -773,11 +773,6 @@ func run() (runErr error) {
 		hls.ConfigureSettings(deliverySettings)
 		hls.ConfigureMemberCeiling(memberCeilingReader())
 		hls.ConfigureProbe(ffprobeTool)
-		if env("PORTICO_FINITE_VOD", "0") == "1" {
-			if e = hls.EnableFinite(ffprobeTool); e != nil {
-				return e
-			}
-		}
 		player.ConfigureHLS(hls)
 		supervise.Supervise(ctx, "cmd.hls", hls.Run)
 		// Converters are cancelled and then waited for: an ffmpeg child that

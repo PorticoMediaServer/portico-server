@@ -142,7 +142,7 @@ func TestMigratedFamilyRefreshSaysMigrated(t *testing.T) {
 	if _, e := f.db.Exec(`INSERT INTO hosted_migrated_families(family_id,refresh_hash) SELECT family_id,token_hash FROM identity_refresh_credentials WHERE family_id=?; UPDATE authorization_session_families SET revoked=1,revoked_reason='membership_removed',revoked_at='2026-09-23T00:00:00Z' WHERE id=?`, f.owner.SessionFamilyID, f.owner.SessionFamilyID); e != nil {
 		t.Fatal(e)
 	}
-	_, e := f.id.RefreshSession(context.Background(), f.owner.RefreshToken, f.owner.InstallationID, "request-1", nil)
+	_, e := f.id.RefreshSession(context.Background(), f.owner.RefreshToken, f.owner.InstallationID, "request-1")
 	if !errors.Is(e, identity.ErrSessionMigrated) {
 		t.Fatal("migrated family did not say so", e)
 	}

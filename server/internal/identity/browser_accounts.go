@@ -44,7 +44,7 @@ func (s *Service) RememberBrowserAccount(ctx context.Context, bearer, installati
 	}
 	tx := gated.Tx()
 	defer gated.Rollback()
-	c, e := s.directCallerTx(ctx, tx, bearer, false)
+	c, e := s.accountManagerTx(ctx, tx, bearer)
 	if e != nil {
 		return nil, e
 	}
@@ -136,7 +136,7 @@ func (s *Service) ForgetBrowserAccount(ctx context.Context, bearer, installation
 	}
 	tx := gated2.Tx()
 	defer gated2.Rollback()
-	c, e := s.directCallerTx(ctx, tx, bearer, false)
+	c, e := s.accountManagerTx(ctx, tx, bearer)
 	if e != nil {
 		return e
 	}

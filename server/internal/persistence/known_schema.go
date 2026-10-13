@@ -389,6 +389,7 @@ index playback_channel_sessions_live
 index playback_origin_associations_asset
 index playback_personal_claim_item
 index playback_personal_fences_item_id_fk
+index playback_route_failures_recent
 index playback_sessions_asset_id_fk
 index playback_sessions_item_id_fk
 index playback_sessions_session_hash

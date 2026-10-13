@@ -412,8 +412,6 @@ func (s *Service) communityEligibleProfiles(now time.Time) ([]string, error) {
 		var active bool
 		if v.Authority == "local" {
 			err = s.read().QueryRow(`SELECT EXISTS(SELECT 1 FROM direct_profiles p JOIN direct_memberships m ON m.account_id=p.account_id WHERE p.id=? AND p.account_id=? AND p.deleted=0 AND m.disabled=0)`, v.ProfileID, v.AccountID).Scan(&active)
-		} else if v.Authority == "hosted" {
-			err = s.read().QueryRow(`SELECT EXISTS(SELECT 1 FROM authorization_session_families WHERE authority='hosted' AND account_id=? AND profile_id=? AND revoked=0 AND julianday(authorization_horizon)>julianday(?))`, v.AccountID, v.ProfileID, now.UTC().Format(time.RFC3339)).Scan(&active)
 		} else {
 			continue
 		}

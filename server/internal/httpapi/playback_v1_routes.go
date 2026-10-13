@@ -157,6 +157,7 @@ type AdminTerminateRequest struct {
 // registerPlaybackV1Admin is Now Playing (spec §14): the active sessions and
 // terminate, for administrators. admin.sessions events say when to refetch.
 func registerPlaybackV1Admin(r *apikit.Registry, d Dependencies) {
+	registerRouteFailureMemory(r, d)
 	v1Route(r, apikit.Metadata{ID: "list_admin_sessions", Method: "GET", Path: "/v1/admin/sessions", Summary: "Active playback sessions: who, what, how it's delivered and from where",
 		Access: apikit.Admin, Requires: apikit.ScopePlayback, AdminScope: "playback", Lane: apikit.Default, Cost: apikit.PageSized, Query: []string{"limit", "cursor"}, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted"}},
 		func(ctx context.Context, q *http.Request, _ noBody) (playbackv1.AdminSessionPage, error) {

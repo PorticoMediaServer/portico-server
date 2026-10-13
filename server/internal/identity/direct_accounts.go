@@ -71,13 +71,12 @@ type DirectSignIn struct {
 	Challenge *SignInChallenge `json:"challenge,omitempty"`
 }
 type directCaller struct {
-	account    DirectAccount
-	epoch      int
-	manage     bool
-	viewerOnly bool
-	deviceID   string
-	profileID  string
-	familyID   string
+	account   DirectAccount
+	epoch     int
+	manage    bool
+	deviceID  string
+	profileID string
+	familyID  string
 }
 
 func directName(v string) bool {
@@ -351,10 +350,7 @@ func (s *Service) directCallerTx(ctx context.Context, tx *sql.Tx, bearer string,
 	}
 	c.manage = primary == 1
 	sessionRole = record.principal.Role
-	if record.principal.Grant == GrantViewerOnly {
-		c.manage = false
-		c.viewerOnly = true
-	}
+
 	var libs string
 	e := tx.QueryRowContext(ctx, `SELECT a.username,a.profile_id,a.epoch,m.role,m.revision,m.disabled,m.allowed_libraries FROM accounts a JOIN direct_memberships m ON m.account_id=a.id WHERE a.id=?`, c.account.ID).Scan(&c.account.Username, &c.account.PrimaryProfileID, &c.epoch, &c.account.Role, &c.account.Revision, &c.account.Disabled, &libs)
 	if sessionRole != "account" && sessionRole != c.account.Role {

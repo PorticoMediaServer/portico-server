@@ -126,7 +126,7 @@ func (s *Service) fileSandbox() bool {
 	return runtime.GOOS == "linux" && s.sandboxCapable && mediaexec.SandboxSetting() != mediaexec.SettingOff
 }
 func owner(p identity.Principal) bool {
-	return p.Role == "owner" && (p.Authority == "local" || p.Authority == "hosted")
+	return p.Role == "owner" && p.Authority == "local"
 }
 func (s *Service) check(ctx context.Context, tx *sql.Tx, p identity.Principal, item string, continued bool) (identity.Principal, error) {
 	f := s.authorize

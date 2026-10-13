@@ -111,9 +111,7 @@ func scanHistory(rows *sql.Rows) (PlaybackHistoryEntry, error) {
 	}
 	if v.Viewer == "" {
 		v.Viewer = "Unavailable profile"
-		if v.Authority == "hosted" {
-			v.Viewer = "Portico Account profile"
-		}
+
 	}
 	v.DeliveryMode, v.DeliveryReason = deliveryOf(kind, presentation)
 	v.State = state

@@ -59,13 +59,6 @@ func (d Dependencies) tierAuthorityTx(ctx context.Context, tx *sql.Tx, p identit
 			return p, identity.ErrForbidden
 		}
 		p.Role = role
-	case "hosted":
-		if d.Hosted == nil {
-			return p, identity.ErrUnauthorized
-		}
-		if _, err := d.Hosted.AuthorizationHorizonTx(ctx, tx, p); err != nil {
-			return p, err
-		}
 	default:
 		return p, identity.ErrUnauthorized
 	}

@@ -1796,7 +1796,7 @@ CREATE TABLE authorization_session_families(
  id TEXT PRIMARY KEY,
  server_id TEXT NOT NULL CHECK(length(server_id)>0),
  account_id TEXT NOT NULL, profile_id TEXT NOT NULL,
- authority TEXT NOT NULL CHECK(authority IN ('local','hosted')),
+ authority TEXT NOT NULL CHECK(authority='local'),
  role TEXT NOT NULL, epoch INTEGER NOT NULL,
  authorization_horizon TEXT NOT NULL,
  current_generation INTEGER NOT NULL CHECK(current_generation>0),
@@ -2095,7 +2095,7 @@ CREATE TABLE live_channel_attributes(
  PRIMARY KEY(generation_id,channel_id)) WITHOUT ROWID,STRICT;
 CREATE TABLE dvr_private_libraries(
  library_id TEXT PRIMARY KEY REFERENCES libraries(id) ON DELETE CASCADE,
- authority TEXT NOT NULL CHECK(authority IN('local','hosted')),
+ authority TEXT NOT NULL CHECK(authority='local'),
  account_id TEXT NOT NULL,profile_id TEXT NOT NULL,
  UNIQUE(authority,account_id,profile_id)) STRICT;
 CREATE TABLE dvr_catalog_provenance(
@@ -2341,7 +2341,7 @@ CREATE TABLE direct_profiles(
  name TEXT NOT NULL, is_primary INTEGER NOT NULL DEFAULT 0 CHECK(is_primary IN(0,1)),
  position INTEGER NOT NULL DEFAULT 0, art TEXT NOT NULL DEFAULT 'blue',
  revision INTEGER NOT NULL DEFAULT 1, pin_revision INTEGER NOT NULL DEFAULT 1,
- pin_hash BLOB, pin_attempts INTEGER NOT NULL DEFAULT 0, pin_locked_until INTEGER NOT NULL DEFAULT 0,
+ pin_hash BLOB,
  allowed_libraries TEXT CHECK(allowed_libraries IS NULL OR json_valid(allowed_libraries)),
  deleted INTEGER NOT NULL DEFAULT 0 CHECK(deleted IN(0,1)), UNIQUE(account_id,id)
 ) STRICT;
@@ -2376,7 +2376,7 @@ CREATE TABLE profile_avatars(
 ) STRICT;
 CREATE TABLE identity_devices(
  id TEXT PRIMARY KEY,
- authority TEXT NOT NULL DEFAULT 'local' CHECK(authority IN('local','hosted')),
+ authority TEXT NOT NULL DEFAULT 'local' CHECK(authority='local'),
  account_id TEXT NOT NULL,
  installation_id TEXT NOT NULL, name TEXT NOT NULL, platform TEXT NOT NULL,
  app TEXT NOT NULL, app_version TEXT NOT NULL, ip TEXT NOT NULL DEFAULT '',
@@ -2414,7 +2414,7 @@ CREATE TABLE identity_factor_challenges(
 ) STRICT;
 CREATE TABLE topshelf_tokens(
  token_hash TEXT PRIMARY KEY, device_id TEXT NOT NULL,
- authority TEXT NOT NULL DEFAULT 'local' CHECK(authority IN('local','hosted')),
+ authority TEXT NOT NULL DEFAULT 'local' CHECK(authority='local'),
  account_id TEXT NOT NULL, profile_id TEXT NOT NULL, expires_at TEXT NOT NULL
 ) STRICT;
 CREATE TABLE content_rating_ages(
@@ -2756,7 +2756,7 @@ CREATE TABLE maintenance_policy(singleton INTEGER PRIMARY KEY CHECK(singleton=1)
 CREATE TABLE maintenance_windows(id TEXT PRIMARY KEY,name TEXT NOT NULL,enabled INTEGER NOT NULL CHECK(enabled IN(0,1)),cadence TEXT NOT NULL,start_minute INTEGER NOT NULL CHECK(start_minute BETWEEN 0 AND 1439),duration_minutes INTEGER NOT NULL CHECK(duration_minutes BETWEEN 15 AND 1440),timezone TEXT NOT NULL) STRICT;
 CREATE TABLE maintenance_window_days(window_id TEXT NOT NULL REFERENCES maintenance_windows(id) ON DELETE CASCADE,day TEXT NOT NULL,PRIMARY KEY(window_id,day)) STRICT;
 CREATE TABLE dvr_recording_grants(
- authority TEXT NOT NULL CHECK(authority IN('local','hosted')),account_id TEXT NOT NULL,profile_id TEXT NOT NULL,
+ authority TEXT NOT NULL CHECK(authority='local'),account_id TEXT NOT NULL,profile_id TEXT NOT NULL,
  enabled INTEGER NOT NULL CHECK(enabled IN(0,1)),inherit_profiles INTEGER NOT NULL CHECK(inherit_profiles IN(0,1)),revision INTEGER NOT NULL,
  PRIMARY KEY(authority,account_id,profile_id)) STRICT;
 CREATE TABLE dvr_defaults(singleton INTEGER PRIMARY KEY CHECK(singleton=1),revision INTEGER NOT NULL,before_seconds INTEGER NOT NULL,after_seconds INTEGER NOT NULL,retention_days INTEGER NOT NULL,episode_limit INTEGER NOT NULL) STRICT;
@@ -2807,11 +2807,12 @@ CREATE TABLE playback_route_failures(
  session_hash TEXT NOT NULL REFERENCES authorization_family_tokens(token_hash) ON DELETE CASCADE,
  asset_id TEXT NOT NULL,
  engine TEXT NOT NULL DEFAULT 'native' CHECK(engine IN ('native','mpv')),
- route TEXT NOT NULL CHECK(route IN ('original','copy_remux','audio_conversion')),
+ route TEXT NOT NULL CHECK(route IN ('original','copy_remux','audio_conversion','video_conversion')),
  code TEXT NOT NULL,detail TEXT NOT NULL DEFAULT '',
  reported_at_ms INTEGER NOT NULL,
  PRIMARY KEY(session_hash,asset_id,engine,route)
  ) STRICT;
+CREATE INDEX playback_route_failures_recent ON playback_route_failures(reported_at_ms DESC);
 -- The audio and subtitle choice a profile last made for a show (item_id is the
 -- show, for every episode of it) or a film, kept as languages so it carries
 -- from one file to the next. subtitle_mode: '' nothing remembered, 'off'
@@ -2897,7 +2898,7 @@ CREATE TABLE identity_credential_attempts(
 ) STRICT;
 CREATE TABLE authorization_family_grants(
  family_id TEXT PRIMARY KEY REFERENCES authorization_session_families(id) ON DELETE CASCADE,
- grant_kind TEXT NOT NULL CHECK(grant_kind IN ('viewer_only','cast_target'))
+ grant_kind TEXT NOT NULL CHECK(grant_kind='cast_target')
 ) STRICT;
 CREATE TABLE direct_profile_pin_attempts(
  profile_id TEXT NOT NULL REFERENCES direct_profiles(id) ON DELETE CASCADE,

@@ -1478,9 +1478,7 @@ direct_profiles.deleted
 direct_profiles.id
 direct_profiles.is_primary
 direct_profiles.name
-direct_profiles.pin_attempts
 direct_profiles.pin_hash
-direct_profiles.pin_locked_until
 direct_profiles.pin_revision
 direct_profiles.position
 direct_profiles.revision

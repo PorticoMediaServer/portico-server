@@ -26,6 +26,8 @@ import "portico.local/apikit"
 //   - A scope never replaces the role check a handler makes. A member's token
 //     with the admin scope is still a member.
 var routeScopes = map[string]apikit.Scope{
+	"GET /v1/admin/playback/route-failures":               apikit.ScopeAdmin,
+	"DELETE /v1/admin/playback/route-failures/{sourceId}": apikit.ScopeAdmin,
 	"GET ":                               apikit.ScopeOpen,
 	"POST ":                              apikit.ScopeOpen,
 	"PUT ":                               apikit.ScopeOpen,

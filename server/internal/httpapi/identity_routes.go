@@ -196,11 +196,7 @@ func (d Dependencies) identityAuthRoutes(mux *http.ServeMux) {
 			failure(w, e)
 			return
 		}
-		var verify identity.HostedRefreshVerifier
-		if d.Hosted != nil {
-			verify = d.Hosted.AuthorizationHorizonTx
-		}
-		out, e := d.Identity.RefreshSession(r.Context(), q.RefreshToken, q.InstallationID, q.RequestID, verify)
+		out, e := d.Identity.RefreshSession(r.Context(), q.RefreshToken, q.InstallationID, q.RequestID)
 		if e != nil {
 			failure(w, e)
 			return

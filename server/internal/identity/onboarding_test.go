@@ -114,7 +114,7 @@ func TestP09QuickConnectCommitsOneFamilyAndRecoversExactGrant(t *testing.T) {
 	if e != nil || !reflect.DeepEqual(first, second) {
 		t.Fatal("lost response recovery changed family", e)
 	}
-	if refreshed, refreshErr := s.RefreshSession(ctx, first.RefreshToken, first.InstallationID, Token(), nil); refreshErr != nil || refreshed.InstallationID != first.InstallationID {
+	if refreshed, refreshErr := s.RefreshSession(ctx, first.RefreshToken, first.InstallationID, Token()); refreshErr != nil || refreshed.InstallationID != first.InstallationID {
 		t.Fatal("Quick Connect grant could not refresh from its response", refreshErr)
 	}
 	if e = s.CancelQuick(ctx, a.DeviceCode); e != nil {
@@ -178,24 +178,7 @@ func TestQuickConnectSignsTheDeviceInAsTheApprover(t *testing.T) {
 	if _, err = s.CreateDirectProfile(ctx, grant.AccessToken, "Second", ""); err != nil {
 		t.Fatalf("the member's television could not do what the member's own session can: %v", err)
 	}
-	// The approving session becomes viewer-only: what it links is viewer-only too.
-	if _, err = db.Exec(`INSERT INTO authorization_family_grants(family_id,grant_kind) VALUES(?,'viewer_only')`, member.SessionFamilyID); err != nil {
-		t.Fatal(err)
-	}
-	limited := link("44444444-4444-4444-8444-444444444444")
-	if _, err = s.CreateDirectProfile(ctx, limited.AccessToken, "Escalated", ""); !errors.Is(err, ErrUnauthorized) {
-		t.Fatalf("a viewer-only session linked a television that manages profiles: %v", err)
-	}
-	selected, err := s.SelectDirectProfile(ctx, limited.AccessToken, "member-profile", DirectSelection{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err = s.CreateDirectProfile(ctx, selected.Session.AccessToken, "Escalated", ""); !errors.Is(err, ErrUnauthorized) {
-		t.Fatalf("a viewer-only television gained account management after profile selection: %v", err)
-	}
-	if _, err = s.PINReset(ctx, selected.Session.AccessToken, "member-profile", ""); !errors.Is(err, ErrUnauthorized) {
-		t.Fatalf("a viewer-only television reset a PIN after profile selection: %v", err)
-	}
+
 }
 func TestP09QuickConnectReplayCannotRestoreRotatedAuthority(t *testing.T) {
 	s, db, _ := familyFixture(t)

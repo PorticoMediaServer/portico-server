@@ -22,7 +22,21 @@ For owner setup and media organisation, see [installation](../../../INSTALLING.m
 and [libraries](../../../docs/libraries.md). Topic references in the API folder
 cover metadata editing, downloads, administration and social playback.
 
-The checked-in generated contract also needs regeneration as source-registered
-routes move forward. For example, current account-session routes are registered
-in `internal/httpapi/foundation.go` but are missing from this generated snapshot.
-Use their documented current source until that snapshot is refreshed.
+Owner playback diagnostics include `GET /v1/admin/playback/route-failures`
+(the latest 100 active remembered failures, with expiry and no credentials).
+`DELETE /v1/admin/playback/route-failures/{sourceId}` clears all remembered
+routes for that file so devices can retry it after a player or driver change.
+Both routes require an owner and the admin key scope.
+
+For anime files numbered across seasons, show identification accepts the
+provider's official order or a show-owned TMDB episode group. An explicit
+`order` such as `tmdb-absolute:official:-12` maps local episode 15 to position 3;
+`tmdb-absolute:tmdb-group:<groupId>:-12` applies the same offset to the selected
+group. The offset is added to the local number. Local numbers remain unchanged,
+and original seasonal coordinates are retained as provenance. Client-core's
+`tmdbAbsoluteOrder` constructs this bounded order value. Seasonal files in the
+same show use the selected base order without the absolute offset.
+
+Regenerate the checked-in registry contract when source-registered routes change:
+run `GOFLAGS=-p=2 go run ./cmd/apigen` from `server/`. For routes outside the
+typed registry, use the current source handlers and their topic references.
