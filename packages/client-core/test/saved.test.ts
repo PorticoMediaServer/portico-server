@@ -1,3 +1,4 @@
+import {wireFixture} from './wire-fixture.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {SavedService} from '../src/saved.ts';
@@ -14,7 +15,7 @@ function projection(view='playlist',revision=0,entries:any[]=[occurrence()],curs
 }
 const resource=(revision=0,entryCount=1)=>({serverId:'server',viewerFence:'fence',id:'playlist',name:'Playlist',summary:'Summary',revision,role:'owner',entryCount,actions:['rename','summary','delete','share','add','remove','reorder'],limits:{maxEntries:1000,maxShares:100,maxReorderEntries:1000},shares:[]});
 const receipt=(body:any,revision=1)=>({serverId:'server',viewerFence:'fence',operationId:body.operationId,playlistId:'playlist',revision,deleted:false,entryId:'new-entry'});
-function setup(request:(path:string,method?:string,body?:any,signal?:AbortSignal)=>Promise<any>,timeoutMs=200){let i=0;return new SavedService({scope,api:{request},requestId:async()=>`00000000-0000-4000-8000-${String(++i).padStart(12,'0')}`,timeoutMs});}
+function setup(request:(path:string,method?:string,body?:any,signal?:AbortSignal)=>Promise<any>,timeoutMs=200){let i=0;return new SavedService({scope,api:{request:async (...args:any[])=>wireFixture(await (request as any)(...args),{'duration': 'durationMs', 'progressSeconds': 'progressMs', 'startSeconds': 'startMs', 'positionSeconds': 'positionMs'})},requestId:async()=>`00000000-0000-4000-8000-${String(++i).padStart(12,'0')}`,timeoutMs});}
 const isContent=(p:string)=>p.includes('/content');
 
 test('server occurrence order preserves duplicate media and opaque hidden rows',async()=>{
@@ -154,7 +155,7 @@ test('viewer cannot fetch order windows and unknown occurrence IDs cannot be mov
  const editable=setup(async p=>isContent(p)?projection():resource());await editable.select({view:'playlist',playlistId:'playlist'});assert.throws(()=>editable.mutate({action:'reorder',entryIds:['unseen']}),/current playlist order/);
 });
 test('reorder retains selected revision across delayed operation-ID generation',async()=>{
- const requestId=deferred();let revision=0,body:any;const s=new SavedService({scope,requestId:()=>requestId.promise,api:{request:async<T>(p,m,b)=>{if(m==='PUT'){body=b;return receipt(b,2) as T;}return(isContent(p)?projection('playlist',revision):resource(revision)) as T;}}});await s.select({view:'playlist',playlistId:'playlist'});const mutation=s.mutate({action:'reorder',entryIds:['entry']});revision=1;await s.refresh();requestId.resolve('00000000-0000-4000-8000-000000000099');await mutation;assert.equal(body.expectedRevision,0);
+ const requestId=deferred();let revision=0,body:any;const s=new SavedService({scope,requestId:()=>requestId.promise,api:{request:async<T>(p,m,b)=>{if(m==='PUT'){body=b;return receipt(b,2) as T;}return wireFixture(isContent(p)?projection('playlist',revision):resource(revision),{startSeconds:'startMs'}) as T;}}});await s.select({view:'playlist',playlistId:'playlist'});const mutation=s.mutate({action:'reorder',entryIds:['entry']});revision=1;await s.refresh();requestId.resolve('00000000-0000-4000-8000-000000000099');await mutation;assert.equal(body.expectedRevision,0);
 });
 test('uncapped playlists read past 1,000 entries through order windows',async()=>{
  const ids=Array.from({length:1050},(_,i)=>'entry-'+i);

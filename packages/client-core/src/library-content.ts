@@ -1,3 +1,4 @@
+import {wireDurations,wireDisplayDurations} from './wire-units.ts';
 import {unreadableServerResponse} from './server-messages.ts';
 import {parseListeningJourney,type ListeningJourney} from './listening.ts';
 import {parseBrowseNode,type BrowseNode,type BrowseSortSelection} from './browse.ts';
@@ -38,6 +39,7 @@ export type ContentEntry = Readonly<{
   absoluteNumber?: number;
   /** Community rating (0–10) and the best file's picture class; browse pages only (the list view's columns). */
   rating?: number;
+ userRating?: number;
   resolution?: '4k' | '1080p' | '720p' | 'sd';
   /** Where a provider biography came from ("Wikipedia") and its article; artist entities only. */
   overviewSource?: string;
@@ -143,6 +145,7 @@ function seeAll(v: unknown): ContentSeeAll | undefined {
  * field is optional and is left out when it cannot be read.
  */
 function entry(v: unknown): ContentEntry {
+ v=wireDisplayDurations(v,{duration:"durationMs",progressSeconds:"progressMs"},left);
   if (!record(v) || !id(v.id) || !entryKinds.includes(v.kind as string) || !string(v.title ?? '', 2048)) invalid();
   const row: { -readonly [K in keyof ContentEntry]: ContentEntry[K] } = { id: v.id, kind: v.kind as ContentEntryKind, title: (v.title ?? '') as string };
   if (v.libraryId !== undefined) { if (!id(v.libraryId)) invalid(); row.libraryId = v.libraryId; }
@@ -159,6 +162,7 @@ function entry(v: unknown): ContentEntry {
   for (const field of ['duration', 'progressSeconds'] as const) {
     if (finite(v[field])) row[field] = v[field] as number; else left('entry.' + field, v[field]);
   }
+  if(v.userRating!==undefined){if(typeof v.userRating=== "number"&&Number.isInteger(v.userRating)&&v.userRating>=0&&v.userRating<=10)row.userRating=v.userRating;else left("entry.userRating",v.userRating);}
   // A year of 0 is how a server says it has none.
   if (typeof v.year === 'number' && Number.isSafeInteger(v.year) && v.year > 0) row.year = v.year; else if (v.year !== 0) left('entry.year', v.year);
   if (string(v.contentRating, 64)) row.contentRating = v.contentRating as string; else left('entry.contentRating', v.contentRating);
@@ -221,7 +225,7 @@ function entry(v: unknown): ContentEntry {
   }
   // Playback that cannot be read is left out when the entry still opens something; otherwise the entry is refused.
   if (v.playback !== undefined && v.playback !== null) {
-    const p = v.playback;
+    const p = wireDisplayDurations(v.playback,{startSeconds:"startMs"},left);
     if (record(p) && id(p.itemId)) row.playback = Object.freeze({ itemId: p.itemId, ...(finite(p.startSeconds) ? { startSeconds: p.startSeconds } : {}) });
     else if (row.navigation) left('entry.playback', p);
     else invalid();

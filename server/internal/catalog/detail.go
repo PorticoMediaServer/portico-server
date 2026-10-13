@@ -33,7 +33,7 @@ func (s *Service) detailOnce(viewer Viewer, server, item string, owner bool) (De
 		return out, e
 	}
 	out.Item.ProgressSeconds = out.Personal.ProgressSeconds
-	min, max, step := .5, 5., .5
+	min, max, step := 0., 10., 1.
 	out.Actions = []DetailAction{{ID: "watchlist", LabelKey: "action.watchlist", Enabled: true}, {ID: "favorite", LabelKey: "action.favorite", Enabled: true}, {ID: "rating", LabelKey: "action.rating", Enabled: true, Min: &min, Max: &max, Step: &step}}
 	out.Actions = append(out.Actions, DetailAction{ID: "watched", LabelKey: "action.watched", Enabled: true})
 	if out.Item.Available {

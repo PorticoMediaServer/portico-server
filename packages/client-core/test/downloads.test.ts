@@ -1,12 +1,17 @@
+import {wireFixture} from './wire-fixture.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  parseDownloadPreparation, parseDownloadBatch, parseDownloadPage, parseDownloadGrant, parseDownloadOptions,
-  decodeDownloadReceipt, parseReceiptOutcomes, parseReceiptKeys, parseRevocationPage, parseDeferredProgressReceipt,
+  parseDownloadPreparation, parseDownloadBatch, parseDownloadPage, parseDownloadGrant, parseDownloadOptions as read_parseDownloadOptions,
+  decodeDownloadReceipt, parseReceiptOutcomes, parseReceiptKeys, parseRevocationPage, parseDeferredProgressReceipt as readProgressReceipt,
   parseDownloadUsage, parseDownloadSettings, validDeferredProgressEntry, downloadActionOffered, receiptUsable,
   downloadReasonMessage, downloadBytes, parseDownloadBundle, parseDownloadTitle,
 } from '../src/downloads.ts';
 import {resetSkippedParts, skippedParts} from '../src/tolerant.ts';
+
+const parseDeferredProgressReceipt=(v:unknown)=>readProgressReceipt(wireFixture(v,{positionSeconds:'positionMs'}));
+
+const parseDownloadOptions=(value:unknown,...args:any[]) => (read_parseDownloadOptions as any)(wireFixture(value,{'durationSeconds': 'durationMs'},[]),...args);
 
 const sha = 'a'.repeat(64);
 const encode = (v: unknown) => Buffer.from(JSON.stringify(v), 'utf8').toString('base64url');

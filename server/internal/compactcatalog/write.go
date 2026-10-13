@@ -241,10 +241,14 @@ func touchEntity(ctx context.Context, tx *sql.Tx, id int64, kind Kind) error {
 	// author a file belongs to now re-derives, so a retired or re-authored book
 	// releases it.
 	switch kind {
+	case Artist:
+		return touchDependents(ctx, tx, id, map[int]string{DomainSearch: `SELECT ?1,entity_id,1 FROM catalog_albums WHERE artist_id=?2 UNION SELECT ?1,song_id,1 FROM catalog_song_artists WHERE artist_id=?2`})
+	case Collection:
+		return touchDependents(ctx, tx, id, map[int]string{DomainSearch: `SELECT ?1,item_id,1 FROM catalog_collection_members WHERE collection_id=?2`})
 	case Show:
-		return touchDependents(ctx, tx, id, map[int]string{DomainBrowseRows: `SELECT ?1,entity_id,1 FROM catalog_seasons WHERE show_id=?2`})
+		return touchDependents(ctx, tx, id, map[int]string{DomainBrowseRows: `SELECT ?1,entity_id,1 FROM catalog_seasons WHERE show_id=?2`, DomainSearch: `SELECT ?1,entity_id,1 FROM catalog_episodes WHERE show_id=?2`})
 	case Album:
-		return touchDependents(ctx, tx, id, map[int]string{DomainBrowseEdges: `SELECT ?1,entity_id,1 FROM catalog_songs INDEXED BY catalog_songs_album_order WHERE album_id=?2`})
+		return touchDependents(ctx, tx, id, map[int]string{DomainBrowseEdges: `SELECT ?1,entity_id,1 FROM catalog_songs INDEXED BY catalog_songs_album_order WHERE album_id=?2`, DomainSearch: `SELECT ?1,entity_id,1 FROM catalog_songs INDEXED BY catalog_songs_album_order WHERE album_id=?2`})
 	case Book:
 		return touchDependents(ctx, tx, id, map[int]string{
 			DomainBrowseEdges: `SELECT ?1,entity_id,1 FROM catalog_book_files INDEXED BY catalog_book_files_order WHERE book_id=?2`,
@@ -584,8 +588,7 @@ func DeleteEntityTx(ctx context.Context, tx *sql.Tx, id int64) error {
  ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1`, DomainBrowseRows, id); err != nil {
 		return err
 	}
-	// The external-content title index needs the old title to remove a row.
-
+	// The title index row goes with its document, through the table's own trigger.
 	if _, err := tx.ExecContext(ctx, `DELETE FROM catalog_search_documents WHERE entity_id=?`, id); err != nil {
 		return err
 	}
@@ -1060,6 +1063,9 @@ func SetCollectionMemberTx(ctx context.Context, tx *sql.Tx, collection, item int
 	if err = TouchTx(ctx, tx, DomainBrowseEdges, item); err != nil {
 		return err
 	}
+	if err = TouchTx(ctx, tx, DomainSearch, item, collection); err != nil {
+		return err
+	}
 	return TouchTx(ctx, tx, DomainBrowseRows, collection)
 }
 
@@ -1074,6 +1080,9 @@ func SetSongArtistsTx(ctx context.Context, tx *sql.Tx, song int64, artists []int
 		if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO catalog_song_artists(song_id,artist_id) VALUES(?,?)`, song, a); err != nil {
 			return err
 		}
+	}
+	if err := TouchTx(ctx, tx, DomainSearch, song); err != nil {
+		return err
 	}
 	return TouchTx(ctx, tx, DomainBrowseEdges, song)
 }

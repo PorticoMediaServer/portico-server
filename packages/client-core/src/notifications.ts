@@ -1,3 +1,4 @@
+import {wireInstants} from './wire-units.ts';
 /**
  * The notification inbox and viewer feedback wire shapes.
  *
@@ -126,6 +127,7 @@ export function notificationActionSupported(action:NotificationAction,views:read
  * out only that notification.
  */
 export function parseNotification(value:unknown):Notification{
+ value=wireInstants(value,["createdAt", "updatedAt", "expiresAt", "readAt", "archivedAt"]);
  if(!obj(value))invalid();
  if(!text(value.id,200)||!value.id)invalid();
  if(value.audience!=='profile'&&value.audience!=='account-admin')invalid();
@@ -153,6 +155,7 @@ function parseCounts(value:unknown):NotificationCounts{
 
 /** The server caps a page at 100; a longer one is a response we do not trust. */
 export function parseNotificationInbox(value:unknown):NotificationInbox{
+ value=wireInstants(value,["observedAt"]);
  if(!obj(value)||!whole(value.revision)||!whole(value.observedAt)||!whole(value.retentionDays))invalid();
  if(!text(value.audience,40)||!text(value.state,20)||!text(value.nextCursor,64))invalid();
  if(!Array.isArray(value.audiences)||value.audiences.length>4)invalid();
@@ -161,6 +164,7 @@ export function parseNotificationInbox(value:unknown):NotificationInbox{
 }
 
 export function parseNotificationSummary(value:unknown):NotificationSummary{
+ value=wireInstants(value,["observedAt"]);
  if(!obj(value)||!whole(value.revision)||!whole(value.observedAt)||!text(value.audience,40))invalid();
  return {...value,counts:parseCounts(value.counts)} as NotificationSummary;
 }
@@ -295,6 +299,7 @@ const feedbackDecisions:readonly FeedbackDecision[]=['attached','unavailable','d
  * nothing about what was attached, and a thread entry it cannot read is left out.
  */
 function feedbackReport(value:unknown,statusOtherwise?:FeedbackItemStatus):FeedbackItem{
+ value=wireInstants(value,["createdAt","updatedAt","expiresAt"]);
  if(!obj(value)||!text(value.id,200)||!value.id||!text(value.cursor,64))invalid();
  if(!whole(value.revision)||!whole(value.createdAt)||!whole(value.updatedAt)||!whole(value.expiresAt))invalid();
  let status=oneOf(value.status,feedbackStatuses);
@@ -314,6 +319,7 @@ function feedbackReport(value:unknown,statusOtherwise?:FeedbackItemStatus):Feedb
  if(diagnostics.detail!==undefined&&!text(diagnostics.detail,400))invalid();
  if(!Array.isArray(value.thread)||value.thread.length>200)invalid();
  const thread=keepReadable('feedback-report','thread',value.thread,event=>{
+  event=wireInstants(event,['at']);
   if(!obj(event)||!whole(event.sequence)||!whole(event.at)||!whole(event.revision))invalid();
   if(!text(event.status,40)||!text(event.reply,4000)||!text(event.actorClass,40))invalid();
   return event as FeedbackThreadEvent;
@@ -334,6 +340,7 @@ export function parseFeedbackSubmission(value:unknown):FeedbackSubmissionResult{
 }
 
 export function parseFeedbackList(value:unknown):FeedbackList{
+ value=wireInstants(value,["observedAt"]);
  if(!obj(value)||!Array.isArray(value.items)||value.items.length>100)invalid();
  if(!text(value.nextCursor,64)||!whole(value.total)||!whole(value.observedAt))invalid();
  if(!obj(value.statusCounts)||!obj(value.filter))invalid();

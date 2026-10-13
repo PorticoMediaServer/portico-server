@@ -1,3 +1,4 @@
+import {wireDurations} from './wire-units.ts';
 import {unreadableServerResponse} from './server-messages.ts';
 import {firstOfEach,keepReadable,noteSkipped,oneOfOr} from './tolerant.ts';
 /** Online personal resources. The server owns membership, query evaluation and permissions.
@@ -188,7 +189,7 @@ export class PersonalSavedService{
     }else{patch.entries=distinct(keepReadable('personal-saved','entries',rows(raw.entries),e=>{if(!obj(e)||!id(e.id)||typeof e.hidden!=='boolean')bad();return {id:e.id,hidden:e.hidden,...(!e.hidden?{media:validateContentEntry(e.media)}:{})};}),'entries');}
    }else{
     if(raw.serverId!==this.scope.serverId||!id(raw.viewerFence)||!num(raw.revision))bad();patch.viewerFence=raw.viewerFence;patch.revision=raw.revision;
-    if(route.view==='history')patch.entries=distinct(keepReadable('personal-saved','history',rows(raw.entries),e=>{if(!obj(e)||!id(e.id)||!str(e.updatedAt,128)||typeof e.positionSeconds!=='number'||!Number.isFinite(e.positionSeconds)||e.positionSeconds<0||typeof e.completed!=='boolean')bad();return {id:e.id,hidden:false,media:validateContentEntry(e.media),updatedAt:e.updatedAt,positionSeconds:e.positionSeconds,completed:e.completed};}),'history');
+    if(route.view==='history')patch.entries=distinct(keepReadable('personal-saved','history',rows(raw.entries),e=>{e=wireDurations(e,{positionSeconds:'positionMs'});if(!obj(e)||!id(e.id)||!str(e.updatedAt,128)||typeof e.positionSeconds!=='number'||!Number.isFinite(e.positionSeconds)||e.positionSeconds<0||typeof e.completed!=='boolean')bad();return {id:e.id,hidden:false,media:validateContentEntry(e.media),updatedAt:e.updatedAt,positionSeconds:e.positionSeconds,completed:e.completed};}),'history');
     // A row from another server or another viewer fence refuses the whole directory; any other row this app cannot read is left out alone.
     else{const listed=rows(raw.resources);for(const v of listed)if(obj(v)&&(v.serverId!==this.scope.serverId||v.viewerFence!==raw.viewerFence))bad();patch.resources=distinct(keepReadable('personal-saved','resources',listed,v=>{const r=resource(v,this.scope);if(r.kind!==(route.view==='collections'?'collection':'view'))bad();return r;}),'resources');}
    }

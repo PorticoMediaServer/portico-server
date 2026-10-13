@@ -1,3 +1,4 @@
+import {wireDurations} from './wire-units.ts';
 import {unreadableServerResponse} from './server-messages.ts';
 /** One listening policy for a proved account/profile/server/device lane.
  * Foreground engines enforce it here; the native owner enforces the same policy
@@ -36,7 +37,7 @@ export function listeningData(raw:unknown,scope:QueueScope):unknown {
 /** What can be played from a page. Its target is exact; a way of playing this app does not know is not offered, and the ones it knows still are. */
 export function parseListeningJourney(v:unknown,libraryId:string):ListeningJourney {
  if(!object(v)||!object(v.target)||v.target.libraryId!==libraryId||!['library','song','artist','album','disc','book'].includes(String(v.target.kind))||typeof v.target.id!=='string'||!(/^[A-Za-z0-9_-]{1,128}(?::disc:\d{1,4})?$/.test(v.target.id))||!Array.isArray(v.actions)||v.actions.length>16||typeof v.resumeUnavailable!=='boolean')bad();
- let resume:ListeningJourney['resume'];if(v.resume!==undefined){if(!object(v.resume)||!id(v.resume.itemId)||!finite(v.resume.positionSeconds))bad();resume=Object.freeze({itemId:v.resume.itemId,positionSeconds:v.resume.positionSeconds});}
+ let resume:ListeningJourney['resume'];if(v.resume!==undefined){const r=wireDurations(v.resume,{positionSeconds:'positionMs'});if(!object(r)||!id(r.itemId)||!finite(r.positionSeconds))bad();resume=Object.freeze({itemId:r.itemId,positionSeconds:r.positionSeconds});}
  return Object.freeze({target:Object.freeze({libraryId,kind:v.target.kind as ListeningTarget['kind'],id:v.target.id}),actions:Object.freeze([...new Set(v.actions.filter(a=>['play','shuffle','mix','enqueue'].includes(String(a))))]) as ListeningJourney['actions'],...(resume?{resume}:{}),resumeUnavailable:v.resumeUnavailable});
 }
 function parseItem(v:unknown,itemId:string):ListeningItem {
@@ -58,7 +59,7 @@ export async function loadListeningSelection(request:ListeningRequest,scope:Queu
   if(total!==-1&&(total!==d.totalCount||seed!==d.seed||unavailable!==d.unavailableCount))bad();
   total=d.totalCount;seed=d.seed;unavailable=d.unavailableCount;
   if(total>capacity)throw new Error(`This selection has ${total.toLocaleString()} available items; this device queue has room for ${capacity.toLocaleString()}. Use the page actions or remove queue entries first (1,000 maximum).`);
-  if(d.resume!==undefined){if(!object(d.resume)||!id(d.resume.itemId)||!finite(d.resume.positionSeconds))bad();if(!entries.length)startSeconds=d.resume.positionSeconds;}
+  if(d.resume!==undefined){d.resume=wireDurations(d.resume,{positionSeconds:'positionMs'});if(!object(d.resume)||!id(d.resume.itemId)||!finite(d.resume.positionSeconds))bad();if(!entries.length)startSeconds=d.resume.positionSeconds;}
   for(const raw of d.entries){const row=parseQueueItem(raw);if(seen.has(row.itemId))bad();seen.add(row.itemId);entries.push(row);}
   cursor=d.nextCursor;if(cursor){if(!d.entries.length||cursors.has(cursor))bad();cursors.add(cursor);}
  }while(cursor);

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"portico.local/server/internal/apiwire"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/supervise"
@@ -48,25 +49,25 @@ type JobObservation struct {
 	ErrorCode string
 }
 type Job struct {
-	ID               string   `json:"id"`
-	Sequence         int64    `json:"-"`
-	Kind             string   `json:"kind"`
-	Resource         string   `json:"resource"`
-	Trigger          string   `json:"trigger"`
-	State            string   `json:"state"`
-	Phase            string   `json:"phase"`
-	Revision         int64    `json:"revision"`
-	Attempt          int      `json:"attempt"`
-	CreatedAt        int64    `json:"createdAt"`
-	UpdatedAt        int64    `json:"updatedAt"`
-	NextAt           int64    `json:"nextAt"`
-	DomainID         string   `json:"domainId,omitempty"`
-	ErrorCode        string   `json:"errorCode,omitempty"`
-	Predecessor      string   `json:"predecessor,omitempty"`
-	SettingsRevision int64    `json:"settingsRevision"`
-	Lane             string   `json:"lane"`
-	Actions          []string `json:"actions"`
-	Processed        *int64   `json:"processed,omitempty"`
+	ID               string          `json:"id"`
+	Sequence         int64           `json:"-"`
+	Kind             string          `json:"kind"`
+	Resource         string          `json:"resource"`
+	Trigger          string          `json:"trigger"`
+	State            string          `json:"state"`
+	Phase            string          `json:"phase"`
+	Revision         int64           `json:"revision"`
+	Attempt          int             `json:"attempt"`
+	CreatedAt        apiwire.Instant `json:"createdAt"`
+	UpdatedAt        apiwire.Instant `json:"updatedAt"`
+	NextAt           apiwire.Instant `json:"nextAt"`
+	DomainID         string          `json:"domainId,omitempty"`
+	ErrorCode        string          `json:"errorCode,omitempty"`
+	Predecessor      string          `json:"predecessor,omitempty"`
+	SettingsRevision int64           `json:"settingsRevision"`
+	Lane             string          `json:"lane"`
+	Actions          []string        `json:"actions"`
+	Processed        *int64          `json:"processed,omitempty"`
 }
 
 const jobColumns = `id,sequence,kind,resource,trigger,state,phase,revision,attempt,created_ms,updated_ms,next_ms,domain_id,error_code,predecessor,settings_revision,processed`
@@ -747,17 +748,17 @@ func (s *Scheduler) startedDomain(ctx context.Context, id string) bool {
 }
 
 type Schedule struct {
-	ID            string `json:"id"`
-	Revision      int64  `json:"revision"`
-	Kind          string `json:"kind"`
-	Resource      string `json:"resource"`
-	Enabled       bool   `json:"enabled"`
-	Timezone      string `json:"timezone"`
-	StartMinute   int    `json:"startMinute"`
-	WindowMinutes int    `json:"windowMinutes"`
-	CatchUp       bool   `json:"catchUp"`
-	LastSlot      string `json:"lastSlot"`
-	CreatedAt     int64  `json:"createdAt"`
+	ID            string          `json:"id"`
+	Revision      int64           `json:"revision"`
+	Kind          string          `json:"kind"`
+	Resource      string          `json:"resource"`
+	Enabled       bool            `json:"enabled"`
+	Timezone      string          `json:"timezone"`
+	StartMinute   int             `json:"startMinute"`
+	WindowMinutes int             `json:"windowMinutes"`
+	CatchUp       bool            `json:"catchUp"`
+	LastSlot      string          `json:"lastSlot"`
+	CreatedAt     apiwire.Instant `json:"createdAt"`
 }
 type ScheduleChange struct {
 	ExpectedRevision int64    `json:"expectedRevision"`
@@ -829,7 +830,7 @@ func (s *Scheduler) SaveSchedule(ctx context.Context, p identity.Principal, auth
 			if n >= 100 {
 				return ErrCapacity
 			}
-			current.CreatedAt = s.Store.now()
+			current.CreatedAt = apiwire.Instant(s.Store.now())
 		} else if err != nil {
 			return err
 		} else if current.Revision != c.ExpectedRevision {

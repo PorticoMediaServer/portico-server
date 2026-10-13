@@ -1,3 +1,4 @@
+import {wireDurations} from './wire-units.ts';
 import {unreadableServerResponse} from './server-messages.ts';
 import {serviceText} from './presentation/service-text.ts';
 import type {MessageId} from '../../i18n/src/index.ts';
@@ -315,7 +316,7 @@ function storage(raw: unknown): DownloadStorage {
 
 export function parseDownloadOptions(raw: unknown, itemId: string): DownloadOptionsView {
   if (!object(raw) || raw.itemId !== itemId || !text(raw.kind, 64)) invalid();
-  const source = raw.source;
+  const source = wireDurations(raw.source,{durationSeconds:"durationMs"});
   if (!object(source) || !text(source.container ?? '', 64) || !count(source.bytes) || typeof source.available !== 'boolean') invalid();
   if (typeof source.durationSeconds !== 'number' || !Number.isFinite(source.durationSeconds) || source.durationSeconds < 0) invalid();
   for (const field of ['videoCodec','audioCodec'] as const) if (source[field] !== undefined && !text(source[field], 64)) invalid();
@@ -441,6 +442,7 @@ export function parseDeferredProgressReceipt(raw: unknown): DeferredProgressRece
   if (!object(raw) || !count(raw.applied) || !count(raw.conflicts)) invalid();
   const outcomes: readonly string[] = ['applied','history_paused','stale_observation','superseded_online','item_deleted','invalid_entry','observation_in_future'];
   const entries = keepReadable('download-progress', 'entries', array(raw.entries, 100), v => {
+    v=wireDurations(v,{positionSeconds:'positionMs'});
     // The server echoes whatever it was sent, including an entry it found unreadable, so the
     // identifiers of a refused entry are text, not necessarily ids.
     if (!object(v) || !text(v.itemId ?? '', 256) || !text(v.playId ?? '', 256) || !outcomes.includes(String(v.outcome)) || typeof v.watched !== 'boolean') invalid();

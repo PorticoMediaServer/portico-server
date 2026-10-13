@@ -1,7 +1,11 @@
+import {wireFixture} from './wire-fixture.ts';
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {ConsoleClient,parseReport,parseSettings,parsePage,parseEvidenceRecord,type ConsoleAPI,type RuntimeSettings,type Schedule} from '../src/console.ts';
+import {ConsoleClient,parseReport as read_parseReport,parseSettings,parsePage,parseEvidenceRecord as read_parseEvidenceRecord,type ConsoleAPI,type RuntimeSettings,type Schedule} from '../src/console.ts';
 import {consoleUTF8Size,readConsoleJson,ConsoleTransportError} from '../src/console-transport.ts';
+const parseReport=(value:unknown,...args:any[]) => (read_parseReport as any)(wireFixture(value,{},['createdAt', 'updatedAt', 'expiresAt', 'readAt', 'archivedAt', 'observedAt', 'freshUntil', 'at', 'nextAt', 'from', 'to']),...args);
+const parseEvidenceRecord=(value:unknown,...args:any[]) => (read_parseEvidenceRecord as any)(wireFixture(value,{},['createdAt', 'updatedAt', 'expiresAt', 'readAt', 'archivedAt', 'observedAt', 'freshUntil', 'at', 'nextAt', 'from', 'to']),...args);
+
 const fence='a'.repeat(64);
 const envelope=(data:unknown,serverId='server-one',viewerFence=fence)=>({scope:{serverId,viewerFence},data});
 const values:RuntimeSettings={name:'My server',transcodingEnabled:true,perAccountCap:null,serverCap:null,diagnosticDays:30,notificationDays:180,jobDays:30,
@@ -15,7 +19,7 @@ const settings=(revision=1)=>({revision,digest:'b'.repeat(64),requested:values,e
 const report={id:'report-one',revision:1,createdAt:100,updatedAt:100,status:'open',category:'playback',message:'Playback stopped.',contextAvailable:true};
 const submission={category:'playback' as const,message:report.message,itemId:''};
 function client(handler:(path:string,method:string,body:any,signal:AbortSignal)=>Promise<unknown>){
- const api:ConsoleAPI={async request<T>(){throw new Error('unbounded fallback must not be used');},async requestConsole<T>(path,method,body,signal){return await handler(path,method,body,signal) as T;}};
+ const api:ConsoleAPI={async request<T>(){throw new Error('unbounded fallback must not be used');},async requestConsole<T>(path,method,body,signal){return wireFixture(await handler(path,method,body,signal),{},['createdAt', 'updatedAt', 'expiresAt', 'readAt', 'archivedAt', 'observedAt', 'freshUntil', 'at', 'nextAt', 'from', 'to']) as T;}};
  return new ConsoleClient(api,{serverId:'server-one',viewerId:'local:one:profile'});
 }
 test('settings preserve explicit unlimited caps and reject invalid limits',()=>{

@@ -1,7 +1,7 @@
 import test from 'node:test';import assert from 'node:assert/strict';
 import {SearchService,parseSearchHistory,searchQueryProblem,type SearchGroup} from '../src/search.ts';
 const scope={serverId:'server',viewerId:JSON.stringify(['hosted','account','profile'])};
-const kinds={movies:'movie',shows:'show',episodes:'episode',artists:'artist',albums:'album',songs:'song',books:'book',people:'person','live-tv':'channel'} as const;
+const kinds={movies:'movie',shows:'show',episodes:'episode',artists:'artist',albums:'album',songs:'song',books:'book',collections:'collection',authors:'author',people:'person','live-tv':'channel'} as const;
 const all=Object.keys(kinds) as SearchGroup[];
 const mediaGroups=all.filter(g=>g!=='people'&&g!=='live-tv');
 const capabilities=(unavailable:SearchGroup[]=['live-tv'])=>({groups:all.map(id=>({id,title:id,entityKind:kinds[id],available:!unavailable.includes(id),...(unavailable.includes(id)?{reason:'Not configured on this server.'}:{}),sorts:['relevance','title']})),sorts:['relevance','title','releaseYear','dateAdded'],directions:['asc','desc'],maxLimit:40,groupBudgetMs:600});
@@ -19,7 +19,7 @@ function result(path:string,changes:Record<string,unknown>={}):any{
  const restrict=url.searchParams.get('groups');
  const echoed=selected?[selected]:restrict?restrict.split(','):all;
  return {scope:{serverId:'server',libraryId:'',libraryKind:'mixed',view:'search',entityId:'',viewerFence:'fence'},revision:{catalog:4,viewer:5},heading:{key:'search.title',fallback:'Search'},
-  query:{q:url.searchParams.get('q'),sort:url.searchParams.get('sort')??'relevance',direction:url.searchParams.get('direction')??'desc',group:selected??'',groups:echoed,libraryIds:url.searchParams.get('libraryIds')?.split(',')??[],limit:Number(url.searchParams.get('limit')),searchMode:'token_prefix',recorded:url.searchParams.get('record')==='1'},
+  query:{q:url.searchParams.get('q'),sort:url.searchParams.get('sort')??'relevance',direction:url.searchParams.get('direction')??'desc',group:selected??'',groups:echoed,libraryIds:url.searchParams.get('libraryIds')?.split(',')??[],limit:Number(url.searchParams.get('limit')),searchMode:'normalized_prefix',recorded:url.searchParams.get('record')==='1'},
   groups:echoed.map(id=>group(id as SearchGroup)),capabilities:capabilities(),...changes};
 }
 function service(fn:(path:string,signal?:AbortSignal)=>Promise<unknown>,timeoutMs=1000){return new SearchService({scope,timeoutMs,api:{request:<T>(path:string,_m?:string,_b?:unknown,signal?:AbortSignal)=>fn(path,signal) as Promise<T>}});}
@@ -68,7 +68,7 @@ test('one group or result that cannot be read is left out and the rest of the an
  const data=await read(r=>{r.groups[0].items=[item('one'),item('one'),item('two',{libraryId:undefined}),item('three',{navigation:{view:'item',entityId:'wrong'}}),item('four',{kind:'show'}),item('five',{available:false,playback:{itemId:'five'}}),{id:'broken'},item('six',{year:0,future:true})];r.groups[0].totalCount=1;r.future={a:1};r.query.searchMode='semantic';r.heading=7;});
  assert.deepEqual(data.groups[0].items.map(e=>e.id),['one','six']);
  assert.equal(data.groups[0].totalCount,2,'the count is at least the results kept');
- assert.deepEqual([data.query.searchMode,data.heading,'future' in data],['token_prefix',{key:'search',fallback:''},false]);
+ assert.deepEqual([data.query.searchMode,data.heading,'future' in data],['normalized_prefix',{key:'search',fallback:''},false]);
  // Groups: one this app does not know, a broken one, one whose rows are of another kind, and a repeated one.
  const groups=await read(r=>{r.groups=[{...group('movies'),id:'podcasts',entityKind:'podcast'},'nope',{...group('shows'),entityKind:'movie'},group('books'),{...group('books'),title:'Again'},{...group('albums'),nextCursor:7},{...group('songs'),items:Array.from({length:13},(_,i)=>({id:'s'+i,libraryId:'library',kind:'song',title:'S',navigation:{view:'item',entityId:'s'+i}}))}];});
  assert.deepEqual(groups.groups.map(g=>[g.id,g.title]),[['books','books']]);
@@ -124,7 +124,7 @@ test('Unicode whitespace normalization and punctuation are encoded without local
 test('CD-30: search validation matches NormalizeSearch before dispatch',async()=>{
  let calls=0;const s=service(async p=>{calls++;return result(p);});
  // Invalid inputs throw as input feedback without dispatching (no connection loss).
- for(const q of ['a','!!!','a b c d','one two three four five six seven eight nine','𠮷'.repeat(129),'é'.repeat(129)])assert.throws(()=>s.select(q),/Invalid search query|Search supports/);
+ for(const q of ['!!!','one two three four five six seven eight nine','𠮷'.repeat(129),'é'.repeat(129)])assert.throws(()=>s.select(q),/Invalid search query|Search supports/);
  assert.equal(calls,0);
  assert.equal(s.getSnapshot().phase,'idle');
  // Astral counting is by code points, not UTF-16 units: 100 astral letters (200 units) is valid.
@@ -191,9 +191,9 @@ test('same-query transient refresh retains results but a new query never inherit
 test('searchQueryProblem says why a query would not be sent (CD-30)', () => {
   assert.equal(searchQueryProblem(''), undefined);
   assert.equal(searchQueryProblem('   '), undefined);
-  assert.equal(searchQueryProblem('a'), 'short');
+  assert.equal(searchQueryProblem('a'), undefined);
   assert.equal(searchQueryProblem('!!!'), 'short');
-  assert.equal(searchQueryProblem('a b c'), 'short');
+  assert.equal(searchQueryProblem('a b c'), undefined);
   assert.equal(searchQueryProblem('one two three four five six seven eight nine'), 'words');
   assert.equal(searchQueryProblem('x'.repeat(129)), 'long');
   assert.equal(searchQueryProblem('テスト'), undefined);

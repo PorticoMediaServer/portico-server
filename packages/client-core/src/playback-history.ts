@@ -1,3 +1,4 @@
+import {wireInstants,wireDurations} from './wire-units.ts';
 /**
  * Owner playback history (Playback v1 sessions). endedAt and durationSeconds are null while a
  * session is still running: the server records no end time before one
@@ -20,11 +21,13 @@ const text=(v:unknown,max=512):v is string=>typeof v==='string'&&v.length<=max;
 function invalid():never{throw new Error('Invalid selected-server playback history response.');}
 
 export function parsePlaybackHistoryEntry(value:unknown):PlaybackHistoryEntry{
+ value=wireDurations(wireInstants(value,["startedAt","endedAt"]),{durationSeconds:"durationMs"});
  if(!obj(value))invalid();
  if(!text(value.id,200)||!value.id||!integer(value.startedAt))invalid();
  for(const key of ['viewer','authority','accountId','profileId','title','mediaKind','libraryName','itemId','deliveryMode','deliveryStrategy','qualityMode','state'])
   if(!text(value[key],512))invalid();
- for(const key of ['endedAt','durationSeconds'])if(value[key]!==null&&!integer(value[key]))invalid();
+ if(value.endedAt!==null&&!integer(value.endedAt))invalid();
+ if(value.durationSeconds!==null&&(typeof value.durationSeconds!=='number'||!Number.isFinite(value.durationSeconds)||value.durationSeconds<0))invalid();
  // A recorded end must not precede its start, and a duration must match it.
  if(value.endedAt!==null&&(value.endedAt<value.startedAt||value.durationSeconds===null))invalid();
  if(value.endedAt===null&&value.durationSeconds!==null)invalid();

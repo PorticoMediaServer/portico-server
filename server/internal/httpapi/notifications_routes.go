@@ -57,7 +57,7 @@ func (d Dependencies) notificationRoutes(mux *http.ServeMux) {
 	slots := make(chan struct{}, 8)
 	type action func(*http.Request, identity.Principal, operations.Authorize) (any, error)
 	register := func(pattern string, owner bool, query []string, fn action) {
-		mux.HandleFunc(pattern, func(w http.ResponseWriter, r *http.Request) {
+		d.projectedHandle(mux, pattern, func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Cache-Control", "no-store")
 			ctx, cancel := context.WithTimeout(r.Context(), 7*time.Second)
 			defer cancel()

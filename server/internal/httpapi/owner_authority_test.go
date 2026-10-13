@@ -61,6 +61,13 @@ func TestHostedOwnerCanReadAdministrationButMemberCannot(t *testing.T) {
 		t.Run(role, func(t *testing.T) {
 			d, session, p := hostedAdministrationFixture(t, role)
 			mux := http.NewServeMux()
+			// As the production router does: the console routes the registry
+			// already serves are not mounted a second time.
+			registry, err := FoundationRegistry(d)
+			if err != nil {
+				t.Fatal(err)
+			}
+			d.registry = registry
 			d.foundationRoutes(mux)
 			d.consoleRoutes(mux)
 			d.operationsRoutes(mux)
@@ -148,6 +155,11 @@ func TestHostedOwnerLateRevocationDropsReadResponse(t *testing.T) {
 func TestHostedOwnerSettingsChangePersistsAndDowngradeBlocksFurtherWrites(t *testing.T) {
 	d, session, _ := hostedAdministrationFixture(t, "owner")
 	mux := http.NewServeMux()
+	registry, err := FoundationRegistry(d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d.registry = registry
 	d.foundationRoutes(mux)
 	d.consoleRoutes(mux)
 	var read struct {

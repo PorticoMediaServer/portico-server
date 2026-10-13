@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"portico.local/server/internal/apiwire"
 	"portico.local/server/internal/dbwork"
 	"strconv"
 	"strings"
@@ -47,11 +48,11 @@ type Notice struct {
 	Actions    []NoticeAction    `json:"actions"`
 	DedupeKey  string            `json:"dedupeKey"`
 	Revision   int64             `json:"revision"`
-	CreatedAt  int64             `json:"createdAt"`
-	UpdatedAt  int64             `json:"updatedAt"`
-	ExpiresAt  int64             `json:"expiresAt"`
-	ReadAt     *int64            `json:"readAt"`
-	ArchivedAt *int64            `json:"archivedAt"`
+	CreatedAt  apiwire.Instant   `json:"createdAt"`
+	UpdatedAt  apiwire.Instant   `json:"updatedAt"`
+	ExpiresAt  apiwire.Instant   `json:"expiresAt"`
+	ReadAt     *apiwire.Instant  `json:"readAt"`
+	ArchivedAt *apiwire.Instant  `json:"archivedAt"`
 	Read       bool              `json:"read"`
 	Archived   bool              `json:"archived"`
 	Cursor     string            `json:"cursor"`
@@ -69,15 +70,15 @@ type NoticeCounts struct {
 // NoticeInbox is the one-document read: vocabulary, counts, page and revision
 // together, so a client needs no second request to render its inbox.
 type NoticeInbox struct {
-	Revision      int64        `json:"revision"`
-	Audience      string       `json:"audience"`
-	Audiences     []string     `json:"audiences"`
-	State         string       `json:"state"`
-	Counts        NoticeCounts `json:"counts"`
-	Items         []Notice     `json:"items"`
-	NextCursor    string       `json:"nextCursor"`
-	ObservedAt    int64        `json:"observedAt"`
-	RetentionDays int          `json:"retentionDays"`
+	Revision      int64           `json:"revision"`
+	Audience      string          `json:"audience"`
+	Audiences     []string        `json:"audiences"`
+	State         string          `json:"state"`
+	Counts        NoticeCounts    `json:"counts"`
+	Items         []Notice        `json:"items"`
+	NextCursor    string          `json:"nextCursor"`
+	ObservedAt    apiwire.Instant `json:"observedAt"`
+	RetentionDays int             `json:"retentionDays"`
 }
 
 // NoticeQuery is the list request. Audience and State are validated against the
@@ -124,10 +125,10 @@ type NoticeBatchResult struct {
 
 // NoticeUnread is the cheap poll: two indexed counts and a revision, nothing else.
 type NoticeUnread struct {
-	Revision   int64        `json:"revision"`
-	Audience   string       `json:"audience"`
-	Counts     NoticeCounts `json:"counts"`
-	ObservedAt int64        `json:"observedAt"`
+	Revision   int64           `json:"revision"`
+	Audience   string          `json:"audience"`
+	Counts     NoticeCounts    `json:"counts"`
+	ObservedAt apiwire.Instant `json:"observedAt"`
 }
 
 // NoticeDelta is what an event stream or a long poll hands back: the records
@@ -400,7 +401,7 @@ func (s *Store) Notices(ctx context.Context, p identity.Principal, auth Authoriz
 	}
 	e = s.snapshot(ctx, auth, "", func(tx *sql.Tx) error {
 		now := s.now()
-		out.ObservedAt, out.RetentionDays = now, notify.RetentionDays(tx)
+		out.ObservedAt, out.RetentionDays = apiwire.Instant(now), notify.RetentionDays(tx)
 		where, args := noticeFilter(scopes, audiences)
 		query := `SELECT ` + noticeColumns + ` FROM notification_records WHERE expires_ms>? AND sequence<? AND ` + where + clause + ` ORDER BY sequence DESC LIMIT ?`
 		rows, err := tx.Query(query, append(append([]any{now, before}, args...), limit+1)...)
@@ -445,7 +446,7 @@ func (s *Store) NoticeSummary(ctx context.Context, p identity.Principal, auth Au
 	out.Audience = audience
 	e = s.snapshot(ctx, auth, "", func(tx *sql.Tx) error {
 		now := s.now()
-		out.ObservedAt = now
+		out.ObservedAt = apiwire.Instant(now)
 		var err error
 		if out.Counts, err = noticeCountsTx(tx, now, scopes, audiences); err != nil {
 			return err

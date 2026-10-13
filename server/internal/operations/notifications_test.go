@@ -311,7 +311,7 @@ func TestNoticeBroadcast(t *testing.T) {
 	if e != nil || len(memberInbox.Items) != 1 || memberInbox.Items[0].Source != notify.SourceBroadcast {
 		t.Fatal("broadcast did not reach a member", e, memberInbox)
 	}
-	if memberInbox.Items[0].ExpiresAt != s.now()+days(2) {
+	if int64(memberInbox.Items[0].ExpiresAt) != s.now()+days(2) {
 		t.Fatal("broadcast expiry", memberInbox.Items[0].ExpiresAt)
 	}
 	replay, e := s.BroadcastNotice(ctx, owner, auth, request)

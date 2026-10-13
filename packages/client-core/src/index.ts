@@ -1,3 +1,4 @@
+import {parseMediaItem} from './media-item.ts';
 import {parseConnectionDocument,type ConnectionDocument} from './server-administration.ts';
 import {trackName} from './presentation/language.ts';
 import {randomId} from './random-id.ts';
@@ -512,10 +513,10 @@ export class HttpLocalApi {
     if (cursor) q.set("cursor", cursor);
     return this.request<{ items: MediaItem[]; nextCursor?: string }>(
       "/v1/items?" + q
-    );
+    ).then(page=>({...page,items:page.items.map(parseMediaItem)}));
   }
   item(id: string) {
-    return this.request<MediaItem>("/v1/items/" + encodeURIComponent(id));
+    return this.request<unknown>("/v1/items/" + encodeURIComponent(id)).then(parseMediaItem);
   }
   mediaUrl(path: string) {
     if (this.routes) return this.routes.mediaURL(path);

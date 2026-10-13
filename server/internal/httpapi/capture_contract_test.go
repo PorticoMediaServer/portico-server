@@ -3,6 +3,7 @@ package httpapi
 import (
 	"encoding/json"
 	"portico.local/server/internal/apispec"
+	"portico.local/server/internal/apiwire"
 	"portico.local/server/internal/operations"
 	"testing"
 	"time"
@@ -18,7 +19,7 @@ func TestCaptureContract(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, component := range []string{"scheduler", "storage", "playback", "client", "support"} {
-		body, _ := json.Marshal(operations.Capture{IdempotencyKey: component, Component: component, ExpiresAt: now.Add(time.Hour).UnixMilli()})
+		body, _ := json.Marshal(operations.Capture{IdempotencyKey: component, Component: component, ExpiresAt: apiwire.Instant(now.Add(time.Hour).UnixMilli())})
 		valid := component == "scheduler"
 		if ok := len(doc.ValidateJSON(schema, body)) == 0; ok != valid {
 			t.Fatalf("%s schema acceptance %v", component, ok)
@@ -35,7 +36,7 @@ func TestCaptureContract(t *testing.T) {
 			assertSpecResponse(t, "POST", "/v1/admin/console/diagnostics/capture", w)
 		}
 	}
-	body, _ := json.Marshal(operations.Capture{Component: "scheduler", ExpiresAt: now.Add(time.Hour + time.Millisecond).UnixMilli()})
+	body, _ := json.Marshal(operations.Capture{Component: "scheduler", ExpiresAt: apiwire.Instant(now.Add(time.Hour + time.Millisecond).UnixMilli())})
 	if w := notificationRequest(mux, "POST", owner.AccessToken, "/v1/admin/console/diagnostics/capture", string(body)); w.Code != 400 {
 		t.Fatalf("accepted overlong capture: %d", w.Code)
 	}

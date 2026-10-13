@@ -1,6 +1,11 @@
+import {wireFixture} from './wire-fixture.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {parsePlayHistory, parsePlaySummary} from '../src/play-history.ts';
+import {parsePlayHistory as read_parsePlayHistory, parsePlaySummary as read_parsePlaySummary} from '../src/play-history.ts';
+
+const parsePlaySummary=(value:unknown,...args:any[]) => (read_parsePlaySummary as any)(wireFixture(value,{'watchedSeconds': 'watchedMs'},[]),...args);
+
+const parsePlayHistory=(value:unknown,...args:any[]) => (read_parsePlayHistory as any)(wireFixture(value,{'positionSeconds': 'positionMs', 'durationSeconds': 'durationMs'},[]),...args);
 
 const play = (id = 'play-1', patch: Record<string, unknown> = {}) => ({id, user: 'justin', accountId: 'account', kind: 'movie', title: 'Movie', libraryId: 'library', startedAt: '2026-10-02T09:08:00Z', positionSeconds: 30, durationSeconds: 60, completed: false, ...patch});
 

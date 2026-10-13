@@ -16,7 +16,7 @@ func TestCompactBrowseSortAnchorsUseMaintainedBuckets(t *testing.T) {
 		{"added", "desc", []BrowsePositionAnchor{{"2026-09", 0}}},
 		{"communityRating", "desc", []BrowsePositionAnchor{{"0", 0}}},
 		{"duration", "desc", []BrowsePositionAnchor{{"0", 0}}},
-		{"personalRating", "desc", []BrowsePositionAnchor{{"4", 0}, {"0", 1}}},
+		{"personalRating", "desc", []BrowsePositionAnchor{{"9", 0}, {"0", 1}}},
 		{"lastPlayed", "desc", []BrowsePositionAnchor{{"2026-09", 0}, {"", 1}}},
 	}
 	for _, tc := range cases {

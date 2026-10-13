@@ -548,6 +548,8 @@ export const enUS = {
   'search.chip.shows': 'Shows',
   'search.chip.episodes': 'Episodes',
   'search.chip.people': 'People',
+  'search.chip.collections': 'Collections',
+  'search.chip.authors': 'Authors',
   'search.chip.artists': 'Artists',
   'search.chip.albums': 'Albums',
   'search.chip.songs': 'Songs',

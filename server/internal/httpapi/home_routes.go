@@ -96,7 +96,7 @@ func homeAllowedQuery(r *http.Request, allowed ...string) error {
 func (d Dependencies) homeRoutes(mux *http.ServeMux) {
 
 	// CON-23: every row this viewer can arrange, empty or not, with the saved layout.
-	mux.HandleFunc("GET /v1/home/layout", func(w http.ResponseWriter, r *http.Request) {
+	d.projectedHandle(mux, "GET /v1/home/layout", func(w http.ResponseWriter, r *http.Request) {
 		if e := homeAllowedQuery(r); e != nil {
 			homeFailure(w, e)
 			return
@@ -118,13 +118,13 @@ func (d Dependencies) homeRoutes(mux *http.ServeMux) {
 		}
 		write(w, 200, out)
 	})
-	mux.HandleFunc("PUT /v1/home/layout", func(w http.ResponseWriter, r *http.Request) {
+	d.projectedHandle(mux, "PUT /v1/home/layout", func(w http.ResponseWriter, r *http.Request) {
 		d.applyHomeLayout(w, r, false)
 	})
-	mux.HandleFunc("POST /v1/home/layout/reset", func(w http.ResponseWriter, r *http.Request) {
+	d.projectedHandle(mux, "POST /v1/home/layout/reset", func(w http.ResponseWriter, r *http.Request) {
 		d.applyHomeLayout(w, r, true)
 	})
-	mux.HandleFunc("GET /v1/suggestions", func(w http.ResponseWriter, r *http.Request) {
+	d.projectedHandle(mux, "GET /v1/suggestions", func(w http.ResponseWriter, r *http.Request) {
 		if e := homeAllowedQuery(r, "limit"); e != nil {
 			homeFailure(w, e)
 			return
@@ -161,7 +161,7 @@ func (d Dependencies) homeRoutes(mux *http.ServeMux) {
 		}
 		write(w, 200, out)
 	})
-	mux.HandleFunc("GET /v1/items/{id}/recommendations", func(w http.ResponseWriter, r *http.Request) {
+	d.projectedHandle(mux, "GET /v1/items/{id}/recommendations", func(w http.ResponseWriter, r *http.Request) {
 		if e := homeAllowedQuery(r, "limit"); e != nil {
 			homeFailure(w, e)
 			return

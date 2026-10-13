@@ -260,13 +260,13 @@ components:
             retryable: { type: boolean }
     SearchGroupId:
       type: string
-      enum: [movies, shows, episodes, artists, albums, songs, books, people, live-tv]
+      enum: [movies, shows, episodes, artists, albums, songs, books, collections, authors, people, live-tv]
     ContentEntry:
       type: object
       description: A media row. People and live-tv rows carry no libraryId, availability or playback.
       required: [id, kind, title]
       properties:
-        userRating: {type: number, format: double, minimum: 0.5, maximum: 5, description: "The viewer's own rating in half steps, on item rows the viewer has rated; absent otherwise."}
+        userRating: {type: integer, minimum: 0, maximum: 10, description: "The viewer's own rating in half steps, on item rows the viewer has rated; absent otherwise."}
         plays: {type: integer, minimum: 1, description: "How many times the viewer has played a song to the end; song entries only, absent when never played."}
         id: { type: string }
         libraryId: { type: string }
@@ -276,8 +276,8 @@ components:
         posterUrl: { type: string }
         overview: { type: string, description: "Present on episode rows only; omitted from other search rows." }
         available: { type: boolean }
-        duration: { type: number }
-        progressSeconds: { type: number }
+        durationMs: { type: integer }
+        progressMs: { type: integer }
         addedAt: { type: [string, 'null'] }
         count: { type: integer }
         year: { type: integer, description: 'Release year; album entities only, absent when unknown.' }
@@ -299,7 +299,7 @@ components:
           type: object
           properties:
             itemId: { type: string }
-            startSeconds: { type: number }
+            startMs: { type: integer }
     SearchResponse:
       type: object
       required: [scope, revision, heading, query, groups, capabilities]
@@ -329,7 +329,7 @@ components:
             groups: { type: array, items: { $ref: '#/components/schemas/SearchGroupId' } }
             libraryIds: { type: array, items: { type: string } }
             limit: { type: integer }
-            searchMode: { type: string, const: token_prefix }
+            searchMode: { type: string, const: normalized_prefix }
             recorded: { type: boolean }
         groups:
           type: array

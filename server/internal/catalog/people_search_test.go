@@ -152,7 +152,7 @@ func TestSearchRelevanceRanksExactThenPrefixThenMatch(t *testing.T) {
 	}
 	r.Sort = "title"
 	out, err = s.Search(context.Background(), r)
-	if err != nil || out.Groups[0].Items[0].ID != names["late"].Public {
+	if err != nil || out.Groups[0].Items[0].ID != names["exact"].Public {
 		t.Fatal("title order", out.Groups[0].Items, err)
 	}
 	r.Sort, r.Direction = "dateAdded", "desc"

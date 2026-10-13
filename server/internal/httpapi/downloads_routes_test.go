@@ -258,7 +258,7 @@ func TestDownloadTransferSupportsRangeAndValidators(t *testing.T) {
 	// Deferred progress lands in ordinary personal state.
 	w = request("POST", "/v1/downloads/progress", auth.AccessToken, map[string]any{
 		"operationId": "op-http-4",
-		"entries":     []map[string]any{{"playId": "play-http-1", "itemId": item.Public, "positionSeconds": 12.5, "observedAt": "2026-09-14T09:12:00Z"}},
+		"entries":     []map[string]any{{"playId": "play-http-1", "itemId": item.Public, "positionMs": 12500, "observedAt": "2026-09-14T09:12:00Z"}},
 	})
 	if w.Code != 200 {
 		t.Fatalf("progress %d %s", w.Code, w.Body.String())

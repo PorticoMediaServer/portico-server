@@ -1,3 +1,4 @@
+import {wireFixture} from './wire-fixture.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { LibraryContentService, type ContentProjection, type ContentRoute, type LibraryContentApi } from '../src/library-content.ts';
@@ -10,7 +11,7 @@ function projection(path: string, changes: Record<string, unknown> = {}): any {
   return { heading: { key: 'library.title', fallback: 'Named Library' }, scope: { serverId: 'server', libraryId: decodeURIComponent(u.pathname.split('/')[3]), libraryKind: 'movie', view: u.searchParams.get('view'), entityId: u.searchParams.get('entityId') ?? '', viewerFence: 'fence' }, revision: { catalog: 3, viewer: 4 }, query: { sort: u.searchParams.get('sort') ?? 'title', direction: u.searchParams.get('direction') ?? 'asc', category: u.searchParams.get('category') ?? '', q: u.searchParams.get('q') ?? '', limit: Number(u.searchParams.get('limit')), searchMode: 'title_prefix' }, navigation: [{ id: 'discover', labelKey: 'library.discover', view: 'discover' }, { id: 'browse', labelKey: 'library.browse', view: 'browse' }], sorts: [{ id: 'title', labelKey: 'sort.title', directions: ['asc','desc'] }], filters: [{ id: 'category', labelKey: 'filter.category', options: [{ id: 'decade:1990', label: '1990s', count: 5 }] }], sections: [{ id: 'server-grid', type: 'grid', heading: { key: 'server.heading', fallback: 'Server-selected heading' }, entries: [entry()], totalCount: 1, nextCursor: '' }], ...changes };
 }
 function service(request: (path: string, signal?: AbortSignal) => Promise<unknown>, timeoutMs = 1000) {
-  return new LibraryContentService({ api: { request: <T>(path: string, _method?: string, _body?: unknown, signal?: AbortSignal) => request(path, signal) as Promise<T> }, scope, timeoutMs });
+  return new LibraryContentService({ api: { request: <T>(path: string, _method?: string, _body?: unknown, signal?: AbortSignal) => request(path, signal).then(v=>wireFixture(v,{'duration': 'durationMs', 'progressSeconds': 'progressMs', 'startSeconds': 'startMs', 'positionSeconds': 'positionMs'})) as Promise<T> }, scope, timeoutMs });
 }
 function deferred<T>() { let resolve!: (value: T) => void; const promise = new Promise<T>(r => { resolve = r; }); return { resolve, promise }; }
 

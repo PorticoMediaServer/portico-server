@@ -174,12 +174,12 @@ test('M20: anchor keys read as rail labels for every sort', () => {
 });
 
 test('facet pages keep the values they can read; the field asked for and the bound stay exact', () => {
-  const page = parseBrowseFacets({field: 'genre', values: [{value: 'Action', label: 'Action', count: 2}]}, 'genre');
+  const page = parseBrowseFacets({total: 6, field: 'genre', values: [{value: 'Action', label: 'Action', count: 2}]}, 'genre');
   assert.equal(page.values[0].count, 2);
-  assert.throws(() => parseBrowseFacets({field: 'genre', values: []}, 'year'), {code:'invalid_browse'});
-  assert.throws(() => parseBrowseFacets({field: 'genre', values: 'nope'}), {code:'invalid_browse'});
-  assert.throws(() => parseBrowseFacets({field: 'genre', values: Array.from({length: 201}, (_, i) => ({value: `v${i}`, label: 'x', count: 1}))}), {code:'invalid_browse'});
-  const loose = parseBrowseFacets({field: 'genre', future: 1, values: [{value: 'a', label: 'A', count: 1}, {value: 'a', label: 'Again', count: 2}, {label: 'no value', count: 1}, {value: 'b'}, {value: 'c', label: 'C', count: -1, future: true}, 7]});
+  assert.throws(() => parseBrowseFacets({total: 6, field: 'genre', values: []}, 'year'), {code:'invalid_browse'});
+  assert.throws(() => parseBrowseFacets({total: 6, field: 'genre', values: 'nope'}), {code:'invalid_browse'});
+  assert.throws(() => parseBrowseFacets({total: 6, field: 'genre', values: Array.from({length: 201}, (_, i) => ({value: `v${i}`, label: 'x', count: 1}))}), {code:'invalid_browse'});
+  const loose = parseBrowseFacets({total: 6, field: 'genre', future: 1, values: [{value: 'a', label: 'A', count: 1}, {value: 'a', label: 'Again', count: 2}, {label: 'no value', count: 1}, {value: 'b'}, {value: 'c', label: 'C', count: -1, future: true}, 7]});
   assert.deepEqual(loose.values, [{value: 'a', label: 'A', count: 1}, {value: 'b', label: 'b', count: 0}, {value: 'c', label: 'C', count: 0}]);
 });
 

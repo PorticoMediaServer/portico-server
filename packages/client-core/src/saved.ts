@@ -1,3 +1,4 @@
+import {wireDurations} from './wire-units.ts';
 import {unreadableServerResponse} from './server-messages.ts';
 import {firstOfEach, keepReadable, noteSkipped, oneOfOr} from './tolerant.ts';
 /** Server-owned Saved projections and playlist commands. No ranking, navigation or queue owner. */
@@ -105,6 +106,7 @@ function route(v: SavedRoute): SavedRoute {
  return freeze({ view: v.view,...(v.resourceId?{resourceId:v.resourceId}:{}), ...(v.sort === undefined ? {} : { sort: v.sort }), ...(v.direction === undefined ? {} : { direction: v.direction }), ...(v.filter === undefined ? {} : { filter: v.filter }), ...(v.period === undefined ? {} : { period: v.period }) });
 }
 function media(v: unknown): ContentEntry {
+ v=wireDurations(v,{duration:"durationMs",progressSeconds:"progressMs"});
  if (!record(v) || !id(v.id) || !id(v.libraryId) || !['movie','show','season','episode','artist','album','song','book','audiobook_file','chapter','collection','category','extra','author','book_series','disc'].includes(v.kind as string) || !text(v.title, 2048)) invalid();
  const out: Record<string, unknown> = { id: v.id, libraryId: v.libraryId, kind: v.kind, title: v.title };
  for (const key of ['subtitle','posterUrl','backdropUrl','overview']) if (v[key] !== undefined) { if (key === 'overview' ? !prose(v[key], 16384, true) : !text(v[key], 4096)) invalid(); out[key] = v[key]; }
@@ -114,7 +116,7 @@ function media(v: unknown): ContentEntry {
  if (v.addedAt !== undefined) { if (v.addedAt !== null && !text(v.addedAt, 128)) invalid(); out.addedAt = v.addedAt; }
  // A destination or a play action this app cannot read is left off; the entry is still shown.
  if (v.navigation !== undefined) { const n = v.navigation; if (!record(n) || !['item','show','season','artist','album','book','collection','browse','categories','author','book_series','disc'].includes(n.view as string) || n.entityId !== undefined && !id(n.entityId) || n.category !== undefined && !text(n.category, 256)) noteSkipped('saved', 'entry.navigation'); else out.navigation = { view: n.view, ...(n.entityId === undefined ? {} : { entityId: n.entityId }), ...(n.category === undefined ? {} : { category: n.category }) }; }
- if (v.playback !== undefined) { const p = v.playback; if (!record(p) || !id(p.itemId) || p.startSeconds !== undefined && !number(p.startSeconds) || v.available === false) noteSkipped('saved', 'entry.playback'); else out.playback = { itemId: p.itemId, ...(p.startSeconds === undefined ? {} : { startSeconds: p.startSeconds }) }; }
+ if (v.playback !== undefined) { try { const p = wireDurations(v.playback,{startSeconds:"startMs"}); if (!record(p) || !id(p.itemId) || p.startSeconds !== undefined && !number(p.startSeconds) || v.available === false) noteSkipped('saved', 'entry.playback'); else out.playback = { itemId: p.itemId, ...(p.startSeconds === undefined ? {} : { startSeconds: p.startSeconds }) }; } catch { noteSkipped('saved', 'entry.playback'); } }
  return out as ContentEntry;
 }
 function entry(v: unknown, view: SavedRoute['view']): SavedEntry {

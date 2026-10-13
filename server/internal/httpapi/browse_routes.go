@@ -93,106 +93,12 @@ func (d Dependencies) browseRoutes(mux *http.ServeMux) {
 		}
 		write(w, 200, out)
 	})
-	mux.HandleFunc("POST /v1/libraries/{id}/browse", func(w http.ResponseWriter, r *http.Request) {
-		p, ok := d.browseLibrary(w, r)
-		if !ok {
-			return
-		}
-		var body browseRequestBody
-		if e := decode(w, r, &body); e != nil {
-			failure(w, e)
-			return
-		}
-		query, e := catalog.ParseBrowseQuery(body.Query, "query")
-		if e != nil {
-			browseFailure(w, e)
-			return
-		}
-		fence, e := d.browseFence(r, p)
-		if e != nil {
-			failure(w, e)
-			return
-		}
-		restrictions, _, e := d.viewerRestrictions(r, p)
-		if e != nil {
-			failure(w, e)
-			return
-		}
-		// One read snapshot for the whole page: the count, the letter index, the
-		// anchor rank and the rows are then four views of one state rather than
-		// four consecutive states, which is what the second revision read inside
-		// browseSelect existed to detect.
-		var out catalog.BrowseResult
-		e = d.compose(r, restrictions, func(cat *catalog.Service) error {
-			var composeErr error
-			viewer := catalog.Viewer{Profile: identity.PersonalKey(p.Viewer), Fence: fence, Libraries: []string{r.PathValue("id")}, Restrictions: restrictions}
-			out, composeErr = cat.BrowseEntities(viewer, catalog.BrowseRequest{ServerID: d.Identity.ID(), Library: r.PathValue("id"), Profile: identity.PersonalKey(p.Viewer), ViewerFence: fence, Pivot: body.Pivot, Query: query, Sort: body.Sort, Limit: min(body.Limit, catalog.BrowseMaximumLimit), Cursor: body.Cursor, Range: body.Range, Seek: body.Seek, Restrictions: restrictions})
-			return composeErr
-		})
-		if e != nil {
-			browseFailure(w, e)
-			return
-		}
-		// Authorization is proven again after the read so a revocation that landed
-		// mid-request cannot be answered with catalogue facts.
-		if e = d.allowedLibrary(r.Context(), p, r.PathValue("id")); e != nil {
-			failure(w, e)
-			return
-		}
-		write(w, 200, out)
-	})
-	mux.HandleFunc("GET /v1/libraries/{id}/facets", func(w http.ResponseWriter, r *http.Request) {
-		p, ok := d.browseLibrary(w, r)
-		if !ok {
-			return
-		}
-		q := r.URL.Query()
-		for key, values := range q {
-			if (key != "field" && key != "q" && key != "limit") || len(values) != 1 {
-				failure(w, catalog.ErrCursor)
-				return
-			}
-		}
-		limit := 0
-		if q.Has("limit") {
-			parsed, e := strconv.Atoi(q.Get("limit"))
-			if e != nil || parsed < 1 {
-				failure(w, catalog.ErrCursor)
-				return
-			}
-			limit = min(parsed, 200)
-		}
-		restrictions, restrictionFence, e := d.viewerRestrictions(r, p)
-		if e != nil {
-			failure(w, e)
-			return
-		}
-		// Facet counts change only when the catalogue does, and they are already
-		// keyed on the restriction fence inside the service. The validator says
-		// the same thing to the client.
-		if revision, revisionErr := d.Catalog.WithContext(r.Context()).ContentRevision(r.PathValue("id"), identity.PersonalKey(p.Viewer)); revisionErr == nil {
-			tag := responseTag("facets", r.PathValue("id"), presentationIdentity(p), restrictionFence, q.Get("field"), q.Get("q"), strconv.Itoa(limit), number(revision.Catalog), number(revision.Viewer))
-			if conditional(w, r, tag) {
-				return
-			}
-		}
-		var out catalog.FacetPage
-		e = d.compose(r, restrictions, func(cat *catalog.Service) error {
-			var composeErr error
-			viewer := catalog.Viewer{Profile: identity.PersonalKey(p.Viewer), Fence: restrictionFence, Libraries: []string{r.PathValue("id")}, Restrictions: restrictions}
-			out, composeErr = cat.Facets(viewer, catalog.FacetRequest{Library: r.PathValue("id"), Profile: identity.PersonalKey(p.Viewer), Field: q.Get("field"), Q: q.Get("q"), Limit: limit, Restrictions: restrictions})
-			return composeErr
-		})
-		if e != nil {
-			browseFailure(w, e)
-			return
-		}
-		if e = d.allowedLibrary(r.Context(), p, r.PathValue("id")); e != nil {
-			failure(w, e)
-			return
-		}
-		write(w, 200, out)
-	})
+	if d.registry == nil {
+		mux.HandleFunc("POST /v1/libraries/{id}/browse", d.browseHandler)
+	}
+	if d.registry == nil {
+		mux.HandleFunc("GET /v1/libraries/{id}/facets", d.facetsHandler)
+	}
 	mux.HandleFunc("PUT /v1/saved-pins/order", func(w http.ResponseWriter, r *http.Request) {
 		p, _, fence, e := d.homeScope(r)
 		if e != nil {
@@ -269,4 +175,106 @@ func (d Dependencies) browseRoutes(mux *http.ServeMux) {
 		}
 		d.savedResponse(w, r, fence, out)
 	})
+}
+
+func (d Dependencies) browseHandler(w http.ResponseWriter, r *http.Request) {
+	p, ok := d.browseLibrary(w, r)
+	if !ok {
+		return
+	}
+	var body browseRequestBody
+	if e := decode(w, r, &body); e != nil {
+		failure(w, e)
+		return
+	}
+	query, e := catalog.ParseBrowseQuery(body.Query, "query")
+	if e != nil {
+		browseFailure(w, e)
+		return
+	}
+	fence, e := d.browseFence(r, p)
+	if e != nil {
+		failure(w, e)
+		return
+	}
+	restrictions, _, e := d.viewerRestrictions(r, p)
+	if e != nil {
+		failure(w, e)
+		return
+	}
+	// One read snapshot for the whole page: the count, the letter index, the
+	// anchor rank and the rows are then four views of one state rather than
+	// four consecutive states, which is what the second revision read inside
+	// browseSelect existed to detect.
+	var out catalog.BrowseResult
+	e = d.compose(r, restrictions, func(cat *catalog.Service) error {
+		var composeErr error
+		viewer := catalog.Viewer{Profile: identity.PersonalKey(p.Viewer), Fence: fence, Libraries: []string{r.PathValue("id")}, Restrictions: restrictions}
+		out, composeErr = cat.BrowseEntities(viewer, catalog.BrowseRequest{ServerID: d.Identity.ID(), Library: r.PathValue("id"), Profile: identity.PersonalKey(p.Viewer), ViewerFence: fence, Pivot: body.Pivot, Query: query, Sort: body.Sort, Limit: min(body.Limit, catalog.BrowseMaximumLimit), Cursor: body.Cursor, Range: body.Range, Seek: body.Seek, Restrictions: restrictions})
+		return composeErr
+	})
+	if e != nil {
+		browseFailure(w, e)
+		return
+	}
+	// Authorization is proven again after the read so a revocation that landed
+	// mid-request cannot be answered with catalogue facts.
+	if e = d.allowedLibrary(r.Context(), p, r.PathValue("id")); e != nil {
+		failure(w, e)
+		return
+	}
+	write(w, 200, out)
+}
+
+func (d Dependencies) facetsHandler(w http.ResponseWriter, r *http.Request) {
+	p, ok := d.browseLibrary(w, r)
+	if !ok {
+		return
+	}
+	q := r.URL.Query()
+	for key, values := range q {
+		if (key != "field" && key != "q" && key != "limit") || len(values) != 1 {
+			failure(w, catalog.ErrCursor)
+			return
+		}
+	}
+	limit := 0
+	if q.Has("limit") {
+		parsed, e := strconv.Atoi(q.Get("limit"))
+		if e != nil || parsed < 1 {
+			failure(w, catalog.ErrCursor)
+			return
+		}
+		limit = min(parsed, 200)
+	}
+	restrictions, restrictionFence, e := d.viewerRestrictions(r, p)
+	if e != nil {
+		failure(w, e)
+		return
+	}
+	// Facet counts change only when the catalogue does, and they are already
+	// keyed on the restriction fence inside the service. The validator says
+	// the same thing to the client.
+	if revision, revisionErr := d.Catalog.WithContext(r.Context()).ContentRevision(r.PathValue("id"), identity.PersonalKey(p.Viewer)); revisionErr == nil {
+		tag := responseTag("facets", r.PathValue("id"), presentationIdentity(p), restrictionFence, q.Get("field"), q.Get("q"), strconv.Itoa(limit), number(revision.Catalog), number(revision.Viewer))
+		if conditional(w, r, tag) {
+			return
+		}
+	}
+	var out catalog.FacetPage
+	e = d.compose(r, restrictions, func(cat *catalog.Service) error {
+		var composeErr error
+		viewer := catalog.Viewer{Profile: identity.PersonalKey(p.Viewer), Fence: restrictionFence, Libraries: []string{r.PathValue("id")}, Restrictions: restrictions}
+		out, composeErr = cat.Facets(viewer, catalog.FacetRequest{Library: r.PathValue("id"), Profile: identity.PersonalKey(p.Viewer), Field: q.Get("field"), Q: q.Get("q"), Limit: limit, Restrictions: restrictions})
+		return composeErr
+	})
+	if e != nil {
+		browseFailure(w, e)
+		return
+	}
+	if e = d.allowedLibrary(r.Context(), p, r.PathValue("id")); e != nil {
+		failure(w, e)
+		return
+	}
+	write(w, 200, out)
 }

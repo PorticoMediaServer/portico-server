@@ -974,7 +974,49 @@ func (s *Service) browseAggregate(request BrowseRequest, pivot browsePivot) (Bro
 		return out, err
 	}
 	out.PageInfo.Revision = revision
-	values, err := s.Facets(request.viewer, FacetRequest{Library: request.Library, Profile: request.Profile, Field: pivot.Aggregate, Limit: browseFacetLimit})
+	sorts := append([]BrowseSortSelection{}, pivot.DefaultSort...)
+	if len(request.Sort) > 0 {
+		if len(request.Sort) != 1 || request.Sort[0].Field != "title" || (request.Sort[0].Direction != "" && request.Sort[0].Direction != "asc" && request.Sort[0].Direction != "desc") {
+			return out, browseIssue("sort", "this grouping sorts by title")
+		}
+		sorts = request.Sort
+		if sorts[0].Direction == "" {
+			sorts = []BrowseSortSelection{{Field: "title", Direction: "asc"}}
+		}
+	}
+	out.Applied.Sort = sorts
+	request.Limit = pageLimit(request.Limit)
+	if request.Cursor != "" && request.Range != nil {
+		return out, browseIssue("range", "a direct range cannot include a cursor")
+	}
+	if request.Seek != nil {
+		return out, browseIssue("seek", "this grouping does not support letter seeking")
+	}
+	revision, err = s.browseRevision(request, pivot, sorts)
+	if err != nil {
+		return out, err
+	}
+	out.PageInfo.Revision = revision
+	scope := cursorScope{Library: request.Library, Viewer: request.ViewerFence, Profile: request.Profile, View: "browse:" + pivot.ID, Sort: canonicalSort(sorts), Limit: request.Limit}
+	start := 0
+	if request.Cursor != "" {
+		cursor, err := s.decodeCursor(request.Cursor, scope)
+		if err != nil {
+			return out, err
+		}
+		// A continuation from before a publication keeps its place in the
+		// list as it is now, as title lists do; it is not a conflict.
+		if start, err = strconv.Atoi(cursor.Value); err != nil || start < 0 {
+			return out, ErrCursor
+		}
+	}
+	if request.Range != nil {
+		if request.Range.Start < 0 || len(request.Range.Revision) > 128 || len(request.Range.AnchorID) > 256 {
+			return out, browseIssue("range", "range identity is invalid")
+		}
+		start = request.Range.Start
+	}
+	values, err := s.Facets(request.viewer, FacetRequest{Library: request.Library, Profile: request.Profile, Field: pivot.Aggregate, Limit: request.Limit, Offset: start, Sort: canonicalSort(sorts)})
 	if err != nil {
 		return out, err
 	}
@@ -982,6 +1024,13 @@ func (s *Service) browseAggregate(request BrowseRequest, pivot browsePivot) (Bro
 		count := value.Count
 		out.Entries = append(out.Entries, ContentEntry{ID: pivot.Aggregate + ":" + value.Value, Kind: pivot.EntityKinds[0], Title: value.Label, Count: &count, Navigation: &ContentNavigation{View: "browse", Category: pivot.Aggregate + ":" + value.Value}})
 	}
-	out.PageInfo.Total = len(out.Entries)
+	out.PageInfo.Start, out.PageInfo.Total = start, values.Total
+	if start+len(out.Entries) < values.Total {
+		out.PageInfo.HasMore = true
+		out.PageInfo.NextCursor, err = s.encodeCursor(cursorValue{Scope: scope, Value: strconv.Itoa(start + len(out.Entries)), Fingerprint: revision, Expires: time.Now().Add(BrowseCursorTTLSecond * time.Second).Unix()})
+		if err != nil {
+			return out, err
+		}
+	}
 	return out, nil
 }

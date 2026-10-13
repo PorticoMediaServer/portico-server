@@ -4,11 +4,20 @@ import (
 	"database/sql/driver"
 	"strings"
 
+	"portico.local/server/internal/facettext"
 	"portico.local/server/internal/sorttext"
 	"portico.local/server/internal/thirdparty/sqlite"
 )
 
 func init() {
+	sqlite.MustRegisterDeterministicScalarFunction("portico_search_text", 1, func(_ *sqlite.FunctionContext, args []driver.Value) (driver.Value, error) {
+		value, _ := args[0].(string)
+		return facettext.SearchDocument(value), nil
+	})
+	sqlite.MustRegisterDeterministicScalarFunction("portico_search_fold", 1, func(_ *sqlite.FunctionContext, args []driver.Value) (driver.Value, error) {
+		value, _ := args[0].(string)
+		return facettext.SearchFold(value), nil
+	})
 	sqlite.MustRegisterDeterministicScalarFunction("portico_sort_title", 3, func(_ *sqlite.FunctionContext, args []driver.Value) (driver.Value, error) {
 		title, _ := args[0].(string)
 		explicit, _ := args[1].(string)

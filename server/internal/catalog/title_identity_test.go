@@ -152,7 +152,7 @@ func TestRemovedTitleKeepsEachProfilesStateAndGetsItBack(t *testing.T) {
 	a, token := identityFile(t, c, "m", "/m/Stalker (1979).mkv", 1080)
 	film := attachMovie(t, c, "m", a, "/m/Stalker (1979).mkv", "Stalker", 1979)
 	c.Exec(`INSERT INTO catalog_external_ids(entity_id,provider,provider_kind,provider_id) VALUES(?,'tmdb','movie','1398')`, film)
-	c.Exec(`INSERT INTO personal_items(profile_id,item_id,watchlisted,favorite,rating,revision,watched,last_played_at,not_interested) VALUES('p',?,1,0,3.5,4,1,'2026-09-01T00:00:00Z',0)`, film)
+	c.Exec(`INSERT INTO personal_items(profile_id,item_id,watchlisted,favorite,rating,revision,watched,last_played_at,not_interested) VALUES('p',?,1,0,7,4,1,'2026-09-01T00:00:00Z',0)`, film)
 	c.Exec(`INSERT INTO personal_watched_intents(profile_id,item_id,watched,authored_at) VALUES('p',?,1,'2026-09-01T00:00:00.000000000Z')`, film)
 	c.Exec(`INSERT INTO progress(profile_id,item_id,position,unit,completed,playback_id) VALUES('q',?,600000,0,0,'play-1')`, film)
 	c.Exec(`INSERT INTO personal_play_counts(profile_id,item_id,plays) VALUES('p',?,3)`, film)
@@ -186,7 +186,7 @@ func TestRemovedTitleKeepsEachProfilesStateAndGetsItBack(t *testing.T) {
 	})
 	var watchlisted, watched bool
 	var rating float64
-	if err = c.DB.QueryRow(`SELECT watchlisted,watched,rating FROM personal_items WHERE profile_id='p' AND item_id=?`, back).Scan(&watchlisted, &watched, &rating); err != nil || !watchlisted || !watched || rating != 3.5 {
+	if err = c.DB.QueryRow(`SELECT watchlisted,watched,rating FROM personal_items WHERE profile_id='p' AND item_id=?`, back).Scan(&watchlisted, &watched, &rating); err != nil || !watchlisted || !watched || rating != 7 {
 		t.Fatalf("state not given back: %v %v %v %v", watchlisted, watched, rating, err)
 	}
 	if n := rows(t, c, `SELECT count(*) FROM personal_watched_intents WHERE profile_id='p' AND item_id=? AND watched=1`, back); n != 1 {

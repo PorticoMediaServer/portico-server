@@ -477,7 +477,7 @@ components:
       type: object
       required:
         [id, viewer, authority, accountId, profileId, title, mediaKind, libraryName, itemId,
-         startedAt, endedAt, durationSeconds, deliveryMode, deliveryStrategy, qualityMode, state]
+         startedAt, endedAt, durationMs, deliveryMode, deliveryStrategy, qualityMode, state]
       properties:
         id: { type: string }
         viewer: { type: string }
@@ -487,11 +487,11 @@ components:
         title: { type: string }
         libraryName: { type: string }
         itemId: { type: string, description: The item, or the channel id for a channel. }
-        startedAt: { type: integer }
+        startedAt: { type: string, format: date-time }
         endedAt:
-          type: [integer, "null"]
+          type: [string, "null"]
           description: Null while the session is still running.
-        durationSeconds: { type: [integer, "null"] }
+        durationMs: { type: [integer, "null"] }
         mediaKind:
           type: string
           description: The item's kind, or `channel` for Live TV and Library Channels (titled by the channel's name).
