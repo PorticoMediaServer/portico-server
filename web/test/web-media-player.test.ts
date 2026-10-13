@@ -143,6 +143,20 @@ test('errors: a refused stream fails at once; a media error recovers twice, then
   assert.ok(decode && decode.type === 'error' && decode.code === 'decode_error');
   hls.error({fatal: false, type: 'mediaError'});
   b.player.dispose();
+
+  // A recovered media error leaves the element paused; playback picks up again by itself.
+  const c = setup();
+  c.player.load(source({startPositionMs: 0}));
+  await settle();
+  c.video.ready(0);
+  assert.equal(c.video.paused, false);
+  c.instances[0]!.error({fatal: true, type: 'mediaError', details: 'bufferAppendError'});
+  c.video.paused = true; // the rebuild resets the element without a pause event
+  c.video.readyState = 4;
+  c.video.fire('canplay');
+  assert.equal(c.video.paused, false, 'it plays on');
+  assert.equal(c.notices.some(n => n.type === 'unsolicited'), false);
+  c.player.dispose();
 });
 
 test('a pause from outside the page is the viewer’s; the port’s own pause and the end of a title are not', async () => {

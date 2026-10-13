@@ -575,7 +575,14 @@ export class WebMediaPlayer implements MediaPlayer {
     if (!this.active() || this.suspended) return;
     this.attempt();
     this.finish();
-    if (this.state !== 'loading' || this.target) return;
+    if (this.target) return;
+    if (this.state !== 'loading') {
+      // Media came back after the engine rebuilt its buffers (a recovered media error): the
+      // element is left paused by that, and nothing else would start it again. A pause the viewer
+      // made from outside is not undone here: it already changed what this port means.
+      if (this.wantPlaying && this.video.paused && this.state !== 'error' && this.state !== 'ended') this.reconcile();
+      return;
+    }
     this.started = true;
     this.reconcile();
   }
