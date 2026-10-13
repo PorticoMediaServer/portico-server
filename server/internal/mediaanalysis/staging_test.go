@@ -55,10 +55,15 @@ func TestAnalysisPreviewCapturesCloseWithoutEarlyPublication(t *testing.T) {
 	for _, a := range out.Artifacts {
 		kinds[a.Kind]++
 	}
-	// Frames, one partial sprite sheet and the set descriptor are all produced
-	// inside the same decode, and none may be published before retirement.
-	if !retired || kinds["trickplay"] != 16 || kinds[trickplaySheetKind] != 1 || kinds[trickplayDescriptorKind] != 1 || len(out.Artifacts) != 18 {
+	// The sixteen frames go straight into one sprite sheet (a frame is no
+	// longer kept as an image of its own); the sheet and the set descriptor are
+	// produced inside the same decode, and neither may be published before
+	// retirement.
+	if !retired || kinds["trickplay"] != 0 || kinds[trickplaySheetKind] != 1 || kinds[trickplayDescriptorKind] != 1 || len(out.Artifacts) != 2 {
 		t.Fatal("incomplete producer", kinds)
+	}
+	if summary, ok := out.Summary.(trickplaySummary); !ok || summary.FrameCount != 16 {
+		t.Fatalf("the sheet does not hold the sixteen frames decoded: %+v", out.Summary)
 	}
 	for _, a := range out.Artifacts {
 		// Resume would fail if the original capture still held a writer descriptor.
