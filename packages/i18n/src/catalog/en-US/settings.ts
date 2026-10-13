@@ -359,7 +359,7 @@ export const settingsMessages = {
   'server.live.onlyGroupsHelp': 'Type a group’s name exactly as the playlist has it. Leave the list empty to bring in every group.',
   'server.live.onlyChannels': 'Only these channels',
   'server.live.onlyChannelsHelp': 'Type a channel’s ID exactly as the playlist has it. Leave the list empty to bring in every channel.',
-  'server.live.skippedBoth': '{channels, plural, one {# channel} other {# channels}} and {programmes, plural, one {# program} other {# programs}} were left out.',
+  'server.live.skippedBoth': '{channels, plural, one {# channel} other {# channels}} and {programs, plural, one {# program} other {# programs}} were left out.',
   'server.live.skippedChannels': '{count, plural, one {# channel was} other {# channels were}} left out.',
   'server.live.skippedProgrammes': '{count, plural, one {# program was} other {# programs were}} left out.',
   'server.live.adjusted': '{count, plural, one {# program’s time was} other {# programs’ times were}} adjusted.',

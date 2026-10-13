@@ -1329,7 +1329,7 @@ export const enUS = {
   'downloads.reason.artifact_changed': 'The file on the server changed. Download it again.',
   'downloads.reason.verification_failed': 'The file arrived damaged. Download it again.',
   'downloads.reason.retention_expired': 'The server stopped keeping this ready because it wasn’t fetched in time. Ask for it again.',
-  'downloads.reason.cancelled': 'Cancelled.',
+  'downloads.reason.cancelled': 'Canceled.',
   'downloads.reason.removed': 'Removed.',
   'downloads.reason.preparation_failed': 'The server couldn’t get this ready. Try again.',
   'downloads.reason.account_disabled': 'This account is no longer active on the server.',

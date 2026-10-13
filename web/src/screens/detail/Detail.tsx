@@ -164,6 +164,7 @@ export function DetailScreen() {
   const [allPeople, setAllPeople] = useState(false);
   const [choice, setChoice] = useState<PlaybackChoice>({});
   const [splitting, setSplitting] = useState<{file: TitleFile; summary: string}>();
+  const editions = useMemo(() => Object.fromEntries((data?.files ?? []).filter(file => file.edition).map(file => [file.id, file.edition!])), [data?.files]);
   useEffect(() => { setAllPeople(false); setChoice({}); setSplitting(undefined); }, [itemId]);
   // The detail carries the cast's first page and the key crew; the rest of
   // either group pages in as its row scrolls (nothing is cut off).
@@ -226,7 +227,7 @@ export function DetailScreen() {
           tagline={data?.facts?.tagline}
           synopsis={item?.overview}
           credits={creditLines}
-          choices={item && library && play?.playback ? <PlaybackChoices libraryId={library} itemId={play.playback.itemId} onChange={setChoice} /> : undefined}
+          choices={item && library && play?.playback ? <PlaybackChoices libraryId={library} itemId={play.playback.itemId} onChange={setChoice} editions={editions} /> : undefined}
           primary={item && play?.playback ? {label: resume ? (remaining ? t('title.resumeRemaining', {remaining}) : t('entry.resume')) : t('action.play'), onClick: () => playWithChoice(play.playback!.startSeconds), progress: resume && item.duration ? item.progressSeconds / item.duration : undefined} : undefined}
           secondary={item ? (
             <div className={s.actionsRow} ref={actionsRow}>

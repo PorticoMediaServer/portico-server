@@ -18,7 +18,7 @@ export function importSkipped(t: Translate, has: Has, diagnostics: unknown): Imp
   const channels = count(d.skippedChannels), programmes = count(d.skippedProgrammes), adjusted = count(d.adjustedProgrammes);
   if (!channels && !programmes && !adjusted) return undefined;
   const parts = [
-    channels && programmes ? t('server.live.skippedBoth', {channels, programmes}) : channels ? t('server.live.skippedChannels', {count: channels}) : programmes ? t('server.live.skippedProgrammes', {count: programmes}) : '',
+    channels && programmes ? t('server.live.skippedBoth', {channels, programs: programmes}) : channels ? t('server.live.skippedChannels', {count: channels}) : programmes ? t('server.live.skippedProgrammes', {count: programmes}) : '',
     adjusted ? t('server.live.adjusted', {count: adjusted}) : '',
   ].filter(Boolean);
   const reasons: string[] = [];
