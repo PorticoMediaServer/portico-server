@@ -1,8 +1,10 @@
-import {useCallback, useMemo, useSyncExternalStore} from 'react';
-import type {BrowseSortSelection} from '@core/browse.ts';
+import {useCallback, useEffect, useMemo, useState, useSyncExternalStore} from 'react';
+import {parseBrowseResult, type BrowseNode, type BrowseSortSelection} from '@core/browse.ts';
 import {BROWSE_PAGE, decodePredicates, encodePredicates, useBrowseCapabilities, useBrowseCollection, useShuffled, type Predicate} from './browse';
-import type {GroupSpec} from './group-spec.ts';
-export {entityGroups, itemPivot, titlePivot, type GroupOrder, type GroupSpec} from './group-spec.ts';
+import type {GroupLibrary, GroupSpec} from './group-spec.ts';
+import {useLibrariesContext} from './libraries';
+import {useSession} from './session';
+export {entityGroups, itemPivot, spanningGroup, titlePivot, type GroupLibrary, type GroupOrder, type GroupSpec} from './group-spec.ts';
 
 /**
  * The library's sort and filter controls on a group of titles: a collection, an artist's albums,
@@ -37,8 +39,10 @@ export function useGroupBrowse(spec: GroupSpec | undefined, choice: GroupChoice,
   const filtered = predicates.length > 0;
   // The page's own list stands until something is chosen that it cannot show.
   const sameAsOpening = !!chosen && chosen.field === opening.field && chosen.direction === opening.direction;
-  const active = !!spec && !!capabilities && (filtered || (!!chosen && (!!spec.own || !sameAsOpening)));
-  const ownSelected = !!spec?.own && !chosen && !filtered;
+  const active = !!spec && !!capabilities && (!!spec.always || filtered || (!!chosen && (!!spec.own || !sameAsOpening)));
+  const ownSelected = !!spec?.own && !spec.always && !chosen && !filtered;
+  // One library's part of a wider list has nothing to show until that library's vocabulary has been read.
+  const pending = !!spec?.always && !capabilities && !error;
   const browse = useBrowseCollection({libraryId: spec?.libraryId, pivot: spec?.pivot, base: spec?.base, predicates, sort, enabled: active, pageSize: capabilities ? Math.min(BROWSE_PAGE, capabilities.queryLimits.maximumLimit) : undefined});
   const total = useSyncExternalStore(browse.collection?.subscribe ?? noSubscribe, () => browse.collection?.getSnapshot().total);
   const setPredicates = useCallback((next: readonly Predicate[]) => onChoice({...choice, filters: encodePredicates(next)}), [choice, onChoice]);
@@ -46,6 +50,30 @@ export function useGroupBrowse(spec: GroupSpec | undefined, choice: GroupChoice,
   /** Back to the page's own order (filters stay as they are). */
   const ownOrder = useCallback(() => onChoice({filters: choice.filters}), [choice.filters, onChoice]);
   const clearFilters = useCallback(() => onChoice({...choice, filters: undefined}), [choice, onChoice]);
-  return {spec, capabilities, error, predicates, sort, opening, filtered, active, ownSelected, collection: active ? browse.collection : undefined, refresh: browse.refresh, total: active ? total : undefined, setPredicates, setSort, ownOrder, clearFilters};
+  return {spec, capabilities, error, predicates, sort, opening, filtered, active, pending, ownSelected, collection: active ? browse.collection : undefined, refresh: browse.refresh, total: active ? total : undefined, setPredicates, setSort, ownOrder, clearFilters};
 }
 export type GroupBrowse = ReturnType<typeof useGroupBrowse>;
+
+/**
+ * Which libraries hold part of a list that spans them (a person's titles, a playlist, My List),
+ * and how much: one small read per library the viewer has, asked once when the page opens. A
+ * library whose vocabulary cannot express the list (a person in a music library) is left out.
+ */
+export function useGroupLibraries(base: readonly BrowseNode[] | undefined, pivotOf: (libraryKind: string) => string | undefined): {libraries: readonly GroupLibrary[]; ready: boolean} {
+  const {api} = useSession();
+  const {items} = useLibrariesContext();
+  const key = base ? JSON.stringify([base, items.map(library => library.id)]) : '';
+  const [state, setState] = useState<{key: string; libraries: readonly GroupLibrary[]}>({key: '', libraries: []});
+  useEffect(() => {
+    if (!base || !key) return;
+    let live = true;
+    const candidates = items.flatMap(library => { const pivot = pivotOf(library.kind); return pivot ? [{id: library.id, name: library.name, kind: library.kind, pivot}] : []; });
+    void Promise.all(candidates.map(library => api.request<unknown>(`/v1/libraries/${encodeURIComponent(library.id)}/browse`, 'POST', {pivot: library.pivot, query: {all: base}, limit: 1}).then(
+      raw => { try { return {...library, total: parseBrowseResult(raw).pageInfo.total}; } catch { return {...library, total: 0}; } },
+      () => ({...library, total: 0}),
+    ))).then(found => { if (live) setState({key, libraries: found.filter(library => library.total > 0)}); });
+    return () => { live = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [api, key]);
+  return state.key === key && key ? {libraries: state.libraries, ready: true} : {libraries: [], ready: false};
+}

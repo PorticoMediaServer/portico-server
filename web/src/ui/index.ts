@@ -15,7 +15,7 @@ export {Dialog} from './Dialog';
 export {Menu, Popover, Tooltip, AnchoredMenu, MenuHeading, MenuRow, MenuSeparator, anchorOf, anchorAt, type MenuItem, type MenuAnchor} from './Menu';
 export {Input, PasswordInput, TextArea, Select, Switch, Checkbox} from './Field';
 export {PasswordStrength} from './PasswordStrength';
-export {Notice, Skeleton, StateView, Badge, ProgressBar, Spinner, Loading, KeyValue, StatusScreen, type Tone} from './Feedback';
+export {Notice, Toast, Skeleton, StateView, Badge, ProgressBar, Spinner, Loading, KeyValue, StatusScreen, type Tone} from './Feedback';
 export {Page, PageHeader, Section, Inset, Stack, Row, Surface, Divider} from './Page';
 export {SettingsPage, SettingsGroup, SettingsRow, SettingsActions, Freshness, PageRefresh, PageRefreshControl, relative, Table, tableCell, Status, Metric, MetricGrid, ConfirmDialog, type StatusTone} from './Settings';
 export {useCompact, useNarrow, useHoverCapable, usePrefersReducedMotion} from './viewport';

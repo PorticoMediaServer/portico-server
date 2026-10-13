@@ -11,7 +11,7 @@ import {usePlayerActions} from '../../player/PlayerContext';
 import {useDVRClient} from '../live/guide';
 import {createNowStore, type NowStore} from '../live/now-store';
 import {DVRView} from '../live/DVR';
-import {Artwork, Badge, Button, Chip, Chips, Dialog, Icon, IconButton, Menu, Notice, Page, PageHeader, Segmented, Select, Skeleton, StateView, Text, cx, useArtworkUrl, useCompact, useHoverCapable, type MenuItem} from '../../ui';
+import {Artwork, Badge, Button, Chip, Chips, Dialog, Icon, IconButton, Menu, Notice, Page, PageHeader, Segmented, Select, Skeleton, StateView, Text, Toast, cx, useArtworkUrl, useCompact, useHoverCapable, type MenuItem} from '../../ui';
 import s from './Channels.module.css';
 import {dvrPaddings, dvrLimits} from '../live/dvr-groups';
 
@@ -292,7 +292,7 @@ function GuideScreen({entry, name, library, sources, picker, search}: {entry: st
       </div>
       {timeline ? <ChannelTimeline channel={timeline} format={format} range={range} loadPrograms={loadPrograms} showSource={entry === ALL} sources={sources} onOpen={setSelection} onWatch={watch} onClose={() => setTimeline(null)} /> : null}
       {selection ? <ProgramSheet selection={selection} format={format} sources={sources} showSource={entry === ALL} onClose={() => setSelection(null)} onWatch={watch} onChanged={() => (forgetGuideReads(), store.invalidate())} onFavorite={c => void setPreference(c, {favorite: !c.favorite, hidden: legacyChannel(c)?.hidden ?? false})} /> : null}
-      {toast ? <div className={s.toast} role="status">{toast.text}{toast.action ? <Button size="sm" variant="secondary" label={toast.action.label} onClick={toast.action.onClick} /> : null}</div> : null}
+      {toast ? <Toast action={toast.action}>{toast.text}</Toast> : null}
     </Page>
   );
 }
@@ -982,12 +982,12 @@ export function ChannelReminders() {
   useEffect(() => { if (!due) return; const id = setTimeout(() => setDue(null), 60_000); return () => clearTimeout(id); }, [due]);
   if (!due) return null;
   return (
-    <div className={s.toast} role="status">
+    <Toast>
       <Icon name="bell" size={16} />
       {t('guide.reminder', {title: due.title, channel: due.channelName})}
       <Button size="sm" variant="primary" label={t('channels.watch')} onClick={() => { setDue(null); void navigate({to: '/channels'}); }} />
       <IconButton name="close" label={t('action.dismiss')} variant="ghost" size="sm" onClick={() => setDue(null)} />
-    </div>
+    </Toast>
   );
 }
 

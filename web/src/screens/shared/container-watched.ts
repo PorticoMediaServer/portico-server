@@ -1,5 +1,6 @@
-import {useCallback, useEffect, useState} from 'react';
-import {containerCarries, getContainerState, setContainerFlag, setContainerState, undoContainerState, type ContainerFlag, type ContainerKind, type ContainerState} from '@core/container-state.ts';
+import {useCallback, useEffect, useRef, useState} from 'react';
+import {CONTAINER_MARKED, announceWatchedMark} from '../../app/watched-mark';
+import {containerCarries, getContainerState, setContainerFlag, setContainerState, type ContainerFlag, type ContainerKind, type ContainerState} from '@core/container-state.ts';
 
 type WatchedApi = {request<T>(path: string, method?: string, body?: unknown, signal?: AbortSignal): Promise<T>};
 
@@ -16,8 +17,6 @@ export type ContainerWatched = Readonly<{
   saving: boolean;
   error: {code: string} | null;
   refresh: () => void;
-  /** Puts back what a mark just changed (each title's own watched state and place), while the server still offers it: about thirty seconds. */
-  undo: () => Promise<boolean>;
   /** Writes the default; rereads first on a 409 revision_mismatch. */
   setWatched: (watched: boolean) => Promise<boolean>;
   /** Whether this kind carries the flag (Watchlist: shows; Favorite: shows, albums, books, artists). */
@@ -31,7 +30,7 @@ export type ContainerWatched = Readonly<{
  * visible-member counts), written as fenced intents, and its Watchlist and
  * Favorite flags, so a show's action row is a movie's.
  */
-export function useContainerWatched(api: WatchedApi | null, kind: ContainerKind | undefined, containerId: string | undefined): ContainerWatched {
+export function useContainerWatched(api: WatchedApi | null, kind: ContainerKind | undefined, containerId: string | undefined, options: {/** The title's name. With it, a watched mark made here is offered for Undo (the shell's toast) for as long as the server takes it back. */ title?: string; /** The state moved (a mark here, an Undo, a mark from a card's menu): what the screen shows of it should be read again. */ onChanged?: () => void} = {}): ContainerWatched {
   const [state, setState] = useState<ContainerState | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -53,6 +52,25 @@ export function useContainerWatched(api: WatchedApi | null, kind: ContainerKind 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [api, kind, containerId, ticket]);
   const refresh = useCallback(() => setTicket(t => t + 1), []);
+  // A mark or an Undo made anywhere for this title (its page, a card's menu, the Undo toast) is read
+  // again here, so counts and the button follow, and the screen is told to re-read what it lists.
+  const latest = useRef(options);
+  latest.current = options;
+  useEffect(() => {
+    if (!ready) return;
+    const on = (event: Event) => {
+      const detail = (event as CustomEvent<{kind?: string; id?: string}>).detail;
+      if (!detail?.kind || !detail.id) return;
+      const mine = detail.kind === kind && detail.id === containerId;
+      // A show's mark moves its seasons' counts and a season's moves its show's: those are read again too.
+      const related = !mine && (kind === 'show' || kind === 'season') && (detail.kind === 'show' || detail.kind === 'season');
+      if (!mine && !related) return;
+      setTicket(t => t + 1);
+      if (mine) latest.current.onChanged?.();
+    };
+    window.addEventListener(CONTAINER_MARKED, on);
+    return () => window.removeEventListener(CONTAINER_MARKED, on);
+  }, [ready, kind, containerId]);
   const setWatched = useCallback(async (watched: boolean) => {
     if (!ready) return false;
     setSaving(true);
@@ -71,26 +89,11 @@ export function useContainerWatched(api: WatchedApi | null, kind: ContainerKind 
       }
       setState(next);
       setSaving(false);
+      // Tells every screen holding this title, and offers Undo with the mark's own receipt.
+      announceWatchedMark(api!, kind!, containerId!, latest.current.title ?? '', next);
       return true;
     } catch (e) {
       setError({code: (e as {code?: string})?.code ?? 'request_failed'});
-      setSaving(false);
-      return false;
-    }
-  }, [api, kind, containerId, ready, state]);
-  const undo = useCallback(async () => {
-    if (!ready || !state?.undoToken) return false;
-    setSaving(true);
-    setError(null);
-    try {
-      const next = await undoContainerState(api!, kind!, containerId!, {expectedRevision: state.revision, undoToken: state.undoToken});
-      setState(next);
-      setSaving(false);
-      return true;
-    } catch (e) {
-      // Too late, or something changed since: the offer is gone and the mark stands.
-      setError({code: (e as {code?: string})?.code ?? 'request_failed'});
-      setState(current => (current ? {...current, undoToken: undefined, undoUntil: undefined} : current));
       setSaving(false);
       return false;
     }
@@ -112,5 +115,5 @@ export function useContainerWatched(api: WatchedApi | null, kind: ContainerKind 
       return false;
     }
   }, [api, kind, containerId, ready, state]);
-  return {state, loading, saving, error, refresh, setWatched, undo, carries, setFlag};
+  return {state, loading, saving, error, refresh, setWatched, carries, setFlag};
 }

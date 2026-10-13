@@ -52,6 +52,8 @@ export function EntryActionsSheet() {
   );
 }
 
+const ITEM_KINDS: ReadonlySet<string> = new Set(['movie', 'episode', 'song', 'audiobook_file', 'extra']);
+
 function Body({entry, origin, onDone}: {entry: ContentEntry; origin?: EntryOrigin; onDone: () => void}) {
   const {api, session, owner} = useSession();
   const viewer = recommendationViewer(useViewerScope());
@@ -63,12 +65,14 @@ function Body({entry, origin, onDone}: {entry: ContentEntry; origin?: EntryOrigi
   const open = useOpenEntry();
   const together = useGroupActions();
   const navigate = useNavigate();
-  const target = entry.libraryId && entry.id ? {libraryId: entry.libraryId, itemId: entry.id} : null;
+  // Only something that plays by itself has a detail to read; a show, an album, an artist or a collection keeps its state on its own route (below).
+  const target = entry.libraryId && entry.id && ITEM_KINDS.has(entry.kind) ? {libraryId: entry.libraryId, itemId: entry.id} : null;
   const {snapshot, mutate, refresh: refreshDetail} = useDetail(target);
   const data = snapshot.data;
   const personal = data?.personal;
   const has = (id: string) => data?.actions.some(a => a.id === id && a.enabled) ?? false;
-  const loadingDetail = !data && snapshot.phase !== 'error';
+  // Nothing is on its way for an entry with no library to read it from: its rows are not held back.
+  const loadingDetail = !!target && !data && snapshot.phase !== 'error';
   const [mode, setMode] = useState<'actions' | 'playlist' | 'collection'>('actions');
   const [notice, setNotice] = useState<string>();
   // WEB-DL-01: Download… only when the server offers at least one way to download this item.
@@ -96,8 +100,10 @@ function Body({entry, origin, onDone}: {entry: ContentEntry; origin?: EntryOrigi
   const containerId = containerKind && entry.navigation?.entityId ? entry.navigation.entityId : undefined;
   // A show, season, album, book or artist keeps its own personal state (the watched default,
   // Watchlist, Favorite) on the container route; item kinds keep the detail intent.
-  const containerWatched = useContainerWatched(api, containerId ? containerKind : undefined, containerId);
+  const containerWatched = useContainerWatched(api, containerId ? containerKind : undefined, containerId, {title: entry.title});
   const container = containerId;
+  // My List, Favorite and Watched wait for the state they toggle: the title's own for a show, season, album, book or artist; the item's detail otherwise.
+  const personalPending = container ? !containerWatched.state && !containerWatched.error : loadingDetail;
   const containerDownloadKind = containerKind === 'show' || containerKind === 'season' || containerKind === 'album' || containerKind === 'book' ? containerKind : undefined;
   // CON-24: one shared model decides the menu's order, groups, labels and glyphs.
   const groups = useMemo(() => entryActions({
@@ -138,7 +144,8 @@ function Body({entry, origin, onDone}: {entry: ContentEntry; origin?: EntryOrigi
       case 'addToGroupQueue': void together.service?.queueAdd([entry.playback!.itemId]).then(ok => setNotice(i18n.t(ok ? 'entry.addedToGroupQueue' : 'entry.groupQueueFailed'))); return;
       case 'watchlist': if (container) void containerWatched.setFlag('watchlisted', !containerWatched.state?.watchlisted); else mutate({action: 'watchlist', value: !personal?.watchlisted}); return;
       case 'favorite': if (container) void containerWatched.setFlag('favorite', !containerWatched.state?.favorite); else mutate({action: 'favorite', value: !personal?.favorite}); return;
-      case 'watched': if (container && containerKind) { void containerWatched.setWatched(!(containerWatched.state?.watched ?? false)); } else mutate({action: 'watched', value: !personal?.watched}); return;
+      // A whole show, season, album or book: the menu closes on the mark, and Undo is offered where the person still is (the shell's toast).
+      case 'watched': if (container && containerKind) { void containerWatched.setWatched(!(containerWatched.state?.watched ?? false)).then(done => { if (done) onDone(); }); } else mutate({action: 'watched', value: !personal?.watched}); return;
       case 'removeFromContinueWatching': {
         if (!personal) return;
         const removal: ContinueRemoval = {itemId: entry.id, title: entry.title, phase: 'pending', undo: async () => {}};
@@ -175,7 +182,7 @@ function Body({entry, origin, onDone}: {entry: ContentEntry; origin?: EntryOrigi
       {groups.map((group, g) => (
         <React.Fragment key={group.id}>
           {g > 0 ? <MenuSeparator /> : null}
-          {group.actions.map(action => <MenuRow key={action.id} disabled={loadingDetail && ((group.id === 'personal' && action.id !== 'notInterested') || action.id === 'addToCollection')} icon={action.icon} label={i18n.t(action.label)} destructive={action.destructive} trailingIcon={action.id === 'addToPlaylist' || action.id === 'addToCollection' ? 'forward' : undefined} onSelect={() => run(action.id)} />)}
+          {group.actions.map(action => <MenuRow key={action.id} disabled={(group.id === 'personal' && action.id !== 'notInterested' && personalPending) || (action.id === 'addToCollection' && loadingDetail)} icon={action.icon} label={i18n.t(action.label)} destructive={action.destructive} trailingIcon={action.id === 'addToPlaylist' || action.id === 'addToCollection' ? 'forward' : undefined} onSelect={() => run(action.id)} />)}
           {group.id === 'play' && startGroup ? <MenuRow icon="people" label={i18n.t('entry.group.together')} onSelect={() => { setPendingTogether({itemId: entry.playback!.itemId, title: entry.title}); void navigate({to: '/together'}); onDone(); }} /> : null}
         </React.Fragment>
       ))}

@@ -6,6 +6,7 @@ import {currentAccessToken, sessionIdentity, useSession} from '../app/session';
 import {LibrariesContext, useLibraries, libraryKindLabel} from '../app/libraries';
 import {useViewerScope} from '../app/viewer-scope';
 import {NotInterestedNotice} from '../app/not-interested-notice';
+import {WatchedMarkToast} from '../screens/shared/WatchedUndo';
 import {useSidebarScans} from '../app/library-scan';
 import {usePreferences} from '../app/preferences';
 import {ArtworkContext, ArtworkStore, Avatar, BrandMark, Button, cx, Dialog, Icon, IconButton, ListRow, Menu, Popover, Text, Tooltip, useCompact, useHoverCapable, useNarrow, Wordmark, type IconName} from '../ui';
@@ -189,6 +190,7 @@ export function Shell() {
           </div>
           {compact ? <BottomBar /> : null}
         </div>
+        <WatchedMarkToast />
         <LazyPlayerSurface />
         <LazyEntryActions />
         <LazySelectionBar />

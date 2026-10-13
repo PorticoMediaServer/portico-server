@@ -27,6 +27,19 @@ export function Notice({tone = 'info', title, children, action, secondaryAction,
   );
 }
 
+/**
+ * A brief message at the bottom of the window, over whatever is on screen: what just happened,
+ * with one action where there is one (Undo). The caller decides how long it stays.
+ */
+export function Toast({children, action}: {children: React.ReactNode; action?: {label: string; onClick: () => void; loading?: boolean}}) {
+  return (
+    <div className={s.toast} role="status">
+      {children}
+      {action ? <Button size="sm" variant="secondary" label={action.label} onClick={action.onClick} loading={action.loading} /> : null}
+    </div>
+  );
+}
+
 export function Skeleton({width, height, radius, className, style}: {width?: number | string; height?: number | string; radius?: number | string; className?: string; style?: React.CSSProperties}) {
   return <div className={cx(s.skeleton, className)} aria-hidden style={{width, height, borderRadius: radius, ...style}} />;
 }

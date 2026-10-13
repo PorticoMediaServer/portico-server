@@ -1,13 +1,13 @@
-import React, {useSyncExternalStore} from 'react';
+import React, {useMemo, useSyncExternalStore} from 'react';
 import type {ContentEntry} from '@core/library-content.ts';
-import type {GroupBrowse} from '../../app/group-browse';
+import type {GroupBrowse, GroupLibrary} from '../../app/group-browse';
 import {listWindowKey} from '../../app/list-position';
 import {useViewerScope} from '../../app/viewer-scope';
 import {ErrorNotice, ErrorState} from '../../app/errors';
 import {useI18n} from '../../app/i18n';
 import {BrowseBar} from '../library/BrowseFilters';
 import {EngineResults} from '../library/EngineResults';
-import {Inset, StateView, WindowedGrid} from '../../ui';
+import {Chip, Chips, Inset, StateView, WindowedGrid} from '../../ui';
 
 /**
  * The library's toolbar on a group page (a collection, an artist's albums, an album's songs, a
@@ -18,10 +18,18 @@ import {Inset, StateView, WindowedGrid} from '../../ui';
  */
 export function GroupBar({group, total}: {group: GroupBrowse; /** The page's own count, shown while its own list stands. */ total?: number}) {
   const {t} = useI18n();
-  const {spec, capabilities} = group;
+  const {spec} = group;
+  // What the group already is (Favorites, this collection) is not offered again as a filter on it.
+  const capabilities = useMemo(() => {
+    const full = group.capabilities;
+    if (!full || !spec) return undefined;
+    const fixed = new Set(spec.base.flatMap(node => ('field' in node ? [node.field] : [])));
+    if (!fixed.size) return full;
+    return {...full, fields: full.fields.filter(field => !fixed.has(field.id)), quickFilters: full.quickFilters.filter(quick => !('field' in quick.query && fixed.has(quick.query.field)))};
+  }, [group.capabilities, spec]);
   if (!spec || !capabilities) return null;
   // The page's own order cannot be kept through a filter (the server orders what it filters), so it is offered only while nothing is filtered.
-  const ownOrder = spec.own && !group.filtered ? {label: t('web.group.ownOrder', {group: spec.own}), selected: group.ownSelected, onSelect: group.ownOrder} : undefined;
+  const ownOrder = spec.own && !spec.always && !group.filtered ? {label: t('web.group.ownOrder', {group: spec.own}), selected: group.ownSelected, onSelect: group.ownOrder} : undefined;
   return <BrowseBar libraryId={spec.libraryId} libraryKind={spec.libraryKind} pivot={spec.pivot} capabilities={capabilities} predicates={group.predicates} onChange={group.setPredicates} sort={group.sort} onSort={group.setSort} defaultSort={group.opening} ownOrder={ownOrder} total={group.total ?? total} />;
 }
 
@@ -89,3 +97,19 @@ export function GroupRows({group, label, estimateRowHeight, columnMin, className
 }
 
 const noSubscribe = () => () => {};
+
+/**
+ * A list that spans libraries is sorted and filtered one library at a time: these chips pick the
+ * library ("All libraries" is the page's own list). Shown only when more than one library holds
+ * part of the list.
+ */
+export function GroupLibraryChips({libraries, value, onChange}: {libraries: readonly GroupLibrary[]; value: string | undefined; onChange: (libraryId: string | undefined) => void}) {
+  const {t} = useI18n();
+  if (libraries.length < 2) return null;
+  return (
+    <Chips>
+      <Chip label={t('web.group.allLibraries')} pressed={!value} onClick={() => onChange(undefined)} />
+      {libraries.map(library => <Chip key={library.id} label={library.name} count={library.total} pressed={value === library.id} onClick={() => onChange(library.id)} />)}
+    </Chips>
+  );
+}

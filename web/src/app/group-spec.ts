@@ -15,7 +15,26 @@ export type GroupSpec = Readonly<{
   own?: GroupOrder;
   /** The server sort the page's own list is already in (an album's track numbers): the group opens on it. */
   opening?: BrowseSortSelection;
+  /** The page has no list of its own for this group (one library's part of a list that spans several): it is always the browse engine's. */
+  always?: boolean;
 }>;
+
+/** One library's part of a list that spans libraries (a person's titles, a playlist, My List), with how many it holds. */
+export type GroupLibrary = Readonly<{id: string; name: string; kind: string; pivot: string; total: number}>;
+
+/**
+ * Sort and filters are a library's: its vocabulary, its values. A list that spans libraries is
+ * therefore sorted and filtered one library at a time.
+ * - Held by one library only: that library's toolbar sits on the page's own list.
+ * - Held by several: the viewer picks a library (`chosen`) and gets its toolbar over that library's
+ *   part; with none picked the page's own list stands as it is, with no toolbar.
+ */
+export function spanningGroup(libraries: readonly GroupLibrary[], chosen: string | undefined, base: readonly BrowseNode[], own: GroupOrder): Readonly<{spec?: GroupSpec; /** Offer the libraries to pick from. */ choose: boolean; chosen?: string}> {
+  if (libraries.length === 1) { const only = libraries[0]!; return {spec: {libraryId: only.id, libraryKind: only.kind, pivot: only.pivot, base, own}, choose: false}; }
+  const picked = libraries.find(library => library.id === chosen);
+  if (!picked) return {choose: libraries.length > 1};
+  return {spec: {libraryId: picked.id, libraryKind: picked.kind, pivot: picked.pivot, base, always: true}, choose: true, chosen: picked.id};
+}
 
 /** The pivot that lists a library's titles themselves: what a collection or a person's page is made of. */
 export function titlePivot(libraryKind: string): string | undefined {

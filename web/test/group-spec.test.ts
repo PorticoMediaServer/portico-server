@@ -55,3 +55,28 @@ test('a library tab with no filters still sends no query', async () => {
   await browsePageSource(api, {libraryId: 'lib', pivot: 'songs', predicates: []})(0, 60, new AbortController().signal);
   assert.equal('query' in (sent[0] as object), false);
 });
+
+import {spanningGroup} from '../src/app/group-spec.ts';
+
+const films = {id: 'films', name: 'Films', kind: 'movie', pivot: 'movies', total: 8};
+const shows = {id: 'tv', name: 'Television', kind: 'tv', pivot: 'shows', total: 3};
+const personBase = [{field: 'person', operator: 'equals' as const, value: 'p1'}];
+
+test('a list held by one library takes that library\'s toolbar on its own list', () => {
+  assert.deepEqual(spanningGroup([films], undefined, personBase, 'default'), {spec: {libraryId: 'films', libraryKind: 'movie', pivot: 'movies', base: personBase, own: 'default'}, choose: false});
+  // A library named in an old address is not needed, and is not required to match.
+  assert.equal(spanningGroup([films], 'tv', personBase, 'default').spec?.libraryId, 'films');
+});
+
+test('a list held by several libraries is sorted and filtered one library at a time', () => {
+  // Nothing picked: the page's own list, with the libraries to pick from and no toolbar.
+  assert.deepEqual(spanningGroup([films, shows], undefined, personBase, 'playlist'), {choose: true});
+  // One picked: its toolbar over its part of the list, which the page has no list of its own for.
+  assert.deepEqual(spanningGroup([films, shows], 'tv', personBase, 'playlist'), {spec: {libraryId: 'tv', libraryKind: 'tv', pivot: 'shows', base: personBase, always: true}, choose: true, chosen: 'tv'});
+  // A library that holds nothing of the list (or is gone) is not a choice.
+  assert.deepEqual(spanningGroup([films, shows], 'music', personBase, 'playlist'), {choose: true});
+});
+
+test('a list no library holds has no toolbar and nothing to pick', () => {
+  assert.deepEqual(spanningGroup([], undefined, personBase, 'default'), {choose: false});
+});

@@ -1,29 +1,32 @@
-import {useEffect, useState} from 'react';
-import type {ContainerWatched} from './container-watched';
+import {useEffect, useState, useSyncExternalStore} from 'react';
 import {useI18n} from '../../app/i18n';
-import {Inset, Notice} from '../../ui';
-
-/** How long an Undo offer still has, in milliseconds; none when there is no offer or its time cannot be read. */
-export function undoRemaining(state: {undoToken?: string; undoUntil?: string} | null, now: number): number {
-  if (!state?.undoToken || !state.undoUntil) return 0;
-  const until = Date.parse(state.undoUntil);
-  return Number.isFinite(until) ? Math.max(0, until - now) : 0;
-}
+import {Toast} from '../../ui';
+import {useViewerScope} from '../../app/viewer-scope';
+import {PERSONAL_CHANGE} from '../../app/detail';
+import {currentWatchedMark, dismissWatchedMark, markRemaining, resetWatchedMark, subscribeWatchedMark, undoWatchedMark} from '../../app/watched-mark';
 
 /**
- * After a show, season, album or book is marked watched or unwatched: a quiet line saying so,
- * with Undo for as long as the server offers it. Undo puts every title back as it was, with its
- * place; it is not the same as marking the other way.
+ * After a show, season, album or book is marked watched or unwatched, from its page or from a
+ * card's menu: a toast where the person still is, with Undo for as long as the server offers it
+ * (about thirty seconds). Undo is the server's: it puts every title back as it was, with its place;
+ * it is not the same as marking the other way. Rendered once, in the shell.
  */
-export function WatchedUndo({watched, onUndone}: {watched: ContainerWatched; onUndone?: () => void}) {
+export function WatchedMarkToast() {
   const {t} = useI18n();
+  const mark = useSyncExternalStore(subscribeWatchedMark, currentWatchedMark);
   const [, tick] = useState(0);
-  const left = undoRemaining(watched.state, Date.now());
+  const left = markRemaining(mark, Date.now());
+  // The offer belongs to the profile that made the mark.
+  const scope = useViewerScope();
+  useEffect(() => () => resetWatchedMark(), [scope.serverId, scope.viewerId]);
   useEffect(() => {
-    if (!left) return;
-    const timer = setTimeout(() => tick(n => n + 1), left + 50);
+    if (!mark) return;
+    // The offer ends when the server's does; a refusal is said for a few seconds and then goes.
+    const timer = setTimeout(() => { if (mark.failed || !markRemaining(mark, Date.now())) dismissWatchedMark(mark); else tick(n => n + 1); }, mark.failed ? 5000 : left + 50);
     return () => clearTimeout(timer);
-  }, [left, watched.state?.undoToken]);
-  if (!left || !watched.state) return null;
-  return <Inset><Notice tone="info" compact action={{label: t('action.undo'), loading: watched.saving, onClick: () => void watched.undo().then(done => { if (done) onUndone?.(); })}}>{t(watched.state.watched ? 'watched.marked' : 'watched.unmarked')}</Notice></Inset>;
+  }, [mark, left]);
+  if (!mark || (!left && !mark.failed)) return null;
+  if (mark.failed) return <Toast>{t('watched.undoGone', {title: mark.title})}</Toast>;
+  const undo = () => void undoWatchedMark().then(done => { if (done) window.dispatchEvent(new CustomEvent(PERSONAL_CHANGE, {detail: {itemIds: [mark.id], action: 'watched', value: !mark.watched}})); });
+  return <Toast action={{label: t('action.undo'), loading: mark.undoing, onClick: undo}}>{t(mark.watched ? 'watched.markedTitle' : 'watched.unmarkedTitle', {title: mark.title})}</Toast>;
 }

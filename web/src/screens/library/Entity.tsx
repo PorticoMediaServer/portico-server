@@ -14,7 +14,6 @@ import {usePlayerActions} from '../../player/PlayerContext';
 import {useSession} from '../../app/session';
 import {useDownloads} from '../../app/downloads';
 import {containerKindFor, useContainerWatched} from '../shared/container-watched';
-import {WatchedUndo} from '../shared/WatchedUndo';
 import {Button, Inset, KeyValue, ListRow, Page, Section, Skeleton, StateView, Text, TitleHero, type MenuAnchor} from '../../ui';
 import {LoadingShelves, SectionView, sectionHeading} from '../shared/Sections';
 import {GroupBar, GroupGrid, GroupRows} from '../shared/GroupBrowse';
@@ -109,7 +108,7 @@ export function EntityScreen() {
   // watched default for a book, and Favorite for all three. Music has no "watched" at all. Other
   // kinds have no container state, so the hook idles. Every hook stays above the returns below.
   const containerKind = entity ? containerKindFor(entity.kind) : undefined;
-  const containerWatched = useContainerWatched(api, containerKind, containerKind && entity ? entity.id : undefined);
+  const containerWatched = useContainerWatched(api, containerKind, containerKind && entity ? entity.id : undefined, {title: entity?.title, onChanged: refresh});
   const watchedKind = entity?.kind === 'book' ? containerKind : undefined;
   const canFavorite = containerWatched.carries('favorite');
   // My List: a book to listen to sits beside the shows and films to watch.
@@ -193,7 +192,7 @@ export function EntityScreen() {
               {music && loaded.length > 1 ? <Button variant="secondary" size="lg" icon="shuffle" label={t('title.shuffle')} onClick={shuffle} /> : null}
               {canList && entity ? <Button variant="secondary" size="lg" icon={listed ? 'bookmarkFilled' : 'bookmark'} label={t(listed ? 'title.inWatchlist' : 'title.watchlist')} selected={listed} disabled={!containerWatched.state} onClick={() => void containerWatched.setFlag('watchlisted', !listed)} /> : null}
               {canFavorite && entity ? <Button variant="secondary" size="lg" icon={favorite ? 'heartFilled' : 'heart'} aria-label={t(favorite ? 'entry.removeFromFavorites' : 'entry.addToFavorites')} title={t(favorite ? 'entry.removeFromFavorites' : 'entry.addToFavorites')} selected={favorite} disabled={!containerWatched.state} onClick={() => void containerWatched.setFlag('favorite', !favorite)} /> : null}
-              {watchedKind && entity ? <Button variant="secondary" size="lg" icon={containerWatched.state?.watched ? 'watched' : 'check'} aria-label={t(containerWatched.state?.watched ? 'title.markNotFinished' : 'title.markFinished')} title={t(containerWatched.state?.watched ? 'title.markNotFinished' : 'title.markFinished')} selected={containerWatched.state?.watched} disabled={containerWatched.saving} onClick={() => void containerWatched.setWatched(!(containerWatched.state?.watched ?? false)).then(done => { if (done) retry(); })} /> : null}
+              {watchedKind && entity ? <Button variant="secondary" size="lg" icon={containerWatched.state?.watched ? 'watched' : 'check'} aria-label={t(containerWatched.state?.watched ? 'title.markNotFinished' : 'title.markFinished')} title={t(containerWatched.state?.watched ? 'title.markNotFinished' : 'title.markFinished')} selected={containerWatched.state?.watched} disabled={containerWatched.saving} onClick={() => void containerWatched.setWatched(!(containerWatched.state?.watched ?? false))} /> : null}
               {canDownload && downloadKind && entity ? <Button variant="secondary" size="lg" icon="download" aria-label={t('entry.download')} title={t('entry.download')} onClick={() => downloads.ask({target: {containerId: entity.id, containerKind: downloadKind}, title: entity.title})} /> : null}
               {entityMore ? <Button variant="secondary" size="lg" icon="more" aria-label={t('title.moreActions')} title={t('title.moreActions')} onClick={(e: React.MouseEvent<HTMLElement>) => player.more(entityMore, anchorOf(e.currentTarget), 'page')} /> : null}
             </>
@@ -202,7 +201,6 @@ export function EntityScreen() {
       <Page>
         {snapshot.phase === 'loading' && !snapshot.sections.length ? <LoadingShelves density={shape === 'square' ? 'square' : 'poster'} /> : null}
         {snapshot.phase === 'error' && !snapshot.sections.length ? <ErrorState error={snapshot.error} context="collection" retry={retry} refresh={refresh} /> : null}
-        <WatchedUndo watched={containerWatched} onUndone={refresh} />
         {snapshot.phase === 'refresh-required' ? <Inset><ErrorNotice error={snapshot.error ?? changedError} context="collection" refresh={refresh} /></Inset> : null}
         {/* Entity sections sit above the backdrop scrim (Detail `.body` rule). */}
         <div className={body.body}>
