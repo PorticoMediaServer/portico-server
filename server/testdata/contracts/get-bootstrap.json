@@ -50,7 +50,7 @@
       },
       "deviceClass": "web",
       "registry": {
-        "revision": "p39.CD32.B4",
+        "revision": "p39.CD32.B5",
         "fields": [
           {
             "consumer": "client.playback.controls",
@@ -118,7 +118,7 @@
             "labelKey": "preferences.playback.upNextCountdownSeconds"
           },
           {
-            "consumer": "client.playback.continuation",
+            "consumer": "server.playback.queue_completion",
             "key": "playback.passoutProtection",
             "type": "boolean",
             "default": true,
@@ -129,7 +129,7 @@
             "labelKey": "preferences.playback.passoutProtection"
           },
           {
-            "consumer": "client.playback.continuation",
+            "consumer": "server.playback.queue_completion",
             "step": 1,
             "key": "playback.passoutAfterEpisodes",
             "type": "integer",
@@ -1320,7 +1320,7 @@
         "search.rememberHistory": "default"
       },
       "clampedFields": [],
-      "registryRevision": "p39.CD32.B4"
+      "registryRevision": "p39.CD32.B5"
     },
     "homeLayout": {
       "revision": 1,

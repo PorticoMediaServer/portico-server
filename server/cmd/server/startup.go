@@ -171,32 +171,32 @@ func runDeferredMaintenance(ctx context.Context, db *sql.DB) {
 // Recovery never opens the database, writes state, or offers an unauthenticated
 // repair button. Public replies contain an actionable category, not log errors
 // that may include media paths, URLs or credentials.
-type startupRecovery struct{ Phase, Advice string }
+type startupRecovery struct{ Title, Phase, Advice, Recovery, AdviceID string }
 
-var recoveryPage = template.Must(template.New("recovery").Parse(`<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Portico could not start</title><body><main><h1>Portico could not start</h1><p>{{.Phase}}</p><p>{{.Advice}}</p><p>Check the service log for details. Fix the cause, then restart Portico. Your files have not been removed.</p></main></body></html>`))
+var recoveryPage = template.Must(template.New("recovery").Parse(`<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{{.Title}}</title><body><main><h1>{{.Title}}</h1><p>{{.Phase}}</p><p>{{.Advice}}</p><p>{{.Recovery}}</p></main></body></html>`))
 
 func (s *startupReporter) fail(err error) {
-	phase := "The server could not finish its startup checks."
+	phase := startupCopy["server.startup.phase"]
 	for _, p := range s.snapshot() {
 		if p.Failed != "" || p.Finished == 0 {
 			phase = p.Label
 			break
 		}
 	}
-	advice := "Check that the state folder is available, has free space, and can be read and written by the service."
+	adviceID := "server.startup.storage"
 	text := strings.ToLower(err.Error())
 	switch {
 	case strings.Contains(text, "earlier pre-release"), strings.Contains(text, "migration"), strings.Contains(text, "schema"):
-		advice = "This database does not match this Portico version. Keep a copy of the state folder, then restore a backup made with this version or start with a new state folder."
+		adviceID = "server.startup.version"
 	case strings.Contains(text, "permission"), strings.Contains(text, "access denied"):
-		advice = "Give the service account permission to read and write the state folder, then restart Portico."
+		adviceID = "server.startup.permissions"
 	case strings.Contains(text, "space"), strings.Contains(text, "disk full"):
-		advice = "Free space on the drive holding the state folder, then restart Portico."
+		adviceID = "server.startup.space"
 	case strings.Contains(text, "another portico"), strings.Contains(text, "already using"):
-		advice = "Stop the other Portico service using this state folder, then restart this service."
+		adviceID = "server.startup.instance"
 	}
 	s.mu.Lock()
-	s.failure = &startupRecovery{phase, advice}
+	s.failure = &startupRecovery{Title: startupCopy["server.startup.failed"], Phase: phase, Advice: startupCopy[adviceID], Recovery: startupCopy["server.startup.recovery"], AdviceID: adviceID}
 	s.mu.Unlock()
 }
 func (s *startupRecovery) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -211,7 +211,7 @@ func (s *startupRecovery) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusServiceUnavailable)
-	_ = json.NewEncoder(w).Encode(map[string]any{"ready": false, "status": "startup_failed", "phase": s.Phase, "message": s.Advice, "retryable": false})
+	_ = json.NewEncoder(w).Encode(map[string]any{"ready": false, "status": "startup_failed", "phase": s.Phase, "message": s.Advice, "messageId": s.AdviceID, "retryable": false})
 }
 func serveStartupRecovery(ctx context.Context, listener net.Listener, reporter *startupReporter) {
 	server := &http.Server{Handler: reporter, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 15 * time.Second, IdleTimeout: 5 * time.Second, MaxHeaderBytes: 32 << 10}

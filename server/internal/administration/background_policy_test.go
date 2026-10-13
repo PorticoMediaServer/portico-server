@@ -37,3 +37,19 @@ func TestBackgroundPauseDurableAndIdempotent(t *testing.T) {
 		t.Fatal("running policy not applied")
 	}
 }
+
+func TestMaintenanceWindowsOnlyOfferScheduledBackups(t *testing.T) {
+	service, _, _ := newService(t)
+	current, err := service.MaintenanceSettings(context.Background(), allow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(current.Tasks) != 1 || current.Tasks[0] != "backup" {
+		t.Fatal("inert scheduled jobs offered", current.Tasks)
+	}
+	settings := current.Settings
+	settings.Windows[0].Tasks = []string{"analysis"}
+	if _, err = service.SaveMaintenanceSettings(context.Background(), allow, Change[MaintenanceSettingsDocument]{ExpectedRevision: current.Revision, OperationID: "unsupported-schedule", Settings: settings}); err == nil {
+		t.Fatal("inert schedule saved")
+	}
+}

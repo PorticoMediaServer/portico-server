@@ -236,3 +236,14 @@ func (s *Service) MovieArtwork(ctx context.Context, library, path string, f asse
 	}
 	return f
 }
+
+// ArtworkUsage returns the accounting already used by ingestion. A console
+// request never waits behind the first directory measurement or image write.
+// Unknown means ingestion has not measured it yet (or is currently updating it).
+func (s *Service) ArtworkUsage() (int64, bool) {
+	if s == nil || !s.mu.TryLock() {
+		return 0, false
+	}
+	defer s.mu.Unlock()
+	return s.artworkBytes, s.artworkAccounted
+}

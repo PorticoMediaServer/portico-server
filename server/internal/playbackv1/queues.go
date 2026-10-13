@@ -176,17 +176,18 @@ type AdvanceRequest struct {
 
 // queueRow is one queues_v1 row.
 type queueRow struct {
+	automatic                                                     int
 	id, ownerKind, ownerID, authority, account, profile, session  string
 	repeat                                                        string
 	revision, current, seed, lap, domain, first, created, updated int64
 	shuffle                                                       bool
 }
 
-const queueColumns = `id,owner_kind,owner_id,authority,account_id,profile_id,session_id,repeat,revision,current_position,shuffle_seed,shuffle_lap,shuffle_domain,shuffle_first,created_ms,updated_ms,shuffle_on`
+const queueColumns = `id,owner_kind,owner_id,authority,account_id,profile_id,session_id,repeat,revision,current_position,shuffle_seed,shuffle_lap,shuffle_domain,shuffle_first,created_ms,updated_ms,shuffle_on,automatic_advances`
 
 func scanQueue(r scanner) (queueRow, error) {
 	var q queueRow
-	err := r.Scan(&q.id, &q.ownerKind, &q.ownerID, &q.authority, &q.account, &q.profile, &q.session, &q.repeat, &q.revision, &q.current, &q.seed, &q.lap, &q.domain, &q.first, &q.created, &q.updated, &q.shuffle)
+	err := r.Scan(&q.id, &q.ownerKind, &q.ownerID, &q.authority, &q.account, &q.profile, &q.session, &q.repeat, &q.revision, &q.current, &q.seed, &q.lap, &q.domain, &q.first, &q.created, &q.updated, &q.shuffle, &q.automatic)
 	return q, err
 }
 

@@ -38,11 +38,6 @@ import (
 // the catalog needs to find locally available entries near the top.
 const discoveryRowBudget = 40
 
-// discoveryRequestTimeout bounds one feed refresh, whatever the transport
-// allows per request: pages are fetched through paced sequential requests, so
-// the whole refresh stays inside one worker step.
-const discoveryRequestTimeout = 75 * time.Second
-
 // trendingSource is one provider's trend fetch. Production wires the same
 // paced adapters the screen matcher uses; tests substitute a bounded fake.
 type trendingSource interface {
@@ -256,7 +251,7 @@ func (s *Service) refreshDiscoveryFeed(ctx context.Context, feed persistence.Dis
 	if source == nil {
 		return persistence.NoteDiscoveryRefreshFailure(ctx, s.db, feed.Provider, feed.MediaKind, s.publicationTime(), attempts, 0, "provider_not_configured")
 	}
-	requestCtx, cancel := context.WithTimeout(ctx, discoveryRequestTimeout)
+	requestCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	entries, fetchErr := source.Trending(requestCtx, language, metadataprovider.TrendingPages(discoveryRowBudget))
 	if fetchErr != nil {

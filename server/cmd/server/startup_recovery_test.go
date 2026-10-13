@@ -2,10 +2,12 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"net"
 	"net/http"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -41,5 +43,19 @@ func TestStartupFailurePageStaysReachable(t *testing.T) {
 	case <-stopped:
 	case <-time.After(time.Second):
 		t.Fatal("recovery failed to stop")
+	}
+}
+
+func TestRecoveryCopyMatchesStringCatalogue(t *testing.T) {
+	source, err := os.ReadFile("../../../packages/i18n/src/catalog/en-US/settings.ts")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for id, message := range startupCopy {
+		key, _ := json.Marshal(id)
+		value, _ := json.Marshal(message)
+		if !strings.Contains(string(source), string(key)+": "+string(value)) {
+			t.Errorf("recovery copy %s is missing or differs from the catalogue", id)
+		}
 	}
 }

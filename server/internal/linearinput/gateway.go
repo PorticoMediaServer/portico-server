@@ -406,7 +406,7 @@ func (g *Gateway) serve(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Unavailable", 404)
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
 	var data []byte
 	location := res.url

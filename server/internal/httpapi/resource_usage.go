@@ -6,6 +6,7 @@ import (
 	"portico.local/apikit"
 	"portico.local/apikit/apierror"
 	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/metadata"
 	"time"
 )
 
@@ -16,11 +17,13 @@ type ConnectionUsage struct {
 	ConsoleReserve int   `json:"consoleReserve"`
 }
 type StorageUsage struct {
+	Measured     bool  `json:"measured"`
 	TrackedBytes int64 `json:"trackedBytes"`
 	LimitBytes   int64 `json:"limitBytes"`
 }
 type ResourceUsage struct {
 	Connections           *ConnectionUsage `json:"connections"`
+	LocalArtwork          StorageUsage     `json:"localArtwork"`
 	Analysis              StorageUsage     `json:"analysis"`
 	Streams               int              `json:"streams"`
 	StreamLimit           *int             `json:"streamLimit"`
@@ -46,6 +49,11 @@ func registerResourceUsage(registry *apikit.Registry, d Dependencies) error {
 			return out, conversionSettingsError(err)
 		}
 		settings := document.Effective
+		out.Analysis.Measured = true
+		out.LocalArtwork.LimitBytes = metadata.LocalArtworkLimit(ctx, d.DB)
+		if d.LocalArtworkUsage != nil {
+			out.LocalArtwork.TrackedBytes, out.LocalArtwork.Measured = d.LocalArtworkUsage()
+		}
 		out.Analysis.LimitBytes = int64(settings.AnalysisStorageGiB) << 30
 		out.StreamLimit = settings.ServerCap
 		out.SubtitleFileLimitMiB = settings.SubtitleFileLimitMiB

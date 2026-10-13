@@ -748,7 +748,7 @@ func (l *LinearRuntime) produceLive(ctx context.Context, w playback.LinearWork, 
 	if e != nil {
 		return e
 	}
-	probeCtx, probeCancel := context.WithTimeout(work, 20*time.Second)
+	probeCtx, probeCancel := context.WithCancel(work)
 	raw, e := decoder.LinearProbe(probeCtx, l.owner.probeSupervisor, w.PlaybackID+"-live-probe", l.config.FFprobe, gateway.URL(), gateway.HLS(), reservation, lock, l.config.DecoderLibraries...)
 	probeCancel()
 	if e != nil {
@@ -816,7 +816,7 @@ func (l *LinearRuntime) produceLibrary(ctx context.Context, w playback.LinearWor
 	if e != nil {
 		return e
 	}
-	probeCtx, probeCancel := context.WithTimeout(ctx, 20*time.Second)
+	probeCtx, probeCancel := context.WithCancel(ctx)
 	raw, e := decoder.LinearProbe(probeCtx, l.owner.probeSupervisor, w.PlaybackID+"-library-probe", l.config.FFprobe, bridge.URL(), false, reservation, nil, l.config.DecoderLibraries...)
 	probeCancel()
 	if e != nil {

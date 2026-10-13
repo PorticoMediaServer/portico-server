@@ -161,10 +161,10 @@ export async function pauseBackgroundWork(deps: Pick<ServerFormDeps, 'api'>, pau
   return parseMaintenanceDocument(await deps.api.request('/v1/admin/maintenance/background-pause', 'POST', {paused, operationId}));
 }
 
-export type ResourceUsage = Readonly<{connections: {ordinary: number; total: number; ordinaryLimit: number; consoleReserve: number} | null; analysis: {trackedBytes: number; limitBytes: number}; streams: number; streamLimit: number | null; subtitleTracksPerFile: number; subtitleFileLimitMiB: number}>;
+export type ResourceUsage = Readonly<{connections: {ordinary: number; total: number; ordinaryLimit: number; consoleReserve: number} | null; analysis: {trackedBytes: number; limitBytes: number; measured: boolean}; localArtwork: {trackedBytes: number; limitBytes: number; measured: boolean}; streams: number; streamLimit: number | null; subtitleTracksPerFile: number; subtitleFileLimitMiB: number}>;
 export async function loadResourceUsage(api: Pick<HttpLocalApi, 'request'>, signal?: AbortSignal): Promise<ResourceUsage> {
   const value = await api.request<ResourceUsage>('/v1/admin/resource-usage', 'GET', undefined, signal);
-  if (!value || !Number.isSafeInteger(value.streams) || !Number.isSafeInteger(value.analysis?.trackedBytes) || !Number.isSafeInteger(value.analysis?.limitBytes) || !Number.isSafeInteger(value.subtitleTracksPerFile)) throw new Error('The server returned resource usage this version cannot read.');
+  if (!value || !Number.isSafeInteger(value.streams) || !Number.isSafeInteger(value.analysis?.trackedBytes) || !Number.isSafeInteger(value.analysis?.limitBytes) || !Number.isSafeInteger(value.subtitleTracksPerFile) || !Number.isSafeInteger(value.localArtwork?.trackedBytes) || !Number.isSafeInteger(value.localArtwork?.limitBytes) || typeof value.localArtwork?.measured !== 'boolean') throw new Error('The server returned resource usage this version cannot read.');
   return value;
 }
 

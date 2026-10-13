@@ -11,7 +11,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"portico.local/server/internal/identity"
 )
@@ -120,7 +119,7 @@ func (s *Service) Import(ctx context.Context, p identity.Principal, item string,
 				return Receipt{}, e
 			}
 			payload, _ := json.Marshal(req)
-			readCtx, cancel := context.WithTimeout(ctx, 90*time.Second)
+			readCtx, cancel := context.WithCancel(ctx)
 			defer cancel()
 			cmd := exec.Command(s.helper, "--portico-subtitle-helper")
 			cmd.Stdin = bytes.NewReader(payload)

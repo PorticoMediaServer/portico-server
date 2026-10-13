@@ -328,7 +328,7 @@ func (d *Driver) probe(ctx context.Context, key string, reader io.ReaderAt, size
 		return empty, e
 	}
 	defer reservation.Close()
-	check, cancel := context.WithTimeout(ctx, 45*time.Second)
+	check, cancel := context.WithCancel(ctx)
 	defer cancel()
 	raw, e := decoder.RunAllocatedProbe(check, &d.supervisor, key, d.ffprobe, bridge.URL(), reservation, d.libraries...)
 	if e != nil {

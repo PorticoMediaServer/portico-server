@@ -67,8 +67,8 @@ func SaveTx(ctx context.Context, tx *sql.Tx, p Policy) error {
 			}
 		}
 		for _, task := range w.Tasks {
-			if !Supported(task) {
-				return errors.New("unsupported automatic maintenance task")
+			if task != "backup" {
+				return errors.New("unsupported scheduled maintenance task")
 			}
 			if _, err := tx.ExecContext(ctx, `INSERT INTO maintenance_window_tasks VALUES(?,?)`, w.ID, task); err != nil {
 				return err

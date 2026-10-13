@@ -16,6 +16,7 @@ type Watch struct {
 	closed bool
 	cancel context.CancelFunc
 	outer  context.CancelFunc
+	expire context.CancelFunc
 }
 
 // New keeps the parent's cancellation. overall is a safety bound for hostile
@@ -26,8 +27,8 @@ func New(parent context.Context, idle, overall time.Duration) (context.Context, 
 	if overall > 0 {
 		parent, outer = context.WithTimeout(parent, overall)
 	}
-	ctx, cancel := context.WithCancel(parent)
-	w := &Watch{idle: idle, cancel: cancel, outer: outer}
+	ctx, cancel := context.WithCancelCause(parent)
+	w := &Watch{idle: idle, cancel: func() { cancel(context.Canceled) }, expire: func() { cancel(context.DeadlineExceeded) }, outer: outer}
 	w.Ping()
 	return ctx, w
 }
@@ -35,8 +36,8 @@ func New(parent context.Context, idle, overall time.Duration) (context.Context, 
 // NewDormant starts measuring only when Ping is called after resource admission.
 // Waiting for a worker slot or an owner pause is not stalled producer input.
 func NewDormant(parent context.Context, idle time.Duration) (context.Context, *Watch) {
-	ctx, cancel := context.WithCancel(parent)
-	return ctx, &Watch{idle: idle, cancel: cancel, outer: func() {}}
+	ctx, cancel := context.WithCancelCause(parent)
+	return ctx, &Watch{idle: idle, cancel: func() { cancel(context.Canceled) }, expire: func() { cancel(context.DeadlineExceeded) }, outer: func() {}}
 }
 func (w *Watch) Ping() {
 	w.mu.Lock()
@@ -48,7 +49,7 @@ func (w *Watch) Ping() {
 				defer w.mu.Unlock()
 				if !w.closed {
 					w.closed = true
-					w.cancel()
+					w.expire()
 				}
 			})
 		} else {

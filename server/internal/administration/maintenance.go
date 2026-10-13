@@ -283,7 +283,7 @@ func MaintenanceCadences() []MaintenanceCadence {
 }
 
 // MaintenanceTasks are the jobs a window may admit.
-var MaintenanceTasks = []string{"library-scan", "metadata-refresh", "analysis", "trickplay", "backup"}
+var MaintenanceTasks = []string{"backup"}
 
 // RetentionCategories bounds legacy cache settings. Artwork has no age policy;
 // its owner retains referenced objects indefinitely.
@@ -306,7 +306,7 @@ type MaintenanceSettingsDocument struct {
 func DefaultMaintenanceSettings() MaintenanceSettingsDocument {
 	retention := map[string]int{"trickplay": 365, "prepared": 90, "conversions": 7, "subtitles": 365, "downloads": 30, "logs": 30}
 	return MaintenanceSettingsDocument{
-		Windows:         []MaintenanceWindow{{ID: "nightly", Name: "Overnight", Enabled: true, Cadence: "nightly", Days: append([]string{}, Days...), StartMinute: 180, DurationMinutes: 240, Timezone: "", Tasks: []string{"library-scan", "analysis", "trickplay", "backup"}}},
+		Windows:         []MaintenanceWindow{{ID: "nightly", Name: "Overnight", Enabled: true, Cadence: "nightly", Days: append([]string{}, Days...), StartMinute: 180, DurationMinutes: 240, Timezone: "", Tasks: []string{"backup"}}},
 		Retention:       retention,
 		BackupKeepCount: 7,
 		BackgroundSpeed: "normal",

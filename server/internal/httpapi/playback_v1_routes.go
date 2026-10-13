@@ -49,12 +49,12 @@ func newPlaybackV1(d Dependencies) *playbackv1.Service {
 	s.Visibility = func(ctx context.Context, tx *sql.Tx, p identity.Principal, item string) (string, []any, error) {
 		return contentaccess.VisibleItemsSQL(ctx, tx, p, item, func(library string) error { return d.allowedLibraryTx(ctx, p, library, tx) })
 	}
-	s.PostPlay = func(ctx context.Context, tx *sql.Tx, p identity.Principal) (bool, int, error) {
+	s.PostPlay = func(ctx context.Context, tx *sql.Tx, p identity.Principal) (playbackv1.PostPlayPolicy, error) {
 		values, _, _, err := operations.EffectivePreferences(tx, p.Viewer, "")
 		if err != nil {
-			return false, 0, err
+			return playbackv1.PostPlayPolicy{}, err
 		}
-		return values.Bool("playback.autoplayNext"), values.Int("playback.upNextCountdownSeconds"), nil
+		return playbackv1.PostPlayPolicy{Autoplay: values.Bool("playback.autoplayNext"), CountdownSeconds: values.Int("playback.upNextCountdownSeconds"), Protection: values.Bool("playback.passoutProtection"), Episodes: values.Int("playback.passoutAfterEpisodes")}, nil
 	}
 	if d.AudioMedia != nil {
 		s.MeasureAudio = d.AudioMedia.MeasureAudio

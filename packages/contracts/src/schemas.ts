@@ -6542,6 +6542,9 @@ export const schemas = {
             "minimum": -9007199254740991,
             "type": "integer"
           },
+          "measured": {
+            "type": "boolean"
+          },
           "trackedBytes": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
@@ -6549,6 +6552,7 @@ export const schemas = {
           }
         },
         "required": [
+          "measured",
           "trackedBytes",
           "limitBytes"
         ],
@@ -6586,6 +6590,29 @@ export const schemas = {
         ],
         "type": "object"
       },
+      "localArtwork": {
+        "properties": {
+          "limitBytes": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "measured": {
+            "type": "boolean"
+          },
+          "trackedBytes": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "measured",
+          "trackedBytes",
+          "limitBytes"
+        ],
+        "type": "object"
+      },
       "streamLimit": {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
@@ -6610,6 +6637,7 @@ export const schemas = {
     },
     "required": [
       "connections",
+      "localArtwork",
       "analysis",
       "streams",
       "streamLimit",

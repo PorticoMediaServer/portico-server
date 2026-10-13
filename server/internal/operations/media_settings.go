@@ -28,6 +28,10 @@ func StartupMediaSettings(ctx context.Context, db *sql.DB) (Settings, error) {
 func effectiveMediaSettings(v Settings) (Settings, []string) {
 	out, fields := v, []string{}
 	if started := startupMediaSettings.Load(); started != nil {
+		if v.ConnectionLimit != started.ConnectionLimit {
+			fields = append(fields, "connectionLimit")
+			out.ConnectionLimit = started.ConnectionLimit
+		}
 		if v.TemporaryDirectory != started.TemporaryDirectory {
 			fields = append(fields, "temporaryDirectory")
 			out.TemporaryDirectory = started.TemporaryDirectory

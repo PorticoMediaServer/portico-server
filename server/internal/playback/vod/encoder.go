@@ -281,7 +281,7 @@ func (e *Encoder) probe(ctx context.Context, input Input, interval string) (prob
 			return p, ErrBudget
 		}
 		if ctx.Err() != nil {
-			return p, ctx.Err()
+			return p, context.Cause(ctx)
 		}
 		return p, ErrUnsupported
 	}
@@ -609,12 +609,18 @@ func (e *Encoder) runWindow(ctx context.Context, args []string, inherited []*os.
 	}
 	cmd, buildErr := mediaexec.CommandContext(ctx, job)
 	if buildErr != nil {
+		if ctx.Err() != nil {
+			return Work{}, context.Cause(ctx)
+		}
 		return Work{}, buildErr
 	}
 	cmd.Stderr = io.Discard
 	cmd.WaitDelay = time.Second
 	started := time.Now()
 	if err := cmd.Start(); err != nil {
+		if ctx.Err() != nil {
+			return Work{}, context.Cause(ctx)
+		}
 		return Work{}, err
 	}
 	done := make(chan error, 1)
@@ -655,7 +661,7 @@ selectLoop:
 		return work, ErrBudget
 	}
 	if ctx.Err() != nil {
-		return work, ctx.Err()
+		return work, context.Cause(ctx)
 	}
 	if err != nil {
 		return work, ErrUnsupported

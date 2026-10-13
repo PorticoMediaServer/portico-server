@@ -1346,7 +1346,7 @@ export const webMessages = {
   'web.maintenance.startsAt': 'Starts at',
   'web.maintenance.hours': 'Hours',
   'web.maintenance.removeWindow': 'Remove window',
-  'web.maintenance.pauseHeavyWork': 'Only do heavy work inside these hours',
+  'web.maintenance.pauseHeavyWork': 'Pause background work for an hour',
   'web.maintenance.pauseHeavyWorkHelp': 'Pause background work for an hour. Work already running can finish. Playback and recordings continue.',
   'web.maintenance.backgroundWork': 'Background work',
   'web.maintenance.backgroundWorkLede': 'Scanning, analysis and picture generation keep running. Lower priority leaves more capacity for browsing and playback.',

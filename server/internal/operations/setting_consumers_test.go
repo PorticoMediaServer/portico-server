@@ -4,6 +4,7 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"os"
 	"path/filepath"
 	"portico.local/server/internal/administration"
 	"portico.local/server/internal/downloads"
@@ -11,6 +12,7 @@ import (
 	"portico.local/server/internal/metadata"
 	"portico.local/server/internal/operations"
 	"reflect"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -82,7 +84,7 @@ var settingConsumers = map[string]settingConsumer{
 	"livechannels.LiveSourceSettings.streamBufferSeconds":                    {"internal/livechannels/configuration.go", "StreamBufferSeconds", "Filter or override the saved live source"},
 	"livechannels.LiveSourceSettings.userAgent":                              {"internal/livechannels/configuration.go", "UserAgent", "Filter or override the saved live source"},
 	"metadata.MetadataSettingsUpdate.includeAdult":                           {"internal/metadata/runtime_settings.go", "IncludeAdult", "Apply artwork storage, adult matching or provider credentials"},
-	"metadata.MetadataSettingsUpdate.localArtworkLimitBytes":                 {"internal/metadata/runtime_settings.go", "literal:local_artwork_limit_bytes", "Apply artwork storage, adult matching or provider credentials"},
+	"metadata.MetadataSettingsUpdate.localArtworkLimitBytes":                 {"cmd/server/main.go", "LocalArtworkLimit", "Apply the owner storage bound to local artwork ingestion"},
 	"metadata.MetadataSettingsUpdate.tmdbReadToken":                          {"internal/metadata/runtime_settings.go", "TMDBReadToken", "Apply artwork storage, adult matching or provider credentials"},
 	"metadata.MetadataSettingsUpdate.tvdbProjectKey":                         {"internal/metadata/runtime_settings.go", "TVDBProjectKey", "Apply artwork storage, adult matching or provider credentials"},
 	"operations.NotificationSettings.certificateWarningDays":                 {"internal/operations/notifications.go", "CertificateWarningDays", "Prune inbox history or emit owner storage/certificate notices"},
@@ -239,6 +241,125 @@ func TestStoredSettingsHaveRuntimeConsumers(t *testing.T) {
 	for key := range settingConsumers {
 		if !seen[key] {
 			t.Errorf("stale consumer entry %s", key)
+		}
+	}
+}
+
+var preferenceRuntimeSources = map[string][2]string{
+	"appearance.cardSizePercent":           {"web/src/shell/Shell.tsx", "appearance.cardSizePercent"},
+	"appearance.reduceMotion":              {"web/src/shell/Shell.tsx", "appearance.reduceMotion"},
+	"appearance.showBackdrops":             {"web/src/shell/Shell.tsx", "appearance.showBackdrops"},
+	"audiobooks.defaultSpeed":              {"server/internal/catalog/listening_preferences.go", "audiobooks.defaultSpeed"},
+	"delivery.directPlay":                  {"server/internal/playback/delivery_policy.go", "delivery.directPlay"},
+	"delivery.directStream":                {"server/internal/playback/delivery_policy.go", "delivery.directStream"},
+	"delivery.transcode":                   {"server/internal/playback/delivery_policy.go", "delivery.transcode"},
+	"home.hiddenRowIds":                    {"server/internal/operations/home_layout.go", "home.hiddenRowIds"},
+	"home.rowOrder":                        {"server/internal/operations/home_layout.go", "home.rowOrder"},
+	"music.audioNormalization":             {"packages/client-core/src/music-preferences.ts", "music.audioNormalization"},
+	"music.crossfadeSeconds":               {"packages/client-core/src/music-preferences.ts", "music.crossfadeSeconds"},
+	"music.defaultSpeed":                   {"server/internal/catalog/listening_preferences.go", "music.defaultSpeed"},
+	"music.gapless":                        {"packages/client-core/src/music-preferences.ts", "music.gapless"},
+	"notifications.badges":                 {"web/src/shell/Shell.tsx", "notifications.badges"},
+	"playback.autoplayNext":                {"server/internal/httpapi/playback_v1_routes.go", "playback.autoplayNext"},
+	"playback.creditsSkip":                 {"web/src/player/Player.tsx", "playback.creditsSkip"},
+	"playback.defaultSpeed":                {"web/src/player/Player.tsx", "playback.defaultSpeed"},
+	"playback.introSkip":                   {"web/src/player/Player.tsx", "playback.introSkip"},
+	"playback.passoutAfterEpisodes":        {"server/internal/httpapi/playback_v1_routes.go", "playback.passoutAfterEpisodes"},
+	"playback.passoutProtection":           {"server/internal/httpapi/playback_v1_routes.go", "playback.passoutProtection"},
+	"playback.playedThresholdPercent":      {"server/internal/catalog/personal_activity.go", "playback.playedThresholdPercent"},
+	"playback.preferredAudioLanguages":     {"server/internal/playback/delivery_context.go", "playback.preferredAudioLanguages"},
+	"playback.preferredSubtitleLanguages":  {"server/internal/subtitles/provider.go", "playback.preferredSubtitleLanguages"},
+	"playback.recapSkip":                   {"web/src/player/Player.tsx", "playback.recapSkip"},
+	"playback.showSyncedLyrics":            {"web/src/player/Player.tsx", "playback.showSyncedLyrics"},
+	"playback.skipBackSeconds":             {"web/src/player/Player.tsx", "playback.skipBackSeconds"},
+	"playback.skipForwardSeconds":          {"web/src/player/Player.tsx", "playback.skipForwardSeconds"},
+	"playback.sleepTimerMinutes":           {"server/internal/catalog/listening_preferences.go", "playback.sleepTimerMinutes"},
+	"playback.startedThresholdPercent":     {"server/internal/catalog/personal_activity.go", "playback.startedThresholdPercent"},
+	"playback.subtitleBackground":          {"web/src/player/Player.tsx", "playback.subtitleBackground"},
+	"playback.subtitleMode":                {"server/internal/playback/delivery_context.go", "playback.subtitleMode"},
+	"playback.subtitleSize":                {"web/src/player/Player.tsx", "playback.subtitleSize"},
+	"playback.upNextCountdownSeconds":      {"server/internal/httpapi/playback_v1_routes.go", "playback.upNextCountdownSeconds"},
+	"privacy.includeInWatchTogether":       {"server/internal/social/privacy.go", "function:watchTogetherVisible"},
+	"privacy.pauseWatchHistory":            {"server/internal/downloads/progress.go", "privacy.pauseWatchHistory"},
+	"privacy.showActivityToMembers":        {"server/internal/catalog/recommendation_engine.go", "privacy.showActivityToMembers"},
+	"quality.cellular.allowHDR":            {"server/internal/playback/delivery_policy.go", "allowHDR"},
+	"quality.cellular.maxAudioBitrateKbps": {"server/internal/playback/delivery_policy.go", "maxAudioBitrateKbps"},
+	"quality.cellular.maxVideoBitrateMbps": {"server/internal/playback/delivery_policy.go", "maxVideoBitrateMbps"},
+	"quality.cellular.maxVideoHeight":      {"server/internal/playback/delivery_policy.go", "maxVideoHeight"},
+	"quality.cellular.mode":                {"server/internal/playback/delivery_policy.go", "mode"},
+	"quality.local.allowHDR":               {"server/internal/playback/delivery_policy.go", "allowHDR"},
+	"quality.local.maxAudioBitrateKbps":    {"server/internal/playback/delivery_policy.go", "maxAudioBitrateKbps"},
+	"quality.local.maxVideoBitrateMbps":    {"server/internal/playback/delivery_policy.go", "maxVideoBitrateMbps"},
+	"quality.local.maxVideoHeight":         {"server/internal/playback/delivery_policy.go", "maxVideoHeight"},
+	"quality.local.mode":                   {"server/internal/playback/delivery_policy.go", "mode"},
+	"quality.unknown.allowHDR":             {"server/internal/playback/delivery_policy.go", "allowHDR"},
+	"quality.unknown.maxAudioBitrateKbps":  {"server/internal/playback/delivery_policy.go", "maxAudioBitrateKbps"},
+	"quality.unknown.maxVideoBitrateMbps":  {"server/internal/playback/delivery_policy.go", "maxVideoBitrateMbps"},
+	"quality.unknown.maxVideoHeight":       {"server/internal/playback/delivery_policy.go", "maxVideoHeight"},
+	"quality.unknown.mode":                 {"server/internal/playback/delivery_policy.go", "mode"},
+	"quality.wifi.allowHDR":                {"server/internal/playback/delivery_policy.go", "allowHDR"},
+	"quality.wifi.maxAudioBitrateKbps":     {"server/internal/playback/delivery_policy.go", "maxAudioBitrateKbps"},
+	"quality.wifi.maxVideoBitrateMbps":     {"server/internal/playback/delivery_policy.go", "maxVideoBitrateMbps"},
+	"quality.wifi.maxVideoHeight":          {"server/internal/playback/delivery_policy.go", "maxVideoHeight"},
+	"quality.wifi.mode":                    {"server/internal/playback/delivery_policy.go", "mode"},
+	"region.hourCycle":                     {"web/src/app/i18n.ts", "region.hourCycle"},
+	"region.locale":                        {"web/src/app/i18n.ts", "region.locale"},
+	"search.rememberHistory":               {"server/internal/catalog/search_history.go", "search.rememberHistory"},
+}
+
+func TestStoredPreferencesHaveRuntimeConsumers(t *testing.T) {
+	seen := map[string]bool{}
+	for _, field := range operations.PreferenceRegistry() {
+		seen[field.Key] = true
+		witness, ok := preferenceRuntimeSources[field.Key]
+		if !ok {
+			t.Errorf("stored preference %s has no runtime consumer", field.Key)
+			continue
+		}
+		path := filepath.Join("../../..", witness[0])
+		found := false
+		if strings.HasSuffix(path, ".go") {
+			file, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
+			if err != nil {
+				t.Error(err)
+				continue
+			}
+			ast.Inspect(file, func(node ast.Node) bool {
+				call, ok := node.(*ast.CallExpr)
+				if !ok {
+					return true
+				}
+				if name, ok := call.Fun.(*ast.Ident); ok && strings.HasPrefix(witness[1], "function:") {
+					found = found || name.Name == strings.TrimPrefix(witness[1], "function:")
+				}
+				for _, arg := range call.Args {
+					ast.Inspect(arg, func(node ast.Node) bool {
+						if literal, ok := node.(*ast.BasicLit); ok && literal.Kind == token.STRING {
+							value, _ := strconv.Unquote(literal.Value)
+							found = found || value == witness[1]
+						}
+						return true
+					})
+				}
+				return true
+			})
+		} else {
+			source, err := os.ReadFile(path)
+			if err != nil {
+				t.Error(err)
+				continue
+			}
+			// Count a runtime reader call, never a catalogue, form or comment.
+			pattern := `(?:value|read)(?:<[^;\n]*?>)?\(\s*['"]` + regexp.QuoteMeta(witness[1]) + `['"]`
+			found = regexp.MustCompile(pattern).Match(source)
+		}
+		if !found {
+			t.Errorf("%s lost its runtime reader in %s", field.Key, witness[0])
+		}
+	}
+	for key := range preferenceRuntimeSources {
+		if !seen[key] {
+			t.Errorf("stale preference consumer %s", key)
 		}
 	}
 }

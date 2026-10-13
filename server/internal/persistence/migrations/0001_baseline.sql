@@ -3032,6 +3032,7 @@ CREATE TABLE api_events(
  at_ms INTEGER NOT NULL
 ) STRICT;
 CREATE TABLE queues_v1(
+ automatic_advances INTEGER NOT NULL DEFAULT 0 CHECK(automatic_advances BETWEEN 0 AND 1000000),
  id TEXT PRIMARY KEY,
  owner_kind TEXT NOT NULL CHECK(owner_kind IN('device','group')),
  owner_id TEXT NOT NULL,
@@ -3351,7 +3352,7 @@ CREATE TABLE live_icon_jobs(
  skipped INTEGER NOT NULL DEFAULT 0,
  next_attempt_ms INTEGER NOT NULL DEFAULT 0
 ) WITHOUT ROWID, STRICT;
-CREATE TABLE "maintenance_window_tasks"(window_id TEXT NOT NULL REFERENCES maintenance_windows(id) ON DELETE CASCADE,task TEXT NOT NULL CHECK(task IN('library-scan','metadata-refresh','analysis','trickplay','backup')),PRIMARY KEY(window_id,task)) STRICT;
+CREATE TABLE "maintenance_window_tasks"(window_id TEXT NOT NULL REFERENCES maintenance_windows(id) ON DELETE CASCADE,task TEXT NOT NULL CHECK(task='backup'),PRIMARY KEY(window_id,task)) STRICT;
 CREATE TABLE networking_claim_credentials(
  operation_id TEXT PRIMARY KEY REFERENCES networking_claim_intents(operation_id),
  server_id TEXT NOT NULL, local_generation INTEGER NOT NULL CHECK(local_generation>=0),
@@ -4511,9 +4512,6 @@ INSERT INTO live_allocation_reconcile_cursor(singleton,cursor) VALUES(1,'');
 INSERT INTO lc_maintenance_cursor(singleton,position,channel_id) VALUES(1,-1,'');
 INSERT INTO dvr_storage_policy(singleton,revision,retention_days,episode_limit,floor_bytes,cap_bytes) VALUES(1,1,0,0,0,0);
 INSERT INTO hosted_membership_sync(singleton,acked,full_pending,next_at,attempts,full_through,full_page,full_cursor,custodian) VALUES(1,0,1,0,0,0,0,'',NULL);
-INSERT INTO maintenance_window_tasks(window_id,task) VALUES('nightly','library-scan');
-INSERT INTO maintenance_window_tasks(window_id,task) VALUES('nightly','analysis');
-INSERT INTO maintenance_window_tasks(window_id,task) VALUES('nightly','trickplay');
 INSERT INTO maintenance_window_tasks(window_id,task) VALUES('nightly','backup');
 INSERT INTO catalog_collection_visible_state(id,class_cursor,generation_cursor,item_cursor,backfill_done,turn) VALUES(1,0,0,0,0,0);
 INSERT INTO catalog_attribute_fields(id,field) VALUES(1,'contentRating');

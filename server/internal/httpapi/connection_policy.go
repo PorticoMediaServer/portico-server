@@ -15,12 +15,14 @@ import (
 // every settings save. Warm request decisions do no settings SQL.
 type connectionPolicyCache struct {
 	mu      sync.Mutex
+	applyMu sync.Mutex
 	setting atomic.Pointer[connectionSettingValue]
 	// uploadAlert mirrors the upload-budget owner alert (upload_budget.go).
 	uploadAlert atomic.Bool
 }
 
 type connectionSettingValue struct {
+	revision          int64
 	locality          localityPolicy
 	accessURLs        []string
 	certificateDomain string
@@ -29,13 +31,18 @@ type connectionSettingValue struct {
 }
 
 func (c *connectionPolicyCache) set(document operations.SettingsDocument) {
+	c.applyMu.Lock()
+	defer c.applyMu.Unlock()
+	if current := c.setting.Load(); current != nil && document.Revision < current.revision {
+		return
+	}
 	medialimits.ConfigureSubtitles(document.Effective.SubtitleTrackLimit, document.Effective.SubtitleFileLimitMiB)
 	urls := []string{}
 	if document.Effective.AdvertiseURL != "" {
 		urls = append(urls, document.Effective.AdvertiseURL)
 	}
 	urls = append(urls, document.Effective.AccessURLs...)
-	c.setting.Store(&connectionSettingValue{locality: newLocalityPolicy(document.Effective), accessURLs: urls, certificateDomain: document.Effective.CustomCertificateDomain, apiPerMinute: document.Effective.APIRequestsPerMinute})
+	c.setting.Store(&connectionSettingValue{revision: document.Revision, locality: newLocalityPolicy(document.Effective), accessURLs: urls, certificateDomain: document.Effective.CustomCertificateDomain, apiPerMinute: document.Effective.APIRequestsPerMinute})
 }
 
 // connectionSetting is the cached projection of the connection rows (secure
