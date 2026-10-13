@@ -10,6 +10,8 @@ import {parseQueueItem} from './queues.ts';
 import {PlayerChaptersService} from './player-chapters.ts';
 
 export const listeningRates=[.5,.75,1,1.25,1.5,1.75,2] as const;
+/** Audiobooks go faster than music: speech stays clear up to three times its speed. */
+export const audiobookRates=[...listeningRates,2.5,3] as const;
 export const passoutChoices=[0,30,60,90,120] as const;
 export type ListeningPreferences=Readonly<{revision:number;musicRate:number;bookRate:number;autoplayNext:boolean;passoutMinutes:number}>;
 export type ListeningTarget=Readonly<{libraryId:string;kind:'library'|'song'|'artist'|'album'|'disc'|'book';id:string}>;
@@ -25,17 +27,18 @@ const finite=(v:unknown):v is number=>typeof v==='number'&&Number.isFinite(v)&&v
 const counter=(v:unknown):v is number=>Number.isSafeInteger(v)&&Number(v)>=0;
 function bad():never{throw new Error(unreadableServerResponse);}
 export function parseListeningPreferences(v:unknown):ListeningPreferences {
- if(!object(v)||!counter(v.revision)||!listeningRates.includes(v.musicRate as never)||!listeningRates.includes(v.bookRate as never)||typeof v.autoplayNext!=='boolean'||!passoutChoices.includes(v.passoutMinutes as never))bad();
+ if(!object(v)||!counter(v.revision)||!listeningRates.includes(v.musicRate as never)||!audiobookRates.includes(v.bookRate as never)||typeof v.autoplayNext!=='boolean'||!passoutChoices.includes(v.passoutMinutes as never))bad();
  return Object.freeze({revision:v.revision,musicRate:v.musicRate as number,bookRate:v.bookRate as number,autoplayNext:v.autoplayNext,passoutMinutes:v.passoutMinutes as number});
 }
 export function listeningData(raw:unknown,scope:QueueScope):unknown {
  if(!object(raw)||!object(raw.scope)||(['serverId','authority','accountId','profileId'] as const).some(k=>(raw.scope as Record<string,unknown>)[k]!==scope[k]))bad();
  return raw.data;
 }
+/** What can be played from a page. Its target is exact; a way of playing this app does not know is not offered, and the ones it knows still are. */
 export function parseListeningJourney(v:unknown,libraryId:string):ListeningJourney {
- if(!object(v)||!object(v.target)||v.target.libraryId!==libraryId||!['library','song','artist','album','disc','book'].includes(String(v.target.kind))||typeof v.target.id!=='string'||!(/^[A-Za-z0-9_-]{1,128}(?::disc:\d{1,4})?$/.test(v.target.id))||!Array.isArray(v.actions)||v.actions.some(a=>!['play','shuffle','mix','enqueue'].includes(String(a)))||typeof v.resumeUnavailable!=='boolean')bad();
+ if(!object(v)||!object(v.target)||v.target.libraryId!==libraryId||!['library','song','artist','album','disc','book'].includes(String(v.target.kind))||typeof v.target.id!=='string'||!(/^[A-Za-z0-9_-]{1,128}(?::disc:\d{1,4})?$/.test(v.target.id))||!Array.isArray(v.actions)||v.actions.length>16||typeof v.resumeUnavailable!=='boolean')bad();
  let resume:ListeningJourney['resume'];if(v.resume!==undefined){const r=wireDurations(v.resume,{positionSeconds:'positionMs'});if(!object(r)||!id(r.itemId)||!finite(r.positionSeconds))bad();resume=Object.freeze({itemId:r.itemId,positionSeconds:r.positionSeconds});}
- return Object.freeze({target:Object.freeze({libraryId,kind:v.target.kind as ListeningTarget['kind'],id:v.target.id}),actions:Object.freeze([...v.actions]) as ListeningJourney['actions'],...(resume?{resume}:{}),resumeUnavailable:v.resumeUnavailable});
+ return Object.freeze({target:Object.freeze({libraryId,kind:v.target.kind as ListeningTarget['kind'],id:v.target.id}),actions:Object.freeze([...new Set(v.actions.filter(a=>['play','shuffle','mix','enqueue'].includes(String(a))))]) as ListeningJourney['actions'],...(resume?{resume}:{}),resumeUnavailable:v.resumeUnavailable});
 }
 function parseItem(v:unknown,itemId:string):ListeningItem {
  if(!object(v)||v.itemId!==itemId||!id(v.libraryId)||typeof v.kind!=='string')bad();

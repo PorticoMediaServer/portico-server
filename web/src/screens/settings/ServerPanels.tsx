@@ -10,11 +10,16 @@ import {LiveSourcesPanel, RecordingRulesPanel, RecordingStoragePanel} from '../s
 import {TunersGroup} from '../server/DVRSettings';
 import {LibraryChannelsPanel} from '../server/Channels';
 import {AccountsPanel} from '../server/People';
-import {APIKeysPanel, InvitationsPanel} from '../server/Access';
+import {AccountDevices, InvitationsPanel} from '../server/Access';
+import {APIKeysPanel, MemberTokensPanel} from '../server/ApiAccess';
+import {WebhooksPanel} from '../server/Webhooks';
+import {AssistantsPanel} from '../server/Assistants';
+import {MetadataSettingsPanel} from '../server/MetadataSettings';
 import {TranscodeStatusPanel} from '../server/Transcoding';
-import {AddressesRow, CertificateStatusRow, RemoteStatusPanel} from '../server/Network';
+import {AddressesRow, CertificateStatusRow, ConnectionRow, OwnCertificateStatusRow, RemoteStatusPanel} from '../server/Network';
 import {AccountConnectionPanel, IdentityRows} from '../server/General';
-import {DiskUsagePanel, MissingTitlesPanel, UpdatesPanel} from '../server/Maintenance';
+import {DiskUsagePanel, MissingTitlesPanel, RestartPanel, UpdatesPanel} from '../server/Maintenance';
+import {ClientReportsPanel} from '../server/ClientReports';
 import {RemoteSourcesPanel} from '../server/Storage';
 import {BackupsGroup} from '../server/Backups';
 import {RetentionRows, ScheduledJobsPanel, WindowsPanel} from '../server/MaintenanceWindows';
@@ -25,7 +30,7 @@ import {PlayHistoryPanel} from '../server/PlayHistory';
 import {StatePermissionsCard} from '../server/StatePermissions';
 
 /** Panels that are rows inside their section's group; every other panel brings its own surface and heading. */
-const ROW_PANELS: ReadonlySet<SettingsCustomId> = new Set(['server.certificateStatus', 'server.addresses', 'server.retention', 'server.detailWindow', 'server.identity']);
+const ROW_PANELS: ReadonlySet<SettingsCustomId> = new Set(['server.certificateStatus', 'server.addresses', 'server.connection', 'server.ownCertificateStatus', 'server.retention', 'server.detailWindow', 'server.identity']);
 export const panelIsGroup = (id: SettingsCustomId) => !ROW_PANELS.has(id);
 
 /** The Server pages' `custom` rows (settings-structure.ts), drawn with the web's own panels. */
@@ -45,12 +50,19 @@ export function ServerPanel({id}: {id: SettingsCustomId}) {
     case 'server.channels': return <LibraryChannelsPanel />;
     case 'server.accounts': return <AccountsPanel />;
     case 'server.invitations': return <InvitationsPanel />;
+    case 'server.devices': return <AccountDevices />;
     case 'server.apiKeys': return <APIKeysPanel />;
+    case 'server.memberTokens': return <MemberTokensPanel />;
+    case 'server.webhooks': return <WebhooksPanel />;
+    case 'server.assistants': return <AssistantsPanel />;
+    case 'server.metadataSettings': return <MetadataSettingsPanel />;
     case 'server.transcodeStatus': return <TranscodeStatusPanel />;
     case 'server.remoteStatus': return <RemoteStatusPanel />;
     case 'server.accountConnection': return <AccountConnectionPanel />;
     case 'server.certificateStatus': return <CertificateStatusRow />;
     case 'server.addresses': return <AddressesRow />;
+    case 'server.connection': return <ConnectionRow />;
+    case 'server.ownCertificateStatus': return <OwnCertificateStatusRow />;
     case 'server.diskUsage': return <DiskUsagePanel />;
     case 'server.retention': return <RetentionRows />;
     case 'server.remoteSources': return <RemoteSourcesPanel />;
@@ -67,6 +79,8 @@ export function ServerPanel({id}: {id: SettingsCustomId}) {
     case 'server.stateFolder': return <StateFolder />;
     case 'server.identity': return <IdentityRows />;
     case 'server.updates': return <UpdatesPanel />;
+    case 'server.restart': return <RestartPanel />;
+    case 'server.clientReports': return <ClientReportsPanel />;
     default: return null;
   }
 }

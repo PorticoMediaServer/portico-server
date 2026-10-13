@@ -131,6 +131,11 @@ func (s *Service) SetupLimit(ctx context.Context, subject, kind string, limit in
 	return nil
 }
 func (s *Service) StartQuick(ctx context.Context, q QuickStart, private bool) (QuickAuthorization, error) {
+	// A device that could never be signed in from where it is gets told now,
+	// not after someone has approved its code.
+	if RemoteSignInClosed(ctx) {
+		return QuickAuthorization{}, ErrRemoteSignIn
+	}
 	if !setupUUID.MatchString(q.RequestID) || !setupLabel(q.DeviceName, 100) || !setupLabel(q.Platform, 32) || !setupLabel(q.AppVersion, 40) {
 		return QuickAuthorization{}, &SetupProtocolError{Code: "invalid_request"}
 	}
@@ -278,7 +283,8 @@ func (s *Service) DecideQuick(ctx context.Context, p Principal, id, code, decisi
 		if e = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM authorization_family_grants WHERE family_id=? AND grant_kind='viewer_only')`, approver).Scan(&viewerOnly); e != nil {
 			return e
 		}
-		cipher, e = s.sealSetup(quickApproval{AccountID: p.AccountID, ProfileID: p.ProfileID, Epoch: p.Epoch, PorticoAdmitted: porticoFamilyTx(ctx, tx, approver), ViewerOnly: viewerOnly}, "quick-approval:"+id)
+		admitted, signer := porticoAdmissionTx(ctx, tx, approver)
+		cipher, e = s.sealSetup(quickApproval{AccountID: p.AccountID, ProfileID: p.ProfileID, Epoch: p.Epoch, PorticoAdmitted: admitted, PorticoSigner: signer, ViewerOnly: viewerOnly}, "quick-approval:"+id)
 		if e != nil {
 			return e
 		}
@@ -359,6 +365,17 @@ func (s *Service) PollQuick(ctx context.Context, secret string) (Envelope, error
 	}
 	if status == "approved" && tokenHash == "" {
 		out, e := s.issueQuickTx(ctx, tx, id, cipher)
+		if errors.Is(e, ErrDevicePending) || errors.Is(e, ErrDeviceDenied) {
+			// The server requires the owner to approve new devices, and this one
+			// is new (or was blocked). Its record is kept, so the owner has
+			// something to approve; rolling it back would leave the television
+			// waiting for an approval nobody could give. The code stays
+			// approved: once the device is approved, the next poll collects it.
+			if commitErr := gated3.Commit(); commitErr != nil {
+				return Envelope{}, commitErr
+			}
+			return Envelope{}, e
+		}
 		if e != nil {
 			return Envelope{}, e
 		}
@@ -506,7 +523,9 @@ func (s *Service) RunSetupMaintenance(ctx context.Context) {
 		_ = s.PruneSetup(step)
 		_, _ = s.PruneAuthorizationRenewals(step)
 		if time.Since(lastSessionPrune) >= 15*time.Minute {
-			if removed, err := s.PruneSessionHistory(step); err == nil && removed < 128 {
+			removed, err := s.PruneSessionHistory(step)
+			ended, endedErr := s.PruneEndedSessions(step)
+			if err == nil && endedErr == nil && removed < 128 && ended < 64 {
 				lastSessionPrune = time.Now()
 			}
 		}
@@ -523,6 +542,9 @@ type quickApproval struct {
 	// PorticoAdmitted: the approving session was admitted through Portico
 	// sign-in (be/member M9), so the device's family inherits that admission.
 	PorticoAdmitted bool `json:"porticoAdmitted,omitempty"`
+	// PorticoSigner is the Hosted signing key behind that admission; the
+	// device's session ends with the approver's if the key is revoked.
+	PorticoSigner string `json:"porticoSigner,omitempty"`
 	// ViewerOnly: the approving session was itself a viewer-only one. A device
 	// signed in by it can do no more than it could.
 	ViewerOnly bool `json:"viewerOnly,omitempty"`
@@ -583,7 +605,7 @@ func (s *Service) issueQuickTx(ctx context.Context, tx *sql.Tx, id string, ciphe
 		}
 	}
 	if a.PorticoAdmitted {
-		if _, e = tx.ExecContext(ctx, `INSERT OR IGNORE INTO portico_admitted_families(family_id) VALUES(?)`, out.SessionFamilyID); e != nil {
+		if e = recordPorticoAdmissionTx(ctx, tx, out.SessionFamilyID, a.PorticoSigner); e != nil {
 			return out, e
 		}
 	}

@@ -183,6 +183,45 @@ type ProviderIdentity struct {
 	ID       string
 }
 
+func normalizedProvider(p ProviderIdentity) (ProviderIdentity, error) {
+	p.Provider, p.Kind, p.ID = strings.ToLower(strings.TrimSpace(p.Provider)), strings.ToLower(strings.TrimSpace(p.Kind)), strings.TrimSpace(p.ID)
+	if p.Provider == "" || p.Kind == "" || p.ID == "" || len(p.Provider) > 64 || len(p.Kind) > 64 || len(p.ID) > 256 {
+		return p, ErrIdentityConflict
+	}
+	for _, value := range []string{p.Provider, p.Kind, p.ID} {
+		for _, r := range value {
+			if unicode.IsControl(r) {
+				return p, ErrIdentityConflict
+			}
+		}
+	}
+	return p, nil
+}
+
+func providerCompatibleTx(ctx context.Context, tx *sql.Tx, entity int64, p ProviderIdentity) (bool, error) {
+	var conflicting bool
+	err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM catalog_external_ids WHERE entity_id=? AND provider=? AND provider_kind=? AND provider_id<>?)`, entity, p.Provider, p.Kind, p.ID).Scan(&conflicting)
+	return !conflicting, err
+}
+
+// RecordProviderIdentityTx records proven identity without silently replacing
+// a different identity already accepted for this provider and kind.
+func RecordProviderIdentityTx(ctx context.Context, tx *sql.Tx, entity int64, p ProviderIdentity) error {
+	p, err := normalizedProvider(p)
+	if err != nil {
+		return err
+	}
+	ok, err := providerCompatibleTx(ctx, tx, entity, p)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return ErrIdentityConflict
+	}
+	_, err = tx.ExecContext(ctx, `INSERT OR IGNORE INTO catalog_external_ids(entity_id,provider,provider_kind,provider_id) VALUES(?,?,?,?)`, entity, p.Provider, p.Kind, p.ID)
+	return err
+}
+
 // FindByProviderTx returns the live entity of a library and kind that carries
 // a provider identity (0 when none does). When several do, the oldest wins.
 func FindByProviderTx(ctx context.Context, tx *sql.Tx, library int64, kind Kind, p ProviderIdentity) (int64, error) {
@@ -229,20 +268,58 @@ type TitleClaim struct {
 // as, then the place (see TitleClaim.Locator). Every name in the claim is then
 // recorded for the title, so the next file that says any of them finds it.
 func ResolveTitleTx(ctx context.Context, tx *sql.Tx, c TitleClaim) (id int64, created bool, err error) {
-	if c.Library == 0 || c.Kind < 1 || len(c.Keys) == 0 && c.Locator == "" {
+	if c.Library == 0 || c.Kind < 1 || len(c.Keys) == 0 && c.Locator == "" && len(c.Provider) == 0 || len(c.Provider) > 12 {
 		return 0, false, fmt.Errorf("a title claim needs a library, a kind and at least one identity")
 	}
-	for _, p := range c.Provider {
-		if id, err = FindByProviderTx(ctx, tx, c.Library, c.Kind, p); err != nil {
+	providers := make([]ProviderIdentity, len(c.Provider))
+	for i, p := range c.Provider {
+		if providers[i], err = normalizedProvider(p); err != nil {
 			return 0, false, err
 		}
-		if id != 0 {
-			break
+		p = providers[i]
+		held, e := FindByProviderTx(ctx, tx, c.Library, c.Kind, p)
+		if e != nil {
+			return 0, false, e
+		}
+		if held != 0 && id != 0 && held != id {
+			return 0, false, ErrIdentityConflict
+		}
+		if held != 0 {
+			id = held
+		}
+	}
+	compatible := func(candidate int64) (bool, error) {
+		for _, p := range providers {
+			ok, e := providerCompatibleTx(ctx, tx, candidate, p)
+			if e != nil || !ok {
+				return false, e
+			}
+		}
+		return true, nil
+	}
+	if id != 0 {
+		ok, e := compatible(id)
+		if e != nil {
+			return 0, false, e
+		}
+		if !ok {
+			return 0, false, ErrIdentityConflict
 		}
 	}
 	for i := 0; id == 0 && i < len(c.Keys); i++ {
-		if id, err = findLiveTx(ctx, tx, c.Library, c.Kind, c.Keys[i]); err != nil {
-			return 0, false, err
+		candidate, e := findLiveTx(ctx, tx, c.Library, c.Kind, c.Keys[i])
+		if e != nil {
+			return 0, false, e
+		}
+		if candidate == 0 {
+			continue
+		}
+		ok, e := compatible(candidate)
+		if e != nil {
+			return 0, false, e
+		}
+		if ok {
+			id = candidate
 		}
 	}
 	if id == 0 && c.Locator != "" {
@@ -250,7 +327,11 @@ func ResolveTitleTx(ctx context.Context, tx *sql.Tx, c TitleClaim) (id int64, cr
 		if e != nil {
 			return 0, false, e
 		}
-		if held != 0 {
+		ok, e := compatible(held)
+		if e != nil {
+			return 0, false, e
+		}
+		if held != 0 && ok {
 			var elsewhere bool
 			if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM catalog_asset_links l JOIN catalog_assets a ON a.id=l.asset_id WHERE l.entity_id=? AND `+presentFileSQL+`)`, held).Scan(&elsewhere); err != nil {
 				return 0, false, err
@@ -268,6 +349,10 @@ func ResolveTitleTx(ctx context.Context, tx *sql.Tx, c TitleClaim) (id int64, cr
 		primary := c.Locator
 		if len(c.Keys) > 0 {
 			primary = c.Keys[0]
+		}
+		if len(providers) > 0 {
+			p := providers[0]
+			primary = ProviderKey(p.Provider, p.Kind, p.ID)
 		}
 		// A name held by a live title of another kind or library cannot be shared.
 		if id, created, err = EnsureEntityTx(ctx, tx, Entity{Library: c.Library, Kind: c.Kind, Parent: c.Parent, Key: primary, Title: c.Title, Year: c.Year, Added: c.Added}); err != nil {
@@ -293,6 +378,11 @@ func ResolveTitleTx(ctx context.Context, tx *sql.Tx, c TitleClaim) (id int64, cr
 	}
 	if c.Locator != "" {
 		if err = MoveIdentityTx(ctx, tx, id, c.Locator); err != nil {
+			return 0, false, err
+		}
+	}
+	for _, p := range providers {
+		if err = RecordProviderIdentityTx(ctx, tx, id, p); err != nil {
 			return 0, false, err
 		}
 	}

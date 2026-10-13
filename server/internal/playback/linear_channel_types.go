@@ -203,18 +203,19 @@ type LinearInterval struct {
 
 // LinearMedia is the channel timeline projection.
 type LinearMedia struct {
-	StreamURL              string           `json:"streamUrl"`
-	BufferGeneration       string           `json:"bufferGeneration"`
-	PresentationGeneration string           `json:"presentationGeneration"`
-	OriginMS               int64            `json:"originMs"`
-	WindowRevision         string           `json:"windowRevision"`
-	WindowStartUS          string           `json:"windowStartUs"`
-	WindowEndUS            string           `json:"windowEndUs"`
-	LiveEdgeUS             string           `json:"liveEdgeUs"`
-	Gaps                   []LinearInterval `json:"gaps"`
-	State                  string           `json:"state"`
-	ErrorCode              string           `json:"errorCode"`
-	LogoURL                string           `json:"logoUrl"`
+	ReservationRequiredAtMS *int64           `json:"reservationRequiredAtMs,omitempty"`
+	StreamURL               string           `json:"streamUrl"`
+	BufferGeneration        string           `json:"bufferGeneration"`
+	PresentationGeneration  string           `json:"presentationGeneration"`
+	OriginMS                int64            `json:"originMs"`
+	WindowRevision          string           `json:"windowRevision"`
+	WindowStartUS           string           `json:"windowStartUs"`
+	WindowEndUS             string           `json:"windowEndUs"`
+	LiveEdgeUS              string           `json:"liveEdgeUs"`
+	Gaps                    []LinearInterval `json:"gaps"`
+	State                   string           `json:"state"`
+	ErrorCode               string           `json:"errorCode"`
+	LogoURL                 string           `json:"logoUrl"`
 }
 
 // LinearDelivery is an owned source/presentation implementation.

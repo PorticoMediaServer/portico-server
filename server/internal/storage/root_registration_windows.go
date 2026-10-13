@@ -145,7 +145,11 @@ func registerRootHelper(req request, in io.Reader, out io.Writer) error {
 	if err := checkLocalRoot(req.Path); err != nil {
 		return err
 	}
-	root, err := os.OpenRoot(req.Path)
+	resolved, err := filepath.EvalSymlinks(req.Path)
+	if err != nil {
+		return err
+	}
+	root, err := os.OpenRoot(resolved)
 	if err != nil {
 		return err
 	}

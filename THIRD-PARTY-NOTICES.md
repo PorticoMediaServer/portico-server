@@ -20,6 +20,21 @@ FFmpeg toolchain release in this GitHub repository.
 The web player uses a patched build of hls.js, kept with its license, patch and
 provenance in `third_party/hls.js`.
 
+The web player draws styled subtitles with libass compiled to WebAssembly
+(`@jellyfin/libass-wasm`), kept unmodified with its provenance in
+`third_party/libass-wasm`. The build's own wrapper is MIT licensed. It contains
+libass (ISC), FreeType (FreeType License), HarfBuzz and Fontconfig (MIT-style),
+Expat and Brotli (MIT), zlib, and FriBidi under the GNU Lesser General Public
+License, version 2.1 or later; the full notices are in
+`third_party/libass-wasm/COPYRIGHT`. The corresponding source is the upstream
+repository at the commit recorded in `third_party/libass-wasm/provenance.json`.
+
+Subtitle fonts distributed with the web player: Liberation Sans and the Noto
+Sans fonts for Arabic, Hebrew, Thai, Devanagari, Bengali and Tamil under the SIL
+Open Font License 1.1, and Droid Sans Fallback under the Apache License 2.0.
+Their licenses and provenance are in `third_party/subtitle-fonts` and
+`third_party/libass-wasm`.
+
 ## Metadata services
 
 Portico includes intentionally distributed application credentials for TMDB

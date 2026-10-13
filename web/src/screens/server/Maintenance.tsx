@@ -1,16 +1,18 @@
-import {useMemo, useState} from 'react';
+import {useEffect, useMemo, useRef, useState} from 'react';
+import {getBackups, isAuthenticationFailure, restartServer, waitForServerAnswer} from '@core/backups.ts';
+import {serverChanged} from '../../app/server-changes';
+import {useServerForm} from '../settings/ServerForms';
 import {parseEnvelope, parseStorageReport, parseUpdateReport, type StorageUsage} from '@core/administration.ts';
 import {emptyMissingTitles, listMissingTitles} from '@core/title-identity.ts';
-import {useAction, useRead} from '../../admin/console';
+import {problem, useAction, useConsole, useRead} from '../../admin/console';
 import {createOperationIds} from './operation-ids';
 import {useCursorRead, withCursor} from '../../admin/cursor-read';
 import {ListPager} from './ListPager';
 import {useSession} from '../../app/session';
-import {useI18n} from '../../app/i18n';
-import {formatBytes} from '@core/presentation/index.ts';
-import {Badge, Button, ConfirmDialog, Freshness, Input, Notice, SettingsGroup, SettingsRow, Status, Text} from '../../ui';
+import {useI18n, type I18n} from '../../app/i18n';
+import {Badge, Button, ConfirmDialog, Freshness, Input, Notice, SettingsGroup, SettingsRow, Status, Switch, Text} from '../../ui';
 
-const when = (iso: string) => (iso ? new Date(iso).toLocaleString(undefined, {dateStyle: 'medium', timeStyle: 'short'}) : '—');
+const when = (i18n: I18n, iso: string) => (iso ? i18n.dateTime(iso) : '—');
 
 /** Typed calls against the administration envelope: every response names the server it came
  * from, and a response from a different server is refused rather than shown. */
@@ -26,7 +28,8 @@ function useAdmin() {
 /** Storage & backups › Disk usage: what the server's own files take, with clean-up. Anything that destroys data asks for a typed confirmation. */
 export function DiskUsagePanel() {
   const admin = useAdmin();
-  const {t} = useI18n();
+  const i18n = useI18n();
+  const {t} = i18n;
   const read = useRead(() => admin.get('/v1/admin/storage-usage', parseStorageReport), [admin]);
   const action = useAction();
   // BE-API-10: one ID per logical write; retries reuse it.
@@ -38,9 +41,9 @@ export function DiskUsagePanel() {
     <SettingsGroup title={t('settings.server.diskUsage')} description={t('web.maintenance.storageLede')}>
       {read.error ? <div style={{padding: 12}}><Notice tone={report ? 'warning' : 'error'} compact action={{label: t('action.tryAgain'), onClick: read.reload}}>{read.error}</Notice></div> : null}
       {action.notice ? <div style={{padding: 12}}><Notice tone="success" compact>{action.notice}</Notice></div> : null}
-      {report ? <SettingsRow label={t('web.maintenance.totalLabel')} meta={formatBytes(report.totalBytes)} help={report.truncated ? t('web.maintenance.truncatedHelp') : undefined} /> : null}
+      {report ? <SettingsRow label={t('web.maintenance.totalLabel')} meta={i18n.bytes(report.totalBytes)} help={report.truncated ? t('web.maintenance.truncatedHelp') : undefined} /> : null}
       {report?.categories.filter(c => c.present).map(c => (
-        <SettingsRow key={c.id} label={c.name} help={c.regenerable ? t('web.maintenance.regenerableHelp', {description: c.description}) : c.description} meta={formatBytes(c.bytes)}
+        <SettingsRow key={c.id} label={c.name} help={c.regenerable ? t('web.maintenance.regenerableHelp', {description: c.description}) : c.description} meta={i18n.bytes(c.bytes)}
           control={c.cleanable && c.bytes > 0 ? <Button size="sm" variant="ghost" label={t('server.cleanUp')} onClick={() => { setChosen(c); setDays(30); action.clear(); }} /> : undefined} />
       ))}
       <div style={{padding: '8px 16px 16px'}}><Freshness at={read.at} refreshing={read.loading} onRefresh={read.reload} /></div>
@@ -56,7 +59,8 @@ export function DiskUsagePanel() {
  * their own if the files return. "Remove them now" does not wait for the rule. */
 export function MissingTitlesPanel() {
   const {api} = useSession();
-  const {t} = useI18n();
+  const i18n = useI18n();
+  const {t} = i18n;
   const read = useCursorRead(cursor => listMissingTitles(api, {cursor: cursor || undefined, limit: 100}), [api]);
   const action = useAction();
   const [asking, setAsking] = useState(false);
@@ -70,7 +74,7 @@ export function MissingTitlesPanel() {
       {removed !== undefined ? <div style={{padding: 12}}><Notice tone="success" compact>{t('web.missingTitles.removed', {count: removed})}</Notice></div> : null}
       {page?.items.map(entry => (
         <SettingsRow key={entry.id} icon="film" label={entry.parentTitle ? `${entry.parentTitle} · ${entry.title}` : entry.title}
-          help={entry.removedAt ? t('web.missingTitles.sinceRemoved', {when: when(entry.missingSince), removes: when(entry.removedAt)}) : t('web.missingTitles.since', {when: when(entry.missingSince)})} />
+          help={entry.removedAt ? t('web.missingTitles.sinceRemoved', {when: when(i18n, entry.missingSince), removes: when(i18n, entry.removedAt)}) : t('web.missingTitles.since', {when: when(i18n, entry.missingSince)})} />
       ))}
       {page && !page.items.length ? <div style={{padding: 16}}><Text variant="caption" tone="tertiary">{t('web.missingTitles.none')}</Text></div> : null}
       {total ? <div style={{padding: '8px 16px 16px', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center'}}>
@@ -90,10 +94,65 @@ export function MissingTitlesPanel() {
   );
 }
 
+/** The address the server checks for new versions when the owner has not changed it, from the settings registry; nothing when it cannot be read. */
+function useDefaultUpdateFeed(): string | undefined {
+  const client = useConsole();
+  const read = useRead(async () => { const fields = ((await client.registry()) as {fields?: readonly {id?: unknown; default?: unknown}[]} | null)?.fields; const field = Array.isArray(fields) ? fields.find(f => f?.id === 'updates.feedUrl') : undefined; return typeof field?.default === 'string' ? field.default : ''; }, [client]);
+  return read.data || undefined;
+}
+
+/**
+ * General › "Check for new versions": the update notice's on/off. Off clears the address the
+ * server checks; on puts back the usual one. An address the owner set by hand is left as it is.
+ * Part of the page's one Save.
+ */
+function UpdateCheckRow() {
+  const {t} = useI18n();
+  const {form, state} = useServerForm<Record<string, unknown>>('runtime');
+  const usual = useDefaultUpdateFeed();
+  const feed = state.draft?.['updates.feedUrl'];
+  if (typeof feed !== 'string') return null;
+  return <SettingsRow label={t('server.updates.check')} help={t('server.updates.checkHelp')} control={<Switch checked={feed !== ''} disabled={feed === '' && !usual} label={t('server.updates.check')} onCheckedChange={on => form.set(draft => ({...draft, 'updates.feedUrl': on ? usual ?? '' : ''}))} />} />;
+}
+
+/**
+ * General › Restart: an owner action, asked first. The page waits for the server to answer again
+ * and says so; an ended sign-in goes to the sign-in screen through the session as usual.
+ */
+export function RestartPanel() {
+  const {t} = useI18n();
+  const {api, system, session} = useSession();
+  const serverId = system?.id ?? session?.viewer.serverId ?? '';
+  const [asking, setAsking] = useState(false);
+  const [phase, setPhase] = useState<'idle' | 'restarting' | 'back'>('idle');
+  const [error, setError] = useState('');
+  const stop = useRef<AbortController | null>(null);
+  useEffect(() => () => stop.current?.abort(), []);
+  const restart = () => {
+    const controller = stop.current = new AbortController();
+    setAsking(false); setError(''); setPhase('restarting');
+    restartServer(api, controller.signal)
+      // The server may already be going down when it answers; either way, wait for it to come back.
+      .catch(e => { if ((e as {status?: number} | null)?.status) throw e; })
+      .then(() => waitForServerAnswer(() => getBackups(api, serverId, controller.signal), {signal: controller.signal}))
+      .then(() => { if (!controller.signal.aborted) { setPhase('back'); serverChanged(); } }, e => { if (controller.signal.aborted || isAuthenticationFailure(e)) return; setPhase('idle'); setError(problem(e, 'action') || t('server.restart.failed')); });
+  };
+  return (
+    <SettingsGroup title={t('web.maintenance.serverRestart')}>
+      {error ? <div style={{padding: 12}}><Notice tone="error" compact>{error}</Notice></div> : null}
+      {phase === 'back' ? <div style={{padding: 12}}><Notice tone="success" compact>{t('server.restart.back')}</Notice></div> : null}
+      <SettingsRow label={t('web.maintenance.serverRestart')} help={t('web.maintenance.serverRestartHelp')} state={phase === 'restarting' ? <span role="status">{t('server.restart.waiting')}</span> : undefined}
+        control={<Button size="sm" variant="secondary" icon="refresh" label={t('web.maintenance.serverRestart')} loading={phase === 'restarting'} onClick={() => setAsking(true)} />} />
+      <ConfirmDialog open={asking} onOpenChange={setAsking} title={t('server.restart.title')} body={t('server.restart.body')} confirmLabel={t('web.maintenance.serverRestart')} cancelLabel={t('action.cancel')} destructive={false} onConfirm={restart} />
+    </SettingsGroup>
+  );
+}
+
 /** General › Version and updates: the one place that says what is running and what is new. */
 export function UpdatesPanel() {
   const {api} = useSession();
-  const {t} = useI18n();
+  const i18n = useI18n();
+  const {t} = i18n;
   // APL-SYS-12 (parser probe): GET /v1/admin/updates is a registry route that answers the bare
   // report, not the administration envelope, so reading it through the envelope always failed
   // with "couldn't read".
@@ -105,12 +164,13 @@ export function UpdatesPanel() {
       {read.error ? <div style={{padding: 12}}><Notice tone={report ? 'warning' : 'error'} compact action={{label: t('action.tryAgain'), onClick: read.reload}}>{read.error}</Notice></div> : null}
       {report ? (
         <>
-          <SettingsRow label={t('web.maintenance.thisServer')} meta={report.current.version || t('web.maintenance.devBuild')} help={report.current.builtAt ? t('web.maintenance.builtAt', {when: when(report.current.builtAt), channel: report.channel}) : t('web.maintenance.channelOnly', {channel: report.channel})} />
+          <SettingsRow label={t('web.maintenance.thisServer')} meta={report.current.version || t('web.maintenance.devBuild')} help={report.current.builtAt ? t('web.maintenance.builtAt', {when: when(i18n, report.current.builtAt), channel: report.channel}) : t('web.maintenance.channelOnly', {channel: report.channel})} />
           <SettingsRow label={report.status === 'update-available' ? t('web.maintenance.updateAvailable') : report.status === 'current' ? t('web.maintenance.upToDate') : t('web.maintenance.updateCheck')} help={report.message || (report.latest?.notes ?? undefined)}
             state={<Status tone={tone}>{report.status === 'update-available' ? report.latest?.version ?? t('web.maintenance.newVersion') : report.status === 'current' ? t('web.maintenance.currentVersion') : report.status === 'no-feed' ? t('web.maintenance.noFeed') : t('web.maintenance.updateUnavailable')}</Status>}
             control={report.latest?.url ? <Button size="sm" variant="secondary" icon="external" label={t('web.maintenance.releaseNotes')} href={report.latest.url} /> : undefined} />
         </>
       ) : null}
+      <UpdateCheckRow />
       <div style={{padding: '8px 16px 16px'}}><Freshness at={read.at} refreshing={read.loading} onRefresh={read.reload} /></div>
     </SettingsGroup>
   );

@@ -15,9 +15,7 @@ import (
 // for, and a count of foreign objects is how an owner finds out that is what
 // they have. Nothing is ever dropped automatically: a build that does not define
 // a table cannot know what removing it would cost.
-const knownSchemaObjects = `index access_devices_account
-index access_devices_page
-index access_invitation_page
+const knownSchemaObjects = `index access_invitation_page
 index access_invitation_pending
 index admin_channel_presets_page
 index admin_dvr_groups_page
@@ -195,6 +193,7 @@ index download_receipts_viewer
 index download_requests_viewer
 index download_requests_work
 index dvr_catalog_provenance_asset_id_fk
+index dvr_recording_shares_capture
 index dvr_recordings_due
 index dvr_recordings_owner_page
 index dvr_recordings_rule
@@ -209,6 +208,7 @@ index hosted_identity_nonces_expiry
 index identity_browser_accounts_recent
 index identity_device_families_device
 index identity_devices_account
+index identity_devices_recent
 index identity_factor_challenge_expiry
 index identity_refresh_device
 index identity_refresh_predecessors_family
@@ -340,7 +340,6 @@ index play_history_library
 index play_history_recent
 index playback_admin_retention
 index playback_channel_sessions_live
-index playback_client_profiles_age
 index playback_origin_associations_asset
 index playback_personal_claim_item
 index playback_personal_fences_item_id_fk
@@ -362,6 +361,7 @@ index playback_vod_pending
 index playlist_receipts_expiry
 index playlist_shared_viewer
 index ported_artwork_jobs_entity
+index portico_admitted_signer
 index prepared_media_item_jobs
 index prepared_media_item_versions
 index prepared_media_object_refs
@@ -412,6 +412,7 @@ index social_group_receipts_age
 index social_groups_owner
 index social_handoffs_open
 index subtitle_candidates_expiry
+index subtitle_inventory_entries_association
 index subtitle_provider_candidates_item_id_fk
 index subtitle_resources_item
 index subtitle_resources_source_id_fk
@@ -430,7 +431,6 @@ index webhook_deliveries_coalesce
 index webhook_deliveries_due
 index webhook_deliveries_log
 index webhook_deliveries_queue
-table access_devices
 table access_invitations
 table access_limits
 table access_receipts
@@ -652,6 +652,7 @@ table download_receipts
 table download_request_items
 table download_requests
 table download_settings
+table download_source_digests
 table dvr_catalog_provenance
 table dvr_catalog_retirements
 table dvr_cleanup_work
@@ -662,6 +663,7 @@ table dvr_owner_revisions
 table dvr_private_libraries
 table dvr_receipts
 table dvr_recording_grants
+table dvr_recording_shares
 table dvr_recordings
 table dvr_retention_retry
 table dvr_rule_work
@@ -736,12 +738,14 @@ table listening_book_groups
 table listening_book_series
 table live_allocation_reconcile_cursor
 table live_allocations
+table live_channel_attributes
 table live_channel_logos
 table live_channel_preferences
 table live_channel_versions
 table live_enable_receipts
 table live_generations
 table live_icon_jobs
+table live_import_diagnostics
 table live_logo_failures
 table live_logo_jobs
 table live_operations
@@ -880,7 +884,8 @@ table playback_admin_operations
 table playback_artifacts
 table playback_audio_plans
 table playback_channel_sessions
-table playback_client_profiles
+table playback_conversion_failures
+table playback_conversion_targets
 table playback_copy_timelines
 table playback_delivery_plans
 table playback_device_capabilities
@@ -917,12 +922,10 @@ table playback_sessions
 table playback_source_observations
 table playback_source_pins
 table playback_source_versions
-table playback_subtitle_files
 table playback_subtitle_pins
-table playback_subtitle_plans
 table playback_subtitle_presentations
 table playback_subtitle_state
-table playback_subtitle_tracks
+table playback_track_memory
 table playback_v1_prepared
 table playback_v1_sessions
 table playback_vod_intervals
@@ -978,6 +981,7 @@ table restriction_outbox
 table restrictions
 table retained_title_identities
 table retained_title_state
+table retained_title_state_counts
 table saved_operation_fences
 table saved_pin_order
 table saved_pin_order_revisions
@@ -1017,6 +1021,8 @@ table subtitle_collections
 table subtitle_inventory_entries
 table subtitle_inventory_evidence
 table subtitle_operations
+table subtitle_original_files
+table subtitle_original_revisions
 table subtitle_provider_candidates
 table subtitle_remote_sessions
 table subtitle_render_revisions
@@ -1318,6 +1324,7 @@ trigger continue_show_dismiss_insert
 trigger continue_show_dismiss_update
 trigger direct_account_created
 trigger direct_account_epoch
+trigger direct_membership_disabled
 trigger direct_profile_capacity
 trigger dvr_managed_inventory_reject
 trigger dvr_managed_library_delete
@@ -1580,6 +1587,8 @@ trigger related_genres_termsource_insert
 trigger related_genres_termsource_update
 trigger related_item_update
 trigger repair_delete_entity
+trigger retained_title_state_count_delete
+trigger retained_title_state_count_insert
 trigger rev_listening_audio_evidence_delete
 trigger rev_listening_audio_evidence_insert
 trigger rev_listening_audio_evidence_update

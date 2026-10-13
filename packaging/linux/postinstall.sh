@@ -2,6 +2,10 @@
 set -eu
 if ! getent group portico >/dev/null 2>&1; then groupadd --system portico; fi
 if ! id portico >/dev/null 2>&1; then useradd --system --gid portico --home-dir /var/lib/portico-media-server --shell /usr/sbin/nologin portico; fi
+# Grant only available device groups; no broad device sandbox restriction.
+for group in render video; do
+ if getent group "$group" >/dev/null 2>&1; then usermod -a -G "$group" portico; fi
+done
 install -d -o portico -g portico -m 0700 /var/lib/portico-media-server
 
 # Debian runs this as "configure <previous version>", with no previous version

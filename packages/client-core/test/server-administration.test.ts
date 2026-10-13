@@ -4,27 +4,36 @@ import {
  parseAccessMember,parseAccessMemberPage,parseLimitsDocument,parseMemberLimits,parseInvitation,parseInvitationPage,
  parseAccessDevicePage,parseLogPage,parseLogSettings,parseLogEvent,parseClientLogUploadPage,
  parseConnectivityPolicy,parseConnectivityStatus,grantsTier,managesTier,
+ parseMemberDeletionPreview,previewMemberDeletion,deleteMember,
 } from '../src/server-administration.ts';
 
 const limits={maxStreams:1,remoteBitrateKbps:4000,maxContentRating:'PG-13',allowUnrated:true,
  schedule:{timezone:'UTC',windows:[{days:[1,3],startMinute:600,endMinute:780}]},
  channelPolicy:{mode:'deny',channels:['news']},tagPolicy:{deniedLabels:['Spoilers']}};
 
-test('member limits round-trip and reject a rating this client does not know', () => {
+test('member limits round-trip, with the rating kept as the server stored it', () => {
  const parsed = parseMemberLimits(limits);
  assert.equal(parsed.maxContentRating, 'PG-13');
+ assert.equal(parsed.ratingSystem, '');
+ assert.equal(parsed.maximumAge, -1, 'an older document without the resolved age reads as no limit');
+ // A limit set from a published rating system comes back with its system and the age it stands for.
+ const british = parseMemberLimits({...limits, ratingSystem: 'bbfc', maxContentRating: '15', maximumAge: 15});
+ assert.deepEqual([british.ratingSystem, british.maxContentRating, british.maximumAge], ['bbfc', '15', 15]);
+ assert.throws(() => parseMemberLimits({...limits, maximumAge: 40}));
+ assert.throws(() => parseMemberLimits({...limits, ratingSystem: 7}));
  // The retired maxSessions field is never sent: it is absent from the parsed
  // document, so a limits save cannot carry it back to a server that rejects it.
  assert.equal('maxSessions' in parsed, false);
   assert.equal(parsed.channelPolicy.mode, 'deny');
   assert.deepEqual([...parsed.tagPolicy.deniedLabels], ['Spoilers']);
   assert.deepEqual([...parsed.schedule.windows[0].days], [1, 3]);
-  assert.throws(() => parseMemberLimits({...limits, maxContentRating: 'XX'}));
+  assert.throws(() => parseMemberLimits({...limits, maxContentRating: 'X'.repeat(40)}));
   assert.throws(() => parseMemberLimits({...limits, maxStreams: 100000}));
   assert.throws(() => parseMemberLimits({...limits, schedule: {timezone: 'UTC', windows: [{days: [], startMinute: 0, endMinute: 10}]}}));
   // An absent envelope is an unrestricted one, not a parse failure.
   const empty = parseMemberLimits({});
   assert.equal(empty.maxContentRating, '');
+  assert.equal(empty.maximumAge, -1);
   assert.equal(empty.allowUnrated, true);
   assert.deepEqual([...empty.tagPolicy.deniedLabels], []);
 });
@@ -50,6 +59,22 @@ test('a member carries its tier and both revisions', () => {
   // itself, which the client refuses rather than renders.
   assert.throws(() => parseAccessMemberPage({limit: 0, items: []}));
 });
+test('a member page is refused whole when one member cannot be read, so nobody with access is ever missing from it', () => {
+  const member = {accountId: 'a', username: 'ada', profileId: 'p', role: 'member', disabled: false, revision: 1, allowedLibraries: [], limitsRevision: 1, limits};
+  const page = parseAccessMemberPage({limit: 25, nextCursor: '', futureField: 1, items: [member,
+    {...member, username: 'again'}, {...member, accountId: 'f', username: 'fay', futureField: {a: 1}}]});
+  assert.deepEqual(page.items.map(row => [row.accountId, row.username]), [['a', 'ada'], ['f', 'fay']]);
+  assert.equal('futureField' in page.items[1], false);
+  // A role, a limit or a revision this app cannot read is never guessed and never hidden.
+  for (const unreadable of [{...member, accountId: 'b', role: 'root'}, {...member, accountId: 'c', limits: {...limits, maximumAge: 99}},
+    {...member, accountId: 'd', limits: {...limits, channelPolicy: {mode: 'sometimes', channels: []}}}, {...member, accountId: 'e', revision: 0}, null])
+    assert.throws(() => parseAccessMemberPage({limit: 25, items: [member, unreadable]}));
+  // The page size, its cursor and its outer shape still refuse the whole page.
+  assert.throws(() => parseAccessMemberPage({limit: 1, items: [member, {...member, accountId: 'b'}]}));
+  assert.throws(() => parseAccessMemberPage({limit: 1001, items: [member]}));
+  assert.throws(() => parseAccessMemberPage({limit: 25, nextCursor: 7, items: [member]}));
+  assert.throws(() => parseAccessMemberPage({limit: 25, items: {}}));
+});
 
 test('an invitation code is accepted only where the server issues one', () => {
   const created = parseInvitation({id: 'i1', email: 'guest@example.com', role: 'member', allowedLibraries: [],
@@ -72,7 +97,9 @@ test('a device page carries the approval policy that governs it', () => {
     profileId: 'p', name: 'Living Room', platform: 'tvos', trust: 'pending', firstSeenAt: '2026-09-16T12:00:00Z', lastSeenAt: '2026-09-16T12:30:00Z', revision: 1}]});
   assert.equal(page.approvalRequired, true);
   assert.equal(page.items[0].trust, 'pending');
-  assert.throws(() => parseAccessDevicePage({limit: 25, approvalRequired: true, items: [{id: 'x', accountId: 'a', trust: 'trusted', firstSeenAt: '2026-09-16T12:00:00Z', lastSeenAt: '2026-09-16T12:00:00Z', revision: 1}]}));
+  // A device whose trust this app cannot read is neither hidden nor listed as approved, pending or blocked: the page is refused.
+  assert.throws(() => parseAccessDevicePage({limit: 25, approvalRequired: true, items: [{id: 'x', accountId: 'a', trust: 'trusted', firstSeenAt: '2026-09-16T12:00:00Z', lastSeenAt: '2026-09-16T12:00:00Z', revision: 1}, page.items[0]]}));
+  assert.throws(() => parseAccessDevicePage({limit: 25, approvalRequired: 'yes', items: []}));
 });
 
 
@@ -81,8 +108,13 @@ test('log records keep their sequence as a string so a long-running server does 
     items: [{sequence: '9007199254740993', at: '2026-09-16T12:00:00Z', level: 'error', category: 'playback', message: 'stalled'}]});
   assert.equal(page.items[0].sequence, '9007199254740993');
   assert.equal(page.effectiveLevel, 'debug');
-  assert.throws(() => parseLogPage({level: 'warn', effectiveLevel: 'warn', limit: 10, items: [{sequence: 'abc', at: '2026-09-16T12:00:00Z', level: 'error', category: 'server', message: 'x'}]}));
-  assert.throws(() => parseLogPage({level: 'chatty', effectiveLevel: 'warn', limit: 10, items: []}));
+  // A line this app cannot read is left out alone; a level or a category it does not know reads as an informational server line.
+  const mixed = parseLogPage({level: 'chatty', effectiveLevel: 'warn', limit: 10, items: [{sequence: 'abc', at: '2026-09-16T12:00:00Z', level: 'error', category: 'server', message: 'x'},
+    {sequence: '5', at: '2026-09-16T12:00:00Z', level: 'trace', category: 'transcode', message: 'frame'}, {sequence: '5', at: '2026-09-16T12:00:00Z', level: 'error', category: 'server', message: 'again'}]});
+  assert.deepEqual(mixed.items, [{sequence: '5', at: '2026-09-16T12:00:00Z', level: 'info', category: 'server', message: 'frame'}]);
+  assert.equal(mixed.level, 'info');
+  assert.equal(mixed.effectiveLevel, 'warn');
+  assert.throws(() => parseLogPage({level: 'warn', effectiveLevel: 'warn', limit: 1, items: [page.items[0], page.items[0]]}));
   const record = parseLogEvent('{"sequence":"4","at":"2026-09-16T12:00:00Z","level":"info","category":"scan","message":"walking"}');
   assert.equal(record.category, 'scan');
   assert.throws(() => parseLogEvent('not json'));
@@ -126,9 +158,20 @@ test('connectivity policy and status parse the whole report', () => {
   assert.equal(status.discovery.state, 'stopped');
   assert.equal(status.addresses[0].class, 'lan');
   assert.equal(status.warnings.length, 1);
-  assert.throws(() => parseConnectivityStatus({connection:{secure:false,remote:false,plainHttpOutsideHome:false,clientAddress:'127.0.0.1',accessUrls:[]},observedAt: '2026-09-16T12:00:00Z', policy,
+  // A discovery state this app does not know reads as unavailable, and a custom certificate it cannot read is left off.
+  const newer = parseConnectivityStatus({connection: {secure: false, remote: true, plainHttpOutsideHome: true, clientAddress: '203.0.113.9', accessUrls: ['https://media.example', 7], later: true}, observedAt: '2026-09-16T12:00:00Z', policy, futureField: 1,
+    tls: {configured: true, tlsReady: true, publiclyTrusted: false, listenerBound: true, listenPort: 8443, customCertificate: {state: 'renewing'}},
+    discovery: {enabled: true, supported: true, state: 'humming'}, addresses: [], interfaces: [], warnings: []});
+  assert.equal(newer.discovery.state, 'unavailable');
+  assert.equal(newer.tls.customCertificate, undefined);
+  assert.equal(newer.tls.listenPort, 8443);
+  // What the server says about this connection is read with the rest, and an advertised address that cannot be read is left out alone.
+  assert.deepEqual(newer.connection, {secure: false, remote: true, plainHttpOutsideHome: true, clientAddress: '203.0.113.9', accessUrls: ['https://media.example']});
+  // A status that says nothing readable about the connection claims nothing about it.
+  const silent = parseConnectivityStatus({connection: 'unknown', observedAt: '2026-09-16T12:00:00Z', policy,
     tls: {configured: true, tlsReady: true, publiclyTrusted: false, listenerBound: true, listenPort: 8443},
-    discovery: {enabled: true, supported: true, state: 'humming'}, addresses: [], interfaces: [], warnings: []}));
+    discovery: {enabled: true, supported: true, state: 'stopped'}, addresses: [], interfaces: [], warnings: []});
+  assert.deepEqual(silent.connection, {secure: false, remote: false, plainHttpOutsideHome: false, clientAddress: '', accessUrls: []});
 });
 
 test('CD-39: a host-sized report renders bounded slices with exact omitted counts', () => {
@@ -146,8 +189,13 @@ test('CD-39: a host-sized report renders bounded slices with exact omitted count
   assert.equal(status.interfaces.length, 128);
   assert.equal(status.omittedAddresses, 1);
   assert.equal(status.omittedInterfaces, 1);
-  // Retained entries are still validated.
-  assert.throws(() => parseConnectivityStatus({...base, addresses: [{...address(0), family: 'carrier-pigeon'}], interfaces: []}));
+  // Retained entries are still validated: one that cannot be read is left out and counted with the omitted ones.
+  const partial = parseConnectivityStatus({...base, addresses: [{...address(0), family: 'carrier-pigeon'}, address(1)], interfaces: [iface(0), {name: ''}]});
+  assert.deepEqual(partial.addresses.map(entry => entry.address), ['10.0.0.1']);
+  assert.equal(partial.omittedAddresses, 1);
+  assert.equal(partial.interfaces.length, 1);
+  assert.equal(partial.omittedInterfaces, 1);
+  assert.throws(() => parseConnectivityStatus({...base, addresses: [], interfaces: [{...iface(0), addresses: new Array(65).fill('10.0.0.1/24')}]}));
   // The policy enums stay strict.
   assert.throws(() => parseConnectivityStatus({...base, policy: {...policy, remoteSignInPolicy: 'sometimes'}, addresses: [], interfaces: []}));
 });
@@ -176,4 +224,22 @@ test('connectivity policy: network parity rows parse, with shipped defaults for 
   assert.equal(newer.advertisedInterface, 'br0');
   assert.equal(newer.customCertificateKeyPath, '/certs/key.pem');
   assert.throws(() => parseConnectivityPolicy({...base, pausedSessionTimeoutMinutes: 5000}));
+});
+
+test('member deletion: the preview is read, checked and confirmed with its revision', async () => {
+ const doc={accountId:'acct_1',username:'sam',role:'member',revision:4,porticoAccount:false,profiles:2,devices:3,playlists:1,savedResources:0,playsKept:57};
+ assert.equal(parseMemberDeletionPreview(doc).playsKept, 57);
+ assert.throws(() => parseMemberDeletionPreview({...doc, role: 'superuser'}));
+ assert.throws(() => parseMemberDeletionPreview({...doc, revision: 0}));
+ assert.throws(() => parseMemberDeletionPreview({...doc, profiles: -1}));
+ const calls: {path: string; method?: string; body?: unknown}[] = [];
+ const api={request:async <T,>(path:string,method?:string,body?:unknown):Promise<T>=>{calls.push({path,method,body});return (method==='GET'?doc:undefined) as T;}};
+ const preview=await previewMemberDeletion(api,'acct_1');
+ await deleteMember(api,preview);
+ assert.deepEqual(calls,[
+  {path:'/v1/direct/members/acct_1/deletion-preview',method:'GET',body:undefined},
+  {path:'/v1/direct/members/acct_1',method:'DELETE',body:{expectedRevision:4}},
+ ]);
+ // A preview that answers for a different member is refused rather than confirmed.
+ await assert.rejects(previewMemberDeletion(api,'acct_2'));
 });

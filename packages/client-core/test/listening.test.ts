@@ -102,7 +102,7 @@ test('selection refuses partial lists, repeated cursors, scope changes and queue
  const abort=new AbortController();abort.abort();let calls=0;await assert.rejects(loadListeningSelection(async()=>{calls++;return wrapped(data);},scope,target,{signal:abort.signal}));assert.equal(calls,0);
 });
 test('book resume and explicit chapter selection preserve server part order and absolute source start',async()=>{
- const book={libraryId:'library',kind:'book' as const,id:'book'};let path='';const data={target:book,entries:[listeningItemInput('part-2',book),listeningItemInput('part-3',book)],totalCount:2,unavailableCount:0,nextCursor:'',seed:'',resume:{itemId:'part-2',positionSeconds:123.5}};
+ const book={libraryId:'library',kind:'book' as const,id:'book'};let path='';const data={target:book,entries:[listeningItemInput('part-2',book),listeningItemInput('part-3',book)],totalCount:2,unavailableCount:0,nextCursor:'',seed:'',resume:{itemId:'part-2',positionMs:123500}};
  const r=await loadListeningSelection(async p=>{path=p;return wrapped(data);},scope,book,{resume:true});assert.match(path,/resume=true/);assert.equal(r.startSeconds,123.5);assert.equal(r.entries[0].itemId,'part-2');
  await loadListeningSelection(async p=>{path=p;return wrapped({...data,resume:undefined});},scope,book,{startItem:'part-2'});assert.match(path,/startItem=part-2/);
 });
@@ -174,4 +174,10 @@ test('a long audiobook pause rewinds once, while short pauses and music do not',
  const f=setup({context:id=>({itemId:id,libraryId:'library',kind:'audiobook_file',bookId:'book'})});t.after(()=>f.service.dispose());const seeks:number[]=[];(f.engine as any).seek=(position:number)=>seeks.push(position);await settle();
  f.engine.update({positionSeconds:300,intent:'paused'});f.setNow(300001);f.engine.update({intent:'playing'});assert.deepEqual(seeks,[285]);f.engine.update({positionSeconds:286});assert.deepEqual(seeks,[285]);
  f.engine.update({intent:'paused'});f.setNow(300100);f.engine.update({intent:'playing'});assert.deepEqual(seeks,[285]);
+});
+
+test('a listening journey keeps millisecond resume and drops only unknown actions',()=>{
+ const result=parseListeningJourney({target:{libraryId:'library',kind:'book',id:'book'},actions:['play','future','play'],resume:{itemId:'part',positionMs:123500},resumeUnavailable:false},'library');
+ assert.deepEqual(result.actions,['play']);
+ assert.deepEqual(result.resume,{itemId:'part',positionSeconds:123.5});
 });

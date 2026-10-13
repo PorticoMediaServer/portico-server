@@ -3,7 +3,10 @@ package playbackruntime
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
+	memberaccess "portico.local/server/internal/access"
+	"portico.local/server/internal/catalog"
 	"strconv"
 	"time"
 
@@ -129,12 +132,23 @@ func (r *channelResolver) liveSelection(ctx context.Context, tx *sql.Tx, p ident
 		return v, channelFault("guide_refresh_required", 409)
 	}
 	ref.Generation = gen
-	v = playback.LinearSelection{Reference: ref, Name: name, SourceFence: liveSourceFence(ctx, tx, r.live, ref, revision, tuners), Quality: playback.ControlQuality{Mode: "automatic", AllowLossy: true}}
+	v = playback.LinearSelection{Reference: ref, Name: name, SourceFence: liveSourceFence(ctx, tx, r.live, ref, revision, tuners), Quality: playback.ControlQuality{Mode: "original", AllowLossy: true}}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	var programme playback.LinearProgramme
+	var programmeFacts string
 	var start, end string
-	e = tx.QueryRowContext(ctx, `SELECT id,title,start_utc,end_utc FROM live_programmes WHERE generation_id=? AND channel_id=? AND start_utc<=? AND end_utc>? ORDER BY start_utc DESC LIMIT 1`, gen, ref.ChannelID, now, now).Scan(&programme.ID, &programme.Title, &start, &end)
+	rating := ""
+	e = tx.QueryRowContext(ctx, `SELECT p.id,p.title,p.start_utc,p.end_utc,COALESCE(m.facts,'{}') FROM live_programmes p LEFT JOIN live_programme_metadata m ON m.generation_id=p.generation_id AND m.id=p.id WHERE p.generation_id=? AND p.channel_id=? AND p.start_utc<=? AND p.end_utc>? ORDER BY p.start_utc DESC LIMIT 1`, gen, ref.ChannelID, now, now).Scan(&programme.ID, &programme.Title, &start, &end, &programmeFacts)
 	if e == nil {
+		var facts struct {
+			Rating *livechannels.ProgrammeRating `json:"rating"`
+		}
+		if json.Unmarshal([]byte(programmeFacts), &facts) != nil {
+			return v, channelFault("source_probe_invalid", 422)
+		}
+		if facts.Rating != nil {
+			rating = facts.Rating.Value
+		}
 		a, ae := time.Parse(time.RFC3339Nano, start)
 		b, be := time.Parse(time.RFC3339Nano, end)
 		if ae == nil && be == nil {
@@ -145,6 +159,20 @@ func (r *channelResolver) liveSelection(ctx context.Context, tx *sql.Tx, p ident
 		}
 	}
 	if e != nil && !errors.Is(e, sql.ErrNoRows) {
+		return v, e
+	}
+	restrictions, e := identity.RestrictionsForViewerTx(ctx, tx, p.Viewer)
+	if e != nil {
+		return v, e
+	}
+	if !catalog.RatingAllowed(restrictions.Content(), rating) {
+		return v, identity.ErrContentRestricted
+	}
+	enforcer := memberaccess.Enforcer{Store: &memberaccess.Store{}}
+	if e = enforcer.AdmitProgramme(ctx, tx, p, rating); errors.Is(e, memberaccess.ErrContentRating) {
+		return v, identity.ErrContentRestricted
+	}
+	if e != nil {
 		return v, e
 	}
 	return v, nil

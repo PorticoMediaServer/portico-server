@@ -39,3 +39,17 @@ export function durationIntent<T extends Record<string,unknown>>(value:T,fields:
  }
  return out;
 }
+/** Display-only media fields degrade individually; identity and write receipts stay exact. */
+export function wireDisplayDurations(value:unknown,fields:Readonly<Record<string,string>>,left:(part:string,value:unknown)=>void):unknown {
+ if(typeof value!=='object'||value===null||Array.isArray(value))return value;
+ const out={...(value as Record<string,unknown>)};
+ for(const [internal,wire] of Object.entries(fields)){
+  delete out[internal];
+  if(!(wire in out))continue;
+  const ms=out[wire];delete out[wire];
+  if(ms===undefined||ms===null)continue;
+  if(typeof ms==='number'&&Number.isSafeInteger(ms)&&ms>=0)out[internal]=ms/1000;
+  else left(wire,ms);
+ }
+ return out;
+}

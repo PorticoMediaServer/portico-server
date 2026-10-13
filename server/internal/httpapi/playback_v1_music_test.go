@@ -542,25 +542,16 @@ func TestPlaybackV1AudioPlanGains(t *testing.T) {
 	}
 }
 
-// B7 (F-web): a client that sends its decode list with its playback profile, and
-// no v1 capabilities (web today), gets direct plans for what it decodes.
+// A client that lists what its own music engine decodes in its capability
+// document gets direct plans for what it decodes.
 func TestPlaybackV1ClientProfileDecodeListChoosesDirect(t *testing.T) {
 	f := newV1Fixture(t, 1)
 	makePlaybackSongs(t, f)
 	addPlaybackRenderFacts(t, f)
-	base := playback.BaselineClientProfile()
-	base.Client.Family, base.Evidence = "browser", playback.EvidenceDeclared
-	for i := range base.Video {
-		base.Video[i].Evidence = playback.EvidenceDeclared
-	}
-	for i := range base.Audio {
-		base.Audio[i].Evidence = playback.EvidenceDeclared
-	}
-	base.AudioDecode = []playback.ClientAudioDecode{{Codec: "aac", Containers: []string{"mp4", "adts"}, MaxSampleRate: 96000, MaxChannels: 2, Via: "webcodecs"}}
-	raw, _ := json.Marshal(base)
-	profile := string(raw)
-	if w := f.raw("PUT", "/v1/playback/client-profile", f.owner.AccessToken, map[string]string{"Content-Type": "application/json"}, profile); w.Code != 200 {
-		t.Fatalf("client profile %d %s", w.Code, w.Body)
+	caps := webCapabilities()
+	caps["audioDecode"] = []map[string]any{{"codec": "aac", "containers": []string{"mp4", "adts"}, "maxSampleRate": 96000, "maxChannels": 2, "via": "webcodecs"}}
+	if w := f.raw("PUT", "/v1/me/devices/current/capabilities", f.owner.AccessToken, map[string]string{"Content-Type": "application/json"}, caps); w.Code != 204 {
+		t.Fatalf("capability document %d %s", w.Code, w.Body)
 	}
 	var s playbackv1.SessionView
 	f.call("POST", "/v1/playback/sessions", map[string]string{"Idempotency-Key": "profile-decode-00001"}, startBody(f.items[0], nil), 201, &s)
@@ -568,8 +559,9 @@ func TestPlaybackV1ClientProfileDecodeListChoosesDirect(t *testing.T) {
 		t.Fatalf("plan %+v", s.Presentation.AudioRender)
 	}
 	// A malformed entry is refused, not half-read.
-	bad := `{"version":1,"client":{"family":"browser"},"evidence":"declared","audioDecode":[{"codec":"aac","containers":[]}]}`
-	if w := f.raw("PUT", "/v1/playback/client-profile", f.owner.AccessToken, map[string]string{"Content-Type": "application/json"}, bad); w.Code < 400 {
+	bad := webCapabilities()
+	bad["audioDecode"] = []map[string]any{{"codec": "aac", "containers": []string{}}}
+	if w := f.raw("PUT", "/v1/me/devices/current/capabilities", f.owner.AccessToken, map[string]string{"Content-Type": "application/json"}, bad); w.Code < 400 {
 		t.Fatalf("an empty container list was accepted: %d", w.Code)
 	}
 }

@@ -135,7 +135,13 @@ export const scopeHelp: Readonly<Record<ApiScopePreset, string>> = {read: 'Brows
 /** The words for a key's scopes in a list: the preset's name when they are one, otherwise each scope. */
 export const scopesLabel = (scopes: readonly ApiScope[]): string => { const preset = presetOf(scopes); return preset ? scopeLabels[preset] : scopes.map(scope => scopeLabels[scope]).join(', '); };
 /** An account made on this server. `hostedAccountId`: a Portico Account member, whose password lives at the Portico Account. */
-export type DirectMember = {id: string; username: string; primaryProfileId: string; role: AccessTier; revision: number; disabled: boolean; allowedLibraries: string[]; hostedAccountId?: string};
+/** `disabledAt` and `disabledReason` are present while the account is off: when, and whether an owner or administrator turned it off (`owner`) or the person left at their Portico Account (`left`). */
+export type DirectMember = {id: string; username: string; primaryProfileId: string; role: AccessTier; revision: number; disabled: boolean; allowedLibraries: string[]; hostedAccountId?: string; disabledAt?: string; disabledReason?: string};
+/** Why and since when an account is off, as its row says it; nothing while it is on or when the server gave no date. */
+export function memberOffLine(member: Pick<DirectMember, 'disabled' | 'disabledAt' | 'disabledReason'>, t: (id: MessageId, values?: Record<string, string | number>) => string, date: (iso: string) => string): string {
+  if (!member.disabled || !member.disabledAt || Number.isNaN(Date.parse(member.disabledAt))) return '';
+  return t(member.disabledReason === 'left' ? 'server.people.leftOnTheirOwn' : 'server.people.turnedOffByOwner', {when: date(member.disabledAt)});
+}
 
 // ── Libraries ───────────────────────────────────────────────────────────────────────────────
 

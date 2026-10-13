@@ -120,7 +120,9 @@ func TestChannelMutationWaitCancelsWithoutReadingBody(t *testing.T) {
 			if kind == "live" {
 				f := newGuideDirectoryHTTPFixture(t)
 				mux, ownerToken, memberToken = f.mux, f.owner.AccessToken, f.member.AccessToken
-				mutationPath, readPath, readToken = "/v1/admin/live-sources/preview", "/v1/guide/channels?limit=1", memberToken
+				// Preview now uses the registry and HTTP upload admission. The
+				// remaining live mutations retain this handler-local gate.
+				mutationPath, readPath, readToken = "/v1/admin/live-sources/"+f.a.ID+"/enabled", "/v1/guide/channels?limit=1", memberToken
 			} else {
 				d, _, owner, member := notificationFixture(t)
 				var err error
@@ -247,5 +249,72 @@ func TestGuideOnlyDevicesLearnFairnessSharesAndRecheckRevocation(t *testing.T) {
 				t.Fatalf("revocation affected other device: %d %s", w.Code, w.Body)
 			}
 		})
+	}
+}
+
+func TestLiveSourceRegistryUploadAdmissionBeforeBody(t *testing.T) {
+	f := newGuideDirectoryHTTPFixture(t)
+	handler := newAdmission().wrap(f.mux, f.mux)
+	entered, release := make(chan struct{}, 2), make(chan struct{})
+	results := make(chan *httptest.ResponseRecorder, 2)
+	var once sync.Once
+	remaining := 2
+	defer func() {
+		once.Do(func() { close(release) })
+		for i := 0; i < remaining; i++ {
+			<-results
+		}
+	}()
+	for i := 0; i < 2; i++ {
+		go func() {
+			body := &channelBlockingBody{entered: entered, release: release, source: bytes.NewReader([]byte(`{"name":"invalid"}`))}
+			r := httptest.NewRequest("POST", "/v1/admin/live-sources/preview", body)
+			r.Header.Set("Authorization", "Bearer "+f.owner.AccessToken)
+			r.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+			handler.ServeHTTP(w, r)
+			results <- w
+		}()
+	}
+	for i := 0; i < 2; i++ {
+		select {
+		case <-entered:
+		case <-time.After(2 * time.Second):
+			t.Fatal("two registry uploads did not enter the upload lane")
+		}
+	}
+	request := func(token string) *http.Request {
+		r := httptest.NewRequest("POST", "/v1/admin/live-sources/preview", avatarUnreadBody{t})
+		r.Header.Set("Authorization", "Bearer "+token)
+		r.Header.Set("Content-Type", "application/json")
+		return r
+	}
+	// The upload lane deliberately refuses immediately instead of queueing or
+	// consuming a third large request body.
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, request(f.owner.AccessToken))
+	if w.Code != http.StatusServiceUnavailable || w.Header().Get("Retry-After") == "" {
+		t.Fatalf("full upload lane: %d %s", w.Code, w.Body)
+	}
+	r := httptest.NewRequest("GET", "/v1/guide/channels?limit=1", nil)
+	r.Header.Set("Authorization", "Bearer "+f.member.AccessToken)
+	w = httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+	if w.Code != http.StatusOK {
+		t.Fatalf("uploads blocked guide reads: %d %s", w.Code, w.Body)
+	}
+	once.Do(func() { close(release) })
+	for remaining > 0 {
+		result := <-results
+		remaining--
+		if result.Code != http.StatusBadRequest {
+			t.Errorf("invalid preview: %d %s", result.Code, result.Body)
+		}
+	}
+	// Once admitted, a member still fails owner authorization before JSON reads.
+	w = httptest.NewRecorder()
+	handler.ServeHTTP(w, request(f.member.AccessToken))
+	if w.Code != http.StatusUnauthorized && w.Code != http.StatusForbidden {
+		t.Fatalf("member upload admitted: %d %s", w.Code, w.Body)
 	}
 }

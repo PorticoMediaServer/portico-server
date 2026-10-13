@@ -104,7 +104,7 @@ func (c *Client) retainedInventoryPage(ctx context.Context, key string, r Invent
 		}
 	}
 	mapKey := inventoryStreamKey(c, key, r)
-	inventoryStreams.once.Do(func() { go expireInventoryStreams() })
+	inventoryStreams.once.Do(func() { supervise.Go("storage.inventory-expiry", expireInventoryStreams) })
 	inventoryStreams.Lock()
 	var s *inventoryStream
 	if r.Cursor != "" {

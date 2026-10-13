@@ -27,16 +27,19 @@ import (
 // They are deliberately different credentials with different reach. The device
 // token survives a receiver restart and is rotated on every reconnect; it is
 // never a Bearer, so leaking it cannot be replayed against the media API. The
-// session is the ordinary bearer every other client uses, so the receiver plays
-// through the ordinary playback session API with no private surface at all.
+// session is a bearer for the ordinary playback session API, so the receiver
+// has no private surface, but it is not an ordinary session: it is a
+// playback-only one. A screen in a shared room is the least trustworthy device
+// in the house, so it holds a member's authority whoever paired it and is
+// refused every route that is not playback (identity.GrantCastTarget).
 
 // castCapabilities is the accepted capability vocabulary.
 var castCapabilities = map[string]bool{"load": true, "control": true, "stop": true, "progress": true, "renew": true, "reconnect": true, "advance": true, "segment-skip": true}
 
 type CastBootstrapRequest struct {
 	ProtocolVersion string   `json:"protocolVersion"`
-	DisplayName     string   `json:"displayName"`
-	Capabilities    []string `json:"capabilities"`
+	DisplayName     string   `json:"displayName,omitempty"`
+	Capabilities    []string `json:"capabilities,omitempty"`
 }
 
 type CastBootstrap struct {
@@ -63,7 +66,7 @@ type CastRedeemRequest struct {
 	ProtocolVersion string `json:"protocolVersion"`
 	Code            string `json:"code"`
 	DeviceID        string `json:"deviceId"`
-	DisplayName     string `json:"displayName"`
+	DisplayName     string `json:"displayName,omitempty"`
 	// Source is the caller's network, set by the route: failed attempts are
 	// charged to it as well as to the server-wide budget.
 	Source string `json:"-"`
@@ -188,8 +191,11 @@ func (s *Store) CastBootstrapStart(ctx context.Context, p identity.Principal, re
 	now := s.ms()
 	expires := now + CastCodeTTLSeconds*1000
 	id := token("cbs_")
-	if _, e = tx.ExecContext(ctx, `INSERT INTO social_cast_bootstraps(id,code_digest,authority,account_id,profile_id,role,account_epoch,display_name,capabilities,state,created_at_ms,expires_at_ms) VALUES(?,?,?,?,?,?,?,?,?,'pending',?,?)`,
-		id, digest(code), p.Authority, p.AccountID, p.ProfileID, p.Role, p.Epoch, req.DisplayName, string(raw), now, expires); e != nil {
+	// The pairing session is remembered so the target's session can be tied to
+	// it. The pairing person's tier is recorded and never used: a paired screen
+	// is always issued a member's playback-only session.
+	if _, e = tx.ExecContext(ctx, `INSERT INTO social_cast_bootstraps(id,code_digest,authority,account_id,profile_id,role,account_epoch,display_name,capabilities,state,created_at_ms,expires_at_ms,pairing_family_id) VALUES(?,?,?,?,?,?,?,?,?,'pending',?,?,?)`,
+		id, digest(code), p.Authority, p.AccountID, p.ProfileID, p.Role, p.Epoch, req.DisplayName, string(raw), now, expires, identity.FamilyOfTokenTx(ctx, tx, p.Hash)); e != nil {
 		return out, e
 	}
 	out = CastBootstrapResponse{ProtocolVersion: Protocol, ServerTime: stamp(now), Bootstrap: CastBootstrap{
@@ -337,7 +343,15 @@ func (s *Store) issueCast(ctx context.Context, tx *sql.Tx, id castIdentity, devi
 		}
 	}
 	device := CastDevice{ID: rowID, DeviceID: deviceID, DisplayName: r.name, ReceiverID: r.receiverID, State: "active", Generation: counter(generation), ExpiresAt: stamp(expires)}
-	session, family, e := s.castSessionTx(ctx, tx, id, device)
+	// The new session derives from the one this screen held before, or, on a
+	// first pairing, from the session that asked for the code.
+	derivedFrom := priorFamily
+	if derivedFrom == "" {
+		if e = tx.QueryRowContext(ctx, `SELECT pairing_family_id FROM social_cast_bootstraps WHERE id=?`, r.bootstrapID).Scan(&derivedFrom); e != nil && !errors.Is(e, sql.ErrNoRows) {
+			return out, e
+		}
+	}
+	session, family, e := s.castSessionTx(ctx, tx, id, device, derivedFrom)
 	if e != nil {
 		return out, e
 	}
@@ -360,13 +374,14 @@ func (s *Store) issueCast(ctx context.Context, tx *sql.Tx, id castIdentity, devi
 	}, nil
 }
 
-// castSessionTx mints the ordinary viewer bearer the receiver plays with, inside
-// the pairing transaction. The bearer binds the receiver's own identity-device
-// record — one stable installation per pairing, reused across reconnects — so it
-// is an ordinary renewable device-bound session. A Hosted viewer's session is
-// issued under the server's current verified Hosted policy, exactly like any
-// other Hosted session; a viewer that policy no longer admits gets none.
-func (s *Store) castSessionTx(ctx context.Context, tx *sql.Tx, id castIdentity, device CastDevice) (CastSession, string, error) {
+// castSessionTx mints the bearer the receiver plays with, inside the pairing
+// transaction. It is a playback-only session (identity.IssueCastTargetTx): a
+// member's, whoever paired the screen, and refused everywhere but playback. It
+// binds the receiver's own identity-device record, one stable installation per
+// pairing, reused across reconnects. A Hosted viewer's session is issued under
+// the server's current verified Hosted policy; a viewer that policy no longer
+// admits gets none.
+func (s *Store) castSessionTx(ctx context.Context, tx *sql.Tx, id castIdentity, device CastDevice, derivedFrom string) (CastSession, string, error) {
 	claimCtx, e := identity.WithIssuingDevice(ctx, identity.DeviceRegistration{
 		InstallationID: "cast-" + strings.TrimPrefix(device.ID, "cdv_"),
 		Name:           device.DisplayName,
@@ -380,7 +395,7 @@ func (s *Store) castSessionTx(ctx context.Context, tx *sql.Tx, id castIdentity, 
 	if e != nil {
 		return CastSession{}, "", e
 	}
-	envelope, e := s.Identity.IssueTx(claimCtx, tx, id.account, id.profile, id.authority, id.role, id.epoch, horizon)
+	envelope, e := s.Identity.IssueCastTargetTx(claimCtx, tx, id.authority, id.account, id.profile, id.epoch, horizon, derivedFrom)
 	if errors.Is(e, identity.ErrUnauthorized) {
 		return CastSession{}, "", errCastAccessEnded
 	}
@@ -526,8 +541,9 @@ func (s *Store) castAttempt(ctx context.Context, source string, attempt func(*sq
 }
 
 // RevokeCastDevice unpairs a receiver and ends the session it plays with. The
-// next reconnect fails closed.
-func (s *Store) RevokeCastDevice(ctx context.Context, p identity.Principal, id string) error {
+// next reconnect fails closed. The profile that paired it may unpair any of its
+// screens; a paired screen may unpair only itself.
+func (s *Store) RevokeCastDevice(ctx context.Context, p identity.Principal, id, expectedGeneration string) error {
 	gated, e := s.begin(ctx)
 	if e != nil {
 		return e
@@ -535,14 +551,38 @@ func (s *Store) RevokeCastDevice(ctx context.Context, p identity.Principal, id s
 	tx := gated.Tx()
 	defer gated.Rollback()
 	var family string
-	e = tx.QueryRowContext(ctx, `SELECT session_family_id FROM social_cast_devices WHERE id=? AND authority=? AND account_id=? AND profile_id=?`, id, p.Authority, p.AccountID, p.ProfileID).Scan(&family)
+	var generation int64
+	e = tx.QueryRowContext(ctx, `SELECT session_family_id,generation FROM social_cast_devices WHERE id=? AND authority=? AND account_id=? AND profile_id=?`, id, p.Authority, p.AccountID, p.ProfileID).Scan(&family, &generation)
 	if errors.Is(e, sql.ErrNoRows) {
 		return errNotFound
 	}
 	if e != nil {
 		return e
 	}
+	// A paired screen may undo its own pairing and no other: the pairing whose
+	// session it is calling with, and only at the generation it names. Another
+	// screen of the same profile looks to it like a pairing that does not exist.
+	if p.Grant == identity.GrantCastTarget {
+		if own := identity.FamilyOfTokenTx(ctx, tx, p.Hash); own == "" || own != family {
+			return errNotFound
+		}
+		if expectedGeneration == "" {
+			return errInvalid
+		}
+	}
+	if expectedGeneration != "" {
+		expected, ok := parseCounter(strings.Trim(expectedGeneration, "\""))
+		if !ok {
+			return errInvalid
+		}
+		if expected != generation {
+			return errConflict
+		}
+	}
 	if _, e = tx.ExecContext(ctx, `UPDATE social_cast_devices SET state='revoked',previous_token_digest='',previous_valid_until_ms=0,session_family_id='' WHERE id=?`, id); e != nil {
+		return e
+	}
+	if _, e = tx.ExecContext(ctx, `UPDATE social_receivers SET state='retired' WHERE id=(SELECT receiver_id FROM social_cast_devices WHERE id=?)`, id); e != nil {
 		return e
 	}
 	if family != "" && s.Identity != nil {

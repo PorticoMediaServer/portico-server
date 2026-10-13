@@ -4,7 +4,6 @@ import (
 	"net/http"
 	"portico.local/apikit"
 	"portico.local/server/internal/catalog"
-	"portico.local/server/internal/downloads"
 
 	"portico.local/server/internal/operations"
 	"strings"
@@ -32,10 +31,6 @@ type projectedItems struct {
 	Items      []catalog.Item `json:"items"`
 	NextCursor string         `json:"nextCursor"`
 }
-type projectedProgress struct {
-	OperationID string                    `json:"operationId"`
-	Entries     []downloads.ProgressEntry `json:"entries"`
-}
 
 var projectedPatterns = map[string]bool{
 	"GET /v1/content":                             true,
@@ -54,8 +49,6 @@ var projectedPatterns = map[string]bool{
 	"GET /v1/personal-history":                    true,
 	"GET /v1/admin/play-history":                  true,
 	"GET /v1/admin/play-history/summary":          true,
-	"GET /v1/items/{id}/download-options":         true,
-	"POST /v1/downloads/progress":                 true,
 	"GET /v1/libraries/{id}/listening/selection":  true,
 	"GET /v1/people/{id}":                         true,
 	"GET /v1/notifications/inbox":                 true,
@@ -109,7 +102,6 @@ func registerUnitProjections(registry *apikit.Registry, d Dependencies) error {
 	mux := http.NewServeMux()
 	private.discoveryRoutes(mux)
 	private.contentHomeRoutes(mux)
-	private.downloadRoutes(mux)
 	private.playHistoryRoutes(mux)
 	private.peopleRoutes(mux)
 	private.listeningRoutes(mux)
@@ -163,12 +155,6 @@ func registerUnitProjections(registry *apikit.Registry, d Dependencies) error {
 		return err
 	}
 	if err := addProjection[noBody, catalog.PlaySummary](registry, mux, "GET /v1/admin/play-history/summary", []string{"period"}); err != nil {
-		return err
-	}
-	if err := addProjection[noBody, downloads.DownloadOptionsView](registry, mux, "GET /v1/items/{id}/download-options", nil); err != nil {
-		return err
-	}
-	if err := addProjection[projectedProgress, downloads.ProgressReceipt](registry, mux, "POST /v1/downloads/progress", nil); err != nil {
 		return err
 	}
 	if err := addProjection[noBody, projectedViewerEnvelope[catalog.ListeningSelection]](registry, mux, "GET /v1/libraries/{id}/listening/selection", []string{"kind", "entityId", "cursor", "limit", "shuffle", "seed"}); err != nil {

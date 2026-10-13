@@ -4,13 +4,24 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"errors"
 	"strings"
 
 	"portico.local/server/internal/access"
 	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/identity"
 )
+
+// RestrictionsTx is the one answer to "what may this viewer see": the profile's
+// own restrictions narrowed by its account's limits, on one rating scale, read
+// in the caller's transaction. Every fence in this file compiles its predicate
+// from it, and the HTTP layer's catalogue viewer is built the same way.
+func RestrictionsTx(ctx context.Context, tx *sql.Tx, viewer identity.Viewer) (identity.ContentRestrictions, error) {
+	restrictions, err := identity.RestrictionsForViewerTx(ctx, tx, viewer)
+	if err != nil {
+		return identity.ContentRestrictions{}, err
+	}
+	return access.ContentLimitsTx(ctx, tx, viewer.AccountID, restrictions.Content())
+}
 
 // VisibleItemTx is the service-level item fence shared by HTTP, playback,
 // preparation and downloads. It applies profile restrictions and local member
@@ -19,11 +30,10 @@ func VisibleItemTx(ctx context.Context, tx *sql.Tx, p identity.Principal, item s
 	if tx == nil || item == "" {
 		return identity.ErrContentRestricted
 	}
-	restrictions, err := identity.RestrictionsForViewerTx(ctx, tx, p.Viewer)
+	content, err := RestrictionsTx(ctx, tx, p.Viewer)
 	if err != nil {
 		return err
 	}
-	content := restrictions.Content()
 	clause, args := catalog.ItemRestrictionSQL("i.id", content)
 	query := `SELECT EXISTS(SELECT 1 FROM catalog_entities i WHERE i.public_id=pid_blob(?) AND (` + clause + `))`
 	args = append([]any{item}, args...)
@@ -54,11 +64,7 @@ func VisibleItemTx(ctx context.Context, tx *sql.Tx, p identity.Principal, item s
 			return identity.ErrContentRestricted
 		}
 	}
-	enforcer := access.Enforcer{Store: &access.Store{}}
-	if err = enforcer.VisibleItem(ctx, tx, p, item); errors.Is(err, access.ErrContentRating) || errors.Is(err, access.ErrLabelDenied) {
-		return identity.ErrContentRestricted
-	}
-	return err
+	return nil
 }
 
 // VisibleKnownItemTx is VisibleItemTx for a caller that already holds the item
@@ -106,19 +112,12 @@ func Unrestricted(ctx context.Context, tx *sql.Tx, p identity.Principal, allowed
 			return false, nil
 		}
 	}
-	restrictions, err := identity.RestrictionsForViewerTx(ctx, tx, p.Viewer)
+	content, err := RestrictionsTx(ctx, tx, p.Viewer)
 	if err != nil {
 		return false, err
 	}
-	if clause, _ := catalog.ItemRestrictionSQL("item", restrictions.Content()); clause != "1" {
-		return false, nil
-	}
-	enforcer := access.Enforcer{Store: &access.Store{}}
-	member, _, err := enforcer.VisibilityClause(ctx, tx, p, "item")
-	if err != nil {
-		return false, err
-	}
-	return member == "", nil
+	clause, _ := catalog.ItemRestrictionSQL("item", content)
+	return clause == "1", nil
 }
 
 // VisibleItemsSQL is the viewer's visibility predicate for the item named by
@@ -157,11 +156,10 @@ func VisibleItemsSQL(ctx context.Context, tx *sql.Tx, p identity.Principal, item
 		clauses = append(clauses, `EXISTS(SELECT 1 FROM catalog_entities visible_item JOIN catalog_libraries visible_library ON visible_library.id=visible_item.library_id WHERE visible_item.id=`+item+` AND visible_library.library_id IN (SELECT value FROM json_each(?)))`)
 		args = append(args, string(raw))
 	}
-	restrictions, err := identity.RestrictionsForViewerTx(ctx, tx, p.Viewer)
+	content, err := RestrictionsTx(ctx, tx, p.Viewer)
 	if err != nil {
 		return "", nil, err
 	}
-	content := restrictions.Content()
 	clause, values := catalog.ItemRestrictionSQL(item, content)
 	clauses, args = append(clauses, clause), append(args, values...)
 	if content.BlockRecordings {
@@ -169,14 +167,6 @@ func VisibleItemsSQL(ctx context.Context, tx *sql.Tx, p identity.Principal, item
 	}
 	if content.Active() && (content.MaximumAge != nil || content.BlockUnrated) {
 		clauses = append(clauses, `NOT EXISTS(SELECT 1 FROM catalog_entities ci JOIN catalog_item_attribute_edges pending_rating ON pending_rating.item_id=ci.id JOIN catalog_attribute_terms term ON term.id=pending_rating.term_id JOIN content_rating_pending pending ON pending.value_key=term.value_key WHERE ci.id=`+item+` AND term.field_id=1)`)
-	}
-	enforcer := access.Enforcer{Store: &access.Store{}}
-	member, values, err := enforcer.VisibilityClause(ctx, tx, p, item)
-	if err != nil {
-		return "", nil, err
-	}
-	if member != "" {
-		clauses, args = append(clauses, "("+member+")"), append(args, values...)
 	}
 	return "(" + strings.Join(clauses, " AND ") + ")", args, nil
 }

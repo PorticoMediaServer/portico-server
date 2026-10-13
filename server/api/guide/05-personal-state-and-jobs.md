@@ -120,11 +120,11 @@ specified**.
 ## Downloads
 
 Offline starts with preparations: `POST /v1/downloads/preparations
-(downloads.openapi.yaml, operationId createDownloadPreparations)` (exactly one
+(portico.openapi.json, operationId create_download_preparations)` (exactly one
 of `mediaId`, `mediaIds` ≤ 100, `containerId`, or `nextAfterMediaId`, plus
 `quality`):
 
-<!-- example: personal-preparation-request file=downloads.openapi.yaml operationId=createDownloadPreparations direction=request schema=#/components/schemas/PreparationRequest -->
+<!-- example: personal-preparation-request file=portico.openapi.json operationId=create_download_preparations direction=request schema=@request /v1/downloads/preparations post -->
 ```json
 {
   "operationId": "dl_01J6X7QZ9MAB0CDEF123456789",
@@ -133,20 +133,20 @@ of `mediaId`, `mediaIds` ≤ 100, `containerId`, or `nextAfterMediaId`, plus
 }
 ```
 
-Then `GET /v1/downloads/preparations (downloads.openapi.yaml, operationId
-listDownloadPreparations)`, `GET /v1/downloads/preparations/{id}
-(downloads.openapi.yaml, operationId getDownloadPreparation)`, `POST
-/v1/downloads/preparations/{id}/grant (downloads.openapi.yaml, operationId
-createDownloadGrant)` (mint the transfer grant), and `GET
-/v1/downloads/artifacts/{grant} (downloads.openapi.yaml, operationId
-transferDownloadArtifact)` (bytes). Receipts are `POST
-/v1/downloads/receipts (downloads.openapi.yaml, operationId
-issueDownloadReceipts)` with revalidate/revoke/revocation reads; usage and
-settings are `GET /v1/downloads/usage (downloads.openapi.yaml, operationId
-getDownloadUsage)` and the settings pair. Request-style offline (`POST
-/v1/downloads/requests (download-requests.openapi.yaml, operationId
+Then `GET /v1/downloads/preparations (portico.openapi.json, operationId
+list_download_preparations)`, `GET /v1/downloads/preparations/{id}
+(portico.openapi.json, operationId get_download_preparation)`, `POST
+/v1/downloads/preparations/{id}/grant (portico.openapi.json, operationId
+create_download_grant)` (mint the transfer grant), and `GET
+/v1/downloads/artifacts/{grant} (portico.openapi.json, operationId
+get_download_artifact)` (bytes). Receipts are `POST
+/v1/downloads/receipts (portico.openapi.json, operationId
+issue_download_receipts)` with revalidate/revoke/revocation reads; usage and
+settings are `GET /v1/downloads/usage (portico.openapi.json, operationId
+get_download_usage)` and the settings pair. Request-style offline (`POST
+/v1/downloads/requests (portico.openapi.json, operationId
 create_download_request)`, `GET /v1/downloads/requests/{id}
-(download-requests.openapi.yaml, operationId get_download_request)`) is the
+(portico.openapi.json, operationId get_download_request)`) is the
 newer queue for the same lifecycle. Rolling subscriptions (`mode=all|unwatched|
 next` with `maxBytes`), whole-show-in-one-call semantics beyond `containerId`,
 and download progress over events are **not specified**.

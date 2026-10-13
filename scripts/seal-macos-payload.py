@@ -108,6 +108,7 @@ def main():
     parser.add_argument("directory", type=pathlib.Path)
     parser.add_argument("--key", type=pathlib.Path)
     parser.add_argument("--public-key", type=pathlib.Path)
+    parser.add_argument("--trusted-public-key", type=pathlib.Path)
     parser.add_argument("--public-key-output", type=pathlib.Path)
     parser.add_argument("--identity")
     parser.add_argument("--verify", action="store_true")
@@ -127,6 +128,8 @@ def main():
         if args.public_key_output.is_symlink() or args.public_key_output.resolve() == args.key.resolve():
             raise ValueError("Public output must not replace the private signing key")
     key = Ed25519PrivateKey.from_private_bytes(args.key.read_bytes())
+    if args.trusted_public_key is None or args.trusted_public_key.read_bytes()!=key.public_key().public_bytes_raw():
+        raise ValueError("Provide the pinned release public key matching the approved signer")
     seal_payload(args.directory, key, args.identity)
     if args.public_key_output is not None:
         args.public_key_output.write_bytes(key.public_key().public_bytes_raw())

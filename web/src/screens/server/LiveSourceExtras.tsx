@@ -8,6 +8,7 @@ export {guideOnlyPatch} from '@core/server-admin/panel-logic.ts';
 import {problem, useAction, useRead} from '../../admin/console';
 import {createOperationIds} from './operation-ids';
 import {useSession} from '../../app/session';
+import {LinesField} from '../settings/ServerForms';
 import {useI18n} from '../../app/i18n';
 import {Badge, Button, Checkbox, ConfirmDialog, Dialog, Input, Loading, Menu, Notice, Segmented, Select, SettingsGroup, SettingsRow, Switch, Text, type MenuItem} from '../../ui';
 
@@ -34,7 +35,7 @@ export function chunkChannelMapEntries<T>(entries: readonly T[]): T[][] {
 }
 
 type FilterRule = {mode: 'include' | 'exclude'; values: string[]};
-type SourceSettings = {kind: string; streamBufferSeconds: number | null; retryWindowSeconds: number | null; userAgent: string; filters: {categories: FilterRule; countries: FilterRule; keywords: FilterRule}; logoImport: {enabled: boolean; overwriteExisting: boolean}; channelNumbering: {mode: 'source' | 'sequential'; startAt: number; step: number}; guideSourceId: string};
+type SourceSettings = {enabledGroups: readonly string[]; enabledChannels: readonly string[]; kind: string; streamBufferSeconds: number | null; retryWindowSeconds: number | null; userAgent: string; filters: {categories: FilterRule; countries: FilterRule; keywords: FilterRule}; logoImport: {enabled: boolean; overwriteExisting: boolean}; channelNumbering: {mode: 'source' | 'sequential'; startAt: number; step: number}; guideSourceId: string};
 type SourceDocument = {sourceId: string; sourceName: string; revision: number; settings: SourceSettings; effective: {streamBufferSeconds: number; retryWindowSeconds: number}; availableKinds: string[]};
 const kindName: Record<string, string> = {playlist: 'Channels (playlist or tuner)', 'xmltv-guide': 'Guide only (XMLTV)', hdhomerun: 'HDHomeRun tuner'};
 const filterName = {categories: 'Categories', countries: 'Countries', keywords: 'Words in the channel name'} as const;
@@ -71,6 +72,17 @@ export function SourceSettingsDialog({src, guides, onClose, onChanged}: {src: {i
             {guideOnly ? <Text variant="caption" tone="tertiary">{t('web.liveSource.guideOnlyNote')}</Text> : (
               <Select label={t('web.liveSource.guideFrom')} help={t('web.liveSource.guideFromHelp')} value={draft.guideSourceId || 'own'} onChange={e => patch({guideSourceId: e.target.value === 'own' ? '' : e.target.value})} options={[{value: 'own', label: t('web.liveSource.ownGuide')}, ...guides.filter(g => g.id !== src.id).map(g => ({value: g.id, label: g.name}))]} />
             )}
+            {/* Bringing in only part of a large line-up: named groups, or named channels. Empty means all of them. */}
+            {!guideOnly ? (
+              <div style={{display: 'flex', flexDirection: 'column', gap: 8}}>
+                <Text variant="label" tone="secondary">{t('server.live.onlyGroups')}</Text>
+                <LinesField label={t('server.live.onlyGroups')} value={draft.enabledGroups} onChange={enabledGroups => patch({enabledGroups})} />
+                <Text variant="caption" tone="tertiary">{t('server.live.onlyGroupsHelp')}</Text>
+                <Text variant="label" tone="secondary">{t('server.live.onlyChannels')}</Text>
+                <LinesField label={t('server.live.onlyChannels')} value={draft.enabledChannels} onChange={enabledChannels => patch({enabledChannels})} />
+                <Text variant="caption" tone="tertiary">{t('server.live.onlyChannelsHelp')}</Text>
+              </div>
+            ) : null}
             {!guideOnly ? (
               <div style={{display: 'flex', flexDirection: 'column', gap: 12}}>
                 <Text variant="label" tone="secondary">{t('web.liveSource.keepChannels')}</Text>
@@ -250,7 +262,8 @@ const blank: Omit<Group, 'id' | 'revision'> = {owner: {authority: 'local', accou
 /** Standing instructions for an explicitly owned series selected from the real guide. */
 export function RecordingRulesGroup({sources}: {sources: readonly {id: string; name: string}[]}) {
   const admin = useAdmin();
-  const {t} = useI18n();
+  const i18n = useI18n();
+  const {t} = i18n;
   const {api} = useSession();
   const serverId = useServerId();
   const policy = useRead(async () => {
@@ -324,7 +337,7 @@ export function RecordingRulesGroup({sources}: {sources: readonly {id: string; n
               {!guideRoute ? <Notice tone="info" compact>{t('web.recordingRules.validDate')}</Notice> : null}
               {guide.error ? <Notice tone="error" compact action={{label: t('action.tryAgain'), onClick: guide.reload}}>{guide.error}</Notice> : null}
               {guide.loading ? <Loading label={t('web.recordingRules.readingGuide')} /> : null}
-              <Select label={t('web.recordingRules.seriesFromGuide')} value={chosenSeries?.key ?? ''} onChange={e => { const picked = series.find(s => s.key === e.target.value); if (picked) setEdit({...edit, name: edit.name || picked.title, kind: 'series', match: picked.seriesId, sourceId: picked.anchor.sourceId, anchor: picked.anchor, enabled: picked.recordAvailable, options: {...edit.options, newEpisodesOnly: false}}); }} options={[{value: '', label: t('web.recordingRules.chooseProgram')}, ...series.map(s => ({value: s.key, label: t('web.recordingRules.seriesOption', {title: s.title, channel: s.channelName, time: new Date(s.startsAt).toLocaleTimeString(), available: s.recordAvailable ? 'yes' : 'no'})}))]} />
+              <Select label={t('web.recordingRules.seriesFromGuide')} value={chosenSeries?.key ?? ''} onChange={e => { const picked = series.find(s => s.key === e.target.value); if (picked) setEdit({...edit, name: edit.name || picked.title, kind: 'series', match: picked.seriesId, sourceId: picked.anchor.sourceId, anchor: picked.anchor, enabled: picked.recordAvailable, options: {...edit.options, newEpisodesOnly: false}}); }} options={[{value: '', label: t('web.recordingRules.chooseProgram')}, ...series.map(s => ({value: s.key, label: t('web.recordingRules.seriesOption', {title: s.title, channel: s.channelName, time: i18n.time(s.startsAt), available: s.recordAvailable ? 'yes' : 'no'})}))]} />
               {!guide.loading && guide.data && !series.length ? <Text variant="caption" tone="secondary">{t('web.recordingRules.noSeries')}</Text> : null}
               <div style={{display: 'flex', gap: 8}}>{guideCursor ? <Button size="sm" variant="ghost" label={t('web.recordingRules.firstChannels')} onClick={() => setGuideCursor('')} /> : null}{guide.data?.nextCursor ? <Button size="sm" variant="ghost" label={t('web.live.empty.moreTitle')} onClick={() => setGuideCursor(guide.data!.nextCursor)} /> : null}</div>
               {chosenSeries && !chosenSeries.recordAvailable ? <Notice tone="info" compact>{t('web.recordingRules.captureUnavailable')}</Notice> : null}

@@ -16,6 +16,8 @@ import {createDeleteOperationIds, deletePayloadKey} from './delete-media';
  */
 /** CD-44: destructive selections are never chunked; over-limit is blocked. */
 export const DELETE_LIMIT = 200;
+/** Titles named with why they were kept, before "and N more". */
+const KEPT_SHOWN = 5;
 export function deleteOverLimit(itemIds: readonly string[]): boolean {
   return new Set(itemIds).size > DELETE_LIMIT;
 }
@@ -27,7 +29,7 @@ export function DeleteMediaDialog({request, onClose}: {request: DeleteRequest; o
   const [typed, setTyped] = useState('');
   const [deleteFiles, setDeleteFiles] = useState(true);
   const [busy, setBusy] = useState(false);
-  const [done, setDone] = useState('');
+  const [done, setDone] = useState<{summary: string; kept: readonly {title: string; why: string}[]}>();
   // BE-API-10: one idempotency key per logical delete; retries reuse it, edits mint a new one.
   const [opIds] = useState(createDeleteOperationIds);
   const i18n = useI18n();
@@ -51,12 +53,22 @@ export function DeleteMediaDialog({request, onClose}: {request: DeleteRequest; o
       const key = deletePayloadKey({itemIds: request.itemIds, revision: preview.revision, deleteFiles, confirmation: typed.trim()});
       const result = parseEnvelope(await api.request<unknown>('/v1/admin/media/delete', 'POST', {itemIds: request.itemIds, deleteFiles, confirmation: typed.trim(), expectedRevision: preview.revision, operationId: opIds.forPayload(key)}), serverId, parseDeleteResult).result;
       opIds.release();
-      setDone(result.failed ? i18n.t('deleteMedia.partial', {removed: result.removed, failed: result.failed}) : i18n.t('deleteMedia.removed'));
+      // A title that stayed says why: the file on disk is not the catalogued one, or storage refused.
+      const kept = result.receipts.filter(r => !r.removed && (r.code === 'file_changed' || r.code === 'file_not_removed')).map(r => ({title: r.title, why: i18n.t(r.code === 'file_changed' ? 'deleteMedia.fileChanged' : 'deleteMedia.fileNotRemoved')}));
+      setDone({summary: result.failed ? i18n.t('deleteMedia.partial', {removed: result.removed, failed: result.failed}) : i18n.t('deleteMedia.removed'), kept});
       request.onDeleted?.();
     } catch (e) { setError(say(e, 'action')); } finally { setBusy(false); }
   };
   const title = request.titles.length === 1 ? i18n.t('deleteMedia.titleOne', {title: request.titles[0]!}) : i18n.t('deleteMedia.titleMany', {count: request.itemIds.length});
-  if (done) return <Dialog open onOpenChange={o => !o && onClose()} title={i18n.t('action.done')} width={440} actions={<Button variant="primary" label={i18n.t('action.close')} onClick={onClose} />}><Text as="p" variant="body" tone="secondary">{done}</Text></Dialog>;
+  if (done) return (
+    <Dialog open onOpenChange={o => !o && onClose()} title={i18n.t('action.done')} width={440} actions={<Button variant="primary" label={i18n.t('action.close')} onClick={onClose} />}>
+      <Text as="p" variant="body" tone="secondary">{done.summary}</Text>
+      {done.kept.slice(0, KEPT_SHOWN).map((k, i) => <Notice key={i} tone="warning" compact title={k.title}>{k.why}</Notice>)}
+      {done.kept.slice(KEPT_SHOWN).length ? <Text as="p" variant="caption" tone="tertiary">{i18n.t('deleteMedia.keptMore', {count: done.kept.slice(KEPT_SHOWN).length})}</Text> : null}
+    </Dialog>
+  );
+  const titlesCovered = preview ? preview.targets.reduce((sum, target) => sum + target.titles, 0) : 0;
+  const coversMore = !!preview && titlesCovered > preview.targets.length;
   return (
     <Dialog open onOpenChange={o => !o && onClose()} title={title} width={520}
       actions={<><Button variant="ghost" label={i18n.t('action.cancel')} onClick={onClose} /><Button variant="danger" label={i18n.t('action.delete')} disabled={overLimit || !preview || !allowed || typed.trim() !== preview.confirmation} loading={busy} onClick={() => void confirm()} /></>}>
@@ -67,6 +79,8 @@ export function DeleteMediaDialog({request, onClose}: {request: DeleteRequest; o
         <div style={{display: 'flex', flexDirection: 'column', gap: 16}}>
           {/* WEB-MENU-02: `blocked` lists library ids; name the library, never show the id. */}
           {preview.blocked.map(b => <Notice key={b} tone="warning" compact>{i18n.t('deleteMedia.blockedLibrary', {library: preview.targets.find(t => t.libraryId === b)?.libraryName || libraries.items.find(l => l.id === b)?.name || '—'})}</Notice>)}
+          {/* A show, season, album or book takes everything beneath it: say how many titles that is. */}
+          {coversMore ? <Text as="p" variant="bodyStrong">{i18n.t('deleteMedia.titlesCovered', {count: titlesCovered})}</Text> : null}
           <Text as="p" variant="body" tone="secondary">{i18n.t('deleteMedia.files', {count: preview.totalFiles, size: preview.totalBytesText})}{preview.targets.some(t => t.dependents.length) ? ' ' + preview.targets.flatMap(t => t.dependents).map(d => d.description).filter((v, i, a) => a.indexOf(v) === i).join(' ') : ''}</Text>
           {preview.targets.some(t => t.files.some(f => f.shared)) ? <Notice tone="info" compact>{i18n.t('deleteMedia.sharedKept')}</Notice> : null}
           {allowed ? (

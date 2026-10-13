@@ -1,6 +1,7 @@
 package backup
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -110,6 +111,10 @@ func copyStateFiles(state, partial string) ([]FileEntry, error) {
 
 // copyOneFile copies one regular file, refusing symlinks, and hashes it.
 func copyOneFile(src, dst, name string) (FileEntry, error) {
+	return copyOneFileContext(context.Background(), src, dst, name, nil)
+}
+
+func copyOneFileContext(ctx context.Context, src, dst, name string, progress func(int64, int64)) (FileEntry, error) {
 	entry := FileEntry{Name: name}
 	info, err := os.Lstat(src)
 	if err != nil {
@@ -131,7 +136,37 @@ func copyOneFile(src, dst, name string) (FileEntry, error) {
 		return entry, err
 	}
 	hash := sha256.New()
-	written, err := io.Copy(out, io.TeeReader(in, hash))
+	var written int64
+	buffer := make([]byte, 128<<10)
+	for {
+		if err = ctx.Err(); err != nil {
+			break
+		}
+		n, readErr := in.Read(buffer)
+		if n > 0 {
+			count, writeErr := out.Write(buffer[:n])
+			hash.Write(buffer[:count])
+			written += int64(count)
+			if progress != nil {
+				progress(written, info.Size())
+			}
+			if writeErr != nil {
+				err = writeErr
+				break
+			}
+			if count != n {
+				err = io.ErrShortWrite
+				break
+			}
+		}
+		if readErr == io.EOF {
+			break
+		}
+		if readErr != nil {
+			err = readErr
+			break
+		}
+	}
 	if syncErr := out.Sync(); err == nil {
 		err = syncErr
 	}
@@ -153,7 +188,7 @@ func writeManifest(partial string, manifest Manifest) error {
 		return err
 	}
 	raw = append(raw, '\n')
-	if err = os.WriteFile(filepath.Join(partial, ManifestName), raw, 0600); err != nil {
+	if err = durableFile(filepath.Join(partial, ManifestName), raw); err != nil {
 		return err
 	}
 	return nil
@@ -262,4 +297,20 @@ func checkManifestHashes(dir string, files []FileEntry) error {
 		}
 	}
 	return nil
+}
+
+func durableFile(path string, data []byte) error {
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0600)
+	if err != nil {
+		return err
+	}
+	_, err = f.Write(data)
+	if err == nil {
+		err = f.Sync()
+	}
+	closeErr := f.Close()
+	if err != nil {
+		return err
+	}
+	return closeErr
 }

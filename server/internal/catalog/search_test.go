@@ -175,17 +175,17 @@ func TestSearchGroupsPagingAndIndexUpdates(t *testing.T) {
 }
 
 func TestSearchInputAndLiteralOperators(t *testing.T) {
-	for _, q := range []string{"", " ", "a", "a b", "***", "OR * NEAR() a b c d e f g", strings.Repeat("界", 129)} {
+	for _, q := range []string{"", " ", "***", "OR * NEAR() a b c d e f g", strings.Repeat("界", 129)} {
 		if _, _, err := NormalizeSearch(q); err == nil {
 			t.Fatal("accepted", q)
 		}
 	}
 	q, expr, err := NormalizeSearch("  café\u2003Moon-STAR\"  ")
-	if err != nil || q != "café Moon-STAR\"" || expr != `"café"* AND "Moon"* AND "STAR"*` {
+	if err != nil || q != "café Moon-STAR\"" || expr != `"cafe"* AND "moonstar"*` {
 		t.Fatal(q, expr, err)
 	}
 	_, expr, err = NormalizeSearch(`harbor OR "movie"* -secret`)
-	if err != nil || expr != `"harbor"* AND "OR"* AND "movie"* AND "secret"*` {
+	if err != nil || expr != `"harbor"* AND "or"* AND "movie"* AND "secret"*` {
 		t.Fatal("operator injection", expr, err)
 	}
 }

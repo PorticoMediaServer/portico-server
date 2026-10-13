@@ -129,7 +129,7 @@ func FuzzClientAddress(f *testing.F) {
 	f.Fuzz(func(t *testing.T, remote, forwarded string) {
 		r := &http.Request{
 			Method:     "POST",
-			URL:        &url.URL{Path: "/v1/sessions"},
+			URL:        &url.URL{Path: "/v1/direct/sign-in"},
 			Header:     http.Header{},
 			RemoteAddr: remote,
 		}

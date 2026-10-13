@@ -207,7 +207,7 @@ func (s *Service) browseSummarise(library string, kinds []string, r identity.Con
 		return out, err
 	}
 	active := r.Active()
-	if r.MemberMaxRating != "" || len(r.MemberDeniedLabels) > 0 {
+	if len(r.MemberDeniedLabels) > 0 {
 		// A cold tiny class uses the authoritative SQL path until the background
 		// generation publishes. The former full-tag-set movie buckets are gone.
 		return out, nil

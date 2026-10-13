@@ -64,3 +64,28 @@ func TestRemoteSourceWithALargeGuideSaves(t *testing.T) {
 		t.Fatalf("saved %+v", source)
 	}
 }
+
+func TestRemoteInitialSelectionKeepsOnlyEnabledChannels(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, "#EXTM3U\n#EXTINF:-1 tvg-id=\"one\" group-title=\"Keep\",One\nhttps://streams.example/one\n#EXTINF:-1 tvg-id=\"two\" group-title=\"Drop\",Two\nhttps://streams.example/two\n")
+	}))
+	defer srv.Close()
+	s := testStore(t)
+	ctx := context.Background()
+	a := testAuthority("fence", true, true)
+	draft := RemoteDraft{ID: strings.Repeat("ab", 24), Name: "Selected", Kind: "m3u", Locator: srv.URL + "/channels.m3u", ConfirmedLANRoots: []string{srv.URL + "/"}, RefreshSeconds: 21600, ViewerAccess: "server-members", EnabledGroups: []string{"Keep"}}
+	p, e := s.PreviewRemote(ctx, a, SourceFetcher{}, draft)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if p.Preview.Channels != 1 || p.Preview.Names[0] != "One" {
+		t.Fatalf("%+v", p)
+	}
+	source, e := s.SaveRemote(ctx, a, p.ID, strings.Repeat("cd", 24))
+	if e != nil {
+		t.Fatal(e)
+	}
+	if source.Channels != 1 {
+		t.Fatalf("%+v", source)
+	}
+}

@@ -66,5 +66,7 @@ test('Reset recommendations: one POST carrying the operation id; the receipt mus
   assert.deepEqual(api.calls, [{path: RESET_RECOMMENDATIONS_PATH, method: 'POST', body: {operationId: 'reset-1'}}]);
   await assert.rejects(resetRecommendations(api, {serverId: 's1', operationId: 'bad id'}));
   assert.throws(() => parseRecommendationsReset({serverId: 's1', operationId: 'other', clearedNotInterested: 0}, 's1', 'reset-1'));
-  assert.throws(() => parseRecommendationsReset({serverId: 's1', operationId: 'reset-1', clearedNotInterested: -1}, 's1', 'reset-1'));
+  // The count is only shown: one that cannot be read is 0, and the receipt still stands.
+  assert.deepEqual(parseRecommendationsReset({serverId: 's1', operationId: 'reset-1', clearedNotInterested: -1, future: true}, 's1', 'reset-1'), {operationId: 'reset-1', clearedNotInterested: 0});
+  assert.throws(() => parseRecommendationsReset({serverId: 'other', operationId: 'reset-1', clearedNotInterested: 0}, 's1', 'reset-1'));
 });

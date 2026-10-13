@@ -3,6 +3,7 @@ package backup
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"log"
 	"time"
 
@@ -14,10 +15,11 @@ import (
 // backup task is open and no scheduled backup has been created since that
 // occurrence started, it creates one and prunes to the keep count.
 type Scheduler struct {
-	service *Service
-	db      *sql.DB
-	keep    func(context.Context) (int, error)
-	now     func() time.Time
+	service       *Service
+	db            *sql.DB
+	keep          func(context.Context) (int, error)
+	now           func() time.Time
+	ReportFailure func(context.Context, bool)
 }
 
 // Schedule builds the scheduler on the live database. keep answers the
@@ -59,9 +61,27 @@ func (s *Scheduler) check(ctx context.Context) {
 	if !latest.IsZero() && !latest.Before(start) {
 		return
 	}
-	id, err := s.service.CreateKind(ctx, KindScheduled)
+	id, err := s.service.Start(ctx, KindScheduled, "scheduled-"+start.UTC().Format("20060102T150405Z"))
+	if err == nil {
+		job, ok := s.service.Job(id)
+		if !ok {
+			return
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-job.Done():
+			err = job.Result()
+		}
+	}
+	if errors.Is(err, ErrBackupRunning) {
+		return
+	}
+	if s.ReportFailure != nil {
+		s.ReportFailure(ctx, err != nil)
+	}
 	if err != nil {
-		log.Printf("Scheduled backup: %v", err)
+		log.Printf("warn: Scheduled backup: %v", err)
 		return
 	}
 	log.Printf("Scheduled backup %s", id)
@@ -72,7 +92,7 @@ func (s *Scheduler) check(ctx context.Context) {
 		}
 	}
 	if err = s.service.Prune(keep); err != nil {
-		log.Printf("Scheduled backup prune: %v", err)
+		log.Printf("warn: Scheduled backup prune: %v", err)
 	}
 }
 

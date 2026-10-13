@@ -459,7 +459,13 @@ func (s *Service) applyDepartures(ctx context.Context, v networking.Intent, depa
 			if e = identity.RevokeFamiliesMatchingTx(ctx, tx, identity.RevokedMembershipRemoved, `authority='local' AND account_id=?`, account); e != nil {
 				return e
 			}
-			if _, e = tx.ExecContext(ctx, `UPDATE direct_memberships SET disabled=1,revision=revision+1 WHERE account_id=? AND disabled=0`, account); e != nil {
+			// Recorded as the person leaving, at the time they left (not when this
+			// server heard), so an invitation sent after that still lets them back.
+			left := d.LeftAt
+			if left.IsZero() {
+				left = time.Now()
+			}
+			if _, e = tx.ExecContext(ctx, `UPDATE direct_memberships SET disabled=1,disabled_ms=?,disabled_reason='left',revision=revision+1 WHERE account_id=? AND disabled=0`, left.UnixMilli(), account); e != nil {
 				return e
 			}
 			if _, e = tx.ExecContext(ctx, `UPDATE accounts SET epoch=epoch+1 WHERE id=?`, account); e != nil {

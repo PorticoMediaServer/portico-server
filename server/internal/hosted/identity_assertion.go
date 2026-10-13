@@ -172,5 +172,5 @@ func (s *Service) verifyAssertion(ctx context.Context, assertion Signed, install
 			return none, e
 		}
 	}
-	return identity.PorticoIdentity{AccountID: c.AccountID, Username: c.Username, DisplayName: c.DisplayName, Consent: string(consent)}, nil
+	return identity.PorticoIdentity{AccountID: c.AccountID, Username: c.Username, DisplayName: c.DisplayName, Consent: string(consent), SignerKeyID: assertion.KeyID}, nil
 }

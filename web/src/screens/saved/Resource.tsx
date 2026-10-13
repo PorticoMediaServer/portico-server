@@ -1,14 +1,14 @@
 import {cardCaptionOf} from '../../app/content';
+import {useBack} from '../../app/back';
 import {useEffect, useMemo, useRef, useState} from 'react';
 import React from 'react';
 import {useNavigate, useParams, useSearch} from '@tanstack/react-router';
-import {defaultI18n} from '@i18n';
 import {SavedService, type SavedRoute, type SavedSnapshot, type PlaylistOccurrence} from '@core/saved.ts';
 import {PersonalSavedService, type PersonalSavedSnapshot} from '@core/personal-saved.ts';
 import {useService} from '../../app/content';
 import {captionFor, formatDuration, iconFor, progressFor, shapeFor} from '@core/presentation/index.ts';
 import {mosaicPaths} from '../../app/title-layout';
-import {useOpenEntry} from '../../app/open';
+import {useEntryHref, useOpenEntry} from '../../app/open';
 import {sequenceContainer} from '../../app/container-play';
 import {usePlayerActions} from '../../player/PlayerContext';
 import {useSession} from '../../app/session';
@@ -17,14 +17,15 @@ import {LoadingGrid, SECTION_WINDOW_AT, useAppendedPages} from '../shared/Sectio
 import {ErrorNotice, errorText} from '../../app/errors';
 import {NameDialog} from './Saved';
 import {useViewerScope} from '../../app/viewer-scope';
+import {useI18n} from '../../app/i18n';
 
-const t = defaultI18n.t;
 const requestId = () => Promise.resolve(crypto.randomUUID());
 type Visible = Extract<PlaylistOccurrence, {hidden: false}>;
 
 /** One playlist or personal collection: identity, Play, then its ordered entries, and (WEB-SAVED-02)
  * the management the server offers for it: rename, reorder, remove and delete. */
 export function SavedResourceScreen() {
+  const {t} = useI18n();
   const {kind, resourceId} = useParams({from: '/app/saved/$kind/$resourceId'});
   const {title} = useSearch({from: '/app/saved/$kind/$resourceId'});
   const navigate = useNavigate();
@@ -32,6 +33,8 @@ export function SavedResourceScreen() {
   const scope = useViewerScope();
   const player = usePlayerActions();
   const open = useOpenEntry();
+  // Cards are links, so they open in a new tab and their address can be copied.
+  const hrefOf = useEntryHref();
   const playlist = kind === 'playlist';
   const route = useMemo<SavedRoute>(() => (playlist ? {view: 'playlist', playlistId: resourceId} : {view: 'resource', resourceId}), [playlist, resourceId]);
   const savedBinding = useService<SavedService, SavedSnapshot>(() => new SavedService({api, scope, requestId}), [api, scope]);
@@ -52,7 +55,7 @@ export function SavedResourceScreen() {
     } catch {}
   }, [route, playlist, savedBinding.service, personalBinding.service]);
   const directory = () => void navigate({to: '/saved', search: {view: playlist ? 'playlists' : 'collections'}});
-  const back = () => (history.length > 1 ? history.back() : directory());
+  const back = useBack(directory);
   const context = playlist ? 'playlist' : 'collection';
   /** Every change goes through the service's intents; a failure is presented, never thrown at the page. */
   const change = async (work: () => Promise<unknown>, after?: () => void) => {
@@ -169,8 +172,8 @@ export function SavedResourceScreen() {
       {snap.loading && !items.length ? <LoadingGrid /> : null}
       {!snap.loading && !items.length && !snap.error ? <StateView icon="collection" title={view ? t('web.saved.viewEmpty') : t('web.saved.collectionEmpty')} /> : null}
       {items.length > SECTION_WINDOW_AT ? (
-        <WindowedRows items={items} estimateRowHeight={300} columnMin="clamp(120px, 11vw, 168px)" label={name} renderItem={e => <Card key={e.id} title={e.media!.title} caption={cardCaptionOf(e.media!)} path={e.media!.posterUrl} shape={shapeFor(e.media!.kind)} icon={iconFor(e.media!.kind)} progress={progressFor(e.media!)} onOpen={() => open(e.media!)} onPlay={e.media!.playback ? () => open(e.media!, 'play') : undefined} onMore={anchor => (can('entries') && !view ? setEntryMenu({id: e.id, anchor}) : open(e.media!, 'more', undefined, anchor))} />} />
-      ) : items.length ? <Grid density="poster">{items.map(e => <Card key={e.id} title={e.media!.title} caption={cardCaptionOf(e.media!)} path={e.media!.posterUrl} shape={shapeFor(e.media!.kind)} icon={iconFor(e.media!.kind)} progress={progressFor(e.media!)} onOpen={() => open(e.media!)} onPlay={e.media!.playback ? () => open(e.media!, 'play') : undefined} onMore={anchor => (can('entries') && !view ? setEntryMenu({id: e.id, anchor}) : open(e.media!, 'more', undefined, anchor))} />)}</Grid> : null}
+        <WindowedRows items={items} estimateRowHeight={300} columnMin="clamp(120px, 11vw, 168px)" label={name} renderItem={e => <Card key={e.id} title={e.media!.title} caption={cardCaptionOf(e.media!)} path={e.media!.posterUrl} shape={shapeFor(e.media!.kind)} icon={iconFor(e.media!.kind)} progress={progressFor(e.media!)} href={hrefOf(e.media!)} onOpen={() => open(e.media!)} onPlay={e.media!.playback ? () => open(e.media!, 'play') : undefined} onMore={anchor => (can('entries') && !view ? setEntryMenu({id: e.id, anchor}) : open(e.media!, 'more', undefined, anchor))} />} />
+      ) : items.length ? <Grid density="poster">{items.map(e => <Card key={e.id} title={e.media!.title} caption={cardCaptionOf(e.media!)} path={e.media!.posterUrl} shape={shapeFor(e.media!.kind)} icon={iconFor(e.media!.kind)} progress={progressFor(e.media!)} href={hrefOf(e.media!)} onOpen={() => open(e.media!)} onPlay={e.media!.playback ? () => open(e.media!, 'play') : undefined} onMore={anchor => (can('entries') && !view ? setEntryMenu({id: e.id, anchor}) : open(e.media!, 'more', undefined, anchor))} />)}</Grid> : null}
       {loadingMore ? <Inset><Skeleton height={48} /></Inset> : null}
       {snap.nextCursor || loadingMore ? <ScrollSentinel cursor={snap.nextCursor} disabled={snap.loading} onMore={() => void service.next().catch(() => {})} /> : null}
       <AnchoredMenu anchor={entryMenu?.anchor} open={!!entryMenu} onOpenChange={o => !o && setEntryMenu(null)} label={t('web.saved.collectionOptions')}>

@@ -3,11 +3,18 @@
 // play those bytes with no server in reach, and the deferred progress a client
 // recorded while it was away.
 //
-// It produces no media of its own. A preparation for `original` points at the
-// catalog asset; a preparation for a quality ladder rung points at a published
-// prepared_media_versions row from internal/preparedmedia. This package adds the
-// viewer's claim on those bytes, the verification hash, the storage accounting
-// and the offline authorization — nothing else.
+// It produces no media of its own and keeps no copy of any. A preparation for
+// `original` points at the library file itself, read in place; a preparation
+// for a quality ladder rung points at a published prepared_media_versions row
+// from internal/preparedmedia. This package adds the viewer's claim on those
+// bytes, the verification hash, the storage accounting and the offline
+// authorization — nothing else.
+//
+// Two things are kept apart throughout. A preparation is the server's promise
+// to hand over bytes: retention, a replaced file or a removed title end it. A
+// receipt is the viewer's permission to play a copy already on a device: only
+// a change to what that viewer may do ends it. Tidying the first never touches
+// the second.
 package downloads
 
 import (
@@ -80,7 +87,23 @@ const (
 	ReasonAccountDisabled = "account_disabled"
 	ReasonRevoked         = "revoked"
 	ReasonUnknownReceipt  = "unknown_receipt"
+	// ReasonUnknownPreparation answers a receipt asked for a claim this server
+	// has no record of, which a client recovers from by asking again.
+	ReasonUnknownPreparation = "unknown_preparation"
+	// ReasonSeveralFiles is a title stored as more than one file. One claim is
+	// one file, so it is refused plainly rather than as an unreachable source.
+	ReasonSeveralFiles = "several_files"
 )
+
+// publishedReasons is the closed set a client is promised. Anything stored or
+// accepted as a reason is one of these.
+var publishedReasons = map[string]bool{
+	ReasonNotAllowed: true, ReasonItemDeleted: true, ReasonSourceMissing: true, ReasonSourceChanged: true,
+	ReasonNotOptimized: true, ReasonOptimizeFailed: true, ReasonStorageFull: true, ReasonArtifactChanged: true,
+	ReasonVerifyFailed: true, ReasonRetention: true, ReasonCancelled: true, ReasonFailed: true,
+	ReasonAccountDisabled: true, ReasonRevoked: true, ReasonUnknownReceipt: true, ReasonUnknownPreparation: true,
+	ReasonSeveralFiles: true, ReasonRemoved: true,
+}
 
 // Origins record how a preparation was asked for, so a client can tell an
 // auto-next-episode claim from one the viewer tapped.
@@ -100,12 +123,13 @@ const QualityOriginal = "original"
 const (
 	MaxLivePerViewer = 200
 	MaxBatchTargets  = 100
-	// GrantTTL is deliberately short: a grant is a handle on bytes, not a
-	// session. Resuming an interrupted transfer asks for a new grant.
-	GrantTTL = 10 * time.Minute
-	// GrantReplayWindow lets one viewer's resumable transfer issue many ranged
-	// requests against the same grant after its first use.
-	GrantReplayWindow = 10 * time.Minute
+	// GrantIdle is how long a transfer address stays good with nobody using or
+	// renewing it. A phone's own downloader pauses a transfer for hours (no
+	// Wi-Fi, a suspended app) and then asks for the same address again, so the
+	// address has to outlive that. It is kept alive by use and by renewal, both
+	// of which recheck that the viewer may still have the file, and it ends
+	// with the claim.
+	GrantIdle = 24 * time.Hour
 	// ReceiptTTL is how long a client may play downloaded bytes with no server
 	// in reach before it has to revalidate.
 	ReceiptTTL = 30 * 24 * time.Hour
@@ -144,12 +168,15 @@ type Progress struct {
 	ETASeconds *int64  `json:"etaSeconds"`
 }
 
-// Preparation is the published view of one viewer's claim.
+// Preparation is the published view of one viewer's claim. Title is what the
+// claim was for, kept with it, so a list of downloads reads as titles even
+// after one has left the library.
 type Preparation struct {
 	ID        string   `json:"id"`
 	ItemID    string   `json:"itemId"`
 	LibraryID string   `json:"libraryId"`
 	ProfileID string   `json:"profileId"`
+	Title     Title    `json:"title"`
 	Quality   string   `json:"quality"`
 	Origin    string   `json:"origin"`
 	BatchID   string   `json:"batchId,omitempty"`

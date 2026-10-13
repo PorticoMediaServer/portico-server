@@ -20,7 +20,7 @@ export * from './audio-effects.ts';
 export * from './music-preferences.ts';
 import {sessionEndMessage} from './session-end.ts';
 import {readCertificateResponse, type CertificateAction} from './certificates.ts';
-import {reportRouteFailure,type RouteFailureCode,type RouteFailureResult} from './client-profile.ts';
+import type {PlayerFailureCode} from './client-profile.ts';
 import {normalizeTransportClass,transportClassHeader,deviceClassHeader,deliveryContextHeaders,setDeliveryContext,type TransportClass} from './delivery.ts';
 export * from './certificates.ts';
 export * from './delivery.ts';
@@ -33,6 +33,7 @@ import type {QueueController} from './queue-controller.ts';
 import {readLyricsResponse} from "./lyrics-http.ts";
 import {readBoundedJson} from './bounded-json.ts';
 import {parseLocalSession} from './local-session.ts';
+import {parseLibraryList} from './library-list.ts';
 import {installationHeaders,issuesCredentials,provesIdentity} from './installation.ts';
 import {AudioSelection,emptyAudio,type AudioPlan,type AudioBinding,type AudioSelectionSnapshot} from './audio-selection.ts';
 export type {AudioPlan,AudioBinding,AudioSelectionSnapshot} from './audio-selection.ts';
@@ -149,6 +150,44 @@ function statusOf(error: unknown): number {
   const status = (error as { status?: unknown } | null)?.status;
   return typeof status === "number" ? status : 0;
 }
+/**
+ * A request the server accepted and then never answered. It is a failure the person can retry,
+ * never a cancellation: the screen that asked stops waiting and says so.
+ */
+export class RequestTimeoutError extends Error {
+  readonly code = 'request_timeout';
+  readonly retryable = true;
+  constructor() { super('The server did not answer in time.'); this.name = 'TimeoutError'; }
+}
+/**
+ * How long a request may go unanswered. A long poll waits as long as it asked the server to
+ * hold it, plus a margin; a read gets half a minute; a change gets a minute, and an owner's
+ * console change two (some do real work before they answer). Media, downloads and event streams
+ * do not come through here and have no such limit.
+ */
+export function requestDeadlineMs(path: string, method: string): number {
+  const held = /[?&]waitSeconds=(\d{1,4})(?:&|$)/.exec(path);
+  if (held) return (Math.min(Number(held[1]), 600) + 15) * 1000;
+  if (method === 'GET' || method === 'HEAD') return 30_000;
+  return path.startsWith('/v1/admin/') ? 120_000 : 60_000;
+}
+/** Runs `work` under the request's deadline and the caller's own cancellation. A caller's cancel stays a cancel; the deadline is a timeout. */
+async function withinDeadline<T>(ms: number, signal: AbortSignal | undefined, work: (signal: AbortSignal) => Promise<T>): Promise<T> {
+  const controller = new AbortController();
+  let timedOut = false;
+  const cancel = () => controller.abort();
+  if (signal?.aborted) cancel(); else signal?.addEventListener('abort', cancel, {once: true});
+  const timer = setTimeout(() => { timedOut = true; controller.abort(); }, ms);
+  try {
+    return await work(controller.signal);
+  } catch (error) {
+    if (timedOut && !signal?.aborted) throw new RequestTimeoutError();
+    throw error;
+  } finally {
+    clearTimeout(timer);
+    signal?.removeEventListener('abort', cancel);
+  }
+}
 export class ApiError extends Error {
   code: string;
   retryable: boolean;
@@ -183,10 +222,14 @@ export class ApiError extends Error {
     if (typeof serverTime === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/.test(serverTime) && Number.isFinite(Date.parse(serverTime))) this.serverTime = serverTime;
   }
 }
+/** What a reported player failure did: `session` is the same session re-planned another way,
+ * to be played in place; `escalates` false means there is no other way. */
+export type PlayerFailureResult = Readonly<{escalates: boolean; session?: PlaybackSession}>;
 export interface PlaybackApi {
-  /** Optional: tells the server the engine rejected the route of one session, so
-   * the next plan for that file on this device takes the next route up. */
-  reportRouteFailure?(sessionId: string, code: RouteFailureCode, detail: string): Promise<RouteFailureResult | null>;
+  /** Optional: tells the server the engine could not play one session's presentation. The server
+   * remembers that for this file on this device and re-plans the same session the next way up, at
+   * `positionSeconds`. The session keeps its id, its queue and its place in it. */
+  reportPlayerFailure?(sessionId: string, code: PlayerFailureCode, detail: string, positionSeconds: number): Promise<PlayerFailureResult | null>;
   createPlayback(
     itemId: string,
     requestId: string,
@@ -389,15 +432,17 @@ export class HttpLocalApi {
    * `ETag`, `Report-Every-Ms`). Rejects only when there is no response (offline, aborted).
    */
   async requestRaw(path: string, method: string, options: Readonly<{headers?: Readonly<Record<string, string>>; body?: unknown; signal?: AbortSignal}> = {}): Promise<{status: number; headers: Record<string, string>; body?: unknown}> {
-    const response = await this.exchange(path, method, options.body, options.signal, options.headers);
-    const headers: Record<string, string> = {};
-    response.headers.forEach((value, key) => { headers[key] = value; });
-    let body: unknown;
-    if (response.status !== 204 && response.status !== 205 && response.status !== 304) {
-      const text = await response.text();
-      if (text) { try { body = JSON.parse(text); } catch { body = undefined; } }
-    }
-    return {status: response.status, headers, body};
+    return withinDeadline(requestDeadlineMs(path, method), options.signal, async signal => {
+      const response = await this.exchange(path, method, options.body, signal, options.headers);
+      const headers: Record<string, string> = {};
+      response.headers.forEach((value, key) => { headers[key] = value; });
+      let body: unknown;
+      if (response.status !== 204 && response.status !== 205 && response.status !== 304) {
+        const text = await response.text();
+        if (text) { try { body = JSON.parse(text); } catch { body = undefined; } }
+      }
+      return {status: response.status, headers, body};
+    });
   }
   async request<T>(
     path: string,
@@ -405,6 +450,10 @@ export class HttpLocalApi {
     body?: unknown,
     signal?: AbortSignal
   ): Promise<T> {
+    // No request waits for ever: one the server never answers fails as timed out (see `requestDeadlineMs`).
+    return withinDeadline(requestDeadlineMs(path, method), signal, bounded => this.answered<T>(path, method, body, bounded));
+  }
+  private async answered<T>(path: string, method: string, body: unknown, signal: AbortSignal): Promise<T> {
     // A 401 means the server did not act on the request, so one retry with a renewed token is safe for any method.
     const response = await this.exchange(path, method, body, signal);
     if (!response.ok) {
@@ -424,7 +473,7 @@ export class HttpLocalApi {
       );
       const path = errorFieldPath(data?.error?.path);
       if (path) error.path = path;
-      const roots = errorConfirmRoots(data?.error?.confirmRoots);
+      const roots = errorConfirmRoots(data?.error?.current?.confirmRoots);
       if (roots) error.confirmRoots = roots;
       throw error;
     }
@@ -435,12 +484,6 @@ export class HttpLocalApi {
   }
   system() {
     return this.request<SystemInfo>("/v1/system");
-  }
-  login(username: string, password: string) {
-    return this.request<unknown>("/v1/sessions", "POST", {
-      username,
-      password,
-    }).then(value=>parseLocalSession(value,{authority:'local'}));
   }
   setup(setupToken: string, username: string, password: string, name: string) {
     return this.request<unknown>("/v1/setup", "POST", {
@@ -457,7 +500,7 @@ export class HttpLocalApi {
     return this.request<void>("/v1/sessions/current", "DELETE");
   }
   libraries() {
-    return this.request<{ items: Library[] }>("/v1/libraries");
+    return this.request<unknown>("/v1/libraries").then(parseLibraryList);
   }
   items(libraryId = "", cursor = "", limit = 40) {
     const q = new URLSearchParams({ limit: String(limit) });
@@ -469,9 +512,6 @@ export class HttpLocalApi {
   }
   item(id: string) {
     return this.request<unknown>("/v1/items/" + encodeURIComponent(id)).then(parseMediaItem);
-  }
-  reportRouteFailure(sessionId: string, code: RouteFailureCode, detail: string) {
-    return reportRouteFailure((path, method, body) => this.request<unknown>(path, method, body), sessionId, code, detail);
   }
   mediaUrl(path: string) {
     if (this.routes) return this.routes.mediaURL(path);
@@ -670,6 +710,8 @@ export class PlaybackService {
   /** The server's music preferences have been adopted: the device journal no longer overrides them. */
   private effectsFromServer = false;
   private lastPlay?: { itemId: string; prepared?: PreparedChoice; quality?: string; audioStream?: number; choices?: PlaybackChoices; local?: () => PlaybackSession };
+  /** The session the engine-failure count belongs to. */
+  private escalationSession?: string;
   private seekRearm?: () => void;
   private startupRearm?: () => void;
   private escalations = 0;
@@ -897,6 +939,11 @@ export class PlaybackService {
    * the server and stays the same session on the same queue entry, so Up next is untouched. The
    * choices are remembered for a replay or an automatic retry of this title.
    */
+  /** Whether a change of quality, version or track can be made on the playing session itself
+   * (`changePlayback` does nothing otherwise: a channel, a downloaded file, nothing playing). */
+  changesInPlace():boolean{
+    return !!this.snapshot.itemId&&!!this.snapshot.session&&!this.snapshot.channel&&!this.lastPlay?.local&&!!this.queue?.changePlayback;
+  }
   changePlayback(choices:PlaybackChoices):Promise<void>{
     const itemId=this.snapshot.itemId,session=this.snapshot.session;
     if(!itemId||!session||this.snapshot.channel||this.lastPlay?.local||!this.queue?.changePlayback)return Promise.resolve();
@@ -1513,20 +1560,28 @@ export class PlaybackService {
    * route above it the title is asked for again from the same position and plays
    * through that one instead. The viewer sees the recovery state, never an error,
    * unless the last resort has failed too. */
-  engineFailed(intentId: number, code: RouteFailureCode, detail: string, message: string) {
-    const session = this.snapshot.session, itemId = this.snapshot.itemId, last = this.lastPlay;
+  engineFailed(intentId: number, code: PlayerFailureCode, detail: string, message: string) {
+    const session = this.snapshot.session, itemId = this.snapshot.itemId;
     if (intentId !== this.snapshot.intentId || this.snapshot.phase === "error" || this.snapshot.phase === "idle") return;
-    if (!session || !itemId || this.snapshot.channel || !this.api.reportRouteFailure || !last || last.itemId !== itemId || last.prepared || last.local || this.escalations >= 3) {
+    // The recovery belongs to the session being played, however it was started (a direct play, a
+    // queue's first entry, or a queue's successor): the server re-plans that session in place.
+    // Only a server session can be re-planned (a download or a prepared file is what it is). The
+    // bound is per session: a re-plan keeps the session, a new title starts a new count.
+    if (session && this.escalationSession !== session.id) { this.escalationSession = session.id; this.escalations = 0; }
+    if (!session || !itemId || this.snapshot.channel || !this.api.reportPlayerFailure || session.protocol !== 'v1' || this.escalations >= 3) {
       this.fail(intentId, message);
       return;
     }
     const position = this.snapshot.pendingSeek?.positionSeconds ?? (this.hasObserved ? this.snapshot.positionSeconds : session.resumeSeconds ?? 0);
     this.escalations++;
     this.recovering(intentId, true);
-    void this.api.reportRouteFailure(session.id, code, detail).then(result => {
+    void this.api.reportPlayerFailure(session.id, code, detail, position).then(async result => {
       if (intentId !== this.snapshot.intentId) return;
-      if (!result?.escalates) { this.fail(intentId, message); return; }
-      return this.play(itemId, position, undefined, last.quality, last.audioStream, last.choices);
+      if (!result?.escalates || !result.session) { this.fail(intentId, message); return; }
+      // The same session, another way: its new presentation replaces the old one in place, so
+      // the queue and the position stay.
+      const next = {...result.session, duration: result.session.duration || session.duration, resumeSeconds: position};
+      if (!this.installPresentation(next)) await this.adoptQueueSession(itemId, next, intentId);
     }).catch(() => { if (intentId === this.snapshot.intentId) this.fail(intentId, message); });
   }
   fail(intentId: number, message: string, extra: Partial<PlaybackSnapshot> = {}) {
@@ -1876,6 +1931,7 @@ export * from './group-session.ts';
 export * from './remote-playback.ts';
 export * from './library-pins.ts';
 export * from './subtitles.ts';
+export * from './subtitle-originals.ts';
 export * from "./lyrics.ts";
 
 export {type MusicPolicy,type MusicPolicyInput,type MusicMatchObservation,type MusicEvidenceDetails,type LocalBookMetadata,musicEvidenceLabel,fingerprintStatusLabel} from "./music-metadata.ts";
@@ -1908,6 +1964,8 @@ export * from './inbox.ts';
 export * from './identity-client.ts';
 export * from './sse.ts';
 export * from './downloads-service.ts';
+
+export * from './client-reports.ts';
 
 export * from './metadata-attention.ts';
 export * from './metadata-settings.ts';

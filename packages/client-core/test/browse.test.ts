@@ -44,22 +44,77 @@ test('capabilities parse only what the server can execute', () => {
   assert.equal(capabilities.resolvedPivot?.id, 'movies');
   assert.equal(capabilities.queryLimits.maximumDepth, 5);
   assert.equal(capabilities.fields.find(f => f.id === 'year')?.facetSource?.field, 'year');
-  assert.throws(() => parseBrowseCapabilities(capabilitiesPayload({fields: [{id: 'title', labelKey: 'k', type: 'string', operators: ['nonsense'], controlHint: 'text', complexity: 'quick', cost: 'indexed', applicableKinds: []}]})), {code:'invalid_browse'});
-  assert.throws(() => parseBrowseCapabilities(capabilitiesPayload({fields: [{id: 'title', labelKey: 'k', type: 'string', operators: ['equals'], controlHint: 'dial', complexity: 'quick', cost: 'indexed', applicableKinds: []}]})), {code:'invalid_browse'});
+  // The library, the query limits and the bounds of the lists stay exact.
+  assert.throws(() => parseBrowseCapabilities(capabilitiesPayload({library: {id: '', name: 'Movies', kind: 'movie', defaultView: 'discover'}})), {code:'invalid_browse'});
+  assert.throws(() => parseBrowseCapabilities(capabilitiesPayload({fields: Array.from({length: 129}, (_, i) => ({id: `f${i}`, labelKey: 'k', type: 'string', operators: ['equals'], controlHint: 'text', complexity: 'quick', cost: 'indexed', applicableKinds: []}))})), {code:'invalid_browse'});
+  assert.throws(() => parseBrowseCapabilities(capabilitiesPayload({pivots: 'nope'})), {code:'invalid_browse'});
   assert.throws(() => parseBrowseCapabilities(capabilitiesPayload({resolvedPivot: {id: 'ghost', labelKey: 'k', entityKinds: [], defaultSort: [], supportedViews: [], browsable: true}})), {code:'invalid_browse'});
   assert.throws(() => parseBrowseCapabilities(capabilitiesPayload({queryLimits: {maximumDepth: 5, maximumClauses: 40, maximumBytes: 1, maximumSorts: 3, defaultLimit: 40, maximumLimit: 10, cursorTtlSeconds: 1}})), {code:'invalid_browse'});
 });
 
-test('browse pages parse position index and page info, and reject incoherent ones', () => {
+test('a filter, sort, pivot or quick filter this app cannot read is not offered and the rest are kept', () => {
+  const field = {id: 'title', labelKey: 'k', type: 'string', operators: ['equals'], controlHint: 'text', complexity: 'quick', cost: 'indexed', applicableKinds: ['movie']};
+  const parsed = parseBrowseCapabilities(capabilitiesPayload({
+    fields: [
+      field, {...field, labelKey: 'again'},
+      {...field, id: 'unknownOperators', operators: ['nonsense']},
+      {...field, id: 'someOperators', operators: ['equals', 'resembles']},
+      {...field, id: 'unknownControl', controlHint: 'dial'},
+      {...field, id: 'unknownType', type: 'colour'},
+      {...field, id: 'hints', complexity: 'expert', cost: 'full-scan', future: {a: 1}},
+      {...field, id: 'brokenFacet', facetSource: {endpoint: 7}},
+      'nope',
+    ],
+    sorts: [
+      {id: 'title', labelKey: 'sort.title', directions: ['asc', 'sideways'], defaultDirection: 'sideways', applicableKinds: ['movie']},
+      {id: 'unknownDirections', labelKey: 'k', directions: ['sideways'], defaultDirection: 'sideways', expensive: false, applicableKinds: []},
+      {id: 'year', labelKey: 'sort.year', directions: ['asc', 'desc'], defaultDirection: 'desc', expensive: true, applicableKinds: ['movie']},
+    ],
+    pivots: [
+      {id: 'movies', labelKey: 'library.movies', entityKinds: ['movie', 7], defaultSort: [{field: 'title', direction: 'asc'}, {field: 'year', direction: 'sideways'}], supportedViews: ['grid'], browsable: true},
+      {id: 'unsure', labelKey: 'library.unsure'},
+      {labelKey: 'no id'},
+    ],
+    quickFilters: [{id: 'favorites', labelKey: 'filter.favorites', query: {field: 'favorite', operator: 'equals', value: true}}, {id: 'future', labelKey: 'k', query: {field: 'mood', operator: 'resembles', value: 'calm'}}],
+  }));
+  assert.deepEqual(parsed.fields.map(f => f.id), ['title', 'someOperators', 'hints']);
+  assert.equal(parsed.fields[0].labelKey, 'k', 'a repeated id keeps its first appearance');
+  assert.deepEqual(parsed.fields[1].operators, ['equals']);
+  assert.deepEqual([parsed.fields[2].complexity, parsed.fields[2].cost, 'future' in parsed.fields[2]], ['advanced', 'indexed-join', false]);
+  assert.deepEqual(parsed.sorts.map(v => [v.id, v.directions, v.defaultDirection, v.expensive]), [['title', ['asc'], 'asc', false], ['year', ['asc', 'desc'], 'desc', true]]);
+  assert.deepEqual(parsed.pivots, [
+    {id: 'movies', labelKey: 'library.movies', entityKinds: ['movie'], defaultSort: [{field: 'title', direction: 'asc'}], supportedViews: ['grid'], browsable: true},
+    {id: 'unsure', labelKey: 'library.unsure', entityKinds: [], defaultSort: [], supportedViews: [], browsable: false},
+  ]);
+  assert.deepEqual(parsed.quickFilters.map(f => f.id), ['favorites']);
+});
+
+test('browse pages parse position index and page info; identity, what was applied and bounds stay exact', () => {
   const page = parseBrowseResult(resultPayload());
   assert.equal(page.pageInfo.total, 3);
   assert.deepEqual([...page.positionIndex], [{key: '#', index: 0}, {key: 'A', index: 1}]);
   assert.equal(page.applied.sort[0].field, 'title');
-  assert.throws(() => parseBrowseResult(resultPayload({pageInfo: {start: 0, total: 1, revision: 'r', hasMore: true, nextCursor: ''}})), {code:'invalid_browse'});
-  assert.throws(() => parseBrowseResult(resultPayload({pageInfo: {start: 5, total: 1, revision: 'r', hasMore: false, nextCursor: ''}})), {code:'invalid_browse'});
-  assert.throws(() => parseBrowseResult(resultPayload({positionIndex: [{key: 'B', index: 2}, {key: 'A', index: 1}]})), {code:'invalid_browse'});
-  assert.throws(() => parseBrowseResult(resultPayload({entries: [{id: 'm1', kind: 'movie', title: 'A'}, {id: 'm1', kind: 'movie', title: 'A'}], pageInfo: {start: 0, total: 2, revision: 'r', hasMore: false, nextCursor: ''}})), {code:'invalid_browse'});
   assert.throws(() => parseBrowseResult(resultPayload({applied: {query: {field: 'genre', operator: 'nonsense', value: 'x'}, sort: [], seek: null}})), {code:'invalid_browse'});
+  assert.throws(() => parseBrowseResult(resultPayload({pivot: ''})), {code:'invalid_browse'});
+  assert.throws(() => parseBrowseResult(resultPayload({pageInfo: {start: 0, total: 3, revision: '', hasMore: true, nextCursor: 'cursor'}})), {code:'invalid_browse'});
+  assert.throws(() => parseBrowseResult(resultPayload({pageInfo: {start: 0, total: 3, revision: 'r', hasMore: true, nextCursor: 7}})), {code:'invalid_browse'});
+  assert.throws(() => parseBrowseResult(resultPayload({entries: 'nope'})), {code:'invalid_browse'});
+  assert.throws(() => parseBrowseResult(resultPayload({entries: Array.from({length: 201}, (_, i) => ({id: `m${i}`, kind: 'movie', title: 'A'})), pageInfo: {start: 0, total: 500, revision: 'r', hasMore: true, nextCursor: ''}})), {code:'invalid_browse'});
+  // A page none of whose entries can be read is refused rather than shown as empty.
+  assert.throws(() => parseBrowseResult(resultPayload({entries: [{id: 'm1', kind: 'hologram', title: 'A'}]})), {code:'invalid_browse'});
+});
+
+test('one browse entry that cannot be read is left out, and the total and hasMore follow the rows the server sent', () => {
+  const movie = (id: string) => ({id, kind: 'movie', title: id});
+  const page = parseBrowseResult(resultPayload({entries: [movie('m1'), movie('m1'), {id: 'x', kind: 'hologram', title: 'Future'}, {id: 'broken'}, {...movie('m2'), year: 0, future: true}], pageInfo: {start: 0, total: 9, revision: 'r', hasMore: true, nextCursor: 'cursor'}}));
+  assert.deepEqual(page.entries.map(e => e.id), ['m1', 'm2']);
+  assert.deepEqual(page.entries[1], movie('m2'));
+  assert.deepEqual([page.pageInfo.total, page.pageInfo.hasMore], [9, true]);
+  // The total is at least where the page ends; hasMore says whether rows remain after it.
+  const short = parseBrowseResult(resultPayload({entries: [movie('m1'), movie('m2'), movie('m3')], pageInfo: {start: 5, total: 1, revision: 'r', hasMore: true}}));
+  assert.deepEqual([short.pageInfo.total, short.pageInfo.hasMore, short.pageInfo.nextCursor], [8, false, '']);
+  // Anchors out of order or past the total are left out of the rail.
+  assert.deepEqual([...parseBrowseResult(resultPayload({positionIndex: [{key: 'B', index: 2}, {key: 'A', index: 1}, {key: 'Z', index: 3}]})).positionIndex], [{key: 'B', index: 2}]);
 });
 
 test('M20: anchors parse on every sort, with empty keys and unknown shapes dropped', () => {
@@ -89,12 +144,12 @@ test('M20: anchors parse on every sort, with empty keys and unknown shapes dropp
     positionIndex: [{key: '1995', index: 0}, {key: 99, index: 1}, null, {index: 2}, {key: '', index: 2}],
   }));
   assert.deepEqual([...dropped.positionIndex], [{key: '1995', index: 0}, {key: '', index: 2}]);
-  // Well-shaped but incoherent anchors still fail the page, as before.
-  assert.throws(() => parseBrowseResult(resultPayload({
+  // An anchor that is out of order is left out of the rail; the page is kept.
+  assert.deepEqual([...parseBrowseResult(resultPayload({
     entries: ids.map(entry),
     pageInfo: {start: 0, total: 4, revision: 'r', hasMore: false, nextCursor: ''},
     positionIndex: [{key: '1995', index: 2}, {key: '1988', index: 1}],
-  })), {code: 'invalid_browse'});
+  })).positionIndex], [{key: '1995', index: 2}]);
 });
 
 test('M20: anchor keys read as rail labels for every sort', () => {
@@ -118,12 +173,14 @@ test('M20: anchor keys read as rail labels for every sort', () => {
   assert.equal(formatBrowseAnchor('2026-13', 'added', 'No value'), '2026-13');
 });
 
-test('facet pages reject duplicate or empty counts', () => {
-  const page = parseBrowseFacets({field: 'genre', values: [{value: 'Action', label: 'Action', count: 2}]}, 'genre');
+test('facet pages keep the values they can read; the field asked for and the bound stay exact', () => {
+  const page = parseBrowseFacets({total: 6, field: 'genre', values: [{value: 'Action', label: 'Action', count: 2}]}, 'genre');
   assert.equal(page.values[0].count, 2);
-  assert.throws(() => parseBrowseFacets({field: 'genre', values: []}, 'year'), {code:'invalid_browse'});
-  assert.throws(() => parseBrowseFacets({field: 'genre', values: [{value: 'a', label: 'a', count: 0}]}), {code:'invalid_browse'});
-  assert.throws(() => parseBrowseFacets({field: 'genre', values: [{value: 'a', label: 'a', count: 1}, {value: 'a', label: 'a', count: 2}]}), {code:'invalid_browse'});
+  assert.throws(() => parseBrowseFacets({total: 6, field: 'genre', values: []}, 'year'), {code:'invalid_browse'});
+  assert.throws(() => parseBrowseFacets({total: 6, field: 'genre', values: 'nope'}), {code:'invalid_browse'});
+  assert.throws(() => parseBrowseFacets({total: 6, field: 'genre', values: Array.from({length: 201}, (_, i) => ({value: `v${i}`, label: 'x', count: 1}))}), {code:'invalid_browse'});
+  const loose = parseBrowseFacets({total: 6, field: 'genre', future: 1, values: [{value: 'a', label: 'A', count: 1}, {value: 'a', label: 'Again', count: 2}, {label: 'no value', count: 1}, {value: 'b'}, {value: 'c', label: 'C', count: -1, future: true}, 7]});
+  assert.deepEqual(loose.values, [{value: 'a', label: 'A', count: 1}, {value: 'b', label: 'b', count: 0}, {value: 'c', label: 'C', count: 0}]);
 });
 
 test('queries are validated against the published capabilities before they are sent', () => {

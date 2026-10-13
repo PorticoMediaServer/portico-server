@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {wireInstant,wireInstants,wireDurations,durationIntent} from '../src/wire-units.ts';
+import {wireInstant,wireInstants,wireDurations,wireDisplayDurations,durationIntent} from '../src/wire-units.ts';
 import {searchQueryProblem} from '../src/search.ts';
 
 test('wire instants use RFC 3339 and keep internal UI milliseconds',()=>{
@@ -21,4 +21,11 @@ test('search admits short titles and punctuated abbreviations',()=>{
  for(const q of ['X','神','M*A*S*H','WALL·E','spiderman'])assert.equal(searchQueryProblem(q),undefined);
  assert.equal(searchQueryProblem('***'),'short');
  assert.equal(searchQueryProblem('a b c d e f g h i'),'words');
+});
+
+test('display milliseconds retain readable fields and omit only malformed durations',()=>{
+ const skipped:string[]=[];
+ const row=wireDisplayDurations({id:'one',durationMs:1250,progressMs:-1},{duration:'durationMs',progressSeconds:'progressMs'},part=>skipped.push(part));
+ assert.deepEqual(row,{id:'one',duration:1.25});
+ assert.deepEqual(skipped,['progressMs']);
 });

@@ -6,7 +6,7 @@ type Shown = {props: {children: {props: {action: {onClick: () => void}}}[]}};
 const screen = () => componentModule(new URL('../src/screens/NotFound.tsx', import.meta.url), {
   react: {default: {createElement: (type: unknown, props: object, ...children: unknown[]) => ({type, props: {...props, children}})}, useEffect: () => {}},
   '../ui': {StateView: 'state-view'},
-  '../app/i18n': {currentI18n: () => ({t: (id: string) => id})},
+  '../app/i18n': {useI18n: () => ({t: (id: string) => id})},
   '@tanstack/react-router': {useNavigate: () => () => {}},
 }) as Promise<typeof import('../src/screens/NotFound.tsx')>;
 const tryAgain = (shown: unknown) => (shown as Shown).props.children[0]!.props.action.onClick;

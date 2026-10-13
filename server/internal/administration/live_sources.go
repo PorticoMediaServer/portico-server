@@ -3,9 +3,13 @@ package administration
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"net"
 	"net/netip"
+	"net/url"
+	"portico.local/server/internal/livechannels"
+	"portico.local/server/internal/remotemedia"
 	"sort"
 	"strconv"
 	"strings"
@@ -14,20 +18,11 @@ import (
 
 // LiveDefaults are the server-wide live source settings every source inherits
 // until it overrides them.
-type LiveDefaults struct {
-	StreamBufferSeconds int    `json:"streamBufferSeconds"`
-	RetryWindowSeconds  int    `json:"retryWindowSeconds"`
-	UserAgent           string `json:"userAgent"`
-	GuideDays           int    `json:"guideDays"`
-	// LogoImport turns on fetching channel logos the source advertises.
-	LogoImport bool `json:"logoImport"`
-	// DiscoveryEnabled allows the HDHomeRun search to send packets on the LAN.
-	DiscoveryEnabled bool `json:"discoveryEnabled"`
-}
+type LiveDefaults = livechannels.LiveDefaults
 
 // DefaultLiveDefaults is the answer before any owner write.
 func DefaultLiveDefaults() LiveDefaults {
-	return LiveDefaults{StreamBufferSeconds: 8, RetryWindowSeconds: 60, UserAgent: "Portico/1.0", GuideDays: 7, LogoImport: true, DiscoveryEnabled: true}
+	return LiveDefaults{ImportLimits: livechannels.ImportLimits{Bytes: livechannels.MaxUploadBytes, Channels: livechannels.MaxChannels, Programmes: livechannels.MaxProgrammes}, StreamBufferSeconds: 8, RetryWindowSeconds: 60, UserAgent: "Portico/1.0", GuideDays: 7, LogoImport: true, DiscoveryEnabled: true}
 }
 
 func validateLiveDefaults(v *LiveDefaults) error {
@@ -37,6 +32,18 @@ func validateLiveDefaults(v *LiveDefaults) error {
 	clampInt(&v.StreamBufferSeconds, 0, 120)
 	clampInt(&v.RetryWindowSeconds, 5, 3600)
 	clampInt(&v.GuideDays, 1, 14)
+	if v.ImportLimits.Bytes == 0 {
+		v.ImportLimits.Bytes = livechannels.MaxUploadBytes
+	}
+	if v.ImportLimits.Channels == 0 {
+		v.ImportLimits.Channels = livechannels.MaxChannels
+	}
+	if v.ImportLimits.Programmes == 0 {
+		v.ImportLimits.Programmes = livechannels.MaxProgrammes
+	}
+	clampInt(&v.ImportLimits.Bytes, 1<<20, 1<<30)
+	clampInt(&v.ImportLimits.Channels, 1, 100000)
+	clampInt(&v.ImportLimits.Programmes, 1, 10000000)
 	return nil
 }
 
@@ -46,54 +53,33 @@ func validateLiveDefaults(v *LiveDefaults) error {
 var LiveSourceKinds = []string{"playlist", "xmltv-guide", "hdhomerun"}
 
 // FilterRule is one include/exclude list applied to a source's channels.
-type FilterRule struct {
-	Mode   string   `json:"mode"`
-	Values []string `json:"values"`
-}
+type FilterRule = livechannels.FilterRule
 
 // SourceFilters narrows what a source contributes. Empty value lists mean the
 // filter is not applied at all, whatever the mode says.
-type SourceFilters struct {
-	Categories FilterRule `json:"categories"`
-	Countries  FilterRule `json:"countries"`
-	Keywords   FilterRule `json:"keywords"`
-}
+type SourceFilters = livechannels.SourceFilters
 
 // LogoImport controls pulling channel logos out of the source.
-type LogoImport struct {
-	Enabled           bool `json:"enabled"`
-	OverwriteExisting bool `json:"overwriteExisting"`
-}
+type LogoImport = livechannels.LogoImport
 
 // ChannelNumbering renumbers a source's channels. "source" keeps what the
 // source published; "sequential" assigns startAt, startAt+step, and so on in
 // the source's own order.
-type ChannelNumbering struct {
-	Mode    string `json:"mode"`
-	StartAt int    `json:"startAt"`
-	Step    int    `json:"step"`
-}
+type ChannelNumbering = livechannels.ChannelNumbering
 
 // LiveSourceSettings is one source's configuration document.
-type LiveSourceSettings struct {
-	Kind string `json:"kind"`
-	// Null-able overrides: a nil value inherits the server default.
-	StreamBufferSeconds *int             `json:"streamBufferSeconds"`
-	RetryWindowSeconds  *int             `json:"retryWindowSeconds"`
-	UserAgent           string           `json:"userAgent"`
-	Filters             SourceFilters    `json:"filters"`
-	Logos               LogoImport       `json:"logoImport"`
-	Numbering           ChannelNumbering `json:"channelNumbering"`
-	// GuideSourceID names the XMLTV source that supplies this source's guide,
-	// which is how a standalone guide is attached to a streaming playlist.
-	GuideSourceID string `json:"guideSourceId"`
-}
+type LiveSourceSettings = livechannels.LiveSourceSettings
 
 // DefaultLiveSourceSettings is the answer before any owner write.
 func DefaultLiveSourceSettings() LiveSourceSettings {
 	return LiveSourceSettings{
-		Kind:      "playlist",
-		Filters:   SourceFilters{FilterRule{"include", []string{}}, FilterRule{"include", []string{}}, FilterRule{"exclude", []string{}}},
+		EnabledGroups: []string{}, EnabledChannels: []string{},
+		Kind: "playlist",
+		Filters: SourceFilters{
+			Categories: FilterRule{Mode: "include", Values: []string{}},
+			Countries:  FilterRule{Mode: "include", Values: []string{}},
+			Keywords:   FilterRule{Mode: "exclude", Values: []string{}},
+		},
 		Logos:     LogoImport{Enabled: true},
 		Numbering: ChannelNumbering{Mode: "source", StartAt: 100, Step: 1},
 	}
@@ -120,6 +106,12 @@ func normalizeFilter(r *FilterRule) {
 }
 
 func normalizeLiveSourceSettings(v *LiveSourceSettings) {
+	if v.EnabledGroups == nil {
+		v.EnabledGroups = []string{}
+	}
+	if v.EnabledChannels == nil {
+		v.EnabledChannels = []string{}
+	}
 	normalizeFilter(&v.Filters.Categories)
 	normalizeFilter(&v.Filters.Countries)
 	normalizeFilter(&v.Filters.Keywords)
@@ -140,6 +132,17 @@ func validateFilter(r FilterRule, field string, fields *[]string) {
 
 func validateLiveSourceSettings(v *LiveSourceSettings) error {
 	fields := []string{}
+	for _, list := range [][]string{v.EnabledGroups, v.EnabledChannels} {
+		if len(list) > 100000 {
+			fields = append(fields, "settings.enabledChannels")
+		}
+		for _, value := range list {
+			if value == "" || !safeText(value, 256) {
+				fields = append(fields, "settings.enabledChannels")
+				break
+			}
+		}
+	}
 	if !oneOf(v.Kind, LiveSourceKinds...) {
 		fields = append(fields, "settings.kind")
 	}
@@ -574,7 +577,7 @@ func (s *Service) DiscoverTuners(ctx context.Context, auth Authorize, window tim
 		if !tableExists(ctx, tx, "live_sources") {
 			return nil
 		}
-		rows, err := tx.QueryContext(ctx, `SELECT id FROM live_sources`)
+		rows, err := tx.QueryContext(ctx, `SELECT json_extract(CAST(c.sealed AS TEXT),'$.draft.locator') FROM live_remote_configs c WHERE json_extract(CAST(c.sealed AS TEXT),'$.draft.kind')='hdhomerun'`)
 		if err != nil {
 			return err
 		}
@@ -584,7 +587,9 @@ func (s *Service) DiscoverTuners(ctx context.Context, auth Authorize, window tim
 			if err = rows.Scan(&id); err != nil {
 				return err
 			}
-			configured[id] = true
+			if u, e := url.Parse(id); e == nil {
+				configured[u.Hostname()] = true
+			}
 		}
 		return rows.Err()
 	})
@@ -604,8 +609,51 @@ func (s *Service) DiscoverTuners(ctx context.Context, auth Authorize, window tim
 		out.Message = "No tuner answered on this network."
 		return out, nil
 	}
+	if len(devices) > 64 {
+		devices = devices[:64]
+	}
+	lookup, stop := context.WithTimeout(ctx, 5*time.Second)
+	defer stop()
 	for i := range devices {
-		devices[i].Configured = configured[devices[i].DeviceID]
+		device := &devices[i]
+		device.Configured = configured[device.Address]
+		root := device.BaseURL + "/"
+		u, e := url.Parse(root)
+		if e != nil || u.Hostname() != device.Address || net.ParseIP(device.Address) == nil {
+			continue
+		}
+		policy := remotemedia.Policy{Approvals: []remotemedia.Approval{{Root: root, Addresses: []string{device.Address}}}}
+		bounded, done := context.WithTimeout(lookup, 750*time.Millisecond)
+		raw, e := livechannels.ReadSource(bounded, root+"discover.json", policy, 64<<10)
+		done()
+		if e != nil {
+			continue
+		}
+		var info struct {
+			DeviceID string `json:"DeviceID"`
+			Model    string `json:"ModelNumber"`
+			Name     string `json:"FriendlyName"`
+			Firmware string `json:"FirmwareVersion"`
+			Count    int    `json:"TunerCount"`
+		}
+		if json.Unmarshal(raw, &info) != nil {
+			continue
+		}
+		if info.Count >= 0 && info.Count <= 256 {
+			device.TunerCount = info.Count
+		}
+		if safeText(info.DeviceID, 64) && info.DeviceID != "" {
+			device.DeviceID = info.DeviceID
+		}
+		if safeText(info.Model, 128) {
+			device.Model = info.Model
+		}
+		if safeText(info.Name, 256) {
+			device.FriendlyName = info.Name
+		}
+		if safeText(info.Firmware, 128) {
+			device.FirmwareVersion = info.Firmware
+		}
 	}
 	sort.Slice(devices, func(i, j int) bool { return devices[i].DeviceID < devices[j].DeviceID })
 	out.Devices = devices

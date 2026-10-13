@@ -1,12 +1,12 @@
 import React, {createContext, useContext, useEffect, useMemo, useSyncExternalStore} from 'react';
 import {FormSet, type AnyDraftForm, type DraftForm, type FormState} from '@core/server-admin/draft-form.ts';
-import {createServerForm, formValue, withFormValue, type ServerFormDeps, type ServerFormId} from '@core/server-admin/server-forms.ts';
+import {createServerForm, formValue, withFormValue, withListEntry, type ServerFormDeps, type ServerFormId} from '@core/server-admin/server-forms.ts';
 import {serverChoices, serverRowShown, type ServerSettingRow} from '@core/presentation/index.ts';
 import {useSession} from '../../app/session';
 import {useI18n, type MessageId} from '../../app/i18n';
 import {problem, useConsole} from '../../admin/console';
 import {operationId} from '../server/operation-ids';
-import {Button, Input, Notice, Select, SettingsRow, Switch, TextArea} from '../../ui';
+import {Button, IconButton, Input, Notice, Select, SettingsRow, Switch} from '../../ui';
 import s from './Settings.module.css';
 
 /**
@@ -160,16 +160,32 @@ export function ServerSettingRowView({row, anchor}: {row: ServerSettingRow; anch
   }
 }
 
-/** A list edited one entry per line; the draft holds the trimmed, non-empty lines. */
-function LinesField({label, example, value, onChange}: {label: string; example?: string; value: readonly string[]; onChange: (next: readonly string[]) => void}) {
-  // What is typed is kept as typed (a trailing newline must survive); the draft gets the cleaned list.
-  const [text, setText] = React.useState(value.join('\n'));
-  const clean = (v: string) => v.split('\n').map(x => x.trim()).filter(Boolean);
-  useEffect(() => {
-    if (clean(text).join('\n') !== value.join('\n')) setText(value.join('\n'));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [value]);
-  return <TextArea hideLabel label={label} rows={Math.min(8, Math.max(2, value.length + 1))} placeholder={example} value={text} className={s.lines} onChange={e => { setText(e.target.value); onChange(clean(e.target.value)); }} />;
+/**
+ * A list of addresses or networks, edited an entry at a time: each one on its own row with
+ * Remove, and a field to add another. The server checks what an entry means when the page is
+ * saved; nothing typed here is sent before that.
+ */
+export function LinesField({label, example, value, onChange}: {label: string; example?: string; value: readonly string[]; onChange: (next: readonly string[]) => void}) {
+  const {t} = useI18n();
+  const [typed, setTyped] = React.useState('');
+  return (
+    <div className={s.entries}>
+      {value.length ? (
+        <ul className={s.entryList} aria-label={label}>
+          {value.map(entry => (
+            <li key={entry} className={s.entry}>
+              <span className={s.entryText}>{entry}</span>
+              <IconButton name="close" size="sm" variant="ghost" label={t('action.remove', {label: entry})} onClick={() => onChange(value.filter(x => x !== entry))} />
+            </li>
+          ))}
+        </ul>
+      ) : <p className={s.entryNone}>{t('settings.list.none')}</p>}
+      <form className={s.entryAdd} onSubmit={e => { e.preventDefault(); onChange(withListEntry(value, typed)); setTyped(''); }}>
+        <Input hideLabel label={t('settings.list.addTo', {list: label})} mono placeholder={example} value={typed} onChange={e => setTyped(e.target.value)} autoCapitalize="off" autoComplete="off" spellCheck={false} />
+        <Button type="submit" variant="secondary" label={t('settings.list.add')} disabled={!typed.trim()} />
+      </form>
+    </div>
+  );
 }
 
 /** What a form could not load, above its rows; nothing when it loaded or the feature is absent. */

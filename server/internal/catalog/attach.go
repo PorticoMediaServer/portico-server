@@ -68,7 +68,7 @@ func AttachMovieTx(ctx context.Context, tx *sql.Tx, f MovieFile) (int64, error) 
 	if err != nil {
 		return 0, err
 	}
-	if created {
+	if created || len(f.Provider) > 0 {
 		err = restoreRetainedTx(ctx, tx, item)
 	}
 	return item, err
@@ -104,7 +104,7 @@ func AttachTrackTx(ctx context.Context, tx *sql.Tx, f TrackFile) (int64, error) 
 	if err != nil {
 		return 0, err
 	}
-	if created {
+	if created || len(f.Provider) > 0 {
 		err = restoreRetainedTx(ctx, tx, item)
 	}
 	return item, err
@@ -119,8 +119,11 @@ func IdentifyTrackTx(ctx context.Context, tx *sql.Tx, item int64, tagKey string)
 		return item, nil
 	}
 	held, err := compactcatalog.AddIdentityTx(ctx, tx, item, tagKey)
-	if err != nil || held == 0 {
+	if err != nil {
 		return item, err
+	}
+	if held == 0 {
+		return item, restoreRetainedTx(ctx, tx, item)
 	}
 	var same bool
 	if err = tx.QueryRowContext(ctx, `SELECT a.kind=b.kind AND a.library_id=b.library_id FROM catalog_entities a,catalog_entities b WHERE a.id=? AND b.id=?`, item, held).Scan(&same); err != nil || !same {
@@ -131,7 +134,7 @@ func IdentifyTrackTx(ctx context.Context, tx *sql.Tx, item int64, tagKey string)
 	if err = MergeTitlesTx(ctx, tx, item, held); err != nil {
 		return 0, err
 	}
-	return held, nil
+	return held, restoreRetainedTx(ctx, tx, held)
 }
 
 var seasonLikeFolder = regexp.MustCompile(`(?i)^(?:(?:season|series|staffel|saison|temporada|stagione|sezon|seizoen|s)[ ._-]*\d{1,4}|specials?|extras?|(?:disc|disk|cd|dvd)[ ._-]*\d{1,3})$`)
@@ -151,7 +154,7 @@ func showFolder(relative string) string {
 		if seasonLikeFolder.MatchString(name) {
 			continue
 		}
-		return name
+		return strings.Join(parts[:i+1], "/")
 	}
 	return ""
 }
@@ -166,7 +169,41 @@ func folderNamesShow(folder, title string) bool {
 	if a == "" || b == "" {
 		return false
 	}
-	return a == b || strings.HasPrefix(b, a+" ") || strings.HasPrefix(a, b+" ")
+	return a == b || strings.HasPrefix(b, a+" ") || strings.HasPrefix(a, b+" ") || oneSpellingDifference(a, b)
+}
+
+// One small spelling error does not turn a show folder into assorted loose
+// files. Short or wholly different names still use their own parsed identity.
+func oneSpellingDifference(a, b string) bool {
+	x, y := []rune(a), []rune(b)
+	if len(x) < 6 || len(y) < 6 || len(x) > 128 || len(y) > 128 || len(x)-len(y) > 1 || len(y)-len(x) > 1 {
+		return false
+	}
+	i, j, edits := 0, 0, 0
+	for i < len(x) && j < len(y) {
+		if x[i] == y[j] {
+			i++
+			j++
+			continue
+		}
+		edits++
+		if edits > 1 {
+			return false
+		}
+		switch {
+		case len(x) > len(y):
+			i++
+		case len(y) > len(x):
+			j++
+		case i+1 < len(x) && j+1 < len(y) && x[i] == y[j+1] && x[i+1] == y[j]:
+			i += 2
+			j += 2
+		default:
+			i++
+			j++
+		}
+	}
+	return edits+(len(x)-i)+(len(y)-j) <= 1
 }
 
 // resolveShowTx returns the show an episode file belongs to and the show's
@@ -186,8 +223,8 @@ func resolveShowTx(ctx context.Context, tx *sql.Tx, library string, handle, asse
 		if err != nil {
 			return 0, "", err
 		}
-		if folder := showFolder(relative); source != "" && folder != "" && folderNamesShow(folder, plan.ShowTitle) {
-			primary = "folder:" + source + ":" + compactcatalog.IdentityText(folder)
+		if folder := showFolder(relative); source != "" && folder != "" && folderNamesShow(filepath.Base(folder), plan.ShowTitle) {
+			primary = "folder:" + source + ":" + folder
 		}
 	}
 	show, created, err := compactcatalog.ResolveTitleTx(ctx, tx, compactcatalog.TitleClaim{Library: handle, Kind: compactcatalog.Show, Keys: []string{compactcatalog.ShowKey(primary)}, Title: plan.ShowTitle, Year: plan.Year})

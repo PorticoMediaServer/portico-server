@@ -11,33 +11,20 @@ import (
 )
 
 // Viewer is the complete authority for a catalogue projection. A nil or empty
-// Libraries slice sees no catalogue rows. MemberMaximumAge can only tighten the
-// profile ceiling; a member grant can never widen profile restrictions.
+// Libraries slice sees no catalogue rows. Restrictions is the viewer's whole
+// content policy: the profile's own restrictions already narrowed by its
+// account's limits (contentaccess.RestrictionsTx), so nothing here can widen
+// either.
 type Viewer struct {
-	Profile            string
-	Fence              string
-	Libraries          []string
-	Restrictions       identity.ContentRestrictions
-	MemberMaximumAge   *int
-	MemberMaxRating    string
-	MemberAllowUnrated bool
-	MemberDeniedLabels []string
+	Profile      string
+	Fence        string
+	Libraries    []string
+	Restrictions identity.ContentRestrictions
 }
 
+// EffectiveRestrictions is the policy the visibility predicate compiles.
 func (v Viewer) EffectiveRestrictions() identity.ContentRestrictions {
-	r := v.Restrictions
-	if v.MemberMaximumAge != nil && (r.MaximumAge == nil || *v.MemberMaximumAge < *r.MaximumAge) {
-		age := *v.MemberMaximumAge
-		r.MaximumAge = &age
-	}
-	if v.MemberMaxRating != "" {
-		r.MemberMaxRating = v.MemberMaxRating
-		r.MemberAllowUnrated = v.MemberAllowUnrated
-	}
-	if len(v.MemberDeniedLabels) > 0 {
-		r.MemberDeniedLabels = append([]string{}, v.MemberDeniedLabels...)
-	}
-	return r
+	return v.Restrictions
 }
 
 func (v Viewer) AllowsLibrary(library string) bool {

@@ -96,7 +96,7 @@ func (s *Service) CommitInventoryPage(ctx context.Context, job, relative, cursor
 			return err
 		}
 	}
-	if page.Remote != nil {
+	{
 		if err = subtitles.CommitManagedPage(ctx, tx, source.ID, source.Incarnation, job, filepath.Join(source.ResolvedPath, relative), page.Entries); err != nil {
 			return err
 		}
@@ -230,11 +230,9 @@ func (s *Service) observeInventoryTx(ctx context.Context, tx *sql.Tx, job string
 		// Exact storage identity plus unchanged size/mtime, never filename similarity.
 		// LIMIT 2 deliberately refuses ambiguous identity candidates.
 		if v.ObjectIdentity != "" {
-			// An inode number is only unique inside one filesystem, so a match in
-			// another source must also carry the same file name.
-			base := filepath.Base(relative)
-			rows, e := tx.QueryContext(ctx, `SELECT DISTINCT o.asset_id FROM inventory_objects o JOIN library_sources s ON s.id=o.source_id WHERE o.object_identity=?1 AND o.size=?2 AND o.modified_ns=?3 AND s.kind=?4 AND o.root_incarnation=s.incarnation
- AND (o.source_id=?5 OR o.relative_path=?6 OR substr(o.relative_path,-length(?6)-1)='/'||?6) LIMIT 2`, v.ObjectIdentity, v.Size, v.ModifiedNS, source.Kind, source.ID, base)
+			// Stable inode identities belong to one admitted source, never to a
+			// similarly named file on another disk or in another library.
+			rows, e := tx.QueryContext(ctx, `SELECT DISTINCT o.asset_id FROM inventory_objects o WHERE o.source_id=?1 AND o.root_incarnation=?2 AND o.object_identity=?3 AND o.size=?4 AND o.modified_ns=?5 AND o.retired=0 LIMIT 2`, source.ID, source.Incarnation, v.ObjectIdentity, v.Size, v.ModifiedNS)
 			if e != nil {
 				return false, e
 			}

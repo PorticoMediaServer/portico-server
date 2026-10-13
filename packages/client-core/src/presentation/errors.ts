@@ -114,7 +114,7 @@ const exact: Record<string, ErrorCategory> = {
   network: 'unreachable', request_failed: 'unreachable', server_unavailable: 'unreachable', route_unavailable: 'unreachable', console_unavailable: 'unreachable', delivery_http_failure: 'unreachable', remote_unavailable: 'unreachable',
   timeout: 'timeout', remote_stalled: 'timeout',
   unauthorized: 'authentication', authentication_required: 'authentication', session_expired: 'authentication', invalid_token: 'authentication', unauthenticated: 'authentication',
-  forbidden: 'permission', permission_changed: 'permission', access_revoked: 'permission', owner_required: 'permission', remote_denied: 'permission', remote_sign_in_not_allowed: 'permission',
+  forbidden: 'permission', permission_changed: 'permission', access_revoked: 'permission', owner_required: 'permission', remote_denied: 'permission', remote_sign_in_not_allowed: 'permission', outside_allowed_hours: 'permission',
   not_found: 'not-found', gone: 'not-found',
   rate_limited: 'rate-limited', too_many_requests: 'rate-limited',
   unsupported_version: 'unsupported-version', client_too_old: 'unsupported-version',
@@ -174,9 +174,15 @@ const codeBodies: Record<string, MessageId> = {
   // Add library with a language the server doesn't offer for the kind/agent (MU12): a definite
   // refusal with its own sentence, whatever the HTTP status category.
   invalid_metadata_language: 'web.libraries.error.metadataLanguage',
+  // Keys, tokens and webhooks have a ceiling; a member's tokens can be turned off by the owner.
+  credential_limit: 'error.credentialLimit',
+  access_tokens_off: 'api.tokens.off',
+  webhook_limit: 'error.webhookLimit',
+  // What was typed to confirm is not what the server asked for (removing a library).
+  confirmation_mismatch: 'error.confirmationMismatch',
 };
 /** Codes whose sentence says what to do instead, so the notice offers no Try again. */
-const noActionCodes = new Set(['local_metadata_only']);
+const noActionCodes = new Set(['local_metadata_only', 'credential_limit', 'access_tokens_off', 'webhook_limit']);
 
 export function presentError(error: unknown, context: ErrorContext = 'generic', options: PresentOptions = {}): PresentedError {
   const i18n = options.i18n ?? defaultI18n;

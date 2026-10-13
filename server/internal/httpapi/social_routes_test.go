@@ -199,14 +199,14 @@ func TestSocialGroupLifecycleInvitesAndMembership(t *testing.T) {
 	if len(snapshot.Group.Members) != 1 {
 		t.Fatalf("member did not leave: %+v", snapshot.Group.Members)
 	}
-	w = f.as(f.token, "POST", "/v1/groups/"+id+"/end", social.EndRequest{ProtocolVersion: social.Protocol, ExpectedRevision: snapshot.Group.Revision})
+	w = f.as(f.token, "POST", "/v1/groups/"+id+"/end", social.EndRequest{ProtocolVersion: social.Protocol, ExpectedRevision: snapshot.Group.GovernanceRevision})
 	var ended social.GroupResponse
 	f.decode(w, 200, &ended)
 	if ended.Group.State != "ended" || ended.Group.EndedReason != "host-ended" {
 		t.Fatalf("group did not end: %+v", ended.Group)
 	}
 	// An ended group refuses further commands.
-	w = f.as(f.token, "POST", "/v1/groups/"+id+"/transport", social.TransportRequest{ProtocolVersion: social.Protocol, IdempotencyKey: "after-end", ExpectedRevision: ended.Group.Revision, Command: "pause"})
+	w = f.as(f.token, "POST", "/v1/groups/"+id+"/transport", social.TransportRequest{ProtocolVersion: social.Protocol, IdempotencyKey: "after-end", ExpectedRevision: ended.Group.PlaybackRevision, Command: "pause"})
 	if w.Code != 409 || errorCode(t, w) != "group_ended" {
 		t.Fatalf("ended group accepted a command %d %s", w.Code, w.Body.String())
 	}
@@ -223,7 +223,7 @@ func TestSocialTransportRevisionFenceAndIdempotency(t *testing.T) {
 		f.decode(w, 200, &queue)
 		var snapshot social.GroupResponse
 		f.decode(f.as(f.token, "GET", "/v1/groups/"+id, nil), 200, &snapshot)
-		w = f.as(f.token, "POST", "/v1/groups/"+id+"/transport", social.TransportRequest{ProtocolVersion: social.Protocol, IdempotencyKey: "load-" + revision, ExpectedRevision: snapshot.Group.Revision, Command: "set-queue-position", QueuePosition: intp(0)})
+		w = f.as(f.token, "POST", "/v1/groups/"+id+"/transport", social.TransportRequest{ProtocolVersion: social.Protocol, IdempotencyKey: "load-" + revision, ExpectedRevision: snapshot.Group.PlaybackRevision, Command: "set-queue-position", QueuePosition: intp(0)})
 		var receipt social.TransportReceipt
 		f.decode(w, 200, &receipt)
 		return receipt
@@ -243,10 +243,10 @@ func TestSocialTransportRevisionFenceAndIdempotency(t *testing.T) {
 		} `json:"error"`
 	}
 	f.decode(w, 409, &conflict)
-	if conflict.Error.CurrentRevision != loaded.Revision {
+	if conflict.Error.CurrentRevision != loaded.PlaybackRevision {
 		t.Fatalf("conflict did not name the current revision: %+v", conflict)
 	}
-	play := social.TransportRequest{ProtocolVersion: social.Protocol, IdempotencyKey: "play-1", ExpectedRevision: loaded.Revision, Command: "play"}
+	play := social.TransportRequest{ProtocolVersion: social.Protocol, IdempotencyKey: "play-1", ExpectedRevision: loaded.PlaybackRevision, Command: "play"}
 	var first social.TransportReceipt
 	firstAnswer := f.as(f.token, "POST", "/v1/groups/"+id+"/transport", play)
 	// CD-01: the receipt is what the spec (and client-core) require, serverTime
@@ -293,12 +293,12 @@ func TestSocialReadinessAggregation(t *testing.T) {
 		t.Fatalf("a joining member did not hold the aggregate: %+v", joined.Group.Readiness)
 	}
 	var lagging social.GroupResponse
-	f.decode(f.as(f.member, "POST", "/v1/groups/"+id+"/readiness", social.ReadinessRequest{ProtocolVersion: social.Protocol, Readiness: "lagging", PositionUS: "1000000"}), 200, &lagging)
+	f.decode(f.as(f.member, "POST", "/v1/groups/"+id+"/readiness", social.ReadinessRequest{ProtocolVersion: social.Protocol, PlaybackRevision: joined.Group.PlaybackRevision, Readiness: "lagging", PositionUS: "1000000"}), 200, &lagging)
 	if lagging.Group.Readiness.Aggregate != "lagging" || lagging.Group.Readiness.Lagging != 1 {
 		t.Fatalf("lagging did not dominate: %+v", lagging.Group.Readiness)
 	}
 	var ready social.GroupResponse
-	f.decode(f.as(f.member, "POST", "/v1/groups/"+id+"/readiness", social.ReadinessRequest{ProtocolVersion: social.Protocol, Readiness: "ready", PositionUS: "2000000"}), 200, &ready)
+	f.decode(f.as(f.member, "POST", "/v1/groups/"+id+"/readiness", social.ReadinessRequest{ProtocolVersion: social.Protocol, PlaybackRevision: joined.Group.PlaybackRevision, Readiness: "ready", PositionUS: "2000000"}), 200, &ready)
 	if ready.Group.Readiness.Aggregate != "ready" || ready.Group.Readiness.Ready != 2 {
 		t.Fatalf("all-ready did not aggregate: %+v", ready.Group.Readiness)
 	}
@@ -309,7 +309,7 @@ func TestSocialReadinessAggregation(t *testing.T) {
 	}
 	// A stale report is not a ready report: the aggregate falls back on its own.
 	store := f.d.Social()
-	store.Now = func() time.Time { return time.Now().Add(2 * time.Minute) }
+	store.Now = func() time.Time { return time.Now().Add(time.Minute) }
 	principal, e := f.d.Identity.Authenticate(f.token)
 	if e != nil {
 		t.Fatal(e)
@@ -356,13 +356,13 @@ func TestSocialQueueVisibilityPlaceholdersAndHostOverride(t *testing.T) {
 	// The group refuses to start an entry a member cannot see.
 	var snapshot social.GroupResponse
 	f.decode(f.as(f.token, "GET", "/v1/groups/"+id, nil), 200, &snapshot)
-	start := social.TransportRequest{ProtocolVersion: social.Protocol, IdempotencyKey: "start-blocked", ExpectedRevision: snapshot.Group.Revision, Command: "set-queue-position", QueuePosition: intp(0)}
+	start := social.TransportRequest{ProtocolVersion: social.Protocol, IdempotencyKey: "start-blocked", ExpectedRevision: snapshot.Group.PlaybackRevision, Command: "set-queue-position", QueuePosition: intp(0)}
 	w := f.as(f.token, "POST", "/v1/groups/"+id+"/transport", start)
 	if w.Code != 409 || errorCode(t, w) != "media_no_longer_accessible" {
 		t.Fatalf("group started media a member cannot see %d %s", w.Code, w.Body.String())
 	}
 	// A member may not override; only the host may, and the override is recorded.
-	memberOverride := social.TransportRequest{ProtocolVersion: social.Protocol, IdempotencyKey: "member-override", ExpectedRevision: snapshot.Group.Revision, Command: "set-queue-position", QueuePosition: intp(0), AllowUnavailable: true}
+	memberOverride := social.TransportRequest{ProtocolVersion: social.Protocol, IdempotencyKey: "member-override", ExpectedRevision: snapshot.Group.PlaybackRevision, Command: "set-queue-position", QueuePosition: intp(0), AllowUnavailable: true}
 	w = f.as(f.outside, "POST", "/v1/groups/"+id+"/transport", memberOverride)
 	if w.Code != 403 {
 		t.Fatalf("member overrode visibility %d %s", w.Code, w.Body.String())
@@ -434,7 +434,7 @@ func TestSocialAnyoneAuthorityPolicy(t *testing.T) {
 	if !joined.Group.Permissions.CanControl || joined.Group.Permissions.IsHost {
 		t.Fatalf("anyone policy did not widen control: %+v", joined.Group.Permissions)
 	}
-	w := f.as(f.member, "POST", "/v1/groups/"+id+"/transport", social.TransportRequest{ProtocolVersion: social.Protocol, IdempotencyKey: "member-pause", ExpectedRevision: joined.Group.Revision, Command: "pause"})
+	w := f.as(f.member, "POST", "/v1/groups/"+id+"/transport", social.TransportRequest{ProtocolVersion: social.Protocol, IdempotencyKey: "member-pause", ExpectedRevision: joined.Group.PlaybackRevision, Command: "pause"})
 	f.decode(w, 200, nil)
 	// Widening transport never widens governance.
 	w = f.as(f.member, "POST", "/v1/groups/"+id+"/invites", social.InviteRequest{ProtocolVersion: social.Protocol})
@@ -463,10 +463,10 @@ func TestSocialHostReconnectTimeline(t *testing.T) {
 	f.decode(f.as(f.token, "POST", "/v1/groups/"+id+"/queue", social.QueueRequest{ProtocolVersion: social.Protocol, IdempotencyKey: "q", ExpectedRevision: "1", Operation: "append", ItemIDs: []string{f.item}}), 200, nil)
 	var snapshot social.GroupResponse
 	f.decode(f.as(f.token, "GET", "/v1/groups/"+id, nil), 200, &snapshot)
-	f.decode(f.as(f.token, "POST", "/v1/groups/"+id+"/transport", social.TransportRequest{ProtocolVersion: social.Protocol, IdempotencyKey: "load", ExpectedRevision: snapshot.Group.Revision, Command: "set-queue-position", QueuePosition: intp(0)}), 200, &snapshot)
+	f.decode(f.as(f.token, "POST", "/v1/groups/"+id+"/transport", social.TransportRequest{ProtocolVersion: social.Protocol, IdempotencyKey: "load", ExpectedRevision: snapshot.Group.PlaybackRevision, Command: "set-queue-position", QueuePosition: intp(0)}), 200, &snapshot)
 	f.decode(f.as(f.token, "GET", "/v1/groups/"+id, nil), 200, &snapshot)
 	var playing social.TransportReceipt
-	f.decode(f.as(f.token, "POST", "/v1/groups/"+id+"/transport", social.TransportRequest{ProtocolVersion: social.Protocol, IdempotencyKey: "play", ExpectedRevision: snapshot.Group.Revision, Command: "play"}), 200, &playing)
+	f.decode(f.as(f.token, "POST", "/v1/groups/"+id+"/transport", social.TransportRequest{ProtocolVersion: social.Protocol, IdempotencyKey: "play", ExpectedRevision: snapshot.Group.PlaybackRevision, Command: "play"}), 200, &playing)
 	if playing.Timeline.State != "playing" {
 		t.Fatalf("group is not playing: %+v", playing.Timeline)
 	}
@@ -555,7 +555,7 @@ func TestSocialEmptyLobbyStaysALobby(t *testing.T) {
 	created := f.group("host-only")
 	id := created.Group.ID
 	var receipt social.TransportReceipt
-	f.decode(f.as(f.token, "POST", "/v1/groups/"+id+"/transport", social.TransportRequest{ProtocolVersion: social.Protocol, IdempotencyKey: "stop-nothing", ExpectedRevision: created.Group.Revision, Command: "stop"}), 200, &receipt)
+	f.decode(f.as(f.token, "POST", "/v1/groups/"+id+"/transport", social.TransportRequest{ProtocolVersion: social.Protocol, IdempotencyKey: "stop-nothing", ExpectedRevision: created.Group.PlaybackRevision, Command: "stop"}), 200, &receipt)
 	var snapshot social.GroupResponse
 	f.decode(f.as(f.token, "GET", "/v1/groups/"+id, nil), 200, &snapshot)
 	if snapshot.Group.State != "lobby" || snapshot.Group.Timeline.State != "idle" {
@@ -592,9 +592,9 @@ func TestSocialEmptyLobbyStaysALobby(t *testing.T) {
 	var queue social.QueueResponse
 	f.decode(f.as(f.token, "POST", "/v1/groups/"+id+"/queue", social.QueueRequest{ProtocolVersion: social.Protocol, IdempotencyKey: "q", ExpectedRevision: snapshot.Group.QueueRevision, Operation: "append", ItemIDs: []string{f.item}}), 200, &queue)
 	f.decode(f.as(f.token, "GET", "/v1/groups/"+id, nil), 200, &snapshot)
-	f.decode(f.as(f.token, "POST", "/v1/groups/"+id+"/transport", social.TransportRequest{ProtocolVersion: social.Protocol, IdempotencyKey: "first-load", ExpectedRevision: snapshot.Group.Revision, Command: "load", EntryID: queue.Queue.Entries[0].EntryID}), 200, &receipt)
+	f.decode(f.as(f.token, "POST", "/v1/groups/"+id+"/transport", social.TransportRequest{ProtocolVersion: social.Protocol, IdempotencyKey: "first-load", ExpectedRevision: snapshot.Group.PlaybackRevision, Command: "load", EntryID: queue.Queue.Entries[0].EntryID}), 200, &receipt)
 	f.decode(f.as(f.token, "GET", "/v1/groups/"+id, nil), 200, &snapshot)
-	if snapshot.Group.State != "preparing" {
+	if snapshot.Group.State != "waiting" {
 		t.Fatalf("the first title did not prepare: %q", snapshot.Group.State)
 	}
 }
@@ -610,11 +610,11 @@ func TestSocialLoadRefusesAnUnknownEntry(t *testing.T) {
 	var snapshot social.GroupResponse
 	f.decode(f.as(f.token, "GET", "/v1/groups/"+id, nil), 200, &snapshot)
 	var receipt social.TransportReceipt
-	f.decode(f.as(f.token, "POST", "/v1/groups/"+id+"/transport", social.TransportRequest{ProtocolVersion: social.Protocol, IdempotencyKey: "load", ExpectedRevision: snapshot.Group.Revision, Command: "load", EntryID: queue.Queue.Entries[0].EntryID, PositionUS: "90000000"}), 200, &receipt)
+	f.decode(f.as(f.token, "POST", "/v1/groups/"+id+"/transport", social.TransportRequest{ProtocolVersion: social.Protocol, IdempotencyKey: "load", ExpectedRevision: snapshot.Group.PlaybackRevision, Command: "load", EntryID: queue.Queue.Entries[0].EntryID, PositionUS: "90000000"}), 200, &receipt)
 	f.decode(f.as(f.token, "GET", "/v1/groups/"+id, nil), 200, &snapshot)
-	f.decode(f.as(f.token, "POST", "/v1/groups/"+id+"/transport", social.TransportRequest{ProtocolVersion: social.Protocol, IdempotencyKey: "seek", ExpectedRevision: snapshot.Group.Revision, Command: "seek", PositionUS: "120000000"}), 200, &receipt)
+	f.decode(f.as(f.token, "POST", "/v1/groups/"+id+"/transport", social.TransportRequest{ProtocolVersion: social.Protocol, IdempotencyKey: "seek", ExpectedRevision: snapshot.Group.PlaybackRevision, Command: "seek", PositionUS: "120000000"}), 200, &receipt)
 	f.decode(f.as(f.token, "GET", "/v1/groups/"+id, nil), 200, &snapshot)
-	w := f.as(f.token, "POST", "/v1/groups/"+id+"/transport", social.TransportRequest{ProtocolVersion: social.Protocol, IdempotencyKey: "load-missing", ExpectedRevision: snapshot.Group.Revision, Command: "load", EntryID: "ent_not_in_this_queue"})
+	w := f.as(f.token, "POST", "/v1/groups/"+id+"/transport", social.TransportRequest{ProtocolVersion: social.Protocol, IdempotencyKey: "load-missing", ExpectedRevision: snapshot.Group.PlaybackRevision, Command: "load", EntryID: "ent_not_in_this_queue"})
 	if w.Code != 409 || errorCode(t, w) != "target_unavailable" {
 		t.Fatalf("an unknown entry was loaded: %d %s", w.Code, w.Body.String())
 	}
@@ -639,18 +639,19 @@ func TestSocialHostTransfer(t *testing.T) {
 	var snapshot social.GroupResponse
 	f.decode(f.as(f.token, "GET", "/v1/groups/"+id, nil), 200, &snapshot)
 	// A member cannot seize authority from a connected host.
-	w := f.as(f.member, "POST", "/v1/groups/"+id+"/host-transfer", social.TransferRequest{ProtocolVersion: social.Protocol, MemberID: memberID, ExpectedRevision: snapshot.Group.Revision})
+	w := f.as(f.member, "POST", "/v1/groups/"+id+"/host-transfer", social.TransferRequest{ProtocolVersion: social.Protocol, MemberID: memberID, ExpectedRevision: snapshot.Group.GovernanceRevision})
 	if w.Code != 403 {
 		t.Fatalf("member seized host authority %d %s", w.Code, w.Body.String())
 	}
+	f.decode(f.as(f.member, "POST", "/v1/groups/"+id+"/readiness", social.ReadinessRequest{ProtocolVersion: social.Protocol, PlaybackRevision: joined.Group.PlaybackRevision, Readiness: "ready", PositionUS: "0"}), 200, nil)
 	// A stale revision refuses the transfer.
-	w = f.as(f.token, "POST", "/v1/groups/"+id+"/host-transfer", social.TransferRequest{ProtocolVersion: social.Protocol, MemberID: memberID, ExpectedRevision: "1"})
+	w = f.as(f.token, "POST", "/v1/groups/"+id+"/host-transfer", social.TransferRequest{ProtocolVersion: social.Protocol, MemberID: memberID, ExpectedRevision: "0"})
 	if w.Code != 409 || errorCode(t, w) != "revision_conflict" {
 		t.Fatalf("stale transfer accepted %d %s", w.Code, w.Body.String())
 	}
 	var moved social.GroupResponse
-	f.decode(f.as(f.token, "POST", "/v1/groups/"+id+"/host-transfer", social.TransferRequest{ProtocolVersion: social.Protocol, MemberID: memberID, ExpectedRevision: snapshot.Group.Revision}), 200, &moved)
-	if moved.Group.HostMemberID != memberID || moved.Group.Permissions.IsHost {
+	f.decode(f.as(f.token, "POST", "/v1/groups/"+id+"/host-transfer", social.TransferRequest{ProtocolVersion: social.Protocol, MemberID: memberID, ExpectedRevision: snapshot.Group.GovernanceRevision}), 200, &moved)
+	if moved.Group.HostMemberID != memberID || moved.Group.Permissions.IsHost || moved.Group.GovernanceRevision == snapshot.Group.GovernanceRevision {
 		t.Fatalf("host authority did not move: %+v", moved.Group)
 	}
 	var theirs social.GroupResponse
@@ -920,8 +921,9 @@ func TestSocialHandoffTwoPhaseCommitAndRollback(t *testing.T) {
 	if w.Code != 400 {
 		t.Fatalf("weak readiness accepted %d %s", w.Code, w.Body.String())
 	}
+	receiverPlayback := f.play(f.token)
 	var ready social.HandoffResponse
-	f.decode(f.as(f.token, "POST", "/v1/handoffs/"+prepared.Handoff.ID+"/readiness", social.HandoffReadiness{ProtocolVersion: social.Protocol, Readiness: "playing", ReceiverPlaybackID: "receiver-1", PositionUS: "5000000", ExpectedRevision: prepared.Handoff.Revision}), 200, &ready)
+	f.decode(f.as(f.token, "POST", "/v1/handoffs/"+prepared.Handoff.ID+"/readiness", social.HandoffReadiness{ProtocolVersion: social.Protocol, Readiness: "playing", ReceiverPlaybackID: receiverPlayback, PositionUS: "5000000", ExpectedRevision: prepared.Handoff.Revision}), 200, &ready)
 	if ready.Handoff.Outcome != "pending" || ready.Handoff.State != "prepared" || ready.Handoff.SourceRetired {
 		t.Fatalf("readiness was treated as acceptance: %+v", ready.Handoff)
 	}
@@ -1139,12 +1141,15 @@ func TestSocialCastBootstrapRedeemReconnectAndScoping(t *testing.T) {
 	if redeemed.DeviceToken == "" || redeemed.Session.AccessToken == "" || redeemed.DeviceToken == redeemed.Session.AccessToken {
 		t.Fatal("redeem did not issue two distinct credentials")
 	}
-	// The issued session is an ordinary bearer: it plays through the ordinary API.
-	if w = f.as(redeemed.Session.AccessToken, "GET", "/v1/receivers", nil); w.Code != 200 {
-		t.Fatalf("redeemed session cannot use the ordinary API %d %s", w.Code, w.Body.String())
+	// The issued session is a bearer for the playback API and nothing else.
+	if w = f.as(redeemed.Session.AccessToken, "GET", "/v1/me", nil); w.Code != 200 {
+		t.Fatalf("redeemed session is not usable %d %s", w.Code, w.Body.String())
+	}
+	if w = f.as(redeemed.Session.AccessToken, "GET", "/v1/receivers", nil); w.Code != 403 {
+		t.Fatalf("a paired screen reached beyond playback %d %s", w.Code, w.Body.String())
 	}
 	// The device token is not a bearer.
-	if w = f.as(redeemed.DeviceToken, "GET", "/v1/receivers", nil); w.Code != 401 {
+	if w = f.as(redeemed.DeviceToken, "GET", "/v1/me", nil); w.Code != 401 {
 		t.Fatalf("device token accepted as a bearer %d %s", w.Code, w.Body.String())
 	}
 	// The code is single use.
@@ -1187,9 +1192,26 @@ func TestSocialCastBootstrapRedeemReconnectAndScoping(t *testing.T) {
 	if theirSession.Scope.AccountID != "account2" || theirSession.Scope.ProfileID != "profile2" {
 		t.Fatalf("second pairing was scoped to the wrong viewer: %+v", theirSession.Scope)
 	}
+	// Cleanup from an older pairing generation must not revoke its replacement.
+	principal, e := f.d.Identity.Authenticate(f.token)
+	if e != nil {
+		t.Fatal(e)
+	}
+	e = f.d.Social().RevokeCastDevice(context.Background(), principal, renewed.Device.ID, "1")
+	if fault, ok := e.(*social.Fault); !ok || fault.Code != "revision_conflict" {
+		t.Fatal("stale cleanup revoked a newer pairing", e)
+	}
+	var pairingState string
+	if e = f.d.DB.QueryRow(`SELECT state FROM social_cast_devices WHERE id=?`, renewed.Device.ID).Scan(&pairingState); e != nil || pairingState != "active" {
+		t.Fatal("new pairing did not survive stale cleanup", pairingState, e)
+	}
 	// Revoking a pairing fails the next reconnect closed.
 	if w = f.as(f.token, "DELETE", "/v1/cast/devices/"+renewed.Device.ID, nil); w.Code != 204 {
 		t.Fatalf("revoke %d %s", w.Code, w.Body.String())
+	}
+	var directoryState string
+	if e = f.d.DB.QueryRow(`SELECT state FROM social_receivers WHERE id=?`, renewed.Device.ReceiverID).Scan(&directoryState); e != nil || directoryState != "retired" {
+		t.Fatal("unpaired receiver stayed active in the directory", directoryState, e)
 	}
 	w = f.as("", "POST", "/v1/cast/reconnect", social.CastReconnectRequest{ProtocolVersion: social.Protocol, DeviceToken: renewed.DeviceToken})
 	if w.Code != 403 || errorCode(t, w) != "cast_device_revoked" {

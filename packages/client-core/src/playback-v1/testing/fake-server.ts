@@ -23,6 +23,8 @@ export type FakeEvent = {id: string; type: string; at: string; resource?: {kind:
 type Session = {
   id: string; revision: number; state: 'playing' | 'paused'; kind: 'vod' | 'audio' | 'channel'; itemId: string; versionId: string;
   audio?: unknown; subtitles?: unknown; quality: unknown; generation: number; positionMs: number; deviceId: string;
+  /** Player failures reported on this session (each re-plans it another way). */
+  failures?: number;
   lastSeq: number; lastActivity: number; ended: boolean; reports: Record<string, unknown>[];
   queue?: {queueId: string; entryId: string}; transferId?: string; startedAt: number; terminatedMessage?: string; endReason?: string;
 };
@@ -58,6 +60,13 @@ export type FakeServerOptions = Readonly<{
   viewer?: Readonly<{serverId: string; authority: string; accountId: string; profileId: string}>;
   /** The listening preference `autoplayNext` (default true). */
   autoplayNext?: boolean;
+  /** The player engine every plan names (default `native`). */
+  engine?: 'native' | 'mpv';
+  /** The viewer's saved default quality that options report (default `original`). */
+  savedQuality?: 'original' | 'automatic';
+  /** What a non-automatic quality needs the connection to carry: a change whose `throughputKbps`
+   * is below it is refused with `connection_too_slow` (default 0: never). */
+  neededKbps?: number;
   /** An item's file and facts (e.g. a `fixtures/audio-gapless/` file and its sidecar),
    * served with Range at the plan's `url`. Without one, a synthetic three-minute FLAC plan. */
   audioSource?: (itemId: string) => FakeAudioSource | undefined;
@@ -199,7 +208,8 @@ export class FakePlaybackServer {
 
   // ── Options (§4.1) ──────────────────────────────────────────────
   private options(itemId: string, q: URLSearchParams) {
-    const limited = q.get('quality') === 'limit';
+    const mode = q.get('quality') ?? 'original', qualityId = q.get('qualityId') ?? undefined;
+    const limited = mode === 'limit' || mode === 'fixed';
     const audio = q.get('audioId') ?? 'a1';
     return {
       itemId, kind: 'movie', resume: {positionMs: 120_000, partIndex: 0, updatedAt: new Date(this.now()).toISOString()},
@@ -213,14 +223,16 @@ export class FakePlaybackServer {
       }],
       chapters: [{startMs: 0, title: 'Opening'}, {startMs: 600_000, title: 'Act II'}],
       markers: [{type: 'intro', startMs: 10_000, endMs: 70_000, confidence: 'detected'}, {type: 'mystery', startMs: 1, endMs: 2, confidence: 'unheard-of'}],
-      preferred: {versionId: 'v1', audioId: 'a1', reason: 'profile_language'},
-      plan: {versionId: 'v1', mode: 'stream', streams: [{id: 'v0', action: limited ? 'transcode' : 'copy', reasons: limited ? ['bitrate_above_request'] : []}, {id: audio, action: audio === 'a1' ? 'transcode' : 'copy', reasons: audio === 'a1' ? ['audio_codec_unsupported'] : []}], quality: {mode: limited ? 'limit' : 'original'}},
+      qualities: [{mode: 'original'}, {mode: 'automatic'}, {mode: 'fixed', id: '2160p', maxHeight: 2160, maxVideoBitrateKbps: 20_000, maxAudioBitrateKbps: 192}, {mode: 'fixed', id: '1080p', maxHeight: 1080, maxVideoBitrateKbps: 8000, maxAudioBitrateKbps: 192}, {mode: 'fixed', id: '720p', maxHeight: 720, maxVideoBitrateKbps: 4000, maxAudioBitrateKbps: 128}],
+      preferred: {versionId: 'v1', audioId: 'a1', reason: 'profile_language', quality: {mode: this.o.savedQuality ?? 'original'}},
+      plan: {versionId: 'v1', mode: 'stream', engine: this.o.engine ?? 'native', streams: [{id: 'v0', action: limited ? 'transcode' : 'copy', reasons: limited ? ['bitrate_above_request'] : []}, {id: audio, action: audio === 'a1' ? 'transcode' : 'copy', to: audio === 'a1' ? 'eac3' : undefined, reasons: audio === 'a1' ? ['audio_codec_unsupported'] : []}], quality: {mode, ...(qualityId ? {id: qualityId} : {})}},
     };
   }
 
   // ── Sessions (§5) ───────────────────────────────────────────────
   private view(s: Session) {
-    const transcoded = (s.quality as {mode?: string} | undefined)?.mode === 'limit';
+    const quality = (s.quality ?? {mode: 'original'}) as {mode?: string; id?: string};
+    const transcoded = quality.mode === 'limit' || quality.mode === 'fixed' || quality.mode === 'automatic' && !!quality.id || (s.failures ?? 0) > 1;
     return {
       id: s.id, revision: String(s.revision), kind: s.kind, role: s.transferId ? 'receiver' : 'local', state: s.ended ? 'ended' : s.state, itemId: s.itemId, versionId: s.versionId,
       ...(s.queue ? {queue: s.queue} : {}),
@@ -228,6 +240,7 @@ export class FakePlaybackServer {
       lease: {expiresAt: new Date(s.lastActivity + this.o.leaseMs).toISOString(), reportEveryMs: this.o.reportEveryMs},
       presentation: {
         generation: s.generation, mode: 'stream', url: `/v1/media/grant-${s.id}/${s.generation}/master.m3u8`, startPositionMs: s.positionMs,
+        engine: this.o.engine ?? 'native', quality, audioTrackId: (s.audio as {trackId?: string} | undefined)?.trackId ?? 'a1', subtitle: {trackId: 's4', kind: 'text', delivery: 'sidecar'},
         subtitles: [{trackId: 's4', format: 'webvtt', url: `/v1/media/grant-${s.id}/${s.generation}/subs/s4.vtt`}],
         decision: {video: {action: transcoded ? 'transcode' : 'copy', reasons: transcoded ? ['bitrate_above_request'] : []}, audio: {action: 'copy', reasons: []}, subtitles: {action: 'sidecar'}},
         ...(s.kind === 'audio' ? {audioRender: this.renderPlan(s.id, s.generation, s.itemId)} : {}),
@@ -376,6 +389,22 @@ export class FakePlaybackServer {
     if (ifMatch === undefined) return this.error(428, 'revision_required');
     if (unquote(ifMatch) !== String(s.revision)) return {status: 412, headers: {ETag: etag(s.revision)}, body: {error: {code: 'revision_mismatch', retry: 'after_refresh', current: this.view(s), requestId: 'req'}}};
     let bytes = false;
+    // Automatic quality is a place on the ladder: a step moves from where the session is.
+    const asked = body.quality as {mode?: string; id?: string; step?: string} | undefined;
+    if (asked?.mode === 'automatic') {
+      const ladder = ['', '2160p', '1080p', '720p'], here = (s.quality as {mode?: string; id?: string} | undefined);
+      const at = Math.max(0, ladder.indexOf(here?.mode === 'automatic' ? here.id ?? '' : ''));
+      const next = asked.step === 'down' ? Math.min(ladder.length - 1, at + 1) : asked.step === 'up' ? Math.max(0, at - 1) : asked.id ? Math.max(0, ladder.indexOf(asked.id)) : at;
+      body = {...body, quality: {mode: 'automatic', ...(ladder[next] ? {id: ladder[next]} : {})}};
+    }
+    // A player failure re-plans the same session another way, until nothing is left (three ways).
+    if (body.failure !== undefined) {
+      if ((s.failures ?? 0) >= 3) return this.error(422, 'unsupported_media');
+      s.failures = (s.failures ?? 0) + 1;
+      bytes = true;
+    }
+    if (typeof body.throughputKbps === 'number' && asked && asked.mode !== 'automatic' && body.throughputKbps < (this.o.neededKbps ?? 0)) return this.error(422, 'connection_too_slow', {reason: '720p'});
+    if (typeof body.positionMs === 'number') s.positionMs = body.positionMs;
     for (const k of BYTES_CHANGING) if (k in body && JSON.stringify(body[k]) !== JSON.stringify((s as Record<string, unknown>)[k])) { (s as Record<string, unknown>)[k] = body[k]; bytes = true; }
     if (body.state === 'playing' || body.state === 'paused') s.state = body.state;
     const seek = body.seek as {positionMs?: unknown} | undefined;

@@ -1,14 +1,14 @@
 import {useEffect, useRef, useState} from 'react';
 import {viewer, useSession} from '../../app/session';
-import {currentI18n} from '../../app/i18n';
 import {Button, Checkbox, Input, Loading, Notice} from '../../ui';
 import {ProfileGrid} from './ProfileGrid';
 import s from './Auth.module.css';
+import {useI18n} from '../../app/i18n';
 
 /** Profiles for a direct (server-local) account. */
 export function DirectProfiles({onDone}: {onDone?: () => void}) {
+  const {t} = useI18n();
   const session = useSession();
-  const t = currentI18n().t;
   const pending = session.direct.pending;
   const [choice, setChoice] = useState<string>();
   const [dismissed, setDismissed] = useState(false);

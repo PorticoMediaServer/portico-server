@@ -28,6 +28,7 @@ func unixIdentity(identity string) (device, inode uint64, ok bool) {
 	if err != nil {
 		return 0, 0, false
 	}
+	i, _, _ = strings.Cut(i, ":fsid:")
 	inode, err = strconv.ParseUint(i, 10, 64)
 	if err != nil {
 		return 0, 0, false
@@ -36,17 +37,18 @@ func unixIdentity(identity string) (device, inode uint64, ok bool) {
 }
 
 // SameRoot reports whether a recorded root identity and a freshly observed one
-// name the same folder. Two Unix identities with the same inode are the same
-// folder whatever their device numbers; every other form must match exactly.
-// A different inode is still a different folder: an unmounted mount point is
-// its own directory on the parent filesystem.
+// name the same folder. A changed device number requires a matching nonzero
+// filesystem identity as well as the root inode. Without that evidence only
+// an exact identity matches; accepting a replacement remains an owner action.
 func SameRoot(recorded, observed string) bool {
 	if recorded == observed {
 		return recorded != ""
 	}
 	_, a, okA := unixIdentity(recorded)
 	_, b, okB := unixIdentity(observed)
-	return okA && okB && a == b
+	_, fsA, hasA := strings.Cut(recorded, ":fsid:")
+	_, fsB, hasB := strings.Cut(observed, ":fsid:")
+	return okA && okB && a == b && hasA && hasB && fsA != "" && fsA == fsB
 }
 
 // StableObjectIdentity is the identity of an object under a root in the form
