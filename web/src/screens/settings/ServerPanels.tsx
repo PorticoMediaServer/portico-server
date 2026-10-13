@@ -10,7 +10,7 @@ import {LiveSourcesPanel, RecordingRulesPanel, RecordingStoragePanel} from '../s
 import {TunersGroup} from '../server/DVRSettings';
 import {LibraryChannelsPanel} from '../server/Channels';
 import {AccountsPanel} from '../server/People';
-import {InvitationsPanel} from '../server/Access';
+import {AccountDevices, InvitationsPanel} from '../server/Access';
 import {APIKeysPanel, MemberTokensPanel} from '../server/ApiAccess';
 import {WebhooksPanel} from '../server/Webhooks';
 import {AssistantsPanel} from '../server/Assistants';
@@ -49,6 +49,7 @@ export function ServerPanel({id}: {id: SettingsCustomId}) {
     case 'server.channels': return <LibraryChannelsPanel />;
     case 'server.accounts': return <AccountsPanel />;
     case 'server.invitations': return <InvitationsPanel />;
+    case 'server.devices': return <AccountDevices />;
     case 'server.apiKeys': return <APIKeysPanel />;
     case 'server.memberTokens': return <MemberTokensPanel />;
     case 'server.webhooks': return <WebhooksPanel />;

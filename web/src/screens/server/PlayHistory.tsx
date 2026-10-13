@@ -54,7 +54,7 @@ export function PlayHistoryPanel() {
         <Table columns={columns} className={s.table}>
           {state.entries.map(entry => (
             <tr key={entry.id}>
-              <td>{playHistoryUser(entry)}</td>
+              <td>{playHistoryUser(entry) || t('server.people.removedPerson')}</td>
               <td>{playHistoryType(entry, i18n)}</td>
               <td className={s.title}>
                 {entry.itemId ? <Link to="/media/$itemId" params={{itemId: entry.itemId}} search={{library: entry.libraryId}}>{playHistoryTitle(entry, i18n)}</Link> : playHistoryTitle(entry, i18n)}

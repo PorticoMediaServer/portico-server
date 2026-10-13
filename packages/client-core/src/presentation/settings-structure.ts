@@ -84,13 +84,13 @@ export type CompositeId =
 export type SettingsActionId = 'signOut' | 'resetRecommendations' | 'linkTV';
 export type SettingsCustomId =
   | 'identity' | 'profiles' | 'password' | 'twoStep' | 'devices' | 'porticoAccount' | 'servers'
-  | 'subtitlePreview' | 'deviceName' | 'downloadsStorage' | 'about' | 'accessTokens'
+  | 'subtitlePreview' | 'deviceName' | 'downloadsStorage' | 'about' | 'accessTokens' | 'privacyNote'
   // The Server heading's panels: each is drawn natively by the client.
   | 'server.nowPlaying' | 'server.alerts' | 'server.health' | 'server.activity' | 'server.statistics'
   | 'server.playHistory'
   | 'server.libraries'
   | 'server.liveSources' | 'server.tuners' | 'server.recordingRules' | 'server.recordingStorage' | 'server.channels'
-  | 'server.accounts' | 'server.invitations' | 'server.apiKeys' | 'server.memberTokens' | 'server.webhooks' | 'server.assistants'
+  | 'server.accounts' | 'server.invitations' | 'server.devices' | 'server.apiKeys' | 'server.memberTokens' | 'server.webhooks' | 'server.assistants'
   | 'server.metadataSettings'
   | 'server.transcodeStatus'
   | 'server.remoteStatus' | 'server.accountConnection' | 'server.certificateStatus' | 'server.addresses' | 'server.connection' | 'server.ownCertificateStatus'
@@ -297,6 +297,8 @@ const accountPages: readonly AuthoredPage[] = [
   },
   {
     id: 'privacy', title: 'settings.page.privacy', icon: 'shield', sections: [
+      // What pausing and clearing do not change, said before the switches that might suggest otherwise.
+      {id: 'note', rows: [custom('privacyNote')]},
       {id: 'history', rows: [
         toggle('privacy.pauseWatchHistory', 'pref.label.privacy.pauseWatchHistory', {help: 'pref.help.privacy.pauseWatchHistory'}),
         toggle('privacy.showActivityToMembers', 'settings.row.showActivity', {help: 'settings.help.showActivity'}),
@@ -379,10 +381,13 @@ const serverPages: readonly AuthoredPage[] = [
       panel('channels', 'server.channels', undefined, {tab: 'channels'}),
     ]},
   {id: 'people', title: 'settings.server.people', icon: 'people',
-    tabs: [{id: 'accounts', title: 'settings.server.accounts'}, {id: 'invitations', title: 'settings.server.invitations'}, {id: 'keys', title: 'settings.server.apiKeys'}],
+    tabs: [{id: 'accounts', title: 'settings.server.accounts'}, {id: 'invitations', title: 'settings.server.invitations'}, {id: 'devices', title: 'settings.section.devices'}, {id: 'keys', title: 'settings.server.apiKeys'}],
     sections: [
       panel('accounts', 'server.accounts', undefined, {tab: 'accounts'}),
       panel('invitations', 'server.invitations', undefined, {tab: 'invitations'}),
+      // Holding new devices until the owner approves them, and every device that has signed in, newest first.
+      {id: 'deviceApproval', tab: 'devices', rows: [on('runtime', 'deviceApprovalRequired', 'server.people.deviceApproval', 'server.people.deviceApprovalHelp')]},
+      panel('devices', 'server.devices', 'settings.section.devices', {tab: 'devices', platforms: ['web']}),
       // The web has a page for keys, tokens, webhooks and assistants; the phone keeps its keys list here.
       panel('apiKeys', 'server.apiKeys', undefined, {tab: 'keys', platforms: ['phone']}),
     ]},

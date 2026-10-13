@@ -1,4 +1,5 @@
-import {useState} from 'react';
+import {useEffect, useState} from 'react';
+import {parseRatingSystems, type RatingSystem} from '@core/identity-restrictions.ts';
 import {contentRatings, parseAccessDevicePage, parseInvitation, type AccessDevice, type AccessTier, type Invitation, type MemberLimits} from '@core/server-administration.ts';
 import {accessListPath, tierLabels as tierLabel} from '@core/server-admin/panel-logic.ts';
 export {accessListPath, accessLists, tierLabels} from '@core/server-admin/panel-logic.ts';
@@ -16,15 +17,34 @@ const items = <T,>(raw: unknown, each: (x: unknown) => T): T[] => {
   if (!Array.isArray(list)) throw new Error('The administration response does not match this server. Refresh before continuing.');
   return list.map(each);
 };
+/** The rating systems this server publishes (the one scale accounts and profiles share); empty until read, and when the read fails. */
+function useRatingSystems(): readonly RatingSystem[] {
+  const {api} = useSession();
+  const [systems, setSystems] = useState<readonly RatingSystem[]>([]);
+  useEffect(() => {
+    const stop = new AbortController();
+    api.request<{items?: unknown}>('/v1/rating-systems', 'GET', undefined, stop.signal).then(raw => setSystems(parseRatingSystems(raw?.items)), () => {});
+    return () => stop.abort();
+  }, [api]);
+  return systems;
+}
+
 /** A person's limits as rows: streams, quality away from home, and what they may see. Zero or empty means no limit. */
 export function LimitsFields({limits, onChange}: {limits: MemberLimits; onChange: (next: MemberLimits) => void}) {
   const {t} = useI18n();
+  // The same scale a profile's limits use: a rating system, then a rating in it. A limit saved
+  // before systems existed (a plain rating with no system) stays shown as it is until changed.
+  const systems = useRatingSystems();
+  const system = systems.find(s => s.id === limits.ratingSystem);
+  const plain = !limits.ratingSystem && !!limits.maxContentRating;
+  const ratings = system ? system.values.map(v => ({value: v.code, label: t('web.limits.ratingOption', {label: v.label, age: v.minimumAge})})) : !systems.length || plain ? contentRatings.map(r => ({value: r, label: r})) : [];
   return (
     <>
       <SettingsGroup title={t('web.access.limits')} description={t('web.access.zeroNoLimit')}>
         <SettingsRow label={t('web.access.maxStreams')} control={<Input hideLabel label={t('web.access.maxStreams')} type="number" min={0} max={1000} value={limits.maxStreams} onChange={e => onChange({...limits, maxStreams: Math.max(0, Number(e.target.value) || 0)})} style={{width: 100}} />} />
         <SettingsRow label={t('web.access.remoteQuality')} help={t('web.access.remoteQualityHelp')} control={<Input hideLabel label={t('web.access.remoteQuality')} type="number" min={0} max={200} value={Math.round(limits.remoteBitrateKbps / 1000)} onChange={e => onChange({...limits, remoteBitrateKbps: Math.max(0, Number(e.target.value) || 0) * 1000})} style={{width: 100}} />} />
-        <SettingsRow label={t('web.access.highestRating')} control={<Select hideLabel label={t('web.access.highestRating')} value={limits.maxContentRating} onChange={e => onChange({...limits, ratingSystem: '', maxContentRating: e.target.value})} options={[{value: '', label: t('limits.noLimit')}, ...contentRatings.map(r => ({value: r, label: r}))]} />} />
+        {systems.length ? <SettingsRow label={t('limits.ratingSystem')} control={<Select hideLabel label={t('limits.ratingSystem')} value={limits.ratingSystem} onChange={e => onChange({...limits, ratingSystem: e.target.value, maxContentRating: ''})} options={[...(limits.ratingSystem ? [] : [{value: '', label: t('server.people.ratingSystemChoose')}]), ...systems.map(s => ({value: s.id, label: t('web.limits.systemOption', {name: s.name, region: s.region})}))]} />} /> : null}
+        <SettingsRow label={t('web.access.highestRating')} help={systems.length && !system && !plain ? t('server.people.ratingSystemFirst') : undefined} control={<Select hideLabel label={t('web.access.highestRating')} value={limits.maxContentRating} disabled={!ratings.length} onChange={e => onChange({...limits, maxContentRating: e.target.value})} options={[{value: '', label: t('limits.noLimit')}, ...ratings, ...(limits.maxContentRating && !ratings.some(r => r.value === limits.maxContentRating) ? [{value: limits.maxContentRating, label: limits.maxContentRating}] : [])]} />} />
         <SettingsRow label={t('web.limits.unrated')} control={<Switch checked={limits.allowUnrated} onCheckedChange={v => onChange({...limits, allowUnrated: v})} label={t('limits.allowUnrated')} />} />
         <SettingsRow label={t('web.limits.hiddenLabels')} help={t('web.access.hiddenLabelsHelp')} stack control={<Input hideLabel label={t('web.limits.hiddenLabels')} value={limits.tagPolicy.deniedLabels.join(', ')} onChange={e => onChange({...limits, tagPolicy: {deniedLabels: e.target.value.split(',').map(x => x.trim()).filter(Boolean)}})} style={{width: '100%'}} />} />
       </SettingsGroup>
@@ -51,15 +71,16 @@ export function InvitationsPanel() {
   const [opIds] = useState(createOperationIds);
   const [open, setOpen] = useState(false);
   const [email, setEmail] = useState('');
+  const [porticoUsername, setPorticoUsername] = useState('');
   const [role, setRole] = useState<AccessTier>('member');
   const [issued, setIssued] = useState<Invitation>();
-  const create = () => void action.run(async () => { const payload = {email: email.trim(), role, allowedLibraries: [], expiresInHours: 168}; const key = JSON.stringify(payload); const out = parseInvitation(await api.request('/v1/admin/access/invitations', 'POST', {operationId: opIds.forPayload(key), ...payload})); opIds.release(); setIssued(out); setEmail(''); read.reload(); });
+  const create = () => void action.run(async () => { const payload = {email: email.trim(), role, allowedLibraries: [], expiresInHours: 168, ...(porticoUsername.trim() ? {porticoUsername: porticoUsername.trim()} : {})}; const key = JSON.stringify(payload); const out = parseInvitation(await api.request('/v1/admin/access/invitations', 'POST', {operationId: opIds.forPayload(key), ...payload})); opIds.release(); setIssued(out); setEmail(''); setPorticoUsername(''); read.reload(); });
   const pending = read.data?.filter(i => i.state === 'pending') ?? [];
   return (
     <SettingsGroup title={t('web.access.invitations')} description={t('web.access.invitationsLede')}>
       {read.error ? <div style={{padding: 12}}><Notice tone={read.data ? 'warning' : 'error'} compact action={{label: t('action.tryAgain'), onClick: read.reload}}>{read.error}</Notice></div> : null}
       {pending.map(i => (
-        <SettingsRow key={i.id} icon="mail" label={i.email || t('web.access.invitationUnlabelled')} help={t('web.access.inviteMeta', {role: tierLabel[i.role], date: i18n.date(i.expiresAt)})}
+        <SettingsRow key={i.id} icon="mail" label={i.email || i.porticoUsername || t('web.access.invitationUnlabelled')} help={[t('web.access.inviteMeta', {role: tierLabel[i.role], date: i18n.date(i.expiresAt)}), i.porticoUsername ? t('server.people.inviteOnlyFor', {username: i.porticoUsername}) : ''].filter(Boolean).join(' · ')}
           control={<Button size="sm" variant="ghost" label={t('web.access.revoke')} disabled={action.busy} onClick={() => void action.run(async () => { const key = JSON.stringify({id: i.id, revision: i.revision}); await api.request(`/v1/admin/access/invitations/${encodeURIComponent(i.id)}/revoke`, 'POST', {expectedRevision: i.revision, operationId: opIds.forPayload(key)}); opIds.release(); read.reload(); }, 'Invitation revoked.')} />} />
       ))}
       {read.data && !pending.length ? <div style={{padding: 16}}><Text variant="caption" tone="tertiary">{t('web.access.noInvitations')}</Text></div> : null}
@@ -69,6 +90,7 @@ export function InvitationsPanel() {
         {issued ? (
           <div style={{display: 'flex', flexDirection: 'column', gap: 12}}>
             <Text as="p" variant="body" tone="secondary">{issued.email ? t('web.access.sendTo', {email: issued.email}) : t('web.access.sendToAnyone')}</Text>
+            {issued.porticoUsername ? <Text as="p" variant="caption" tone="tertiary">{t('server.people.inviteOnlyFor', {username: issued.porticoUsername})}</Text> : null}
             <TextArea label={t('web.access.inviteLink')} readOnly rows={3} value={joinLink(api.baseUrl, issued.code ?? '')} onFocus={e => e.currentTarget.select()} />
             <div><Button size="sm" variant="secondary" icon="copy" label={t('web.access.copyLink')} onClick={() => void navigator.clipboard?.writeText(joinLink(api.baseUrl, issued.code ?? ''))} /></div>
             <Text as="p" variant="caption" tone="tertiary">Or give them the code on its own: {issued.code}</Text>
@@ -77,6 +99,7 @@ export function InvitationsPanel() {
           <div style={{display: 'flex', flexDirection: 'column', gap: 12}}>
             {action.error ? <Notice tone="error" compact>{action.error}</Notice> : null}
             <Input label={t('web.hostedSecurity.email')} type="email" optional help={t('web.access.emailHelp')} autoFocus value={email} onChange={e => setEmail(e.target.value)} />
+            <Input label={t('server.people.inviteRecipient')} optional help={t('server.people.inviteRecipientHelp')} autoCapitalize="off" spellCheck={false} maxLength={64} value={porticoUsername} onChange={e => setPorticoUsername(e.target.value)} />
             <Select label={t('web.access.roleLabel')} value={role} onChange={e => setRole(e.target.value as AccessTier)} options={[{value: 'member', label: t('web.access.roleMember')}, {value: 'admin', label: t('web.access.roleAdmin')}]} />
           </div>
         )}
@@ -87,10 +110,10 @@ export function InvitationsPanel() {
 }
 
 /** An account's devices, in the one place they are managed: approve, block, and see when each was last here. */
-export function AccountDevices({accountId}: {accountId: string}) {
+export function AccountDevices({accountId}: {/** Absent: everyone's devices, most recently seen first, each with whose it is. */ accountId?: string}) {
   const {t} = useI18n();
   const {api} = useSession();
-  const read = useCursorList(async cursor => { const raw = await api.request(accessListPath('devices', cursor) + '&account=' + encodeURIComponent(accountId)); return {items: [...parseAccessDevicePage(raw).items], nextCursor: nextCursorOf(raw)}; }, [api, accountId]);
+  const read = useCursorList(async cursor => { const raw = await api.request(accessListPath('devices', cursor) + (accountId ? '&account=' + encodeURIComponent(accountId) : '')); return {items: [...parseAccessDevicePage(raw).items], nextCursor: nextCursorOf(raw)}; }, [api, accountId]);
   const action = useAction();
   // BE-API-10: one ID per logical write; retries reuse it.
   const [opIds] = useState(createOperationIds);
@@ -102,7 +125,7 @@ export function AccountDevices({accountId}: {accountId: string}) {
       {read.error ? <div style={{padding: 12}}><Notice tone={read.data ? 'warning' : 'error'} compact action={{label: t('action.tryAgain'), onClick: read.reload}}>{read.error}</Notice></div> : null}
       {action.error ? <div style={{padding: 12}}><Notice tone="error" compact>{action.error}</Notice></div> : null}
       {mine?.map(d => (
-        <SettingsRow key={d.id} icon={d.platform === 'tvos' ? 'cast' : d.platform === 'web' ? 'globe' : 'profile'} label={d.name} help={t('web.access.deviceMeta', {platform: d.platform, when: since(d.lastSeenAt)})}
+        <SettingsRow key={d.id} icon={d.platform === 'tvos' ? 'cast' : d.platform === 'web' ? 'globe' : 'profile'} label={d.name} help={[accountId ? '' : d.username, t('web.access.deviceMeta', {platform: d.platform, when: since(d.lastSeenAt)})].filter(Boolean).join(' · ')}
           state={<Status tone={d.trust === 'approved' ? 'healthy' : d.trust === 'blocked' ? 'danger' : 'warning'}>{d.trust === 'approved' ? t('web.access.trustApproved') : d.trust === 'blocked' ? t('web.access.trustBlocked') : t('web.access.trustWaiting')}</Status>}
           control={<div style={{display: 'flex', gap: 8}}>{d.trust !== 'approved' ? <Button size="sm" variant="secondary" label={t('web.devices.approve')} disabled={action.busy} onClick={() => trust(d, 'approved')} /> : null}{d.trust !== 'blocked' ? <Button size="sm" variant="ghost" label={t('web.access.block')} disabled={action.busy} onClick={() => trust(d, 'blocked')} /> : null}</div>} />
       ))}
