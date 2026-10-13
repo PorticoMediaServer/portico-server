@@ -3855,9 +3855,9 @@ export const routes = [
     "admission": "browsing"
   },
   {
-    "id": "get_guide_images_digest",
+    "id": "get_guide_programme_image",
     "method": "GET",
-    "path": "/v1/guide/images/{digest}",
+    "path": "/v1/guide/programme-images/{generation}/{programme}",
     "summary": "Read guide images",
     "access": "device",
     "requires": "read",
@@ -15751,7 +15751,7 @@ export const routePaths = {
   "get_feedback_reports_id": "/v1/feedback/reports/{id}",
   "get_guide": "/v1/guide",
   "get_guide_channels": "/v1/guide/channels",
-  "get_guide_images_digest": "/v1/guide/images/{digest}",
+  "get_guide_programme_image": "/v1/guide/programme-images/{generation}/{programme}",
   "get_guide_sources": "/v1/guide/sources",
   "get_health_live": "/health/live",
   "get_health_ready": "/health/ready",

@@ -274,10 +274,8 @@ func (s *Service) guideImageRoot() (string, error) {
 	return root, nil
 }
 
-// GuideImageBytes reads a stored programme image for delivery. Images are
-// addressed by the digest of their own bytes, so a programme the profile may
-// not see is never published with its image path; this read itself carries no
-// programme identity.
+// GuideImageBytes reads a stored image after the HTTP caller has authorized
+// its programme. A content digest is storage identity, not an access grant.
 func (s *Service) GuideImageBytes(ctx context.Context, digest string) ([]byte, string, error) {
 	if s == nil || s.db == nil {
 		return nil, "", ErrUnavailable

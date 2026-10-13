@@ -29753,12 +29753,12 @@
         ],
         "type": "object"
       },
-      "GetGuideImagesDigestRequest": {
+      "GetGuideProgrammeImageRequest": {
         "properties": {},
         "required": [],
         "type": "object"
       },
-      "GetGuideImagesDigestResponse": {
+      "GetGuideProgrammeImageResponse": {
         "format": "binary",
         "type": "string"
       },
@@ -185549,13 +185549,21 @@
         "x-scope": "read"
       }
     },
-    "/v1/guide/images/{digest}": {
+    "/v1/guide/programme-images/{generation}/{programme}": {
       "get": {
-        "operationId": "get_guide_images_digest",
+        "operationId": "get_guide_programme_image",
         "parameters": [
           {
             "in": "path",
-            "name": "digest",
+            "name": "generation",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "programme",
             "required": true,
             "schema": {
               "type": "string"
