@@ -2,7 +2,9 @@ package httpapi
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/base64"
 	"encoding/hex"
 	"net/http/httptest"
@@ -17,11 +19,11 @@ import (
 	"portico.local/server/internal/hosted"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/ingestion"
+	"portico.local/server/internal/livechannels"
 	"portico.local/server/internal/persistence"
 )
 
-// GET /v1/guide/images/{digest}: 401 without a credential, 404 for an unknown
-// or malformed digest, 200 with the stored bytes and cache headers.
+// Programme images check current source access and rating before serving bytes.
 func TestGuideImageServing(t *testing.T) {
 	root := t.TempDir()
 	db, err := persistence.Open(filepath.Join(root, "server.sqlite"))
@@ -55,6 +57,24 @@ func TestGuideImageServing(t *testing.T) {
 		handler.ServeHTTP(w, r)
 		return w
 	}
+	store, err := livechannels.New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	authority := func(context.Context, *sql.Tx, bool) (string, func(string, string) bool, error) {
+		return "owner", func(string, string) bool { return true }, nil
+	}
+	saved, err := store.Save(context.Background(), authority, livechannels.SourceInput{ID: strings.Repeat("ab", 24), RequestID: strings.Repeat("cd", 24), Name: "Source", TunerCount: 1,
+		Playlist: "#EXTM3U\n#EXTINF:-1 tvg-id=\"one\",One\nhttps://provider.invalid/stream\n",
+		Guide:    `<tv><channel id="one"/><programme channel="one" start="20261013000000 +0000" stop="20261013010000 +0000"><title>Adult programme</title><rating system="MPAA"><value>R</value></rating><icon src="https://img.invalid/kept.png"/></programme></tv>`})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var programme string
+	if err = db.QueryRow(`SELECT id FROM live_programmes WHERE generation_id=?`, saved.Generation).Scan(&programme); err != nil {
+		t.Fatal(err)
+	}
+	imagePath := "/v1/guide/programme-images/" + saved.Generation + "/" + programme
 	// Store one image directly: the digest of its own bytes, served from the
 	// state directory's guide-images root.
 	image := bytes.Repeat([]byte{7}, 1024)
@@ -69,19 +89,19 @@ func TestGuideImageServing(t *testing.T) {
 	if err = os.WriteFile(filepath.Join(root, "guide-images", digest+".png"), image, 0600); err != nil {
 		t.Fatal(err)
 	}
-	if w := request("GET", "/v1/guide/images/"+digest, ""); w.Code != 401 {
+	if w := request("GET", imagePath, ""); w.Code != 401 {
 		t.Fatalf("no credential answered %d: %s", w.Code, w.Body.String())
 	}
 	for _, path := range []string{
-		"/v1/guide/images/" + strings.Repeat("0", 64),
-		"/v1/guide/images/not-a-digest",
-		"/v1/guide/images/" + strings.ToUpper(digest),
+		"/v1/guide/programme-images/" + saved.Generation + "/unknown",
+		"/v1/guide/programme-images/unknown/" + programme,
+		"/v1/guide/programme-images/" + strings.ToUpper(saved.Generation) + "/" + programme,
 	} {
 		if w := request("GET", path, owner.AccessToken); w.Code != 404 {
 			t.Fatalf("GET %s answered %d: %s", path, w.Code, w.Body.String())
 		}
 	}
-	w := request("GET", "/v1/guide/images/"+digest, owner.AccessToken)
+	w := request("GET", imagePath, owner.AccessToken)
 	if w.Code != 200 {
 		t.Fatalf("stored image answered %d: %s", w.Code, w.Body.String())
 	}
@@ -94,7 +114,7 @@ func TestGuideImageServing(t *testing.T) {
 	if got := w.Header().Get("ETag"); got != `"`+digest+`"` {
 		t.Fatalf("etag %q", got)
 	}
-	if got := w.Header().Get("Cache-Control"); got != "private, max-age=31536000, immutable" {
+	if got := w.Header().Get("Cache-Control"); got != "private, no-store" {
 		t.Fatalf("cache control %q", got)
 	}
 	if got := w.Header().Get("X-Content-Type-Options"); got != "nosniff" {
@@ -103,4 +123,41 @@ func TestGuideImageServing(t *testing.T) {
 	if strings.Contains(w.Body.String()+w.Header().Get("ETag"), "img.invalid") {
 		t.Fatal("provider URL leaked in response")
 	}
+	if w := request("GET", "/v1/guide/images/"+digest, owner.AccessToken); w.Code != 404 {
+		t.Fatalf("retired digest route: %d", w.Code)
+	}
+	if _, err = db.Exec(`INSERT INTO accounts VALUES('member','member',x'00','member-profile',1)`); err != nil {
+		t.Fatal(err)
+	}
+	member, err := ident.Issue("member", "member-profile", "local", "member", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w := request("GET", imagePath, member.AccessToken); w.Code != 404 {
+		t.Fatalf("member fetched owner-only source image: %d %s", w.Code, w.Body)
+	}
+	if _, err = db.Exec(`INSERT INTO live_source_settings(source_id,viewer_access) VALUES(?,'server-members') ON CONFLICT(source_id) DO UPDATE SET viewer_access=excluded.viewer_access`, saved.ID); err != nil {
+		t.Fatal(err)
+	}
+	if w := request("GET", imagePath, member.AccessToken); w.Code != 200 {
+		t.Fatalf("visible image: %d %s", w.Code, w.Body)
+	}
+	if _, err = db.Exec(`INSERT INTO profile_restrictions(profile_id,maximum_age,blocked_labels,allow_unrated,revision) VALUES('member-profile',12,'[]',1,1)`); err != nil {
+		t.Fatal(err)
+	}
+	r := httptest.NewRequest("GET", imagePath, nil)
+	r.Header.Set("Authorization", "Bearer "+member.AccessToken)
+	r.Header.Set("If-None-Match", `"`+digest+`"`)
+	hidden := httptest.NewRecorder()
+	handler.ServeHTTP(hidden, r)
+	if hidden.Code != 404 || bytes.Equal(hidden.Body.Bytes(), image) {
+		t.Fatalf("restricted programme image: %d %s", hidden.Code, hidden.Body)
+	}
+	if _, err = db.Exec(`UPDATE live_sources SET active_generation='' WHERE id=?`, saved.ID); err != nil {
+		t.Fatal(err)
+	}
+	if w := request("GET", imagePath, owner.AccessToken); w.Code != 404 {
+		t.Fatalf("superseded programme image: %d %s", w.Code, w.Body)
+	}
+
 }

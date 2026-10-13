@@ -29,11 +29,29 @@ var ErrClientLogBudget = errors.New("daily client log budget exhausted")
 var (
 	bearerSecret = regexp.MustCompile(`(?i)\bBearer\s+[^\s"'<>]+`)
 	mediaGrant   = regexp.MustCompile(`(?i)/v1/media/[^\s"'<>]+`)
-	querySecret  = regexp.MustCompile(`(?i)([?&](?:grant|token|key|credential)=)[^\s&#"'<>]+`)
-	longSecret   = regexp.MustCompile(`[A-Za-z0-9_-]{40,}`)
+	querySecret  = regexp.MustCompile(`(?i)([?&](?:grant|token|key|credential|api[_-]?key|access[_-]?token|refresh[_-]?token|device[_-]?code|password|secret|signature)=)[^\s&#"'<>]+`)
+	// Short passwords, factor seeds and provider keys do not match the generic
+	// token length heuristic. Scrub their named values in JSON and key/value logs.
+	namedSecret    = regexp.MustCompile(`(?i)(\b(?:password|passphrase|pin|totp[_-]?secret|factor[_-]?seed|recovery[_-]?code|api[_-]?key|access[_-]?token|refresh[_-]?token|device[_-]?code|client[_-]?secret|authorization|cookie|set-cookie|secret|credential)\b["']?\s*[:=]\s*)("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^\s,;&}]+)`)
+	secretHeader   = regexp.MustCompile(`(?im)(\b(?:authorization|proxy-authorization|cookie|set-cookie)\s*:\s*)[^\r\n]+`)
+	urlCredentials = regexp.MustCompile(`(?i)(https?://)[^/\s?#"']+@`)
+	longSecret     = regexp.MustCompile(`[A-Za-z0-9_-]{40,}`)
 )
 
 func redactClientLog(body string) string {
+	body = secretHeader.ReplaceAllString(body, "${1}[REDACTED]")
+	body = bearerSecret.ReplaceAllString(body, "Bearer [REDACTED]")
+	body = namedSecret.ReplaceAllStringFunc(body, func(match string) string {
+		parts := namedSecret.FindStringSubmatch(match)
+		value := "[REDACTED]"
+		if strings.HasPrefix(parts[2], "\"") {
+			value = `"[REDACTED]"`
+		} else if strings.HasPrefix(parts[2], "'") {
+			value = "'[REDACTED]'"
+		}
+		return parts[1] + value
+	})
+	body = urlCredentials.ReplaceAllString(body, "${1}[REDACTED]@")
 	body = bearerSecret.ReplaceAllString(body, "Bearer [REDACTED]")
 	body = mediaGrant.ReplaceAllString(body, "/v1/media/[REDACTED]")
 	body = querySecret.ReplaceAllString(body, "${1}[REDACTED]")

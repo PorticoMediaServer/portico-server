@@ -420,31 +420,14 @@ func mcpTools() []mcpTool {
 			return status, raw, err
 		})
 
-	add(mcpTool{Name: "control_playback", Title: "Pause, resume or seek playback", Description: "Control your own playback, or another member’s session when you may administer playback.", Required: []string{"sessionId", "action"},
+	add(mcpTool{Name: "control_playback", Title: "Pause, resume or seek playback", Description: "Control your own playback session.", Required: []string{"sessionId", "action"},
 		Properties: map[string]any{"sessionId": text("The playback session's id."), "action": choice("What to do.", "pause", "resume", "seek"), "positionMs": whole("For seek: where to go, in milliseconds from the start.", 0, 1<<40)}},
-		[]mcpRoute{{"GET", "/v1/playback/sessions/{id}"}, {"PATCH", "/v1/playback/sessions/{id}"}, {"GET", "/v1/admin/sessions/{id}/controls"}, {"POST", "/v1/admin/sessions/{id}/controls"}}, func(args map[string]any, call mcpInvoker) (int, []byte, error) {
+		[]mcpRoute{{"GET", "/v1/playback/sessions/{id}"}, {"PATCH", "/v1/playback/sessions/{id}"}}, func(args map[string]any, call mcpInvoker) (int, []byte, error) {
 			path, err := pathWith("/v1/playback/sessions/{id}", args, "sessionId")
 			if err != nil {
 				return 0, nil, err
 			}
 			status, header, current, err := call(mcpCall{Method: "GET", Path: path})
-			if err == nil && status == 404 {
-				adminPath := "/v1/admin/sessions/" + str(args, "sessionId") + "/controls"
-				status, _, current, err = call(mcpCall{Method: "GET", Path: adminPath})
-				if err != nil || status != 200 {
-					return status, current, err
-				}
-				revision, ok := field(current, "revision")
-				if !ok {
-					return 0, nil, errors.New("the session revision was missing")
-				}
-				body := map[string]any{"action": str(args, "action"), "expectedRevision": revision}
-				if str(args, "action") == "seek" {
-					body["positionMs"] = args["positionMs"]
-				}
-				status, _, raw, err := call(mcpCall{Method: "POST", Path: adminPath, Body: body})
-				return status, raw, err
-			}
 
 			if err != nil || status != 200 {
 				return status, current, err
@@ -469,6 +452,33 @@ func mcpTools() []mcpTool {
 				body["seek"] = map[string]any{"positionMs": position, "id": "mcp-" + mcpToken()}
 			}
 			status, _, raw, err := call(mcpCall{Method: "PATCH", Path: path, Body: body, Header: map[string]string{"If-Match": revision}})
+			return status, raw, err
+		})
+
+	add(mcpTool{Name: "control_member_playback", Title: "Pause, resume or seek a member's playback", Description: "Control another member's playback session from now_playing. Requires permission to administer playback.", Role: identity.TierAdmin, Required: []string{"sessionId", "action"},
+		Properties: map[string]any{"sessionId": text("The playback session's id, from now_playing."), "action": choice("What to do.", "pause", "resume", "seek"), "positionMs": whole("For seek: where to go, in milliseconds from the start.", 0, 1<<40)}},
+		[]mcpRoute{{"GET", "/v1/admin/sessions/{id}/controls"}, {"POST", "/v1/admin/sessions/{id}/controls"}}, func(args map[string]any, call mcpInvoker) (int, []byte, error) {
+			path, err := pathWith("/v1/admin/sessions/{id}/controls", args, "sessionId")
+			if err != nil {
+				return 0, nil, err
+			}
+			status, _, current, err := call(mcpCall{Method: "GET", Path: path})
+			if err != nil || status != 200 {
+				return status, current, err
+			}
+			revision, ok := field(current, "revision")
+			if !ok {
+				return 0, nil, errors.New("the session revision was missing")
+			}
+			body := map[string]any{"action": str(args, "action"), "expectedRevision": revision}
+			if str(args, "action") == "seek" {
+				position, ok := args["positionMs"]
+				if !ok {
+					return 0, nil, errors.New("positionMs is needed to seek")
+				}
+				body["positionMs"] = position
+			}
+			status, _, raw, err := call(mcpCall{Method: "POST", Path: path, Body: body})
 			return status, raw, err
 		})
 

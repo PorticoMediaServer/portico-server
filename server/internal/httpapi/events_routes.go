@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"time"
 
+	"portico.local/apikit"
 	"portico.local/server/internal/apievents"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/eventfeed"
@@ -44,6 +45,15 @@ func (d Dependencies) eventAuthority(r *http.Request) (identity.Principal, bool,
 	p, err := d.strictPrincipalFor(r)
 	if err != nil {
 		return p, false, err
+	}
+	if credential, ok := identity.APICredentialFrom(r.Context()); ok {
+		granted := make([]apikit.Scope, 0, len(credential.Scopes))
+		for _, scope := range credential.Scopes {
+			granted = append(granted, apikit.Scope(scope))
+		}
+		if !apikit.ScopeAllows(granted, apikit.ScopeAdmin) {
+			return p, false, nil
+		}
 	}
 	if p.Role != "owner" {
 		return p, false, nil

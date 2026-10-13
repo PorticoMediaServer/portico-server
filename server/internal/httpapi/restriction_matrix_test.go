@@ -638,14 +638,14 @@ func restrictionRoutes() map[string]restrictionRoute {
 		// Live TV, guide and recordings: channels and recordings carry their own
 		// restriction (channel_restriction_test, recordings_switch_test); the
 		// matrix still checks that no catalogue title leaks through them.
-		"GET /v1/guide":                 static("/v1/guide?kind=live-source&start=2026-09-19T12:00:00Z&end=2026-09-19T14:00:00Z&timezone=UTC&limit=30"),
-		"GET /v1/guide/channels":        static("/v1/guide/channels?kind=all&sort=number&offset=0&limit=50"),
-		"GET /v1/guide/sources":         static("/v1/guide/sources"),
-		"GET /v1/guide/images/{digest}": exempt("image bytes addressed by content digest; a programme the profile may not see is published without its image path"),
-		"GET /v1/dvr":                   static("/v1/dvr"),
-		"GET /v1/dvr/channels":          static("/v1/dvr/channels"),
-		"GET /v1/dvr/storage":           static("/v1/dvr/storage"),
-		"GET /v1/dvr/recordings/{id}":   probe(func(m *restrictionEnv) []string { return prefixed("/v1/dvr/recordings/", m.hiddenItemSamples()) }),
+		"GET /v1/guide":          static("/v1/guide?kind=live-source&start=2026-09-19T12:00:00Z&end=2026-09-19T14:00:00Z&timezone=UTC&limit=30"),
+		"GET /v1/guide/channels": static("/v1/guide/channels?kind=all&sort=number&offset=0&limit=50"),
+		"GET /v1/guide/sources":  static("/v1/guide/sources"),
+		"GET /v1/guide/programme-images/{generation}/{programme}": exempt("programme image rechecks live source access and rating restrictions; guide_images_test covers hidden and changed programmes"),
+		"GET /v1/dvr":                 static("/v1/dvr"),
+		"GET /v1/dvr/channels":        static("/v1/dvr/channels"),
+		"GET /v1/dvr/storage":         static("/v1/dvr/storage"),
+		"GET /v1/dvr/recordings/{id}": probe(func(m *restrictionEnv) []string { return prefixed("/v1/dvr/recordings/", m.hiddenItemSamples()) }),
 		"GET /v1/dvr/recordings/{id}/delete-preview": probe(func(m *restrictionEnv) []string {
 			return prefixed("/v1/dvr/recordings/", m.hiddenItemSamples(), "/delete-preview")
 		}),

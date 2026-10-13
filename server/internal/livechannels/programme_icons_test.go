@@ -62,12 +62,12 @@ func TestProgrammeIconsStoredProjectedAndRestricted(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "/v1/guide/images/" + digest
+	imagePath := func(p Programme) string { return "/v1/guide/programme-images/" + saved.Generation + "/" + p.ID }
 	byTitle := map[string]Programme{}
 	for _, p := range guide.Channels[0].Programmes {
 		byTitle[p.Title] = p
 	}
-	if byTitle["First"].Image != want || byTitle["Second"].Image != want {
+	if byTitle["First"].Image != imagePath(byTitle["First"]) || byTitle["Second"].Image != imagePath(byTitle["Second"]) {
 		t.Fatalf("shared image: %+v", byTitle)
 	}
 	if byTitle["Third"].Image != "" {

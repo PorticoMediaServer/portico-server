@@ -28293,12 +28293,12 @@ export const schemas = {
     ],
     "type": "object"
   },
-  "GetGuideImagesDigestRequest": {
+  "GetGuideProgrammeImageRequest": {
     "properties": {},
     "required": [],
     "type": "object"
   },
-  "GetGuideImagesDigestResponse": {
+  "GetGuideProgrammeImageResponse": {
     "format": "binary",
     "type": "string"
   },
@@ -78426,55 +78426,70 @@ export const schemas = {
     "type": "object"
   },
   "PostItemsIdAnalysisJobsJobControlResponse": {
-    "properties": {
-      "analyzed": {
-        "maximum": 9007199254740991,
-        "minimum": -9007199254740991,
-        "type": "integer"
-      },
-      "error": {
-        "type": "string"
-      },
-      "id": {
-        "type": "string"
-      },
-      "jobs": {
-        "items": {
-          "type": "string"
+    "anyOf": [
+      {
+        "properties": {
+          "analyzed": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "error": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "jobs": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "phase": {
+            "type": "string"
+          },
+          "processed": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "scanMode": {
+            "type": "string"
+          },
+          "sourceId": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "warnings": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
         },
-        "type": "array"
+        "required": [
+          "id",
+          "status",
+          "processed",
+          "analyzed",
+          "warnings"
+        ],
+        "type": "object"
       },
-      "phase": {
-        "type": "string"
-      },
-      "processed": {
-        "maximum": 9007199254740991,
-        "minimum": -9007199254740991,
-        "type": "integer"
-      },
-      "scanMode": {
-        "type": "string"
-      },
-      "sourceId": {
-        "type": "string"
-      },
-      "status": {
-        "type": "string"
-      },
-      "warnings": {
-        "maximum": 9007199254740991,
-        "minimum": -9007199254740991,
-        "type": "integer"
+      {
+        "properties": {
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "type": "object"
       }
-    },
-    "required": [
-      "id",
-      "status",
-      "processed",
-      "analyzed",
-      "warnings"
-    ],
-    "type": "object"
+    ]
   },
   "PostItemsIdAnalysisJobsRequest": {
     "properties": {

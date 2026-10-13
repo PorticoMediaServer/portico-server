@@ -16,7 +16,7 @@ import {call, type V1Http} from './http.ts';
 import {parseEvent, type ServerEvent} from './types.ts';
 
 /** A raw SSE message (`readEventStream` in `sse.ts` produces these on web; Apple's XHR adapter too). */
-export type RawStreamEvent = Readonly<{id?: string; event?: string; data: string}>;
+export type RawStreamEvent = Readonly<{id?: string; event?: string; data: string; /** Local shared-stream invalidation, never a server cursor. */ resync?: boolean}>;
 
 /**
  * Opens the SSE stream from `lastEventId`, calls `onEvent` for each message, and resolves when the
@@ -188,6 +188,7 @@ export class EventsClient {
         this.setStatus({connected: true});
         if (signal.aborted) return;
         this.streamFailures = 0;
+        if (raw.resync) { for (const listener of [...this.resyncListeners]) listener(); return; }
         let parsed: unknown;
         try { parsed = JSON.parse(raw.data); } catch { return; }
         const event = parseEvent(parsed);
@@ -218,10 +219,11 @@ export class EventsClient {
     const cursor = this.status.cursor;
     const r = await call(this.o.http, {method: 'GET', path: routePath("get_events") + "?waitSeconds=" + (wait) + (cursor ? `&after=${encodeURIComponent(cursor)}` : ''), signal});
     if (signal.aborted) return 0;
-    this.setStatus({connected: true});
     const b = r.body as {events?: unknown; nextAfter?: unknown} | undefined;
-    for (const raw of Array.isArray(b?.events) ? b!.events : []) { if (signal.aborted) return 0; const e = parseEvent(raw); if (e) this.deliver(e); }
-    if (!signal.aborted && typeof b?.nextAfter === 'string' && b.nextAfter) this.setStatus({cursor: b.nextAfter});
+    if (!b || typeof b !== 'object' || Array.isArray(b) || !Array.isArray(b.events) || b.events.length > 100 || typeof b.nextAfter !== 'string' || b.nextAfter.length > 128) throw new Error('invalid_event_page');
+    this.setStatus({connected: true});
+    for (const raw of b.events) { if (signal.aborted) return 0; const e = parseEvent(raw); if (e) this.deliver(e); }
+    if (!signal.aborted && b.nextAfter) this.setStatus({cursor: b.nextAfter});
     return 0;
   }
 }

@@ -404,3 +404,17 @@ test('a subtitle choice as a change of the session: the original when the browse
   ];
   for (const c of cases) assert.deepEqual(c.got, c.want, c.name);
 });
+
+test('rapid subtitle seeks keep at most two worker frames in flight', async () => {
+ const c=canvas(), sent:ImageWorkerRequest[]=[];
+ const worker:ImageWorkerLike={postMessage:m=>{sent.push(m);if(m.type==='load')queueMicrotask(()=>worker.onmessage?.({data:{type:'ready',width:8,height:8,starts:Float64Array.from({length:20},(_,i)=>i*1000),ends:Float64Array.from({length:20},(_,i)=>(i+1)*1000),skipped:0}}));},terminate:()=>{},onmessage:null,onerror:null};
+ const renderer=new ImageSubtitleRenderer({spawn:()=>worker});
+ try {
+  await renderer.load({kind:'pgs',data:new Uint8Array(1)},{canvas:c.element,read:noRead,signal:new AbortController().signal,failed:()=>{}});
+  for(let i=0;i<20;i++)renderer.sync({timeSeconds:i,paused:true,rate:1});
+  assert.equal(sent.filter(m=>m.type==='paint').length,2);
+  worker.onmessage?.({data:{type:'frame',index:0,rects:[]}});
+  renderer.sync({timeSeconds:19,paused:true,rate:1});
+  assert.equal(sent.filter(m=>m.type==='paint').length,3,'latest wanted cue is asked once space is free');
+ } finally {renderer.dispose();}
+});

@@ -1,4 +1,4 @@
-import {encodedRoutePath} from "../../contracts/src/routes.ts";
+import {encodedRoutePath, routePattern} from "../../contracts/src/routes.ts";
 import {enUS,type MessageId} from '../../i18n/src/index.ts';
 import {unreadableServerResponse} from './server-messages.ts';
 import type {LibraryContentApi} from './library-content.ts';
@@ -67,7 +67,7 @@ export function validateSubtitlePlan(v:unknown):SubtitlePlan{
  if(resources.some(r=>r.sourceId!==v.sourceId)||discovered.some(r=>r.sourceId!==v.sourceId)||selected&&selected.sourceId!==v.sourceId)invalid();
  if(new Set(resources.map(r=>r.id)).size!==resources.length||new Set(discovered.map(r=>r.id)).size!==discovered.length)invalid();
  if((v.mode==='off')!==(selected===null)||v.mode==='off'&&(v.offsetUs!=='0'||v.documentUrl!==undefined))invalid();
- if(v.documentUrl!==undefined&&(!selected||!text(v.documentUrl,512)||!new RegExp('^'+encodedRoutePath('get_v1_media_subtitles_grant_resource_revision',{grant:'[A-Za-z0-9_-]{1,128}',resource:selected.id,revision:String(selected.revision)})+'$').test(v.documentUrl)))invalid();
+ if(v.documentUrl!==undefined&&(!selected||!text(v.documentUrl,512)||!new RegExp('^'+routePattern('get_v1_media_subtitles_grant_resource_revision').replace('{grant}','[A-Za-z0-9_-]{1,128}').replace('{resource}',selected.id).replace('{revision}',String(selected.revision))+'$').test(v.documentUrl)))invalid();
  if(selected&&(selected.pinned!==true||selected.renderer!==v.renderer))invalid();if(v.mode==='off'&&v.renderer!=='external_text')invalid();if(selected?.enabled&&v.renderer==='external_text'&&!v.documentUrl)invalid();if(v.renderer==='burn_in'&&v.documentUrl!==undefined)invalid();
  if(v.presentation!==undefined){const p=v.presentation;if(!record(p)||p.sessionId!==v.sessionId||p.generation!==v.generation||!text(p.streamUrl,1024)||!/^\/v1\/media\/[A-Za-z0-9_-]+(?:\/master\.m3u8)?$/.test(p.streamUrl)||!['direct','hls'].includes(String(p.mode))||!decimal(p.positionUs))invalid();}
  if(v.appliedRevision!==undefined&&(!integer(v.appliedRevision)||v.appliedRevision>v.revision))invalid();

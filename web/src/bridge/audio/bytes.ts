@@ -75,36 +75,57 @@ export class RangeReader implements ByteReader {
   get locked() { return this.limit !== Infinity; }
 
   private async block(index: number, signal?: AbortSignal): Promise<Uint8Array> {
+    if (signal?.aborted || this.abort.signal.aborted) throw new MediaReadError('cancelled', 'Reading was canceled.');
     const key = `${this.key}:${index}`;
     const hit = this.cache.get(key);
     if (hit) return hit;
     const pending = this.inflight.get(index);
-    if (pending) return pending;
+    if (pending) return waitFor(pending, signal);
+    const request = linkedSignal(signal, this.abort.signal);
     const task = (async () => {
       const start = index * BLOCK, end = this.size !== undefined ? Math.min(this.size, start + BLOCK) : start + BLOCK;
-      while (this.requested + (end - start) > this.limit && !this.abort.signal.aborted) await new Promise<void>(r => this.waiting.push(r));
-      if (this.abort.signal.aborted) throw new MediaReadError('cancelled', 'Reading was canceled.');
+      while (this.requested + (end - start) > this.limit && !request.signal.aborted) {
+        await new Promise<void>(resolve => {
+          const wake = () => { request.signal.removeEventListener('abort', wake); const i = this.waiting.indexOf(wake); if (i >= 0) this.waiting.splice(i, 1); resolve(); };
+          this.waiting.push(wake); request.signal.addEventListener('abort', wake, {once: true});
+          if (request.signal.aborted) wake();
+        });
+      }
+      if (request.signal.aborted) throw new MediaReadError('cancelled', 'Reading was canceled.');
       this.requested += end - start;
-      const response = await this.fetcher(this.url, {headers: {Range: `bytes=${start}-${end - 1}`}, signal: signal ? anySignal(signal, this.abort.signal) : this.abort.signal, credentials: 'omit', cache: 'no-store', redirect: 'error'});
+      const response = await this.fetcher(this.url, {headers: {Range: `bytes=${start}-${end - 1}`}, signal: request.signal, credentials: 'omit', cache: 'no-store', redirect: 'error'});
       if (response.status === 416) return new Uint8Array(0);
       if (response.status === 403) throw new MediaReadError('prepared_limit', 'The prepared track can’t be read further before it is committed.', 403);
       if (!response.ok) throw new MediaReadError('media_unavailable', 'The audio file could not be read.', response.status);
-      const bytes = new Uint8Array(await response.arrayBuffer());
-      try { this.onBytes?.(bytes.length); } catch { /* a listener is not the reader's problem */ }
-      // A server that ignored Range sends the whole file: take this block from it.
-      const data = response.status === 200 ? bytes.slice(start, end) : bytes;
+      let expected = end - start;
+      const invalid = async () => { try { await response.body?.cancel(); } catch {} throw new MediaReadError('invalid_range', 'The audio range could not be read.'); };
+      if (response.status === 206) {
+        const range = /^bytes (\d+)-(\d+)\/(\d+|\*)$/.exec(response.headers.get('Content-Range') ?? '');
+        if (!range) return invalid();
+        const first = Number(range[1]), last = Number(range[2]), total = range[3] === '*' ? undefined : Number(range[3]);
+        if (!Number.isSafeInteger(first) || !Number.isSafeInteger(last) || first !== start || last < first || last >= end || (total !== undefined && (!Number.isSafeInteger(total) || total <= last || (this.size !== undefined && total !== this.size))) || (last < end - 1 && total !== last + 1)) return invalid();
+        expected = last - first + 1;
+      } else if (response.status !== 200 || start !== 0) return invalid();
+      const bytes = await boundedBlock(response, expected, request.signal, count => { try { this.onBytes?.(count); } catch { /* a listener never breaks the read */ } });
+      if (response.status === 206 && bytes.length !== expected) throw new MediaReadError('invalid_range', 'The audio range ended too soon.');
+      // A small complete 200 response at the start is usable within the same byte bound.
+      const data = bytes;
       this.cache.put(key, data);
       return data;
-    })().finally(() => this.inflight.delete(index));
+    })().finally(() => { request.release(); this.inflight.delete(index); });
     this.inflight.set(index, task);
     return task;
   }
 
   async read(offset: number, length: number, signal?: AbortSignal): Promise<Uint8Array> {
+    if (signal?.aborted || this.abort.signal.aborted) throw new MediaReadError('cancelled', 'Reading was canceled.');
+    if (!Number.isSafeInteger(offset) || offset < 0 || !Number.isSafeInteger(length) || length < 0 || length > 64 * 1024 * 1024 || !Number.isSafeInteger(offset + length)) throw new MediaReadError('invalid_range', 'The audio range is too large.');
     if (this.size !== undefined) length = Math.max(0, Math.min(length, this.size - offset));
     if (length <= 0) return new Uint8Array(0);
     const first = Math.floor(offset / BLOCK), last = Math.floor((offset + length - 1) / BLOCK);
-    const parts = await Promise.all(Array.from({length: last - first + 1}, (_, i) => this.block(first + i, signal)));
+    const parts: Uint8Array[] = [];
+    // A large MP4 index does not occupy every browser connection at once.
+    for (let index = first; index <= last; index += 2) parts.push(...await Promise.all([this.block(index, signal), ...(index < last ? [this.block(index + 1, signal)] : [])]));
     const out = new Uint8Array(length);
     let written = 0;
     for (let i = 0; i < parts.length; i++) {
@@ -126,11 +147,40 @@ export class RangeReader implements ByteReader {
   }
 }
 
-function anySignal(a: AbortSignal, b: AbortSignal): AbortSignal {
-  const any = (AbortSignal as unknown as {any?: (s: AbortSignal[]) => AbortSignal}).any;
-  if (any) return any.call(AbortSignal, [a, b]);
-  const c = new AbortController();
-  const stop = () => c.abort();
-  a.addEventListener('abort', stop, {once: true}); b.addEventListener('abort', stop, {once: true});
-  return c.signal;
+function linkedSignal(a: AbortSignal | undefined, b: AbortSignal): {signal: AbortSignal; release(): void} {
+  const controller = new AbortController(), stop = () => controller.abort();
+  for (const signal of [a, b]) { signal?.addEventListener('abort', stop, {once: true}); if (signal?.aborted) stop(); }
+  return {signal: controller.signal, release: () => { a?.removeEventListener('abort', stop); b.removeEventListener('abort', stop); }};
+}
+
+function waitFor<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) return promise;
+  return new Promise((resolve, reject) => {
+    const abort = () => reject(new MediaReadError('cancelled', 'Reading was canceled.'));
+    signal.addEventListener('abort', abort, {once: true});
+    if (signal.aborted) abort();
+    promise.then(resolve, reject).finally(() => signal.removeEventListener('abort', abort));
+  });
+}
+
+async function boundedBlock(response: Response, max: number, signal: AbortSignal, onBytes: (count: number) => void): Promise<Uint8Array> {
+  const length = response.headers.get('Content-Length');
+  const tooLarge = () => new MediaReadError('invalid_range', 'The audio range is too large.');
+  if (length !== null && (!/^\d+$/.test(length) || Number(length) > max)) { try { await response.body?.cancel(); } catch {} throw tooLarge(); }
+  if (!response.body) return new Uint8Array(0);
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = []; let count = 0;
+  try {
+    for (;;) {
+      const next = await waitFor(reader.read(), signal);
+      if (next.done) break;
+      count += next.value.length;
+      if (count > max) throw tooLarge();
+      chunks.push(next.value);
+      onBytes(next.value.length);
+    }
+    const bytes = new Uint8Array(count); let at = 0;
+    for (const chunk of chunks) { bytes.set(chunk, at); at += chunk.length; }
+    return bytes;
+  } finally { void reader.cancel().catch(() => {}); reader.releaseLock(); }
 }

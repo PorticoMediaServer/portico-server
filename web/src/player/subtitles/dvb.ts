@@ -7,7 +7,7 @@
  * objects and colour tables stay until a page says to start afresh, so the state is carried from
  * packet to packet and what each page shows is kept, compactly, with its cue.
  */
-import {bitmapLimits, checkedSize, finishCues, yuvToRgb, type BitmapCue, type BitmapRect, type BitmapTrack} from './bitmap.ts';
+import {bitmapDecodeLimits, type BitmapDecodeLimits, bitmapLimits, checkedSize, finishCues, yuvToRgb, type BitmapCue, type BitmapRect, type BitmapTrack} from './bitmap.ts';
 import {readMatroskaSubtitles, type MatroskaPacket} from './matroska.ts';
 
 type Placement = {id: number; x: number; y: number};
@@ -146,7 +146,11 @@ function drawField(data: Uint8Array, from: number, to: number, region: Region, x
   }
 }
 
-export function parseDvbPackets(packets: readonly MatroskaPacket[], pages: readonly number[] | null): BitmapTrack {
+export function parseDvbPackets(packets: readonly MatroskaPacket[], pages: readonly number[] | null, lower: BitmapDecodeLimits = {}): BitmapTrack {
+  const limits = bitmapDecodeLimits(lower);
+  let statePixels = 0, retainedBytes = 0, workPixels = 0;
+  const work = (count: number) => { workPixels += count; return workPixels <= limits.maxWorkPixels; };
+  const removeRegion = (id: number) => { statePixels -= regions.get(id)?.pixels.length ?? 0; regions.delete(id); };
   let regions = new Map<number, Region>(), cluts = new Map<number, Clut>();
   let display = {width: 720, height: 576, x: 0, y: 0};
   let canvasWidth = 0, canvasHeight = 0, skipped = 0;
@@ -154,7 +158,8 @@ export function parseDvbPackets(packets: readonly MatroskaPacket[], pages: reado
   let open = null as {startMs: number; endMs: number} | null;
   const clutOf = (id: number) => { let c = cluts.get(id); if (!c && cluts.size < 256) { c = defaultClut(); cluts.set(id, c); } return c ?? defaultClut(); };
 
-  for (const packet of packets) {
+  packetsLoop: for (const packet of packets) {
+    if (cues.length >= bitmapLimits.maxCues) { skipped++; break; }
     const data = packet.data, view = new DataView(data.buffer, data.byteOffset, data.byteLength);
     let p = data.length >= 2 && data[0] === 0x20 && data[1] === 0x00 ? 2 : 0;
     let page = null as {timeout: number; list: Placement[]} | null;
@@ -165,20 +170,25 @@ export function parseDvbPackets(packets: readonly MatroskaPacket[], pages: reado
       if (pages && pages.length && !pages.includes(pageId)) continue;
       if (type === 0x10 && length >= 2) {
         const state = (data[body + 1]! >> 2) & 3;
-        if (state === 1 || state === 2) { regions = new Map(); cluts = new Map(); }
+        if (state === 1 || state === 2) { regions = new Map(); cluts = new Map(); statePixels = 0; }
         page = {timeout: data[body]!, list: []};
         for (let q = body + 2; q + 6 <= end && page.list.length < bitmapLimits.maxPictures; q += 6) page.list.push({id: data[q]!, x: view.getUint16(q + 2), y: view.getUint16(q + 4)});
       } else if (type === 0x11 && length >= 10) {
         const id = data[body]!, fill = (data[body + 1]! >> 3) & 1, width = view.getUint16(body + 2), height = view.getUint16(body + 4);
         const depthCode = (data[body + 6]! >> 2) & 7, depth = depthCode === 1 ? 2 : depthCode === 2 ? 4 : depthCode === 3 ? 8 : 0;
-        if (!depth || !checkedSize(width, height) || (!regions.has(id) && regions.size >= 256)) { regions.delete(id); skipped++; continue; }
+        if (!depth || !checkedSize(width, height) || (!regions.has(id) && regions.size >= 256)) { removeRegion(id); skipped++; continue; }
         let region = regions.get(id);
         const fresh = !region || region.width !== width || region.height !== height;
+        if (fresh) {
+          const count = width * height;
+          if (statePixels - (region?.pixels.length ?? 0) + count > limits.maxStatePixels || !work(count)) { removeRegion(id); skipped++; continue; }
+          statePixels += count - (region?.pixels.length ?? 0);
+        }
         if (!region || fresh) region = {width, height, depth, clut: 0, pixels: new Uint8Array(width * height), objects: []};
         region.depth = depth;
         region.clut = data[body + 7]!;
         const background = depth === 8 ? data[body + 8]! : depth === 4 ? data[body + 9]! >> 4 : (data[body + 9]! >> 2) & 3;
-        if (fill || fresh) region.pixels.fill(background);
+        if (fill || fresh) { if (!fresh && !work(region.pixels.length)) { removeRegion(id); skipped++; continue; } region.pixels.fill(background); }
         region.objects = [];
         for (let q = body + 10; q + 6 <= end && region.objects.length < 256;) {
           const kind = data[q + 2]! >> 6;
@@ -204,7 +214,9 @@ export function parseDvbPackets(packets: readonly MatroskaPacket[], pages: reado
         const top = view.getUint16(body + 3), bottom = view.getUint16(body + 5), first = body + 7;
         if (first + top + bottom > end) { skipped++; continue; }
         for (const region of regions.values()) for (const placed of region.objects) {
+          if (!work(1)) { skipped++; break packetsLoop; }
           if (placed.id !== id) continue;
+          if (!work((top + bottom) * 8 + region.pixels.length * 2)) { skipped++; break packetsLoop; }
           drawField(data, first, first + top, region, placed.x, placed.y, keepOne);
           // An object with no second field repeats its first on the lines between.
           if (bottom) drawField(data, first + top, first + top + bottom, region, placed.x, placed.y + 1, keepOne);
@@ -220,10 +232,16 @@ export function parseDvbPackets(packets: readonly MatroskaPacket[], pages: reado
     if (open && open.endMs > at) open.endMs = at;
     open = null;
     const shown: Shown[] = [];
+    let framePixels = 0;
     for (const entry of page.list) {
       const region = regions.get(entry.id);
       if (!region) continue;
-      shown.push({x: entry.x + display.x, y: entry.y + display.y, width: region.width, height: region.height, packed: packRuns(region.pixels), table: clutOf(region.clut)[region.depth].slice()});
+      const count = region.pixels.length, table = clutOf(region.clut)[region.depth];
+      if (framePixels + count > limits.maxFramePixels || retainedBytes + count + 1 + table.byteLength > limits.maxRetainedBytes || !work(count)) { skipped++; continue; }
+      const packed = packRuns(region.pixels);
+      framePixels += count;
+      retainedBytes += packed.byteLength + table.byteLength;
+      shown.push({x: entry.x + display.x, y: entry.y + display.y, width: region.width, height: region.height, packed, table: table.slice()});
     }
     if (!shown.length) continue;
     if (cues.length >= bitmapLimits.maxCues) { skipped++; continue; }

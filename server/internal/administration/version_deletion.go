@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"portico.local/server/internal/entityid"
+	"time"
 
 	"portico.local/server/internal/compactcatalog"
 )
@@ -140,6 +141,19 @@ func (s *Service) DeleteVersion(ctx context.Context, auth Authorize, item, asset
 			r.FilesDeleted, r.Bytes = 1, f.Bytes
 		}
 	}
+	if r.Removed && !f.Shared {
+		// Disk deletion has already happened. Record that fact even if the
+		// request is cancelled or title/owner authority changes before unlinking
+		// its catalogue association. This transaction grants no new action.
+		reconcile, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		err = s.transaction(reconcile, nil, func(tx *sql.Tx) error {
+			return markDeletedFilesTx(reconcile, tx, []DeleteFile{f})
+		})
+		cancel()
+		if err != nil {
+			return out, err
+		}
+	}
 	err = s.transaction(ctx, auth, func(tx *sql.Tx) error {
 		if r.Removed {
 			current, key, e := versionTarget(ctx, tx, item, asset)
@@ -148,11 +162,6 @@ func (s *Service) DeleteVersion(ctx context.Context, auth Authorize, item, asset
 			}
 			if key != in.PreviewKey {
 				return ErrConflict
-			}
-			if !f.Shared {
-				if e = markDeletedFilesTx(ctx, tx, []DeleteFile{f}); e != nil {
-					return e
-				}
 			}
 			var id int64
 			if e = tx.QueryRowContext(ctx, `SELECT id FROM catalog_assets WHERE token=?`, asset).Scan(&id); e != nil {

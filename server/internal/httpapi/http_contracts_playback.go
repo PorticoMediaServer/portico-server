@@ -11,7 +11,21 @@ import (
 	operations "portico.local/server/internal/operations"
 	playback "portico.local/server/internal/playback"
 	preparedmedia "portico.local/server/internal/preparedmedia"
+	"reflect"
 )
+
+// AnalysisControlResponse describes the existing flat responses: a queued job
+// for retry, or an acknowledgement for pause, resume and cancel.
+type AnalysisControlResponse struct{}
+
+func (AnalysisControlResponse) JSONSchema() map[string]any {
+	job, _ := apikit.Schema(reflect.TypeFor[ingestion.Job]())
+	acknowledgement, _ := apikit.Schema(reflect.TypeFor[struct {
+		Status string `json:"status"`
+	}]())
+	// The fuller shape comes first so tolerant decoding preserves job fields.
+	return map[string]any{"anyOf": []any{job, acknowledgement}}
+}
 
 func registerPlaybackHTTPContracts(registry *apikit.Registry) error {
 	// internal/httpapi/activity.go:36
@@ -62,56 +76,56 @@ func registerPlaybackHTTPContracts(registry *apikit.Registry) error {
 		return err
 	}
 	// internal/httpapi/lyrics.go:118
-	if err := apikit.RegisterHTTP[lyrics.Mutation, lyrics.Revision](registry, apikit.Metadata{ID: "post_items_id_lyrics", Method: "POST", Path: "/v1/items/{id}/lyrics", Summary: "Run title lyrics", Access: apikit.Device, Requires: apikit.ScopeLibrary, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, BodyLimit: 2097152, Status: 200, Query: []string{"sessionId", "sourceId", "sourceVersion"}, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[lyrics.Mutation, lyrics.Revision](registry, apikit.Metadata{ID: "post_items_id_lyrics", Method: "POST", Path: "/v1/items/{id}/lyrics", Summary: "Run title lyrics", Access: apikit.Device, Requires: apikit.ScopeLibrary, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, BodyLimit: 2097152, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/lyrics.go:118
-	if err := apikit.RegisterHTTP[lyrics.Mutation, lyrics.Revision](registry, apikit.Metadata{ID: "patch_items_id_lyrics_resource_offset", Method: "PATCH", Path: "/v1/items/{id}/lyrics/{resource}/offset", Summary: "Change title lyrics offset", Access: apikit.Device, Requires: apikit.ScopeLibrary, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, BodyLimit: 2097152, Status: 200, Query: []string{"sessionId", "sourceId", "sourceVersion"}, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[lyrics.Mutation, lyrics.Revision](registry, apikit.Metadata{ID: "patch_items_id_lyrics_resource_offset", Method: "PATCH", Path: "/v1/items/{id}/lyrics/{resource}/offset", Summary: "Change title lyrics offset", Access: apikit.Device, Requires: apikit.ScopeLibrary, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, BodyLimit: 2097152, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/lyrics.go:118
-	if err := apikit.RegisterHTTP[lyrics.Mutation, lyrics.Revision](registry, apikit.Metadata{ID: "delete_items_id_lyrics_resource", Method: "DELETE", Path: "/v1/items/{id}/lyrics/{resource}", Summary: "Remove title lyrics", Access: apikit.Device, Requires: apikit.ScopeLibrary, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, BodyLimit: 2097152, Status: 200, Query: []string{"sessionId", "sourceId", "sourceVersion"}, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[lyrics.Mutation, lyrics.Revision](registry, apikit.Metadata{ID: "delete_items_id_lyrics_resource", Method: "DELETE", Path: "/v1/items/{id}/lyrics/{resource}", Summary: "Remove title lyrics", Access: apikit.Device, Requires: apikit.ScopeLibrary, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, BodyLimit: 2097152, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/lyrics.go:118
-	if err := apikit.RegisterHTTP[lyrics.SearchInput, lyrics.SearchResult](registry, apikit.Metadata{ID: "post_items_id_lyrics_search", Method: "POST", Path: "/v1/items/{id}/lyrics/search", Summary: "Run title lyrics search", Access: apikit.Device, Requires: apikit.ScopeLibrary, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, BodyLimit: 2097152, Status: 200, Query: []string{"sessionId", "sourceId", "sourceVersion"}, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[lyrics.SearchInput, lyrics.SearchResult](registry, apikit.Metadata{ID: "post_items_id_lyrics_search", Method: "POST", Path: "/v1/items/{id}/lyrics/search", Summary: "Run title lyrics search", Access: apikit.Device, Requires: apikit.ScopeLibrary, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, BodyLimit: 2097152, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/lyrics.go:118
-	if err := apikit.RegisterHTTP[lyrics.Choose, lyrics.Selection](registry, apikit.Metadata{ID: "put_items_id_lyrics_selection", Method: "PUT", Path: "/v1/items/{id}/lyrics/selection", Summary: "Save title lyrics selection", Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, BodyLimit: 2097152, Status: 200, Query: []string{"sessionId", "sourceId", "sourceVersion"}, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[lyrics.Choose, lyrics.Selection](registry, apikit.Metadata{ID: "put_items_id_lyrics_selection", Method: "PUT", Path: "/v1/items/{id}/lyrics/selection", Summary: "Save title lyrics selection", Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, BodyLimit: 2097152, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/lyrics.go:262
 	if err := apikit.RegisterHTTP[struct {
 		Enabled          bool  "json:\"enabled\""
 		ExpectedRevision int64 "json:\"expectedRevision\""
-	}, lyrics.ProviderSettings](registry, apikit.Metadata{ID: "put_lyrics_provider", Method: "PUT", Path: "/v1/lyrics/provider", Summary: "Save lyrics provider", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	}, lyrics.ProviderSettings](registry, apikit.Metadata{ID: "put_lyrics_provider", Method: "PUT", Path: "/v1/lyrics/provider", Summary: "Save lyrics provider", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, BodyLimit: 2 << 20, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/media_analysis.go:108
-	if err := apikit.RegisterHTTP[struct{}, mediaanalysis.View](registry, apikit.Metadata{ID: "get_items_id_analysis", Method: "GET", Path: "/v1/items/{id}/analysis", Summary: "Read title analysis", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.PageSized, BodyLimit: 0, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[struct{}, mediaanalysis.View](registry, apikit.Metadata{ID: "get_items_id_analysis", Method: "GET", Path: "/v1/items/{id}/analysis", Summary: "Read title analysis", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.PageSized, BodyLimit: 0, Status: 200, Query: []string{"sourceId", "sourceRevision", "mappingRevision", "sessionId", "generation", "positionUS"}, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/media_analysis.go:108
-	if err := apikit.RegisterHTTP[struct{}, mediaanalysis.Artifact](registry, apikit.Metadata{ID: "get_items_id_analysis_artifacts_artifact", Method: "GET", Path: "/v1/items/{id}/analysis/artifacts/{artifact}", Summary: "Read title analysis artifacts", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.PageSized, BodyLimit: 0, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
-		return err
-	}
-	// internal/httpapi/media_analysis.go:108
-	if err := apikit.RegisterHTTP[struct {
-		mediaanalysis.Target
-		Action string `json:"action"`
-	}, ingestion.Job](registry, apikit.Metadata{ID: "post_items_id_analysis_jobs", Method: "POST", Path: "/v1/items/{id}/analysis/jobs", Summary: "Run title analysis jobs", Access: apikit.Device, Requires: apikit.ScopeLibrary, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, BodyLimit: 2097152, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[struct{}, mediaanalysis.Artifact](registry, apikit.Metadata{ID: "get_items_id_analysis_artifacts_artifact", Method: "GET", Path: "/v1/items/{id}/analysis/artifacts/{artifact}", Summary: "Read title analysis artifacts", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.PageSized, BodyLimit: 0, Status: 200, Query: []string{"sourceId", "sourceRevision", "mappingRevision", "sessionId", "generation", "positionUS"}, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/media_analysis.go:108
 	if err := apikit.RegisterHTTP[struct {
 		mediaanalysis.Target
 		Action string `json:"action"`
-	}, ingestion.Job](registry, apikit.Metadata{ID: "post_items_id_analysis_jobs_job_control", Method: "POST", Path: "/v1/items/{id}/analysis/jobs/{job}/control", Summary: "Run title analysis jobs control", Access: apikit.Device, Requires: apikit.ScopeLibrary, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, BodyLimit: 2097152, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	}, ingestion.Job](registry, apikit.Metadata{ID: "post_items_id_analysis_jobs", Method: "POST", Path: "/v1/items/{id}/analysis/jobs", Summary: "Run title analysis jobs", Access: apikit.Owner, Requires: apikit.ScopeLibrary, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, BodyLimit: 2097152, Status: 202, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/media_analysis.go:108
-	if err := apikit.RegisterHTTP[mediaanalysis.Mutation, mediaanalysis.MutationResult](registry, apikit.Metadata{ID: "post_items_id_analysis_markers", Method: "POST", Path: "/v1/items/{id}/analysis/markers", Summary: "Run title analysis markers", Access: apikit.Device, Requires: apikit.ScopeLibrary, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, BodyLimit: 2097152, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[struct {
+		mediaanalysis.Target
+		Action string `json:"action"`
+	}, AnalysisControlResponse](registry, apikit.Metadata{ID: "post_items_id_analysis_jobs_job_control", Method: "POST", Path: "/v1/items/{id}/analysis/jobs/{job}/control", Summary: "Run title analysis jobs control", Access: apikit.Owner, Requires: apikit.ScopeLibrary, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, BodyLimit: 2097152, Status: 200, SuccessStatuses: []int{202}, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+		return err
+	}
+	// internal/httpapi/media_analysis.go:108
+	if err := apikit.RegisterHTTP[mediaanalysis.Mutation, mediaanalysis.MutationResult](registry, apikit.Metadata{ID: "post_items_id_analysis_markers", Method: "POST", Path: "/v1/items/{id}/analysis/markers", Summary: "Run title analysis markers", Access: apikit.Owner, Requires: apikit.ScopeLibrary, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, BodyLimit: 2097152, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/media_analysis.go:108
@@ -121,7 +135,7 @@ func registerPlaybackHTTPContracts(registry *apikit.Registry) error {
 		Operations       []string                  `json:"operations"`
 		Trickplay        catalog.TrickplaySettings `json:"trickplay"`
 		ExpectedRevision int64                     `json:"expectedRevision"`
-	}, catalog.ScanPolicy](registry, apikit.Metadata{ID: "put_items_id_analysis_policy", Method: "PUT", Path: "/v1/items/{id}/analysis/policy", Summary: "Save title analysis policy", Access: apikit.Device, Requires: apikit.ScopeLibrary, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, BodyLimit: 2097152, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	}, catalog.ScanPolicy](registry, apikit.Metadata{ID: "put_items_id_analysis_policy", Method: "PUT", Path: "/v1/items/{id}/analysis/policy", Summary: "Save title analysis policy", Access: apikit.Owner, Requires: apikit.ScopeLibrary, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, BodyLimit: 2097152, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/playback_chapters.go:12
@@ -215,7 +229,7 @@ func registerPlaybackHTTPContracts(registry *apikit.Registry) error {
 	// internal/httpapi/activity.go:36
 	if err := apikit.RegisterHTTP[struct {
 		IdempotencyKey string `json:"idempotencyKey"`
-	}, operations.Job](registry, apikit.Metadata{ID: "post_libraries_id_lyrics_fetch", Method: "POST", Path: "/v1/libraries/{id}/lyrics/fetch", Summary: "Run library lyrics fetch", Access: apikit.Owner, Requires: apikit.ScopeLibrary, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	}, operations.Job](registry, apikit.Metadata{ID: "post_libraries_id_lyrics_fetch", Method: "POST", Path: "/v1/libraries/{id}/lyrics/fetch", Summary: "Run library lyrics fetch", Access: apikit.Owner, Requires: apikit.ScopeLibrary, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, BodyLimit: 2 << 20, Status: 202, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	return nil

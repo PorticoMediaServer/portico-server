@@ -147,11 +147,12 @@ export type SharedStreamEnvironment = Readonly<{
   channel(name: string): {post(message: unknown): void; listen(listener: (message: unknown) => void): () => void; close(): void};
 }>;
 
-type Relay = {kind: 'event'; event: RawStreamEvent} | {kind: 'open'} | {kind: 'lost'} | {kind: 'who'};
+type Relay = {kind: 'event'; event: RawStreamEvent} | {kind: 'open'; cursor?: string} | {kind: 'lost'} | {kind: 'who'};
 const relay = (message: unknown): Relay | undefined => {
-  const m = message as {kind?: unknown; event?: {id?: unknown; event?: unknown; data?: unknown}} | null;
+  const m = message as {kind?: unknown; event?: {id?: unknown; event?: unknown; data?: unknown}; cursor?: unknown} | null;
   if (!m || typeof m !== 'object') return undefined;
-  if (m.kind === 'open' || m.kind === 'lost' || m.kind === 'who') return {kind: m.kind};
+  if (m.kind === 'open') return {kind: 'open', cursor: typeof m.cursor === 'string' && m.cursor.length <= 128 ? m.cursor : undefined};
+  if (m.kind === 'lost' || m.kind === 'who') return {kind: m.kind};
   if (m.kind !== 'event' || !m.event || typeof m.event.data !== 'string' || m.event.data.length > 262144) return undefined;
   return {kind: 'event', event: {id: typeof m.event.id === 'string' ? m.event.id : undefined, event: typeof m.event.event === 'string' ? m.event.event : undefined, data: m.event.data}};
 };
@@ -171,6 +172,7 @@ export function sharedStreamOpener(name: string, open: StreamOpener, env: Shared
     const stop = () => inner.abort();
     signal.addEventListener('abort', stop, {once: true});
     const channel = env.channel(name);
+    let acknowledged = false;
     let last = lastEventId, holding = false, failed: unknown, lost: (() => void) | undefined;
     // An empty frame is not an event; it tells the feed the stream is alive, as the first bytes of a real one would.
     const alive = () => { if (!inner.signal.aborted) onEvent({data: '{}'}); };
@@ -182,9 +184,15 @@ export function sharedStreamOpener(name: string, open: StreamOpener, env: Shared
     const off = channel.listen(message => {
       const m = relay(message);
       if (!m) return;
-      if (holding) { if (m.kind === 'who') channel.post({kind: 'open'}); return; }
+      if (holding) { if (m.kind === 'who') channel.post({kind: 'open', cursor: last}); return; }
       if (m.kind === 'event') heard(m.event);
-      else if (m.kind === 'open') alive();
+      else if (m.kind === 'open') {
+        // The leader cannot replay what this tab missed while absent. Invalidate once, without
+        // manufacturing a server cursor or refetching on every acknowledgement.
+        if (!acknowledged && m.cursor !== lastEventId) onEvent({data: '{}', resync: true});
+        acknowledged = true;
+        alive();
+      }
       else if (m.kind === 'lost') lost?.();
     });
     try {
@@ -196,7 +204,7 @@ export function sharedStreamOpener(name: string, open: StreamOpener, env: Shared
         if (inner.signal.aborted) return;
         holding = true;
         try {
-          channel.post({kind: 'open'});
+          channel.post({kind: 'open', cursor: last});
           await open(last, event => { channel.post({kind: 'event', event}); heard(event); }, inner.signal);
         } catch (error) {
           failed = error ?? failure('event_stream_failed');
