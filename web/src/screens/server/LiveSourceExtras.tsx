@@ -8,7 +8,7 @@ export {guideOnlyPatch} from '@core/server-admin/panel-logic.ts';
 import {problem, useAction, useRead} from '../../admin/console';
 import {createOperationIds} from './operation-ids';
 import {useSession} from '../../app/session';
-import {LinesField} from '../settings/ServerForms';
+import {liveSourceChoicesService, type LiveSourceChoicePage} from '@core/administration.ts';
 import {useI18n} from '../../app/i18n';
 import {Badge, Button, Checkbox, ConfirmDialog, Dialog, Input, Loading, Menu, Notice, Segmented, Select, SettingsGroup, SettingsRow, Switch, Text, type MenuItem} from '../../ui';
 
@@ -72,15 +72,11 @@ export function SourceSettingsDialog({src, guides, onClose, onChanged}: {src: {i
             {guideOnly ? <Text variant="caption" tone="tertiary">{t('web.liveSource.guideOnlyNote')}</Text> : (
               <Select label={t('web.liveSource.guideFrom')} help={t('web.liveSource.guideFromHelp')} value={draft.guideSourceId || 'own'} onChange={e => patch({guideSourceId: e.target.value === 'own' ? '' : e.target.value})} options={[{value: 'own', label: t('web.liveSource.ownGuide')}, ...guides.filter(g => g.id !== src.id).map(g => ({value: g.id, label: g.name}))]} />
             )}
-            {/* Bringing in only part of a large line-up: named groups, or named channels. Empty means all of them. */}
+            {/* Bringing in only part of a large line-up: ticked from what the source really has. Nothing ticked means all of it. */}
             {!guideOnly ? (
-              <div style={{display: 'flex', flexDirection: 'column', gap: 8}}>
-                <Text variant="label" tone="secondary">{t('server.live.onlyGroups')}</Text>
-                <LinesField label={t('server.live.onlyGroups')} value={draft.enabledGroups} onChange={enabledGroups => patch({enabledGroups})} />
-                <Text variant="caption" tone="tertiary">{t('server.live.onlyGroupsHelp')}</Text>
-                <Text variant="label" tone="secondary">{t('server.live.onlyChannels')}</Text>
-                <LinesField label={t('server.live.onlyChannels')} value={draft.enabledChannels} onChange={enabledChannels => patch({enabledChannels})} />
-                <Text variant="caption" tone="tertiary">{t('server.live.onlyChannelsHelp')}</Text>
+              <div style={{display: 'flex', flexDirection: 'column', gap: 12}}>
+                <SourceChoicePicker sourceId={src.id} kind="groups" label={t('server.live.onlyGroups')} help={t('server.live.pickGroupsHelp')} value={draft.enabledGroups} onChange={enabledGroups => patch({enabledGroups})} />
+                <SourceChoicePicker sourceId={src.id} kind="channels" label={t('server.live.onlyChannels')} help={t('server.live.pickChannelsHelp')} value={draft.enabledChannels} onChange={enabledChannels => patch({enabledChannels})} />
               </div>
             ) : null}
             {!guideOnly ? (
@@ -357,5 +353,68 @@ export function RecordingRulesGroup({sources}: {sources: readonly {id: string; n
       <ConfirmDialog open={!!remove} onOpenChange={o => !o && setRemove(null)} title={t('web.recordingRules.removeTitle', {name: remove?.name ?? ''})} body={t('web.recordingRules.removeBody')} confirmLabel={t('web.recordingRules.remove')} busy={action.busy} onConfirm={() => { const g = remove; if (g) { const key = JSON.stringify({id: g.id, revision: g.revision}); void action.run(async () => { await admin.send(`/v1/admin/dvr/recording-groups/${encodeURIComponent(g.id)}?expectedRevision=${g.revision}&operationId=${ruleOpIds.forPayload(key)}`, 'DELETE'); ruleOpIds.release(); setRemove(null); read.reload(); }); } }} />
     </SettingsGroup>
     </>
+  );
+}
+
+type SourceChoice = LiveSourceChoicePage['items'][number];
+
+/**
+ * Choose some of a source's groups or channels from what it really has: a search field, the
+ * matches as a checklist a page at a time, and what is chosen so far with a way to clear it.
+ * Something chosen earlier that the source no longer lists stays chosen until it is unticked.
+ */
+function SourceChoicePicker({sourceId, kind, label, help, value, onChange}: {sourceId: string; kind: 'groups' | 'channels'; label: string; help: string; value: readonly string[]; onChange: (next: readonly string[]) => void}) {
+  const {t} = useI18n();
+  const {api} = useSession();
+  const [open, setOpen] = useState(value.length > 0);
+  const [query, setQuery] = useState('');
+  const [items, setItems] = useState<readonly SourceChoice[]>([]);
+  const [total, setTotal] = useState(0);
+  const [cursor, setCursor] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [failed, setFailed] = useState('');
+  useEffect(() => {
+    if (!open) return;
+    let live = true;
+    // What is typed is searched once typing pauses; a new search starts the list again.
+    const timer = setTimeout(() => {
+      setLoading(true); setFailed('');
+      liveSourceChoicesService(<T,>(path: string, method?: string, body?: unknown) => api.request<T>(path, method, body), sourceId).list(kind, '', 50, query.trim())
+        .then(page => { if (live) { setItems(page.items); setTotal(page.total); setCursor(page.nextCursor); } }, e => { if (live) setFailed(problem(e)); })
+        .finally(() => { if (live) setLoading(false); });
+    }, query ? 300 : 0);
+    return () => { live = false; clearTimeout(timer); };
+  }, [open, api, sourceId, kind, query]);
+  const more = () => {
+    setLoading(true);
+    liveSourceChoicesService(<T,>(path: string, method?: string, body?: unknown) => api.request<T>(path, method, body), sourceId).list(kind, cursor, 50, query.trim())
+      .then(page => { setItems(prev => [...prev, ...page.items.filter(x => !prev.some(p => p.id === x.id))]); setCursor(page.nextCursor); }, e => setFailed(problem(e)))
+      .finally(() => setLoading(false));
+  };
+  const toggle = (id: string, on: boolean) => onChange(on ? [...value.filter(x => x !== id), id] : value.filter(x => x !== id));
+  const gone = value.filter(id => !items.some(x => x.id === id));
+  return (
+    <fieldset style={{border: 0, padding: 0, margin: 0, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 8}}>
+      <legend style={{padding: 0, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap'}}>
+        <Text variant="label" tone="secondary">{label}</Text>
+        <Text variant="caption" tone="tertiary">{value.length ? t('server.live.chosenCount', {count: value.length}) : t('server.live.chosenAll')}</Text>
+        {value.length ? <Button size="sm" variant="link" label={t('server.live.chooseAll')} onClick={() => onChange([])} /> : null}
+        {!open ? <Button size="sm" variant="link" label={t('server.live.choose')} onClick={() => setOpen(true)} /> : null}
+      </legend>
+      {open ? (
+        <>
+          <Input hideLabel type="search" label={t(kind === 'groups' ? 'server.live.searchGroups' : 'server.live.searchChannels')} placeholder={t(kind === 'groups' ? 'server.live.searchGroups' : 'server.live.searchChannels')} value={query} onChange={e => setQuery(e.target.value)} />
+          {failed ? <Notice tone="error" compact>{failed}</Notice> : null}
+          <div style={{display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 240, overflowY: 'auto'}}>
+            {items.map(x => <Checkbox key={x.id} checked={value.includes(x.id)} onCheckedChange={on => toggle(x.id, on)} label={x.name || x.id} help={kind === 'groups' ? t('server.live.channelCount', {count: x.channels}) : x.group || undefined} />)}
+            {/* Chosen before and not in this list (another search, or no longer in the source): still shown, so it can be unticked. */}
+            {gone.map(id => <Checkbox key={'chosen:' + id} checked onCheckedChange={() => toggle(id, false)} label={id} />)}
+            {!items.length && !gone.length && !loading && !failed ? <Text variant="caption" tone="tertiary">{t('server.live.noMatches')}</Text> : null}
+          </div>
+          {cursor ? <div><Button size="sm" variant="ghost" label={t('action.showMore')} loading={loading} onClick={more} /></div> : null}
+          <Text variant="caption" tone="tertiary">{total ? `${t('server.live.choiceTotal', {count: total})} ${help}` : help}</Text>
+        </>
+      ) : null}
+    </fieldset>
   );
 }

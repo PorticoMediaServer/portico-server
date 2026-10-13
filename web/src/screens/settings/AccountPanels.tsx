@@ -11,9 +11,10 @@ import s from './Settings.module.css';
 
 // Few members ever make a token: the list and its dialogs are a chunk of their own, outside the first load of Settings.
 const AccessTokens = React.lazy(() => import('./AccessTokens'));
+const RemoteControls = React.lazy(() => import('./RemoteControls'));
 
 /** Panels that bring their own group and heading; the rest are rows inside their section's group. */
-const GROUP_PANELS: ReadonlySet<SettingsCustomId> = new Set(['identity', 'profiles', 'password', 'twoStep', 'devices', 'porticoAccount', 'about', 'accessTokens', 'privacyNote']);
+const GROUP_PANELS: ReadonlySet<SettingsCustomId> = new Set(['identity', 'profiles', 'password', 'twoStep', 'devices', 'porticoAccount', 'about', 'accessTokens', 'privacyNote', 'remoteControls']);
 export const isGroupPanel = (id: SettingsCustomId) => GROUP_PANELS.has(id);
 
 /** The account pages' `custom` rows (settings-structure.ts), drawn with the web's own panels. */
@@ -30,6 +31,7 @@ export function AccountPanel({id}: {id: SettingsCustomId}) {
     case 'deviceName': return <DeviceNameRow />;
     case 'about': return <About />;
     case 'privacyNote': return <PrivacyNote />;
+    case 'remoteControls': return <Suspense fallback={null}><RemoteControls /></Suspense>;
     case 'accessTokens': return <Suspense fallback={null}><AccessTokens /></Suspense>;
     default: return null;
   }

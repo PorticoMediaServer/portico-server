@@ -20,6 +20,7 @@ import {AddressesRow, CertificateStatusRow, ConnectionRow, OwnCertificateStatusR
 import {AccountConnectionPanel, IdentityRows} from '../server/General';
 import {DiskUsagePanel, MissingTitlesPanel, RestartPanel, UpdatesPanel} from '../server/Maintenance';
 import {ClientReportsPanel} from '../server/ClientReports';
+import {BackgroundPauseRow, DownloadUsagePanel, FFmpegStatusRow, ResourceUsagePanel, StorageStatusPanel} from '../server/StorageStatus';
 import {RemoteSourcesPanel} from '../server/Storage';
 import {BackupsGroup} from '../server/Backups';
 import {RetentionRows, ScheduledJobsPanel, WindowsPanel} from '../server/MaintenanceWindows';
@@ -30,7 +31,7 @@ import {PlayHistoryPanel} from '../server/PlayHistory';
 import {StatePermissionsCard} from '../server/StatePermissions';
 
 /** Panels that are rows inside their section's group; every other panel brings its own surface and heading. */
-const ROW_PANELS: ReadonlySet<SettingsCustomId> = new Set(['server.certificateStatus', 'server.addresses', 'server.connection', 'server.ownCertificateStatus', 'server.retention', 'server.detailWindow', 'server.identity']);
+const ROW_PANELS: ReadonlySet<SettingsCustomId> = new Set(['server.certificateStatus', 'server.addresses', 'server.connection', 'server.ownCertificateStatus', 'server.backgroundPause', 'server.ffmpegStatus', 'server.retention', 'server.detailWindow', 'server.identity']);
 export const panelIsGroup = (id: SettingsCustomId) => !ROW_PANELS.has(id);
 
 /** The Server pages' `custom` rows (settings-structure.ts), drawn with the web's own panels. */
@@ -81,6 +82,11 @@ export function ServerPanel({id}: {id: SettingsCustomId}) {
     case 'server.updates': return <UpdatesPanel />;
     case 'server.restart': return <RestartPanel />;
     case 'server.clientReports': return <ClientReportsPanel />;
+    case 'server.backgroundPause': return <BackgroundPauseRow />;
+    case 'server.ffmpegStatus': return <FFmpegStatusRow />;
+    case 'server.resourceUsage': return <ResourceUsagePanel />;
+    case 'server.storageStatus': return <StorageStatusPanel />;
+    case 'server.downloadUsage': return <DownloadUsagePanel />;
     default: return null;
   }
 }

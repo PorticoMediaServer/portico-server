@@ -165,7 +165,7 @@ export function ServerSettingRowView({row, anchor}: {row: ServerSettingRow; anch
  * Remove, and a field to add another. The server checks what an entry means when the page is
  * saved; nothing typed here is sent before that.
  */
-export function LinesField({label, example, value, onChange}: {label: string; example?: string; value: readonly string[]; onChange: (next: readonly string[]) => void}) {
+function LinesField({label, example, value, onChange}: {label: string; example?: string; value: readonly string[]; onChange: (next: readonly string[]) => void}) {
   const {t} = useI18n();
   const [typed, setTyped] = React.useState('');
   return (
