@@ -25,12 +25,10 @@ func socialContract[Req, Resp any](r *apikit.Registry, pattern string, h http.Ha
 	}
 	if parts[1] == "/v1/cast/redeem" || parts[1] == "/v1/cast/reconnect" {
 		m.Access = apikit.Public
-		m.Requires = apikit.ScopeSession
 		m.Lane = apikit.Security
 	}
 	if parts[0] == "PUT" && parts[1] == "/v1/cast/configuration" {
 		m.Access = apikit.Owner
-		m.Requires = apikit.ScopeAdmin
 		m.Cost = apikit.Constant
 	}
 	if strings.HasSuffix(parts[1], "/events") {
@@ -40,6 +38,9 @@ func socialContract[Req, Resp any](r *apikit.Registry, pattern string, h http.Ha
 	if strings.HasSuffix(parts[1], "/inbox/wait") {
 		m.Query = []string{"waitSeconds"}
 		m.Lane = apikit.Realtime
+	}
+	if scope, ok := routeScopes[pattern]; ok {
+		m.Requires = scope
 	}
 	if e := apikit.RegisterRaw(r, apikit.RawRoute[Req, Resp]{Metadata: m, Serve: func(w http.ResponseWriter, q *http.Request) { w.Header().Set("Cache-Control", "no-store"); h(w, q) }}); e != nil {
 		panic(e)

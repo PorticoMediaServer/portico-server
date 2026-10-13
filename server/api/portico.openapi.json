@@ -5867,7 +5867,7 @@
         "x-cost": "page_sized",
         "x-lane": "default",
         "x-max-body-bytes": 262144,
-        "x-scope": "playback"
+        "x-scope": "session"
       }
     },
     "/v1/cast/bootstrap/{id}": {
@@ -5944,7 +5944,7 @@
         "x-access": "device",
         "x-cost": "page_sized",
         "x-lane": "browsing",
-        "x-scope": "playback"
+        "x-scope": "session"
       }
     },
     "/v1/cast/configuration": {
@@ -5982,7 +5982,7 @@
         "x-access": "device",
         "x-cost": "page_sized",
         "x-lane": "browsing",
-        "x-scope": "playback"
+        "x-scope": "read"
       },
       "put": {
         "operationId": "social_put_v1_cast_configuration",
@@ -6065,7 +6065,7 @@
         "x-access": "device",
         "x-cost": "page_sized",
         "x-lane": "default",
-        "x-scope": "playback"
+        "x-scope": "session"
       }
     },
     "/v1/cast/reconnect": {
@@ -9121,7 +9121,7 @@
         "x-access": "device",
         "x-cost": "page_sized",
         "x-lane": "browsing",
-        "x-scope": "playback"
+        "x-scope": "read"
       },
       "post": {
         "operationId": "social_post_v1_groups",
@@ -10608,7 +10608,7 @@
         "x-access": "device",
         "x-cost": "page_sized",
         "x-lane": "browsing",
-        "x-scope": "playback"
+        "x-scope": "read"
       }
     },
     "/v1/groups/{id}/end": {
@@ -11178,7 +11178,7 @@
         "x-access": "device",
         "x-cost": "page_sized",
         "x-lane": "realtime",
-        "x-scope": "playback"
+        "x-scope": "read"
       }
     },
     "/v1/groups/{id}/heartbeat": {
@@ -12907,7 +12907,7 @@
         "x-access": "device",
         "x-cost": "page_sized",
         "x-lane": "browsing",
-        "x-scope": "playback"
+        "x-scope": "read"
       },
       "post": {
         "operationId": "social_post_v1_groups_id_queue",
@@ -14604,7 +14604,7 @@
         "x-access": "device",
         "x-cost": "page_sized",
         "x-lane": "browsing",
-        "x-scope": "playback"
+        "x-scope": "read"
       }
     },
     "/v1/handoffs/{id}/commit": {
@@ -27010,7 +27010,7 @@
         "x-access": "device",
         "x-cost": "page_sized",
         "x-lane": "browsing",
-        "x-scope": "playback"
+        "x-scope": "read"
       },
       "post": {
         "operationId": "social_post_v1_receivers",
@@ -27264,7 +27264,7 @@
         "x-access": "device",
         "x-cost": "page_sized",
         "x-lane": "browsing",
-        "x-scope": "playback"
+        "x-scope": "read"
       },
       "post": {
         "operationId": "social_post_v1_receivers_id_grants",
@@ -27797,7 +27797,7 @@
         "x-access": "device",
         "x-cost": "page_sized",
         "x-lane": "browsing",
-        "x-scope": "playback"
+        "x-scope": "read"
       }
     },
     "/v1/receivers/{id}/inbox/wait": {
@@ -27978,7 +27978,7 @@
         "x-access": "device",
         "x-cost": "page_sized",
         "x-lane": "realtime",
-        "x-scope": "playback"
+        "x-scope": "read"
       }
     },
     "/v1/server": {
