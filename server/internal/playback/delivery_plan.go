@@ -885,7 +885,7 @@ func (p DeliveryPlan) conversionGraph(burn *decoder.BurnIn) (decoder.ConversionG
 		}
 		request.Target = &decoder.ConversionTarget{VideoCodec: "h264", BitDepth: 8, DynamicRange: "sdr", ToneMap: p.ToneMap, Width: p.TargetWidth, Height: p.TargetHeight, FrameRate: p.MaxFrameRate, VideoBitrateBPS: p.VideoBitrateBPS, VideoLevel: decoder.H264OutputLevel(w, h, rate), AudioCodec: p.OutputAudioCodec, AudioChannels: p.AudioChannels, AudioSampleRate: p.AudioSampleRate, AudioBitrateBPS: p.AudioBitrateBPS, Packaging: p.OutputContainer}
 	}
-	if request.Target != nil && request.Target.VideoCodec == "hevc" && request.Target.VideoLevel == 0 {
+	if request.Target != nil && (request.Target.VideoCodec == "hevc" || request.Target.VideoCodec == "h264") && request.Target.VideoLevel == 0 {
 		target := *request.Target
 		w, h := convertedDimensions(p)
 		rate := target.FrameRate
@@ -896,6 +896,9 @@ func (p DeliveryPlan) conversionGraph(burn *decoder.BurnIn) (decoder.ConversionG
 			}
 		}
 		target.VideoLevel = decoder.HEVCOutputLevel(w, h, rate)
+		if target.VideoCodec == "h264" {
+			target.VideoLevel = decoder.H264OutputLevel(w, h, rate)
+		}
 		request.Target = &target
 	}
 	if p.Trace != nil && p.Trace.Video != nil {

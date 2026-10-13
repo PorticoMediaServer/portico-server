@@ -3,6 +3,7 @@ package playback
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"math"
 	"os"
 	"path/filepath"
@@ -12,6 +13,7 @@ import (
 	"portico.local/server/internal/decodertest"
 	"portico.local/server/internal/mediaexec"
 	"portico.local/server/internal/persistence"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -223,5 +225,201 @@ func TestMPEGTSHasASequentialCopyTimeline(t *testing.T) {
 		if math.Abs(at/4-math.Round(at/4)) > 0.05 {
 			t.Fatal("cut was not a source keyframe", timeline.Boundaries)
 		}
+	}
+}
+
+func TestMPEGTSSeekRestartsOnIndexedPacket(t *testing.T) {
+	binary, probe := decodertest.QualifiedFFmpeg(t), decodertest.QualifiedFFprobe(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 40*time.Second)
+	defer cancel()
+	dir := t.TempDir()
+	source := filepath.Join(dir, "source.ts")
+	run := func(args []string) {
+		t.Helper()
+		cmd, err := mediaexec.CommandContext(ctx, mediaexec.Job{Executable: binary, Args: args, ReadPaths: []string{source}, WriteDirs: []string{dir}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatal(err, string(out))
+		}
+	}
+	run([]string{"-v", "error", "-f", "lavfi", "-i", "testsrc2=s=160x90:r=24:d=19", "-c:v", "libx264", "-preset", "ultrafast", "-threads", "2", "-g", "96", "-sc_threshold", "0", "-f", "mpegts", source})
+	timeline, err := probeCopyTimeline(ctx, probe, &assets.PlaybackInput{Argument: source}, 19)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, from := range []int{0, 1, 2} {
+		staging := filepath.Join(dir, strconv.Itoa(from))
+		if err := os.Mkdir(staging, 0700); err != nil {
+			t.Fatal(err)
+		}
+		position := timeline.Boundaries[from]
+		args := []string{"-v", "error", "-fflags", "+genpts+discardcorrupt"}
+		if from > 0 {
+			args = append(args, "-ss", strconv.FormatFloat(position+0.002, 'f', 6, 64))
+		}
+		args = append(args, "-i", source, "-map", "0:v:0", "-c:v", "copy", "-an", "-muxdelay", "0", "-muxpreload", "0")
+		args = append(args, copySegmentArgs(timeline, from, staging)...)
+		run(args)
+		out, err := runProbe(ctx, probe, &assets.PlaybackInput{Argument: filepath.Join(staging, hlsSegmentFile(from))}, "-select_streams", "v:0", "-show_entries", "packet=pts_time,flags", "-of", "csv=p=0", "-read_intervals", "%+#1")
+		if err != nil {
+			t.Fatal(err)
+		}
+		stamp, flags, _ := strings.Cut(strings.TrimSpace(string(out)), ",")
+		pts, err := strconv.ParseFloat(stamp, 64)
+		if err != nil || math.Abs(pts-position) > 0.05 || !strings.HasPrefix(flags, "K") {
+			t.Fatalf("window %d expected keyframe at %.6f, got %q", from, position, out)
+		}
+	}
+}
+
+func TestConversionReplacementRetainsHDRTargetAndRotatesGrant(t *testing.T) {
+	f := newReplanFixture(t, 1_600_000)
+	session := f.start("hardware-replacement", V1Choice{})
+	target := decoder.ConversionTarget{VideoCodec: "hevc", BitDepth: 10, DynamicRange: "hdr10", SourceRange: "hdr10", AudioCodec: "aac", AudioChannels: 6, Width: 1920, Height: 1080, RateControl: "quality", Packaging: "fmp4_hls"}
+	tx, err := f.db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = tx.Exec(`UPDATE playback_delivery_plans SET video_action='convert',audio_action='convert',strategy='video_conversion' WHERE session_id=?`, session.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err = StoreConversionTarget(context.Background(), tx, session.ID, target); err != nil {
+		t.Fatal(err)
+	}
+	if err = tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	before := f.plan(session.ID)
+	var generation int
+	var grant string
+	if err = f.db.QueryRow(`SELECT generation,grant_hash FROM playback_sessions WHERE id=?`, session.ID).Scan(&generation, &grant); err != nil {
+		t.Fatal(err)
+	}
+	next, err := f.h.downgradeCopyPlan(context.Background(), session.ID, before, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	loaded := f.plan(session.ID)
+	if next.ConversionTarget == nil || loaded.ConversionTarget == nil || loaded.ConversionTarget.DynamicRange != "hdr10" || loaded.OutputVideoCodec != "hevc" || loaded.HardwareBackend != "software" {
+		t.Fatalf("lost selected output: %+v", loaded)
+	}
+	var after int
+	var newGrant string
+	if err = f.db.QueryRow(`SELECT generation,grant_hash FROM playback_sessions WHERE id=?`, session.ID).Scan(&after, &newGrant); err != nil {
+		t.Fatal(err)
+	}
+	if after != generation+1 || grant == newGrant {
+		t.Fatal("replacement reused generation or grant")
+	}
+}
+
+func TestConvertedFragmentClockSurvivesSeeks(t *testing.T) {
+	binary, probe := decodertest.QualifiedFFmpeg(t), decodertest.QualifiedFFprobe(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+	facts, err := decoder.ProbeToolchain(ctx, binary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, codec := range []string{"h264", "hevc", "av1", "flac", "opus"} {
+		t.Run(codec, func(t *testing.T) {
+			audio := codec == "flac" || codec == "opus"
+			target := decoder.ConversionTarget{VideoCodec: codec, RateControl: "quality", Width: 160, Height: 90, FrameRate: 24, Packaging: "fmp4_hls"}
+			request := decoder.ConversionRequest{Target: &target, ConvertVideo: true, SoftwarePreset: "ultrafast", Toolchain: &facts}
+			if audio {
+				target.VideoCodec = "h264"
+				target.AudioCodec = codec
+				target.AudioChannels = 6
+				request.ConvertVideo = false
+				request.ConvertAudio = true
+			}
+			graph, err := decoder.BuildConversion(request)
+			if err != nil {
+				t.Skip(err)
+			}
+			dir := t.TempDir()
+			firstPTS := 0.0
+			for _, from := range []int{0, 2} {
+				stage := filepath.Join(dir, fmt.Sprintf("window-%d", from))
+				if err := os.Mkdir(stage, 0700); err != nil {
+					t.Fatal(err)
+				}
+				initName := fmt.Sprintf("init-%d.mp4", from)
+				filename := fmt.Sprintf("segment-%06d.m4s", from)
+				pattern := "segment-%06d.m4s"
+				stream := "v:0"
+				var rendition *AudioRenditionPlan
+				args := []string{"-v", "error", "-f", "lavfi", "-i", "testsrc2=s=160x90:r=24:d=7"}
+				if audio {
+					rendition = &AudioRenditionPlan{Ordinal: 0, Codec: codec}
+					initName = fmt.Sprintf("audio-0-init-%d.mp4", from)
+					filename = renditionSegmentFile(*rendition, from)
+					pattern = "audio-0-%06d.m4s"
+					stream = "a:0"
+					args[len(args)-1] = "anullsrc=r=48000:cl=5.1:d=7"
+					args = append(args, graph.Audio...)
+					args = append(args, "-vn")
+				} else {
+					args = append(args, graph.Video...)
+					args = append(args, "-an")
+				}
+				pack, _, err := decoder.HLSPackagingArgs("fmp4_hls", initName)
+				if err != nil {
+					t.Fatal(err)
+				}
+				args = append(args, pack...)
+				args = append(args, "-f", "hls", "-hls_time", "6", "-hls_list_size", "0", "-hls_flags", "independent_segments+temp_file", "-output_ts_offset", strconv.Itoa(from*6), "-start_number", strconv.Itoa(from), "-hls_segment_filename", filepath.Join(stage, pattern), filepath.Join(stage, "window.m3u8"))
+				cmd, err := mediaexec.CommandContext(ctx, mediaexec.Job{Executable: binary, Args: args, WriteDirs: []string{dir}})
+				if err != nil {
+					t.Fatal(err)
+				}
+				if out, err := cmd.CombinedOutput(); err != nil {
+					t.Fatal(err, string(out))
+				}
+				highest, err := promoteConvertedFragments(stage, dir, initName, from, rendition, &convertedFragmentClock{})
+				if err != nil || highest < from {
+					t.Fatal(highest, err)
+				}
+				initFile := "init.mp4"
+				if audio {
+					initFile = renditionInitFile(0)
+				}
+				init, err := os.ReadFile(filepath.Join(dir, initFile))
+				if err != nil {
+					t.Fatal(err)
+				}
+				media, err := os.ReadFile(filepath.Join(dir, filename))
+				if err != nil {
+					t.Fatal(err)
+				}
+				standalone := filepath.Join(dir, fmt.Sprintf("standalone-%d.mp4", from))
+				if err := os.WriteFile(standalone, append(init, media...), 0600); err != nil {
+					t.Fatal(err)
+				}
+				out, err := runProbe(ctx, probe, &assets.PlaybackInput{Argument: standalone}, "-select_streams", stream, "-show_entries", "packet=pts_time", "-of", "csv=p=0", "-read_intervals", "%+#1")
+				if err != nil {
+					t.Fatal(err)
+				}
+				stamp, _, _ := strings.Cut(strings.TrimSpace(string(out)), ",")
+				pts, err := strconv.ParseFloat(stamp, 64)
+				if err != nil {
+					t.Fatal(err, string(out))
+				}
+				if from == 0 {
+					firstPTS = pts
+				} else if math.Abs(pts-firstPTS-float64(from*6)) > 0.001 {
+					t.Fatal("presentation clock reset", firstPTS, pts)
+				}
+				cmd, err = mediaexec.CommandContext(ctx, mediaexec.Job{Executable: binary, Args: []string{"-v", "error", "-i", standalone, "-threads", "2", "-f", "null", "-"}, ReadPaths: []string{standalone}})
+				if err != nil {
+					t.Fatal(err)
+				}
+				if out, err := cmd.CombinedOutput(); err != nil {
+					t.Fatal(err, string(out))
+				}
+			}
+		})
 	}
 }

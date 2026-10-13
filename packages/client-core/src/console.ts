@@ -20,7 +20,15 @@ export type TranscodingSettings={
  x264Preset:X264Preset;directStreamRemux:boolean;planningPolicy:PlanningPolicy;
  throttleBufferSeconds:number;playedRetentionSeconds:number;temporaryDirectory:string;ffmpegPath:string;sessionStorageMiB:number;
  maxConcurrentSessions:number;maxHardwareSessions:number;maxSoftwareSessions:number;maxBackgroundSessions:number};
-export type RuntimeSettings=TranscodingSettings&{name:string;transcodingEnabled:boolean;perAccountCap:number|null;serverCap:number|null;diagnosticDays:number;notificationDays:number;jobDays:number;/** How long the play history is kept; 0 keeps everything. Absent on a server without the setting. */playHistoryDays?:number;'home.communityActivityEnabled'?:boolean};
+export type RuntimeSettings=TranscodingSettings&{
+ name:string;transcodingEnabled:boolean;perAccountCap:number|null;serverCap:number|null;
+ diagnosticDays:number;notificationDays:number;jobDays:number;playHistoryDays:number;'home.communityActivityEnabled':boolean;
+ 'updates.releaseChannel':string;'updates.feedUrl':string;'library.trashRetentionDays':number|null;
+ remoteSignInPolicy:string;remoteBitrateLimitKbps:number;secureConnectionsPolicy:string;lanNetworks:string[];accessUrls:string[];lanDiscoveryEnabled:boolean;
+ trustedProxies:string[];treatWanAsLan:boolean;uploadCapacityKbps:number;pausedSessionTimeoutMinutes:number;advertisedInterface:string;
+ customCertificatePath:string;customCertificateKeyPath:string;customCertificateDomain:string;deviceApprovalRequired:boolean;
+ logLevel:string;logRetention:{category:string;days:number}[];
+};
 export type SettingsDocument={revision:number;digest:string;requested:RuntimeSettings;effective:RuntimeSettings;activeRevision:number;restartFields:string[];registryRevision:string};
 export type Diagnostic={platform:'web'|'ios'|'tvos';state:'idle'|'starting'|'playing'|'paused'|'buffering'|'failed'|'unknown';online:boolean};
 export type FeedbackStatus='open'|'in-progress'|'resolved'|'closed';
@@ -45,8 +53,16 @@ function base(v:unknown):Record<string,any>{if(!obj(v))invalid();return v;}
 function revision(v:Record<string,any>){if(!integer(v.revision)||v.revision<1)invalid();}
 export function parseSettings(v:unknown):SettingsDocument{
  const d=base(v);revision(d);if(!/^[a-f0-9]{64}$/.test(d.digest)||!integer(d.activeRevision)||!Array.isArray(d.restartFields))invalid();
- for(const key of ['requested','effective']){const s=base(d[key]);if(!text(s.name,100)||typeof s.transcodingEnabled!=='boolean')invalid();for(const key of ['serverCap','perAccountCap'])if(s[key]!==null&&(!integer(s[key])||s[key]<1||s[key]>1000000))invalid(); for(const key of ['diagnosticDays','notificationDays','jobDays'])if(!integer(s[key])||s[key]<1||s[key]>(key==='notificationDays'?180:30))invalid();if(s.playHistoryDays!==undefined&&(!integer(s.playHistoryDays)||s.playHistoryDays<0||s.playHistoryDays>36500))invalid();checkTranscoding(s);if(s['home.communityActivityEnabled']!==undefined&&typeof s['home.communityActivityEnabled']!=='boolean')invalid();}
+ for(const key of ['requested','effective']){const s=base(d[key]);if(!text(s.name,100)||typeof s.transcodingEnabled!=='boolean')invalid();for(const key of ['serverCap','perAccountCap'])if(s[key]!==null&&(!integer(s[key])||s[key]<1||s[key]>1000000))invalid(); for(const key of ['diagnosticDays','notificationDays','jobDays'])if(!integer(s[key])||s[key]<1||s[key]>(key==='notificationDays'?180:30))invalid();if(!integer(s.playHistoryDays)||s.playHistoryDays>36500)invalid();checkTranscoding(s);checkOwnerDocument(s);if(typeof s['home.communityActivityEnabled']!=='boolean')invalid();}
  return d as SettingsDocument;
+}
+function checkOwnerDocument(s:Record<string,any>){
+ for(const key of ['updates.releaseChannel','updates.feedUrl','remoteSignInPolicy','secureConnectionsPolicy','advertisedInterface','customCertificatePath','customCertificateKeyPath','customCertificateDomain','logLevel'])if(!text(s[key],4096))invalid();
+ for(const key of ['remoteBitrateLimitKbps','uploadCapacityKbps','pausedSessionTimeoutMinutes'])if(!integer(s[key]))invalid();
+ for(const key of ['lanDiscoveryEnabled','treatWanAsLan','deviceApprovalRequired'])if(typeof s[key]!=='boolean')invalid();
+ for(const key of ['lanNetworks','accessUrls','trustedProxies'])if(!Array.isArray(s[key])||s[key].length>64||!s[key].every((v:unknown)=>text(v,4096)))invalid();
+ const trash=s['library.trashRetentionDays'];if(trash!==null&&!integer(trash))invalid();
+ if(!Array.isArray(s.logRetention)||s.logRetention.length>64||!s.logRetention.every((v:unknown)=>obj(v)&&text(v.category,100)&&integer(v.days)))invalid();
 }
 /** Transcoding values are rejected outside the bounds the registry publishes,
  * so a client cannot render a choice this server would refuse to save. */

@@ -316,7 +316,7 @@ func run() error {
 		return e
 	}
 	defer db.Close()
-	// Resolve one verified pair. Qualification overlaps independent schema work,
+	// Resolve one verified pair. Qualification overlaps independent startup work,
 	// but is joined below before constructing the first playback service.
 	doneQualification := reporter.step("toolchain", "Verify and qualify the media tools")
 	startupMedia, e := operations.StartupMediaSettings(context.Background(), db)
@@ -325,6 +325,7 @@ func run() error {
 	}
 	decoder.SetBackgroundConversionLimit(startupMedia.MaxBackgroundSessions)
 	ffmpegTool, ffprobeTool := decoder.ResolveTools()
+	defaultFFmpegTool, defaultFFprobeTool := ffmpegTool, ffprobeTool
 	if startupMedia.FFmpegPath != "" {
 		ffmpegTool = startupMedia.FFmpegPath
 		ffprobeTool = decoder.CompanionProbe(ffmpegTool, ffprobeTool)
@@ -426,11 +427,13 @@ func run() error {
 	cat.SetStorage(storeIO)
 	// This is a barrier, not a background best-effort capability update. No
 	// playback service is constructed until qualification completes or times out.
+	overrideRejected := false
 	select {
 	case result := <-toolchainReady:
 		if result.err != nil {
 			if startupMedia.FFmpegPath != "" {
-				return fmt.Errorf("configured FFmpeg could not be qualified: %w", result.err)
+				overrideRejected = true
+				log.Printf("Configured FFmpeg could not be qualified; using bundled tools: %v", result.err)
 			}
 			log.Printf("Media toolchain qualification unavailable: %v", result.err)
 		} else {
@@ -442,11 +445,25 @@ func run() error {
 		}
 	case <-qualificationCtx.Done():
 		if startupMedia.FFmpegPath != "" {
-			return fmt.Errorf("configured FFmpeg qualification timed out: %w", qualificationCtx.Err())
+			overrideRejected = true
+			log.Printf("Configured FFmpeg qualification timed out; using bundled tools: %v", qualificationCtx.Err())
 		}
 		log.Printf("Media toolchain qualification unavailable: %v", qualificationCtx.Err())
 	}
 	qualificationCancel()
+	if overrideRejected {
+		ffmpegTool, ffprobeTool = defaultFFmpegTool, defaultFFprobeTool
+		startupMedia.FFmpegPath = ""
+		operations.UseBundledFFmpeg()
+		retry, retryCancel := context.WithTimeout(context.Background(), 40*time.Second)
+		facts, err := decoder.ProbeToolchain(retry, ffmpegTool)
+		retryCancel()
+		if err == nil {
+			decoder.ConfigureToolchain(facts)
+		} else {
+			log.Printf("Media toolchain qualification unavailable: %v", err)
+		}
+	}
 	if startupMedia.FFmpegPath != "" {
 		if e := decoder.ConfigureResolvedTools(ffmpegTool, ffprobeTool); e != nil {
 			return e

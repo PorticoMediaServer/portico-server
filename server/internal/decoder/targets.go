@@ -97,7 +97,7 @@ func (t ConversionTarget) Normalized() (ConversionTarget, error) {
 	if base := DolbyVisionBaseRange(t.DolbyVisionProfile, t.DolbyVisionCompatibility); base != "" && t.SourceRange == "dolby_vision" {
 		t.SourceRange = base
 	}
-	if t.SourceRange != "" && t.DynamicRange != "sdr" && t.SourceRange != t.DynamicRange && !(t.SourceRange == "hdr10_plus" && t.DynamicRange == "hdr10") && t.DolbyVisionProfile == 0 {
+	if t.SourceRange != "" && t.DynamicRange != "sdr" && t.SourceRange != t.DynamicRange && !(t.SourceRange == "hdr10_plus" && t.DynamicRange == "hdr10") {
 		return t, errors.New("dynamic_range_conversion_unavailable")
 	}
 	if t.SourceRange != "" && t.SourceRange != "sdr" && t.DynamicRange == "sdr" && !t.ToneMap {

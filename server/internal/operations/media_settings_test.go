@@ -59,3 +59,17 @@ func TestConversionSettingsRejectInvalidLimitsAndPaths(t *testing.T) {
 		t.Fatal("accepted unsafe storage budget")
 	}
 }
+
+func TestRejectedFFmpegOverrideStaysRequested(t *testing.T) {
+	before := startupMediaSettings.Load()
+	defer startupMediaSettings.Store(before)
+	v := DefaultSettings()
+	v.FFmpegPath = "/missing/ffmpeg"
+	v.TemporaryDirectory = "/working"
+	startupMediaSettings.Store(&v)
+	UseBundledFFmpeg()
+	effective, pending := effectiveMediaSettings(v)
+	if effective.FFmpegPath != "" || effective.TemporaryDirectory != "/working" || len(pending) != 1 || pending[0] != "ffmpegPath" || v.FFmpegPath != "/missing/ffmpeg" {
+		t.Fatal(effective, pending)
+	}
+}

@@ -22,7 +22,7 @@ func TestFontPackIsWrittenAndRestored(t *testing.T) {
 		t.Fatalf("pack %+v", pack)
 	}
 	conf, err := os.ReadFile(pack.Config)
-	if err != nil || !strings.Contains(string(conf), "<dir>"+pack.Dir+"</dir>") || !strings.Contains(string(conf), "<cachedir>/tmp/portico-fontconfig</cachedir>") {
+	if err != nil || !strings.Contains(string(conf), "<dir>"+fontXMLPath(pack.Dir)+"</dir>") || !strings.Contains(string(conf), "<cachedir>"+fontXMLPath(filepath.Join(os.TempDir(), "portico-fontconfig"))+"</cachedir>") {
 		t.Fatalf("config %s: %v", conf, err)
 	}
 	face, err := os.ReadFile(filepath.Join(pack.Dir, "DejaVuSans.ttf"))

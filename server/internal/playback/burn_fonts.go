@@ -24,7 +24,7 @@ func (h *HLS) extractBurnFonts(ctx context.Context, input *assets.PlaybackInput,
 		return "", err
 	}
 	build := func(source, protocols string) []string {
-		args := []string{"-nostdin", "-hide_banner", "-loglevel", "error", "-y", "-protocol_whitelist", protocols}
+		args := []string{"-nostdin", "-hide_banner", "-loglevel", "error", "-y", "-max_alloc", "8388608", "-protocol_whitelist", protocols}
 		for i := 0; i < 32; i++ {
 			args = append(args, fmt.Sprintf("-dump_attachment:t:%d", i), filepath.Join(fonts, fmt.Sprintf("font-%02d.ttf", i)))
 		}

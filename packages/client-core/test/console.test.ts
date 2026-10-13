@@ -7,7 +7,10 @@ const envelope=(data:unknown,serverId='server-one',viewerFence=fence)=>({scope:{
 const values:RuntimeSettings={name:'My server',transcodingEnabled:true,perAccountCap:null,serverCap:null,diagnosticDays:30,notificationDays:180,jobDays:30,
  hardwareBackend:'auto',hardwareDevice:'',hdrToneMapping:false,hdrToneMappingAlgorithm:'hable',x264Preset:'veryfast',directStreamRemux:true,
  planningPolicy:'maximum_fidelity',throttleBufferSeconds:60,playedRetentionSeconds:180,temporaryDirectory:'',ffmpegPath:'',sessionStorageMiB:4096,
- maxConcurrentSessions:0,maxHardwareSessions:0,maxSoftwareSessions:0,maxBackgroundSessions:0};
+ maxConcurrentSessions:0,maxHardwareSessions:0,maxSoftwareSessions:0,maxBackgroundSessions:0,
+ playHistoryDays:0,'home.communityActivityEnabled':false,'updates.releaseChannel':'stable','updates.feedUrl':'','library.trashRetentionDays':30,
+ remoteSignInPolicy:'allow',remoteBitrateLimitKbps:0,secureConnectionsPolicy:'preferred',lanNetworks:[],accessUrls:[],lanDiscoveryEnabled:true,
+ trustedProxies:[],treatWanAsLan:true,uploadCapacityKbps:0,pausedSessionTimeoutMinutes:0,advertisedInterface:'',customCertificatePath:'',customCertificateKeyPath:'',customCertificateDomain:'',deviceApprovalRequired:false,logLevel:'info',logRetention:[]};
 const settings=(revision=1)=>({revision,digest:'b'.repeat(64),requested:values,effective:values,activeRevision:revision,restartFields:[],registryRevision:'p08.0'});
 const report={id:'report-one',revision:1,createdAt:100,updatedAt:100,status:'open',category:'playback',message:'Playback stopped.',contextAvailable:true};
 const submission={category:'playback' as const,message:report.message,itemId:''};
@@ -135,4 +138,11 @@ test('CD-38: current-app taxonomy leaves and admin triage events parse; legacy s
  assert.equal(parseReport(report).category,'playback');
  // Malformed identifiers and unknown actor roles still fail.
  for(const change of [{category:'playback stall!'},{category:''},{id:'../secret'},{events:[{sequence:1,at:200,revision:2,status:'in-progress',reply:'x',actorClass:'moderator'}]},{events:[{sequence:1,at:200,revision:2,status:'in-progress',reply:'x',actorClass:''}]}])assert.throws(()=>parseReport({...leaf,...change}));
+});
+
+test('typed owner settings errors retain revision and bounded field paths',async()=>{
+ const response=new Response(JSON.stringify({error:{code:'revision_mismatch',current:{revision:9},fields:[{path:'values.sessionStorageMiB',code:'invalid_value',message:'untrusted text'}]}}),{status:409,headers:{'Content-Type':'application/json'}});
+ await assert.rejects(readConsoleJson(response,new AbortController().signal),e=>{
+  assert.ok(e instanceof ConsoleTransportError);assert.equal(e.currentRevision,9);assert.deepEqual(e.fields,['values.sessionStorageMiB']);assert.doesNotMatch(e.message,/untrusted/);return true;
+ });
 });

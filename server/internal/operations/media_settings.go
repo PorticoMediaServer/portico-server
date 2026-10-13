@@ -45,3 +45,13 @@ func ConversionDirectory(state, configured string) string {
 	}
 	return filepath.Join(state, "hls")
 }
+
+// UseBundledFFmpeg records the effective fallback without erasing the owner's
+// requested path. The console remains available to correct a rejected override.
+func UseBundledFFmpeg() {
+	if current := startupMediaSettings.Load(); current != nil {
+		copy := *current
+		copy.FFmpegPath = ""
+		startupMediaSettings.Store(&copy)
+	}
+}

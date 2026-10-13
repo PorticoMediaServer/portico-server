@@ -165,6 +165,9 @@ func promoteRenditionInit(dir, window string, ordinal int) error {
 	if err != nil {
 		return err
 	}
+	return publishRenditionInit(dir, ordinal, data)
+}
+func publishRenditionInit(dir string, ordinal int, data []byte) error {
 	target := filepath.Join(dir, renditionInitFile(ordinal))
 	if old, err := readConversionInit(target); err == nil {
 		if string(old) != string(data) {

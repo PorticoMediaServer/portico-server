@@ -242,11 +242,7 @@ func readSettings(tx *sql.Tx) (SettingsDocument, error) {
 	return SettingsDocument{revision, Hash(string(b)), v, effective, revision, pending, RegistryRevision}, nil
 }
 
-// restartFields names saved values the running process has not adopted. The
-// document is applied atomically, so a value is never half-saved; what a client
-// needs instead is the registry's applicationMode, which says which fields only
-// take effect after a restart. This stays empty rather than guessing at what
-// the process adopted at startup, which no table records.
+// restartFields reports restart-applied settings the running process has not adopted.
 func restartFields(v Settings) []string { _, fields := effectiveMediaSettings(v); return fields }
 func (s *Store) Settings(ctx context.Context, auth Authorize) (out SettingsDocument, e error) {
 	e = s.snapshot(ctx, auth, "", func(tx *sql.Tx) error { var err error; out, err = readSettings(tx); return err })

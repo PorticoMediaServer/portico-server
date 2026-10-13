@@ -239,6 +239,7 @@ func hlsMasterManifest(p *DeliveryPlan) []byte {
 	}
 	videoCodec := videoCodecString(p)
 	codecs := []string{}
+	completeCodecs := p.VideoAction == "none" || videoCodec != ""
 	if p.VideoAction != "none" {
 		codecs = append(codecs, videoCodec)
 	}
@@ -252,12 +253,18 @@ func hlsMasterManifest(p *DeliveryPlan) []byte {
 			auto = "NO"
 		}
 		fmt.Fprintf(&b, "#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID=\"audio\",NAME=\"%s\",LANGUAGE=\"%s\",DEFAULT=%s,AUTOSELECT=%s,CHANNELS=\"%d\",URI=\"audio-%d.m3u8\"\n", manifestQuoted(r.Label), r.Language, def, auto, max(1, r.Channels), r.Ordinal)
+		if audioCodecString(r.Codec) == "" {
+			completeCodecs = false
+		}
 		if c := audioCodecString(r.Codec); c != "" && !containsString(codecs, c) {
 			codecs = append(codecs, c)
 		}
 		audioRate = max(audioRate, r.BitrateBPS)
 	}
 	if len(p.Renditions) == 0 && p.AudioAction != "none" {
+		if audioCodecString(p.OutputAudioCodec) == "" {
+			completeCodecs = false
+		}
 		if c := audioCodecString(p.OutputAudioCodec); c != "" {
 			codecs = append(codecs, c)
 		}
@@ -275,7 +282,7 @@ func hlsMasterManifest(p *DeliveryPlan) []byte {
 		peak = 200_000_000 + max(audioRate, 192000)
 	}
 	fmt.Fprintf(&b, "#EXT-X-STREAM-INF:BANDWIDTH=%d,AVERAGE-BANDWIDTH=%d", peak, average)
-	if (p.VideoAction != "none" && videoCodec != "" || p.VideoAction == "none") && len(codecs) > 0 {
+	if completeCodecs && len(codecs) > 0 {
 		fmt.Fprintf(&b, ",CODECS=\"%s\"", strings.Join(codecs, ","))
 	}
 	if hevcSampleEntry(p) == "dvh1" && p.Trace.Video.DolbyVisionProfile == 8 {
@@ -508,6 +515,18 @@ func (h *HLS) produceRendition(ctx context.Context, id string, r AudioRenditionP
 	args = append(args, graph.Audio...)
 	fragmented := renditionPackaging(r.Codec) == "fmp4_hls"
 	initWindow := fmt.Sprintf("audio-%d-init-%d.mp4", r.Ordinal, from)
+	outputDir := dir
+	clock := &convertedFragmentClock{}
+	if fragmented {
+		outputDir = filepath.Join(dir, fmt.Sprintf("audio-window-%d-%d", r.Ordinal, from))
+		_ = os.RemoveAll(outputDir)
+		if err := os.MkdirAll(outputDir, 0700); err != nil {
+			failed(FailureOutOfSpace)
+			return
+		}
+		defer os.RemoveAll(outputDir)
+	}
+
 	if fragmented {
 		outputArgs, _, err := decoder.HLSPackagingArgs("fmp4_hls", initWindow)
 		if err != nil {
@@ -517,7 +536,7 @@ func (h *HLS) produceRendition(ctx context.Context, id string, r AudioRenditionP
 		args = append(args, outputArgs...)
 		args = append(args, "-strict", "-2")
 	}
-	args = append(args, "-max_muxing_queue_size", "1024", "-f", "hls", "-hls_time", "6", "-hls_list_size", "0", "-hls_flags", "independent_segments+temp_file", "-output_ts_offset", offset, "-muxdelay", "0", "-muxpreload", "0", "-start_number", strconv.Itoa(from), "-hls_segment_filename", filepath.Join(dir, strings.ReplaceAll(renditionSegmentFile(r, 0), "000000", "%06d")), filepath.Join(dir, fmt.Sprintf("audio-%d-window.m3u8", r.Ordinal)))
+	args = append(args, "-max_muxing_queue_size", "1024", "-f", "hls", "-hls_time", "6", "-hls_list_size", "0", "-hls_flags", "independent_segments+temp_file", "-output_ts_offset", offset, "-muxdelay", "0", "-muxpreload", "0", "-start_number", strconv.Itoa(from), "-hls_segment_filename", filepath.Join(outputDir, strings.ReplaceAll(renditionSegmentFile(r, 0), "000000", "%06d")), filepath.Join(outputDir, fmt.Sprintf("audio-%d-window.m3u8", r.Ordinal)))
 	run, cancel := context.WithTimeout(ctx, 6*time.Hour)
 	defer cancel()
 	watchDone := make(chan struct{})
@@ -537,13 +556,16 @@ func (h *HLS) produceRendition(ctx context.Context, id string, r AudioRenditionP
 			for produced+1 < hlsSegmentCount(plan.Duration) && segmentReady(filepath.Join(dir, renditionSegmentFile(r, produced+1))) {
 				produced++
 			}
-			if fragmented && produced >= from {
-				if err := promoteRenditionInit(dir, initWindow, r.Ordinal); err != nil && !os.IsNotExist(err) {
+			if fragmented {
+				var publishErr error
+				produced, publishErr = promoteConvertedFragments(outputDir, dir, initWindow, from, &r, clock)
+				if publishErr != nil {
 					cancel()
 					failed(FailureConverter)
 					return
 				}
 			}
+
 			h.mu.Lock()
 			w.produced = produced
 			served := max(w.served, w.start-1)
@@ -590,12 +612,13 @@ func (h *HLS) produceRendition(ctx context.Context, id string, r AudioRenditionP
 	}
 	cancel()
 	<-watchDone
-	if fragmented && segmentReady(filepath.Join(dir, renditionSegmentFile(r, from))) {
-		if publishErr := promoteRenditionInit(dir, initWindow, r.Ordinal); publishErr != nil {
+	if fragmented {
+		if _, publishErr := promoteConvertedFragments(outputDir, dir, initWindow, from, &r, clock); publishErr != nil {
 			failed(FailureConverter)
 			return
 		}
 	}
+
 	h.mu.Lock()
 	throttled := w.throttled
 	h.mu.Unlock()

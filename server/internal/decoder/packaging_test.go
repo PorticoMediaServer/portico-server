@@ -7,7 +7,9 @@ import (
 	"os"
 	"path/filepath"
 	"portico.local/server/internal/decodertest"
+	"portico.local/server/internal/mediaexec"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 )
@@ -28,6 +30,7 @@ func TestHLSPackagingArguments(t *testing.T) {
 
 func TestFragmentedConversionKeepsInitAcrossWindows(t *testing.T) {
 	binary := decodertest.QualifiedFFmpeg(t)
+	probe := decodertest.QualifiedFFprobe(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 	facts, err := ProbeToolchain(ctx, binary)
@@ -72,6 +75,31 @@ func TestFragmentedConversionKeepsInitAcrossWindows(t *testing.T) {
 				if info, err := os.Stat(filepath.Join(dir, fmt.Sprintf("segment-%06d.m4s", from))); err != nil || info.Size() == 0 {
 					t.Fatal("missing fragment", err)
 				}
+				fragment, err := os.ReadFile(filepath.Join(dir, fmt.Sprintf("segment-%06d.m4s", from)))
+				if err != nil {
+					t.Fatal(err)
+				}
+				standalone := filepath.Join(dir, "standalone.mp4")
+				if err := os.WriteFile(standalone, append(append([]byte{}, init...), fragment...), 0600); err != nil {
+					t.Fatal(err)
+				}
+				cmd, err := mediaexec.CommandContext(ctx, mediaexec.Job{Executable: probe, Args: []string{"-v", "error", "-select_streams", "v:0", "-show_entries", "packet=pts_time", "-of", "csv=p=0", "-read_intervals", "%+#1", standalone}, ReadPaths: []string{standalone}})
+				if err != nil {
+					t.Fatal(err)
+				}
+				raw, err := cmd.Output()
+				if err != nil {
+					t.Fatal(err)
+				}
+				pts, err := strconv.ParseFloat(strings.TrimSpace(string(raw)), 64)
+				if err != nil {
+					t.Fatal(err, string(raw))
+				}
+				if mathBad := pts < 0 || pts > 0.5; mathBad {
+					t.Fatal("unexpected raw muxer origin", pts)
+				}
+				runTinyMedia(t, ctx, binary, []string{"-v", "error", "-i", standalone, "-an", "-threads", "2", "-f", "null", "-"}, dir)
+
 			}
 		})
 	}

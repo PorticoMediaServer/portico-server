@@ -14,7 +14,7 @@ func HLSPackagingArgs(packaging, initName string) ([]string, string, error) {
 		if !hlsInitName.MatchString(initName) {
 			return nil, "", ErrInvalidConfiguration
 		}
-		return []string{"-hls_segment_type", "fmp4", "-hls_fmp4_init_filename", initName, "-hls_segment_options", "use_editlist=0", "-map_metadata", "-1", "-map_chapters", "-1", "-fflags", "+bitexact"}, "m4s", nil
+		return []string{"-hls_segment_type", "fmp4", "-hls_fmp4_init_filename", initName, "-hls_segment_options", "use_editlist=0:avoid_negative_ts=disabled", "-map_metadata", "-1", "-map_chapters", "-1", "-fflags", "+bitexact"}, "m4s", nil
 	}
 	return nil, "", ErrInvalidConfiguration
 }

@@ -760,7 +760,7 @@ func BuildConversion(r ConversionRequest) (ConversionGraph, error) {
 		out.Stages = append(out.Stages, HardwareStage{StageDecode, ExecutionSoftware}, HardwareStage{StageEncode, ExecutionSoftware})
 	}
 	if r.ConvertVideo {
-		native := r.BurnIn == nil && backend != BackendSoftware && r.Probe.NativeFilters && spec.toneMap != nil && spec.scale != nil
+		native := r.BurnIn == nil && backend != BackendSoftware && spec.scale != nil && (r.ToneMap && r.Probe.NativeFilters && spec.toneMap != nil || !r.ToneMap && (r.Probe.ScaleFilters || r.Probe.NativeFilters))
 		if r.DisableHardwareDecode {
 			native = false
 		}

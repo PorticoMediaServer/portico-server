@@ -309,3 +309,70 @@ func TestBitmapBurnPreservesGlyphShapeOnCroppedVideo(t *testing.T) {
 		t.Fatal("bitmap glyph distorted", width, height, left, top)
 	}
 }
+
+func TestSDRHardwareScaleDoesNotRequireToneMap(t *testing.T) {
+	g, err := BuildConversion(ConversionRequest{ConvertVideo: true, MaxHeight: 720, Probe: HardwareProbe{Backend: BackendNVENC, Available: true, ScaleFilters: true}, Toolchain: targetFacts()})
+	if err != nil || !strings.Contains(argValue(g.Video, "-vf"), "scale_cuda") || argValue(g.Input, "-hwaccel") != "cuda" {
+		t.Fatal(g, err)
+	}
+}
+func TestDolbyVisionBaseCopyStripsItsBrandAndEnhancement(t *testing.T) {
+	facts := targetFacts()
+	facts.BitstreamFilters = map[string]bool{"dovi_rpu": true, "filter_units": true}
+	target := ConversionTarget{VideoCodec: "hevc", BitDepth: 10, DynamicRange: "hdr10", SourceRange: "dolby_vision", DolbyVisionProfile: 7}
+	graph, err := BuildConversion(ConversionRequest{Target: &target, CopyVideo: true, Toolchain: facts})
+	if err != nil || argValue(graph.Video, "-bsf:v") != "dovi_rpu=strip=1,filter_units=remove_types=63" {
+		t.Fatal(graph, err)
+	}
+	target.DynamicRange = "hlg"
+	if _, err := BuildConversion(ConversionRequest{Target: &target, CopyVideo: true, Toolchain: facts}); err == nil {
+		t.Fatal("relabelled HDR10 as HLG")
+	}
+}
+func TestHardwareQualityNeedsIndependentQualification(t *testing.T) {
+	for _, backend := range HardwareBackends {
+		if !backendSpecs[backend].supported() {
+			continue
+		}
+		target := ConversionTarget{VideoCodec: "hevc", BitDepth: 10, RateControl: "quality"}
+		proof := HardwareProbe{Backend: backend, Available: true, OutputEncoders: map[string]bool{"hevc:10": true}}
+		g, err := BuildConversion(ConversionRequest{Target: &target, ConvertVideo: true, Probe: proof, Toolchain: targetFacts()})
+		if err != nil || g.Backend != BackendSoftware {
+			t.Fatal(g, err)
+		}
+		proof.OutputQuality = map[string]bool{"hevc:10": true}
+		g, err = BuildConversion(ConversionRequest{Target: &target, ConvertVideo: true, Probe: proof, Toolchain: targetFacts()})
+		if err != nil || g.Backend != backend {
+			t.Fatal(g, err)
+		}
+		if backend == BackendNVENC && argValue(g.Video, "-cq") == "" {
+			t.Fatal(g.Video)
+		}
+		target.VideoBitrateBPS = 1_000_000
+		g, err = BuildConversion(ConversionRequest{Target: &target, ConvertVideo: true, Probe: proof, Toolchain: targetFacts()})
+		if err != nil || g.Backend != BackendSoftware {
+			t.Fatal("ignored quality ceiling", g, err)
+		}
+	}
+}
+
+func TestHDRBitmapBurnKeepsTenBitPlane(t *testing.T) {
+	binary := decodertest.QualifiedFFmpeg(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	dir := t.TempDir()
+	file := filepath.Join(dir, "cue.sup")
+	if err := os.WriteFile(file, pgsFixture(), 0600); err != nil {
+		t.Fatal(err)
+	}
+	target := ConversionTarget{VideoCodec: "hevc", BitDepth: 10, DynamicRange: "hdr10", Width: 160, Height: 60, FrameRate: 24}
+	graph, err := BuildConversion(ConversionRequest{Target: &target, ConvertVideo: true, SoftwarePreset: "ultrafast", BurnIn: &BurnIn{File: file, Format: "pgs", PositionUS: 5000000, Width: 160, Height: 60}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	args := []string{"-v", "error", "-f", "lavfi", "-i", "color=black:s=160x60:r=24:d=1,format=yuv420p10le,setparams=color_primaries=bt2020:color_trc=smpte2084:colorspace=bt2020nc"}
+	args = append(args, graph.ExtraInput...)
+	args = append(args, graph.Video...)
+	args = append(args, "-map", graph.VideoMap, "-frames:v", "24", "-an", filepath.Join(dir, "burn.mp4"))
+	runTinyMedia(t, ctx, binary, args, dir)
+}
