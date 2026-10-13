@@ -64,7 +64,7 @@ try{
  const webhookPort=await freePort();env.PORTICO_WEBHOOK_URL=`http://127.0.0.1:${webhookPort}/events`;
  sink=http.createServer((req,res)=>{let body='';req.on('data',d=>body+=d);req.on('end',()=>{writeFileSync(path.join(output,'webhook-received.json'),JSON.stringify({received:true,body:JSON.parse(body),signed:!!req.headers['x-portico-signature']}));res.end('ok');});});
  await new Promise(resolve=>sink.listen(webhookPort,'127.0.0.1',resolve));
- for(const mode of ['subtitles','browse','freshness','console','media','profiles','tokens','downloads','csp']){
+ for(const mode of ['subtitles','browse','groups','freshness','console','media','profiles','tokens','downloads','csp']){
   const code=await command(process.execPath,['web/test/integration/browser-actions.mjs',mode],env,`actions-${mode}.log`);summary.push({name:mode,status:code===0?'pass':'fail',exitCode:code});writeFileSync(path.join(output,'summary.json'),JSON.stringify(summary,null,2));console.log(mode,code===0?'pass':'fail');
  }
  const walked=await command(process.execPath,['web/test/integration/browser-walk.mjs'],env,'walk.log');summary.push({name:'screen-walk',status:walked===0?'pass':'fail',exitCode:walked});

@@ -33,6 +33,10 @@ type listeningSection struct {
 	browseKind string
 }
 
+// Author navigation uses the same catalog identity as the browse pivot. Series
+// retain their own group identity; group membership remains an internal key.
+const listeningGroupNavigationID = `CASE g.kind WHEN 1 THEN (SELECT pid(author.public_id) FROM catalog_identities ai JOIN catalog_entities author ON author.public_id=ai.public_id WHERE ai.root=l.root AND ai.source_key=portico_author_key(g.name) AND author.library_id=g.library_id AND author.kind=13 AND author.retired=0) ELSE g.token END`
+
 // A section's visibility predicate is applied before both count and page SQL.
 // The correlated membership checks make an album, book or artist disappear when
 // none of its items are visible to the viewer.
@@ -52,7 +56,7 @@ func listeningSectionVisibility(kind string, viewer Viewer) (string, []any) {
 	case "disc":
 		return `EXISTS(SELECT 1 FROM catalog_entities album JOIN catalog_songs member ON member.album_id=album.id JOIN catalog_entities i ON i.id=member.entity_id WHERE album.id=projected.entity_id AND COALESCE(member.disc_number,1)=projected.disc_number AND ` + item + `)`, args
 	case "author", "book_series", "context":
-		return `EXISTS(SELECT 1 FROM catalog_book_groups g JOIN catalog_book_group_members m ON m.group_id=g.id JOIN catalog_book_files member ON member.book_id=m.book_id JOIN catalog_entities i ON i.id=member.entity_id WHERE g.token=projected.id AND g.retired=0 AND ` + item + `)`, args
+		return `EXISTS(SELECT 1 FROM catalog_book_groups g JOIN catalog_book_group_members m ON m.group_id=g.id JOIN catalog_book_files member ON member.book_id=m.book_id JOIN catalog_entities i ON i.id=member.entity_id WHERE g.id=projected.entity_id AND g.retired=0 AND ` + item + `)`, args
 	}
 	return "0", nil
 }
@@ -196,14 +200,14 @@ func (s *Service) listeningContent(r ContentRequest, lib Library) (ContentEnvelo
 			if kind == "book_series" {
 				groupKind = 2
 			}
-			query := `SELECT g.token id,g.id entity_id,g.name title,'' subtitle,g.name ordering,g.member_count n,0 chapter_index FROM catalog_book_groups g JOIN catalog_libraries l ON l.id=g.library_id WHERE l.library_id=? AND g.kind=? AND g.retired=0`
+			query := `SELECT ` + listeningGroupNavigationID + ` id,g.id entity_id,g.name title,'' subtitle,g.name ordering,g.member_count n,0 chapter_index FROM catalog_book_groups g JOIN catalog_libraries l ON l.id=g.library_id WHERE l.library_id=? AND g.kind=? AND g.retired=0`
 			args := []any{lib.ID, groupKind}
 			if r.Viewer.EffectiveRestrictions().Active() {
 				class, generation, err := s.bookGroupClassReady(lib.ID, r.Viewer.EffectiveRestrictions())
 				if err != nil {
 					return out, err
 				}
-				query = `SELECT g.token id,g.id entity_id,g.name title,'' subtitle,g.name ordering,COALESCE(vc.total,0) n,0 chapter_index FROM catalog_book_groups g JOIN catalog_libraries l ON l.id=g.library_id LEFT JOIN catalog_book_group_visible_counts vc ON vc.class_id=? AND vc.generation=? AND vc.group_id=g.id WHERE l.library_id=? AND g.kind=? AND g.retired=0`
+				query = `SELECT ` + listeningGroupNavigationID + ` id,g.id entity_id,g.name title,'' subtitle,g.name ordering,COALESCE(vc.total,0) n,0 chapter_index FROM catalog_book_groups g JOIN catalog_libraries l ON l.id=g.library_id LEFT JOIN catalog_book_group_visible_counts vc ON vc.class_id=? AND vc.generation=? AND vc.group_id=g.id WHERE l.library_id=? AND g.kind=? AND g.retired=0`
 				args = []any{class, generation, lib.ID, groupKind}
 			}
 			sections = append(sections, listeningSection{"groups", title, "grid", kind, kind, query, args, false, ""})
@@ -275,11 +279,15 @@ func (s *Service) listeningContent(r ContentRequest, lib Library) (ContentEnvelo
 			return out, sql.ErrNoRows
 		}
 		var title, key string
-		groupKind := 1
-		if r.View == "book_series" {
-			groupKind = 2
+		if r.View == "author" {
+			if e = s.read().QueryRow(`SELECT lower(trim(author.title)) FROM catalog_entities author JOIN catalog_libraries l ON l.id=author.library_id WHERE author.public_id=pid_blob(?) AND l.library_id=? AND author.kind=13 AND author.retired=0`, r.EntityID, lib.ID).Scan(&key); e != nil {
+				return out, e
+			}
+			e = s.read().QueryRow(`SELECT g.name FROM catalog_book_groups g JOIN catalog_libraries l ON l.id=g.library_id WHERE l.library_id=? AND g.kind=1 AND g.name_key=? AND g.retired=0`, lib.ID, key).Scan(&title)
+		} else {
+			e = s.read().QueryRow(`SELECT g.name,g.name_key FROM catalog_book_groups g JOIN catalog_libraries l ON l.id=g.library_id WHERE g.token=? AND l.library_id=? AND g.kind=2 AND g.retired=0`, r.EntityID, lib.ID).Scan(&title, &key)
 		}
-		if e = s.read().QueryRow(`SELECT g.name,g.name_key FROM catalog_book_groups g JOIN catalog_libraries l ON l.id=g.library_id WHERE g.token=? AND l.library_id=? AND g.kind=? AND g.retired=0`, r.EntityID, lib.ID, groupKind).Scan(&title, &key); e != nil {
+		if e != nil {
 			return out, e
 		}
 		out.Heading = ContentHeading{Key: "entity.title", Fallback: title}
@@ -322,7 +330,7 @@ func (s *Service) listeningContent(r ContentRequest, lib Library) (ContentEnvelo
 		}
 		sections = append(sections, listeningSection{"chapters", "Chapters", "list", "chapter", "item", `SELECT pid(file.public_id)||':'||c.chapter_index id,file.id entity_id,c.chapter_index,pid(file.public_id) subtitle,c.title title,printf('%08d:%08d:%020d:%08d',COALESCE(f.disc_number,1),COALESCE(f.part_number,0),file.id,c.chapter_index) ordering,0 n FROM catalog_book_chapters c JOIN catalog_entities file ON file.id=c.file_id JOIN catalog_book_files f ON f.entity_id=file.id JOIN catalog_entities book ON book.id=f.book_id WHERE book.public_id=pid_blob(?) AND book.retired=0 AND file.retired=0`, []any{r.EntityID}, false, ""})
 		sections = append(sections, listeningSection{"files", "Book parts", "list", "audiobook_file", "item", `SELECT pid(file.public_id) id,file.id entity_id,file.title,'' subtitle,printf('%08d:%08d:%020d',COALESCE(f.disc_number,1),COALESCE(f.part_number,0),file.id) ordering,0 n,0 chapter_index FROM catalog_entities book JOIN catalog_book_files f ON f.book_id=book.id JOIN catalog_entities file ON file.id=f.entity_id WHERE book.public_id=pid_blob(?) AND book.retired=0 AND file.retired=0`, []any{r.EntityID}, true, ""})
-		sections = append(sections, listeningSection{"context", "Author & series", "list", "context", "", `SELECT g.token id,g.id entity_id,g.name title,CASE g.kind WHEN 1 THEN 'author' ELSE 'book_series' END subtitle,g.name ordering,0 n,0 chapter_index FROM catalog_entities book JOIN catalog_book_group_members m ON m.book_id=book.id JOIN catalog_book_groups g ON g.id=m.group_id AND g.retired=0 WHERE book.public_id=pid_blob(?)`, []any{r.EntityID}, false, ""})
+		sections = append(sections, listeningSection{"context", "Author & series", "list", "context", "", `SELECT ` + listeningGroupNavigationID + ` id,g.id entity_id,g.name title,CASE g.kind WHEN 1 THEN 'author' ELSE 'book_series' END subtitle,g.name ordering,0 n,0 chapter_index FROM catalog_entities book JOIN catalog_book_group_members m ON m.book_id=book.id JOIN catalog_book_groups g ON g.id=m.group_id AND g.retired=0 JOIN catalog_libraries l ON l.id=g.library_id WHERE book.public_id=pid_blob(?)`, []any{r.EntityID}, false, ""})
 	default:
 		return out, requestinput.New("unknown listening view")
 	}
@@ -536,7 +544,7 @@ func (s *Service) listeningSection(r ContentRequest, spec listeningSection, offs
 			visibility = `EXISTS(SELECT 1 FROM catalog_book_visible_counts vc WHERE vc.class_id=? AND vc.generation=? AND vc.book_id=projected.entity_id)`
 			visibleArgs = []any{class, generation}
 		} else if spec.kind == "context" {
-			visibility = `EXISTS(SELECT 1 FROM catalog_book_group_visible_counts vc JOIN catalog_book_groups g ON g.id=vc.group_id WHERE vc.class_id=? AND vc.generation=? AND g.token=projected.id AND g.retired=0)`
+			visibility = `EXISTS(SELECT 1 FROM catalog_book_group_visible_counts vc JOIN catalog_book_groups g ON g.id=vc.group_id WHERE vc.class_id=? AND vc.generation=? AND g.id=projected.entity_id AND g.retired=0)`
 			visibleArgs = []any{class, generation}
 		}
 	}

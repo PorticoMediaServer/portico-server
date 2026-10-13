@@ -35,6 +35,9 @@ func TestListeningGroupsLargeLibraryCost(t *testing.T) {
 			if err != nil {
 				return err
 			}
+			if _, _, err = compactcatalog.EnsureEntityTx(ctx, tx, compactcatalog.Entity{Library: library, Kind: compactcatalog.Author, Key: compactcatalog.AuthorKey(fmt.Sprintf("Author %07d", i/10)), Title: fmt.Sprintf("Author %07d", i/10)}); err != nil {
+				return err
+			}
 			if err = compactcatalog.SetFactsTx(ctx, tx, bookID, map[string]any{"library_id": library, "local_key": book, "author": fmt.Sprintf("Author %07d", i/10)}); err != nil {
 				return err
 			}
@@ -112,7 +115,7 @@ func TestListeningGroupsLargeLibraryCost(t *testing.T) {
 	page("authors page", authors)
 	page("series page", series)
 	var authorID, seriesID string
-	if err := c.DB.QueryRow(`SELECT token FROM catalog_book_groups WHERE kind=1 ORDER BY name LIMIT 1`).Scan(&authorID); err != nil {
+	if err := c.DB.QueryRow(`SELECT pid(public_id) FROM catalog_entities WHERE kind=13 ORDER BY title LIMIT 1`).Scan(&authorID); err != nil {
 		t.Fatal(err)
 	}
 	if err := c.DB.QueryRow(`SELECT token FROM catalog_book_groups WHERE kind=2 ORDER BY name LIMIT 1`).Scan(&seriesID); err != nil {

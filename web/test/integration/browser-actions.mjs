@@ -82,6 +82,29 @@ try{
   });
   await driver.clickText('Close player');
  }
+ if(mode==='groups'){
+  await driver.navigate(base);await driver.waitFor(`document.querySelector('button[class*="avatarItem"]')`);
+  for(const [viewport,width,height] of [['desktop',1440,1000],['phone',390,844]]){
+   await driver.viewport(width,height);
+   for(const [kind,view,title,expected] of [['music','artists','Browser Artist','Browser Song'],['music','releases','Browser Album','Browser Song'],['audiobook','authors','Browser Author','Browser Book']]){
+    await step(viewport+'-'+view+'-group',async()=>{
+     const lib=libraries.find(l=>l.kind===kind);await go(`/library/${lib.id}?view=${view}`);
+     await driver.waitFor(`[...document.querySelectorAll('a')].some(a=>a.getAttribute('aria-label')?.startsWith(${JSON.stringify(title)}))`);
+     const label=await driver.evaluate(`[...document.querySelectorAll('a')].find(a=>a.getAttribute('aria-label')?.startsWith(${JSON.stringify(title)})).getAttribute('aria-label')`);
+     await driver.clickText(label,'a');await driver.waitFor(`document.body.innerText.includes(${JSON.stringify(expected)})`,15000);
+     return {route:await driver.evaluate('location.pathname'),member:expected};
+    });
+   }
+   await step(viewport+'-book-author-context',async()=>{
+    const lib=libraries.find(l=>l.kind==='audiobook');await go(`/library/${lib.id}?view=browse`);
+    await driver.waitFor(`[...document.querySelectorAll('a')].some(a=>a.getAttribute('aria-label')?.startsWith('Browser Book'))`);
+    const label=await driver.evaluate(`[...document.querySelectorAll('a')].find(a=>a.getAttribute('aria-label')?.startsWith('Browser Book')).getAttribute('aria-label')`);
+    await driver.clickText(label,'a');await driver.waitFor(`location.pathname.includes('/book/') && document.body.innerText.includes('Author & series')`);
+    await driver.clickText('Browser Author','button');await driver.waitFor(`location.pathname.includes('/author/') && document.body.innerText.includes('Browser Book')`);
+    return {authorContextOpensBook:true};
+   });
+  }
+ }
  if(mode==='tokens'){
   await driver.viewport(1440,1000);await driver.navigate(base);await driver.waitFor(`document.querySelector('button[class*="avatarItem"]')`);
   const member={username:'member-'+crypto.randomUUID().slice(0,8),password:'Test-'+crypto.randomUUID()+'9x'};
@@ -116,7 +139,7 @@ try{
   await step('desktop-download-prepared',async()=>{
    const library=libraries.find(l=>l.kind==='movie');await go(`/library/${library.id}?view=browse`);await driver.waitFor(`document.querySelector('a[aria-label^="Browser Film"]')`);const label=await driver.evaluate(`document.querySelector('a[aria-label^="Browser Film"]').getAttribute('aria-label')`);await driver.clickText(label,'a');await driver.waitFor(`document.querySelector('button[aria-label="More actions"]')`);
    await driver.clickText('More actions');await driver.waitFor(`document.querySelector('[role="menuitem"]')`);await driver.clickText('Download…','[role="menuitem"]');await driver.waitFor(`document.querySelector('[role="dialog"]')`);
-   const original=await driver.evaluate(`[...document.querySelectorAll('[role="dialog"] button')].find(b=>b.innerText.startsWith('Original')).innerText.trim()`);await driver.clickText(original,'[role="dialog"] button');await driver.waitFor(`document.querySelector('a[href="/downloads"]')`);await driver.clickText('View downloads','a');await driver.waitFor(`document.body.innerText.includes('Ready to save')&&!document.querySelector('[role="dialog"]')`);return {readyToSave:true};
+   await driver.waitFor(`[...document.querySelectorAll('[role="dialog"] button')].some(b=>b.innerText.startsWith('Original'))`);const original=await driver.evaluate(`[...document.querySelectorAll('[role="dialog"] button')].find(b=>b.innerText.startsWith('Original')).innerText.trim()`);await driver.clickText(original,'[role="dialog"] button');await driver.waitFor(`document.querySelector('a[href="/downloads"]')`);await driver.clickText('View downloads','a');await driver.waitFor(`document.body.innerText.includes('Ready to save')&&!document.querySelector('[role="dialog"]')`);return {readyToSave:true};
   });
   await step('desktop-download-saved',async()=>{
    const directory=path.join(output,'saved-downloads');await driver.send('Browser.setDownloadBehavior',{behavior:'allow',downloadPath:directory,eventsEnabled:true});await driver.clickText('Save file');
@@ -153,6 +176,9 @@ try{
     await driver.waitFor(`document.querySelector('[role="dialog"]')?.innerText.includes('Browser Viewer')`);
     const option=await driver.evaluate(`[...document.querySelectorAll('[role="dialog"] button')].find(b=>b.innerText.includes('Browser Viewer')).innerText.trim()`);await driver.clickText(option,'[role="dialog"] button');
     await driver.waitFor(`!document.querySelector('[role="dialog"]')`);await pause(450);
+    await go('/settings/profile');await driver.waitFor(`document.body.innerText.includes('Browser Viewer')`);
+    assert(!await driver.evaluate(`document.body.innerText.includes('Two-step verification')||document.body.innerText.includes('Change password')`),'Secondary profiles must not receive account-management controls');
+    assert(!driver.events.slice(-12).some(e=>e.kind==='http'&&e.status===403),'Profile switch must not send forbidden account requests');
     await driver.screenshot(viewport+'-viewer-profile');
     await driver.clickSelector(viewport==='desktop'?'button[class*="avatarItem"]':'button[class*="topAvatar"]');await driver.clickText('Switch profile…','[role="menuitem"]');await driver.waitFor(`document.querySelector('[role="dialog"]')?.innerText.includes('Browser Viewer')`);
     const owner=await driver.evaluate(`[...document.querySelectorAll('[role="dialog"] button')].find(b=>b.innerText.includes(${JSON.stringify(credentials.username)})).innerText.trim()`);await driver.clickText(owner,'[role="dialog"] button');await driver.waitFor(`!document.querySelector('[role="dialog"]')`);

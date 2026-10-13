@@ -49,3 +49,15 @@ test('the Player setting is offered only where there is a second player to choos
   assert.equal(i18n.t('saved.view.partial', {count: 1000}), 'This view has more than 1,000 titles. The first 1,000 are playing.');
   assert.equal(i18n.t('player.cannotPlay.gone', {title: 'Dune'}), 'Dune is no longer on this server.');
 });
+
+
+test('secondary local profiles retain their profile controls without account security or devices', () => {
+ const panels = (manage: boolean) => settingsStructure({platform:'web', owner:false, capabilities:{localAccount:true, manageSignIn:manage, manageDevices:manage, deviceName:manage}})
+  .headings.flatMap(h=>h.pages.flatMap(p=>p.sections.flatMap(s=>s.rows))).filter(r=>r.kind==='custom').map(r=>r.id);
+ const secondary=panels(false), primary=panels(true);
+ assert(secondary.includes('profiles'));
+ for(const id of ['password','twoStep','devices','deviceName']){
+  assert(!secondary.includes(id), id+' requires the primary profile');
+  assert(primary.includes(id), id+' remains available to the primary profile');
+ }
+});

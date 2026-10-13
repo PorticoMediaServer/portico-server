@@ -26,14 +26,14 @@ export type DeviceAccess = Readonly<{state: 'pending' | 'denied'; checking: bool
  * here, and that is shown inside the shell (`blocked`, INT gate 3), never as a page of its own.
  */
 export function DeviceGate({children, blocked}: {children: React.ReactNode; blocked: (access: DeviceAccess) => React.ReactNode}) {
-  const {api, session} = useSession();
+  const {api, session, local: account} = useSession();
   const identity = useMemo(() => new IdentityClient(api), [api]);
   const [state, setState] = useState<'ok' | DeviceAccess['state']>('ok');
   const [checking, setChecking] = useState(false);
   // Every sign-in is a device on its server, however the viewer proved who they are: the record
   // lives on the server alone, and a Portico Account sign-in never asks Hosted Services about it.
   const family = session?.sessionFamilyId ?? '';
-  const local = session?.viewer.authority === 'local';
+  const rememberAccount = session?.viewer.authority === 'local' && !!account?.profiles.some(p => p.primary && p.id === session.viewer.profileId);
   const announce = useCallback(async () => {
     if (!family) { setState('ok'); return; }
     const installationId = browserInstallation();
@@ -42,8 +42,8 @@ export function DeviceGate({children, blocked}: {children: React.ReactNode; bloc
     setChecking(false);
     setState(outcome === 'pending' || outcome === 'denied' ? outcome : 'ok');
     // The sign-in screen can then offer this account by name; nothing stored there signs anyone in.
-    if (outcome === 'bound' && local) void identity.rememberAccount(installationId, false).catch(() => {});
-  }, [identity, family, local]);
+    if (outcome === 'bound' && rememberAccount) void identity.rememberAccount(installationId, false).catch(() => {});
+  }, [identity, family, rememberAccount]);
   useEffect(() => { void announce(); }, [announce]);
   // Every sign-in, direct or Portico Account, tells its server what this browser plays, so the
   // server stops converting what would have played as it is.
