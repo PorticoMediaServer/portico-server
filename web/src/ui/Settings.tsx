@@ -5,7 +5,7 @@ import {Button} from './Button';
 import {Icon, type IconName} from './Icon';
 import {Dialog} from './Dialog';
 import {Input} from './Field';
-import {Notice} from './Feedback';
+import {Loading, Notice} from './Feedback';
 import s from './Settings.module.css';
 
 /**
@@ -54,6 +54,35 @@ export function SettingsRow({label, help, control, meta, state, stack, icon, onC
   );
   if (onClick) return <button type="button" id={id} className={cx(s.row, s.rowClickable, stack && s.rowStack)} onClick={onClick}>{body}</button>;
   return <div id={id} className={cx(s.row, stack && s.rowStack)}>{body}</div>;
+}
+
+/**
+ * What a list in a group says when it has nothing in it: one plain sentence, and a second when
+ * there is something the owner can do about it. Every console list uses this, so an empty list
+ * reads the same on every page.
+ */
+export function SettingsEmpty({title, body}: {title: React.ReactNode; body?: React.ReactNode}) {
+  return (
+    <div className={s.empty}>
+      <span className={s.emptyTitle}>{title}</span>
+      {body ? <span className={s.emptyBody}>{body}</span> : null}
+    </div>
+  );
+}
+
+/** A group's first read, before there is anything to show: "Loading {thing}" where its rows will be. `thing` is the lower-case noun ("webhooks", "API keys"). */
+export function SettingsLoading({thing}: {thing: string}) {
+  return <div className={s.empty}><Loading label={uiI18n().t('status.loadingThing', {thing})} /></div>;
+}
+
+/** A notice inside a group (a failed read, the result of an action), inset like the rows around it. */
+export function SettingsNote({children}: {children: React.ReactNode}) {
+  return <div className={s.note}>{children}</div>;
+}
+
+/** What sits under a group's rows: a quiet action on the whole list (Show more, Remove them now) or a caption. */
+export function SettingsFooter({children}: {children: React.ReactNode}) {
+  return <div className={s.footer}>{children}</div>;
 }
 
 export function SettingsActions({children, note, sticky}: {children: React.ReactNode; note?: React.ReactNode; sticky?: boolean}) {
@@ -167,16 +196,17 @@ export function MetricGrid({children}: {children: React.ReactNode}) {
 }
 
 /**
- * Destructive confirmation. Names the target and impact; optionally requires
- * typing the exact target name. The confirm action is the only danger-toned
- * control on the page.
+ * Destructive confirmation (component spec, Confirmations). Tier 1: the title is "Verb object?",
+ * the body states the consequence, and the confirm button carries the verb. Tier 2 (files or
+ * server-wide loss) adds one field to type a short human word into. The confirm action is the
+ * only danger-toned control on the page; the control that opens the dialog is not.
  */
-export function ConfirmDialog({open, onOpenChange, title, body, confirmLabel = 'Confirm', cancelLabel = 'Cancel', onConfirm, destructive = true, typedConfirmation, busy, error}: {open: boolean; onOpenChange: (o: boolean) => void; title: string; body?: React.ReactNode; confirmLabel?: string; cancelLabel?: string; onConfirm: () => void | Promise<void>; destructive?: boolean; typedConfirmation?: string; busy?: boolean; error?: string}) {
+export function ConfirmDialog({open, onOpenChange, title, body, confirmLabel, cancelLabel = uiI18n().t('action.cancel'), onConfirm, destructive = true, typedConfirmation, busy, error}: {open: boolean; onOpenChange: (o: boolean) => void; title: string; body?: React.ReactNode; /** The verb of the title ("Revoke", "Remove library"), never "OK" or "Confirm". */ confirmLabel: string; cancelLabel?: string; onConfirm: () => void | Promise<void>; destructive?: boolean; /** Tier 2 only: a short human word or name to type, never an ID. Capitals do not matter. */ typedConfirmation?: string; busy?: boolean; error?: string}) {
   const [typed, setTyped] = useState('');
   useEffect(() => {
     if (!open) setTyped('');
   }, [open]);
-  const ready = !typedConfirmation || typed.trim() === typedConfirmation;
+  const ready = !typedConfirmation || typed.trim().toLocaleLowerCase() === typedConfirmation.trim().toLocaleLowerCase();
   return (
     <Dialog open={open} onOpenChange={onOpenChange} title={title} dismissable={!busy} actions={<><Button variant="ghost" label={cancelLabel} onClick={() => onOpenChange(false)} disabled={busy} /><Button variant={destructive ? 'danger' : 'primary'} label={confirmLabel} onClick={() => void onConfirm()} disabled={!ready} loading={busy} /></>}>
       {body ? <div style={{fontSize: 14, color: 'var(--text-secondary)', lineHeight: 1.5}}>{body}</div> : null}

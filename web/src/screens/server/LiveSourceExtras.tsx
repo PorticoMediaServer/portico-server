@@ -5,12 +5,14 @@ import {parseRecordingGrants, parseRecordingOwners, recordingAllowed, recordingO
 import {RecordingPermissionsGroup} from './DVRSettings';
 import {guideOnlyPatch} from '@core/server-admin/panel-logic.ts';
 export {guideOnlyPatch} from '@core/server-admin/panel-logic.ts';
-import {problem, useAction, useRead} from '../../admin/console';
+import {QUIET_READ_EVERY_MS, problem, sendFresh, useAction, useRead} from '../../admin/console';
+import {isStaleAnswer, rebaseDraft} from '@core/freshness-actions.ts';
 import {createOperationIds} from './operation-ids';
 import {useSession} from '../../app/session';
 import {liveSourceChoicesService, type LiveSourceChoicePage} from '@core/administration.ts';
 import {useI18n} from '../../app/i18n';
-import {Badge, Button, Checkbox, ConfirmDialog, Dialog, Input, Loading, Menu, Notice, Segmented, Select, SettingsGroup, SettingsRow, Switch, Text, type MenuItem} from '../../ui';
+import {Badge, Button, Checkbox, ConfirmDialog, Dialog, Input, Loading, Menu, Notice, Segmented, Select, SettingsEmpty, SettingsGroup, SettingsLoading, SettingsNote, SettingsRow, Switch, Text, type MenuItem} from '../../ui';
+import type {MessageId} from '../../app/i18n';
 
 function useServerId() { const {system, session} = useSession(); return system?.id ?? session?.viewer.serverId ?? ''; }
 /** These documents come in the shared admin envelope; the page reads fields it names and no others. */
@@ -37,8 +39,8 @@ export function chunkChannelMapEntries<T>(entries: readonly T[]): T[][] {
 type FilterRule = {mode: 'include' | 'exclude'; values: string[]};
 type SourceSettings = {enabledGroups: readonly string[]; enabledChannels: readonly string[]; kind: string; streamBufferSeconds: number | null; retryWindowSeconds: number | null; userAgent: string; filters: {categories: FilterRule; countries: FilterRule; keywords: FilterRule}; logoImport: {enabled: boolean; overwriteExisting: boolean}; channelNumbering: {mode: 'source' | 'sequential'; startAt: number; step: number}; guideSourceId: string};
 type SourceDocument = {sourceId: string; sourceName: string; revision: number; settings: SourceSettings; effective: {streamBufferSeconds: number; retryWindowSeconds: number}; availableKinds: string[]};
-const kindName: Record<string, string> = {playlist: 'Channels (playlist or tuner)', 'xmltv-guide': 'Guide only (XMLTV)', hdhomerun: 'HDHomeRun tuner'};
-const filterName = {categories: 'Categories', countries: 'Countries', keywords: 'Words in the channel name'} as const;
+const kindName: Record<string, MessageId> = {playlist: 'server.live.sourceKind.playlist', 'xmltv-guide': 'server.live.sourceKind.guide', hdhomerun: 'server.live.sourceKind.tuner'};
+const filterName = {categories: 'server.live.filter.categories', countries: 'server.live.filter.countries', keywords: 'server.live.filter.keywords'} as const satisfies Record<string, MessageId>;
 
 /** One source's own settings: what it is, where its guide comes from, which of its channels
  * are wanted, how they are numbered, and whether its logos are brought in. */
@@ -58,7 +60,20 @@ export function SourceSettingsDialog({src, guides, onClose, onChanged}: {src: {i
   // BE-API-10: one ID per logical save; retries reuse it, edits mint a new one.
   const [opIds] = useState(createOperationIds);
   const [logoOpIds] = useState(createOperationIds);
-  const save = () => void action.run(async () => { if (!draft || !doc) return; const key = JSON.stringify({revision: doc.revision, settings: draft}); await admin.send(source(src.id, '/configuration'), 'PUT', {expectedRevision: doc.revision, operationId: opIds.forPayload(key), settings: draft}); opIds.release(); read.reload(); onChanged(); }, 'Saved. Changes to filters and numbering show after the next guide refresh.');
+  const save = () => void action.run(async () => {
+    if (!draft || !doc) return;
+    const put = (revision: number, settings: SourceSettings) => admin.send(source(src.id, '/configuration'), 'PUT', {expectedRevision: revision, operationId: opIds.forPayload(JSON.stringify({revision, settings})), settings});
+    try { await put(doc.revision, draft); }
+    catch (e) {
+      if (!isStaleAnswer(e)) throw e;
+      // The source's settings moved (a channel was renumbered, or they were saved elsewhere): carry these edits onto them and save again.
+      const fresh = await admin.get<SourceDocument>(source(src.id, '/configuration')).catch(() => { throw e; });
+      const rebased = rebaseDraft(doc.settings, draft, fresh.settings);
+      if (rebased.conflict) { read.reload(); throw e; }
+      await put(fresh.revision, rebased.merged);
+    }
+    opIds.release(); read.reload(); onChanged();
+  }, t('server.live.settingsSaved'));
   return (
     <Dialog open onOpenChange={o => !o && onClose()} title={src.name} description={t('web.liveSource.settingsLede')} width={620} actions={<><Button variant="ghost" label={t('action.close')} onClick={onClose} /><Button variant="primary" label={t('action.save')} loading={action.busy} disabled={!dirty} onClick={save} /></>}>
       <div style={{display: 'flex', flexDirection: 'column', gap: 16}}>
@@ -68,7 +83,7 @@ export function SourceSettingsDialog({src, guides, onClose, onChanged}: {src: {i
         {!draft && !read.error ? <Loading label={t('web.librarySettings.loading')} /> : null}
         {draft && doc ? (
           <>
-            <Select label={t('web.liveSource.provides')} value={draft.kind} onChange={e => (kind => patch({...guideOnlyPatch(kind)}))(e.target.value)} options={doc.availableKinds.map(k => ({value: k, label: kindName[k] ?? k}))} />
+            <Select label={t('web.liveSource.provides')} value={draft.kind} onChange={e => (kind => patch({...guideOnlyPatch(kind)}))(e.target.value)} options={doc.availableKinds.map(k => ({value: k, label: kindName[k] ? t(kindName[k]!) : k}))} />
             {guideOnly ? <Text variant="caption" tone="tertiary">{t('web.liveSource.guideOnlyNote')}</Text> : (
               <Select label={t('web.liveSource.guideFrom')} help={t('web.liveSource.guideFromHelp')} value={draft.guideSourceId || 'own'} onChange={e => patch({guideSourceId: e.target.value === 'own' ? '' : e.target.value})} options={[{value: 'own', label: t('web.liveSource.ownGuide')}, ...guides.filter(g => g.id !== src.id).map(g => ({value: g.id, label: g.name}))]} />
             )}
@@ -84,8 +99,8 @@ export function SourceSettingsDialog({src, guides, onClose, onChanged}: {src: {i
                 <Text variant="label" tone="secondary">{t('web.liveSource.keepChannels')}</Text>
                 {(Object.keys(filterName) as (keyof typeof filterName)[]).map(key => (
                   <div key={key} style={{display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap'}}>
-                    <div style={{flex: '1 1 260px'}}><Input label={filterName[key]} placeholder={t('web.liveSource.filterPlaceholder')} value={draft.filters[key].values.join(', ')} onChange={e => patch({filters: {...draft.filters, [key]: {...draft.filters[key], values: list(e.target.value)}}})} /></div>
-                    <Segmented size="sm" label={t('web.liveSource.filterMode', {filter: key})} value={draft.filters[key].mode} onChange={mode => patch({filters: {...draft.filters, [key]: {...draft.filters[key], mode}}})} options={[{id: 'include', label: t('web.liveSource.onlyThese')}, {id: 'exclude', label: t('web.liveSource.allButThese')}]} />
+                    <div style={{flex: '1 1 260px'}}><Input label={t(filterName[key])} placeholder={t('web.liveSource.filterPlaceholder')} value={draft.filters[key].values.join(', ')} onChange={e => patch({filters: {...draft.filters, [key]: {...draft.filters[key], values: list(e.target.value)}}})} /></div>
+                    <Segmented size="sm" label={t('web.liveSource.filterMode', {filter: t(filterName[key])})} value={draft.filters[key].mode} onChange={mode => patch({filters: {...draft.filters, [key]: {...draft.filters[key], mode}}})} options={[{id: 'include', label: t('web.liveSource.onlyThese')}, {id: 'exclude', label: t('web.liveSource.allButThese')}]} />
                   </div>
                 ))}
               </div>
@@ -186,7 +201,7 @@ export function ChannelMapDialog({src, onClose}: {src: {id: string; name: string
       }
     }
     setEdits({}); mapOpIds.release(); await more('');
-  }, 'Saved.');
+  }, t('server.live.saved'));
   return (
     <Dialog open onOpenChange={o => !o && onClose()} title={t('web.liveSource.channelMapTitle', {name: src.name})} description={t('web.liveSource.channelMapLede')} width={760} actions={<><Button variant="ghost" label={t('action.close')} onClick={onClose} /><Button variant="primary" label={changed ? t('web.liveSource.saveMapChanges', {changed}) : t('action.save')} loading={action.busy} disabled={!changed} onClick={save} /></>}>
       <div style={{display: 'flex', flexDirection: 'column', gap: 12}}>
@@ -197,7 +212,7 @@ export function ChannelMapDialog({src, onClose}: {src: {id: string; name: string
         <Input label={t('web.live.findChannel')} hideLabel placeholder={t('web.live.findChannel')} value={filter} onChange={e => setFilter(e.target.value)} />
         <div style={{maxHeight: '52vh', overflow: 'auto', border: '1px solid var(--line-soft)', borderRadius: 10}}>
           <table style={{width: '100%', borderCollapse: 'collapse', fontSize: 14}}>
-            <thead><tr style={{textAlign: 'left', position: 'sticky', top: 0, background: 'var(--surface-raised)'}}>{['Channel', 'From source', 'Number', 'Guide listing ID', 'Hidden'].map(h => <th key={h} style={{padding: '8px 12px', fontWeight: 600}}><Text variant="label" tone="tertiary">{h}</Text></th>)}</tr></thead>
+            <thead><tr style={{textAlign: 'left', position: 'sticky', top: 0, background: 'var(--surface-raised)'}}>{(['channel', 'fromSource', 'number', 'guideId', 'hidden'] as const).map(h => <th key={h} style={{padding: '8px 12px', fontWeight: 600}}><Text variant="label" tone="tertiary">{t(`server.live.map.${h}`)}</Text></th>)}</tr></thead>
             <tbody>
               {shown.map(c => {
                 const v = value(c);
@@ -245,7 +260,7 @@ export function DiscoverTunersDialog({onClose, onUse}: {onClose: () => void; onU
         {busy && !result ? <Loading label={t('web.liveSource.searching')} /> : null}
         {result && !result.discoveryEnabled ? <Notice tone="info" compact>{t('web.liveSource.searchOff')}</Notice> : null}
         {result && result.discoveryEnabled && !result.devices.length ? <Notice tone="info" compact>{t('web.liveSource.noTuners')}</Notice> : null}
-        {result?.devices.map(found => <SettingsRow key={found.deviceId || found.address} icon="live" label={found.friendlyName || found.model || t('web.liveSource.tunerFallback')} help={[found.model, found.address, found.tunerCount ? `${found.tunerCount} tuners` : ''].filter(Boolean).join(' · ')} control={found.configured ? <Badge tone="neutral">{t('web.liveSource.alreadyAdded')}</Badge> : <Button size="sm" variant="primary" label={t('web.liveSource.useThis')} onClick={() => onUse(found)} />} />)}
+        {result?.devices.map(found => <SettingsRow key={found.deviceId || found.address} icon="live" label={found.friendlyName || found.model || t('web.liveSource.tunerFallback')} help={[found.model, found.address, found.tunerCount ? t('server.live.tunerCount', {count: found.tunerCount}) : ''].filter(Boolean).join(' · ')} control={found.configured ? <Badge tone="neutral">{t('web.liveSource.alreadyAdded')}</Badge> : <Button size="sm" variant="secondary" label={t('web.liveSource.useThis')} onClick={() => onUse(found)} />} />)}
       </div>
     </Dialog>
   );
@@ -271,18 +286,21 @@ export function RecordingRulesGroup({sources}: {sources: readonly {id: string; n
       const page = parseRecordingOwners(await admin.get<unknown>('/v1/admin/dvr/recording-owners?limit=200' + (cursor ? '&cursor=' + encodeURIComponent(cursor) : '')));
       owners.push(...page.items);
       cursor = page.nextCursor;
-      if (cursor && seen.has(cursor)) throw new Error('Recording profiles could not be read. Refresh and try again.');
+      if (cursor && seen.has(cursor)) throw Object.assign(new Error('invalid_response'), {code: 'invalid_response'});
       seen.add(cursor);
     } while (cursor);
     return {owners, grants};
   }, [admin]);
-  const read = useRead(() => admin.get<{items: Group[]}>('/v1/admin/dvr/recording-groups?limit=100'), [admin]);
+  // A rule a member makes from the guide, or pauses, shows here by itself.
+  const read = useRead(() => admin.get<{items: Group[]}>('/v1/admin/dvr/recording-groups?limit=100'), [admin], {every: QUIET_READ_EVERY_MS});
   const action = useAction();
   // BE-API-10: one ID per logical write; retries reuse it.
   const [ruleOpIds] = useState(createOperationIds);
   const [edit, setEdit] = useState<(Omit<Group, 'id' | 'revision'> & {id?: string; revision?: number}) | null>(null);
   const [remove, setRemove] = useState<Group | null>(null);
   const groups = read.data?.items ?? [];
+  // A rule as the server has it now: read before pausing, resuming or removing it is sent again.
+  const again = (id: string) => async () => (await admin.get<{items: Group[]}>('/v1/admin/dvr/recording-groups?limit=100')).items.find(x => x.id === id);
   const [guideDate, setGuideDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [guideSource, setGuideSource] = useState('');
   const [guideCursor, setGuideCursor] = useState('');
@@ -305,19 +323,21 @@ export function RecordingRulesGroup({sources}: {sources: readonly {id: string; n
     const key = JSON.stringify({id: g.id ?? null, revision: g.revision ?? null, owner: g.owner, anchor: g.anchor, kind: g.kind, name: g.name, match: g.match, sourceId: g.sourceId, enabled: g.enabled, options: g.options});
     return recordingRulePayload(g, grants, ruleOpIds.forPayload(key));
   };
-  const save = () => void action.run(async () => { if (!edit || !valid) return; await admin.send(edit.id ? `/v1/admin/dvr/recording-groups/${encodeURIComponent(edit.id)}` : '/v1/admin/dvr/recording-groups', edit.id ? 'PUT' : 'POST', body(edit)); ruleOpIds.release(); setEdit(null); read.reload(); }, 'Saved.');
+  const save = () => void action.run(async () => { if (!edit || !valid) return; await admin.send(edit.id ? `/v1/admin/dvr/recording-groups/${encodeURIComponent(edit.id)}` : '/v1/admin/dvr/recording-groups', edit.id ? 'PUT' : 'POST', body(edit)); ruleOpIds.release(); setEdit(null); read.reload(); }, t('server.live.saved'));
   const items = (g: Group): MenuItem[] => [{id: 'edit', label: legacy(g) ? t('web.recordingRules.replaceOwned') : t('web.recordingRules.editRule'), icon: 'edit'}, {id: 'toggle', label: g.enabled ? t('web.recordingRules.pauseRule') : t('web.recordingRules.resumeRule'), icon: 'pause', disabled: legacy(g) || !recordingAllowed(g.owner, grants)}, {id: 'remove', label: t('web.recordingRules.remove'), icon: 'trash', destructive: true, separatorBefore: true}];
   return (
     <>
     {policy.error ? <Notice tone="error" compact action={{label: t('action.tryAgain'), onClick: policy.reload}}>{policy.error}</Notice> : null}
     {policy.data ? <RecordingPermissionsGroup owners={owners} grants={grants} onSaved={policy.reload} /> : null}
     <SettingsGroup title={t('web.recordingRules.title')} description={t('web.recordingRules.lede')} action={<Button size="sm" variant="secondary" icon="plus" label={t('web.recordingRules.newRule')} disabled={!policy.data} onClick={() => openEdit()} />}>
-      {read.error ? <div style={{padding: 12}}><Notice tone={read.data ? 'warning' : 'error'} compact action={{label: t('action.tryAgain'), onClick: read.reload}}>{read.error}</Notice></div> : null}
-      {action.error && !edit ? <div style={{padding: 12}}><Notice tone="error" compact>{action.error}</Notice></div> : null}
-      {read.data && !groups.length ? <SettingsRow label={t('web.recordingRules.noRules')} help={t('web.recordingRules.noRulesHelp')} /> : null}
+      {read.error ? <SettingsNote><Notice tone={read.data ? 'warning' : 'error'} compact action={{label: t('action.tryAgain'), onClick: read.reload}}>{read.error}</Notice></SettingsNote> : null}
+      {action.error && !edit && !remove ? <SettingsNote><Notice tone="error" compact>{action.error}</Notice></SettingsNote> : null}
+      {action.notice ? <SettingsNote><Notice tone="success" compact>{action.notice}</Notice></SettingsNote> : null}
+      {!read.data && read.loading ? <SettingsLoading thing={t('server.thing.recordingRules')} /> : null}
+      {read.data && !groups.length ? <SettingsEmpty title={t('web.recordingRules.noRules')} body={t('web.recordingRules.noRulesHelp')} /> : null}
       {groups.map(g => <SettingsRow key={g.id} icon="dvr" label={g.name} help={[g.kind === 'series' ? t('web.recordingRules.seriesKind') : t('web.recordingRules.matchTitles', {match: g.match}), g.options.newEpisodesOnly ? t('web.recordingRules.newOnly') : '', g.sourceId ? sources.find(s => s.id === g.sourceId)?.name ?? '' : t('web.recordingRules.anySource')].filter(Boolean).join(' · ')} meta={legacy(g) ? t('web.recordingRules.chooseOwner') : g.enabled ? undefined : t('web.recordingRules.pausedRule')} control={<Menu label={t('web.liveSource.ruleOptions', {name: g.name})} trigger={<Button size="sm" variant="ghost" icon="more" aria-label={t('web.liveSource.ruleOptions', {name: g.name})} />} items={items(g)} onSelect={id => {
         if (id === 'edit') openEdit(g);
-        else if (id === 'toggle' && !legacy(g) && recordingAllowed(g.owner, grants)) void action.run(async () => { await admin.send(`/v1/admin/dvr/recording-groups/${encodeURIComponent(g.id)}`, 'PUT', body({...g, enabled: !g.enabled})); ruleOpIds.release(); read.reload(); });
+        else if (id === 'toggle' && !legacy(g) && recordingAllowed(g.owner, grants)) { const enabled = !g.enabled; void action.run(async () => { await sendFresh(g, x => admin.send(`/v1/admin/dvr/recording-groups/${encodeURIComponent(x.id)}`, 'PUT', body({...x, enabled})), again(g.id), now => (now.enabled === enabled ? 'done' : true)); ruleOpIds.release(); read.reload(); }); }
         else setRemove(g);
       }} />} />)}
       <Dialog open={!!edit} onOpenChange={o => !o && setEdit(null)} title={edit?.id ? t('web.recordingRules.editTitle') : t('web.recordingRules.newTitle')} width={520} actions={<><Button variant="ghost" label={t('action.cancel')} onClick={() => setEdit(null)} /><Button variant="primary" label={t('action.save')} loading={action.busy} disabled={!valid} onClick={save} /></>}>
@@ -350,7 +370,7 @@ export function RecordingRulesGroup({sources}: {sources: readonly {id: string; n
           </div>
         ) : null}
       </Dialog>
-      <ConfirmDialog open={!!remove} onOpenChange={o => !o && setRemove(null)} title={t('web.recordingRules.removeTitle', {name: remove?.name ?? ''})} body={t('web.recordingRules.removeBody')} confirmLabel={t('web.recordingRules.remove')} busy={action.busy} onConfirm={() => { const g = remove; if (g) { const key = JSON.stringify({id: g.id, revision: g.revision}); void action.run(async () => { await admin.send(`/v1/admin/dvr/recording-groups/${encodeURIComponent(g.id)}?expectedRevision=${g.revision}&operationId=${ruleOpIds.forPayload(key)}`, 'DELETE'); ruleOpIds.release(); setRemove(null); read.reload(); }); } }} />
+      <ConfirmDialog open={!!remove} onOpenChange={o => !o && setRemove(null)} title={t('web.recordingRules.removeTitle', {name: remove?.name ?? ''})} body={t('web.recordingRules.removeBody')} confirmLabel={t('web.recordingRules.remove')} busy={action.busy} error={action.error || undefined} onConfirm={() => { const g = remove; if (g) { const key = JSON.stringify({id: g.id, revision: g.revision}); void action.run(async () => { await sendFresh(g, x => admin.send(`/v1/admin/dvr/recording-groups/${encodeURIComponent(x.id)}?expectedRevision=${x.revision}&operationId=${ruleOpIds.forPayload(JSON.stringify({id: x.id, revision: x.revision}))}`, 'DELETE'), again(g.id)); ruleOpIds.release(); setRemove(null); read.reload(); }); } }} />
     </SettingsGroup>
     </>
   );

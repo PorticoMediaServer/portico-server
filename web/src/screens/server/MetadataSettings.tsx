@@ -2,6 +2,7 @@ import {useEffect, useMemo, useState} from 'react';
 import {useNavigate} from '@tanstack/react-router';
 import {artworkLimitBytes as limitBytes, artworkLimitText as limitText, metadataSettingsService, type MetadataSettings} from '@core/metadata-settings.ts';
 import {problem, useRead} from '../../admin/console';
+import {isStaleAnswer} from '@core/freshness-actions.ts';
 import {useInlineForm} from '../settings/ServerForms';
 import {useSession} from '../../app/session';
 import {useI18n} from '../../app/i18n';
@@ -42,7 +43,16 @@ export function MetadataSettingsPanel() {
     save: async () => {
       if (!doc || bytes === undefined) return;
       const tmdbKey = keyChange(tmdb), tvdbKey = keyChange(tvdb);
-      await service.save({expectedRevision: doc.revision, localArtworkLimitBytes: bytes, includeAdult: adult, ...(tmdbKey !== undefined ? {tmdbReadToken: tmdbKey} : {}), ...(tvdbKey !== undefined ? {tvdbProjectKey: tvdbKey} : {})});
+      const keys = {...(tmdbKey !== undefined ? {tmdbReadToken: tmdbKey} : {}), ...(tvdbKey !== undefined ? {tvdbProjectKey: tvdbKey} : {})};
+      try { await service.save({expectedRevision: doc.revision, localArtworkLimitBytes: bytes, includeAdult: adult, ...keys}); }
+      catch (e) {
+        if (!isStaleAnswer(e)) throw e;
+        // These settings moved on the server: what was not changed here takes the server's value, and it is saved again, unless the same setting was changed there too.
+        const fresh = await service.read().catch(() => { throw e; });
+        const limitMine = bytes !== doc.localArtworkLimitBytes, adultMine = adult !== doc.includeAdult;
+        if ((limitMine && fresh.localArtworkLimitBytes !== doc.localArtworkLimitBytes && fresh.localArtworkLimitBytes !== bytes) || (adultMine && fresh.includeAdult !== doc.includeAdult && fresh.includeAdult !== adult)) { read.reload(); throw e; }
+        await service.save({expectedRevision: fresh.revision, localArtworkLimitBytes: limitMine ? bytes : fresh.localArtworkLimitBytes, includeAdult: adultMine ? adult : fresh.includeAdult, ...keys});
+      }
       read.reload();
     },
   });

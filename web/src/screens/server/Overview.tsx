@@ -1,9 +1,10 @@
 import {TelemetryPanel} from './OverviewCharts';
+import {alertName, severityName} from '@core/server-admin/console-catalogue.ts';
 import type {Alert, Measurement} from '@core/console.ts';
 import {STATE_PERMISSIONS_CODE} from '@core/administration.ts';
 import {healthFacts} from '@core/server-admin/dashboard.ts';
 import {StatePermissionsCard} from './StatePermissions';
-import {alertLabel, alertTone, duration, sentence, useAction, useConsole, useRead, when} from '../../admin/console';
+import {alertTone, duration, sendFresh, sentence, useAction, useConsole, useRead, when} from '../../admin/console';
 import {Badge, Button, Freshness, Notice, Status, Text} from '../../ui';
 import {useI18n} from '../../app/i18n';
 import s from './Server.module.css';
@@ -49,7 +50,7 @@ export function AlertsPanel() {
   // reports the item.
   const permissions = open.find(a => a.code === STATE_PERMISSIONS_CODE);
   const rest = permissions ? open.filter(a => a !== permissions) : open;
-  if (read.error && !read.data) return <Notice tone="error" action={{label: t('action.tryAgain'), onClick: read.reload}}>Alerts couldn’t be loaded. {read.error}</Notice>;
+  if (read.error && !read.data) return <Notice tone="error" action={{label: t('action.tryAgain'), onClick: read.reload}}>{read.error}</Notice>;
   if (!read.data) return null;
   if (!open.length) return <Notice tone="success" icon="success">{t('web.overview.noAlerts')}</Notice>;
   return (
@@ -57,13 +58,13 @@ export function AlertsPanel() {
       {permissions ? <StatePermissionsCard alert={permissions} /> : null}
       {rest.map(a => (
         <div key={a.id} className={s.alert}>
-          <Badge tone={alertTone(a)} dot>{sentence(a.severity)}</Badge>
+          <Badge tone={alertTone(a)} dot>{severityName(t, id => i18n.has(id), a.severity)}</Badge>
           <div className={s.alertBody}>
-            <Text variant="bodyStrong">{alertLabel(a)}</Text>
+            <Text variant="bodyStrong">{alertName(t, id => i18n.has(id), a.code)}</Text>
             <Text variant="caption" tone="tertiary">{[a.occurrences > 1 ? t('server.alert.seen', {count: a.occurrences, when: when(i18n, a.lastAt)}) : t('server.alert.firstSeen', {when: when(i18n, a.firstAt)}), a.status === 'acknowledged' ? t('server.alert.acknowledged') : ''].filter(Boolean).join(' · ')}</Text>
             <details className={s.details}><summary>{t('server.technicalDetails')}</summary><dl><dt>Code</dt><dd>{a.code}</dd><dt>Alert</dt><dd>{a.id}</dd></dl></details> {/* lint-strings-allow: technical console readout (alert code/id field labels) */}
           </div>
-          {a.status === 'open' ? <Button size="sm" variant="outline" label={t('web.overview.acknowledge')} loading={action.busy} onClick={() => void action.run(() => client.acknowledge(a)).then(ok => ok && read.reload())} /> : null}
+          {a.status === 'open' ? <Button size="sm" variant="outline" label={t('web.overview.acknowledge')} loading={action.busy} onClick={() => void action.run(() => sendFresh(a, x => client.acknowledge(x), async () => (await client.alerts()).find(x => x.id === a.id), now => (now.status === 'open' ? true : 'done'))).then(ok => ok && read.reload())} /> : null}
         </div>
       ))}
       {action.error ? <Notice tone="error" compact>{action.error}</Notice> : null}

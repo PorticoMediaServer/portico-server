@@ -180,9 +180,21 @@ const codeBodies: Record<string, MessageId> = {
   webhook_limit: 'error.webhookLimit',
   // What was typed to confirm is not what the server asked for (removing a library).
   confirmation_mismatch: 'error.confirmationMismatch',
+  // Live TV sources: what is wrong with an address, a sign-in or a tuner, in a sentence of its own.
+  invalid_channel_input: 'error.live.invalidInput',
+  source_has_dependencies: 'error.live.hasDependencies',
+  source_network_policy: 'error.live.networkPolicy',
+  source_credentials_required: 'error.live.credentials',
+  source_unavailable: 'error.live.unavailable',
+  channel_revision_conflict: 'error.live.previewExpired',
+  source_capacity_unavailable: 'error.live.tunersBusy',
+  // A picture chosen for a channel's logo that is too large to send.
+  image_too_large: 'server.channels.logoTooLarge',
+  // Playback that ended before a control sent to it arrived (the owner's Pause, a remote's Stop).
+  session_ended: 'error.sessionEnded',
 };
 /** Codes whose sentence says what to do instead, so the notice offers no Try again. */
-const noActionCodes = new Set(['local_metadata_only', 'credential_limit', 'access_tokens_off', 'webhook_limit']);
+const noActionCodes = new Set(['local_metadata_only', 'credential_limit', 'access_tokens_off', 'webhook_limit', 'session_ended', 'image_too_large']);
 
 export function presentError(error: unknown, context: ErrorContext = 'generic', options: PresentOptions = {}): PresentedError {
   const i18n = options.i18n ?? defaultI18n;

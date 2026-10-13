@@ -2,18 +2,22 @@ import {useEffect, useMemo, useState} from 'react';
 import {useNavigate} from '@tanstack/react-router';
 import {apiScopes, createApiKey, getApiAccessOptions, listApiKeys, listMemberAccessTokens, revokeApiKey, revokeMemberAccessToken, type ApiAccessOptions, type ApiCredential, type ApiCredentialPage, type ApiScope, type IssuedApiCredential, type NewApiCredential} from '@core/api-access.ts';
 import {EXPIRY_DAYS, chosenScopes, credentialFacts, credentialMember, credentialState, credentialWorks, expiryInstant, expiryLabel, scopeTicked, type ExpiryDays} from '@core/server-admin/api-words.ts';
-import {useAction, useRead, type Read} from '../../admin/console';
+import {QUIET_READ_EVERY_MS, useAction, useRead, type Read} from '../../admin/console';
 import {useCursorList} from '../../admin/cursor-read';
+import {dependsOn} from '@core/freshness-hub.ts';
 import {createOperationIds} from './operation-ids';
 import {ListPager} from './ListPager';
 import {useSession} from '../../app/session';
 import {useI18n} from '../../app/i18n';
-import {Button, Checkbox, ConfirmDialog, Dialog, Input, Notice, Select, SettingsGroup, SettingsRow, Status, Text, TextArea} from '../../ui';
+import {Button, Checkbox, ConfirmDialog, Dialog, Input, Notice, Select, SettingsEmpty, SettingsFooter, SettingsGroup, SettingsLoading, SettingsNote, SettingsRow, Status, Text, TextArea} from '../../ui';
+
+// The owner turning members' tokens off, or changing the rate, is a change to the server's settings.
+const ACCESS_OPTION_MOVES = [dependsOn.settings('server')];
 
 /** What this server offers for keys and tokens: the scopes, how many there may be, and the rate each gets. */
 export function useApiAccessOptions(): Read<ApiAccessOptions> {
   const {api} = useSession();
-  return useRead(() => getApiAccessOptions(api), [api]);
+  return useRead(() => getApiAccessOptions(api), [api], {on: ACCESS_OPTION_MOVES});
 }
 
 /** The words a list uses for one kind of credential, so keys and tokens read as themselves. */
@@ -64,19 +68,19 @@ export function CredentialList({kind, title, description, read, create, revoke, 
     );
   };
   return (
-    <SettingsGroup title={title} description={description}>
-      {read.error ? <div style={{padding: 12}}><Notice tone={read.data ? 'warning' : 'error'} compact action={{label: t('action.tryAgain'), onClick: read.reload}}>{read.error}</Notice></div> : null}
-      {action.notice ? <div style={{padding: 12}}><Notice tone="success" compact>{action.notice}</Notice></div> : null}
+    <SettingsGroup title={title} description={description} action={create ? <Button size="sm" variant="secondary" icon="plus" label={words.create} disabled={kind === 'token' && !!options && !options.tokensAllowed} onClick={() => { action.clear(); setAdding(true); }} /> : undefined}>
+      {read.error ? <SettingsNote><Notice tone={read.data ? 'warning' : 'error'} compact action={{label: t('action.tryAgain'), onClick: read.reload}}>{read.error}</Notice></SettingsNote> : null}
+      {action.notice ? <SettingsNote><Notice tone="success" compact>{action.notice}</Notice></SettingsNote> : null}
+      {!read.data && read.loading ? <SettingsLoading thing={t(kind === 'key' ? 'server.thing.apiKeys' : 'server.thing.tokens')} /> : null}
       {working.map(row)}
-      {read.data && !working.length ? <div style={{padding: 16}}><Text variant="caption" tone="tertiary">{words.none}</Text></div> : null}
+      {read.data && !working.length ? <SettingsEmpty title={words.none} /> : null}
       {showEnded ? ended.map(row) : null}
-      {create || ended.length ? (
-        <div style={{padding: '8px 16px 16px', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center'}}>
-          {create ? <Button size="sm" variant="secondary" icon="plus" label={words.create} disabled={kind === 'token' && !!options && !options.tokensAllowed} onClick={() => { action.clear(); setAdding(true); }} /> : null}
+      {ended.length || footnote ? (
+        <SettingsFooter>
           {ended.length ? <Button size="sm" variant="ghost" label={showEnded ? t('api.credential.hideEnded') : t('api.credential.showEnded', {count: ended.length})} aria-expanded={showEnded} onClick={() => setShowEnded(v => !v)} /> : null}
-        </div>
+          {footnote ? <Text as="p" variant="caption" tone="tertiary" style={{flexBasis: '100%'}}>{footnote}</Text> : null}
+        </SettingsFooter>
       ) : null}
-      {footnote ? <div style={{padding: '0 16px 16px'}}><Text as="p" variant="caption" tone="tertiary">{footnote}</Text></div> : null}
       {create ? <CreateCredentialDialog open={adding} onClose={() => setAdding(false)} words={words} scopes={options?.scopes.length ? options.scopes : apiScopes} create={create} onCreated={read.reload} /> : null}
       <ConfirmDialog open={!!revoking} onOpenChange={o => !o && setRevoking(undefined)} title={words.revokeTitle(revoking?.name ?? '')} body={words.revokeBody} confirmLabel={t('web.access.revoke')} cancelLabel={t('action.cancel')} busy={action.busy} error={action.error}
         onConfirm={() => void action.run(async () => { if (!revoking) return; await revoke(revoking.id); setRevoking(undefined); read.reload(); }, words.revoked)} />
@@ -153,7 +157,7 @@ export function APIKeysPanel() {
   const {t} = useI18n();
   const {api} = useSession();
   const options = useApiAccessOptions();
-  const read = useCursorList(cursor => credentialPage(listApiKeys(api, cursor)), [api]);
+  const read = useCursorList(cursor => credentialPage(listApiKeys(api, cursor)), [api], {every: QUIET_READ_EVERY_MS});
   return <CredentialList kind="key" title={t('web.access.apiKeys')} description={t('server.access.keyLede')} read={read} options={options.data} create={input => createApiKey(api, input)} revoke={id => revokeApiKey(api, id)} footnote={t('api.tokens.lifetime')} />;
 }
 
@@ -161,7 +165,7 @@ export function APIKeysPanel() {
 export function MemberTokensPanel() {
   const {t} = useI18n();
   const {api} = useSession();
-  const read = useCursorList(cursor => credentialPage(listMemberAccessTokens(api, {cursor})), [api]);
+  const read = useCursorList(cursor => credentialPage(listMemberAccessTokens(api, {cursor})), [api], {every: QUIET_READ_EVERY_MS});
   return <CredentialList kind="token" title={t('api.tokens.memberTitle')} description={t('api.tokens.memberLede')} read={read} revoke={id => revokeMemberAccessToken(api, id)} showMember />;
 }
 

@@ -1,6 +1,7 @@
 import {useState} from 'react';
+import {jobName, jobStateName} from '@core/server-admin/console-catalogue.ts';
 import type {Job} from '@core/console.ts';
-import {jobLabel, jobStateLabel, jobTone, sentence, useAction, useConsole, useRead, when} from '../../admin/console';
+import {jobTone, useAction, useConsole, useRead, when} from '../../admin/console';
 import {Badge, Button, Freshness, Notice, StateView, Surface, Table, tableCell, Text} from '../../ui';
 import s from './Server.module.css';
 import {useI18n} from '../../app/i18n';
@@ -12,6 +13,7 @@ const TASK_EVENTS = Object.freeze([dependsOn.event('operation.updated'), depends
 export function JobsPanel({compact}: {compact?: boolean}) {
   const i18n = useI18n();
   const {t} = i18n;
+  const has = (id: string) => i18n.has(id);
   const client = useConsole();
   const [cursor, setCursor] = useState('');
   // Tasks follow the server as it works: a scan's progress and a task's change of state arrive on the event feed.
@@ -31,8 +33,8 @@ export function JobsPanel({compact}: {compact?: boolean}) {
         <Table columns={[{label: t('web.activity.taskColumn')}, {label: t('web.activity.stateColumn')}, {label: t('web.activity.progressColumn'), num: true}, {label: compact ? t('web.activity.whenColumn') : t('web.activity.startedColumn')}, {label: '', actions: true}]} className="" >
           {items.map(job => (
             <tr key={job.id}>
-              <td><Text variant="bodyStrong">{jobLabel(job.kind)}</Text>{job.resource ? <Text as="div" variant="caption" tone="tertiary">{job.resource}</Text> : null}{job.errorCode ? <Text as="div" variant="caption" tone="danger">{t('web.console.jobFailed')}</Text> : null}<details className={s.details}><summary>{t('server.technicalDetails')}</summary><dl><dt>{t('web.activity.taskColumn')}</dt><dd>{job.id}</dd><dt>{t('web.activity.detail.phase')}</dt><dd>{job.phase}</dd><dt>{t('web.activity.detail.attempt')}</dt><dd>{job.attempt}</dd><dt>{t('web.activity.detail.queue')}</dt><dd>{job.lane}</dd><dt>{t('web.activity.detail.trigger')}</dt><dd>{job.trigger}</dd></dl></details></td>
-              <td><Badge tone={jobTone(job.state)} dot={job.state === 'running'} live={job.state === 'running'}>{jobStateLabel[job.state]}</Badge></td>
+              <td><Text variant="bodyStrong">{jobName(t, has, job.kind)}</Text>{job.resource ? <Text as="div" variant="caption" tone="tertiary">{job.resource}</Text> : null}{job.errorCode ? <Text as="div" variant="caption" tone="danger">{t('web.console.jobFailed')}</Text> : null}<details className={s.details}><summary>{t('server.technicalDetails')}</summary><dl><dt>{t('web.activity.taskColumn')}</dt><dd>{job.id}</dd><dt>{t('web.activity.detail.phase')}</dt><dd>{job.phase}</dd><dt>{t('web.activity.detail.attempt')}</dt><dd>{job.attempt}</dd><dt>{t('web.activity.detail.queue')}</dt><dd>{job.lane}</dd><dt>{t('web.activity.detail.trigger')}</dt><dd>{job.trigger}</dd></dl></details></td>
+              <td><Badge tone={jobTone(job.state)} dot={job.state === 'running'} live={job.state === 'running'}>{jobStateName(t, has, job.state)}</Badge></td>
               <td className={tableCell.num}>{job.processed != null ? i18n.number(job.processed) : '—'}</td>
               <td>{when(i18n, job.createdAt)}</td>
               <td className={tableCell.actions}>

@@ -1,4 +1,5 @@
 import {FolderPicker, LibrarySettingsSections, type LibraryTab} from './LibrarySettings';
+import {scanDepthHelp, scanDepthName, scanStateName, scanStepName} from '@core/server-admin/console-catalogue.ts';
 import {LookupStatusRow, useScreenLookup} from './MetadataLookup';
 import {MetadataSourceChoice} from './MetadataSource';
 import {kindMetadataAgentsPath, parseKindMetadataAgents, type KindMetadataAgents, type MetadataAgentId, type MetadataAgentOption} from '../../admin/metadata-agent';
@@ -7,7 +8,7 @@ import {useEffect, useMemo, useState} from 'react';
 import {useNavigate, useSearch} from '@tanstack/react-router';
 import {LibraryManagementService, fetchEpisodeIssues, type EpisodeIssue, type LibraryAdminJob, type LibraryManagementSnapshot, type ManagedLibrary} from '@core/library-management.ts';
 import {LibraryInventoryService, scanOperations, type LibraryInventorySnapshot, type ScanTier, type SourceSettings} from '@core/library-inventory.ts';
-import {addSourceSettings, canAddSource, createLibraryAndScan, scanJobLabels as jobLabel, scanTierHelp as tierHelp, scanTierLabels as tierLabel} from '@core/server-admin/panel-logic.ts';
+import {addSourceSettings, canAddSource, createLibraryAndScan} from '@core/server-admin/panel-logic.ts';
 export {addSourceSettings, canAddSource, libraryMutationError} from '@core/server-admin/panel-logic.ts';
 import {problem, sentence, useAction} from '../../admin/console';
 import {useService} from '../../app/content';
@@ -25,6 +26,7 @@ import {dependsOn} from '@core/freshness-hub.ts';
 import {NeedsAttentionPanel, hasAttentionList, useAttentionCounts} from './NeedsAttention';
 import {attentionCountText, type AttentionCount} from '@core/server-admin/attention-words.ts';
 import {removeLibrary} from '@core/title-identity.ts';
+import {isStaleAnswer} from '@core/freshness-actions.ts';
 
 const LIBRARY_LIST_MOVES = [dependsOn.libraries, dependsOn.event('library.scan.updated')];
 const kinds: readonly {value: ManagedLibrary['kind']; label: MessageId; description: MessageId}[] = [{value: 'movie', label: 'web.search.movies', description: 'web.libraries.typeMovies'}, {value: 'tv', label: 'builder.shows', description: 'web.libraries.typeTv'}, {value: 'anime', label: 'web.libraries.kindAnime', description: 'web.libraries.typeAnime'}, {value: 'music', label: 'pref.group.music.title', description: 'web.libraries.typeMusic'}, {value: 'audiobook', label: 'web.libraries.kindAudiobooks', description: 'web.libraries.typeAudiobooks'}];
@@ -34,7 +36,6 @@ export function defaultLibraryName(kind: ManagedLibrary['kind'], t?: I18n['t']):
 }
 const jobTone = (s: LibraryAdminJob['status']): 'accent' | 'healthy' | 'warning' | 'danger' | 'neutral' => (s === 'running' ? 'accent' : s === 'complete' ? 'healthy' : s === 'complete_with_warnings' || s === 'paused' ? 'warning' : s === 'failed' ? 'danger' : 'neutral');
 
-const opLabel: Record<string, string> = {probe: 'Inspect media files', local_metadata: 'Local metadata and artwork', subtitles: 'Subtitle discovery', checksum: 'Checksums', chapter_images: 'Chapter images', trickplay: 'Preview thumbnails', waveform: 'Audio waveforms', loudness: 'Loudness analysis', fingerprint: 'Audio fingerprints', segment_detection: 'Intro and credit detection'};
 
 /**
  * Libraries: the directory, and one library's sources, scan policy and scan
@@ -96,7 +97,7 @@ export function LibrariesPage() {
                   {l.source.availability === 'unavailable' ? <Badge tone="danger">{t('web.libraries.sourceUnavailable')}</Badge> : null}
                   {/* A status that needs reading opens what it is about. */}
                   {toMatch ? <Button size="sm" variant="outline" label={t('server.attention.badge', {count: toMatch})} onClick={() => select(l.id, 'attention')} /> : null}
-                  {warned ? <Button size="sm" variant="outline" icon="warning" label={l.attention ? t('server.libraries.needAttention', {count: l.attention.files}) : t('server.libraries.warnings', {count: scan?.warnings ?? 0})} onClick={() => (l.attention ? setIssuesFor(l.id) : select(l.id))} /> : scan ? <Badge tone={jobTone(scan.status)} dot={scan.status === 'running'} live={scan.status === 'running'}>{jobLabel[scan.status]}</Badge> : null}
+                  {warned ? <Button size="sm" variant="outline" icon="warning" label={l.attention ? t('server.libraries.needAttention', {count: l.attention.files}) : t('server.libraries.warnings', {count: scan?.warnings ?? 0})} onClick={() => (l.attention ? setIssuesFor(l.id) : select(l.id))} /> : scan ? <Badge tone={jobTone(scan.status)} dot={scan.status === 'running'} live={scan.status === 'running'}>{scanStateName(t, id => i18n.has(id), scan.status)}</Badge> : null}
                   <Menu label={l.name} trigger={<Button size="sm" variant="ghost" icon="more" aria-label={t('player.more')} />} items={items} onSelect={id => { if (id === 'open') select(l.id); else if (id === 'up') move(i, -1); else if (id === 'down') move(i, 1); }} />
                 </div>} />
             );
@@ -305,7 +306,7 @@ function LibraryDetail({service, snapshot, libraryId, onBack, onRemoved}: {servi
             <SettingsRow label={t('server.library.type')} meta={libraryKindLabel(library.kind, t)} />
           </SettingsGroup> : null}
           {tab === 'scanning' ? <SettingsGroup title={t('web.libraries.scan')} description={t('web.libraries.scanLede')}>
-            <SettingsRow label={t('web.libraries.lastScan')} state={scan ? [jobLabel[scan.status], t('server.libraries.files', {count: scan.processed}), scan.warnings ? t('server.libraries.warnings', {count: scan.warnings}) : '', scan.finishedAt ? t('web.libraries.scanFinished', {when: i18n.dateTime(scan.finishedAt)}) : scan.updatedAt ? t('web.libraries.scanUpdated', {when: i18n.dateTime(scan.updatedAt)}) : '', scan.error || ''].filter(Boolean).join(' · ') : t('web.libraries.notScannedYet')} control={scan && scan.status === 'running' && scan.actions.includes('cancel') ? <Button size="sm" variant="outline" label={t('web.libraries.cancelScan')} onClick={() => void action.run(() => service.cancelJob(scan.id))} /> : scan?.status === 'paused' && scan.actions.includes('resume') ? <Button size="sm" variant="outline" label={t('entry.resume')} onClick={() => void action.run(() => service.controlJob(scan.id, 'resume'))} /> : scan?.status === 'failed' && scan.actions.includes('retry') ? <Button size="sm" variant="outline" label={t('action.tryAgain')} onClick={() => void action.run(() => service.controlJob(scan.id, 'retry'))} /> : undefined} meta={scan ? <Badge tone={jobTone(scan.status)} dot={scan.status === 'running'} live={scan.status === 'running'}>{jobLabel[scan.status]}</Badge> : undefined} />
+            <SettingsRow label={t('web.libraries.lastScan')} state={scan ? [scanStateName(t, id => i18n.has(id), scan.status), t('server.libraries.files', {count: scan.processed}), scan.warnings ? t('server.libraries.warnings', {count: scan.warnings}) : '', scan.finishedAt ? t('web.libraries.scanFinished', {when: i18n.dateTime(scan.finishedAt)}) : scan.updatedAt ? t('web.libraries.scanUpdated', {when: i18n.dateTime(scan.updatedAt)}) : '', scan.error || ''].filter(Boolean).join(' · ') : t('web.libraries.notScannedYet')} control={scan && scan.status === 'running' && scan.actions.includes('cancel') ? <Button size="sm" variant="outline" label={t('web.libraries.cancelScan')} onClick={() => void action.run(() => service.cancelJob(scan.id))} /> : scan?.status === 'paused' && scan.actions.includes('resume') ? <Button size="sm" variant="outline" label={t('entry.resume')} onClick={() => void action.run(() => service.controlJob(scan.id, 'resume'))} /> : scan?.status === 'failed' && scan.actions.includes('retry') ? <Button size="sm" variant="outline" label={t('action.tryAgain')} onClick={() => void action.run(() => service.controlJob(scan.id, 'retry'))} /> : undefined} meta={scan ? <Badge tone={jobTone(scan.status)} dot={scan.status === 'running'} live={scan.status === 'running'}>{scanStateName(t, id => i18n.has(id), scan.status)}</Badge> : undefined} />
             {/* What the scan left out and why, a page at a time: paths are the owner's to see, never a viewer's. */}
             {scan && scan.status !== 'queued' ? <SettingsRow label={t('server.scan.skipped')} help={t('server.scan.skippedHelp')} control={<Button size="sm" variant="ghost" label={t('server.scan.skippedOpen')} onClick={() => setSkippedFor(scan.id)} />} /> : null}
             {library.attention ? <SettingsRow icon="warning" label={library.attention.atLeast ? t('web.libraries.attentionAtLeast', {count: i18n.number(library.attention.files)}) : t('web.libraries.attention', {count: library.attention.files})} help={t('web.libraries.attentionHelp')} control={<Button size="sm" variant="outline" label={t('web.libraries.attentionReview')} onClick={() => setIssuesOpen(true)} />} /> : null}
@@ -321,7 +322,7 @@ function LibraryDetail({service, snapshot, libraryId, onBack, onRemoved}: {servi
             {config && !config.sources.length ? <SettingsRow label={t('web.libraries.noFolders')} help={t('web.libraries.noFoldersHelp')} /> : null}
             {config?.sources.map(src => (
               <SettingsRow key={src.id} icon="folder" label={src.name || src.path} help={<><span style={{fontFamily: 'var(--font-mono)', fontSize: 12}}>{src.path}</span>{src.classification === 'network' ? ` · ${t('web.libraries.networkFolder')}` : ''}{src.lastCompleteAt ? ` · ${t('server.libraries.scanned', {when: i18n.dateTime(src.lastCompleteAt)})}` : ''}</>} meta={<Badge tone={src.health === 'healthy' || src.health === 'available' ? 'healthy' : src.health === 'unknown' ? 'neutral' : 'warning'} dot>{sentence(src.health || 'unknown')}{!src.enabled ? ` · ${t('web.libraries.folderPaused')}` : ''}</Badge>} control={<Menu label={t('web.libraries.folderMenu', {name: src.name})} trigger={<Button size="sm" variant="ghost" icon="more" aria-label={t('web.libraries.folderActions')} />} items={[{id: 'scan', label: t('web.libraries.scanFolder'), icon: 'refresh'}, {id: 'check', label: t('web.libraries.checkAvailability'), icon: 'pulse'}, {id: 'edit', label: t('web.selection.edit'), icon: 'edit'}, {id: 'remove', label: t('web.libraries.removeFolder'), icon: 'trash', destructive: true, separatorBefore: true}]} onSelect={id => {
-                if (id === 'scan') void action.run(() => inventory.service.scanSource(src.id), 'Scan started.');
+                if (id === 'scan') void action.run(() => inventory.service.scanSource(src.id), t('server.scan.started'));
                 else if (id === 'check') void action.run(() => inventory.service.checkSource(src.id), 'Checked.');
                 else if (id === 'edit') setEditSource({id: src.id, settings: {name: src.name, path: src.path, classification: src.classification, followSymlinks: src.followSymlinks, intervalSeconds: src.intervalSeconds, expectedRevision: config.revision, acceptReplacement: false}});
                 else if (id === 'remove') setRemoveSource({id: src.id, name: src.name || src.path, revision: config.revision});
@@ -341,7 +342,17 @@ function LibraryDetail({service, snapshot, libraryId, onBack, onRemoved}: {servi
       {issuesOpen && library ? <EpisodeIssuesDialog libraryId={library.id} onClose={() => setIssuesOpen(false)} /> : null}
       <ConfirmDialog open={removing && !!library} onOpenChange={o => !o && setRemoving(false)} title={t('server.library.removeTitle', {name: library?.name ?? ''})} typedConfirmation={library?.name} confirmLabel={t('server.library.remove')} cancelLabel={t('action.cancel')} busy={action.busy} error={action.error}
         body={<div style={{display: 'flex', flexDirection: 'column', gap: 8}}><span>{t('server.library.removeGoes')}</span><span>{t('server.library.removeKept')}</span></div>}
-        onConfirm={() => { if (library && config) void action.run(() => removeLibrary(api, library.id, library.name, config.revision)).then(ok => { if (ok) { setRemoving(false); onRemoved(); } }); }} />
+        onConfirm={() => { if (library && config) void action.run(async () => {
+          try { await removeLibrary(api, library.id, library.name, config.revision); }
+          catch (e) {
+            if (!isStaleAnswer(e)) throw e;
+            // A scan or a setting moved the library while its name was being typed: it is still the library that was named, so it is removed as asked.
+            await inventory.service.refresh();
+            const now = inventory.service.getSnapshot().config;
+            if (!now) throw e;
+            await removeLibrary(api, library.id, library.name, now.revision);
+          }
+        }).then(ok => { if (ok) { setRemoving(false); onRemoved(); } }); }} />
       <SourceDialog value={editSource} onClose={() => setEditSource(null)} onSave={(id, settings) => void action.run(() => inventory.service.saveSource(id, settings), 'Saved.').then(ok => { if (ok) setEditSource(null); void inventory.service.refresh(); })} busy={action.busy} error={action.error} />
       <ConfirmDialog open={!!removeSource} onOpenChange={o => !o && setRemoveSource(null)} title={t('web.libraries.removeFolderTitle', {name: removeSource?.name ?? ''})} body={t('web.libraries.removeFolderBody')} confirmLabel={t('web.libraries.removeFolder')} busy={action.busy} onConfirm={() => { if (removeSource) void action.run(() => inventory.service.removeSource(removeSource.id, removeSource.revision)).then(ok => { if (ok) { setRemoveSource(null); void inventory.service.refresh(); } }); }} />
     </>
@@ -378,7 +389,9 @@ function EpisodeIssuesDialog({libraryId, onClose}: {libraryId: string; onClose: 
 }
 
 function ScanPolicyRow({inventory, snapshot}: {inventory: LibraryInventoryService; snapshot: LibraryInventorySnapshot}) {
-  const {t} = useI18n();
+  const i18n = useI18n();
+  const {t} = i18n;
+  const has = (id: string) => i18n.has(id);
   const policy = snapshot.config!.policy;
   const [tier, setTier] = useState<ScanTier>(policy.tier);
   const [ops, setOps] = useState<string[]>([...policy.operations]);
@@ -390,12 +403,24 @@ function ScanPolicyRow({inventory, snapshot}: {inventory: LibraryInventoryServic
   const inline = useInlineForm('scan-policy', {
     dirty,
     discard: () => { setTier(policy.tier); setOps([...policy.operations]); },
-    save: async () => { await inventory.setPolicy({tier, operations: tier === 'custom' ? (ops as typeof policy.operations) : policy.operations, expectedRevision: snapshot.config!.revision}); void inventory.refresh(); },
+    save: async () => {
+      const operations = tier === 'custom' ? (ops as typeof policy.operations) : policy.operations;
+      try { await inventory.setPolicy({tier, operations, expectedRevision: snapshot.config!.revision}); }
+      catch (e) {
+        if (!isStaleAnswer(e)) throw e;
+        // The library moved (a folder was added, a scan setting saved): the same choice is sent again against it, unless the scan depth itself was changed elsewhere.
+        await inventory.refresh();
+        const now = inventory.getSnapshot().config;
+        if (!now || now.policy.tier !== policy.tier || JSON.stringify([...now.policy.operations].sort()) !== JSON.stringify([...policy.operations].sort())) throw e;
+        await inventory.setPolicy({tier, operations, expectedRevision: now.revision});
+      }
+      void inventory.refresh();
+    },
   });
   return (
     <>
-      <SettingsRow label={t('web.libraries.scanDepth')} help={tierHelp[tier]} control={<Select hideLabel label={t('web.libraries.scanDepth')} value={tier} options={(['file_list_only', 'basic', 'complete', 'custom'] as ScanTier[]).map(t => ({value: t, label: tierLabel[t]}))} onChange={e => setTier(e.target.value as ScanTier)} />} />
-      {tier === 'custom' ? <SettingsRow label={t('web.libraries.steps')} stack control={<div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 8}}>{scanOperations.map(op => <Checkbox key={op} checked={ops.includes(op)} onCheckedChange={v => setOps(prev => (v ? [...prev, op] : prev.filter(x => x !== op)))} label={opLabel[op] ?? sentence(op)} />)}</div>} start /> : null}
+      <SettingsRow label={t('web.libraries.scanDepth')} help={scanDepthHelp(t, has, tier)} control={<Select hideLabel label={t('web.libraries.scanDepth')} value={tier} options={(['file_list_only', 'basic', 'complete', 'custom'] as ScanTier[]).map(value => ({value, label: scanDepthName(t, has, value)}))} onChange={e => setTier(e.target.value as ScanTier)} />} />
+      {tier === 'custom' ? <SettingsRow label={t('web.libraries.steps')} stack control={<div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 8}}>{scanOperations.map(op => <Checkbox key={op} checked={ops.includes(op)} onCheckedChange={v => setOps(prev => (v ? [...prev, op] : prev.filter(x => x !== op)))} label={scanStepName(t, has, op)} />)}</div>} start /> : null}
       {inline.error ? <div style={{padding: '0 16px 12px'}}><Notice tone="error" compact>{problem(inline.error, 'action')}</Notice></div> : null}
     </>
   );

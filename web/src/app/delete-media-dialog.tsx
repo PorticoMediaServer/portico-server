@@ -4,6 +4,7 @@ import {useSession} from './session';
 import {useLibrariesContext} from './libraries';
 import {useI18n} from './i18n';
 import {errorText} from './errors';
+import {isStaleAnswer} from '@core/freshness-actions.ts';
 import {Button, Dialog, Input, Loading, Notice, Switch, Text} from '../ui';
 import type {DeleteRequest} from './delete-media';
 import {createDeleteOperationIds, deletePayloadKey} from './delete-media';
@@ -50,8 +51,17 @@ export function DeleteMediaDialog({request, onClose}: {request: DeleteRequest; o
     if (!preview || overLimit) return;
     setBusy(true); setError('');
     try {
-      const key = deletePayloadKey({itemIds: request.itemIds, revision: preview.revision, deleteFiles, confirmation: typed.trim()});
-      const result = parseEnvelope(await api.request<unknown>('/v1/admin/media/delete', 'POST', {itemIds: request.itemIds, deleteFiles, confirmation: typed.trim(), expectedRevision: preview.revision, operationId: opIds.forPayload(key)}), serverId, parseDeleteResult).result;
+      const send = (revision: number) => api.request<unknown>('/v1/admin/media/delete', 'POST', {itemIds: request.itemIds, deleteFiles, confirmation: typed.trim(), expectedRevision: revision, operationId: opIds.forPayload(deletePayloadKey({itemIds: request.itemIds, revision, deleteFiles, confirmation: typed.trim()}))});
+      let raw: unknown;
+      try { raw = await send(preview.revision); }
+      catch (e) {
+        if (!isStaleAnswer(e)) throw e;
+        // Something in the library moved while the name was being typed. What will be deleted is read again: if it is exactly what was confirmed, it is deleted as asked; if not, the new answer is shown and nothing is deleted.
+        const fresh = parseEnvelope(await api.request<unknown>('/v1/admin/media/delete/preview', 'POST', {itemIds: request.itemIds}), serverId, parseDeletePreview).result;
+        if (fresh.confirmation !== preview.confirmation || fresh.totalFiles !== preview.totalFiles || fresh.totalBytesText !== preview.totalBytesText || !deletionAllowed(fresh)) { setPreview(fresh); setTyped(''); throw e; }
+        raw = await send(fresh.revision);
+      }
+      const result = parseEnvelope(raw, serverId, parseDeleteResult).result;
       opIds.release();
       // A title that stayed says why: the file on disk is not the catalogued one, or storage refused.
       const kept = result.receipts.filter(r => !r.removed && (r.code === 'file_changed' || r.code === 'file_not_removed')).map(r => ({title: r.title, why: i18n.t(r.code === 'file_changed' ? 'deleteMedia.fileChanged' : 'deleteMedia.fileNotRemoved')}));

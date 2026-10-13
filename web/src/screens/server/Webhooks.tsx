@@ -1,11 +1,11 @@
 import {useEffect, useMemo, useState} from 'react';
 import {createWebhook, deleteWebhook, listWebhookDeliveries, listWebhooks, sendWebhookTest, updateWebhook, type IssuedWebhook, type Webhook, type WebhookDelivery} from '@core/api-access.ts';
 import {deliveryProblem, deliveryProgress, deliveryTone, webhookAddressOk, webhookEventGroups, webhookEventLabel, webhookTrouble} from '@core/server-admin/api-words.ts';
-import {problem, useAction, useRead} from '../../admin/console';
+import {QUIET_READ_EVERY_MS, problem, useAction, useRead} from '../../admin/console';
 import {usePollWhile} from '../../admin/poll-while';
 import {useSession} from '../../app/session';
 import {useI18n} from '../../app/i18n';
-import {Button, Checkbox, ConfirmDialog, Dialog, Input, Loading, Menu, Notice, PasswordInput, SettingsGroup, SettingsRow, Status, Switch, Text, TextArea, type MenuItem} from '../../ui';
+import {Button, Checkbox, ConfirmDialog, Dialog, Input, Loading, Menu, Notice, PasswordInput, SettingsEmpty, SettingsFooter, SettingsGroup, SettingsLoading, SettingsNote, SettingsRow, Status, Switch, Text, TextArea, type MenuItem} from '../../ui';
 
 type Draft = {name: string; url: string; events: readonly string[]; secret: string};
 
@@ -19,7 +19,8 @@ export function WebhooksPanel() {
   const i18n = useI18n();
   const {t} = i18n;
   const {api} = useSession();
-  const read = useRead(() => listWebhooks(api), [api]);
+  // Whether each one is arriving changes as the server delivers; nothing on the feed says so.
+  const read = useRead(() => listWebhooks(api), [api], {every: QUIET_READ_EVERY_MS});
   const action = useAction();
   const [editing, setEditing] = useState<{webhook?: Webhook} | null>(null);
   const [issued, setIssued] = useState<IssuedWebhook>();
@@ -45,11 +46,11 @@ export function WebhooksPanel() {
     else if (id === 'test') void action.run(async () => { await sendWebhookTest(api, w.id); read.reload(); }, t('api.webhooks.testQueued')).then(ok => { if (ok) setLog(w); });
   };
   return (
-    <SettingsGroup title={t('api.webhooks.title')} description={t('api.webhooks.lede')}>
-      {read.error ? <div style={{padding: 12}}><Notice tone={list ? 'warning' : 'error'} compact action={{label: t('action.tryAgain'), onClick: read.reload}}>{read.error}</Notice></div> : null}
-      {action.error && !editing && !removing && !rotating ? <div style={{padding: 12}}><Notice tone="error" compact>{action.error}</Notice></div> : null}
-      {action.notice ? <div style={{padding: 12}}><Notice tone="success" compact>{action.notice}</Notice></div> : null}
-      {!list && read.loading ? <div style={{padding: 16}}><Loading label={t('api.webhooks.title')} /></div> : null}
+    <SettingsGroup title={t('api.webhooks.title')} description={t('api.webhooks.lede')} action={<Button size="sm" variant="secondary" icon="plus" label={t('api.webhooks.add')} disabled={!list || full} onClick={() => { action.clear(); setEditing({}); }} />}>
+      {read.error ? <SettingsNote><Notice tone={list ? 'warning' : 'error'} compact action={{label: t('action.tryAgain'), onClick: read.reload}}>{read.error}</Notice></SettingsNote> : null}
+      {action.error && !editing && !removing && !rotating ? <SettingsNote><Notice tone="error" compact>{action.error}</Notice></SettingsNote> : null}
+      {action.notice ? <SettingsNote><Notice tone="success" compact>{action.notice}</Notice></SettingsNote> : null}
+      {!list && read.loading ? <SettingsLoading thing={t('server.thing.webhooks')} /> : null}
       {list?.items.map(w => {
         const trouble = webhookTrouble(t, w);
         return (
@@ -61,8 +62,8 @@ export function WebhooksPanel() {
             </div>} />
         );
       })}
-      {list && !list.items.length ? <div style={{padding: 16}}><Text variant="caption" tone="tertiary">{t('api.webhooks.none')}</Text></div> : null}
-      {list ? <div style={{padding: '8px 16px 16px'}}><Button size="sm" variant="secondary" icon="plus" label={t('api.webhooks.add')} disabled={full} onClick={() => { action.clear(); setEditing({}); }} />{full ? <Text as="p" variant="caption" tone="tertiary" style={{marginTop: 8}}>{t('api.webhooks.full', {count: list.maximum})}</Text> : null}</div> : null}
+      {list && !list.items.length ? <SettingsEmpty title={t('api.webhooks.none')} /> : null}
+      {full ? <SettingsFooter><Text as="p" variant="caption" tone="tertiary">{t('api.webhooks.full', {count: list.maximum})}</Text></SettingsFooter> : null}
       {editing && list ? <WebhookDialog webhook={editing.webhook} offered={list.events} onClose={() => setEditing(null)} busy={action.busy} error={action.error}
         onSave={draft => void action.run(async () => {
           const w = editing.webhook;

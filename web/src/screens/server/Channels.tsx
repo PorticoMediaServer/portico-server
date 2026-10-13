@@ -3,7 +3,9 @@ import {readLibraryChannels, readLibraryDefaults, readLibraryTemplates, saveLibr
 import {channelRequestID} from '@core/live-source-draft.ts';
 import {regenerationBody} from '@core/server-admin/panel-logic.ts';
 export {regenerationBody} from '@core/server-admin/panel-logic.ts';
-import {sentence, useAction, useRead} from '../../admin/console';
+import {QUIET_READ_EVERY_MS, sendFresh, useAction, useRead} from '../../admin/console';
+import {isStaleAnswer} from '@core/freshness-actions.ts';
+import type {MessageId} from '../../app/i18n';
 import {createOperationIds} from './operation-ids';
 import {useSession} from '../../app/session';
 import {Badge, Button, ConfirmDialog, Dialog, Freshness, KeyValue, Menu, Notice, SettingsGroup, SettingsRow, StateView, Text, type MenuItem} from '../../ui';
@@ -39,7 +41,9 @@ export function LibraryChannelsPanel() {
   const i18n = useI18n();
   const {t} = i18n;
   const serverId = session?.viewer.serverId ?? '';
-  const read = useRead<LibraryChannel[]>(() => readLibraryChannels(api, serverId), [api, serverId]);
+  // A channel that finishes building its schedule, or runs out of titles, shows by itself.
+  const read = useRead<LibraryChannel[]>(() => readLibraryChannels(api, serverId), [api, serverId], {every: QUIET_READ_EVERY_MS});
+  const again = (id: string) => async () => (await readLibraryChannels(api, serverId)).find(c => c.config.id === id);
   const templates = useRead<LibraryChannelTemplate[]>(() => readLibraryTemplates(api, serverId), [api, serverId]);
   const action = useAction();
   const [editing, setEditing] = useState<{config: LibraryChannelConfig; revision: number; templateName?: string} | null>(null);
@@ -63,12 +67,12 @@ export function LibraryChannelsPanel() {
     const operationId = held && held.key === key ? held.id : channelRequestID();
     logoOperation.current = {key, id: operationId};
     mutate(async () => {
-      if (file.size > 10 * 1024 * 1024) throw new Error('Choose an image smaller than 10 MB.');
+      if (file.size > 10 * 1024 * 1024) throw Object.assign(new Error('image_too_large'), {code: 'image_too_large'});
       const form = logoUploadForm(file, operationId);
       const response = await api.routeFetch(`${api.baseUrl}/v1/admin/library-channels/${encodeURIComponent(channel.config.id)}/logo`, {method: 'POST', headers: {Authorization: 'Bearer ' + token}, body: form});
       if (!response.ok) { const value = await response.json().catch(() => null); const code = (value?.error as {code?: unknown} | undefined)?.code; throw Object.assign(new Error(t('web.libraryChannels.logoSaveFailed')), typeof code === 'string' && code ? {code} : {}); }
       logoOperation.current = null;
-    }, 'Logo saved.');
+    }, t('server.channels.logoSaved'));
   };
   const channels = [...(read.data ?? [])].sort((a, b) => a.config.position - b.config.position);
   const mutate = (fn: () => Promise<unknown>, done?: string) => void action.run(fn, done).then(ok => ok && read.reload());
@@ -79,22 +83,42 @@ export function LibraryChannelsPanel() {
     const target = index + dir;
     if (target < 0 || target >= next.length) return;
     [next[index], next[target]] = [next[target]!, next[index]!];
-    const payload = {channels: next.map(c => ({id: c.config.id, expectedRevision: c.revision}))};
-    const key = JSON.stringify(payload);
+    const ids = next.map(c => c.config.id);
+    const send = (list: readonly LibraryChannel[]) => {
+      const payload = {channels: ids.map(id => ({id, expectedRevision: list.find(c => c.config.id === id)!.revision}))};
+      return api.request('/v1/admin/library-channels/reorder', 'POST', {requestId: opIds.forPayload(JSON.stringify(payload)), ...payload});
+    };
     mutate(async () => {
-      await api.request('/v1/admin/library-channels/reorder', 'POST', {requestId: opIds.forPayload(key), ...payload});
+      try { await send(channels); }
+      catch (e) {
+        if (!isStaleAnswer(e)) throw e;
+        // A channel changed since the list was read: the same order is sent again with what the server has now, as long as the same channels are there.
+        const fresh = await readLibraryChannels(api, serverId).catch(() => { throw e; });
+        if (fresh.length !== ids.length || !ids.every(id => fresh.some(c => c.config.id === id))) throw e;
+        await send(fresh);
+      }
+      opIds.release();
+    });
+  };
+  // A channel with a health problem says so (Check health has the detail); a state this app has no word for is not guessed at.
+  const stateWord = (c: LibraryChannel): string => { const id = `server.channels.state.${c.state}`; return c.healthCode || !i18n.has(id) ? t('server.channels.state.degraded') : t(id as MessageId); };
+  const toggle = (c: LibraryChannel) => {
+    const enabled = !c.config.enabled;
+    mutate(async () => {
+      await sendFresh(c, x => saveLibraryChannel(api, serverId, {...x.config, enabled}, x.revision, opIds.forPayload(JSON.stringify({id: x.config.id, revision: x.revision, enabled}))), again(c.config.id), now => (now.config.enabled === enabled ? 'done' : true));
       opIds.release();
     });
   };
   return (
     <>
-      <SectionHeader lede={t('web.console.nav.channelsLede')} actions={<Menu label={t('builder.newTitle')} trigger={<Button variant="primary" icon="plus" label={t('builder.newTitle')} iconAfter="chevronDown" />} items={[...(templates.data ?? []).map<MenuItem>(t => ({id: 'tpl:' + t.id, label: t.name, meta: t.applicable ? undefined : sentence(t.reason || 'Not enough media'), disabled: !t.applicable, group: 'Templates'})), ...templateStatus(t, templates), {id: 'blank', label: t('web.libraryChannels.startFromScratch'), icon: 'plus', group: 'Custom'}]} onSelect={id => {
+      <SectionHeader lede={t('web.console.nav.channelsLede')} actions={<Menu label={t('builder.newTitle')} trigger={<Button variant="primary" icon="plus" label={t('builder.newTitle')} iconAfter="chevronDown" />} items={[...(templates.data ?? []).map<MenuItem>(t => ({id: 'tpl:' + t.id, label: t.name, meta: t.applicable ? undefined : i18n.t('server.channels.notEnough'), disabled: !t.applicable, group: i18n.t('server.channels.templates')})), ...templateStatus(t, templates), {id: 'blank', label: t('web.libraryChannels.startFromScratch'), icon: 'plus', group: t('server.channels.custom')}]} onSelect={id => {
         if (id === 'templates-retry') templates.reload();
         else if (id === 'blank') createBlank();
         else { const template = templates.data?.find(t => 'tpl:' + t.id === id); if (template) review(template); }
       }} />} />
       {read.error && !read.data ? <Notice tone="error" action={{label: t('action.tryAgain'), onClick: read.reload}}>{read.error}</Notice> : null}
-      {action.error ? <Notice tone="error">{action.error}</Notice> : null}
+      {action.error && !remove ? <Notice tone="error" compact>{action.error}</Notice> : null}
+      {action.notice ? <Notice tone="success" compact>{action.notice}</Notice> : null}
       <div style={{display: 'flex', flexDirection: 'column', gap: 28}}>
         {read.data && !channels.length ? (
           <StateView icon="channels" title={t('builder.empty.title')} body={t('builder.empty.body')} action={{label: t('builder.empty.create'), onClick: createBlank, loading: action.busy}}>
@@ -107,22 +131,11 @@ export function LibraryChannelsPanel() {
         ) : null}
         {channels.length ? (
           <SettingsGroup title={t('channels.title')} action={<Freshness at={read.at} onRefresh={read.reload} refreshing={read.loading} />}>
-            {channels.map((c, i) => <SettingsRow key={c.config.id} icon="channels" label={c.config.name} help={[c.config.description || t('web.libraryChannels.ruleCount', {count: c.config.rules.length}), t('server.channels.titles', {count: c.candidateCount}), c.generatedThrough ? t('server.channels.through', {when: i18n.dateTime(c.generatedThrough)}) : '', c.healthCode ? sentence(c.healthCode) : ''].filter(Boolean).join(' · ')} meta={<Badge tone={stateTone(c)} dot>{!c.config.enabled ? t('web.libraryChannels.offState') : sentence(c.state)}</Badge>} control={<Menu label={c.config.name} trigger={<Button size="sm" variant="ghost" icon="more" aria-label={t('web.storage.actions')} />} items={[{id: 'edit', label: t('web.selection.edit'), icon: 'edit'}, {id: 'toggle', label: c.config.enabled ? t('web.libraryChannels.turnOff') : t('web.libraryChannels.turnOn'), icon: c.config.enabled ? 'pause' : 'play'}, {id: 'regen', label: t('web.libraryChannels.regenSchedule'), icon: 'refresh', disabled: !c.replacementBoundary}, {id: 'health', label: t('web.libraryChannels.checkHealth'), icon: 'pulse'}, {id: 'logo', label: t('web.libraryChannels.uploadLogo'), icon: 'upload'}, {id: 'up', label: t('web.profile.moveUp'), icon: 'chevronUp', disabled: i === 0, separatorBefore: true}, {id: 'down', label: t('web.profile.moveDown'), icon: 'chevronDown', disabled: i === channels.length - 1}, {id: 'delete', label: t('web.libraryChannels.delete'), icon: 'trash', destructive: true, separatorBefore: true}]} onSelect={id => {
+            {channels.map((c, i) => <SettingsRow key={c.config.id} icon="channels" label={c.config.name} help={[c.config.description || t('web.libraryChannels.ruleCount', {count: c.config.rules.length}), t('server.channels.titles', {count: c.candidateCount}), c.generatedThrough ? t('server.channels.through', {when: i18n.dateTime(c.generatedThrough)}) : ''].filter(Boolean).join(' · ')} meta={<Badge tone={stateTone(c)} dot>{!c.config.enabled ? t('web.libraryChannels.offState') : stateWord(c)}</Badge>} control={<Menu label={c.config.name} trigger={<Button size="sm" variant="ghost" icon="more" aria-label={t('server.row.actions', {name: c.config.name})} />} items={[{id: 'edit', label: t('web.selection.edit'), icon: 'edit'}, {id: 'toggle', label: c.config.enabled ? t('web.libraryChannels.turnOff') : t('web.libraryChannels.turnOn'), icon: c.config.enabled ? 'pause' : 'play'}, {id: 'regen', label: t('web.libraryChannels.regenSchedule'), icon: 'refresh', disabled: !c.replacementBoundary}, {id: 'health', label: t('web.libraryChannels.checkHealth'), icon: 'pulse'}, {id: 'logo', label: t('web.libraryChannels.uploadLogo'), icon: 'upload'}, {id: 'up', label: t('web.profile.moveUp'), icon: 'chevronUp', disabled: i === 0, separatorBefore: true}, {id: 'down', label: t('web.profile.moveDown'), icon: 'chevronDown', disabled: i === channels.length - 1}, {id: 'delete', label: t('web.libraryChannels.delete'), icon: 'trash', destructive: true, separatorBefore: true}]} onSelect={id => {
               if (id === 'edit') setEditing({config: c.config, revision: c.revision});
               else if (id === 'health') setHealthFor(c);
               else if (id === 'logo') { logoTarget.current = c; logoPicker.current?.click(); }
-              else if (id === 'toggle') mutate(async () => {
-                const next = {...c.config, enabled: !c.config.enabled};
-                const key = JSON.stringify({config: next, revision: c.revision});
-                const requestId = opIds.forPayload(key);
-                try {
-                  await saveLibraryChannel(api, serverId, next, c.revision, requestId);
-                  opIds.release();
-                } catch (e) {
-                  if ((e as {status?: number})?.status === 409) opIds.release();
-                  throw e;
-                }
-              });
+              else if (id === 'toggle') toggle(c);
               else if (id === 'regen') mutate(async () => {
                 const key = JSON.stringify({id: c.config.id, revision: c.revision, boundary: c.replacementBoundary});
                 try {
@@ -134,7 +147,7 @@ export function LibraryChannelsPanel() {
                   if ((e as {status?: number})?.status === 409 || (e as {code?: string})?.code === 'library_channel_changed') { opIds.release(); read.reload(); }
                   throw e;
                 }
-              }, 'Regenerating.');
+              }, t('server.channels.regenerating'));
               else if (id === 'up') move(i, -1);
               else if (id === 'down') move(i, 1);
               else setRemove(c);
@@ -145,7 +158,8 @@ export function LibraryChannelsPanel() {
       <input ref={logoPicker} type="file" accept="image/jpeg,image/png,image/webp" hidden onChange={e => { const file = e.target.files?.[0]; e.target.value = ''; uploadLogo(file); }} />
       {healthFor ? <ChannelHealthDialog channel={healthFor} onClose={() => setHealthFor(null)} /> : null}
       <ChannelEditor value={editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); read.reload(); }} />
-      <ConfirmDialog open={!!remove} onOpenChange={o => !o && setRemove(null)} title={t('web.libraryChannels.deleteTitle', {name: remove?.config.name ?? ''})} body={t('web.libraryChannels.deleteBody')} confirmLabel={t('web.libraryChannels.delete')} busy={action.busy} onConfirm={() => { if (remove) { const payload = {expectedRevision: remove.revision}; const key = JSON.stringify({id: remove.config.id, ...payload}); void action.run(async () => { await api.request(`/v1/admin/library-channels/${encodeURIComponent(remove.config.id)}/delete`, 'POST', {requestId: opIds.forPayload(key), ...payload}); opIds.release(); }).then(ok => { if (ok) { setRemove(null); read.reload(); } }); } }} />
+      <ConfirmDialog open={!!remove} onOpenChange={o => !o && setRemove(null)} title={t('web.libraryChannels.deleteTitle', {name: remove?.config.name ?? ''})} body={t('web.libraryChannels.deleteBody')} confirmLabel={t('web.libraryChannels.delete')} busy={action.busy} error={action.error || undefined}
+        onConfirm={() => { const c = remove; if (c) void action.run(async () => { await sendFresh(c, x => api.request(`/v1/admin/library-channels/${encodeURIComponent(x.config.id)}/delete`, 'POST', {requestId: opIds.forPayload(JSON.stringify({id: x.config.id, revision: x.revision})), expectedRevision: x.revision}), again(c.config.id)); opIds.release(); }).then(ok => { if (ok) { setRemove(null); read.reload(); } }); }} />
     </>
   );
 }

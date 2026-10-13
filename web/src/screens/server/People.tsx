@@ -1,16 +1,18 @@
 import {useEffect, useState} from 'react';
 import {deleteMember, parseAccessMember, parseLimitsDocument, previewMemberDeletion, type AccessMember, type AccessTier, type MemberDeletionPreview, type MemberLimits} from '@core/server-administration.ts';
 import {memberOffLine, type DirectMember} from '@core/server-admin/panel-logic.ts';
-import {problem, useAction, useRead} from '../../admin/console';
-import {nextCursorOf, useCursorList} from '../../admin/cursor-read';
+import {QUIET_READ_EVERY_MS, problem, sendFresh, useAction, useRead} from '../../admin/console';
+import {findInPages, nextCursorOf, useCursorList} from '../../admin/cursor-read';
+import {roleLabel} from '@core/server-admin/people-words.ts';
+import {isStaleAnswer, rebaseDraft} from '@core/freshness-actions.ts';
 import {createOperationIds} from './operation-ids';
 import {ListPager} from './ListPager';
-import {AccountDevices, LimitsFields, accessListPath, tierLabels} from './Access';
+import {AccountDevices, LimitsFields, accessListPath} from './Access';
 import {useInlineForm} from '../settings/ServerForms';
 import {useLibrariesContext} from '../../app/libraries';
 import {useSession} from '../../app/session';
 import {useNavigate, useSearch} from '@tanstack/react-router';
-import {Badge, Button, Checkbox, Dialog, Input, Loading, Notice, PasswordInput, Select, SettingsGroup, SettingsRow, Text, PasswordStrength} from '../../ui';
+import {Badge, Button, Checkbox, Dialog, Input, Loading, Notice, PasswordInput, Select, SettingsGroup, SettingsLoading, SettingsNote, SettingsRow, Text, PasswordStrength} from '../../ui';
 import {passwordStrength} from '@core/password-strength.ts';
 import {SectionHeader} from './Server';
 import {useI18n} from '../../app/i18n';
@@ -28,34 +30,39 @@ export function AccountsPanel() {
   const navigate = useNavigate();
   const search = useSearch({from: '/app/settings/$section'});
   const libraries = useLibrariesContext();
-  const read = useRead<{items: DirectMember[]}>(() => api.request('/v1/direct/members'), [api]);
+  // Someone joining with an invitation, leaving, or being turned off elsewhere shows here by itself.
+  const read = useRead<{items: DirectMember[]}>(() => api.request('/v1/direct/members'), [api], {every: QUIET_READ_EVERY_MS});
   // Roles and limits come from the access list, joined by account.
-  const access = useCursorList(async cursor => { const raw = await api.request(accessListPath('members', cursor)); const list = (raw as {items?: unknown[]}).items ?? []; return {items: list.map(parseAccessMember), nextCursor: nextCursorOf(raw)}; }, [api]);
+  const accessPage = async (cursor: string) => { const raw = await api.request(accessListPath('members', cursor)); const list = (raw as {items?: unknown[]}).items ?? []; return {items: list.map(parseAccessMember), nextCursor: nextCursorOf(raw)}; };
+  const access = useCursorList(accessPage, [api], {every: QUIET_READ_EVERY_MS});
   const action = useAction();
   const [adding, setAdding] = useState(false);
   const members = read.data?.items ?? [];
   const libName = (id: string) => libraries.items.find(l => l.id === id)?.name ?? t('server.people.libraryGone');
   const open = (id?: string) => void navigate({to: '.', search: id ? {id} : {}});
   const selected = search.id ? members.find(m => m.id === search.id) : undefined;
-  if (search.id && selected) return <AccountDetail member={selected} access={access.data?.find(a => a.accountId === selected.id)} libraries={libraries.items} onBack={() => open()} onChanged={() => { read.reload(); access.reload(); }} onDeleted={() => { open(); read.reload(); access.reload(); }} />;
+  if (search.id && selected) return <AccountDetail member={selected} access={access.data?.find(a => a.accountId === selected.id)} libraries={libraries.items} onBack={() => open()} onChanged={() => { read.reload(); access.reload(); }} onDeleted={() => { open(); read.reload(); access.reload(); }}
+    readMember={async () => (await api.request<{items: DirectMember[]}>('/v1/direct/members')).items.find(m => m.id === selected.id)} readAccess={() => findInPages(accessPage, a => a.accountId === selected.id)} />;
   return (
     <>
-      <SettingsGroup title={t('web.people.accountsTitle')} description={t('web.people.accountsLede')} action={<Button size="sm" variant="primary" icon="plus" label={t('web.people.addAccount')} onClick={() => setAdding(true)} />}>
-        {read.error ? <div style={{padding: 12}}><Notice tone="error" compact action={{label: t('action.tryAgain'), onClick: read.reload}}>{read.error}</Notice></div> : null}
+      <SettingsGroup title={t('web.people.accountsTitle')} description={t('web.people.accountsLede')} action={<Button size="sm" variant="secondary" icon="plus" label={t('web.people.addAccount')} onClick={() => { action.clear(); setAdding(true); }} />}>
+        {read.error ? <SettingsNote><Notice tone={read.data ? 'warning' : 'error'} compact action={{label: t('action.tryAgain'), onClick: read.reload}}>{read.error}</Notice></SettingsNote> : null}
+        {action.notice ? <SettingsNote><Notice tone="success" compact>{action.notice}</Notice></SettingsNote> : null}
+        {!read.data && read.loading ? <SettingsLoading thing={t('server.thing.accounts')} /> : null}
         {members.map(m => {
           const limits = access.data?.find(a => a.accountId === m.id)?.limits;
           const facts = [memberOffLine(m, t, iso => i18n.date(iso)), m.hostedAccountId ? t('server.people.porticoAccount') : '', m.role === 'owner' ? t('server.people.allLibraries') : m.allowedLibraries.length ? m.allowedLibraries.map(libName).join(', ') : t('server.people.allLibraries'), limits?.maxStreams ? t('server.people.streams', {count: limits.maxStreams}) : '', limits?.maxContentRating ? t('server.people.upTo', {rating: limits.maxContentRating}) : ''];
-          return <SettingsRow key={m.id} icon="profile" label={m.username} help={facts.filter(Boolean).join(' · ')} meta={m.disabled ? <Badge tone="danger">{t('web.people.disabledBadge')}</Badge> : <Badge tone={m.role === 'owner' ? 'accent' : 'neutral'}>{tierLabels[m.role]}</Badge>} onClick={() => open(m.id)} />;
+          return <SettingsRow key={m.id} icon="profile" label={m.username} help={facts.filter(Boolean).join(' · ')} meta={m.disabled ? <Badge tone="danger">{t('web.people.disabledBadge')}</Badge> : <Badge tone={m.role === 'owner' ? 'accent' : 'neutral'}>{roleLabel(t, m.role)}</Badge>} onClick={() => open(m.id)} />;
         })}
         <ListPager pages={access} />
       </SettingsGroup>
-      <LocalMemberDialog open={adding} member={null} libraries={libraries.items} onClose={() => setAdding(false)} busy={action.busy} error={action.error} onSave={input => void action.run(() => api.request('/v1/direct/members', 'POST', input)).then(ok => { if (ok) { setAdding(false); read.reload(); access.reload(); } })} />
+      <LocalMemberDialog open={adding} member={null} libraries={libraries.items} onClose={() => setAdding(false)} busy={action.busy} error={action.error} onSave={input => void action.run(() => api.request('/v1/direct/members', 'POST', input), t('server.people.accountAdded')).then(ok => { if (ok) { setAdding(false); read.reload(); access.reload(); } })} />
     </>
   );
 }
 
 /** One account: who it is, what it may do, and the devices signed in with it. Limits save with the page. */
-function AccountDetail({member, access, libraries, onBack, onChanged, onDeleted}: {member: DirectMember; access?: AccessMember; libraries: readonly {id: string; name: string}[]; onBack: () => void; onChanged: () => void; onDeleted: () => void}) {
+function AccountDetail({member, access, libraries, onBack, onChanged, onDeleted, readMember, readAccess}: {member: DirectMember; access?: AccessMember; libraries: readonly {id: string; name: string}[]; onBack: () => void; onChanged: () => void; onDeleted: () => void; /** The account, and its role record, as the server has them now: read again before a change is sent again. */ readMember: () => Promise<DirectMember | undefined>; readAccess: () => Promise<AccessMember | undefined>}) {
   const i18n = useI18n();
   const {t} = i18n;
   const [deleting, setDeleting] = useState(false);
@@ -64,22 +71,51 @@ function AccountDetail({member, access, libraries, onBack, onChanged, onDeleted}
   const [opIds] = useState(createOperationIds);
   const [editing, setEditing] = useState(false);
   const owner = member.role === 'owner';
-  const doc = useRead(async () => parseLimitsDocument(await api.request(`/v1/admin/access/members/${encodeURIComponent(member.id)}/limits`), member.id), [api, member.id], {auto: !owner});
+  const readLimits = async () => parseLimitsDocument(await api.request(`/v1/admin/access/members/${encodeURIComponent(member.id)}/limits`), member.id);
+  const doc = useRead(readLimits, [api, member.id], {auto: !owner});
   const [limits, setLimits] = useState<MemberLimits>();
-  useEffect(() => { if (doc.data) setLimits(doc.data.limits); }, [doc.data]);
+  // What the draft was last compared with: a newer document is taken under the owner's own edits, never over them.
+  const [basis, setBasis] = useState<MemberLimits>();
+  useEffect(() => {
+    if (!doc.data) return;
+    const next = doc.data.limits;
+    setLimits(current => (current && basis ? rebaseDraft(basis, current, next).merged : next));
+    setBasis(next);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [doc.data]);
   const inline = useInlineForm('limits:' + member.id, {
-    dirty: !!doc.data && !!limits && JSON.stringify(limits) !== JSON.stringify(doc.data.limits),
-    discard: () => setLimits(doc.data?.limits),
+    dirty: !!basis && !!limits && JSON.stringify(limits) !== JSON.stringify(basis),
+    discard: () => setLimits(basis),
     save: async () => {
-      if (!doc.data || !limits) return;
-      const key = JSON.stringify({id: member.id, revision: doc.data.revision, limits});
-      await api.request(`/v1/admin/access/members/${encodeURIComponent(member.id)}/limits`, 'PUT', {expectedRevision: doc.data.revision, operationId: opIds.forPayload(key), limits});
+      if (!doc.data || !limits || !basis) return;
+      const put = (revision: number, value: MemberLimits) => api.request(`/v1/admin/access/members/${encodeURIComponent(member.id)}/limits`, 'PUT', {expectedRevision: revision, operationId: opIds.forPayload(JSON.stringify({id: member.id, revision, limits: value})), limits: value});
+      try { await put(doc.data.revision, limits); }
+      catch (e) {
+        if (!isStaleAnswer(e)) throw e;
+        // The account moved (its role, or a limit set elsewhere): carry these edits onto it and save again.
+        const fresh = await readLimits().catch(() => { throw e; });
+        const rebased = rebaseDraft(basis, limits, fresh.limits);
+        setBasis(fresh.limits); setLimits(rebased.merged);
+        if (rebased.conflict) throw e;
+        await put(fresh.revision, rebased.merged);
+      }
       opIds.release(); doc.reload(); onChanged();
     },
   });
   // A role decides what someone may do on the server, so choosing one asks first instead of taking effect as the menu closes.
   const [askRole, setAskRole] = useState<AccessTier>();
-  const setRole = (role: AccessTier) => access && void action.run(async () => { const key = JSON.stringify({id: member.id, revision: access.revision, role}); await api.request(`/v1/admin/access/members/${encodeURIComponent(member.id)}/role`, 'PUT', {expectedRevision: access.revision, operationId: opIds.forPayload(key), role}); opIds.release(); onChanged(); });
+  const setRole = (role: AccessTier) => access && void action.run(async () => {
+    await sendFresh(access,
+      a => api.request(`/v1/admin/access/members/${encodeURIComponent(member.id)}/role`, 'PUT', {expectedRevision: a.revision, operationId: opIds.forPayload(JSON.stringify({id: member.id, revision: a.revision, role})), role}),
+      readAccess, now => (now.role === role ? 'done' : now.role === 'owner' ? false : true));
+    opIds.release(); onChanged();
+  });
+  // Saving the account's sign-in and libraries: when the account moved underneath, it is sent again only if what this dialog showed is still what the server has.
+  const saveMember = (input: {username: string; password: string; name: string; allowedLibraries: string[]; disabled: boolean}) => action.run(async () => {
+    await sendFresh(member,
+      m => api.request(`/v1/direct/members/${encodeURIComponent(member.id)}`, 'PATCH', {...input, expectedRevision: m.revision}),
+      readMember, (now, was) => now.disabled === was.disabled && JSON.stringify([...now.allowedLibraries].sort()) === JSON.stringify([...was.allowedLibraries].sort()));
+  });
   const libName = (id: string) => libraries.find(l => l.id === id)?.name ?? t('server.people.libraryGone');
   return (
     <>
@@ -87,7 +123,7 @@ function AccountDetail({member, access, libraries, onBack, onChanged, onDeleted}
       {action.error ? <Notice tone="error" compact>{action.error}</Notice> : null}
       {inline.error ? <Notice tone="error" compact>{problem(inline.error, 'action')}</Notice> : null}
       <SettingsGroup>
-        <SettingsRow label={t('web.access.roleLabel')} control={owner || !access ? <Badge tone="accent">{tierLabels[member.role]}</Badge> : <Select hideLabel label={t('web.access.roleFor', {name: member.username})} value={access.role} disabled={action.busy} onChange={e => { const next = e.target.value as AccessTier; if (next !== access.role) setAskRole(next); }} options={[{value: 'member', label: t('web.access.roleMember')}, {value: 'admin', label: t('web.access.roleAdmin')}]} />} />
+        <SettingsRow label={t('web.access.roleLabel')} control={owner || !access ? <Badge tone="accent">{roleLabel(t, member.role)}</Badge> : <Select hideLabel label={t('web.access.roleFor', {name: member.username})} value={access.role} disabled={action.busy} onChange={e => { const next = e.target.value as AccessTier; if (next !== access.role) setAskRole(next); }} options={[{value: 'member', label: t('web.access.roleMember')}, {value: 'admin', label: t('web.access.roleAdmin')}]} />} />
         <SettingsRow label={t('web.people.visibleLibraries')} meta={owner || !member.allowedLibraries.length ? t('server.people.allLibraries') : member.allowedLibraries.map(libName).join(', ')} control={!owner ? <Button size="sm" variant="ghost" label={t('web.selection.edit')} onClick={() => { action.clear(); setEditing(true); }} /> : undefined} />
         {!owner ? <SettingsRow label={t('server.people.signIn')} help={member.hostedAccountId ? t('web.people.hostedNote') : t('server.people.signInHelp')} state={memberOffLine(member, t, iso => i18n.date(iso)) || undefined} meta={member.disabled ? <Badge tone="danger">{t('web.people.disabledBadge')}</Badge> : undefined} control={<Button size="sm" variant="ghost" label={t('web.selection.edit')} onClick={() => { action.clear(); setEditing(true); }} />} /> : null}
       </SettingsGroup>
@@ -96,12 +132,12 @@ function AccountDetail({member, access, libraries, onBack, onChanged, onDeleted}
       <AccountDevices accountId={member.id} />
       {/* The last thing on the page, and never offered for the owner: the dialog reads what goes before it asks. */}
       {!owner ? <SettingsGroup>
-        <SettingsRow label={t('server.people.delete')} help={t('server.people.deleteHelp')} control={<Button size="sm" variant="danger" label={t('server.people.delete')} onClick={() => setDeleting(true)} />} />
+        <SettingsRow label={t('server.people.delete')} help={t('server.people.deleteHelp')} control={<Button size="sm" variant="secondary" label={t('server.people.delete')} onClick={() => setDeleting(true)} />} />
       </SettingsGroup> : null}
       {deleting ? <DeleteMemberDialog member={member} onClose={() => setDeleting(false)} onDeleted={onDeleted} /> : null}
       <Dialog open={!!askRole} onOpenChange={o => !o && setAskRole(undefined)} title={t('web.access.roleConfirmTitle', {name: member.username})} description={t(askRole === 'admin' ? 'web.access.roleConfirmAdmin' : 'web.access.roleConfirmMember', {name: member.username})} width={480}
         actions={<><Button variant="ghost" label={t('action.cancel')} onClick={() => setAskRole(undefined)} /><Button variant="primary" label={t('web.access.roleConfirm')} onClick={() => { const role = askRole; setAskRole(undefined); if (role) setRole(role); }} /></>} />
-      <LocalMemberDialog open={editing} member={member} libraries={libraries} onClose={() => setEditing(false)} busy={action.busy} error={action.error} onSave={input => void action.run(() => api.request(`/v1/direct/members/${encodeURIComponent(member.id)}`, 'PATCH', {...input, expectedRevision: member.revision})).then(ok => { if (ok) { setEditing(false); onChanged(); } })} />
+      <LocalMemberDialog open={editing} member={member} libraries={libraries} onClose={() => setEditing(false)} busy={action.busy} error={action.error} onSave={input => void saveMember(input).then(ok => { if (ok) { setEditing(false); onChanged(); } })} />
     </>
   );
 }
@@ -133,7 +169,9 @@ function LocalMemberDialog({open, member, libraries, onClose, onSave, busy, erro
       setChosen(member?.allowedLibraries ?? []);
       setDisabled(member?.disabled ?? false);
     }
-  }, [open, member]);
+    // Filled when the dialog opens for an account; the list reading itself again must not clear what is being typed.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, member?.id]);
   return (
     <Dialog open={open} onOpenChange={o => !o && onClose()} title={member ? t('web.people.editAccountTitle', {name: member.username}) : t('web.people.addAccountTitle')} actions={<><Button variant="ghost" label={t('action.cancel')} onClick={onClose} /><Button variant="primary" label={member ? t('action.save') : t('web.people.addAccount')} loading={busy} disabled={!username.trim() || (!member && (!passwordStrength(password).acceptable || !name.trim())) || (!!member && !!password && !passwordStrength(password).acceptable) || (!all && !chosen.length)} onClick={() => onSave({username: username.trim(), password, name: name.trim() || username.trim(), allowedLibraries: all ? [] : chosen, disabled})} /></>}>
       <Input label={t('web.direct.username')} value={username} onChange={e => setUsername(e.target.value)} autoCapitalize="off" spellCheck={false} disabled={!!member} minLength={3} maxLength={64} autoFocus />

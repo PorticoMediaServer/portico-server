@@ -15,6 +15,7 @@ import {preferenceMessages} from './en-US/preferences.ts';
 import {settingsMessages} from './en-US/settings.ts';
 import {channelBuilderMessages} from './en-US/channel-builder.ts';
 import {drawnSubtitleMessages} from './en-US/subtitles.ts';
+import {ownerConsoleMessages} from './en-US/owner-console.ts';
 
 export const enUS = {
   'browse.field.search': 'Search',
@@ -2101,6 +2102,8 @@ export const enUS = {
   ...channelBuilderMessages,
   // ── Drawn subtitles and up next during credits: catalog/en-US/subtitles.ts ──
   ...drawnSubtitleMessages,
+  // ── Owner console: later screens (catalog/en-US/owner-console.ts) ──
+  ...ownerConsoleMessages,
 } as const satisfies Record<string, string>;
 
 export type MessageId = keyof typeof enUS;

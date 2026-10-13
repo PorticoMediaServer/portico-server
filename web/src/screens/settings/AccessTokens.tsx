@@ -1,5 +1,6 @@
 import {createAccessToken, listAccessTokens, revokeAccessToken} from '@core/api-access.ts';
 import {useCursorList} from '../../admin/cursor-read';
+import {QUIET_READ_EVERY_MS} from '../../admin/console';
 import {useSession} from '../../app/session';
 import {useI18n} from '../../app/i18n';
 import {Notice} from '../../ui';
@@ -16,7 +17,7 @@ export default function AccessTokensPanel() {
   const {t} = useI18n();
   const {api} = useSession();
   const options = useApiAccessOptions();
-  const read = useCursorList(cursor => credentialPage(listAccessTokens(api, cursor)), [api]);
+  const read = useCursorList(cursor => credentialPage(listAccessTokens(api, cursor)), [api], {every: QUIET_READ_EVERY_MS});
   const limit = options.data ? `${t('api.credential.limitNote', {count: options.data.requestsPerMinute})} ` : '';
   return (
     <>

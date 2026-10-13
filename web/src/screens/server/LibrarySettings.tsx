@@ -5,6 +5,7 @@ import {setLibraryAnalysis} from '../../admin/library-policy';
 import {filesystemPath, mergeFilesystemPages} from '@core/server-admin/panel-logic.ts';
 export {filesystemPath, mergeFilesystemPages} from '@core/server-admin/panel-logic.ts';
 import {problem, useRead} from '../../admin/console';
+import {isStaleAnswer, rebaseDraft} from '@core/freshness-actions.ts';
 import {useInlineForm} from '../settings/ServerForms';
 import {createOperationIds} from './operation-ids';
 import {useSession} from '../../app/session';
@@ -145,9 +146,18 @@ export function LibrarySettingsSections({library, tab}: {library: {id: string; n
     save: async () => {
       if (!draft || !doc) return;
       // The owner's own provider keys are the server's (Server › Metadata); a library carries none.
-      const settings = {...draft, providers: draft.providers.map(p => ({...p, apiKey: ''}))};
-      const key = JSON.stringify({revision: doc.revision, settings});
-      await api.request(`/v1/admin/libraries/${encodeURIComponent(library.id)}/settings`, 'PUT', {expectedRevision: doc.revision, operationId: opIds.forPayload(key), settings});
+      const clean = (value: typeof draft) => ({...value, providers: value.providers.map(p => ({...p, apiKey: ''}))});
+      const path = `/v1/admin/libraries/${encodeURIComponent(library.id)}/settings`;
+      const put = (revision: number, settings: typeof draft) => api.request(path, 'PUT', {expectedRevision: revision, operationId: opIds.forPayload(JSON.stringify({revision, settings})), settings});
+      try { await put(doc.revision, clean(draft)); }
+      catch (e) {
+        if (!isStaleAnswer(e)) throw e;
+        // The library's settings moved (a scan setting saved elsewhere): carry these edits onto them and save again.
+        const fresh = await api.request<unknown>(path).then(raw => parseEnvelope(raw, serverId, parseLibraryDocument).result).catch(() => { throw e; });
+        const rebased = rebaseDraft(clean(doc.settings), clean(draft), clean(fresh.settings));
+        if (rebased.conflict) { read.reload(); throw e; }
+        await put(fresh.revision, rebased.merged);
+      }
       opIds.release();
       read.reload();
     },

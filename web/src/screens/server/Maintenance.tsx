@@ -11,7 +11,7 @@ import {useCursorRead, withCursor} from '../../admin/cursor-read';
 import {ListPager} from './ListPager';
 import {useSession} from '../../app/session';
 import {useI18n, type I18n} from '../../app/i18n';
-import {Badge, Button, ConfirmDialog, Freshness, Input, Notice, SettingsGroup, SettingsRow, Status, Switch, Text} from '../../ui';
+import {Button, ConfirmDialog, Freshness, Input, Notice, SettingsEmpty, SettingsFooter, SettingsGroup, SettingsLoading, SettingsNote, SettingsRow, Status, Switch} from '../../ui';
 
 // A scan that finds files gone, or back, moves this list.
 const MISSING_MOVES = [dependsOn.content()];
@@ -41,18 +41,19 @@ export function DiskUsagePanel() {
   const [days, setDays] = useState(30);
   const report = read.data;
   return (
-    <SettingsGroup title={t('settings.server.diskUsage')} description={t('web.maintenance.storageLede')}>
-      {read.error ? <div style={{padding: 12}}><Notice tone={report ? 'warning' : 'error'} compact action={{label: t('action.tryAgain'), onClick: read.reload}}>{read.error}</Notice></div> : null}
-      {action.notice ? <div style={{padding: 12}}><Notice tone="success" compact>{action.notice}</Notice></div> : null}
+    <SettingsGroup title={t('settings.server.diskUsage')} description={t('web.maintenance.storageLede')} action={<Freshness at={read.at} refreshing={read.loading} onRefresh={read.reload} />}>
+      {read.error ? <SettingsNote><Notice tone={report ? 'warning' : 'error'} compact action={{label: t('action.tryAgain'), onClick: read.reload}}>{read.error}</Notice></SettingsNote> : null}
+      {action.notice ? <SettingsNote><Notice tone="success" compact>{action.notice}</Notice></SettingsNote> : null}
+      {!report && read.loading ? <SettingsLoading thing={t('server.thing.diskUsage')} /> : null}
       {report ? <SettingsRow label={t('web.maintenance.totalLabel')} meta={i18n.bytes(report.totalBytes)} help={report.truncated ? t('web.maintenance.truncatedHelp') : undefined} /> : null}
       {report?.categories.filter(c => c.present).map(c => (
         <SettingsRow key={c.id} label={c.name} help={c.regenerable ? t('web.maintenance.regenerableHelp', {description: c.description}) : c.description} meta={i18n.bytes(c.bytes)}
           control={c.cleanable && c.bytes > 0 ? <Button size="sm" variant="ghost" label={t('server.cleanUp')} onClick={() => { setChosen(c); setDays(30); action.clear(); }} /> : undefined} />
       ))}
-      <div style={{padding: '8px 16px 16px'}}><Freshness at={read.at} refreshing={read.loading} onRefresh={read.reload} /></div>
-      <ConfirmDialog open={!!chosen} onOpenChange={o => !o && setChosen(undefined)} title={t('web.maintenance.cleanUpTitle', {name: chosen?.name ?? ''})} typedConfirmation={chosen?.id} busy={action.busy} error={action.error} destructive={!chosen?.regenerable}
-        body={<div style={{display: 'flex', flexDirection: 'column', gap: 12}}><span>{t('web.maintenance.cleanUpBody', {canRecreate: chosen?.regenerable ? 'yes' : 'no', id: chosen?.id ?? ''})}</span><Input label={t('web.maintenance.olderThan')} type="number" min={0} max={3650} value={days} onChange={e => setDays(Math.max(0, Number(e.target.value) || 0))} style={{width: 140}} /></div>}
-        confirmLabel={t('server.cleanUp')} onConfirm={() => void action.run(async () => { if (!chosen) return; const payload = {olderThanDays: days, confirmation: chosen.id}; const key = JSON.stringify({id: chosen.id, ...payload}); const out = await admin.send<{bytesFreedText: string; filesRemoved: number}>(`/v1/admin/storage-usage/${encodeURIComponent(chosen.id)}/cleanup`, {...payload, operationId: opIds.forPayload(key)}); opIds.release(); setChosen(undefined); read.reload(); action.clear(); return out; }, 'Cleaned up.')} />
+      {/* Tier 2: files go. The word to type is the folder's own name; the server is sent its id. */}
+      <ConfirmDialog open={!!chosen} onOpenChange={o => !o && setChosen(undefined)} title={t('web.maintenance.cleanUpTitle', {name: chosen?.name ?? ''})} typedConfirmation={chosen?.name} busy={action.busy} error={action.error || undefined} destructive={!chosen?.regenerable}
+        body={<div style={{display: 'flex', flexDirection: 'column', gap: 12}}><span>{t('server.cleanup.body', {canRecreate: chosen?.regenerable ? 'yes' : 'no'})}</span><Input label={t('web.maintenance.olderThan')} type="number" min={0} max={3650} value={days} onChange={e => setDays(Math.max(0, Number(e.target.value) || 0))} style={{width: 140}} /></div>}
+        confirmLabel={t('server.cleanUp')} onConfirm={() => void action.run(async () => { if (!chosen) return; const payload = {olderThanDays: days, confirmation: chosen.id}; const key = JSON.stringify({id: chosen.id, ...payload}); await admin.send<{bytesFreedText: string; filesRemoved: number}>(`/v1/admin/storage-usage/${encodeURIComponent(chosen.id)}/cleanup`, {...payload, operationId: opIds.forPayload(key)}); opIds.release(); setChosen(undefined); read.reload(); }, t('server.cleanup.done'))} />
     </SettingsGroup>
   );
 }
@@ -72,20 +73,21 @@ export function MissingTitlesPanel() {
   const total = page?.total ?? 0;
   return (
     <>
-      {read.error ? <div style={{padding: 12}}><Notice tone={page ? 'warning' : 'error'} compact action={{label: t('action.tryAgain'), onClick: read.reload}}>{read.error}</Notice></div> : null}
-      {action.error && !asking ? <div style={{padding: 12}}><Notice tone="error" compact>{action.error}</Notice></div> : null}
-      {removed !== undefined ? <div style={{padding: 12}}><Notice tone="success" compact>{t('web.missingTitles.removed', {count: removed})}</Notice></div> : null}
+      {read.error ? <SettingsNote><Notice tone={page ? 'warning' : 'error'} compact action={{label: t('action.tryAgain'), onClick: read.reload}}>{read.error}</Notice></SettingsNote> : null}
+      {action.error && !asking ? <SettingsNote><Notice tone="error" compact>{action.error}</Notice></SettingsNote> : null}
+      {removed !== undefined ? <SettingsNote><Notice tone="success" compact>{t('web.missingTitles.removed', {count: removed})}</Notice></SettingsNote> : null}
+      {!page && read.loading ? <SettingsLoading thing={t('server.thing.missingTitles')} /> : null}
       {page?.items.map(entry => (
         <SettingsRow key={entry.id} icon="film" label={entry.parentTitle ? `${entry.parentTitle} · ${entry.title}` : entry.title}
           help={entry.removedAt ? t('web.missingTitles.sinceRemoved', {when: when(i18n, entry.missingSince), removes: when(i18n, entry.removedAt)}) : t('web.missingTitles.since', {when: when(i18n, entry.missingSince)})} />
       ))}
-      {page && !page.items.length ? <div style={{padding: 16}}><Text variant="caption" tone="tertiary">{t('web.missingTitles.none')}</Text></div> : null}
-      {total ? <div style={{padding: '8px 16px 16px', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center'}}>
-        <Button size="sm" variant="danger" label={t('web.missingTitles.removeNow')} onClick={() => { action.clear(); setRemoved(undefined); setAsking(true); }} />
+      {page && !page.items.length ? <SettingsEmpty title={t('web.missingTitles.none')} /> : null}
+      {total ? <SettingsFooter>
+        <Button size="sm" variant="secondary" label={t('web.missingTitles.removeNow')} onClick={() => { action.clear(); setRemoved(undefined); setAsking(true); }} />
         <Status tone="neutral">{t('web.missingTitles.count', {count: total})}</Status>
-      </div> : null}
-      <ConfirmDialog open={asking} onOpenChange={o => !o && setAsking(false)} title={t('web.missingTitles.removeTitle')} typedConfirmation={String(total)} busy={action.busy} error={action.error}
-        body={t('web.missingTitles.removeBody', {count: total})}
+      </SettingsFooter> : null}
+      <ConfirmDialog open={asking} onOpenChange={o => !o && setAsking(false)} title={t('web.missingTitles.removeTitle')} typedConfirmation={String(total)} busy={action.busy} error={action.error || undefined}
+        body={t('server.missing.removeBody', {count: total})}
         confirmLabel={t('web.missingTitles.removeConfirm')} onConfirm={() => void action.run(async () => {
           const out = await emptyMissingTitles(api);
           setRemoved(out.titles);
@@ -142,8 +144,8 @@ export function RestartPanel() {
   };
   return (
     <SettingsGroup title={t('web.maintenance.serverRestart')}>
-      {error ? <div style={{padding: 12}}><Notice tone="error" compact>{error}</Notice></div> : null}
-      {phase === 'back' ? <div style={{padding: 12}}><Notice tone="success" compact>{t('server.restart.back')}</Notice></div> : null}
+      {error ? <SettingsNote><Notice tone="error" compact>{error}</Notice></SettingsNote> : null}
+      {phase === 'back' ? <SettingsNote><Notice tone="success" compact>{t('server.restart.back')}</Notice></SettingsNote> : null}
       <SettingsRow label={t('web.maintenance.serverRestart')} help={t('web.maintenance.serverRestartHelp')} state={phase === 'restarting' ? <span role="status">{t('server.restart.waiting')}</span> : undefined}
         control={<Button size="sm" variant="secondary" icon="refresh" label={t('web.maintenance.serverRestart')} loading={phase === 'restarting'} onClick={() => setAsking(true)} />} />
       <ConfirmDialog open={asking} onOpenChange={setAsking} title={t('server.restart.title')} body={t('server.restart.body')} confirmLabel={t('web.maintenance.serverRestart')} cancelLabel={t('action.cancel')} destructive={false} onConfirm={restart} />
@@ -163,8 +165,8 @@ export function UpdatesPanel() {
   const report = read.data;
   const tone = report?.status === 'update-available' ? 'accent' : report?.status === 'current' ? 'healthy' : 'neutral';
   return (
-    <SettingsGroup title={t('web.general.updates')} description={t('web.maintenance.updatesLede')}>
-      {read.error ? <div style={{padding: 12}}><Notice tone={report ? 'warning' : 'error'} compact action={{label: t('action.tryAgain'), onClick: read.reload}}>{read.error}</Notice></div> : null}
+    <SettingsGroup title={t('web.general.updates')} description={t('web.maintenance.updatesLede')} action={<Freshness at={read.at} refreshing={read.loading} onRefresh={read.reload} />}>
+      {read.error ? <SettingsNote><Notice tone={report ? 'warning' : 'error'} compact action={{label: t('action.tryAgain'), onClick: read.reload}}>{read.error}</Notice></SettingsNote> : null}
       {report ? (
         <>
           <SettingsRow label={t('web.maintenance.thisServer')} meta={report.current.version || t('web.maintenance.devBuild')} help={report.current.builtAt ? t('web.maintenance.builtAt', {when: when(i18n, report.current.builtAt), channel: report.channel}) : t('web.maintenance.channelOnly', {channel: report.channel})} />
@@ -174,7 +176,6 @@ export function UpdatesPanel() {
         </>
       ) : null}
       <UpdateCheckRow />
-      <div style={{padding: '8px 16px 16px'}}><Freshness at={read.at} refreshing={read.loading} onRefresh={read.reload} /></div>
     </SettingsGroup>
   );
 }

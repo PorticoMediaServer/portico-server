@@ -1,12 +1,13 @@
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {Link} from '@tanstack/react-router';
 import {PLAY_HISTORY_COLUMNS, PLAY_HISTORY_PERIODS, fetchPlayHistory, playHistoryPeriodLabel, playHistoryPlatform, playHistoryPlayed, playHistoryTitle, playHistoryType, playHistoryUser, type PlayHistoryEntry, type PlayHistoryFilters, type PlayHistoryPeriod} from '@core/play-history.ts';
-import {useConsole, useRead} from '../../admin/console';
+import {QUIET_READ_EVERY_MS, useConsole, useQuietly, useRead} from '../../admin/console';
+import {mergeRevalidatedList} from '@core/freshness-actions.ts';
 import {useI18n} from '../../app/i18n';
 import {useLibrariesContext} from '../../app/libraries';
 import {useSession} from '../../app/session';
 import {present} from '../../app/errors';
-import {Button, Notice, Select, Surface, Table, Text} from '../../ui';
+import {Button, Freshness, Notice, Select, Surface, Table, Text} from '../../ui';
 import s from './PlayHistory.module.css';
 
 /**
@@ -23,17 +24,25 @@ export function PlayHistoryPanel() {
   const libraries = useLibrariesContext();
   const accounts = useRead(() => client.accountOptions(), [client]);
   const [filters, setFilters] = useState<PlayHistoryFilters>({period: 'all'});
-  const [state, setState] = useState<{entries: readonly PlayHistoryEntry[]; total?: number; next: string; loading: boolean; error?: string}>({entries: [], next: '', loading: true});
+  const [state, setState] = useState<{entries: readonly PlayHistoryEntry[]; total?: number; next: string; loading: boolean; error?: string; at?: number; /** The filters `entries` were read with: until a new answer arrives they stay on screen. */ shown?: PlayHistoryFilters}>({entries: [], next: '', loading: true});
   const run = useRef(0);
   const load = useCallback((cursor: string) => {
     const n = ++run.current;
-    setState(prev => ({...(cursor ? prev : {entries: [], next: ''}), loading: true}));
+    // What is on screen stays until the answer arrives: a filter or Refresh never empties the table first.
+    setState(prev => ({...prev, loading: true, error: undefined}));
     fetchPlayHistory(api, filters, cursor).then(
-      page => { if (n === run.current) setState(prev => ({entries: cursor ? [...prev.entries, ...page.entries] : page.entries, total: page.total ?? prev.total, next: page.nextCursor, loading: false})); },
+      page => { if (n === run.current) setState(prev => ({entries: cursor ? [...prev.entries, ...page.entries] : page.entries, total: page.total ?? (cursor ? prev.total : undefined), next: page.nextCursor, loading: false, at: Date.now(), shown: filters})); },
       error => { if (n === run.current) setState(prev => ({...prev, loading: false, error: present(error, 'server-console').body})); },
     );
   }, [api, filters]);
   useEffect(() => load(''), [load]);
+  // New plays arrive at the top by themselves; pages already asked for stay under them.
+  useQuietly(async () => {
+    const n = run.current;
+    const page = await fetchPlayHistory(api, filters, '');
+    if (n !== run.current) return;
+    setState(prev => (prev.loading || prev.shown !== filters ? prev : {...prev, entries: mergeRevalidatedList(prev.entries, page.entries, e => e.id, {complete: !page.nextCursor && !prev.next, same: (a, b) => JSON.stringify(a) === JSON.stringify(b)}), total: page.total ?? prev.total, next: prev.entries.length > page.entries.length ? prev.next : page.nextCursor, at: Date.now()}));
+  }, () => state.shown === filters && !state.loading, {every: QUIET_READ_EVERY_MS});
   const libraryName = useMemo(() => new Map(libraries.items.map(l => [l.id, l.name])), [libraries.items]);
   const filtered = !!filters.accountId || !!filters.libraryId || filters.period !== 'all';
   const columns = PLAY_HISTORY_COLUMNS.map(c => ({label: t(c.label)}));
@@ -47,7 +56,8 @@ export function PlayHistoryPanel() {
         <Select hideLabel label={t('server.plays.filterPeriod')} value={filters.period} onChange={e => setFilters(f => ({...f, period: e.target.value as PlayHistoryPeriod}))}
           options={PLAY_HISTORY_PERIODS.map(p => ({value: p, label: t(playHistoryPeriodLabel(p))}))} />
         {state.total !== undefined ? <Text variant="caption" tone="secondary" className={s.total}>{t('server.plays.total', {count: state.total})}</Text> : null}
-        <Button size="sm" variant="ghost" icon="refresh" label={t('action.refresh')} loading={state.loading && !state.entries.length} onClick={() => load('')} />
+        {/* The page's one Refresh asks this list again. */}
+        <Freshness at={state.at} verb="Updated" refreshing={state.loading} onRefresh={() => load('')} />
       </div>
       {state.error ? <div className={s.note}><Notice tone="error" compact action={{label: t('action.tryAgain'), onClick: () => load(state.entries.length ? state.next : '')}}>{state.error}</Notice></div> : null}
       {state.entries.length ? (

@@ -3,8 +3,8 @@ import {useNavigate} from '@tanstack/react-router';
 import {metadataAttentionService, serverMetadataAttentionService, type AttentionCandidate, type AttentionCommand, type AttentionEntry} from '@core/metadata-attention.ts';
 import {attentionCount, attentionInProgress, attentionOffers, attentionReason, candidateFacts, candidateLine, hasAttentionList, providerName, typedProviderId, type AttentionCount} from '@core/server-admin/attention-words.ts';
 export {hasAttentionList} from '@core/server-admin/attention-words.ts';
-import {useAction} from '../../admin/console';
-import {useCursorRead} from '../../admin/cursor-read';
+import {useAction, sendFresh} from '../../admin/console';
+import {findInPages, useCursorRead} from '../../admin/cursor-read';
 import {usePollWhile} from '../../admin/poll-while';
 import {ListPager} from './ListPager';
 import {useSession} from '../../app/session';
@@ -64,7 +64,11 @@ export function NeedsAttentionPanel({libraryId, onCount}: {libraryId: string; on
   usePollWhile(!!entries?.some(e => attentionInProgress(e.reason)), read.reload);
   const has = (id: string) => i18n.has(id);
   const send = (entry: AttentionEntry, command: Omit<AttentionCommand, 'kind' | 'entityId' | 'expectedRevision'>, done: string) =>
-    action.run(async () => { await service.act({kind: entry.kind, entityId: entry.entityId, expectedRevision: entry.revision, ...command}); }, done).then(ok => { read.reload(); return ok; });
+    action.run(async () => {
+      // A scan or a search moved the title since the list was read: the same answer is sent again for the title as it is now, while it is still on the list.
+      await sendFresh(entry, e => service.act({kind: e.kind, entityId: e.entityId, expectedRevision: e.revision, ...command}),
+        () => findInPages(async cursor => { const page = await service.list(cursor, 25); return {items: page.entries, nextCursor: page.nextCursor ?? ''}; }, e => e.entityId === entry.entityId && e.kind === entry.kind, 8));
+    }, done).then(ok => { read.reload(); return ok; });
   const open = (entry: AttentionEntry) => (entry.kind === 'show'
     ? void navigate({to: '/show/$showId', params: {showId: entry.entityId}, search: {library: libraryId}})
     : void navigate({to: '/media/$itemId', params: {itemId: entry.entityId}, search: {library: libraryId}}));

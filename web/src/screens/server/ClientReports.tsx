@@ -1,6 +1,6 @@
 import {useState} from 'react';
 import {deleteClientReport, listClientReports, readClientReport, type ClientReport} from '@core/client-reports.ts';
-import {problem, useAction, useRead} from '../../admin/console';
+import {QUIET_READ_EVERY_MS, problem, useAction, useRead} from '../../admin/console';
 import {readCatalogueFailures} from '@core/catalogue-failures.ts';
 import {dependsOn} from '@core/freshness-hub.ts';
 
@@ -10,7 +10,7 @@ import {useCursorList} from '../../admin/cursor-read';
 import {ListPager} from './ListPager';
 import {useSession} from '../../app/session';
 import {useI18n} from '../../app/i18n';
-import {Button, ConfirmDialog, Dialog, Loading, Menu, Notice, SettingsGroup, SettingsRow, Text} from '../../ui';
+import {Button, ConfirmDialog, Dialog, Loading, Menu, Notice, SettingsEmpty, SettingsFooter, SettingsGroup, SettingsLoading, SettingsNote, SettingsRow, Text} from '../../ui';
 
 /** "iPhone · phone · 1.4.2": what sent a report, in the words the report carries. */
 export const reportSender = (report: Pick<ClientReport, 'platform' | 'deviceClass' | 'appVersion'>): string => [report.platform, report.deviceClass, report.appVersion].filter(Boolean).join(' · ');
@@ -34,7 +34,7 @@ export function ClientReportsPanel() {
   const {t} = i18n;
   const {api, system, session} = useSession();
   const serverId = system?.id ?? session?.viewer.serverId ?? '';
-  const read = useCursorList(async cursor => { const page = await listClientReports(api, serverId, cursor); return {items: [...page.items], nextCursor: page.nextCursor ?? ''}; }, [api, serverId]);
+  const read = useCursorList(async cursor => { const page = await listClientReports(api, serverId, cursor); return {items: [...page.items], nextCursor: page.nextCursor ?? ''}; }, [api, serverId], {every: QUIET_READ_EVERY_MS});
   const action = useAction();
   const [open, setOpen] = useState<{report: ClientReport; body?: string; error?: string}>();
   const [removing, setRemoving] = useState<ClientReport>();
@@ -42,17 +42,18 @@ export function ClientReportsPanel() {
   const show = (report: ClientReport) => { setOpen({report}); load(report, full => setOpen(o => (o?.report.id === report.id ? {report: full, body: full.body ?? ''} : o))).catch(e => setOpen(o => (o?.report.id === report.id ? {report, error: problem(e)} : o))); };
   return (
     <SettingsGroup title={t('web.diagnostics.clientReports')} description={t('server.reports.lede')}>
-      {read.error ? <div style={{padding: 12}}><Notice tone={read.data ? 'warning' : 'error'} compact action={{label: t('action.tryAgain'), onClick: read.reload}}>{read.error}</Notice></div> : null}
-      {action.error && !removing ? <div style={{padding: 12}}><Notice tone="error" compact>{action.error}</Notice></div> : null}
+      {read.error ? <SettingsNote><Notice tone={read.data ? 'warning' : 'error'} compact action={{label: t('action.tryAgain'), onClick: read.reload}}>{read.error}</Notice></SettingsNote> : null}
+      {action.error && !removing ? <SettingsNote><Notice tone="error" compact>{action.error}</Notice></SettingsNote> : null}
+      {!read.data && read.loading ? <SettingsLoading thing={t('server.thing.reports')} /> : null}
       {read.data?.map(report => (
         <SettingsRow key={report.id} icon="logs" label={reportSender(report) || t('server.reports.unknownSender')} help={`${i18n.dateTime(report.receivedAt)} · ${i18n.bytes(report.bytes)}`}
           control={<div style={{display: 'flex', gap: 8, alignItems: 'center'}}>
             <Button size="sm" variant="secondary" label={t('server.reports.read')} onClick={() => show(report)} />
-            <Menu label={reportSender(report)} trigger={<Button size="sm" variant="ghost" icon="more" aria-label={t('server.reports.actions')} />} items={[{id: 'download', label: t('web.diagnostics.clientReportDownload'), icon: 'download'}, {id: 'delete', label: t('web.diagnostics.clientReportDelete'), icon: 'trash', destructive: true, separatorBefore: true}]}
+            <Menu label={reportSender(report)} trigger={<Button size="sm" variant="ghost" icon="more" aria-label={t('server.row.actions', {name: reportSender(report) || t('server.reports.unknownSender')})} />} items={[{id: 'download', label: t('web.diagnostics.clientReportDownload'), icon: 'download'}, {id: 'delete', label: t('web.diagnostics.clientReportDelete'), icon: 'trash', destructive: true, separatorBefore: true}]}
               onSelect={id => { action.clear(); if (id === 'delete') setRemoving(report); else void action.run(() => load(report, save)); }} />
           </div>} />
       ))}
-      {read.data && !read.data.length ? <div style={{padding: 16}}><Text variant="caption" tone="tertiary">{t('server.reports.none')}</Text></div> : null}
+      {read.data && !read.data.length ? <SettingsEmpty title={t('server.reports.none')} /> : null}
       <ListPager pages={read} />
       <Dialog open={!!open} onOpenChange={o => !o && setOpen(undefined)} title={t('server.reports.title')} description={open ? `${reportSender(open.report)} · ${i18n.dateTime(open.report.receivedAt)}` : undefined} width={720}
         actions={<><Button variant="ghost" icon="download" label={t('web.diagnostics.clientReportDownload')} disabled={open?.body === undefined} onClick={() => open && save(open.report)} /><Button variant="primary" label={t('action.done')} onClick={() => setOpen(undefined)} /></>}>
@@ -60,7 +61,7 @@ export function ClientReportsPanel() {
         {open && open.body === undefined && !open.error ? <Loading label={t('server.reports.title')} /> : null}
         {open?.body !== undefined ? <pre style={{margin: 0, maxHeight: 440, overflow: 'auto', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', fontFamily: 'var(--font-mono)', fontSize: 12, lineHeight: 1.5}}>{open.body || t('server.reports.empty')}</pre> : null}
       </Dialog>
-      <ConfirmDialog open={!!removing} onOpenChange={o => !o && setRemoving(undefined)} title={t('server.reports.deleteTitle')} body={t('server.reports.deleteBody')} confirmLabel={t('action.delete')} cancelLabel={t('action.cancel')} busy={action.busy} error={action.error}
+      <ConfirmDialog open={!!removing} onOpenChange={o => !o && setRemoving(undefined)} title={t('server.reports.deleteTitle')} body={t('server.reports.deleteBody')} confirmLabel={t('action.delete')} busy={action.busy} error={action.error || undefined}
         onConfirm={() => void action.run(async () => { if (!removing) return; await deleteClientReport(api, removing.id); setRemoving(undefined); read.reload(); })} />
     </SettingsGroup>
   );
@@ -80,14 +81,16 @@ export function SetAsideTitlesPanel() {
   if (!list?.failures.length) return null;
   return (
     <SettingsGroup title={t('server.setAside.title')} description={t('server.setAside.lede')}>
-      {read.error ? <div style={{padding: 12}}><Notice tone="warning" compact action={{label: t('action.tryAgain'), onClick: read.reload}}>{read.error}</Notice></div> : null}
+      {read.error ? <SettingsNote><Notice tone="warning" compact action={{label: t('action.tryAgain'), onClick: read.reload}}>{read.error}</Notice></SettingsNote> : null}
       {list.failures.map((f, n) => (
         <SettingsRow key={`${f.domain}:${f.entityId ?? n}`} icon="warning" label={f.title || t('server.setAside.untitled')} stack
           help={t('server.setAside.tried', {count: f.attempts, when: i18n.dateTime(f.failedAt)})}
           control={<Text variant="mono" tone="tertiary" style={{fontSize: 12, overflowWrap: 'anywhere'}}>{f.reason}</Text>} />
       ))}
-      {list.more ? <div style={{padding: '0 16px 16px'}}><Text variant="caption" tone="tertiary">{t('server.setAside.more')}</Text></div> : null}
-      <div style={{padding: '8px 16px 16px'}}><Button size="sm" variant="ghost" icon="refresh" label={t('server.setAside.check')} loading={read.loading} onClick={read.reload} /></div>
+      <SettingsFooter>
+        <Button size="sm" variant="ghost" icon="refresh" label={t('server.setAside.check')} loading={read.loading} onClick={read.reload} />
+        {list.more ? <Text variant="caption" tone="tertiary">{t('server.setAside.more')}</Text> : null}
+      </SettingsFooter>
     </SettingsGroup>
   );
 }

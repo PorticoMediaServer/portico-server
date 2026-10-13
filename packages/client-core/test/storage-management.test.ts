@@ -28,3 +28,15 @@ test('a source this app cannot read is left out, an unknown state reads as unava
 test('safe executable/configuration codes are actionable definite rejections without submitted data or retry',async()=>{for(const code of ['storage_executable_invalid','storage_config_invalid']){let writes=0;const s=service(async(_p,m)=>{if(m==='POST'){writes++;throw Object.assign(new Error(credentials.config+' '+credentials.remote),{status:400,code,retryable:false});}return list([]);});await s.load();await s.create(credentials);assert.equal(s.getSnapshot().mutation.phase,'error');assert.equal(s.getSnapshot().mutation.error?.code,code);assert.equal(s.getSnapshot().mutation.error?.retryable,false);assert.equal(writes,1);assert(!JSON.stringify(s.getSnapshot()).includes('secret_access_key'));assert(!JSON.stringify(s.getSnapshot()).includes('private:folder'));assert.match(s.getSnapshot().mutation.error!.message,code==='storage_executable_invalid'?/native rclone executable/:/configuration format/);s.dispose();}});
 
 test('allocation recovery is a definite rejection and never triggers credential replay',async()=>{let writes=0;const s=service(async(_p,m)=>{if(m==='POST'){writes++;throw Object.assign(new Error(credentials.config),{status:409,code:'storage_allocation_recovery_required',retryable:false});}return list([]);});await s.load();await s.create(credentials);const state=s.getSnapshot();assert.equal(state.mutation.phase,'error');assert.equal(state.mutation.error?.code,'storage_allocation_recovery_required');assert.equal(state.mutation.error?.retryable,false);assert.match(state.mutation.error!.message,/allocations need recovery/);assert.equal(writes,1);assert(!JSON.stringify(state).includes('secret_access_key'));s.dispose();});
+
+test('a quiet re-read shows a mount that changed by itself without clearing the list, and a failed one leaves it as it was',async()=>{
+ let observed='stopped',fail=false;const seen:string[]=[];
+ const s=service(async()=>{if(fail)throw new TypeError('Failed to fetch');return list([mount({observedState:observed})]);});
+ await s.load();s.subscribe(()=>{const x=s.getSnapshot();seen.push(x.phase+':'+(x.data?.mounts[0]?.observedState??'-'));});
+ observed='mounted';await s.revalidate();
+ assert.deepEqual(seen,['ready:mounted'],'never loading, never empty');
+ fail=true;await assert.rejects(s.revalidate());
+ assert.equal(s.getSnapshot().phase,'ready');assert.equal(s.getSnapshot().data!.mounts[0].observedState,'mounted');assert.equal(s.getSnapshot().error,null);
+ // Nothing is read while a command's outcome is unknown, or before the first load.
+ fail=false;const idle=service(async()=>{throw new Error('must not be read');});await idle.revalidate();assert.equal(idle.getSnapshot().phase,'idle');idle.dispose();s.dispose();
+});

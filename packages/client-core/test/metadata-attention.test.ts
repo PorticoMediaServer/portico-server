@@ -13,3 +13,16 @@ test('one title or suggestion that cannot be read is left out alone',()=>{const 
  assert.equal(parseMetadataAttention({...page,entries:[{...entry,candidates:Array(4).fill(candidate)}]},'lib').entries.length,0);});
 test('attention commands use the library route and its revision',async()=>{const calls:unknown[]=[];const service=metadataAttentionService(async <T>(path:string,method?:string,body?:unknown)=>{calls.push({path,method,body});return page as T;},'lib');await service.list();await service.act({kind:'item',entityId:'title',expectedRevision:4,action:'dismiss'});assert.deepEqual(calls[1],{path:'/v1/libraries/lib/metadata/attention',method:'POST',body:{kind:'item',entityId:'title',expectedRevision:4,action:'dismiss'}});});
 test('metadata settings return credential presence only',()=>{const out=parseMetadataSettings({revision:1,localArtworkUsedBytes:0,localArtworkLimitBytes:2**31,includeAdult:false,tmdbCredentialConfigured:true,tvdbCredentialConfigured:false,tmdbReadToken:'secret'});assert.equal('tmdbReadToken' in out,false);assert.throws(()=>parseMetadataSettings({...out,localArtworkLimitBytes:0}));});
+
+test('an episode order is stored with what is added to file numbers, and reads back the same', async () => {
+  const {orderTakesOffset, readTmdbOrder, tmdbAbsoluteOrder} = await import('../src/screen-metadata.ts');
+  assert.equal(tmdbAbsoluteOrder('official', 0), 'official');
+  assert.equal(tmdbAbsoluteOrder('official', 12), 'tmdb-absolute:official:12');
+  assert.equal(tmdbAbsoluteOrder('tmdb-group:abc123', -3), 'tmdb-absolute:tmdb-group:abc123:-3');
+  assert.deepEqual(readTmdbOrder('tmdb-absolute:tmdb-group:abc123:-3'), {base: 'tmdb-group:abc123', offset: -3});
+  assert.deepEqual(readTmdbOrder('official'), {base: 'official', offset: 0});
+  assert.deepEqual(readTmdbOrder(''), {base: '', offset: 0});
+  assert.equal(orderTakesOffset('official'), true);
+  assert.equal(orderTakesOffset('dvd'), false);
+  assert.throws(() => tmdbAbsoluteOrder('dvd', 2));
+});

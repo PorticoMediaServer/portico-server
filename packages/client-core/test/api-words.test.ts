@@ -93,3 +93,48 @@ test('the assistant address is the server\'s own address with the one path', () 
   assert.equal(assistantAddress('https://media.example.com'), 'https://media.example.com/v1/mcp');
   assert.equal(assistantAddress('http://192.168.1.10:32500/'), 'http://192.168.1.10:32500/v1/mcp');
 });
+
+test('console words come from the catalogue, and a code with no word is never shown as a code where a general word will do', async () => {
+  const {alertName, feedbackCategoryName, jobName, jobStateName, scanStateName, scanStepName, severityName} = await import('../src/server-admin/console-catalogue.ts');
+  const {roleLabel, deviceFacts, devicePlatform} = await import('../src/server-admin/people-words.ts');
+  const {liveSourceState} = await import('../src/server-admin/live-words.ts');
+  const {mountStateId, sourceStateText} = await import('../src/server-admin/storage-words.ts');
+  const {createI18n} = await import('../../i18n/src/index.ts');
+  const i18n = createI18n();
+  const t = i18n.t, has = (id: string) => i18n.has(id);
+  assert.equal(jobName(t, has, 'library_scan'), 'Library scan');
+  assert.equal(jobName(t, has, 'artwork_sweep'), 'Artwork sweep', 'a new kind of task reads as its own name');
+  assert.equal(jobStateName(t, has, 'cancellation-requested'), 'Canceling');
+  assert.equal(alertName(t, has, 'low_storage'), 'Storage is running low');
+  assert.equal(alertName(t, has, 'x9_internal'), 'Something on the server needs attention');
+  assert.equal(severityName(t, has, 'critical'), 'Critical');
+  assert.equal(scanStateName(t, has, 'complete_with_warnings'), 'Finished with warnings');
+  assert.equal(scanStepName(t, has, 'probe'), 'Read file details');
+  assert.equal(feedbackCategoryName(t, has, 'playback.stall'), 'playback.stall');
+  assert.equal(roleLabel(t, 'admin'), 'Administrator');
+  assert.equal(devicePlatform(t, 'web'), 'Web browser');
+  assert.equal(devicePlatform(t, ''), '');
+  // A device that sent no platform has no stray separator, and one never seen has no "last seen".
+  assert.equal(deviceFacts(t, {username: 'ada', platform: '', lastSeenAt: '2026-10-13T10:00:00Z'}, {showOwner: true, relative: () => '1 minute ago'}), 'ada · last seen 1 minute ago');
+  assert.equal(deviceFacts(t, {username: 'ada', platform: 'tvos', lastSeenAt: ''}, {showOwner: false, relative: () => ''}), 'Apple TV');
+  assert.deepEqual(liveSourceState({state: 'disabled'}, {state: 'refreshing'}), {id: 'web.liveTv.pausedBadge', tone: 'neutral', live: false});
+  assert.equal(liveSourceState({state: 'ready'}, {state: 'credentials-required'}).id, 'server.live.state.credentials');
+  assert.equal(liveSourceState({state: 'ready'}, undefined).tone, 'healthy');
+  assert.equal(t(mountStateId('quarantined')), 'Stopped after repeated failures');
+  assert.equal(t(mountStateId('hibernating')), 'Unavailable');
+  assert.equal(sourceStateText(t, has, {state: 'ready'}), 'Connected');
+  assert.equal(sourceStateText(t, has, {state: 'ready', errorCode: 'tls_handshake'}), 'Needs attention');
+});
+
+test('a viewing window\'s days are one choice, and a set saved elsewhere is kept as it is', async () => {
+  const {dayChoiceOf, daysOfChoice, newViewingHours} = await import('../src/server-admin/people-words.ts');
+  assert.equal(dayChoiceOf([0, 1, 2, 3, 4, 5, 6]), 'all');
+  assert.equal(dayChoiceOf([5, 4, 3, 2, 1]), 'weekdays');
+  assert.equal(dayChoiceOf([6, 0]), 'weekends');
+  assert.equal(dayChoiceOf([3]), '3');
+  assert.equal(dayChoiceOf([1, 3, 5]), 'several');
+  assert.deepEqual(daysOfChoice('several', [1, 3, 5]), [1, 3, 5]);
+  assert.deepEqual(daysOfChoice('weekends', [1]), [0, 6]);
+  assert.deepEqual(daysOfChoice('2', [1]), [2]);
+  assert.deepEqual(newViewingHours(), {days: [0, 1, 2, 3, 4, 5, 6], startMinute: 480, endMinute: 1200});
+});

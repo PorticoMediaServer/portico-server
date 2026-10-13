@@ -1,10 +1,12 @@
 import {useState} from 'react';
+import {jobName} from '@core/server-admin/console-catalogue.ts';
 import type {Schedule} from '@core/console.ts';
 import type {LogSettings} from '@core/server-administration.ts';
 import {scheduledJobs, type LogsDraft, type MaintenanceDocument, type MaintenanceSettings, type MaintenanceWindow} from '@core/server-admin/server-forms.ts';
 import {TASK_LABELS, broadcastBody, broadcastProblem, clockMinutes, clockText, retentionRows, utf8Length} from '@core/server-admin/panel-logic.ts';
 export {broadcastBody, broadcastBodyBytes, broadcastProblem, broadcastTitleBytes, maintenanceSaveSettings, utf8Length, type BroadcastProblem} from '@core/server-admin/panel-logic.ts';
-import {jobLabel, useAction, useConsole, useRead, when} from '../../admin/console';
+import {sendFresh, useAction, useConsole, useRead, when} from '../../admin/console';
+import {rebaseDraft} from '@core/freshness-actions.ts';
 import {useSession} from '../../app/session';
 import {useI18n, type MessageId} from '../../app/i18n';
 import {Button, Dialog, Input, Notice, Select, SettingsGroup, SettingsRow, Status, Switch, Text, TextArea} from '../../ui';
@@ -14,8 +16,8 @@ import page from '../settings/Settings.module.css';
 const clock = clockText, minutes = clockMinutes;
 
 function useTaskLabel() {
-  const {t} = useI18n();
-  return (task: string) => (TASK_LABELS[task] ? t(TASK_LABELS[task]!) : jobLabel(task));
+  const i18n = useI18n();
+  return (task: string) => (TASK_LABELS[task] ? i18n.t(TASK_LABELS[task]!) : jobName(i18n.t, id => i18n.has(id), task));
 }
 
 /**
@@ -92,15 +94,16 @@ const zones = (() => {
 function ScheduleRow({schedule, onSaved}: {schedule: Schedule; onSaved: () => void}) {
   const client = useConsole();
   const {t} = useI18n();
+  const task = useTaskLabel();
   const action = useAction();
   const [draft, setDraft] = useState<Schedule>();
   const options = zones.length ? zones.map(z => ({value: z, label: z})) : [{value: schedule.timezone, label: schedule.timezone}];
   return (
     <>
-      <SettingsRow icon="jobs" label={jobLabel(schedule.kind)} help={[schedule.resource, schedule.enabled ? t('server.schedule.daily', {time: clock(schedule.startMinute)}) : t('server.schedule.off'), schedule.lastSlot ? t('settings.server.jobs.last', {when: schedule.lastSlot}) : ''].filter(Boolean).join(' · ')}
+      <SettingsRow icon="jobs" label={task(schedule.kind)} help={[schedule.resource, schedule.enabled ? t('server.schedule.daily', {time: clock(schedule.startMinute)}) : t('server.schedule.off'), schedule.lastSlot ? t('settings.server.jobs.last', {when: schedule.lastSlot}) : ''].filter(Boolean).join(' · ')}
         control={<Button size="sm" variant="ghost" label={t('web.selection.edit')} onClick={() => { action.clear(); setDraft(schedule); }} />} />
-      <Dialog open={!!draft} onOpenChange={o => !o && setDraft(undefined)} title={jobLabel(schedule.kind)} width={480}
-        actions={<><Button variant="ghost" label={t('action.cancel')} onClick={() => setDraft(undefined)} /><Button variant="primary" label={t('action.save')} loading={action.busy} disabled={!draft || JSON.stringify(draft) === JSON.stringify(schedule)} onClick={() => draft && void action.run(() => client.saveSchedule(draft, schedule.revision)).then(ok => { if (ok) { setDraft(undefined); onSaved(); } })} /></>}>
+      <Dialog open={!!draft} onOpenChange={o => !o && setDraft(undefined)} title={task(schedule.kind)} width={480}
+        actions={<><Button variant="ghost" label={t('action.cancel')} onClick={() => setDraft(undefined)} /><Button variant="primary" label={t('action.save')} loading={action.busy} disabled={!draft || JSON.stringify(draft) === JSON.stringify(schedule)} onClick={() => draft && void action.run(() => sendFresh(schedule, now => client.saveSchedule(rebaseDraft(schedule, draft, now).merged, now.revision), async () => (await client.schedules()).find(x => x.kind === schedule.kind && x.resource === schedule.resource), now => !rebaseDraft(schedule, draft, now).conflict)).then(ok => { if (ok) { setDraft(undefined); onSaved(); } })} /></>}>
         {draft ? (
           <div style={{display: 'flex', flexDirection: 'column', gap: 12}}>
             {action.error ? <Notice tone="error" compact>{action.error}</Notice> : null}
@@ -153,7 +156,7 @@ export function BroadcastButton() {
   const [audience, setAudience] = useState('profile');
   const [severity, setSeverity] = useState('info');
   const problem = broadcastProblem(title, body);
-  const send = () => void action.run(async () => { await api.request('/v1/admin/notifications/broadcast', 'POST', broadcastBody(operation, {audience, severity, title, body})); setOpen(false); setTitle(''); setBody(''); setOperation(''); }, 'Message sent.');
+  const send = () => void action.run(async () => { await api.request('/v1/admin/notifications/broadcast', 'POST', broadcastBody(operation, {audience, severity, title, body})); setOpen(false); setTitle(''); setBody(''); setOperation(''); }, t('server.broadcast.sent'));
   return (
     <>
       <Button size="sm" variant="secondary" icon="mail" label={t('server.messageEveryone')} onClick={() => { action.clear(); setOperation(crypto.randomUUID()); setOpen(true); }} />

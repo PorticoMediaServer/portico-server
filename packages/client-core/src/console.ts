@@ -168,7 +168,8 @@ export class ConsoleClient {
   if(intent&&intent.body!==serialized)throw new Error('A previous action has an unconfirmed result. Confirm the pending action before submitting different values.');
   if(!intent){intent={body:serialized,key:consoleOperationId(),method,parse};this.intents.set(path,intent);}
   try{const result=await this.call(path,method,{...body,idempotencyKey:intent.key},parse);this.intents.delete(path);return result;}
-  catch(e){if(obj(e)&&[400,404,409,410,429].includes(e.status))this.intents.delete(path);throw e;}
+  catch(e){// A refusal is definite: the server did not act, so nothing is left unconfirmed (412 and 428 are a revision that moved or was missing).
+   if(obj(e)&&[400,404,409,410,412,428,429].includes(e.status))this.intents.delete(path);throw e;}
 
  }
  registry(){return this.call(routePath("get_console_registry"),'GET',undefined,base);}

@@ -132,8 +132,20 @@ test('the third-pass panels sit beside the settings they explain', () => {
   const playback = rowIds(page(web, 'streaming')!);
   assert.ok(playback.indexOf('server.ffmpegStatus') === playback.indexOf('runtime.ffmpegPath') + 1, 'the check result follows the path it checked');
   assert.ok(rowIds(page(web, 'troubleshooting')!).includes('server.setAsideTitles'));
+  // What the server is avoiding after a playback failure is the last thing on the page about playing, and only where it is drawn.
+  assert.equal(playback.at(-1), 'server.playbackProblems');
+  for (const p of server('phone')) assert.ok(!rowIds(p).includes('server.playbackProblems'));
   // None of the web's panels is offered where nothing draws it.
   for (const id of ['server.resourceUsage', 'server.storageStatus', 'server.downloadUsage', 'server.setAsideTitles']) for (const p of server('phone')) assert.ok(!rowIds(p).includes(id), id);
   const device = settingsStructure({owner: false, platform: 'web', capabilities: {}}).headings[0]!.pages.find(p => p.id === 'device')!;
   assert.ok(rowIds(device).includes('remoteControls'));
+});
+
+test('remembered playback failures are shown a file at a time, newest first', async () => {
+  const {groupPlaybackFailures, parsePlaybackFailureMemory} = await import('../src/playback-failure-memory.ts');
+  const row = (sourceId: string, route: string, reportedAtMs: number, expiresAtMs: number) => ({sourceId, engine: 'native', route, code: 'decode_failed', detail: 'no decoder', reportedAtMs, expiresAtMs});
+  const memory = parsePlaybackFailureMemory({items: [row('a', 'original', 10, 100), row('b', 'original', 30, 90), row('a', 'copy_remux', 20, 200), {sourceId: 'bad id!', engine: 'native', route: 'original', code: 'x', detail: '', reportedAtMs: 1, expiresAtMs: 2}], more: false});
+  const groups = groupPlaybackFailures(memory.items);
+  assert.deepEqual(groups.map(g => [g.sourceId, g.failures.map(f => f.route), g.reportedAtMs, g.expiresAtMs]), [['b', ['original'], 30, 90], ['a', ['copy_remux', 'original'], 20, 200]]);
+  assert.deepEqual(groupPlaybackFailures([]), []);
 });

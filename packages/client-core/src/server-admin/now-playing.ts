@@ -11,6 +11,8 @@
 import type {AdminSession} from '../playback-v1/types.ts';
 import type {MessageId, MessageValues} from '../../../i18n/src/index.ts';
 import {when} from './console-words.ts';
+import {ALREADY_DONE, sendWithFreshRecord} from '../freshness-actions.ts';
+import type {SessionControls} from '../playback-controls.ts';
 
 export const NOW_PLAYING_POLL_MS = 10_000;
 /** The server's limit for the message shown to the viewer (`AdminTerminateMessageMax`). */
@@ -107,10 +109,82 @@ export function sessionViewer(x: AdminSession, t: Translate): string {
 export function sessionFacts(x: AdminSession, t: Translate): string {
   const parts = [sessionViewer(x, t)];
   if (x.device) parts.push(t('web.nowPlaying.onDevice', {device: x.device}));
-  for (const id of [stateId(x.state), deliveryId(x.decision), locationId(x.location)]) if (id) parts.push(t(id as MessageId));
+  const state = stateId(x.state);
+  if (state) parts.push(t(state as MessageId));
+  // Where playback is, for something with a timeline: what Back and Forward are measured from.
+  if ((x.kind === 'vod' || x.kind === 'audio') && x.positionMs > 0) parts.push(t('web.nowPlaying.position', {position: positionClock(x.positionMs)}));
+  for (const id of [deliveryId(x.decision), locationId(x.location)]) if (id) parts.push(t(id as MessageId));
   const rate = rateMbps(x);
   if (rate) parts.push(t('web.nowPlaying.rate', {rate}));
   const started = x.startedAt ? Date.parse(x.startedAt) : NaN;
   if (Number.isFinite(started)) parts.push(t('web.nowPlaying.started', {time: when(started)}));
   return parts.join(' · ');
+}
+
+// ── Pause, resume and seek on somebody else's playback ─────────────────────────────────────
+
+/** How far Back and Forward move playback that is on another device. */
+export const REMOTE_SKIP_MS = 30_000;
+export type TransportCommand = 'pause' | 'resume' | 'back' | 'forward' | 'startOver';
+
+/**
+ * What can be asked of playback on another device, in the order a menu lists it: Pause or Resume
+ * (whichever applies), then Back, Forward and Start over for something with a timeline. A
+ * channel has no position of its own to move, so it is only paused and resumed. `allowed` is the
+ * server's own list for the session, when it has been read; nothing it leaves out is offered.
+ */
+export function transportOffers(x: Readonly<{kind: string; state: string}>, allowed?: readonly string[]): readonly TransportCommand[] {
+  const may = (action: string) => !allowed || allowed.includes(action);
+  const offers: TransportCommand[] = [];
+  if (x.state === 'paused') { if (may('resume')) offers.push('resume'); }
+  else if (may('pause')) offers.push('pause');
+  if ((x.kind === 'vod' || x.kind === 'audio') && may('seek')) offers.push('back', 'forward', 'startOver');
+  return offers;
+}
+
+/** The server action a command is sent as. */
+export const transportAction = (command: TransportCommand): 'pause' | 'resume' | 'seek' => (command === 'pause' || command === 'resume' ? command : 'seek');
+
+/** Where a seeking command lands from a position, in whole milliseconds; nothing for Pause and Resume. */
+export function seekTarget(command: TransportCommand, positionMs: number): number | undefined {
+  const at = Number.isFinite(positionMs) ? Math.max(0, Math.round(positionMs)) : 0;
+  return command === 'back' ? Math.max(0, at - REMOTE_SKIP_MS) : command === 'forward' ? at + REMOTE_SKIP_MS : command === 'startOver' ? 0 : undefined;
+}
+
+/** Whether the session already is what a command asks for (someone else pressed it first). */
+export const transportDone = (command: TransportCommand, state: string): boolean => (command === 'pause' && state === 'paused') || (command === 'resume' && state === 'playing');
+
+const ended = () => Object.assign(new Error('session_ended'), {code: 'session_ended', status: 410});
+
+/**
+ * The owner's Pause, Resume, Back, Forward or Start over on any session. The session's controls
+ * are read first (they carry the revision and the position a seek is measured from); when the
+ * session moved in between, they are read again and the command is sent again, silently. A
+ * session that has ended, or no longer allows the command, ends with `session_ended`.
+ */
+export async function sendTransport(service: Readonly<{readAdmin(id: string): Promise<SessionControls>; controlAdmin(current: SessionControls, action: 'pause' | 'resume' | 'seek', positionMs?: number): Promise<SessionControls>}>, sessionId: string, command: TransportCommand): Promise<SessionControls> {
+  const action = transportAction(command);
+  const first = await service.readAdmin(sessionId);
+  if (!first.actions.includes(action)) throw ended();
+  if (transportDone(command, first.state)) return first;
+  let latest = first;
+  try {
+    const out = await sendWithFreshRecord(first, current => service.controlAdmin(current, action, seekTarget(command, current.positionMs)), {
+      reread: async () => (latest = await service.readAdmin(sessionId)),
+      applies: now => (!now.actions.includes(action) ? false : transportDone(command, now.state) ? 'done' : true),
+    });
+    return out === ALREADY_DONE ? latest : out;
+  } catch (error) {
+    // It ended while the command was on its way: say that, not that something changed.
+    if (!latest.actions.includes(action)) throw ended();
+    throw error;
+  }
+}
+
+/** A position as the console shows it: `1:02:03`, or `2:03` under an hour. */
+export function positionClock(positionMs: number): string {
+  const total = Math.max(0, Math.floor((Number.isFinite(positionMs) ? positionMs : 0) / 1000));
+  const h = Math.floor(total / 3600), m = Math.floor((total % 3600) / 60), sec = total % 60;
+  const two = (n: number) => String(n).padStart(2, '0');
+  return h ? `${h}:${two(m)}:${two(sec)}` : `${m}:${two(sec)}`;
 }
