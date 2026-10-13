@@ -6,7 +6,6 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
-	"time"
 )
 
 var mbid = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
@@ -151,7 +150,7 @@ func (s *MusicBrainz) SearchRecordings(ctx context.Context, title, artist string
 // Merge redirects are followed only within the same public API/entity; arbitrary
 // provider URLs and cross-origin redirects cannot become server-side fetch targets.
 func (s *MusicBrainz) lookup(ctx context.Context, entity, id, includes string, out any) error {
-	ctx, cancel := context.WithTimeout(ctx, 45*time.Second)
+	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	if !mbid.MatchString(id) {
 		return errors.New("invalid MusicBrainz identifier")

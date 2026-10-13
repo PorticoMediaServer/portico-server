@@ -43,7 +43,7 @@ func (s *Service) produce(ctx context.Context, b binding, stage string, input In
 	generated := int64(0)
 	add := func(data []byte, kind, mime string, index int, start, end int64, w, h int) error {
 		generated += int64(len(data))
-		if generated > s.options.MaxGeneratedBytes {
+		if generated > s.stageLimit(ctx) {
 			return ErrBudget
 		}
 		// Close each unsealed capture immediately. Thousands of previews must

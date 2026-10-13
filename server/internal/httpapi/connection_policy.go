@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"net/http"
+	"portico.local/server/internal/medialimits"
 	"portico.local/server/internal/networkpolicy"
 	"portico.local/server/internal/operations"
 	"strings"
@@ -28,6 +29,7 @@ type connectionSettingValue struct {
 }
 
 func (c *connectionPolicyCache) set(document operations.SettingsDocument) {
+	medialimits.ConfigureSubtitles(document.Effective.SubtitleTrackLimit, document.Effective.SubtitleFileLimitMiB)
 	urls := []string{}
 	if document.Effective.AdvertiseURL != "" {
 		urls = append(urls, document.Effective.AdvertiseURL)

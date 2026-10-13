@@ -38,7 +38,7 @@ func (s *AcoustID) Lookup(ctx context.Context, fingerprint string, duration int)
 	if !ValidFingerprint(fingerprint) || duration < 1 || duration > 86400 {
 		return nil, &Error{Provider: "acoustid", Code: "invalid_fingerprint"}
 	}
-	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	if err := s.http.acquire(ctx); err != nil {
 		return nil, err

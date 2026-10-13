@@ -41,6 +41,7 @@ import (
 	"portico.local/server/internal/localmetadata"
 	"portico.local/server/internal/lyrics"
 	"portico.local/server/internal/mediaexec"
+	"portico.local/server/internal/medialimits"
 	"portico.local/server/internal/metadata"
 	"portico.local/server/internal/mounts"
 	"portico.local/server/internal/networking"
@@ -373,6 +374,7 @@ func run() (runErr error) {
 	if e != nil {
 		return e
 	}
+	medialimits.ConfigureSubtitles(startupMedia.SubtitleTrackLimit, startupMedia.SubtitleFileLimitMiB)
 	decoder.SetBackgroundConversionLimit(startupMedia.MaxBackgroundSessions)
 	ffmpegTool, ffprobeTool := decoder.ResolveTools()
 	defaultFFmpegTool, defaultFFprobeTool := ffmpegTool, ffprobeTool
@@ -1071,7 +1073,11 @@ func run() (runErr error) {
 	if manager := claimHandler.Remote(); manager != nil {
 		manager.SetAccessURLs(accessURLsProvider(console, manager))
 	}
-	handler := httpapi.New(httpapi.Dependencies{Restart: requestRestart, ListeningPort: listener.Addr().(*net.TCPAddr).Port, Events: events, Administration: adminOperations, Backups: backupService, Access: administration, Webhooks: outboundWebhooks, SettingsApplied: func(ctx context.Context) {
+	var transport *cappedListener
+	handler := httpapi.New(httpapi.Dependencies{ConnectionUsage: func() httpapi.ConnectionUsage {
+		held, _ := transport.Held()
+		return httpapi.ConnectionUsage{Ordinary: len(transport.ordinary), Total: held, OrdinaryLimit: cap(transport.ordinary), ConsoleReserve: consoleConnectionReserve}
+	}, Restart: requestRestart, ListeningPort: listener.Addr().(*net.TCPAddr).Port, Events: events, Administration: adminOperations, Backups: backupService, Access: administration, Webhooks: outboundWebhooks, SettingsApplied: func(ctx context.Context) {
 		control.NotifySettingsChanged(ctx)
 		supervise.Go("delivery-settings.refresh", func() { deliverySettings.Refresh(ctx) })
 		claimHandler.Remote().Wake()
@@ -1097,7 +1103,7 @@ func run() (runErr error) {
 			connectionLimit = document.Effective.ConnectionLimit
 		}
 	}
-	transport := consoleConnections(listener, connectionLimit)
+	transport = consoleConnections(listener, connectionLimit)
 	listener = transport
 	server.ConnContext = transport.context
 	server.ConnState = transport.state

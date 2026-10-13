@@ -161,6 +161,13 @@ export async function pauseBackgroundWork(deps: Pick<ServerFormDeps, 'api'>, pau
   return parseMaintenanceDocument(await deps.api.request('/v1/admin/maintenance/background-pause', 'POST', {paused, operationId}));
 }
 
+export type ResourceUsage = Readonly<{connections: {ordinary: number; total: number; ordinaryLimit: number; consoleReserve: number} | null; analysis: {trackedBytes: number; limitBytes: number}; streams: number; streamLimit: number | null; subtitleTracksPerFile: number; subtitleFileLimitMiB: number}>;
+export async function loadResourceUsage(api: Pick<HttpLocalApi, 'request'>, signal?: AbortSignal): Promise<ResourceUsage> {
+  const value = await api.request<ResourceUsage>('/v1/admin/resource-usage', 'GET', undefined, signal);
+  if (!value || !Number.isSafeInteger(value.streams) || !Number.isSafeInteger(value.analysis?.trackedBytes) || !Number.isSafeInteger(value.analysis?.limitBytes) || !Number.isSafeInteger(value.subtitleTracksPerFile)) throw new Error('The server returned resource usage this version cannot read.');
+  return value;
+}
+
 export type ScheduledJob = Readonly<{task: string; /** Names of the enabled windows that run it. */ windows: readonly string[]; /** The start of the next window that runs it, in the server window's own clock, or undefined when no enabled window does. */ nextAt?: Date}>;
 
 const DAY_INDEX: Readonly<Record<string, number>> = {sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6, sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6};

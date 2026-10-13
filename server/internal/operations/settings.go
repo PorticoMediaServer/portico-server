@@ -7,13 +7,14 @@ import (
 	"errors"
 	"path/filepath"
 	"portico.local/server/internal/identity"
+	"portico.local/server/internal/medialimits"
 	"portico.local/server/internal/networkpolicy"
 	"sort"
 	"strings"
 	"time"
 )
 
-const RegistryRevision = "p09.3"
+const RegistryRevision = "p09.4"
 
 type Field struct {
 	ID          string   `json:"id"`
@@ -74,6 +75,10 @@ func Registry() []Field {
 		return Field{ID: id, Group: group, Scope: "server", Overrides: []string{}, Type: kind, Default: def, Min: min, Max: max, Options: options, Save: "explicit-apply", Apply: apply, Consumer: consumer, Description: description, Permission: "owner", Secret: false, Retention: "configuration", Audit: "administrative"}
 	}
 	return []Field{
+		field("analysisStorageGiB", "storage", "integer", 32, bounded(1), bounded(16384), nil, "next-operation", "media analysis artifact storage", "Maximum space for analysis artifacts in GiB. Existing artifacts are kept when the limit is lowered."),
+		field("analysisStageStorageMiB", "storage", "integer", 256, bounded(1), bounded(4096), nil, "next-operation", "media analysis output", "Maximum output for one analysis stage in MiB."),
+		field("subtitleTrackLimit", "storage", "integer", medialimits.DefaultSubtitleTracks, bounded(32), bounded(medialimits.MaxSubtitleTracks), nil, "next-operation", "subtitle inventory", "How many subtitle tracks one file may offer. Existing tracks remain available when the limit is lowered."),
+		field("subtitleFileLimitMiB", "storage", "integer", medialimits.DefaultSubtitleFileMiB, bounded(32), bounded(medialimits.MaxSubtitleFileMiB), nil, "next-operation", "subtitle acquisition", "Largest image subtitle file Portico may read, in MiB."),
 		field("name", "identity", "string", "Portico", nil, nil, nil, "hot", "identity.Service.Name", "Name shown when selecting this server."),
 		field("transcodingEnabled", "playback", "boolean", true, nil, nil, nil, "next-operation", "playback delivery planning", "Allows new audio/video conversions. Existing playback is not interrupted."),
 		field("perAccountCap", "playback", "nullable-integer", nil, bounded(1), bounded(1000000), nil, "next-operation", "playback admission and expired-lease recovery", "Null means unlimited across an account's profiles and devices."),
@@ -130,10 +135,14 @@ func Registry() []Field {
 const DefaultUpdateFeedURL = "https://github.com/PorticoMediaServer/portico-server/releases/latest/download/portico-update-manifest.json"
 
 type Settings struct {
-	Name               string `json:"name"`
-	TranscodingEnabled bool   `json:"transcodingEnabled"`
-	PerAccountCap      *int   `json:"perAccountCap"`
-	ServerCap          *int   `json:"serverCap"`
+	AnalysisStorageGiB      int    `json:"analysisStorageGiB"`
+	AnalysisStageStorageMiB int    `json:"analysisStageStorageMiB"`
+	SubtitleTrackLimit      int    `json:"subtitleTrackLimit"`
+	SubtitleFileLimitMiB    int    `json:"subtitleFileLimitMiB"`
+	Name                    string `json:"name"`
+	TranscodingEnabled      bool   `json:"transcodingEnabled"`
+	PerAccountCap           *int   `json:"perAccountCap"`
+	ServerCap               *int   `json:"serverCap"`
 	// Transcoding administration. No domain table mirrors these, so the console
 	// document is their single authority and the registry their only contract.
 	HardwareBackend         string `json:"hardwareBackend"`
@@ -214,7 +223,7 @@ type LogRetention struct {
 // DefaultSettings is the registry's own answer before any owner write, so a
 // fresh database and a document saved before these fields existed agree.
 func DefaultSettings() Settings {
-	return Settings{Name: "Portico", TranscodingEnabled: true, HDRToneMapping: true, HardwareBackend: "auto", HDRToneMappingAlgorithm: "hable", X264Preset: "veryfast", DirectStreamRemux: true, PlanningPolicy: "maximum_fidelity", ThrottleBufferSeconds: 60, PlayedRetentionSeconds: 180, SessionStorageMiB: 4096, DiagnosticDays: 30, NotificationDays: 180, JobDays: 30, UpdateChannel: "stable", UpdateFeedURL: DefaultUpdateFeedURL, MissingTitles: "after_days", MissingTitlesDays: 30,
+	return Settings{AnalysisStorageGiB: 32, AnalysisStageStorageMiB: 256, SubtitleTrackLimit: medialimits.DefaultSubtitleTracks, SubtitleFileLimitMiB: medialimits.DefaultSubtitleFileMiB, Name: "Portico", TranscodingEnabled: true, HDRToneMapping: true, HardwareBackend: "auto", HDRToneMappingAlgorithm: "hable", X264Preset: "veryfast", DirectStreamRemux: true, PlanningPolicy: "maximum_fidelity", ThrottleBufferSeconds: 60, PlayedRetentionSeconds: 180, SessionStorageMiB: 4096, DiagnosticDays: 30, NotificationDays: 180, JobDays: 30, UpdateChannel: "stable", UpdateFeedURL: DefaultUpdateFeedURL, MissingTitles: "after_days", MissingTitlesDays: 30,
 		RemoteSignInPolicy: "allow", LANNetworks: networkpolicy.DefaultHomeNetworks(), AccessURLs: []string{}, LANDiscoveryEnabled: true, TrustedProxies: []string{}, LogLevel: "info", LogRetention: []LogRetention{}}
 }
 
@@ -322,6 +331,18 @@ func validTemporaryDirectory(v string) bool {
 }
 func validateSettings(v *Settings) error {
 	fields := []string{}
+	if v.AnalysisStorageGiB < 1 || v.AnalysisStorageGiB > 16384 {
+		fields = append(fields, "values.analysisStorageGiB")
+	}
+	if v.AnalysisStageStorageMiB < 1 || v.AnalysisStageStorageMiB > 4096 || int64(v.AnalysisStageStorageMiB) > int64(v.AnalysisStorageGiB)*1024 {
+		fields = append(fields, "values.analysisStageStorageMiB")
+	}
+	if v.SubtitleTrackLimit < 32 || v.SubtitleTrackLimit > medialimits.MaxSubtitleTracks {
+		fields = append(fields, "values.subtitleTrackLimit")
+	}
+	if v.SubtitleFileLimitMiB < 32 || v.SubtitleFileLimitMiB > medialimits.MaxSubtitleFileMiB {
+		fields = append(fields, "values.subtitleFileLimitMiB")
+	}
 	if !SafeText(v.Name, 100) || strings.ContainsAny(v.Name, "\n\t") {
 		fields = append(fields, "values.name")
 	}

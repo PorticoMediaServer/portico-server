@@ -468,6 +468,12 @@ const serverPages: readonly AuthoredPage[] = [
   ]},
   {id: 'storage', title: 'settings.server.storage', icon: 'storage', sections: [
     panel('disk', 'server.diskUsage', 'settings.server.diskUsage'),
+    {id: 'limits', rows: [
+      setting('runtime', 'analysisStorageGiB', 'settings.server.analysisStorage', {type: 'number', min: 1, max: 16384}),
+      setting('runtime', 'analysisStageStorageMiB', 'settings.server.analysisStageStorage', {type: 'number', min: 1, max: 4096}),
+      setting('runtime', 'subtitleTrackLimit', 'settings.server.subtitleTracks', {type: 'number', min: 32, max: 4096}),
+      setting('runtime', 'subtitleFileLimitMiB', 'settings.server.subtitleFileSize', {type: 'number', min: 32, max: 512}),
+    ]},
     // Retention in one place: it was split between Maintenance and Logs & diagnostics.
     {id: 'retention', title: 'settings.server.retention', description: 'settings.server.retentionLede', rows: [
       setting('runtime', 'diagnosticDays', 'web.logs.includeServer', {type: 'number', min: 1, max: 30, unit: 'settings.unit.days'}, {help: 'web.logs.serverRecordsHelp'}),

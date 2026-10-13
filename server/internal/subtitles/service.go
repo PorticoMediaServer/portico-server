@@ -423,7 +423,7 @@ func saveReceipt(ctx context.Context, tx *sql.Tx, p identity.Principal, item, di
 	return e
 }
 func validateMutation(m Mutation) error {
-	if len(m.Companion) > 0 && m.Content == nil && m.Data == nil || m.Content != nil && m.Data != nil || len(m.Data)+len(m.Companion) > MaxBinaryBytes {
+	if len(m.Companion) > 0 && m.Content == nil && m.Data == nil || m.Content != nil && m.Data != nil || len(m.Data)+len(m.Companion) > BinaryLimitBytes() {
 		return ErrInput
 	}
 	if !validID(m.OperationID) || !validID(m.SourceID) || m.ResourceID != "" && !validID(m.ResourceID) || m.ExpectedRevision < 0 || m.ResourceID == "" && m.ExpectedRevision != 0 || m.ResourceID != "" && m.ExpectedRevision < 1 || !textField(m.Title, 160) || !textField(m.Rights, 500) || m.Scope != "shared" && m.Scope != "personal" {
@@ -549,7 +549,7 @@ func (s *Service) publish(ctx context.Context, p identity.Principal, item string
 	defer s.publication.Unlock()
 	if raw != nil {
 		pub.renderer = assetRenderer(raw)
-		w, e := s.objects.Begin(MaxAssetBytes)
+		w, e := s.objects.Begin(int64(AssetLimitBytes()))
 		if e != nil {
 			return Receipt{}, e
 		}
@@ -571,7 +571,7 @@ func (s *Service) publish(ctx context.Context, p identity.Principal, item string
 		_ = json.Unmarshal(pub.originalAsset, &originalHeader)
 	}
 	if len(pub.originalAsset) > 0 && originalArchive(pub.originalAsset) {
-		w, e := s.objects.Begin(MaxAssetBytes)
+		w, e := s.objects.Begin(int64(AssetLimitBytes()))
 		if e != nil {
 			return Receipt{}, e
 		}

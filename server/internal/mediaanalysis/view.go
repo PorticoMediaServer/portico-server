@@ -117,7 +117,7 @@ func (s *Service) View(ctx context.Context, a Access, t Target, position string)
 		return out, e
 	}
 	if out.CanManage {
-		out.Budgets = map[string]any{"maxInputBytes": fmt.Sprint(s.options.MaxInputBytes), "maxGeneratedBytesPerStage": fmt.Sprint(s.options.MaxGeneratedBytes), "maxPreviewFrames": s.options.MaxPreviewFrames, "retainDays": s.options.RetainDays, "maxCacheBytes": fmt.Sprint(s.options.MaxCacheBytes)}
+		out.Budgets = map[string]any{"maxInputBytes": fmt.Sprint(s.options.MaxInputBytes), "maxGeneratedBytesPerStage": fmt.Sprint(s.stageLimit(ctx)), "maxPreviewFrames": s.options.MaxPreviewFrames, "retainDays": s.options.RetainDays, "maxCacheBytes": fmt.Sprint(s.cacheLimit(ctx))}
 	}
 	rows, e := tx.QueryContext(ctx, `SELECT r.stage,r.algorithm,r.evidence,r.created_ms,r.summary_json,COALESCE((SELECT id FROM analysis_artifacts a WHERE a.result_id=r.id AND a.kind IN ('waveform','fingerprint') LIMIT 1),'') FROM analysis_heads h JOIN analysis_results r ON r.id=h.result_id WHERE h.object_id=? AND h.source_revision=? AND r.root_incarnation=? AND r.configuration_generation=? AND r.retired_ms=0 AND (?='' OR r.evidence=?) ORDER BY r.stage LIMIT 16`, v.ObjectID, v.Revision, v.Incarnation, v.Configuration, v.Evidence, v.Evidence)
 	if e != nil {

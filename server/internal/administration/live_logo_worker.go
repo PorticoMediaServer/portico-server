@@ -23,6 +23,9 @@ func (s *Service) RunLogoImports(ctx context.Context) {
 	unregister := dbwork.WakeOnTables(wake, "live_logo_jobs")
 	defer unregister()
 	for ctx.Err() == nil {
+		if !dbwork.Yield(ctx) {
+			return
+		}
 		var source, generation, last string
 		err := dbwork.ReadHandle(ctx, s.db).QueryRowContext(ctx,
 			`SELECT source_id,generation_id,last_channel FROM live_logo_jobs INDEXED BY live_logo_jobs_due WHERE state='pending' AND next_attempt_ms<=? ORDER BY next_attempt_ms,source_id LIMIT 1`, s.milliseconds()).Scan(&source, &generation, &last)

@@ -81,7 +81,7 @@ func (t *transport) rawConditional(ctx context.Context, client *http.Client, bas
 	if base == "" {
 		base = t.base
 	}
-	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	if err := t.begin(ctx); err != nil {
 		return nil, in, err

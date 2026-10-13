@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"portico.local/server/internal/progressio"
 	"strconv"
 	"strings"
 	"sync"
@@ -51,7 +52,7 @@ func newTransport(provider, base, userAgent string) *transport {
 	if provider == "musicbrainz" || provider == "anilist" || provider == "acoustid" {
 		capacity = 1
 	}
-	out := &transport{inflight: make(chan struct{}, capacity), provider: provider, base: base, userAgent: userAgent, interval: time.Second, gate: make(chan struct{}, 1), client: &http.Client{Transport: t, Timeout: 15 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}
+	out := &transport{inflight: make(chan struct{}, capacity), provider: provider, base: base, userAgent: userAgent, interval: time.Second, gate: make(chan struct{}, 1), client: &http.Client{Transport: progressio.Transport{Base: t, Idle: 30 * time.Second, Overall: 15 * time.Minute}, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}
 	out.setSpeed("normal")
 	return out
 }
@@ -126,7 +127,7 @@ func (t *transport) raw(ctx context.Context, client *http.Client, base, route, t
 	if base == "" {
 		base = t.base
 	}
-	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	if err := t.begin(ctx); err != nil {
 		return nil, err
@@ -184,7 +185,7 @@ func (t *transport) request(ctx context.Context, method, route, token string, bo
 	if !strings.HasPrefix(route, "/") || strings.HasPrefix(route, "//") {
 		return errors.New("invalid provider route")
 	}
-	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	var payload []byte
 	var err error

@@ -29,10 +29,10 @@ func (s *Service) sealOriginalFiles(ctx context.Context, raw []byte, durationUS 
 		if len(data) == 0 {
 			return nil
 		}
-		if len(data) > MaxBinaryBytes {
+		if len(data) > BinaryLimitBytes() {
 			return ErrCapacity
 		}
-		w, e := s.objects.Begin(MaxBinaryBytes)
+		w, e := s.objects.Begin(int64(BinaryLimitBytes()))
 		if e != nil {
 			return e
 		}

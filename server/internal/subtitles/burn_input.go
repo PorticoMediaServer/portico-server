@@ -41,7 +41,7 @@ func (s *Service) SelectedBurnInput(ctx context.Context, session, resource strin
 	if e = gate.Commit(); e != nil {
 		return nil, 0, e
 	}
-	raw, e := io.ReadAll(io.LimitReader(reader, MaxAssetBytes+1))
+	raw, e := io.ReadAll(io.LimitReader(reader, int64(AssetLimitBytes())+1))
 	if e != nil {
 		return nil, 0, e
 	}

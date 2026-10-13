@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/entityid"
+	"portico.local/server/internal/progressio"
 	"regexp"
 	"strconv"
 	"strings"
@@ -88,7 +89,7 @@ func newArtworkClient() *http.Client {
 		}
 		return nil, last
 	}
-	return &http.Client{Transport: tr, Timeout: 25 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	return &http.Client{Transport: progressio.Transport{Base: tr, Idle: 30 * time.Second, Overall: 15 * time.Minute}, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 }
 func (s *Service) fetchArtwork(ctx context.Context, origin, provider string) ([]byte, error) {
 	if provider == "local" {

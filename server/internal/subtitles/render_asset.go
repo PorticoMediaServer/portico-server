@@ -7,13 +7,18 @@ import (
 	"bytes"
 	"encoding/binary"
 	"encoding/json"
+	"portico.local/server/internal/medialimits"
 	"regexp"
 	"strconv"
 	"strings"
 )
 
-const MaxBinaryBytes = 32 << 20
-const MaxAssetBytes = 48 << 20
+// These hard limits also bound previously stored assets. New reads use the owner policy.
+const MaxBinaryBytes = medialimits.MaxSubtitleFileMiB << 20
+const MaxAssetBytes = MaxBinaryBytes * 3 / 2
+
+func BinaryLimitBytes() int { return medialimits.SubtitleFileBytes() }
+func AssetLimitBytes() int  { return medialimits.SubtitleAssetBytes() }
 
 type RenderAsset struct {
 	Version      int              `json:"version"`
@@ -45,7 +50,7 @@ func DecodeRenderAsset(raw []byte) (RenderAsset, error) {
 	return a, nil
 }
 func assetJSON(format string, data, companion []byte) ([]byte, error) {
-	if len(data)+len(companion) > MaxBinaryBytes {
+	if len(data)+len(companion) > BinaryLimitBytes() {
 		return nil, ErrCapacity
 	}
 	return json.Marshal(RenderAsset{Version: 2, TimeDomain: "source-relative", Renderer: "burn_in", Format: format, Data: data, Companion: companion})
@@ -102,7 +107,7 @@ func CanonicalAsset(raw, companion []byte, format string, durationUS int64) ([]b
 		if e != nil {
 			return nil, e
 		}
-		if len(companion) < 4 || len(companion) > MaxBinaryBytes || !bytes.Equal(companion[:4], []byte{0, 0, 1, 0xba}) {
+		if len(companion) < 4 || len(companion) > BinaryLimitBytes() || !bytes.Equal(companion[:4], []byte{0, 0, 1, 0xba}) {
 			return nil, ErrText
 		}
 		if !bytes.Contains(idx, []byte("VobSub index file")) || !bytes.Contains(idx, []byte("timestamp:")) || bytes.Contains(idx, []byte{0}) {
@@ -167,7 +172,7 @@ func CanonicalAsset(raw, companion []byte, format string, durationUS int64) ([]b
 	}
 }
 func validatePGS(raw []byte) error {
-	if len(raw) == 0 || len(raw) > MaxBinaryBytes {
+	if len(raw) == 0 || len(raw) > BinaryLimitBytes() {
 		return ErrCapacity
 	}
 	cues := 0

@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"portico.local/server/internal/mediasource"
+	"portico.local/server/internal/progressio"
 	"strings"
 	"time"
 )
@@ -87,8 +88,8 @@ func (c *Client) runWithStem(ctx context.Context, key, op, path, stem string, vi
 	if duration <= 0 {
 		duration = 30 * time.Second
 	}
-	ctx, cancel := context.WithTimeout(ctx, duration)
-	defer cancel()
+	ctx, progress := progressio.New(ctx, duration, 4*time.Hour)
+	defer progress.Close()
 	req := request{Stem: stem, Operation: op, Path: path, Identity: c.expectedIdentity, ManagedArtifact: c.managedRecording(path)}
 	if c.MountedRoot != nil {
 		req.MountedRoot = c.MountedRoot(path)
@@ -97,7 +98,7 @@ func (c *Client) runWithStem(ctx context.Context, key, op, path, stem string, vi
 	cmd := exec.Command(c.Binary, "--portico-storage-helper")
 	cmd.Stdin = bytes.NewReader(data)
 	return c.Supervisor.Run(ctx, filepath.Clean(key), cmd, func(reader io.Reader) error {
-		scanner := bufio.NewScanner(reader)
+		scanner := bufio.NewScanner(progress.Reader(reader))
 		scanner.Buffer(make([]byte, 4096), 64<<10)
 		for scanner.Scan() {
 			var value Snapshot
@@ -233,7 +234,7 @@ func Helper(in io.Reader, out io.Writer) (result error) {
 	case "blob", "subtitle-blob":
 		maximum := int64(8 << 20)
 		if r.Operation == "subtitle-blob" && binarySubtitlePath(r.Path) {
-			maximum = 32 << 20
+			maximum = 512 << 20
 		}
 		if r.Limit <= 0 || r.Limit > maximum {
 			return errors.New("invalid blob limit")
@@ -392,7 +393,7 @@ func (c *Client) ReadSmall(ctx context.Context, key, path string, limit int64) (
 // Metadata readers retain their smaller limits and the same rooted custody.
 func (c *Client) ReadSubtitleBinary(ctx context.Context, key, path string, limit int64) ([]byte, error) {
 	ext := strings.ToLower(filepath.Ext(path))
-	if (ext != ".sup" && ext != ".sub") || limit <= 0 || limit > 32<<20 {
+	if (ext != ".sup" && ext != ".sub") || limit <= 0 || limit > 512<<20 {
 		return nil, errors.New("invalid subtitle binary read")
 	}
 	return c.readBlob(ctx, key, path, limit, true)
@@ -400,7 +401,7 @@ func (c *Client) ReadSubtitleBinary(ctx context.Context, key, path string, limit
 func (c *Client) readBlob(ctx context.Context, key, path string, limit int64, subtitle bool) ([]byte, error) {
 	if c.IsRemote(path) {
 		if subtitle {
-			return c.readRemoteBlob(ctx, path, limit, 32<<20)
+			return c.readRemoteBlob(ctx, path, limit, 512<<20)
 		}
 		return c.readRemoteSmall(ctx, path, limit)
 	}
