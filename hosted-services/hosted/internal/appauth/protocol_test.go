@@ -97,3 +97,19 @@ func TestReturnKeepsTheAddressAsShown(t *testing.T) {
 		t.Error("denial", got)
 	}
 }
+
+// An app scheme is for handing the answer to an app. Schemes that drive the
+// browser itself, an operating-system tool, a network or file protocol, or a
+// call are refused, since the consent page would launch them for anyone.
+func TestReturnRefusesHandlerSchemes(t *testing.T) {
+	for _, raw := range []string{"ms-msdt:/id%20PCWDiagnostic", "search-ms://query=x", "ms-officecmd://x/y", "ms-appinstaller://x/?source=y", "microsoft-edge://x/y", "itms-services:///?action=download-manifest", "itms-apps://x/y", "vbscript://x/y", "view-source://x/y", "chrome://settings/x", "chrome-extension://id/x", "moz-extension://id/x", "resource://x/y", "jar://x/y", "filesystem://x/y", "shell://x/y", "cid://x/y", "ssh://host/x", "sftp://host/x", "telnet://host/x", "smb://host/share", "nfs://host/x", "ldap://host/x", "rdp://host/x", "vnc://host/x", "irc://host/x", "git://host/x", "gopher://host/x", "facetime://someone/x", "callto://someone/x", "MS-MSDT:/id"} {
+		if ValidRedirect(raw) {
+			t.Errorf("accepted %q", raw)
+		}
+	}
+	for _, raw := range []string{"my-player://signin/finish", "tv.example.player:/signin", "infuse://x-callback/portico", "com.googleusercontent.apps.123:/oauth2redirect", "msplayer://done", "gitplayer://done"} {
+		if !ValidRedirect(raw) {
+			t.Errorf("refused %q", raw)
+		}
+	}
+}

@@ -151,12 +151,27 @@ func ValidRedirect(raw string) bool {
 		if !appScheme.MatchString(u.Scheme) {
 			return false
 		}
-		switch u.Scheme {
-		case "javascript", "data", "file", "ftp", "blob", "about", "intent", "mailto", "tel", "sms", "ws", "wss":
+		if handlerScheme(u.Scheme) {
 			return false
 		}
 		return u.Port() == "" && (u.Host != "" || strings.HasPrefix(u.Path, "/"))
 	}
+}
+
+// handlerScheme reports a scheme that is not an app's own: it drives the
+// browser, an operating-system tool, a network or file protocol, or a call or
+// message. The consent page navigates to the return address for anyone who
+// asks, so these are refused. No such list is complete; it names the known
+// ones, and an ordinary app scheme (my-player://…) is unaffected.
+func handlerScheme(scheme string) bool {
+	switch scheme {
+	case "javascript", "vbscript", "data", "blob", "about", "view-source", "filesystem", "resource", "jar", "cid", "mid",
+		"chrome", "chrome-extension", "moz-extension", "edge", "microsoft-edge", "safari-extension", "opera", "brave",
+		"file", "ftp", "sftp", "ssh", "telnet", "smb", "nfs", "afp", "ldap", "ldaps", "rdp", "vnc", "irc", "ircs", "git", "svn", "gopher", "news", "nntp", "ws", "wss",
+		"intent", "shell", "search-ms", "mailto", "tel", "sms", "callto", "facetime", "facetime-audio":
+		return true
+	}
+	return strings.HasPrefix(scheme, "ms-") || strings.HasPrefix(scheme, "itms")
 }
 func (q Exchange) Validate() error {
 	if !strings.HasPrefix(q.Code, "pac_") || !base64Bytes(strings.TrimPrefix(q.Code, "pac_"), 32) || !verifier.MatchString(q.Verifier) || !ValidRedirect(q.RedirectURI) {
