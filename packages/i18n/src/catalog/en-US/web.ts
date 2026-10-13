@@ -2173,4 +2173,7 @@ export const webMessages = {
   'web.metadata.votes': '{count, plural, one {# vote} other {# votes}}',
   'web.episode.previousNamed': 'Previous episode: {episode}',
   'web.episode.nextNamed': 'Next episode: {episode}',
+  'web.profilePicker.notShared': 'Not shared',
+  'web.profilePicker.accessRemoved': 'Access removed',
+  'web.profilePicker.restricted': 'Restricted',
 } as const satisfies Record<string, string>;
