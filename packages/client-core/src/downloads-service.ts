@@ -28,6 +28,10 @@ export class DownloadsService{
  private api:DownloadsApi;private operationId:()=>string;private pollMs:number;
  private state:DownloadsSnapshot=Object.freeze<DownloadsSnapshot>({phase:'idle',items:[],busy:[],nextCursor:'',loadingMore:false,requests:[]});
  private listeners=new Set<()=>void>();private timer?:ReturnType<typeof setTimeout>;private generation=0;private disposed=false;private watching=false;
+ /** Failed reads in a row. The list is tried again by itself, a little later each time. */
+ private failures=0;
+ /** The waits of request followers, so disposal leaves no timer behind. */
+ private waits=new Set<ReturnType<typeof setTimeout>>();
  /** Whole-container requests followed on this device, by request id. */
  private tracked=new Map<string,TrackedDownloadRequest>();
  /** The device whose whole-container requests are found again on the server (`followDevice`). */
@@ -39,7 +43,7 @@ export class DownloadsService{
  getSnapshot=()=>this.state;
  subscribe=(fn:()=>void)=>{this.listeners.add(fn);return()=>{this.listeners.delete(fn);};};
  private publish(patch:Partial<DownloadsSnapshot>){if(this.disposed)return;this.state=Object.freeze({...this.state,...patch});this.listeners.forEach(f=>f());}
- dispose(){this.disposed=true;this.generation++;clearTimeout(this.timer);this.listeners.clear();}
+ dispose(){this.disposed=true;this.generation++;clearTimeout(this.timer);for(const wait of this.waits)clearTimeout(wait);this.waits.clear();this.listeners.clear();}
 
  /** Starts following the list. Safe to call again; `stop` ends the polling without forgetting. */
  start(){this.watching=true;void this.refresh();void this.refreshRequests();}
@@ -53,6 +57,7 @@ export class DownloadsService{
   try{
    const result=parseDownloadPage(await this.api.request<unknown>(this.pagePath('')));
    if(generation!==this.generation)return;
+   this.failures=0;
    this.publish({phase:'ready',items:Object.freeze(result.items.filter(p=>p.state!=='cancelled'||p.actions.length>0)),nextCursor:result.nextCursor,loadingMore:false,error:undefined,failure:undefined,unavailable:false});
     void this.api.request<unknown>('/v1/downloads/usage').then(raw=>{try{if(generation===this.generation)this.publish({usage:parseDownloadUsage(raw)});}catch{}},()=>{});
   }catch(e){
@@ -60,8 +65,8 @@ export class DownloadsService{
    const status=(e as {status?:number}|null)?.status;
    // 404/503 here means this server does not offer downloads at all, which is a fact to show
    // plainly, not an error to retry.
-   if(status===404||status===503&&!this.state.items.length)this.publish({phase:'ready',unavailable:true,error:undefined,failure:undefined});
-   else this.publish({phase:this.state.items.length?'ready':'error',error:say(e,'downloads.error.load'),failure:e});
+   if(status===404||status===503&&!this.state.items.length){this.failures=0;this.publish({phase:'ready',unavailable:true,error:undefined,failure:undefined});}
+   else{this.failures++;this.publish({phase:this.state.items.length?'ready':'error',error:say(e,'downloads.error.load'),failure:e});}
   }
   this.schedule(generation);
  }
@@ -83,7 +88,12 @@ export class DownloadsService{
   }
  }
  private schedule(generation:number){
-  if(this.watching&&generation===this.generation&&!this.disposed&&(this.state.phase==='error'||this.state.items.some(p=>ACTIVE.has(p.state))))this.timer=setTimeout(()=>void this.poll(),this.state.phase==='error'?this.pollMs*3:this.pollMs);
+  if(!this.watching||generation!==this.generation||this.disposed)return;
+  // A list that could not be read is tried again quietly, three polls later at first and then
+  // less and less often (five minutes at most), so a server that is away is not asked forever
+  // at full pace. While something is being prepared it is polled at the ordinary pace.
+  if(this.failures>0)this.timer=setTimeout(()=>void this.refresh(),Math.min(this.pollMs*3*2**Math.min(this.failures-1,6),300000));
+  else if(this.state.items.some(p=>ACTIVE.has(p.state)))this.timer=setTimeout(()=>void this.poll(),this.pollMs);
  }
  /** PERF-S12: the 5 s poll reads only active preparations — one page each of `queued` and
   * `running` (the server caps live preparations at 200, so two pages cover them) — never the
@@ -117,9 +127,11 @@ export class DownloadsService{
    const paged:DownloadPreparation[]=[];
    for(const p of this.state.items){const current=byId.get(p.id);if(current)paged.push(current);}
    for(const p of active)if(!paged.some(q=>q.id===p.id))paged.push(p);
+   this.failures=0;
    this.publish({phase:'ready',items:Object.freeze(paged.filter(p=>p.state!=='cancelled'||p.actions.length>0)),error:undefined,failure:undefined});
   }catch(e){
    if(generation!==this.generation||this.disposed)return;
+   this.failures++;
    this.publish({phase:this.state.items.length?'ready':'error',error:say(e,'downloads.error.load'),failure:e});
   }
   this.schedule(generation);
@@ -200,7 +212,7 @@ export class DownloadsService{
   this.following.add(requestId);
   try{
    for(;;){
-    await new Promise(resolve=>setTimeout(resolve,this.pollMs));
+    await new Promise<void>(resolve=>{const wait=setTimeout(()=>{this.waits.delete(wait);resolve();},this.pollMs);this.waits.add(wait);});
     if(this.disposed)return;
     const prior=this.tracked.get(requestId);
     if(!prior||isDownloadRequestTerminal(prior.request.state)){void this.refresh();return;}

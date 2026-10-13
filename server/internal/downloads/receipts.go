@@ -91,6 +91,16 @@ type ReceiptOutcome struct {
 	Code          string   `json:"code,omitempty"`
 	Receipt       *Receipt `json:"receipt,omitempty"`
 	TitleOnServer *bool    `json:"titleOnServer,omitempty"`
+	// Viewing is where the viewer stands with the title on the server now, sent
+	// with a renewal so a copy on a device resumes from where another device
+	// left off, not from where this one last was.
+	Viewing *ReceiptViewing `json:"viewing,omitempty"`
+}
+
+// ReceiptViewing is a title's resume point and watched state.
+type ReceiptViewing struct {
+	PositionSeconds float64 `json:"positionSeconds"`
+	Watched         bool    `json:"watched"`
 }
 
 // Outcomes. "issued" and "renewed" carry a receipt. "refused" with
@@ -493,7 +503,19 @@ func (s *Service) Revalidate(ctx context.Context, p identity.Principal, serverID
 			return out, err
 		}
 		present := onServer
-		out = append(out, ReceiptOutcome{ReceiptID: id, PreparationID: preparation, Outcome: OutcomeRenewed, Receipt: &renewed, TitleOnServer: &present})
+		outcome := ReceiptOutcome{ReceiptID: id, PreparationID: preparation, Outcome: OutcomeRenewed, Receipt: &renewed, TitleOnServer: &present}
+		if onServer {
+			entity, err := entityid.Resolve(ctx, tx, item)
+			if err != nil {
+				return out, err
+			}
+			position, watched, err := readCurrentProgress(ctx, tx, identity.PersonalKey(p.Viewer), entity)
+			if err != nil {
+				return out, err
+			}
+			outcome.Viewing = &ReceiptViewing{PositionSeconds: position, Watched: watched}
+		}
+		out = append(out, outcome)
 	}
 	if e = operations.SaveReceipt(tx, scope, operationID, digest, out, now); e != nil {
 		return out, e

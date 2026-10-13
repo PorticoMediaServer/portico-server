@@ -3,16 +3,17 @@ import assert from 'node:assert/strict';
 import {DownloadsService} from '../src/downloads-service.ts';
 
 const sha='a'.repeat(64);
+const usageDoc={profileId:'profile',profileBytes:0,profileCount:0,serverBytes:0,serverCount:0,distinctArtifactBytes:0,maxPreparedBytes:0,remainingBytes:null,retentionDays:7,profiles:[]};
 const preparation=(over:Record<string,unknown>={}):any=>({
- id:'prep',itemId:'item',libraryId:'lib',profileId:'profile',quality:'1080p',origin:'item',batchId:'batch',state:'ready',reason:'',
+ id:'prep',itemId:'item',libraryId:'lib',profileId:'profile',quality:'1080p',origin:'item',title:{kind:'movie',title:'Film',onServer:true},batchId:'batch',state:'ready',reason:'',
  artifact:{kind:'prepared',ref:'version',sha256:sha,bytes:4096,estimated:false,container:'mp4',contentType:'video/mp4',fileName:'prep.mp4'},
  progress:{bytesDone:4096,bytesTotal:4096,bytesTotalEstimated:false,percent:100,etaSeconds:null},
  actions:['remove'],revision:3,createdAt:'2026-09-16T10:00:00Z',updatedAt:'2026-09-16T10:05:00Z',readyAt:'2026-09-16T10:05:00Z',expiresAt:'2026-10-16T10:05:00Z',...over});
 const running=()=>preparation({id:'busy',state:'running',artifact:{kind:'',ref:'',sha256:'',bytes:0,estimated:true,container:'',contentType:'',fileName:''},progress:{bytesDone:100,bytesTotal:1000,bytesTotalEstimated:true,percent:10,etaSeconds:60},actions:['pause','cancel'],readyAt:'',expiresAt:''});
+const grantDoc={preparationId:'prep',itemId:'item',url:'/v1/downloads/artifacts/tok-1',token:'tok-1',issuedAt:'2026-09-17T00:00:00Z',expiresAt:'2026-09-17T00:10:00Z',renewAfterSeconds:600,renewed:false,artifact:{kind:'prepared',ref:'version',sha256:sha,bytes:4096,estimated:false,container:'mp4',contentType:'video/mp4',fileName:'prep.mp4'}};
 
 function server(items:any[]){
  const calls:{path:string;method:string;body?:any}[]=[];let fail:any;
- const usage={profileId:'profile',profileBytes:0,profileCount:0,serverBytes:0,serverCount:0,distinctArtifactBytes:0,maxPreparedBytes:0,remainingBytes:null,retentionDays:7,profiles:[]};
  return{calls,failWith:(e:any)=>{fail=e;},set:(next:any[])=>{items=next;},api:{request:async<T,>(path:string,method='GET',body?:any):Promise<T>=>{
   calls.push({path,method,body});if(fail)throw fail;
   if(path.startsWith('/v1/downloads/preparations?')){
@@ -24,7 +25,8 @@ function server(items:any[]){
    const slice=pool.slice(cursor,cursor+limit);
    return {items:slice,nextCursor:cursor+limit<pool.length?String(cursor+limit):''} as T;
   }
-  if(path==='/v1/downloads/usage')return usage as T;
+  if(path==='/v1/downloads/usage')return usageDoc as T;
+  if(/^\/v1\/downloads\/preparations\/[^/]+\/grant$/.test(path))return grantDoc as T;
   const single=path.match(/^\/v1\/downloads\/preparations\/([^/]+)$/);
   if(single&&method==='GET'){const row=items.find(p=>p.id===single[1]);if(!row)throw Object.assign(new Error('Not found'),{status:404});return row as T;}
   if(path.endsWith('/actions')){const id=path.split('/')[4];const row=items.find(p=>p.id===id);const next={...row,state:body.action==='pause'?'paused':row.state,actions:['resume','cancel'],revision:row.revision+1};items=items.map(p=>p.id===id?next:p);return next as T;}
@@ -33,40 +35,124 @@ function server(items:any[]){
 
 test('a failed refresh keeps the list; a server without downloads is a fact, not an error',async()=>{
  const s=server([preparation()]),service=new DownloadsService(s.api,()=>'op',10);
- await service.refresh();assert.equal(service.getSnapshot().items.length,1);
- s.failWith(new TypeError('Failed to fetch'));await service.refresh();
- assert.equal(service.getSnapshot().phase,'ready');assert.equal(service.getSnapshot().items.length,1);assert.ok(service.getSnapshot().error,'a catalogue message');assert.ok(service.getSnapshot().failure,'the error itself is kept for presentError');
- const none=server([]);none.failWith(Object.assign(new Error('nope'),{status:404}));const off=new DownloadsService(none.api,()=>'op',10);
- await off.refresh();assert.equal(off.getSnapshot().unavailable,true);assert.equal(off.getSnapshot().error,undefined);
- service.dispose();off.dispose();
+ try{
+  await service.refresh();assert.equal(service.getSnapshot().items.length,1);
+  s.failWith(new TypeError('Failed to fetch'));await service.refresh();
+  assert.equal(service.getSnapshot().phase,'ready');assert.equal(service.getSnapshot().items.length,1);assert.ok(service.getSnapshot().error,'a catalogue message');assert.ok(service.getSnapshot().failure,'the error itself is kept for presentError');
+ }finally{service.dispose();}
+ const none=server([]);none.failWith(Object.assign(new Error('nope'),{status:404}));
+ const off=new DownloadsService(none.api,()=>'op',10);
+ try{
+  await off.refresh();assert.equal(off.getSnapshot().unavailable,true);assert.equal(off.getSnapshot().error,undefined);
+ }finally{off.dispose();}
 });
 
 test('it polls only while something is still being prepared, and stops when told',async()=>{
  const s=server([running()]),service=new DownloadsService(s.api,()=>'op',15);
- service.start();await new Promise(r=>setTimeout(r,60));
- const polls=s.calls.filter(c=>c.path.startsWith('/v1/downloads/preparations?')).length;assert.ok(polls>=2,'kept polling while running: '+polls);
- s.set([preparation()]);await new Promise(r=>setTimeout(r,60));
- const settled=s.calls.filter(c=>c.path.startsWith('/v1/downloads/preparations?')).length;
- await new Promise(r=>setTimeout(r,60));
- assert.equal(s.calls.filter(c=>c.path.startsWith('/v1/downloads/preparations?')).length,settled,'no polling once everything is ready');
- service.dispose();
+ try{
+  service.start();await new Promise(r=>setTimeout(r,60));
+  const polls=s.calls.filter(c=>c.path.startsWith('/v1/downloads/preparations?')).length;assert.ok(polls>=2,'kept polling while running: '+polls);
+  s.set([preparation()]);await new Promise(r=>setTimeout(r,60));
+  const settled=s.calls.filter(c=>c.path.startsWith('/v1/downloads/preparations?')).length;
+  await new Promise(r=>setTimeout(r,60));
+  assert.equal(s.calls.filter(c=>c.path.startsWith('/v1/downloads/preparations?')).length,settled,'no polling once everything is ready');
+ }finally{service.dispose();}
 });
 
-test('an action carries the revision it was made against, and a conflict shows the current row',async()=>{
+test('an action carries the revision it was made against',async()=>{
  const s=server([running()]),service=new DownloadsService(s.api,()=>'op-7',10000);
- await service.refresh();await service.act(service.getSnapshot().items[0],'pause');
- const sent=s.calls.find(c=>c.path.endsWith('/actions'))!;
- assert.deepEqual(sent.body,{operationId:'op-7',action:'pause',expectedRevision:3});
- assert.equal(service.getSnapshot().items[0].state,'paused');
- await new Promise(r=>setTimeout(r,5));assert.equal(service.getSnapshot().items[0].state,'paused','the follow-up read agrees');
- // A refused action says why, and the list is re-read so it shows what is true now.
- s.set([{...running(),state:'failed',reason:'storage_full',actions:['retry','remove'],revision:9}]);
- const before=s.calls.length;
- s.failWith(Object.assign(new Error('Someone else changed this download.'),{status:409}));
- const acting=service.act(service.getSnapshot().items[0],'resume');s.failWith(undefined);await acting;await new Promise(r=>setTimeout(r,5));
- assert.ok(s.calls.length>before);assert.equal(service.getSnapshot().items[0].state,'failed');assert.equal(service.getSnapshot().items[0].revision,9);
- assert.match(service.reason(service.getSnapshot().items[0]),/./);
- service.dispose();
+ try{
+  await service.refresh();await service.act(service.getSnapshot().items[0],'pause');
+  const sent=s.calls.find(c=>c.path.endsWith('/actions'))!;
+  assert.deepEqual(sent.body,{operationId:'op-7',action:'pause',expectedRevision:3});
+  assert.equal(service.getSnapshot().items[0].state,'paused');
+  await new Promise(r=>setTimeout(r,5));assert.equal(service.getSnapshot().items[0].state,'paused','the follow-up read agrees');
+ }finally{service.dispose();}
+});
+
+test('a conflict re-reads the row and re-sends the action once when it still applies',async()=>{
+ const calls:{path:string;method:string;body?:any}[]=[];let attempts=0;
+ const stale=preparation({actions:['pause','cancel'],revision:3});
+ const current=preparation({actions:['pause','cancel'],revision:5});
+ const api={request:async<T,>(path:string,method='GET',body?:any):Promise<T>=>{
+  calls.push({path,method,body});
+  if(path.startsWith('/v1/downloads/preparations?'))return {items:[attempts?current:stale],nextCursor:''} as T;
+  if(path==='/v1/downloads/usage')return usageDoc as T;
+  if(path.endsWith('/actions')){attempts++;if(attempts===1)throw Object.assign(new Error('Someone else changed this download.'),{status:409});return preparation({actions:['cancel'],revision:6,state:'paused'}) as T;}
+  if(/^\/v1\/downloads\/preparations\/prep$/.test(path))return current as T;
+  throw new Error('unexpected '+method+' '+path);}};
+ const service=new DownloadsService(api,()=>'op-7',10000);
+ try{
+  await service.refresh();
+  await service.act(service.getSnapshot().items[0],'pause');
+  const sends=calls.filter(c=>c.path.endsWith('/actions'));
+  assert.equal(sends.length,2,'the action was re-sent once after the conflict');
+  assert.deepEqual(sends[0].body,{operationId:'op-7',action:'pause',expectedRevision:3});
+  assert.deepEqual(sends[1].body,{operationId:'op-7',action:'pause',expectedRevision:5},'the re-send fences on the revision it just read');
+  await new Promise(r=>setTimeout(r,10));
+  assert.equal(service.getSnapshot().error,undefined,'a conflict that resolved is not an error to show');
+ }finally{service.dispose();}
+});
+
+test('a conflict for an action that no longer applies shows the current row without an error',async()=>{
+ const calls:{path:string;method:string;body?:any}[]=[];let conflicted=false;
+ const stale=preparation({actions:['pause','cancel'],revision:3});
+ const current=preparation({actions:['remove'],revision:4});
+ const api={request:async<T,>(path:string,method='GET',body?:any):Promise<T>=>{
+  calls.push({path,method,body});
+  if(path.startsWith('/v1/downloads/preparations?'))return {items:[conflicted?current:stale],nextCursor:''} as T;
+  if(path==='/v1/downloads/usage')return usageDoc as T;
+  if(path.endsWith('/actions'))throw Object.assign(new Error('Someone else changed this download.'),{status:409});
+  if(/^\/v1\/downloads\/preparations\/prep$/.test(path)){conflicted=true;return current as T;}
+  throw new Error('unexpected '+method+' '+path);}};
+ const service=new DownloadsService(api,()=>'op-7',10000);
+ try{
+  await service.refresh();
+  await service.act(service.getSnapshot().items[0],'pause');
+  assert.equal(calls.filter(c=>c.path.endsWith('/actions')).length,1,'an action that no longer applies is not re-sent');
+  await new Promise(r=>setTimeout(r,10));
+  assert.equal(service.getSnapshot().error,undefined);
+  assert.equal(service.getSnapshot().items[0].revision,4,'the row is shown as it is now');
+ }finally{service.dispose();}
+});
+
+test('grant(preparation, token) renews the same address',async()=>{
+ const s=server([preparation()]),service=new DownloadsService(s.api,()=>'op-g',10000);
+ try{
+  const fresh=await service.grant(preparation());
+  assert.equal(fresh.token,'tok-1');
+  assert.equal(fresh.renewAfterSeconds,600);
+  const renewed=await service.grant(preparation(),'tok');
+  assert.equal(renewed.url,'/v1/downloads/artifacts/tok-1');
+  const grants=s.calls.filter(c=>c.path.endsWith('/grant'));
+  assert.deepEqual(grants[0].body,{operationId:'op-g'},'a first grant sends no renewal');
+  assert.deepEqual(grants[1].body,{operationId:'op-g',renew:'tok'});
+ }finally{service.dispose();}
+});
+
+test('followDevice finds the requests this device started',async()=>{
+ const summary={requestId:'req-1',state:'complete',target:{kind:'season',id:'s-1'},title:'Season 1',quality:'original',createdAt:'2026-09-16T10:00:00Z'};
+ const view={requestId:'req-1',total:2,totalKnown:true,state:'complete',ready:2,preparing:0,queued:0,failed:0,paused:0,items:[],nextCursor:''};
+ const calls:{path:string;method:string;body?:any}[]=[];
+ const api={request:async<T,>(path:string,method='GET',body?:any):Promise<T>=>{
+  calls.push({path,method,body});
+  if(path==='/v1/downloads/requests?'+new URLSearchParams({deviceId:'dev-1'}))return {requests:[summary]} as T;
+  if(path.startsWith('/v1/downloads/requests/req-1'))return view as T;
+  if(path.startsWith('/v1/downloads/preparations?'))return {items:[],nextCursor:''} as T;
+  if(path==='/v1/downloads/usage')return usageDoc as T;
+  throw new Error('unexpected '+method+' '+path);}};
+ const service=new DownloadsService(api,()=>'op',10000);
+ try{
+  service.followDevice('dev-1');
+  service.start();
+  await new Promise(r=>setTimeout(r,40));
+  assert.ok(calls.some(c=>c.path==='/v1/downloads/requests?deviceId=dev-1'),'the device asks for its own requests');
+  const tracked=service.getSnapshot().requests.find(r=>r.request.requestId==='req-1');
+  assert.ok(tracked,'the listed request is tracked');
+  assert.equal(tracked!.title,'Season 1');
+  assert.equal(tracked!.request.state,'complete');
+  assert.equal(tracked!.request.ready,2);
+ }finally{service.dispose();}
 });
 
 test('PERF-S12: with 1,100 preparations a poll reads only the active pages (<= 2 requests)',async()=>{
@@ -74,27 +160,28 @@ test('PERF-S12: with 1,100 preparations a poll reads only the active pages (<= 2
  const runningOne=running();runningOne.id='prep-0';runningOne.itemId='item-0';
  const s=server([runningOne,...Array.from({length:1099},(_,i)=>settled(i+1))]);
  const service=new DownloadsService(s.api,()=>'op',20);
- service.start();
- await new Promise(r=>setTimeout(r,10));
- // The list itself is paged: the first page only, never 10x100 up front.
- assert.equal(service.getSnapshot().items.length,100);
- assert.ok(service.getSnapshot().nextCursor,'more pages remain');
- await new Promise(r=>setTimeout(r,100));
- const pages=()=>s.calls.filter(c=>c.path.startsWith('/v1/downloads/preparations?'));
- const polls=pages().filter(c=>c.path.includes('state='));
- // Every poll is exactly the two active-state pages; the only unfiltered read is the first page.
- assert.ok(polls.length>=4,'polled while active: '+polls.length);
- assert.ok(polls.length%2===0,'polls come in queued+running pairs: '+polls.length);
- assert.ok(polls.every(c=>c.path==='/v1/downloads/preparations?limit=100&state=queued'||c.path==='/v1/downloads/preparations?limit=100&state=running'));
- assert.equal(pages().length-polls.length,1,'one unfiltered first page, never a full re-read');
- // Finish it server-side: one single read settles it, then polling stops (<= 2 per poll held).
- s.set([settled(0),...Array.from({length:1099},(_,i)=>settled(i+1))]);
- await new Promise(r=>setTimeout(r,80));
- assert.equal(service.getSnapshot().items.find(p=>p.id==='prep-0')?.state,'ready');
- const settledCount=pages().length;
- await new Promise(r=>setTimeout(r,60));
- assert.equal(pages().length,settledCount,'polling stopped once nothing was active');
- service.dispose();
+ try{
+  service.start();
+  await new Promise(r=>setTimeout(r,10));
+  // The list itself is paged: the first page only, never 10x100 up front.
+  assert.equal(service.getSnapshot().items.length,100);
+  assert.ok(service.getSnapshot().nextCursor,'more pages remain');
+  await new Promise(r=>setTimeout(r,100));
+  const pages=()=>s.calls.filter(c=>c.path.startsWith('/v1/downloads/preparations?'));
+  const polls=pages().filter(c=>c.path.includes('state='));
+  // Every poll is exactly the two active-state pages; the only unfiltered read is the first page.
+  assert.ok(polls.length>=4,'polled while active: '+polls.length);
+  assert.ok(polls.length%2===0,'polls come in queued+running pairs: '+polls.length);
+  assert.ok(polls.every(c=>c.path==='/v1/downloads/preparations?limit=100&state=queued'||c.path==='/v1/downloads/preparations?limit=100&state=running'));
+  assert.equal(pages().length-polls.length,1,'one unfiltered first page, never a full re-read');
+  // Finish it server-side: one single read settles it, then polling stops (<= 2 per poll held).
+  s.set([settled(0),...Array.from({length:1099},(_,i)=>settled(i+1))]);
+  await new Promise(r=>setTimeout(r,80));
+  assert.equal(service.getSnapshot().items.find(p=>p.id==='prep-0')?.state,'ready');
+  const settledCount=pages().length;
+  await new Promise(r=>setTimeout(r,60));
+  assert.equal(pages().length,settledCount,'polling stopped once nothing was active');
+ }finally{service.dispose();}
 });
 
 test('PERF-S12: every preparation is reachable by paging, and a finished one settles without a reload',async()=>{
@@ -102,28 +189,29 @@ test('PERF-S12: every preparation is reachable by paging, and a finished one set
  const rows=[item(0,'running'),...Array.from({length:1099},(_,i)=>item(i+1,'ready'))];
  const s=server(rows);
  const service=new DownloadsService(s.api,()=>'op',15);
- await service.refresh();
- for(let page=0;page<10;page++)await service.loadMore();
- assert.equal(service.getSnapshot().items.length,1100,'all 1,100 reachable by paging');
- assert.equal(service.getSnapshot().nextCursor,'','no silent truncation left');
- assert.equal(new Set(service.getSnapshot().items.map(p=>p.id)).size,1100,'no duplicates across pages');
- // Follow the list while one preparation is still running, then finish it server-side: the poll
- // re-reads it by id and stops, with no full reload.
- service.start();
- await new Promise(r=>setTimeout(r,40));
- s.set([item(0,'ready'),...rows.slice(1)]);
- await new Promise(r=>setTimeout(r,80));
- assert.equal(service.getSnapshot().items.find(p=>p.id==='prep-0')?.state,'ready','the finished preparation settled via the poll');
- const pages=s.calls.filter(c=>c.path.startsWith('/v1/downloads/preparations?'));
- assert.ok(pages.length>0);
- const unfiltered=pages.filter(c=>!c.path.includes('state='));
- assert.equal(unfiltered.length,12,'only the refresh/loadMore reads are unfiltered pages (1 + 10 + start refresh); every poll reads active states');
- const singles=s.calls.filter(c=>/^\/v1\/downloads\/preparations\/[^/]+$/.test(c.path));
- assert.ok(singles.length>=1&&singles.length<=3,'the transition took only single reads: '+singles.length);
- const settled=pages.length;
- await new Promise(r=>setTimeout(r,60));
- assert.equal(s.calls.filter(c=>c.path.startsWith('/v1/downloads/preparations?')).length,settled,'polling stopped once nothing was active');
- service.dispose();
+ try{
+  await service.refresh();
+  for(let page=0;page<10;page++)await service.loadMore();
+  assert.equal(service.getSnapshot().items.length,1100,'all 1,100 reachable by paging');
+  assert.equal(service.getSnapshot().nextCursor,'','no silent truncation left');
+  assert.equal(new Set(service.getSnapshot().items.map(p=>p.id)).size,1100,'no duplicates across pages');
+  // Follow the list while one preparation is still running, then finish it server-side: the poll
+  // re-reads it by id and stops, with no full reload.
+  service.start();
+  await new Promise(r=>setTimeout(r,40));
+  s.set([item(0,'ready'),...rows.slice(1)]);
+  await new Promise(r=>setTimeout(r,80));
+  assert.equal(service.getSnapshot().items.find(p=>p.id==='prep-0')?.state,'ready','the finished preparation settled via the poll');
+  const pages=s.calls.filter(c=>c.path.startsWith('/v1/downloads/preparations?'));
+  assert.ok(pages.length>0);
+  const unfiltered=pages.filter(c=>!c.path.includes('state='));
+  assert.equal(unfiltered.length,12,'only the refresh/loadMore reads are unfiltered pages (1 + 10 + start refresh); every poll reads active states');
+  const singles=s.calls.filter(c=>/^\/v1\/downloads\/preparations\/[^/]+$/.test(c.path));
+  assert.ok(singles.length>=1&&singles.length<=3,'the transition took only single reads: '+singles.length);
+  const settled=pages.length;
+  await new Promise(r=>setTimeout(r,60));
+  assert.equal(s.calls.filter(c=>c.path.startsWith('/v1/downloads/preparations?')).length,settled,'polling stopped once nothing was active');
+ }finally{service.dispose();}
 });
 
 test('a whole-container request is tracked from capture to completion',async()=>{
@@ -139,19 +227,20 @@ test('a whole-container request is tracked from capture to completion',async()=>
    return (reads<2?view():view({state:'complete',total:2,totalKnown:true,ready:2})) as T;
   }
   if(path.startsWith('/v1/downloads/preparations?'))return {items:[],nextCursor:''} as T;
-  if(path==='/v1/downloads/usage')return {profileId:'profile',profileBytes:0,profileCount:0,serverBytes:0,serverCount:0,distinctArtifactBytes:0,maxPreparedBytes:0,remainingBytes:null,retentionDays:7,profiles:[]} as T;
+  if(path==='/v1/downloads/usage')return usageDoc as T;
   throw new Error('unexpected '+method+' '+path);}};
  const service=new DownloadsService(api,()=>'op-1',15);
- const created=await service.requestContainer({target:{kind:'season',id:'s-1',title:'Season 1'},deviceId:'dev-1',quality:'original',policy:{episodes:'next',keepNext:3}});
- assert.equal(created.requestId,'req-1');
- assert.equal(service.getSnapshot().requests.length,1);
- assert.equal(service.getSnapshot().requests[0].title,'Season 1');
- assert.equal(service.getSnapshot().requests[0].request.totalKnown,false);
- await new Promise(r=>setTimeout(r,80));
- assert.equal(service.getSnapshot().requests[0].request.state,'complete');
- assert.equal(service.getSnapshot().requests[0].request.ready,2);
- await assert.rejects(service.requestContainer({target:{kind:'episode' as any,id:'e'},deviceId:'dev-1',quality:'original',policy:{episodes:'all'}}));
- service.dispose();
+ try{
+  const created=await service.requestContainer({target:{kind:'season',id:'s-1',title:'Season 1'},deviceId:'dev-1',quality:'original',policy:{episodes:'next',keepNext:3}});
+  assert.equal(created.requestId,'req-1');
+  assert.equal(service.getSnapshot().requests.length,1);
+  assert.equal(service.getSnapshot().requests[0].title,'Season 1');
+  assert.equal(service.getSnapshot().requests[0].request.totalKnown,false);
+  await new Promise(r=>setTimeout(r,80));
+  assert.equal(service.getSnapshot().requests[0].request.state,'complete');
+  assert.equal(service.getSnapshot().requests[0].request.ready,2);
+  await assert.rejects(service.requestContainer({target:{kind:'episode' as any,id:'e'},deviceId:'dev-1',quality:'original',policy:{episodes:'all'}}));
+ }finally{service.dispose();}
 });
 
 test('an ordinary list refresh does not stop following a whole-container request',async()=>{
@@ -161,14 +250,15 @@ test('an ordinary list refresh does not stop following a whole-container request
   if(path==='/v1/downloads/requests'&&method==='POST')return view() as T;
   if(path.startsWith('/v1/downloads/requests/req-1')){reads++;return (reads<4?view({state:'preparing',total:2,totalKnown:true}):view({state:'complete',total:2,totalKnown:true,ready:2})) as T;}
   if(path.startsWith('/v1/downloads/preparations?'))return {items:[],nextCursor:''} as T;
-  if(path==='/v1/downloads/usage')return {profileId:'profile',profileBytes:0,profileCount:0,serverBytes:0,serverCount:0,distinctArtifactBytes:0,maxPreparedBytes:0,remainingBytes:null,retentionDays:7,profiles:[]} as T;
+  if(path==='/v1/downloads/usage')return usageDoc as T;
   throw new Error('unexpected '+method+' '+path);}};
  const service=new DownloadsService(api,()=>'op-1',15);
- await service.requestContainer({target:{kind:'season',id:'s-1',title:'Season 1'},deviceId:'dev-1',quality:'original',policy:{episodes:'all'}});
- // Opening the Downloads screen refreshes the list (a new generation).
- await service.refresh();
- await service.refresh();
- await new Promise(r=>setTimeout(r,150));
- assert.equal(service.getSnapshot().requests[0].request.state,'complete','the request kept being followed to completion');
- service.dispose();
+ try{
+  await service.requestContainer({target:{kind:'season',id:'s-1',title:'Season 1'},deviceId:'dev-1',quality:'original',policy:{episodes:'all'}});
+  // Opening the Downloads screen refreshes the list (a new generation).
+  await service.refresh();
+  await service.refresh();
+  await new Promise(r=>setTimeout(r,150));
+  assert.equal(service.getSnapshot().requests[0].request.state,'complete','the request kept being followed to completion');
+ }finally{service.dispose();}
 });

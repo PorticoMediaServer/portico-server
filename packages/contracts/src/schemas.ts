@@ -11488,6 +11488,21 @@ export const schemas = {
             },
             "titleOnServer": {
               "type": "boolean"
+            },
+            "viewing": {
+              "properties": {
+                "positionSeconds": {
+                  "type": "number"
+                },
+                "watched": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "positionSeconds",
+                "watched"
+              ],
+              "type": "object"
             }
           },
           "required": [
@@ -15761,6 +15776,21 @@ export const schemas = {
             },
             "titleOnServer": {
               "type": "boolean"
+            },
+            "viewing": {
+              "properties": {
+                "positionSeconds": {
+                  "type": "number"
+                },
+                "watched": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "positionSeconds",
+                "watched"
+              ],
+              "type": "object"
             }
           },
           "required": [
@@ -15942,6 +15972,21 @@ export const schemas = {
             },
             "titleOnServer": {
               "type": "boolean"
+            },
+            "viewing": {
+              "properties": {
+                "positionSeconds": {
+                  "type": "number"
+                },
+                "watched": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "positionSeconds",
+                "watched"
+              ],
+              "type": "object"
             }
           },
           "required": [

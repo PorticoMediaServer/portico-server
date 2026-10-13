@@ -4,7 +4,7 @@ import {
   parseDownloadPreparation, parseDownloadBatch, parseDownloadPage, parseDownloadGrant, parseDownloadOptions,
   decodeDownloadReceipt, parseReceiptOutcomes, parseReceiptKeys, parseRevocationPage, parseDeferredProgressReceipt,
   parseDownloadUsage, parseDownloadSettings, validDeferredProgressEntry, downloadActionOffered, receiptUsable,
-  downloadReasonMessage, downloadBytes,
+  downloadReasonMessage, downloadBytes, parseDownloadBundle, parseDownloadTitle,
 } from '../src/downloads.ts';
 
 const sha = 'a'.repeat(64);
@@ -12,10 +12,15 @@ const encode = (v: unknown) => Buffer.from(JSON.stringify(v), 'utf8').toString('
 const signature = 'A'.repeat(86);
 const publicKey = 'B'.repeat(43);
 
+/** Every preparation carries the title facts the server last knew. */
+function title(over: Record<string, unknown> = {}): any {
+  return {kind: 'movie', title: 'Film', onServer: true, ...over};
+}
+
 function preparation(): any {
   return {
     id: 'prep', itemId: 'item', libraryId: 'lib', profileId: 'profile', quality: '1080p', origin: 'item',
-    batchId: 'batch', state: 'ready', reason: '',
+    title: title(), batchId: 'batch', state: 'ready', reason: '',
     artifact: {kind: 'prepared', ref: 'version', sha256: sha, bytes: 4096, estimated: false, container: 'mp4', contentType: 'video/mp4', fileName: 'prep.mp4'},
     progress: {bytesDone: 4096, bytesTotal: 4096, bytesTotalEstimated: false, percent: 100, etaSeconds: null},
     actions: ['remove'], revision: 3,
@@ -46,16 +51,34 @@ function claims(): any {
 }
 const envelope = (c = claims()) => ({receiptId: c.receiptId, algorithm: 'ed25519', keyId: c.keyId, payload: encode(c), signature, claims: c, revision: 1});
 
+function bundle(): any {
+  return {
+    preparationId: 'prep', itemId: 'item', quality: '1080p', qualityLabel: '1080p', overview: 'An overview.',
+    title: title({kind: 'episode', title: 'Pilot', parentTitle: 'Show', groupNumber: 1, number: 2}),
+    media: {container: 'mp4', videoCodec: 'h264', audioCodec: 'aac', width: 1920, height: 1080},
+    artwork: [{role: 'poster', path: 'artwork/poster.jpg', contentType: 'image/jpeg'}],
+    chapters: [], markers: [], audio: [], subtitles: [],
+  };
+}
+
 test('a preparation is read only when every published invariant holds', () => {
   const parsed = parseDownloadPreparation(preparation());
   assert.equal(parsed.artifact.sha256, sha);
+  assert.equal(parsed.title.title, 'Film');
+  assert.equal(parsed.title.onServer, true);
   assert.deepEqual([...parsed.actions], ['remove']);
   assert(Object.isFrozen(parsed.actions));
   assert.equal(downloadActionOffered(parsed, 'remove'), true);
   assert.equal(downloadActionOffered(parsed, 'retry'), false);
+  // A quality is opaque and id-shaped: any rung the server learns to make is accepted.
+  const hevc = preparation();
+  hevc.quality = '1080p-hevc';
+  assert.equal(parseDownloadPreparation(hevc).quality, '1080p-hevc');
   for (const change of [
     (v: any) => v.state = 'finished',
-    (v: any) => v.quality = '4320p',
+    (v: any) => v.quality = 'bad quality!',
+    (v: any) => v.title = undefined,
+    (v: any) => v.title.onServer = 'true',
     (v: any) => v.reason = 'made_up_code',
     (v: any) => v.origin = 'guess',
     (v: any) => v.actions = ['pause', 'pause'],
@@ -111,13 +134,17 @@ test('a batch bounds its targets and cannot claim more accepted than it returned
 });
 
 test('a grant URL is a server path and never an absolute redirect', () => {
-  const good = {preparationId: 'prep', itemId: 'item', url: '/v1/downloads/artifacts/tok-1', token: 'tok-1', issuedAt: '2026-09-16T10:00:00Z', expiresAt: '2026-09-16T10:10:00Z', replayWindowSeconds: 600, artifact: preparation().artifact};
-  assert.equal(parseDownloadGrant(good).replayWindowSeconds, 600);
-  for (const url of ['https://evil.example/v1/downloads/artifacts/tok', '/v1/downloads/artifacts/../../etc', '/v1/media/tok', '']) {
+  const good = {preparationId: 'prep', itemId: 'item', url: '/v1/downloads/artifacts/tok-1', token: 'tok-1', issuedAt: '2026-09-16T10:00:00Z', expiresAt: '2026-09-16T10:10:00Z', renewAfterSeconds: 600, renewed: false, artifact: preparation().artifact};
+  const parsed = parseDownloadGrant(good);
+  assert.equal(parsed.renewAfterSeconds, 600);
+  assert.equal(parsed.renewed, false);
+  for (const url of ['https://evil.example/v1/downloads/artifacts/tok-1', '/v1/downloads/artifacts/../../etc', '/v1/media/tok-1', '/v1/downloads/artifacts/tok-2', '']) {
     assert.throws(() => parseDownloadGrant({...good, url}), `accepted ${url}`);
   }
   assert.throws(() => parseDownloadGrant({...good, expiresAt: good.issuedAt}));
   assert.throws(() => parseDownloadGrant({...good, artifact: {...good.artifact, sha256: ''}}));
+  assert.throws(() => parseDownloadGrant({...good, renewAfterSeconds: 0}));
+  assert.throws(() => parseDownloadGrant({...good, renewed: undefined}));
 });
 
 test('download options publish the original first and explain every unavailable rung', () => {
@@ -172,14 +199,26 @@ test('a receipt is usable only for its own viewer, in date, and not revoked', ()
 
 test('receipt outcomes pair a receipt with issue and renewal, and a reason with refusal', () => {
   const results = parseReceiptOutcomes({results: [
-    {preparationId: 'prep', receiptId: 'receipt', outcome: 'issued', receipt: envelope()},
-    {receiptId: 'gone', outcome: 'refused', code: 'item_deleted'},
+    {preparationId: 'prep', receiptId: 'receipt', outcome: 'issued', receipt: envelope(), titleOnServer: true},
+    {receiptId: 'gone', outcome: 'refused', code: 'item_deleted', titleOnServer: true},
   ]});
   assert.equal(results[0].receipt?.receiptId, 'receipt');
+  assert.equal(results[0].titleOnServer, true);
   assert.equal(results[1].receipt, null);
+  // A refusal says nothing about the server's library, whatever the wire carried.
+  assert.equal(results[1].titleOnServer, null);
   assert.throws(() => parseReceiptOutcomes({results: [{receiptId: 'gone', outcome: 'refused', code: 'item_deleted', receipt: envelope()}]}));
   assert.throws(() => parseReceiptOutcomes({results: [{receiptId: 'gone', outcome: 'refused', code: ''}]}));
   assert.throws(() => parseReceiptOutcomes({results: [{receiptId: 'a', outcome: 'renewed'}]}));
+  // An absent `titleOnServer` (or a non-boolean) is not silently treated as a fact.
+  assert.equal(parseReceiptOutcomes({results: [{receiptId: 'receipt', outcome: 'renewed', receipt: envelope()}]})[0].titleOnServer, null);
+  assert.throws(() => parseReceiptOutcomes({results: [{receiptId: 'receipt', outcome: 'issued', receipt: envelope(), titleOnServer: 'yes'}]}));
+  // A renewal may carry where the viewer stands; a refusal carries nothing.
+  const viewing = parseReceiptOutcomes({results: [{receiptId: 'receipt', outcome: 'renewed', receipt: envelope(), viewing: {positionSeconds: 120, watched: false}}]});
+  assert.deepEqual(viewing[0].viewing, {positionSeconds: 120, watched: false});
+  assert.equal(parseReceiptOutcomes({results: [{receiptId: 'receipt', outcome: 'renewed', receipt: envelope()}]})[0].viewing, null);
+  assert.equal(parseReceiptOutcomes({results: [{receiptId: 'gone', outcome: 'refused', code: 'item_deleted', viewing: {positionSeconds: 1, watched: true}}]})[0].viewing, null);
+  assert.throws(() => parseReceiptOutcomes({results: [{receiptId: 'receipt', outcome: 'issued', receipt: envelope(), viewing: {positionSeconds: -1, watched: false}}]}));
 });
 
 test('verification keys are 32 bytes and unique', () => {
@@ -207,20 +246,36 @@ test('a revocation page must be ordered, because its cursor is a sequence', () =
 
 test('deferred progress reports every entry and its counts agree', () => {
   const receipt = parseDeferredProgressReceipt({applied: 1, conflicts: 1, entries: [
-    {itemId: 'item', outcome: 'applied', positionSeconds: 600, watched: false, observedAt: '2026-09-14T09:12:00Z'},
-    {itemId: 'other', outcome: 'stale_observation', positionSeconds: 42, watched: true, observedAt: '2026-09-13T09:12:00Z'},
+    {playId: 'play-1', itemId: 'item', outcome: 'applied', positionSeconds: 600, watched: false, observedAt: '2026-09-14T09:12:00Z'},
+    {playId: 'play-2', itemId: 'other', outcome: 'stale_observation', positionSeconds: 42, watched: true, observedAt: '2026-09-13T09:12:00Z'},
   ]});
   assert.equal(receipt.entries.length, 2);
+  assert.equal(receipt.entries[0].watched, false);
+  assert.equal(receipt.entries[0].playId, 'play-1');
+  // A play recorded while the viewer has paused their history is neither applied nor a conflict.
+  const paused = parseDeferredProgressReceipt({applied: 1, conflicts: 0, entries: [
+    {playId: 'play-1', itemId: 'item', outcome: 'applied', positionSeconds: 1, watched: true, observedAt: '2026-09-14T09:12:00Z'},
+    {playId: 'play-2', itemId: 'other', outcome: 'history_paused', positionSeconds: 1, watched: false, observedAt: '2026-09-14T09:12:00Z'},
+  ]});
+  assert.equal(paused.applied, 1);
+  assert.equal(paused.conflicts, 0);
   assert.throws(() => parseDeferredProgressReceipt({applied: 2, conflicts: 0, entries: [
-    {itemId: 'item', outcome: 'applied', positionSeconds: 1, watched: false},
+    {playId: 'play-1', itemId: 'item', outcome: 'applied', positionSeconds: 1, watched: false, observedAt: '2026-09-14T09:12:00Z'},
+  ]}));
+  // The counts equation holds (0 + 0 + one paused = 1 entry) but no entry was applied.
+  assert.throws(() => parseDeferredProgressReceipt({applied: 1, conflicts: 0, entries: [
+    {playId: 'play-1', itemId: 'item', outcome: 'history_paused', positionSeconds: 1, watched: false, observedAt: '2026-09-14T09:12:00Z'},
   ]}));
   assert.throws(() => parseDeferredProgressReceipt({applied: 1, conflicts: 0, entries: [
-    {itemId: 'item', outcome: 'no_such_outcome', positionSeconds: 1, watched: false},
+    {playId: 'play-1', itemId: 'item', outcome: 'no_such_outcome', positionSeconds: 1, watched: false, observedAt: '2026-09-14T09:12:00Z'},
   ]}));
-  assert.equal(validDeferredProgressEntry({itemId: 'item', positionSeconds: 12, observedAt: '2026-09-14T09:12:00Z'}), true);
-  assert.equal(validDeferredProgressEntry({itemId: 'item', positionSeconds: -1, observedAt: '2026-09-14T09:12:00Z'}), false);
-  assert.equal(validDeferredProgressEntry({itemId: 'item', positionSeconds: Number.NaN, observedAt: '2026-09-14T09:12:00Z'}), false);
-  assert.equal(validDeferredProgressEntry({itemId: 'item', positionSeconds: 1, observedAt: 'soon'}), false);
+  assert.equal(validDeferredProgressEntry({playId: 'play-1', itemId: 'item', positionSeconds: 12, observedAt: '2026-09-14T09:12:00Z'}), true);
+  assert.equal(validDeferredProgressEntry({playId: 'play-1', itemId: 'item', positionSeconds: 1, observedAt: '2026-09-14T09:12:00Z', ended: true}), true);
+  assert.equal(validDeferredProgressEntry({playId: 'play-1', itemId: 'item', positionSeconds: 1, observedAt: '2026-09-14T09:12:00Z', ended: 'yes' as any}), false);
+  assert.equal(validDeferredProgressEntry({playId: 'play-1', itemId: 'item', positionSeconds: -1, observedAt: '2026-09-14T09:12:00Z'}), false);
+  assert.equal(validDeferredProgressEntry({playId: 'play-1', itemId: 'item', positionSeconds: Number.NaN, observedAt: '2026-09-14T09:12:00Z'}), false);
+  assert.equal(validDeferredProgressEntry({itemId: 'item', positionSeconds: 1, observedAt: '2026-09-14T09:12:00Z'}), false);
+  assert.equal(validDeferredProgressEntry({playId: 'play-1', itemId: 'item', positionSeconds: 1, observedAt: 'soon'}), false);
 });
 
 test('usage and settings enforce the unlimited-ceiling contract', () => {
@@ -229,16 +284,54 @@ test('usage and settings enforce the unlimited-ceiling contract', () => {
   // A profile cannot hold more than the server it is part of.
   assert.throws(() => parseDownloadUsage({profileId: 'profile', profileBytes: 30, profileCount: 1, serverBytes: 20, serverCount: 2, distinctArtifactBytes: 20, maxPreparedBytes: 0, remainingBytes: null, retentionDays: 30, profiles: []}));
   assert.throws(() => parseDownloadUsage({profileId: 'profile', profileBytes: 1, profileCount: 1, serverBytes: 20, serverCount: 2, distinctArtifactBytes: 20, maxPreparedBytes: 0, remainingBytes: 5, retentionDays: 30, profiles: []}));
-  assert.deepEqual(parseDownloadSettings({maxPreparedBytes: 0, retentionDays: 30, revision: 1}), {maxPreparedBytes: 0, retentionDays: 30, revision: 1});
-  assert.throws(() => parseDownloadSettings({maxPreparedBytes: 0, retentionDays: 0, revision: 1}));
-  assert.throws(() => parseDownloadSettings({maxPreparedBytes: 0, retentionDays: 400, revision: 1}));
+  const qualities = [
+    {quality: 'original', label: 'Original', kind: 'source'},
+    {quality: '720p', label: '720p', kind: 'optimized', targetDisplayHeight: 720},
+  ];
+  assert.deepEqual(parseDownloadSettings({maxPreparedBytes: 0, retentionDays: 30, revision: 1, qualities}), {
+    maxPreparedBytes: 0, retentionDays: 30, revision: 1,
+    qualities: [
+      {quality: 'original', label: 'Original', kind: 'source', targetDisplayHeight: 0},
+      {quality: '720p', label: '720p', kind: 'optimized', targetDisplayHeight: 720},
+    ],
+  });
+  assert.throws(() => parseDownloadSettings({maxPreparedBytes: 0, retentionDays: 0, revision: 1, qualities}));
+  assert.throws(() => parseDownloadSettings({maxPreparedBytes: 0, retentionDays: 400, revision: 1, qualities}));
+  // The menu must lead with the original and name each quality once.
+  assert.throws(() => parseDownloadSettings({maxPreparedBytes: 0, retentionDays: 30, revision: 1, qualities: [{quality: '720p', label: '720p', kind: 'optimized'}]}));
+  assert.throws(() => parseDownloadSettings({maxPreparedBytes: 0, retentionDays: 30, revision: 1, qualities: [qualities[0], qualities[0]]}));
+});
+
+test('a download title needs the facts a list shows, and onServer must be a boolean', () => {
+  const parsed = parseDownloadTitle(title({year: 1999}));
+  assert.equal(parsed.title, 'Film');
+  assert.equal(parsed.onServer, true);
+  assert.equal(parsed.year, 1999);
+  // `onServer` decides whether the title is offered as still in the library, so a
+  // missing or non-boolean value is refused rather than coerced.
+  assert.throws(() => parseDownloadTitle({kind: 'movie', title: 'Film'}));
+  assert.throws(() => parseDownloadTitle({kind: 'movie', title: 'Film', onServer: 'true'}));
+  assert.throws(() => parseDownloadTitle({kind: 'movie', title: 'Film', onServer: true, year: -1}));
+});
+
+test('a bundle names only files under the grant, never a path out of it', () => {
+  const parsed = parseDownloadBundle(bundle(), 'prep');
+  assert.equal(parsed.artwork[0].path, 'artwork/poster.jpg');
+  assert.equal(parsed.title.title, 'Pilot');
+  assert.throws(() => parseDownloadBundle({...bundle(), preparationId: 'other'}, 'prep'));
+  for (const path of ['artwork/../poster.jpg', '/artwork/poster.jpg']) {
+    assert.throws(() => parseDownloadBundle({...bundle(), artwork: [{role: 'poster', path, contentType: 'image/jpeg'}]}, 'prep'), `accepted ${path}`);
+  }
 });
 
 test('reason codes render a sentence and sizes render a unit', () => {
-  assert.match(downloadReasonMessage('storage_full'), /no room/);
+  assert.equal(downloadReasonMessage('storage_full'), 'The server has no room left for smaller copies.');
   assert.match(downloadReasonMessage('optimized_version_unavailable'), /original/);
+  assert.match(downloadReasonMessage('unknown_preparation'), /no record/);
+  assert.match(downloadReasonMessage('several_files'), /several files/);
   assert.equal(downloadReasonMessage(''), '');
-  assert.equal(downloadReasonMessage('brand_new_code'), 'brand new code');
+  // An unknown code says nothing rather than showing the code itself.
+  assert.equal(downloadReasonMessage('brand_new_code'), '');
   assert.equal(downloadBytes(2048), '2 KiB');
   assert.equal(downloadBytes(5_368_709_120), '5.00 GiB');
 });

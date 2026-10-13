@@ -88,7 +88,9 @@ export type ReceiptClaims = Readonly<{
 export type DownloadReceipt = Readonly<{receiptId: string; algorithm: 'ed25519'; keyId: string; payload: string; signature: string; claims: ReceiptClaims; revision: number}>;
 /** `titleOnServer` accompanies a receipt: false means the title has left the server's library
  * (the copy still plays). It is null on a refusal. */
-export type ReceiptOutcome = Readonly<{preparationId: string; receiptId: string; outcome: 'issued'|'renewed'|'refused'; code: string; receipt: DownloadReceipt|null; titleOnServer: boolean|null}>;
+export type ReceiptOutcome = Readonly<{preparationId: string; receiptId: string; outcome: 'issued'|'renewed'|'refused'; code: string; receipt: DownloadReceipt|null; titleOnServer: boolean|null;
+  /** Where the viewer stands with the title on the server now (sent with a renewal), or null. */
+  viewing: Readonly<{positionSeconds: number; watched: boolean}>|null}>;
 export type ReceiptKey = Readonly<{id: string; algorithm: 'ed25519'; publicKey: string; createdAt: string; retiredAt: string}>;
 export type DownloadRevocation = Readonly<{receiptId: string; itemId: string; profileId: string; reason: string; revokedAt: string; sequence: number}>;
 export type DownloadRevocationPage = Readonly<{items: readonly DownloadRevocation[]; nextCursor: string; asOf: string}>;
@@ -372,11 +374,14 @@ export function parseReceiptOutcomes(raw: unknown): readonly ReceiptOutcome[] {
     const refused = v.outcome === 'refused';
     if (refused ? v.receipt != null || !v.code : v.receipt == null) invalid();
     if (v.titleOnServer !== undefined && typeof v.titleOnServer !== 'boolean') invalid();
+    const viewing = v.viewing;
+    if (viewing !== undefined && (!object(viewing) || !seconds(viewing.positionSeconds) || typeof viewing.watched !== 'boolean')) invalid();
     return Object.freeze({
       preparationId: String(v.preparationId ?? ''), receiptId: String(v.receiptId ?? ''),
       outcome: String(v.outcome) as 'issued'|'renewed'|'refused', code: String(v.code ?? ''),
       receipt: refused ? null : decodeDownloadReceipt(v.receipt).receipt,
       titleOnServer: refused || v.titleOnServer === undefined ? null : v.titleOnServer,
+      viewing: refused || !object(viewing) ? null : Object.freeze({positionSeconds: viewing.positionSeconds as number, watched: viewing.watched as boolean}),
     });
   });
   return Object.freeze(results);
