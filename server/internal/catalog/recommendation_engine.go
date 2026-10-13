@@ -23,7 +23,7 @@ const recCandidateLimit = 960
 const recMinimumShelf = 3
 const recMinimumTrend = 3
 const communityWindow = 7 * 24 * time.Hour
-const communityViewers = 2
+const communityViewers = 3
 
 // Normalize descriptive text only. Provider and local entity identifiers are
 // never normalized or compared across namespaces.
@@ -258,7 +258,7 @@ func validTrendSQL() string {
 func diversifyRecommendations(in []recCandidate, now time.Time) []recCandidate {
 	out := make([]recCandidate, 0, len(in))
 	used := map[string]int{}
-	day := now.UTC().Format("2006-01-02")
+	day := now.In(time.Local).Format("2006-01-02")
 	tie := func(id string) uint64 { h := fnv.New64a(); h.Write([]byte(day + ":" + id)); return h.Sum64() }
 	// Only the first 60 entries need the quadratic diversity pass. Remaining
 	// candidates retain score order for stable bounded row paging.
@@ -350,7 +350,7 @@ func (s *Service) homeEngineSource(r HomeRequest, spec homeRowSpec) (homeSource,
 	if row == "recommended" {
 		// The ranking is defined per day (rotation): a cursor from yesterday's
 		// order never continues into today's, even where the order agrees.
-		src.fingerprint += ":" + s.recommendationNow(r.Now).UTC().Format("2006-01-02")
+		src.fingerprint += ":" + s.recommendationNow(r.Now).In(time.Local).Format("2006-01-02")
 	}
 	// A modelled list may predate a restriction change: re-apply the viewer's
 	// current restriction to its entities on every read. Candidates are public

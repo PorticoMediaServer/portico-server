@@ -722,9 +722,6 @@ func New(d Dependencies) http.Handler {
 			if err := d.Scheduler.Register(d.Catalog.BulkAdapter(d.bulkAccess)); err != nil {
 				panic(err)
 			}
-			if err := d.Scheduler.Register(d.Catalog.ContainerResetAdapter()); err != nil {
-				panic(err)
-			}
 			if err := d.Scheduler.Register(d.Catalog.LibraryRemovalAdapter()); err != nil {
 				panic(err)
 			}

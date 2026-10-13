@@ -105,5 +105,6 @@ export function decodeStartPlaybackSessionResponse(input: unknown): types.StartP
 export function decodeStopPlaybackSessionResponse(input: unknown): types.StopPlaybackSessionResponse { return decode("StopPlaybackSessionResponse", input) as types.StopPlaybackSessionResponse; }
 export function decodeTerminateAdminSessionResponse(input: unknown): types.TerminateAdminSessionResponse { return decode("TerminateAdminSessionResponse", input) as types.TerminateAdminSessionResponse; }
 export function decodeTestWebhookResponse(input: unknown): types.TestWebhookResponse { return decode("TestWebhookResponse", input) as types.TestWebhookResponse; }
+export function decodeUndoContainerPersonalStateResponse(input: unknown): types.UndoContainerPersonalStateResponse { return decode("UndoContainerPersonalStateResponse", input) as types.UndoContainerPersonalStateResponse; }
 export function decodeUpdateQueueResponse(input: unknown): types.UpdateQueueResponse { return decode("UpdateQueueResponse", input) as types.UpdateQueueResponse; }
 export function decodeUpdateWebhookResponse(input: unknown): types.UpdateWebhookResponse { return decode("UpdateWebhookResponse", input) as types.UpdateWebhookResponse; }

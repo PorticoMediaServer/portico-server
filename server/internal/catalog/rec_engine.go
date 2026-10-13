@@ -486,7 +486,7 @@ func (s *Service) recSession(r HomeRequest) (*recSession, error) {
 	return x, nil
 }
 
-func (x *recSession) day() string { return x.now.UTC().Format("2006-01-02") }
+func (x *recSession) day() string { return x.now.In(time.Local).Format("2006-01-02") }
 
 // strength is how much a facet says about this profile: taste × rarity × type.
 func (x *recSession) strength(f string) float64 {

@@ -16862,6 +16862,12 @@ export const schemas = {
         "minimum": -9007199254740991,
         "type": "integer"
       },
+      "undoToken": {
+        "type": "string"
+      },
+      "undoUntil": {
+        "type": "string"
+      },
       "watched": {
         "type": "boolean"
       },
@@ -17693,6 +17699,58 @@ export const schemas = {
       "createdAt",
       "status",
       "durationMs"
+    ],
+    "type": "object"
+  },
+  "UndoContainerPersonalStateRequest": {
+    "properties": {
+      "expectedRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "undoToken": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "expectedRevision",
+      "undoToken"
+    ],
+    "type": "object"
+  },
+  "UndoContainerPersonalStateResponse": {
+    "properties": {
+      "favorite": {
+        "type": "boolean"
+      },
+      "revision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "undoToken": {
+        "type": "string"
+      },
+      "undoUntil": {
+        "type": "string"
+      },
+      "watched": {
+        "type": "boolean"
+      },
+      "watchlisted": {
+        "type": "boolean"
+      },
+      "watermark": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "revision",
+      "watched",
+      "watermark",
+      "watchlisted",
+      "favorite"
     ],
     "type": "object"
   },

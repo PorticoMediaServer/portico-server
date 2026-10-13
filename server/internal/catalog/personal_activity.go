@@ -25,6 +25,19 @@ import (
 // watched state and resume point that go with it) stops while they have paused
 // it.
 func (s *Service) AcceptPlaybackProgress(tx *sql.Tx, v identity.Viewer, playbackID, item string, sequence int64, position, duration float64, state string, canonical bool) error {
+	return s.acceptPlaybackProgress(tx, v, playbackID, item, sequence, position, duration, state, canonical, time.Now().UTC())
+}
+
+// AcceptPlaybackProgressAt accepts a verified occurrence timestamp from an
+// offline journal. Authentication and replay/order checks remain with its caller.
+func (s *Service) AcceptPlaybackProgressAt(tx *sql.Tx, v identity.Viewer, playbackID, item string, sequence int64, position, duration float64, state string, canonical bool, clock time.Time) error {
+	if clock.IsZero() || clock.After(time.Now().Add(24*time.Hour)) {
+		return jobInvalid("invalid playback time")
+	}
+	return s.acceptPlaybackProgress(tx, v, playbackID, item, sequence, position, duration, state, canonical, clock.UTC())
+}
+
+func (s *Service) acceptPlaybackProgress(tx *sql.Tx, v identity.Viewer, playbackID, item string, sequence int64, position, duration float64, state string, canonical bool, clock time.Time) error {
 	preferences, preferenceSources, _, e := operations.EffectivePreferences(tx, v, "")
 	if e != nil {
 		return e
@@ -47,7 +60,6 @@ func (s *Service) AcceptPlaybackProgress(tx *sql.Tx, v identity.Viewer, playback
 		played = float64(preferences.Int("playback.playedThresholdPercent"))
 	}
 	profile := identity.PersonalKey(v)
-	clock := time.Now().UTC()
 	now := clock.Format("2006-01-02T15:04:05.000Z")
 	position = math.Max(0, position)
 	if duration > 0 {
@@ -71,12 +83,12 @@ func (s *Service) AcceptPlaybackProgress(tx *sql.Tx, v identity.Viewer, playback
 	// seconds at most, sooner for a short title, at once for an audiobook file.
 	threshold := 30.
 	if duration > 0 {
-		threshold = math.Min(threshold, duration*started/100)
+		threshold = duration * started / 100
 	}
 	if kind == int64(compactcatalog.Part) {
 		threshold = 1
 	}
-	counted, e := recordPlay(tx, v, playbackID, entityID, kind, clock, positionMillis(position), duration, position >= threshold, completed)
+	counted, e := recordPlay(tx, v, playbackID, entityID, kind, clock, positionMillis(position), duration, position >= threshold, completed, !preferences.Bool("privacy.pauseWatchHistory") && preferences.Bool("privacy.showActivityToMembers"))
 	if e != nil {
 		return e
 	}
@@ -91,9 +103,11 @@ func (s *Service) AcceptPlaybackProgress(tx *sql.Tx, v identity.Viewer, playback
 		}
 	}
 	positionMs := positionMillis(position)
-	_, e = tx.Exec(`INSERT INTO personal_history(id,profile_id,item_id,started_at,updated_at,sequence,position,unit,completed) VALUES(?,?,?,?,?,?,?,0,?) ON CONFLICT(profile_id,id) DO UPDATE SET updated_at=excluded.updated_at,sequence=excluded.sequence,position=excluded.position,completed=excluded.completed WHERE excluded.sequence>personal_history.sequence`, playbackID, profile, entityID, now, now, sequence, positionMs, completed)
-	if e != nil {
-		return e
+	if position >= threshold || completed {
+		_, e = tx.Exec(`INSERT INTO personal_history(id,profile_id,item_id,started_at,updated_at,sequence,position,unit,completed) VALUES(?,?,?,?,?,?,?,0,?) ON CONFLICT(profile_id,id) DO UPDATE SET updated_at=excluded.updated_at,sequence=excluded.sequence,position=excluded.position,completed=max(personal_history.completed,excluded.completed) WHERE excluded.sequence>personal_history.sequence`, playbackID, profile, entityID, now, now, sequence, positionMs, completed)
+		if e != nil {
+			return e
+		}
 	}
 	out, e := readPersonalByID(tx, profile, entityID, personalstate.SQL("?", "?"))
 	if e != nil {
@@ -102,7 +116,11 @@ func (s *Service) AcceptPlaybackProgress(tx *sql.Tx, v identity.Viewer, playback
 	if e = snapshotPersonalByID(tx, profile, entityID, out); e != nil {
 		return e
 	}
-	out.LastPlayedAt = now
+	previousPosition := out.ProgressSeconds
+	meaningful := completed || position >= threshold && (positionMillis(position) != positionMillis(previousPosition) || out.LastPlayedAt == "")
+	if meaningful {
+		out.LastPlayedAt = now
+	}
 	var blocked int
 	if e = tx.QueryRow(`SELECT (SELECT count(*) FROM personal_evidence_fences WHERE profile_id=? AND item_id=? AND playback_id=?)+(SELECT count(*) FROM playback_personal_fences f WHERE f.profile_key=? AND f.item_id=? AND f.through_ordinal>=COALESCE((SELECT accepted_ordinal FROM playback_personal_claims WHERE playback_id=? AND profile_key=f.profile_key AND item_id=f.item_id),0))+(SELECT count(*) FROM playback_personal_profile_fences f WHERE f.profile_key=? AND f.through_ordinal>=COALESCE((SELECT accepted_ordinal FROM playback_personal_claims WHERE playback_id=? AND profile_key=f.profile_key),0))`, profile, entityID, playbackID, profile, entityID, playbackID, profile, playbackID).Scan(&blocked); e != nil {
 		return e
@@ -112,7 +130,7 @@ func (s *Service) AcceptPlaybackProgress(tx *sql.Tx, v identity.Viewer, playback
 			blocked++
 		}
 	}
-	if canonical && blocked == 0 {
+	if (canonical || completed) && blocked == 0 {
 		switch {
 		case completed:
 			out.Watched = true
@@ -130,26 +148,33 @@ func (s *Service) AcceptPlaybackProgress(tx *sql.Tx, v identity.Viewer, playback
 			out.ProgressSeconds = 0 // a brief replay must not clear prior completion
 		}
 		if completed || position >= threshold {
-			if e = personalstate.Write(tx, profile, entityID, out.Watched); e != nil {
-				return e
+			if meaningful {
+				if e = personalstate.Write(tx, profile, entityID, out.Watched); e != nil {
+					return e
+				}
 			}
 		}
 		if kind == int64(compactcatalog.Track) {
 			out.ProgressSeconds = 0
 		}
-		if _, e = tx.Exec(`UPDATE progress SET position=? WHERE profile_id=? AND item_id=? AND playback_id=?`, positionMillis(out.ProgressSeconds), profile, entityID, playbackID); e != nil {
+		if _, e = tx.Exec(`UPDATE progress SET position=? WHERE profile_id=? AND item_id=? AND (playback_id=? OR ?=1)`, positionMillis(out.ProgressSeconds), profile, entityID, playbackID, completed); e != nil {
 			return e
 		}
 		activityState := state
 		if completed {
 			activityState = "ended"
 		}
-		if _, e = tx.Exec(`INSERT INTO progress_activity(profile_id,library_id,item_id,updated_at,state) SELECT ?,cl.library_id,e.id,?,? FROM catalog_entities e JOIN catalog_libraries cl ON cl.id=e.library_id WHERE e.id=? ON CONFLICT(profile_id,item_id) DO UPDATE SET updated_at=excluded.updated_at,state=excluded.state`, profile, now, activityState, entityID); e != nil {
+		if meaningful {
+			if _, e = tx.Exec(`INSERT INTO progress_activity(profile_id,library_id,item_id,updated_at,state) SELECT ?,cl.library_id,e.id,?,? FROM catalog_entities e JOIN catalog_libraries cl ON cl.id=e.library_id WHERE e.id=? ON CONFLICT(profile_id,item_id) DO UPDATE SET updated_at=excluded.updated_at,state=excluded.state`, profile, now, activityState, entityID); e != nil {
+				return e
+			}
+		}
+		if _, e = tx.Exec(`UPDATE book_resume SET position=? WHERE profile_id=? AND item_id=? AND (playback_id=? OR ?=1)`, positionMillis(out.ProgressSeconds), profile, entityID, playbackID, completed); e != nil {
 			return e
 		}
-		if _, e = tx.Exec(`UPDATE book_resume SET position=? WHERE profile_id=? AND item_id=? AND playback_id=?`, positionMillis(out.ProgressSeconds), profile, entityID, playbackID); e != nil {
-			return e
-		}
+	}
+	if !meaningful || blocked != 0 || (!canonical && !completed) {
+		return nil
 	}
 	out.Revision++
 	if e = storePersonalByID(tx, profile, entityID, out); e != nil {
@@ -180,12 +205,12 @@ type HistoryPage struct {
 // boundary so every device agrees on what "last 7 days" means.
 var HistoryPeriods = map[string]time.Duration{"24h": 24 * time.Hour, "7d": 7 * 24 * time.Hour, "30d": 30 * 24 * time.Hour, "90d": 90 * 24 * time.Hour, "all": 0}
 
-func (s *Service) History(server, fence, profile, cursor, period, libraryID string, libraries []string, limit int) (HistoryPage, error) {
+func (s *Service) History(server, fence, profile, cursor, period, libraryID string, libraries []string, limit int, viewer Viewer) (HistoryPage, error) {
 	if dbwork.Snapshot(s.Context()) == nil {
 		var out HistoryPage
 		err := dbwork.WithReadSnapshot(s.Context(), s.db, func(ctx context.Context) error {
 			var err error
-			out, err = s.WithContext(ctx).History(server, fence, profile, cursor, period, libraryID, libraries, limit)
+			out, err = s.WithContext(ctx).History(server, fence, profile, cursor, period, libraryID, libraries, limit, viewer)
 			return err
 		})
 		return out, err
@@ -225,7 +250,9 @@ func (s *Service) History(server, fence, profile, cursor, period, libraryID stri
 	scope := cursorScope{Profile: profile, View: "history", Viewer: fence, Limit: limit, Category: period, Library: libraryID}
 	raw, _ := json.Marshal(libraries)
 	where := ` FROM personal_history h CROSS JOIN catalog_entities i ON i.id=h.item_id CROSS JOIN catalog_item_details detail ON detail.entity_id=i.id WHERE h.profile_id=? AND i.retired=0 AND i.library_id IN(SELECT id FROM catalog_libraries WHERE library_id IN(SELECT value FROM json_each(?)) AND retired=0)`
-	args := []any{profile, string(raw)}
+	visibility, visibleArgs := viewer.itemVisibilitySQL("i.id")
+	where += ` AND ` + visibility + recordingsClause("i.id", viewer.EffectiveRestrictions())
+	args := append([]any{profile, string(raw)}, visibleArgs...)
 	if window > 0 {
 		where += ` AND h.updated_at>=?`
 		args = append(args, time.Now().UTC().Add(-window).Format("2006-01-02T15:04:05.000Z"))
@@ -355,7 +382,7 @@ func (s *Service) MutateActivity(profile string, m ActivityMutation, authorize f
 		if _, e = tx.Exec(`INSERT INTO personal_evidence_fences SELECT profile_id,item_id,playback_id FROM progress WHERE profile_id=? ON CONFLICT(profile_id,item_id) DO UPDATE SET playback_id=excluded.playback_id`, profile); e != nil {
 			return out, e
 		}
-		for _, table := range []string{"container_personal_state", "personal_watched_intents", "container_personal_resets", "personal_play_counts"} {
+		for _, table := range []string{"container_personal_state", "personal_watched_intents", "container_personal_undo", "personal_play_counts"} {
 			if _, e = tx.Exec(`DELETE FROM `+table+` WHERE profile_id=?`, profile); e != nil {
 				return out, e
 			}

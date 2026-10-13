@@ -23,7 +23,7 @@ import (
 // title opened and closed again leaves nothing behind. counted reports that this
 // report is the one that completed the play: the caller keeps the viewer's own
 // count from it.
-func recordPlay(tx *sql.Tx, v identity.Viewer, playbackID string, entityID, kind int64, now time.Time, positionMs int64, duration float64, started, completed bool) (counted bool, err error) {
+func recordPlay(tx *sql.Tx, v identity.Viewer, playbackID string, entityID, kind int64, now time.Time, positionMs int64, duration float64, started, completed, share bool) (counted bool, err error) {
 	nowMs := now.UnixMilli()
 	var id int64
 	var was bool
@@ -46,7 +46,10 @@ func recordPlay(tx *sql.Tx, v identity.Viewer, playbackID string, entityID, kind
 	if !completed || was {
 		return false, nil
 	}
-	_, err = tx.Exec(`INSERT INTO play_counts(item_id,plays,last_played_ms) VALUES(?,1,?) ON CONFLICT(item_id) DO UPDATE SET plays=plays+1,last_played_ms=excluded.last_played_ms`, entityID, nowMs)
+	if !share {
+		return true, nil
+	}
+	_, err = tx.Exec(`INSERT INTO play_counts(item_id,plays,last_played_ms) VALUES(?,1,?) ON CONFLICT(item_id) DO UPDATE SET plays=plays+1,last_played_ms=max(last_played_ms,excluded.last_played_ms)`, entityID, nowMs)
 	return err == nil, err
 }
 

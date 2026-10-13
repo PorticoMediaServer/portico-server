@@ -2000,7 +2000,7 @@ export const routes = [
     "access": "device",
     "requires": "playback",
     "lane": "default",
-    "cost": "constant",
+    "cost": "page_sized",
     "bodyLimit": 2048,
     "errors": [
       "invalid_request",
@@ -2136,6 +2136,27 @@ export const routes = [
       "internal"
     ],
     "status": 202
+  },
+  {
+    "id": "undo_container_personal_state",
+    "method": "POST",
+    "path": "/v1/containers/{kind}/{id}/personal-state/undo",
+    "summary": "Restore watched and resume state before a recent container mark",
+    "access": "device",
+    "requires": "playback",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 2048,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_found",
+      "idempotency_key_reused",
+      "revision_mismatch",
+      "rate_limited",
+      "internal"
+    ],
+    "status": 200
   },
   {
     "id": "update_queue",

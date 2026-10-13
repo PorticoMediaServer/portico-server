@@ -3621,8 +3621,19 @@ CREATE TABLE container_personal_state(profile_id TEXT NOT NULL,kind TEXT NOT NUL
  PRIMARY KEY(profile_id,kind,container_id)) STRICT;
 CREATE TABLE personal_watched_intents(profile_id TEXT NOT NULL,item_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,
  watched INTEGER NOT NULL CHECK(watched IN(0,1)),authored_at TEXT NOT NULL,PRIMARY KEY(profile_id,item_id)) STRICT;
-CREATE TABLE container_personal_resets(id TEXT PRIMARY KEY,profile_id TEXT NOT NULL,kind TEXT NOT NULL,container_id INTEGER NOT NULL,
- watermark TEXT NOT NULL,cursor TEXT NOT NULL DEFAULT '',state TEXT NOT NULL DEFAULT 'queued') STRICT;
+CREATE TABLE container_personal_undo(
+ token TEXT PRIMARY KEY,profile_id TEXT NOT NULL,kind TEXT NOT NULL,container_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,
+ revision INTEGER NOT NULL,previous_watched INTEGER NOT NULL,previous_watermark TEXT NOT NULL,previous_clear TEXT NOT NULL,
+ watermark TEXT NOT NULL,expires_ms INTEGER NOT NULL,
+ UNIQUE(profile_id,kind,container_id)
+) STRICT;
+CREATE TABLE container_personal_undo_items(
+ token TEXT NOT NULL REFERENCES container_personal_undo(token) ON DELETE CASCADE,
+ item_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,
+ previous_watched INTEGER NOT NULL,after_revision INTEGER NOT NULL,
+ position INTEGER,unit INTEGER,playback_id TEXT,activity_at TEXT,activity_state TEXT,book_position INTEGER,
+ PRIMARY KEY(token,item_id)
+) STRICT;
 CREATE TABLE personal_job_destinations(
  job_id TEXT PRIMARY KEY REFERENCES personal_jobs(id) ON DELETE CASCADE,
  kind TEXT NOT NULL,target_id TEXT NOT NULL,revision INTEGER NOT NULL,

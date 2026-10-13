@@ -284,7 +284,7 @@ func removeContainerTx(ctx context.Context, tx *sql.Tx, id int64) error {
 	}
 	for _, q := range []string{
 		`DELETE FROM container_personal_state WHERE container_id=?`,
-		`DELETE FROM container_personal_resets WHERE container_id=?`,
+		`DELETE FROM container_personal_undo WHERE container_id=?`,
 		`DELETE FROM playback_sessions WHERE item_id=?`,
 	} {
 		if _, err := tx.ExecContext(ctx, q, id); err != nil {

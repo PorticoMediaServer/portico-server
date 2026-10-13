@@ -218,7 +218,7 @@ func moveContainerStateTx(ctx context.Context, tx *sql.Tx, from, into int64) err
 		`INSERT OR IGNORE INTO container_personal_state(profile_id,kind,container_id,watched,watermark,revision,cleared_through)
  SELECT profile_id,kind,?2,watched,watermark,revision,cleared_through FROM container_personal_state WHERE container_id=?1`,
 		`DELETE FROM container_personal_state WHERE container_id=?1`,
-		`DELETE FROM container_personal_resets WHERE container_id=?1`,
+		`DELETE FROM container_personal_undo WHERE container_id=?1`,
 		`INSERT INTO profile_show_activity(profile_id,show_id,library_id,last_activity,last_item_id) SELECT profile_id,?2,library_id,last_activity,last_item_id FROM profile_show_activity INDEXED BY profile_show_activity_show_id_fk WHERE show_id=?1
  ON CONFLICT(profile_id,show_id) DO UPDATE SET last_activity=excluded.last_activity,last_item_id=excluded.last_item_id WHERE excluded.last_activity>profile_show_activity.last_activity`,
 		`DELETE FROM profile_show_activity WHERE show_id=?1`,

@@ -1,5 +1,6 @@
 import {unreadableServerResponse} from './server-messages.ts';
 /** Server-composed home rows. Clients render membership, order and policy as published; they never rank, hide or page a row themselves. */
+import {parseBrowseNode, type BrowseNode, type BrowseSortSelection} from './browse.ts';
 import {unknownContentEntryKind, validateContentEntry, type ContentEntry} from './library-content.ts';
 
 export type HomeArtworkShape = 'poster' | 'square' | 'landscape';
@@ -7,10 +8,15 @@ export type HomeRevision = Readonly<{catalog: number; viewer: number}>;
 /** A server-authored label (CON-19): a catalogue message id, its parameters, and the US English
  * fallback for a code this client doesn't know. Name rows with `serverTextLabel`. */
 export type ServerText = Readonly<{code: string; params?: Readonly<Record<string, string>>; fallback: string}>;
+export type HomeSeeAll = Readonly<
+ {type:'library';libraryId:string;pivot:string;query?:BrowseNode;sort:readonly BrowseSortSelection[]} |
+ {type:'row';rowId:string} | {type:'saved_view';resourceId:string}
+>;
 export type HomeRow = Readonly<{
   id: string; title: string; titleText?: ServerText; kind: string; artworkShape: HomeArtworkShape; explanation?: string; endpoint: string;
   /** `for_you` on the personal rows: the layout arranges and hides them together as the row `for_you`. */
   family?: string;
+  seeAll?: HomeSeeAll;
   libraryId?: string; privacySensitivity: string; policyState: string;
   relation?: string; provider?: string; evidenceId?: string;
   priority: number; cacheTtlSeconds: number;
@@ -59,6 +65,15 @@ function revision(value: unknown): HomeRevision {
   return Object.freeze({catalog: value.catalog, viewer: value.viewer});
 }
 
+export function validateHomeSeeAll(value:unknown):HomeSeeAll {
+ if(!object(value))invalid();
+ if(value.type==='row' && id(value.rowId))return Object.freeze({type:'row',rowId:value.rowId});
+ if(value.type==='saved_view' && id(value.resourceId))return Object.freeze({type:'saved_view',resourceId:value.resourceId});
+ if(value.type!=='library'||!id(value.libraryId)||!id(value.pivot)||!Array.isArray(value.sort)||value.sort.length<1||value.sort.length>3)invalid();
+ const sort=value.sort.map(s=>{if(!object(s)||!id(s.field)||(s.direction!=='asc'&&s.direction!=='desc'))invalid();return Object.freeze({field:s.field,direction:s.direction}) as BrowseSortSelection;});
+ return Object.freeze({type:'library',libraryId:value.libraryId,pivot:value.pivot,sort:Object.freeze(sort),...(value.query===undefined?{}:{query:parseBrowseNode(value.query)})});
+}
+
 export function validateHomeRow(value: unknown): HomeRow {
   if (!object(value) || !id(value.id) || !text(value.title, 1024) || !id(value.kind) || !shapes.includes(value.artworkShape as string)) invalid();
   if (!id(value.endpoint) || !id(value.privacySensitivity) || !id(value.policyState)) invalid();
@@ -79,6 +94,7 @@ export function validateHomeRow(value: unknown): HomeRow {
     entries: Object.freeze(entries), total: value.total, start: value.start, limit: value.limit,
     hasMore: value.hasMore, nextCursor: value.nextCursor, revision: revision(value.revision),
   };
+  if(value.seeAll!==undefined)row.seeAll=validateHomeSeeAll(value.seeAll);
   const titleText = parseServerText(value.titleText);
   if (titleText) row.titleText = titleText;
   for (const field of ['explanation', 'libraryId', 'relation', 'provider', 'evidenceId', 'anchorId', 'family'] as const) {

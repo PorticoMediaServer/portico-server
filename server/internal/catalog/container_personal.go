@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"strconv"
 
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/entityid"
@@ -28,6 +27,8 @@ type ContainerPersonal struct {
 	Watermark   string `json:"watermark"`
 	Watchlisted bool   `json:"watchlisted"`
 	Favorite    bool   `json:"favorite"`
+	UndoToken   string `json:"undoToken,omitempty"`
+	UndoUntil   string `json:"undoUntil,omitempty"`
 }
 type ContainerCounts struct {
 	WatchedCount   int64 `json:"watchedCount"`
@@ -118,8 +119,8 @@ func (s *Service) SetContainerSaved(ctx context.Context, p identity.Principal, v
 	return
 }
 
-func (s *Service) SetContainerPersonal(ctx context.Context, p identity.Principal, kind, id string, m ContainerPersonalMutation, scheduler *operations.Scheduler, access BulkAccess) (out ContainerPersonal, err error) {
-	if m.Watched == nil || m.Watchlisted != nil || m.Favorite != nil || m.ExpectedRevision < 0 || m.ExpectedRevision > 9007199254740991 || scheduler == nil {
+func (s *Service) SetContainerPersonal(ctx context.Context, p identity.Principal, kind, id string, m ContainerPersonalMutation, _ *operations.Scheduler, access BulkAccess) (out ContainerPersonal, err error) {
+	if m.Watched == nil || m.Watchlisted != nil || m.Favorite != nil || m.ExpectedRevision < 0 || m.ExpectedRevision > 9007199254740991 {
 		return out, jobInvalid("invalid container mutation")
 	}
 	members, e := containerMembers(kind)
@@ -144,33 +145,58 @@ func (s *Service) SetContainerPersonal(ctx context.Context, p identity.Principal
 			return e
 		}
 		var previous ContainerPersonal
-		e = tx.QueryRowContext(ctx, `SELECT revision,watched,watermark FROM container_personal_state WHERE profile_id=? AND kind=? AND container_id=?`, profile, kind, containerID).Scan(&previous.Revision, &previous.Watched, &previous.Watermark)
+		var clear string
+		e = tx.QueryRowContext(ctx, `SELECT revision,watched,watermark,cleared_through FROM container_personal_state WHERE profile_id=? AND kind=? AND container_id=?`, profile, kind, containerID).Scan(&previous.Revision, &previous.Watched, &previous.Watermark, &clear)
 		if e != nil && !errors.Is(e, sql.ErrNoRows) {
 			return e
 		}
 		if previous.Revision != m.ExpectedRevision {
 			return ErrPersonalConflict
 		}
-		out = ContainerPersonal{Revision: previous.Revision + 1, Watched: *m.Watched, Watermark: personalstate.Stamp()}
-		clear := ""
-		if !out.Watched {
-			clear = out.Watermark
-		}
-		if _, e = tx.ExecContext(ctx, `INSERT INTO container_personal_state(profile_id,kind,container_id,watched,watermark,revision,cleared_through) VALUES(?,?,?,?,?,?,?) ON CONFLICT(profile_id,kind,container_id) DO UPDATE SET watched=excluded.watched,watermark=excluded.watermark,revision=excluded.revision,cleared_through=max(container_personal_state.cleared_through,excluded.cleared_through)`, profile, kind, containerID, out.Watched, out.Watermark, out.Revision, clear); e != nil {
+		ids, e := containerMemberIDs(ctx, tx, members, containerID)
+		if e != nil {
 			return e
 		}
-		// Catalogue membership is unchanged. Invalidate personal cursor/cache scopes.
-		if _, e = tx.ExecContext(ctx, `INSERT INTO viewer_revisions(profile_id,library_id,revision) SELECT ?,cl.library_id,1 FROM catalog_entities e JOIN catalog_libraries cl ON cl.id=e.library_id WHERE e.id=? ON CONFLICT(profile_id,library_id) DO UPDATE SET revision=revision+1`, profile, containerID); e != nil {
+		out = ContainerPersonal{Revision: previous.Revision + 1, Watched: *m.Watched, Watermark: personalstate.Stamp(), UndoToken: identity.Token()}
+		if e = captureContainerUndo(ctx, tx, profile, kind, containerID, previous, clear, &out, ids); e != nil {
 			return e
 		}
-		if !out.Watched {
-			reset := identity.Token()
-			if _, e = tx.ExecContext(ctx, `INSERT INTO container_personal_resets(id,profile_id,kind,container_id,watermark) VALUES(?,?,?,?,?)`, reset, profile, kind, containerID, out.Watermark); e != nil {
+		if _, e = tx.ExecContext(ctx, `INSERT INTO container_personal_state(profile_id,kind,container_id,watched,watermark,revision,cleared_through) VALUES(?,?,?,?,?,?,?) ON CONFLICT(profile_id,kind,container_id) DO UPDATE SET watched=excluded.watched,watermark=excluded.watermark,revision=excluded.revision,cleared_through=excluded.cleared_through`, profile, kind, containerID, out.Watched, out.Watermark, out.Revision, out.Watermark); e != nil {
+			return e
+		}
+		for _, item := range ids {
+			before, e := readPersonalByID(tx, profile, item, personalstate.SQL("?", "?"))
+			if e != nil {
 				return e
 			}
-			if _, e = scheduler.EnqueueDomainTx(ctx, tx, "container-unwatched", reset, profile); e != nil {
+			if e = snapshotPersonalByID(tx, profile, item, before); e != nil {
 				return e
 			}
+			if e = fenceEvidenceByID(tx, profile, item); e != nil {
+				return e
+			}
+			// Older intents stay available for Undo; the new default supersedes them.
+			before.Watched = out.Watched
+			before.ProgressSeconds = 0
+			before.Revision++
+			if e = storePersonalByID(tx, profile, item, before); e != nil {
+				return e
+			}
+			if _, e = tx.ExecContext(ctx, `UPDATE progress SET position=0 WHERE profile_id=? AND item_id=?`, profile, item); e != nil {
+				return e
+			}
+			if _, e = tx.ExecContext(ctx, `UPDATE progress_activity SET state='ended' WHERE profile_id=? AND item_id=?`, profile, item); e != nil {
+				return e
+			}
+			if _, e = tx.ExecContext(ctx, `UPDATE book_resume SET position=0 WHERE profile_id=? AND item_id=?`, profile, item); e != nil {
+				return e
+			}
+			if e = snapshotPersonalByID(tx, profile, item, before); e != nil {
+				return e
+			}
+		}
+		if e = invalidateContainer(ctx, tx, profile, containerID); e != nil {
+			return e
 		}
 		out.Watchlisted, out.Favorite, e = readContainerSaved(ctx, tx, profile, containerID)
 		return e
@@ -194,104 +220,6 @@ func (s *Service) ContainerPersonalCounts(v Viewer, kind, id string) (out Contai
 	args := append([]any{v.Profile, id}, bound...)
 	err = s.read().QueryRow(`SELECT COALESCE(sum(watched),0),count(*)-COALESCE(sum(watched),0) FROM (SELECT `+personalstate.CompactSQL("?", "i.id")+` AS watched FROM catalog_entities i WHERE i.id IN(`+members+`) AND `+visible+recordingsClause("i.id", v.EffectiveRestrictions())+`)`, args...).Scan(&out.WatchedCount, &out.UnwatchedCount)
 	return
-}
-func (s *Service) ContainerResetAdapter() operations.Adapter {
-	return operations.Adapter{Kind: "container-unwatched", Lane: "background-media", Resource: operations.LaneWriteHeavy,
-		ValidateTx: func(ctx context.Context, tx *sql.Tx, id string) error {
-			var n int
-			return tx.QueryRowContext(ctx, `SELECT 1 FROM container_personal_resets WHERE id=?`, id).Scan(&n)
-		},
-		Step: func(ctx context.Context, id string) (out operations.JobObservation, err error) {
-			out.State = "running"
-			for ctx.Err() == nil {
-				complete := false
-				e := dbwork.WithWriteTx(ctx, s.db, dbwork.ClassBackgroundMedia, func(tx *sql.Tx) error {
-					var profile, kind, watermark, cursor, state string
-					var container int64
-					if e := tx.QueryRowContext(ctx, `SELECT profile_id,kind,container_id,watermark,cursor,state FROM container_personal_resets WHERE id=?`, id).Scan(&profile, &kind, &container, &watermark, &cursor, &state); e != nil {
-						return e
-					}
-					if state == "failed" {
-						out.State = "failed"
-						complete = true
-						return nil
-					}
-					if state == "complete" {
-						complete = true
-						return nil
-					}
-					members, e := containerMembers(kind)
-					if e != nil {
-						return e
-					}
-					// The reset cursor is the last member's integer entity id, decimal.
-					// An empty cursor starts before the first member.
-					cursorID := int64(0)
-					if cursor != "" {
-						if n, e := strconv.ParseInt(cursor, 10, 64); e == nil && n > 0 {
-							cursorID = n
-						}
-					}
-					rows, e := tx.QueryContext(ctx, `SELECT i.id FROM catalog_entities i WHERE i.id IN(`+members+`) AND i.id>? ORDER BY i.id LIMIT ?`, container, cursorID, bulkBatchSize)
-					if e != nil {
-						return e
-					}
-					ids := []int64{}
-					for rows.Next() {
-						var item int64
-						if e = rows.Scan(&item); e != nil {
-							rows.Close()
-							return e
-						}
-						ids = append(ids, item)
-					}
-					e = rows.Err()
-					rows.Close()
-					if e != nil {
-						return e
-					}
-					observeBulkBatch(ctx, "reset", len(ids))
-					for _, item := range ids {
-						// A later explicit item action wins even if cleanup has not reached it.
-						if _, e = tx.ExecContext(ctx, `UPDATE personal_items SET watched=0,revision=revision+1 WHERE profile_id=? AND item_id=? AND NOT EXISTS(SELECT 1 FROM personal_watched_intents wi WHERE wi.profile_id=? AND wi.item_id=? AND wi.authored_at>?)`, profile, item, profile, item, watermark); e != nil {
-							return e
-						}
-						if _, e = tx.ExecContext(ctx, `DELETE FROM personal_watched_intents WHERE profile_id=? AND item_id=? AND authored_at<=?`, profile, item, watermark); e != nil {
-							return e
-						}
-						cursor = strconv.FormatInt(item, 10)
-					}
-					if len(ids) < bulkBatchSize {
-						complete = true
-						state = "complete"
-					}
-					_, e = tx.ExecContext(ctx, `UPDATE container_personal_resets SET cursor=?,state=? WHERE id=?`, cursor, state, id)
-					return e
-				})
-				if e != nil {
-					if errors.Is(e, sql.ErrNoRows) {
-						return operations.JobObservation{State: "failed", Phase: "removed"}, nil
-					}
-					if ctx.Err() != nil || errors.Is(e, context.DeadlineExceeded) {
-						break
-					}
-					if dbwork.Retryable(e) {
-						return out, e
-					}
-					if _, markErr := dbwork.ExecWrite(ctx, s.db, dbwork.ClassBackgroundMedia, `UPDATE container_personal_resets SET state='failed' WHERE id=?`, id); markErr != nil {
-						return out, markErr
-					}
-					return operations.JobObservation{State: "failed", Phase: "reset_failed", ErrorCode: "reset_failed"}, nil
-				}
-				if complete {
-					if out.State != "failed" {
-						out.State = "succeeded"
-					}
-					break
-				}
-			}
-			return out, nil
-		}}
 }
 
 type ContainerPersonalView struct {

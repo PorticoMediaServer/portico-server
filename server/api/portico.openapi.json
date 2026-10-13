@@ -5541,6 +5541,12 @@
                       "minimum": -9007199254740991,
                       "type": "integer"
                     },
+                    "undoToken": {
+                      "type": "string"
+                    },
+                    "undoUntil": {
+                      "type": "string"
+                    },
                     "watched": {
                       "type": "boolean"
                     },
@@ -5567,7 +5573,86 @@
         },
         "summary": "Set a container watched watermark, or its Watchlist or Favorite flag, for this profile",
         "x-access": "device",
-        "x-cost": "constant",
+        "x-cost": "page_sized",
+        "x-lane": "default",
+        "x-max-body-bytes": 2048,
+        "x-scope": "playback"
+      }
+    },
+    "/v1/containers/{kind}/{id}/personal-state/undo": {
+      "post": {
+        "operationId": "undo_container_personal_state",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "expectedRevision": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "undoToken": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "expectedRevision",
+                  "undoToken"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "favorite": {
+                      "type": "boolean"
+                    },
+                    "revision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "undoToken": {
+                      "type": "string"
+                    },
+                    "undoUntil": {
+                      "type": "string"
+                    },
+                    "watched": {
+                      "type": "boolean"
+                    },
+                    "watchlisted": {
+                      "type": "boolean"
+                    },
+                    "watermark": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "revision",
+                    "watched",
+                    "watermark",
+                    "watchlisted",
+                    "favorite"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Restore watched and resume state before a recent container mark",
+        "x-access": "device",
+        "x-cost": "page_sized",
         "x-lane": "default",
         "x-max-body-bytes": 2048,
         "x-scope": "playback"

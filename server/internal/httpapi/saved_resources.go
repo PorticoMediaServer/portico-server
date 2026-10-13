@@ -247,7 +247,12 @@ func (d Dependencies) savedResourceRoutes(mux *http.ServeMux) {
 			failure(w, e)
 			return
 		}
-		out, e := d.Catalog.WithContext(r.Context()).History(d.Identity.ID(), fence, identity.PersonalKey(p.Viewer), r.URL.Query().Get("cursor"), r.URL.Query().Get("period"), r.URL.Query().Get("libraryId"), libraries, limit)
+		viewer, e := d.catalogViewer(r, p, libraries, fence)
+		if e != nil {
+			failure(w, e)
+			return
+		}
+		out, e := d.Catalog.WithContext(r.Context()).History(d.Identity.ID(), fence, identity.PersonalKey(p.Viewer), r.URL.Query().Get("cursor"), r.URL.Query().Get("period"), r.URL.Query().Get("libraryId"), libraries, limit, viewer)
 		if e != nil {
 			failure(w, e)
 			return

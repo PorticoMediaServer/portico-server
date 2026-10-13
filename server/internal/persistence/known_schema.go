@@ -630,8 +630,9 @@ table console_report_events
 table console_reports
 table console_schedules
 table console_settings_revision
-table container_personal_resets
 table container_personal_state
+table container_personal_undo
+table container_personal_undo_items
 table content_rating_ages
 table content_rating_pending
 table continue_dismissals

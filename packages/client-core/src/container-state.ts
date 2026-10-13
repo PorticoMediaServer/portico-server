@@ -17,6 +17,7 @@ export type ContainerKind='show'|'season'|'album'|'book'|'artist';
 /** The saved flags a title carries besides watched. */
 export type ContainerFlag='watchlisted'|'favorite';
 export type ContainerState=Readonly<{
+ undoToken?:string;undoUntil?:string;
  revision:number;watched:boolean;watermark:string;watchlisted:boolean;favorite:boolean;
  /** Present on GET: the viewer's visible members only, never library-wide summaries. */
  watchedCount?:number;unwatchedCount?:number;
@@ -49,16 +50,18 @@ function checkKind(kind:string):ContainerKind{
 function parse(raw:unknown,withCounts:boolean):ContainerState{
  if(!object(raw))invalid();
  if(!count(raw.revision)||typeof raw.watched!=='boolean'||typeof raw.watermark!=='string'||raw.watermark.length>128)invalid();
- if(Object.keys(raw).some(k=>k!=='revision'&&k!=='watched'&&k!=='watermark'&&k!=='watchlisted'&&k!=='favorite'&&k!=='watchedCount'&&k!=='unwatchedCount'&&k!=='libraryId'))invalid();
+ if(Object.keys(raw).some(k=>k!=='revision'&&k!=='watched'&&k!=='watermark'&&k!=='watchlisted'&&k!=='favorite'&&k!=='watchedCount'&&k!=='unwatchedCount'&&k!=='libraryId'&&k!=='undoToken'&&k!=='undoUntil'))invalid();
  if(raw.libraryId!==undefined&&!id(raw.libraryId))invalid();
  if(raw.watchlisted!==undefined&&typeof raw.watchlisted!=='boolean'||raw.favorite!==undefined&&typeof raw.favorite!=='boolean')invalid();
+ if(raw.undoToken!==undefined&&(!id(raw.undoToken)||!id(raw.undoUntil)))invalid();
+ const undo=raw.undoToken===undefined?{}:{undoToken:raw.undoToken as string,undoUntil:raw.undoUntil as string};
  const flags={watchlisted:raw.watchlisted===true,favorite:raw.favorite===true};
  if(withCounts){
   if(!count(raw.watchedCount)||!count(raw.unwatchedCount))invalid();
-  return Object.freeze({revision:raw.revision as number,watched:raw.watched as boolean,watermark:raw.watermark as string,...flags,watchedCount:raw.watchedCount as number,unwatchedCount:raw.unwatchedCount as number,...(raw.libraryId?{libraryId:raw.libraryId as string}:{})});
+  return Object.freeze({revision:raw.revision as number,watched:raw.watched as boolean,watermark:raw.watermark as string,...flags,...undo,watchedCount:raw.watchedCount as number,unwatchedCount:raw.unwatchedCount as number,...(raw.libraryId?{libraryId:raw.libraryId as string}:{})});
  }
  return Object.freeze({
-  revision:raw.revision as number,watched:raw.watched as boolean,watermark:raw.watermark as string,...flags,
+  revision:raw.revision as number,watched:raw.watched as boolean,watermark:raw.watermark as string,...flags,...undo,
   ...(raw.watchedCount===undefined?{}:{watchedCount:raw.watchedCount as number}),
   ...(raw.unwatchedCount===undefined?{}:{unwatchedCount:raw.unwatchedCount as number}),
  });
@@ -107,4 +110,11 @@ export async function setContainerFlag(api:ContainerStateApi,kind:ContainerKind,
 export function containerCountLabel(watchedCount:number,unwatchedCount:number):{watched:number;unwatched:number}{
  if(!count(watchedCount)||!count(unwatchedCount))throw new Error('Invalid container counts.');
  return {watched:watchedCount,unwatched:unwatchedCount};
+}
+
+/** Restore the precise watched/resume mix captured by a mark within 30 seconds. */
+export async function undoContainerState(api:ContainerStateApi,kind:ContainerKind,containerId:string,input:Readonly<{expectedRevision:number;undoToken:string}>,signal?:AbortSignal):Promise<ContainerState>{
+ const checked=checkKind(kind);
+ if(!id(containerId)||!count(input.expectedRevision)||input.expectedRevision<1||!id(input.undoToken))throw new Error('A recent container mark is required.');
+ return parse(await api.request<unknown>('/v1/containers/'+checked+'/'+encodeURIComponent(containerId)+'/personal-state/undo','POST',input,signal),false);
 }
