@@ -1,4 +1,5 @@
 import {watchedWords} from './card-caption.ts';
+import {serviceText} from './service-text.ts';
 /**
  * The detail page actions (CON-25): one model for web, iPhone/iPad and TV.
  * The same title shows the same actions in the same places: Play/Resume
@@ -82,7 +83,7 @@ export function detailActions(detail: DetailInput, viewer?: DetailViewer): Detai
         id: 'resume',
         label: 'entry.resume',
         icon: 'play',
-        ...(remaining ? {remaining, caption: `${remaining} left`} : {}),
+        ...(remaining ? {remaining, caption: serviceText('duration.remaining', {duration: remaining})} : {}),
         playback: play.playback,
       }
       : {id: 'play', label: 'entry.play', icon: 'play', playback: play.playback}
