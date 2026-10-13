@@ -1461,6 +1461,8 @@ trigger dvr_preserve_recording_dependency
 trigger dvr_retire_disabled_rule_dependency
 trigger dvr_retirement_catalog_revision
 trigger enrichment_external_ids_insert
+trigger history_observation_hint_insert
+trigger history_observation_hint_update
 trigger hosted_member_link_delete
 trigger hosted_member_link_insert
 trigger hosted_member_link_update
@@ -1692,6 +1694,7 @@ trigger profile_show_personal_update
 trigger profile_show_progress_insert
 trigger profile_show_progress_update
 trigger progress_observation_update
+trigger progress_replay_membership
 trigger rec_data_external_delete
 trigger rec_data_external_insert
 trigger rec_data_similar_delete
