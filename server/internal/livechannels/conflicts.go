@@ -13,6 +13,7 @@ type Capacity struct {
 }
 
 type Reservation struct {
+	ChannelID  string
 	ID         string
 	Start, End time.Time
 	Priority   int
@@ -54,10 +55,11 @@ func Conflicts(all []Reservation, target string, capacity Capacity) []LosingInte
 	type edge struct {
 		at             time.Time
 		demand, higher int
+		channel        string
 	}
 	edges := []edge{}
 	for _, r := range all {
-		if r.ID == target || !r.Start.Before(selected.End) || !r.End.After(selected.Start) {
+		if r.ID == target || selected.ChannelID != "" && r.ChannelID == selected.ChannelID || !r.Start.Before(selected.End) || !r.End.After(selected.Start) {
 			continue
 		}
 		a, b := r.Start, r.End
@@ -71,10 +73,15 @@ func Conflicts(all []Reservation, target string, capacity Capacity) []LosingInte
 		if reservationBefore(r, *selected) {
 			higher = 1
 		}
-		edges = append(edges, edge{a, 1, higher}, edge{b, -1, -higher})
+		key := r.ChannelID
+		if key == "" {
+			key = r.ID
+		}
+		edges = append(edges, edge{a, 1, higher, key}, edge{b, -1, -higher, key})
 	}
 	sort.Slice(edges, func(i, j int) bool { return edges[i].at.Before(edges[j].at) })
 	demand, higher := 1, 0
+	counts := map[string][2]int{}
 	last := selected.Start
 	for i := 0; i < len(edges); {
 		at := edges[i].at
@@ -87,8 +94,22 @@ func Conflicts(all []Reservation, target string, capacity Capacity) []LosingInte
 			}
 		}
 		for i < len(edges) && edges[i].at.Equal(at) {
-			demand += edges[i].demand
-			higher += edges[i].higher
+			edge := edges[i]
+			old := counts[edge.channel]
+			next := [2]int{old[0] + edge.demand, old[1] + edge.higher}
+			counts[edge.channel] = next
+			if old[0] == 0 && next[0] > 0 {
+				demand++
+			}
+			if old[0] > 0 && next[0] == 0 {
+				demand--
+			}
+			if old[1] == 0 && next[1] > 0 {
+				higher++
+			}
+			if old[1] > 0 && next[1] == 0 {
+				higher--
+			}
 			i++
 		}
 		last = at

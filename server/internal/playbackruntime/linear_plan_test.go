@@ -50,3 +50,43 @@ func TestLinearPlanHonorsNarrowedProfile(t *testing.T) {
 		t.Fatalf("capped plan: %+v", capped)
 	}
 }
+
+func TestLinearCopiesCompatibleCodecsAndUnknownLiveRates(t *testing.T) {
+	for _, codec := range []string{"h264", "hevc", "mpeg2video"} {
+		p := playback.BaselineClientProfile()
+		p.Video = []playback.ClientVideoCodec{{Codec: codec, MaxFrameRate: 60, MaxBitrateBPS: 400000000, BitDepths: []int{8}, DynamicRanges: []string{"sdr"}, Evidence: playback.EvidenceBuiltin}}
+		p.Audio = []playback.ClientAudioCodec{{Codec: "ac3", MaxChannels: 6, Evidence: playback.EvidenceBuiltin}}
+		p.AudioOutput.MaxChannels = 6
+		for i := range p.Transports {
+			if p.Transports[i].Transport == playback.TransportHLSTS {
+				p.Transports[i].Video = []string{codec}
+				p.Transports[i].Audio = []string{"ac3"}
+			}
+		}
+		w := playback.LinearWork{ClientProfile: p, TranscodingEnabled: false}
+		w.Selection.Quality.Mode = "original"
+		w.Selection.Quality.AllowLossy = true
+		raw := []byte(`{"streams":[{"codec_type":"video","codec_name":"` + codec + `","pix_fmt":"yuv420p","width":1920,"height":1080,"avg_frame_rate":"0/0","field_order":"progressive"},{"codec_type":"audio","codec_name":"ac3","channels":6,"sample_rate":"48000"}]}`)
+		plan, e := linearPlan(raw, w)
+		if e != nil || plan.ConvertVideo || plan.ConvertAudio {
+			t.Fatalf("%s: %+v %v", codec, plan, e)
+		}
+	}
+}
+
+func TestLinearAudioConversionKeepsCopiedHDR(t *testing.T) {
+	p := playback.BaselineClientProfile()
+	p.Video = append(p.Video, playback.ClientVideoCodec{Codec: "hevc", BitDepths: []int{10}, DynamicRanges: []string{"hdr10"}, MaxWidth: 3840, MaxHeight: 2160, MaxFrameRate: 60, Evidence: playback.EvidenceBuiltin})
+	for i := range p.Transports {
+		if p.Transports[i].Transport == playback.TransportHLSTS {
+			p.Transports[i].Video = append(p.Transports[i].Video, "hevc")
+		}
+	}
+	w := playback.LinearWork{ClientProfile: p, TranscodingEnabled: true}
+	w.Selection.Quality.AllowLossy = true
+	raw := []byte(`{"streams":[{"codec_type":"video","codec_name":"hevc","pix_fmt":"yuv420p10le","color_transfer":"smpte2084","width":1920,"height":1080,"avg_frame_rate":"30/1","field_order":"progressive"},{"codec_type":"audio","codec_name":"ac3","channels":6,"sample_rate":"48000"}]}`)
+	plan, e := linearPlan(raw, w)
+	if e != nil || plan.ConvertVideo || !plan.ConvertAudio || plan.HDRToSDR {
+		t.Fatalf("%+v %v", plan, e)
+	}
+}

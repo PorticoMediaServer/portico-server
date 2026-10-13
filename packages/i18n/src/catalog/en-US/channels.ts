@@ -5,6 +5,22 @@
  * renamed.
  */
 export const channelMessages = {
+  'live.import.channelLineTooLong': 'A channel line was too long.',
+  'live.import.channelAddressMissing': 'A channel had no stream address.',
+  'live.import.channelDescriptionInvalid': 'A channel description was invalid.',
+  'live.import.channelAddressInvalid': 'A channel had no usable stream address.',
+  'live.import.channelRepeated': 'A repeated channel identity was skipped.',
+  'live.import.channelLimit': 'The channel limit was reached.',
+  'live.import.programmeInvalid': 'A program had no usable title or time.',
+  'live.import.programmeRepeated': 'A contradictory repeated program was skipped.',
+  'live.import.programmeEndMissing': 'A program without an end time had no following program.',
+  'live.tunerReservation': 'A recording needs this tuner soon.',
+  'live.import.bytes': 'Maximum guide size in bytes',
+  'live.import.channels': 'Maximum channels',
+  'live.import.programmes': 'Maximum programs',
+  'live.import.enabledGroups': 'Enabled channel groups',
+  'live.import.enabledChannels': 'Enabled channels',
+
   'channels.view': 'View',
   'channels.viewGuide': 'Guide',
   'channels.viewList': 'List',

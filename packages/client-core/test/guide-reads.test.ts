@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import type {ChannelApi} from '../src/channel-guide.ts';
 import {ApiError} from '../src/index.ts';
-import {dedupedGuideApi, forgetGuideReads, GUIDE_READ_LIMIT, GUIDE_REUSE_MS} from '../src/guide/reads.ts';
+import {dedupedGuideApi, forgetGuideReads, GUIDE_READ_LIMIT} from '../src/guide/reads.ts';
 
 function held() {
   const calls: {path: string; signal?: AbortSignal; resolve: (value: unknown) => void; reject: (error: unknown) => void}[] = [];
@@ -44,7 +44,7 @@ test('one caller aborts alone; the last caller aborts the real transport and a r
   calls[0].resolve('stale result'); // A transport ignoring cancellation cannot publish into the retry.
   calls[1].resolve('new result');
   assert.equal(await retry, 'new result');
-  assert.equal(await guide.request('/v1/guide?a=1'), 'new result');
+  const fresh=guide.request('/v1/guide?a=1');await started();assert.equal(calls.length,3);calls[2].resolve('fresh result');assert.equal(await fresh,'fresh result');
 });
 
 test('one caller aborting leaves another caller able to receive the result', async () => {
@@ -69,28 +69,17 @@ test('completed reads remove abort listeners and do not attach listeners on cach
   await started(); assert.equal(listeners, 1);
   calls[0].resolve('done'); await result;
   assert.equal(listeners, 0);
-  assert.equal(await guide.request('/v1/guide', undefined, undefined, signal), 'done');
+  const next=guide.request('/v1/guide',undefined,undefined,signal);await started();calls[1].resolve('fresh');assert.equal(await next,'fresh');
   assert.equal(listeners, 0);
   controller.abort(); assert.equal(calls[0].signal?.aborted, false);
 });
 
-test('bounded LRU results expire after completion and failures are retried', async () => {
-  forgetGuideReads();
-  let at = 0, requests = 0, fail = false;
-  const api: ChannelApi = {request: async <T,>(path: string) => { requests++; if (fail) throw new Error('retry'); return path as T; }};
-  const guide = dedupedGuideApi(api, () => at);
-  for (let i = 0; i < GUIDE_READ_LIMIT; i++) await guide.request(`/v1/guide?i=${i}`);
-  await guide.request('/v1/guide?i=0'); // Promote it before evicting the least-recent window.
-  await guide.request('/v1/guide?i=new');
-  await guide.request('/v1/guide?i=0');
-  assert.equal(requests, GUIDE_READ_LIMIT + 1);
-  await guide.request('/v1/guide?i=1');
-  assert.equal(requests, GUIDE_READ_LIMIT + 2);
-  at = GUIDE_REUSE_MS;
-  await guide.request('/v1/guide?i=0');
-  assert.equal(requests, GUIDE_READ_LIMIT + 3);
-  fail = true; await assert.rejects(guide.request('/v1/guide?fail'), /retry/);
-  fail = false; assert.equal(await guide.request('/v1/guide?fail'), '/v1/guide?fail');
+test('completed reads fetch again immediately and rejected reads can retry',async()=>{
+ forgetGuideReads();let requests=0,fail=false;
+ const api:ChannelApi={async request<T>(path:string){requests++;if(fail)throw new Error('retry');return path as T}};
+ const guide=dedupedGuideApi(api);
+ await guide.request('/v1/guide');await guide.request('/v1/guide');assert.equal(requests,2);
+ fail=true;await assert.rejects(guide.request('/v1/guide'),/retry/);fail=false;await guide.request('/v1/guide');assert.equal(requests,4);
 });
 
 test('distinct held reads are capped, duplicates still join, and freed capacity admits retry', async () => {
@@ -127,7 +116,7 @@ test('already-aborted calls never start server work; forgetting rejects old subs
   const fresh = guide.request('/v1/guide'); await started();
   calls[0].resolve('old credentials'); calls[1].resolve('current credentials');
   assert.equal(await fresh, 'current credentials');
-  assert.equal(await guide.request('/v1/guide'), 'current credentials');
+  const reread=guide.request('/v1/guide');await started();calls[2].resolve('reread credentials');assert.equal(await reread,'reread credentials');
 });
 
 test('API instances isolate credentials and writes/non-guide paths are never cached', async () => {

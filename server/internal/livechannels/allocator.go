@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"portico.local/server/internal/apievents"
 	"sort"
 	"time"
 )
@@ -22,7 +23,7 @@ func (o Owner) Key() string { return id(o.Authority, o.AccountID, o.ProfileID) }
 
 const AllocationTTL = 20 * time.Second
 
-var ErrCapacity = errors.New("The source has reached its confirmed tuner limit.")
+var ErrCapacity = errors.New("All tuners are in use.")
 var ErrPreemptPending = errors.New("A live tuner is being released for a protected recording.")
 var ErrReservation = errors.New("A protected recording requires this tuner now.")
 var ErrLease = errors.New("This source allocation is no longer valid.")
@@ -71,8 +72,8 @@ type Allocation struct {
 	PreemptAt  time.Time
 }
 
-func reservationsTx(ctx context.Context, tx *sql.Tx, sid string, start, end time.Time) ([]Reservation, error) {
-	rows, e := tx.QueryContext(ctx, `SELECT id,start_ms,end_ms,priority FROM live_reservations WHERE source_id=? AND enabled=1 AND start_ms<? AND end_ms>? ORDER BY start_ms,id`, sid, end.UnixMilli(), start.UnixMilli())
+func ReservationsTx(ctx context.Context, tx *sql.Tx, sid string, start, end time.Time) ([]Reservation, error) {
+	rows, e := tx.QueryContext(ctx, `SELECT r.id,r.start_ms,r.end_ms,r.priority,COALESCE(d.channel_id,r.id) FROM live_reservations r LEFT JOIN dvr_recordings d ON d.id=r.id WHERE r.source_id=? AND r.enabled=1 AND r.start_ms<? AND r.end_ms>? ORDER BY r.start_ms,r.id`, sid, end.UnixMilli(), start.UnixMilli())
 	if e != nil {
 		return nil, ErrUnavailable
 	}
@@ -81,7 +82,7 @@ func reservationsTx(ctx context.Context, tx *sql.Tx, sid string, start, end time
 	for rows.Next() {
 		var r Reservation
 		var a, b int64
-		if rows.Scan(&r.ID, &a, &b, &r.Priority) != nil {
+		if rows.Scan(&r.ID, &a, &b, &r.Priority, &r.ChannelID) != nil {
 			return nil, ErrUnavailable
 		}
 		r.Start = time.UnixMilli(a)
@@ -118,28 +119,53 @@ func AcquireTx(ctx context.Context, tx *sql.Tx, want Allocation, now time.Time) 
 		return want, ErrUnavailable
 	}
 	var active int
-	if tx.QueryRowContext(ctx, `SELECT count(*) FROM live_allocations WHERE source_id=? AND state!='released'`, want.SourceID).Scan(&active) != nil {
+	if tx.QueryRowContext(ctx, `SELECT count(DISTINCT CASE WHEN channel_id='' THEN id ELSE channel_id END) FROM live_allocations WHERE source_id=? AND state!='released'`, want.SourceID).Scan(&active) != nil {
 		return want, ErrUnavailable
 	}
-	reservations, e := reservationsTx(ctx, tx, want.SourceID, now, now.Add(7*24*time.Hour))
+	reservations, e := ReservationsTx(ctx, tx, want.SourceID, now, now.Add(7*24*time.Hour))
 	if e != nil {
 		return want, e
 	}
-	if cap.Known {
-		if want.Kind == "recording" {
-			activeReservations := []Reservation{}
-			for _, r := range reservations {
-				if !now.Before(r.Start) && now.Before(r.End) {
-					activeReservations = append(activeReservations, r)
-				}
-			}
-			sort.Slice(activeReservations, func(i, j int) bool { return reservationBefore(activeReservations[i], activeReservations[j]) })
-			for n, r := range activeReservations {
-				if r.ID == want.ResourceID && n >= cap.Effective {
-					return want, ErrCapacity
-				}
-			}
+	var shared bool
+	if e = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM live_allocations WHERE source_id=? AND channel_id=? AND state='active' AND lease_until_ms>?)`, want.SourceID, want.ChannelID, now.UnixMilli()).Scan(&shared); e != nil {
+		return want, ErrUnavailable
+	}
+	if shared && want.Kind == "live" {
+		var deadline int64
+		if e = tx.QueryRowContext(ctx, `SELECT COALESCE(min(NULLIF(preempt_at_ms,0)),0) FROM live_allocations WHERE source_id=? AND channel_id=? AND state='active'`, want.SourceID, want.ChannelID).Scan(&deadline); e != nil {
+			return want, e
 		}
+		if deadline > 0 {
+			want.PreemptAt = time.UnixMilli(deadline)
+		}
+	}
+	existingChannels := map[string]bool{want.ChannelID: true}
+	rows, e := tx.QueryContext(ctx, `SELECT DISTINCT channel_id FROM live_allocations WHERE source_id=? AND state!='released'`, want.SourceID)
+	if e != nil {
+		return want, ErrUnavailable
+	}
+	for rows.Next() {
+		var channel string
+		if e = rows.Scan(&channel); e != nil {
+			rows.Close()
+			return want, e
+		}
+		existingChannels[channel] = true
+	}
+	e = rows.Err()
+	rows.Close()
+	if e != nil {
+		return want, e
+	}
+	filtered := reservations[:0]
+	for _, r := range reservations {
+		if !existingChannels[r.ChannelID] {
+			filtered = append(filtered, r)
+		}
+	}
+	reservations = filtered
+	if cap.Known && !shared {
+
 		if active >= cap.Effective {
 			if want.Kind == "recording" {
 				// A newly submitted recording cannot silently kill an active viewer.
@@ -147,9 +173,9 @@ func AcquireTx(ctx context.Context, tx *sql.Tx, want Allocation, now time.Time) 
 				// typed countdown gets ten seconds and the capture reports lateness.
 				boundary := now.Add(RetirementGrace).UnixMilli()
 				var victim string
-				err := tx.QueryRowContext(ctx, `SELECT id FROM live_allocations WHERE source_id=? AND kind='live' AND state='active' ORDER BY created_ms DESC,id DESC LIMIT 1`, want.SourceID).Scan(&victim)
+				err := tx.QueryRowContext(ctx, `SELECT channel_id FROM live_allocations a WHERE source_id=? AND kind='live' AND state='active' AND NOT EXISTS(SELECT 1 FROM live_allocations b WHERE b.source_id=a.source_id AND b.channel_id=a.channel_id AND b.kind='recording' AND b.state!='released') ORDER BY created_ms DESC,id DESC LIMIT 1`, want.SourceID).Scan(&victim)
 				if err == nil {
-					_, err = tx.ExecContext(ctx, `UPDATE live_allocations SET preempt_at_ms=CASE WHEN preempt_at_ms=0 OR preempt_at_ms>? THEN ? ELSE preempt_at_ms END WHERE id=?`, boundary, boundary, victim)
+					err = preemptChannelTx(ctx, tx, want.SourceID, victim, boundary)
 					if err != nil {
 						return want, ErrUnavailable
 					}
@@ -165,7 +191,7 @@ func AcquireTx(ctx context.Context, tx *sql.Tx, want Allocation, now time.Time) 
 			// Active recording leases already consume capacity; count only live leases
 			// plus protected reservations, so a recording is never counted twice.
 			var liveCount int
-			if tx.QueryRowContext(ctx, `SELECT count(*) FROM live_allocations WHERE source_id=? AND kind='live' AND state!='released'`, want.SourceID).Scan(&liveCount) != nil {
+			if tx.QueryRowContext(ctx, `SELECT count(DISTINCT CASE WHEN channel_id='' THEN id ELSE channel_id END) FROM live_allocations a WHERE source_id=? AND kind='live' AND state!='released' AND NOT EXISTS(SELECT 1 FROM live_allocations b WHERE b.source_id=a.source_id AND b.channel_id=a.channel_id AND b.kind='recording' AND b.state!='released')`, want.SourceID).Scan(&liveCount) != nil {
 				return want, ErrUnavailable
 			}
 			at, blocked := protectedBoundary(reservations, now, cap.Effective-liveCount-1)
@@ -207,7 +233,52 @@ func AcquireTx(ctx context.Context, tx *sql.Tx, want Allocation, now time.Time) 
 	if e != nil {
 		return want, ErrUnavailable
 	}
+	if preempt > 0 {
+		if e = reservationEventTx(tx, want.Owner, want.ResourceID, preempt); e != nil {
+			return want, e
+		}
+	}
 	return want, nil
+}
+
+func reservationEventTx(tx *sql.Tx, owner Owner, session string, deadline int64) error {
+	return apievents.Append(tx, apievents.ProfileAudience(owner.Authority, owner.AccountID, owner.ProfileID), "channel.reservation-required", "session", session, "", struct {
+		ReservationRequiredAtMS int64 `json:"reservationRequiredAtMs"`
+	}{deadline})
+}
+
+func preemptChannelTx(ctx context.Context, tx *sql.Tx, source, channel string, deadline int64) error {
+	rows, e := tx.QueryContext(ctx, `SELECT resource_id,authority,account_id,profile_id FROM live_allocations WHERE source_id=? AND channel_id=? AND kind='live' AND state='active' AND (preempt_at_ms=0 OR preempt_at_ms>?)`, source, channel, deadline)
+	if e != nil {
+		return e
+	}
+	type victim struct {
+		session string
+		owner   Owner
+	}
+	victims := []victim{}
+	for rows.Next() {
+		var v victim
+		if e = rows.Scan(&v.session, &v.owner.Authority, &v.owner.AccountID, &v.owner.ProfileID); e != nil {
+			rows.Close()
+			return e
+		}
+		victims = append(victims, v)
+	}
+	e = rows.Err()
+	rows.Close()
+	if e != nil {
+		return e
+	}
+	if _, e = tx.ExecContext(ctx, `UPDATE live_allocations SET preempt_at_ms=? WHERE source_id=? AND channel_id=? AND kind='live' AND state='active' AND (preempt_at_ms=0 OR preempt_at_ms>?)`, deadline, source, channel, deadline); e != nil {
+		return e
+	}
+	for _, v := range victims {
+		if e = reservationEventTx(tx, v.owner, v.session, deadline); e != nil {
+			return e
+		}
+	}
+	return nil
 }
 func RenewAllocationTx(ctx context.Context, tx *sql.Tx, a Allocation, now time.Time) (time.Time, error) {
 	var deadline int64
@@ -238,22 +309,28 @@ func RenewAllocationTx(ctx context.Context, tx *sql.Tx, a Allocation, now time.T
 // available is the remaining capacity after existing live viewers and this one.
 func protectedBoundary(all []Reservation, now time.Time, available int) (time.Time, bool) {
 	type edge struct {
-		at    time.Time
-		delta int
+		at      time.Time
+		channel string
+		delta   int
 	}
 	edges := []edge{}
-	demand := 0
+	counts := map[string]int{}
 	for _, r := range all {
 		if !r.End.After(now) {
 			continue
 		}
-		if !r.Start.After(now) {
-			demand++
-		} else {
-			edges = append(edges, edge{r.Start, 1})
+		key := r.ChannelID
+		if key == "" {
+			key = r.ID
 		}
-		edges = append(edges, edge{r.End, -1})
+		if !r.Start.After(now) {
+			counts[key]++
+		} else {
+			edges = append(edges, edge{r.Start, key, 1})
+		}
+		edges = append(edges, edge{r.End, key, -1})
 	}
+	demand := len(counts)
 	if demand > available {
 		return now, true
 	}
@@ -261,7 +338,15 @@ func protectedBoundary(all []Reservation, now time.Time, available int) (time.Ti
 	for i := 0; i < len(edges); {
 		at := edges[i].at
 		for i < len(edges) && edges[i].at.Equal(at) {
-			demand += edges[i].delta
+			v := edges[i]
+			old := counts[v.channel]
+			counts[v.channel] += v.delta
+			if old == 0 && counts[v.channel] > 0 {
+				demand++
+			}
+			if old > 0 && counts[v.channel] == 0 {
+				demand--
+			}
 			i++
 		}
 		if demand > available {
@@ -270,6 +355,7 @@ func protectedBoundary(all []Reservation, now time.Time, available int) (time.Ti
 	}
 	return time.Time{}, false
 }
+
 func ReleaseAllocationTx(ctx context.Context, tx *sql.Tx, a Allocation) error {
 	res, e := tx.ExecContext(ctx, `UPDATE live_allocations SET state='released',lease_until_ms=0 WHERE id=? AND token=? AND generation=?`, a.ID, a.Token, a.Generation)
 	if e != nil {

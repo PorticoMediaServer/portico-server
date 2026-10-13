@@ -634,6 +634,7 @@ func FoundationRegistry(d Dependencies) (*apikit.Registry, error) {
 	registerMetadataRefresh(registry, d)
 	registerScreenMetadataReads(registry, d)
 	registerCapabilityReport(registry)
+	registerLiveContracts(registry, d)
 	registerIdentityRoutes(registry, d)
 	// Lane C's /v1/events (886f5011) on the shared contextual registry.
 	err = apikit.Register(registry, apikit.Route[struct{}, eventfeed.Page]{Metadata: apikit.Metadata{

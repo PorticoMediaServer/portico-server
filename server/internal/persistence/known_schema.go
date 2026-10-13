@@ -195,6 +195,7 @@ index download_receipts_viewer
 index download_requests_viewer
 index download_requests_work
 index dvr_catalog_provenance_asset_id_fk
+index dvr_recording_shares_capture
 index dvr_recordings_due
 index dvr_recordings_owner_page
 index dvr_recordings_rule
@@ -663,6 +664,7 @@ table dvr_owner_revisions
 table dvr_private_libraries
 table dvr_receipts
 table dvr_recording_grants
+table dvr_recording_shares
 table dvr_recordings
 table dvr_retention_retry
 table dvr_rule_work
@@ -737,12 +739,14 @@ table listening_book_groups
 table listening_book_series
 table live_allocation_reconcile_cursor
 table live_allocations
+table live_channel_attributes
 table live_channel_logos
 table live_channel_preferences
 table live_channel_versions
 table live_enable_receipts
 table live_generations
 table live_icon_jobs
+table live_import_diagnostics
 table live_logo_failures
 table live_logo_jobs
 table live_operations

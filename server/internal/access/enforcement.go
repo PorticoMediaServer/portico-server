@@ -158,6 +158,22 @@ func (e *Enforcer) AdmitChannel(ctx context.Context, tx *sql.Tx, p identity.Prin
 	return channelAllowed(limits.Channels, channel)
 }
 
+// AdmitProgramme applies the same member rating ladder to a live guide slot,
+// which has no catalogue item yet. An absent guide slot is unrated.
+func (e *Enforcer) AdmitProgramme(ctx context.Context, tx *sql.Tx, p identity.Principal, rating string) error {
+	limits, err := e.limits(ctx, tx, p.AccountID)
+	if err != nil {
+		return err
+	}
+	if limits.MaxContentRating != "" {
+		rank := ratingRank(rating)
+		if rank == 0 && !limits.AllowUnrated || rank > ratingRank(limits.MaxContentRating) {
+			return ErrContentRating
+		}
+	}
+	return nil
+}
+
 // VisibleItem is the catalog-visibility side of the content rating and label
 // limits: a title a member may not play is also a title the member may not see.
 // Detail and playback call it per item; the browse projection applies the same

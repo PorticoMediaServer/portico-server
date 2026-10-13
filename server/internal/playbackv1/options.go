@@ -208,7 +208,7 @@ type Service struct {
 	// session being replaced). Nil Channels: channel starts are unavailable.
 	Channels       ChannelEngine
 	ChannelWake    func()
-	TunerAvailable func(ctx context.Context, tx *sql.Tx, sourceID, replacing string) (bool, error)
+	TunerAvailable func(ctx context.Context, tx *sql.Tx, sourceID, channelID, replacing string) (bool, error)
 	// MeasureAudio measures an audio asset's facts (spec §18.7) when a play finds
 	// them missing; nil: plays without facts are unavailable for client decoding.
 	MeasureAudio audiofacts.Measure

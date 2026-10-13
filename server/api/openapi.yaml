@@ -4340,47 +4340,6 @@ paths:
         '200': { description: The new preference revision., content: { application/json: { schema: { type: object, required: [protocolVersion, serverId, revision], properties: { protocolVersion: { type: string }, serverId: { type: string }, revision: { type: integer, format: int64 } } } } } }
         default: { $ref: '#/components/responses/LiveError' }
       x-error-codes: [authentication_required, channel_permission_denied, invalid_channel_input, channel_revision_conflict, channel_busy, guide_unavailable]
-  /v1/admin/live-sources:
-    get:
-      operationId: listLiveSources
-      tags: [live]
-      summary: List live TV sources
-      description: >-
-        Server owner only; no query string. Returns every configured source with its channel
-        mappings, tuner count, viewer-access setting and the current refresh status of each remote
-        guide.
-      responses:
-        '200': { description: The sources and their refresh status., content: { application/json: { schema: { type: object, required: [protocolVersion, serverId, sources, refresh], properties: { protocolVersion: { type: string }, serverId: { type: string }, sources: { type: array, items: { type: object, additionalProperties: true } }, refresh: { type: array, items: { type: object, additionalProperties: true } } } } } } }
-        default: { $ref: '#/components/responses/LiveError' }
-      x-error-codes: [authentication_required, channel_permission_denied, invalid_channel_input, channel_busy, source_unavailable, guide_unavailable]
-    post:
-      operationId: saveLiveSource
-      tags: [live]
-      summary: Create or update a live TV source
-      description: >-
-        Server owner only; no query string. Carries the playlist and guide documents inline (bounded
-        to twice the upload limit), the tuner count and any explicit channel mappings.
-        `expectedRevision` fences an update and `requestId` makes it replayable. Preview first with
-        `POST /v1/admin/live-sources/preview`.
-      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/LiveSourceInput' } } } }
-      responses:
-        '200': { description: The saved source., content: { application/json: { schema: { type: object, required: [protocolVersion, serverId, source], properties: { protocolVersion: { type: string }, serverId: { type: string }, source: { type: object, additionalProperties: true } } } } } }
-        default: { $ref: '#/components/responses/LiveError' }
-      x-error-codes: [authentication_required, channel_permission_denied, invalid_channel_input, channel_revision_conflict, source_network_policy, source_credentials_required, source_capacity_unavailable, channel_busy, source_unavailable]
-  /v1/admin/live-sources/preview:
-    post:
-      operationId: previewLiveSource
-      tags: [live]
-      summary: Preview a live source before saving it
-      description: >-
-        Server owner only; no query string. Parses the submitted playlist and guide without storing
-        anything and reports the channels, programmes and problems it found, so an owner confirms a
-        described result rather than a blind save. Nothing is fetched from the network here.
-      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/LiveSourceInput' } } } }
-      responses:
-        '200': { description: The parse preview., content: { application/json: { schema: { type: object, required: [protocolVersion, serverId, preview], properties: { protocolVersion: { type: string }, serverId: { type: string }, preview: { type: object, additionalProperties: true } } } } } }
-        default: { $ref: '#/components/responses/LiveError' }
-      x-error-codes: [authentication_required, channel_permission_denied, invalid_channel_input, channel_busy, guide_unavailable]
   /v1/admin/live-sources/{id}/enabled:
     post:
       operationId: setLiveSourceEnabled
@@ -4397,41 +4356,6 @@ paths:
         '200': { description: Whether the change was saved., content: { application/json: { schema: { type: object, required: [protocolVersion, serverId, saved], properties: { protocolVersion: { type: string }, serverId: { type: string }, saved: { type: boolean } } } } } }
         default: { $ref: '#/components/responses/LiveError' }
       x-error-codes: [authentication_required, channel_permission_denied, invalid_channel_input, channel_revision_conflict, channel_busy, guide_unavailable]
-  /v1/admin/live-sources/remote/preview:
-    post:
-      operationId: previewRemoteLiveSource
-      tags: [live]
-      summary: Fetch and preview a remote live source
-      description: >-
-        Server owner only; no query string. Fetches the playlist and guide from the submitted
-        locator — including any credentials and the owner's explicitly confirmed LAN roots, which
-        are a confirmation and never discovery data — and returns a preview with a preview id. Save
-        it with `POST /v1/admin/live-sources/remote/save`.
-        A source, guide or stream on the owner's own network (private, loopback, link-local or
-        CGNAT addresses: an HDHomeRun, Threadfin, a NAS) is refused with 422
-        `source_lan_confirmation_required` until confirmed; `error.confirmRoots` lists every root
-        still needed (scheme://host:port/). Ask the owner, then preview again with those exact
-        values in `confirmedLanRoots`. Nothing is fetched from an unconfirmed root. Other ports of a
-        confirmed device (an HDHomeRun's :5004 streams) are approved with it. Addresses that can
-        never be used (metadata services) stay `source_network_policy`.
-      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/RemoteLiveDraft' } } } }
-      responses:
-        '200': { description: The remote preview., content: { application/json: { schema: { type: object, required: [protocolVersion, serverId, remotePreview], properties: { protocolVersion: { type: string }, serverId: { type: string }, remotePreview: { type: object, additionalProperties: true } } } } } }
-        default: { $ref: '#/components/responses/LiveError' }
-      x-error-codes: [authentication_required, channel_permission_denied, invalid_channel_input, source_lan_confirmation_required, source_network_policy, source_credentials_required, source_capacity_unavailable, channel_busy, source_unavailable]
-  /v1/admin/live-sources/remote/save:
-    post:
-      operationId: saveRemoteLiveSource
-      tags: [live]
-      summary: Save a previewed remote live source
-      description: >-
-        Server owner only; no query string. Commits the preview named by `previewId`, so what is
-        stored is exactly what the owner reviewed. `requestId` makes the save replayable.
-      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [previewId], properties: { previewId: { type: string }, requestId: { type: string } }, additionalProperties: false } } } }
-      responses:
-        '200': { description: The saved source., content: { application/json: { schema: { type: object, required: [protocolVersion, serverId, source], properties: { protocolVersion: { type: string }, serverId: { type: string }, source: { type: object, additionalProperties: true } } } } } }
-        default: { $ref: '#/components/responses/LiveError' }
-      x-error-codes: [authentication_required, channel_permission_denied, invalid_channel_input, channel_revision_conflict, source_capacity_unavailable, channel_busy, source_unavailable]
   /v1/admin/live-sources/{id}/refresh:
     post:
       operationId: refreshLiveSource

@@ -79,7 +79,9 @@ export type RulerTick = Readonly<{atMs: number; x: number; kind: 'hour' | 'half'
  */
 export function rulerTicks(viewStart: number, viewEnd: number, pxPerMs: number, timeZone: string, slotMs = SLOT_MS): RulerTick[] {
   const out: RulerTick[] = [];
-  for (let t = ceilTo(viewStart, slotMs); t < viewEnd; t += slotMs) {
+  if(!Number.isFinite(slotMs)||slotMs<=0)return out;
+  const offset=zoneOffset(viewStart,timeZone);
+  for (let t = ceilTo(viewStart+offset,slotMs)-offset; t < viewEnd; t += slotMs) {
     const local = t + zoneOffset(t, timeZone);
     const minuteOfDay = ((local % DAY_MS) + DAY_MS) % DAY_MS;
     const kind = minuteOfDay === 0 ? 'day' : minuteOfDay % HOUR_MS === 0 ? 'hour' : 'half';

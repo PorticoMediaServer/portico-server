@@ -35,7 +35,7 @@ func TestTunerAssignmentsIncludeReservationsBeyondTwoHundred(t *testing.T) {
 	}
 	defer tx.Rollback()
 	got, err := assignments(context.Background(), tx, "source", `state='scheduled' AND start_ms>=?`, 0)
-	if err != nil || len(got) != 201 || overlapExcess(got, 1) != 200 {
+	if err != nil || len(got) != 201 || overlapExcess(got, 1) != 0 {
 		t.Fatalf("assignments=%d conflicts=%d: %v", len(got), overlapExcess(got, 1), err)
 	}
 }

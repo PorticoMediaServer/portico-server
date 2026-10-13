@@ -2034,6 +2034,18 @@ CREATE TABLE console_notifications(sequence INTEGER PRIMARY KEY AUTOINCREMENT,id
 CREATE TABLE console_operations(sequence INTEGER PRIMARY KEY AUTOINCREMENT,id TEXT NOT NULL UNIQUE,kind TEXT NOT NULL,resource TEXT NOT NULL,actor TEXT NOT NULL,trigger TEXT NOT NULL,state TEXT NOT NULL,phase TEXT NOT NULL,revision INTEGER NOT NULL,attempt INTEGER NOT NULL,created_ms INTEGER NOT NULL,updated_ms INTEGER NOT NULL,next_ms INTEGER NOT NULL,domain_id TEXT NOT NULL,error_code TEXT NOT NULL,predecessor TEXT NOT NULL,settings_revision INTEGER NOT NULL,processed INTEGER) STRICT;
 CREATE TABLE console_schedules(id TEXT PRIMARY KEY,revision INTEGER NOT NULL,kind TEXT NOT NULL,resource TEXT NOT NULL,enabled INTEGER NOT NULL,timezone TEXT NOT NULL,start_minute INTEGER NOT NULL,window_minutes INTEGER NOT NULL,catch_up INTEGER NOT NULL,last_slot TEXT NOT NULL,created_ms INTEGER NOT NULL) STRICT;
 CREATE TABLE console_settings_revision(singleton INTEGER PRIMARY KEY CHECK(singleton=1),revision INTEGER NOT NULL) STRICT;
+CREATE TABLE dvr_recording_shares(
+ recording_id TEXT PRIMARY KEY REFERENCES dvr_recordings(id) ON DELETE CASCADE,
+ capture_recording_id TEXT NOT NULL REFERENCES dvr_recordings(id),
+ CHECK(recording_id<>capture_recording_id)) STRICT;
+CREATE INDEX dvr_recording_shares_capture ON dvr_recording_shares(capture_recording_id,recording_id);
+CREATE TABLE live_import_diagnostics(
+ generation_id TEXT PRIMARY KEY REFERENCES live_generations(id) ON DELETE CASCADE,
+ skipped_channels INTEGER NOT NULL,skipped_programmes INTEGER NOT NULL,adjusted_programmes INTEGER NOT NULL,examples TEXT NOT NULL) STRICT;
+CREATE TABLE live_channel_attributes(
+ generation_id TEXT NOT NULL REFERENCES live_generations(id) ON DELETE CASCADE,channel_id TEXT NOT NULL,
+ country TEXT NOT NULL,catchup TEXT NOT NULL,catchup_source TEXT NOT NULL,catchup_days TEXT NOT NULL,
+ PRIMARY KEY(generation_id,channel_id)) WITHOUT ROWID,STRICT;
 CREATE TABLE dvr_private_libraries(
  library_id TEXT PRIMARY KEY REFERENCES libraries(id) ON DELETE CASCADE,
  authority TEXT NOT NULL CHECK(authority IN('local','hosted')),
