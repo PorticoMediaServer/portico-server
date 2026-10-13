@@ -110,3 +110,19 @@ func TestCredentialResolutionBoundsConcurrencyAndDeadline(t *testing.T) {
 		t.Errorf("cancelled lookup: %v", err)
 	}
 }
+
+func TestCredentialResolutionHonorsCallerDeadline(t *testing.T) {
+	gate := newCredentialGate()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Millisecond)
+	defer cancel()
+	_, err := gate.resolve(ctx, "key", "192.0.2.1", func(ctx context.Context) (access.ResolvedCredential, error) {
+		<-ctx.Done()
+		return access.ResolvedCredential{}, ctx.Err()
+	})
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("deadline: %v", err)
+	}
+	if len(gate.resolving) != 0 {
+		t.Fatal("deadline left a resolver slot held")
+	}
+}

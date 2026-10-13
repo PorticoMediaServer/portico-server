@@ -81,3 +81,26 @@ func TestWebhookRetryPreservesEventOrder(t *testing.T) {
 		t.Fatal("retry signature is invalid")
 	}
 }
+
+func TestWebhookSameMillisecondEventsKeepInsertionOrder(t *testing.T) {
+	s, db := open(t)
+	ctx := context.Background()
+	r := newReceiver(t)
+	w, err := s.Create(ctx, nil, Create{Name: "Ordering", URL: r.server.URL, Events: []string{PlaybackStarted, PlaybackStopped}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UnixMilli() - 1000
+	for i, event := range []string{PlaybackStarted, PlaybackStopped} {
+		id := []string{"z-first", "a-second"}[i]
+		if _, err := db.Exec(`INSERT INTO webhook_deliveries(id,webhook_id,type,data,next_attempt_ms,created_ms) VALUES(?,?,?,'{}',?,?)`, id, w.Webhook.ID, event, now, now); err != nil {
+			t.Fatal(err)
+		}
+	}
+	NewDispatcher(s).Step(ctx)
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if len(r.seen) != 2 || r.seen[0].header.Get(HeaderEvent) != PlaybackStarted || r.seen[1].header.Get(HeaderEvent) != PlaybackStopped {
+		t.Fatalf("equal timestamps reordered events: %+v", r.seen)
+	}
+}

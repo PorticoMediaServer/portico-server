@@ -81,7 +81,15 @@ func administrationFixtureNew(t *testing.T) administrationFixture {
 	deps.credentials = newCredentialGate()
 	deps.Webhooks = webhooks.New(db)
 	deps.self = &selfHandler{}
-	return administrationFixture{handler: New(deps), owner: ownerToken.AccessToken, admin: adminToken.AccessToken, member: memberToken.AccessToken, memberDevice: memberToken.DeviceID, recorder: recorder, deps: deps}
+	handler := New(deps)
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := FlushCredentialUse(ctx, handler); err != nil {
+			t.Errorf("flush credential use: %v", err)
+		}
+	})
+	return administrationFixture{handler: handler, owner: ownerToken.AccessToken, admin: adminToken.AccessToken, member: memberToken.AccessToken, memberDevice: memberToken.DeviceID, recorder: recorder, deps: deps}
 }
 
 func (f administrationFixture) call(method, path, token, body string) *httptest.ResponseRecorder {

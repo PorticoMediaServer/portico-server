@@ -85,14 +85,15 @@ type credentialGate struct {
 	total           int
 	streamed        int
 	uses            map[string]access.CredentialUse
-	flushed         time.Time
-	flushing        bool
+	flushMu         sync.Mutex
+	useTimer        *time.Timer
+	closed          bool
 	resolving       chan struct{}
 	resolveFailures limiter
 }
 
 func newCredentialGate() *credentialGate {
-	return &credentialGate{resolved: map[string]resolvedEntry{}, buckets: map[string]*credentialBucket{}, inflight: map[string]int{}, streams: map[string]int{}, uses: map[string]access.CredentialUse{}, flushed: time.Now(), resolving: make(chan struct{}, credentialResolveConcurrency)}
+	return &credentialGate{resolved: map[string]resolvedEntry{}, buckets: map[string]*credentialBucket{}, inflight: map[string]int{}, streams: map[string]int{}, uses: map[string]access.CredentialUse{}, resolving: make(chan struct{}, credentialResolveConcurrency)}
 }
 
 type credentialNestedKey struct{}
@@ -263,29 +264,90 @@ func (g *credentialGate) leave(id string, stream bool) {
 	}
 }
 
-// used notes a request and, about once a minute, hands the notes to the store
-// off the request path.
+// used schedules a flush on the first use of an idle credential gate. No
+// subsequent request is needed for the last-used time to reach the database.
 func (g *credentialGate) used(store *access.Store, id string, now time.Time) {
-	g.mu.Lock()
-	use := g.uses[id]
-	use.LastUsedMs, use.Requests = now.UnixMilli(), use.Requests+1
-	g.uses[id] = use
-	if g.flushing || now.Sub(g.flushed) < credentialUseFlush || store == nil {
-		g.mu.Unlock()
+	if store == nil {
 		return
 	}
-	batch := g.uses
-	g.uses, g.flushing, g.flushed = map[string]access.CredentialUse{}, true, now
-	g.mu.Unlock()
-	supervise.Go("httpapi.credential-use", func() {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	use := g.uses[id]
+	use.LastUsedMs, use.Requests = max(use.LastUsedMs, now.UnixMilli()), use.Requests+1
+	g.uses[id] = use
+	g.scheduleUseFlush(store)
+}
+
+// scheduleUseFlush is called with g.mu held. An idle gate has no timer.
+func (g *credentialGate) scheduleUseFlush(store *access.Store) {
+	if g.closed || g.useTimer != nil || len(g.uses) == 0 {
+		return
+	}
+	g.useTimer = time.AfterFunc(credentialUseFlush, func() {
+		defer supervise.Recover("httpapi.credential-use")
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-		_ = store.RecordCredentialUse(ctx, batch)
-		_ = store.PruneCredentials(ctx)
-		g.mu.Lock()
-		g.flushing = false
-		g.mu.Unlock()
+		_ = g.flushUses(ctx, store)
 	})
+}
+
+func (g *credentialGate) flushUses(ctx context.Context, store *access.Store) error {
+	g.flushMu.Lock()
+	defer g.flushMu.Unlock()
+	g.mu.Lock()
+	if g.useTimer != nil {
+		g.useTimer.Stop()
+		g.useTimer = nil
+	}
+	batch := g.uses
+	g.uses = map[string]access.CredentialUse{}
+	g.mu.Unlock()
+	if len(batch) == 0 || store == nil {
+		return nil
+	}
+	err := store.RecordCredentialUse(ctx, batch)
+	g.mu.Lock()
+	if err != nil {
+		// Uses arriving during the write stay in the new map. Merge a failed
+		// batch back into it, retaining the newest timestamp and both counts.
+		for id, failed := range batch {
+			current := g.uses[id]
+			current.LastUsedMs = max(current.LastUsedMs, failed.LastUsedMs)
+			current.Requests += failed.Requests
+			g.uses[id] = current
+		}
+	}
+	g.scheduleUseFlush(store)
+	g.mu.Unlock()
+	if err == nil {
+		_ = store.PruneCredentials(ctx)
+	}
+	return err
+}
+
+// credentialUsageHandler exposes the router's pending metadata to its shutdown
+// owner while keeping ordinary HTTP handling and nested MCP calls unchanged.
+type credentialUsageHandler struct {
+	http.Handler
+	gate  *credentialGate
+	store *access.Store
+}
+
+// FlushCredentialUse stops the router's timer and persists its pending usage.
+// Call it after draining HTTP requests and before closing the database.
+func FlushCredentialUse(ctx context.Context, handler http.Handler) error {
+	h, ok := handler.(*credentialUsageHandler)
+	if !ok || h.store == nil {
+		return nil
+	}
+	h.gate.mu.Lock()
+	h.gate.closed = true
+	if h.gate.useTimer != nil {
+		h.gate.useTimer.Stop()
+		h.gate.useTimer = nil
+	}
+	h.gate.mu.Unlock()
+	return h.gate.flushUses(ctx, h.store)
 }
 
 // apiRequestsPerMinute is the owner's rate for one credential.

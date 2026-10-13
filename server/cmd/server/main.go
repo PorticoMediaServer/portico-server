@@ -1009,6 +1009,11 @@ func run() error {
 		notified := make(chan struct{})
 		supervise.Go("hosted.shutdown-notice", func() { defer close(notified); _ = control.NotifyShutdown(stop) })
 		_ = server.Shutdown(stop)
+		flush, finishFlush := context.WithTimeout(context.Background(), 10*time.Second)
+		if err := httpapi.FlushCredentialUse(flush, handler); err != nil {
+			log.Printf("Credential usage could not be saved before shutdown: %v", err)
+		}
+		finishFlush()
 		<-notified
 	})
 	certificates := claimHandler.Certificates()
