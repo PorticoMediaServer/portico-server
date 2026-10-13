@@ -257,6 +257,10 @@ func ResolveTitleTx(ctx context.Context, tx *sql.Tx, c TitleClaim) (id int64, cr
 			}
 			if !elsewhere {
 				id = held
+			} else if err = DropIdentityTx(ctx, tx, held, c.Locator); err != nil {
+				// The title that was here has its file somewhere else now: the
+				// place is free for whatever this file turns out to be.
+				return 0, false, err
 			}
 		}
 	}

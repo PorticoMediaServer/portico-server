@@ -188,7 +188,7 @@ func (s *Service) Libraries() ([]Library, error) {
 		return out, err
 	}
 	// The owner's order first (position), then by name for libraries not ordered yet.
-	rows, e := s.read().Query(`SELECT id,name,kind FROM libraries ORDER BY position,name,id`)
+	rows, e := s.read().Query(`SELECT id,name,kind FROM libraries WHERE NOT EXISTS(SELECT 1 FROM catalog_libraries gone WHERE gone.library_id=libraries.id AND gone.retired=1) ORDER BY position,name,id`)
 	if e != nil {
 		return nil, e
 	}

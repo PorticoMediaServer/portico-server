@@ -470,7 +470,7 @@ func (s *Service) LibraryIndex(ctx context.Context, auth Authorize, token string
 		return out, err
 	}
 	err = s.snapshot(ctx, auth, func(tx *sql.Tx) error {
-		rows, err := tx.QueryContext(ctx, `SELECT l.id,l.name,l.kind,(SELECT COUNT(*) FROM library_sources s WHERE s.library_id=l.id) FROM libraries l WHERE (?='' OR l.id>?) ORDER BY l.id LIMIT ?`, c.ID, c.ID, size+1)
+		rows, err := tx.QueryContext(ctx, `SELECT l.id,l.name,l.kind,(SELECT COUNT(*) FROM library_sources s WHERE s.library_id=l.id) FROM libraries l WHERE NOT EXISTS(SELECT 1 FROM catalog_libraries gone WHERE gone.library_id=l.id AND gone.retired=1) AND (?='' OR l.id>?) ORDER BY l.id LIMIT ?`, c.ID, c.ID, size+1)
 		if err != nil {
 			return err
 		}
