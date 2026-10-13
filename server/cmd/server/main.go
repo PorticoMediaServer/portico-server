@@ -378,6 +378,12 @@ func run() error {
 		return e
 	}
 	wireNativeServerIdentity(ident)
+	// A restore that has just been applied signs everyone out, before anything
+	// can be served from the restored sessions. The copy of the previous
+	// database the restore set aside is scrubbed of its sessions too.
+	if e = signOutAfterRestore(context.Background(), ident, state); e != nil {
+		return e
+	}
 	// A devtrust build on a throwaway e2e state directory seeds its test owner
 	// (identity.SeedDevE2EOwner); every other build and state does nothing.
 	if e = ident.SeedDevE2EOwner(context.Background()); e != nil {
@@ -915,6 +921,8 @@ func run() error {
 	adminOperations.DVR = recordingStore
 	events := eventfeed.New(db)
 	backupService := backup.New(state, db, ident.ID(), buildinfo.Info()["version"], persistence.SchemaVersion())
+	// A backup holds no sessions: each database copy is scrubbed as it is written.
+	backupService.SetCopyScrubber(identity.ScrubBackupCopy)
 	backupService.SetRestartFunc(func() {
 		restartRequested.Store(true)
 		// The staged reply must flush before leaving the way SIGTERM does.
