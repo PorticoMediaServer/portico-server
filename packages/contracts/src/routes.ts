@@ -480,6 +480,48 @@ export const routes = [
     "status": 200
   },
   {
+    "id": "delete_collections_id",
+    "method": "DELETE",
+    "path": "/v1/collections/{id}",
+    "summary": "Delete id",
+    "access": "owner",
+    "requires": "library",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 204,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "delete_collections_id_items_itemId",
+    "method": "DELETE",
+    "path": "/v1/collections/{id}/items/{itemId}",
+    "summary": "Delete itemId",
+    "access": "owner",
+    "requires": "library",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 204,
+    "http": true,
+    "admission": "default"
+  },
+  {
     "id": "delete_device",
     "method": "DELETE",
     "path": "/v1/devices/{id}",
@@ -684,6 +726,69 @@ export const routes = [
     "admission": "browsing"
   },
   {
+    "id": "delete_playlists_id",
+    "method": "DELETE",
+    "path": "/v1/playlists/{id}",
+    "summary": "Delete id",
+    "access": "device",
+    "requires": "playback",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
+  },
+  {
+    "id": "delete_playlists_id_entries_entryId",
+    "method": "DELETE",
+    "path": "/v1/playlists/{id}/entries/{entryId}",
+    "summary": "Delete entryId",
+    "access": "device",
+    "requires": "playback",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
+  },
+  {
+    "id": "delete_playlists_id_shares",
+    "method": "DELETE",
+    "path": "/v1/playlists/{id}/shares",
+    "summary": "Delete shares",
+    "access": "device",
+    "requires": "playback",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
+  },
+  {
     "id": "delete_queue",
     "method": "DELETE",
     "path": "/v1/queues/{id}",
@@ -698,6 +803,48 @@ export const routes = [
       "not_found"
     ],
     "status": 204
+  },
+  {
+    "id": "delete_saved_resources_id",
+    "method": "DELETE",
+    "path": "/v1/saved-resources/{id}",
+    "summary": "Delete id",
+    "access": "device",
+    "requires": "playback",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
+  },
+  {
+    "id": "delete_saved_resources_id_shares",
+    "method": "DELETE",
+    "path": "/v1/saved-resources/{id}/shares",
+    "summary": "Delete shares",
+    "access": "device",
+    "requires": "playback",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
   },
   {
     "id": "delete_search_history",
@@ -1654,6 +1801,27 @@ export const routes = [
       "internal"
     ],
     "status": 200
+  },
+  {
+    "id": "get_collections_id",
+    "method": "GET",
+    "path": "/v1/collections/{id}",
+    "summary": "Get id",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
   },
   {
     "id": "get_collections_id_items",
@@ -2857,6 +3025,52 @@ export const routes = [
     "admission": "browsing"
   },
   {
+    "id": "get_libraries_id_categories",
+    "method": "GET",
+    "path": "/v1/libraries/{id}/categories",
+    "summary": "Get categories",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "get_libraries_id_collections",
+    "method": "GET",
+    "path": "/v1/libraries/{id}/collections",
+    "summary": "Get collections",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "cursor",
+      "limit"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
     "id": "get_libraries_id_content",
     "method": "GET",
     "path": "/v1/libraries/{id}/content",
@@ -3709,6 +3923,77 @@ export const routes = [
     "status": 200
   },
   {
+    "id": "get_playlists_id",
+    "method": "GET",
+    "path": "/v1/playlists/{id}",
+    "summary": "Get id",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "get_playlists_id_content",
+    "method": "GET",
+    "path": "/v1/playlists/{id}/content",
+    "summary": "Get content",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "cursor",
+      "limit"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "get_playlists_id_share_candidates",
+    "method": "GET",
+    "path": "/v1/playlists/{id}/share-candidates",
+    "summary": "Get share candidates",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "cursor",
+      "limit"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
     "id": "get_profiles_id_avatar",
     "method": "GET",
     "path": "/v1/profiles/{id}/avatar",
@@ -3865,6 +4150,53 @@ export const routes = [
     "admission": "browsing"
   },
   {
+    "id": "get_saved_resources",
+    "method": "GET",
+    "path": "/v1/saved-resources",
+    "summary": "Get saved resources",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "cursor",
+      "kind",
+      "pinned"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "get_saved_resources_id",
+    "method": "GET",
+    "path": "/v1/saved-resources/{id}",
+    "summary": "Get id",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
     "id": "get_saved_resources_id_content",
     "method": "GET",
     "path": "/v1/saved-resources/{id}/content",
@@ -3886,6 +4218,30 @@ export const routes = [
       "internal"
     ],
     "status": 200
+  },
+  {
+    "id": "get_saved_resources_id_share_candidates",
+    "method": "GET",
+    "path": "/v1/saved-resources/{id}/share-candidates",
+    "summary": "Get share candidates",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "cursor"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
   },
   {
     "id": "get_scan_issues",
@@ -5454,6 +5810,27 @@ export const routes = [
     "admission": "default"
   },
   {
+    "id": "patch_collections_id",
+    "method": "PATCH",
+    "path": "/v1/collections/{id}",
+    "summary": "Patch id",
+    "access": "owner",
+    "requires": "library",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
     "id": "patch_device",
     "method": "PATCH",
     "path": "/v1/devices/{id}",
@@ -5523,6 +5900,48 @@ export const routes = [
     "lane": "default",
     "cost": "constant",
     "bodyLimit": 262144,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
+  },
+  {
+    "id": "patch_playlists_id",
+    "method": "PATCH",
+    "path": "/v1/playlists/{id}",
+    "summary": "Patch id",
+    "access": "device",
+    "requires": "playback",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
+  },
+  {
+    "id": "patch_saved_resources_id",
+    "method": "PATCH",
+    "path": "/v1/saved-resources/{id}",
+    "summary": "Patch id",
+    "access": "device",
+    "requires": "playback",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
     "errors": [
       "invalid_request",
       "unauthorized",
@@ -6612,6 +7031,27 @@ export const routes = [
     "admission": "browsing"
   },
   {
+    "id": "post_libraries_id_collections",
+    "method": "POST",
+    "path": "/v1/libraries/{id}/collections",
+    "summary": "Post collections",
+    "access": "owner",
+    "requires": "library",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 201,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
     "id": "post_libraries_id_episode_assignments",
     "method": "POST",
     "path": "/v1/libraries/{id}/episode-assignments",
@@ -6676,6 +7116,27 @@ export const routes = [
     "status": 202,
     "http": true,
     "admission": "browsing"
+  },
+  {
+    "id": "post_me_recommendations_reset",
+    "method": "POST",
+    "path": "/v1/me/recommendations:reset",
+    "summary": "Post recommendations:reset",
+    "access": "device",
+    "requires": "playback",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
   },
   {
     "id": "post_metadata_attention",
@@ -6760,6 +7221,90 @@ export const routes = [
     "status": 200,
     "http": true,
     "admission": "browsing"
+  },
+  {
+    "id": "post_personal_history_actions",
+    "method": "POST",
+    "path": "/v1/personal-history/actions",
+    "summary": "Post actions",
+    "access": "device",
+    "requires": "playback",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
+  },
+  {
+    "id": "post_playlists",
+    "method": "POST",
+    "path": "/v1/playlists",
+    "summary": "Post playlists",
+    "access": "device",
+    "requires": "playback",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
+  },
+  {
+    "id": "post_playlists_id_entries",
+    "method": "POST",
+    "path": "/v1/playlists/{id}/entries",
+    "summary": "Post entries",
+    "access": "device",
+    "requires": "playback",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
+  },
+  {
+    "id": "post_saved_resources",
+    "method": "POST",
+    "path": "/v1/saved-resources",
+    "summary": "Post saved resources",
+    "access": "device",
+    "requires": "playback",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
   },
   {
     "id": "post_shows_id_metadata_screen_retry",
@@ -7386,6 +7931,27 @@ export const routes = [
     "admission": "default"
   },
   {
+    "id": "put_collections_id_items_itemId",
+    "method": "PUT",
+    "path": "/v1/collections/{id}/items/{itemId}",
+    "summary": "Put itemId",
+    "access": "owner",
+    "requires": "library",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 204,
+    "http": true,
+    "admission": "default"
+  },
+  {
     "id": "put_device_capabilities",
     "method": "PUT",
     "path": "/v1/me/devices/current/capabilities",
@@ -7738,6 +8304,48 @@ export const routes = [
     "status": 200
   },
   {
+    "id": "put_playlists_id_shares",
+    "method": "PUT",
+    "path": "/v1/playlists/{id}/shares",
+    "summary": "Put shares",
+    "access": "device",
+    "requires": "playback",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
+  },
+  {
+    "id": "put_saved_pins_kind_id",
+    "method": "PUT",
+    "path": "/v1/saved-pins/{kind}/{id}",
+    "summary": "Put id",
+    "access": "device",
+    "requires": "playback",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
     "id": "put_saved_pins_order",
     "method": "PUT",
     "path": "/v1/saved-pins/order",
@@ -7757,6 +8365,48 @@ export const routes = [
     "status": 200,
     "http": true,
     "admission": "browsing"
+  },
+  {
+    "id": "put_saved_resources_id_entries",
+    "method": "PUT",
+    "path": "/v1/saved-resources/{id}/entries",
+    "summary": "Put entries",
+    "access": "device",
+    "requires": "playback",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
+  },
+  {
+    "id": "put_saved_resources_id_shares",
+    "method": "PUT",
+    "path": "/v1/saved-resources/{id}/shares",
+    "summary": "Put shares",
+    "access": "device",
+    "requires": "playback",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
   },
   {
     "id": "put_shows_id_metadata_screen",

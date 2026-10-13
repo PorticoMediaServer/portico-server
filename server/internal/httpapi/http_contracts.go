@@ -38,5 +38,8 @@ func registerHTTPContracts(registry *apikit.Registry) error {
 	if err := registerMetadataHTTPContracts(registry); err != nil {
 		return err
 	}
+	if err := registerPersonalHTTPContracts(registry); err != nil {
+		return err
+	}
 	return registerIdentityHTTPContracts(registry)
 }

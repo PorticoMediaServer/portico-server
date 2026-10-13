@@ -141,7 +141,7 @@ func (d Dependencies) discoveryRoutes(mux *http.ServeMux) {
 		setGridTag(w, tag)
 		write(w, 200, result)
 	})
-	d.projectedHandle(mux, "GET /v1/libraries/{id}/categories", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "GET /v1/libraries/{id}/categories", func(w http.ResponseWriter, r *http.Request) {
 		p, ok := libraryAccess(w, r, r.PathValue("id"))
 		if !ok {
 			return
@@ -163,7 +163,7 @@ func (d Dependencies) discoveryRoutes(mux *http.ServeMux) {
 		setGridTag(w, tag)
 		write(w, 200, map[string]any{"categories": rows})
 	})
-	d.projectedHandle(mux, "GET /v1/libraries/{id}/collections", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "GET /v1/libraries/{id}/collections", func(w http.ResponseWriter, r *http.Request) {
 		p, ok := libraryAccess(w, r, r.PathValue("id"))
 		if !ok {
 			return
@@ -186,7 +186,7 @@ func (d Dependencies) discoveryRoutes(mux *http.ServeMux) {
 		setGridTag(w, tag)
 		write(w, 200, map[string]any{"collections": rows, "nextCursor": next})
 	})
-	d.projectedHandle(mux, "POST /v1/libraries/{id}/collections", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "POST /v1/libraries/{id}/collections", func(w http.ResponseWriter, r *http.Request) {
 		if _, err := d.owner(r); err != nil {
 			failure(w, err)
 			return
@@ -236,7 +236,7 @@ func (d Dependencies) discoveryRoutes(mux *http.ServeMux) {
 		}
 		return p, collection, true
 	}
-	d.projectedHandle(mux, "GET /v1/collections/{id}", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "GET /v1/collections/{id}", func(w http.ResponseWriter, r *http.Request) {
 		_, c, ok := collectionAccess(w, r)
 		if ok {
 			write(w, 200, c)
@@ -264,7 +264,7 @@ func (d Dependencies) discoveryRoutes(mux *http.ServeMux) {
 		setGridTag(w, tag)
 		write(w, 200, map[string]any{"items": rows, "nextCursor": next})
 	})
-	d.projectedHandle(mux, "PATCH /v1/collections/{id}", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "PATCH /v1/collections/{id}", func(w http.ResponseWriter, r *http.Request) {
 		if _, err := d.owner(r); err != nil {
 			failure(w, err)
 			return
@@ -283,7 +283,7 @@ func (d Dependencies) discoveryRoutes(mux *http.ServeMux) {
 		}
 		write(w, 200, row)
 	})
-	d.projectedHandle(mux, "DELETE /v1/collections/{id}", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "DELETE /v1/collections/{id}", func(w http.ResponseWriter, r *http.Request) {
 		if _, err := d.owner(r); err != nil {
 			failure(w, err)
 			return

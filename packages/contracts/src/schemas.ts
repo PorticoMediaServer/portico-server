@@ -7912,6 +7912,26 @@ export const schemas = {
     "required": [],
     "type": "object"
   },
+  "DeleteCollectionsIdItemsItemIdRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "DeleteCollectionsIdItemsItemIdResponse": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "DeleteCollectionsIdRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "DeleteCollectionsIdResponse": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
   "DeleteDeviceRequest": {
     "properties": {},
     "required": [],
@@ -8590,6 +8610,270 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "DeletePlaylistsIdEntriesEntryIdRequest": {
+    "properties": {
+      "accountId": {
+        "type": "string"
+      },
+      "afterEntryId": {
+        "type": "string"
+      },
+      "authority": {
+        "type": "string"
+      },
+      "entryIds": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "expectedRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "itemId": {
+        "type": "string"
+      },
+      "itemIds": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "name": {
+        "type": "string"
+      },
+      "operationId": {
+        "type": "string"
+      },
+      "profileId": {
+        "type": "string"
+      },
+      "role": {
+        "type": "string"
+      },
+      "summary": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "operationId"
+    ],
+    "type": "object"
+  },
+  "DeletePlaylistsIdEntriesEntryIdResponse": {
+    "properties": {
+      "deleted": {
+        "type": "boolean"
+      },
+      "entryId": {
+        "type": "string"
+      },
+      "operationId": {
+        "type": "string"
+      },
+      "playlistId": {
+        "type": "string"
+      },
+      "revision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "serverId": {
+        "type": "string"
+      },
+      "viewerFence": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "serverId",
+      "viewerFence",
+      "operationId",
+      "playlistId",
+      "revision",
+      "deleted"
+    ],
+    "type": "object"
+  },
+  "DeletePlaylistsIdRequest": {
+    "properties": {
+      "accountId": {
+        "type": "string"
+      },
+      "afterEntryId": {
+        "type": "string"
+      },
+      "authority": {
+        "type": "string"
+      },
+      "entryIds": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "expectedRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "itemId": {
+        "type": "string"
+      },
+      "itemIds": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "name": {
+        "type": "string"
+      },
+      "operationId": {
+        "type": "string"
+      },
+      "profileId": {
+        "type": "string"
+      },
+      "role": {
+        "type": "string"
+      },
+      "summary": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "operationId"
+    ],
+    "type": "object"
+  },
+  "DeletePlaylistsIdResponse": {
+    "properties": {
+      "deleted": {
+        "type": "boolean"
+      },
+      "entryId": {
+        "type": "string"
+      },
+      "operationId": {
+        "type": "string"
+      },
+      "playlistId": {
+        "type": "string"
+      },
+      "revision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "serverId": {
+        "type": "string"
+      },
+      "viewerFence": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "serverId",
+      "viewerFence",
+      "operationId",
+      "playlistId",
+      "revision",
+      "deleted"
+    ],
+    "type": "object"
+  },
+  "DeletePlaylistsIdSharesRequest": {
+    "properties": {
+      "accountId": {
+        "type": "string"
+      },
+      "afterEntryId": {
+        "type": "string"
+      },
+      "authority": {
+        "type": "string"
+      },
+      "entryIds": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "expectedRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "itemId": {
+        "type": "string"
+      },
+      "itemIds": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "name": {
+        "type": "string"
+      },
+      "operationId": {
+        "type": "string"
+      },
+      "profileId": {
+        "type": "string"
+      },
+      "role": {
+        "type": "string"
+      },
+      "summary": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "operationId"
+    ],
+    "type": "object"
+  },
+  "DeletePlaylistsIdSharesResponse": {
+    "properties": {
+      "deleted": {
+        "type": "boolean"
+      },
+      "entryId": {
+        "type": "string"
+      },
+      "operationId": {
+        "type": "string"
+      },
+      "playlistId": {
+        "type": "string"
+      },
+      "revision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "serverId": {
+        "type": "string"
+      },
+      "viewerFence": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "serverId",
+      "viewerFence",
+      "operationId",
+      "playlistId",
+      "revision",
+      "deleted"
+    ],
+    "type": "object"
+  },
   "DeleteQueueRequest": {
     "properties": {},
     "required": [],
@@ -8598,6 +8882,508 @@ export const schemas = {
   "DeleteQueueResponse": {
     "properties": {},
     "required": [],
+    "type": "object"
+  },
+  "DeleteSavedResourcesIdRequest": {
+    "properties": {
+      "accountId": {
+        "type": "string"
+      },
+      "addItemIds": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "authority": {
+        "type": "string"
+      },
+      "definition": {
+        "properties": {
+          "libraryId": {
+            "type": "string"
+          },
+          "pivot": {
+            "type": "string"
+          },
+          "presentation": {
+            "type": "string"
+          },
+          "query": {
+            "additionalProperties": false,
+            "description": "A predicate or all/any/not group. The parser enforces the published depth and clause bounds.",
+            "nullable": true,
+            "properties": {
+              "all": {
+                "items": {
+                  "additionalProperties": {},
+                  "properties": {},
+                  "required": [],
+                  "type": "object"
+                },
+                "maxItems": 40,
+                "minItems": 1,
+                "type": "array"
+              },
+              "any": {
+                "items": {
+                  "additionalProperties": {},
+                  "properties": {},
+                  "required": [],
+                  "type": "object"
+                },
+                "maxItems": 40,
+                "minItems": 1,
+                "type": "array"
+              },
+              "field": {
+                "type": "string"
+              },
+              "not": {
+                "additionalProperties": {},
+                "properties": {},
+                "required": [],
+                "type": "object"
+              },
+              "operator": {
+                "type": "string"
+              },
+              "value": {}
+            },
+            "required": [],
+            "type": "object"
+          },
+          "sort": {
+            "items": {
+              "properties": {
+                "direction": {
+                  "type": "string"
+                },
+                "field": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "field",
+                "direction"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "libraryId",
+          "pivot",
+          "query",
+          "sort",
+          "presentation"
+        ],
+        "type": "object"
+      },
+      "expectedRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "kind": {
+        "type": "string"
+      },
+      "name": {
+        "type": "string"
+      },
+      "operationId": {
+        "type": "string"
+      },
+      "profileId": {
+        "type": "string"
+      },
+      "removeEntryIds": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "role": {
+        "type": "string"
+      },
+      "summary": {
+        "type": "string"
+      },
+      "visibility": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "operationId",
+      "expectedRevision"
+    ],
+    "type": "object"
+  },
+  "DeleteSavedResourcesIdResponse": {
+    "properties": {
+      "current": {
+        "properties": {
+          "deleted": {
+            "type": "boolean"
+          },
+          "resourceId": {
+            "type": "string"
+          },
+          "revision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "resourceId",
+          "revision",
+          "deleted"
+        ],
+        "type": "object"
+      },
+      "receipt": {
+        "properties": {
+          "deleted": {
+            "type": "boolean"
+          },
+          "entries": {
+            "properties": {
+              "added": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "failed": {
+                "items": {
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "itemId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "itemId",
+                    "code"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "removed": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "unchanged": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "added",
+              "removed",
+              "unchanged",
+              "failed"
+            ],
+            "type": "object"
+          },
+          "operationId": {
+            "type": "string"
+          },
+          "resourceId": {
+            "type": "string"
+          },
+          "revision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "operationId",
+          "resourceId",
+          "revision",
+          "deleted"
+        ],
+        "type": "object"
+      },
+      "receiptLifetimeSeconds": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "serverId": {
+        "type": "string"
+      },
+      "viewerFence": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "serverId",
+      "viewerFence",
+      "receipt",
+      "receiptLifetimeSeconds"
+    ],
+    "type": "object"
+  },
+  "DeleteSavedResourcesIdSharesRequest": {
+    "properties": {
+      "accountId": {
+        "type": "string"
+      },
+      "addItemIds": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "authority": {
+        "type": "string"
+      },
+      "definition": {
+        "properties": {
+          "libraryId": {
+            "type": "string"
+          },
+          "pivot": {
+            "type": "string"
+          },
+          "presentation": {
+            "type": "string"
+          },
+          "query": {
+            "additionalProperties": false,
+            "description": "A predicate or all/any/not group. The parser enforces the published depth and clause bounds.",
+            "nullable": true,
+            "properties": {
+              "all": {
+                "items": {
+                  "additionalProperties": {},
+                  "properties": {},
+                  "required": [],
+                  "type": "object"
+                },
+                "maxItems": 40,
+                "minItems": 1,
+                "type": "array"
+              },
+              "any": {
+                "items": {
+                  "additionalProperties": {},
+                  "properties": {},
+                  "required": [],
+                  "type": "object"
+                },
+                "maxItems": 40,
+                "minItems": 1,
+                "type": "array"
+              },
+              "field": {
+                "type": "string"
+              },
+              "not": {
+                "additionalProperties": {},
+                "properties": {},
+                "required": [],
+                "type": "object"
+              },
+              "operator": {
+                "type": "string"
+              },
+              "value": {}
+            },
+            "required": [],
+            "type": "object"
+          },
+          "sort": {
+            "items": {
+              "properties": {
+                "direction": {
+                  "type": "string"
+                },
+                "field": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "field",
+                "direction"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "libraryId",
+          "pivot",
+          "query",
+          "sort",
+          "presentation"
+        ],
+        "type": "object"
+      },
+      "expectedRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "kind": {
+        "type": "string"
+      },
+      "name": {
+        "type": "string"
+      },
+      "operationId": {
+        "type": "string"
+      },
+      "profileId": {
+        "type": "string"
+      },
+      "removeEntryIds": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "role": {
+        "type": "string"
+      },
+      "summary": {
+        "type": "string"
+      },
+      "visibility": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "operationId",
+      "expectedRevision"
+    ],
+    "type": "object"
+  },
+  "DeleteSavedResourcesIdSharesResponse": {
+    "properties": {
+      "current": {
+        "properties": {
+          "deleted": {
+            "type": "boolean"
+          },
+          "resourceId": {
+            "type": "string"
+          },
+          "revision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "resourceId",
+          "revision",
+          "deleted"
+        ],
+        "type": "object"
+      },
+      "receipt": {
+        "properties": {
+          "deleted": {
+            "type": "boolean"
+          },
+          "entries": {
+            "properties": {
+              "added": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "failed": {
+                "items": {
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "itemId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "itemId",
+                    "code"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "removed": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "unchanged": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "added",
+              "removed",
+              "unchanged",
+              "failed"
+            ],
+            "type": "object"
+          },
+          "operationId": {
+            "type": "string"
+          },
+          "resourceId": {
+            "type": "string"
+          },
+          "revision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "operationId",
+          "resourceId",
+          "revision",
+          "deleted"
+        ],
+        "type": "object"
+      },
+      "receiptLifetimeSeconds": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "serverId": {
+        "type": "string"
+      },
+      "viewerFence": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "serverId",
+      "viewerFence",
+      "receipt",
+      "receiptLifetimeSeconds"
+    ],
     "type": "object"
   },
   "DeleteSearchHistoryRequest": {
@@ -15043,6 +15829,36 @@ export const schemas = {
     "required": [
       "items",
       "nextCursor"
+    ],
+    "type": "object"
+  },
+  "GetCollectionsIdRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetCollectionsIdResponse": {
+    "properties": {
+      "id": {
+        "type": "string"
+      },
+      "itemCount": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "libraryId": {
+        "type": "string"
+      },
+      "name": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "id",
+      "libraryId",
+      "name",
+      "itemCount"
     ],
     "type": "object"
   },
@@ -27861,6 +28677,94 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "GetLibrariesIdCategoriesRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetLibrariesIdCategoriesResponse": {
+    "properties": {
+      "categories": {
+        "items": {
+          "properties": {
+            "artworkPaths": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "count": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "id": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "name",
+            "count"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      }
+    },
+    "required": [
+      "categories"
+    ],
+    "type": "object"
+  },
+  "GetLibrariesIdCollectionsRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetLibrariesIdCollectionsResponse": {
+    "properties": {
+      "collections": {
+        "items": {
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "itemCount": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "libraryId": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "libraryId",
+            "name",
+            "itemCount"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "nextCursor": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "collections",
+      "nextCursor"
+    ],
+    "type": "object"
+  },
   "GetLibrariesIdContentRequest": {
     "properties": {},
     "required": [],
@@ -39169,6 +40073,1697 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "GetPlaylistsIdContentRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetPlaylistsIdContentResponse": {
+    "properties": {
+      "actions": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "empty": {
+        "properties": {
+          "fallback": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          },
+          "params": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          }
+        },
+        "required": [
+          "key",
+          "fallback"
+        ],
+        "type": "object"
+      },
+      "entity": {
+        "additionalProperties": false,
+        "properties": {
+          "absoluteNumber": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "activeBeginYear": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "activeEndYear": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "addedAt": {
+            "nullable": true,
+            "type": "string"
+          },
+          "airDate": {
+            "type": "string"
+          },
+          "album": {
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "name"
+            ],
+            "type": "object"
+          },
+          "albumType": {
+            "type": "string"
+          },
+          "artist": {
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "name"
+            ],
+            "type": "object"
+          },
+          "artworkPaths": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "author": {
+            "type": "string"
+          },
+          "available": {
+            "type": "boolean"
+          },
+          "backdropUrl": {
+            "type": "string"
+          },
+          "contentRating": {
+            "type": "string"
+          },
+          "count": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "country": {
+            "type": "string"
+          },
+          "discNumber": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "durationMs": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "episodeNumber": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "genres": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "hidden": {
+            "nullable": true,
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "latestEpisode": {
+            "properties": {
+              "airDate": {
+                "type": "string"
+              },
+              "count": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "episodeNumber": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "seasonNumber": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "title": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "airDate",
+              "episodeNumber",
+              "count"
+            ],
+            "type": "object"
+          },
+          "libraryId": {
+            "type": "string"
+          },
+          "media": {
+            "properties": {
+              "absoluteNumber": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "activeBeginYear": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "activeEndYear": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "addedAt": {
+                "nullable": true,
+                "type": "string"
+              },
+              "airDate": {
+                "type": "string"
+              },
+              "album": {
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "name"
+                ],
+                "type": "object"
+              },
+              "albumType": {
+                "type": "string"
+              },
+              "artist": {
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "name"
+                ],
+                "type": "object"
+              },
+              "artworkPaths": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "author": {
+                "type": "string"
+              },
+              "available": {
+                "type": "boolean"
+              },
+              "backdropUrl": {
+                "type": "string"
+              },
+              "contentRating": {
+                "type": "string"
+              },
+              "count": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "country": {
+                "type": "string"
+              },
+              "discNumber": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "durationMs": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "episodeNumber": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "genres": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              },
+              "latestEpisode": {
+                "properties": {
+                  "airDate": {
+                    "type": "string"
+                  },
+                  "count": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "episodeNumber": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "seasonNumber": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "title": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "airDate",
+                  "episodeNumber",
+                  "count"
+                ],
+                "type": "object"
+              },
+              "libraryId": {
+                "type": "string"
+              },
+              "missing": {
+                "type": "boolean"
+              },
+              "navigation": {
+                "properties": {
+                  "category": {
+                    "type": "string"
+                  },
+                  "entityId": {
+                    "type": "string"
+                  },
+                  "view": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "view"
+                ],
+                "type": "object"
+              },
+              "overview": {
+                "type": "string"
+              },
+              "overviewSource": {
+                "type": "string"
+              },
+              "overviewSourceUrl": {
+                "type": "string"
+              },
+              "playback": {
+                "properties": {
+                  "itemId": {
+                    "type": "string"
+                  },
+                  "startMs": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "itemId"
+                ],
+                "type": "object"
+              },
+              "plays": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "posterUrl": {
+                "type": "string"
+              },
+              "progressMs": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "rating": {
+                "type": "number"
+              },
+              "resolution": {
+                "type": "string"
+              },
+              "role": {
+                "type": "string"
+              },
+              "seasonNumber": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "stillUrl": {
+                "type": "string"
+              },
+              "subtitle": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "totalAtLeast": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "trackNumber": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "unwatchedCount": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "userRating": {
+                "maximum": 10,
+                "minimum": 0,
+                "nullable": true,
+                "type": "integer"
+              },
+              "watched": {
+                "type": "boolean"
+              },
+              "watchedCount": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "watchlisted": {
+                "type": "boolean"
+              },
+              "year": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "missing",
+              "id",
+              "kind",
+              "title",
+              "addedAt"
+            ],
+            "type": "object"
+          },
+          "missing": {
+            "type": "boolean"
+          },
+          "navigation": {
+            "properties": {
+              "category": {
+                "type": "string"
+              },
+              "entityId": {
+                "type": "string"
+              },
+              "view": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "view"
+            ],
+            "type": "object"
+          },
+          "overview": {
+            "type": "string"
+          },
+          "overviewSource": {
+            "type": "string"
+          },
+          "overviewSourceUrl": {
+            "type": "string"
+          },
+          "playback": {
+            "properties": {
+              "itemId": {
+                "type": "string"
+              },
+              "startMs": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "itemId"
+            ],
+            "type": "object"
+          },
+          "plays": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "posterUrl": {
+            "type": "string"
+          },
+          "progressMs": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "rating": {
+            "type": "number"
+          },
+          "resolution": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          },
+          "seasonNumber": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "stillUrl": {
+            "type": "string"
+          },
+          "subtitle": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "totalAtLeast": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "trackNumber": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "unwatchedCount": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "userRating": {
+            "maximum": 10,
+            "minimum": 0,
+            "nullable": true,
+            "type": "integer"
+          },
+          "watched": {
+            "type": "boolean"
+          },
+          "watchedCount": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "watchlisted": {
+            "type": "boolean"
+          },
+          "year": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "kind"
+        ],
+        "type": "object"
+      },
+      "filters": {
+        "items": {
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "labelKey": {
+              "type": "string"
+            },
+            "options": {
+              "items": {
+                "properties": {
+                  "count": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "label": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "label",
+                  "count"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "id",
+            "labelKey",
+            "options"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "heading": {
+        "properties": {
+          "fallback": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          },
+          "params": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          }
+        },
+        "required": [
+          "key",
+          "fallback"
+        ],
+        "type": "object"
+      },
+      "listening": {
+        "properties": {
+          "actions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "resume": {
+            "properties": {
+              "itemId": {
+                "type": "string"
+              },
+              "positionMs": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "itemId",
+              "positionMs"
+            ],
+            "type": "object"
+          },
+          "resumeUnavailable": {
+            "type": "boolean"
+          },
+          "target": {
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string"
+              },
+              "libraryId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "libraryId",
+              "kind",
+              "id"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "target",
+          "actions",
+          "resumeUnavailable"
+        ],
+        "type": "object"
+      },
+      "navigation": {
+        "items": {
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "labelKey": {
+              "type": "string"
+            },
+            "view": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "labelKey",
+            "view"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "playlistRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "query": {
+        "properties": {
+          "category": {
+            "type": "string"
+          },
+          "direction": {
+            "type": "string"
+          },
+          "limit": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "q": {
+            "type": "string"
+          },
+          "searchMode": {
+            "type": "string"
+          },
+          "sort": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "sort",
+          "direction",
+          "category",
+          "q",
+          "limit",
+          "searchMode"
+        ],
+        "type": "object"
+      },
+      "revision": {
+        "properties": {
+          "catalog": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "viewer": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "catalog",
+          "viewer"
+        ],
+        "type": "object"
+      },
+      "scope": {
+        "properties": {
+          "entityId": {
+            "type": "string"
+          },
+          "libraryId": {
+            "type": "string"
+          },
+          "libraryKind": {
+            "type": "string"
+          },
+          "serverId": {
+            "type": "string"
+          },
+          "view": {
+            "type": "string"
+          },
+          "viewerFence": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "serverId",
+          "libraryId",
+          "libraryKind",
+          "view",
+          "entityId",
+          "viewerFence"
+        ],
+        "type": "object"
+      },
+      "sections": {
+        "items": {
+          "properties": {
+            "entries": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "absoluteNumber": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "activeBeginYear": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "activeEndYear": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "addedAt": {
+                    "nullable": true,
+                    "type": "string"
+                  },
+                  "airDate": {
+                    "type": "string"
+                  },
+                  "album": {
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "name"
+                    ],
+                    "type": "object"
+                  },
+                  "albumType": {
+                    "type": "string"
+                  },
+                  "artist": {
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "name"
+                    ],
+                    "type": "object"
+                  },
+                  "artworkPaths": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "author": {
+                    "type": "string"
+                  },
+                  "available": {
+                    "type": "boolean"
+                  },
+                  "backdropUrl": {
+                    "type": "string"
+                  },
+                  "contentRating": {
+                    "type": "string"
+                  },
+                  "count": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "country": {
+                    "type": "string"
+                  },
+                  "discNumber": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "durationMs": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "episodeNumber": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "genres": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "hidden": {
+                    "nullable": true,
+                    "type": "boolean"
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string"
+                  },
+                  "label": {
+                    "type": "string"
+                  },
+                  "latestEpisode": {
+                    "properties": {
+                      "airDate": {
+                        "type": "string"
+                      },
+                      "count": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "episodeNumber": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "seasonNumber": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "title": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "airDate",
+                      "episodeNumber",
+                      "count"
+                    ],
+                    "type": "object"
+                  },
+                  "libraryId": {
+                    "type": "string"
+                  },
+                  "media": {
+                    "properties": {
+                      "absoluteNumber": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "activeBeginYear": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "activeEndYear": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "addedAt": {
+                        "nullable": true,
+                        "type": "string"
+                      },
+                      "airDate": {
+                        "type": "string"
+                      },
+                      "album": {
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "name"
+                        ],
+                        "type": "object"
+                      },
+                      "albumType": {
+                        "type": "string"
+                      },
+                      "artist": {
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "name"
+                        ],
+                        "type": "object"
+                      },
+                      "artworkPaths": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
+                      "author": {
+                        "type": "string"
+                      },
+                      "available": {
+                        "type": "boolean"
+                      },
+                      "backdropUrl": {
+                        "type": "string"
+                      },
+                      "contentRating": {
+                        "type": "string"
+                      },
+                      "count": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "country": {
+                        "type": "string"
+                      },
+                      "discNumber": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "durationMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "episodeNumber": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "genres": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
+                      "id": {
+                        "type": "string"
+                      },
+                      "kind": {
+                        "type": "string"
+                      },
+                      "label": {
+                        "type": "string"
+                      },
+                      "latestEpisode": {
+                        "properties": {
+                          "airDate": {
+                            "type": "string"
+                          },
+                          "count": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "episodeNumber": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "seasonNumber": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "title": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "airDate",
+                          "episodeNumber",
+                          "count"
+                        ],
+                        "type": "object"
+                      },
+                      "libraryId": {
+                        "type": "string"
+                      },
+                      "missing": {
+                        "type": "boolean"
+                      },
+                      "navigation": {
+                        "properties": {
+                          "category": {
+                            "type": "string"
+                          },
+                          "entityId": {
+                            "type": "string"
+                          },
+                          "view": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "view"
+                        ],
+                        "type": "object"
+                      },
+                      "overview": {
+                        "type": "string"
+                      },
+                      "overviewSource": {
+                        "type": "string"
+                      },
+                      "overviewSourceUrl": {
+                        "type": "string"
+                      },
+                      "playback": {
+                        "properties": {
+                          "itemId": {
+                            "type": "string"
+                          },
+                          "startMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": 0,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "itemId"
+                        ],
+                        "type": "object"
+                      },
+                      "plays": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "posterUrl": {
+                        "type": "string"
+                      },
+                      "progressMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "rating": {
+                        "type": "number"
+                      },
+                      "resolution": {
+                        "type": "string"
+                      },
+                      "role": {
+                        "type": "string"
+                      },
+                      "seasonNumber": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "stillUrl": {
+                        "type": "string"
+                      },
+                      "subtitle": {
+                        "type": "string"
+                      },
+                      "title": {
+                        "type": "string"
+                      },
+                      "totalAtLeast": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "trackNumber": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "unwatchedCount": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "userRating": {
+                        "maximum": 10,
+                        "minimum": 0,
+                        "nullable": true,
+                        "type": "integer"
+                      },
+                      "watched": {
+                        "type": "boolean"
+                      },
+                      "watchedCount": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "watchlisted": {
+                        "type": "boolean"
+                      },
+                      "year": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "missing",
+                      "id",
+                      "kind",
+                      "title",
+                      "addedAt"
+                    ],
+                    "type": "object"
+                  },
+                  "missing": {
+                    "type": "boolean"
+                  },
+                  "navigation": {
+                    "properties": {
+                      "category": {
+                        "type": "string"
+                      },
+                      "entityId": {
+                        "type": "string"
+                      },
+                      "view": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "view"
+                    ],
+                    "type": "object"
+                  },
+                  "overview": {
+                    "type": "string"
+                  },
+                  "overviewSource": {
+                    "type": "string"
+                  },
+                  "overviewSourceUrl": {
+                    "type": "string"
+                  },
+                  "playback": {
+                    "properties": {
+                      "itemId": {
+                        "type": "string"
+                      },
+                      "startMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "itemId"
+                    ],
+                    "type": "object"
+                  },
+                  "plays": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "posterUrl": {
+                    "type": "string"
+                  },
+                  "progressMs": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "rating": {
+                    "type": "number"
+                  },
+                  "resolution": {
+                    "type": "string"
+                  },
+                  "role": {
+                    "type": "string"
+                  },
+                  "seasonNumber": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "stillUrl": {
+                    "type": "string"
+                  },
+                  "subtitle": {
+                    "type": "string"
+                  },
+                  "title": {
+                    "type": "string"
+                  },
+                  "totalAtLeast": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "trackNumber": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "unwatchedCount": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "userRating": {
+                    "maximum": 10,
+                    "minimum": 0,
+                    "nullable": true,
+                    "type": "integer"
+                  },
+                  "watched": {
+                    "type": "boolean"
+                  },
+                  "watchedCount": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "watchlisted": {
+                    "type": "boolean"
+                  },
+                  "year": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "id",
+                  "kind"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "heading": {
+              "properties": {
+                "fallback": {
+                  "type": "string"
+                },
+                "key": {
+                  "type": "string"
+                },
+                "params": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object"
+                }
+              },
+              "required": [
+                "key",
+                "fallback"
+              ],
+              "type": "object"
+            },
+            "id": {
+              "type": "string"
+            },
+            "nextCursor": {
+              "type": "string"
+            },
+            "seeAll": {
+              "properties": {
+                "pivot": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "query": {
+                  "additionalProperties": {},
+                  "type": "object"
+                },
+                "sort": {
+                  "items": {
+                    "properties": {
+                      "direction": {
+                        "enum": [
+                          "asc",
+                          "desc"
+                        ],
+                        "type": "string"
+                      },
+                      "field": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "field",
+                      "direction"
+                    ],
+                    "type": "object"
+                  },
+                  "maxItems": 3,
+                  "type": "array"
+                }
+              },
+              "required": [
+                "pivot",
+                "sort"
+              ],
+              "type": "object"
+            },
+            "start": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "totalCount": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "type": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "type",
+            "heading",
+            "entries",
+            "totalCount",
+            "nextCursor",
+            "start"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "sorts": {
+        "items": {
+          "properties": {
+            "directions": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "id": {
+              "type": "string"
+            },
+            "labelKey": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "labelKey",
+            "directions"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      }
+    },
+    "required": [
+      "heading",
+      "scope",
+      "revision",
+      "navigation",
+      "query",
+      "sorts",
+      "filters",
+      "sections"
+    ],
+    "type": "object"
+  },
+  "GetPlaylistsIdRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetPlaylistsIdResponse": {
+    "properties": {
+      "actions": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "entryCount": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "id": {
+        "type": "string"
+      },
+      "limits": {
+        "properties": {
+          "maxEntries": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "maxReorderEntries": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "maxShares": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "maxShares",
+          "maxReorderEntries"
+        ],
+        "type": "object"
+      },
+      "name": {
+        "type": "string"
+      },
+      "pinRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "pinned": {
+        "type": "boolean"
+      },
+      "revision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "role": {
+        "type": "string"
+      },
+      "serverId": {
+        "type": "string"
+      },
+      "shares": {
+        "items": {
+          "properties": {
+            "accountId": {
+              "type": "string"
+            },
+            "authority": {
+              "type": "string"
+            },
+            "displayName": {
+              "type": "string"
+            },
+            "profileId": {
+              "type": "string"
+            },
+            "role": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "authority",
+            "accountId",
+            "profileId",
+            "role",
+            "displayName"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "summary": {
+        "type": "string"
+      },
+      "viewerFence": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "pinned",
+      "pinRevision",
+      "serverId",
+      "viewerFence",
+      "id",
+      "name",
+      "summary",
+      "revision",
+      "role",
+      "entryCount",
+      "actions",
+      "limits"
+    ],
+    "type": "object"
+  },
+  "GetPlaylistsIdShareCandidatesRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetPlaylistsIdShareCandidatesResponse": {
+    "properties": {
+      "candidates": {
+        "items": {
+          "properties": {
+            "accountId": {
+              "type": "string"
+            },
+            "authority": {
+              "type": "string"
+            },
+            "displayName": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            },
+            "profileId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "authority",
+            "accountId",
+            "profileId",
+            "id",
+            "displayName"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "nextCursor": {
+        "type": "string"
+      },
+      "playlistId": {
+        "type": "string"
+      },
+      "revision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "serverId": {
+        "type": "string"
+      },
+      "viewerFence": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "serverId",
+      "viewerFence",
+      "playlistId",
+      "revision",
+      "candidates",
+      "nextCursor"
+    ],
+    "type": "object"
+  },
   "GetProfilesIdAvatarRequest": {
     "properties": {},
     "required": [],
@@ -42611,6 +45206,494 @@ export const schemas = {
     "required": [
       "resource",
       "entries",
+      "nextCursor"
+    ],
+    "type": "object"
+  },
+  "GetSavedResourcesIdRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetSavedResourcesIdResponse": {
+    "properties": {
+      "actions": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "definition": {
+        "properties": {
+          "libraryId": {
+            "type": "string"
+          },
+          "pivot": {
+            "type": "string"
+          },
+          "presentation": {
+            "type": "string"
+          },
+          "query": {
+            "additionalProperties": false,
+            "description": "A predicate or all/any/not group. The parser enforces the published depth and clause bounds.",
+            "nullable": true,
+            "properties": {
+              "all": {
+                "items": {
+                  "additionalProperties": {},
+                  "properties": {},
+                  "required": [],
+                  "type": "object"
+                },
+                "maxItems": 40,
+                "minItems": 1,
+                "type": "array"
+              },
+              "any": {
+                "items": {
+                  "additionalProperties": {},
+                  "properties": {},
+                  "required": [],
+                  "type": "object"
+                },
+                "maxItems": 40,
+                "minItems": 1,
+                "type": "array"
+              },
+              "field": {
+                "type": "string"
+              },
+              "not": {
+                "additionalProperties": {},
+                "properties": {},
+                "required": [],
+                "type": "object"
+              },
+              "operator": {
+                "type": "string"
+              },
+              "value": {}
+            },
+            "required": [],
+            "type": "object"
+          },
+          "sort": {
+            "items": {
+              "properties": {
+                "direction": {
+                  "type": "string"
+                },
+                "field": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "field",
+                "direction"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "libraryId",
+          "pivot",
+          "query",
+          "sort",
+          "presentation"
+        ],
+        "type": "object"
+      },
+      "entryCount": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "id": {
+        "type": "string"
+      },
+      "invalidComponents": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "kind": {
+        "type": "string"
+      },
+      "name": {
+        "type": "string"
+      },
+      "pinRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "pinned": {
+        "type": "boolean"
+      },
+      "revision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "role": {
+        "type": "string"
+      },
+      "serverId": {
+        "type": "string"
+      },
+      "shares": {
+        "items": {
+          "properties": {
+            "accountId": {
+              "type": "string"
+            },
+            "authority": {
+              "type": "string"
+            },
+            "displayName": {
+              "type": "string"
+            },
+            "profileId": {
+              "type": "string"
+            },
+            "role": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "authority",
+            "accountId",
+            "profileId",
+            "role",
+            "displayName"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "status": {
+        "type": "string"
+      },
+      "summary": {
+        "type": "string"
+      },
+      "viewerFence": {
+        "type": "string"
+      },
+      "visibility": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "serverId",
+      "viewerFence",
+      "id",
+      "kind",
+      "name",
+      "summary",
+      "visibility",
+      "revision",
+      "role",
+      "entryCount",
+      "actions",
+      "status",
+      "invalidComponents",
+      "pinned",
+      "pinRevision"
+    ],
+    "type": "object"
+  },
+  "GetSavedResourcesIdShareCandidatesRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetSavedResourcesIdShareCandidatesResponse": {
+    "properties": {
+      "candidates": {
+        "items": {
+          "properties": {
+            "accountId": {
+              "type": "string"
+            },
+            "authority": {
+              "type": "string"
+            },
+            "displayName": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            },
+            "profileId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "authority",
+            "accountId",
+            "profileId",
+            "id",
+            "displayName"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "nextCursor": {
+        "type": "string"
+      },
+      "resourceId": {
+        "type": "string"
+      },
+      "revision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "serverId": {
+        "type": "string"
+      },
+      "viewerFence": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "serverId",
+      "viewerFence",
+      "resourceId",
+      "revision",
+      "candidates",
+      "nextCursor"
+    ],
+    "type": "object"
+  },
+  "GetSavedResourcesRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetSavedResourcesResponse": {
+    "properties": {
+      "nextCursor": {
+        "type": "string"
+      },
+      "resources": {
+        "items": {
+          "properties": {
+            "actions": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "definition": {
+              "properties": {
+                "libraryId": {
+                  "type": "string"
+                },
+                "pivot": {
+                  "type": "string"
+                },
+                "presentation": {
+                  "type": "string"
+                },
+                "query": {
+                  "additionalProperties": false,
+                  "description": "A predicate or all/any/not group. The parser enforces the published depth and clause bounds.",
+                  "nullable": true,
+                  "properties": {
+                    "all": {
+                      "items": {
+                        "additionalProperties": {},
+                        "properties": {},
+                        "required": [],
+                        "type": "object"
+                      },
+                      "maxItems": 40,
+                      "minItems": 1,
+                      "type": "array"
+                    },
+                    "any": {
+                      "items": {
+                        "additionalProperties": {},
+                        "properties": {},
+                        "required": [],
+                        "type": "object"
+                      },
+                      "maxItems": 40,
+                      "minItems": 1,
+                      "type": "array"
+                    },
+                    "field": {
+                      "type": "string"
+                    },
+                    "not": {
+                      "additionalProperties": {},
+                      "properties": {},
+                      "required": [],
+                      "type": "object"
+                    },
+                    "operator": {
+                      "type": "string"
+                    },
+                    "value": {}
+                  },
+                  "required": [],
+                  "type": "object"
+                },
+                "sort": {
+                  "items": {
+                    "properties": {
+                      "direction": {
+                        "type": "string"
+                      },
+                      "field": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "field",
+                      "direction"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
+                }
+              },
+              "required": [
+                "libraryId",
+                "pivot",
+                "query",
+                "sort",
+                "presentation"
+              ],
+              "type": "object"
+            },
+            "entryCount": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "id": {
+              "type": "string"
+            },
+            "invalidComponents": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "kind": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "pinRevision": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "pinned": {
+              "type": "boolean"
+            },
+            "revision": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "role": {
+              "type": "string"
+            },
+            "serverId": {
+              "type": "string"
+            },
+            "shares": {
+              "items": {
+                "properties": {
+                  "accountId": {
+                    "type": "string"
+                  },
+                  "authority": {
+                    "type": "string"
+                  },
+                  "displayName": {
+                    "type": "string"
+                  },
+                  "profileId": {
+                    "type": "string"
+                  },
+                  "role": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "authority",
+                  "accountId",
+                  "profileId",
+                  "role",
+                  "displayName"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "status": {
+              "type": "string"
+            },
+            "summary": {
+              "type": "string"
+            },
+            "viewerFence": {
+              "type": "string"
+            },
+            "visibility": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "serverId",
+            "viewerFence",
+            "id",
+            "kind",
+            "name",
+            "summary",
+            "visibility",
+            "revision",
+            "role",
+            "entryCount",
+            "actions",
+            "status",
+            "invalidComponents",
+            "pinned",
+            "pinRevision"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "revision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "serverId": {
+        "type": "string"
+      },
+      "viewerFence": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "serverId",
+      "viewerFence",
+      "revision",
+      "resources",
       "nextCursor"
     ],
     "type": "object"
@@ -50625,6 +53708,42 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "PatchCollectionsIdRequest": {
+    "properties": {
+      "name": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "name"
+    ],
+    "type": "object"
+  },
+  "PatchCollectionsIdResponse": {
+    "properties": {
+      "id": {
+        "type": "string"
+      },
+      "itemCount": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "libraryId": {
+        "type": "string"
+      },
+      "name": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "id",
+      "libraryId",
+      "name",
+      "itemCount"
+    ],
+    "type": "object"
+  },
   "PatchDeviceRequest": {
     "properties": {
       "lastProfileId": {
@@ -51044,6 +54163,345 @@ export const schemas = {
       "kind",
       "title",
       "description"
+    ],
+    "type": "object"
+  },
+  "PatchPlaylistsIdRequest": {
+    "properties": {
+      "accountId": {
+        "type": "string"
+      },
+      "afterEntryId": {
+        "type": "string"
+      },
+      "authority": {
+        "type": "string"
+      },
+      "entryIds": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "expectedRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "itemId": {
+        "type": "string"
+      },
+      "itemIds": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "name": {
+        "type": "string"
+      },
+      "operationId": {
+        "type": "string"
+      },
+      "profileId": {
+        "type": "string"
+      },
+      "role": {
+        "type": "string"
+      },
+      "summary": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "operationId"
+    ],
+    "type": "object"
+  },
+  "PatchPlaylistsIdResponse": {
+    "properties": {
+      "deleted": {
+        "type": "boolean"
+      },
+      "entryId": {
+        "type": "string"
+      },
+      "operationId": {
+        "type": "string"
+      },
+      "playlistId": {
+        "type": "string"
+      },
+      "revision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "serverId": {
+        "type": "string"
+      },
+      "viewerFence": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "serverId",
+      "viewerFence",
+      "operationId",
+      "playlistId",
+      "revision",
+      "deleted"
+    ],
+    "type": "object"
+  },
+  "PatchSavedResourcesIdRequest": {
+    "properties": {
+      "accountId": {
+        "type": "string"
+      },
+      "addItemIds": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "authority": {
+        "type": "string"
+      },
+      "definition": {
+        "properties": {
+          "libraryId": {
+            "type": "string"
+          },
+          "pivot": {
+            "type": "string"
+          },
+          "presentation": {
+            "type": "string"
+          },
+          "query": {
+            "additionalProperties": false,
+            "description": "A predicate or all/any/not group. The parser enforces the published depth and clause bounds.",
+            "nullable": true,
+            "properties": {
+              "all": {
+                "items": {
+                  "additionalProperties": {},
+                  "properties": {},
+                  "required": [],
+                  "type": "object"
+                },
+                "maxItems": 40,
+                "minItems": 1,
+                "type": "array"
+              },
+              "any": {
+                "items": {
+                  "additionalProperties": {},
+                  "properties": {},
+                  "required": [],
+                  "type": "object"
+                },
+                "maxItems": 40,
+                "minItems": 1,
+                "type": "array"
+              },
+              "field": {
+                "type": "string"
+              },
+              "not": {
+                "additionalProperties": {},
+                "properties": {},
+                "required": [],
+                "type": "object"
+              },
+              "operator": {
+                "type": "string"
+              },
+              "value": {}
+            },
+            "required": [],
+            "type": "object"
+          },
+          "sort": {
+            "items": {
+              "properties": {
+                "direction": {
+                  "type": "string"
+                },
+                "field": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "field",
+                "direction"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "libraryId",
+          "pivot",
+          "query",
+          "sort",
+          "presentation"
+        ],
+        "type": "object"
+      },
+      "expectedRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "kind": {
+        "type": "string"
+      },
+      "name": {
+        "type": "string"
+      },
+      "operationId": {
+        "type": "string"
+      },
+      "profileId": {
+        "type": "string"
+      },
+      "removeEntryIds": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "role": {
+        "type": "string"
+      },
+      "summary": {
+        "type": "string"
+      },
+      "visibility": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "operationId",
+      "expectedRevision"
+    ],
+    "type": "object"
+  },
+  "PatchSavedResourcesIdResponse": {
+    "properties": {
+      "current": {
+        "properties": {
+          "deleted": {
+            "type": "boolean"
+          },
+          "resourceId": {
+            "type": "string"
+          },
+          "revision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "resourceId",
+          "revision",
+          "deleted"
+        ],
+        "type": "object"
+      },
+      "receipt": {
+        "properties": {
+          "deleted": {
+            "type": "boolean"
+          },
+          "entries": {
+            "properties": {
+              "added": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "failed": {
+                "items": {
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "itemId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "itemId",
+                    "code"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "removed": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "unchanged": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "added",
+              "removed",
+              "unchanged",
+              "failed"
+            ],
+            "type": "object"
+          },
+          "operationId": {
+            "type": "string"
+          },
+          "resourceId": {
+            "type": "string"
+          },
+          "revision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "operationId",
+          "resourceId",
+          "revision",
+          "deleted"
+        ],
+        "type": "object"
+      },
+      "receiptLifetimeSeconds": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "serverId": {
+        "type": "string"
+      },
+      "viewerFence": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "serverId",
+      "viewerFence",
+      "receipt",
+      "receiptLifetimeSeconds"
     ],
     "type": "object"
   },
@@ -56016,6 +59474,42 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "PostLibrariesIdCollectionsRequest": {
+    "properties": {
+      "name": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "name"
+    ],
+    "type": "object"
+  },
+  "PostLibrariesIdCollectionsResponse": {
+    "properties": {
+      "id": {
+        "type": "string"
+      },
+      "itemCount": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "libraryId": {
+        "type": "string"
+      },
+      "name": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "id",
+      "libraryId",
+      "name",
+      "itemCount"
+    ],
+    "type": "object"
+  },
   "PostLibrariesIdEpisodeAssignmentsRequest": {
     "properties": {
       "airDate": {
@@ -56224,6 +59718,173 @@ export const schemas = {
       "name",
       "kind",
       "pinned"
+    ],
+    "type": "object"
+  },
+  "PostMeRecommendationsResetRequest": {
+    "properties": {
+      "accountId": {
+        "type": "string"
+      },
+      "addItemIds": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "authority": {
+        "type": "string"
+      },
+      "definition": {
+        "properties": {
+          "libraryId": {
+            "type": "string"
+          },
+          "pivot": {
+            "type": "string"
+          },
+          "presentation": {
+            "type": "string"
+          },
+          "query": {
+            "additionalProperties": false,
+            "description": "A predicate or all/any/not group. The parser enforces the published depth and clause bounds.",
+            "nullable": true,
+            "properties": {
+              "all": {
+                "items": {
+                  "additionalProperties": {},
+                  "properties": {},
+                  "required": [],
+                  "type": "object"
+                },
+                "maxItems": 40,
+                "minItems": 1,
+                "type": "array"
+              },
+              "any": {
+                "items": {
+                  "additionalProperties": {},
+                  "properties": {},
+                  "required": [],
+                  "type": "object"
+                },
+                "maxItems": 40,
+                "minItems": 1,
+                "type": "array"
+              },
+              "field": {
+                "type": "string"
+              },
+              "not": {
+                "additionalProperties": {},
+                "properties": {},
+                "required": [],
+                "type": "object"
+              },
+              "operator": {
+                "type": "string"
+              },
+              "value": {}
+            },
+            "required": [],
+            "type": "object"
+          },
+          "sort": {
+            "items": {
+              "properties": {
+                "direction": {
+                  "type": "string"
+                },
+                "field": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "field",
+                "direction"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "libraryId",
+          "pivot",
+          "query",
+          "sort",
+          "presentation"
+        ],
+        "type": "object"
+      },
+      "expectedRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "kind": {
+        "type": "string"
+      },
+      "name": {
+        "type": "string"
+      },
+      "operationId": {
+        "type": "string"
+      },
+      "profileId": {
+        "type": "string"
+      },
+      "removeEntryIds": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "role": {
+        "type": "string"
+      },
+      "summary": {
+        "type": "string"
+      },
+      "visibility": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "operationId",
+      "expectedRevision"
+    ],
+    "type": "object"
+  },
+  "PostMeRecommendationsResetResponse": {
+    "properties": {
+      "clearedNotInterested": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "operationId": {
+        "type": "string"
+      },
+      "receiptLifetimeSeconds": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "serverId": {
+        "type": "string"
+      },
+      "viewerFence": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "serverId",
+      "viewerFence",
+      "operationId",
+      "clearedNotInterested",
+      "receiptLifetimeSeconds"
     ],
     "type": "object"
   },
@@ -57657,6 +61318,612 @@ export const schemas = {
       "cascades",
       "schema",
       "artworkRoles"
+    ],
+    "type": "object"
+  },
+  "PostPersonalHistoryActionsRequest": {
+    "properties": {
+      "accountId": {
+        "type": "string"
+      },
+      "addItemIds": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "authority": {
+        "type": "string"
+      },
+      "definition": {
+        "properties": {
+          "libraryId": {
+            "type": "string"
+          },
+          "pivot": {
+            "type": "string"
+          },
+          "presentation": {
+            "type": "string"
+          },
+          "query": {
+            "additionalProperties": false,
+            "description": "A predicate or all/any/not group. The parser enforces the published depth and clause bounds.",
+            "nullable": true,
+            "properties": {
+              "all": {
+                "items": {
+                  "additionalProperties": {},
+                  "properties": {},
+                  "required": [],
+                  "type": "object"
+                },
+                "maxItems": 40,
+                "minItems": 1,
+                "type": "array"
+              },
+              "any": {
+                "items": {
+                  "additionalProperties": {},
+                  "properties": {},
+                  "required": [],
+                  "type": "object"
+                },
+                "maxItems": 40,
+                "minItems": 1,
+                "type": "array"
+              },
+              "field": {
+                "type": "string"
+              },
+              "not": {
+                "additionalProperties": {},
+                "properties": {},
+                "required": [],
+                "type": "object"
+              },
+              "operator": {
+                "type": "string"
+              },
+              "value": {}
+            },
+            "required": [],
+            "type": "object"
+          },
+          "sort": {
+            "items": {
+              "properties": {
+                "direction": {
+                  "type": "string"
+                },
+                "field": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "field",
+                "direction"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "libraryId",
+          "pivot",
+          "query",
+          "sort",
+          "presentation"
+        ],
+        "type": "object"
+      },
+      "expectedRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "kind": {
+        "type": "string"
+      },
+      "name": {
+        "type": "string"
+      },
+      "operationId": {
+        "type": "string"
+      },
+      "profileId": {
+        "type": "string"
+      },
+      "removeEntryIds": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "role": {
+        "type": "string"
+      },
+      "summary": {
+        "type": "string"
+      },
+      "visibility": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "operationId",
+      "expectedRevision"
+    ],
+    "type": "object"
+  },
+  "PostPersonalHistoryActionsResponse": {
+    "properties": {
+      "receipt": {
+        "properties": {
+          "action": {
+            "type": "string"
+          },
+          "operationId": {
+            "type": "string"
+          },
+          "revision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "operationId",
+          "revision",
+          "action"
+        ],
+        "type": "object"
+      },
+      "receiptLifetimeSeconds": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "serverId": {
+        "type": "string"
+      },
+      "viewerFence": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "serverId",
+      "viewerFence",
+      "receipt",
+      "receiptLifetimeSeconds"
+    ],
+    "type": "object"
+  },
+  "PostPlaylistsIdEntriesRequest": {
+    "properties": {
+      "accountId": {
+        "type": "string"
+      },
+      "afterEntryId": {
+        "type": "string"
+      },
+      "authority": {
+        "type": "string"
+      },
+      "entryIds": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "expectedRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "itemId": {
+        "type": "string"
+      },
+      "itemIds": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "name": {
+        "type": "string"
+      },
+      "operationId": {
+        "type": "string"
+      },
+      "profileId": {
+        "type": "string"
+      },
+      "role": {
+        "type": "string"
+      },
+      "summary": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "operationId"
+    ],
+    "type": "object"
+  },
+  "PostPlaylistsIdEntriesResponse": {
+    "properties": {
+      "deleted": {
+        "type": "boolean"
+      },
+      "entryId": {
+        "type": "string"
+      },
+      "operationId": {
+        "type": "string"
+      },
+      "playlistId": {
+        "type": "string"
+      },
+      "revision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "serverId": {
+        "type": "string"
+      },
+      "viewerFence": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "serverId",
+      "viewerFence",
+      "operationId",
+      "playlistId",
+      "revision",
+      "deleted"
+    ],
+    "type": "object"
+  },
+  "PostPlaylistsRequest": {
+    "properties": {
+      "accountId": {
+        "type": "string"
+      },
+      "afterEntryId": {
+        "type": "string"
+      },
+      "authority": {
+        "type": "string"
+      },
+      "entryIds": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "expectedRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "itemId": {
+        "type": "string"
+      },
+      "itemIds": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "name": {
+        "type": "string"
+      },
+      "operationId": {
+        "type": "string"
+      },
+      "profileId": {
+        "type": "string"
+      },
+      "role": {
+        "type": "string"
+      },
+      "summary": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "operationId"
+    ],
+    "type": "object"
+  },
+  "PostPlaylistsResponse": {
+    "properties": {
+      "deleted": {
+        "type": "boolean"
+      },
+      "entryId": {
+        "type": "string"
+      },
+      "operationId": {
+        "type": "string"
+      },
+      "playlistId": {
+        "type": "string"
+      },
+      "revision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "serverId": {
+        "type": "string"
+      },
+      "viewerFence": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "serverId",
+      "viewerFence",
+      "operationId",
+      "playlistId",
+      "revision",
+      "deleted"
+    ],
+    "type": "object"
+  },
+  "PostSavedResourcesRequest": {
+    "properties": {
+      "accountId": {
+        "type": "string"
+      },
+      "addItemIds": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "authority": {
+        "type": "string"
+      },
+      "definition": {
+        "properties": {
+          "libraryId": {
+            "type": "string"
+          },
+          "pivot": {
+            "type": "string"
+          },
+          "presentation": {
+            "type": "string"
+          },
+          "query": {
+            "additionalProperties": false,
+            "description": "A predicate or all/any/not group. The parser enforces the published depth and clause bounds.",
+            "nullable": true,
+            "properties": {
+              "all": {
+                "items": {
+                  "additionalProperties": {},
+                  "properties": {},
+                  "required": [],
+                  "type": "object"
+                },
+                "maxItems": 40,
+                "minItems": 1,
+                "type": "array"
+              },
+              "any": {
+                "items": {
+                  "additionalProperties": {},
+                  "properties": {},
+                  "required": [],
+                  "type": "object"
+                },
+                "maxItems": 40,
+                "minItems": 1,
+                "type": "array"
+              },
+              "field": {
+                "type": "string"
+              },
+              "not": {
+                "additionalProperties": {},
+                "properties": {},
+                "required": [],
+                "type": "object"
+              },
+              "operator": {
+                "type": "string"
+              },
+              "value": {}
+            },
+            "required": [],
+            "type": "object"
+          },
+          "sort": {
+            "items": {
+              "properties": {
+                "direction": {
+                  "type": "string"
+                },
+                "field": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "field",
+                "direction"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "libraryId",
+          "pivot",
+          "query",
+          "sort",
+          "presentation"
+        ],
+        "type": "object"
+      },
+      "expectedRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "kind": {
+        "type": "string"
+      },
+      "name": {
+        "type": "string"
+      },
+      "operationId": {
+        "type": "string"
+      },
+      "profileId": {
+        "type": "string"
+      },
+      "removeEntryIds": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "role": {
+        "type": "string"
+      },
+      "summary": {
+        "type": "string"
+      },
+      "visibility": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "operationId",
+      "expectedRevision"
+    ],
+    "type": "object"
+  },
+  "PostSavedResourcesResponse": {
+    "properties": {
+      "current": {
+        "properties": {
+          "deleted": {
+            "type": "boolean"
+          },
+          "resourceId": {
+            "type": "string"
+          },
+          "revision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "resourceId",
+          "revision",
+          "deleted"
+        ],
+        "type": "object"
+      },
+      "receipt": {
+        "properties": {
+          "deleted": {
+            "type": "boolean"
+          },
+          "entries": {
+            "properties": {
+              "added": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "failed": {
+                "items": {
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "itemId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "itemId",
+                    "code"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "removed": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "unchanged": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "added",
+              "removed",
+              "unchanged",
+              "failed"
+            ],
+            "type": "object"
+          },
+          "operationId": {
+            "type": "string"
+          },
+          "resourceId": {
+            "type": "string"
+          },
+          "revision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "operationId",
+          "resourceId",
+          "revision",
+          "deleted"
+        ],
+        "type": "object"
+      },
+      "receiptLifetimeSeconds": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "serverId": {
+        "type": "string"
+      },
+      "viewerFence": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "serverId",
+      "viewerFence",
+      "receipt",
+      "receiptLifetimeSeconds"
     ],
     "type": "object"
   },
@@ -60962,6 +65229,16 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "PutCollectionsIdItemsItemIdRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "PutCollectionsIdItemsItemIdResponse": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
   "PutDeviceCapabilitiesRequest": {
     "properties": {
       "audioDecode": {
@@ -63552,6 +67829,277 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "PutPlaylistsIdSharesRequest": {
+    "properties": {
+      "accountId": {
+        "type": "string"
+      },
+      "afterEntryId": {
+        "type": "string"
+      },
+      "authority": {
+        "type": "string"
+      },
+      "entryIds": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "expectedRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "itemId": {
+        "type": "string"
+      },
+      "itemIds": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "name": {
+        "type": "string"
+      },
+      "operationId": {
+        "type": "string"
+      },
+      "profileId": {
+        "type": "string"
+      },
+      "role": {
+        "type": "string"
+      },
+      "summary": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "operationId"
+    ],
+    "type": "object"
+  },
+  "PutPlaylistsIdSharesResponse": {
+    "properties": {
+      "deleted": {
+        "type": "boolean"
+      },
+      "entryId": {
+        "type": "string"
+      },
+      "operationId": {
+        "type": "string"
+      },
+      "playlistId": {
+        "type": "string"
+      },
+      "revision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "serverId": {
+        "type": "string"
+      },
+      "viewerFence": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "serverId",
+      "viewerFence",
+      "operationId",
+      "playlistId",
+      "revision",
+      "deleted"
+    ],
+    "type": "object"
+  },
+  "PutSavedPinsKindIdRequest": {
+    "properties": {
+      "accountId": {
+        "type": "string"
+      },
+      "addItemIds": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "authority": {
+        "type": "string"
+      },
+      "definition": {
+        "properties": {
+          "libraryId": {
+            "type": "string"
+          },
+          "pivot": {
+            "type": "string"
+          },
+          "presentation": {
+            "type": "string"
+          },
+          "query": {
+            "additionalProperties": false,
+            "description": "A predicate or all/any/not group. The parser enforces the published depth and clause bounds.",
+            "nullable": true,
+            "properties": {
+              "all": {
+                "items": {
+                  "additionalProperties": {},
+                  "properties": {},
+                  "required": [],
+                  "type": "object"
+                },
+                "maxItems": 40,
+                "minItems": 1,
+                "type": "array"
+              },
+              "any": {
+                "items": {
+                  "additionalProperties": {},
+                  "properties": {},
+                  "required": [],
+                  "type": "object"
+                },
+                "maxItems": 40,
+                "minItems": 1,
+                "type": "array"
+              },
+              "field": {
+                "type": "string"
+              },
+              "not": {
+                "additionalProperties": {},
+                "properties": {},
+                "required": [],
+                "type": "object"
+              },
+              "operator": {
+                "type": "string"
+              },
+              "value": {}
+            },
+            "required": [],
+            "type": "object"
+          },
+          "sort": {
+            "items": {
+              "properties": {
+                "direction": {
+                  "type": "string"
+                },
+                "field": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "field",
+                "direction"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "libraryId",
+          "pivot",
+          "query",
+          "sort",
+          "presentation"
+        ],
+        "type": "object"
+      },
+      "expectedRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "kind": {
+        "type": "string"
+      },
+      "name": {
+        "type": "string"
+      },
+      "operationId": {
+        "type": "string"
+      },
+      "profileId": {
+        "type": "string"
+      },
+      "removeEntryIds": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "role": {
+        "type": "string"
+      },
+      "summary": {
+        "type": "string"
+      },
+      "visibility": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "operationId",
+      "expectedRevision"
+    ],
+    "type": "object"
+  },
+  "PutSavedPinsKindIdResponse": {
+    "properties": {
+      "deleted": {
+        "type": "boolean"
+      },
+      "operationId": {
+        "type": "string"
+      },
+      "pinRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "pinned": {
+        "type": "boolean"
+      },
+      "playlistId": {
+        "type": "string"
+      },
+      "resourceId": {
+        "type": "string"
+      },
+      "revision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "serverId": {
+        "type": "string"
+      },
+      "viewerFence": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "serverId",
+      "viewerFence",
+      "operationId",
+      "resourceId",
+      "playlistId",
+      "revision",
+      "pinRevision",
+      "pinned",
+      "deleted"
+    ],
+    "type": "object"
+  },
   "PutSavedPinsOrderRequest": {
     "properties": {
       "expectedRevision": {
@@ -63621,6 +68169,508 @@ export const schemas = {
       "viewerFence",
       "revision",
       "order"
+    ],
+    "type": "object"
+  },
+  "PutSavedResourcesIdEntriesRequest": {
+    "properties": {
+      "accountId": {
+        "type": "string"
+      },
+      "addItemIds": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "authority": {
+        "type": "string"
+      },
+      "definition": {
+        "properties": {
+          "libraryId": {
+            "type": "string"
+          },
+          "pivot": {
+            "type": "string"
+          },
+          "presentation": {
+            "type": "string"
+          },
+          "query": {
+            "additionalProperties": false,
+            "description": "A predicate or all/any/not group. The parser enforces the published depth and clause bounds.",
+            "nullable": true,
+            "properties": {
+              "all": {
+                "items": {
+                  "additionalProperties": {},
+                  "properties": {},
+                  "required": [],
+                  "type": "object"
+                },
+                "maxItems": 40,
+                "minItems": 1,
+                "type": "array"
+              },
+              "any": {
+                "items": {
+                  "additionalProperties": {},
+                  "properties": {},
+                  "required": [],
+                  "type": "object"
+                },
+                "maxItems": 40,
+                "minItems": 1,
+                "type": "array"
+              },
+              "field": {
+                "type": "string"
+              },
+              "not": {
+                "additionalProperties": {},
+                "properties": {},
+                "required": [],
+                "type": "object"
+              },
+              "operator": {
+                "type": "string"
+              },
+              "value": {}
+            },
+            "required": [],
+            "type": "object"
+          },
+          "sort": {
+            "items": {
+              "properties": {
+                "direction": {
+                  "type": "string"
+                },
+                "field": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "field",
+                "direction"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "libraryId",
+          "pivot",
+          "query",
+          "sort",
+          "presentation"
+        ],
+        "type": "object"
+      },
+      "expectedRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "kind": {
+        "type": "string"
+      },
+      "name": {
+        "type": "string"
+      },
+      "operationId": {
+        "type": "string"
+      },
+      "profileId": {
+        "type": "string"
+      },
+      "removeEntryIds": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "role": {
+        "type": "string"
+      },
+      "summary": {
+        "type": "string"
+      },
+      "visibility": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "operationId",
+      "expectedRevision"
+    ],
+    "type": "object"
+  },
+  "PutSavedResourcesIdEntriesResponse": {
+    "properties": {
+      "current": {
+        "properties": {
+          "deleted": {
+            "type": "boolean"
+          },
+          "resourceId": {
+            "type": "string"
+          },
+          "revision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "resourceId",
+          "revision",
+          "deleted"
+        ],
+        "type": "object"
+      },
+      "receipt": {
+        "properties": {
+          "deleted": {
+            "type": "boolean"
+          },
+          "entries": {
+            "properties": {
+              "added": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "failed": {
+                "items": {
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "itemId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "itemId",
+                    "code"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "removed": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "unchanged": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "added",
+              "removed",
+              "unchanged",
+              "failed"
+            ],
+            "type": "object"
+          },
+          "operationId": {
+            "type": "string"
+          },
+          "resourceId": {
+            "type": "string"
+          },
+          "revision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "operationId",
+          "resourceId",
+          "revision",
+          "deleted"
+        ],
+        "type": "object"
+      },
+      "receiptLifetimeSeconds": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "serverId": {
+        "type": "string"
+      },
+      "viewerFence": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "serverId",
+      "viewerFence",
+      "receipt",
+      "receiptLifetimeSeconds"
+    ],
+    "type": "object"
+  },
+  "PutSavedResourcesIdSharesRequest": {
+    "properties": {
+      "accountId": {
+        "type": "string"
+      },
+      "addItemIds": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "authority": {
+        "type": "string"
+      },
+      "definition": {
+        "properties": {
+          "libraryId": {
+            "type": "string"
+          },
+          "pivot": {
+            "type": "string"
+          },
+          "presentation": {
+            "type": "string"
+          },
+          "query": {
+            "additionalProperties": false,
+            "description": "A predicate or all/any/not group. The parser enforces the published depth and clause bounds.",
+            "nullable": true,
+            "properties": {
+              "all": {
+                "items": {
+                  "additionalProperties": {},
+                  "properties": {},
+                  "required": [],
+                  "type": "object"
+                },
+                "maxItems": 40,
+                "minItems": 1,
+                "type": "array"
+              },
+              "any": {
+                "items": {
+                  "additionalProperties": {},
+                  "properties": {},
+                  "required": [],
+                  "type": "object"
+                },
+                "maxItems": 40,
+                "minItems": 1,
+                "type": "array"
+              },
+              "field": {
+                "type": "string"
+              },
+              "not": {
+                "additionalProperties": {},
+                "properties": {},
+                "required": [],
+                "type": "object"
+              },
+              "operator": {
+                "type": "string"
+              },
+              "value": {}
+            },
+            "required": [],
+            "type": "object"
+          },
+          "sort": {
+            "items": {
+              "properties": {
+                "direction": {
+                  "type": "string"
+                },
+                "field": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "field",
+                "direction"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "libraryId",
+          "pivot",
+          "query",
+          "sort",
+          "presentation"
+        ],
+        "type": "object"
+      },
+      "expectedRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "kind": {
+        "type": "string"
+      },
+      "name": {
+        "type": "string"
+      },
+      "operationId": {
+        "type": "string"
+      },
+      "profileId": {
+        "type": "string"
+      },
+      "removeEntryIds": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "role": {
+        "type": "string"
+      },
+      "summary": {
+        "type": "string"
+      },
+      "visibility": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "operationId",
+      "expectedRevision"
+    ],
+    "type": "object"
+  },
+  "PutSavedResourcesIdSharesResponse": {
+    "properties": {
+      "current": {
+        "properties": {
+          "deleted": {
+            "type": "boolean"
+          },
+          "resourceId": {
+            "type": "string"
+          },
+          "revision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "resourceId",
+          "revision",
+          "deleted"
+        ],
+        "type": "object"
+      },
+      "receipt": {
+        "properties": {
+          "deleted": {
+            "type": "boolean"
+          },
+          "entries": {
+            "properties": {
+              "added": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "failed": {
+                "items": {
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "itemId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "itemId",
+                    "code"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "removed": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "unchanged": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "added",
+              "removed",
+              "unchanged",
+              "failed"
+            ],
+            "type": "object"
+          },
+          "operationId": {
+            "type": "string"
+          },
+          "resourceId": {
+            "type": "string"
+          },
+          "revision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "operationId",
+          "resourceId",
+          "revision",
+          "deleted"
+        ],
+        "type": "object"
+      },
+      "receiptLifetimeSeconds": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "serverId": {
+        "type": "string"
+      },
+      "viewerFence": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "serverId",
+      "viewerFence",
+      "receipt",
+      "receiptLifetimeSeconds"
     ],
     "type": "object"
   },
