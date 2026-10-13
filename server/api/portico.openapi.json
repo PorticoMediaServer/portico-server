@@ -873,6 +873,75 @@
         "x-scope": "admin"
       }
     },
+    "/v1/admin/catalogue/failures": {
+      "get": {
+        "operationId": "get_catalogue_failures",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "failures": {
+                      "items": {
+                        "properties": {
+                          "attempts": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "domain": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "entityId": {
+                            "type": "string"
+                          },
+                          "failedAt": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "reason": {
+                            "type": "string"
+                          },
+                          "title": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "domain",
+                          "reason",
+                          "attempts",
+                          "failedAt"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "more": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "failures",
+                    "more"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Read titles set aside by catalogue workers",
+        "x-access": "admin_scope",
+        "x-cost": "page_sized",
+        "x-lane": "default",
+        "x-scope": "admin"
+      }
+    },
     "/v1/admin/connectivity/policy": {
       "get": {
         "operationId": "get_connectivity_policy",
@@ -7534,13 +7603,17 @@
                       },
                       "type": "array"
                     },
+                    "more": {
+                      "type": "boolean"
+                    },
                     "nextAfter": {
                       "type": "string"
                     }
                   },
                   "required": [
                     "events",
-                    "nextAfter"
+                    "nextAfter",
+                    "more"
                   ],
                   "type": "object"
                 }

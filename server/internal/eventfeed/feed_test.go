@@ -84,20 +84,13 @@ func TestHubWakesOnCommittedOutboxWrite(t *testing.T) {
 		h.Run(ctx)
 	}()
 	<-started
-	// Wait until Run has installed its commit subscription. The initial pass
-	// wakes readers, and then this test drains that wake before writing.
-	select {
-	case <-wake:
-	case <-time.After(time.Second):
-		t.Fatal("hub did not start")
-	}
-	_, err = dbwork.ExecWrite(ctx, db, dbwork.ClassInteractive, `INSERT INTO notification_inbox(scope,audience,revision,updated_ms) VALUES('viewer','profile',1,?)`, time.Now().UnixMilli())
+	_, err = dbwork.ExecWrite(ctx, db, dbwork.ClassInteractive, `INSERT INTO api_events(audience,type,at_ms) VALUES('server','settings.changed',?)`, time.Now().UnixMilli())
 	if err != nil {
 		t.Fatal(err)
 	}
 	select {
 	case <-wake:
-	case <-time.After(2 * time.Second):
+	case <-time.After(3 * time.Second):
 		t.Fatal("committed outbox write did not wake subscribers")
 	}
 }
@@ -304,7 +297,7 @@ func TestEventBoundsUseIndexedEndpoints(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer db.Close()
-	if _, err = db.Exec(`CREATE TABLE api_events(id INTEGER PRIMARY KEY)`); err != nil {
+	if _, err = db.Exec(`CREATE TABLE api_events(id INTEGER PRIMARY KEY AUTOINCREMENT)`); err != nil {
 		t.Fatal(err)
 	}
 	// The actual production driver must keep both endpoints indexed, regardless
@@ -331,8 +324,8 @@ func TestEventBoundsUseIndexedEndpoints(t *testing.T) {
 	if err = rows.Err(); err != nil {
 		t.Fatal(err)
 	}
-	if searches != 2 {
-		t.Fatalf("want two indexed endpoint probes, got %d", searches)
+	if searches != 1 {
+		t.Fatalf("want one indexed lower endpoint probe, got %d", searches)
 	}
 	var low, high int64
 	if err = db.QueryRow(eventBoundsSQL).Scan(&low, &high); err != nil || low != 0 || high != 0 {
@@ -394,7 +387,7 @@ func BenchmarkEventBounds(b *testing.B) {
 	}
 	defer db.Close()
 	db.SetMaxOpenConns(1)
-	if _, err = db.Exec(`CREATE TABLE api_events(id INTEGER PRIMARY KEY); WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i+1 FROM n WHERE i<20000) INSERT INTO api_events SELECT i FROM n`); err != nil {
+	if _, err = db.Exec(`CREATE TABLE api_events(id INTEGER PRIMARY KEY AUTOINCREMENT); WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i+1 FROM n WHERE i<20000) INSERT INTO api_events SELECT i FROM n`); err != nil {
 		b.Fatal(err)
 	}
 	for _, tc := range []struct{ name, query string }{

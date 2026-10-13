@@ -14,6 +14,7 @@ import (
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/operations"
+	"portico.local/server/internal/supervise"
 	"portico.local/server/internal/worker"
 )
 
@@ -21,7 +22,7 @@ const PageLimit = 100
 
 // Separate endpoint probes preserve SQLite's min/max optimization. Combining
 // both aggregates scans the retained ring for every subscriber on every wake.
-const eventBoundsSQL = `SELECT COALESCE((SELECT min(id) FROM api_events),0),COALESCE((SELECT max(id) FROM api_events),0)`
+const eventBoundsSQL = `SELECT COALESCE((SELECT min(id) FROM api_events),0),COALESCE((SELECT seq FROM sqlite_sequence WHERE name='api_events'),0)`
 
 type Resource struct {
 	Kind string `json:"kind"`
@@ -38,12 +39,13 @@ type Event struct {
 type Page struct {
 	Events    []Event `json:"events"`
 	NextAfter string  `json:"nextAfter"`
+	More      bool    `json:"more"`
 }
 
 type Hub struct {
 	DB      *sql.DB
 	mu      sync.Mutex
-	readers map[chan struct{}]struct{}
+	readers map[chan struct{}]map[string]bool
 	streams map[string]stream
 	next    uint64
 	// LibraryVisible gates library: audiences. Nil delivers none.
@@ -55,7 +57,7 @@ type stream struct {
 }
 
 func New(db *sql.DB) *Hub {
-	return &Hub{DB: db, readers: map[chan struct{}]struct{}{}, streams: map[string]stream{}}
+	return &Hub{DB: db, readers: map[chan struct{}]map[string]bool{}, streams: map[string]stream{}}
 }
 
 // InstallationKey uses the live token-to-device binding, never a client-sent
@@ -75,14 +77,56 @@ func (h *Hub) InstallationKey(ctx context.Context, p identity.Principal) (string
 // outbox trigger is in that same commit; no idle client needs a polling loop.
 func (h *Hub) Run(ctx context.Context) {
 	signal := worker.NewSignal()
-	unregister := dbwork.WakeOnTables(signal, "api_events", "notification_inbox", "console_operations")
+	unregister := dbwork.WakeOnTables(signal, "api_events", "notification_inbox", "console_operations", "api_change_pending")
 	defer unregister()
-	unregisterDirect := dbwork.WakeOnDirectWrites(signal, "api_events", "notification_inbox", "console_operations")
+	unregisterDirect := dbwork.WakeOnDirectWrites(signal, "api_events", "notification_inbox", "console_operations", "api_change_pending")
 	defer unregisterDirect()
-	worker.Run(ctx, "api.events", signal, func(context.Context) time.Duration {
-		h.Wake()
+	// Security changes must re-authorize existing streams without idle polling.
+	security := worker.NewSignal()
+	stop := dbwork.WakeOnTableWrites(security, "authorization_session_families", "authorization_family_tokens", "accounts", "direct_memberships", "direct_profiles", "identity_devices", "libraries", "library_sources", "direct_profile_trust", "restrictions", "profile_restrictions", "restriction_outbox", "policy", "library_network_policy", "api_credentials", "hosted_profile_revisions")
+	defer stop()
+	supervise.Go("api.events.authority", func() {
+		for security.Wait(ctx) {
+			h.Wake()
+		}
+	})
+	var after int64
+	runChanges(ctx, signal, func(ctx context.Context) time.Duration {
+		count := 0
+		err := dbwork.WithWriteTx(ctx, h.DB, dbwork.ClassMaintenance, func(tx *sql.Tx) error { var err error; count, err = apievents.Flush(ctx, tx, 64); return err })
+		if err != nil {
+			return 2 * time.Second
+		}
+		rows, err := h.DB.QueryContext(ctx, `SELECT id,audience FROM api_events WHERE id>? ORDER BY id LIMIT 1000`, after)
+		if err != nil {
+			return 2 * time.Second
+		}
+		audiences := map[string]bool{}
+		read := 0
+		for rows.Next() {
+			var id int64
+			var audience string
+			if err = rows.Scan(&id, &audience); err != nil {
+				break
+			}
+			after = id
+			audiences[audience] = true
+			read++
+		}
+		if err == nil {
+			err = rows.Err()
+		}
+		rows.Close()
+		if err != nil {
+			return 2 * time.Second
+		}
+		h.wakeAudiences(audiences)
+		if count == 64 || read == 1000 {
+			return 2 * time.Second
+		}
 		return 0
 	})
+
 }
 
 func (h *Hub) Wake() {
@@ -98,7 +142,7 @@ func (h *Hub) Wake() {
 func (h *Hub) Subscribe() (<-chan struct{}, func()) {
 	ch := make(chan struct{}, 1)
 	h.mu.Lock()
-	h.readers[ch] = struct{}{}
+	h.readers[ch] = nil
 	h.mu.Unlock()
 	return ch, func() {
 		h.mu.Lock()
@@ -173,7 +217,7 @@ func (h *Hub) Read(ctx context.Context, p identity.Principal, owner bool, after 
 	if owner {
 		operationAudience = apievents.AdminAudience
 	}
-	rows, err := tx.QueryContext(ctx, `SELECT id,audience,type,resource_kind,resource_id,revision,data,at_ms FROM api_events WHERE id>? AND (audience IN (?,?,?,?) OR audience >= 'library:' AND audience < 'library;') ORDER BY id LIMIT ?`, after, audience, deviceAudience, adminAudience, operationAudience, PageLimit+1)
+	rows, err := tx.QueryContext(ctx, `SELECT id,audience,type,resource_kind,resource_id,revision,data,at_ms FROM api_events WHERE id>? AND (audience IN (?,?,?,?,'server') OR audience >= 'library:' AND audience < 'library;') ORDER BY id LIMIT ?`, after, audience, deviceAudience, adminAudience, operationAudience, PageLimit+1)
 	if err != nil {
 		return out, err
 	}
@@ -220,8 +264,88 @@ func (h *Hub) Read(ctx context.Context, p identity.Principal, owner bool, after 
 	if len(out.Events) > PageLimit {
 		out.Events = out.Events[:PageLimit]
 		out.NextAfter = out.Events[PageLimit-1].ID
+		out.More = true
 	} else if examined == PageLimit+1 {
+		out.More = true
 		out.NextAfter = strconv.FormatInt(lastExamined, 10)
 	}
 	return out, gate.Commit()
+}
+
+// SubscribeFor filters private profile/device changes in memory. Library hints
+// still pass the snapshot authorization check in Read before delivery.
+func (h *Hub) SubscribeFor(p identity.Principal, owner bool) (<-chan struct{}, func()) {
+	ch := make(chan struct{}, 1)
+	audiences := map[string]bool{apievents.ProfileAudience(p.Authority, p.AccountID, p.ProfileID): true, "server": true}
+	if p.DeviceID != "" {
+		audiences[apievents.DeviceAudience(p.DeviceID)] = true
+	}
+	if owner {
+		audiences[apievents.AdminAudience] = true
+		audiences[apievents.AccountAudience(p.Authority, p.AccountID)] = true
+	}
+	h.mu.Lock()
+	h.readers[ch] = audiences
+	h.mu.Unlock()
+	return ch, func() { h.mu.Lock(); delete(h.readers, ch); h.mu.Unlock() }
+}
+func (h *Hub) wakeAudiences(changed map[string]bool) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for ch, scope := range h.readers {
+		relevant := false
+		for audience := range changed {
+			if scope == nil || scope[audience] || strings.HasPrefix(audience, "library:") {
+				relevant = true
+				break
+			}
+		}
+		if relevant {
+			select {
+			case ch <- struct{}{}:
+			default:
+			}
+		}
+	}
+}
+
+func (h *Hub) TokenDeadline(ctx context.Context, p identity.Principal) (time.Time, error) {
+	var expiry string
+	err := h.DB.QueryRowContext(ctx, `SELECT min(t.expires_at,f.authorization_horizon) FROM authorization_family_tokens t JOIN authorization_session_families f ON f.id=t.family_id WHERE t.token_hash=?`, p.Hash).Scan(&expiry)
+	if err != nil {
+		return time.Time{}, err
+	}
+	return time.Parse(time.RFC3339Nano, expiry)
+}
+
+// runChanges sleeps indefinitely when no committed changes need delivery.
+func runChanges(ctx context.Context, signal *worker.Signal, step func(context.Context) time.Duration) {
+	var last time.Time
+	for ctx.Err() == nil {
+		if !last.IsZero() {
+			remaining := 2*time.Second - time.Since(last)
+			if remaining > 0 {
+				timer := time.NewTimer(remaining)
+				select {
+				case <-ctx.Done():
+					timer.Stop()
+					return
+				case <-timer.C:
+				}
+			}
+		}
+		delay := step(ctx)
+		last = time.Now()
+		if delay > 0 {
+			timer := time.NewTimer(delay)
+			select {
+			case <-ctx.Done():
+				timer.Stop()
+				return
+			case <-timer.C:
+			}
+		} else if !signal.Wait(ctx) {
+			return
+		}
+	}
 }

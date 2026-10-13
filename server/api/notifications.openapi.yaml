@@ -150,7 +150,7 @@ paths:
         archived and total counts for the selected audience. Intended for a badge
         and for clients that poll rather than stream.
 
-        Prefer `GET /v1/notifications/events`, or `GET /v1/notifications/wait`,
+        Subscribe to `notification.changed` on `GET /v1/events`,
         over polling this on a short timer. Polling it every few seconds is
         nevertheless safe: it is two indexed aggregate queries and returns a few
         hundred bytes.
@@ -227,128 +227,6 @@ paths:
         "400": { $ref: "#/components/responses/Invalid" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "409": { $ref: "#/components/responses/Conflict" }
-        "429": { $ref: "#/components/responses/Busy" }
-        "503": { $ref: "#/components/responses/Unavailable" }
-  /v1/notifications/events:
-    get:
-      tags: [notifications-live]
-      operationId: streamNotificationEvents
-      summary: Server-sent events for one viewer's inboxes
-      description: |
-        A `text/event-stream` whose notification frames carry `id: <revision>`.
-
-        Frames:
-
-        * `hello` — sent immediately with the current revision, the counts and
-          `heartbeatSeconds`.
-        * `change` — the notifications whose revision is above the client's,
-          oldest first, with the new revision and counts. `resync: true` means
-          more changed than one frame carries: re-read the inbox from
-          `GET /v1/notifications/inbox` rather than trusting a partial list.
-        * `heartbeat` — every 20 seconds, carrying the current revision, so a
-          client can tell a live connection from a stalled proxy.
-        * `closed` — the server is ending the stream; `reason` is
-          `unauthorized`, `unavailable` or `stream-lifetime`. Reconnect with
-          `Last-Event-ID` unless the reason is `unauthorized`.
-
-        * `receiver.inbox_changed` — a per-profile receiver invalidation with
-          `{kind: grant|handoff|resync, receiverId?: string}`. Grant/handoff
-          arrivals are emitted only after their transaction commits. Fetch the
-          named receiver's authenticated inbox. `resync` is sent on every
-          connection and when changes are coalesced; refresh the inboxes of this
-          profile's registered receivers. These hints contain no grant secrets,
-          media identifiers or commands and carry no SSE id, preserving the
-          notification resume cursor. The durable receiver inbox is authoritative.
-
-        **Resume.** Send `Last-Event-ID: <revision>` on reconnect (browsers do
-        this automatically). The server replays exactly the records whose
-        revision is above it. `?revision=` is the equivalent hint on a first
-        connection. A malformed `Last-Event-ID` resumes from nothing rather than
-        failing the connection.
-
-        Authorization is re-derived before event delivery and every 20-second
-        heartbeat, so a revoked session stops receiving at its next check. A stream is closed after 30 minutes with
-        `reason: stream-lifetime`; reconnecting with `Last-Event-ID` loses
-        nothing.
-
-        Limits: four concurrent parked connections per session and 512 per server,
-        counted against `GET /v1/notifications/wait` as well. Exceeding either is
-        429.
-
-        Cost: event-driven indexed queries, with a 45-second safety poll. Clients
-        that cannot hold an event-stream reader should use
-        `GET /v1/notifications/wait` instead of polling the inbox.
-      parameters:
-        - name: audience
-          in: query
-          schema: { type: string, enum: [profile, account-admin, all], default: all }
-        - name: revision
-          in: query
-          description: First-connection resume hint. `Last-Event-ID` takes precedence.
-          schema: { type: integer, format: int64, minimum: 0 }
-        - name: Last-Event-ID
-          in: header
-          description: The revision of the last frame the client processed.
-          schema: { type: string }
-      responses:
-        "200":
-          description: The event stream.
-          content:
-            text/event-stream:
-              schema: { type: string }
-        "400": { $ref: "#/components/responses/Invalid" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "429": { $ref: "#/components/responses/Busy" }
-        "503": { $ref: "#/components/responses/Unavailable" }
-  /v1/notifications/wait:
-    get:
-      tags: [notifications-live]
-      operationId: waitForNotifications
-      summary: Long poll for the next inbox change
-      description: |
-        The event stream's contract without server-sent events, for clients that
-        cannot hold a stream reader open.
-
-        Pass the revision the client holds. If the inbox has already moved the
-        response is immediate and carries the changed records. Otherwise the
-        request parks until the revision moves or `waitSeconds` elapses, then
-        returns the current revision with an empty `items`.
-
-        `resync: true` carries the same meaning as on the stream: re-read the
-        inbox.
-
-        A request with no `revision` returns the current revision without
-        parking, which is how a client obtains its first position.
-
-        Limits: the same four-per-session, 64-per-server budget as the event
-        stream. Exceeding it is 429.
-
-        Cost: one small indexed query on wake, plus one every two seconds while
-        parked. No paging.
-      parameters:
-        - name: audience
-          in: query
-          schema: { type: string, enum: [profile, account-admin, all], default: all }
-        - name: revision
-          in: query
-          description: The revision the client holds. Omit to read the current one without parking.
-          schema: { type: integer, format: int64, minimum: 0 }
-        - name: waitSeconds
-          in: query
-          schema: { type: integer, minimum: 0, maximum: 60, default: 25 }
-      responses:
-        "200":
-          description: The change, or the unchanged revision after the wait.
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [scope, data]
-                properties:
-                  scope: { $ref: "#/components/schemas/Scope" }
-                  data: { $ref: "#/components/schemas/NotificationDelta" }
-        "400": { $ref: "#/components/responses/Invalid" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
         "429": { $ref: "#/components/responses/Busy" }
         "503": { $ref: "#/components/responses/Unavailable" }
   /v1/admin/notifications/broadcast:

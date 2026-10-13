@@ -546,6 +546,24 @@ export const routes = [
     "status": 200
   },
   {
+    "id": "get_catalogue_failures",
+    "method": "GET",
+    "path": "/v1/admin/catalogue/failures",
+    "summary": "Read titles set aside by catalogue workers",
+    "access": "admin_scope",
+    "adminScope": "library",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
     "id": "get_connection",
     "method": "GET",
     "path": "/v1/networking/connection",
@@ -823,8 +841,7 @@ export const routes = [
     "bodyLimit": 0,
     "query": [
       "after",
-      "waitSeconds",
-      "topics"
+      "waitSeconds"
     ],
     "errors": [
       "unauthorized",

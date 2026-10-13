@@ -99,9 +99,7 @@ func (s *Service) AcceptPlaybackProgress(tx *sql.Tx, v identity.Viewer, playback
 	if e != nil {
 		return e
 	}
-	if e = snapshotPersonalByID(tx, profile, entityID, out); e != nil {
-		return e
-	}
+	previous := out
 	out.LastPlayedAt = now
 	var blocked int
 	if e = tx.QueryRow(`SELECT (SELECT count(*) FROM personal_evidence_fences WHERE profile_id=? AND item_id=? AND playback_id=?)+(SELECT count(*) FROM playback_personal_fences f WHERE f.profile_key=? AND f.item_id=? AND f.through_ordinal>=COALESCE((SELECT accepted_ordinal FROM playback_personal_claims WHERE playback_id=? AND profile_key=f.profile_key AND item_id=f.item_id),0))+(SELECT count(*) FROM playback_personal_profile_fences f WHERE f.profile_key=? AND f.through_ordinal>=COALESCE((SELECT accepted_ordinal FROM playback_personal_claims WHERE playback_id=? AND profile_key=f.profile_key),0))`, profile, entityID, playbackID, profile, entityID, playbackID, profile, playbackID).Scan(&blocked); e != nil {
@@ -151,11 +149,20 @@ func (s *Service) AcceptPlaybackProgress(tx *sql.Tx, v identity.Viewer, playback
 			return e
 		}
 	}
-	out.Revision++
+	changed := out.Watched != previous.Watched || previous.LastPlayedAt == ""
+	if changed {
+		if e = snapshotPersonalByID(tx, profile, entityID, previous); e != nil {
+			return e
+		}
+		out.Revision++
+	}
 	if e = storePersonalByID(tx, profile, entityID, out); e != nil {
 		return e
 	}
-	return snapshotPersonalByID(tx, profile, entityID, out)
+	if changed {
+		return snapshotPersonalByID(tx, profile, entityID, out)
+	}
+	return nil
 }
 
 type HistoryEntry struct {

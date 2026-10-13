@@ -298,10 +298,8 @@ func restrictionRoutes() map[string]restrictionRoute {
 		"GET /v1/saved-pins/order":                      exempt("pin order: resource ids only, each read through the saved-resource routes probed below"),
 
 		// Streams.
-		"GET /v1/events":               exempt(reasonStream),
-		"GET /v1/groups/{id}/events":   exempt(reasonStream),
-		"GET /v1/notifications/events": exempt(reasonStream),
-		"GET /v1/notifications/wait":   exempt(reasonStream),
+		"GET /v1/events":             exempt(reasonStream),
+		"GET /v1/groups/{id}/events": exempt(reasonStream),
 
 		// Grants, sessions, jobs and social objects created by admitted requests.
 		"GET /v1/cast/bootstrap/{id}":                                   exempt(reasonGrant),

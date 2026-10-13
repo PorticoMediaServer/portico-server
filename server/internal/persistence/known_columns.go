@@ -163,6 +163,12 @@ analysis_stage_runs.source_revision
 analysis_stage_runs.stage
 analysis_stage_runs.state
 analysis_stage_runs.updated_ms
+api_change_pending.audience
+api_change_pending.data
+api_change_pending.resource_id
+api_change_pending.resource_kind
+api_change_pending.revision
+api_change_pending.type
 api_credential_use.credential_id
 api_credential_use.last_used_ms
 api_credential_use.requests
@@ -768,6 +774,7 @@ catalog_derivation_failures.reason
 catalog_derivations.active_slot
 catalog_derivations.cleaning
 catalog_derivations.domain
+catalog_derivations.first_build
 catalog_derivations.rebuild_cursor
 catalog_derivations.rebuilding
 catalog_derivations.served_ms
@@ -1092,6 +1099,10 @@ catalog_related_facets_previous.present
 catalog_related_facets_previous.provider
 catalog_related_facets_previous.relation
 catalog_related_facets_previous.year
+catalog_retention_cursors.after_id
+catalog_retention_cursors.after_key
+catalog_retention_cursors.after_root
+catalog_retention_cursors.name
 catalog_search_documents.entity_id
 catalog_search_documents.kind
 catalog_search_documents.title
@@ -1990,6 +2001,7 @@ library_network_policy.approvals_json
 library_network_policy.library_id
 library_network_policy.revision
 library_revisions.library_id
+library_revisions.order_revision
 library_revisions.revision
 library_scan_policies.library_id
 library_scan_policies.operations_json
@@ -4411,6 +4423,7 @@ video_nfo_status.issue
 video_nfo_status.library_id
 video_nfo_status.status
 viewer_revisions.library_id
+viewer_revisions.observation_revision
 viewer_revisions.profile_id
 viewer_revisions.revision
 webhook_deliveries.attempts

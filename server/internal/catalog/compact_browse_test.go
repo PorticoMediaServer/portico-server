@@ -3,7 +3,6 @@ package catalog
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"testing"
 
 	"portico.local/server/internal/catalogtest"
@@ -50,7 +49,7 @@ func TestCompactBrowseServesThePublishedGenerationWhileChangesQueue(t *testing.T
 	if err := compactcatalog.NewWorker(db).Rebuild(context.Background(), compactcatalog.DomainBrowseRows); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := service.BrowseEntities(viewer, request); !errors.Is(err, ErrVisibilityBuilding) {
+	if _, err := service.BrowseEntities(viewer, request); err != nil {
 		t.Fatalf("browse during a rebuild: %v", err)
 	}
 }

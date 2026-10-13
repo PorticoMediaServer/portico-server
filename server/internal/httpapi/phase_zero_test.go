@@ -18,7 +18,7 @@ func TestFailureDoesNotDiscloseRawErrors(t *testing.T) {
 }
 
 func TestLongPollRoutesUseRealtimeLane(t *testing.T) {
-	for _, route := range []string{"GET /v1/notifications/wait"} {
+	for _, route := range []string{"GET /v1/events"} {
 		if routeLanes[route] != laneRealtime {
 			t.Errorf("%s has lane %s", route, routeLanes[route])
 		}

@@ -187,7 +187,7 @@ func (d Dependencies) homeRoutes(mux *http.ServeMux) {
 		// profiles' privacy on every read, so they carry no validator.
 		tag := ""
 		if !request.CommunityActivity {
-			tag = gridTag(r, p, time.Minute, request.ViewerFence)
+			tag = d.gridTag(r, p, time.Minute, request.ViewerFence)
 			if gridNotModified(w, r, tag) {
 				return
 			}

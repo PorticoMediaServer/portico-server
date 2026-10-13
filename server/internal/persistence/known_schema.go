@@ -105,8 +105,10 @@ index catalog_collection_visible_edges_item
 index catalog_collection_visible_edges_pair
 index catalog_collections_name
 index catalog_container_added_item
+index catalog_credits_department
 index catalog_credits_person
 index catalog_credits_provider_person
+index catalog_credits_role
 index catalog_entities_added
 index catalog_entities_library
 index catalog_entities_parent
@@ -152,6 +154,7 @@ index catalog_term_sources_name_seek
 index catalog_term_sources_provider
 index catalog_term_sources_term
 index catalog_visibility_sort_edge_entity
+index catalogue_failures_recent
 index client_log_uploads_account_day
 index client_log_uploads_device
 index client_log_uploads_page
@@ -452,6 +455,7 @@ table analysis_markers
 table analysis_probe_bindings
 table analysis_results
 table analysis_stage_runs
+table api_change_pending
 table api_credential_use
 table api_credentials
 table api_events
@@ -601,6 +605,7 @@ table catalog_rec_facets
 table catalog_rec_postings
 table catalog_related_facets
 table catalog_related_facets_previous
+table catalog_retention_cursors
 table catalog_search_documents
 table catalog_search_documents_next
 table catalog_search_titles
@@ -1108,6 +1113,9 @@ trigger authorization_revocation_metadata
 trigger book_resume_revision_delete
 trigger book_resume_revision_insert
 trigger book_resume_revision_update
+trigger browse_order_delete
+trigger browse_order_insert
+trigger browse_order_update
 trigger catalog_asset_issue_delete
 trigger catalog_asset_issue_insert
 trigger catalog_asset_issue_update
@@ -1396,8 +1404,10 @@ trigger item_extras_revision_insert
 trigger item_extras_revision_update
 trigger job_observation_create
 trigger job_observation_update
+trigger library_change_hint
 trigger library_configuration_create
 trigger library_configuration_update
+trigger library_directory_hint
 trigger library_metadata_agent_create
 trigger library_revision_create
 trigger library_revision_update
@@ -1545,6 +1555,8 @@ trigger mount_revision_update
 trigger networking_identity_no_delete
 trigger networking_identity_no_replace
 trigger networking_identity_no_update
+trigger personal_change_hint
+trigger personal_change_hint_update
 trigger personal_history_revision_DELETE
 trigger personal_history_revision_INSERT
 trigger personal_history_revision_UPDATE
@@ -1600,6 +1612,7 @@ trigger profile_show_personal_insert
 trigger profile_show_personal_update
 trigger profile_show_progress_insert
 trigger profile_show_progress_update
+trigger progress_observation_update
 trigger rec_data_external_delete
 trigger rec_data_external_insert
 trigger rec_data_similar_delete
@@ -1699,6 +1712,8 @@ trigger screen_wake_item_assets_UPDATE
 trigger screen_wake_video_nfo_evidence_DELETE
 trigger screen_wake_video_nfo_evidence_INSERT
 trigger screen_wake_video_nfo_evidence_UPDATE
+trigger server_settings_hint
+trigger server_settings_insert_hint
 trigger tvdb_episode_created
 trigger tvdb_episode_link_insert
 trigger tvdb_episode_link_update

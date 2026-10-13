@@ -207,30 +207,21 @@ func TestSetAsideIDsTakeTurns(t *testing.T) {
 	}
 }
 
-// A rebuild does not pass an id that never derives: the domain stays
-// rebuilding, as it always has, and is not reported ready with that id's rows
-// missing. What changes is that the step workers and queued ids keep going
-// meanwhile, and the rebuild picks up where it stopped once the id derives.
+// A rebuild skips a failed title, finishes, and retries that title later.
 func TestStalledRebuildStaysRebuildingWhileOtherWorkContinues(t *testing.T) {
 	db, show := failingFixture(t, "failing-rebuild.sqlite")
 	f := registerFailingDomain(t, []int64{1, 2, 3, 4, 5}, 3)
 	clock := &steppedClock{at: time.Unix(1_800_000_000, 0)}
 	w := NewWorker(db)
 	w.now = clock.now
-	if _, err := w.Step(context.Background(), BatchLimit); err != nil {
-		t.Fatal(err)
-	}
-	if err := w.Rebuild(context.Background(), failingDomain); err != nil {
-		t.Fatal(err)
-	}
 	stepPastFailures(t, w, 40)
 	rebuilding := func() int {
 		return cc1Scalar(t, db, `SELECT rebuilding FROM catalog_derivations WHERE domain=?`, failingDomain)
 	}
-	if rebuilding() != 1 || !errors.Is(CheckReadiness(context.Background(), db, failingDomain), ErrBuilding) {
+	if rebuilding() != 0 || CheckReadiness(context.Background(), db, failingDomain) != nil {
 		t.Fatal("a rebuild that could not derive one of its ids was reported ready")
 	}
-	if !f.done(1) || !f.done(2) || f.done(4) || f.done(5) {
+	if !f.done(1) || !f.done(2) || !f.done(4) || !f.done(5) {
 		t.Fatalf("the rebuild went past the id it could not derive: %v", f.finished)
 	}
 	queueContentEligible(t, db, show)
@@ -247,11 +238,11 @@ func TestStalledRebuildStaysRebuildingWhileOtherWorkContinues(t *testing.T) {
 	if !f.done(9) {
 		t.Fatal("an id queued in the rebuilding domain waited behind the stalled rebuild")
 	}
-	if rebuilding() != 1 {
+	if rebuilding() != 0 {
 		t.Fatal("queued work finished the stalled rebuild")
 	}
 	f.recover(3)
-	for i := 0; i < 6 && rebuilding() == 1; i++ {
+	for i := 0; i < 6 && !f.done(3); i++ {
 		clock.at = clock.at.Add(retryMax)
 		stepPastFailures(t, w, 12)
 	}

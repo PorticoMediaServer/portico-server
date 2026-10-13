@@ -13,11 +13,11 @@ import (
 const searchLiveSQL = `e.retired=0 AND EXISTS(SELECT 1 FROM catalog_kinds k WHERE k.id=e.kind AND k.searchable=1)`
 
 func deriveSearch(ctx context.Context, tx *sql.Tx, ids string) error {
-	var slot, rebuilding int
-	if err := tx.QueryRowContext(ctx, `SELECT active_slot,rebuilding FROM catalog_derivations WHERE domain=17`).Scan(&slot, &rebuilding); err != nil && err != sql.ErrNoRows {
+	var slot, rebuilding, first int
+	if err := tx.QueryRowContext(ctx, `SELECT active_slot,rebuilding,first_build FROM catalog_derivations WHERE domain=17`).Scan(&slot, &rebuilding, &first); err != nil && err != sql.ErrNoRows {
 		return err
 	}
-	if rebuilding == 1 {
+	if rebuilding == 1 && first == 0 {
 		slot = 1 - slot
 	}
 	for _, query := range []string{

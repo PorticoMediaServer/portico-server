@@ -46,7 +46,7 @@ func (d Dependencies) discoveryRoutes(mux *http.ServeMux) {
 		if !ok {
 			return
 		}
-		tag := gridTag(r, p, gridTagBucket)
+		tag := d.gridTag(r, p, gridTagBucket)
 		if gridNotModified(w, r, tag) {
 			return
 		}
@@ -96,7 +96,7 @@ func (d Dependencies) discoveryRoutes(mux *http.ServeMux) {
 			failure(w, err)
 			return
 		}
-		tag := gridTag(r, p, gridTagBucket)
+		tag := d.gridTag(r, p, gridTagBucket)
 		if gridNotModified(w, r, tag) {
 			return
 		}
@@ -118,7 +118,7 @@ func (d Dependencies) discoveryRoutes(mux *http.ServeMux) {
 			failure(w, e)
 			return
 		}
-		tag := gridTag(r, p, time.Minute)
+		tag := d.gridTag(r, p, time.Minute)
 		if gridNotModified(w, r, tag) {
 			return
 		}
@@ -145,7 +145,7 @@ func (d Dependencies) discoveryRoutes(mux *http.ServeMux) {
 			failure(w, err)
 			return
 		}
-		tag := gridTag(r, p, gridTagBucket)
+		tag := d.gridTag(r, p, gridTagBucket)
 		if gridNotModified(w, r, tag) {
 			return
 		}
@@ -168,7 +168,7 @@ func (d Dependencies) discoveryRoutes(mux *http.ServeMux) {
 			failure(w, err)
 			return
 		}
-		tag := gridTag(r, p, gridTagBucket)
+		tag := d.gridTag(r, p, gridTagBucket)
 		if gridNotModified(w, r, tag) {
 			return
 		}
@@ -246,7 +246,7 @@ func (d Dependencies) discoveryRoutes(mux *http.ServeMux) {
 			failure(w, err)
 			return
 		}
-		tag := gridTag(r, p, gridTagBucket)
+		tag := d.gridTag(r, p, gridTagBucket)
 		if gridNotModified(w, r, tag) {
 			return
 		}

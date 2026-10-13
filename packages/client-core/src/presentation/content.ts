@@ -8,12 +8,18 @@ import type {IconId} from '../../../design/src/icons.ts';
  * are the en-US fallbacks the clients use until they adopt it.
  */
 
+const viewerScopes = new WeakMap<object, {viewerId: string; serverId: string}>();
+
 /** Stable viewer identity used to scope every content service. */
 export function viewerScope(session: {viewer: {authority: string; accountId: string; profileId: string; serverId: string}} | undefined, api: {baseUrl: string}): {viewerId: string; serverId: string} {
-  return {
+  const value = {
     viewerId: session ? JSON.stringify([session.viewer.authority, session.viewer.accountId, session.viewer.profileId]) : 'signed-out',
     serverId: session?.viewer.serverId ?? api.baseUrl,
   };
+  const previous = viewerScopes.get(api);
+  if (previous?.viewerId === value.viewerId && previous.serverId === value.serverId) return previous;
+  viewerScopes.set(api, value);
+  return value;
 }
 
 /** The library-family glyph for an entry kind or library kind. */

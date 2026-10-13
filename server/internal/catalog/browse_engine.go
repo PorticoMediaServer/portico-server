@@ -355,6 +355,10 @@ func (s *Service) BrowseEntities(viewer Viewer, request BrowseRequest) (BrowseRe
 		return result, err
 	}
 	out, rows, err := s.browseSelect(request)
+	if errors.Is(err, ErrVisibilityBuilding) {
+		out.Entries = []ContentEntry{}
+		return out, nil
+	}
 	if err != nil {
 		return out, err
 	}
@@ -424,9 +428,7 @@ func (s *Service) browseSelect(request BrowseRequest) (BrowseResult, []browseRow
 		if request.Seek != nil {
 			return out, nil, browseIssue("seek", "seek is unavailable for filtered queries")
 		}
-		if request.Range != nil && request.Range.AnchorID != "" {
-			return out, nil, browseIssue("range.anchorId", "anchors are unavailable for filtered queries")
-		}
+
 	}
 
 	where, args := browseScopeSQL(request.Library, pivot)
@@ -585,7 +587,7 @@ func (s *Service) browseSelect(request BrowseRequest) (BrowseResult, []browseRow
 		}
 	}
 
-	if request.Query == nil && start > 0 && start >= total {
+	if start > 0 && start >= total {
 		start = max(0, total-1)
 	}
 	out.PageInfo.Start = start

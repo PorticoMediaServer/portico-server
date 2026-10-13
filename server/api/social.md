@@ -292,7 +292,8 @@ no write gate, so polling it every few seconds while idle is the intended use; p
 is still proved by `POST /v1/receivers/{id}/heartbeat`. Another viewer asking for the
 same receiver gets `404`.
 
-A receiver that cannot hold the notifications event stream open waits on
+Receiver hints (`receiver.inbox_changed`) share the authenticated `/v1/events` feed.
+A receiver that cannot share that feed waits on
 `GET /v1/receivers/{id}/inbox/wait?waitSeconds=25` instead. It answers at once when the
 inbox holds a pending grant or an open handoff, and otherwise holds the request until one
 arrives or the wait (0 to 55 seconds, 25 by default) elapses, then answers with the inbox

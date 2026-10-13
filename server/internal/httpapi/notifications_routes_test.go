@@ -1,7 +1,6 @@
 package httpapi
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -178,94 +177,12 @@ func TestNotificationRoutesDocumentAndBatch(t *testing.T) {
 	}
 }
 
-// The event stream: a hello frame with the revision, an id on every frame, and
-// a Last-Event-ID resume that replays exactly what changed.
-func TestNotificationEventStreamResume(t *testing.T) {
-	d, mux, _, member := notificationFixture(t)
-	scope := notify.ProfileScope("local", "member", "member-profile")
-	first := raiseNotice(t, d, scope, "download:one", "Download ready")
-
-	ctx, cancel := context.WithCancel(context.Background())
-	r := httptest.NewRequest("GET", "/v1/notifications/events", nil).WithContext(ctx)
-	r.Header.Set("Authorization", "Bearer "+member.AccessToken)
-	w := httptest.NewRecorder()
-	// The handler returns when the request context is cancelled; cancel as soon
-	// as the first frames are written so the test does not wait on a heartbeat.
-	go func() {
-		time.Sleep(400 * time.Millisecond)
-		cancel()
-	}()
-	mux.ServeHTTP(w, r)
-	if w.Code != 200 || !strings.HasPrefix(w.Header().Get("Content-Type"), "text/event-stream") {
-		t.Fatal("stream", w.Code, w.Header().Get("Content-Type"))
-	}
-	body := w.Body.String()
-	if !strings.Contains(body, "event: hello") || !strings.Contains(body, "id: ") {
-		t.Fatal("hello frame", body)
-	}
-	if !strings.Contains(body, `"heartbeatSeconds":20`) {
-		t.Fatal("heartbeat interval must be published on the stream", body)
-	}
-	if !strings.Contains(body, "event: receiver.inbox_changed\ndata: {\"kind\":\"resync\"}") {
-		t.Fatal("missing receiver reconnect hint", body)
-	}
-	if routeLanes["GET /v1/notifications/wait"] != laneRealtime {
-		t.Fatal("long poll is not in realtime lane")
-	}
-	// Resuming from the revision the client already saw replays the record that
-	// changed after it, and nothing else.
-	second := raiseNotice(t, d, scope, "download:two", "Second download ready")
-	ctx, cancel = context.WithCancel(context.Background())
-	r = httptest.NewRequest("GET", "/v1/notifications/events", nil).WithContext(ctx)
-	r.Header.Set("Authorization", "Bearer "+member.AccessToken)
-	r.Header.Set("Last-Event-ID", itoa(first.Revision))
-	w = httptest.NewRecorder()
-	go func() {
-		time.Sleep(400 * time.Millisecond)
-		cancel()
-	}()
-	mux.ServeHTTP(w, r)
-	body = w.Body.String()
-	if !strings.Contains(body, "event: change") || !strings.Contains(body, second.ID) {
-		t.Fatal("resume did not replay", body)
-	}
-	if strings.Contains(body, first.ID) {
-		t.Fatal("resume replayed a record the client already had", body)
-	}
-	if !strings.Contains(body, "id: "+itoa(second.Revision)) {
-		t.Fatal("every frame must carry the revision as its id", body)
-	}
-	// An unauthenticated stream is a JSON error, not an event stream.
-	w = notificationRequest(mux, "GET", "", "/v1/notifications/events", "")
-	if w.Code != 401 || strings.HasPrefix(w.Header().Get("Content-Type"), "text/event-stream") {
-		t.Fatal("anonymous stream", w.Code, w.Header().Get("Content-Type"))
-	}
-}
-
-// The long-poll variant answers immediately when the client is behind and parks
-// otherwise, with the same revision contract as the stream.
-func TestNotificationLongPollRoute(t *testing.T) {
-	d, mux, _, member := notificationFixture(t)
-	scope := notify.ProfileScope("local", "member", "member-profile")
-	first := raiseNotice(t, d, scope, "download:one", "Download ready")
-	second := raiseNotice(t, d, scope, "download:two", "Second download ready")
-
-	w := notificationRequest(mux, "GET", member.AccessToken, "/v1/notifications/wait?revision="+itoa(first.Revision), "")
-	if w.Code != 200 {
-		t.Fatal("wait", w.Code, w.Body.String())
-	}
-	var out struct{ Data operations.NoticeDelta }
-	if e := json.Unmarshal(w.Body.Bytes(), &out); e != nil || out.Data.Revision != second.Revision || len(out.Data.Items) != 1 {
-		t.Fatalf("wait payload: %v %+v", e, out.Data)
-	}
-	start := time.Now()
-	w = notificationRequest(mux, "GET", member.AccessToken, "/v1/notifications/wait?revision="+itoa(second.Revision)+"&waitSeconds=1", "")
-	if w.Code != 200 || time.Since(start) < 900*time.Millisecond {
-		t.Fatal("an up-to-date client must park for the requested wait", w.Code, time.Since(start))
-	}
-	for _, bad := range []string{"?waitSeconds=600", "?revision=-1", "?nonsense=1"} {
-		if w = notificationRequest(mux, "GET", member.AccessToken, "/v1/notifications/wait"+bad, ""); w.Code != 400 {
-			t.Fatal("wait validation", bad, w.Code)
+// Dedicated notification listeners were removed; all hints use /v1/events.
+func TestDedicatedNotificationListenersAreRemoved(t *testing.T) {
+	_, mux, _, member := notificationFixture(t)
+	for _, path := range []string{"/v1/notifications/events", "/v1/notifications/wait"} {
+		if w := notificationRequest(mux, "GET", member.AccessToken, path, ""); w.Code != 404 {
+			t.Fatalf("obsolete route %s: %d", path, w.Code)
 		}
 	}
 }

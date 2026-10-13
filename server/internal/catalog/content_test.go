@@ -80,7 +80,7 @@ func TestContentOwnsSemanticsAndFencesContinuations(t *testing.T) {
 		t.Fatal(e)
 	}
 	r.Cursor = page.Sections[0].NextCursor
-	if _, e = db.Exec(`INSERT INTO viewer_revisions VALUES('p','a',1)`); e != nil {
+	if _, e = db.Exec(`INSERT INTO viewer_revisions(profile_id,library_id,revision) VALUES('p','a',1)`); e != nil {
 		t.Fatal(e)
 	}
 	if _, e = s.Content(r); !errors.Is(e, ErrStaleContinuation) {

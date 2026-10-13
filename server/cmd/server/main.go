@@ -964,6 +964,7 @@ func run() error {
 	supervise.Go("cmd.started-notice", func() { announceStarted(ctx, outboundWebhooks) })
 	supervise.Supervise(ctx, "cmd.visibility-rebuilder", cat.RunVisibilityRebuilder)
 	supervise.Supervise(ctx, "cmd.compact-catalogue", compactcatalog.NewWorker(db).Run)
+	supervise.Go("cmd.catalogue-retention", func() { compactcatalog.RunRetention(ctx, db) })
 	server := &http.Server{Addr: bind, Handler: handlerSwitch, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 32 << 10, HTTP2: serverHTTP2Policy()}
 	connectionLimit := connectionBudget(hostlimits.EffectiveMemoryBytes())
 	if console != nil {

@@ -273,8 +273,6 @@ var routeLanes = map[string]string{
 	"GET /v1/networking/claim":                                        laneAuth,
 	"GET /v1/networking/certificate":                                  laneAuth,
 	"GET /v1/networking/remote":                                       laneAuth,
-	"GET /v1/notifications/events":                                    laneRealtime,
-	"GET /v1/notifications/wait":                                      laneRealtime,
 	"GET /v1/people":                                                  laneBrowsing,
 	"GET /v1/people/{id}":                                             laneBrowsing,
 	"GET /v1/people/{id}/portrait":                                    laneBrowsing,

@@ -1,6 +1,6 @@
 import {serviceProblem,serviceText} from './presentation/service-text.ts';
 import {SOCIAL_PROTOCOL,parseHandoff,parseReceiver,parseReceiverGrant,parseReceiverList,type Handoff,type Receiver,type ReceiverGrant} from './social-playback.ts';
-import {readEventStream} from './sse.ts';
+import type {EventsClient} from './playback-v1/events.ts';
 
 /** Moving playback to a Portico television, and being that television.
  *
@@ -93,19 +93,10 @@ export function receiverPollDelay(baseMs:number,rand:()=>number=Math.random):num
  return Math.round(baseMs*(0.8+0.4*r));
 }
 
-/** PERF-16: a `receiver.inbox_changed` hint on `/v1/notifications/events`. The event is a hint,
- * never playback authority: the named inbox is re-read and processed exactly as a poll would.
- * These frames deliberately carry no SSE id, so they never move a notification resume cursor
- * (this host keeps none and sends no `Last-Event-ID`). */
+/** Receiver invalidations share the one device feed. */
 export type ReceiverInboxEventKind='grant'|'handoff'|'resync';
 export type ReceiverInboxEvent=Readonly<{kind:ReceiverInboxEventKind;receiverId?:string}>;
-/** Opens the authenticated notifications event stream; the app supplies it because only it knows
- * the bearer (same seam as `GroupStreamOpener`). Reuses the shared SSE reader in `sse.ts`. */
-export type ReceiverEventOpener=(signal:AbortSignal)=>Promise<Response>;
-/** While the event stream is connected, the inbox poll backs off to this safety interval. */
 const RECEIVER_SAFETY_MS=60000;
-/** Reconnect waits after a dropped stream: 5 s doubling to 20 s, jittered by the poll delay. */
-const receiverReconnectDelay=(failures:number,rand:()=>number)=>receiverPollDelay(Math.min(20000,5000*2**Math.min(Math.max(failures-1,0),2)),rand);
 
 const MAX_RECEIVER_ID=200;
 /** Unknown kinds and shapes are skipped (a newer server), never applied. */
@@ -118,14 +109,14 @@ export function parseReceiverInboxEvent(value:unknown):ReceiverInboxEvent|undefi
 }
 
 export class ReceiverHost{
- private api:RemoteApi;private device:ReceiverDevice;private player:ReceiverPlayer;private pollMs:number;private heartbeatMs:number;private rand:()=>number;private events?:ReceiverEventOpener;
+ private api:RemoteApi;private device:ReceiverDevice;private player:ReceiverPlayer;private pollMs:number;private heartbeatMs:number;private rand:()=>number;private events?:EventsClient;
  /** True while the event stream is connected: the inbox poll backs off to the safety interval. */
- private streamConnected=false;private streamFailures=0;
+ private streamConnected=false;private releaseEvents?:()=>void;
  /** True while the player is in the foreground: the inbox poll pauses, the heartbeat doesn't. */
  private playerActive=false;
  private state:ReceiverSnapshot=Object.freeze<ReceiverSnapshot>({phase:'off'});private listeners=new Set<()=>void>();
  private run?:AbortController;private handled=new Set<string>();
-  constructor(options:{api:RemoteApi;device:ReceiverDevice;player:ReceiverPlayer;pollMs?:number;heartbeatMs?:number;rand?:()=>number;events?:ReceiverEventOpener}){this.api=options.api;this.device=options.device;this.player=options.player;this.pollMs=options.pollMs??30000;this.heartbeatMs=options.heartbeatMs??45000;this.rand=options.rand??Math.random;this.events=options.events;}
+  constructor(options:{api:RemoteApi;device:ReceiverDevice;player:ReceiverPlayer;pollMs?:number;heartbeatMs?:number;rand?:()=>number;events?:EventsClient}){this.api=options.api;this.device=options.device;this.player=options.player;this.pollMs=options.pollMs??30000;this.heartbeatMs=options.heartbeatMs??45000;this.rand=options.rand??Math.random;this.events=options.events;}
   getSnapshot=()=>this.state;
   subscribe=(fn:()=>void)=>{this.listeners.add(fn);return()=>{this.listeners.delete(fn);};};
   private publish(patch:Partial<ReceiverSnapshot>){this.state=Object.freeze({...this.state,...patch});this.listeners.forEach(f=>f());}
@@ -144,15 +135,15 @@ export class ReceiverHost{
   /** The player is in the foreground (something loaded: playing or paused). While set, the inbox
    * poll pauses; registration and the heartbeat continue so grants arrive on the next idle poll. */
   setPlayerActive(active:boolean){this.playerActive=active;}
- stop(){this.run?.abort();this.run=undefined;this.streamConnected=false;this.publish({phase:'off',asking:undefined});}
+ stop(){this.releaseEvents?.();this.releaseEvents=undefined;this.run?.abort();this.run=undefined;this.streamConnected=false;this.publish({phase:'off',asking:undefined});}
  dispose(){this.stop();this.listeners.clear();}
 
  /** Registers (again, harmlessly) and waits to be used. Failures back off and keep trying: a
   * television that lost its server for a minute should be available again without a visit. */
  start(){
   if(this.run)return;const run=this.run=new AbortController(),signal=run.signal;
-  this.streamConnected=false;this.streamFailures=0;
-  if(this.events)void this.followEvents(run,signal);
+  this.streamConnected=false;
+  if(this.events)this.followEvents(signal);
   void(async()=>{
    let failures=0,lastBeat=0;
    while(!signal.aborted){
@@ -191,37 +182,15 @@ export class ReceiverHost{
   const handoff=(inbox.handoffs??[]).map(h=>parseHandoff({protocolVersion:SOCIAL_PROTOCOL,serverTime:'',handoff:h})).find(h=>h.outcome==='waiting'&&!this.handled.has(h.id));
   if(handoff){this.handled.add(handoff.id);void this.take(handoff,signal);}
  }
- /** Holds `/v1/notifications/events` open and turns `receiver.inbox_changed` into inbox reads.
-  * A dropped stream never empties anything: the poll loop keeps covering until it reconnects. */
- private async followEvents(run:AbortController,signal:AbortSignal){
-  while(!signal.aborted&&this.run===run){
-   try{
-    const response=await this.events!(signal);
-    if(signal.aborted||this.run!==run)return;
-    this.streamConnected=true;this.streamFailures=0;
-    await readEventStream(response,event=>{
-     if(signal.aborted||this.run!==run)return;
-     if(event.event!=='receiver.inbox_changed')return;
-     let body:unknown;try{body=JSON.parse(event.data);}catch{return;}
-     const hint=parseReceiverInboxEvent(body);
-     if(!hint||this.playerActive)return;
-     // `grant`/`handoff` name their receiver; `resync` (and a hint without one) refreshes this
-     // host's own inbox. The server sends `resync` on every connection.
-     const id=hint.kind==='resync'?this.state.receiver?.id:(hint.receiverId??this.state.receiver?.id);
-     if(!id)return;
-     // A forgotten receiver re-registers on the next poll turn, as after a failed poll.
-     void this.refreshInbox(id,signal).catch(e=>{if(status(e)===404)this.publish({receiver:undefined});});
-    },signal);
-   }catch{
-    if(signal.aborted||this.run!==run)return;
-   }
-   this.streamConnected=false;
-   if(signal.aborted||this.run!==run)return;
-   // Fall back to the 30 s poll at once instead of sleeping out the safety interval.
-   this.sleeper?.wake();
-   this.streamFailures++;
-   await wait(receiverReconnectDelay(this.streamFailures,this.rand),signal);
-  }
+ /** Receiver features subscribe to the shared feed and never open a connection. */
+ private followEvents(signal:AbortSignal){
+  const events=this.events!;
+  const refresh=()=>{const id=this.state.receiver?.id;if(id&&!signal.aborted&&!this.playerActive)void this.refreshInbox(id,signal).catch(e=>{if(status(e)===404)this.publish({receiver:undefined});});};
+  const hint=events.on('receiver.inbox_changed',event=>{const value=parseReceiverInboxEvent(event.data);if(value)refresh();});
+  const resync=events.onResync(refresh);
+  const statusOff=events.subscribeStatus(()=>{this.streamConnected=events.getStatus().connected;this.sleeper?.wake();});
+  this.streamConnected=events.getStatus().connected;
+  this.releaseEvents=()=>{hint();resync();statusOff();};
  }
  async decide(grant:ReceiverGrant,decision:'accept'|'decline'):Promise<void>{
   const id=this.state.receiver?.id;if(!id)return;
