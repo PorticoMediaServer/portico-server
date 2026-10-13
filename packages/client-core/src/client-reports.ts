@@ -1,4 +1,5 @@
 import {parseEnvelope} from './administration.ts';
+import {keepReadable} from './tolerant.ts';
 
 export type ClientReport=Readonly<{id:string;accountId:string;profileId:string;deviceId:string;platform:string;deviceClass:string;appVersion:string;receivedAt:string;bytes:number;body?:string}>;
 export type ClientReportInput=Readonly<{platform:string;deviceClass:string;appVersion:string;body:string}>;
@@ -23,7 +24,8 @@ export async function listClientReports(transport:ReportTransport,serverId:strin
   if(!value||typeof value!=='object')throw new Error('Invalid client reports.');
   const v=value as Record<string,unknown>;
   if(!Array.isArray(v.items)||v.items.length>100||typeof v.limit!=='number'||v.limit<1||v.limit>100||v.nextCursor!==undefined&&typeof v.nextCursor!=='string')throw new Error('Invalid client reports.');
-  return Object.freeze({items:Object.freeze(v.items.map(report)),limit:v.limit,...(v.nextCursor?{nextCursor:v.nextCursor as string}:{})});
+  // One report that cannot be read is left out alone; the rest are listed.
+  return Object.freeze({items:Object.freeze(keepReadable('client-reports','items',v.items,report)),limit:v.limit,...(v.nextCursor?{nextCursor:v.nextCursor as string}:{})});
  }).result;
 }
 export async function readClientReport(transport:ReportTransport,serverId:string,id:string,signal?:AbortSignal):Promise<ClientReport>{

@@ -13,7 +13,7 @@ import s from './Settings.module.css';
 const AccessTokens = React.lazy(() => import('./AccessTokens'));
 
 /** Panels that bring their own group and heading; the rest are rows inside their section's group. */
-const GROUP_PANELS: ReadonlySet<SettingsCustomId> = new Set(['identity', 'profiles', 'password', 'twoStep', 'devices', 'porticoAccount', 'about', 'accessTokens']);
+const GROUP_PANELS: ReadonlySet<SettingsCustomId> = new Set(['identity', 'profiles', 'password', 'twoStep', 'devices', 'porticoAccount', 'about', 'accessTokens', 'privacyNote']);
 export const isGroupPanel = (id: SettingsCustomId) => GROUP_PANELS.has(id);
 
 /** The account pages' `custom` rows (settings-structure.ts), drawn with the web's own panels. */
@@ -29,9 +29,16 @@ export function AccountPanel({id}: {id: SettingsCustomId}) {
     case 'subtitlePreview': return <SubtitlePreview />;
     case 'deviceName': return <DeviceNameRow />;
     case 'about': return <About />;
+    case 'privacyNote': return <PrivacyNote />;
     case 'accessTokens': return <Suspense fallback={null}><AccessTokens /></Suspense>;
     default: return null;
   }
+}
+
+/** The one thing the privacy switches do not change: the owner's own record of what is played. */
+function PrivacyNote() {
+  const {t} = useI18n();
+  return <p className={s.sectionLede}>{t('pref.note.privacy.ownerSeesPlays')}</p>;
 }
 
 function Identity() {

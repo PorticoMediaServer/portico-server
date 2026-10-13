@@ -16,14 +16,14 @@ test('the web has one page for keys, members\' tokens, webhooks and assistants',
   assert.deepEqual(integrations.tabs?.map(x => x.id), ['keys', 'tokens', 'webhooks', 'assistants']);
   assert.deepEqual(rowIds(integrations), ['server.apiKeys', 'runtime.apiRequestsPerMinute', 'server.memberTokens', 'runtime.blockMemberAccessTokens', 'server.webhooks', 'server.assistants']);
   // People keeps accounts and invitations; keys moved out.
-  assert.deepEqual(page(server('web'), 'people')!.tabs?.map(x => x.id), ['accounts', 'invitations']);
+  assert.deepEqual(page(server('web'), 'people')!.tabs?.map(x => x.id), ['accounts', 'invitations', 'devices']);
 });
 
 test('the phone keeps its keys list under People and has no page it cannot draw', () => {
   const pages = server('phone');
   assert.equal(page(pages, 'integrations'), undefined);
   assert.equal(page(pages, 'metadata'), undefined);
-  assert.deepEqual(page(pages, 'people')!.tabs?.map(x => x.id), ['accounts', 'invitations', 'keys']);
+  assert.deepEqual(page(pages, 'people')!.tabs?.map(x => x.id), ['accounts', 'invitations', 'devices', 'keys']);
 });
 
 test('remote access carries the home networks, the address to give out, proxies, the owner\'s certificate and the connection limit', () => {
@@ -98,4 +98,27 @@ test('a list setting takes an entry once, trimmed, and never an empty one', () =
   assert.deepEqual(withListEntry(['10.0.0.0/8'], ' 100.64.0.0/10 '), ['10.0.0.0/8', '100.64.0.0/10']);
   assert.deepEqual(withListEntry(['10.0.0.0/8'], '10.0.0.0/8'), ['10.0.0.0/8']);
   assert.deepEqual(withListEntry(['10.0.0.0/8'], '   '), ['10.0.0.0/8']);
+});
+
+test('the second-pass rows are where an owner would look', () => {
+  const web = server('web');
+  assert.deepEqual(rowIds(page(web, 'people')!).filter(id => id.includes('evice')), ['runtime.deviceApprovalRequired', 'server.devices']);
+  // The phone draws the approval switch; the list of everyone's devices is the web's.
+  assert.deepEqual(rowIds(page(server('phone'), 'people')!).filter(id => id.includes('evice')), ['runtime.deviceApprovalRequired']);
+  for (const id of ['runtime.sessionStorageMiB', 'runtime.ffmpegPath', 'runtime.temporaryDirectory', 'runtime.hardwareBackend']) assert.ok(rowIds(page(web, 'streaming')!).includes(id), id);
+  for (const id of ['liveDefaults.importLimits.channels', 'liveDefaults.importLimits.programmes', 'liveDefaults.importLimits.bytes']) assert.ok(rowIds(page(web, 'live')!).includes(id), id);
+  assert.ok(rowIds(page(web, 'general')!).includes('server.restart'));
+  assert.ok(rowIds(page(web, 'troubleshooting')!).includes('server.clientReports'));
+  const space = page(web, 'streaming')!.sections.flatMap(s => s.rows).find(r => r.kind === 'server-setting' && r.key === 'sessionStorageMiB');
+  assert.ok(space && space.kind === 'server-setting' && space.control.type === 'number' && space.control.scale === 1024);
+});
+
+test('privacy opens with what the owner always sees, and the web never offers a player or passthrough it does not have', () => {
+  const account = settingsStructure({owner: false, platform: 'web', capabilities: {audioPassthrough: false, hdr: true}}).headings[0]!.pages;
+  assert.equal(account.find(p => p.id === 'privacy')!.sections[0]!.rows[0]!.kind === 'custom' && (account.find(p => p.id === 'privacy')!.sections[0]!.rows[0] as {id: string}).id, 'privacyNote');
+  const quality = account.find(p => p.id === 'quality')!.sections.flatMap(s => s.rows).map(r => ('id' in r ? r.id : 'key' in r ? r.key : ''));
+  assert.ok(quality.includes('forceStereo') && quality.includes('disableHdr'));
+  assert.ok(!quality.includes('disablePassthrough') && !quality.includes('playerEngine'));
+  const noHdr = settingsStructure({owner: false, platform: 'web', capabilities: {hdr: false}}).headings[0]!.pages.find(p => p.id === 'quality')!.sections.flatMap(s => s.rows).map(r => ('id' in r ? r.id : ''));
+  assert.ok(!noHdr.includes('disableHdr'));
 });

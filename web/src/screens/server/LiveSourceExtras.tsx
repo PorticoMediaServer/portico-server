@@ -8,6 +8,7 @@ export {guideOnlyPatch} from '@core/server-admin/panel-logic.ts';
 import {problem, useAction, useRead} from '../../admin/console';
 import {createOperationIds} from './operation-ids';
 import {useSession} from '../../app/session';
+import {LinesField} from '../settings/ServerForms';
 import {useI18n} from '../../app/i18n';
 import {Badge, Button, Checkbox, ConfirmDialog, Dialog, Input, Loading, Menu, Notice, Segmented, Select, SettingsGroup, SettingsRow, Switch, Text, type MenuItem} from '../../ui';
 
@@ -34,7 +35,7 @@ export function chunkChannelMapEntries<T>(entries: readonly T[]): T[][] {
 }
 
 type FilterRule = {mode: 'include' | 'exclude'; values: string[]};
-type SourceSettings = {kind: string; streamBufferSeconds: number | null; retryWindowSeconds: number | null; userAgent: string; filters: {categories: FilterRule; countries: FilterRule; keywords: FilterRule}; logoImport: {enabled: boolean; overwriteExisting: boolean}; channelNumbering: {mode: 'source' | 'sequential'; startAt: number; step: number}; guideSourceId: string};
+type SourceSettings = {enabledGroups: readonly string[]; enabledChannels: readonly string[]; kind: string; streamBufferSeconds: number | null; retryWindowSeconds: number | null; userAgent: string; filters: {categories: FilterRule; countries: FilterRule; keywords: FilterRule}; logoImport: {enabled: boolean; overwriteExisting: boolean}; channelNumbering: {mode: 'source' | 'sequential'; startAt: number; step: number}; guideSourceId: string};
 type SourceDocument = {sourceId: string; sourceName: string; revision: number; settings: SourceSettings; effective: {streamBufferSeconds: number; retryWindowSeconds: number}; availableKinds: string[]};
 const kindName: Record<string, string> = {playlist: 'Channels (playlist or tuner)', 'xmltv-guide': 'Guide only (XMLTV)', hdhomerun: 'HDHomeRun tuner'};
 const filterName = {categories: 'Categories', countries: 'Countries', keywords: 'Words in the channel name'} as const;
@@ -71,6 +72,17 @@ export function SourceSettingsDialog({src, guides, onClose, onChanged}: {src: {i
             {guideOnly ? <Text variant="caption" tone="tertiary">{t('web.liveSource.guideOnlyNote')}</Text> : (
               <Select label={t('web.liveSource.guideFrom')} help={t('web.liveSource.guideFromHelp')} value={draft.guideSourceId || 'own'} onChange={e => patch({guideSourceId: e.target.value === 'own' ? '' : e.target.value})} options={[{value: 'own', label: t('web.liveSource.ownGuide')}, ...guides.filter(g => g.id !== src.id).map(g => ({value: g.id, label: g.name}))]} />
             )}
+            {/* Bringing in only part of a large line-up: named groups, or named channels. Empty means all of them. */}
+            {!guideOnly ? (
+              <div style={{display: 'flex', flexDirection: 'column', gap: 8}}>
+                <Text variant="label" tone="secondary">{t('server.live.onlyGroups')}</Text>
+                <LinesField label={t('server.live.onlyGroups')} value={draft.enabledGroups} onChange={enabledGroups => patch({enabledGroups})} />
+                <Text variant="caption" tone="tertiary">{t('server.live.onlyGroupsHelp')}</Text>
+                <Text variant="label" tone="secondary">{t('server.live.onlyChannels')}</Text>
+                <LinesField label={t('server.live.onlyChannels')} value={draft.enabledChannels} onChange={enabledChannels => patch({enabledChannels})} />
+                <Text variant="caption" tone="tertiary">{t('server.live.onlyChannelsHelp')}</Text>
+              </div>
+            ) : null}
             {!guideOnly ? (
               <div style={{display: 'flex', flexDirection: 'column', gap: 12}}>
                 <Text variant="label" tone="secondary">{t('web.liveSource.keepChannels')}</Text>

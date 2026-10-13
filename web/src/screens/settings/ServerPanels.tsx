@@ -10,7 +10,7 @@ import {LiveSourcesPanel, RecordingRulesPanel, RecordingStoragePanel} from '../s
 import {TunersGroup} from '../server/DVRSettings';
 import {LibraryChannelsPanel} from '../server/Channels';
 import {AccountsPanel} from '../server/People';
-import {InvitationsPanel} from '../server/Access';
+import {AccountDevices, InvitationsPanel} from '../server/Access';
 import {APIKeysPanel, MemberTokensPanel} from '../server/ApiAccess';
 import {WebhooksPanel} from '../server/Webhooks';
 import {AssistantsPanel} from '../server/Assistants';
@@ -18,7 +18,8 @@ import {MetadataSettingsPanel} from '../server/MetadataSettings';
 import {TranscodeStatusPanel} from '../server/Transcoding';
 import {AddressesRow, CertificateStatusRow, ConnectionRow, OwnCertificateStatusRow, RemoteStatusPanel} from '../server/Network';
 import {AccountConnectionPanel, IdentityRows} from '../server/General';
-import {DiskUsagePanel, MissingTitlesPanel, UpdatesPanel} from '../server/Maintenance';
+import {DiskUsagePanel, MissingTitlesPanel, RestartPanel, UpdatesPanel} from '../server/Maintenance';
+import {ClientReportsPanel} from '../server/ClientReports';
 import {RemoteSourcesPanel} from '../server/Storage';
 import {BackupsGroup} from '../server/Backups';
 import {RetentionRows, ScheduledJobsPanel, WindowsPanel} from '../server/MaintenanceWindows';
@@ -49,6 +50,7 @@ export function ServerPanel({id}: {id: SettingsCustomId}) {
     case 'server.channels': return <LibraryChannelsPanel />;
     case 'server.accounts': return <AccountsPanel />;
     case 'server.invitations': return <InvitationsPanel />;
+    case 'server.devices': return <AccountDevices />;
     case 'server.apiKeys': return <APIKeysPanel />;
     case 'server.memberTokens': return <MemberTokensPanel />;
     case 'server.webhooks': return <WebhooksPanel />;
@@ -77,6 +79,8 @@ export function ServerPanel({id}: {id: SettingsCustomId}) {
     case 'server.stateFolder': return <StateFolder />;
     case 'server.identity': return <IdentityRows />;
     case 'server.updates': return <UpdatesPanel />;
+    case 'server.restart': return <RestartPanel />;
+    case 'server.clientReports': return <ClientReportsPanel />;
     default: return null;
   }
 }
