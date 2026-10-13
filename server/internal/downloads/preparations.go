@@ -125,9 +125,29 @@ func (s *Service) Submit(ctx context.Context, p identity.Principal, r Request, g
 				continue
 			}
 		}
+		if err = retireStrays(ctx, tx, key, entity, item, now); err != nil {
+			return out, err
+		}
 		// A live claim on the same item and quality is the same claim. Returning
 		// it keeps a client that retried a batch from accumulating duplicates.
+		// One that failed is what the viewer is asking to have another go at:
+		// asking again starts it again, rather than handing back the failure.
 		existing, err := readPreparation(tx.QueryRowContext(ctx, `SELECT `+preparationColumns+` FROM download_preparations WHERE profile_key=? AND item_id=? AND quality=? AND state IN('queued','running','ready','paused','failed')`, key, entity, r.Quality))
+		if err == nil && existing.State == StateFailed {
+			if err = s.restart(ctx, tx, p, existing, now); errors.Is(err, ErrStorageFull) {
+				out.Rejected = append(out.Rejected, Rejection{item, ReasonStorageFull})
+				refused++
+				continue
+			} else if err != nil {
+				return out, err
+			}
+			if existing, err = readPreparation(tx.QueryRowContext(ctx, `SELECT `+preparationColumns+` FROM download_preparations WHERE id=?`, existing.ID)); err != nil {
+				return out, err
+			}
+			out.Items = append(out.Items, s.publish(existing, settings.RetentionDays))
+			out.Accepted++
+			continue
+		}
 		if err == nil {
 			out.Items = append(out.Items, s.publish(existing, settings.RetentionDays))
 			continue
@@ -143,8 +163,12 @@ func (s *Service) Submit(ctx context.Context, p identity.Principal, r Request, g
 			out.Rejected = append(out.Rejected, Rejection{item, reason})
 			continue
 		}
+		if reason := qualityReason(ctx, tx, r.Quality, found); reason != "" {
+			out.Rejected = append(out.Rejected, Rejection{item, reason})
+			continue
+		}
 		estimate, estimated := estimateBytes(r.Quality, found)
-		if err = storageRoom(tx, estimate); errors.Is(err, ErrStorageFull) {
+		if err = storageRoom(tx, r.Quality, estimate); errors.Is(err, ErrStorageFull) {
 			out.Rejected = append(out.Rejected, Rejection{item, ReasonStorageFull})
 			refused++
 			continue
@@ -156,8 +180,12 @@ func (s *Service) Submit(ctx context.Context, p identity.Principal, r Request, g
 		if estimated {
 			flag = 1
 		}
-		if _, err = tx.ExecContext(ctx, `INSERT INTO download_preparations(id,profile_key,authority,account_id,profile_id,item_id,library_id,quality,origin,batch_id,state,bytes_total,estimated,created_ms,updated_ms) VALUES(?,?,?,?,?,?,?,?,?,?,'queued',?,?,?,?)`,
-			id, key, p.Authority, p.AccountID, p.ProfileID, entity, library, r.Quality, origin, batch, estimate, flag, now, now); err != nil {
+		title, err := readTitle(ctx, tx, entity)
+		if err != nil {
+			return out, err
+		}
+		if _, err = tx.ExecContext(ctx, `INSERT INTO download_preparations(id,profile_key,authority,account_id,profile_id,item_id,item_public,library_id,title_json,quality,origin,batch_id,state,bytes_total,estimated,created_ms,updated_ms) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,'queued',?,?,?,?)`,
+			id, key, p.Authority, p.AccountID, p.ProfileID, entity, item, library, titleSnapshot(title), r.Quality, origin, batch, estimate, flag, now, now); err != nil {
 			return out, err
 		}
 		fresh, err := readPreparation(tx.QueryRowContext(ctx, `SELECT `+preparationColumns+` FROM download_preparations WHERE id=?`, id))
@@ -191,6 +219,55 @@ func (s *Service) Submit(ctx context.Context, p identity.Principal, r Request, g
 	}
 	s.signal()
 	return out, nil
+}
+
+// retireStrays ends a live claim that holds this title's number in the
+// catalogue but was made for a different title: the number was the removed
+// title's and has been given to a new one. Housekeeping would end it on its
+// next pass; a request for the new title must not be answered with it, or
+// refused by it, in the meantime.
+func retireStrays(ctx context.Context, tx *sql.Tx, key string, entity int64, item string, now int64) error {
+	rows, e := tx.QueryContext(ctx, `SELECT id FROM download_preparations WHERE profile_key=? AND item_id=? AND item_public<>? AND state IN('queued','running','ready','paused','failed')`, key, entity, item)
+	if e != nil {
+		return e
+	}
+	ids, e := collectIDs(rows)
+	if e != nil {
+		return e
+	}
+	for _, id := range ids {
+		if e = endClaim(ctx, tx, id, StateUnavailable, ReasonItemDeleted, now, `('queued','running','ready','paused','failed')`); e != nil {
+			return e
+		}
+	}
+	return nil
+}
+
+// restart puts a failed or ended claim back in the queue from nothing, under
+// the authority of the viewer asking now.
+func (s *Service) restart(ctx context.Context, tx *sql.Tx, p identity.Principal, current row, now int64) error {
+	var device string
+	e := tx.QueryRowContext(ctx, `SELECT device_id FROM download_preparation_authority WHERE preparation_id=?`, current.ID).Scan(&device)
+	if e != nil && !errors.Is(e, sql.ErrNoRows) {
+		return e
+	}
+	if device != "" {
+		if _, _, e = s.requestAccess(ctx, tx, p, device); e != nil {
+			return e
+		}
+	}
+	principal, _ := json.Marshal(p)
+	if _, e = tx.ExecContext(ctx, `UPDATE download_preparation_authority SET principal=?,optimization_requested=0,optimization_operation='' WHERE preparation_id=?`, string(principal), current.ID); e != nil {
+		return e
+	}
+	if e = storageRoom(tx, current.Quality, current.Progress.BytesTotal); e != nil {
+		return e
+	}
+	if _, e = tx.ExecContext(ctx, `DELETE FROM download_grants WHERE preparation_id=?`, current.ID); e != nil {
+		return e
+	}
+	_, e = tx.ExecContext(ctx, `UPDATE download_preparations SET state='queued',reason='',artifact_kind='',artifact_ref='',artifact_digest='',artifact_container='',source_modified_ns=0,hash_state=NULL,bytes_done=0,started_ms=0,ready_ms=0,used_ms=0,revision=revision+1,updated_ms=? WHERE id=?`, now, current.ID)
+	return e
 }
 
 // legal reports whether an action is offered from a state. The published
@@ -261,35 +338,31 @@ func (s *Service) Act(ctx context.Context, p identity.Principal, id string, c Co
 		if c.Action == ActionRemove {
 			reason = ReasonRemoved
 		}
-		// Giving up the claim also withdraws the offline authorization it
-		// justified: a receipt outliving its preparation would let a client play
-		// bytes the server no longer accounts for.
-		if e = revokeForPreparation(tx, id, reason, now); e != nil {
-			return out, e
-		}
+		// Giving up the claim ends what the server will transfer for it. A copy
+		// already on a device is not the claim: it is taken off a device by
+		// removing it there, or by withdrawing its receipt (receipts/revoke).
 		if _, e = tx.ExecContext(ctx, `DELETE FROM download_grants WHERE preparation_id=?`, id); e != nil {
 			return out, e
 		}
 		_, e = tx.ExecContext(ctx, `UPDATE download_preparations SET state='cancelled',reason=?,hash_state=NULL,bytes_done=0,revision=revision+1,updated_ms=? WHERE id=?`, reason, now, id)
 	case ActionRetry:
-		var device string
-		e = tx.QueryRowContext(ctx, `SELECT device_id FROM download_preparation_authority WHERE preparation_id=?`, id).Scan(&device)
+		// A claim that ended (unavailable) is outside the one-live-claim rule,
+		// so a newer claim for the same title and quality may exist by now.
+		// That newer claim is the retry: this one steps aside for it instead of
+		// colliding with it.
+		var sibling string
+		e = tx.QueryRowContext(ctx, `SELECT other.id FROM download_preparations mine JOIN download_preparations other ON other.profile_key=mine.profile_key AND other.item_id=mine.item_id AND other.quality=mine.quality AND other.id<>mine.id AND other.state IN('queued','running','ready','paused','failed') WHERE mine.id=?`, id).Scan(&sibling)
 		if e != nil && !errors.Is(e, sql.ErrNoRows) {
 			return out, e
 		}
-		if device != "" {
-			if _, _, e = s.requestAccess(ctx, tx, p, device); e != nil {
+		if e == nil {
+			if _, e = tx.ExecContext(ctx, `UPDATE download_preparations SET state='cancelled',reason=?,hash_state=NULL,revision=revision+1,updated_ms=? WHERE id=?`, ReasonRemoved, now, id); e != nil {
 				return out, e
 			}
+			id = sibling
+			break
 		}
-		principal, _ := json.Marshal(p)
-		if _, e = tx.ExecContext(ctx, `UPDATE download_preparation_authority SET principal=?,optimization_requested=0,optimization_operation='' WHERE preparation_id=?`, string(principal), id); e != nil {
-			return out, e
-		}
-		if e = storageRoom(tx, current.Progress.BytesTotal); e != nil {
-			return out, e
-		}
-		_, e = tx.ExecContext(ctx, `UPDATE download_preparations SET state='queued',reason='',artifact_kind='',artifact_ref='',artifact_digest='',artifact_container='',source_version_json='',hash_state=NULL,bytes_done=0,started_ms=0,ready_ms=0,revision=revision+1,updated_ms=? WHERE id=?`, now, id)
+		e = s.restart(ctx, tx, p, current, now)
 	}
 	if e != nil {
 		return out, e

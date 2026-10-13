@@ -6,8 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"os"
-	"path/filepath"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/worker"
 	"strconv"
@@ -40,13 +38,15 @@ type Optimizer interface {
 }
 
 type Options struct {
-	SourceSnapshotRoot string
-	DB                 *sql.DB
-	Now                func() time.Time
-	OpenSource         SourceOpener
-	Artifacts          ArtifactOpener
-	Optimizer          Optimizer
-	Notifier           DownloadNotifier
+	DB         *sql.DB
+	Now        func() time.Time
+	OpenSource SourceOpener
+	Artifacts  ArtifactOpener
+	Optimizer  Optimizer
+	Notifier   DownloadNotifier
+	// Plays is the personal-state writer offline plays are recorded through
+	// (catalog.AcceptPlaybackProgressAt): the one online playback uses.
+	Plays playback.OfflineWriter
 	// BaseGrantPath is the route prefix a grant URL is published under. It is a
 	// path, never an absolute URL: the client already knows which server it is
 	// talking to, and a server behind a proxy must not invent an origin.
@@ -56,15 +56,16 @@ type Options struct {
 type Service struct {
 	access       RequestAccess
 	accessMu     sync.RWMutex
-	snapshotRoot string
-	snapshotMu   sync.Mutex
 	advanceMu    sync.Mutex
+	tidied       time.Time
+	pruned       time.Time
 	db           *sql.DB
 	now          func() time.Time
-	openSource   SourceOpener
+	openOriginal SourceOpener
 	artifacts    ArtifactOpener
 	optimizer    Optimizer
 	notifier     DownloadNotifier
+	plays        playback.OfflineWriter
 	grantPath    string
 	wake         *worker.Signal
 	done         chan struct{}
@@ -84,21 +85,7 @@ func New(o Options) (*Service, error) {
 	if o.BaseGrantPath == "" {
 		o.BaseGrantPath = "/v1/downloads/artifacts/"
 	}
-	if o.SourceSnapshotRoot == "" {
-		var sequence int
-		var name, path string
-		if err := o.DB.QueryRow("PRAGMA database_list").Scan(&sequence, &name, &path); err != nil {
-			return nil, err
-		}
-		if path == "" {
-			return nil, errors.New("download source snapshot directory required")
-		}
-		o.SourceSnapshotRoot = filepath.Join(filepath.Dir(path), "download-source-snapshots")
-	}
-	if err := os.MkdirAll(o.SourceSnapshotRoot, 0700); err != nil {
-		return nil, err
-	}
-	return &Service{snapshotRoot: o.SourceSnapshotRoot, db: o.DB, now: o.Now, openSource: o.OpenSource, artifacts: o.Artifacts, optimizer: o.Optimizer, notifier: o.Notifier, grantPath: o.BaseGrantPath, wake: worker.NewSignal()}, nil
+	return &Service{db: o.DB, now: o.Now, openOriginal: o.OpenSource, artifacts: o.Artifacts, optimizer: o.Optimizer, notifier: o.Notifier, plays: o.Plays, grantPath: o.BaseGrantPath, wake: worker.NewSignal()}, nil
 }
 
 func (s *Service) millis() int64 { return s.now().UnixMilli() }
@@ -210,11 +197,16 @@ type UsageLine struct {
 	Count     int    `json:"count"`
 }
 
-// committedStates are the preparations the server has promised storage to. A
-// queued claim counts against the ceiling from the moment it is admitted;
-// admitting work the store cannot hold and discovering it later would leave a
-// viewer watching a progress bar that can only end in storage_full.
+// committedStates are the live preparations. A queued claim counts against the
+// ceiling from the moment it is admitted; admitting work the store cannot hold
+// and discovering it later would leave a viewer watching a progress bar that
+// can only end in storage_full.
 const committedStates = `('queued','running','ready','paused')`
+
+// storedClaims are the live claims that stand for bytes this server keeps: the
+// converted files. An original is the library file itself, read in place, so
+// claiming one takes no room and is never refused for lack of it.
+const storedClaims = committedStates + ` AND quality<>'original'`
 
 func (s *Service) Usage(ctx context.Context, p identity.Principal, all bool) (Usage, error) {
 	out := Usage{ProfileID: p.ProfileID, Profiles: []UsageLine{}}
@@ -245,7 +237,11 @@ func (s *Service) Usage(ctx context.Context, p identity.Principal, all bool) (Us
 		return out, e
 	}
 	if settings.MaxPreparedBytes > 0 {
-		remaining := settings.MaxPreparedBytes - out.ServerBytes
+		var stored sql.NullInt64
+		if e = tx.QueryRowContext(ctx, `SELECT sum(bytes_total) FROM download_preparations WHERE state IN `+storedClaims).Scan(&stored); e != nil {
+			return out, e
+		}
+		remaining := settings.MaxPreparedBytes - stored.Int64
 		if remaining < 0 {
 			remaining = 0
 		}
@@ -275,10 +271,13 @@ func (s *Service) Usage(ctx context.Context, p identity.Principal, all bool) (Us
 	return out, gated3.Commit()
 }
 
-// storageRoom refuses admission once the owner's ceiling is reached. The check
-// is inside the admitting transaction, so two concurrent batches cannot both
-// squeeze past the same remaining allowance.
-func storageRoom(tx *sql.Tx, want int64) error {
+// storageRoom refuses admission of a converted download once the owner's
+// ceiling is reached. The check is inside the admitting transaction, so two
+// concurrent batches cannot both squeeze past the same remaining allowance.
+func storageRoom(tx *sql.Tx, quality string, want int64) error {
+	if quality == QualityOriginal {
+		return nil
+	}
 	settings, e := readSettings(tx)
 	if e != nil {
 		return e
@@ -287,7 +286,7 @@ func storageRoom(tx *sql.Tx, want int64) error {
 		return nil
 	}
 	var committed sql.NullInt64
-	if e = tx.QueryRow(`SELECT sum(bytes_total) FROM download_preparations WHERE state IN ` + committedStates).Scan(&committed); e != nil {
+	if e = tx.QueryRow(`SELECT sum(bytes_total) FROM download_preparations WHERE state IN ` + storedClaims).Scan(&committed); e != nil {
 		return e
 	}
 	if committed.Int64+want > settings.MaxPreparedBytes {
@@ -296,7 +295,7 @@ func storageRoom(tx *sql.Tx, want int64) error {
 	return nil
 }
 
-const preparationColumns = `id,COALESCE((SELECT pid(public_id) FROM catalog_entities WHERE id=download_preparations.item_id),''),library_id,profile_id,quality,origin,batch_id,state,reason,artifact_kind,artifact_ref,artifact_digest,artifact_container,bytes_done,bytes_total,estimated,revision,created_ms,updated_ms,started_ms,ready_ms`
+const preparationColumns = `id,item_public,library_id,profile_id,title_json,NOT (` + titleGone + `),quality,origin,batch_id,state,reason,artifact_kind,artifact_ref,artifact_digest,artifact_container,bytes_done,bytes_total,estimated,revision,created_ms,updated_ms,started_ms,ready_ms`
 
 type row struct {
 	Preparation
@@ -308,12 +307,15 @@ func readPreparation(scan interface{ Scan(...any) error }) (row, error) {
 	var r row
 	var estimated int
 	var updatedMS, readyMS int64
-	e := scan.Scan(&r.ID, &r.ItemID, &r.LibraryID, &r.ProfileID, &r.Quality, &r.Origin, &r.BatchID, &r.State, &r.Reason,
+	var title string
+	var onServer bool
+	e := scan.Scan(&r.ID, &r.ItemID, &r.LibraryID, &r.ProfileID, &title, &onServer, &r.Quality, &r.Origin, &r.BatchID, &r.State, &r.Reason,
 		&r.Artifact.Kind, &r.Artifact.Ref, &r.Artifact.SHA256, &r.Artifact.Container,
 		&r.Progress.BytesDone, &r.Progress.BytesTotal, &estimated, &r.Revision, &r.CreatedMS, &updatedMS, &r.StartedMS, &readyMS)
 	if e != nil {
 		return r, e
 	}
+	r.Title = storedTitle(title, onServer)
 	// An estimate is a moving lower bound once the worker has produced more.
 	// Exact ready sizes remain authoritative.
 	if estimated != 0 && r.State != StateReady && r.Progress.BytesDone > r.Progress.BytesTotal {

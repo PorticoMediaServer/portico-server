@@ -10,11 +10,9 @@ import (
 	"errors"
 	"io"
 	"os"
-	"path/filepath"
 	"portico.local/server/internal/contentaccess"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/entityid"
-	"portico.local/server/internal/mediasource"
 	"portico.local/server/internal/supervise"
 	"time"
 
@@ -22,6 +20,20 @@ import (
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/preparedmedia"
 	"portico.local/server/internal/worker"
+)
+
+// Housekeeping looks for claims that have run out, and pruning removes rows
+// nobody will read again. Neither is urgent, so neither runs on every wake of
+// a loop that any commit anywhere in the server can wake.
+const (
+	tidyEvery  = time.Minute
+	pruneEvery = time.Hour
+	// A finished claim, a spent request and a withdrawn receipt are kept this
+	// long for the lists that show them, then removed.
+	finishedRowsKept = 30 * 24 * time.Hour
+	// A grant that has run out is kept for a while so the same address can be
+	// brought back by renewal when the app that holds it comes back online.
+	spentGrantsKept = 7 * 24 * time.Hour
 )
 
 // Start runs the preparation worker until Close. Everything it does is also
@@ -43,7 +55,7 @@ func (s *Service) Start() {
 		worker.RunWith(ctx, "downloads.worker", s.wake, shared, func(ctx context.Context) time.Duration {
 			// A failing pass is not fatal: the next wake retries, and every
 			// preparation carries its own terminal state if it truly cannot run.
-			_ = s.Advance(ctx)
+			_ = s.advance(ctx, false)
 			return 0
 		})
 	})
@@ -58,36 +70,34 @@ func (s *Service) Close() error {
 	return nil
 }
 
-// Advance runs one bounded pass: retention first, then a page of live work.
-// It is safe to call concurrently with itself; every write is fenced on the
-// revision the pass read.
-func (s *Service) Advance(ctx context.Context) error {
+// Advance runs one bounded pass: container requests, housekeeping, then a page
+// of live work. It is safe to call concurrently with itself; every write is
+// fenced on what the pass read.
+func (s *Service) Advance(ctx context.Context) error { return s.advance(ctx, true) }
+
+func (s *Service) advance(ctx context.Context, tidyNow bool) error {
 	s.advanceMu.Lock()
 	defer s.advanceMu.Unlock()
 	if e := s.advanceRequests(ctx); e != nil {
 		return e
 	}
-	if e := s.expire(ctx); e != nil {
-		return e
-	}
-	if e := s.collectSnapshots(ctx); e != nil {
-		return e
+	if clock := time.Now(); tidyNow || clock.Sub(s.tidied) >= tidyEvery {
+		s.tidied = clock
+		if e := s.tidy(ctx); e != nil {
+			return e
+		}
+		if tidyNow || clock.Sub(s.pruned) >= pruneEvery {
+			s.pruned = clock
+			if e := s.prune(ctx); e != nil {
+				return e
+			}
+		}
 	}
 	rows, e := s.db.QueryContext(ctx, `SELECT id FROM download_preparations WHERE state='running' OR (state='queued' AND (SELECT count(*) FROM download_preparations active WHERE active.profile_key=download_preparations.profile_key AND active.state='running')<?) ORDER BY updated_ms,id LIMIT 8`, MaxLivePerViewer)
 	if e != nil {
 		return e
 	}
-	ids := []string{}
-	for rows.Next() {
-		var id string
-		if e = rows.Scan(&id); e != nil {
-			rows.Close()
-			return e
-		}
-		ids = append(ids, id)
-	}
-	e = rows.Err()
-	rows.Close()
+	ids, e := collectIDs(rows)
 	if e != nil {
 		return e
 	}
@@ -115,82 +125,143 @@ func (s *Service) Advance(ctx context.Context) error {
 	return nil
 }
 
-// expire retires unused ready claims and sweeps spent grants. A claim the
-// viewer never transferred expires retentionDays after it became ready; one
-// they did transfer expires retentionDays after the last transfer, so an actively
-// used download is not deleted out from under a client that keeps refreshing it.
-func (s *Service) expire(ctx context.Context) error {
-	gated, e := dbwork.Begin(ctx, s.db, dbwork.ClassForegroundTransfer)
+func collectIDs(rows *sql.Rows) ([]string, error) {
+	out := []string{}
+	for rows.Next() {
+		var id string
+		if e := rows.Scan(&id); e != nil {
+			rows.Close()
+			return out, e
+		}
+		out = append(out, id)
+	}
+	e := rows.Err()
+	rows.Close()
+	return out, e
+}
+
+// titleGone is true for a claim whose title has left the library. The public
+// id is compared as well as the entity, so a new title that happens to be
+// given a removed one's number is never mistaken for it.
+const titleGone = `NOT EXISTS(SELECT 1 FROM catalog_entities e WHERE e.id=download_preparations.item_id AND e.public_id=pid_blob(download_preparations.item_public))`
+
+// tidy ends claims the server can no longer honour. It ends the claim only: a
+// copy already on a device stays playable, because its receipt answers to what
+// the viewer may do, not to what the server still holds. Four things end a
+// claim here:
+//
+//   - nobody transferred it for retentionDays;
+//   - its title left the library;
+//   - the converted file it pointed at was removed;
+//   - the library file it pointed at was replaced.
+//
+// The reads come first and use no write transaction, so a pass with nothing to
+// end takes no writer at all.
+func (s *Service) tidy(ctx context.Context) error {
+	var retentionDays int
+	if e := s.db.QueryRowContext(ctx, `SELECT retention_days FROM download_settings WHERE singleton=1`).Scan(&retentionDays); e != nil {
+		return e
+	}
+	now := s.millis()
+	deadline := now - int64(retentionDays)*24*60*60*1000
+	type ending struct{ query, state, reason string }
+	endings := []ending{
+		{`SELECT id FROM download_preparations WHERE state='ready' AND (CASE WHEN used_ms>0 THEN used_ms ELSE ready_ms END)<? ORDER BY updated_ms LIMIT 64`, StateExpired, ReasonRetention},
+		{`SELECT id FROM download_preparations WHERE state IN('queued','running','paused','ready','failed') AND ?>0 AND ` + titleGone + ` ORDER BY updated_ms LIMIT 64`, StateUnavailable, ReasonItemDeleted},
+		{`SELECT id FROM download_preparations WHERE state='ready' AND ?>0 AND artifact_kind='prepared' AND NOT EXISTS(SELECT 1 FROM prepared_media_versions v WHERE v.id=download_preparations.artifact_ref AND v.digest=download_preparations.artifact_digest AND v.state='published') ORDER BY updated_ms LIMIT 64`, StateUnavailable, ReasonNotOptimized},
+		{`SELECT id FROM download_preparations WHERE state='ready' AND ?>0 AND artifact_kind='source' AND NOT EXISTS(SELECT 1 FROM catalog_asset_links link JOIN catalog_assets a ON a.id=link.asset_id WHERE link.entity_id=download_preparations.item_id AND a.token=download_preparations.artifact_ref AND a.size=download_preparations.bytes_total AND a.modified_ns=download_preparations.source_modified_ns) ORDER BY updated_ms LIMIT 64`, StateUnavailable, ReasonSourceChanged},
+	}
+	type ended struct{ id, state, reason string }
+	due := []ended{}
+	seen := map[string]bool{}
+	for _, c := range endings {
+		rows, e := s.db.QueryContext(ctx, c.query, deadline)
+		if e != nil {
+			return e
+		}
+		ids, e := collectIDs(rows)
+		if e != nil {
+			return e
+		}
+		for _, id := range ids {
+			if !seen[id] {
+				seen[id] = true
+				due = append(due, ended{id, c.state, c.reason})
+			}
+		}
+	}
+	var spent bool
+	if e := s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM download_grants WHERE expires_ms<? OR (revoked=1 AND expires_ms<?))`, now-int64(spentGrantsKept/time.Millisecond), now).Scan(&spent); e != nil {
+		return e
+	}
+	if len(due) == 0 && !spent {
+		return nil
+	}
+	gated, e := dbwork.Begin(ctx, s.db, dbwork.ClassBackgroundMedia)
 	if e != nil {
 		return e
 	}
 	tx := gated.Tx()
 	defer gated.Rollback()
-	settings, e := readSettings(tx)
-	if e != nil {
-		return e
-	}
-	now := s.millis()
-	deadline := now - int64(settings.RetentionDays)*24*60*60*1000
-	rows, e := tx.QueryContext(ctx, `SELECT id FROM download_preparations WHERE state='ready' AND (CASE WHEN used_ms>0 THEN used_ms ELSE ready_ms END)<? ORDER BY updated_ms LIMIT 64`, deadline)
-	if e != nil {
-		return e
-	}
-	expired := []string{}
-	for rows.Next() {
-		var id string
-		if e = rows.Scan(&id); e != nil {
-			rows.Close()
-			return e
+	for _, d := range due {
+		// The read above was outside this transaction: only a claim still in a
+		// state the reason applies to is ended.
+		live := `('queued','running','paused','ready','failed')`
+		if d.reason != ReasonItemDeleted {
+			live = `('ready')`
 		}
-		expired = append(expired, id)
-	}
-	e = rows.Err()
-	rows.Close()
-	if e != nil {
-		return e
-	}
-	for _, id := range expired {
-		if e = revokeForPreparation(tx, id, ReasonRetention, now); e != nil {
-			return e
-		}
-		if _, e = tx.ExecContext(ctx, `UPDATE download_preparations SET state='expired',reason=?,hash_state=NULL,revision=revision+1,updated_ms=? WHERE id=? AND state='ready'`, ReasonRetention, now, id); e != nil {
+		if e = endClaim(ctx, tx, d.id, d.state, d.reason, now, live); e != nil {
 			return e
 		}
 	}
-	// A ready claim whose item left the library is no longer a download anybody
-	// can use, and leaving it committed would hold storage against the owner's
-	// ceiling forever. Retiring it here is also what stops its receipts.
-	rows, e = tx.QueryContext(ctx, `SELECT id FROM download_preparations WHERE state='ready' AND NOT EXISTS(SELECT 1 FROM catalog_entities WHERE id=download_preparations.item_id) ORDER BY updated_ms LIMIT 64`)
-	if e != nil {
-		return e
-	}
-	orphaned := []string{}
-	for rows.Next() {
-		var id string
-		if e = rows.Scan(&id); e != nil {
-			rows.Close()
-			return e
-		}
-		orphaned = append(orphaned, id)
-	}
-	e = rows.Err()
-	rows.Close()
-	if e != nil {
-		return e
-	}
-	for _, id := range orphaned {
-		if e = revokeForPreparation(tx, id, ReasonItemDeleted, now); e != nil {
-			return e
-		}
-		if _, e = tx.ExecContext(ctx, `UPDATE download_preparations SET state='unavailable',reason=?,hash_state=NULL,revision=revision+1,updated_ms=? WHERE id=? AND state='ready'`, ReasonItemDeleted, now, id); e != nil {
-			return e
-		}
-	}
-	if _, e = tx.ExecContext(ctx, `DELETE FROM download_grants WHERE expires_ms<?`, now-int64(GrantReplayWindow/time.Millisecond)); e != nil {
+	if _, e = tx.ExecContext(ctx, `DELETE FROM download_grants WHERE expires_ms<? OR (revoked=1 AND expires_ms<?)`, now-int64(spentGrantsKept/time.Millisecond), now); e != nil {
 		return e
 	}
 	return gated.Commit()
+}
+
+// endClaim moves a claim to a state it cannot be transferred from, and
+// withdraws its transfer addresses. It never touches a receipt.
+func endClaim(ctx context.Context, tx *sql.Tx, id, state, reason string, now int64, from string) error {
+	result, e := tx.ExecContext(ctx, `UPDATE download_preparations SET state=?,reason=?,hash_state=NULL,revision=revision+1,updated_ms=? WHERE id=? AND state IN`+from, state, reason, now, id)
+	if e != nil {
+		return e
+	}
+	if changed, _ := result.RowsAffected(); changed == 0 {
+		return nil
+	}
+	_, e = tx.ExecContext(ctx, `UPDATE download_grants SET revoked=1 WHERE preparation_id=?`, id)
+	return e
+}
+
+// prune removes rows that have told their story: claims that ended a month
+// ago, requests that finished, receipts nobody could still be holding, and the
+// bookkeeping of titles and files that no longer exist. Each statement is
+// bounded, so a server that has never been pruned catches up over several
+// passes instead of holding the writer for one long one.
+func (s *Service) prune(ctx context.Context) error {
+	now := s.millis()
+	old := now - int64(finishedRowsKept/time.Millisecond)
+	statements := []struct {
+		query string
+		args  []any
+	}{
+		{`DELETE FROM download_preparations WHERE id IN(SELECT id FROM download_preparations WHERE state IN('cancelled','expired','unavailable') AND updated_ms<? LIMIT 256)`, []any{old}},
+		{`DELETE FROM download_requests WHERE id IN(SELECT id FROM download_requests WHERE state IN('complete','failed') AND updated_ms<? LIMIT 64)`, []any{old}},
+		// A withdrawn receipt is kept until the copy it covered could not have
+		// been played anyway, so a device that comes back is still told plainly
+		// that it was withdrawn. A receipt nobody renewed for a year is gone
+		// from every device that could have held it.
+		{`DELETE FROM download_receipts WHERE id IN(SELECT id FROM download_receipts WHERE (revoked_ms>0 AND revoked_ms<? AND expires_ms<?) OR expires_ms<? LIMIT 256)`, []any{old, old, now - int64(365*24*time.Hour/time.Millisecond)}},
+		{`DELETE FROM download_progress_marks WHERE rowid IN(SELECT m.rowid FROM download_progress_marks m WHERE NOT EXISTS(SELECT 1 FROM catalog_entities e WHERE e.id=m.item_id) LIMIT 256)`, nil},
+		{`DELETE FROM download_source_digests WHERE asset_id IN(SELECT d.asset_id FROM download_source_digests d WHERE NOT EXISTS(SELECT 1 FROM catalog_assets a WHERE a.token=d.asset_id AND a.size=d.size AND a.modified_ns=d.modified_ns) LIMIT 256)`, nil},
+	}
+	for _, statement := range statements {
+		if _, e := dbwork.ExecWrite(ctx, s.db, dbwork.ClassBackgroundMedia, statement.query, statement.args...); e != nil {
+			return e
+		}
+	}
+	return nil
 }
 
 // plan is what one pass decided to do outside the database transaction.
@@ -199,14 +270,12 @@ type optimization struct {
 	item, asset, profile, operation string
 }
 type plan struct {
-	optimization     *optimization
-	hashBytes        bool
-	path             string
-	size, modifiedNS int64
-	offset           int64
-	state            []byte
-	revision         int64
-	snapshotVersion  mediasource.Version
+	optimization *optimization
+	hashBytes    bool
+	file         pinned
+	offset       int64
+	state        []byte
+	revision     int64
 }
 
 func (s *Service) step(ctx context.Context, id string) (bool, error) {
@@ -225,30 +294,20 @@ func (s *Service) step(ctx context.Context, id string) (bool, error) {
 	if e != nil || !p.hashBytes {
 		return false, e
 	}
-	if p.snapshotVersion.ID() == "" {
-		p, e = s.snapshotOriginal(ctx, id, p)
-		if e != nil {
-			if ctx.Err() != nil {
-				return false, ctx.Err()
-			}
-			reason := ReasonSourceChanged
-			if errors.Is(e, ErrStorageFull) {
-				reason = ReasonStorageFull
-			}
-			return false, s.fail(ctx, id, p.revision, reason)
-		}
-		if !p.hashBytes {
-			return false, nil
-		}
-	}
-	digestState, read, e := s.hashChunk(ctx, p)
+	digestState, read, e := s.hashWindow(ctx, p)
 	if e != nil {
+		if ctx.Err() != nil {
+			return false, ctx.Err()
+		}
+		// The file could not be opened as the file that was pinned: it is
+		// unreachable, or it has changed. The next attempt re-reads the library
+		// and pins whatever is there then.
 		return false, s.fail(ctx, id, p.revision, ReasonSourceMissing)
 	}
 	if e = s.record(ctx, id, p, digestState, read); e != nil {
 		return false, e
 	}
-	return read > 0 && p.offset+read < p.size, nil
+	return read > 0 && p.offset+read < p.file.size, nil
 }
 
 // prepare decides, inside one transaction, what a preparation needs next. It
@@ -263,10 +322,11 @@ func (s *Service) prepare(ctx context.Context, id string) (plan, error) {
 	tx := gated2.Tx()
 	defer gated2.Rollback()
 	now := s.millis()
-	var state, quality, item, authority, account, profile, artifactRef, snapshotJSON string
-	var bytesDone, bytesTotal, revision int64
+	var state, quality, item, authority, account, profile, artifactRef string
+	var bytesDone, bytesTotal, revision, modifiedNS int64
 	var hashState []byte
-	e = tx.QueryRowContext(ctx, `SELECT state,quality,COALESCE((SELECT pid(public_id) FROM catalog_entities WHERE id=download_preparations.item_id),''),authority,account_id,profile_id,artifact_ref,bytes_done,bytes_total,revision,hash_state,source_version_json FROM download_preparations WHERE id=?`, id).Scan(&state, &quality, &item, &authority, &account, &profile, &artifactRef, &bytesDone, &bytesTotal, &revision, &hashState, &snapshotJSON)
+	var present bool
+	e = tx.QueryRowContext(ctx, `SELECT state,quality,item_public,authority,account_id,profile_id,artifact_ref,bytes_done,bytes_total,revision,hash_state,source_modified_ns,NOT (`+titleGone+`) FROM download_preparations WHERE id=?`, id).Scan(&state, &quality, &item, &authority, &account, &profile, &artifactRef, &bytesDone, &bytesTotal, &revision, &hashState, &modifiedNS, &present)
 	if errors.Is(e, sql.ErrNoRows) {
 		return out, nil
 	}
@@ -275,6 +335,9 @@ func (s *Service) prepare(ctx context.Context, id string) (plan, error) {
 	}
 	if state != StateQueued && state != StateRunning {
 		return out, nil
+	}
+	if !present {
+		return out, terminal(ctx, gated2, id, StateUnavailable, ReasonItemDeleted, now)
 	}
 	if state == StateQueued {
 		var running int
@@ -333,22 +396,6 @@ func (s *Service) prepare(ctx context.Context, id string) (plan, error) {
 		}
 		return out, terminal(ctx, gated2, id, StateUnavailable, ReasonItemDeleted, now)
 	}
-	// Checkpoints refer exclusively to a published immutable snapshot. A later
-	// rescan or different selected asset cannot change the bytes being hashed.
-	if quality == QualityOriginal && snapshotJSON != "" {
-		version, err := sourceSnapshotVersion(snapshotJSON, id, bytesTotal)
-		if err != nil {
-			return out, terminal(ctx, gated2, id, StateUnavailable, ReasonSourceChanged, now)
-		}
-		if state == StateQueued {
-			if _, e = tx.ExecContext(ctx, `UPDATE download_preparations SET state='running',revision=revision+1,updated_ms=? WHERE id=?`, now, id); e != nil {
-				return out, e
-			}
-			revision++
-		}
-		out = plan{hashBytes: true, path: filepath.Join(s.snapshotRoot, id+".source"), size: bytesTotal, offset: bytesDone, state: hashState, revision: revision, snapshotVersion: version}
-		return out, gated2.Commit()
-	}
 	found, err := resolveSource(ctx, tx, item)
 	if reason := sourceReason(found, err); reason != "" {
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
@@ -362,8 +409,15 @@ func (s *Service) prepare(ctx context.Context, id string) (plan, error) {
 			if !ok {
 				return out, ErrInput
 			}
-			if _, e = tx.ExecContext(ctx, `UPDATE download_preparations SET state='running',revision=revision+1,updated_ms=? WHERE id=?`, now, id); e != nil {
+			recipe := preparedProfile(found.Kind, rung)
+			if !preparedmedia.Producible(recipe) {
+				return out, s.advanceOptimized(ctx, gated2, id, quality, found, now)
+			}
+			if _, e = tx.ExecContext(ctx, `UPDATE download_preparations SET state='running',revision=revision+(state<>'running'),updated_ms=? WHERE id=?`, now, id); e != nil {
 				return out, e
+			}
+			if state != StateRunning {
+				revision++
 			}
 			if optimizationOperation == "" {
 				optimizationOperation = identity.Token()
@@ -371,33 +425,55 @@ func (s *Service) prepare(ctx context.Context, id string) (plan, error) {
 					return out, e
 				}
 			}
-			out.optimization = &optimization{principal, item, found.Asset, preparedProfile(found.Kind, rung), optimizationOperation}
-			out.revision = revision + 1
+			out.optimization = &optimization{principal, item, found.Asset, recipe, optimizationOperation}
+			out.revision = revision
 			return out, gated2.Commit()
 		}
 		return out, s.advanceOptimized(ctx, gated2, id, quality, found, now)
 	}
-	// Capture this original into one immutable snapshot before checkpointing.
-	// Legacy mutable-source checkpoints are discarded, even at identical size.
-	if snapshotJSON == "" || artifactRef != found.Asset || bytesTotal != found.Size {
-		if found.Size > bytesTotal {
-			if e := storageRoom(tx, found.Size-bytesTotal); e != nil {
-				return out, e
-			}
-		}
-		bytesDone, hashState = 0, nil
-		if _, e = tx.ExecContext(ctx, `UPDATE download_preparations SET artifact_kind='source',artifact_ref=?,artifact_container=?,bytes_total=?,bytes_done=0,estimated=0,hash_state=NULL,state='running',started_ms=?,revision=revision+1,updated_ms=? WHERE id=?`, found.Asset, found.Container, found.Size, now, now, id); e != nil {
+	file := pinned{asset: found.Asset, path: found.Path, size: found.Size, modifiedNS: found.ModifiedNS}
+	// Somebody has already read this exact file: the claim is ready at once.
+	if digest, known, err := knownDigest(ctx, tx, file); err != nil {
+		return out, err
+	} else if known {
+		if _, e = tx.ExecContext(ctx, `UPDATE download_preparations SET state='ready',reason='',artifact_kind='source',artifact_ref=?,artifact_digest=?,artifact_container=?,source_modified_ns=?,bytes_total=?,bytes_done=?,estimated=0,hash_state=NULL,started_ms=CASE WHEN started_ms=0 THEN ? ELSE started_ms END,ready_ms=?,revision=revision+1,updated_ms=? WHERE id=?`,
+			file.asset, digest, found.Container, file.modifiedNS, file.size, file.size, now, now, now, id); e != nil {
 			return out, e
 		}
-		revision++
+		if e = s.settle(ctx, tx, id, now); e != nil {
+			return out, e
+		}
+		return out, gated2.Commit()
+	}
+	// Pin the file as the library knows it now. A claim that was part-way
+	// through a file which has since changed starts again on the new one: bytes
+	// of two different files are never folded into one digest.
+	if artifactRef != file.asset || bytesTotal != file.size || modifiedNS != file.modifiedNS {
+		bytesDone, hashState = 0, nil
+		if _, e = tx.ExecContext(ctx, `UPDATE download_preparations SET artifact_kind='source',artifact_ref=?,artifact_digest='',artifact_container=?,source_modified_ns=?,bytes_total=?,bytes_done=0,estimated=0,hash_state=NULL,state='running',started_ms=?,revision=revision+(state<>'running'),updated_ms=? WHERE id=?`, file.asset, found.Container, file.modifiedNS, file.size, now, now, id); e != nil {
+			return out, e
+		}
+		if state != StateRunning {
+			revision++
+		}
 	} else if state == StateQueued {
 		if _, e = tx.ExecContext(ctx, `UPDATE download_preparations SET state='running',started_ms=CASE WHEN started_ms=0 THEN ? ELSE started_ms END,revision=revision+1,updated_ms=? WHERE id=?`, now, now, id); e != nil {
 			return out, e
 		}
 		revision++
 	}
-	out = plan{hashBytes: true, path: found.Path, size: found.Size, modifiedNS: found.ModifiedNS, offset: bytesDone, state: hashState, revision: revision}
+	out = plan{hashBytes: true, file: file, offset: bytesDone, state: hashState, revision: revision}
 	return out, gated2.Commit()
+}
+
+// settle finishes a claim that has just become ready: its listing facts are
+// refreshed from the library, and the notifications seam is told, both inside
+// the transaction that made it ready.
+func (s *Service) settle(ctx context.Context, tx *sql.Tx, id string, now int64) error {
+	if e := refreshTitle(ctx, tx, id); e != nil {
+		return e
+	}
+	return s.announce(ctx, tx, id, now, true, "")
 }
 
 // advanceOptimized resolves a ladder rung against prepared media. The bytes are
@@ -417,11 +493,11 @@ func (s *Service) advanceOptimized(ctx context.Context, gatedArg *dbwork.Write, 
 		if v.ProfileID != profileID || !v.Selectable || !validDigest.MatchString(v.Digest) {
 			continue
 		}
-		if _, e = tx.ExecContext(ctx, `UPDATE download_preparations SET state='ready',reason='',artifact_kind='prepared',artifact_ref=?,artifact_digest=?,artifact_container=?,bytes_total=?,bytes_done=?,estimated=0,ready_ms=?,revision=revision+1,updated_ms=? WHERE id=?`,
+		if _, e = tx.ExecContext(ctx, `UPDATE download_preparations SET state='ready',reason='',artifact_kind='prepared',artifact_ref=?,artifact_digest=?,artifact_container=?,source_modified_ns=0,bytes_total=?,bytes_done=?,estimated=0,ready_ms=?,revision=revision+1,updated_ms=? WHERE id=?`,
 			v.ID, v.Digest, v.Facts.Container, v.Size, v.Size, now, now, id); e != nil {
 			return e
 		}
-		if e = s.announce(ctx, tx, id, now, true, ""); e != nil {
+		if e = s.settle(ctx, tx, id, now); e != nil {
 			return e
 		}
 		return gatedArg.Commit()
@@ -444,7 +520,11 @@ func (s *Service) advanceOptimized(ctx context.Context, gatedArg *dbwork.Write, 
 	}
 	switch state {
 	case "queued", "running", "cancelling":
-		if _, e = tx.ExecContext(ctx, `UPDATE download_preparations SET state='running',reason='',bytes_done=?,started_ms=CASE WHEN started_ms=0 THEN ? ELSE started_ms END,revision=revision+1,updated_ms=? WHERE id=?`, bytes, now, now, id); e != nil {
+		// Watching somebody else's conversion is progress, not a change of
+		// state: the claim's revision moves only when the claim itself does, so
+		// a Pause or Cancel made against the row a person is looking at is not
+		// refused because a byte count ticked.
+		if _, e = tx.ExecContext(ctx, `UPDATE download_preparations SET state='running',reason='',bytes_done=?,started_ms=CASE WHEN started_ms=0 THEN ? ELSE started_ms END,revision=revision+(state<>'running'),updated_ms=? WHERE id=?`, bytes, now, now, id); e != nil {
 			return e
 		}
 		return gatedArg.Commit()
@@ -455,13 +535,13 @@ func (s *Service) advanceOptimized(ctx context.Context, gatedArg *dbwork.Write, 
 	}
 }
 
-// terminal writes a final state and commits. It also withdraws any offline
-// authorization the claim had, because a preparation that can no longer be
-// transferred must not keep vouching for bytes offline.
+// terminal writes a final state and commits. A claim that can no longer be
+// transferred loses its transfer addresses; the receipts of copies already on
+// devices are left alone.
 func terminal(ctx context.Context, gatedArg *dbwork.Write, id, state, reason string, now int64) error {
 	tx := gatedArg.Tx()
 	if state != StateReady {
-		if e := revokeForPreparation(tx, id, reason, now); e != nil {
+		if _, e := tx.ExecContext(ctx, `UPDATE download_grants SET revoked=1 WHERE preparation_id=?`, id); e != nil {
 			return e
 		}
 	}
@@ -475,7 +555,7 @@ func terminal(ctx context.Context, gatedArg *dbwork.Write, id, state, reason str
 // the state true, so a notification can never describe a state that rolled back.
 func (s *Service) announce(ctx context.Context, tx *sql.Tx, id string, now int64, ready bool, reason string) error {
 	var authority, account, profile, item string
-	if e := tx.QueryRowContext(ctx, `SELECT authority,account_id,profile_id,COALESCE((SELECT pid(public_id) FROM catalog_entities WHERE id=download_preparations.item_id),'') FROM download_preparations WHERE id=?`, id).Scan(&authority, &account, &profile, &item); e != nil {
+	if e := tx.QueryRowContext(ctx, `SELECT authority,account_id,profile_id,item_public FROM download_preparations WHERE id=?`, id).Scan(&authority, &account, &profile, &item); e != nil {
 		return e
 	}
 	viewer := identity.Viewer{AccountID: account, ProfileID: profile, Authority: authority}
@@ -485,17 +565,19 @@ func (s *Service) announce(ctx context.Context, tx *sql.Tx, id string, now int64
 	return s.notifier.DownloadFailed(tx, now, viewer, id, item, reason)
 }
 
-// hashChunk reads one bounded window of the source and folds it into the
-// running SHA-256. The hash state is checkpointed by the caller, so a pause, a
-// restart or a crash costs one window rather than the whole file.
-func (s *Service) hashChunk(ctx context.Context, p plan) ([]byte, int64, error) {
+// hashWindow reads one bounded window of the library file and folds it into
+// the running SHA-256. The hash state is checkpointed by the caller, so a
+// pause, a restart or a crash costs one window rather than the whole file. The
+// file is opened afresh for each window, and each open refuses a file whose
+// size or modified time is not the pinned one.
+func (s *Service) hashWindow(ctx context.Context, p plan) ([]byte, int64, error) {
 	digest := sha256.New()
 	if len(p.state) > 0 {
 		if e := digest.(encoding.BinaryUnmarshaler).UnmarshalBinary(p.state); e != nil {
 			return nil, 0, e
 		}
 	}
-	f, e := s.openSnapshot(p.snapshotVersion)
+	f, e := s.openSource(ctx, p.file)
 	if e != nil {
 		return nil, 0, e
 	}
@@ -505,7 +587,7 @@ func (s *Service) hashChunk(ctx context.Context, p plan) ([]byte, int64, error) 
 			return nil, 0, e
 		}
 	}
-	remaining := p.size - p.offset
+	remaining := p.file.size - p.offset
 	if remaining > hashChunk {
 		remaining = hashChunk
 	}
@@ -521,30 +603,31 @@ func (s *Service) hashChunk(ctx context.Context, p plan) ([]byte, int64, error) 
 }
 
 // record folds one window's work back into the row, refusing to write if the
-// viewer paused, cancelled or retried while the bytes were being read.
+// viewer paused, cancelled or retried while the bytes were being read, or if
+// the claim was pinned to a different file meanwhile. Progress is not a change
+// of state, so it leaves the revision a person's action is fenced on alone.
 func (s *Service) record(ctx context.Context, id string, p plan, state []byte, read int64) error {
-	gated3, e := dbwork.Begin(ctx, s.db, dbwork.ClassForegroundTransfer)
+	gated3, e := dbwork.Begin(ctx, s.db, dbwork.ClassBackgroundMedia)
 	if e != nil {
 		return e
 	}
 	tx := gated3.Tx()
 	defer gated3.Rollback()
 	now := s.millis()
-	var revision, total int64
-	var current string
-	if e = tx.QueryRowContext(ctx, `SELECT revision,bytes_total,state FROM download_preparations WHERE id=?`, id).Scan(&revision, &total, &current); e != nil {
+	var revision, total, done, modifiedNS int64
+	var current, asset string
+	if e = tx.QueryRowContext(ctx, `SELECT revision,bytes_total,bytes_done,state,artifact_ref,source_modified_ns FROM download_preparations WHERE id=?`, id).Scan(&revision, &total, &done, &current, &asset, &modifiedNS); e != nil {
 		if errors.Is(e, sql.ErrNoRows) {
 			return nil
 		}
 		return e
 	}
-	if revision != p.revision || current != StateRunning {
+	if revision != p.revision || current != StateRunning || done != p.offset || asset != p.file.asset || total != p.file.size || modifiedNS != p.file.modifiedNS {
 		return nil
 	}
-	done := p.offset + read
+	done = p.offset + read
 	if done < total {
-		_, e = tx.ExecContext(ctx, `UPDATE download_preparations SET bytes_done=?,hash_state=?,revision=revision+1,updated_ms=? WHERE id=? AND revision=?`, done, state, now, id, revision)
-		if e != nil {
+		if _, e = tx.ExecContext(ctx, `UPDATE download_preparations SET bytes_done=?,hash_state=?,updated_ms=? WHERE id=?`, done, state, now, id); e != nil {
 			return e
 		}
 		return gated3.Commit()
@@ -553,13 +636,13 @@ func (s *Service) record(ctx context.Context, id string, p plan, state []byte, r
 	if e != nil {
 		return e
 	}
-	if digest != p.snapshotVersion.Evidence().Revision {
-		return terminal(ctx, gated3, id, StateUnavailable, ReasonSourceChanged, now)
-	}
-	if _, e = tx.ExecContext(ctx, `UPDATE download_preparations SET state='ready',reason='',artifact_digest=?,bytes_done=?,hash_state=NULL,ready_ms=?,revision=revision+1,updated_ms=? WHERE id=? AND revision=?`, digest, done, now, now, id, revision); e != nil {
+	if e = rememberDigest(ctx, tx, p.file, digest, now); e != nil {
 		return e
 	}
-	if e = s.announce(ctx, tx, id, now, true, ""); e != nil {
+	if _, e = tx.ExecContext(ctx, `UPDATE download_preparations SET state='ready',reason='',artifact_digest=?,bytes_done=?,hash_state=NULL,ready_ms=?,revision=revision+1,updated_ms=? WHERE id=?`, digest, done, now, now, id); e != nil {
+		return e
+	}
+	if e = s.settle(ctx, tx, id, now); e != nil {
 		return e
 	}
 	return gated3.Commit()
@@ -575,13 +658,14 @@ func (s *Service) fail(ctx context.Context, id string, revision int64, reason st
 	defer gated4.Rollback()
 	now := s.millis()
 	var current int64
-	if e = tx.QueryRowContext(ctx, `SELECT revision FROM download_preparations WHERE id=?`, id).Scan(&current); e != nil {
+	var state string
+	if e = tx.QueryRowContext(ctx, `SELECT revision,state FROM download_preparations WHERE id=?`, id).Scan(&current, &state); e != nil {
 		if errors.Is(e, sql.ErrNoRows) {
 			return nil
 		}
 		return e
 	}
-	if current != revision {
+	if current != revision || state != StateRunning {
 		return nil
 	}
 	if e = s.announce(ctx, tx, id, now, false, reason); e != nil {
@@ -590,12 +674,24 @@ func (s *Service) fail(ctx context.Context, id string, revision int64, reason st
 	return terminal(ctx, gated4, id, StateFailed, reason, now)
 }
 
-// directSource is the fallback reader used when no isolated media process is
-// configured. The path comes from the server's own asset table, never from a
-// request, and it is opened read-only.
-func directSource(_ context.Context, name string, _, _ int64) (io.ReadSeekCloser, error) {
-	return os.Open(name)
+// directSource is the reader used when no isolated media process is configured
+// (tests, and a composition with no library helper). The path comes from the
+// server's own asset table, never from a request, it is opened read-only, and
+// the opened file must be the size and age the caller pinned.
+func directSource(_ context.Context, name string, size, modifiedNS int64) (io.ReadSeekCloser, error) {
+	f, e := os.Open(name)
+	if e != nil {
+		return nil, e
+	}
+	info, e := f.Stat()
+	if e != nil || !info.Mode().IsRegular() || info.Size() != size || (modifiedNS != 0 && info.ModTime().UnixNano() != modifiedNS) {
+		f.Close()
+		return nil, errSourceChanged
+	}
+	return f, nil
 }
+
+var errSourceChanged = errors.New("the library file is not the one that was pinned")
 
 // finishHash reads back the checkpointed state and renders the digest in the
 // lowercase hex the rest of the server publishes for content digests.

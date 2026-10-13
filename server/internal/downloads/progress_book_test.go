@@ -3,6 +3,8 @@ package downloads
 import (
 	"context"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -63,6 +65,12 @@ func (b *bookHarness) listenedOnline(t *testing.T, part catalogtest.Item, second
 
 func (b *bookHarness) sync(t *testing.T, operation string, entries ...ProgressEntry) ProgressReceipt {
 	t.Helper()
+	// Each entry here is its own play unless the test names one.
+	for i := range entries {
+		if entries[i].PlayID == "" {
+			entries[i].PlayID = operation + "-" + strconv.Itoa(i)
+		}
+	}
 	out, e := b.service.SyncProgress(context.Background(), b.viewer, operation, entries)
 	if e != nil {
 		t.Fatal(e)
@@ -201,7 +209,10 @@ func TestOfflineListeningDoesNotTakeTheBookFromASessionThatJustStarted(t *testin
 			if item, position := b.pointer(t); item != b.parts[3].ID || position != 60_000 {
 				t.Fatalf("a later observation did not move the book: part id %d at %d ms", item, position)
 			}
-			if session := b.writer(t); session != "" {
+			// The play holds the pointer now, in the same order of intentional
+			// plays a session holds it in, so the next session to start takes
+			// it from the play exactly as it would from another session.
+			if session := b.writer(t); !strings.HasPrefix(session, "offline-") {
 				t.Fatalf("the superseded session kept the pointer: writer %q", session)
 			}
 		})

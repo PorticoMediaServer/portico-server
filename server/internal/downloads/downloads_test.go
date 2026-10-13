@@ -14,10 +14,12 @@ import (
 	"testing"
 	"time"
 
+	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/persistence"
+	"portico.local/server/internal/preparedmedia"
 )
 
 // The fixture is one library, one movie and one real file on disk. Every path
@@ -64,9 +66,9 @@ func newHarness(t *testing.T) *harness {
 	h := &harness{db: db, root: root, assetPath: film, now: time.Unix(1_760_000_000, 0).UTC()}
 	h.item, h.itemID = addCompactFixtureItem(t, db, "lib", compactcatalog.Movie, "item", "Film", 0, "", nil)
 	h.asset, h.assetID = addCompactFixtureAsset(t, db, h.itemID, film, info, "mp4", "h264", "aac", 1920, 1080, 60)
-	service, e := New(Options{DB: db, Now: func() time.Time { return h.now }, OpenSource: func(_ context.Context, name string, _, _ int64) (io.ReadSeekCloser, error) {
-		return os.Open(name)
-	}})
+	// The confined opener is not composed here: the package's own reader opens
+	// the file and holds it to the size and modified time that were pinned.
+	service, e := New(Options{DB: db, Now: func() time.Time { return h.now }, Plays: (&catalog.Service{}).AcceptPlaybackProgressAt})
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -368,15 +370,24 @@ func TestStorageFullRefusesNewPreparations(t *testing.T) {
 	if _, e := h.service.ApplySettings(context.Background(), h.viewer, SettingsChange{OperationID: "op-settings", ExpectedRevision: 1, MaxPreparedBytes: 4, RetentionDays: 30}); e != nil {
 		t.Fatal(e)
 	}
-	_, e := h.service.Submit(context.Background(), h.viewer, Request{OperationID: "op-full", MediaID: h.item, Quality: QualityOriginal}, nil)
+	// The ceiling is on what the server stores: converted copies.
+	_, e := h.service.Submit(context.Background(), h.viewer, Request{OperationID: "op-full", MediaID: h.item, Quality: "720p"}, nil)
 	if e != ErrStorageFull {
 		t.Fatalf("expected storage_full, got %v", e)
 	}
-	// Lifting the ceiling admits the same request under a new operation id.
+	// An original is the library file itself and takes no room, so it is never
+	// refused for lack of it.
+	if _, e = h.service.Submit(context.Background(), h.viewer, Request{OperationID: "op-full-2", MediaID: h.item, Quality: QualityOriginal}, nil); e != nil {
+		t.Fatalf("an original was refused for storage it does not use: %v", e)
+	}
+	// Lifting the ceiling admits the converted request under a new operation id.
 	if _, e = h.service.ApplySettings(context.Background(), h.viewer, SettingsChange{OperationID: "op-settings-2", ExpectedRevision: 2, MaxPreparedBytes: 0, RetentionDays: 30}); e != nil {
 		t.Fatal(e)
 	}
-	if _, e = h.service.Submit(context.Background(), h.viewer, Request{OperationID: "op-full-2", MediaID: h.item, Quality: QualityOriginal}, nil); e != nil {
+	if batch, e := h.service.Submit(context.Background(), h.viewer, Request{OperationID: "op-full-3", MediaID: h.item, Quality: "720p"}, nil); e != nil || batch.Accepted != 1 {
+		t.Fatalf("%+v %v", batch, e)
+	}
+	if _, e = h.db.Exec(`DELETE FROM download_preparations WHERE quality<>'original'`); e != nil {
 		t.Fatal(e)
 	}
 	usage, e := h.service.Usage(context.Background(), h.viewer, true)
@@ -398,26 +409,23 @@ func TestSettingsFenceRefusesAStaleRevision(t *testing.T) {
 	}
 }
 
-func TestGrantTTLReplayWindowAndRange(t *testing.T) {
+func TestATransferAddressLivesWhileItIsUsedOrRenewed(t *testing.T) {
 	h := newHarness(t)
 	ready := h.ready(t, "op-grant")
-	grant, e := h.service.IssueGrant(context.Background(), h.viewer, ready.ID, "op-grant-1")
+	ctx := context.Background()
+	grant, e := h.service.IssueGrant(ctx, h.viewer, ready.ID, GrantRequest{OperationID: "op-grant-1"})
 	if e != nil {
 		t.Fatal(e)
 	}
-	if !strings.HasPrefix(grant.URL, "/v1/downloads/artifacts/") || grant.Token == "" {
+	if !strings.HasPrefix(grant.URL, "/v1/downloads/artifacts/") || grant.Token == "" || grant.Renewed || grant.RenewAfterSeconds <= 0 {
 		t.Fatalf("grant %+v", grant)
 	}
-	// A replayed operationId hands back the same token rather than burning a
-	// second window.
-	same, e := h.service.IssueGrant(context.Background(), h.viewer, ready.ID, "op-grant-1")
-	if e != nil {
-		t.Fatal(e)
+	// A replayed operationId hands back the same address.
+	same, e := h.service.IssueGrant(ctx, h.viewer, ready.ID, GrantRequest{OperationID: "op-grant-1"})
+	if e != nil || same.Token != grant.Token {
+		t.Fatalf("a replayed grant request minted a second token: %v", e)
 	}
-	if same.Token != grant.Token {
-		t.Fatal("a replayed grant request minted a second token")
-	}
-	transfer, e := h.service.OpenGrant(context.Background(), grant.Token)
+	transfer, e := h.service.OpenGrant(ctx, grant.Token)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -426,11 +434,15 @@ func TestGrantTTLReplayWindowAndRange(t *testing.T) {
 	if e != nil || string(body) != filmBody {
 		t.Fatalf("body %q %v", body, e)
 	}
-	// A ranged read seeks against the same artifact; this is what makes a
-	// resumed transfer possible.
-	transfer, e = h.service.OpenGrant(context.Background(), grant.Token)
+	if transfer.SaveAs != "Film.mp4" {
+		t.Fatalf("a saved file is named %q", transfer.SaveAs)
+	}
+	// A ranged read seeks against the same file; this is what a resumed
+	// transfer does, hours later, with the same address.
+	h.now = h.now.Add(GrantIdle - time.Hour)
+	transfer, e = h.service.OpenGrant(ctx, grant.Token)
 	if e != nil {
-		t.Fatal(e)
+		t.Fatalf("the address ran out while it was within its idle time: %v", e)
 	}
 	if _, e = transfer.Reader.Seek(5, io.SeekStart); e != nil {
 		t.Fatal(e)
@@ -443,24 +455,117 @@ func TestGrantTTLReplayWindowAndRange(t *testing.T) {
 	if string(part) != filmBody[5:9] {
 		t.Fatalf("range %q", part)
 	}
-	// Past the replay window the grant stops working even though its TTL would
-	// still allow it.
-	h.now = h.now.Add(GrantReplayWindow + time.Minute)
-	if _, e = h.service.OpenGrant(context.Background(), grant.Token); e != ErrGrant {
-		t.Fatalf("expired replay window accepted: %v", e)
+	// That use slid the lifetime forward: another long pause is still covered.
+	h.now = h.now.Add(GrantIdle - time.Hour)
+	if transfer, e = h.service.OpenGrant(ctx, grant.Token); e != nil {
+		t.Fatalf("using the address did not keep it alive: %v", e)
 	}
-	// A grant never used at all stops at its TTL.
-	h.now = h.now.Add(-GrantReplayWindow - time.Minute)
-	fresh, e := h.service.IssueGrant(context.Background(), h.viewer, ready.ID, "op-grant-2")
+	transfer.Reader.Close()
+	// Left alone for longer than the idle time, it stops working.
+	h.now = h.now.Add(GrantIdle + time.Minute)
+	if _, e = h.service.OpenGrant(ctx, grant.Token); e != ErrGrant {
+		t.Fatalf("an address nobody used or renewed still worked: %v", e)
+	}
+	// Renewal brings the same address back, so a transfer the phone's own
+	// downloader is holding carries on where it stopped.
+	renewed, e := h.service.IssueGrant(ctx, h.viewer, ready.ID, GrantRequest{OperationID: "op-grant-2", Renew: grant.Token})
 	if e != nil {
 		t.Fatal(e)
 	}
-	h.now = h.now.Add(GrantTTL + time.Second)
-	if _, e = h.service.OpenGrant(context.Background(), fresh.Token); e != ErrGrant {
-		t.Fatalf("expired grant accepted: %v", e)
+	if !renewed.Renewed || renewed.Token != grant.Token || renewed.URL != grant.URL {
+		t.Fatalf("renewal changed the address: %+v", renewed)
 	}
-	if _, e = h.service.OpenGrant(context.Background(), "not-a-grant"); e != ErrGrant {
+	if transfer, e = h.service.OpenGrant(ctx, grant.Token); e != nil {
+		t.Fatalf("a renewed address did not work: %v", e)
+	}
+	transfer.Reader.Close()
+	// Somebody else's token, or one for another download, is never extended.
+	other, e := h.service.IssueGrant(ctx, h.viewer, ready.ID, GrantRequest{OperationID: "op-grant-3", Renew: "not-a-grant"})
+	if e != nil || other.Renewed || other.Token == grant.Token {
+		t.Fatalf("an unknown token was renewed: %+v %v", other, e)
+	}
+	if _, e = h.service.OpenGrant(ctx, "not-a-grant"); e != ErrGrant {
 		t.Fatalf("unknown grant accepted: %v", e)
+	}
+	// Giving up the claim ends its addresses.
+	if _, e = h.service.Act(ctx, h.viewer, ready.ID, Command{OperationID: "op-grant-4", Action: ActionRemove, ExpectedRevision: ready.Revision}); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = h.service.OpenGrant(ctx, grant.Token); e != ErrGrant {
+		t.Fatalf("an address outlived its claim: %v", e)
+	}
+}
+
+func TestAnOriginalIsServedFromTheLibraryAndNeverCopied(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	ready := h.ready(t, "op-inplace")
+	// Nothing was written beside the database for it.
+	entries, e := os.ReadDir(filepath.Join(h.root, "state"))
+	if e != nil {
+		t.Fatal(e)
+	}
+	for _, entry := range entries {
+		if entry.IsDir() {
+			t.Fatalf("an original download left a folder in the state directory: %s", entry.Name())
+		}
+	}
+	// A second viewer asking for the same file waits for nothing: the digest
+	// belongs to the file.
+	second := h.viewer
+	second.AccountID, second.ProfileID = "account-2", "profile-2"
+	batch, e := h.service.Submit(ctx, second, Request{OperationID: "op-inplace-2", MediaID: h.item, Quality: QualityOriginal}, nil)
+	if e != nil {
+		t.Fatal(e)
+	}
+	var hashed int
+	restore := hashChunk
+	hashChunk = 1 // a second read of the file would now take one pass per byte
+	t.Cleanup(func() { hashChunk = restore })
+	h.advance(t)
+	other, e := h.service.Get(ctx, second, batch.Items[0].ID)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if other.State != StateReady || other.Artifact.SHA256 != ready.Artifact.SHA256 {
+		t.Fatalf("the second viewer did not share the digest: %q %+v", other.State, other.Artifact)
+	}
+	if e = h.db.QueryRow(`SELECT count(*) FROM download_source_digests`).Scan(&hashed); e != nil || hashed != 1 {
+		t.Fatalf("digests remembered: %d %v", hashed, e)
+	}
+	// The file is replaced in the library. The address stops, the claim says
+	// why, and asking again prepares the file that is there now.
+	grant, e := h.service.IssueGrant(ctx, h.viewer, ready.ID, GrantRequest{OperationID: "op-inplace-3"})
+	if e != nil {
+		t.Fatal(e)
+	}
+	replacement := "a different film of a different length"
+	if e = os.WriteFile(h.assetPath, []byte(replacement), 0600); e != nil {
+		t.Fatal(e)
+	}
+	info, e := os.Stat(h.assetPath)
+	if e != nil {
+		t.Fatal(e)
+	}
+	// Until the library has looked at the file again, the pinned file simply
+	// cannot be opened: nothing is ended, the transfer waits.
+	if _, e = h.service.OpenGrant(ctx, grant.Token); e != ErrSourceOffline {
+		t.Fatalf("a changed file was served, or the claim was ended early: %v", e)
+	}
+	updateCompactFixtureAssetByToken(t, h.db, h.asset, func(a *compactcatalog.Asset) { a.Size, a.ModifiedNS = info.Size(), info.ModTime().UnixNano() })
+	settleDownloadsProjection(t, h.db)
+	if _, e = h.service.OpenGrant(ctx, grant.Token); e != ErrUnavailable {
+		t.Fatalf("a replaced file was still transferable: %v", e)
+	}
+	ended, e := h.service.Get(ctx, h.viewer, ready.ID)
+	if e != nil || ended.State != StateUnavailable || ended.Reason != ReasonSourceChanged {
+		t.Fatalf("claim after the file changed: %q %q %v", ended.State, ended.Reason, e)
+	}
+	hashChunk = restore
+	again := h.ready(t, "op-inplace-4")
+	sum := sha256.Sum256([]byte(replacement))
+	if again.Artifact.SHA256 != hex.EncodeToString(sum[:]) || again.ID == ready.ID {
+		t.Fatalf("asking again did not prepare the new file: %+v", again.Artifact)
 	}
 }
 
@@ -498,7 +603,7 @@ func TestReceiptSignVerifyRevalidateAndRevoke(t *testing.T) {
 	}
 	// Revalidation renews it.
 	h.now = h.now.Add(20 * 24 * time.Hour)
-	renewed, e := h.service.Revalidate(context.Background(), h.viewer, "server", "op-r2", []string{envelope.ReceiptID})
+	renewed, e := h.service.Revalidate(context.Background(), h.viewer, "server", "op-r2", []string{envelope.ReceiptID}, nil)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -519,7 +624,7 @@ func TestReceiptSignVerifyRevalidateAndRevoke(t *testing.T) {
 	if len(page.Items) != 1 || page.Items[0].ReceiptID != envelope.ReceiptID || page.Items[0].Reason != ReasonRemoved {
 		t.Fatalf("revocations %+v", page)
 	}
-	after, e := h.service.Revalidate(context.Background(), h.viewer, "server", "op-r4", []string{envelope.ReceiptID})
+	after, e := h.service.Revalidate(context.Background(), h.viewer, "server", "op-r4", []string{envelope.ReceiptID}, nil)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -539,7 +644,7 @@ func TestReceiptSignVerifyRevalidateAndRevoke(t *testing.T) {
 func TestDownloadSwitchRevokesGrantAndReceiptRenewal(t *testing.T) {
 	h := newHarness(t)
 	ready := h.ready(t, "op-switch-ready")
-	grant, err := h.service.IssueGrant(context.Background(), h.viewer, ready.ID, "op-switch-grant")
+	grant, err := h.service.IssueGrant(context.Background(), h.viewer, ready.ID, GrantRequest{OperationID: "op-switch-grant"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -553,7 +658,7 @@ func TestDownloadSwitchRevokesGrantAndReceiptRenewal(t *testing.T) {
 	if _, err = h.db.Exec(`INSERT INTO profile_restrictions(profile_id,allow_downloads) VALUES('profile',0)`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = h.service.IssueGrant(context.Background(), h.viewer, ready.ID, "op-switch-grant"); err != ErrPolicy {
+	if _, err = h.service.IssueGrant(context.Background(), h.viewer, ready.ID, GrantRequest{OperationID: "op-switch-grant"}); err != ErrPolicy {
 		t.Fatalf("grant replay survived switch: %v", err)
 	}
 	if _, err = h.service.OpenGrant(context.Background(), grant.Token); err != ErrPolicy {
@@ -562,138 +667,246 @@ func TestDownloadSwitchRevokesGrantAndReceiptRenewal(t *testing.T) {
 	if _, err = h.service.IssueReceipts(context.Background(), h.viewer, "server", "op-switch-receipt", []string{ready.ID}); err != ErrPolicy {
 		t.Fatalf("receipt replay survived switch: %v", err)
 	}
-	result, err := h.service.Revalidate(context.Background(), h.viewer, "server", "op-switch-revalidate", []string{receipts[0].Receipt.ReceiptID})
+	result, err := h.service.Revalidate(context.Background(), h.viewer, "server", "op-switch-revalidate", []string{receipts[0].Receipt.ReceiptID}, nil)
 	if err != nil || len(result) != 1 || result[0].Outcome != OutcomeRefused || result[0].Code != ReasonNotAllowed {
 		t.Fatalf("receipt renewed after switch: %+v %v", result, err)
 	}
 }
 
-func TestCancellingAClaimRevokesItsReceipts(t *testing.T) {
+// A copy already on a device answers to what its viewer may do, never to what
+// the server still keeps. Each of these is the server tidying up.
+func TestACopyOnADeviceOutlivesServerTidying(t *testing.T) {
+	ctx := context.Background()
+	held := func(t *testing.T, h *harness, operation string) (Preparation, string) {
+		t.Helper()
+		ready := h.ready(t, operation)
+		results, e := h.service.IssueReceipts(ctx, h.viewer, "server", operation+"-receipt", []string{ready.ID})
+		if e != nil || len(results) != 1 || results[0].Receipt == nil || results[0].TitleOnServer == nil || !*results[0].TitleOnServer {
+			t.Fatalf("receipt %+v %v", results, e)
+		}
+		return ready, results[0].ReceiptID
+	}
+	renews := func(t *testing.T, h *harness, operation, receipt string, onServer bool) {
+		t.Helper()
+		out, e := h.service.Revalidate(ctx, h.viewer, "server", operation, []string{receipt}, nil)
+		if e != nil || len(out) != 1 || out[0].Outcome != OutcomeRenewed || out[0].Receipt == nil {
+			t.Fatalf("the copy was taken away: %+v %v", out, e)
+		}
+		if out[0].TitleOnServer == nil || *out[0].TitleOnServer != onServer {
+			t.Fatalf("titleOnServer %v, want %v", out[0].TitleOnServer, onServer)
+		}
+		var revoked int
+		if e = h.db.QueryRow(`SELECT count(*) FROM download_receipts WHERE revoked_ms>0`).Scan(&revoked); e != nil || revoked != 0 {
+			t.Fatalf("receipts withdrawn: %d %v", revoked, e)
+		}
+	}
+	t.Run("the claim ran out its retention", func(t *testing.T) {
+		h := newHarness(t)
+		ready, receipt := held(t, h, "op-kept-retention")
+		if _, e := h.service.ApplySettings(ctx, h.viewer, SettingsChange{OperationID: "op-kept-settings", ExpectedRevision: 1, RetentionDays: 2}); e != nil {
+			t.Fatal(e)
+		}
+		h.now = h.now.Add(3 * 24 * time.Hour)
+		h.advance(t)
+		out, e := h.service.Get(ctx, h.viewer, ready.ID)
+		if e != nil || out.State != StateExpired || out.Reason != ReasonRetention {
+			t.Fatalf("claim %q %q %v", out.State, out.Reason, e)
+		}
+		renews(t, h, "op-kept-retention-renew", receipt, true)
+		// The server no longer hands the bytes over for the ended claim.
+		if _, e = h.service.IssueGrant(ctx, h.viewer, ready.ID, GrantRequest{OperationID: "op-kept-retention-grant"}); e != ErrNotReady {
+			t.Fatalf("an expired claim was still transferable: %v", e)
+		}
+	})
+	t.Run("the viewer removed the claim from the server's list", func(t *testing.T) {
+		h := newHarness(t)
+		ready, receipt := held(t, h, "op-kept-removed")
+		if _, e := h.service.Act(ctx, h.viewer, ready.ID, Command{OperationID: "op-kept-remove", Action: ActionRemove, ExpectedRevision: ready.Revision}); e != nil {
+			t.Fatal(e)
+		}
+		renews(t, h, "op-kept-removed-renew", receipt, true)
+	})
+	t.Run("the file was replaced", func(t *testing.T) {
+		h := newHarness(t)
+		ready, receipt := held(t, h, "op-kept-replaced")
+		updateCompactFixtureAssetByToken(t, h.db, h.asset, func(a *compactcatalog.Asset) { a.Size++ })
+		settleDownloadsProjection(t, h.db)
+		h.advance(t)
+		out, e := h.service.Get(ctx, h.viewer, ready.ID)
+		if e != nil || out.State != StateUnavailable || out.Reason != ReasonSourceChanged {
+			t.Fatalf("claim %q %q %v", out.State, out.Reason, e)
+		}
+		renews(t, h, "op-kept-replaced-renew", receipt, true)
+	})
+	t.Run("the title was removed from the server", func(t *testing.T) {
+		h := newHarness(t)
+		ready, receipt := held(t, h, "op-kept-gone")
+		deleteCompactFixtureEntity(t, h.db, h.itemID)
+		h.advance(t)
+		out, e := h.service.Get(ctx, h.viewer, ready.ID)
+		if e != nil || out.State != StateUnavailable || out.Reason != ReasonItemDeleted {
+			t.Fatalf("claim %q %q %v", out.State, out.Reason, e)
+		}
+		// The claim still reads as the title it was, and says it is gone.
+		if out.ItemID != h.item || out.Title.Name != "Film" || out.Title.OnServer {
+			t.Fatalf("a removed title lost its name: %+v", out)
+		}
+		usage, e := h.service.Usage(ctx, h.viewer, false)
+		if e != nil || usage.ServerBytes != 0 || usage.ServerCount != 0 {
+			t.Fatalf("an ended claim still counts: %+v %v", usage, e)
+		}
+		renews(t, h, "op-kept-gone-renew", receipt, false)
+	})
+}
+
+// What does end a copy: the owner taking something away from the viewer.
+func TestACopyOnADeviceEndsWhenAccessIsWithdrawn(t *testing.T) {
+	ctx := context.Background()
 	h := newHarness(t)
-	ready := h.ready(t, "op-cancel")
-	results, e := h.service.IssueReceipts(context.Background(), h.viewer, "server", "op-c1", []string{ready.ID})
+	ready := h.ready(t, "op-withdrawn")
+	results, e := h.service.IssueReceipts(ctx, h.viewer, "server", "op-withdrawn-receipt", []string{ready.ID})
 	if e != nil {
 		t.Fatal(e)
 	}
 	receipt := results[0].ReceiptID
-	if _, e = h.service.Act(context.Background(), h.viewer, ready.ID, Command{OperationID: "op-c2", Action: ActionRemove, ExpectedRevision: ready.Revision}); e != nil {
-		t.Fatal(e)
+	// The viewer is no longer let into the title's library.
+	refused := func(tx *sql.Tx, library string) error { return identity.ErrForbidden }
+	out, e := h.service.Revalidate(ctx, h.viewer, "server", "op-withdrawn-renew", []string{receipt}, refused)
+	if e != nil || out[0].Outcome != OutcomeRefused || out[0].Receipt != nil {
+		t.Fatalf("a viewer shut out of the library kept the copy: %+v %v", out, e)
 	}
-	var reason string
-	if e = h.db.QueryRow(`SELECT revoked_reason FROM download_receipts WHERE id=?`, receipt).Scan(&reason); e != nil {
-		t.Fatal(e)
+	again, e := h.service.Revalidate(ctx, h.viewer, "server", "op-withdrawn-again", []string{receipt}, nil)
+	if e != nil || again[0].Outcome != OutcomeRefused || again[0].Code != ReasonRevoked {
+		t.Fatalf("a withdrawn receipt came back: %+v %v", again, e)
 	}
-	if reason != ReasonRemoved {
-		t.Fatalf("receipt outlived its preparation: %q", reason)
+	// A receipt this server has no record of says nothing about the copy.
+	unknown, e := h.service.Revalidate(ctx, h.viewer, "server", "op-withdrawn-unknown", []string{"never-issued"}, nil)
+	if e != nil || unknown[0].Code != ReasonUnknownReceipt {
+		t.Fatalf("unknown receipt: %+v %v", unknown, e)
 	}
-}
-
-func TestRetentionExpiresAnUnusedReadyClaim(t *testing.T) {
-	h := newHarness(t)
-	ready := h.ready(t, "op-retention")
-	if _, e := h.service.IssueReceipts(context.Background(), h.viewer, "server", "op-e1", []string{ready.ID}); e != nil {
-		t.Fatal(e)
+	missing, e := h.service.IssueReceipts(ctx, h.viewer, "server", "op-withdrawn-missing", []string{"never-claimed"})
+	if e != nil || missing[0].Code != ReasonUnknownPreparation {
+		t.Fatalf("unknown claim: %+v %v", missing, e)
 	}
-	if _, e := h.service.ApplySettings(context.Background(), h.viewer, SettingsChange{OperationID: "op-e2", ExpectedRevision: 1, MaxPreparedBytes: 0, RetentionDays: 2}); e != nil {
-		t.Fatal(e)
-	}
-	h.now = h.now.Add(3 * 24 * time.Hour)
-	h.advance(t)
-	out, e := h.service.Get(context.Background(), h.viewer, ready.ID)
-	if e != nil {
-		t.Fatal(e)
-	}
-	if out.State != StateExpired || out.Reason != ReasonRetention {
-		t.Fatalf("state %q reason %q", out.State, out.Reason)
-	}
-	page, e := h.service.Revocations(context.Background(), h.viewer, "", 0, false)
-	if e != nil {
-		t.Fatal(e)
-	}
-	if len(page.Items) != 1 || page.Items[0].Reason != ReasonRetention {
-		t.Fatalf("expiry did not revoke the receipt: %+v", page)
+	// Only a documented reason may be recorded against a receipt.
+	if _, e = h.service.Revoke(ctx, h.viewer, "op-withdrawn-reason", "because", []string{receipt}, false); e != ErrInput {
+		t.Fatalf("an undocumented revocation reason was accepted: %v", e)
 	}
 }
 
-func TestDeferredProgressIsLastWriteWinsByObservation(t *testing.T) {
+func TestOfflinePlaysFollowTheOrderingOfOnlinePlayback(t *testing.T) {
 	h := newHarness(t)
-	// Keep observations inside this test movie; duration clamping is tested separately.
+	ctx := context.Background()
 	updateCompactFixtureAssetByToken(t, h.db, h.asset, func(a *compactcatalog.Asset) { a.Duration = 3600 })
 	settleDownloadsProjection(t, h.db)
-	base := h.now
-	newer := base.Add(time.Hour)
-	older := base.Add(-time.Hour)
-	out, e := h.service.SyncProgress(context.Background(), h.viewer, "op-p1", []ProgressEntry{
-		{ItemID: h.item, PositionSeconds: 600, ObservedAt: newer.Format(time.RFC3339)},
-	})
-	if e != nil {
-		t.Fatal(e)
-	}
-	if out.Applied != 1 || out.Entries[0].Outcome != ProgressApplied || out.Entries[0].PositionSeconds != 600 {
-		t.Fatalf("first batch %+v", out)
-	}
-	// An older observation loses and reports the server's current value.
-	out, e = h.service.SyncProgress(context.Background(), h.viewer, "op-p2", []ProgressEntry{
-		{ItemID: h.item, PositionSeconds: 10, ObservedAt: older.Format(time.RFC3339)},
-	})
-	if e != nil {
-		t.Fatal(e)
-	}
-	if out.Conflicts != 1 || out.Entries[0].Outcome != ProgressStale || out.Entries[0].PositionSeconds != 600 {
-		t.Fatalf("older observation applied %+v", out)
-	}
-	// A newer one wins, and a watched flag lands in ordinary personal state.
-	watched := true
-	out, e = h.service.SyncProgress(context.Background(), h.viewer, "op-p3", []ProgressEntry{
-		{ItemID: h.item, PositionSeconds: 0, Watched: &watched, ObservedAt: newer.Add(time.Hour).Format(time.RFC3339)},
-	})
-	if e != nil {
-		t.Fatal(e)
-	}
-	if out.Applied != 1 || !out.Entries[0].Watched {
-		t.Fatalf("watched batch %+v", out)
-	}
 	personal := identity.PersonalKey(h.viewer.Viewer)
-	var state string
-	if e = h.db.QueryRow(`SELECT state FROM progress_activity WHERE profile_id=? AND item_id=?`, personal, h.itemID).Scan(&state); e != nil {
-		t.Fatal(e)
+	base := h.now
+	at := func(d time.Duration) string { return base.Add(d).Format(time.RFC3339) }
+	count := func(query string, args ...any) int {
+		t.Helper()
+		var n int
+		if e := h.db.QueryRow(query, args...).Scan(&n); e != nil {
+			t.Fatal(e)
+		}
+		return n
 	}
-	if state != "ended" {
-		t.Fatalf("activity state %q", state)
-	}
-	// Online activity after the observation wins over a deferred entry.
-	if _, e = h.db.Exec(`UPDATE progress_activity SET updated_at=? WHERE profile_id=? AND item_id=?`, base.Add(48*time.Hour).Format(time.RFC3339), personal, h.itemID); e != nil {
-		t.Fatal(e)
-	}
-	out, e = h.service.SyncProgress(context.Background(), h.viewer, "op-p4", []ProgressEntry{
-		{ItemID: h.item, PositionSeconds: 42, ObservedAt: base.Add(24 * time.Hour).Format(time.RFC3339)},
-	})
+	out, e := h.service.SyncProgress(ctx, h.viewer, "op-p1", []ProgressEntry{{PlayID: "play-1", ItemID: h.item, PositionSeconds: 600, ObservedAt: at(-2 * time.Hour)}})
 	if e != nil {
 		t.Fatal(e)
 	}
-	if out.Conflicts != 1 || out.Entries[0].Outcome != ProgressSuperseded {
-		t.Fatalf("online write lost to a stale offline entry: %+v", out)
+	if out.Applied != 1 || out.Entries[0].Outcome != ProgressApplied || out.Entries[0].PositionSeconds != 600 || out.Entries[0].PlayID != "play-1" {
+		t.Fatalf("first play %+v", out)
+	}
+	// It is a play like any other: in the server's history and the viewer's.
+	if count(`SELECT count(*) FROM play_history`) != 1 || count(`SELECT count(*) FROM personal_history WHERE profile_id=?`, personal) != 1 {
+		t.Fatal("an offline play did not reach the histories")
+	}
+	// The same play reported again, further on, moves on; it is still one play.
+	out, e = h.service.SyncProgress(ctx, h.viewer, "op-p2", []ProgressEntry{{PlayID: "play-1", ItemID: h.item, PositionSeconds: 900, ObservedAt: at(-90 * time.Minute)}})
+	if e != nil || out.Applied != 1 || out.Entries[0].PositionSeconds != 900 {
+		t.Fatalf("later report of the same play %+v %v", out, e)
+	}
+	if count(`SELECT count(*) FROM play_history`) != 1 {
+		t.Fatal("one play became two")
+	}
+	// An older play from another device arrives late: it is recorded, and the
+	// resume point stays where the newer play left it.
+	out, e = h.service.SyncProgress(ctx, h.viewer, "op-p3", []ProgressEntry{{PlayID: "play-0", ItemID: h.item, PositionSeconds: 120, ObservedAt: at(-5 * time.Hour)}})
+	if e != nil || out.Conflicts != 1 || out.Entries[0].Outcome != ProgressStale || out.Entries[0].PositionSeconds != 900 {
+		t.Fatalf("an older play moved the resume point %+v %v", out, e)
+	}
+	if count(`SELECT count(*) FROM play_history`) != 2 {
+		t.Fatal("an older play was not recorded")
+	}
+	// The viewer marks the film watched on the web. An offline play made
+	// before that cannot undo it.
+	if _, e = h.db.Exec(`INSERT INTO personal_explicit_events(profile_id,item_id,operation_id,field,base_revision,base_value,value,device_id,device_mutation_id,sequence,authored_at,created_at) VALUES(?,?,'mark','watched',0,'false','true','web','m1',1,?,?)`, personal, h.itemID, at(-30*time.Minute), at(-30*time.Minute)); e != nil {
+		t.Fatal(e)
+	}
+	out, e = h.service.SyncProgress(ctx, h.viewer, "op-p4", []ProgressEntry{{PlayID: "play-2", ItemID: h.item, PositionSeconds: 1200, ObservedAt: at(-time.Hour)}})
+	if e != nil || out.Entries[0].Outcome != ProgressSuperseded || out.Entries[0].PositionSeconds != 900 {
+		t.Fatalf("a play older than an explicit mark was applied %+v %v", out, e)
+	}
+	// One made after it is the newest thing known, and plays to the end: it
+	// counts as watched, the resume point is cleared, and the play is counted.
+	out, e = h.service.SyncProgress(ctx, h.viewer, "op-p5", []ProgressEntry{{PlayID: "play-3", ItemID: h.item, PositionSeconds: 3600, Ended: true, ObservedAt: at(-10 * time.Minute)}})
+	if e != nil || out.Applied != 1 || !out.Entries[0].Watched || out.Entries[0].PositionSeconds != 0 {
+		t.Fatalf("a finished play %+v %v", out, e)
+	}
+	if count(`SELECT plays FROM play_counts WHERE item_id=?`, h.itemID) != 1 {
+		t.Fatal("a finished offline play was not counted")
+	}
+	// The intent is dated to the play, not to the moment it was reported.
+	var authored string
+	if e = h.db.QueryRow(`SELECT authored_at FROM personal_watched_intents WHERE profile_id=? AND item_id=?`, personal, h.itemID).Scan(&authored); e != nil || !strings.HasPrefix(authored, base.Add(-10*time.Minute).Format("2006-01-02T15:04:05")) {
+		t.Fatalf("watched intent dated %q %v", authored, e)
+	}
+	// Online activity after an observation wins over it.
+	if _, e = h.db.Exec(`UPDATE progress_activity SET updated_at=? WHERE profile_id=? AND item_id=?`, at(48*time.Hour), personal, h.itemID); e != nil {
+		t.Fatal(e)
+	}
+	out, e = h.service.SyncProgress(ctx, h.viewer, "op-p6", []ProgressEntry{{PlayID: "play-4", ItemID: h.item, PositionSeconds: 42, ObservedAt: at(23 * time.Hour)}})
+	if e != nil || out.Conflicts != 1 || out.Entries[0].Outcome != ProgressSuperseded {
+		t.Fatalf("online activity lost to an older offline play: %+v %v", out, e)
 	}
 	// Unreadable and impossible entries are reported, never applied.
-	out, e = h.service.SyncProgress(context.Background(), h.viewer, "op-p5", []ProgressEntry{
-		{ItemID: h.item, PositionSeconds: 1, ObservedAt: "not-a-time"},
-		{ItemID: "missing", PositionSeconds: 1, ObservedAt: base.Format(time.RFC3339)},
-		{ItemID: h.item, PositionSeconds: 1, ObservedAt: base.Add(72 * time.Hour).Format(time.RFC3339)},
+	out, e = h.service.SyncProgress(ctx, h.viewer, "op-p7", []ProgressEntry{
+		{PlayID: "play-5", ItemID: h.item, PositionSeconds: 1, ObservedAt: "not-a-time"},
+		{PlayID: "play-6", ItemID: "missing", PositionSeconds: 1, ObservedAt: at(0)},
+		{PlayID: "play-7", ItemID: h.item, PositionSeconds: 1, ObservedAt: at(72 * time.Hour)},
+		{ItemID: h.item, PositionSeconds: 1, ObservedAt: at(0)},
 	})
 	if e != nil {
 		t.Fatal(e)
 	}
-	if out.Applied != 0 || out.Conflicts != 3 {
+	if out.Applied != 0 || out.Conflicts != 4 {
 		t.Fatalf("invalid entries applied: %+v", out)
 	}
-	if out.Entries[0].Outcome != ProgressInvalid || out.Entries[1].Outcome != ProgressMissing || out.Entries[2].Outcome != ProgressFuture {
+	if out.Entries[0].Outcome != ProgressInvalid || out.Entries[1].Outcome != ProgressMissing || out.Entries[2].Outcome != ProgressFuture || out.Entries[3].Outcome != ProgressInvalid {
 		t.Fatalf("outcomes %+v", out.Entries)
+	}
+}
+
+// One viewer's play id can never name another viewer's play.
+func TestOfflinePlayIdsBelongToTheViewer(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	other := h.viewer
+	other.AccountID, other.ProfileID = "account-2", "profile-2"
+	for i, viewer := range []identity.Principal{h.viewer, other} {
+		if _, e := h.service.SyncProgress(ctx, viewer, "op-own-"+strconv.Itoa(i), []ProgressEntry{{PlayID: "same-id", ItemID: h.item, PositionSeconds: 40, ObservedAt: h.now.Add(-time.Hour).Format(time.RFC3339)}}); e != nil {
+			t.Fatal(e)
+		}
+	}
+	var plays int
+	if e := h.db.QueryRow(`SELECT count(DISTINCT playback_id) FROM play_history`).Scan(&plays); e != nil || plays != 2 {
+		t.Fatalf("two viewers' plays shared a record: %d %v", plays, e)
 	}
 }
 
 func TestProgressBatchIsIdempotent(t *testing.T) {
 	h := newHarness(t)
-	entries := []ProgressEntry{{ItemID: h.item, PositionSeconds: 120, ObservedAt: h.now.Format(time.RFC3339)}}
+	entries := []ProgressEntry{{PlayID: "play-idem", ItemID: h.item, PositionSeconds: 40, ObservedAt: h.now.Format(time.RFC3339)}}
 	first, e := h.service.SyncProgress(context.Background(), h.viewer, "op-idem", entries)
 	if e != nil {
 		t.Fatal(e)
@@ -740,7 +953,7 @@ func TestPolicyRevocationStopsAnAdmittedClaimAndItsReceipts(t *testing.T) {
 	if _, e := h.db.Exec(`INSERT INTO restrictions(profile_id,revision,revoked) VALUES('profile',1,1)`); e != nil {
 		t.Fatal(e)
 	}
-	out, e := h.service.Revalidate(context.Background(), h.viewer, "server", "op-lost-2", []string{})
+	out, e := h.service.Revalidate(context.Background(), h.viewer, "server", "op-lost-2", []string{}, nil)
 	if e != ErrInput {
 		t.Fatalf("empty revalidation accepted: %v %+v", e, out)
 	}
@@ -748,7 +961,7 @@ func TestPolicyRevocationStopsAnAdmittedClaimAndItsReceipts(t *testing.T) {
 	if e = h.db.QueryRow(`SELECT id FROM download_receipts LIMIT 1`).Scan(&receipt); e != nil {
 		t.Fatal(e)
 	}
-	out, e = h.service.Revalidate(context.Background(), h.viewer, "server", "op-lost-3", []string{receipt})
+	out, e = h.service.Revalidate(context.Background(), h.viewer, "server", "op-lost-3", []string{receipt}, nil)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -785,6 +998,21 @@ func TestOptionsPublishTheLadderAndEstimates(t *testing.T) {
 	}
 	if !rung.RequiresPrepare {
 		t.Fatal("an owner must be told the rung needs preparing first")
+	}
+	// Only what the conversion code can make is on the menu: a rung that is
+	// just a name in the ladder would be a claim that can only fail.
+	for _, option := range view.Options[1:] {
+		if !preparedmedia.Producible(option.PreparedProfileID) {
+			t.Fatalf("%s is offered and cannot be produced", option.Quality)
+		}
+	}
+	for _, missing := range []string{"480p", "360p"} {
+		if _, offered := seen[missing]; offered != preparedmedia.Producible("portable-"+strings.TrimSuffix(missing, "p")+"-v3") {
+			t.Fatalf("%s offered=%v disagrees with the conversion code", missing, offered)
+		}
+	}
+	if batch, err := h.service.Submit(context.Background(), h.viewer, Request{OperationID: "op-unreal", MediaID: h.item, Quality: "480p"}, nil); preparedmedia.Producible("portable-480-v3") == (err == nil && len(batch.Rejected) == 1) {
+		t.Fatalf("a claim for 480p: %+v %v", batch, err)
 	}
 	if view.Source.Bytes != int64(len(filmBody)) || !view.Source.Available {
 		t.Fatalf("source %+v", view.Source)
@@ -959,45 +1187,13 @@ func TestResumeContinuesAPartialHash(t *testing.T) {
 	}
 }
 
-func TestADeletedItemRetiresItsReadyClaimAndReceipts(t *testing.T) {
-	h := newHarness(t)
-	ready := h.ready(t, "op-gone")
-	if _, e := h.service.IssueReceipts(context.Background(), h.viewer, "server", "op-gone-1", []string{ready.ID}); e != nil {
-		t.Fatal(e)
-	}
-	deleteCompactFixtureEntity(t, h.db, h.itemID)
-	h.advance(t)
-	out, e := h.service.Get(context.Background(), h.viewer, ready.ID)
-	if e != nil {
-		t.Fatal(e)
-	}
-	if out.State != StateUnavailable || out.Reason != ReasonItemDeleted {
-		t.Fatalf("state %q reason %q", out.State, out.Reason)
-	}
-	// The claim no longer counts against the owner's ceiling.
-	usage, e := h.service.Usage(context.Background(), h.viewer, false)
-	if e != nil {
-		t.Fatal(e)
-	}
-	if usage.ServerBytes != 0 || usage.ServerCount != 0 {
-		t.Fatalf("a retired claim still holds storage: %+v", usage)
-	}
-	page, e := h.service.Revocations(context.Background(), h.viewer, "", 0, false)
-	if e != nil {
-		t.Fatal(e)
-	}
-	if len(page.Items) != 1 || page.Items[0].Reason != ReasonItemDeleted {
-		t.Fatalf("revocations %+v", page)
-	}
-}
-
 func TestGrantsAreRefusedBeforeAClaimIsReady(t *testing.T) {
 	h := newHarness(t)
 	batch, e := h.service.Submit(context.Background(), h.viewer, Request{OperationID: "op-early", MediaID: h.item, Quality: QualityOriginal}, nil)
 	if e != nil {
 		t.Fatal(e)
 	}
-	if _, e = h.service.IssueGrant(context.Background(), h.viewer, batch.Items[0].ID, "op-early-1"); e != ErrNotReady {
+	if _, e = h.service.IssueGrant(context.Background(), h.viewer, batch.Items[0].ID, GrantRequest{OperationID: "op-early-1"}); e != ErrNotReady {
 		t.Fatalf("a grant was minted before the artifact existed: %v", e)
 	}
 	if _, e = h.service.IssueReceipts(context.Background(), h.viewer, "server", "op-early-2", []string{batch.Items[0].ID}); e != nil {
@@ -1018,7 +1214,7 @@ func TestGrantsAreRefusedBeforeAClaimIsReady(t *testing.T) {
 	if _, e = h.service.Act(context.Background(), stranger, batch.Items[0].ID, Command{OperationID: "op-steal", Action: ActionCancel, ExpectedRevision: 1}); e != ErrNotFound {
 		t.Fatalf("another viewer acted on the claim: %v", e)
 	}
-	if _, e = h.service.IssueGrant(context.Background(), stranger, batch.Items[0].ID, "op-steal-2"); e != ErrNotFound {
+	if _, e = h.service.IssueGrant(context.Background(), stranger, batch.Items[0].ID, GrantRequest{OperationID: "op-steal-2"}); e != ErrNotFound {
 		t.Fatalf("another viewer took a grant: %v", e)
 	}
 }

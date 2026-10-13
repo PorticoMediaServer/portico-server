@@ -5354,7 +5354,2404 @@
         "x-lane": "security"
       }
     },
+    "/v1/downloads/artifacts/{grant}": {
+      "get": {
+        "operationId": "get_download_artifact",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {},
+                  "required": [],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Fetch a download's media file, whole or by byte range",
+        "x-access": "public",
+        "x-cost": "constant",
+        "x-lane": "media"
+      },
+      "head": {
+        "operationId": "head_download_artifact",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {},
+                  "required": [],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Read a download's size, type and digest",
+        "x-access": "public",
+        "x-cost": "constant",
+        "x-lane": "media"
+      }
+    },
+    "/v1/downloads/artifacts/{grant}/artwork/{role}": {
+      "get": {
+        "operationId": "get_download_artwork",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {},
+                  "required": [],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Fetch one picture that travels with a download",
+        "x-access": "public",
+        "x-cost": "constant",
+        "x-lane": "media"
+      }
+    },
+    "/v1/downloads/artifacts/{grant}/subtitles/{resource}/{revision}.vtt": {
+      "get": {
+        "operationId": "get_download_subtitle",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {},
+                  "required": [],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Fetch one subtitle track that travels with a download, as WebVTT",
+        "x-access": "public",
+        "x-cost": "constant",
+        "x-lane": "media"
+      }
+    },
+    "/v1/downloads/preparations": {
+      "get": {
+        "operationId": "list_download_preparations",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "items": {
+                      "items": {
+                        "properties": {
+                          "actions": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
+                          },
+                          "artifact": {
+                            "properties": {
+                              "bytes": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "container": {
+                                "type": "string"
+                              },
+                              "contentType": {
+                                "type": "string"
+                              },
+                              "estimated": {
+                                "type": "boolean"
+                              },
+                              "fileName": {
+                                "type": "string"
+                              },
+                              "kind": {
+                                "type": "string"
+                              },
+                              "ref": {
+                                "type": "string"
+                              },
+                              "sha256": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "bytes",
+                              "estimated"
+                            ],
+                            "type": "object"
+                          },
+                          "batchId": {
+                            "type": "string"
+                          },
+                          "createdAt": {
+                            "type": "string"
+                          },
+                          "expiresAt": {
+                            "type": "string"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "itemId": {
+                            "type": "string"
+                          },
+                          "libraryId": {
+                            "type": "string"
+                          },
+                          "origin": {
+                            "type": "string"
+                          },
+                          "profileId": {
+                            "type": "string"
+                          },
+                          "progress": {
+                            "properties": {
+                              "bytesDone": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "bytesTotal": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "bytesTotalEstimated": {
+                                "type": "boolean"
+                              },
+                              "etaSeconds": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "nullable": true,
+                                "type": "integer"
+                              },
+                              "percent": {
+                                "type": "number"
+                              }
+                            },
+                            "required": [
+                              "bytesDone",
+                              "bytesTotal",
+                              "bytesTotalEstimated",
+                              "percent",
+                              "etaSeconds"
+                            ],
+                            "type": "object"
+                          },
+                          "quality": {
+                            "type": "string"
+                          },
+                          "readyAt": {
+                            "type": "string"
+                          },
+                          "reason": {
+                            "type": "string"
+                          },
+                          "revision": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "state": {
+                            "type": "string"
+                          },
+                          "title": {
+                            "properties": {
+                              "artist": {
+                                "type": "string"
+                              },
+                              "durationSeconds": {
+                                "type": "number"
+                              },
+                              "groupId": {
+                                "type": "string"
+                              },
+                              "groupNumber": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "groupTitle": {
+                                "type": "string"
+                              },
+                              "kind": {
+                                "type": "string"
+                              },
+                              "number": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "onServer": {
+                                "type": "boolean"
+                              },
+                              "parentId": {
+                                "type": "string"
+                              },
+                              "parentTitle": {
+                                "type": "string"
+                              },
+                              "title": {
+                                "type": "string"
+                              },
+                              "year": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "title",
+                              "onServer"
+                            ],
+                            "type": "object"
+                          },
+                          "updatedAt": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "itemId",
+                          "libraryId",
+                          "profileId",
+                          "title",
+                          "quality",
+                          "origin",
+                          "state",
+                          "artifact",
+                          "progress",
+                          "actions",
+                          "revision",
+                          "createdAt",
+                          "updatedAt"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "nextCursor": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "items",
+                    "nextCursor"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "List this viewer's download claims, newest first",
+        "x-access": "device",
+        "x-cost": "page_sized",
+        "x-lane": "default"
+      },
+      "post": {
+        "operationId": "create_download_preparations",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "mediaId": {
+                    "type": "string"
+                  },
+                  "mediaIds": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "nextAfterMediaId": {
+                    "type": "string"
+                  },
+                  "operationId": {
+                    "type": "string"
+                  },
+                  "quality": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "operationId",
+                  "quality"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "accepted": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "batchId": {
+                      "type": "string"
+                    },
+                    "duplicate": {
+                      "type": "boolean"
+                    },
+                    "items": {
+                      "items": {
+                        "properties": {
+                          "actions": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
+                          },
+                          "artifact": {
+                            "properties": {
+                              "bytes": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "container": {
+                                "type": "string"
+                              },
+                              "contentType": {
+                                "type": "string"
+                              },
+                              "estimated": {
+                                "type": "boolean"
+                              },
+                              "fileName": {
+                                "type": "string"
+                              },
+                              "kind": {
+                                "type": "string"
+                              },
+                              "ref": {
+                                "type": "string"
+                              },
+                              "sha256": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "bytes",
+                              "estimated"
+                            ],
+                            "type": "object"
+                          },
+                          "batchId": {
+                            "type": "string"
+                          },
+                          "createdAt": {
+                            "type": "string"
+                          },
+                          "expiresAt": {
+                            "type": "string"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "itemId": {
+                            "type": "string"
+                          },
+                          "libraryId": {
+                            "type": "string"
+                          },
+                          "origin": {
+                            "type": "string"
+                          },
+                          "profileId": {
+                            "type": "string"
+                          },
+                          "progress": {
+                            "properties": {
+                              "bytesDone": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "bytesTotal": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "bytesTotalEstimated": {
+                                "type": "boolean"
+                              },
+                              "etaSeconds": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "nullable": true,
+                                "type": "integer"
+                              },
+                              "percent": {
+                                "type": "number"
+                              }
+                            },
+                            "required": [
+                              "bytesDone",
+                              "bytesTotal",
+                              "bytesTotalEstimated",
+                              "percent",
+                              "etaSeconds"
+                            ],
+                            "type": "object"
+                          },
+                          "quality": {
+                            "type": "string"
+                          },
+                          "readyAt": {
+                            "type": "string"
+                          },
+                          "reason": {
+                            "type": "string"
+                          },
+                          "revision": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "state": {
+                            "type": "string"
+                          },
+                          "title": {
+                            "properties": {
+                              "artist": {
+                                "type": "string"
+                              },
+                              "durationSeconds": {
+                                "type": "number"
+                              },
+                              "groupId": {
+                                "type": "string"
+                              },
+                              "groupNumber": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "groupTitle": {
+                                "type": "string"
+                              },
+                              "kind": {
+                                "type": "string"
+                              },
+                              "number": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "onServer": {
+                                "type": "boolean"
+                              },
+                              "parentId": {
+                                "type": "string"
+                              },
+                              "parentTitle": {
+                                "type": "string"
+                              },
+                              "title": {
+                                "type": "string"
+                              },
+                              "year": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "title",
+                              "onServer"
+                            ],
+                            "type": "object"
+                          },
+                          "updatedAt": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "itemId",
+                          "libraryId",
+                          "profileId",
+                          "title",
+                          "quality",
+                          "origin",
+                          "state",
+                          "artifact",
+                          "progress",
+                          "actions",
+                          "revision",
+                          "createdAt",
+                          "updatedAt"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "rejected": {
+                      "items": {
+                        "properties": {
+                          "code": {
+                            "type": "string"
+                          },
+                          "itemId": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "itemId",
+                          "code"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "batchId",
+                    "items",
+                    "rejected",
+                    "accepted",
+                    "duplicate"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Claim one title, several titles or the next episode for offline use",
+        "x-access": "device",
+        "x-cost": "page_sized",
+        "x-lane": "default",
+        "x-max-body-bytes": 32768
+      }
+    },
+    "/v1/downloads/preparations/{id}": {
+      "get": {
+        "operationId": "get_download_preparation",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "actions": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "artifact": {
+                      "properties": {
+                        "bytes": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "container": {
+                          "type": "string"
+                        },
+                        "contentType": {
+                          "type": "string"
+                        },
+                        "estimated": {
+                          "type": "boolean"
+                        },
+                        "fileName": {
+                          "type": "string"
+                        },
+                        "kind": {
+                          "type": "string"
+                        },
+                        "ref": {
+                          "type": "string"
+                        },
+                        "sha256": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "bytes",
+                        "estimated"
+                      ],
+                      "type": "object"
+                    },
+                    "batchId": {
+                      "type": "string"
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    },
+                    "expiresAt": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "itemId": {
+                      "type": "string"
+                    },
+                    "libraryId": {
+                      "type": "string"
+                    },
+                    "origin": {
+                      "type": "string"
+                    },
+                    "profileId": {
+                      "type": "string"
+                    },
+                    "progress": {
+                      "properties": {
+                        "bytesDone": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "bytesTotal": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "bytesTotalEstimated": {
+                          "type": "boolean"
+                        },
+                        "etaSeconds": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "nullable": true,
+                          "type": "integer"
+                        },
+                        "percent": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "bytesDone",
+                        "bytesTotal",
+                        "bytesTotalEstimated",
+                        "percent",
+                        "etaSeconds"
+                      ],
+                      "type": "object"
+                    },
+                    "quality": {
+                      "type": "string"
+                    },
+                    "readyAt": {
+                      "type": "string"
+                    },
+                    "reason": {
+                      "type": "string"
+                    },
+                    "revision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "state": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "properties": {
+                        "artist": {
+                          "type": "string"
+                        },
+                        "durationSeconds": {
+                          "type": "number"
+                        },
+                        "groupId": {
+                          "type": "string"
+                        },
+                        "groupNumber": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "groupTitle": {
+                          "type": "string"
+                        },
+                        "kind": {
+                          "type": "string"
+                        },
+                        "number": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "onServer": {
+                          "type": "boolean"
+                        },
+                        "parentId": {
+                          "type": "string"
+                        },
+                        "parentTitle": {
+                          "type": "string"
+                        },
+                        "title": {
+                          "type": "string"
+                        },
+                        "year": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "title",
+                        "onServer"
+                      ],
+                      "type": "object"
+                    },
+                    "updatedAt": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "itemId",
+                    "libraryId",
+                    "profileId",
+                    "title",
+                    "quality",
+                    "origin",
+                    "state",
+                    "artifact",
+                    "progress",
+                    "actions",
+                    "revision",
+                    "createdAt",
+                    "updatedAt"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Read one download claim",
+        "x-access": "device",
+        "x-cost": "constant",
+        "x-lane": "default"
+      }
+    },
+    "/v1/downloads/preparations/{id}/actions": {
+      "post": {
+        "operationId": "act_on_download_preparation",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "action": {
+                    "type": "string"
+                  },
+                  "expectedRevision": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "operationId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "operationId",
+                  "action",
+                  "expectedRevision"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "actions": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "artifact": {
+                      "properties": {
+                        "bytes": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "container": {
+                          "type": "string"
+                        },
+                        "contentType": {
+                          "type": "string"
+                        },
+                        "estimated": {
+                          "type": "boolean"
+                        },
+                        "fileName": {
+                          "type": "string"
+                        },
+                        "kind": {
+                          "type": "string"
+                        },
+                        "ref": {
+                          "type": "string"
+                        },
+                        "sha256": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "bytes",
+                        "estimated"
+                      ],
+                      "type": "object"
+                    },
+                    "batchId": {
+                      "type": "string"
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    },
+                    "expiresAt": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "itemId": {
+                      "type": "string"
+                    },
+                    "libraryId": {
+                      "type": "string"
+                    },
+                    "origin": {
+                      "type": "string"
+                    },
+                    "profileId": {
+                      "type": "string"
+                    },
+                    "progress": {
+                      "properties": {
+                        "bytesDone": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "bytesTotal": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "bytesTotalEstimated": {
+                          "type": "boolean"
+                        },
+                        "etaSeconds": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "nullable": true,
+                          "type": "integer"
+                        },
+                        "percent": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "bytesDone",
+                        "bytesTotal",
+                        "bytesTotalEstimated",
+                        "percent",
+                        "etaSeconds"
+                      ],
+                      "type": "object"
+                    },
+                    "quality": {
+                      "type": "string"
+                    },
+                    "readyAt": {
+                      "type": "string"
+                    },
+                    "reason": {
+                      "type": "string"
+                    },
+                    "revision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "state": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "properties": {
+                        "artist": {
+                          "type": "string"
+                        },
+                        "durationSeconds": {
+                          "type": "number"
+                        },
+                        "groupId": {
+                          "type": "string"
+                        },
+                        "groupNumber": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "groupTitle": {
+                          "type": "string"
+                        },
+                        "kind": {
+                          "type": "string"
+                        },
+                        "number": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "onServer": {
+                          "type": "boolean"
+                        },
+                        "parentId": {
+                          "type": "string"
+                        },
+                        "parentTitle": {
+                          "type": "string"
+                        },
+                        "title": {
+                          "type": "string"
+                        },
+                        "year": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "title",
+                        "onServer"
+                      ],
+                      "type": "object"
+                    },
+                    "updatedAt": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "itemId",
+                    "libraryId",
+                    "profileId",
+                    "title",
+                    "quality",
+                    "origin",
+                    "state",
+                    "artifact",
+                    "progress",
+                    "actions",
+                    "revision",
+                    "createdAt",
+                    "updatedAt"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Pause, resume, cancel, retry or remove a download claim",
+        "x-access": "device",
+        "x-cost": "constant",
+        "x-lane": "default",
+        "x-max-body-bytes": 4096
+      }
+    },
+    "/v1/downloads/preparations/{id}/bundle": {
+      "get": {
+        "operationId": "get_download_bundle",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "artwork": {
+                      "items": {
+                        "properties": {
+                          "contentType": {
+                            "type": "string"
+                          },
+                          "path": {
+                            "type": "string"
+                          },
+                          "role": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "role",
+                          "path",
+                          "contentType"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "audio": {
+                      "items": {
+                        "properties": {
+                          "channels": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "codec": {
+                            "type": "string"
+                          },
+                          "default": {
+                            "type": "boolean"
+                          },
+                          "index": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "language": {
+                            "type": "string"
+                          },
+                          "title": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "index",
+                          "language",
+                          "title",
+                          "codec",
+                          "channels",
+                          "default"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "chapters": {
+                      "items": {
+                        "properties": {
+                          "endSeconds": {
+                            "type": "number"
+                          },
+                          "index": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "startSeconds": {
+                            "type": "number"
+                          },
+                          "title": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "index",
+                          "title",
+                          "startSeconds",
+                          "endSeconds"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "itemId": {
+                      "type": "string"
+                    },
+                    "markers": {
+                      "items": {
+                        "properties": {
+                          "automatic": {
+                            "type": "boolean"
+                          },
+                          "endSeconds": {
+                            "type": "number"
+                          },
+                          "kind": {
+                            "type": "string"
+                          },
+                          "startSeconds": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "startSeconds",
+                          "endSeconds",
+                          "automatic"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "media": {
+                      "properties": {
+                        "audioCodec": {
+                          "type": "string"
+                        },
+                        "container": {
+                          "type": "string"
+                        },
+                        "height": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "videoCodec": {
+                          "type": "string"
+                        },
+                        "width": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "container"
+                      ],
+                      "type": "object"
+                    },
+                    "overview": {
+                      "type": "string"
+                    },
+                    "preparationId": {
+                      "type": "string"
+                    },
+                    "quality": {
+                      "type": "string"
+                    },
+                    "qualityLabel": {
+                      "type": "string"
+                    },
+                    "subtitles": {
+                      "items": {
+                        "properties": {
+                          "default": {
+                            "type": "boolean"
+                          },
+                          "files": {
+                            "additionalProperties": {
+                              "properties": {
+                                "contentType": {
+                                  "type": "string"
+                                },
+                                "path": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "path",
+                                "contentType"
+                              ],
+                              "type": "object"
+                            },
+                            "type": "object"
+                          },
+                          "forced": {
+                            "type": "boolean"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "language": {
+                            "type": "string"
+                          },
+                          "revision": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "title": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "revision",
+                          "language",
+                          "title",
+                          "default",
+                          "forced",
+                          "files"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "title": {
+                      "properties": {
+                        "artist": {
+                          "type": "string"
+                        },
+                        "durationSeconds": {
+                          "type": "number"
+                        },
+                        "groupId": {
+                          "type": "string"
+                        },
+                        "groupNumber": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "groupTitle": {
+                          "type": "string"
+                        },
+                        "kind": {
+                          "type": "string"
+                        },
+                        "number": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "onServer": {
+                          "type": "boolean"
+                        },
+                        "parentId": {
+                          "type": "string"
+                        },
+                        "parentTitle": {
+                          "type": "string"
+                        },
+                        "title": {
+                          "type": "string"
+                        },
+                        "year": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "title",
+                        "onServer"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "preparationId",
+                    "itemId",
+                    "quality",
+                    "qualityLabel",
+                    "title",
+                    "overview",
+                    "media",
+                    "artwork",
+                    "chapters",
+                    "markers",
+                    "audio",
+                    "subtitles"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Read everything that travels with a ready download: titles, artwork, chapters, markers, subtitles and audio tracks",
+        "x-access": "device",
+        "x-cost": "page_sized",
+        "x-lane": "default"
+      }
+    },
+    "/v1/downloads/preparations/{id}/grant": {
+      "post": {
+        "operationId": "create_download_grant",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "operationId": {
+                    "type": "string"
+                  },
+                  "renew": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "operationId"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "artifact": {
+                      "properties": {
+                        "bytes": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "container": {
+                          "type": "string"
+                        },
+                        "contentType": {
+                          "type": "string"
+                        },
+                        "estimated": {
+                          "type": "boolean"
+                        },
+                        "fileName": {
+                          "type": "string"
+                        },
+                        "kind": {
+                          "type": "string"
+                        },
+                        "ref": {
+                          "type": "string"
+                        },
+                        "sha256": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "bytes",
+                        "estimated"
+                      ],
+                      "type": "object"
+                    },
+                    "expiresAt": {
+                      "type": "string"
+                    },
+                    "issuedAt": {
+                      "type": "string"
+                    },
+                    "itemId": {
+                      "type": "string"
+                    },
+                    "preparationId": {
+                      "type": "string"
+                    },
+                    "renewAfterSeconds": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "renewed": {
+                      "type": "boolean"
+                    },
+                    "token": {
+                      "type": "string"
+                    },
+                    "url": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "preparationId",
+                    "itemId",
+                    "url",
+                    "token",
+                    "issuedAt",
+                    "expiresAt",
+                    "renewAfterSeconds",
+                    "renewed",
+                    "artifact"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Take, or keep alive, the address a ready download is fetched from",
+        "x-access": "device",
+        "x-cost": "constant",
+        "x-lane": "default",
+        "x-max-body-bytes": 4096
+      }
+    },
+    "/v1/downloads/progress": {
+      "post": {
+        "operationId": "sync_download_progress",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "entries": {
+                    "items": {
+                      "properties": {
+                        "ended": {
+                          "type": "boolean"
+                        },
+                        "itemId": {
+                          "type": "string"
+                        },
+                        "observedAt": {
+                          "type": "string"
+                        },
+                        "playId": {
+                          "type": "string"
+                        },
+                        "positionSeconds": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "playId",
+                        "itemId",
+                        "positionSeconds",
+                        "observedAt"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "operationId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "operationId",
+                  "entries"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "applied": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "conflicts": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "entries": {
+                      "items": {
+                        "properties": {
+                          "itemId": {
+                            "type": "string"
+                          },
+                          "observedAt": {
+                            "type": "string"
+                          },
+                          "outcome": {
+                            "type": "string"
+                          },
+                          "playId": {
+                            "type": "string"
+                          },
+                          "positionSeconds": {
+                            "type": "number"
+                          },
+                          "watched": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "playId",
+                          "itemId",
+                          "outcome",
+                          "positionSeconds",
+                          "watched"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "applied",
+                    "conflicts",
+                    "entries"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Report plays of downloaded copies made with no server in reach",
+        "x-access": "device",
+        "x-cost": "page_sized",
+        "x-lane": "default",
+        "x-max-body-bytes": 65536
+      }
+    },
+    "/v1/downloads/receipt-keys": {
+      "get": {
+        "operationId": "list_download_receipt_keys",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "keys": {
+                      "items": {
+                        "properties": {
+                          "algorithm": {
+                            "type": "string"
+                          },
+                          "createdAt": {
+                            "type": "string"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "publicKey": {
+                            "type": "string"
+                          },
+                          "retiredAt": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "algorithm",
+                          "publicKey",
+                          "createdAt"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "keys"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Read the keys this server signs receipts with",
+        "x-access": "device",
+        "x-cost": "constant",
+        "x-lane": "default"
+      }
+    },
+    "/v1/downloads/receipts": {
+      "post": {
+        "operationId": "issue_download_receipts",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "operationId": {
+                    "type": "string"
+                  },
+                  "preparationIds": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "operationId",
+                  "preparationIds"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "results": {
+                      "items": {
+                        "properties": {
+                          "code": {
+                            "type": "string"
+                          },
+                          "outcome": {
+                            "type": "string"
+                          },
+                          "preparationId": {
+                            "type": "string"
+                          },
+                          "receipt": {
+                            "properties": {
+                              "algorithm": {
+                                "type": "string"
+                              },
+                              "claims": {
+                                "properties": {
+                                  "artifact": {
+                                    "properties": {
+                                      "bytes": {
+                                        "maximum": 9007199254740991,
+                                        "minimum": -9007199254740991,
+                                        "type": "integer"
+                                      },
+                                      "sha256": {
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": [
+                                      "sha256",
+                                      "bytes"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  "expiresAt": {
+                                    "type": "string"
+                                  },
+                                  "issuedAt": {
+                                    "type": "string"
+                                  },
+                                  "itemId": {
+                                    "type": "string"
+                                  },
+                                  "keyId": {
+                                    "type": "string"
+                                  },
+                                  "kind": {
+                                    "type": "string"
+                                  },
+                                  "preparationId": {
+                                    "type": "string"
+                                  },
+                                  "quality": {
+                                    "type": "string"
+                                  },
+                                  "qualityLabel": {
+                                    "type": "string"
+                                  },
+                                  "receiptId": {
+                                    "type": "string"
+                                  },
+                                  "version": {
+                                    "type": "string"
+                                  },
+                                  "viewer": {
+                                    "properties": {
+                                      "accountId": {
+                                        "type": "string"
+                                      },
+                                      "authority": {
+                                        "type": "string"
+                                      },
+                                      "profileId": {
+                                        "type": "string"
+                                      },
+                                      "serverId": {
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": [
+                                      "authority",
+                                      "accountId",
+                                      "profileId",
+                                      "serverId"
+                                    ],
+                                    "type": "object"
+                                  }
+                                },
+                                "required": [
+                                  "kind",
+                                  "version",
+                                  "receiptId",
+                                  "keyId",
+                                  "viewer",
+                                  "itemId",
+                                  "preparationId",
+                                  "quality",
+                                  "qualityLabel",
+                                  "artifact",
+                                  "issuedAt",
+                                  "expiresAt"
+                                ],
+                                "type": "object"
+                              },
+                              "keyId": {
+                                "type": "string"
+                              },
+                              "payload": {
+                                "type": "string"
+                              },
+                              "receiptId": {
+                                "type": "string"
+                              },
+                              "revision": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "signature": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "receiptId",
+                              "algorithm",
+                              "keyId",
+                              "payload",
+                              "signature",
+                              "claims",
+                              "revision"
+                            ],
+                            "type": "object"
+                          },
+                          "receiptId": {
+                            "type": "string"
+                          },
+                          "titleOnServer": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "outcome"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "results"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Take signed offline permission for ready downloads",
+        "x-access": "device",
+        "x-cost": "page_sized",
+        "x-lane": "default",
+        "x-max-body-bytes": 32768
+      }
+    },
+    "/v1/downloads/receipts/revalidate": {
+      "post": {
+        "operationId": "revalidate_download_receipts",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "operationId": {
+                    "type": "string"
+                  },
+                  "receiptIds": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "operationId",
+                  "receiptIds"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "results": {
+                      "items": {
+                        "properties": {
+                          "code": {
+                            "type": "string"
+                          },
+                          "outcome": {
+                            "type": "string"
+                          },
+                          "preparationId": {
+                            "type": "string"
+                          },
+                          "receipt": {
+                            "properties": {
+                              "algorithm": {
+                                "type": "string"
+                              },
+                              "claims": {
+                                "properties": {
+                                  "artifact": {
+                                    "properties": {
+                                      "bytes": {
+                                        "maximum": 9007199254740991,
+                                        "minimum": -9007199254740991,
+                                        "type": "integer"
+                                      },
+                                      "sha256": {
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": [
+                                      "sha256",
+                                      "bytes"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  "expiresAt": {
+                                    "type": "string"
+                                  },
+                                  "issuedAt": {
+                                    "type": "string"
+                                  },
+                                  "itemId": {
+                                    "type": "string"
+                                  },
+                                  "keyId": {
+                                    "type": "string"
+                                  },
+                                  "kind": {
+                                    "type": "string"
+                                  },
+                                  "preparationId": {
+                                    "type": "string"
+                                  },
+                                  "quality": {
+                                    "type": "string"
+                                  },
+                                  "qualityLabel": {
+                                    "type": "string"
+                                  },
+                                  "receiptId": {
+                                    "type": "string"
+                                  },
+                                  "version": {
+                                    "type": "string"
+                                  },
+                                  "viewer": {
+                                    "properties": {
+                                      "accountId": {
+                                        "type": "string"
+                                      },
+                                      "authority": {
+                                        "type": "string"
+                                      },
+                                      "profileId": {
+                                        "type": "string"
+                                      },
+                                      "serverId": {
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": [
+                                      "authority",
+                                      "accountId",
+                                      "profileId",
+                                      "serverId"
+                                    ],
+                                    "type": "object"
+                                  }
+                                },
+                                "required": [
+                                  "kind",
+                                  "version",
+                                  "receiptId",
+                                  "keyId",
+                                  "viewer",
+                                  "itemId",
+                                  "preparationId",
+                                  "quality",
+                                  "qualityLabel",
+                                  "artifact",
+                                  "issuedAt",
+                                  "expiresAt"
+                                ],
+                                "type": "object"
+                              },
+                              "keyId": {
+                                "type": "string"
+                              },
+                              "payload": {
+                                "type": "string"
+                              },
+                              "receiptId": {
+                                "type": "string"
+                              },
+                              "revision": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "signature": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "receiptId",
+                              "algorithm",
+                              "keyId",
+                              "payload",
+                              "signature",
+                              "claims",
+                              "revision"
+                            ],
+                            "type": "object"
+                          },
+                          "receiptId": {
+                            "type": "string"
+                          },
+                          "titleOnServer": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "outcome"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "results"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Renew offline permission for copies already on a device",
+        "x-access": "device",
+        "x-cost": "page_sized",
+        "x-lane": "default",
+        "x-max-body-bytes": 32768
+      }
+    },
+    "/v1/downloads/receipts/revocations": {
+      "get": {
+        "operationId": "list_download_revocations",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "asOf": {
+                      "type": "string"
+                    },
+                    "items": {
+                      "items": {
+                        "properties": {
+                          "itemId": {
+                            "type": "string"
+                          },
+                          "profileId": {
+                            "type": "string"
+                          },
+                          "reason": {
+                            "type": "string"
+                          },
+                          "receiptId": {
+                            "type": "string"
+                          },
+                          "revokedAt": {
+                            "type": "string"
+                          },
+                          "sequence": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "receiptId",
+                          "itemId",
+                          "profileId",
+                          "reason",
+                          "revokedAt",
+                          "sequence"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "nextCursor": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "items",
+                    "nextCursor",
+                    "asOf"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Page the receipts that have been withdrawn",
+        "x-access": "device",
+        "x-cost": "page_sized",
+        "x-lane": "security"
+      }
+    },
+    "/v1/downloads/receipts/revoke": {
+      "post": {
+        "operationId": "revoke_download_receipts",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "allProfiles": {
+                    "type": "boolean"
+                  },
+                  "operationId": {
+                    "type": "string"
+                  },
+                  "reason": {
+                    "type": "string"
+                  },
+                  "receiptIds": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "operationId",
+                  "receiptIds"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "results": {
+                      "items": {
+                        "properties": {
+                          "code": {
+                            "type": "string"
+                          },
+                          "outcome": {
+                            "type": "string"
+                          },
+                          "preparationId": {
+                            "type": "string"
+                          },
+                          "receipt": {
+                            "properties": {
+                              "algorithm": {
+                                "type": "string"
+                              },
+                              "claims": {
+                                "properties": {
+                                  "artifact": {
+                                    "properties": {
+                                      "bytes": {
+                                        "maximum": 9007199254740991,
+                                        "minimum": -9007199254740991,
+                                        "type": "integer"
+                                      },
+                                      "sha256": {
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": [
+                                      "sha256",
+                                      "bytes"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  "expiresAt": {
+                                    "type": "string"
+                                  },
+                                  "issuedAt": {
+                                    "type": "string"
+                                  },
+                                  "itemId": {
+                                    "type": "string"
+                                  },
+                                  "keyId": {
+                                    "type": "string"
+                                  },
+                                  "kind": {
+                                    "type": "string"
+                                  },
+                                  "preparationId": {
+                                    "type": "string"
+                                  },
+                                  "quality": {
+                                    "type": "string"
+                                  },
+                                  "qualityLabel": {
+                                    "type": "string"
+                                  },
+                                  "receiptId": {
+                                    "type": "string"
+                                  },
+                                  "version": {
+                                    "type": "string"
+                                  },
+                                  "viewer": {
+                                    "properties": {
+                                      "accountId": {
+                                        "type": "string"
+                                      },
+                                      "authority": {
+                                        "type": "string"
+                                      },
+                                      "profileId": {
+                                        "type": "string"
+                                      },
+                                      "serverId": {
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": [
+                                      "authority",
+                                      "accountId",
+                                      "profileId",
+                                      "serverId"
+                                    ],
+                                    "type": "object"
+                                  }
+                                },
+                                "required": [
+                                  "kind",
+                                  "version",
+                                  "receiptId",
+                                  "keyId",
+                                  "viewer",
+                                  "itemId",
+                                  "preparationId",
+                                  "quality",
+                                  "qualityLabel",
+                                  "artifact",
+                                  "issuedAt",
+                                  "expiresAt"
+                                ],
+                                "type": "object"
+                              },
+                              "keyId": {
+                                "type": "string"
+                              },
+                              "payload": {
+                                "type": "string"
+                              },
+                              "receiptId": {
+                                "type": "string"
+                              },
+                              "revision": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "signature": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "receiptId",
+                              "algorithm",
+                              "keyId",
+                              "payload",
+                              "signature",
+                              "claims",
+                              "revision"
+                            ],
+                            "type": "object"
+                          },
+                          "receiptId": {
+                            "type": "string"
+                          },
+                          "titleOnServer": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "outcome"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "results"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Withdraw offline permission from copies on devices",
+        "x-access": "device",
+        "x-cost": "page_sized",
+        "x-lane": "security",
+        "x-max-body-bytes": 32768
+      }
+    },
     "/v1/downloads/requests": {
+      "get": {
+        "operationId": "list_download_requests",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "requests": {
+                      "items": {
+                        "properties": {
+                          "createdAt": {
+                            "type": "string"
+                          },
+                          "quality": {
+                            "type": "string"
+                          },
+                          "requestId": {
+                            "type": "string"
+                          },
+                          "state": {
+                            "type": "string"
+                          },
+                          "target": {
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "kind": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "id"
+                            ],
+                            "type": "object"
+                          },
+                          "title": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "requestId",
+                          "state",
+                          "target",
+                          "title",
+                          "quality",
+                          "createdAt"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "requests"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "List the whole-show, season, album, book and playlist downloads a device started",
+        "x-access": "device",
+        "x-cost": "page_sized",
+        "x-lane": "browsing"
+      },
       "post": {
         "operationId": "create_download_request",
         "requestBody": {
@@ -5573,6 +7970,58 @@
                               "state": {
                                 "type": "string"
                               },
+                              "title": {
+                                "properties": {
+                                  "artist": {
+                                    "type": "string"
+                                  },
+                                  "durationSeconds": {
+                                    "type": "number"
+                                  },
+                                  "groupId": {
+                                    "type": "string"
+                                  },
+                                  "groupNumber": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "groupTitle": {
+                                    "type": "string"
+                                  },
+                                  "kind": {
+                                    "type": "string"
+                                  },
+                                  "number": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "onServer": {
+                                    "type": "boolean"
+                                  },
+                                  "parentId": {
+                                    "type": "string"
+                                  },
+                                  "parentTitle": {
+                                    "type": "string"
+                                  },
+                                  "title": {
+                                    "type": "string"
+                                  },
+                                  "year": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  }
+                                },
+                                "required": [
+                                  "kind",
+                                  "title",
+                                  "onServer"
+                                ],
+                                "type": "object"
+                              },
                               "updatedAt": {
                                 "type": "string"
                               }
@@ -5582,6 +8031,7 @@
                               "itemId",
                               "libraryId",
                               "profileId",
+                              "title",
                               "quality",
                               "origin",
                               "state",
@@ -5811,6 +8261,58 @@
                               "state": {
                                 "type": "string"
                               },
+                              "title": {
+                                "properties": {
+                                  "artist": {
+                                    "type": "string"
+                                  },
+                                  "durationSeconds": {
+                                    "type": "number"
+                                  },
+                                  "groupId": {
+                                    "type": "string"
+                                  },
+                                  "groupNumber": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "groupTitle": {
+                                    "type": "string"
+                                  },
+                                  "kind": {
+                                    "type": "string"
+                                  },
+                                  "number": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "onServer": {
+                                    "type": "boolean"
+                                  },
+                                  "parentId": {
+                                    "type": "string"
+                                  },
+                                  "parentTitle": {
+                                    "type": "string"
+                                  },
+                                  "title": {
+                                    "type": "string"
+                                  },
+                                  "year": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  }
+                                },
+                                "required": [
+                                  "kind",
+                                  "title",
+                                  "onServer"
+                                ],
+                                "type": "object"
+                              },
                               "updatedAt": {
                                 "type": "string"
                               }
@@ -5820,6 +8322,7 @@
                               "itemId",
                               "libraryId",
                               "profileId",
+                              "title",
                               "quality",
                               "origin",
                               "state",
@@ -5904,6 +8407,232 @@
         "x-access": "device",
         "x-cost": "page_sized",
         "x-lane": "browsing"
+      }
+    },
+    "/v1/downloads/settings": {
+      "get": {
+        "operationId": "get_download_settings",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "maxPreparedBytes": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "retentionDays": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "revision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "maxPreparedBytes",
+                    "retentionDays",
+                    "revision"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Read the owner's download settings",
+        "x-access": "device",
+        "x-cost": "constant",
+        "x-lane": "default"
+      },
+      "put": {
+        "operationId": "put_download_settings",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "expectedRevision": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "maxPreparedBytes": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "operationId": {
+                    "type": "string"
+                  },
+                  "retentionDays": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "operationId",
+                  "expectedRevision",
+                  "maxPreparedBytes",
+                  "retentionDays"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "maxPreparedBytes": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "retentionDays": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "revision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "maxPreparedBytes",
+                    "retentionDays",
+                    "revision"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Change the owner's download settings",
+        "x-access": "owner",
+        "x-cost": "constant",
+        "x-lane": "default",
+        "x-max-body-bytes": 4096
+      }
+    },
+    "/v1/downloads/usage": {
+      "get": {
+        "operationId": "get_download_usage",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "distinctArtifactBytes": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "maxPreparedBytes": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "profileBytes": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "profileCount": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "profileId": {
+                      "type": "string"
+                    },
+                    "profiles": {
+                      "items": {
+                        "properties": {
+                          "bytes": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "count": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "profileId": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "profileId",
+                          "bytes",
+                          "count"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "remainingBytes": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "nullable": true,
+                      "type": "integer"
+                    },
+                    "retentionDays": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "serverBytes": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "serverCount": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "profileId",
+                    "profileBytes",
+                    "profileCount",
+                    "serverBytes",
+                    "serverCount",
+                    "distinctArtifactBytes",
+                    "maxPreparedBytes",
+                    "remainingBytes",
+                    "retentionDays",
+                    "profiles"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Read how much this viewer, or the whole server, has claimed",
+        "x-access": "device",
+        "x-cost": "page_sized",
+        "x-lane": "default"
       }
     },
     "/v1/events": {
@@ -6022,6 +8751,195 @@
         "x-access": "device",
         "x-cost": "constant",
         "x-lane": "realtime"
+      }
+    },
+    "/v1/items/{id}/download-options": {
+      "get": {
+        "operationId": "get_download_options",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "itemId": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string"
+                    },
+                    "options": {
+                      "items": {
+                        "properties": {
+                          "available": {
+                            "type": "boolean"
+                          },
+                          "estimated": {
+                            "type": "boolean"
+                          },
+                          "estimatedBytes": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "kind": {
+                            "type": "string"
+                          },
+                          "label": {
+                            "type": "string"
+                          },
+                          "maxAudioBitrateBps": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "maxVideoBitrateBps": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "preparationId": {
+                            "type": "string"
+                          },
+                          "preparationState": {
+                            "type": "string"
+                          },
+                          "preparedProfileId": {
+                            "type": "string"
+                          },
+                          "preparedVersionId": {
+                            "type": "string"
+                          },
+                          "quality": {
+                            "type": "string"
+                          },
+                          "reason": {
+                            "type": "string"
+                          },
+                          "requiresPreparation": {
+                            "type": "boolean"
+                          },
+                          "targetDisplayHeight": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "quality",
+                          "label",
+                          "kind",
+                          "estimatedBytes",
+                          "estimated",
+                          "available",
+                          "requiresPreparation"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "policy": {
+                      "properties": {
+                        "allowDownloads": {
+                          "type": "boolean"
+                        },
+                        "reason": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "allowDownloads"
+                      ],
+                      "type": "object"
+                    },
+                    "source": {
+                      "properties": {
+                        "audioCodec": {
+                          "type": "string"
+                        },
+                        "available": {
+                          "type": "boolean"
+                        },
+                        "bytes": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "container": {
+                          "type": "string"
+                        },
+                        "durationSeconds": {
+                          "type": "number"
+                        },
+                        "height": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "videoCodec": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "container",
+                        "durationSeconds",
+                        "bytes",
+                        "available"
+                      ],
+                      "type": "object"
+                    },
+                    "storage": {
+                      "properties": {
+                        "committedBytes": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "maxPreparedBytes": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "remainingBytes": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "nullable": true,
+                          "type": "integer"
+                        },
+                        "retentionDays": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "maxPreparedBytes",
+                        "committedBytes",
+                        "remainingBytes",
+                        "retentionDays"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "itemId",
+                    "kind",
+                    "source",
+                    "options",
+                    "policy",
+                    "storage"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Read what can be downloaded for one title, with sizes",
+        "x-access": "viewer_item_restrictions",
+        "x-cost": "constant",
+        "x-lane": "browsing"
       }
     },
     "/v1/items/{itemId}/playback-options": {
