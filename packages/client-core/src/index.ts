@@ -1560,6 +1560,7 @@ export class PlaybackService {
       pendingSeek: undefined,
       seekError: undefined,
       failedSeek: undefined,
+      recovering: undefined,
       positionSeconds: 0,
       duration: 0,
       error: undefined,

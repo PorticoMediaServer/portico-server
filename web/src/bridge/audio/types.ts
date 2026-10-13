@@ -34,10 +34,13 @@ export interface Demuxer {
   /** Packets in order from the start. */
   packets(signal?: AbortSignal): AsyncGenerator<Packet>;
   /** Packets from the one holding raw frame `target`, `preroll` packets earlier, found without
-   * reading what comes before (a container with a sample index). `rawStart` is the raw index
-   * of the first packet's first frame. Absent: the caller walks `packets` from the start. */
-  seek?(target: number, preroll: number, signal?: AbortSignal): {packets: AsyncGenerator<Packet>; rawStart: number};
+   * reading what comes before (a container with a sample index, or frames that carry their own
+   * position). `rawStart` is the raw index of the first packet's first frame, and is exact.
+   * Absent, or answering undefined: the caller walks `packets` from the start. */
+  seek?(target: number, preroll: number, signal?: AbortSignal): SeekResult | undefined | Promise<SeekResult | undefined>;
 }
+
+export type SeekResult = {packets: AsyncGenerator<Packet>; rawStart: number};
 
 export class DemuxError extends Error {
   readonly code = 'invalid_media';

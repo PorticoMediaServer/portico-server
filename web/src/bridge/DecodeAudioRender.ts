@@ -104,7 +104,9 @@ export class DecodeAudioRender {
         open: async fromFrame => { source = new ConvertedSource({...plan, url: this.url(plan.url)}, fromFrame, {locked: !unlocked}); return source; },
       };
     }
-    const range = new RangeReader({url: this.url(plan.url), key: plan.id, size: plan.bytes, cache: audioByteCache, ...(prepared && plan.prefetchBytes ? {limit: plan.prefetchBytes} : {})});
+    // A start or seek that is still reading the file is alive, however long the link makes it take.
+    const alive = () => { if (!this.disposed && !prepared) this.service.engineProgress(this.service.getSnapshot().intentId); };
+    const range = new RangeReader({url: this.url(plan.url), key: plan.id, size: plan.bytes, cache: audioByteCache, onBytes: alive, ...(prepared && plan.prefetchBytes ? {limit: plan.prefetchBytes} : {})});
     return {unlock: () => range.unlock(), close: () => range.close(), prefetchAll: () => range.prefetchAll(), open: fromFrame => TrackStream.open(plan, range, fromFrame)};
   }
 
