@@ -2,14 +2,28 @@ package hosted
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"portico.local/server/internal/identity"
+	"portico.local/server/internal/networking"
 )
 
 func TestClaimAcknowledgmentImmediatelyAdmitsOwner(t *testing.T) {
-	f := newClaimFixture(t)
-	// No control step, status readback, topology change or wake has run.
+	f := newClaimFixture(t, func(f *claimFixture) {
+		// Run the same first pass as the control loop before a claim exists;
+		// it finds no credential and settles on its six-hour safety sleep.
+		if err := f.runner.Do(context.Background(), func(ctx context.Context) error {
+			_, err := f.service.currentControlStep(ctx)
+			if !errors.Is(err, networking.ErrStale) {
+				t.Fatal("unclaimed control step", err)
+			}
+			return nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+	})
+	// No post-install control step, status readback, topology change or wake has run.
 	if !f.installed.InstallationAcknowledged {
 		t.Fatal("claim not acknowledged")
 	}
@@ -26,5 +40,29 @@ func TestClaimAcknowledgmentImmediatelyAdmitsOwner(t *testing.T) {
 	}
 	if _, err = f.id.Authenticate(in.Session.AccessToken); err != nil {
 		t.Fatal("owner session unusable", err)
+	}
+}
+
+func TestClaimInstallationPreservesExistingAccountLinks(t *testing.T) {
+	for _, alreadyLinked := range []string{"owner", "another member"} {
+		t.Run(alreadyLinked, func(t *testing.T) {
+			f := newClaimFixture(t, func(f *claimFixture) {
+				if alreadyLinked == "owner" {
+					if _, err := f.db.Exec(`INSERT INTO account_portico_links(account_id,hosted_account_id) VALUES(?,'previous-account')`, f.owner.Viewer.AccountID); err != nil {
+						t.Fatal(err)
+					}
+				} else {
+					addLinkedMember(t, f, "other-local", "account")
+				}
+			})
+			var account string
+			query, key, want := `SELECT hosted_account_id FROM account_portico_links WHERE account_id=?`, f.owner.Viewer.AccountID, "previous-account"
+			if alreadyLinked != "owner" {
+				query, key, want = `SELECT account_id FROM account_portico_links WHERE hosted_account_id=?`, "account", "other-local"
+			}
+			if err := f.db.QueryRow(query, key).Scan(&account); err != nil || account != want {
+				t.Fatal("installation reassigned existing identity", account, err)
+			}
+		})
 	}
 }

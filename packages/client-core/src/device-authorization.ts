@@ -3,6 +3,7 @@ import {routePath as hostedRoutePath} from "../../contracts/src/hosted/routes.ts
 import {routePath} from "../../contracts/src/routes.ts";
 import {randomId} from './random-id.ts';
 import { ApiError, HttpLocalApi, type HostedSession } from "./index.ts";
+import {hostedGate, type HostedGate, type HostedRequestKind} from './hosted-gate.ts';
 export type DeviceAuthorization = {
   deviceCode: string;
   userCode: string;
@@ -13,56 +14,61 @@ export type DeviceAuthorization = {
   interval: number;
 };
 export interface DeviceAuthorizationApi {
+  readonly gate?: HostedGate;
   create(
     requestId: string,
     deviceName: string,
     platform: string,
     appVersion: string,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    kind?: HostedRequestKind
   ): Promise<DeviceAuthorization>;
   poll(deviceCode: string, signal?: AbortSignal): Promise<HostedSession>;
-  cancel(deviceCode: string): Promise<void>;
+  cancel(deviceCode: string, kind?: HostedRequestKind): Promise<void>;
   revoke(session: HostedSession): Promise<void>;
 }
 export class HttpDeviceAuthorizationApi implements DeviceAuthorizationApi {
+  readonly gate: HostedGate;
   private http: HttpLocalApi;
   private baseUrl: string;
   constructor(baseUrl: string) {
     this.baseUrl = baseUrl;
     this.http = new HttpLocalApi(baseUrl);
+    this.gate = hostedGate(baseUrl);
   }
   create(
     requestId: string,
     deviceName: string,
     platform: string,
     appVersion: string,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    kind: HostedRequestKind = 'interactive'
   ) {
-    return this.http.request<DeviceAuthorization>(
+    return this.gate.run(kind, () => this.http.request<DeviceAuthorization>(
       hostedRoutePath("device_authorization_create"),
       "POST",
       hostedRouteBody("device_authorization_create", { requestId, deviceName, platform, appVersion }),
       signal
-    );
+    ));
   }
   poll(deviceCode: string, signal?: AbortSignal) {
-    return this.http.request<HostedSession>(
+    return this.gate.run('automatic', () => this.http.request<HostedSession>(
       hostedRoutePath("device_authorization_token"),
       "POST",
       hostedRouteBody("device_authorization_token", { deviceCode }),
       signal
-    );
+    ), undefined, ['authorization_pending', 'slow_down']);
   }
-  cancel(deviceCode: string) {
-    return this.http.request<void>(hostedRoutePath("device_authorization_cancel"), "POST", hostedRouteBody("device_authorization_cancel", {
+  cancel(deviceCode: string, kind: HostedRequestKind = 'interactive') {
+    return this.gate.run(kind, () => this.http.request<void>(hostedRoutePath("device_authorization_cancel"), "POST", hostedRouteBody("device_authorization_cancel", {
       deviceCode,
-    }));
+    })));
   }
   revoke(session: HostedSession) {
-    return new HttpLocalApi(this.baseUrl, session.accessToken).request<void>(
+    return this.gate.run('automatic', () => new HttpLocalApi(this.baseUrl, session.accessToken).request<void>(
       routePath("delete_sessions_current"),
       "DELETE"
-    );
+    ));
   }
 }
 export type DeviceAuthorizationSnapshot = {
@@ -84,6 +90,8 @@ export class DeviceAuthorizationService {
   private controller?: AbortController;
   private interval = 5000;
   private expires = 0;
+  private retryAt = 0;
+  private failures = 0;
   private api: DeviceAuthorizationApi;
   private timing: { minimumPollMs: number; requestTimeoutMs: number };
   private requestId: () => Promise<string>;
@@ -136,26 +144,35 @@ export class DeviceAuthorizationService {
     try {
       const requestId = await this.requestId();
       if (generation !== this.generation) return;
-      const create = () =>
+      const create = (kind: HostedRequestKind) =>
         this.bounded((signal) =>
           this.api
-            .create(requestId, deviceName, platform, appVersion, signal)
+            .create(requestId, deviceName, platform, appVersion, signal, kind)
             .then((value) => {
               if (generation !== this.generation)
-                void this.api.cancel(value.deviceCode).catch(() => {});
+                void this.api.cancel(value.deviceCode, 'automatic').catch(() => {});
               return value;
             })
         );
       let created: DeviceAuthorization;
-      try {
-        created = await create();
-      } catch (e) {
-        if (generation !== this.generation) return;
-        if (e instanceof ApiError && !e.retryable) throw e;
-        created = await create(); // Recover the same receipt after an ambiguous transport result.
+      for (let attempt = 0; ; attempt++) {
+        try {
+          created = await create(attempt === 0 ? 'interactive' : 'automatic');
+          break;
+        } catch (e) {
+          if (generation !== this.generation) return;
+          if (e instanceof ApiError && !e.retryable && e.status !== 429) throw e;
+          if (!this.api.gate && attempt >= 1) throw e;
+          if (this.api.gate) {
+            const wait = Math.max(Math.min(30000, 5000 * 2 ** Math.min(attempt, 3)), this.api.gate.blockedFor(), e instanceof ApiError ? (e.retryAfterSeconds ?? 0) * 1000 : 0);
+            if (!await this.waitForRetry(wait, generation)) return;
+          }
+        }
       }
       if (generation !== this.generation) return;
       this.secret = created.deviceCode;
+      this.failures = 0;
+      this.retryAt = 0;
       this.interval = Math.max(
         this.timing.minimumPollMs,
         created.interval * 1000
@@ -176,7 +193,7 @@ export class DeviceAuthorizationService {
         ++this.generation;
         const secret = this.secret;
         this.secret = undefined;
-        if (secret) void this.api.cancel(secret).catch(() => {});
+        if (secret) void this.api.cancel(secret, 'automatic').catch(() => {});
         this.update({
           phase: "error",
           error: e instanceof Error ? e.message : "Activation is unavailable.",
@@ -184,16 +201,29 @@ export class DeviceAuthorizationService {
       }
     }
   }
+  private async waitForRetry(delay: number, generation: number): Promise<boolean> {
+    const controller = new AbortController();
+    this.controller = controller;
+    try {
+      await new Promise<void>(resolve => {
+        const timer = setTimeout(resolve, delay + Math.floor(Math.random() * 1000));
+        controller.signal.addEventListener('abort', () => {clearTimeout(timer); resolve();}, {once: true});
+      });
+      return generation === this.generation;
+    } finally {if (this.controller === controller) this.controller = undefined;}
+  }
   private schedule(generation: number) {
+    const gateWait = this.api.gate?.blockedFor() ?? 0;
+    const delay = Math.max(this.interval, this.retryAt - Date.now(), gateWait > 0 ? gateWait + Math.floor(Math.random() * 1000) : 0);
     this.timer = setTimeout(
       () => void this.poll(generation),
-      Math.min(this.interval, Math.max(0, this.expires - Date.now()))
+      Math.min(delay, Math.max(0, this.expires - Date.now()))
     );
   }
   private async poll(generation: number) {
     if (generation !== this.generation || !this.secret) return;
     if (Date.now() >= this.expires) {
-      this.cancel();
+      this.cancel('automatic');
       this.update({
         phase: "error",
         error: "This activation code has expired. Generate a new code.",
@@ -216,21 +246,24 @@ export class DeviceAuthorizationService {
         e instanceof ApiError &&
         ["access_denied", "expired_token", "invalid_grant"].includes(e.code)
       ) {
-        this.cancel();
+        this.cancel('automatic');
         this.update({ phase: "error", error: e.message });
         return;
       }
+      const protocol = e instanceof ApiError && ['authorization_pending', 'slow_down'].includes(e.code);
+      if (protocol) this.failures = 0;
       if (e instanceof ApiError && e.code === "slow_down")
-        this.interval += 5000;
-      if (e instanceof ApiError && e.retryAfterSeconds)
-        this.interval = Math.max(this.interval, e.retryAfterSeconds * 1000);
+        this.interval = Math.max(this.interval, Math.min(30000, this.interval + 5000));
+      const step = protocol ? 0 : Math.min(30000, 5000 * 2 ** Math.min(3, this.failures++));
+      const retry = protocol ? 0 : Math.round(step < 30000 ? step * (1 + Math.random() * 0.2) : step * (1 - Math.random() * 0.2));
+      this.retryAt = Date.now() + Math.max(retry, e instanceof ApiError ? (e.retryAfterSeconds ?? 0) * 1000 : 0);
       if (
         e instanceof ApiError &&
         !["authorization_pending", "slow_down"].includes(e.code) &&
         !e.retryable &&
         e.status !== 429
       ) {
-        this.cancel();
+        this.cancel('automatic');
         this.update({ phase: "error", error: e.message });
         return;
       }
@@ -242,13 +275,13 @@ export class DeviceAuthorizationService {
     this.secret = undefined;
     return true;
   }
-  cancel() {
+  cancel(kind: HostedRequestKind = 'interactive') {
     ++this.generation;
     clearTimeout(this.timer);
     this.controller?.abort();
     const secret = this.secret;
     this.secret = undefined;
-    if (secret) void this.api.cancel(secret).catch(() => {});
+    if (secret) void this.api.cancel(secret, kind).catch(() => {});
     this.update({ phase: "idle" });
   }
 }

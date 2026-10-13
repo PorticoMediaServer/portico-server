@@ -83,6 +83,9 @@ func (s *Service) verifyEnvelopeAt(ctx context.Context, e trust.Envelope, at tim
 // revoked, when it is newer than anything this server has seen, and ends what
 // the revoked keys admitted. The caller has verified c against the root.
 func (s *Service) learnRevocations(ctx context.Context, c *trust.Certificate) error {
+	if c == nil || c.Revision == 0 || c.Revision > trust.MaximumCertificateRevision {
+		return trust.ErrTrust
+	}
 	// Root-signed revocations are permanent and monotonic even across restarts.
 	// No transaction or writes for the common case with an unchanged key set.
 	var revision uint64
