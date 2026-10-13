@@ -162,7 +162,7 @@ func TestEpisodeCacheDoesNotReuseAnotherRegion(t *testing.T) {
 }
 
 func TestScreenAbsoluteOrderSelection(t *testing.T) {
-	r := metadataprovider.ScreenRecord{Identity: metadataprovider.ScreenID{"tmdb", "show", "500"}, Orders: []metadataprovider.ScreenOrder{{ID: "official"}, {ID: "tmdb-group:dvd"}}}
+	r := metadataprovider.ScreenRecord{Identity: metadataprovider.ScreenID{Provider: "tmdb", Type: "show", ID: "500"}, Orders: []metadataprovider.ScreenOrder{{ID: "official"}, {ID: "tmdb-group:dvd"}}}
 	for _, order := range []string{"official", "tmdb-absolute:official:-12", "tmdb-absolute:tmdb-group:dvd:12"} {
 		if !screenOrderSupported(r, order) {
 			t.Fatal(order)

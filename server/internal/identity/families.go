@@ -178,7 +178,6 @@ func (s *Service) checkFamilyPrincipalTx(ctx context.Context, tx *sql.Tx, p Prin
 	default:
 		return ErrUnauthorized
 	}
-	return nil
 }
 func (s *Service) familyTokenTx(ctx context.Context, tx *sql.Tx, hash string) (familyRecord, error) {
 	var r familyRecord

@@ -407,8 +407,7 @@ func (s *Store) castSessionTx(ctx context.Context, tx *sql.Tx, id castIdentity, 
 
 var errCastAccessEnded = &Fault{Code: "cast_access_ended", Status: 403, Message: "This account can no longer play on this server. Pair again from a signed-in device."}
 
-// castHorizonTx is the verified Hosted policy horizon for a Hosted viewer, and
-// zero for a local one.
+// Cast sessions belong to local accounts; retired authorities cannot pair.
 func (s *Store) castHorizonTx(ctx context.Context, tx *sql.Tx, id castIdentity) (time.Time, error) {
 	switch id.authority {
 	case "local":

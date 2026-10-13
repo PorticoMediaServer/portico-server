@@ -9,10 +9,8 @@ import (
 )
 
 // ProfileAllowsDownloads reads the current profile switch in the same
-// transaction as preparation, grant and receipt authority. A revoked hosted
-// profile also loses offline authorization on the next server contact.
+// transaction as preparation, grant and receipt authority.
 func ProfileAllowsDownloads(tx *sql.Tx, viewer identity.Viewer) (bool, error) {
-
 	restrictions, err := identity.RestrictionsForViewerTx(context.Background(), tx, viewer)
 	if err != nil {
 		return false, err
