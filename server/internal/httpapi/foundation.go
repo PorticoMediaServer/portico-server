@@ -633,6 +633,9 @@ func FoundationRegistry(d Dependencies) (*apikit.Registry, error) {
 	if err := registerCredentialRoutes(registry, d); err != nil {
 		return nil, err
 	}
+	if err := registerPlatformRoutes(registry, d); err != nil {
+		return nil, err
+	}
 	registry.Freeze()
 	return registry, nil
 }

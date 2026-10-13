@@ -250,7 +250,7 @@ func (s *Service) verifyPage(ctx context.Context, job string, source catalog.Lib
 	return gated4.Commit()
 }
 func (s *Service) reconcilePage(ctx context.Context, job string, source catalog.LibrarySource) error {
-	rows, err := s.db.QueryContext(ctx, `SELECT o.id,o.asset_id,o.revision,o.missing_since,o.missing_observations,o.last_missing_job,o.relative_path,o.state FROM inventory_objects o JOIN inventory_runs r ON r.source_id=o.source_id WHERE r.job_id=? AND r.authoritative=1 AND o.root_incarnation=r.root_incarnation AND o.id>r.reconcile_cursor AND o.retired=0 AND o.seen_job!=? AND NOT(o.state='available' AND o.missing_observations=0 AND EXISTS(SELECT 1 FROM inventory_directories d WHERE d.job_id=r.job_id AND d.relative_path=o.directory_path AND d.skipped=1 AND d.state='done')) ORDER BY o.id LIMIT ?`, job, job, s.reconciliationBatch(source))
+	rows, err := s.db.QueryContext(ctx, `SELECT o.id,o.asset_id,o.revision,o.missing_since,o.missing_observations,o.last_missing_job,o.relative_path,o.state FROM inventory_objects o JOIN inventory_runs r ON r.source_id=o.source_id WHERE r.job_id=? AND r.authoritative=1 AND o.root_incarnation=r.root_incarnation AND o.id>r.reconcile_cursor AND o.retired=0 AND o.seen_job!=? AND `+targetScopeSQL+` AND NOT(o.state='available' AND o.missing_observations=0 AND EXISTS(SELECT 1 FROM inventory_directories d WHERE d.job_id=r.job_id AND d.relative_path=o.directory_path AND d.skipped=1 AND d.state='done')) ORDER BY o.id LIMIT ?`, job, job, string(filepath.Separator), s.reconciliationBatch(source))
 	if err != nil {
 		return err
 	}

@@ -9,6 +9,9 @@ package httpapi
 // /v1/downloads/settings is an ordinary read while /v1/downloads/artifacts/{grant}
 // is a byte stream — and a prefix rule cannot tell them apart.
 var routeLanes = map[string]string{
+	// Routes for outside tools (platform_routes.go).
+	"GET /v1/titles":                   laneBrowsing,
+	"POST /v1/libraries/paths-changed": laneDefault,
 	// API keys and personal access tokens (api_credentials_routes.go).
 	"GET /v1/me/api-access":                         laneDefault,
 	"GET /v1/admin/api-keys":                        laneAdmin,
