@@ -59,6 +59,7 @@ import (
 	"portico.local/server/internal/subtitles"
 	"portico.local/server/internal/subtitlevideo"
 	"portico.local/server/internal/supervise"
+	"portico.local/server/internal/telemetry"
 	"portico.local/server/internal/worker"
 	"portico.local/server/internal/workpolicy"
 	"strconv"
@@ -971,7 +972,7 @@ func run() error {
 		defer ticker.Stop()
 		for {
 			free, total, _ := telemetry.VolumeUsage(state)
-			if err := console.NotificationMaintenance(ctx, free, total); err != nil && ctx.Err() == nil {
+			if err := console.NotificationMaintenance(dbwork.WithClass(ctx, dbwork.ClassMaintenance), free, total); err != nil && ctx.Err() == nil {
 				log.Printf("Owner notices: %v", err)
 			}
 			select {
