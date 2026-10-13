@@ -374,7 +374,11 @@ func (s *Service) CompleteSignInChallenge(ctx context.Context, token, code strin
 	// A challenge a Portico sign-in raised (the account's own local second
 	// factor) finishes as a Portico sign-in: no recovery-password network rule.
 	var portico bool
-	if e = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM portico_factor_challenges WHERE token_hash=?)`, Digest(token)).Scan(&portico); e != nil {
+	var signer string
+	switch e = tx.QueryRowContext(ctx, `SELECT signer_key_id FROM portico_factor_challenges WHERE token_hash=?`, Digest(token)).Scan(&signer); {
+	case e == nil:
+		portico = true
+	case !errors.Is(e, sql.ErrNoRows):
 		return DirectSignIn{}, e
 	}
 	at, err := time.Parse(time.RFC3339, expiry)
@@ -413,7 +417,7 @@ func (s *Service) CompleteSignInChallenge(ctx context.Context, token, code strin
 		return DirectSignIn{}, e
 	}
 	if portico {
-		if e = markPorticoAdmissionTx(ctx, tx, out); e != nil {
+		if e = markPorticoAdmissionTx(ctx, tx, out, signer); e != nil {
 			return DirectSignIn{}, e
 		}
 	}

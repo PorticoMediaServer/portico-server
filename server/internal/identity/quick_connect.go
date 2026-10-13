@@ -283,7 +283,8 @@ func (s *Service) DecideQuick(ctx context.Context, p Principal, id, code, decisi
 		if e = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM authorization_family_grants WHERE family_id=? AND grant_kind='viewer_only')`, approver).Scan(&viewerOnly); e != nil {
 			return e
 		}
-		cipher, e = s.sealSetup(quickApproval{AccountID: p.AccountID, ProfileID: p.ProfileID, Epoch: p.Epoch, PorticoAdmitted: porticoFamilyTx(ctx, tx, approver), ViewerOnly: viewerOnly}, "quick-approval:"+id)
+		admitted, signer := porticoAdmissionTx(ctx, tx, approver)
+		cipher, e = s.sealSetup(quickApproval{AccountID: p.AccountID, ProfileID: p.ProfileID, Epoch: p.Epoch, PorticoAdmitted: admitted, PorticoSigner: signer, ViewerOnly: viewerOnly}, "quick-approval:"+id)
 		if e != nil {
 			return e
 		}
@@ -539,6 +540,9 @@ type quickApproval struct {
 	// PorticoAdmitted: the approving session was admitted through Portico
 	// sign-in (be/member M9), so the device's family inherits that admission.
 	PorticoAdmitted bool `json:"porticoAdmitted,omitempty"`
+	// PorticoSigner is the Hosted signing key behind that admission; the
+	// device's session ends with the approver's if the key is revoked.
+	PorticoSigner string `json:"porticoSigner,omitempty"`
 	// ViewerOnly: the approving session was itself a viewer-only one. A device
 	// signed in by it can do no more than it could.
 	ViewerOnly bool `json:"viewerOnly,omitempty"`
@@ -599,7 +603,7 @@ func (s *Service) issueQuickTx(ctx context.Context, tx *sql.Tx, id string, ciphe
 		}
 	}
 	if a.PorticoAdmitted {
-		if _, e = tx.ExecContext(ctx, `INSERT OR IGNORE INTO portico_admitted_families(family_id) VALUES(?)`, out.SessionFamilyID); e != nil {
+		if e = recordPorticoAdmissionTx(ctx, tx, out.SessionFamilyID, a.PorticoSigner); e != nil {
 			return out, e
 		}
 	}

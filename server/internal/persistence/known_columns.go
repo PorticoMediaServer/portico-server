@@ -3409,6 +3409,8 @@ policy.payload
 policy.revision
 policy.server_id
 portico_admitted_families.family_id
+portico_admitted_families.signer_key_id
+portico_factor_challenges.signer_key_id
 portico_factor_challenges.token_hash
 prepared_media_jobs.asset_id
 prepared_media_jobs.bytes

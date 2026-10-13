@@ -87,6 +87,16 @@ func (s *Service) verifyEnvelopeAt(ctx context.Context, e trust.Envelope, at tim
 		if _, err = tx.ExecContext(ctx, `UPDATE hosted_trust_state SET revision=max(revision,?) WHERE singleton=1`, e.Certificate.Revision); err != nil {
 			return nil, err
 		}
+		// A newly learned revocation ends the sessions the revoked key
+		// admitted: every sign-in made with one of its assertions, and every
+		// session derived from one (a chosen profile, a television it
+		// approved, a Cast target it paired). Refusing the key's future
+		// assertions is not enough; whoever held the key may already be in.
+		if s.identity != nil {
+			if _, err = s.identity.RevokeSessionsAdmittedByRevokedKeysTx(ctx, tx); err != nil {
+				return nil, err
+			}
+		}
 		// A newly learned root revocation also withdraws cached authorization.
 		if err = identity.RevokeFamiliesMatchingTx(ctx, tx, identity.RevokedAdminRevoke, `authority='hosted' AND server_id IN (SELECT server_id FROM hosted_policy_signers p JOIN hosted_signing_revocations r ON r.key_id=p.key_id)`); err != nil {
 			return nil, err

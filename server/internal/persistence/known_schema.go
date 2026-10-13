@@ -359,6 +359,7 @@ index playback_vod_pending
 index playlist_receipts_expiry
 index playlist_shared_viewer
 index ported_artwork_jobs_entity
+index portico_admitted_signer
 index prepared_media_item_jobs
 index prepared_media_item_versions
 index prepared_media_object_refs

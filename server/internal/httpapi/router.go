@@ -822,9 +822,9 @@ func New(d Dependencies) http.Handler {
 		write(w, 200, map[string]any{"providers": []map[string]string{{"name": "TMDB", "notice": metadata.Attribution, "url": "https://www.themoviedb.org"}, {"name": "TheTVDB", "notice": "Metadata provided by TheTVDB.", "url": "https://thetvdb.com"}, {"name": "MusicBrainz", "notice": "Music metadata provided by MusicBrainz.", "url": "https://musicbrainz.org"}, {"name": "Cover Art Archive", "notice": "Cover art provided by Cover Art Archive / MusicBrainz and Internet Archive. Images copyright their respective owners.", "url": "https://coverartarchive.org"}}})
 	})
 	// hostedConfigured says this build can reach the Portico Account service at all (every release
-	// build can); hostedAttached says this server actually signs people in with Portico Accounts
-	// (it holds Hosted policy). A sign-in page decides by the second: a server set up for direct
-	// sign-in must never be shown the Portico Account hand-off.
+	// build can); hostedAttached says this server actually signs people in with Portico Accounts,
+	// which is whether its claim is installed. A sign-in page decides by the second: a server set
+	// up for direct sign-in and never claimed must never be shown the Portico Account hand-off.
 	mux.HandleFunc("GET /v1/system", func(w http.ResponseWriter, r *http.Request) {
 		write(w, 200, map[string]any{"id": d.Identity.ID(), "name": d.Identity.Name(), "setupRequired": d.Identity.SetupRequired(), "hostedConfigured": d.Hosted.Configured(), "hostedAttached": d.Identity.Hosted(), "version": buildinfo.Info()["version"], "buildId": buildinfo.Info()["buildId"], "sourceDigest": buildinfo.Info()["sourceDigest"], "builtAt": buildinfo.Info()["builtAt"]})
 	})

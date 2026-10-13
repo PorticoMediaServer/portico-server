@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"strings"
+	"time"
 
 	"portico.local/server/internal/dbwork"
 )
@@ -33,6 +34,10 @@ type PorticoIdentity struct {
 	// statement that it signed in here, which Hosted requires before listing
 	// this server for it (INT M6).
 	Consent string
+	// SignerKeyID is the Hosted signing key that signed the assertion. It is
+	// recorded with every session the assertion admits, so that if the key is
+	// later revoked those sessions end.
+	SignerKeyID string
 }
 
 func validHostedAccountID(v string) bool {
@@ -96,7 +101,7 @@ func (s *Service) PorticoSignInTx(ctx context.Context, tx *sql.Tx, who PorticoId
 		if err != nil {
 			return DirectSignIn{}, err
 		}
-		if _, err = tx.ExecContext(ctx, `INSERT INTO portico_factor_challenges(token_hash) VALUES(?)`, Digest(challenge.Token)); err != nil {
+		if _, err = tx.ExecContext(ctx, `INSERT INTO portico_factor_challenges(token_hash,signer_key_id) VALUES(?,?)`, Digest(challenge.Token), who.SignerKeyID); err != nil {
 			return DirectSignIn{}, err
 		}
 		return DirectSignIn{Challenge: &challenge}, nil
@@ -105,33 +110,106 @@ func (s *Service) PorticoSignInTx(ctx context.Context, tx *sql.Tx, who PorticoId
 	if e != nil {
 		return out, e
 	}
-	return out, markPorticoAdmissionTx(ctx, tx, out)
+	return out, markPorticoAdmissionTx(ctx, tx, out, who.SignerKeyID)
 }
 
 // markPorticoAdmissionTx records that a sign-in's session family was admitted
-// through a Portico identity assertion (portico_admitted_families).
-func markPorticoAdmissionTx(ctx context.Context, tx *sql.Tx, out DirectSignIn) error {
+// through a Portico identity assertion, and which Hosted signing key signed
+// that assertion (portico_admitted_families).
+func markPorticoAdmissionTx(ctx context.Context, tx *sql.Tx, out DirectSignIn, signer string) error {
 	if out.Session == nil || out.Session.SessionFamilyID == "" {
 		return nil
 	}
-	_, e := tx.ExecContext(ctx, `INSERT OR IGNORE INTO portico_admitted_families(family_id) VALUES(?)`, out.Session.SessionFamilyID)
+	return recordPorticoAdmissionTx(ctx, tx, out.Session.SessionFamilyID, signer)
+}
+
+func recordPorticoAdmissionTx(ctx context.Context, tx *sql.Tx, family, signer string) error {
+	_, e := tx.ExecContext(ctx, `INSERT INTO portico_admitted_families(family_id,signer_key_id) VALUES(?,?) ON CONFLICT(family_id) DO UPDATE SET signer_key_id=excluded.signer_key_id WHERE excluded.signer_key_id<>''`, family, signer)
 	return e
 }
 
-// inheritPorticoAdmissionTx carries a Portico admission from the family that
-// acted (an account session choosing a profile, a quick-connect approver) to
-// the family it issued.
+// inheritPorticoAdmissionTx carries a Portico admission, and the signing key
+// behind it, from the family that acted (an account session choosing a
+// profile, a quick-connect approver) to the family it issued. A session
+// derived from one that a key admitted is admitted by that key too.
 func inheritPorticoAdmissionTx(ctx context.Context, tx *sql.Tx, from, to string) error {
-	if from == "" || to == "" || !porticoFamilyTx(ctx, tx, from) {
+	if from == "" || to == "" {
 		return nil
 	}
-	_, e := tx.ExecContext(ctx, `INSERT OR IGNORE INTO portico_admitted_families(family_id) VALUES(?)`, to)
-	return e
+	admitted, signer := porticoAdmissionTx(ctx, tx, from)
+	if !admitted {
+		return nil
+	}
+	return recordPorticoAdmissionTx(ctx, tx, to, signer)
+}
+
+// InheritPorticoAdmissionTx is inheritPorticoAdmissionTx for an issuer outside
+// this package (Cast pairing), which derives a session from the one that paired it.
+func InheritPorticoAdmissionTx(ctx context.Context, tx *sql.Tx, from, to string) error {
+	return inheritPorticoAdmissionTx(ctx, tx, from, to)
 }
 
 func porticoFamilyTx(ctx context.Context, tx *sql.Tx, family string) bool {
-	var found bool
-	return family != "" && tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM portico_admitted_families WHERE family_id=?)`, family).Scan(&found) == nil && found
+	admitted, _ := porticoAdmissionTx(ctx, tx, family)
+	return admitted
+}
+
+// porticoAdmissionTx reports whether a family was admitted through a Portico
+// identity assertion, and the signing key that admitted it.
+func porticoAdmissionTx(ctx context.Context, tx *sql.Tx, family string) (bool, string) {
+	var signer string
+	if family == "" || tx.QueryRowContext(ctx, `SELECT signer_key_id FROM portico_admitted_families WHERE family_id=?`, family).Scan(&signer) != nil {
+		return false, ""
+	}
+	return true, signer
+}
+
+// RevokeSessionsAdmittedByRevokedKeysTx ends every live session that was
+// admitted, directly or through a session it was derived from, by a Hosted
+// signing key this server now knows to be revoked. The caller has just
+// recorded the revocation in this transaction. Sessions that never depended on
+// Hosted (a password sign-in, the recovery owner) are not touched, and neither
+// is anything that needs Hosted to be reachable: this is a local decision
+// about a key this server once believed.
+func (s *Service) RevokeSessionsAdmittedByRevokedKeysTx(ctx context.Context, tx *sql.Tx) (int, error) {
+	return s.revokeWhereTx(ctx, tx, RevokedSigningKeyRevoked, `id IN (SELECT a.family_id FROM portico_admitted_families a JOIN hosted_signing_revocations r ON r.key_id=a.signer_key_id WHERE a.signer_key_id<>'')`)
+}
+
+// revokeWhereTx ends every live family a trusted, static predicate selects,
+// through the family hook, so what those sessions had open (playback, queues,
+// readers) is retired with them. Values are always passed as arguments.
+func (s *Service) revokeWhereTx(ctx context.Context, tx *sql.Tx, reason RevocationReason, predicate string, args ...any) (int, error) {
+	rows, e := tx.QueryContext(ctx, `SELECT id,current_generation,authorization_horizon FROM authorization_session_families WHERE revoked=0 AND (`+predicate+`)`, args...)
+	if e != nil {
+		return 0, e
+	}
+	var families []FamilyState
+	for rows.Next() {
+		var f FamilyState
+		var horizon string
+		if e = rows.Scan(&f.ID, &f.TokenGeneration, &horizon); e != nil {
+			rows.Close()
+			return 0, e
+		}
+		f.AuthorizationHorizon, _ = time.Parse(time.RFC3339, horizon)
+		families = append(families, f)
+	}
+	e = rows.Err()
+	rows.Close()
+	if e != nil {
+		return 0, e
+	}
+	for _, f := range families {
+		if s.OnFamilyRevokedTx != nil {
+			if e = s.OnFamilyRevokedTx(ctx, tx, f); e != nil {
+				return 0, e
+			}
+		}
+		if e = RevokeFamilyTx(ctx, tx, f.ID, reason); e != nil {
+			return 0, e
+		}
+	}
+	return len(families), nil
 }
 
 func familyForTokenTx(ctx context.Context, tx *sql.Tx, hash string) string {

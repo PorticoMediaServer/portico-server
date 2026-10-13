@@ -468,6 +468,10 @@ func sessionRevocationText(reason string) string {
 		return "Signed out: device was not approved"
 	case RevokedPasswordChange:
 		return "Signed out: account security changed"
+	case RevokedSigningKeyRevoked:
+		return "Signed out: the Portico Account sign-in was withdrawn"
+	case RevokedRestored:
+		return "Signed out: the server was restored from a backup"
 	default:
 		return "Signed out"
 	}

@@ -52,12 +52,26 @@ func (s *Service) PINRecovery(ctx context.Context, bearer string) (PINRecoveryMe
 	return out, nil
 }
 
-// Hosted reports whether this server is attached to a hosted account, which is
-// what makes an emailed recovery token available.
+// Hosted reports whether this server signs people in with Portico Accounts,
+// which is what its own sign-in and invitation pages ask before offering that
+// sign-in. The answer is whether the server's claim is installed: a Portico
+// Account can only sign in to a server Hosted knows, and Hosted knows a
+// server by its claim, however the server was first set up. A server set up
+// for direct sign-in and never claimed answers false and is never shown the
+// Portico Account hand-off.
 func (s *Service) Hosted() bool {
-	var attached bool
-	_ = s.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM policy)`).Scan(&attached)
-	return attached
+	if s.SetupClaimReadyTx == nil {
+		return false
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	gated, err := dbwork.BeginSnapshot(ctx, s.db)
+	if err != nil {
+		return false
+	}
+	defer gated.Rollback()
+	attached, err := s.SetupClaimReadyTx(ctx, gated.Tx())
+	return err == nil && attached
 }
 
 // PINReset clears or replaces a profile PIN for an account manager's current

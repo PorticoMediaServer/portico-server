@@ -1725,7 +1725,7 @@ CREATE TABLE authorization_session_families(
  current_generation INTEGER NOT NULL CHECK(current_generation>0),
  revoked INTEGER NOT NULL DEFAULT 0 CHECK(revoked IN (0,1))
 , revoked_reason TEXT NOT NULL DEFAULT ''
- CHECK(revoked_reason IN ('','refresh_reuse','explicit_signout','admin_revoke','membership_removed','device_disapproved','password_change')), revoked_at TEXT NOT NULL DEFAULT '') STRICT;
+ CHECK(revoked_reason IN ('','refresh_reuse','explicit_signout','admin_revoke','membership_removed','device_disapproved','password_change','signing_key_revoked','restored')), revoked_at TEXT NOT NULL DEFAULT '') STRICT;
 CREATE TABLE authorization_family_tokens(
  token_hash TEXT PRIMARY KEY,
  family_id TEXT NOT NULL REFERENCES authorization_session_families(id),
@@ -3229,9 +3229,15 @@ CREATE TABLE hosted_identity_challenges(
  installation_id TEXT NOT NULL,
  expires_ms INTEGER NOT NULL) STRICT;
 CREATE TABLE portico_admitted_families(
- family_id TEXT PRIMARY KEY REFERENCES authorization_session_families(id) ON DELETE CASCADE) STRICT;
+ family_id TEXT PRIMARY KEY REFERENCES authorization_session_families(id) ON DELETE CASCADE,
+ -- The Hosted signing key whose identity assertion admitted this session (or
+ -- the session it was derived from). When that key is learned to be revoked,
+ -- the session ends.
+ signer_key_id TEXT NOT NULL DEFAULT '') STRICT;
+CREATE INDEX portico_admitted_signer ON portico_admitted_families(signer_key_id) WHERE signer_key_id<>'';
 CREATE TABLE portico_factor_challenges(
- token_hash TEXT PRIMARY KEY REFERENCES identity_factor_challenges(token_hash) ON DELETE CASCADE) STRICT;
+ token_hash TEXT PRIMARY KEY REFERENCES identity_factor_challenges(token_hash) ON DELETE CASCADE,
+ signer_key_id TEXT NOT NULL DEFAULT '') STRICT;
 CREATE TABLE hosted_migrated_families(family_id TEXT PRIMARY KEY, refresh_hash TEXT UNIQUE) STRICT;
 CREATE TABLE live_programme_icons(
  generation_id TEXT NOT NULL,
