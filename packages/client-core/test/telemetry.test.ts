@@ -73,8 +73,9 @@ test('capacity keeps null session counts distinct from zero and rejects bad shap
 test('attention items must be actionable and the list stays bounded',()=>{
  const items=parseAttention({items:[{id:'ffmpeg',severity:'critical',title:'ffmpeg is missing',detail:'Conversions depend on it.',action:{kind:'dependency',target:'ffmpeg'}}]});
  assert.equal(items[0].severity,'critical');
- assert.throws(()=>parseAttention({items:[{id:'x',severity:'urgent',title:'t',detail:'d',action:{kind:'k',target:''}}]}),/Invalid/);
- assert.throws(()=>parseAttention({items:[{id:'x',severity:'info',title:'',detail:'d',action:{kind:'k',target:''}}]}),/Invalid/);
+ // A severity this app does not know reads as the plainest one, and an item with nothing to say is left out on its own.
+ assert.equal(parseAttention({items:[{id:'x',severity:'urgent',title:'t',detail:'d',action:{kind:'k',target:''}}]})[0].severity,'info');
+ assert.deepEqual(parseAttention({items:[{id:'x',severity:'info',title:'',detail:'d',action:{kind:'k',target:''}},items[0]]}).map(item=>item.id),['ffmpeg']);
  assert.throws(()=>parseAttention({items:Array.from({length:51},()=>({id:'x',severity:'info',title:'t',detail:'d',action:{kind:'k',target:''}}))}),/Invalid/);
 });
 
