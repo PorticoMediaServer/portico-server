@@ -19,11 +19,15 @@ func probeLyricTags(source *os.File, argv []string) ([]map[string]string, error)
 	if err := ensureWindowsProbeJob(); err != nil {
 		return nil, err
 	}
-	_, path, closeInput, err := lockWindowsMediaInput(source)
+	locked, path, closeInput, err := lockWindowsMediaInput(source)
 	if err != nil {
 		return nil, err
 	}
 	defer closeInput()
+	expected, token, err := windowsFileBinding(locked)
+	if err != nil {
+		return nil, err
+	}
 	args, err := replaceScanInput(argv, descriptorInput, path)
 	if err != nil {
 		return nil, err
@@ -39,6 +43,9 @@ func probeLyricTags(source *os.File, argv []string) ([]map[string]string, error)
 	buffer := &lyricProbeBuffer{}
 	cmd.Stdout = buffer
 	if err := cmd.Run(); err != nil {
+		return nil, err
+	}
+	if err := checkWindowsMediaInput(locked, path, expected, token); err != nil {
 		return nil, err
 	}
 	return parseLyricProbe(buffer.data)

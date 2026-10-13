@@ -18,9 +18,9 @@ const descriptorInput = "portico-retained-scan-input"
 const scanCPUSeconds = 300
 
 // A decoder that must open by name gets a read-data handle denying writes and
-// deletion, plus non-reparse directory handles denying ancestor replacement.
-// Only after matching the admitted handle do we expose this locked physical
-// path. Protocol and format bounds stay identical to descriptor-fed Unix jobs.
+// deletion on the admitted file. Its physical path is checked before and after
+// the probe, without locking ancestor directories. Protocol and format bounds
+// stay identical to descriptor-fed Unix jobs.
 func lockWindowsMediaInput(source *os.File) (*os.File, string, func(), error) {
 	var buffer [32768]uint16
 	n, err := windows.GetFinalPathNameByHandle(windows.Handle(source.Fd()), &buffer[0], uint32(len(buffer)), 0)
@@ -63,38 +63,9 @@ func lockWindowsMediaInput(source *os.File) (*os.File, string, func(), error) {
 		closeInput()
 		return nil, "", nil, err
 	}
-	for parent := filepath.Dir(path); ; parent = filepath.Dir(parent) {
-		directory, err := open(parent)
-		if err != nil {
-			closeInput()
-			return nil, "", nil, err
-		}
-		info, err := directory.Stat()
-		if err != nil || !info.IsDir() {
-			closeInput()
-			return nil, "", nil, ErrObservedSourceLost
-		}
-		if filepath.Dir(parent) == parent {
-			break
-		}
-	}
-	// Ancestor locks now stabilize the namespace. Reopen that exact name once
-	// more and compare the full object/revision identity, not size or a path.
-	current, err := os.Open(path)
-	if err != nil {
+	if err := checkWindowsMediaInput(locked, path, expected, token); err != nil {
 		closeInput()
 		return nil, "", nil, err
-	}
-	actual, revision, err := windowsFileBinding(current)
-	current.Close()
-	if err != nil || actual != expected || revision != token {
-		closeInput()
-		return nil, "", nil, ErrObservedSourceLost
-	}
-	actual, revision, err = windowsFileBinding(locked)
-	if err != nil || actual != expected || revision != token {
-		closeInput()
-		return nil, "", nil, ErrObservedSourceLost
 	}
 	info, err := locked.Stat()
 	if err != nil || !info.Mode().IsRegular() {
@@ -106,6 +77,25 @@ func lockWindowsMediaInput(source *os.File) (*os.File, string, func(), error) {
 		return nil, "", nil, ErrObservedSourceLost
 	}
 	return locked, path, closeInput, nil
+}
+
+// Check both the retained handle and the name the decoder uses. A failed final
+// check makes the helper fail, so callers discard probe facts and artwork.
+func checkWindowsMediaInput(locked *os.File, path, expected, token string) error {
+	actual, revision, err := windowsFileBinding(locked)
+	if err != nil || actual != expected || revision != token {
+		return ErrObservedSourceLost
+	}
+	current, err := os.Open(path)
+	if err != nil {
+		return ErrObservedSourceLost
+	}
+	defer current.Close()
+	actual, revision, err = windowsFileBinding(current)
+	if err != nil || actual != expected || revision != token {
+		return ErrObservedSourceLost
+	}
+	return nil
 }
 
 var probeJob struct {
@@ -154,11 +144,15 @@ func inventoryCommandHelper(r request) error {
 		return err
 	}
 	defer source.Close()
-	_, path, closeInput, err := lockWindowsMediaInput(source)
+	locked, path, closeInput, err := lockWindowsMediaInput(source)
 	if err != nil {
 		return err
 	}
 	defer closeInput()
+	expected, token, err := windowsFileBinding(locked)
+	if err != nil {
+		return err
+	}
 	argv, err := replaceScanInput(r.Argv, descriptorInput, path)
 	if err != nil {
 		return err
@@ -168,5 +162,8 @@ func inventoryCommandHelper(r request) error {
 		return err
 	}
 	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
-	return cmd.Run()
+	if err := cmd.Run(); err != nil {
+		return err
+	}
+	return checkWindowsMediaInput(locked, path, expected, token)
 }
