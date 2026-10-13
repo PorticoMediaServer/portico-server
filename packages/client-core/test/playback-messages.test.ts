@@ -18,3 +18,8 @@ test('a missing conversion route explains device support without suggesting perm
  assert.equal(playbackUserMessage({code:'no_admissible_delivery_route',message:'private converter detail'}),'This server cannot prepare a version of this title that this device can play.');
  assert.equal(playbackFailurePermanent('no_admissible_delivery_route'),true);
 });
+
+test('conversion capacity is actionable and retryable without exposing converter details',()=>{
+ assert.match(playbackUserMessage({code:'conversion_capacity',message:'private session path'}),/Wait a moment or stop another stream/);
+ assert.equal(playbackFailurePermanent({code:'conversion_capacity'}),false);
+});

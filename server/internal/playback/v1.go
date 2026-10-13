@@ -121,7 +121,8 @@ func (s *Service) selectAsset(ctx context.Context, item string, v1 *V1Choice) *s
 // facts, spec §18.7).
 func (s *Service) SelectedAsset(ctx context.Context, item string, v1 *V1Choice) (string, error) {
 	var id string
-	return id, s.selectAsset(ctx, item, v1).Scan(&id)
+	err := s.selectAsset(ctx, item, v1).Scan(&id)
+	return id, err
 }
 
 // CreateV1 starts one presentation (a playback_sessions row with its own grant)

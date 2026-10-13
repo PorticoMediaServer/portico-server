@@ -34,6 +34,7 @@
  * Not here yet: live channels (phase 6).
  */
 import type {PlaybackService, PlaybackSession} from '../index.ts';
+import {playbackUserMessage} from '../playback-messages.ts';
 import {ListeningService, loadListeningSelection, type ListeningTarget} from '../listening.ts';
 import type {QueueAdvanceMode, QueuePostPlay} from '../post-play.ts';
 import type {PreparedChoice} from '../prepared-media.ts';
@@ -117,6 +118,7 @@ const segments = (ids: readonly string[], shuffle: boolean): SegmentInput[] => {
 const message = (e: unknown, fallback: string): string => {
   if (e instanceof PlaybackApiError) {
     switch (e.code) {
+      case 'conversion_capacity': return playbackUserMessage(e);
       case 'queue_too_large': return 'This queue is too long. Remove some of it or start a new one.';
       case 'queue_building': return 'This part of the queue is still loading. Try again in a moment.';
       case 'queue_ended': return 'The queue has ended.';

@@ -20,6 +20,7 @@ export function playbackUserMessage(error:unknown):string {
   unsupported_version:'Update this app to play media from this server.',invalid_request:'This playback action could not be completed. Open the title again.',internal_error:'Playback could not start. Please try again.'
  };
  if(code==='terminated')return sessionEndMessage({reason:'terminated',message:typeof value?.message==='string'?value.message:undefined});
+ if(code==='conversion_capacity')return serviceText('error.playbackConversionCapacity');
  if(code==='queue_too_large')return serviceText('error.queueTooLarge');
  // Lyric and subtitle searches on a library whose metadata source is local only.
  if(code==='local_metadata_only')return serviceText('error.localMetadataOnly');

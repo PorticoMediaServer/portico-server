@@ -72,6 +72,7 @@ export const routes = [
       "queue_building",
       "queue_ended",
       "stream_limit_reached",
+      "conversion_capacity",
       "transcode_not_allowed",
       "unsupported_media"
     ],
@@ -161,6 +162,7 @@ export const routes = [
       "revision_required",
       "revision_mismatch",
       "stream_limit_reached",
+      "conversion_capacity",
       "transcode_not_allowed",
       "unsupported_media",
       "connection_too_slow"
@@ -409,6 +411,7 @@ export const routes = [
       "idempotency_key_required",
       "idempotency_key_reused",
       "stream_limit_reached",
+      "conversion_capacity",
       "transcode_not_allowed",
       "unsupported_media",
       "source_unavailable"
@@ -11405,6 +11408,7 @@ export const routes = [
       "idempotency_key_reused",
       "queue_ended",
       "prepare_not_allowed",
+      "conversion_capacity",
       "not_implemented"
     ],
     "status": 200,
@@ -15404,6 +15408,7 @@ export const routes = [
       "idempotency_key_required",
       "idempotency_key_reused",
       "stream_limit_reached",
+      "conversion_capacity",
       "transcode_not_allowed",
       "source_unavailable",
       "unsupported_media",

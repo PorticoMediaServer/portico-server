@@ -314,7 +314,7 @@ func registerPlaybackV1Sessions(r *apikit.Registry, d Dependencies) {
 	sessionErrors := []string{"invalid_request", "unauthorized", "not_found", "session_ended", "revision_required", "revision_mismatch"}
 	v1Route(r, apikit.Metadata{Admission: lanePlayback, ID: "start_playback_session", Method: "POST", Path: "/v1/playback/sessions", Summary: "Start playback (201), or report that it is being prepared (202)",
 		Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Media, Cost: apikit.Constant, BodyLimit: 8 << 10, Status: 201,
-		Errors: []string{"invalid_request", "unauthorized", "not_found", "idempotency_key_required", "idempotency_key_reused", "stream_limit_reached", "transcode_not_allowed", "source_unavailable", "unsupported_media", "connection_too_slow", "feature_restricted", "no_tuner_available", "queue_building"}},
+		Errors: []string{"invalid_request", "unauthorized", "not_found", "idempotency_key_required", "idempotency_key_reused", "stream_limit_reached", "conversion_capacity", "transcode_not_allowed", "source_unavailable", "unsupported_media", "connection_too_slow", "feature_restricted", "no_tuner_available", "queue_building"}},
 		func(ctx context.Context, q *http.Request, in playbackv1.StartRequest) (playbackv1.SessionView, error) {
 			c := d.v1ServiceCaller(q, callerFrom(ctx))
 			v, preparing, err := d.playbackV1().Start(ctx, c, q.Header.Get("Idempotency-Key"), in)
@@ -339,7 +339,7 @@ func registerPlaybackV1Sessions(r *apikit.Registry, d Dependencies) {
 		})
 	v1Route(r, apikit.Metadata{Admission: lanePlayback, ID: "change_playback_session", Method: "PATCH", Path: "/v1/playback/sessions/{id}", Summary: "Change tracks, quality, version or state, or report that the player failed; a change to the bytes re-plans the same session as a new generation and keeps its queue",
 		Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Media, Cost: apikit.Constant, BodyLimit: 4 << 10, Status: 200,
-		Errors: append(sessionErrors, "stream_limit_reached", "transcode_not_allowed", "unsupported_media", "connection_too_slow")},
+		Errors: append(sessionErrors, "stream_limit_reached", "conversion_capacity", "transcode_not_allowed", "unsupported_media", "connection_too_slow")},
 		func(ctx context.Context, q *http.Request, in playbackv1.Change) (playbackv1.SessionView, error) {
 			v, err := d.playbackV1().Patch(ctx, d.v1ServiceCaller(q, callerFrom(ctx)), q.PathValue("id"), q.Header.Get("If-Match"), in)
 			if err == nil {
@@ -483,7 +483,7 @@ func registerPlaybackV1Queues(r *apikit.Registry, d Dependencies) {
 	}
 	v1Route(r, apikit.Metadata{Admission: lanePlayback, ID: "create_queue", Method: "POST", Path: "/v1/queues", Summary: "Play: replace this device's queue from selectors, optionally starting the first session",
 		Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Media, Cost: apikit.SelectionAsync, BodyLimit: 64 << 10, Status: 201,
-		Errors: append(command, "idempotency_key_required", "idempotency_key_reused", "stream_limit_reached", "transcode_not_allowed", "unsupported_media", "source_unavailable")},
+		Errors: append(command, "idempotency_key_required", "idempotency_key_reused", "stream_limit_reached", "conversion_capacity", "transcode_not_allowed", "unsupported_media", "source_unavailable")},
 		func(ctx context.Context, q *http.Request, in playbackv1.CreateQueueRequest) (playbackv1.QueueReply, error) {
 			out, err := d.playbackV1().CreateQueue(ctx, caller(ctx, q), q.Header.Get("Idempotency-Key"), in)
 			return reply(ctx, out, err)
@@ -569,14 +569,14 @@ func registerPlaybackV1Queues(r *apikit.Registry, d Dependencies) {
 		})
 	v1Route(r, apikit.Metadata{Admission: lanePlayback, ID: "advance_queue", Method: "POST", Path: "/v1/queues/{id}:advance", Summary: "Move to the next, previous or a chosen entry; starts its session when one is playing",
 		Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Media, Cost: apikit.Constant, BodyLimit: 1 << 10, Status: 200,
-		Errors: append(command, "queue_ended", "stream_limit_reached", "transcode_not_allowed", "unsupported_media")},
+		Errors: append(command, "queue_ended", "stream_limit_reached", "conversion_capacity", "transcode_not_allowed", "unsupported_media")},
 		func(ctx context.Context, q *http.Request, in playbackv1.AdvanceRequest) (playbackv1.QueueReply, error) {
 			out, err := d.playbackV1().Advance(ctx, caller(ctx, q), q.PathValue("id"), q.Header.Get("If-Match"), in)
 			return reply(ctx, out, err)
 		})
 	v1Route(r, apikit.Metadata{Admission: lanePlayback, ID: "prepare_queue_next", Method: "POST", Path: "/v1/queues/{id}:prepare-next", Summary: "Prepare the next entry's audio before the current one ends (spec §18.2; private until committed)",
 		Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Media, Cost: apikit.Constant, BodyLimit: 1 << 10, Status: 200,
-		Errors: append(command, "idempotency_key_required", "idempotency_key_reused", "queue_ended", "prepare_not_allowed", "not_implemented")},
+		Errors: append(command, "idempotency_key_required", "idempotency_key_reused", "queue_ended", "prepare_not_allowed", "conversion_capacity", "not_implemented")},
 		func(ctx context.Context, q *http.Request, in playbackv1.PrepareNextRequest) (playbackv1.PreparedNext, error) {
 			out, err := d.playbackV1().PrepareNext(ctx, caller(ctx, q), q.PathValue("id"), q.Header.Get("If-Match"), q.Header.Get("Idempotency-Key"), in)
 			return out, v1Error(err)

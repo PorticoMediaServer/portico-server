@@ -152,3 +152,9 @@ device's current capabilities while retaining the session, queue entry, state,
 version, quality and track choices. The action is not saved as a preference or
 replayed on the next title. Live channel sessions reject this action; their
 wall-clock transport has its own controls.
+
+When the server's conversion slots are occupied, operations that create a
+conversion (start, session change, queue create/advance and prepare-next) answer
+429 with code conversion_capacity, retry same_request and Retry-After: 2.
+Retry the same request after that delay. This is temporary server occupancy;
+the account's stream_limit_reached policy refusal remains a separate 409.
