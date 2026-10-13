@@ -2196,4 +2196,6 @@ export const webMessages = {
   'web.librarySettings.mediaKind': '{kind, select, movie {Movies} show {Shows} episode {Episodes} music {Music} book {Audiobooks} audiobook {Audiobooks} anime {Anime} photo {Photos} other {Other}}',
   'web.librarySettings.chapterMode': '{mode, select, none {Off} embedded {From the file} other {Made by the server}}',
   'web.libraryChannels.ruleCount': '{count, plural, =0 {No rules} one {# rule} other {# rules}}',
+  'web.entry.collectionAddFailed': 'This item couldn’t be added to the collection. Check that it’s available and that you have access to it.',
+  'web.entry.collectionAddUnconfirmed': 'The server didn’t confirm that this item was added. Open the collection again to check.',
 } as const satisfies Record<string, string>;
