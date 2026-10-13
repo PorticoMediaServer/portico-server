@@ -24,7 +24,7 @@ func (d Dependencies) accessRoutes(mux *http.ServeMux) {
 	if store == nil || d.Identity == nil {
 		return
 	}
-	mux.HandleFunc("GET /v1/admin/access/members", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "GET /v1/admin/access/members", func(w http.ResponseWriter, r *http.Request) {
 		p, e := d.administrator(r)
 		if e != nil {
 			accessFailure(w, e)
@@ -37,7 +37,7 @@ func (d Dependencies) accessRoutes(mux *http.ServeMux) {
 		}
 		write(w, 200, out)
 	})
-	mux.HandleFunc("PUT /v1/admin/access/members/{id}/role", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "PUT /v1/admin/access/members/{id}/role", func(w http.ResponseWriter, r *http.Request) {
 		p, e := d.administrator(r)
 		if e != nil {
 			accessFailure(w, e)
@@ -55,7 +55,7 @@ func (d Dependencies) accessRoutes(mux *http.ServeMux) {
 		}
 		write(w, 200, out)
 	})
-	mux.HandleFunc("GET /v1/admin/access/members/{id}/limits", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "GET /v1/admin/access/members/{id}/limits", func(w http.ResponseWriter, r *http.Request) {
 		p, e := d.administrator(r)
 		if e != nil {
 			accessFailure(w, e)
@@ -68,7 +68,7 @@ func (d Dependencies) accessRoutes(mux *http.ServeMux) {
 		}
 		write(w, 200, out)
 	})
-	mux.HandleFunc("PUT /v1/admin/access/members/{id}/limits", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "PUT /v1/admin/access/members/{id}/limits", func(w http.ResponseWriter, r *http.Request) {
 		p, e := d.administrator(r)
 		if e != nil {
 			accessFailure(w, e)
@@ -86,7 +86,7 @@ func (d Dependencies) accessRoutes(mux *http.ServeMux) {
 		}
 		write(w, 200, out)
 	})
-	mux.HandleFunc("GET /v1/admin/access/invitations", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "GET /v1/admin/access/invitations", func(w http.ResponseWriter, r *http.Request) {
 		p, e := d.administrator(r)
 		if e != nil {
 			accessFailure(w, e)
@@ -100,7 +100,7 @@ func (d Dependencies) accessRoutes(mux *http.ServeMux) {
 		}
 		write(w, 200, out)
 	})
-	mux.HandleFunc("POST /v1/admin/access/invitations", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "POST /v1/admin/access/invitations", func(w http.ResponseWriter, r *http.Request) {
 		p, e := d.administrator(r)
 		if e != nil {
 			accessFailure(w, e)
@@ -118,7 +118,7 @@ func (d Dependencies) accessRoutes(mux *http.ServeMux) {
 		}
 		write(w, 201, out)
 	})
-	mux.HandleFunc("POST /v1/admin/access/invitations/{id}/revoke", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "POST /v1/admin/access/invitations/{id}/revoke", func(w http.ResponseWriter, r *http.Request) {
 		p, e := d.administrator(r)
 		if e != nil {
 			accessFailure(w, e)
@@ -136,7 +136,7 @@ func (d Dependencies) accessRoutes(mux *http.ServeMux) {
 		}
 		write(w, 200, out)
 	})
-	mux.HandleFunc("POST /v1/access/invitations/accept", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "POST /v1/access/invitations/accept", func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
 			access.Acceptance
 			// PorticoIdentity accepts as a Portico Account instead of creating

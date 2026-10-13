@@ -40,11 +40,11 @@ func registerPersonalHTTPContracts(registry *apikit.Registry) error {
 		return err
 	}
 	// internal/httpapi/discovery.go:298
-	if err := apikit.RegisterHTTP[struct{}, struct{}](registry, apikit.Metadata{ID: "put_collections_id_items_itemId", Method: "PUT", Path: "/v1/collections/{id}/items/{itemId}", Summary: "Put itemId", Access: apikit.Owner, Requires: apikit.ScopeLibrary, Lane: apikit.Default, Admission: laneDefault, Cost: apikit.Constant, BodyLimit: 0, Status: 204, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[struct{}, struct{}](registry, apikit.Metadata{ID: "put_collections_id_items_itemId", Method: "PUT", Path: "/v1/collections/{id}/items/{itemId}", Summary: "Put itemId", Access: apikit.Owner, Requires: apikit.ScopeLibrary, Lane: apikit.Default, Admission: laneBrowsing, Cost: apikit.Constant, BodyLimit: 0, Status: 204, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/discovery.go:298
-	if err := apikit.RegisterHTTP[struct{}, struct{}](registry, apikit.Metadata{ID: "delete_collections_id_items_itemId", Method: "DELETE", Path: "/v1/collections/{id}/items/{itemId}", Summary: "Delete itemId", Access: apikit.Owner, Requires: apikit.ScopeLibrary, Lane: apikit.Default, Admission: laneDefault, Cost: apikit.Constant, BodyLimit: 0, Status: 204, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[struct{}, struct{}](registry, apikit.Metadata{ID: "delete_collections_id_items_itemId", Method: "DELETE", Path: "/v1/collections/{id}/items/{itemId}", Summary: "Delete itemId", Access: apikit.Owner, Requires: apikit.ScopeLibrary, Lane: apikit.Default, Admission: laneBrowsing, Cost: apikit.Constant, BodyLimit: 0, Status: 204, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/playlists.go:28

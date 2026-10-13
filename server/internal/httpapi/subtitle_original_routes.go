@@ -47,6 +47,19 @@ func registerSubtitleRaw[Req, Resp any](registry *apikit.Registry, pattern strin
 	if method != "GET" && method != "HEAD" {
 		body = subtitles.MaxAssetBytes
 	}
+	admission := laneDefault
+	if method == "GET" && strings.Contains(path, "/{itemId}/") {
+		admission = laneBrowsing
+	}
+	if strings.Contains(path, "/playback/") {
+		admission = lanePlayback
+	}
+	if strings.Contains(path, "/media/") {
+		admission = laneMediaBody
+	}
+	if strings.HasSuffix(path, "/{tile}.jpg") || strings.HasSuffix(path, "/{chapter}/image") {
+		admission = laneMedia
+	}
 	contentType := ""
 	switch {
 	case strings.HasSuffix(path, ".vtt"):
@@ -64,7 +77,7 @@ func registerSubtitleRaw[Req, Resp any](registry *apikit.Registry, pattern strin
 	}
 
 	identifier := strings.NewReplacer("/", "_", "{", "", "}", "", "-", "_", ".", "_").Replace(strings.ToLower(method) + path)
-	return apikit.RegisterRaw(registry, apikit.RawRoute[Req, Resp]{Metadata: apikit.Metadata{ID: identifier, Method: method, Path: path, Summary: "Read or change authorized subtitles", Access: access, Requires: requires, Lane: lane, Cost: apikit.Constant, BodyLimit: body, Query: []string{"segment"}, Status: 200, ResponseContentType: contentType, Errors: subtitleRouteErrors()}, Serve: handler})
+	return apikit.RegisterRaw(registry, apikit.RawRoute[Req, Resp]{Metadata: apikit.Metadata{Admission: admission, ID: identifier, Method: method, Path: path, Summary: "Read or change authorized subtitles", Access: access, Requires: requires, Lane: lane, Cost: apikit.Constant, BodyLimit: body, Query: []string{"segment"}, Status: 200, ResponseContentType: contentType, Errors: subtitleRouteErrors()}, Serve: handler})
 }
 func (d Dependencies) originalSubtitleRoute(w http.ResponseWriter, r *http.Request) {
 	subtitleHeaders(w)

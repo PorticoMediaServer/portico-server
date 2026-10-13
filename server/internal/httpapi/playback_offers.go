@@ -9,7 +9,7 @@ import (
 )
 
 func (d Dependencies) playbackOfferRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("GET /v1/items/{id}/playback-offers", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "GET /v1/items/{id}/playback-offers", func(w http.ResponseWriter, r *http.Request) {
 		p, library, fence, e := d.detailAccess(r)
 		if e != nil {
 			failure(w, e)

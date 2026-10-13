@@ -41,7 +41,7 @@ func (d Dependencies) diagnosticsRoutes(mux *http.ServeMux) {
 	if recorder == nil {
 		return
 	}
-	mux.HandleFunc("GET /v1/admin/logs", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "GET /v1/admin/logs", func(w http.ResponseWriter, r *http.Request) {
 		if _, e := d.administrator(r); e != nil {
 			accessFailure(w, e)
 			return
@@ -63,8 +63,8 @@ func (d Dependencies) diagnosticsRoutes(mux *http.ServeMux) {
 		}
 		write(w, 200, out)
 	})
-	mux.HandleFunc("GET /v1/admin/logs/events", d.adminLogEvents(recorder, &adminLogStreams{}))
-	mux.HandleFunc("GET /v1/admin/logs/settings", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "GET /v1/admin/logs/events", d.adminLogEvents(recorder, &adminLogStreams{}))
+	d.httpHandle(mux, "GET /v1/admin/logs/settings", func(w http.ResponseWriter, r *http.Request) {
 		if _, e := d.administrator(r); e != nil {
 			accessFailure(w, e)
 			return
@@ -76,7 +76,7 @@ func (d Dependencies) diagnosticsRoutes(mux *http.ServeMux) {
 		}
 		write(w, 200, d.logSettings(document))
 	})
-	mux.HandleFunc("PATCH /v1/admin/logs/settings", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "PATCH /v1/admin/logs/settings", func(w http.ResponseWriter, r *http.Request) {
 		p, e := d.owner(r)
 		if e != nil {
 			accessFailure(w, e)
@@ -107,7 +107,7 @@ func (d Dependencies) diagnosticsRoutes(mux *http.ServeMux) {
 		d.applyLogSettings(document)
 		write(w, 200, d.logSettings(document))
 	})
-	mux.HandleFunc("POST /v1/admin/logs/debug-window", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "POST /v1/admin/logs/debug-window", func(w http.ResponseWriter, r *http.Request) {
 		p, e := d.administrator(r)
 		if e != nil {
 			accessFailure(w, e)
@@ -145,7 +145,7 @@ func (d Dependencies) diagnosticsRoutes(mux *http.ServeMux) {
 		}
 		write(w, 200, d.logSettings(document))
 	})
-	mux.HandleFunc("GET /v1/admin/diagnostics/bundle", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "GET /v1/admin/diagnostics/bundle", func(w http.ResponseWriter, r *http.Request) {
 		if _, e := d.owner(r); e != nil {
 			accessFailure(w, e)
 			return

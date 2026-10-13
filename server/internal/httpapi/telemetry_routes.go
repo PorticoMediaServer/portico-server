@@ -70,7 +70,7 @@ func (d Dependencies) telemetryRoutes(mux *http.ServeMux) {
 		}
 		return d.Console.PlaybackHistory(r.Context(), a, period, r.URL.Query().Get("cursor"), limit)
 	})
-	mux.HandleFunc("GET /v1/admin/playback/history.csv", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "GET /v1/admin/playback/history.csv", func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 		defer cancel()
 		p, e := d.owner(r.WithContext(ctx))

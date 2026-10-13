@@ -21,7 +21,7 @@ import (
 // not be shown before a session exists, and would break mid-stream on renewal.
 func (d Dependencies) trickplayRoutes(mux *http.ServeMux) {
 
-	mux.HandleFunc("GET /v1/items/{id}/trickplay/{set}/thumbnails.vtt", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "GET /v1/items/{id}/trickplay/{set}/thumbnails.vtt", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		if d.Analysis == nil {
 			analysisFailure(w, mediaanalysis.ErrUnsupported)
@@ -58,7 +58,7 @@ func (d Dependencies) trickplayRoutes(mux *http.ServeMux) {
 		w.Header().Set("Cache-Control", "private, max-age=300")
 		_, _ = w.Write([]byte(out))
 	})
-	mux.HandleFunc("GET /v1/items/{id}/trickplay", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "GET /v1/items/{id}/trickplay", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		if d.Analysis == nil {

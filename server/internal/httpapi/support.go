@@ -17,7 +17,7 @@ func (d Dependencies) supportOwner(ctx context.Context, r *http.Request) (identi
 }
 
 func (d Dependencies) supportRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("GET /v1/admin/support-report", d.supportHandler(diagnostics.Read))
+	d.httpHandle(mux, "GET /v1/admin/support-report", d.supportHandler(diagnostics.Read))
 }
 func (d Dependencies) supportHandler(read func(context.Context, *sql.DB, bool) (diagnostics.Report, error)) http.HandlerFunc {
 	// A small dedicated gate bounds expensive snapshot requests independently of scanning.

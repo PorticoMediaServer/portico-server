@@ -115,7 +115,7 @@ func (d Dependencies) lyricRoutes(mux *http.ServeMux) {
 		{"PUT /v1/items/{id}/lyrics/selection", "selection"},
 	}
 	for _, route := range routes {
-		mux.HandleFunc(route.pattern, func(w http.ResponseWriter, r *http.Request) {
+		d.httpHandle(mux, route.pattern, func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Cache-Control", "no-store")
 			w.Header().Set("X-Content-Type-Options", "nosniff")
 			if d.Lyrics == nil {
@@ -224,7 +224,7 @@ func (d Dependencies) lyricRoutes(mux *http.ServeMux) {
 	// Bulk acquisition is an owner action on a library, not on one item, and it
 	// produces an ordinary console job so progress is visible where every other
 	// background job already is.
-	mux.HandleFunc("POST /v1/libraries/{id}/lyrics/fetch", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "POST /v1/libraries/{id}/lyrics/fetch", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 		// Owner first: a member is refused before anything about this server's
 		// lyrics setup is revealed.
@@ -259,7 +259,7 @@ func (d Dependencies) lyricRoutes(mux *http.ServeMux) {
 		}
 		write(w, 202, job)
 	})
-	mux.HandleFunc("PUT /v1/lyrics/provider", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "PUT /v1/lyrics/provider", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 		if d.Lyrics == nil {
 			lyricFailure(w, lyrics.ErrUnavailable)

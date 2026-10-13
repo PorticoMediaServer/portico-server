@@ -25,7 +25,7 @@ const pprofMaxSeconds = 8
 
 // pprofRoutes mounts the runtime profiles.
 func (d Dependencies) pprofRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("GET /v1/admin/diagnostics/pprof/{profile}", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "GET /v1/admin/diagnostics/pprof/{profile}", func(w http.ResponseWriter, r *http.Request) {
 		if _, e := d.owner(r); e != nil {
 			failure(w, e)
 			return

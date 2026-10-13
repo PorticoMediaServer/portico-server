@@ -74,7 +74,14 @@ func NewClaimHandler(store *SQLiteStore, runner *AuthorityRunner, transport Tran
 	}
 	return &ClaimHandler{store: store, runner: runner, transport: transport, signer: signer, authorize: authorize, name: name, endpoints: endpointRegistrations{pending: make(map[string]endpointPending)}, failures: sharedFailureLog}, nil
 }
-func (h *ClaimHandler) Register(mux *http.ServeMux) {
+
+// HTTPRegistrar is the route binding surface shared by net/http and the API registry.
+type HTTPRegistrar interface {
+	Handle(string, http.Handler)
+	HandleFunc(string, func(http.ResponseWriter, *http.Request))
+}
+
+func (h *ClaimHandler) Register(mux HTTPRegistrar) {
 	if h == nil {
 		return
 	}

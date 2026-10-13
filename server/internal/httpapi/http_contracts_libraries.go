@@ -11,18 +11,18 @@ import (
 
 func registerLibrariesHTTPContracts(registry *apikit.Registry) error {
 	// internal/httpapi/admin.go:62
-	if err := apikit.RegisterHTTP[struct{}, catalog.AdminLibraries](registry, apikit.Metadata{ID: "get_admin_libraries", Method: "GET", Path: "/v1/admin/libraries", Summary: "Get libraries", Access: apikit.Owner, Requires: apikit.ScopeLibrary, Lane: apikit.Default, Admission: laneDefault, Cost: apikit.Constant, BodyLimit: 0, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[struct{}, catalog.AdminLibraries](registry, apikit.Metadata{ID: "get_admin_libraries", Method: "GET", Path: "/v1/admin/libraries", Summary: "Get libraries", Access: apikit.Owner, Requires: apikit.ScopeLibrary, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.Constant, BodyLimit: 0, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/admin.go:62
-	if err := apikit.RegisterHTTP[struct{}, catalog.AdminJobs](registry, apikit.Metadata{ID: "get_admin_jobs", Method: "GET", Path: "/v1/admin/jobs", Summary: "Get jobs", Access: apikit.Owner, Requires: apikit.ScopeLibrary, Lane: apikit.Default, Admission: laneDefault, Cost: apikit.Constant, BodyLimit: 0, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[struct{}, catalog.AdminJobs](registry, apikit.Metadata{ID: "get_admin_jobs", Method: "GET", Path: "/v1/admin/jobs", Summary: "Get jobs", Access: apikit.Owner, Requires: apikit.ScopeLibrary, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.Constant, BodyLimit: 0, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/admin.go:62
 	if err := apikit.RegisterHTTP[struct{}, struct {
 		Scope   catalog.AdminScope   `json:"scope"`
 		Library catalog.AdminLibrary `json:"library"`
-	}](registry, apikit.Metadata{ID: "get_admin_libraries_id", Method: "GET", Path: "/v1/admin/libraries/{id}", Summary: "Get id", Access: apikit.Owner, Requires: apikit.ScopeLibrary, Lane: apikit.Default, Admission: laneDefault, Cost: apikit.Constant, BodyLimit: 0, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	}](registry, apikit.Metadata{ID: "get_admin_libraries_id", Method: "GET", Path: "/v1/admin/libraries/{id}", Summary: "Get id", Access: apikit.Owner, Requires: apikit.ScopeLibrary, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.Constant, BodyLimit: 0, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/admin.go:94
@@ -65,11 +65,11 @@ func registerLibrariesHTTPContracts(registry *apikit.Registry) error {
 		return err
 	}
 	// internal/httpapi/inventory.go:74
-	if err := apikit.RegisterHTTP[catalog.SourceSettings, catalog.LibrarySource](registry, apikit.Metadata{ID: "post_admin_libraries_id_sources", Method: "POST", Path: "/v1/admin/libraries/{id}/sources", Summary: "Post sources", Access: apikit.Owner, Requires: apikit.ScopeLibrary, Lane: apikit.Default, Admission: laneDefault, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[catalog.SourceSettings, catalog.LibrarySource](registry, apikit.Metadata{ID: "post_admin_libraries_id_sources", Method: "POST", Path: "/v1/admin/libraries/{id}/sources", Summary: "Post sources", Access: apikit.Owner, Requires: apikit.ScopeLibrary, Lane: apikit.Default, Admission: laneAdminHeavy, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/inventory.go:74
-	if err := apikit.RegisterHTTP[catalog.SourceSettings, catalog.LibrarySource](registry, apikit.Metadata{ID: "patch_admin_libraries_id_sources_source", Method: "PATCH", Path: "/v1/admin/libraries/{id}/sources/{source}", Summary: "Patch source", Access: apikit.Owner, Requires: apikit.ScopeLibrary, Lane: apikit.Default, Admission: laneDefault, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[catalog.SourceSettings, catalog.LibrarySource](registry, apikit.Metadata{ID: "patch_admin_libraries_id_sources_source", Method: "PATCH", Path: "/v1/admin/libraries/{id}/sources/{source}", Summary: "Patch source", Access: apikit.Owner, Requires: apikit.ScopeLibrary, Lane: apikit.Default, Admission: laneAdminHeavy, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/inventory.go:74

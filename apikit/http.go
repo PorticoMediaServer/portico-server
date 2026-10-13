@@ -53,3 +53,14 @@ func (r *Registry) MountHTTP(mux *http.ServeMux, pattern string, handler http.Ha
 	}
 	return fmt.Errorf("HTTP handler has no typed contract: %s", pattern)
 }
+
+// MetadataForPattern reads an operation declaration by its registered pattern.
+// It also covers HTTP path parameters whose syntax belongs to net/http.
+func (r *Registry) MetadataForPattern(pattern string) (Metadata, bool) {
+	for _, route := range r.routes {
+		if route.Method+" "+route.Path == pattern {
+			return route.Metadata, true
+		}
+	}
+	return Metadata{}, false
+}

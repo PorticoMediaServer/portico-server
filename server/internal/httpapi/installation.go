@@ -25,11 +25,11 @@ func contentHashedWebAsset(name string) bool { return hashedWebAsset.MatchString
 func (d Dependencies) installationRoutes(mux *http.ServeMux) {
 	// Readiness is exposed only after root composition has completed. These public
 	// endpoints contain no account, build, route or dependency details.
-	mux.HandleFunc("GET /health/live", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "GET /health/live", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 		write(w, 200, map[string]bool{"alive": true})
 	})
-	mux.HandleFunc("GET /health/ready", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "GET /health/ready", func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), time.Second)
 		defer cancel()
 		w.Header().Set("Cache-Control", "no-store")

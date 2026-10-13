@@ -44,5 +44,25 @@ func registerHTTPContracts(registry *apikit.Registry) error {
 	if err := registerLiveHTTPContracts(registry); err != nil {
 		return err
 	}
+	if err := registerPlaybackHTTPContracts(registry); err != nil {
+		return err
+	}
+	if err := registerAdministrationHTTPContracts(registry); err != nil {
+		return err
+	}
+	if err := registerSetupHTTPContracts(registry); err != nil {
+		return err
+	}
 	return registerIdentityHTTPContracts(registry)
+}
+
+// httpRegistrar lets a service bind handlers through the same typed registry.
+type httpRegistrar struct {
+	d   Dependencies
+	mux *http.ServeMux
+}
+
+func (r httpRegistrar) Handle(pattern string, h http.Handler) { r.d.httpHandler(r.mux, pattern, h) }
+func (r httpRegistrar) HandleFunc(pattern string, h func(http.ResponseWriter, *http.Request)) {
+	r.d.httpHandle(r.mux, pattern, h)
 }

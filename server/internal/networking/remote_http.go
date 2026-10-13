@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-func (h *ClaimHandler) registerRemote(mux *http.ServeMux) {
+func (h *ClaimHandler) registerRemote(mux HTTPRegistrar) {
 	if h.remote == nil {
 		return
 	}

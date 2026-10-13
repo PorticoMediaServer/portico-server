@@ -179,7 +179,7 @@ func (d Dependencies) concurrencyDiagnostics(ctx context.Context) ConcurrencyDia
 }
 
 func (d Dependencies) concurrencyRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("GET /v1/admin/diagnostics/concurrency", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "GET /v1/admin/diagnostics/concurrency", func(w http.ResponseWriter, r *http.Request) {
 		if _, e := d.owner(r); e != nil {
 			failure(w, e)
 			return
@@ -193,7 +193,7 @@ func (d Dependencies) concurrencyRoutes(mux *http.ServeMux) {
 	// The database's structural health, checked now rather than whenever the
 	// scheduled pass last ran. It is the heavy admin lane because quick_check
 	// and foreign_key_check both read the whole database.
-	mux.HandleFunc("POST /v1/admin/diagnostics/integrity", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "POST /v1/admin/diagnostics/integrity", func(w http.ResponseWriter, r *http.Request) {
 		if _, e := d.owner(r); e != nil {
 			failure(w, e)
 			return
@@ -205,7 +205,7 @@ func (d Dependencies) concurrencyRoutes(mux *http.ServeMux) {
 	// CASCADE — where the schema has already said what removing the parent
 	// means — and reports the rest for a person to decide about. Nothing here
 	// runs on a timer: a repair nobody asked for is a repair nobody reviews.
-	mux.HandleFunc("POST /v1/admin/diagnostics/integrity/repair", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "POST /v1/admin/diagnostics/integrity/repair", func(w http.ResponseWriter, r *http.Request) {
 		if _, e := d.owner(r); e != nil {
 			failure(w, e)
 			return
@@ -223,7 +223,7 @@ func (d Dependencies) concurrencyRoutes(mux *http.ServeMux) {
 	// Readiness is deliberately unauthenticated and free of database work: a
 	// supervisor has to be able to ask "are you up?" of a server that is still
 	// opening its database, and the answer must not itself need the database.
-	mux.HandleFunc("GET /v1/readiness", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "GET /v1/readiness", func(w http.ResponseWriter, r *http.Request) {
 		ready := d.DB != nil
 		status := "ready"
 		if !ready {

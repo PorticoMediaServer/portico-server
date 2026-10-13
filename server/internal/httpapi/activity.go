@@ -33,7 +33,7 @@ func activityFailure(w http.ResponseWriter, e error) {
 }
 func (d Dependencies) activityRoutes(mux *http.ServeMux) {
 	for _, route := range []string{"GET /v1/admin/playback-sessions", "POST /v1/admin/playback-sessions/{id}/stop", "GET /v1/admin/playback-operations/{operationId}"} {
-		mux.HandleFunc(route, func(w http.ResponseWriter, r *http.Request) {
+		d.httpHandle(mux, route, func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Cache-Control", "no-store")
 			ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 			defer cancel()

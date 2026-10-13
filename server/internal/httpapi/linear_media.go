@@ -80,5 +80,5 @@ func (d Dependencies) linearMediaRoutes(mux *http.ServeMux) {
 			}
 		}
 	}
-	mux.HandleFunc("GET /v1/media/linear/{playbackId}/{generation}/{token}/{name}", serve)
+	d.httpHandle(mux, "GET /v1/media/linear/{playbackId}/{generation}/{token}/{name}", serve)
 }
