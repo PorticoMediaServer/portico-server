@@ -50,3 +50,22 @@ func TestConsentIsNotGivenByARepeatedPress(t *testing.T) {
 		t.Fatalf("a deliberate Allow did not complete: %v %v", calls, assigned)
 	}
 }
+
+// Names supplied by the app and the server owner are shown as names, each in
+// its own element, and cannot stand in for the page's own words or each other.
+func TestConsentSentenceKeepsNamesApart(t *testing.T) {
+	out := runConsentPage(t, map[string]any{"id": "app_review", "accountId": "acct", "accountName": "Sam", "serverName": "Den {appName}", "appName": "Player {serverName}", "redirectUri": "my-player://done"})
+	if text := out["consentText"]; text != "Allow Player {serverName} (an unverified app name) to sign you in to Den {appName}?" {
+		t.Fatalf("consent sentence: %v", text)
+	}
+	var names []string
+	for _, part := range out["consentParts"].([]any) {
+		p := part.(map[string]any)
+		if p["tag"] == "strong" {
+			names = append(names, p["text"].(string))
+		}
+	}
+	if len(names) != 2 || names[0] != "Player {serverName}" || names[1] != "Den {appName}" {
+		t.Fatalf("names are not set apart: %v", out["consentParts"])
+	}
+}

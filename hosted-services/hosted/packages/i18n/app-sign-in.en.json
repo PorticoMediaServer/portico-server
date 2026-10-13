@@ -4,6 +4,7 @@
  "openAccount": "Open account sign-in",
  "continue": "Continue",
  "consent": "Allow {appName} (an unverified app name) to sign you in to {serverName}?",
+ "meaning": "The app will be able to use this server as you. Allow this only if you started the sign-in yourself.",
  "account": "Account",
  "returnAddress": "Return address",
  "allow": "Allow sign-in",

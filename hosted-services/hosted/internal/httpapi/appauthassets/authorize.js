@@ -14,6 +14,13 @@
  // key, a second press or a double-click cannot carry on into a decision.
  let decideAfter=0;
  const text=(id,value)=>{document.getElementById(id).textContent=value;};
+ // Each name is its own element, filled in one pass: words supplied by the app
+ // or the server's owner never run into the page's own or take another's place.
+ const sentence=(id,template,names)=>document.getElementById(id).replaceChildren(...template.split(/(\{[A-Za-z]+\})/).filter(Boolean).map(part=>{
+  const key=part.slice(1,-1);
+  if(!part.startsWith('{')||!Object.hasOwn(names,key))return document.createTextNode(part);
+  const name=document.createElement('strong');name.textContent=names[key];return name;
+ }));
  async function call(path,body){
   if(Date.now()<notBefore)throw new Error(strings.wait);
   const name=location.protocol==='https:'?'__Host-portico_refresh_csrf':'portico_refresh_dev_csrf';
@@ -40,7 +47,7 @@
  }
  document.getElementById('review').addEventListener('click',()=>work(async()=>{
   reviewed=await call('/v1/app-authorizations',request);
-  text('consent-line',strings.consent.replace('{appName}',()=>reviewed.appName).replace('{serverName}',()=>reviewed.serverName));
+  sentence('consent-line',strings.consent,{appName:reviewed.appName,serverName:reviewed.serverName});
   text('account-name',reviewed.accountName);
   text('return-address',reviewed.redirectUri);
   document.getElementById('signin').hidden=true;document.getElementById('consent').hidden=false;
