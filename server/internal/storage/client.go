@@ -137,6 +137,12 @@ func (c *Client) Stat(ctx context.Context, key, path string) (Snapshot, error) {
 	}
 	var value Snapshot
 	e := c.run(ctx, key, "stat", path, func(v Snapshot) error { value = v; return nil })
+	if e == nil && value.ErrorCode != "" {
+		// "There is no such file" is an answer, told apart from a file that
+		// could not be looked at: a caller that reports unreadable sidecars
+		// must not report every sidecar a title simply does not have.
+		return Snapshot{}, inventoryCodeError(value.ErrorCode)
+	}
 	return value, e
 }
 func (c *Client) Inventory(ctx context.Context, key, path string, visit func(Snapshot) error) error {
@@ -335,6 +341,9 @@ func Helper(in io.Reader, out io.Writer) (result error) {
 		return encoder.Encode(result)
 	case "stat":
 		info, e := os.Lstat(r.Path)
+		if errors.Is(e, os.ErrNotExist) {
+			return encoder.Encode(Snapshot{ErrorCode: inventoryErrorCode(e)})
+		}
 		if e != nil {
 			return e
 		}

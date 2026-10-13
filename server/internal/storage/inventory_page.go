@@ -238,7 +238,14 @@ func LocalInventoryPage(r InventoryRequest) (InventoryPage, error) {
 		}
 		v := snapshot(bindingPath, info)
 		if v.ObjectIdentity == "" {
-			p.Issues = append(p.Issues, InventoryIssue{Path: filepath.Join(r.RelativePath, name), Reason: "entry_unreadable", Protect: true, Warning: true})
+			reason := "entry_unreadable"
+			if info.IsDir() {
+				// A folder's identity includes its filesystem and requires opening
+				// it. Protect an unreadable child alone, so healthy siblings still
+				// reconcile instead of making the whole parent appear changed.
+				reason = "directory_unreadable"
+			}
+			p.Issues = append(p.Issues, InventoryIssue{Path: filepath.Join(r.RelativePath, name), Reason: reason, Protect: true, Warning: true})
 			continue
 		}
 		v.Path = filepath.Join(r.Root, r.RelativePath, name)

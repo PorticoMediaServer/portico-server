@@ -31,6 +31,7 @@ var settingConsumers = map[string]settingConsumer{
 	"administration.DVRDefaults.prePaddingSeconds":                           {"internal/administration/dvr_runtime.go", "PrePaddingSeconds", "Set padding or retained recording count/days"},
 	"administration.LibrarySettings.allowMediaDeletion":                      {"internal/administration/deletion.go", "AllowMediaDeletion", "Authorize physical media deletion"},
 	"administration.LibrarySettings.analysis":                                {"internal/administration/library_runtime.go", "Analysis", "Select analysis recipes and trickplay geometry"},
+	"administration.LibrarySettings.monitorChanges":                          {"internal/ingestion/monitor.go", "literal:$.monitorChanges", "Watch the library's folders and scan what changes"},
 	"administration.LibrarySettings.continueWatching.includeSeasonPremieres": {"internal/catalog/continue_policy.go", "IncludeSeasonPremieres", "Select continue-watching rows and completion rules"},
 	"administration.LibrarySettings.continueWatching.maximumItems":           {"internal/catalog/continue_policy.go", "MaximumItems", "Select continue-watching rows and completion rules"},
 	"administration.LibrarySettings.continueWatching.videoCompletion":        {"internal/catalog/continue_policy.go", "VideoCompletion", "Select continue-watching rows and completion rules"},

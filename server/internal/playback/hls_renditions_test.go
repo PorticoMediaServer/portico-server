@@ -167,13 +167,19 @@ func TestFragmentedSignallingFollowsActualDolbyVisionLayer(t *testing.T) {
 	client.Video[1].DolbyVisionProfiles = nil
 	client.Video[1].DynamicRanges = []string{"sdr", "hdr10", "hlg"}
 	client.Display.DynamicRanges = []string{"sdr", "hdr10", "hlg"}
-	p = decide(t, source, client, func(in *DeliveryInput) { in.FMP4Output = true })
+	// A device without Dolby Vision is sent the title's own HDR10 base layer,
+	// copied, which needs a converter that can strip the Dolby Vision data.
+	stripping := func(in *DeliveryInput) { in.FMP4Output, in.Server = true, matrixToolchain() }
+	p = decide(t, source, client, stripping)
+	if p.Strategy != DeliveryCopyRemux && p.Strategy != DeliveryAudioConversion {
+		t.Fatal("the base layer was not copied", p.Strategy)
+	}
 	m = string(hlsMasterManifest(&p))
 	if strings.Contains(m, "dvh1") || strings.Contains(m, "SUPPLEMENTAL") || !strings.Contains(m, "hvc1.2.4.L153.B0") || !strings.Contains(m, "VIDEO-RANGE=PQ") {
 		t.Fatal(m)
 	}
 	source.Video.DolbyVisionCompatibility = 4
-	p = decide(t, source, client, func(in *DeliveryInput) { in.FMP4Output = true })
+	p = decide(t, source, client, stripping)
 	if !strings.Contains(string(hlsMasterManifest(&p)), "VIDEO-RANGE=HLG") {
 		t.Fatal(string(hlsMasterManifest(&p)))
 	}

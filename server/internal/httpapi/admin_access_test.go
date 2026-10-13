@@ -165,7 +165,7 @@ func TestMemberLimitsScopeCatalogueProjectionAndFence(t *testing.T) {
 func TestAdministrationTierBoundaries(t *testing.T) {
 	f := administrationFixtureNew(t)
 	adminTier := []string{"/v1/admin/access/members", "/v1/admin/access/invitations", "/v1/admin/access/devices",
-		"/v1/admin/logs", "/v1/admin/logs/settings", "/v1/admin/diagnostics/client-logs", "/v1/admin/connectivity/status"}
+		"/v1/admin/logs", "/v1/admin/logs/settings", "/v1/admin/connectivity/status"}
 	for _, path := range adminTier {
 		if w := f.call("GET", path, f.admin, ""); w.Code != 200 {
 			t.Fatalf("admin tier refused %s: %d %s", path, w.Code, w.Body)
@@ -176,7 +176,7 @@ func TestAdministrationTierBoundaries(t *testing.T) {
 			}
 		}
 	}
-	ownerOnly := []string{"/v1/admin/access/api-keys", "/v1/admin/connectivity/policy"}
+	ownerOnly := []string{"/v1/admin/diagnostics/client-logs", "/v1/admin/api-keys", "/v1/admin/connectivity/policy"}
 	for _, path := range ownerOnly {
 		if w := f.call("GET", path, f.owner, ""); w.Code != 200 {
 			t.Fatalf("owner refused %s: %d %s", path, w.Code, w.Body)

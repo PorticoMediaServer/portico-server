@@ -1,99 +1,49 @@
-<div align="center">
-  <a href="https://getportico.tv">
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/PorticoMediaServer/getportico-tv/main/public/brand/portico-wordmark-white.svg">
-      <img src="https://raw.githubusercontent.com/PorticoMediaServer/getportico-tv/main/public/brand/portico-wordmark-black.svg" alt="Portico" width="420">
-    </picture>
-  </a>
+# Portico Media Server
 
-  <h1>Portico Media Server</h1>
+Portico organizes and streams media you keep on your own storage. The server is
+written in Go, uses SQLite, and serves its React web app on the same address.
+It is prerelease software: routes and database layouts can change between builds.
+Read the release notes and keep a backup before upgrading.
 
-  <p><strong>Portico is a free personal media server that turns your media collection into a refined streaming experience across all of your devices.</strong></p>
+- [Install, run, upgrade and recover](INSTALLING.md)
+- [Library layout, naming and matching](docs/libraries.md)
+- [API developer guide](server/api/guide/README.md)
+- [Build from source](BUILDING.md) and [release packaging](RELEASING.md)
+- [Security policy and trade-offs](SECURITY.md)
+- [Third-party notices](THIRD-PARTY-NOTICES.md)
 
-  <p>
-    <a href="https://getportico.tv">Website</a> ·
-    <a href="https://github.com/PorticoMediaServer/portico-server/releases">Releases</a> ·
-    <a href="https://github.com/PorticoMediaServer/portico-server/issues">Report an issue</a>
-  </p>
+## Installation options
 
-  <p>
-    <a href="LICENSE"><img alt="GPL-3.0-or-later" src="https://img.shields.io/badge/license-GPL--3.0--or--later-59636e?style=flat-square"></a>
-    <img alt="Prerelease software" src="https://img.shields.io/badge/status-prerelease-e09f3e?style=flat-square">
-  </p>
-</div>
+The release packaging covers Windows x64/ARM64 (service installer or portable
+ZIP), Apple Silicon macOS (PKG, also inside a DMG), Linux x64/ARM64 (DEB, RPM or
+portable tar archive), and Linux amd64/arm64 Docker images. Check the
+[release page](https://github.com/PorticoMediaServer/portico-server/releases)
+for the artifacts available for the build you want. Preview packages are unsigned
+at the operating-system level; release manifests have separate signatures.
 
----
+Open `http://127.0.0.1:32500/` on the server after installation. Complete setup,
+choose media folders the service account can read, and add libraries. A Portico
+Account is optional for local accounts and direct server sign-in.
 
-This is the primary repository for Portico. Visit [getportico.tv](https://getportico.tv) for downloads, documentation, and project news.
+## Integrations
 
-Portico Media Server organizes and streams the movies, television, music, and other media you already own. The project is being developed in the open and is not yet considered ready for everyday production use.
+Outside apps use the same local API as Portico's own clients. Owners can create
+API keys; members can create personal tokens where allowed. The server provides
+a bounded title query, reports of changed paths, outbound webhooks, an event feed,
+and an MCP endpoint for assistants. These integrations do not require Hosted.
+There is no plugin, theme or custom CSS system.
 
-## Project status
+## Source and feedback
 
-Portico is prerelease software. Builds may be incomplete, upgrades may require extra care, and some features are still changing. Please read the release notes before installing or updating.
+Go and JavaScript dependencies and tool versions are described in [BUILDING.md](BUILDING.md).
+The headless client core, contracts, design tokens and strings in `packages/`
+are shared with the [native clients](https://github.com/PorticoMediaServer/portico-react-native).
 
-## Downloads
+Report problems through [GitHub Issues](https://github.com/PorticoMediaServer/portico-server/issues).
+External code contributions are not accepted; see [CONTRIBUTING.md](CONTRIBUTING.md).
+Report suspected vulnerabilities privately using [SECURITY.md](SECURITY.md).
 
-The newest stable release will always be available from the unchanging [latest release](https://github.com/PorticoMediaServer/portico-server/releases/latest) page. Prerelease and development builds appear on the [complete releases page](https://github.com/PorticoMediaServer/portico-server/releases).
-
-Planned packages include:
-
-| Platform | Architectures | Packages |
-| --- | --- | --- |
-| Windows | x64, ARM64 | Installer (`.exe`) and portable archive |
-| macOS | Apple Silicon | Application disk image (`.dmg`) |
-| Debian and Ubuntu | x64, ARM64 | `.deb` and distribution-neutral `.tar.gz` archive |
-| Fedora and related systems | x64, ARM64 | `.rpm` and distribution-neutral `.tar.gz` archive |
-| Docker | amd64, arm64 | Container image from GitHub Container Registry |
-
-Unsigned packages are suitable for early testing. Platform signing and notarization will be introduced before unattended updates are enabled.
-
-## Technology
-
-| Area | Technology |
-| --- | --- |
-| Server | Go |
-| Database | SQLite |
-| Web application | React, TypeScript, Vite |
-| Media processing | FFmpeg and FFprobe |
-| API contract | OpenAPI |
-| Containers | Docker / OCI |
-| Automation | GitHub Actions |
-
-## Building locally
-
-You need Go, Node.js, npm, and Make. FFmpeg is optional for compilation but required for real playback and transcoding.
-
-```sh
-make test
-make build-server
-```
-
-See [BUILDING.md](BUILDING.md) for supported tool versions and complete instructions. Installation and release packaging are described in [INSTALLING.md](INSTALLING.md) and [RELEASING.md](RELEASING.md).
-
-## Related repositories
-
-- [Portico React Native clients](https://github.com/PorticoMediaServer/portico-react-native)
-- [Portico for Roku](https://github.com/PorticoMediaServer/portico-roku)
-- [getportico.tv website](https://github.com/PorticoMediaServer/getportico-tv)
-
-## Feedback and contributions
-
-Bug reports, feature requests, and thoughtful feedback are welcome through [GitHub Issues](https://github.com/PorticoMediaServer/portico-server/issues).
-
-Portico does not accept external code contributions. Please read [CONTRIBUTING.md](CONTRIBUTING.md) before opening an issue.
-
-Security problems should be reported privately as described in [SECURITY.md](SECURITY.md).
-
-## License and trademarks
-
-Portico Media Server is licensed under `GPL-3.0-or-later`. See [LICENSE](LICENSE). Third-party components remain under their respective licenses.
-
-The GPL does not grant permission to present modified or redistributed builds as official Portico releases. See [TRADEMARKS.md](TRADEMARKS.md).
-
----
-
-Made with ❤️ in Nova Scotia, Canada | Developed by [Justin Ehler](https://ehler.ca)  
-Copyright © 2026 Justin Ehler  
-Portico Media Server is free software licensed under the GNU General  
-Public License, version 3 or, at your option, any later version.
+Portico Media Server is GPL-3.0-or-later; see [LICENSE](LICENSE). Third-party
+components retain their own licences. [TRADEMARKS.md](TRADEMARKS.md) explains
+use of the Portico name. Developed by [Justin Ehler](https://ehler.ca).
+Copyright © 2026 Justin Ehler.

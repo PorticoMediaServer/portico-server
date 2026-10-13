@@ -104,8 +104,8 @@ func TestPlaylistOccurrencesPermissionsCASAndRestart(t *testing.T) {
 	if e != nil || reordered.Revision != 6 {
 		t.Fatal(e)
 	}
-	if _, e = s.PlaylistContent(request, editor, []string{"a"}); !errors.Is(e, ErrStaleContinuation) {
-		t.Fatal("stale page accepted", e)
+	if _, e = s.PlaylistContent(request, editor, []string{"a"}); e != nil {
+		t.Fatal("page did not continue after publication", e)
 	}
 	if _, e = s.MutatePlaylist(owner, id, "add", "", PlaylistMutation{OperationID: "old", ExpectedRevision: 5, ItemID: visible.Public}, nil); !errors.Is(e, ErrPlaylistConflict) {
 		t.Fatal("stale CAS", e)
@@ -317,8 +317,8 @@ func TestPlaylistDirectoryCursorAndCandidateBounds(t *testing.T) {
 	if _, e = s.MutatePlaylist(a, one.PlaylistID, "update", "", PlaylistMutation{OperationID: "rename", ExpectedRevision: 1, Name: &n}, nil); e != nil {
 		t.Fatal(e)
 	}
-	if _, e = s.PlaylistDirectory(r, a); !errors.Is(e, ErrStaleContinuation) {
-		t.Fatal("directory cursor survived mutation", e)
+	if _, e = s.PlaylistDirectory(r, a); e != nil {
+		t.Fatal("directory cursor did not survive mutation", e)
 	}
 	_, e = db.Exec(`INSERT INTO accounts VALUES('u1','private1',x'00','candidate1',1),('u2','private2',x'00','candidate2',1)`)
 	if e != nil {

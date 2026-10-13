@@ -7,21 +7,20 @@ function counting() {
   return {calls, api: {request: async <T,>(path: string) => { calls.push(path); return {path} as T; }}};
 }
 
-test('identical guide reads within the window share one request', async () => {
-  let t = 0;
+test('concurrent identical guide reads share one request and refresh reads again', async () => {
   const {calls, api} = counting();
-  const guide = dedupedGuideApi(api, () => t);
+  const guide = dedupedGuideApi(api);
   await Promise.all([guide.request('/v1/guide?a=1'), guide.request('/v1/guide?a=1'), guide.request('/v1/guide?a=2')]);
   assert.deepEqual(calls, ['/v1/guide?a=1', '/v1/guide?a=2']);
-  t = 5_000; await guide.request('/v1/guide?a=1');
-  assert.equal(calls.length, 2);
-  t = 20_000; await guide.request('/v1/guide?a=1');
+  await guide.request('/v1/guide?a=1');
   assert.equal(calls.length, 3);
+  await guide.request('/v1/guide?a=1');
+  assert.equal(calls.length, 4);
 });
 
 test('writes, other paths and a forgotten cache always go to the server', async () => {
   const {calls, api} = counting();
-  const guide = dedupedGuideApi(api, () => 0);
+  const guide = dedupedGuideApi(api);
   await guide.request('/v1/guide?a=1'); await guide.request('/v1/items/x'); await guide.request('/v1/items/x');
   await guide.request('/v1/guide/x', 'POST', {});
   forgetGuideReads();
@@ -31,7 +30,7 @@ test('writes, other paths and a forgotten cache always go to the server', async 
 
 test('one caller aborting does not cancel the shared read for the others', async () => {
   const {api} = counting();
-  const guide = dedupedGuideApi(api, () => 0);
+  const guide = dedupedGuideApi(api);
   forgetGuideReads();
   const controller = new AbortController();
   const first = guide.request('/v1/guide?b=1', 'GET', undefined, controller.signal);
