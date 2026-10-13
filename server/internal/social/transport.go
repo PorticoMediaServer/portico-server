@@ -21,14 +21,14 @@ type TransportRequest struct {
 	IdempotencyKey   string `json:"idempotencyKey"`
 	ExpectedRevision string `json:"expectedRevision"`
 	Command          string `json:"command"`
-	PositionUS       string `json:"positionUs"`
-	QueuePosition    *int   `json:"queuePosition"`
-	EntryID          string `json:"entryId"`
-	Rate             *Rate  `json:"rate"`
+	PositionUS       string `json:"positionUs,omitempty"`
+	QueuePosition    *int   `json:"queuePosition,omitempty"`
+	EntryID          string `json:"entryId,omitempty"`
+	Rate             *Rate  `json:"rate,omitempty"`
 	// AllowUnavailable is the documented host override. The group refuses to
 	// start an entry some member cannot see; a host may override, and the group
 	// records that it did so. A member can never set it.
-	AllowUnavailable bool `json:"allowUnavailable"`
+	AllowUnavailable bool `json:"allowUnavailable,omitempty"`
 }
 
 // TransportReceipt is the durable answer to one command. A replay of the same
@@ -65,8 +65,8 @@ type SettingsRequest struct {
 	ProtocolVersion  string  `json:"protocolVersion"`
 	IdempotencyKey   string  `json:"idempotencyKey"`
 	ExpectedRevision string  `json:"expectedRevision"`
-	Shuffle          *bool   `json:"shuffleEnabled"`
-	Repeat           *string `json:"repeatMode"`
+	Shuffle          *bool   `json:"shuffleEnabled,omitempty"`
+	Repeat           *string `json:"repeatMode,omitempty"`
 }
 
 // ReadinessRequest is a participant's own report. Readiness is evidence about
@@ -76,8 +76,8 @@ type ReadinessRequest struct {
 	ProtocolVersion  string `json:"protocolVersion"`
 	Readiness        string `json:"readiness"`
 	PlaybackRevision string `json:"playbackRevision"`
-	Ended            bool   `json:"ended"`
-	PositionUS       string `json:"positionUs"`
+	Ended            bool   `json:"ended,omitempty"`
+	PositionUS       string `json:"positionUs,omitempty"`
 }
 
 // mayControl applies the host authority policy. `host-only` is the contract
@@ -184,6 +184,12 @@ func (s *Store) Transport(ctx context.Context, p identity.Principal, id string, 
 	expected, ok := parseCounter(req.ExpectedRevision)
 	if !ok {
 		return out, errInvalid
+	}
+	if req.PositionUS != "" {
+		value, valid := parseCounter(req.PositionUS)
+		if !valid || value > MaxPositionUS {
+			return out, errInvalid
+		}
 	}
 	switch req.Command {
 	case "play", "pause", "stop", "next", "previous":

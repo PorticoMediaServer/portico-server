@@ -97,6 +97,7 @@ export class HandoffController{
  private control(change?:SessionChange):Promise<boolean>{
   const id=this.state.receiverPlaybackId,sessions=this.sessions;if(!id||!sessions)return Promise.resolve(false);
   return this.controlWork=this.controlWork.catch(()=>false).then(async()=>{
+   if(this.state.receiverPlaybackId!==id)return false;
    this.publish({controlling:true});
    try{
     if(!change){await sessions.stop(id);this.publish({receiverPlaybackId:undefined,remoteSession:undefined,phase:'idle'});return true;}
@@ -104,7 +105,7 @@ export class HandoffController{
     try{next=await sessions.patch(id,current.revision,change);}catch(e){
      if(!(e instanceof PlaybackApiError)||e.status!==412||!e.current)throw e;
      const fresh=e.current as Session;
-     if(fresh.state!==current.state||fresh.presentation.generation!==current.presentation.generation)throw e;
+     if(change.seek||fresh.state!==current.state||fresh.presentation.generation!==current.presentation.generation)throw e;
      next=await sessions.patch(id,fresh.revision,change);
     }
     if(this.state.receiverPlaybackId===id)this.publish({remoteSession:next});return true;
@@ -161,7 +162,7 @@ export class ReceiverHost{
  /** Whether playback is in front; approvals and handoffs remain reachable. */
  private playerActive=false;
  private state:ReceiverSnapshot=Object.freeze<ReceiverSnapshot>({phase:'off'});private listeners=new Set<()=>void>();
- private run?:AbortController;private handled=new Set<string>();private inboxWork?:Promise<void>;
+ private run?:AbortController;private handled=new Set<string>();private inboxWork?:Promise<void>;private taking?:string;
   constructor(options:{api:RemoteApi;device:ReceiverDevice;player:ReceiverPlayer;pollMs?:number;heartbeatMs?:number;rand?:()=>number;events?:ReceiverEventOpener}){this.api=options.api;this.device=options.device;this.player=options.player;this.pollMs=options.pollMs??30000;this.heartbeatMs=options.heartbeatMs??45000;this.rand=options.rand??Math.random;this.events=options.events;}
   getSnapshot=()=>this.state;
   subscribe=(fn:()=>void)=>{this.listeners.add(fn);return()=>{this.listeners.delete(fn);};};
@@ -180,7 +181,7 @@ export class ReceiverHost{
  }
   /** The player is in the foreground (something loaded: playing or paused). While set, the inbox
    * inbox remains live so a new handoff can be accepted while something is playing. */
-  setPlayerActive(active:boolean){this.playerActive=active;}
+  setPlayerActive(active:boolean){if(this.playerActive!==active){this.playerActive=active;this.sleeper?.wake();}}
  stop(){this.run?.abort();this.run=undefined;this.streamConnected=false;this.publish({phase:'off',asking:undefined});}
  dispose(){this.stop();this.listeners.clear();}
 
@@ -201,8 +202,8 @@ export class ReceiverHost{
      }
       const id=this.state.receiver!.id;
       if(Date.now()-lastBeat>=this.heartbeatMs){await this.api.request<unknown>(`/v1/receivers/${encodeURIComponent(id)}/heartbeat`,'POST',{protocolVersion:SOCIAL_PROTOCOL,keyFingerprint:this.device.keyFingerprint},signal);lastBeat=Date.now();}
-      // PERF-16: no inbox poll while the player is in the foreground. While the event stream is
-      // connected the poll backs off to the safety interval; on a dropped stream the 30 s poll
+      // While the event stream is connected the poll backs off to the safety interval;
+      // on a dropped stream the 30 s poll
       // (with jitter) covers the gap until it reconnects.
       await this.refreshInbox(id,signal);
       failures=0;if(this.state.phase==='error')this.publish({phase:'waiting',error:undefined});
@@ -228,7 +229,9 @@ export class ReceiverHost{
   const asking=(inbox.grants??[]).map(g=>parseReceiverGrant({protocolVersion:SOCIAL_PROTOCOL,serverTime:'',grant:g}))[0];
   if(asking?.id!==this.state.asking?.id)this.publish({asking});
   const handoff=(inbox.handoffs??[]).map(h=>parseHandoff({protocolVersion:SOCIAL_PROTOCOL,serverTime:'',handoff:h})).find(h=>h.outcome==='waiting'&&!this.handled.has(h.id));
-  if(handoff){this.handled.add(handoff.id);if(this.handled.size>64)this.handled.delete(this.handled.values().next().value!);await this.take(handoff,signal);}
+  if(handoff&&!this.taking){this.handled.add(handoff.id);if(this.handled.size>64)this.handled.delete(this.handled.values().next().value!);this.taking=handoff.id;
+   void this.take(handoff,signal).catch(()=>{}).finally(()=>{if(this.taking===handoff.id)this.taking=undefined;this.sleeper?.wake();});
+  }
  }
  /** Holds `/v1/notifications/events` open and turns `receiver.inbox_changed` into inbox reads.
   * A dropped stream never empties anything: the poll loop keeps covering until it reconnects. */

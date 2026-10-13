@@ -1903,9 +1903,7 @@
                   }
                 },
                 "required": [
-                  "protocolVersion",
-                  "displayName",
-                  "capabilities"
+                  "protocolVersion"
                 ],
                 "type": "object"
               }
@@ -1914,7 +1912,7 @@
           "required": true
         },
         "responses": {
-          "200": {
+          "201": {
             "content": {
               "application/json": {
                 "schema": {
@@ -1981,7 +1979,7 @@
           }
         },
         "summary": "Manage shared playback for the signed-in profile",
-        "x-access": "device",
+        "x-access": "viewer_library",
         "x-cost": "page_sized",
         "x-lane": "default",
         "x-max-body-bytes": 262144
@@ -2058,7 +2056,7 @@
           }
         },
         "summary": "Manage shared playback for the signed-in profile",
-        "x-access": "device",
+        "x-access": "viewer_library",
         "x-cost": "page_sized",
         "x-lane": "browsing"
       }
@@ -2095,7 +2093,7 @@
           }
         },
         "summary": "Manage shared playback for the signed-in profile",
-        "x-access": "device",
+        "x-access": "viewer_library",
         "x-cost": "page_sized",
         "x-lane": "browsing"
       },
@@ -2176,7 +2174,7 @@
           }
         },
         "summary": "Manage shared playback for the signed-in profile",
-        "x-access": "device",
+        "x-access": "viewer_library",
         "x-cost": "page_sized",
         "x-lane": "default"
       }
@@ -2355,8 +2353,7 @@
                 "required": [
                   "protocolVersion",
                   "code",
-                  "deviceId",
-                  "displayName"
+                  "deviceId"
                 ],
                 "type": "object"
               }
@@ -5106,7 +5103,7 @@
           }
         },
         "summary": "Manage shared playback for the signed-in profile",
-        "x-access": "device",
+        "x-access": "viewer_library",
         "x-cost": "page_sized",
         "x-lane": "browsing"
       },
@@ -5132,9 +5129,7 @@
                 },
                 "required": [
                   "protocolVersion",
-                  "name",
-                  "displayName",
-                  "hostAuthority"
+                  "name"
                 ],
                 "type": "object"
               }
@@ -5611,7 +5606,7 @@
           }
         },
         "summary": "Manage shared playback for the signed-in profile",
-        "x-access": "device",
+        "x-access": "viewer_library",
         "x-cost": "page_sized",
         "x-lane": "default",
         "x-max-body-bytes": 262144
@@ -5637,8 +5632,7 @@
                 },
                 "required": [
                   "protocolVersion",
-                  "code",
-                  "displayName"
+                  "code"
                 ],
                 "type": "object"
               }
@@ -6115,7 +6109,7 @@
           }
         },
         "summary": "Manage shared playback for the signed-in profile",
-        "x-access": "device",
+        "x-access": "viewer_library",
         "x-cost": "page_sized",
         "x-lane": "default",
         "x-max-body-bytes": 262144
@@ -6593,7 +6587,7 @@
           }
         },
         "summary": "Manage shared playback for the signed-in profile",
-        "x-access": "device",
+        "x-access": "viewer_library",
         "x-cost": "page_sized",
         "x-lane": "browsing"
       }
@@ -7092,7 +7086,7 @@
           }
         },
         "summary": "Manage shared playback for the signed-in profile",
-        "x-access": "device",
+        "x-access": "viewer_library",
         "x-cost": "page_sized",
         "x-lane": "default",
         "x-max-body-bytes": 262144
@@ -7161,7 +7155,7 @@
           }
         },
         "summary": "Manage shared playback for the signed-in profile",
-        "x-access": "device",
+        "x-access": "viewer_library",
         "x-cost": "page_sized",
         "x-lane": "realtime"
       }
@@ -7638,7 +7632,7 @@
           }
         },
         "summary": "Manage shared playback for the signed-in profile",
-        "x-access": "device",
+        "x-access": "viewer_library",
         "x-cost": "page_sized",
         "x-lane": "default"
       }
@@ -8141,7 +8135,7 @@
           }
         },
         "summary": "Manage shared playback for the signed-in profile",
-        "x-access": "device",
+        "x-access": "viewer_library",
         "x-cost": "page_sized",
         "x-lane": "default",
         "x-max-body-bytes": 262144
@@ -8249,7 +8243,7 @@
           }
         },
         "summary": "Manage shared playback for the signed-in profile",
-        "x-access": "device",
+        "x-access": "viewer_library",
         "x-cost": "page_sized",
         "x-lane": "default",
         "x-max-body-bytes": 262144
@@ -8273,7 +8267,7 @@
           }
         },
         "summary": "Manage shared playback for the signed-in profile",
-        "x-access": "device",
+        "x-access": "viewer_library",
         "x-cost": "page_sized",
         "x-lane": "default"
       }
@@ -8750,7 +8744,7 @@
           }
         },
         "summary": "Manage shared playback for the signed-in profile",
-        "x-access": "device",
+        "x-access": "viewer_library",
         "x-cost": "page_sized",
         "x-lane": "default"
       }
@@ -8884,7 +8878,7 @@
           }
         },
         "summary": "Manage shared playback for the signed-in profile",
-        "x-access": "device",
+        "x-access": "viewer_library",
         "x-cost": "page_sized",
         "x-lane": "browsing"
       },
@@ -9065,7 +9059,7 @@
           }
         },
         "summary": "Manage shared playback for the signed-in profile",
-        "x-access": "device",
+        "x-access": "viewer_library",
         "x-cost": "page_sized",
         "x-lane": "default",
         "x-max-body-bytes": 262144
@@ -9098,9 +9092,7 @@
                 "required": [
                   "protocolVersion",
                   "readiness",
-                  "playbackRevision",
-                  "ended",
-                  "positionUs"
+                  "playbackRevision"
                 ],
                 "type": "object"
               }
@@ -9577,7 +9569,7 @@
           }
         },
         "summary": "Manage shared playback for the signed-in profile",
-        "x-access": "device",
+        "x-access": "viewer_library",
         "x-cost": "page_sized",
         "x-lane": "default",
         "x-max-body-bytes": 262144
@@ -9601,20 +9593,16 @@
                     "type": "string"
                   },
                   "repeatMode": {
-                    "nullable": true,
                     "type": "string"
                   },
                   "shuffleEnabled": {
-                    "nullable": true,
                     "type": "boolean"
                   }
                 },
                 "required": [
                   "protocolVersion",
                   "idempotencyKey",
-                  "expectedRevision",
-                  "shuffleEnabled",
-                  "repeatMode"
+                  "expectedRevision"
                 ],
                 "type": "object"
               }
@@ -10091,7 +10079,7 @@
           }
         },
         "summary": "Manage shared playback for the signed-in profile",
-        "x-access": "device",
+        "x-access": "viewer_library",
         "x-cost": "page_sized",
         "x-lane": "default",
         "x-max-body-bytes": 262144
@@ -10129,11 +10117,9 @@
                   "queuePosition": {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
-                    "nullable": true,
                     "type": "integer"
                   },
                   "rate": {
-                    "nullable": true,
                     "properties": {
                       "denominator": {
                         "type": "string"
@@ -10153,12 +10139,7 @@
                   "protocolVersion",
                   "idempotencyKey",
                   "expectedRevision",
-                  "command",
-                  "positionUs",
-                  "queuePosition",
-                  "entryId",
-                  "rate",
-                  "allowUnavailable"
+                  "command"
                 ],
                 "type": "object"
               }
@@ -10318,7 +10299,7 @@
           }
         },
         "summary": "Manage shared playback for the signed-in profile",
-        "x-access": "device",
+        "x-access": "viewer_library",
         "x-cost": "page_sized",
         "x-lane": "default",
         "x-max-body-bytes": 262144
@@ -10359,9 +10340,7 @@
                   "requestId",
                   "receiverId",
                   "grantId",
-                  "sourcePlaybackId",
-                  "startPositionUs",
-                  "expectedPlaybackRevision"
+                  "sourcePlaybackId"
                 ],
                 "type": "object"
               }
@@ -10475,7 +10454,7 @@
           }
         },
         "summary": "Manage shared playback for the signed-in profile",
-        "x-access": "device",
+        "x-access": "viewer_library",
         "x-cost": "page_sized",
         "x-lane": "default",
         "x-max-body-bytes": 262144
@@ -10590,7 +10569,7 @@
           }
         },
         "summary": "Manage shared playback for the signed-in profile",
-        "x-access": "device",
+        "x-access": "viewer_library",
         "x-cost": "page_sized",
         "x-lane": "browsing"
       }
@@ -10726,7 +10705,7 @@
           }
         },
         "summary": "Manage shared playback for the signed-in profile",
-        "x-access": "device",
+        "x-access": "viewer_library",
         "x-cost": "page_sized",
         "x-lane": "default",
         "x-max-body-bytes": 262144
@@ -10760,8 +10739,7 @@
                   "protocolVersion",
                   "readiness",
                   "receiverPlaybackId",
-                  "positionUs",
-                  "expectedRevision"
+                  "positionUs"
                 ],
                 "type": "object"
               }
@@ -10875,7 +10853,7 @@
           }
         },
         "summary": "Manage shared playback for the signed-in profile",
-        "x-access": "device",
+        "x-access": "viewer_library",
         "x-cost": "page_sized",
         "x-lane": "default",
         "x-max-body-bytes": 262144
@@ -10900,9 +10878,7 @@
                   }
                 },
                 "required": [
-                  "protocolVersion",
-                  "expectedRevision",
-                  "reason"
+                  "protocolVersion"
                 ],
                 "type": "object"
               }
@@ -11016,7 +10992,7 @@
           }
         },
         "summary": "Manage shared playback for the signed-in profile",
-        "x-access": "device",
+        "x-access": "viewer_library",
         "x-cost": "page_sized",
         "x-lane": "default",
         "x-max-body-bytes": 262144
@@ -21205,7 +21181,7 @@
           }
         },
         "summary": "Manage shared playback for the signed-in profile",
-        "x-access": "device",
+        "x-access": "viewer_library",
         "x-cost": "page_sized",
         "x-lane": "browsing"
       },
@@ -21244,11 +21220,7 @@
                 "required": [
                   "protocolVersion",
                   "displayName",
-                  "platform",
-                  "keyFingerprint",
-                  "publicKey",
-                  "supportedCommands",
-                  "grantPolicy"
+                  "keyFingerprint"
                 ],
                 "type": "object"
               }
@@ -21344,7 +21316,7 @@
           }
         },
         "summary": "Manage shared playback for the signed-in profile",
-        "x-access": "device",
+        "x-access": "viewer_library",
         "x-cost": "page_sized",
         "x-lane": "default",
         "x-max-body-bytes": 262144
@@ -21368,7 +21340,7 @@
           }
         },
         "summary": "Manage shared playback for the signed-in profile",
-        "x-access": "device",
+        "x-access": "viewer_library",
         "x-cost": "page_sized",
         "x-lane": "default"
       }
@@ -21460,7 +21432,7 @@
           }
         },
         "summary": "Manage shared playback for the signed-in profile",
-        "x-access": "device",
+        "x-access": "viewer_library",
         "x-cost": "page_sized",
         "x-lane": "browsing"
       },
@@ -21488,10 +21460,7 @@
                   }
                 },
                 "required": [
-                  "protocolVersion",
-                  "controllerDisplayName",
-                  "requestedCommands",
-                  "keyFingerprint"
+                  "protocolVersion"
                 ],
                 "type": "object"
               }
@@ -21580,7 +21549,7 @@
           }
         },
         "summary": "Manage shared playback for the signed-in profile",
-        "x-access": "device",
+        "x-access": "viewer_library",
         "x-cost": "page_sized",
         "x-lane": "default",
         "x-max-body-bytes": 262144
@@ -21692,7 +21661,7 @@
           }
         },
         "summary": "Manage shared playback for the signed-in profile",
-        "x-access": "device",
+        "x-access": "viewer_library",
         "x-cost": "page_sized",
         "x-lane": "default",
         "x-max-body-bytes": 262144
@@ -21811,7 +21780,7 @@
           }
         },
         "summary": "Manage shared playback for the signed-in profile",
-        "x-access": "device",
+        "x-access": "viewer_library",
         "x-cost": "page_sized",
         "x-lane": "default",
         "x-max-body-bytes": 262144
@@ -21992,7 +21961,7 @@
           }
         },
         "summary": "Manage shared playback for the signed-in profile",
-        "x-access": "device",
+        "x-access": "viewer_library",
         "x-cost": "page_sized",
         "x-lane": "browsing"
       }
@@ -22172,7 +22141,7 @@
           }
         },
         "summary": "Manage shared playback for the signed-in profile",
-        "x-access": "device",
+        "x-access": "viewer_library",
         "x-cost": "page_sized",
         "x-lane": "realtime"
       }

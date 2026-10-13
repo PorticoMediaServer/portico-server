@@ -651,7 +651,7 @@ func TestSocialHostTransfer(t *testing.T) {
 	}
 	var moved social.GroupResponse
 	f.decode(f.as(f.token, "POST", "/v1/groups/"+id+"/host-transfer", social.TransferRequest{ProtocolVersion: social.Protocol, MemberID: memberID, ExpectedRevision: snapshot.Group.GovernanceRevision}), 200, &moved)
-	if moved.Group.HostMemberID != memberID || moved.Group.Permissions.IsHost {
+	if moved.Group.HostMemberID != memberID || moved.Group.Permissions.IsHost || moved.Group.GovernanceRevision == snapshot.Group.GovernanceRevision {
 		t.Fatalf("host authority did not move: %+v", moved.Group)
 	}
 	var theirs social.GroupResponse
@@ -1189,9 +1189,26 @@ func TestSocialCastBootstrapRedeemReconnectAndScoping(t *testing.T) {
 	if theirSession.Scope.AccountID != "account2" || theirSession.Scope.ProfileID != "profile2" {
 		t.Fatalf("second pairing was scoped to the wrong viewer: %+v", theirSession.Scope)
 	}
+	// Cleanup from an older pairing generation must not revoke its replacement.
+	principal, e := f.d.Identity.Authenticate(f.token)
+	if e != nil {
+		t.Fatal(e)
+	}
+	e = f.d.Social().RevokeCastDevice(context.Background(), principal, renewed.Device.ID, "1")
+	if fault, ok := e.(*social.Fault); !ok || fault.Code != "revision_conflict" {
+		t.Fatal("stale cleanup revoked a newer pairing", e)
+	}
+	var pairingState string
+	if e = f.d.DB.QueryRow(`SELECT state FROM social_cast_devices WHERE id=?`, renewed.Device.ID).Scan(&pairingState); e != nil || pairingState != "active" {
+		t.Fatal("new pairing did not survive stale cleanup", pairingState, e)
+	}
 	// Revoking a pairing fails the next reconnect closed.
 	if w = f.as(f.token, "DELETE", "/v1/cast/devices/"+renewed.Device.ID, nil); w.Code != 204 {
 		t.Fatalf("revoke %d %s", w.Code, w.Body.String())
+	}
+	var directoryState string
+	if e = f.d.DB.QueryRow(`SELECT state FROM social_receivers WHERE id=?`, renewed.Device.ReceiverID).Scan(&directoryState); e != nil || directoryState != "retired" {
+		t.Fatal("unpaired receiver stayed active in the directory", directoryState, e)
 	}
 	w = f.as("", "POST", "/v1/cast/reconnect", social.CastReconnectRequest{ProtocolVersion: social.Protocol, DeviceToken: renewed.DeviceToken})
 	if w.Code != 403 || errorCode(t, w) != "cast_device_revoked" {

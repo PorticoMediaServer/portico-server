@@ -4,6 +4,7 @@ import "portico.local/apikit/apierror"
 
 func socialErrorDefinitions() []apierror.Definition {
 	return []apierror.Definition{
+		{Code: "receiver_required", Status: 403, Message: "Only the receiving device may do that.", Retry: apierror.Never},
 		{Code: "capacity_reached", Status: 429, Message: "You already have several groups open.", Retry: apierror.Never},
 		{Code: "cast_access_ended", Status: 403, Message: "This account can no longer play on this server. Pair again from a signed-in device.", Retry: apierror.Never},
 		{Code: "cast_code_consumed", Status: 410, Message: "That pairing code has already been used.", Retry: apierror.Never},

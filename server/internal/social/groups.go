@@ -158,14 +158,14 @@ type GroupListResponse struct {
 type CreateGroupRequest struct {
 	ProtocolVersion string `json:"protocolVersion"`
 	Name            string `json:"name"`
-	DisplayName     string `json:"displayName"`
-	HostAuthority   string `json:"hostAuthority"`
+	DisplayName     string `json:"displayName,omitempty"`
+	HostAuthority   string `json:"hostAuthority,omitempty"`
 }
 
 type JoinRequest struct {
 	ProtocolVersion string `json:"protocolVersion"`
 	Code            string `json:"code"`
-	DisplayName     string `json:"displayName"`
+	DisplayName     string `json:"displayName,omitempty"`
 }
 
 type TransferRequest struct {
@@ -404,14 +404,12 @@ func (s *Store) EndGroup(ctx context.Context, p identity.Principal, id string, r
 		if m.role != "host" {
 			return errHost
 		}
-		if req.ExpectedRevision != "" {
-			expected, ok := parseCounter(req.ExpectedRevision)
-			if !ok {
-				return errInvalid
-			}
-			if expected != g.governanceRevision {
-				return &Fault{Code: "revision_conflict", Status: 409, Message: "The group changed.", Detail: map[string]any{"currentRevision": counter(g.governanceRevision)}}
-			}
+		expected, ok := parseCounter(req.ExpectedRevision)
+		if !ok {
+			return errInvalid
+		}
+		if expected != g.governanceRevision {
+			return &Fault{Code: "revision_conflict", Status: 409, Message: "The group changed.", Detail: map[string]any{"currentRevision": counter(g.governanceRevision)}}
 		}
 		return s.endGroup(ctx, tx, g, "host-ended")
 	})
@@ -487,11 +485,11 @@ func (s *Store) TransferHost(ctx context.Context, p identity.Principal, device, 
 			return e
 		}
 		var ready string
-		var seenAt int64
-		if e = tx.QueryRowContext(ctx, `SELECT readiness,max(seen_at_ms,joined_at_ms) FROM social_group_members WHERE id=?`, req.MemberID).Scan(&ready, &seenAt); e != nil {
+		var seenAt, readyAt, readyRevision int64
+		if e = tx.QueryRowContext(ctx, `SELECT readiness,max(seen_at_ms,joined_at_ms),readiness_at_ms,readiness_revision FROM social_group_members WHERE id=?`, req.MemberID).Scan(&ready, &seenAt, &readyAt, &readyRevision); e != nil {
 			return e
 		}
-		if ready != "ready" || s.ms()-seenAt > HostGraceSeconds*1000 {
+		if ready != "ready" || s.ms()-seenAt > HostGraceSeconds*1000 || s.ms()-readyAt > ReadinessStaleSeconds*1000 || g.itemID != "" && readyRevision != g.playbackRevision {
 			return fault("participant_incompatible", 409, "That member is not ready to host.")
 		}
 		if state != "joined" {
@@ -509,6 +507,7 @@ func (s *Store) TransferHost(ctx context.Context, p identity.Principal, device, 
 			return e
 		}
 		g.playbackRevision++
+		g.governanceRevision++
 		g.hostMemberID = req.MemberID
 		g.hostSeenMS = s.ms()
 		g.reconnect++

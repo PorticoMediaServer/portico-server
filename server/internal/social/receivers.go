@@ -16,7 +16,7 @@ import (
 // A Portico receiver is a first-party player — an Android TV, Fire TV or tvOS
 // app — that registers itself so a phone can hand playback to it.
 //
-// Registration publishes a stable receiver id and a public key fingerprint. The
+// Registration publishes a stable receiver id and a rotation fingerprint. The
 // fingerprint is the fence: rotating the receiver key immediately revokes every
 // grant bound to the old fingerprint, because a grant names the fingerprint it
 // was issued against and a mismatched grant fails closed.
@@ -34,11 +34,11 @@ type ReceiverRequest struct {
 	ProtocolVersion   string   `json:"protocolVersion"`
 	DeviceID          string   `json:"-"`
 	DisplayName       string   `json:"displayName"`
-	Platform          string   `json:"platform"`
+	Platform          string   `json:"platform,omitempty"`
 	KeyFingerprint    string   `json:"keyFingerprint"`
-	PublicKey         string   `json:"publicKey"`
-	SupportedCommands []string `json:"supportedCommands"`
-	GrantPolicy       string   `json:"grantPolicy"`
+	PublicKey         string   `json:"publicKey,omitempty"`
+	SupportedCommands []string `json:"supportedCommands,omitempty"`
+	GrantPolicy       string   `json:"grantPolicy,omitempty"`
 }
 
 type Receiver struct {
@@ -72,9 +72,9 @@ type ReceiverListResponse struct {
 type GrantRequest struct {
 	ProtocolVersion       string   `json:"protocolVersion"`
 	ControllerDeviceID    string   `json:"-"`
-	ControllerDisplayName string   `json:"controllerDisplayName"`
-	RequestedCommands     []string `json:"requestedCommands"`
-	KeyFingerprint        string   `json:"keyFingerprint"`
+	ControllerDisplayName string   `json:"controllerDisplayName,omitempty"`
+	RequestedCommands     []string `json:"requestedCommands,omitempty"`
+	KeyFingerprint        string   `json:"keyFingerprint,omitempty"`
 }
 
 type GrantDecision struct {
@@ -182,19 +182,19 @@ func (s *Store) RegisterReceiver(ctx context.Context, p identity.Principal, req 
 	}
 	tx := gated.Tx()
 	defer gated.Rollback()
+	var count int
+	if e = tx.QueryRowContext(ctx, `SELECT count(*) FROM social_receivers WHERE authority=? AND account_id=? AND profile_id=? AND state='active' AND device_id<>?`, p.Authority, p.AccountID, p.ProfileID, req.DeviceID).Scan(&count); e != nil {
+		return out, e
+	}
+	if count >= 16 {
+		return out, fault("capacity_reached", 429, "You already have several receiving devices.")
+	}
 	now := s.ms()
 	var id, existing string
 	var revision int64
 	e = tx.QueryRowContext(ctx, `SELECT id,key_fingerprint,authorization_revision FROM social_receivers WHERE authority=? AND account_id=? AND profile_id=? AND device_id=?`, p.Authority, p.AccountID, p.ProfileID, req.DeviceID).Scan(&id, &existing, &revision)
 	switch {
 	case errors.Is(e, sql.ErrNoRows):
-		var count int
-		if e = tx.QueryRowContext(ctx, `SELECT count(*) FROM social_receivers WHERE authority=? AND account_id=? AND profile_id=? AND state='active'`, p.Authority, p.AccountID, p.ProfileID).Scan(&count); e != nil {
-			return out, e
-		}
-		if count >= 16 {
-			return out, fault("capacity_reached", 429, "You already have several receiving devices.")
-		}
 		if e = s.limit(ctx, tx, "receiver-create:"+viewerKey(p.Viewer), 30, time.Hour); e != nil {
 			return out, e
 		}
@@ -322,7 +322,7 @@ func (s *Store) ReceiverHeartbeat(ctx context.Context, p identity.Principal, id,
 		return out, e
 	}
 	if p.DeviceID == "" || p.DeviceID != r.DeviceID {
-		return out, identity.ErrUnauthorized
+		return out, fault("receiver_required", 403, "Only the receiving device may do that.")
 	}
 	if !fingerprintPattern.MatchString(fingerprint) || !sameSecret(fingerprint, r.KeyFingerprint) {
 		return out, &Fault{Code: "receiver_key_mismatch", Status: 403, Message: "That receiver key does not match the registration."}
@@ -518,7 +518,7 @@ func (s *Store) DecideGrant(ctx context.Context, p identity.Principal, receiverI
 		return out, e
 	}
 	if p.DeviceID == "" || p.DeviceID != receiver.DeviceID {
-		return out, identity.ErrUnauthorized
+		return out, fault("receiver_required", 403, "Only the receiving device may do that.")
 	}
 	grant, e := s.readGrant(ctx, tx, p, grantID)
 	if e != nil {

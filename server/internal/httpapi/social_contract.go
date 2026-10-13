@@ -19,7 +19,7 @@ func socialContract[Req, Resp any](r *apikit.Registry, pattern string, h http.Ha
 	if parts[0] == "GET" {
 		lane = apikit.Browsing
 	}
-	m := apikit.Metadata{ID: "social_" + strings.NewReplacer("/", "_", "{", "", "}", "", "-", "_").Replace(strings.ToLower(parts[0])+parts[1]), Method: parts[0], Path: parts[1], Summary: "Manage shared playback for the signed-in profile", Access: apikit.Device, Lane: lane, Cost: apikit.PageSized, BodyLimit: 256 << 10, Status: status, Errors: socialErrorCodes()}
+	m := apikit.Metadata{ID: "social_" + strings.NewReplacer("/", "_", "{", "", "}", "", "-", "_").Replace(strings.ToLower(parts[0])+parts[1]), Method: parts[0], Path: parts[1], Summary: "Manage shared playback for the signed-in profile", Access: apikit.ViewerLibrary, Lane: lane, Cost: apikit.PageSized, BodyLimit: 256 << 10, Status: status, Errors: socialErrorCodes()}
 	if reflect.TypeFor[Req]() == reflect.TypeFor[noBody]() {
 		m.BodyLimit = 0
 	}
@@ -138,7 +138,7 @@ func registerSocial(r *apikit.Registry, d Dependencies) {
 		case "POST /v1/handoffs/{id}/commit":
 			socialContract[social.HandoffCommit, social.HandoffResponse](r, pattern, h, 200)
 		case "POST /v1/cast/bootstrap":
-			socialContract[social.CastBootstrapRequest, social.CastBootstrapResponse](r, pattern, h, 200)
+			socialContract[social.CastBootstrapRequest, social.CastBootstrapResponse](r, pattern, h, 201)
 		case "GET /v1/cast/bootstrap/{id}":
 			socialContract[noBody, social.CastBootstrapResponse](r, pattern, h, 200)
 		case "POST /v1/cast/redeem":

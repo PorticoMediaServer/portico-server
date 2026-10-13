@@ -906,7 +906,7 @@ func (d Dependencies) castRoutes(handle socialHandle, viewer socialViewer, store
 		if !ok {
 			return
 		}
-		if e := store.RevokeCastDevice(r.Context(), p, r.PathValue("id")); e != nil {
+		if e := store.RevokeCastDevice(r.Context(), p, r.PathValue("id"), r.Header.Get("If-Match")); e != nil {
 			socialFailure(w, e)
 			return
 		}

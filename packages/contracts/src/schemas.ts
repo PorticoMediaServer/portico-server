@@ -13386,9 +13386,7 @@ export const schemas = {
       }
     },
     "required": [
-      "protocolVersion",
-      "displayName",
-      "capabilities"
+      "protocolVersion"
     ],
     "type": "object"
   },
@@ -13592,8 +13590,7 @@ export const schemas = {
     "required": [
       "protocolVersion",
       "code",
-      "deviceId",
-      "displayName"
+      "deviceId"
     ],
     "type": "object"
   },
@@ -15844,9 +15841,7 @@ export const schemas = {
     "required": [
       "protocolVersion",
       "readiness",
-      "playbackRevision",
-      "ended",
-      "positionUs"
+      "playbackRevision"
     ],
     "type": "object"
   },
@@ -16321,20 +16316,16 @@ export const schemas = {
         "type": "string"
       },
       "repeatMode": {
-        "nullable": true,
         "type": "string"
       },
       "shuffleEnabled": {
-        "nullable": true,
         "type": "boolean"
       }
     },
     "required": [
       "protocolVersion",
       "idempotencyKey",
-      "expectedRevision",
-      "shuffleEnabled",
-      "repeatMode"
+      "expectedRevision"
     ],
     "type": "object"
   },
@@ -16823,11 +16814,9 @@ export const schemas = {
       "queuePosition": {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
-        "nullable": true,
         "type": "integer"
       },
       "rate": {
-        "nullable": true,
         "properties": {
           "denominator": {
             "type": "string"
@@ -16847,12 +16836,7 @@ export const schemas = {
       "protocolVersion",
       "idempotencyKey",
       "expectedRevision",
-      "command",
-      "positionUs",
-      "queuePosition",
-      "entryId",
-      "rate",
-      "allowUnavailable"
+      "command"
     ],
     "type": "object"
   },
@@ -17012,8 +16996,7 @@ export const schemas = {
     },
     "required": [
       "protocolVersion",
-      "code",
-      "displayName"
+      "code"
     ],
     "type": "object"
   },
@@ -17493,9 +17476,7 @@ export const schemas = {
     },
     "required": [
       "protocolVersion",
-      "name",
-      "displayName",
-      "hostAuthority"
+      "name"
     ],
     "type": "object"
   },
@@ -18091,8 +18072,7 @@ export const schemas = {
       "protocolVersion",
       "readiness",
       "receiverPlaybackId",
-      "positionUs",
-      "expectedRevision"
+      "positionUs"
     ],
     "type": "object"
   },
@@ -18205,9 +18185,7 @@ export const schemas = {
       }
     },
     "required": [
-      "protocolVersion",
-      "expectedRevision",
-      "reason"
+      "protocolVersion"
     ],
     "type": "object"
   },
@@ -18336,9 +18314,7 @@ export const schemas = {
       "requestId",
       "receiverId",
       "grantId",
-      "sourcePlaybackId",
-      "startPositionUs",
-      "expectedPlaybackRevision"
+      "sourcePlaybackId"
     ],
     "type": "object"
   },
@@ -18543,10 +18519,7 @@ export const schemas = {
       }
     },
     "required": [
-      "protocolVersion",
-      "controllerDisplayName",
-      "requestedCommands",
-      "keyFingerprint"
+      "protocolVersion"
     ],
     "type": "object"
   },
@@ -18744,11 +18717,7 @@ export const schemas = {
     "required": [
       "protocolVersion",
       "displayName",
-      "platform",
-      "keyFingerprint",
-      "publicKey",
-      "supportedCommands",
-      "grantPolicy"
+      "keyFingerprint"
     ],
     "type": "object"
   },

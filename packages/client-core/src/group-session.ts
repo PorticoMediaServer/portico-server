@@ -168,7 +168,7 @@ export class GroupSessionService{
    alive();
    await readEventStream(response,event=>{
     if(this.room!==room)return;alive();attempt=0;
-    if(event.id&&(!room.lastEventId||BigInt(event.id)>BigInt(room.lastEventId)))room.lastEventId=event.id;
+    if(event.id&&/^(0|[1-9][0-9]{0,18})$/.test(event.id)&&(!room.lastEventId||BigInt(event.id)>BigInt(room.lastEventId)))room.lastEventId=event.id;
     if(this.state.phase==='reconnecting'||this.state.phase==='joining')this.publish({phase:'live',error:undefined});
     this.receive(room,event.event,event.data);
    },turn.signal);
@@ -191,8 +191,8 @@ export class GroupSessionService{
    // The clock is applied the moment it arrives; everything else in the room is re-read, because
    // members and the queue are projected per viewer and cannot ride in a shared event.
    if(kind==='group.readiness'&&this.state.group){
- const v=body as {memberId?:string;readiness?:GroupReadiness;positionUs?:string;reportedAt?:string;aggregate?:Group['readiness']};
- if(v.memberId&&v.readiness&&v.positionUs&&v.aggregate)this.publish({group:Object.freeze({...this.state.group,readiness:v.aggregate,members:this.state.group.members.map(m=>m.id===v.memberId?Object.freeze({...m,readiness:v.readiness!,positionUs:m.private?'0':v.positionUs!,reportedAt:m.private?null:v.reportedAt??m.reportedAt,presence:'connected' as const}):m)})});
+ const v=body as {memberId?:string;readiness?:GroupReadiness;positionUs?:string;reportedAt?:string|null;private?:boolean;displayName?:string;aggregate?:Group['readiness']};
+ if(v.memberId&&v.readiness&&v.positionUs&&v.aggregate)this.publish({group:Object.freeze({...this.state.group,readiness:v.aggregate,members:this.state.group.members.map(m=>m.id===v.memberId?Object.freeze({...m,readiness:v.readiness!,private:v.private??m.private,displayName:v.displayName??m.displayName,positionUs:(v.private??m.private)?'0':v.positionUs!,reportedAt:(v.private??m.private)?null:v.reportedAt??m.reportedAt,presence:'connected' as const}):m)})});
  return;
  }
  if(kind==='group.transport'&&this.state.group){const timeline=timelineOf(body,this.state.group.timeline);if(timeline){const v=body as {groupState?:Group['state'];revision?:string;playbackRevision?:string};
@@ -382,7 +382,7 @@ export class GroupFollower{
   const length=local.durationSeconds;
  if(length!==undefined&&Number.isFinite(length)&&length>0&&local.positionSeconds>=length-0.25&&!local.playing&&target>=length-0.25){
  this.player.setRate(1);this.report('ready',length);
- if(group.permissions.isHost&&this.endReported!==group.playbackRevision){this.endReported=group.playbackRevision;void this.service.readiness('ready',String(Math.round(length*1e6)),true);}
+ if(group.permissions.isHost&&timeline.state==='playing'&&this.endReported!==group.playbackRevision){this.endReported=group.playbackRevision;void this.service.readiness('ready',String(Math.round(length*1e6)),true);}
  return;
  }
  if(!local.ready){this.report('buffering',local.positionSeconds);return;}

@@ -140,6 +140,7 @@ func (s *Store) EventsSince(ctx context.Context, p identity.Principal, group str
 		return nil, 0, e
 	}
 	rows.Close()
+	visibility := map[string]bool{}
 	for i := range out {
 		if out[i].Kind == EventTransport {
 			var payload map[string]any
@@ -147,9 +148,13 @@ func (s *Store) EventsSince(ctx context.Context, p identity.Principal, group str
 				return nil, 0, e
 			}
 			if item, ok := payload["itemId"].(string); ok {
-				visible, e := s.visible(ctx, tx, p.Viewer, item)
-				if e != nil {
-					return nil, 0, e
+				visible, known := visibility[item]
+				if !known {
+					visible, e = s.visible(ctx, tx, p.Viewer, item)
+					if e != nil {
+						return nil, 0, e
+					}
+					visibility[item] = visible
 				}
 				if !visible {
 					payload["itemId"] = ""

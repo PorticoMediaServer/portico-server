@@ -15,7 +15,7 @@ async function harness(fixture={}){
   const path=url.replace(/^https?:\/\/[^/]+/,'');
   if(path.startsWith('/v2/'))throw new Error('removed v2 route '+path);
   if(path.endsWith('/reconnect')&&fixture.revoked)return reply({error:{code:'cast_device_revoked',message:'That receiver pairing was revoked.',retryable:false}},403);
-  if(path.endsWith('/redeem')||path.endsWith('/reconnect'))return reply({device:{id:'cdv_'+(body?.code||'renewed')},session:{accessToken:'bearer-'+(body?.code||'renewed')},deviceToken:'device-'+(body?.code||'renewed'),scope:{accountId:String(body?.code||'').startsWith('OTHER')?'other':'account',profileId:'profile',authority:'hosted'}});
+  if(path.endsWith('/redeem')||path.endsWith('/reconnect'))return reply({device:{id:'cdv_'+(body?.code||'renewed'),generation:'1'},session:{accessToken:'bearer-'+(body?.code||'renewed')},deviceToken:'device-'+(body?.code||'renewed'),scope:{accountId:String(body?.code||'').startsWith('OTHER')?'other':'account',profileId:'profile',authority:'hosted'}});
   if(path==='/v1/playback/client-profile')return reply({version:1});
   if(path==='/v1/playback/sessions'&&options.method==='POST'){
    if(fixture.ambiguous&&!failed){failed=true;throw new Error('lost response')}
@@ -227,6 +227,6 @@ test('refusing a takeover revokes the unused pairing and keeps the existing film
  const h=await harness();h.senders.push('phone','guest');
  await h.message('phone',{type:'pair',code:'ABCD',origin:''});await h.message('phone',{type:'load',itemId:'movie'});
  await h.message('guest',{type:'pair',code:'OTHER1',origin:''});await h.message('phone',{type:'takeover',allow:false});
- assert(h.calls.some(x=>x.url.endsWith('/v1/cast/devices/cdv_OTHER1')&&x.method==='DELETE'&&x.headers.Authorization==='Bearer bearer-OTHER1'));
+ assert(h.calls.some(x=>x.url.endsWith('/v1/cast/devices/cdv_OTHER1')&&x.method==='DELETE'&&x.headers.Authorization==='Bearer bearer-OTHER1'&&x.headers['If-Match']==='1'));
  assert.equal(h.receiver.state().playbackId,'ps_1');assert.equal(h.manager.getPlayerState(),'PLAYING');
 });

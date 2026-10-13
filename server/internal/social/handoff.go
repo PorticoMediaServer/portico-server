@@ -23,8 +23,8 @@ import (
 //     observable outcome from `waiting` to `pending` and nothing else. Only the
 //     commit step ends the source session (Playback.EndSessionTx).
 //  2. Commit is fenced. It carries the handoff revision the controller last
-//     read and the source session's own revision; either being stale
-//     refuses the commit rather than retiring a source that has since moved.
+//     read, and rechecks source/receiver session identity and liveness.
+//     Ordinary progress reports do not invalidate the proposal.
 //  3. Failure rolls back to the retained source. A definitive failure, a
 //     rollback, an expiry, a revoked grant or a rotated receiver key all discard
 //     the prepared target and leave the source exactly as it was.
@@ -40,8 +40,8 @@ type HandoffRequest struct {
 	ReceiverID       string `json:"receiverId"`
 	GrantID          string `json:"grantId"`
 	SourcePlaybackID string `json:"sourcePlaybackId"`
-	StartPositionUS  string `json:"startPositionUs"`
-	ExpectedRevision string `json:"expectedPlaybackRevision"`
+	StartPositionUS  string `json:"startPositionUs,omitempty"`
+	ExpectedRevision string `json:"expectedPlaybackRevision,omitempty"`
 }
 
 type HandoffReadiness struct {
@@ -49,7 +49,7 @@ type HandoffReadiness struct {
 	Readiness          string `json:"readiness"`
 	ReceiverPlaybackID string `json:"receiverPlaybackId"`
 	PositionUS         string `json:"positionUs"`
-	ExpectedRevision   string `json:"expectedRevision"`
+	ExpectedRevision   string `json:"expectedRevision,omitempty"`
 }
 
 type HandoffCommit struct {
@@ -59,8 +59,8 @@ type HandoffCommit struct {
 
 type HandoffRollback struct {
 	ProtocolVersion  string `json:"protocolVersion"`
-	ExpectedRevision string `json:"expectedRevision"`
-	Reason           string `json:"reason"`
+	ExpectedRevision string `json:"expectedRevision,omitempty"`
+	Reason           string `json:"reason,omitempty"`
 }
 
 type Handoff struct {
@@ -333,7 +333,7 @@ func (s *Store) ReportHandoffReadiness(ctx context.Context, p identity.Principal
 		return out, e
 	}
 	if p.DeviceID == "" || p.DeviceID != receiver.DeviceID {
-		return out, identity.ErrUnauthorized
+		return out, fault("receiver_required", 403, "Only the receiving device may do that.")
 	}
 	if e = s.checkReceiverPlayback(ctx, tx, p, h, req.ReceiverPlaybackID); e != nil {
 		return out, e
@@ -400,6 +400,9 @@ func (s *Store) CommitHandoff(ctx context.Context, p identity.Principal, id stri
 	}
 	if e != nil {
 		return out, e
+	}
+	if source.ItemID != h.itemID {
+		return out, s.failHandoff(ctx, gated4, h, "handoff-source-changed")
 	}
 	if !source.Live {
 		return out, s.failHandoff(ctx, gated4, h, "handoff-source-terminal")

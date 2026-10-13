@@ -21,10 +21,14 @@ func (s *Store) projectActivity(ctx context.Context, tx *sql.Tx, group string, p
 		return payload, nil
 	}
 	var public bool
-	if e := tx.QueryRowContext(ctx, `SELECT `+watchTogetherVisible("m")+` FROM social_group_members m WHERE group_id=? AND id=?`, group, member).Scan(&public); e != nil {
+	var name string
+	if e := tx.QueryRowContext(ctx, `SELECT `+watchTogetherVisible("m")+`,display_name FROM social_group_members m WHERE group_id=? AND id=?`, group, member).Scan(&public, &name); e != nil {
 		return nil, e
 	}
+	body["private"] = !public
+	body["displayName"] = name
 	if !public {
+		body["displayName"] = "Viewer"
 		body["positionUs"] = "0"
 		body["reportedAt"] = nil
 	}

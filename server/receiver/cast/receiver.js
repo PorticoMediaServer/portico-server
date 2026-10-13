@@ -21,11 +21,11 @@
  * A different sender that pairs while something is playing doesn't interrupt
  * it: the TV shows who is asking, the controller is asked, and the TV switches
  * only if the controller allows it, stops, or has left (then after 10 seconds).
- * The same Portico account on the same server switches straight away. The old
+ * The same profile on the same server switches straight away. The old
  * pairing is kept until the new one is adopted, and nothing is sent to other
  * senders but "busy".
  *
- * Sender protocol additions (all optional, backwards compatible):
+ * Sender protocol:
  *   pair  {displayName}                         → paired | pair-pending | pair-failed {code: 'tv_busy' | …}
  *   load  {title, subtitle, seriesTitle, season, episode, kind, artworkPath}
  *   controller receives takeover-requested {requester} and replies takeover {allow}
@@ -515,7 +515,7 @@
     visible('takeover', true);
   }
   function discardPair(p) {
-    if(p&&p.result&&p.result.device&&p.result.device.id&&p.result.session)request('/v1/cast/devices/'+encodeURIComponent(p.result.device.id),{method:'DELETE',origin:p.origin,bearer:p.result.session.accessToken}).catch(function(){});
+    if(p&&p.result&&p.result.device&&p.result.device.id&&p.result.session)request('/v1/cast/devices/'+encodeURIComponent(p.result.device.id),{method:'DELETE',origin:p.origin,bearer:p.result.session.accessToken,headers:{'If-Match':p.result.device.generation}}).catch(function(){});
   }
   function denyPending(code) {
     var p = pendingPair; if (!p) return;

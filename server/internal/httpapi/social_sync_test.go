@@ -157,7 +157,7 @@ func TestSocialHandoffRequiresTheReceivingDeviceAndRemainsControllable(t *testin
 	var grant social.GrantResponse
 	f.decode(f.as(f.token, "POST", "/v1/receivers/"+id+"/grants", social.GrantRequest{ProtocolVersion: social.Protocol, ControllerDisplayName: "Phone"}), 201, &grant)
 	self := f.as(f.token, "POST", "/v1/receivers/"+id+"/grants/"+grant.Grant.ID+"/decision", social.GrantDecision{ProtocolVersion: social.Protocol, Decision: "accept"})
-	if self.Code != 401 {
+	if self.Code != 403 {
 		t.Fatal("phone approved itself", self.Code, self.Body.String())
 	}
 	f.decode(f.as(tv.AccessToken, "POST", "/v1/receivers/"+id+"/grants/"+grant.Grant.ID+"/decision", social.GrantDecision{ProtocolVersion: social.Protocol, Decision: "accept"}), 200, &grant)
@@ -172,7 +172,7 @@ func TestSocialHandoffRequiresTheReceivingDeviceAndRemainsControllable(t *testin
 	destination := f.play(tv.AccessToken)
 	request.ReceiverPlaybackID = destination
 	wrong = f.as(f.token, "POST", "/v1/handoffs/"+prepared.Handoff.ID+"/readiness", request)
-	if wrong.Code != 401 {
+	if wrong.Code != 403 {
 		t.Fatal("phone reported TV readiness", wrong.Code, wrong.Body.String())
 	}
 	var ready social.HandoffResponse
@@ -317,5 +317,20 @@ func TestSocialPresenceAndHostRecoveryRespectMemberLeases(t *testing.T) {
 		if m.ID == gone.Group.MemberID {
 			t.Fatal("silent member stayed joined", m)
 		}
+	}
+}
+
+func TestSocialBoundsGroupCreationAndFiltersNames(t *testing.T) {
+	f := socialHTTP(t)
+	bad := f.as(f.token, "POST", "/v1/groups", social.CreateGroupRequest{ProtocolVersion: social.Protocol, Name: "Film\u202e", DisplayName: "Host"})
+	if bad.Code != 400 {
+		t.Fatal("text-direction controls were accepted", bad.Code, bad.Body.String())
+	}
+	for i := 0; i < 4; i++ {
+		f.group("host-only")
+	}
+	capped := f.as(f.token, "POST", "/v1/groups", social.CreateGroupRequest{ProtocolVersion: social.Protocol, Name: "Film night", DisplayName: "Host"})
+	if capped.Code != 429 || errorCode(t, capped) != "capacity_reached" {
+		t.Fatal("live group cap did not apply", capped.Code, capped.Body.String())
 	}
 }

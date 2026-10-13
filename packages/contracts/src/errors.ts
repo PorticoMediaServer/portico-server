@@ -415,6 +415,12 @@ export const errors = [
     "retry": "never"
   },
   {
+    "code": "receiver_required",
+    "status": 403,
+    "message": "Only the receiving device may do that.",
+    "retry": "never"
+  },
+  {
     "code": "request_in_progress",
     "status": 409,
     "message": "This request is still being processed.",
