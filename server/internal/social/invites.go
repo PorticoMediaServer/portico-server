@@ -101,7 +101,7 @@ func (s *Store) RevokeInvite(ctx context.Context, p identity.Principal, group, i
 	}
 	tx := gated2.Tx()
 	defer gated2.Rollback()
-	m, e := loadMember(ctx, tx, group, p.Viewer)
+	m, e := loadJoinedMember(ctx, tx, group, p.Viewer)
 	if e != nil {
 		return e
 	}

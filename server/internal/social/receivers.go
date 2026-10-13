@@ -7,7 +7,7 @@ import (
 	"errors"
 	"regexp"
 	"sort"
- "time"
+	"time"
 
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/identity"
@@ -32,7 +32,7 @@ var commandVocabulary = map[string]bool{"load": true, "play": true, "pause": tru
 
 type ReceiverRequest struct {
 	ProtocolVersion   string   `json:"protocolVersion"`
-	DeviceID          string   `json:"deviceId"`
+	DeviceID          string   `json:"-"`
 	DisplayName       string   `json:"displayName"`
 	Platform          string   `json:"platform"`
 	KeyFingerprint    string   `json:"keyFingerprint"`
@@ -71,7 +71,7 @@ type ReceiverListResponse struct {
 
 type GrantRequest struct {
 	ProtocolVersion       string   `json:"protocolVersion"`
-	ControllerDeviceID    string   `json:"controllerDeviceId"`
+	ControllerDeviceID    string   `json:"-"`
 	ControllerDisplayName string   `json:"controllerDisplayName"`
 	RequestedCommands     []string `json:"requestedCommands"`
 	KeyFingerprint        string   `json:"keyFingerprint"`
@@ -188,10 +188,16 @@ func (s *Store) RegisterReceiver(ctx context.Context, p identity.Principal, req 
 	e = tx.QueryRowContext(ctx, `SELECT id,key_fingerprint,authorization_revision FROM social_receivers WHERE authority=? AND account_id=? AND profile_id=? AND device_id=?`, p.Authority, p.AccountID, p.ProfileID, req.DeviceID).Scan(&id, &existing, &revision)
 	switch {
 	case errors.Is(e, sql.ErrNoRows):
- var count int
- if e=tx.QueryRowContext(ctx,`SELECT count(*) FROM social_receivers WHERE authority=? AND account_id=? AND profile_id=? AND state='active'`,p.Authority,p.AccountID,p.ProfileID).Scan(&count);e!=nil{return out,e}
- if count>=16{return out,fault("capacity_reached",429,"You already have several receiving devices.")}
- if e=s.limit(ctx,tx,"receiver-create:"+viewerKey(p.Viewer),30,time.Hour);e!=nil{return out,e}
+		var count int
+		if e = tx.QueryRowContext(ctx, `SELECT count(*) FROM social_receivers WHERE authority=? AND account_id=? AND profile_id=? AND state='active'`, p.Authority, p.AccountID, p.ProfileID).Scan(&count); e != nil {
+			return out, e
+		}
+		if count >= 16 {
+			return out, fault("capacity_reached", 429, "You already have several receiving devices.")
+		}
+		if e = s.limit(ctx, tx, "receiver-create:"+viewerKey(p.Viewer), 30, time.Hour); e != nil {
+			return out, e
+		}
 		id, revision = token("rcv_"), 1
 		if _, e = tx.ExecContext(ctx, `INSERT INTO social_receivers(id,authority,account_id,profile_id,kind,device_id,display_name,platform,key_fingerprint,public_key,supported_commands,grant_policy,authorization_revision,state,created_at_ms,last_seen_ms) VALUES(?,?,?,?,'portico',?,?,?,?,?,?,?,1,'active',?,?)`,
 			id, p.Authority, p.AccountID, p.ProfileID, req.DeviceID, req.DisplayName, req.Platform, req.KeyFingerprint, req.PublicKey, string(raw), req.GrantPolicy, now, now); e != nil {
@@ -315,7 +321,10 @@ func (s *Store) ReceiverHeartbeat(ctx context.Context, p identity.Principal, id,
 	if e != nil {
 		return out, e
 	}
-	if fingerprint != "" && !sameSecret(fingerprint, r.KeyFingerprint) {
+	if p.DeviceID == "" || p.DeviceID != r.DeviceID {
+		return out, identity.ErrUnauthorized
+	}
+	if !fingerprintPattern.MatchString(fingerprint) || !sameSecret(fingerprint, r.KeyFingerprint) {
 		return out, &Fault{Code: "receiver_key_mismatch", Status: 403, Message: "That receiver key does not match the registration."}
 	}
 	if _, e = tx.ExecContext(ctx, `UPDATE social_receivers SET last_seen_ms=? WHERE id=?`, s.ms(), id); e != nil {
@@ -461,9 +470,10 @@ func (s *Store) ListGrants(ctx context.Context, p identity.Principal, receiverID
 	}
 	defer done()
 
-	receiver,e:=s.readReceiver(ctx,tx,p,receiverID)
- if e!=nil{return out,e}
- if p.DeviceID=="" || p.DeviceID!=receiver.DeviceID{return out,identity.ErrUnauthorized}
+	_, e = s.readReceiver(ctx, tx, p, receiverID)
+	if e != nil {
+		return out, e
+	}
 	rows, e := tx.QueryContext(ctx, `SELECT id FROM social_receiver_grants WHERE receiver_id=? AND authority=? AND account_id=? AND profile_id=? ORDER BY created_at_ms DESC,id`, receiverID, p.Authority, p.AccountID, p.ProfileID)
 	if e != nil {
 		return out, e
@@ -503,8 +513,12 @@ func (s *Store) DecideGrant(ctx context.Context, p identity.Principal, receiverI
 	}
 	tx := gated7.Tx()
 	defer gated7.Rollback()
-	if _, e = s.readReceiver(ctx, tx, p, receiverID); e != nil {
+	receiver, e := s.readReceiver(ctx, tx, p, receiverID)
+	if e != nil {
 		return out, e
+	}
+	if p.DeviceID == "" || p.DeviceID != receiver.DeviceID {
+		return out, identity.ErrUnauthorized
 	}
 	grant, e := s.readGrant(ctx, tx, p, grantID)
 	if e != nil {

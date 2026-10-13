@@ -545,6 +545,9 @@ func (s *Store) RevokeCastDevice(ctx context.Context, p identity.Principal, id s
 	if _, e = tx.ExecContext(ctx, `UPDATE social_cast_devices SET state='revoked',previous_token_digest='',previous_valid_until_ms=0,session_family_id='' WHERE id=?`, id); e != nil {
 		return e
 	}
+	if _, e = tx.ExecContext(ctx, `UPDATE social_receivers SET state='retired' WHERE id=(SELECT receiver_id FROM social_cast_devices WHERE id=?)`, id); e != nil {
+		return e
+	}
 	if family != "" && s.Identity != nil {
 		if e = s.Identity.RetireFamilyTx(ctx, tx, p.Authority, p.AccountID, p.ProfileID, family); e != nil {
 			return e

@@ -22,7 +22,7 @@ export type CastTrack = Readonly<{id: number; language: string; name: string}>;
 export type CastCommand =
   | {type: 'pair'; code: string; origin: string; displayName: string}
   | ({type: 'load'; itemId: string; startSeconds: number} & Record<string, string | number>)
-  | {type: 'play'} | {type: 'pause'} | {type: 'stop'} | {type: 'status'}
+  | {type: 'play'} | {type: 'pause'} | {type: 'stop'} | {type: 'status';controlToken?:string}
   | {type: 'seek'; positionSeconds: number}
   | {type: 'audio'; trackId: number}
   | {type: 'subtitles'; trackIds: number[]}
@@ -30,7 +30,7 @@ export type CastCommand =
 
 /** Receiver → sender, validated. Unknown or malformed messages are dropped. */
 export type CastEvent =
-  | {type: 'paired'}
+  | {type: 'paired';controlToken?:string}
   | {type: 'pair-pending'}
   | {type: 'pair-failed'; code: string}
   | {type: 'busy'}
@@ -54,7 +54,8 @@ export function parseCastEvent(raw: unknown): CastEvent | undefined {
   if (!m || typeof m !== 'object') return undefined;
   const o = m as Record<string, unknown>;
   switch (o.type) {
-    case 'paired': case 'pair-pending': case 'busy': case 'pair-required': case 'load-failed': case 'replaced':
+    case 'paired': return {type:'paired',...(typeof o.controlToken==='string'&&/^[a-f0-9]{48}$/.test(o.controlToken)?{controlToken:o.controlToken}:{})};
+    case 'pair-pending': case 'busy': case 'pair-required': case 'load-failed': case 'replaced':
       return {type: o.type};
     case 'pair-failed': return {type: 'pair-failed', code: short(o.code, 64) || 'pair_failed'};
     case 'takeover-requested': return {type: 'takeover-requested', requester: short(o.requester, 64)};

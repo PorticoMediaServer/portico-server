@@ -95,8 +95,10 @@ func socialBody(w http.ResponseWriter, r *http.Request, out any) bool {
 // Social builds the social playback store with the composition's policy seams
 // wired in. It is exported so a test can drive the same store the routes use.
 func (d Dependencies) Social() *social.Store {
-	if d.social!=nil{return d.social}
- store := social.New(d.DB)
+	if d.social != nil {
+		return d.social
+	}
+	store := social.New(d.DB)
 	store.Identity = d.Identity
 	if v1 := d.playbackV1(); v1 != nil {
 		store.Playback = socialPlayback{d: d, v1: v1}
@@ -157,31 +159,13 @@ func (d Dependencies) socialRoutes(mux *http.ServeMux) {
 		defer cancel()
 		_ = store.ResumeSweeperIfLive(ctx)
 	})
-	handle := func(pattern string, handler http.HandlerFunc) {
-		if socialRegistered[pattern]{return}
- mux.HandleFunc(pattern, func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Cache-Control", "no-store")
-			handler(w, r)
-		})
-	}
-	// viewer resolves the caller, or answers 401 and reports false.
-	viewer := func(w http.ResponseWriter, r *http.Request) (identity.Principal, bool) {
-		p, e := d.principal(r)
-		if e != nil {
-			socialFailure(w, e)
-			return p, false
-		}
-		return p, true
-	}
-	d.groupRoutes(mux, handle, viewer, store)
-	d.receiverRoutes(mux, handle, viewer, store)
-	d.castRoutes(mux, handle, viewer, store)
+	d.serveCastBundle(mux)
 }
 
 type socialHandle func(string, http.HandlerFunc)
 type socialViewer func(http.ResponseWriter, *http.Request) (identity.Principal, bool)
 
-func (d Dependencies) groupRoutes(mux *http.ServeMux, handle socialHandle, viewer socialViewer, store *social.Store) {
+func (d Dependencies) groupRoutes(handle socialHandle, viewer socialViewer, store *social.Store) {
 	// device is the caller's authenticated device, which a host binds the group
 	// to; a token with no device binds nothing.
 	device := func(r *http.Request, p identity.Principal) string {
@@ -595,7 +579,7 @@ func (d Dependencies) groupEventStream(w http.ResponseWriter, r *http.Request, s
 	}
 }
 
-func (d Dependencies) receiverRoutes(mux *http.ServeMux, handle socialHandle, viewer socialViewer, store *social.Store) {
+func (d Dependencies) receiverRoutes(handle socialHandle, viewer socialViewer, store *social.Store) {
 	handle("POST /v1/receivers", func(w http.ResponseWriter, r *http.Request) {
 		p, ok := viewer(w, r)
 		if !ok {
@@ -605,9 +589,9 @@ func (d Dependencies) receiverRoutes(mux *http.ServeMux, handle socialHandle, vi
 		if !socialBody(w, r, &body) {
 			return
 		}
-		body.DeviceID,_=d.deviceOf(r.Context(),p)
- p.DeviceID=body.DeviceID
- out, e := store.RegisterReceiver(r.Context(), p, body)
+		body.DeviceID, _ = d.deviceOf(r.Context(), p)
+		p.DeviceID = body.DeviceID
+		out, e := store.RegisterReceiver(r.Context(), p, body)
 		if e != nil {
 			socialFailure(w, e)
 			return
@@ -638,6 +622,7 @@ func (d Dependencies) receiverRoutes(mux *http.ServeMux, handle socialHandle, vi
 		if !socialBody(w, r, &body) {
 			return
 		}
+		p.DeviceID, _ = d.deviceOf(r.Context(), p)
 		out, e := store.ReceiverHeartbeat(r.Context(), p, r.PathValue("id"), body.KeyFingerprint)
 		if e != nil {
 			socialFailure(w, e)
@@ -754,8 +739,8 @@ func (d Dependencies) receiverRoutes(mux *http.ServeMux, handle socialHandle, vi
 		if !socialBody(w, r, &body) {
 			return
 		}
-		body.ControllerDeviceID,_=d.deviceOf(r.Context(),p)
- out, e := store.RequestGrant(r.Context(), p, r.PathValue("id"), body)
+		body.ControllerDeviceID, _ = d.deviceOf(r.Context(), p)
+		out, e := store.RequestGrant(r.Context(), p, r.PathValue("id"), body)
 		if e != nil {
 			socialFailure(w, e)
 			return
@@ -771,8 +756,8 @@ func (d Dependencies) receiverRoutes(mux *http.ServeMux, handle socialHandle, vi
 		if !socialBody(w, r, &body) {
 			return
 		}
-		p.DeviceID,_=d.deviceOf(r.Context(),p)
- out, e := store.DecideGrant(r.Context(), p, r.PathValue("id"), r.PathValue("grantId"), body)
+		p.DeviceID, _ = d.deviceOf(r.Context(), p)
+		out, e := store.DecideGrant(r.Context(), p, r.PathValue("id"), r.PathValue("grantId"), body)
 		if e != nil {
 			socialFailure(w, e)
 			return
@@ -816,8 +801,8 @@ func (d Dependencies) receiverRoutes(mux *http.ServeMux, handle socialHandle, vi
 		if !socialBody(w, r, &body) {
 			return
 		}
-		p.DeviceID,_=d.deviceOf(r.Context(),p)
- out, e := store.ReportHandoffReadiness(r.Context(), p, r.PathValue("id"), body)
+		p.DeviceID, _ = d.deviceOf(r.Context(), p)
+		out, e := store.ReportHandoffReadiness(r.Context(), p, r.PathValue("id"), body)
 		if e != nil {
 			socialFailure(w, e)
 			return
@@ -858,7 +843,7 @@ func (d Dependencies) receiverRoutes(mux *http.ServeMux, handle socialHandle, vi
 	})
 }
 
-func (d Dependencies) castRoutes(mux *http.ServeMux, handle socialHandle, viewer socialViewer, store *social.Store) {
+func (d Dependencies) castRoutes(handle socialHandle, viewer socialViewer, store *social.Store) {
 	handle("POST /v1/cast/bootstrap", func(w http.ResponseWriter, r *http.Request) {
 		p, ok := viewer(w, r)
 		if !ok {
@@ -960,6 +945,9 @@ func (d Dependencies) castRoutes(mux *http.ServeMux, handle socialHandle, viewer
 	// The Cast receiver application is a static bundle compiled into the server
 	// binary, so every GOOS and the Docker image serve the identical bytes with
 	// no build step and no external host.
+}
+
+func (d Dependencies) serveCastBundle(mux *http.ServeMux) {
 	files := http.StripPrefix("/receiver/", http.FileServerFS(receiver.Files()))
 	mux.Handle("GET /receiver/cast/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// CAF loads its player from gstatic and injects player styles. Media and

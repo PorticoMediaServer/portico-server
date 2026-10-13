@@ -25,6 +25,66 @@ export const errors = [
     "retry": "never"
   },
   {
+    "code": "capacity_reached",
+    "status": 429,
+    "message": "You already have several groups open.",
+    "retry": "never"
+  },
+  {
+    "code": "cast_access_ended",
+    "status": 403,
+    "message": "This account can no longer play on this server. Pair again from a signed-in device.",
+    "retry": "never"
+  },
+  {
+    "code": "cast_code_consumed",
+    "status": 410,
+    "message": "That pairing code has already been used.",
+    "retry": "never"
+  },
+  {
+    "code": "cast_code_expired",
+    "status": 410,
+    "message": "That pairing code has expired.",
+    "retry": "never"
+  },
+  {
+    "code": "cast_code_not_found",
+    "status": 404,
+    "message": "That pairing code is not valid.",
+    "retry": "never"
+  },
+  {
+    "code": "cast_code_revoked",
+    "status": 410,
+    "message": "That pairing code was canceled.",
+    "retry": "never"
+  },
+  {
+    "code": "cast_device_expired",
+    "status": 410,
+    "message": "That receiver pairing has expired; pair again.",
+    "retry": "never"
+  },
+  {
+    "code": "cast_device_not_found",
+    "status": 404,
+    "message": "That receiver is not paired.",
+    "retry": "never"
+  },
+  {
+    "code": "cast_device_revoked",
+    "status": 403,
+    "message": "That receiver pairing was revoked.",
+    "retry": "never"
+  },
+  {
+    "code": "cast_unavailable",
+    "status": 503,
+    "message": "Cast pairing is not available.",
+    "retry": "never"
+  },
+  {
     "code": "channel_unavailable",
     "status": 503,
     "message": "This channel can't be played right now.",
@@ -55,6 +115,18 @@ export const errors = [
     "retry": "never"
   },
   {
+    "code": "device_required",
+    "status": 409,
+    "message": "Hosting a group needs a signed-in device.",
+    "retry": "never"
+  },
+  {
+    "code": "entry_not_found",
+    "status": 404,
+    "message": "No such queue entry.",
+    "retry": "never"
+  },
+  {
     "code": "event_stream_exists",
     "status": 409,
     "message": "An existing stream was retired; reconnect using your last event ID.",
@@ -64,6 +136,72 @@ export const errors = [
     "code": "feature_restricted",
     "status": 403,
     "message": "This feature is not permitted for this profile.",
+    "retry": "never"
+  },
+  {
+    "code": "grant_not_accepted",
+    "status": 403,
+    "message": "That receiver has not authorized this controller.",
+    "retry": "never"
+  },
+  {
+    "code": "grant_not_pending",
+    "status": 409,
+    "message": "That authorization is not awaiting a decision.",
+    "retry": "never"
+  },
+  {
+    "code": "group_ended",
+    "status": 409,
+    "message": "The group has ended.",
+    "retry": "never"
+  },
+  {
+    "code": "group_full",
+    "status": 409,
+    "message": "The group is full.",
+    "retry": "never"
+  },
+  {
+    "code": "handoff_expired",
+    "status": 410,
+    "message": "The prepared handoff expired and was rolled back.",
+    "retry": "never"
+  },
+  {
+    "code": "handoff_in_progress",
+    "status": 409,
+    "message": "That source already has a handoff in flight.",
+    "retry": "never"
+  },
+  {
+    "code": "handoff_not_ready",
+    "status": 409,
+    "message": "The receiver is not playing that title.",
+    "retry": "never"
+  },
+  {
+    "code": "handoff_source_conflict",
+    "status": 409,
+    "message": "The source is no longer playing.",
+    "retry": "never"
+  },
+  {
+    "code": "handoff_source_revision_conflict",
+    "status": 409,
+    "message": "The source session changed.",
+    "retry": "never"
+  },
+  {
+    "code": "handoff_state_conflict",
+    "status": 409,
+    "message": "The handoff is not open.",
+    "retry": "never"
+  },
+  {
+    "code": "host_required",
+    "status": 403,
+    "message": "Only the group host may do that.",
     "retry": "never"
   },
   {
@@ -109,6 +247,54 @@ export const errors = [
     "retry": "never"
   },
   {
+    "code": "invite_consumed",
+    "status": 410,
+    "message": "That invitation has already been used.",
+    "retry": "never"
+  },
+  {
+    "code": "invite_expired",
+    "status": 410,
+    "message": "That invitation has expired.",
+    "retry": "never"
+  },
+  {
+    "code": "invite_not_found",
+    "status": 404,
+    "message": "No such invitation.",
+    "retry": "never"
+  },
+  {
+    "code": "invite_revoked",
+    "status": 410,
+    "message": "That invitation was revoked.",
+    "retry": "never"
+  },
+  {
+    "code": "invite_wrong_recipient",
+    "status": 403,
+    "message": "That invitation was issued to someone else.",
+    "retry": "never"
+  },
+  {
+    "code": "media_no_longer_accessible",
+    "status": 403,
+    "message": "You cannot add media you cannot see.",
+    "retry": "never"
+  },
+  {
+    "code": "member_not_found",
+    "status": 404,
+    "message": "No such member.",
+    "retry": "never"
+  },
+  {
+    "code": "membership_revoked",
+    "status": 403,
+    "message": "You are not a member of this group.",
+    "retry": "never"
+  },
+  {
     "code": "metadata_unavailable",
     "status": 503,
     "message": "Metadata is temporarily unavailable.",
@@ -151,9 +337,21 @@ export const errors = [
     "retry": "never"
   },
   {
+    "code": "participant_incompatible",
+    "status": 409,
+    "message": "That member is not ready to host.",
+    "retry": "never"
+  },
+  {
     "code": "password_change_required",
     "status": 403,
     "message": "Change your password before continuing.",
+    "retry": "never"
+  },
+  {
+    "code": "playback_authority_unavailable",
+    "status": 503,
+    "message": "Playback authority is not available.",
     "retry": "never"
   },
   {
@@ -193,6 +391,12 @@ export const errors = [
     "retry": "never"
   },
   {
+    "code": "queue_full",
+    "status": 409,
+    "message": "The group queue is full.",
+    "retry": "never"
+  },
+  {
     "code": "queue_too_large",
     "status": 422,
     "message": "This queue is too long. Remove some of it or start a new one.",
@@ -203,6 +407,12 @@ export const errors = [
     "status": 429,
     "message": "Too many attempts. Try again later.",
     "retry": "same_request"
+  },
+  {
+    "code": "receiver_key_mismatch",
+    "status": 403,
+    "message": "That receiver key does not match the registration.",
+    "retry": "never"
   },
   {
     "code": "request_in_progress",
@@ -238,6 +448,12 @@ export const errors = [
     "code": "restore_source_invalid",
     "status": 400,
     "message": "This restore source can't be used. Pick one of the listed backups or a Portico database file on the server.",
+    "retry": "never"
+  },
+  {
+    "code": "revision_conflict",
+    "status": 409,
+    "message": "The group changed.",
     "retry": "never"
   },
   {
@@ -287,6 +503,12 @@ export const errors = [
     "status": 503,
     "message": "This connection cannot stream events.",
     "retry": "same_request"
+  },
+  {
+    "code": "target_unavailable",
+    "status": 409,
+    "message": "That receiver is retired.",
+    "retry": "never"
   },
   {
     "code": "transcode_not_allowed",

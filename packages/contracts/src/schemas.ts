@@ -11568,6 +11568,7302 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "SocialDeleteV1CastDevicesIdRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "SocialDeleteV1CastDevicesIdResponse": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "SocialDeleteV1GroupsIdInvitesInviteIdRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "SocialDeleteV1GroupsIdInvitesInviteIdResponse": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "SocialDeleteV1ReceiversIdRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "SocialDeleteV1ReceiversIdResponse": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "SocialGetV1CastBootstrapIdRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "SocialGetV1CastBootstrapIdResponse": {
+    "properties": {
+      "bootstrap": {
+        "properties": {
+          "applicationId": {
+            "type": "string"
+          },
+          "capabilities": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "code": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "receiverUrl": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "code",
+          "state",
+          "displayName",
+          "capabilities",
+          "expiresAt",
+          "applicationId",
+          "receiverUrl"
+        ],
+        "type": "object"
+      },
+      "protocolVersion": {
+        "type": "string"
+      },
+      "serverTime": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "protocolVersion",
+      "serverTime",
+      "bootstrap"
+    ],
+    "type": "object"
+  },
+  "SocialGetV1CastConfigurationRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "SocialGetV1CastConfigurationResponse": {
+    "properties": {
+      "applicationId": {
+        "type": "string"
+      },
+      "protocolVersion": {
+        "type": "string"
+      },
+      "receiverUrl": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "protocolVersion",
+      "applicationId",
+      "receiverUrl"
+    ],
+    "type": "object"
+  },
+  "SocialGetV1GroupsIdEventsRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "SocialGetV1GroupsIdEventsResponse": {
+    "properties": {
+      "events": {
+        "items": {
+          "properties": {
+            "data": {},
+            "event": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "event",
+            "data"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      }
+    },
+    "required": [
+      "events"
+    ],
+    "type": "object"
+  },
+  "SocialGetV1GroupsIdQueueRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "SocialGetV1GroupsIdQueueResponse": {
+    "properties": {
+      "groupId": {
+        "type": "string"
+      },
+      "protocolVersion": {
+        "type": "string"
+      },
+      "queue": {
+        "properties": {
+          "eligibility": {
+            "nullable": true,
+            "properties": {
+              "blockedEntries": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "currentEntryBlocked": {
+                "type": "boolean"
+              },
+              "members": {
+                "items": {
+                  "properties": {
+                    "blockedEntryIds": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "displayName": {
+                      "type": "string"
+                    },
+                    "memberId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "memberId",
+                    "displayName",
+                    "blockedEntryIds"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "blockedEntries",
+              "currentEntryBlocked",
+              "members"
+            ],
+            "type": "object"
+          },
+          "entries": {
+            "items": {
+              "properties": {
+                "addedBy": {
+                  "type": "string"
+                },
+                "entryId": {
+                  "type": "string"
+                },
+                "itemId": {
+                  "nullable": true,
+                  "type": "string"
+                },
+                "position": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "unavailable": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "entryId",
+                "position",
+                "itemId",
+                "unavailable",
+                "addedBy"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "position": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "revision": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "revision",
+          "position",
+          "entries",
+          "eligibility"
+        ],
+        "type": "object"
+      },
+      "serverTime": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "protocolVersion",
+      "serverTime",
+      "groupId",
+      "queue"
+    ],
+    "type": "object"
+  },
+  "SocialGetV1GroupsIdRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "SocialGetV1GroupsIdResponse": {
+    "properties": {
+      "group": {
+        "properties": {
+          "authority": {
+            "properties": {
+              "deviceId": {
+                "type": "string"
+              },
+              "playbackId": {
+                "nullable": true,
+                "type": "string"
+              },
+              "state": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "deviceId",
+              "playbackId",
+              "state"
+            ],
+            "type": "object"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "endedReason": {
+            "type": "string"
+          },
+          "eventOrdinal": {
+            "type": "string"
+          },
+          "governanceRevision": {
+            "type": "string"
+          },
+          "host": {
+            "properties": {
+              "endAt": {
+                "nullable": true,
+                "type": "string"
+              },
+              "lastSeenAt": {
+                "type": "string"
+              },
+              "pauseAt": {
+                "nullable": true,
+                "type": "string"
+              },
+              "presence": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "presence",
+              "lastSeenAt",
+              "pauseAt",
+              "endAt"
+            ],
+            "type": "object"
+          },
+          "hostAuthority": {
+            "type": "string"
+          },
+          "hostMemberId": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "lastCommand": {
+            "type": "string"
+          },
+          "lastCommandId": {
+            "type": "string"
+          },
+          "members": {
+            "items": {
+              "properties": {
+                "displayName": {
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "joinedAt": {
+                  "type": "string"
+                },
+                "positionUs": {
+                  "type": "string"
+                },
+                "presence": {
+                  "type": "string"
+                },
+                "private": {
+                  "type": "boolean"
+                },
+                "readiness": {
+                  "type": "string"
+                },
+                "reportedAt": {
+                  "nullable": true,
+                  "type": "string"
+                },
+                "role": {
+                  "type": "string"
+                },
+                "state": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "displayName",
+                "private",
+                "role",
+                "state",
+                "readiness",
+                "positionUs",
+                "reportedAt",
+                "presence",
+                "joinedAt"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "name": {
+            "type": "string"
+          },
+          "permissions": {
+            "properties": {
+              "canControl": {
+                "type": "boolean"
+              },
+              "canManageQueue": {
+                "type": "boolean"
+              },
+              "isHost": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "isHost",
+              "canControl",
+              "canManageQueue"
+            ],
+            "type": "object"
+          },
+          "playbackRevision": {
+            "type": "string"
+          },
+          "queue": {
+            "nullable": true,
+            "properties": {
+              "eligibility": {
+                "nullable": true,
+                "properties": {
+                  "blockedEntries": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "currentEntryBlocked": {
+                    "type": "boolean"
+                  },
+                  "members": {
+                    "items": {
+                      "properties": {
+                        "blockedEntryIds": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "displayName": {
+                          "type": "string"
+                        },
+                        "memberId": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "memberId",
+                        "displayName",
+                        "blockedEntryIds"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "blockedEntries",
+                  "currentEntryBlocked",
+                  "members"
+                ],
+                "type": "object"
+              },
+              "entries": {
+                "items": {
+                  "properties": {
+                    "addedBy": {
+                      "type": "string"
+                    },
+                    "entryId": {
+                      "type": "string"
+                    },
+                    "itemId": {
+                      "nullable": true,
+                      "type": "string"
+                    },
+                    "position": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "unavailable": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "entryId",
+                    "position",
+                    "itemId",
+                    "unavailable",
+                    "addedBy"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "position": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "revision": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "revision",
+              "position",
+              "entries",
+              "eligibility"
+            ],
+            "type": "object"
+          },
+          "queueRevision": {
+            "type": "string"
+          },
+          "readiness": {
+            "properties": {
+              "aggregate": {
+                "type": "string"
+              },
+              "buffering": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "lagging": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "memberCount": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "ready": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "stale": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "aggregate",
+              "ready",
+              "buffering",
+              "lagging",
+              "stale",
+              "memberCount"
+            ],
+            "type": "object"
+          },
+          "reconnectGeneration": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "string"
+          },
+          "settings": {
+            "properties": {
+              "repeatMode": {
+                "type": "string"
+              },
+              "shuffleEnabled": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "shuffleEnabled",
+              "repeatMode"
+            ],
+            "type": "object"
+          },
+          "settingsRevision": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "sync": {
+            "properties": {
+              "noCorrectionUnderMs": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "rateCorrectionMaxMs": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "rateCorrectionMaximum": {
+                "type": "string"
+              },
+              "rateCorrectionMinimum": {
+                "type": "string"
+              },
+              "seekAtOrOverMs": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "noCorrectionUnderMs",
+              "rateCorrectionMinimum",
+              "rateCorrectionMaximum",
+              "rateCorrectionMaxMs",
+              "seekAtOrOverMs"
+            ],
+            "type": "object"
+          },
+          "timeline": {
+            "properties": {
+              "anchorAt": {
+                "type": "string"
+              },
+              "anchorPositionUs": {
+                "type": "string"
+              },
+              "currentEntryId": {
+                "type": "string"
+              },
+              "itemId": {
+                "type": "string"
+              },
+              "queuePosition": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "rate": {
+                "properties": {
+                  "denominator": {
+                    "type": "string"
+                  },
+                  "numerator": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "numerator",
+                  "denominator"
+                ],
+                "type": "object"
+              },
+              "state": {
+                "type": "string"
+              },
+              "waitUntil": {
+                "nullable": true,
+                "type": "string"
+              }
+            },
+            "required": [
+              "itemId",
+              "currentEntryId",
+              "state",
+              "anchorPositionUs",
+              "anchorAt",
+              "rate",
+              "queuePosition",
+              "waitUntil"
+            ],
+            "type": "object"
+          },
+          "updatedAt": {
+            "type": "string"
+          },
+          "viewerMemberId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "state",
+          "hostAuthority",
+          "hostMemberId",
+          "revision",
+          "playbackRevision",
+          "settingsRevision",
+          "governanceRevision",
+          "queueRevision",
+          "reconnectGeneration",
+          "lastCommand",
+          "lastCommandId",
+          "endedReason",
+          "eventOrdinal",
+          "createdAt",
+          "updatedAt",
+          "permissions",
+          "authority",
+          "host",
+          "timeline",
+          "settings",
+          "sync",
+          "readiness",
+          "members",
+          "queue",
+          "viewerMemberId"
+        ],
+        "type": "object"
+      },
+      "protocolVersion": {
+        "type": "string"
+      },
+      "serverTime": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "protocolVersion",
+      "serverTime",
+      "group"
+    ],
+    "type": "object"
+  },
+  "SocialGetV1GroupsRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "SocialGetV1GroupsResponse": {
+    "properties": {
+      "groups": {
+        "items": {
+          "properties": {
+            "authority": {
+              "properties": {
+                "deviceId": {
+                  "type": "string"
+                },
+                "playbackId": {
+                  "nullable": true,
+                  "type": "string"
+                },
+                "state": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "deviceId",
+                "playbackId",
+                "state"
+              ],
+              "type": "object"
+            },
+            "createdAt": {
+              "type": "string"
+            },
+            "endedReason": {
+              "type": "string"
+            },
+            "eventOrdinal": {
+              "type": "string"
+            },
+            "governanceRevision": {
+              "type": "string"
+            },
+            "host": {
+              "properties": {
+                "endAt": {
+                  "nullable": true,
+                  "type": "string"
+                },
+                "lastSeenAt": {
+                  "type": "string"
+                },
+                "pauseAt": {
+                  "nullable": true,
+                  "type": "string"
+                },
+                "presence": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "presence",
+                "lastSeenAt",
+                "pauseAt",
+                "endAt"
+              ],
+              "type": "object"
+            },
+            "hostAuthority": {
+              "type": "string"
+            },
+            "hostMemberId": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            },
+            "lastCommand": {
+              "type": "string"
+            },
+            "lastCommandId": {
+              "type": "string"
+            },
+            "members": {
+              "items": {
+                "properties": {
+                  "displayName": {
+                    "type": "string"
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "joinedAt": {
+                    "type": "string"
+                  },
+                  "positionUs": {
+                    "type": "string"
+                  },
+                  "presence": {
+                    "type": "string"
+                  },
+                  "private": {
+                    "type": "boolean"
+                  },
+                  "readiness": {
+                    "type": "string"
+                  },
+                  "reportedAt": {
+                    "nullable": true,
+                    "type": "string"
+                  },
+                  "role": {
+                    "type": "string"
+                  },
+                  "state": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "displayName",
+                  "private",
+                  "role",
+                  "state",
+                  "readiness",
+                  "positionUs",
+                  "reportedAt",
+                  "presence",
+                  "joinedAt"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "name": {
+              "type": "string"
+            },
+            "permissions": {
+              "properties": {
+                "canControl": {
+                  "type": "boolean"
+                },
+                "canManageQueue": {
+                  "type": "boolean"
+                },
+                "isHost": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "isHost",
+                "canControl",
+                "canManageQueue"
+              ],
+              "type": "object"
+            },
+            "playbackRevision": {
+              "type": "string"
+            },
+            "queue": {
+              "nullable": true,
+              "properties": {
+                "eligibility": {
+                  "nullable": true,
+                  "properties": {
+                    "blockedEntries": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "currentEntryBlocked": {
+                      "type": "boolean"
+                    },
+                    "members": {
+                      "items": {
+                        "properties": {
+                          "blockedEntryIds": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
+                          },
+                          "displayName": {
+                            "type": "string"
+                          },
+                          "memberId": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "memberId",
+                          "displayName",
+                          "blockedEntryIds"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "blockedEntries",
+                    "currentEntryBlocked",
+                    "members"
+                  ],
+                  "type": "object"
+                },
+                "entries": {
+                  "items": {
+                    "properties": {
+                      "addedBy": {
+                        "type": "string"
+                      },
+                      "entryId": {
+                        "type": "string"
+                      },
+                      "itemId": {
+                        "nullable": true,
+                        "type": "string"
+                      },
+                      "position": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "unavailable": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "entryId",
+                      "position",
+                      "itemId",
+                      "unavailable",
+                      "addedBy"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                "position": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "revision": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "revision",
+                "position",
+                "entries",
+                "eligibility"
+              ],
+              "type": "object"
+            },
+            "queueRevision": {
+              "type": "string"
+            },
+            "readiness": {
+              "properties": {
+                "aggregate": {
+                  "type": "string"
+                },
+                "buffering": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "lagging": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "memberCount": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "ready": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "stale": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "aggregate",
+                "ready",
+                "buffering",
+                "lagging",
+                "stale",
+                "memberCount"
+              ],
+              "type": "object"
+            },
+            "reconnectGeneration": {
+              "type": "string"
+            },
+            "revision": {
+              "type": "string"
+            },
+            "settings": {
+              "properties": {
+                "repeatMode": {
+                  "type": "string"
+                },
+                "shuffleEnabled": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "shuffleEnabled",
+                "repeatMode"
+              ],
+              "type": "object"
+            },
+            "settingsRevision": {
+              "type": "string"
+            },
+            "state": {
+              "type": "string"
+            },
+            "sync": {
+              "properties": {
+                "noCorrectionUnderMs": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "rateCorrectionMaxMs": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "rateCorrectionMaximum": {
+                  "type": "string"
+                },
+                "rateCorrectionMinimum": {
+                  "type": "string"
+                },
+                "seekAtOrOverMs": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "noCorrectionUnderMs",
+                "rateCorrectionMinimum",
+                "rateCorrectionMaximum",
+                "rateCorrectionMaxMs",
+                "seekAtOrOverMs"
+              ],
+              "type": "object"
+            },
+            "timeline": {
+              "properties": {
+                "anchorAt": {
+                  "type": "string"
+                },
+                "anchorPositionUs": {
+                  "type": "string"
+                },
+                "currentEntryId": {
+                  "type": "string"
+                },
+                "itemId": {
+                  "type": "string"
+                },
+                "queuePosition": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "rate": {
+                  "properties": {
+                    "denominator": {
+                      "type": "string"
+                    },
+                    "numerator": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "numerator",
+                    "denominator"
+                  ],
+                  "type": "object"
+                },
+                "state": {
+                  "type": "string"
+                },
+                "waitUntil": {
+                  "nullable": true,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "itemId",
+                "currentEntryId",
+                "state",
+                "anchorPositionUs",
+                "anchorAt",
+                "rate",
+                "queuePosition",
+                "waitUntil"
+              ],
+              "type": "object"
+            },
+            "updatedAt": {
+              "type": "string"
+            },
+            "viewerMemberId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "name",
+            "state",
+            "hostAuthority",
+            "hostMemberId",
+            "revision",
+            "playbackRevision",
+            "settingsRevision",
+            "governanceRevision",
+            "queueRevision",
+            "reconnectGeneration",
+            "lastCommand",
+            "lastCommandId",
+            "endedReason",
+            "eventOrdinal",
+            "createdAt",
+            "updatedAt",
+            "permissions",
+            "authority",
+            "host",
+            "timeline",
+            "settings",
+            "sync",
+            "readiness",
+            "members",
+            "queue",
+            "viewerMemberId"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "protocolVersion": {
+        "type": "string"
+      },
+      "serverTime": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "protocolVersion",
+      "serverTime",
+      "groups"
+    ],
+    "type": "object"
+  },
+  "SocialGetV1HandoffsIdRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "SocialGetV1HandoffsIdResponse": {
+    "properties": {
+      "handoff": {
+        "properties": {
+          "committedPositionUs": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": "string"
+          },
+          "grantId": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "itemId": {
+            "type": "string"
+          },
+          "outcome": {
+            "type": "string"
+          },
+          "readyPositionUs": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "receiverId": {
+            "type": "string"
+          },
+          "receiverPlaybackId": {
+            "type": "string"
+          },
+          "requestId": {
+            "type": "string"
+          },
+          "requestedPositionUs": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "string"
+          },
+          "settledAt": {
+            "nullable": true,
+            "type": "string"
+          },
+          "sourcePlaybackId": {
+            "type": "string"
+          },
+          "sourceRetired": {
+            "type": "boolean"
+          },
+          "state": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "receiverId",
+          "grantId",
+          "requestId",
+          "state",
+          "outcome",
+          "reason",
+          "revision",
+          "itemId",
+          "sourcePlaybackId",
+          "receiverPlaybackId",
+          "requestedPositionUs",
+          "readyPositionUs",
+          "committedPositionUs",
+          "sourceRetired",
+          "createdAt",
+          "expiresAt",
+          "settledAt"
+        ],
+        "type": "object"
+      },
+      "protocolVersion": {
+        "type": "string"
+      },
+      "serverTime": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "protocolVersion",
+      "serverTime",
+      "handoff"
+    ],
+    "type": "object"
+  },
+  "SocialGetV1ReceiversIdGrantsRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "SocialGetV1ReceiversIdGrantsResponse": {
+    "properties": {
+      "grants": {
+        "items": {
+          "properties": {
+            "allowedCommands": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "authorizationRevision": {
+              "type": "string"
+            },
+            "controllerDeviceId": {
+              "type": "string"
+            },
+            "controllerDisplayName": {
+              "type": "string"
+            },
+            "createdAt": {
+              "type": "string"
+            },
+            "decidedAt": {
+              "nullable": true,
+              "type": "string"
+            },
+            "expiresAt": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            },
+            "receiverId": {
+              "type": "string"
+            },
+            "receiverKeyFingerprint": {
+              "type": "string"
+            },
+            "state": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "receiverId",
+            "controllerDeviceId",
+            "controllerDisplayName",
+            "receiverKeyFingerprint",
+            "allowedCommands",
+            "authorizationRevision",
+            "state",
+            "expiresAt",
+            "createdAt",
+            "decidedAt"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "protocolVersion": {
+        "type": "string"
+      },
+      "serverTime": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "protocolVersion",
+      "serverTime",
+      "grants"
+    ],
+    "type": "object"
+  },
+  "SocialGetV1ReceiversIdInboxRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "SocialGetV1ReceiversIdInboxResponse": {
+    "properties": {
+      "grants": {
+        "items": {
+          "properties": {
+            "allowedCommands": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "authorizationRevision": {
+              "type": "string"
+            },
+            "controllerDeviceId": {
+              "type": "string"
+            },
+            "controllerDisplayName": {
+              "type": "string"
+            },
+            "createdAt": {
+              "type": "string"
+            },
+            "decidedAt": {
+              "nullable": true,
+              "type": "string"
+            },
+            "expiresAt": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            },
+            "receiverId": {
+              "type": "string"
+            },
+            "receiverKeyFingerprint": {
+              "type": "string"
+            },
+            "state": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "receiverId",
+            "controllerDeviceId",
+            "controllerDisplayName",
+            "receiverKeyFingerprint",
+            "allowedCommands",
+            "authorizationRevision",
+            "state",
+            "expiresAt",
+            "createdAt",
+            "decidedAt"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "handoffs": {
+        "items": {
+          "properties": {
+            "committedPositionUs": {
+              "type": "string"
+            },
+            "createdAt": {
+              "type": "string"
+            },
+            "expiresAt": {
+              "type": "string"
+            },
+            "grantId": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            },
+            "itemId": {
+              "type": "string"
+            },
+            "outcome": {
+              "type": "string"
+            },
+            "readyPositionUs": {
+              "type": "string"
+            },
+            "reason": {
+              "type": "string"
+            },
+            "receiverId": {
+              "type": "string"
+            },
+            "receiverPlaybackId": {
+              "type": "string"
+            },
+            "requestId": {
+              "type": "string"
+            },
+            "requestedPositionUs": {
+              "type": "string"
+            },
+            "revision": {
+              "type": "string"
+            },
+            "settledAt": {
+              "nullable": true,
+              "type": "string"
+            },
+            "sourcePlaybackId": {
+              "type": "string"
+            },
+            "sourceRetired": {
+              "type": "boolean"
+            },
+            "state": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "receiverId",
+            "grantId",
+            "requestId",
+            "state",
+            "outcome",
+            "reason",
+            "revision",
+            "itemId",
+            "sourcePlaybackId",
+            "receiverPlaybackId",
+            "requestedPositionUs",
+            "readyPositionUs",
+            "committedPositionUs",
+            "sourceRetired",
+            "createdAt",
+            "expiresAt",
+            "settledAt"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "protocolVersion": {
+        "type": "string"
+      },
+      "receiverId": {
+        "type": "string"
+      },
+      "serverTime": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "protocolVersion",
+      "serverTime",
+      "receiverId",
+      "grants",
+      "handoffs"
+    ],
+    "type": "object"
+  },
+  "SocialGetV1ReceiversIdInboxWaitRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "SocialGetV1ReceiversIdInboxWaitResponse": {
+    "properties": {
+      "grants": {
+        "items": {
+          "properties": {
+            "allowedCommands": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "authorizationRevision": {
+              "type": "string"
+            },
+            "controllerDeviceId": {
+              "type": "string"
+            },
+            "controllerDisplayName": {
+              "type": "string"
+            },
+            "createdAt": {
+              "type": "string"
+            },
+            "decidedAt": {
+              "nullable": true,
+              "type": "string"
+            },
+            "expiresAt": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            },
+            "receiverId": {
+              "type": "string"
+            },
+            "receiverKeyFingerprint": {
+              "type": "string"
+            },
+            "state": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "receiverId",
+            "controllerDeviceId",
+            "controllerDisplayName",
+            "receiverKeyFingerprint",
+            "allowedCommands",
+            "authorizationRevision",
+            "state",
+            "expiresAt",
+            "createdAt",
+            "decidedAt"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "handoffs": {
+        "items": {
+          "properties": {
+            "committedPositionUs": {
+              "type": "string"
+            },
+            "createdAt": {
+              "type": "string"
+            },
+            "expiresAt": {
+              "type": "string"
+            },
+            "grantId": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            },
+            "itemId": {
+              "type": "string"
+            },
+            "outcome": {
+              "type": "string"
+            },
+            "readyPositionUs": {
+              "type": "string"
+            },
+            "reason": {
+              "type": "string"
+            },
+            "receiverId": {
+              "type": "string"
+            },
+            "receiverPlaybackId": {
+              "type": "string"
+            },
+            "requestId": {
+              "type": "string"
+            },
+            "requestedPositionUs": {
+              "type": "string"
+            },
+            "revision": {
+              "type": "string"
+            },
+            "settledAt": {
+              "nullable": true,
+              "type": "string"
+            },
+            "sourcePlaybackId": {
+              "type": "string"
+            },
+            "sourceRetired": {
+              "type": "boolean"
+            },
+            "state": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "receiverId",
+            "grantId",
+            "requestId",
+            "state",
+            "outcome",
+            "reason",
+            "revision",
+            "itemId",
+            "sourcePlaybackId",
+            "receiverPlaybackId",
+            "requestedPositionUs",
+            "readyPositionUs",
+            "committedPositionUs",
+            "sourceRetired",
+            "createdAt",
+            "expiresAt",
+            "settledAt"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "protocolVersion": {
+        "type": "string"
+      },
+      "receiverId": {
+        "type": "string"
+      },
+      "serverTime": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "protocolVersion",
+      "serverTime",
+      "receiverId",
+      "grants",
+      "handoffs"
+    ],
+    "type": "object"
+  },
+  "SocialGetV1ReceiversRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "SocialGetV1ReceiversResponse": {
+    "properties": {
+      "protocolVersion": {
+        "type": "string"
+      },
+      "receivers": {
+        "items": {
+          "properties": {
+            "authorizationRevision": {
+              "type": "string"
+            },
+            "createdAt": {
+              "type": "string"
+            },
+            "deviceId": {
+              "type": "string"
+            },
+            "displayName": {
+              "type": "string"
+            },
+            "grantPolicy": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            },
+            "keyFingerprint": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string"
+            },
+            "lastSeenAt": {
+              "type": "string"
+            },
+            "platform": {
+              "type": "string"
+            },
+            "presence": {
+              "type": "string"
+            },
+            "state": {
+              "type": "string"
+            },
+            "supportedCommands": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "id",
+            "kind",
+            "deviceId",
+            "displayName",
+            "platform",
+            "keyFingerprint",
+            "supportedCommands",
+            "grantPolicy",
+            "authorizationRevision",
+            "state",
+            "presence",
+            "lastSeenAt",
+            "createdAt"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "serverTime": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "protocolVersion",
+      "serverTime",
+      "receivers"
+    ],
+    "type": "object"
+  },
+  "SocialPostV1CastBootstrapRequest": {
+    "properties": {
+      "capabilities": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "displayName": {
+        "type": "string"
+      },
+      "protocolVersion": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "protocolVersion",
+      "displayName",
+      "capabilities"
+    ],
+    "type": "object"
+  },
+  "SocialPostV1CastBootstrapResponse": {
+    "properties": {
+      "bootstrap": {
+        "properties": {
+          "applicationId": {
+            "type": "string"
+          },
+          "capabilities": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "code": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "receiverUrl": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "code",
+          "state",
+          "displayName",
+          "capabilities",
+          "expiresAt",
+          "applicationId",
+          "receiverUrl"
+        ],
+        "type": "object"
+      },
+      "protocolVersion": {
+        "type": "string"
+      },
+      "serverTime": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "protocolVersion",
+      "serverTime",
+      "bootstrap"
+    ],
+    "type": "object"
+  },
+  "SocialPostV1CastReconnectRequest": {
+    "properties": {
+      "deviceId": {
+        "type": "string"
+      },
+      "deviceToken": {
+        "type": "string"
+      },
+      "protocolVersion": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "protocolVersion",
+      "deviceToken"
+    ],
+    "type": "object"
+  },
+  "SocialPostV1CastReconnectResponse": {
+    "properties": {
+      "applicationId": {
+        "type": "string"
+      },
+      "device": {
+        "properties": {
+          "deviceId": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": "string"
+          },
+          "generation": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "receiverId": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "deviceId",
+          "displayName",
+          "receiverId",
+          "state",
+          "generation",
+          "expiresAt"
+        ],
+        "type": "object"
+      },
+      "deviceToken": {
+        "type": "string"
+      },
+      "grantSemantics": {
+        "type": "string"
+      },
+      "protocolVersion": {
+        "type": "string"
+      },
+      "scope": {
+        "properties": {
+          "accountId": {
+            "type": "string"
+          },
+          "authority": {
+            "type": "string"
+          },
+          "capabilities": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "profileId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "accountId",
+          "profileId",
+          "authority",
+          "capabilities"
+        ],
+        "type": "object"
+      },
+      "serverTime": {
+        "type": "string"
+      },
+      "session": {
+        "properties": {
+          "accessToken": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "accessToken",
+          "expiresAt"
+        ],
+        "type": "object"
+      }
+    },
+    "required": [
+      "protocolVersion",
+      "serverTime",
+      "grantSemantics",
+      "deviceToken",
+      "device",
+      "scope",
+      "session",
+      "applicationId"
+    ],
+    "type": "object"
+  },
+  "SocialPostV1CastRedeemRequest": {
+    "properties": {
+      "code": {
+        "type": "string"
+      },
+      "deviceId": {
+        "type": "string"
+      },
+      "displayName": {
+        "type": "string"
+      },
+      "protocolVersion": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "protocolVersion",
+      "code",
+      "deviceId",
+      "displayName"
+    ],
+    "type": "object"
+  },
+  "SocialPostV1CastRedeemResponse": {
+    "properties": {
+      "applicationId": {
+        "type": "string"
+      },
+      "device": {
+        "properties": {
+          "deviceId": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": "string"
+          },
+          "generation": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "receiverId": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "deviceId",
+          "displayName",
+          "receiverId",
+          "state",
+          "generation",
+          "expiresAt"
+        ],
+        "type": "object"
+      },
+      "deviceToken": {
+        "type": "string"
+      },
+      "grantSemantics": {
+        "type": "string"
+      },
+      "protocolVersion": {
+        "type": "string"
+      },
+      "scope": {
+        "properties": {
+          "accountId": {
+            "type": "string"
+          },
+          "authority": {
+            "type": "string"
+          },
+          "capabilities": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "profileId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "accountId",
+          "profileId",
+          "authority",
+          "capabilities"
+        ],
+        "type": "object"
+      },
+      "serverTime": {
+        "type": "string"
+      },
+      "session": {
+        "properties": {
+          "accessToken": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "accessToken",
+          "expiresAt"
+        ],
+        "type": "object"
+      }
+    },
+    "required": [
+      "protocolVersion",
+      "serverTime",
+      "grantSemantics",
+      "deviceToken",
+      "device",
+      "scope",
+      "session",
+      "applicationId"
+    ],
+    "type": "object"
+  },
+  "SocialPostV1GroupsIdEndRequest": {
+    "properties": {
+      "expectedRevision": {
+        "type": "string"
+      },
+      "protocolVersion": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "protocolVersion",
+      "expectedRevision"
+    ],
+    "type": "object"
+  },
+  "SocialPostV1GroupsIdEndResponse": {
+    "properties": {
+      "group": {
+        "properties": {
+          "authority": {
+            "properties": {
+              "deviceId": {
+                "type": "string"
+              },
+              "playbackId": {
+                "nullable": true,
+                "type": "string"
+              },
+              "state": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "deviceId",
+              "playbackId",
+              "state"
+            ],
+            "type": "object"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "endedReason": {
+            "type": "string"
+          },
+          "eventOrdinal": {
+            "type": "string"
+          },
+          "governanceRevision": {
+            "type": "string"
+          },
+          "host": {
+            "properties": {
+              "endAt": {
+                "nullable": true,
+                "type": "string"
+              },
+              "lastSeenAt": {
+                "type": "string"
+              },
+              "pauseAt": {
+                "nullable": true,
+                "type": "string"
+              },
+              "presence": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "presence",
+              "lastSeenAt",
+              "pauseAt",
+              "endAt"
+            ],
+            "type": "object"
+          },
+          "hostAuthority": {
+            "type": "string"
+          },
+          "hostMemberId": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "lastCommand": {
+            "type": "string"
+          },
+          "lastCommandId": {
+            "type": "string"
+          },
+          "members": {
+            "items": {
+              "properties": {
+                "displayName": {
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "joinedAt": {
+                  "type": "string"
+                },
+                "positionUs": {
+                  "type": "string"
+                },
+                "presence": {
+                  "type": "string"
+                },
+                "private": {
+                  "type": "boolean"
+                },
+                "readiness": {
+                  "type": "string"
+                },
+                "reportedAt": {
+                  "nullable": true,
+                  "type": "string"
+                },
+                "role": {
+                  "type": "string"
+                },
+                "state": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "displayName",
+                "private",
+                "role",
+                "state",
+                "readiness",
+                "positionUs",
+                "reportedAt",
+                "presence",
+                "joinedAt"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "name": {
+            "type": "string"
+          },
+          "permissions": {
+            "properties": {
+              "canControl": {
+                "type": "boolean"
+              },
+              "canManageQueue": {
+                "type": "boolean"
+              },
+              "isHost": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "isHost",
+              "canControl",
+              "canManageQueue"
+            ],
+            "type": "object"
+          },
+          "playbackRevision": {
+            "type": "string"
+          },
+          "queue": {
+            "nullable": true,
+            "properties": {
+              "eligibility": {
+                "nullable": true,
+                "properties": {
+                  "blockedEntries": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "currentEntryBlocked": {
+                    "type": "boolean"
+                  },
+                  "members": {
+                    "items": {
+                      "properties": {
+                        "blockedEntryIds": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "displayName": {
+                          "type": "string"
+                        },
+                        "memberId": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "memberId",
+                        "displayName",
+                        "blockedEntryIds"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "blockedEntries",
+                  "currentEntryBlocked",
+                  "members"
+                ],
+                "type": "object"
+              },
+              "entries": {
+                "items": {
+                  "properties": {
+                    "addedBy": {
+                      "type": "string"
+                    },
+                    "entryId": {
+                      "type": "string"
+                    },
+                    "itemId": {
+                      "nullable": true,
+                      "type": "string"
+                    },
+                    "position": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "unavailable": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "entryId",
+                    "position",
+                    "itemId",
+                    "unavailable",
+                    "addedBy"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "position": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "revision": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "revision",
+              "position",
+              "entries",
+              "eligibility"
+            ],
+            "type": "object"
+          },
+          "queueRevision": {
+            "type": "string"
+          },
+          "readiness": {
+            "properties": {
+              "aggregate": {
+                "type": "string"
+              },
+              "buffering": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "lagging": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "memberCount": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "ready": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "stale": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "aggregate",
+              "ready",
+              "buffering",
+              "lagging",
+              "stale",
+              "memberCount"
+            ],
+            "type": "object"
+          },
+          "reconnectGeneration": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "string"
+          },
+          "settings": {
+            "properties": {
+              "repeatMode": {
+                "type": "string"
+              },
+              "shuffleEnabled": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "shuffleEnabled",
+              "repeatMode"
+            ],
+            "type": "object"
+          },
+          "settingsRevision": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "sync": {
+            "properties": {
+              "noCorrectionUnderMs": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "rateCorrectionMaxMs": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "rateCorrectionMaximum": {
+                "type": "string"
+              },
+              "rateCorrectionMinimum": {
+                "type": "string"
+              },
+              "seekAtOrOverMs": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "noCorrectionUnderMs",
+              "rateCorrectionMinimum",
+              "rateCorrectionMaximum",
+              "rateCorrectionMaxMs",
+              "seekAtOrOverMs"
+            ],
+            "type": "object"
+          },
+          "timeline": {
+            "properties": {
+              "anchorAt": {
+                "type": "string"
+              },
+              "anchorPositionUs": {
+                "type": "string"
+              },
+              "currentEntryId": {
+                "type": "string"
+              },
+              "itemId": {
+                "type": "string"
+              },
+              "queuePosition": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "rate": {
+                "properties": {
+                  "denominator": {
+                    "type": "string"
+                  },
+                  "numerator": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "numerator",
+                  "denominator"
+                ],
+                "type": "object"
+              },
+              "state": {
+                "type": "string"
+              },
+              "waitUntil": {
+                "nullable": true,
+                "type": "string"
+              }
+            },
+            "required": [
+              "itemId",
+              "currentEntryId",
+              "state",
+              "anchorPositionUs",
+              "anchorAt",
+              "rate",
+              "queuePosition",
+              "waitUntil"
+            ],
+            "type": "object"
+          },
+          "updatedAt": {
+            "type": "string"
+          },
+          "viewerMemberId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "state",
+          "hostAuthority",
+          "hostMemberId",
+          "revision",
+          "playbackRevision",
+          "settingsRevision",
+          "governanceRevision",
+          "queueRevision",
+          "reconnectGeneration",
+          "lastCommand",
+          "lastCommandId",
+          "endedReason",
+          "eventOrdinal",
+          "createdAt",
+          "updatedAt",
+          "permissions",
+          "authority",
+          "host",
+          "timeline",
+          "settings",
+          "sync",
+          "readiness",
+          "members",
+          "queue",
+          "viewerMemberId"
+        ],
+        "type": "object"
+      },
+      "protocolVersion": {
+        "type": "string"
+      },
+      "serverTime": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "protocolVersion",
+      "serverTime",
+      "group"
+    ],
+    "type": "object"
+  },
+  "SocialPostV1GroupsIdHeartbeatRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "SocialPostV1GroupsIdHeartbeatResponse": {
+    "properties": {
+      "group": {
+        "properties": {
+          "authority": {
+            "properties": {
+              "deviceId": {
+                "type": "string"
+              },
+              "playbackId": {
+                "nullable": true,
+                "type": "string"
+              },
+              "state": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "deviceId",
+              "playbackId",
+              "state"
+            ],
+            "type": "object"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "endedReason": {
+            "type": "string"
+          },
+          "eventOrdinal": {
+            "type": "string"
+          },
+          "governanceRevision": {
+            "type": "string"
+          },
+          "host": {
+            "properties": {
+              "endAt": {
+                "nullable": true,
+                "type": "string"
+              },
+              "lastSeenAt": {
+                "type": "string"
+              },
+              "pauseAt": {
+                "nullable": true,
+                "type": "string"
+              },
+              "presence": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "presence",
+              "lastSeenAt",
+              "pauseAt",
+              "endAt"
+            ],
+            "type": "object"
+          },
+          "hostAuthority": {
+            "type": "string"
+          },
+          "hostMemberId": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "lastCommand": {
+            "type": "string"
+          },
+          "lastCommandId": {
+            "type": "string"
+          },
+          "members": {
+            "items": {
+              "properties": {
+                "displayName": {
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "joinedAt": {
+                  "type": "string"
+                },
+                "positionUs": {
+                  "type": "string"
+                },
+                "presence": {
+                  "type": "string"
+                },
+                "private": {
+                  "type": "boolean"
+                },
+                "readiness": {
+                  "type": "string"
+                },
+                "reportedAt": {
+                  "nullable": true,
+                  "type": "string"
+                },
+                "role": {
+                  "type": "string"
+                },
+                "state": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "displayName",
+                "private",
+                "role",
+                "state",
+                "readiness",
+                "positionUs",
+                "reportedAt",
+                "presence",
+                "joinedAt"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "name": {
+            "type": "string"
+          },
+          "permissions": {
+            "properties": {
+              "canControl": {
+                "type": "boolean"
+              },
+              "canManageQueue": {
+                "type": "boolean"
+              },
+              "isHost": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "isHost",
+              "canControl",
+              "canManageQueue"
+            ],
+            "type": "object"
+          },
+          "playbackRevision": {
+            "type": "string"
+          },
+          "queue": {
+            "nullable": true,
+            "properties": {
+              "eligibility": {
+                "nullable": true,
+                "properties": {
+                  "blockedEntries": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "currentEntryBlocked": {
+                    "type": "boolean"
+                  },
+                  "members": {
+                    "items": {
+                      "properties": {
+                        "blockedEntryIds": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "displayName": {
+                          "type": "string"
+                        },
+                        "memberId": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "memberId",
+                        "displayName",
+                        "blockedEntryIds"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "blockedEntries",
+                  "currentEntryBlocked",
+                  "members"
+                ],
+                "type": "object"
+              },
+              "entries": {
+                "items": {
+                  "properties": {
+                    "addedBy": {
+                      "type": "string"
+                    },
+                    "entryId": {
+                      "type": "string"
+                    },
+                    "itemId": {
+                      "nullable": true,
+                      "type": "string"
+                    },
+                    "position": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "unavailable": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "entryId",
+                    "position",
+                    "itemId",
+                    "unavailable",
+                    "addedBy"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "position": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "revision": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "revision",
+              "position",
+              "entries",
+              "eligibility"
+            ],
+            "type": "object"
+          },
+          "queueRevision": {
+            "type": "string"
+          },
+          "readiness": {
+            "properties": {
+              "aggregate": {
+                "type": "string"
+              },
+              "buffering": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "lagging": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "memberCount": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "ready": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "stale": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "aggregate",
+              "ready",
+              "buffering",
+              "lagging",
+              "stale",
+              "memberCount"
+            ],
+            "type": "object"
+          },
+          "reconnectGeneration": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "string"
+          },
+          "settings": {
+            "properties": {
+              "repeatMode": {
+                "type": "string"
+              },
+              "shuffleEnabled": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "shuffleEnabled",
+              "repeatMode"
+            ],
+            "type": "object"
+          },
+          "settingsRevision": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "sync": {
+            "properties": {
+              "noCorrectionUnderMs": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "rateCorrectionMaxMs": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "rateCorrectionMaximum": {
+                "type": "string"
+              },
+              "rateCorrectionMinimum": {
+                "type": "string"
+              },
+              "seekAtOrOverMs": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "noCorrectionUnderMs",
+              "rateCorrectionMinimum",
+              "rateCorrectionMaximum",
+              "rateCorrectionMaxMs",
+              "seekAtOrOverMs"
+            ],
+            "type": "object"
+          },
+          "timeline": {
+            "properties": {
+              "anchorAt": {
+                "type": "string"
+              },
+              "anchorPositionUs": {
+                "type": "string"
+              },
+              "currentEntryId": {
+                "type": "string"
+              },
+              "itemId": {
+                "type": "string"
+              },
+              "queuePosition": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "rate": {
+                "properties": {
+                  "denominator": {
+                    "type": "string"
+                  },
+                  "numerator": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "numerator",
+                  "denominator"
+                ],
+                "type": "object"
+              },
+              "state": {
+                "type": "string"
+              },
+              "waitUntil": {
+                "nullable": true,
+                "type": "string"
+              }
+            },
+            "required": [
+              "itemId",
+              "currentEntryId",
+              "state",
+              "anchorPositionUs",
+              "anchorAt",
+              "rate",
+              "queuePosition",
+              "waitUntil"
+            ],
+            "type": "object"
+          },
+          "updatedAt": {
+            "type": "string"
+          },
+          "viewerMemberId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "state",
+          "hostAuthority",
+          "hostMemberId",
+          "revision",
+          "playbackRevision",
+          "settingsRevision",
+          "governanceRevision",
+          "queueRevision",
+          "reconnectGeneration",
+          "lastCommand",
+          "lastCommandId",
+          "endedReason",
+          "eventOrdinal",
+          "createdAt",
+          "updatedAt",
+          "permissions",
+          "authority",
+          "host",
+          "timeline",
+          "settings",
+          "sync",
+          "readiness",
+          "members",
+          "queue",
+          "viewerMemberId"
+        ],
+        "type": "object"
+      },
+      "protocolVersion": {
+        "type": "string"
+      },
+      "serverTime": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "protocolVersion",
+      "serverTime",
+      "group"
+    ],
+    "type": "object"
+  },
+  "SocialPostV1GroupsIdHostTransferRequest": {
+    "properties": {
+      "expectedRevision": {
+        "type": "string"
+      },
+      "memberId": {
+        "type": "string"
+      },
+      "protocolVersion": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "protocolVersion",
+      "memberId",
+      "expectedRevision"
+    ],
+    "type": "object"
+  },
+  "SocialPostV1GroupsIdHostTransferResponse": {
+    "properties": {
+      "group": {
+        "properties": {
+          "authority": {
+            "properties": {
+              "deviceId": {
+                "type": "string"
+              },
+              "playbackId": {
+                "nullable": true,
+                "type": "string"
+              },
+              "state": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "deviceId",
+              "playbackId",
+              "state"
+            ],
+            "type": "object"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "endedReason": {
+            "type": "string"
+          },
+          "eventOrdinal": {
+            "type": "string"
+          },
+          "governanceRevision": {
+            "type": "string"
+          },
+          "host": {
+            "properties": {
+              "endAt": {
+                "nullable": true,
+                "type": "string"
+              },
+              "lastSeenAt": {
+                "type": "string"
+              },
+              "pauseAt": {
+                "nullable": true,
+                "type": "string"
+              },
+              "presence": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "presence",
+              "lastSeenAt",
+              "pauseAt",
+              "endAt"
+            ],
+            "type": "object"
+          },
+          "hostAuthority": {
+            "type": "string"
+          },
+          "hostMemberId": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "lastCommand": {
+            "type": "string"
+          },
+          "lastCommandId": {
+            "type": "string"
+          },
+          "members": {
+            "items": {
+              "properties": {
+                "displayName": {
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "joinedAt": {
+                  "type": "string"
+                },
+                "positionUs": {
+                  "type": "string"
+                },
+                "presence": {
+                  "type": "string"
+                },
+                "private": {
+                  "type": "boolean"
+                },
+                "readiness": {
+                  "type": "string"
+                },
+                "reportedAt": {
+                  "nullable": true,
+                  "type": "string"
+                },
+                "role": {
+                  "type": "string"
+                },
+                "state": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "displayName",
+                "private",
+                "role",
+                "state",
+                "readiness",
+                "positionUs",
+                "reportedAt",
+                "presence",
+                "joinedAt"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "name": {
+            "type": "string"
+          },
+          "permissions": {
+            "properties": {
+              "canControl": {
+                "type": "boolean"
+              },
+              "canManageQueue": {
+                "type": "boolean"
+              },
+              "isHost": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "isHost",
+              "canControl",
+              "canManageQueue"
+            ],
+            "type": "object"
+          },
+          "playbackRevision": {
+            "type": "string"
+          },
+          "queue": {
+            "nullable": true,
+            "properties": {
+              "eligibility": {
+                "nullable": true,
+                "properties": {
+                  "blockedEntries": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "currentEntryBlocked": {
+                    "type": "boolean"
+                  },
+                  "members": {
+                    "items": {
+                      "properties": {
+                        "blockedEntryIds": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "displayName": {
+                          "type": "string"
+                        },
+                        "memberId": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "memberId",
+                        "displayName",
+                        "blockedEntryIds"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "blockedEntries",
+                  "currentEntryBlocked",
+                  "members"
+                ],
+                "type": "object"
+              },
+              "entries": {
+                "items": {
+                  "properties": {
+                    "addedBy": {
+                      "type": "string"
+                    },
+                    "entryId": {
+                      "type": "string"
+                    },
+                    "itemId": {
+                      "nullable": true,
+                      "type": "string"
+                    },
+                    "position": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "unavailable": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "entryId",
+                    "position",
+                    "itemId",
+                    "unavailable",
+                    "addedBy"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "position": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "revision": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "revision",
+              "position",
+              "entries",
+              "eligibility"
+            ],
+            "type": "object"
+          },
+          "queueRevision": {
+            "type": "string"
+          },
+          "readiness": {
+            "properties": {
+              "aggregate": {
+                "type": "string"
+              },
+              "buffering": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "lagging": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "memberCount": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "ready": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "stale": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "aggregate",
+              "ready",
+              "buffering",
+              "lagging",
+              "stale",
+              "memberCount"
+            ],
+            "type": "object"
+          },
+          "reconnectGeneration": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "string"
+          },
+          "settings": {
+            "properties": {
+              "repeatMode": {
+                "type": "string"
+              },
+              "shuffleEnabled": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "shuffleEnabled",
+              "repeatMode"
+            ],
+            "type": "object"
+          },
+          "settingsRevision": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "sync": {
+            "properties": {
+              "noCorrectionUnderMs": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "rateCorrectionMaxMs": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "rateCorrectionMaximum": {
+                "type": "string"
+              },
+              "rateCorrectionMinimum": {
+                "type": "string"
+              },
+              "seekAtOrOverMs": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "noCorrectionUnderMs",
+              "rateCorrectionMinimum",
+              "rateCorrectionMaximum",
+              "rateCorrectionMaxMs",
+              "seekAtOrOverMs"
+            ],
+            "type": "object"
+          },
+          "timeline": {
+            "properties": {
+              "anchorAt": {
+                "type": "string"
+              },
+              "anchorPositionUs": {
+                "type": "string"
+              },
+              "currentEntryId": {
+                "type": "string"
+              },
+              "itemId": {
+                "type": "string"
+              },
+              "queuePosition": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "rate": {
+                "properties": {
+                  "denominator": {
+                    "type": "string"
+                  },
+                  "numerator": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "numerator",
+                  "denominator"
+                ],
+                "type": "object"
+              },
+              "state": {
+                "type": "string"
+              },
+              "waitUntil": {
+                "nullable": true,
+                "type": "string"
+              }
+            },
+            "required": [
+              "itemId",
+              "currentEntryId",
+              "state",
+              "anchorPositionUs",
+              "anchorAt",
+              "rate",
+              "queuePosition",
+              "waitUntil"
+            ],
+            "type": "object"
+          },
+          "updatedAt": {
+            "type": "string"
+          },
+          "viewerMemberId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "state",
+          "hostAuthority",
+          "hostMemberId",
+          "revision",
+          "playbackRevision",
+          "settingsRevision",
+          "governanceRevision",
+          "queueRevision",
+          "reconnectGeneration",
+          "lastCommand",
+          "lastCommandId",
+          "endedReason",
+          "eventOrdinal",
+          "createdAt",
+          "updatedAt",
+          "permissions",
+          "authority",
+          "host",
+          "timeline",
+          "settings",
+          "sync",
+          "readiness",
+          "members",
+          "queue",
+          "viewerMemberId"
+        ],
+        "type": "object"
+      },
+      "protocolVersion": {
+        "type": "string"
+      },
+      "serverTime": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "protocolVersion",
+      "serverTime",
+      "group"
+    ],
+    "type": "object"
+  },
+  "SocialPostV1GroupsIdInvitesRequest": {
+    "properties": {
+      "expiresInSeconds": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "maxUses": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "protocolVersion": {
+        "type": "string"
+      },
+      "recipientProfileId": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "protocolVersion",
+      "expiresInSeconds",
+      "maxUses",
+      "recipientProfileId"
+    ],
+    "type": "object"
+  },
+  "SocialPostV1GroupsIdInvitesResponse": {
+    "properties": {
+      "invite": {
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": "string"
+          },
+          "groupId": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "maxUses": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "recipientProfileId": {
+            "type": "string"
+          },
+          "uses": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "groupId",
+          "code",
+          "expiresAt",
+          "maxUses",
+          "uses",
+          "recipientProfileId"
+        ],
+        "type": "object"
+      },
+      "protocolVersion": {
+        "type": "string"
+      },
+      "serverTime": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "protocolVersion",
+      "serverTime",
+      "invite"
+    ],
+    "type": "object"
+  },
+  "SocialPostV1GroupsIdLeaveRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "SocialPostV1GroupsIdLeaveResponse": {
+    "properties": {
+      "group": {
+        "properties": {
+          "authority": {
+            "properties": {
+              "deviceId": {
+                "type": "string"
+              },
+              "playbackId": {
+                "nullable": true,
+                "type": "string"
+              },
+              "state": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "deviceId",
+              "playbackId",
+              "state"
+            ],
+            "type": "object"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "endedReason": {
+            "type": "string"
+          },
+          "eventOrdinal": {
+            "type": "string"
+          },
+          "governanceRevision": {
+            "type": "string"
+          },
+          "host": {
+            "properties": {
+              "endAt": {
+                "nullable": true,
+                "type": "string"
+              },
+              "lastSeenAt": {
+                "type": "string"
+              },
+              "pauseAt": {
+                "nullable": true,
+                "type": "string"
+              },
+              "presence": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "presence",
+              "lastSeenAt",
+              "pauseAt",
+              "endAt"
+            ],
+            "type": "object"
+          },
+          "hostAuthority": {
+            "type": "string"
+          },
+          "hostMemberId": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "lastCommand": {
+            "type": "string"
+          },
+          "lastCommandId": {
+            "type": "string"
+          },
+          "members": {
+            "items": {
+              "properties": {
+                "displayName": {
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "joinedAt": {
+                  "type": "string"
+                },
+                "positionUs": {
+                  "type": "string"
+                },
+                "presence": {
+                  "type": "string"
+                },
+                "private": {
+                  "type": "boolean"
+                },
+                "readiness": {
+                  "type": "string"
+                },
+                "reportedAt": {
+                  "nullable": true,
+                  "type": "string"
+                },
+                "role": {
+                  "type": "string"
+                },
+                "state": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "displayName",
+                "private",
+                "role",
+                "state",
+                "readiness",
+                "positionUs",
+                "reportedAt",
+                "presence",
+                "joinedAt"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "name": {
+            "type": "string"
+          },
+          "permissions": {
+            "properties": {
+              "canControl": {
+                "type": "boolean"
+              },
+              "canManageQueue": {
+                "type": "boolean"
+              },
+              "isHost": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "isHost",
+              "canControl",
+              "canManageQueue"
+            ],
+            "type": "object"
+          },
+          "playbackRevision": {
+            "type": "string"
+          },
+          "queue": {
+            "nullable": true,
+            "properties": {
+              "eligibility": {
+                "nullable": true,
+                "properties": {
+                  "blockedEntries": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "currentEntryBlocked": {
+                    "type": "boolean"
+                  },
+                  "members": {
+                    "items": {
+                      "properties": {
+                        "blockedEntryIds": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "displayName": {
+                          "type": "string"
+                        },
+                        "memberId": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "memberId",
+                        "displayName",
+                        "blockedEntryIds"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "blockedEntries",
+                  "currentEntryBlocked",
+                  "members"
+                ],
+                "type": "object"
+              },
+              "entries": {
+                "items": {
+                  "properties": {
+                    "addedBy": {
+                      "type": "string"
+                    },
+                    "entryId": {
+                      "type": "string"
+                    },
+                    "itemId": {
+                      "nullable": true,
+                      "type": "string"
+                    },
+                    "position": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "unavailable": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "entryId",
+                    "position",
+                    "itemId",
+                    "unavailable",
+                    "addedBy"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "position": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "revision": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "revision",
+              "position",
+              "entries",
+              "eligibility"
+            ],
+            "type": "object"
+          },
+          "queueRevision": {
+            "type": "string"
+          },
+          "readiness": {
+            "properties": {
+              "aggregate": {
+                "type": "string"
+              },
+              "buffering": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "lagging": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "memberCount": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "ready": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "stale": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "aggregate",
+              "ready",
+              "buffering",
+              "lagging",
+              "stale",
+              "memberCount"
+            ],
+            "type": "object"
+          },
+          "reconnectGeneration": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "string"
+          },
+          "settings": {
+            "properties": {
+              "repeatMode": {
+                "type": "string"
+              },
+              "shuffleEnabled": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "shuffleEnabled",
+              "repeatMode"
+            ],
+            "type": "object"
+          },
+          "settingsRevision": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "sync": {
+            "properties": {
+              "noCorrectionUnderMs": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "rateCorrectionMaxMs": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "rateCorrectionMaximum": {
+                "type": "string"
+              },
+              "rateCorrectionMinimum": {
+                "type": "string"
+              },
+              "seekAtOrOverMs": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "noCorrectionUnderMs",
+              "rateCorrectionMinimum",
+              "rateCorrectionMaximum",
+              "rateCorrectionMaxMs",
+              "seekAtOrOverMs"
+            ],
+            "type": "object"
+          },
+          "timeline": {
+            "properties": {
+              "anchorAt": {
+                "type": "string"
+              },
+              "anchorPositionUs": {
+                "type": "string"
+              },
+              "currentEntryId": {
+                "type": "string"
+              },
+              "itemId": {
+                "type": "string"
+              },
+              "queuePosition": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "rate": {
+                "properties": {
+                  "denominator": {
+                    "type": "string"
+                  },
+                  "numerator": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "numerator",
+                  "denominator"
+                ],
+                "type": "object"
+              },
+              "state": {
+                "type": "string"
+              },
+              "waitUntil": {
+                "nullable": true,
+                "type": "string"
+              }
+            },
+            "required": [
+              "itemId",
+              "currentEntryId",
+              "state",
+              "anchorPositionUs",
+              "anchorAt",
+              "rate",
+              "queuePosition",
+              "waitUntil"
+            ],
+            "type": "object"
+          },
+          "updatedAt": {
+            "type": "string"
+          },
+          "viewerMemberId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "state",
+          "hostAuthority",
+          "hostMemberId",
+          "revision",
+          "playbackRevision",
+          "settingsRevision",
+          "governanceRevision",
+          "queueRevision",
+          "reconnectGeneration",
+          "lastCommand",
+          "lastCommandId",
+          "endedReason",
+          "eventOrdinal",
+          "createdAt",
+          "updatedAt",
+          "permissions",
+          "authority",
+          "host",
+          "timeline",
+          "settings",
+          "sync",
+          "readiness",
+          "members",
+          "queue",
+          "viewerMemberId"
+        ],
+        "type": "object"
+      },
+      "protocolVersion": {
+        "type": "string"
+      },
+      "serverTime": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "protocolVersion",
+      "serverTime",
+      "group"
+    ],
+    "type": "object"
+  },
+  "SocialPostV1GroupsIdQueueRequest": {
+    "properties": {
+      "destinationEntryId": {
+        "type": "string"
+      },
+      "entryId": {
+        "type": "string"
+      },
+      "expectedRevision": {
+        "type": "string"
+      },
+      "idempotencyKey": {
+        "type": "string"
+      },
+      "itemIds": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "operation": {
+        "type": "string"
+      },
+      "placement": {
+        "type": "string"
+      },
+      "protocolVersion": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "protocolVersion",
+      "idempotencyKey",
+      "expectedRevision",
+      "operation",
+      "itemIds",
+      "entryId",
+      "destinationEntryId",
+      "placement"
+    ],
+    "type": "object"
+  },
+  "SocialPostV1GroupsIdQueueResponse": {
+    "properties": {
+      "groupId": {
+        "type": "string"
+      },
+      "protocolVersion": {
+        "type": "string"
+      },
+      "queue": {
+        "properties": {
+          "eligibility": {
+            "nullable": true,
+            "properties": {
+              "blockedEntries": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "currentEntryBlocked": {
+                "type": "boolean"
+              },
+              "members": {
+                "items": {
+                  "properties": {
+                    "blockedEntryIds": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "displayName": {
+                      "type": "string"
+                    },
+                    "memberId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "memberId",
+                    "displayName",
+                    "blockedEntryIds"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "blockedEntries",
+              "currentEntryBlocked",
+              "members"
+            ],
+            "type": "object"
+          },
+          "entries": {
+            "items": {
+              "properties": {
+                "addedBy": {
+                  "type": "string"
+                },
+                "entryId": {
+                  "type": "string"
+                },
+                "itemId": {
+                  "nullable": true,
+                  "type": "string"
+                },
+                "position": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "unavailable": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "entryId",
+                "position",
+                "itemId",
+                "unavailable",
+                "addedBy"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "position": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "revision": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "revision",
+          "position",
+          "entries",
+          "eligibility"
+        ],
+        "type": "object"
+      },
+      "serverTime": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "protocolVersion",
+      "serverTime",
+      "groupId",
+      "queue"
+    ],
+    "type": "object"
+  },
+  "SocialPostV1GroupsIdReadinessRequest": {
+    "properties": {
+      "ended": {
+        "type": "boolean"
+      },
+      "playbackRevision": {
+        "type": "string"
+      },
+      "positionUs": {
+        "type": "string"
+      },
+      "protocolVersion": {
+        "type": "string"
+      },
+      "readiness": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "protocolVersion",
+      "readiness",
+      "playbackRevision",
+      "ended",
+      "positionUs"
+    ],
+    "type": "object"
+  },
+  "SocialPostV1GroupsIdReadinessResponse": {
+    "properties": {
+      "group": {
+        "properties": {
+          "authority": {
+            "properties": {
+              "deviceId": {
+                "type": "string"
+              },
+              "playbackId": {
+                "nullable": true,
+                "type": "string"
+              },
+              "state": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "deviceId",
+              "playbackId",
+              "state"
+            ],
+            "type": "object"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "endedReason": {
+            "type": "string"
+          },
+          "eventOrdinal": {
+            "type": "string"
+          },
+          "governanceRevision": {
+            "type": "string"
+          },
+          "host": {
+            "properties": {
+              "endAt": {
+                "nullable": true,
+                "type": "string"
+              },
+              "lastSeenAt": {
+                "type": "string"
+              },
+              "pauseAt": {
+                "nullable": true,
+                "type": "string"
+              },
+              "presence": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "presence",
+              "lastSeenAt",
+              "pauseAt",
+              "endAt"
+            ],
+            "type": "object"
+          },
+          "hostAuthority": {
+            "type": "string"
+          },
+          "hostMemberId": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "lastCommand": {
+            "type": "string"
+          },
+          "lastCommandId": {
+            "type": "string"
+          },
+          "members": {
+            "items": {
+              "properties": {
+                "displayName": {
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "joinedAt": {
+                  "type": "string"
+                },
+                "positionUs": {
+                  "type": "string"
+                },
+                "presence": {
+                  "type": "string"
+                },
+                "private": {
+                  "type": "boolean"
+                },
+                "readiness": {
+                  "type": "string"
+                },
+                "reportedAt": {
+                  "nullable": true,
+                  "type": "string"
+                },
+                "role": {
+                  "type": "string"
+                },
+                "state": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "displayName",
+                "private",
+                "role",
+                "state",
+                "readiness",
+                "positionUs",
+                "reportedAt",
+                "presence",
+                "joinedAt"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "name": {
+            "type": "string"
+          },
+          "permissions": {
+            "properties": {
+              "canControl": {
+                "type": "boolean"
+              },
+              "canManageQueue": {
+                "type": "boolean"
+              },
+              "isHost": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "isHost",
+              "canControl",
+              "canManageQueue"
+            ],
+            "type": "object"
+          },
+          "playbackRevision": {
+            "type": "string"
+          },
+          "queue": {
+            "nullable": true,
+            "properties": {
+              "eligibility": {
+                "nullable": true,
+                "properties": {
+                  "blockedEntries": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "currentEntryBlocked": {
+                    "type": "boolean"
+                  },
+                  "members": {
+                    "items": {
+                      "properties": {
+                        "blockedEntryIds": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "displayName": {
+                          "type": "string"
+                        },
+                        "memberId": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "memberId",
+                        "displayName",
+                        "blockedEntryIds"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "blockedEntries",
+                  "currentEntryBlocked",
+                  "members"
+                ],
+                "type": "object"
+              },
+              "entries": {
+                "items": {
+                  "properties": {
+                    "addedBy": {
+                      "type": "string"
+                    },
+                    "entryId": {
+                      "type": "string"
+                    },
+                    "itemId": {
+                      "nullable": true,
+                      "type": "string"
+                    },
+                    "position": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "unavailable": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "entryId",
+                    "position",
+                    "itemId",
+                    "unavailable",
+                    "addedBy"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "position": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "revision": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "revision",
+              "position",
+              "entries",
+              "eligibility"
+            ],
+            "type": "object"
+          },
+          "queueRevision": {
+            "type": "string"
+          },
+          "readiness": {
+            "properties": {
+              "aggregate": {
+                "type": "string"
+              },
+              "buffering": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "lagging": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "memberCount": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "ready": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "stale": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "aggregate",
+              "ready",
+              "buffering",
+              "lagging",
+              "stale",
+              "memberCount"
+            ],
+            "type": "object"
+          },
+          "reconnectGeneration": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "string"
+          },
+          "settings": {
+            "properties": {
+              "repeatMode": {
+                "type": "string"
+              },
+              "shuffleEnabled": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "shuffleEnabled",
+              "repeatMode"
+            ],
+            "type": "object"
+          },
+          "settingsRevision": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "sync": {
+            "properties": {
+              "noCorrectionUnderMs": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "rateCorrectionMaxMs": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "rateCorrectionMaximum": {
+                "type": "string"
+              },
+              "rateCorrectionMinimum": {
+                "type": "string"
+              },
+              "seekAtOrOverMs": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "noCorrectionUnderMs",
+              "rateCorrectionMinimum",
+              "rateCorrectionMaximum",
+              "rateCorrectionMaxMs",
+              "seekAtOrOverMs"
+            ],
+            "type": "object"
+          },
+          "timeline": {
+            "properties": {
+              "anchorAt": {
+                "type": "string"
+              },
+              "anchorPositionUs": {
+                "type": "string"
+              },
+              "currentEntryId": {
+                "type": "string"
+              },
+              "itemId": {
+                "type": "string"
+              },
+              "queuePosition": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "rate": {
+                "properties": {
+                  "denominator": {
+                    "type": "string"
+                  },
+                  "numerator": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "numerator",
+                  "denominator"
+                ],
+                "type": "object"
+              },
+              "state": {
+                "type": "string"
+              },
+              "waitUntil": {
+                "nullable": true,
+                "type": "string"
+              }
+            },
+            "required": [
+              "itemId",
+              "currentEntryId",
+              "state",
+              "anchorPositionUs",
+              "anchorAt",
+              "rate",
+              "queuePosition",
+              "waitUntil"
+            ],
+            "type": "object"
+          },
+          "updatedAt": {
+            "type": "string"
+          },
+          "viewerMemberId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "state",
+          "hostAuthority",
+          "hostMemberId",
+          "revision",
+          "playbackRevision",
+          "settingsRevision",
+          "governanceRevision",
+          "queueRevision",
+          "reconnectGeneration",
+          "lastCommand",
+          "lastCommandId",
+          "endedReason",
+          "eventOrdinal",
+          "createdAt",
+          "updatedAt",
+          "permissions",
+          "authority",
+          "host",
+          "timeline",
+          "settings",
+          "sync",
+          "readiness",
+          "members",
+          "queue",
+          "viewerMemberId"
+        ],
+        "type": "object"
+      },
+      "protocolVersion": {
+        "type": "string"
+      },
+      "serverTime": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "protocolVersion",
+      "serverTime",
+      "group"
+    ],
+    "type": "object"
+  },
+  "SocialPostV1GroupsIdSettingsRequest": {
+    "properties": {
+      "expectedRevision": {
+        "type": "string"
+      },
+      "idempotencyKey": {
+        "type": "string"
+      },
+      "protocolVersion": {
+        "type": "string"
+      },
+      "repeatMode": {
+        "nullable": true,
+        "type": "string"
+      },
+      "shuffleEnabled": {
+        "nullable": true,
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "protocolVersion",
+      "idempotencyKey",
+      "expectedRevision",
+      "shuffleEnabled",
+      "repeatMode"
+    ],
+    "type": "object"
+  },
+  "SocialPostV1GroupsIdSettingsResponse": {
+    "properties": {
+      "group": {
+        "properties": {
+          "authority": {
+            "properties": {
+              "deviceId": {
+                "type": "string"
+              },
+              "playbackId": {
+                "nullable": true,
+                "type": "string"
+              },
+              "state": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "deviceId",
+              "playbackId",
+              "state"
+            ],
+            "type": "object"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "endedReason": {
+            "type": "string"
+          },
+          "eventOrdinal": {
+            "type": "string"
+          },
+          "governanceRevision": {
+            "type": "string"
+          },
+          "host": {
+            "properties": {
+              "endAt": {
+                "nullable": true,
+                "type": "string"
+              },
+              "lastSeenAt": {
+                "type": "string"
+              },
+              "pauseAt": {
+                "nullable": true,
+                "type": "string"
+              },
+              "presence": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "presence",
+              "lastSeenAt",
+              "pauseAt",
+              "endAt"
+            ],
+            "type": "object"
+          },
+          "hostAuthority": {
+            "type": "string"
+          },
+          "hostMemberId": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "lastCommand": {
+            "type": "string"
+          },
+          "lastCommandId": {
+            "type": "string"
+          },
+          "members": {
+            "items": {
+              "properties": {
+                "displayName": {
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "joinedAt": {
+                  "type": "string"
+                },
+                "positionUs": {
+                  "type": "string"
+                },
+                "presence": {
+                  "type": "string"
+                },
+                "private": {
+                  "type": "boolean"
+                },
+                "readiness": {
+                  "type": "string"
+                },
+                "reportedAt": {
+                  "nullable": true,
+                  "type": "string"
+                },
+                "role": {
+                  "type": "string"
+                },
+                "state": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "displayName",
+                "private",
+                "role",
+                "state",
+                "readiness",
+                "positionUs",
+                "reportedAt",
+                "presence",
+                "joinedAt"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "name": {
+            "type": "string"
+          },
+          "permissions": {
+            "properties": {
+              "canControl": {
+                "type": "boolean"
+              },
+              "canManageQueue": {
+                "type": "boolean"
+              },
+              "isHost": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "isHost",
+              "canControl",
+              "canManageQueue"
+            ],
+            "type": "object"
+          },
+          "playbackRevision": {
+            "type": "string"
+          },
+          "queue": {
+            "nullable": true,
+            "properties": {
+              "eligibility": {
+                "nullable": true,
+                "properties": {
+                  "blockedEntries": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "currentEntryBlocked": {
+                    "type": "boolean"
+                  },
+                  "members": {
+                    "items": {
+                      "properties": {
+                        "blockedEntryIds": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "displayName": {
+                          "type": "string"
+                        },
+                        "memberId": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "memberId",
+                        "displayName",
+                        "blockedEntryIds"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "blockedEntries",
+                  "currentEntryBlocked",
+                  "members"
+                ],
+                "type": "object"
+              },
+              "entries": {
+                "items": {
+                  "properties": {
+                    "addedBy": {
+                      "type": "string"
+                    },
+                    "entryId": {
+                      "type": "string"
+                    },
+                    "itemId": {
+                      "nullable": true,
+                      "type": "string"
+                    },
+                    "position": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "unavailable": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "entryId",
+                    "position",
+                    "itemId",
+                    "unavailable",
+                    "addedBy"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "position": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "revision": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "revision",
+              "position",
+              "entries",
+              "eligibility"
+            ],
+            "type": "object"
+          },
+          "queueRevision": {
+            "type": "string"
+          },
+          "readiness": {
+            "properties": {
+              "aggregate": {
+                "type": "string"
+              },
+              "buffering": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "lagging": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "memberCount": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "ready": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "stale": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "aggregate",
+              "ready",
+              "buffering",
+              "lagging",
+              "stale",
+              "memberCount"
+            ],
+            "type": "object"
+          },
+          "reconnectGeneration": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "string"
+          },
+          "settings": {
+            "properties": {
+              "repeatMode": {
+                "type": "string"
+              },
+              "shuffleEnabled": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "shuffleEnabled",
+              "repeatMode"
+            ],
+            "type": "object"
+          },
+          "settingsRevision": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "sync": {
+            "properties": {
+              "noCorrectionUnderMs": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "rateCorrectionMaxMs": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "rateCorrectionMaximum": {
+                "type": "string"
+              },
+              "rateCorrectionMinimum": {
+                "type": "string"
+              },
+              "seekAtOrOverMs": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "noCorrectionUnderMs",
+              "rateCorrectionMinimum",
+              "rateCorrectionMaximum",
+              "rateCorrectionMaxMs",
+              "seekAtOrOverMs"
+            ],
+            "type": "object"
+          },
+          "timeline": {
+            "properties": {
+              "anchorAt": {
+                "type": "string"
+              },
+              "anchorPositionUs": {
+                "type": "string"
+              },
+              "currentEntryId": {
+                "type": "string"
+              },
+              "itemId": {
+                "type": "string"
+              },
+              "queuePosition": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "rate": {
+                "properties": {
+                  "denominator": {
+                    "type": "string"
+                  },
+                  "numerator": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "numerator",
+                  "denominator"
+                ],
+                "type": "object"
+              },
+              "state": {
+                "type": "string"
+              },
+              "waitUntil": {
+                "nullable": true,
+                "type": "string"
+              }
+            },
+            "required": [
+              "itemId",
+              "currentEntryId",
+              "state",
+              "anchorPositionUs",
+              "anchorAt",
+              "rate",
+              "queuePosition",
+              "waitUntil"
+            ],
+            "type": "object"
+          },
+          "updatedAt": {
+            "type": "string"
+          },
+          "viewerMemberId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "state",
+          "hostAuthority",
+          "hostMemberId",
+          "revision",
+          "playbackRevision",
+          "settingsRevision",
+          "governanceRevision",
+          "queueRevision",
+          "reconnectGeneration",
+          "lastCommand",
+          "lastCommandId",
+          "endedReason",
+          "eventOrdinal",
+          "createdAt",
+          "updatedAt",
+          "permissions",
+          "authority",
+          "host",
+          "timeline",
+          "settings",
+          "sync",
+          "readiness",
+          "members",
+          "queue",
+          "viewerMemberId"
+        ],
+        "type": "object"
+      },
+      "protocolVersion": {
+        "type": "string"
+      },
+      "serverTime": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "protocolVersion",
+      "serverTime",
+      "group"
+    ],
+    "type": "object"
+  },
+  "SocialPostV1GroupsIdTransportRequest": {
+    "properties": {
+      "allowUnavailable": {
+        "type": "boolean"
+      },
+      "command": {
+        "type": "string"
+      },
+      "entryId": {
+        "type": "string"
+      },
+      "expectedRevision": {
+        "type": "string"
+      },
+      "idempotencyKey": {
+        "type": "string"
+      },
+      "positionUs": {
+        "type": "string"
+      },
+      "protocolVersion": {
+        "type": "string"
+      },
+      "queuePosition": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "nullable": true,
+        "type": "integer"
+      },
+      "rate": {
+        "nullable": true,
+        "properties": {
+          "denominator": {
+            "type": "string"
+          },
+          "numerator": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "numerator",
+          "denominator"
+        ],
+        "type": "object"
+      }
+    },
+    "required": [
+      "protocolVersion",
+      "idempotencyKey",
+      "expectedRevision",
+      "command",
+      "positionUs",
+      "queuePosition",
+      "entryId",
+      "rate",
+      "allowUnavailable"
+    ],
+    "type": "object"
+  },
+  "SocialPostV1GroupsIdTransportResponse": {
+    "properties": {
+      "command": {
+        "type": "string"
+      },
+      "disposition": {
+        "type": "string"
+      },
+      "groupId": {
+        "type": "string"
+      },
+      "groupState": {
+        "type": "string"
+      },
+      "idempotencyKey": {
+        "type": "string"
+      },
+      "override": {
+        "nullable": true,
+        "properties": {
+          "blockedMemberIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason",
+          "blockedMemberIds"
+        ],
+        "type": "object"
+      },
+      "playbackRevision": {
+        "type": "string"
+      },
+      "protocolVersion": {
+        "type": "string"
+      },
+      "queueRevision": {
+        "type": "string"
+      },
+      "recordedAt": {
+        "type": "string"
+      },
+      "revision": {
+        "type": "string"
+      },
+      "serverTime": {
+        "type": "string"
+      },
+      "settings": {
+        "properties": {
+          "repeatMode": {
+            "type": "string"
+          },
+          "shuffleEnabled": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "shuffleEnabled",
+          "repeatMode"
+        ],
+        "type": "object"
+      },
+      "timeline": {
+        "properties": {
+          "anchorAt": {
+            "type": "string"
+          },
+          "anchorPositionUs": {
+            "type": "string"
+          },
+          "currentEntryId": {
+            "type": "string"
+          },
+          "itemId": {
+            "type": "string"
+          },
+          "queuePosition": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "rate": {
+            "properties": {
+              "denominator": {
+                "type": "string"
+              },
+              "numerator": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "numerator",
+              "denominator"
+            ],
+            "type": "object"
+          },
+          "state": {
+            "type": "string"
+          },
+          "waitUntil": {
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "itemId",
+          "currentEntryId",
+          "state",
+          "anchorPositionUs",
+          "anchorAt",
+          "rate",
+          "queuePosition",
+          "waitUntil"
+        ],
+        "type": "object"
+      }
+    },
+    "required": [
+      "protocolVersion",
+      "serverTime",
+      "groupId",
+      "idempotencyKey",
+      "disposition",
+      "command",
+      "groupState",
+      "revision",
+      "playbackRevision",
+      "queueRevision",
+      "recordedAt",
+      "timeline",
+      "settings",
+      "override"
+    ],
+    "type": "object"
+  },
+  "SocialPostV1GroupsJoinRequest": {
+    "properties": {
+      "code": {
+        "type": "string"
+      },
+      "displayName": {
+        "type": "string"
+      },
+      "protocolVersion": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "protocolVersion",
+      "code",
+      "displayName"
+    ],
+    "type": "object"
+  },
+  "SocialPostV1GroupsJoinResponse": {
+    "properties": {
+      "group": {
+        "properties": {
+          "authority": {
+            "properties": {
+              "deviceId": {
+                "type": "string"
+              },
+              "playbackId": {
+                "nullable": true,
+                "type": "string"
+              },
+              "state": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "deviceId",
+              "playbackId",
+              "state"
+            ],
+            "type": "object"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "endedReason": {
+            "type": "string"
+          },
+          "eventOrdinal": {
+            "type": "string"
+          },
+          "governanceRevision": {
+            "type": "string"
+          },
+          "host": {
+            "properties": {
+              "endAt": {
+                "nullable": true,
+                "type": "string"
+              },
+              "lastSeenAt": {
+                "type": "string"
+              },
+              "pauseAt": {
+                "nullable": true,
+                "type": "string"
+              },
+              "presence": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "presence",
+              "lastSeenAt",
+              "pauseAt",
+              "endAt"
+            ],
+            "type": "object"
+          },
+          "hostAuthority": {
+            "type": "string"
+          },
+          "hostMemberId": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "lastCommand": {
+            "type": "string"
+          },
+          "lastCommandId": {
+            "type": "string"
+          },
+          "members": {
+            "items": {
+              "properties": {
+                "displayName": {
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "joinedAt": {
+                  "type": "string"
+                },
+                "positionUs": {
+                  "type": "string"
+                },
+                "presence": {
+                  "type": "string"
+                },
+                "private": {
+                  "type": "boolean"
+                },
+                "readiness": {
+                  "type": "string"
+                },
+                "reportedAt": {
+                  "nullable": true,
+                  "type": "string"
+                },
+                "role": {
+                  "type": "string"
+                },
+                "state": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "displayName",
+                "private",
+                "role",
+                "state",
+                "readiness",
+                "positionUs",
+                "reportedAt",
+                "presence",
+                "joinedAt"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "name": {
+            "type": "string"
+          },
+          "permissions": {
+            "properties": {
+              "canControl": {
+                "type": "boolean"
+              },
+              "canManageQueue": {
+                "type": "boolean"
+              },
+              "isHost": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "isHost",
+              "canControl",
+              "canManageQueue"
+            ],
+            "type": "object"
+          },
+          "playbackRevision": {
+            "type": "string"
+          },
+          "queue": {
+            "nullable": true,
+            "properties": {
+              "eligibility": {
+                "nullable": true,
+                "properties": {
+                  "blockedEntries": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "currentEntryBlocked": {
+                    "type": "boolean"
+                  },
+                  "members": {
+                    "items": {
+                      "properties": {
+                        "blockedEntryIds": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "displayName": {
+                          "type": "string"
+                        },
+                        "memberId": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "memberId",
+                        "displayName",
+                        "blockedEntryIds"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "blockedEntries",
+                  "currentEntryBlocked",
+                  "members"
+                ],
+                "type": "object"
+              },
+              "entries": {
+                "items": {
+                  "properties": {
+                    "addedBy": {
+                      "type": "string"
+                    },
+                    "entryId": {
+                      "type": "string"
+                    },
+                    "itemId": {
+                      "nullable": true,
+                      "type": "string"
+                    },
+                    "position": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "unavailable": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "entryId",
+                    "position",
+                    "itemId",
+                    "unavailable",
+                    "addedBy"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "position": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "revision": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "revision",
+              "position",
+              "entries",
+              "eligibility"
+            ],
+            "type": "object"
+          },
+          "queueRevision": {
+            "type": "string"
+          },
+          "readiness": {
+            "properties": {
+              "aggregate": {
+                "type": "string"
+              },
+              "buffering": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "lagging": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "memberCount": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "ready": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "stale": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "aggregate",
+              "ready",
+              "buffering",
+              "lagging",
+              "stale",
+              "memberCount"
+            ],
+            "type": "object"
+          },
+          "reconnectGeneration": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "string"
+          },
+          "settings": {
+            "properties": {
+              "repeatMode": {
+                "type": "string"
+              },
+              "shuffleEnabled": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "shuffleEnabled",
+              "repeatMode"
+            ],
+            "type": "object"
+          },
+          "settingsRevision": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "sync": {
+            "properties": {
+              "noCorrectionUnderMs": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "rateCorrectionMaxMs": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "rateCorrectionMaximum": {
+                "type": "string"
+              },
+              "rateCorrectionMinimum": {
+                "type": "string"
+              },
+              "seekAtOrOverMs": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "noCorrectionUnderMs",
+              "rateCorrectionMinimum",
+              "rateCorrectionMaximum",
+              "rateCorrectionMaxMs",
+              "seekAtOrOverMs"
+            ],
+            "type": "object"
+          },
+          "timeline": {
+            "properties": {
+              "anchorAt": {
+                "type": "string"
+              },
+              "anchorPositionUs": {
+                "type": "string"
+              },
+              "currentEntryId": {
+                "type": "string"
+              },
+              "itemId": {
+                "type": "string"
+              },
+              "queuePosition": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "rate": {
+                "properties": {
+                  "denominator": {
+                    "type": "string"
+                  },
+                  "numerator": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "numerator",
+                  "denominator"
+                ],
+                "type": "object"
+              },
+              "state": {
+                "type": "string"
+              },
+              "waitUntil": {
+                "nullable": true,
+                "type": "string"
+              }
+            },
+            "required": [
+              "itemId",
+              "currentEntryId",
+              "state",
+              "anchorPositionUs",
+              "anchorAt",
+              "rate",
+              "queuePosition",
+              "waitUntil"
+            ],
+            "type": "object"
+          },
+          "updatedAt": {
+            "type": "string"
+          },
+          "viewerMemberId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "state",
+          "hostAuthority",
+          "hostMemberId",
+          "revision",
+          "playbackRevision",
+          "settingsRevision",
+          "governanceRevision",
+          "queueRevision",
+          "reconnectGeneration",
+          "lastCommand",
+          "lastCommandId",
+          "endedReason",
+          "eventOrdinal",
+          "createdAt",
+          "updatedAt",
+          "permissions",
+          "authority",
+          "host",
+          "timeline",
+          "settings",
+          "sync",
+          "readiness",
+          "members",
+          "queue",
+          "viewerMemberId"
+        ],
+        "type": "object"
+      },
+      "protocolVersion": {
+        "type": "string"
+      },
+      "serverTime": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "protocolVersion",
+      "serverTime",
+      "group"
+    ],
+    "type": "object"
+  },
+  "SocialPostV1GroupsRequest": {
+    "properties": {
+      "displayName": {
+        "type": "string"
+      },
+      "hostAuthority": {
+        "type": "string"
+      },
+      "name": {
+        "type": "string"
+      },
+      "protocolVersion": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "protocolVersion",
+      "name",
+      "displayName",
+      "hostAuthority"
+    ],
+    "type": "object"
+  },
+  "SocialPostV1GroupsResponse": {
+    "properties": {
+      "group": {
+        "properties": {
+          "authority": {
+            "properties": {
+              "deviceId": {
+                "type": "string"
+              },
+              "playbackId": {
+                "nullable": true,
+                "type": "string"
+              },
+              "state": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "deviceId",
+              "playbackId",
+              "state"
+            ],
+            "type": "object"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "endedReason": {
+            "type": "string"
+          },
+          "eventOrdinal": {
+            "type": "string"
+          },
+          "governanceRevision": {
+            "type": "string"
+          },
+          "host": {
+            "properties": {
+              "endAt": {
+                "nullable": true,
+                "type": "string"
+              },
+              "lastSeenAt": {
+                "type": "string"
+              },
+              "pauseAt": {
+                "nullable": true,
+                "type": "string"
+              },
+              "presence": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "presence",
+              "lastSeenAt",
+              "pauseAt",
+              "endAt"
+            ],
+            "type": "object"
+          },
+          "hostAuthority": {
+            "type": "string"
+          },
+          "hostMemberId": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "lastCommand": {
+            "type": "string"
+          },
+          "lastCommandId": {
+            "type": "string"
+          },
+          "members": {
+            "items": {
+              "properties": {
+                "displayName": {
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "joinedAt": {
+                  "type": "string"
+                },
+                "positionUs": {
+                  "type": "string"
+                },
+                "presence": {
+                  "type": "string"
+                },
+                "private": {
+                  "type": "boolean"
+                },
+                "readiness": {
+                  "type": "string"
+                },
+                "reportedAt": {
+                  "nullable": true,
+                  "type": "string"
+                },
+                "role": {
+                  "type": "string"
+                },
+                "state": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "displayName",
+                "private",
+                "role",
+                "state",
+                "readiness",
+                "positionUs",
+                "reportedAt",
+                "presence",
+                "joinedAt"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "name": {
+            "type": "string"
+          },
+          "permissions": {
+            "properties": {
+              "canControl": {
+                "type": "boolean"
+              },
+              "canManageQueue": {
+                "type": "boolean"
+              },
+              "isHost": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "isHost",
+              "canControl",
+              "canManageQueue"
+            ],
+            "type": "object"
+          },
+          "playbackRevision": {
+            "type": "string"
+          },
+          "queue": {
+            "nullable": true,
+            "properties": {
+              "eligibility": {
+                "nullable": true,
+                "properties": {
+                  "blockedEntries": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "currentEntryBlocked": {
+                    "type": "boolean"
+                  },
+                  "members": {
+                    "items": {
+                      "properties": {
+                        "blockedEntryIds": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "displayName": {
+                          "type": "string"
+                        },
+                        "memberId": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "memberId",
+                        "displayName",
+                        "blockedEntryIds"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "blockedEntries",
+                  "currentEntryBlocked",
+                  "members"
+                ],
+                "type": "object"
+              },
+              "entries": {
+                "items": {
+                  "properties": {
+                    "addedBy": {
+                      "type": "string"
+                    },
+                    "entryId": {
+                      "type": "string"
+                    },
+                    "itemId": {
+                      "nullable": true,
+                      "type": "string"
+                    },
+                    "position": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "unavailable": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "entryId",
+                    "position",
+                    "itemId",
+                    "unavailable",
+                    "addedBy"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "position": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "revision": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "revision",
+              "position",
+              "entries",
+              "eligibility"
+            ],
+            "type": "object"
+          },
+          "queueRevision": {
+            "type": "string"
+          },
+          "readiness": {
+            "properties": {
+              "aggregate": {
+                "type": "string"
+              },
+              "buffering": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "lagging": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "memberCount": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "ready": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "stale": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "aggregate",
+              "ready",
+              "buffering",
+              "lagging",
+              "stale",
+              "memberCount"
+            ],
+            "type": "object"
+          },
+          "reconnectGeneration": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "string"
+          },
+          "settings": {
+            "properties": {
+              "repeatMode": {
+                "type": "string"
+              },
+              "shuffleEnabled": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "shuffleEnabled",
+              "repeatMode"
+            ],
+            "type": "object"
+          },
+          "settingsRevision": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "sync": {
+            "properties": {
+              "noCorrectionUnderMs": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "rateCorrectionMaxMs": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "rateCorrectionMaximum": {
+                "type": "string"
+              },
+              "rateCorrectionMinimum": {
+                "type": "string"
+              },
+              "seekAtOrOverMs": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "noCorrectionUnderMs",
+              "rateCorrectionMinimum",
+              "rateCorrectionMaximum",
+              "rateCorrectionMaxMs",
+              "seekAtOrOverMs"
+            ],
+            "type": "object"
+          },
+          "timeline": {
+            "properties": {
+              "anchorAt": {
+                "type": "string"
+              },
+              "anchorPositionUs": {
+                "type": "string"
+              },
+              "currentEntryId": {
+                "type": "string"
+              },
+              "itemId": {
+                "type": "string"
+              },
+              "queuePosition": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "rate": {
+                "properties": {
+                  "denominator": {
+                    "type": "string"
+                  },
+                  "numerator": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "numerator",
+                  "denominator"
+                ],
+                "type": "object"
+              },
+              "state": {
+                "type": "string"
+              },
+              "waitUntil": {
+                "nullable": true,
+                "type": "string"
+              }
+            },
+            "required": [
+              "itemId",
+              "currentEntryId",
+              "state",
+              "anchorPositionUs",
+              "anchorAt",
+              "rate",
+              "queuePosition",
+              "waitUntil"
+            ],
+            "type": "object"
+          },
+          "updatedAt": {
+            "type": "string"
+          },
+          "viewerMemberId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "state",
+          "hostAuthority",
+          "hostMemberId",
+          "revision",
+          "playbackRevision",
+          "settingsRevision",
+          "governanceRevision",
+          "queueRevision",
+          "reconnectGeneration",
+          "lastCommand",
+          "lastCommandId",
+          "endedReason",
+          "eventOrdinal",
+          "createdAt",
+          "updatedAt",
+          "permissions",
+          "authority",
+          "host",
+          "timeline",
+          "settings",
+          "sync",
+          "readiness",
+          "members",
+          "queue",
+          "viewerMemberId"
+        ],
+        "type": "object"
+      },
+      "protocolVersion": {
+        "type": "string"
+      },
+      "serverTime": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "protocolVersion",
+      "serverTime",
+      "group"
+    ],
+    "type": "object"
+  },
+  "SocialPostV1HandoffsIdCommitRequest": {
+    "properties": {
+      "expectedRevision": {
+        "type": "string"
+      },
+      "protocolVersion": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "protocolVersion",
+      "expectedRevision"
+    ],
+    "type": "object"
+  },
+  "SocialPostV1HandoffsIdCommitResponse": {
+    "properties": {
+      "handoff": {
+        "properties": {
+          "committedPositionUs": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": "string"
+          },
+          "grantId": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "itemId": {
+            "type": "string"
+          },
+          "outcome": {
+            "type": "string"
+          },
+          "readyPositionUs": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "receiverId": {
+            "type": "string"
+          },
+          "receiverPlaybackId": {
+            "type": "string"
+          },
+          "requestId": {
+            "type": "string"
+          },
+          "requestedPositionUs": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "string"
+          },
+          "settledAt": {
+            "nullable": true,
+            "type": "string"
+          },
+          "sourcePlaybackId": {
+            "type": "string"
+          },
+          "sourceRetired": {
+            "type": "boolean"
+          },
+          "state": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "receiverId",
+          "grantId",
+          "requestId",
+          "state",
+          "outcome",
+          "reason",
+          "revision",
+          "itemId",
+          "sourcePlaybackId",
+          "receiverPlaybackId",
+          "requestedPositionUs",
+          "readyPositionUs",
+          "committedPositionUs",
+          "sourceRetired",
+          "createdAt",
+          "expiresAt",
+          "settledAt"
+        ],
+        "type": "object"
+      },
+      "protocolVersion": {
+        "type": "string"
+      },
+      "serverTime": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "protocolVersion",
+      "serverTime",
+      "handoff"
+    ],
+    "type": "object"
+  },
+  "SocialPostV1HandoffsIdReadinessRequest": {
+    "properties": {
+      "expectedRevision": {
+        "type": "string"
+      },
+      "positionUs": {
+        "type": "string"
+      },
+      "protocolVersion": {
+        "type": "string"
+      },
+      "readiness": {
+        "type": "string"
+      },
+      "receiverPlaybackId": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "protocolVersion",
+      "readiness",
+      "receiverPlaybackId",
+      "positionUs",
+      "expectedRevision"
+    ],
+    "type": "object"
+  },
+  "SocialPostV1HandoffsIdReadinessResponse": {
+    "properties": {
+      "handoff": {
+        "properties": {
+          "committedPositionUs": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": "string"
+          },
+          "grantId": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "itemId": {
+            "type": "string"
+          },
+          "outcome": {
+            "type": "string"
+          },
+          "readyPositionUs": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "receiverId": {
+            "type": "string"
+          },
+          "receiverPlaybackId": {
+            "type": "string"
+          },
+          "requestId": {
+            "type": "string"
+          },
+          "requestedPositionUs": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "string"
+          },
+          "settledAt": {
+            "nullable": true,
+            "type": "string"
+          },
+          "sourcePlaybackId": {
+            "type": "string"
+          },
+          "sourceRetired": {
+            "type": "boolean"
+          },
+          "state": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "receiverId",
+          "grantId",
+          "requestId",
+          "state",
+          "outcome",
+          "reason",
+          "revision",
+          "itemId",
+          "sourcePlaybackId",
+          "receiverPlaybackId",
+          "requestedPositionUs",
+          "readyPositionUs",
+          "committedPositionUs",
+          "sourceRetired",
+          "createdAt",
+          "expiresAt",
+          "settledAt"
+        ],
+        "type": "object"
+      },
+      "protocolVersion": {
+        "type": "string"
+      },
+      "serverTime": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "protocolVersion",
+      "serverTime",
+      "handoff"
+    ],
+    "type": "object"
+  },
+  "SocialPostV1HandoffsIdRollbackRequest": {
+    "properties": {
+      "expectedRevision": {
+        "type": "string"
+      },
+      "protocolVersion": {
+        "type": "string"
+      },
+      "reason": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "protocolVersion",
+      "expectedRevision",
+      "reason"
+    ],
+    "type": "object"
+  },
+  "SocialPostV1HandoffsIdRollbackResponse": {
+    "properties": {
+      "handoff": {
+        "properties": {
+          "committedPositionUs": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": "string"
+          },
+          "grantId": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "itemId": {
+            "type": "string"
+          },
+          "outcome": {
+            "type": "string"
+          },
+          "readyPositionUs": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "receiverId": {
+            "type": "string"
+          },
+          "receiverPlaybackId": {
+            "type": "string"
+          },
+          "requestId": {
+            "type": "string"
+          },
+          "requestedPositionUs": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "string"
+          },
+          "settledAt": {
+            "nullable": true,
+            "type": "string"
+          },
+          "sourcePlaybackId": {
+            "type": "string"
+          },
+          "sourceRetired": {
+            "type": "boolean"
+          },
+          "state": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "receiverId",
+          "grantId",
+          "requestId",
+          "state",
+          "outcome",
+          "reason",
+          "revision",
+          "itemId",
+          "sourcePlaybackId",
+          "receiverPlaybackId",
+          "requestedPositionUs",
+          "readyPositionUs",
+          "committedPositionUs",
+          "sourceRetired",
+          "createdAt",
+          "expiresAt",
+          "settledAt"
+        ],
+        "type": "object"
+      },
+      "protocolVersion": {
+        "type": "string"
+      },
+      "serverTime": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "protocolVersion",
+      "serverTime",
+      "handoff"
+    ],
+    "type": "object"
+  },
+  "SocialPostV1HandoffsRequest": {
+    "properties": {
+      "expectedPlaybackRevision": {
+        "type": "string"
+      },
+      "grantId": {
+        "type": "string"
+      },
+      "protocolVersion": {
+        "type": "string"
+      },
+      "receiverId": {
+        "type": "string"
+      },
+      "requestId": {
+        "type": "string"
+      },
+      "sourcePlaybackId": {
+        "type": "string"
+      },
+      "startPositionUs": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "protocolVersion",
+      "requestId",
+      "receiverId",
+      "grantId",
+      "sourcePlaybackId",
+      "startPositionUs",
+      "expectedPlaybackRevision"
+    ],
+    "type": "object"
+  },
+  "SocialPostV1HandoffsResponse": {
+    "properties": {
+      "handoff": {
+        "properties": {
+          "committedPositionUs": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": "string"
+          },
+          "grantId": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "itemId": {
+            "type": "string"
+          },
+          "outcome": {
+            "type": "string"
+          },
+          "readyPositionUs": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "receiverId": {
+            "type": "string"
+          },
+          "receiverPlaybackId": {
+            "type": "string"
+          },
+          "requestId": {
+            "type": "string"
+          },
+          "requestedPositionUs": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "string"
+          },
+          "settledAt": {
+            "nullable": true,
+            "type": "string"
+          },
+          "sourcePlaybackId": {
+            "type": "string"
+          },
+          "sourceRetired": {
+            "type": "boolean"
+          },
+          "state": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "receiverId",
+          "grantId",
+          "requestId",
+          "state",
+          "outcome",
+          "reason",
+          "revision",
+          "itemId",
+          "sourcePlaybackId",
+          "receiverPlaybackId",
+          "requestedPositionUs",
+          "readyPositionUs",
+          "committedPositionUs",
+          "sourceRetired",
+          "createdAt",
+          "expiresAt",
+          "settledAt"
+        ],
+        "type": "object"
+      },
+      "protocolVersion": {
+        "type": "string"
+      },
+      "serverTime": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "protocolVersion",
+      "serverTime",
+      "handoff"
+    ],
+    "type": "object"
+  },
+  "SocialPostV1ReceiversIdGrantsGrantIdDecisionRequest": {
+    "properties": {
+      "decision": {
+        "type": "string"
+      },
+      "protocolVersion": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "protocolVersion",
+      "decision"
+    ],
+    "type": "object"
+  },
+  "SocialPostV1ReceiversIdGrantsGrantIdDecisionResponse": {
+    "properties": {
+      "grant": {
+        "properties": {
+          "allowedCommands": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "authorizationRevision": {
+            "type": "string"
+          },
+          "controllerDeviceId": {
+            "type": "string"
+          },
+          "controllerDisplayName": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "decidedAt": {
+            "nullable": true,
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "receiverId": {
+            "type": "string"
+          },
+          "receiverKeyFingerprint": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "receiverId",
+          "controllerDeviceId",
+          "controllerDisplayName",
+          "receiverKeyFingerprint",
+          "allowedCommands",
+          "authorizationRevision",
+          "state",
+          "expiresAt",
+          "createdAt",
+          "decidedAt"
+        ],
+        "type": "object"
+      },
+      "protocolVersion": {
+        "type": "string"
+      },
+      "serverTime": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "protocolVersion",
+      "serverTime",
+      "grant"
+    ],
+    "type": "object"
+  },
+  "SocialPostV1ReceiversIdGrantsRequest": {
+    "properties": {
+      "controllerDisplayName": {
+        "type": "string"
+      },
+      "keyFingerprint": {
+        "type": "string"
+      },
+      "protocolVersion": {
+        "type": "string"
+      },
+      "requestedCommands": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      }
+    },
+    "required": [
+      "protocolVersion",
+      "controllerDisplayName",
+      "requestedCommands",
+      "keyFingerprint"
+    ],
+    "type": "object"
+  },
+  "SocialPostV1ReceiversIdGrantsResponse": {
+    "properties": {
+      "grant": {
+        "properties": {
+          "allowedCommands": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "authorizationRevision": {
+            "type": "string"
+          },
+          "controllerDeviceId": {
+            "type": "string"
+          },
+          "controllerDisplayName": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "decidedAt": {
+            "nullable": true,
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "receiverId": {
+            "type": "string"
+          },
+          "receiverKeyFingerprint": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "receiverId",
+          "controllerDeviceId",
+          "controllerDisplayName",
+          "receiverKeyFingerprint",
+          "allowedCommands",
+          "authorizationRevision",
+          "state",
+          "expiresAt",
+          "createdAt",
+          "decidedAt"
+        ],
+        "type": "object"
+      },
+      "protocolVersion": {
+        "type": "string"
+      },
+      "serverTime": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "protocolVersion",
+      "serverTime",
+      "grant"
+    ],
+    "type": "object"
+  },
+  "SocialPostV1ReceiversIdHeartbeatRequest": {
+    "properties": {
+      "keyFingerprint": {
+        "type": "string"
+      },
+      "protocolVersion": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "protocolVersion",
+      "keyFingerprint"
+    ],
+    "type": "object"
+  },
+  "SocialPostV1ReceiversIdHeartbeatResponse": {
+    "properties": {
+      "protocolVersion": {
+        "type": "string"
+      },
+      "receiver": {
+        "properties": {
+          "authorizationRevision": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "deviceId": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "grantPolicy": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "keyFingerprint": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "lastSeenAt": {
+            "type": "string"
+          },
+          "platform": {
+            "type": "string"
+          },
+          "presence": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "supportedCommands": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "deviceId",
+          "displayName",
+          "platform",
+          "keyFingerprint",
+          "supportedCommands",
+          "grantPolicy",
+          "authorizationRevision",
+          "state",
+          "presence",
+          "lastSeenAt",
+          "createdAt"
+        ],
+        "type": "object"
+      },
+      "serverTime": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "protocolVersion",
+      "serverTime",
+      "receiver"
+    ],
+    "type": "object"
+  },
+  "SocialPostV1ReceiversRequest": {
+    "properties": {
+      "displayName": {
+        "type": "string"
+      },
+      "grantPolicy": {
+        "type": "string"
+      },
+      "keyFingerprint": {
+        "type": "string"
+      },
+      "platform": {
+        "type": "string"
+      },
+      "protocolVersion": {
+        "type": "string"
+      },
+      "publicKey": {
+        "type": "string"
+      },
+      "supportedCommands": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      }
+    },
+    "required": [
+      "protocolVersion",
+      "displayName",
+      "platform",
+      "keyFingerprint",
+      "publicKey",
+      "supportedCommands",
+      "grantPolicy"
+    ],
+    "type": "object"
+  },
+  "SocialPostV1ReceiversResponse": {
+    "properties": {
+      "protocolVersion": {
+        "type": "string"
+      },
+      "receiver": {
+        "properties": {
+          "authorizationRevision": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "deviceId": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "grantPolicy": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "keyFingerprint": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "lastSeenAt": {
+            "type": "string"
+          },
+          "platform": {
+            "type": "string"
+          },
+          "presence": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "supportedCommands": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "deviceId",
+          "displayName",
+          "platform",
+          "keyFingerprint",
+          "supportedCommands",
+          "grantPolicy",
+          "authorizationRevision",
+          "state",
+          "presence",
+          "lastSeenAt",
+          "createdAt"
+        ],
+        "type": "object"
+      },
+      "serverTime": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "protocolVersion",
+      "serverTime",
+      "receiver"
+    ],
+    "type": "object"
+  },
+  "SocialPutV1CastConfigurationRequest": {
+    "properties": {
+      "applicationId": {
+        "type": "string"
+      },
+      "protocolVersion": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "protocolVersion",
+      "applicationId"
+    ],
+    "type": "object"
+  },
+  "SocialPutV1CastConfigurationResponse": {
+    "properties": {
+      "applicationId": {
+        "type": "string"
+      },
+      "protocolVersion": {
+        "type": "string"
+      },
+      "receiverUrl": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "protocolVersion",
+      "applicationId",
+      "receiverUrl"
+    ],
+    "type": "object"
+  },
   "StartPlaybackSessionRequest": {
     "properties": {
       "audio": {

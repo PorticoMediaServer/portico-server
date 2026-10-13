@@ -4,8 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"errors"
- "time"
 	"portico.local/server/internal/dbwork"
+	"time"
 
 	"portico.local/server/internal/identity"
 )
@@ -178,7 +178,9 @@ func (s *Store) PrepareHandoff(ctx context.Context, p identity.Principal, req Ha
 	}
 	tx := gated.Tx()
 	defer gated.Rollback()
- if e=s.limit(ctx,tx,"handoff-create:"+viewerKey(p.Viewer),60,time.Minute);e!=nil{return out,e}
+	if e = s.limit(ctx, tx, "handoff-create:"+viewerKey(p.Viewer), 60, time.Minute); e != nil {
+		return out, e
+	}
 	// A retried prepare with the same request id returns the same handoff; the
 	// same id with a different proposal is a conflict.
 	want := digestJSON(req)
@@ -326,11 +328,17 @@ func (s *Store) ReportHandoffReadiness(ctx context.Context, p identity.Principal
 	if grant.State != "accepted" {
 		return out, &Fault{Code: "grant_not_accepted", Status: 403, Message: "That authorization is no longer valid."}
 	}
-	receiver,e:=s.readReceiver(ctx,tx,p,h.receiverID)
- if e!=nil{return out,e}
- if p.DeviceID=="" || p.DeviceID!=receiver.DeviceID{return out,identity.ErrUnauthorized}
- if e=s.checkReceiverPlayback(ctx,tx,p,h,req.ReceiverPlaybackID);e!=nil{return out,e}
- h.revision++
+	receiver, e := s.readReceiver(ctx, tx, p, h.receiverID)
+	if e != nil {
+		return out, e
+	}
+	if p.DeviceID == "" || p.DeviceID != receiver.DeviceID {
+		return out, identity.ErrUnauthorized
+	}
+	if e = s.checkReceiverPlayback(ctx, tx, p, h, req.ReceiverPlaybackID); e != nil {
+		return out, e
+	}
+	h.revision++
 	h.receiverPlaybackID, h.readyUS, h.outcome = req.ReceiverPlaybackID, position, "pending"
 	if _, e = tx.ExecContext(ctx, `UPDATE social_handoffs SET receiver_playback_id=?,ready_position_us=?,outcome='pending',revision=? WHERE id=?`, req.ReceiverPlaybackID, position, h.revision, id); e != nil {
 		return out, e
@@ -383,8 +391,10 @@ func (s *Store) CommitHandoff(ctx context.Context, p identity.Principal, id stri
 	if grant.State != "accepted" {
 		return out, &Fault{Code: "grant_not_accepted", Status: 403, Message: "That authorization is no longer valid."}
 	}
-	if e=s.checkReceiverPlayback(ctx,tx,p,h,h.receiverPlaybackID);e!=nil{return out,e}
- source, e := s.Playback.SessionTx(ctx, tx, p, h.sourcePlaybackID)
+	if e = s.checkReceiverPlayback(ctx, tx, p, h, h.receiverPlaybackID); e != nil {
+		return out, e
+	}
+	source, e := s.Playback.SessionTx(ctx, tx, p, h.sourcePlaybackID)
 	if errors.Is(e, sql.ErrNoRows) {
 		return out, s.failHandoff(ctx, gated4, h, "handoff-source-missing")
 	}
@@ -489,13 +499,23 @@ func handoffStateFault(h handoffRow) *Fault {
 }
 
 // Readiness must describe the live session on the named receiving device.
-func(s *Store)checkReceiverPlayback(ctx context.Context,tx *sql.Tx,p identity.Principal,h handoffRow,id string)error{
- if s.Playback==nil{return fault("playback_authority_unavailable",503,"Playback authority is not available.")}
- receiver,e:=s.readReceiver(ctx,tx,p,h.receiverID)
- if e!=nil{return e}
- facts,e:=s.Playback.SessionTx(ctx,tx,p,id)
- if errors.Is(e,sql.ErrNoRows){return fault("handoff_not_ready",409,"The receiver is not playing that title.")}
- if e!=nil{return e}
- if !facts.Live || facts.DeviceID!=receiver.DeviceID || facts.ItemID!=h.itemID || facts.State!="playing" {return fault("handoff_not_ready",409,"The receiver is not playing that title.")}
- return nil
+func (s *Store) checkReceiverPlayback(ctx context.Context, tx *sql.Tx, p identity.Principal, h handoffRow, id string) error {
+	if s.Playback == nil {
+		return fault("playback_authority_unavailable", 503, "Playback authority is not available.")
+	}
+	receiver, e := s.readReceiver(ctx, tx, p, h.receiverID)
+	if e != nil {
+		return e
+	}
+	facts, e := s.Playback.SessionTx(ctx, tx, p, id)
+	if errors.Is(e, sql.ErrNoRows) {
+		return fault("handoff_not_ready", 409, "The receiver is not playing that title.")
+	}
+	if e != nil {
+		return e
+	}
+	if !facts.Live || facts.DeviceID != receiver.DeviceID || facts.ItemID != h.itemID || facts.State != "playing" {
+		return fault("handoff_not_ready", 409, "The receiver is not playing that title.")
+	}
+	return nil
 }

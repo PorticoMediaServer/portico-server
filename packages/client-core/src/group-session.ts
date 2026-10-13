@@ -192,7 +192,7 @@ export class GroupSessionService{
    // members and the queue are projected per viewer and cannot ride in a shared event.
    if(kind==='group.readiness'&&this.state.group){
  const v=body as {memberId?:string;readiness?:GroupReadiness;positionUs?:string;reportedAt?:string;aggregate?:Group['readiness']};
- if(v.memberId&&v.readiness&&v.positionUs&&v.aggregate)this.publish({group:Object.freeze({...this.state.group,readiness:v.aggregate,members:this.state.group.members.map(m=>m.id===v.memberId?Object.freeze({...m,readiness:v.readiness!,positionUs:v.positionUs!,reportedAt:v.reportedAt??m.reportedAt,presence:'connected' as const}):m)})});
+ if(v.memberId&&v.readiness&&v.positionUs&&v.aggregate)this.publish({group:Object.freeze({...this.state.group,readiness:v.aggregate,members:this.state.group.members.map(m=>m.id===v.memberId?Object.freeze({...m,readiness:v.readiness!,positionUs:m.private?'0':v.positionUs!,reportedAt:m.private?null:v.reportedAt??m.reportedAt,presence:'connected' as const}):m)})});
  return;
  }
  if(kind==='group.transport'&&this.state.group){const timeline=timelineOf(body,this.state.group.timeline);if(timeline){const v=body as {groupState?:Group['state'];revision?:string;playbackRevision?:string};
@@ -234,7 +234,7 @@ export class GroupSessionService{
  }
  async transport(command:GroupTransportCommand,input:{positionUs?:string;entryId?:string;queuePosition?:number;allowUnavailable?:boolean}={}):Promise<boolean>{
   const receipt=await this.act(async group=>parseGroupTransportReceipt(await this.api.request<unknown>(path(group.id,'/transport'),'POST',{protocolVersion:SOCIAL_PROTOCOL,idempotencyKey:this.key(),expectedRevision:group.playbackRevision,command,...(input.positionUs!==undefined?{positionUs:input.positionUs}:{}),...(input.entryId?{entryId:input.entryId}:{}),...(input.queuePosition!==undefined?{queuePosition:input.queuePosition}:{}),...(input.allowUnavailable?{allowUnavailable:true}:{})})),'together.error.notReached');
-  if(receipt&&this.state.group)this.publish({group:Object.freeze({...this.state.group,timeline:receipt.timeline,state:receipt.timeline.waitUntil?'waiting':receipt.timeline.state==='playing'?'playing':receipt.timeline.state==='idle'?'lobby':'paused',revision:receipt.revision,playbackRevision:receipt.playbackRevision})});
+  if(receipt&&this.state.group)this.publish({group:Object.freeze({...this.state.group,timeline:receipt.timeline,state:receipt.groupState,revision:receipt.revision,playbackRevision:receipt.playbackRevision})});
   else if(!receipt&&this.lastCode==='media_no_longer_accessible'&&!input.allowUnavailable)this.publish({...this.problem('together.error.memberCantSee'),refused:Object.freeze({command,input:Object.freeze({positionUs:input.positionUs,entryId:input.entryId,queuePosition:input.queuePosition})})});
   if(receipt&&this.room)void this.reread(this.room);
   return !!receipt;
@@ -278,7 +278,7 @@ export class GroupSessionService{
  async makeHost(memberId:string):Promise<boolean>{
   const mine=this.state.group?.viewerMemberId===memberId;
   const done=await this.act(async group=>{
-   const body={protocolVersion:SOCIAL_PROTOCOL,memberId,expectedRevision:group.revision};
+   const body={protocolVersion:SOCIAL_PROTOCOL,memberId,expectedRevision:group.governanceRevision};
    // Claiming binds this device at once; handing over leaves the incoming host's heartbeat to bind its own.
    const sent=this.now();
    this.adopt(parseGroupSnapshot(await this.api.request<unknown>(path(group.id,'/host-transfer'),'POST',body)),{sent,received:this.now()});
@@ -293,7 +293,7 @@ export class GroupSessionService{
   void this.refreshDirectory();
  }
  async end():Promise<boolean>{
-  const done=await this.act(async group=>{await this.api.request<unknown>(path(group.id,'/end'),'POST',{protocolVersion:SOCIAL_PROTOCOL,expectedRevision:group.revision});return true;},'together.error.end');
+  const done=await this.act(async group=>{await this.api.request<unknown>(path(group.id,'/end'),'POST',{protocolVersion:SOCIAL_PROTOCOL,expectedRevision:group.governanceRevision});return true;},'together.error.end');
   if(done){this.publish({phase:'ended'});this.close('ended');void this.refreshDirectory();}
   return !!done;
  }
@@ -368,7 +368,7 @@ export class GroupFollower{
   const snapshot=this.service.getSnapshot(),group=snapshot.group;
   if(!group||(snapshot.phase!=='live'&&snapshot.phase!=='reconnecting'))return;
   const timeline=group.timeline,target=this.target();
- if(this.epoch!==group.playbackRevision){this.epoch=group.playbackRevision;this.lastReadiness='';this.own=undefined;this.correctingUntil=0;this.player.setRate(1);}
+ if(this.epoch!==group.playbackRevision){if(this.correctingUntil){this.correctingUntil=0;this.player.setRate(1);}this.epoch=group.playbackRevision;this.lastReadiness='';}
  if(!timeline.itemId&&timeline.currentEntryId){this.player.pause();this.report('buffering',0);return;}
   if(target===undefined||timeline.state==='idle'||timeline.state==='stopped'){if(timeline.state==='stopped'&&this.player.state().playing)this.player.pause();return;}
   const local=this.player.state(),wantPlaying=timeline.state==='playing';

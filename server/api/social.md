@@ -1,6 +1,6 @@
 # Social and remote playback for third-party clients
 
-Companion to `social.openapi.yaml`. That document is the schema; this one is the
+Companion to `portico.openapi.json`. That document is the schema; this one is the
 behaviour you cannot read off a schema: how the group timeline works, what the
 handoff state machine guarantees, and what this server deliberately does not do.
 

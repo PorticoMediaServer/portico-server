@@ -5,14 +5,14 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
- "time"
+	"time"
 
 	"portico.local/server/internal/identity"
 )
 
 // TransportRequest is one authoritative group command.
 //
-// `expectedRevision` fences the command against the group revision the caller
+// `expectedRevision` fences the command against the playback revision the caller
 // last read; `idempotencyKey` makes the command replay-safe. Both are required:
 // a retried Play that arrives after a Pause must not undo the Pause, and a
 // retried Play that arrives twice must not be applied twice.
@@ -39,18 +39,19 @@ type TransportReceipt struct {
 	// ServerTime is the answer's time, like every other social response
 	// (CD-01): clients read it to place the timeline. It is set when the
 	// answer is sent, so a replayed receipt carries the replay's time.
-	ServerTime     string         `json:"serverTime"`
-	GroupID        string         `json:"groupId"`
-	IdempotencyKey string         `json:"idempotencyKey"`
-	Disposition    string         `json:"disposition"`
-	Command        string         `json:"command"`
-	Revision       string         `json:"revision"`
- PlaybackRevision string `json:"playbackRevision"`
-	QueueRevision  string         `json:"queueRevision"`
-	RecordedAt     string         `json:"recordedAt"`
-	Timeline       Timeline       `json:"timeline"`
-	Settings       Settings       `json:"settings"`
-	Override       *OverrideNotes `json:"override"`
+	ServerTime       string         `json:"serverTime"`
+	GroupID          string         `json:"groupId"`
+	IdempotencyKey   string         `json:"idempotencyKey"`
+	Disposition      string         `json:"disposition"`
+	Command          string         `json:"command"`
+	GroupState       string         `json:"groupState"`
+	Revision         string         `json:"revision"`
+	PlaybackRevision string         `json:"playbackRevision"`
+	QueueRevision    string         `json:"queueRevision"`
+	RecordedAt       string         `json:"recordedAt"`
+	Timeline         Timeline       `json:"timeline"`
+	Settings         Settings       `json:"settings"`
+	Override         *OverrideNotes `json:"override"`
 }
 
 // OverrideNotes records that a host started an entry some members cannot see.
@@ -69,14 +70,14 @@ type SettingsRequest struct {
 }
 
 // ReadinessRequest is a participant's own report. Readiness is evidence about
-// one member's transport, never a command: it can hold the group out of `ready`
-// but it can never start or stop playback.
+// one member's transport. Matching readiness releases a bounded seek/load wait;
+// a fenced host end report anchors the group at the end of the title.
 type ReadinessRequest struct {
-	ProtocolVersion string `json:"protocolVersion"`
-	Readiness       string `json:"readiness"`
- PlaybackRevision string `json:"playbackRevision"`
- Ended bool `json:"ended"`
-	PositionUS      string `json:"positionUs"`
+	ProtocolVersion  string `json:"protocolVersion"`
+	Readiness        string `json:"readiness"`
+	PlaybackRevision string `json:"playbackRevision"`
+	Ended            bool   `json:"ended"`
+	PositionUS       string `json:"positionUs"`
 }
 
 // mayControl applies the host authority policy. `host-only` is the contract
@@ -138,9 +139,18 @@ func (s *Store) command(ctx context.Context, p identity.Principal, id, key strin
 		}
 		return nil, errGroupEnded
 	}
-	if e=s.limit(ctx,tx,"group-command:"+id+":"+m.id,120,time.Minute);e!=nil{return nil,e}
- if _,e=tx.ExecContext(ctx,`UPDATE social_group_members SET seen_at_ms=? WHERE id=?`,s.ms(),m.id);e!=nil{return nil,e}
- out, e := apply(tx, &g, m)
+	if e = s.limit(ctx, tx, "group-command:"+id+":"+m.id, 120, time.Minute); e != nil {
+		return nil, e
+	}
+	if _, e = tx.ExecContext(ctx, `UPDATE social_group_members SET seen_at_ms=? WHERE id=?`, s.ms(), m.id); e != nil {
+		return nil, e
+	}
+	g.activitySeenMS = s.ms()
+	m, e = loadJoinedMember(ctx, tx, id, p.Viewer)
+	if e != nil {
+		return nil, e
+	}
+	out, e := apply(tx, &g, m)
 	if e != nil {
 		return nil, e
 	}
@@ -178,7 +188,7 @@ func (s *Store) Transport(ctx context.Context, p identity.Principal, id string, 
 	switch req.Command {
 	case "play", "pause", "stop", "next", "previous":
 	case "seek", "load":
-		if _, ok := parseCounter(req.PositionUS); !ok && req.PositionUS != "" {
+		if value, ok := parseCounter(req.PositionUS); (!ok || value > MaxPositionUS) && req.PositionUS != "" {
 			return out, errInvalid
 		}
 		if req.Command == "seek" && req.PositionUS == "" {
@@ -197,7 +207,7 @@ func (s *Store) Transport(ctx context.Context, p identity.Principal, id string, 
 	if req.Rate != nil {
 		num, okNum := parseCounter(req.Rate.Numerator)
 		den, okDen := parseCounter(req.Rate.Denominator)
-		if !okNum || !okDen || num == 0 || den == 0 || num > 4*den || 2*num < den {
+		if !okNum || !okDen || num == 0 || den == 0 || num > 4000000 || den > 1000000 || num > 4*den || 2*num < den {
 			return out, errInvalid
 		}
 	}
@@ -222,15 +232,17 @@ func (s *Store) Transport(ctx context.Context, p identity.Principal, id string, 
 			return nil, e
 		}
 		g.playbackRevision++
- g.lastCommand, g.lastCommandID = req.Command, req.IdempotencyKey
-		if e = s.publishTimeline(ctx,tx,*g,req.Command,notes); e!=nil{return nil,e}
- return TransportReceipt{
+		g.lastCommand, g.lastCommandID = req.Command, req.IdempotencyKey
+		if e = s.publishTimeline(ctx, tx, *g, req.Command, notes); e != nil {
+			return nil, e
+		}
+		return TransportReceipt{
 			ProtocolVersion: Protocol, GroupID: g.id, IdempotencyKey: req.IdempotencyKey, Disposition: "accepted",
-			Command: req.Command, Revision: counter(g.revision + 1), PlaybackRevision: counter(g.playbackRevision), QueueRevision: counter(g.queueRevision),
+			Command: req.Command, GroupState: g.state, Revision: counter(g.revision + 1), PlaybackRevision: counter(g.playbackRevision), QueueRevision: counter(g.queueRevision),
 			RecordedAt: stamp(s.ms()),
 			Timeline: Timeline{ItemID: g.itemID, CurrentEntryID: g.currentEntryID, State: timelineState(g.state),
 				AnchorPositionUS: counter(g.positionUS), AnchorAt: stamp(g.positionUpdatedMS),
-				Rate: Rate{Numerator: counter(g.rateNum), Denominator: counter(g.rateDen)}, QueuePosition: g.queuePosition,WaitUntil:optionalStamp(g.waitUntilMS)},
+				Rate: Rate{Numerator: counter(g.rateNum), Denominator: counter(g.rateDen)}, QueuePosition: g.queuePosition, WaitUntil: optionalStamp(g.waitUntilMS)},
 			Settings: Settings{Shuffle: g.shuffle, Repeat: g.repeat},
 			Override: notes,
 		}, nil
@@ -239,8 +251,10 @@ func (s *Store) Transport(ctx context.Context, p identity.Principal, id string, 
 		return out, e
 	}
 	out, e = decodeReceipt(response)
-	if e==nil {out.Timeline.ItemID,e=s.itemFor(ctx,p,id,out.Timeline.ItemID)}
- out.ServerTime = stamp(s.ms())
+	if e == nil {
+		out.Timeline.ItemID, e = s.itemFor(ctx, p, id, out.Timeline.ItemID)
+	}
+	out.ServerTime = stamp(s.ms())
 	return out, e
 }
 
@@ -264,20 +278,22 @@ func decodeReceipt(response any) (TransportReceipt, error) {
 // re-anchors the clock or refuses; none of them touch a member's own transport.
 func (s *Store) applyTransport(ctx context.Context, tx *sql.Tx, g *record, m membership, req TransportRequest) (*OverrideNotes, error) {
 	now := s.ms()
- position := s.extrapolate(*g)
- if req.Rate != nil {
+	position := s.extrapolate(*g)
+	if req.Rate != nil {
 		g.rateNum, _ = parseCounter(req.Rate.Numerator)
 		g.rateDen, _ = parseCounter(req.Rate.Denominator)
 	}
 	switch req.Command {
 	case "pause":
- g.waitUntilMS=0
+		g.waitUntilMS = 0
 		g.positionUS, g.positionUpdatedMS = position, now
 		g.state, g.resumeState = "paused", "paused"
- if g.itemID=="" {g.state="lobby"}
+		if g.itemID == "" {
+			g.state = "lobby"
+		}
 		return nil, nil
 	case "stop":
- g.waitUntilMS=0
+		g.waitUntilMS = 0
 		g.positionUS, g.positionUpdatedMS = 0, now
 		g.state, g.resumeState = "ready", "paused"
 		if g.itemID == "" {
@@ -288,8 +304,10 @@ func (s *Store) applyTransport(ctx context.Context, tx *sql.Tx, g *record, m mem
 	case "seek":
 		target, _ := parseCounter(req.PositionUS)
 		g.positionUS, g.positionUpdatedMS = target, now
- if g.itemID=="" {return nil,fault("target_unavailable",409,"The group has nothing loaded.")}
- s.beginWait(g)
+		if g.itemID == "" {
+			return nil, fault("target_unavailable", 409, "The group has nothing loaded.")
+		}
+		s.beginWait(g)
 		return nil, nil
 	case "play":
 		if g.itemID == "" {
@@ -305,8 +323,8 @@ func (s *Store) applyTransport(ctx context.Context, tx *sql.Tx, g *record, m mem
 			}
 		}
 		g.positionUS, g.positionUpdatedMS = position, now
-		g.waitUntilMS=0
- g.state, g.resumeState = "playing", "playing"
+		g.waitUntilMS = 0
+		g.state, g.resumeState = "playing", "playing"
 		return notes, nil
 	}
 	// The remaining commands all select a different queue entry.
@@ -369,7 +387,7 @@ func (s *Store) applyTransport(ctx context.Context, tx *sql.Tx, g *record, m mem
 			g.positionUS = start
 		}
 	}
-	if g.state == "lobby" || g.state == "ready" || g.state=="preparing" {
+	if g.state == "lobby" || g.state == "ready" || g.state == "preparing" {
 		g.state, g.resumeState = "preparing", "paused"
 	}
 	s.beginWait(g)
@@ -395,7 +413,7 @@ func (s *Store) gateEntry(ctx context.Context, tx *sql.Tx, g *record, entryID st
 	if e != nil {
 		return nil, e
 	}
-	people, e := joinedParticipants(ctx, tx, g.id)
+	people, e := joinedParticipants(ctx, tx, g.id, s.ms()-MemberStaleSeconds*1000)
 	if e != nil {
 		return nil, e
 	}
@@ -437,7 +455,7 @@ func (s *Store) UpdateSettings(ctx context.Context, p identity.Principal, id str
 			return nil, &Fault{Code: "revision_conflict", Status: 409, Message: "The group changed.", Detail: map[string]any{"currentRevision": counter(g.settingsRevision)}}
 		}
 		g.settingsRevision++
- if req.Shuffle != nil {
+		if req.Shuffle != nil {
 			g.shuffle = *req.Shuffle
 		}
 		if req.Repeat != nil {
@@ -477,14 +495,18 @@ func (s *Store) ReportReadiness(ctx context.Context, p identity.Principal, id st
 		return GroupResponse{}, errInvalid
 	}
 	position, ok := parseCounter(req.PositionUS)
-	if !ok && req.PositionUS != "" {
+	if (!ok || position > MaxPositionUS) && req.PositionUS != "" {
 		return GroupResponse{}, errInvalid
 	}
 	return s.mutateTelemetry(ctx, p, id, func(tx *sql.Tx, g *record, m membership) error {
-		epoch,valid:=parseCounter(req.PlaybackRevision)
- if !valid{return errInvalid}
- if epoch!=g.playbackRevision{return nil}
- if _, e := tx.ExecContext(ctx, `UPDATE social_group_members SET readiness=?,readiness_position_us=?,readiness_at_ms=?,readiness_revision=? WHERE id=?`, req.Readiness, position, s.ms(), g.playbackRevision, m.id); e != nil {
+		epoch, valid := parseCounter(req.PlaybackRevision)
+		if !valid {
+			return errInvalid
+		}
+		if epoch != g.playbackRevision {
+			return nil
+		}
+		if _, e := tx.ExecContext(ctx, `UPDATE social_group_members SET readiness=?,readiness_position_us=?,readiness_at_ms=?,readiness_revision=? WHERE id=?`, req.Readiness, position, s.ms(), g.playbackRevision, m.id); e != nil {
 			return e
 		}
 		if m.role == "host" {
@@ -492,9 +514,17 @@ func (s *Store) ReportReadiness(ctx context.Context, p identity.Principal, id st
 				return e
 			}
 		}
-		if req.Ended && m.role=="host" && timelineState(g.state)=="playing" {g.positionUS=position;g.positionUpdatedMS=s.ms();g.state,g.resumeState="paused","paused";g.playbackRevision++;return s.publishTimeline(ctx,tx,*g,"ended",nil)}
- if _,e:=s.releaseWait(ctx,tx,g);e!=nil{return e}
- _, summary, e := s.members(ctx, tx, *g)
+		if req.Ended && m.role == "host" && timelineState(g.state) == "playing" {
+			g.positionUS = position
+			g.positionUpdatedMS = s.ms()
+			g.state, g.resumeState = "paused", "paused"
+			g.playbackRevision++
+			return s.publishTimeline(ctx, tx, *g, "ended", nil)
+		}
+		if _, e := s.releaseWait(ctx, tx, g); e != nil {
+			return e
+		}
+		_, summary, e := s.members(ctx, tx, *g)
 		if e != nil {
 			return e
 		}
@@ -504,6 +534,6 @@ func (s *Store) ReportReadiness(ctx context.Context, p identity.Principal, id st
 		if g.state == "preparing" && summary.Aggregate == "ready" {
 			g.state = "ready"
 		}
-		return s.publish(ctx, tx, g.id, EventReadiness, map[string]any{"memberId": m.id, "readiness": req.Readiness, "positionUs": counter(position), "reportedAt":stamp(s.ms()), "aggregate": summary})
+		return s.publish(ctx, tx, g.id, EventReadiness, map[string]any{"memberId": m.id, "readiness": req.Readiness, "positionUs": counter(position), "reportedAt": stamp(s.ms()), "aggregate": summary})
 	})
 }

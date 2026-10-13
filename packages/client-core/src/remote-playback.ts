@@ -47,7 +47,7 @@ export class HandoffController{
   let handoff:Handoff|undefined;const device={device:target.displayName};
   try{
    this.publish({phase:'asking',target,message:undefined,receiverPlaybackId:undefined,remoteSession:undefined});
-   let grant=parseReceiverGrant(await this.api.request<unknown>(`/v1/receivers/${encodeURIComponent(target.id)}/grants`,'POST',{protocolVersion:SOCIAL_PROTOCOL,controllerDeviceId:this.device.deviceId,controllerDisplayName:this.device.displayName.slice(0,64)},signal));
+   let grant=parseReceiverGrant(await this.api.request<unknown>(`/v1/receivers/${encodeURIComponent(target.id)}/grants`,'POST',{protocolVersion:SOCIAL_PROTOCOL,controllerDisplayName:this.device.displayName.slice(0,64)},signal));
    // A television that has not met this device asks its own viewer first.
    for(let waited=0;grant.state==='pending'&&waited<60000&&!signal.aborted;waited+=this.pollMs){
     this.publish({message:serviceText('playOn.approveOn',device)});
@@ -108,7 +108,7 @@ export class HandoffController{
      next=await sessions.patch(id,fresh.revision,change);
     }
     if(this.state.receiverPlaybackId===id)this.publish({remoteSession:next});return true;
-   }catch(e){this.publish({message:serviceProblem(e,'devices','playOn.notReachable','action')});return false;}
+   }catch(e){this.publish({message:serviceProblem(e,'devices','playOn.controlUnavailable','action')});return false;}
    finally{this.publish({controlling:false});}
   });
  }
@@ -196,7 +196,7 @@ export class ReceiverHost{
     try{
      if(!this.state.receiver){
       this.publish({phase:'registering'});
-      this.publish({receiver:parseReceiver((await this.api.request<{receiver?:unknown}>('/v1/receivers','POST',{protocolVersion:SOCIAL_PROTOCOL,deviceId:this.device.deviceId,displayName:this.device.displayName.slice(0,64),platform:this.device.platform,keyFingerprint:this.device.keyFingerprint,supportedCommands:['load','play','pause','seek','stop'],grantPolicy:'per-device'},signal)).receiver),phase:'waiting',error:undefined});
+      this.publish({receiver:parseReceiver((await this.api.request<{receiver?:unknown}>('/v1/receivers','POST',{protocolVersion:SOCIAL_PROTOCOL,displayName:this.device.displayName.slice(0,64),platform:this.device.platform,keyFingerprint:this.device.keyFingerprint,supportedCommands:['load','play','pause','seek','stop'],grantPolicy:'per-device'},signal)).receiver),phase:'waiting',error:undefined});
       lastBeat=Date.now();
      }
       const id=this.state.receiver!.id;

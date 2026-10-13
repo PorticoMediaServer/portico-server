@@ -13,13 +13,13 @@ import (
 // controllers.
 type SocialSession struct {
 	ID, ItemID, DeviceID, State string
-	Live       bool
-	Revision   int64
-	PositionUS int64
+	Live                        bool
+	Revision                    int64
+	PositionUS                  int64
 }
 
 func socialFacts(r row) SocialSession {
-	return SocialSession{ID: r.id, ItemID: r.item, DeviceID:r.device,State:r.state,Live: r.ended == 0, Revision: int64(r.revision), PositionUS: r.position * 1000}
+	return SocialSession{ID: r.id, ItemID: r.item, DeviceID: r.device, State: r.state, Live: r.ended == 0, Revision: int64(r.revision), PositionUS: r.position * 1000}
 }
 
 func sameProfile(p identity.Principal, r row) bool {
@@ -36,7 +36,9 @@ func (s *Service) SocialSessionTx(ctx context.Context, tx *sql.Tx, p identity.Pr
 	if err != nil {
 		return SocialSession{}, err
 	}
-	return socialFacts(r), nil
+	facts := socialFacts(r)
+	facts.Live = facts.Live && r.lease > s.now().UnixMilli()
+	return facts, nil
 }
 
 // DeviceSessionTx reads the live session a device is playing. present is false

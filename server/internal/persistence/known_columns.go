@@ -3913,6 +3913,7 @@ social_group_receipts.idempotency_key
 social_group_receipts.member_id
 social_group_receipts.response
 social_groups.account_id
+social_groups.activity_seen_ms
 social_groups.authority
 social_groups.created_at_ms
 social_groups.current_entry_id
@@ -3920,6 +3921,7 @@ social_groups.end_after_seconds
 social_groups.ended_at_ms
 social_groups.ended_reason
 social_groups.event_ordinal
+social_groups.governance_revision
 social_groups.host_authority
 social_groups.host_device_id
 social_groups.host_member_id
