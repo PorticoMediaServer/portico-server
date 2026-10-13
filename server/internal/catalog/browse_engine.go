@@ -310,7 +310,7 @@ func compactBrowseKindSQL(column string) string {
 }
 
 func (s *Service) browseRevision(request BrowseRequest, pivot browsePivot, sorts []BrowseSortSelection) (string, error) {
-	revision, err := s.ContentRevision(request.Library, request.Profile)
+	revision, err := s.browseContentRevision(request.Library, request.Profile)
 	if err != nil {
 		return "", err
 	}
@@ -451,9 +451,6 @@ func (s *Service) browseSelect(request BrowseRequest) (BrowseResult, []browseRow
 	}
 	out.PageInfo.Revision = revision
 	stale := request.Range != nil && request.Range.Revision != "" && request.Range.Revision != revision
-	if stale && request.Range.AnchorID == "" {
-		return out, nil, ErrStaleContinuation
-	}
 
 	// The count, the letter index and the anchor rank used to be three passes over
 	// the whole pivot. When the client has posted no expression of its own — which
@@ -553,7 +550,7 @@ func (s *Service) browseSelect(request BrowseRequest) (BrowseResult, []browseRow
 	}
 	if request.Seek != nil {
 		start = total
-		wanted := strings.ToUpper(request.Seek.Prefix[:1])
+		wanted := strings.ToUpper(string([]rune(request.Seek.Prefix)[:1]))
 		for _, anchor := range out.PositionIndex {
 			if anchor.Key == wanted {
 				start = anchor.Index
@@ -577,18 +574,17 @@ func (s *Service) browseSelect(request BrowseRequest) (BrowseResult, []browseRow
 	// anything; a current revision ignores the anchor entirely.
 	if request.Range != nil && request.Range.AnchorID != "" && stale {
 		primary, _ := shape.primary()
-		if !shape.positional() || primary.Profile || primary.Ordering < 0 {
-			return out, nil, ErrStaleContinuation
+		if shape.positional() && !primary.Profile && primary.Ordering >= 0 {
+			rank, found, err := s.browseAnchorRank(shape, request.Range.AnchorID)
+			if err != nil {
+				return out, nil, err
+			}
+			if found {
+				start = rank
+			}
 		}
-		rank, found, err := s.browseAnchorRank(shape, request.Range.AnchorID)
-		if err != nil {
-			return out, nil, err
-		}
-		if !found {
-			return out, nil, ErrStaleContinuation
-		}
-		start = rank
 	}
+
 	if request.Query == nil && start > 0 && start >= total {
 		start = max(0, total-1)
 	}

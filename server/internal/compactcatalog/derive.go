@@ -6,7 +6,7 @@
 // revision) by that API and by small triggers on the fact tables, and one
 // supervised Worker drains it in bounded batches. A derivation can always be
 // rebuilt from facts: raising its Version rebuilds it in the background after
-// startup, and readers of that domain answer ErrBuilding meanwhile.
+// startup while readers continue using the serving generation.
 package compactcatalog
 
 import (
@@ -44,7 +44,7 @@ const (
 const BatchLimit = 64
 
 // ErrBuilding is what a reader of a derived domain answers while it rebuilds.
-var ErrBuilding = errors.New("catalogue is being prepared")
+var ErrBuilding = errors.New("library visibility is unavailable")
 
 // Key is one queued unit: an entity (or asset, as the domain defines) and the
 // revision it was queued at.
@@ -121,22 +121,8 @@ const (
 	touchMany = `INSERT INTO catalog_dirty(domain,entity_id,revision) SELECT ?,value,1 FROM json_each(?) WHERE 1 ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1`
 )
 
-// CheckReadiness answers ErrBuilding while one of the derived domains a reader
-// needs is rebuilding. Facts are always current (they are written
-// synchronously); only derived data can be behind. One indexed probe.
-func CheckReadiness(ctx context.Context, q ReadQuery, domains ...int) error {
-	if len(domains) == 0 {
-		return nil
-	}
-	var building bool
-	if err := q.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM catalog_derivations WHERE rebuilding=1 AND domain IN(SELECT value FROM json_each(?)))`, mustJSON(domains)).Scan(&building); err != nil {
-		return err
-	}
-	if building {
-		return ErrBuilding
-	}
-	return nil
-}
+// CheckReadiness leaves the serving generation available during rebuilds.
+func CheckReadiness(ctx context.Context, q ReadQuery, domains ...int) error { return nil }
 
 // ReadQuery is a transaction or handle a reader passes in.
 type ReadQuery interface {
@@ -166,6 +152,7 @@ type Worker struct {
 	// aren't queued behind a rebuild.
 	backfillTurn map[int]bool
 	stepTurn     int
+	domainTurns  int
 	ready        bool
 	now          func() time.Time
 }
@@ -232,11 +219,41 @@ func (w *Worker) prepare(ctx context.Context) error {
 	err := dbwork.WithWriteTx(ctx, w.db, dbwork.ClassMaintenance, func(tx *sql.Tx) error {
 		for _, domain := range registeredDomains() {
 			d, _ := derivation(domain)
-			if _, err := tx.ExecContext(ctx, `INSERT INTO catalog_derivations(domain,version) VALUES(?,?) ON CONFLICT(domain) DO UPDATE SET version=excluded.version,rebuilding=1,rebuild_cursor=0 WHERE excluded.version>catalog_derivations.version`, domain, d.Version); err != nil {
+			var old int
+			err := tx.QueryRowContext(ctx, `SELECT version FROM catalog_derivations WHERE domain=?`, domain).Scan(&old)
+			if err != nil && !errors.Is(err, sql.ErrNoRows) {
+				return err
+			}
+			if old > 0 && d.Version > old {
+				if err := beginGeneration(ctx, tx); err != nil {
+					return err
+				}
+			}
+			if _, err := tx.ExecContext(ctx, `INSERT INTO catalog_derivations(domain,version) VALUES(?,?) ON CONFLICT(domain) DO UPDATE SET version=excluded.version,rebuilding=1,rebuild_cursor=0,cleaning=CASE WHEN excluded.domain=17 THEN 1 ELSE 0 END WHERE excluded.version>catalog_derivations.version`, domain, d.Version); err != nil {
 				return err
 			}
 		}
-		return nil
+		rows, err := tx.QueryContext(ctx, `SELECT domain,entity_id FROM catalog_derivation_failures`)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var domain int
+			var id int64
+			if err := rows.Scan(&domain, &id); err != nil {
+				return err
+			}
+			w.mu.Lock()
+			if w.poison[domain] == nil {
+				w.poison[domain] = map[int64]bool{}
+			}
+			w.poison[domain][id] = true
+			w.retryAt = w.now().Add(retryFirst)
+			w.retryDelay = retryFirst
+			w.mu.Unlock()
+		}
+		return rows.Err()
 	})
 	if err == nil {
 		w.mu.Lock()
@@ -249,7 +266,10 @@ func (w *Worker) prepare(ctx context.Context) error {
 // Rebuild starts rebuilding one domain from facts (tests and diagnostics).
 func (w *Worker) Rebuild(ctx context.Context, domain int) error {
 	return dbwork.WithWriteTx(ctx, w.db, dbwork.ClassMaintenance, func(tx *sql.Tx) error {
-		_, err := tx.ExecContext(ctx, `UPDATE catalog_derivations SET rebuilding=1,rebuild_cursor=0 WHERE domain=?`, domain)
+		if err := beginGeneration(ctx, tx); err != nil {
+			return err
+		}
+		_, err := tx.ExecContext(ctx, `UPDATE catalog_derivations SET rebuilding=1,rebuild_cursor=0,cleaning=CASE WHEN domain=17 THEN 1 ELSE 0 END WHERE domain=?`, domain)
 		return err
 	})
 }
@@ -273,6 +293,14 @@ func (w *Worker) Step(ctx context.Context, limit int) (int, error) {
 		n, domain, failed, step, retried, backfilled = 0, -1, 0, -1, false, false
 		var rebuilding int
 		var err error
+		w.domainTurns++
+		if w.domainTurns%4 == 0 {
+			n, step, err = w.runSteps(ctx, tx, limit)
+			if err != nil || n > 0 {
+				return err
+			}
+		}
+
 		if domain, rebuilding, err = w.workable(ctx, tx); err != nil {
 			domain = -1
 			return err
@@ -308,7 +336,10 @@ func (w *Worker) Step(ctx context.Context, limit int) (int, error) {
 			return err
 		}
 		_, err = tx.ExecContext(ctx, `UPDATE catalog_derivations SET served_ms=? WHERE domain=?`, time.Now().UnixMilli(), domain)
-		return err
+		if err != nil {
+			return err
+		}
+		return finishGeneration(ctx, tx)
 	})
 	if err != nil {
 		w.setAside(ctx, domain, failed, step, backfilled, retried, err)
@@ -416,6 +447,30 @@ func Drain(ctx context.Context, db *sql.DB) error {
 // batch of one and whether the batch came from rebuild enumeration.
 func (w *Worker) drainDomain(ctx context.Context, tx *sql.Tx, domain, rebuilding, limit int, retry bool) (int, int64, bool, error) {
 	d, ok := derivation(domain)
+	if domain == DomainSearch && rebuilding == 1 {
+		var cleaning, slot int
+		if err := tx.QueryRowContext(ctx, `SELECT cleaning,active_slot FROM catalog_derivations WHERE domain=17`).Scan(&cleaning, &slot); err != nil {
+			return 0, 0, false, err
+		}
+		if cleaning == 1 {
+			ids, err := scanIDs(ctx, tx, searchTables(`SELECT entity_id FROM catalog_search_documents ORDER BY entity_id LIMIT ?`, 1-slot), limit)
+			if err != nil {
+				return 0, 0, false, err
+			}
+			if len(ids) > 0 {
+				raw := mustJSON(ids)
+				for _, query := range []string{`INSERT INTO catalog_search_titles(catalog_search_titles,rowid,title,kind) SELECT 'delete',entity_id,title,kind FROM catalog_search_documents WHERE entity_id IN(SELECT value FROM json_each(?))`, `DELETE FROM catalog_search_documents WHERE entity_id IN(SELECT value FROM json_each(?))`} {
+					if _, err = tx.ExecContext(ctx, searchTables(query, 1-slot), raw); err != nil {
+						return 0, 0, false, err
+					}
+				}
+				return len(ids), 0, false, nil
+			}
+			if _, err = tx.ExecContext(ctx, `UPDATE catalog_derivations SET cleaning=0 WHERE domain=17`); err != nil {
+				return 0, 0, false, err
+			}
+		}
+	}
 	if !ok {
 		// A domain queued by an older build: nothing derives it any more.
 		_, err := tx.ExecContext(ctx, `DELETE FROM catalog_dirty WHERE domain=?`, domain)
@@ -478,7 +533,7 @@ func (w *Worker) drainDomain(ctx context.Context, tx *sql.Tx, domain, rebuilding
 			return 0, 0, false, err
 		}
 		if len(ids) == 0 {
-			_, err = tx.ExecContext(ctx, `UPDATE catalog_derivations SET rebuilding=0,rebuild_cursor=0 WHERE domain=?`, domain)
+			_, err = tx.ExecContext(ctx, `UPDATE catalog_derivations SET rebuilding=0,rebuild_cursor=0,active_slot=CASE WHEN domain=17 THEN 1-active_slot ELSE active_slot END WHERE domain=?`, domain)
 			return 1, 0, true, err
 		}
 		sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
@@ -519,6 +574,9 @@ func (w *Worker) drainDomain(ctx context.Context, tx *sql.Tx, domain, rebuilding
 		}
 	}
 	if len(pairs) > 0 {
+		if _, err = tx.ExecContext(ctx, `DELETE FROM catalog_derivation_failures WHERE domain=? AND entity_id IN(SELECT json_extract(value,'$[0]') FROM json_each(?))`, domain, mustJSON(pairs)); err != nil {
+			return 0, single, backfilled, err
+		}
 		if _, err = tx.ExecContext(ctx, `DELETE FROM catalog_dirty WHERE domain=? AND (entity_id,revision) IN(SELECT json_extract(value,'$[0]'),json_extract(value,'$[1]') FROM json_each(?))`, domain, mustJSON(pairs)); err != nil {
 			return 0, single, backfilled, err
 		}
@@ -573,15 +631,13 @@ func (w *Worker) setAside(ctx context.Context, domain int, id int64, step int, b
 	}
 	w.mu.Lock()
 	single := id != 0 && (w.isolate[domain] || w.poison[domain][id])
-	stalls := single && backfilled && !w.stalled[domain]
+	stalls := false
 	if single {
 		if w.poison[domain] == nil {
 			w.poison[domain] = map[int64]bool{}
 		}
 		w.poison[domain][id] = true
-		if backfilled {
-			w.stalled[domain] = true
-		}
+
 	}
 	w.isolate[domain] = true
 	var again time.Duration
@@ -602,6 +658,16 @@ func (w *Worker) setAside(ctx context.Context, domain int, id int64, step int, b
 		log.Printf("Catalogue domain %d failed and retries one id at a time: %v", domain, cause)
 	}
 	err := dbwork.WithWriteTx(ctx, w.db, dbwork.ClassMaintenance, func(tx *sql.Tx) error {
+		if single {
+			if _, err := tx.ExecContext(ctx, `INSERT INTO catalog_derivation_failures(domain,entity_id,reason,failed_ms) VALUES(?,?,?,?) ON CONFLICT(domain,entity_id) DO UPDATE SET reason=excluded.reason,attempts=attempts+1,failed_ms=excluded.failed_ms`, domain, id, cause.Error(), w.now().UnixMilli()); err != nil {
+				return err
+			}
+			if backfilled {
+				if _, err := tx.ExecContext(ctx, `UPDATE catalog_derivations SET rebuild_cursor=max(rebuild_cursor,?) WHERE domain=?`, id, domain); err != nil {
+					return err
+				}
+			}
+		}
 		_, err := tx.ExecContext(ctx, `UPDATE catalog_derivations SET served_ms=? WHERE domain=?`, time.Now().UnixMilli(), domain)
 		return err
 	})

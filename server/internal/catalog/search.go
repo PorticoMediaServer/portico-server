@@ -559,7 +559,7 @@ func (s *Service) searchCatalogGroup(ctx context.Context, r SearchRequest, g sea
 			return e
 		}
 		if c.Fingerprint != fingerprint {
-			return ErrStaleContinuation
+			c.Total = 0
 		}
 		value, e := cursorOrderValue(c.Value, order.numeric)
 		if e != nil {
@@ -750,7 +750,7 @@ func (s *Service) searchPeopleGroup(ctx context.Context, r SearchRequest, g sear
 			return e
 		}
 		if c.Fingerprint != fingerprint {
-			return ErrStaleContinuation
+			c.Total = 0
 		}
 		if offset, e = strconv.Atoi(c.ID); e != nil || offset < 0 || offset > 100000 {
 			return ErrCursor
@@ -824,7 +824,7 @@ func (s *Service) searchLiveGroup(ctx context.Context, r SearchRequest, g search
 			return e
 		}
 		if c.Fingerprint != fingerprint {
-			return ErrStaleContinuation
+			c.Total = 0
 		}
 		if offset, e = strconv.Atoi(c.ID); e != nil || offset < 0 || offset > 100000 {
 			return ErrCursor

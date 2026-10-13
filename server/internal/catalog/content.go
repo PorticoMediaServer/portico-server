@@ -528,3 +528,10 @@ func consistentRead[T any](firstPage bool, read func() (T, error)) (T, error) {
 	}
 	return out, err
 }
+
+// browseContentRevision fences ordering independently from decoration changes.
+func (s *Service) browseContentRevision(library, profile string) (ContentRevision, error) {
+	var out ContentRevision
+	err := s.read().QueryRow(`SELECT r.order_revision,COALESCE(v.revision,0) FROM library_revisions r LEFT JOIN viewer_revisions v ON v.library_id=r.library_id AND v.profile_id=? WHERE r.library_id=?`, profile, library).Scan(&out.Catalog, &out.Viewer)
+	return out, err
+}

@@ -159,7 +159,7 @@ func (s *Service) decodeRevisionCursor(raw string, scope cursorScope, revision C
 		return out, ErrCursor
 	}
 	if out.CatalogRevision != revision.Catalog || out.ViewerRevision != revision.Viewer {
-		return out, ErrStaleContinuation
+		out.Total = 0
 	}
 	return out, nil
 }
