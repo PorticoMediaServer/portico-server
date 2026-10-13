@@ -172,3 +172,13 @@ test('the bounded named-channel guide accepts fifty rows and rejects a larger re
  value.guide.channels.push({...channel,id:'overflow',programmes:[]});
  assert.throws(()=>parseChannelGuide(value,'server',route));
 });
+
+
+test('guide accepts programme-bound images and refuses unscoped or external image URLs',()=>{
+ const safe='/v1/guide/programme-images/'+'ab'.repeat(24)+'/'+'cd'.repeat(32);
+ for(const image of [safe,'/v1/guide/images/'+'ab'.repeat(32),'https://provider.invalid/icon.png',safe+'?token=secret',safe.replace('programme-images/','programme-images/../')]){
+  const value=fixture();Object.assign(value.guide.channels[0].programmes[0],{image});
+  const parsed=parseChannelGuide(value,'server',route).channels[0].programmes[0];
+  assert.equal(parsed.image,image===safe?safe:undefined);
+ }
+});

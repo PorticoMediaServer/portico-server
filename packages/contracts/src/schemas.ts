@@ -28290,12 +28290,12 @@ export const schemas = {
     ],
     "type": "object"
   },
-  "GetGuideImagesDigestRequest": {
+  "GetGuideProgrammeImageRequest": {
     "properties": {},
     "required": [],
     "type": "object"
   },
-  "GetGuideImagesDigestResponse": {
+  "GetGuideProgrammeImageResponse": {
     "format": "binary",
     "type": "string"
   },

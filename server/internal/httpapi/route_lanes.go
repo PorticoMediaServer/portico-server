@@ -198,7 +198,7 @@ var routeLanes = map[string]string{
 	"GET /v1/groups/{id}/queue":                                                  "browsing",
 	"GET /v1/guide":                                                              "default",
 	"GET /v1/guide/channels":                                                     "browsing",
-	"GET /v1/guide/images/{digest}":                                              "media",
+	"GET /v1/guide/programme-images/{generation}/{programme}":                    "media",
 	"GET /v1/guide/sources":                                                      "browsing",
 	"GET /v1/handoffs/{id}":                                                      "browsing",
 	"GET /v1/home":                                                               "browsing",

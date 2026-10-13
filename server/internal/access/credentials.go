@@ -369,6 +369,7 @@ func (s *Store) RevokeCredential(ctx context.Context, auth Authorize, issuer *id
 // credential's scopes and limits. Whether the member behind it is still
 // entitled to anything is decided, as for every session, by authentication.
 type ResolvedCredential struct {
+	ExpiresAt time.Time
 	ID        string
 	Kind      string
 	AccountID string
@@ -393,6 +394,9 @@ func (s *Store) ResolveCredential(ctx context.Context, secretDigest string) (Res
 	}
 	if revoked > 0 || expires > 0 && expires <= s.now() {
 		return ResolvedCredential{}, identity.ErrUnauthorized
+	}
+	if expires > 0 {
+		out.ExpiresAt = time.UnixMilli(expires)
 	}
 	out.Scopes = strings.Split(scopes, ",")
 	return out, nil

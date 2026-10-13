@@ -175,7 +175,7 @@ export function decodeGetFeedbackReportsResponse(input: unknown): types.GetFeedb
 export function decodeGetFeedbackReportsIdResponse(input: unknown): types.GetFeedbackReportsIdResponse { return decode("GetFeedbackReportsIdResponse", input) as types.GetFeedbackReportsIdResponse; }
 export function decodeGetGuideResponse(input: unknown): types.GetGuideResponse { return decode("GetGuideResponse", input) as types.GetGuideResponse; }
 export function decodeGetGuideChannelsResponse(input: unknown): types.GetGuideChannelsResponse { return decode("GetGuideChannelsResponse", input) as types.GetGuideChannelsResponse; }
-export function decodeGetGuideImagesDigestResponse(input: unknown): types.GetGuideImagesDigestResponse { return decode("GetGuideImagesDigestResponse", input) as types.GetGuideImagesDigestResponse; }
+export function decodeGetGuideProgrammeImageResponse(input: unknown): types.GetGuideProgrammeImageResponse { return decode("GetGuideProgrammeImageResponse", input) as types.GetGuideProgrammeImageResponse; }
 export function decodeGetGuideSourcesResponse(input: unknown): types.GetGuideSourcesResponse { return decode("GetGuideSourcesResponse", input) as types.GetGuideSourcesResponse; }
 export function decodeGetHealthLiveResponse(input: unknown): types.GetHealthLiveResponse { return decode("GetHealthLiveResponse", input) as types.GetHealthLiveResponse; }
 export function decodeGetHealthReadyResponse(input: unknown): types.GetHealthReadyResponse { return decode("GetHealthReadyResponse", input) as types.GetHealthReadyResponse; }

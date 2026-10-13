@@ -351,7 +351,7 @@ func (s *Service) SetRemoteRecovery(ctx context.Context, p Principal, expected i
 	return out, gated6.Commit()
 }
 
-// BrowserSetupToken is only exposed by the local, origin-checked first-run route.
+// BrowserSetupToken is only exposed by the origin-checked first-run route.
 // The normal setup transaction still consumes the token atomically; no login or
 // initialized-server route can retrieve it.
 func (s *Service) BrowserSetupToken(ctx context.Context) (string, error) {

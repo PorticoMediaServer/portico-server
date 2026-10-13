@@ -769,8 +769,8 @@ func (s *Store) Guide(ctx context.Context, a Authority, q GuideQuery) (Guide, er
 		for i := range out.Channels {
 			c := &out.Channels[i]
 			for j := range c.Programmes {
-				if digest, ok := digests[programmeKey{c.Generation, c.Programmes[j].ID}]; ok {
-					c.Programmes[j].Image = "/v1/guide/images/" + digest
+				if _, ok := digests[programmeKey{c.Generation, c.Programmes[j].ID}]; ok {
+					c.Programmes[j].Image = "/v1/guide/programme-images/" + c.Generation + "/" + c.Programmes[j].ID
 				}
 				c.Programmes[j].Admit(q.ProgrammeAllowed)
 			}

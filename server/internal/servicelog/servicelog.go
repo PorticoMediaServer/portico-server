@@ -222,12 +222,29 @@ func (r *Recorder) Write(p []byte) (int, error) {
 
 // Tee returns a writer that records and also forwards to another writer, so
 // installing the recorder as the standard log output does not take stderr away
-// from whoever is watching the process.
+// from whoever is watching the process. The forwarded copy is scrubbed too: a
+// container or service manager may persist stderr independently of the recorder.
 func (r *Recorder) Tee(also io.Writer) io.Writer {
 	if also == nil {
 		return r
 	}
-	return io.MultiWriter(also, r)
+	return io.MultiWriter(redactedWriter{to: also}, r)
+}
+
+// Standard log records arrive as one Write. Report the caller's byte count even
+// when redaction changes the forwarded length.
+type redactedWriter struct{ to io.Writer }
+
+func (w redactedWriter) Write(p []byte) (int, error) {
+	clean := []byte(redactClientLog(string(p)))
+	n, err := w.to.Write(clean)
+	if err != nil {
+		return 0, err
+	}
+	if n != len(clean) {
+		return 0, io.ErrShortWrite
+	}
+	return len(p), nil
 }
 
 // classify reads the optional prefixes a call site may use. "warn: text" sets

@@ -96,7 +96,7 @@ function parseFlags(v: unknown): GuideProgrammeFlags | undefined {
  if (!object(v)) return undefined;
  return {live: v.live === true, premiere: v.premiere === true, new: v.new === true, repeat: v.repeat === true};
 }
-const programmeImagePath = /^\/v1\/items\/[A-Za-z0-9_-]{1,128}\/art\/poster$/;
+const programmeImagePath = /^\/v1\/(?:items\/[A-Za-z0-9_-]{1,128}\/art\/poster|guide\/programme-images\/[a-f0-9]{48}\/[a-f0-9]{64})$/;
 function parseImage(v: unknown): string | undefined {
  return typeof v === 'string' && v.length <= 512 && programmeImagePath.test(v) ? v : undefined;
 }
