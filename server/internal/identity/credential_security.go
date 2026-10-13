@@ -246,13 +246,11 @@ func (s *Service) proveCurrentPassword(ctx context.Context, bearer, password str
 	}
 	valid := false
 	if len(password) <= 72 {
-		select {
-		case s.hashSlots <- struct{}{}:
-			valid = bcrypt.CompareHashAndPassword(proof.hash, []byte(password)) == nil
-			<-s.hashSlots
-		default:
-			return currentPasswordProof{}, ErrBusy
+		if slotErr := s.takeHashSlot(ctx); slotErr != nil {
+			return currentPasswordProof{}, slotErr
 		}
+		valid = bcrypt.CompareHashAndPassword(proof.hash, []byte(password)) == nil
+		<-s.hashSlots
 	}
 	if !valid {
 		if err = s.passwordAttempt(ctx, proof.account, credentialFailure); err != nil {

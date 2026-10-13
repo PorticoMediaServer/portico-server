@@ -42,7 +42,7 @@ func (s *Service) RefreshSession(ctx context.Context, secret, installation, requ
 			// A known predecessor outside its exact replay is evidence that the
 			// refresh credential escaped. Commit the revocation before returning
 			// an error; the deferred rollback would otherwise undo it.
-			if err = RevokeFamilyTx(ctx, tx, reused, RevokedRefreshReuse); err != nil {
+			if _, err = s.revokeWhereTx(ctx, tx, RevokedRefreshReuse, `id=?`, reused); err != nil {
 				return Envelope{}, err
 			}
 			if err = gated.Commit(); err != nil {

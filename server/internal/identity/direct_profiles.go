@@ -142,12 +142,10 @@ func (s *Service) EditDirectProfile(ctx context.Context, bearer, id string, q Di
 	var hash []byte
 	var e error
 	if q.PIN != nil && *q.PIN != "" {
-		select {
-		case s.hashSlots <- struct{}{}:
-			defer func() { <-s.hashSlots }()
-		default:
-			return DirectSnapshot{}, ErrBusy
+		if slotErr := s.takeHashSlot(ctx); slotErr != nil {
+			return DirectSnapshot{}, slotErr
 		}
+		defer func() { <-s.hashSlots }()
 		hash, e = bcrypt.GenerateFromPassword([]byte(*q.PIN), PINCost)
 		if e != nil {
 			return DirectSnapshot{}, e
@@ -294,6 +292,100 @@ type DirectSelectionResult struct {
 	TrustedSelection *DirectTrust `json:"trustedSelection,omitempty"`
 }
 
+// profilePINProof is what was established about a PIN outside the selection
+// transaction.
+type profilePINProof struct {
+	// checked: the profile has a PIN, no remembered trust covers this
+	// selection, and the PIN offered was compared with it.
+	checked bool
+	correct bool
+	// pinRevision is the PIN the comparison was made against.
+	pinRevision int64
+}
+
+// PINFailuresAcrossDevices is how many wrong PINs a profile takes, counted
+// over every device in a day, before the profile is closed to PIN entry for
+// PINProfileCooloff after the last one. The per-device delays alone are reset
+// by signing in again as a new device; this count is not.
+const (
+	PINFailuresAcrossDevices = 20
+	PINProfileCooloff        = 15 * time.Minute
+)
+
+// profilePINLockedTx applies the across-devices count to one profile.
+func profilePINLockedTx(ctx context.Context, tx *sql.Tx, profile string, nowMS int64) error {
+	var failures, last int64
+	day := int64((24 * time.Hour) / time.Millisecond)
+	if e := tx.QueryRowContext(ctx, `SELECT COALESCE(SUM(failed_attempts),0),COALESCE(MAX(last_failed_ms),0) FROM direct_profile_pin_attempts WHERE profile_id=? AND last_failed_ms>?`, profile, nowMS-day).Scan(&failures, &last); e != nil {
+		return e
+	}
+	if failures >= PINFailuresAcrossDevices && nowMS < last+PINProfileCooloff.Milliseconds() {
+		return ErrProfileLocked
+	}
+	return nil
+}
+
+// proveProfilePIN compares the offered PIN with the profile's, reading what it
+// needs in a snapshot and hashing with no transaction open. A profile with no
+// PIN, or a selection covered by remembered trust, needs no proof. A device or
+// profile that is locked out is refused here, before any hashing is done for it.
+func (s *Service) proveProfilePIN(ctx context.Context, bearer, id string, q DirectSelection) (profilePINProof, error) {
+	var proof profilePINProof
+	gated, e := dbwork.BeginSnapshot(ctx, s.db)
+	if e != nil {
+		return proof, e
+	}
+	tx := gated.Tx()
+	c, e := s.directCallerTx(ctx, tx, bearer, false)
+	if e != nil {
+		gated.Rollback()
+		return proof, e
+	}
+	var hash []byte
+	var revision int64
+	if e = tx.QueryRowContext(ctx, `SELECT pin_hash,revision,pin_revision FROM direct_profiles WHERE account_id=? AND id=? AND deleted=0`, c.account.ID, id).Scan(&hash, &revision, &proof.pinRevision); e != nil {
+		gated.Rollback()
+		return proof, ErrUnauthorized
+	}
+	trusted := false
+	if q.TrustToken != "" && validFamilyID(q.InstallationID) {
+		if e = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM direct_profile_trust WHERE token_hash=? AND account_id=? AND profile_id=? AND installation_id=? AND pin_revision=? AND membership_revision=? AND profile_revision=? AND expires_at>?)`, Digest(q.TrustToken), c.account.ID, id, q.InstallationID, proof.pinRevision, c.account.Revision, revision, time.Now().UTC().Format(time.RFC3339)).Scan(&trusted); e != nil {
+			gated.Rollback()
+			return proof, e
+		}
+	}
+	if len(hash) == 0 || trusted {
+		gated.Rollback()
+		return proof, nil
+	}
+	nowMS := time.Now().UnixMilli()
+	var lastFailed, locked int64
+	e = tx.QueryRowContext(ctx, `SELECT last_failed_ms,locked_until_ms FROM direct_profile_pin_attempts WHERE profile_id=? AND device_id=?`, id, c.deviceID).Scan(&lastFailed, &locked)
+	if e != nil && !errors.Is(e, sql.ErrNoRows) {
+		gated.Rollback()
+		return proof, e
+	}
+	if nowMS-lastFailed <= int64((24*time.Hour)/time.Millisecond) && locked > nowMS {
+		gated.Rollback()
+		return proof, ErrProfileLocked
+	}
+	if e = profilePINLockedTx(ctx, tx, id, nowMS); e != nil {
+		gated.Rollback()
+		return proof, e
+	}
+	gated.Rollback()
+	proof.checked = true
+	if !validPIN(q.PIN) {
+		return proof, nil
+	}
+	if e = s.takeHashSlot(ctx); e != nil {
+		return proof, e
+	}
+	proof.correct = bcrypt.CompareHashAndPassword(hash, []byte(q.PIN)) == nil
+	<-s.hashSlots
+	return proof, nil
+}
+
 func (s *Service) SelectDirectProfile(ctx context.Context, bearer, id string, q DirectSelection) (DirectSelectionResult, error) {
 	return s.SelectDirectProfileFrom(ctx, bearer, id, q, true)
 }
@@ -301,6 +393,15 @@ func (s *Service) SelectDirectProfileFrom(ctx context.Context, bearer, id string
 	out := DirectSelectionResult{}
 	if !validFamilyID(id) || len(q.PIN) > 4 || len(q.TrustToken) > 128 || len(q.InstallationID) > 128 || q.Trust && !validFamilyID(q.InstallationID) {
 		return out, ErrDirectInput
+	}
+	// The PIN is checked before the transaction opens. Hashing takes tens of
+	// milliseconds, longer on a small machine, and may wait for a hashing
+	// slot; the database has one writer, and every other write on the server
+	// would wait behind it. The transaction below only compares what was
+	// proved against the profile as it is then.
+	proof, e := s.proveProfilePIN(ctx, bearer, id, q)
+	if e != nil {
+		return out, e
 	}
 	gated4, e := dbwork.Begin(ctx, s.db, dbwork.ClassSecurityFence)
 	if e != nil {
@@ -341,13 +442,16 @@ func (s *Service) SelectDirectProfileFrom(ctx context.Context, bearer, id string
 		if locked > nowMS {
 			return out, ErrProfileLocked
 		}
-		select {
-		case s.hashSlots <- struct{}{}:
-			defer func() { <-s.hashSlots }()
-		default:
-			return out, ErrBusy
+		if e = profilePINLockedTx(ctx, tx, id, nowMS); e != nil {
+			return out, e
 		}
-		if !validPIN(q.PIN) || bcrypt.CompareHashAndPassword(hash, []byte(q.PIN)) != nil {
+		// The proof was made against the PIN as it was a moment ago. If the PIN
+		// has been changed, removed or set since, nothing was proved about the
+		// one in force now.
+		if !proof.checked || proof.pinRevision != pinRevision {
+			return out, ErrProfileChanged
+		}
+		if !proof.correct {
 			attempts++
 			delay := int64(2)
 			if attempts >= 3 {

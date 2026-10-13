@@ -86,12 +86,10 @@ func (s *Service) PINReset(ctx context.Context, bearer, profile, pin string) (Di
 	var hash []byte
 	var e error
 	if pin != "" {
-		select {
-		case s.hashSlots <- struct{}{}:
-			defer func() { <-s.hashSlots }()
-		default:
-			return DirectSnapshot{}, ErrBusy
+		if slotErr := s.takeHashSlot(ctx); slotErr != nil {
+			return DirectSnapshot{}, slotErr
 		}
+		defer func() { <-s.hashSlots }()
 		if hash, e = bcrypt.GenerateFromPassword([]byte(pin), PINCost); e != nil {
 			return DirectSnapshot{}, e
 		}

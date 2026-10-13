@@ -523,7 +523,9 @@ func (s *Service) RunSetupMaintenance(ctx context.Context) {
 		_ = s.PruneSetup(step)
 		_, _ = s.PruneAuthorizationRenewals(step)
 		if time.Since(lastSessionPrune) >= 15*time.Minute {
-			if removed, err := s.PruneSessionHistory(step); err == nil && removed < 128 {
+			removed, err := s.PruneSessionHistory(step)
+			ended, endedErr := s.PruneEndedSessions(step)
+			if err == nil && endedErr == nil && removed < 128 && ended < 64 {
 				lastSessionPrune = time.Now()
 			}
 		}

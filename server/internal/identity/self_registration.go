@@ -149,12 +149,10 @@ func (s *Service) Register(ctx context.Context, q SelfRegistrationRequest, priva
 	if mode == SelfRegistrationInvite && (s.RedeemInvitation == nil || strings.TrimSpace(q.InvitationCode) == "") {
 		return DirectSignIn{}, ErrRegistrationInvite
 	}
-	select {
-	case s.hashSlots <- struct{}{}:
-		defer func() { <-s.hashSlots }()
-	default:
-		return DirectSignIn{}, ErrBusy
+	if slotErr := s.takeHashSlot(ctx); slotErr != nil {
+		return DirectSignIn{}, slotErr
 	}
+	defer func() { <-s.hashSlots }()
 	hash, e := bcrypt.GenerateFromPassword([]byte(q.Password), PasswordCost)
 	if e != nil {
 		return DirectSignIn{}, e

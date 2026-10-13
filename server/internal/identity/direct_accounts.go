@@ -123,10 +123,8 @@ func (s *Service) passwordAccount(ctx context.Context, user, password string) (d
 	} else if err := s.credentialCooloff(ctx, c.account.ID); err != nil {
 		return directCaller{}, nil, err
 	}
-	select {
-	case s.hashSlots <- struct{}{}:
-	default:
-		return directCaller{}, nil, ErrBusy
+	if slotErr := s.takeHashSlot(ctx); slotErr != nil {
+		return directCaller{}, nil, slotErr
 	}
 	// A Portico Account member has no password here. It pays the same bcrypt
 	// cost as any other account, so the answer's timing does not tell a prober
@@ -540,13 +538,11 @@ func (s *Service) ChangeDirectPassword(ctx context.Context, bearer, current, nex
 		return e
 	}
 	var hash []byte
-	select {
-	case s.hashSlots <- struct{}{}:
-		hash, e = bcrypt.GenerateFromPassword([]byte(next), PasswordCost)
-		<-s.hashSlots
-	default:
-		return ErrBusy
+	if slotErr := s.takeHashSlot(ctx); slotErr != nil {
+		return slotErr
 	}
+	hash, e = bcrypt.GenerateFromPassword([]byte(next), PasswordCost)
+	<-s.hashSlots
 	if e != nil {
 		return e
 	}
@@ -636,12 +632,10 @@ func (s *Service) CreateDirectMember(ctx context.Context, bearer string, q Direc
 	if len(q.Username) < 3 || len(q.Username) > 64 || strings.ContainsAny(q.Username, " \t\r\n@") || !directPassword(q.Password) || !directName(q.Name) || !directLibraries(q.AllowedLibraries) {
 		return DirectAccount{}, ErrDirectInput
 	}
-	select {
-	case s.hashSlots <- struct{}{}:
-		defer func() { <-s.hashSlots }()
-	default:
-		return DirectAccount{}, ErrBusy
+	if slotErr := s.takeHashSlot(ctx); slotErr != nil {
+		return DirectAccount{}, slotErr
 	}
+	defer func() { <-s.hashSlots }()
 	hash, e := bcrypt.GenerateFromPassword([]byte(q.Password), PasswordCost)
 	if e != nil {
 		return DirectAccount{}, e
@@ -688,12 +682,10 @@ func (s *Service) UpdateDirectMember(ctx context.Context, bearer, id string, q D
 	}
 	var passwordHash []byte
 	if q.Password != "" {
-		select {
-		case s.hashSlots <- struct{}{}:
-			defer func() { <-s.hashSlots }()
-		default:
-			return ErrBusy
+		if slotErr := s.takeHashSlot(ctx); slotErr != nil {
+			return slotErr
 		}
+		defer func() { <-s.hashSlots }()
 		var err error
 		passwordHash, err = bcrypt.GenerateFromPassword([]byte(q.Password), PasswordCost)
 		if err != nil {

@@ -107,6 +107,33 @@ type Service struct {
 	RedeemInvitation InvitationRedeemer
 }
 
+// hashSlotWait is how long a password or PIN check waits for one of the two
+// hashing slots before answering "busy". Two slots bound what hashing can cost
+// the processor; a short wait means a brief burst of sign-ins queues instead
+// of being turned away, without letting a flood of them pile up.
+const hashSlotWait = 3 * time.Second
+
+// takeHashSlot takes a hashing slot, waiting briefly for one. The caller
+// releases it with <-s.hashSlots. It must not be called while holding the
+// database writer: the wait would hold up every other write.
+func (s *Service) takeHashSlot(ctx context.Context) error {
+	select {
+	case s.hashSlots <- struct{}{}:
+		return nil
+	default:
+	}
+	wait := time.NewTimer(hashSlotWait)
+	defer wait.Stop()
+	select {
+	case s.hashSlots <- struct{}{}:
+		return nil
+	case <-wait.C:
+		return ErrBusy
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
 func Token() string {
 	b := make([]byte, 32)
 	if _, e := rand.Read(b); e != nil {

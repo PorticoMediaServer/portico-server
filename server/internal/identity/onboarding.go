@@ -87,12 +87,10 @@ func (s *Service) SetupWithOptions(ctx context.Context, q SetupOptions, private 
 	if e != nil || subtle.ConstantTimeCompare(token, []byte(q.SetupToken)) != 1 {
 		return Envelope{}, ErrUnauthorized
 	}
-	select {
-	case s.hashSlots <- struct{}{}:
-		defer func() { <-s.hashSlots }()
-	default:
-		return Envelope{}, ErrBusy
+	if slotErr := s.takeHashSlot(ctx); slotErr != nil {
+		return Envelope{}, slotErr
 	}
+	defer func() { <-s.hashSlots }()
 	hash, e := bcrypt.GenerateFromPassword([]byte(q.Password), PasswordCost)
 	if e != nil {
 		return Envelope{}, e
