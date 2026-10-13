@@ -2,7 +2,10 @@
 
 package httpapi
 
-import "net/http"
+import (
+	"net/http"
+	"net/netip"
+)
 
 // The development e2e owner, the server-side counterpart of Hosted's
 // /dev/e2e/session: on a development server with a throwaway state directory
@@ -20,14 +23,14 @@ func init() {
 	devRoutes = append(devRoutes, func(d Dependencies, mux *http.ServeMux) {
 		mux.HandleFunc("GET /v1/dev/e2e", func(w http.ResponseWriter, r *http.Request) {
 			name, ok := d.Identity.DevE2EUsername()
-			if !ok || !loopbackPeer(r) {
+			if !ok || !devE2ELoopbackPeer(r) {
 				devE2ENotFound(w)
 				return
 			}
 			write(w, 200, map[string]string{"username": name})
 		})
 		mux.HandleFunc("POST /v1/dev/e2e/sign-in", func(w http.ResponseWriter, r *http.Request) {
-			if _, ok := d.Identity.DevE2EUsername(); !ok || !loopbackPeer(r) {
+			if _, ok := d.Identity.DevE2EUsername(); !ok || !devE2ELoopbackPeer(r) {
 				devE2ENotFound(w)
 				return
 			}
@@ -46,6 +49,12 @@ func init() {
 			writeAuth(w, r, 200, out)
 		})
 	})
+}
+
+// Development sign-in trusts only the socket peer, never forwarded addresses.
+func devE2ELoopbackPeer(r *http.Request) bool {
+	peer, err := netip.ParseAddrPort(r.RemoteAddr)
+	return err == nil && peer.Addr().Unmap().IsLoopback()
 }
 
 func devE2ENotFound(w http.ResponseWriter) {

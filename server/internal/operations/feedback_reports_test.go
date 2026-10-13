@@ -2,9 +2,11 @@ package operations
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"testing"
 
+	"portico.local/server/internal/identity"
 	"portico.local/server/internal/notify"
 )
 
@@ -40,10 +42,11 @@ func TestFeedbackCapabilities(t *testing.T) {
 	if out, e = s.FeedbackCapabilitiesDocument(ctx, member, auth); e != nil || !out.CanSubmit {
 		t.Fatalf("a local profile collided with a Hosted revocation: %v %+v", e, out)
 	}
-	hosted := member
-	hosted.Authority = "hosted"
-	if out, e = s.FeedbackCapabilitiesDocument(ctx, hosted, auth); e != nil || out.CanSubmit || out.SubmitBlockedReason == "" {
-		t.Fatalf("a revoked Hosted profile must be told it cannot submit: %v %+v", e, out)
+	// Portico Accounts use the same local membership authorization as direct
+	// accounts. Revocation is enforced by that boundary, not the retired table.
+	revoked := func(context.Context, *sql.Tx, string) error { return identity.ErrUnauthorized }
+	if _, e = s.FeedbackCapabilitiesDocument(ctx, member, revoked); !errors.Is(e, identity.ErrUnauthorized) {
+		t.Fatalf("a revoked membership must be refused: %v", e)
 	}
 }
 
