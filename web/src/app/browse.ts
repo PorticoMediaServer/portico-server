@@ -8,6 +8,7 @@ import type {MessageId} from '@i18n';
 import {sessionIdentity, useSession} from './session';
 import {errorText} from './errors';
 import {browsePageSource, type Predicate} from './browse-page-source.ts';
+import {RevalidatingCache} from './revalidating-cache.ts';
 export {browsePageSource} from './browse-page-source.ts';
 export type {Predicate} from './browse-page-source.ts';
 
@@ -18,25 +19,27 @@ export type {Predicate} from './browse-page-source.ts';
  * the URL as a compact JSON list of predicates so a view is linkable.
  */
 
-const capabilityCache = new Map<string, Promise<BrowseCapabilities>>();
+/**
+ * A library's vocabulary has no revision to key on, so what was read last is shown at once and
+ * checked again each time a library is opened: a server upgrade, a changed library setting or
+ * facets that appear after the first scan reach an open tab the next time the library is shown.
+ * Entries belong to whoever is signed in and are forgotten when that changes.
+ */
+const capabilityCache = new RevalidatingCache<BrowseCapabilities>({max: 32});
 export function useBrowseCapabilities(libraryId: string | undefined, pivot: string | undefined) {
   const {api, session} = useSession();
-  const [state, setState] = useState<{capabilities?: BrowseCapabilities; error?: string}>({});
+  const [state, setState] = useState<{capabilities?: BrowseCapabilities; error?: string; key?: string}>({});
   const who = sessionIdentity(session);
+  const key = libraryId && pivot ? `${libraryId}:${pivot}` : undefined;
   useEffect(() => {
-    if (!libraryId || !pivot) { setState({}); return; }
-    const key = `${who}:${libraryId}:${pivot}`;
-    let promise = capabilityCache.get(key);
-    if (!promise) {
-      promise = api.request<unknown>(`/v1/libraries/${encodeURIComponent(libraryId)}/browse-capabilities?pivot=${encodeURIComponent(pivot)}`, 'GET').then(parseBrowseCapabilities);
-      capabilityCache.set(key, promise);
-      promise.catch(() => capabilityCache.delete(key));
-    }
-    let cancelled = false;
-    promise.then(c => { if (!cancelled) setState({capabilities: c}); }, e => { if (!cancelled) setState({error: errorText(e, 'library', 'load')}); });
-    return () => { cancelled = true; };
-  }, [api, who, libraryId, pivot]);
-  return state;
+    if (!libraryId || !pivot || !key) { setState({}); return; }
+    return capabilityCache.use(who, key, () => api.request<unknown>(`/v1/libraries/${encodeURIComponent(libraryId)}/browse-capabilities?pivot=${encodeURIComponent(pivot)}`, 'GET').then(parseBrowseCapabilities), {
+      value: capabilities => setState({capabilities, key}),
+      error: e => setState({error: errorText(e, 'library', 'load'), key}),
+    });
+  }, [api, who, libraryId, pivot, key]);
+  // Another library's vocabulary is never shown while this one's is on its way.
+  return state.key === key ? {capabilities: state.capabilities, error: state.error} : {};
 }
 
 /**
