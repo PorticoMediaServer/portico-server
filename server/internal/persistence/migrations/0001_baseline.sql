@@ -409,7 +409,7 @@ CREATE TABLE catalog_derivations(
 
 -- Personal state per profile and item. not_interested hides a title from
 -- recommendations and counts against similar titles (recommendations plan).
-CREATE TABLE personal_items(profile_id TEXT NOT NULL,item_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,watchlisted INTEGER NOT NULL DEFAULT 0 CHECK(watchlisted IN(0,1)),favorite INTEGER NOT NULL DEFAULT 0 CHECK(favorite IN(0,1)),rating INTEGER CHECK(rating IS NULL OR (rating>=0 AND rating<=10)),revision INTEGER NOT NULL, reaction TEXT NOT NULL DEFAULT 'none' CHECK(reaction IN('none','like','dislike')), watched INTEGER NOT NULL DEFAULT 0 CHECK(watched IN(0,1)), last_played_at TEXT NOT NULL DEFAULT '', not_interested INTEGER NOT NULL DEFAULT 0 CHECK(not_interested IN(0,1)),PRIMARY KEY(profile_id,item_id)) STRICT;
+CREATE TABLE personal_items(profile_id TEXT NOT NULL,item_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,watchlisted INTEGER NOT NULL DEFAULT 0 CHECK(watchlisted IN(0,1)),favorite INTEGER NOT NULL DEFAULT 0 CHECK(favorite IN(0,1)),rating INTEGER CHECK(rating IS NULL OR (rating>=0 AND rating<=10)),revision INTEGER NOT NULL, watched INTEGER NOT NULL DEFAULT 0 CHECK(watched IN(0,1)), last_played_at TEXT NOT NULL DEFAULT '', not_interested INTEGER NOT NULL DEFAULT 0 CHECK(not_interested IN(0,1)),PRIMARY KEY(profile_id,item_id)) STRICT;
 -- Its indexes, as the 265 schema had them (a core.sql table replaces the old
 -- definition, indexes included).
 CREATE INDEX personal_watchlist ON personal_items(profile_id,watchlisted,item_id);
@@ -449,7 +449,6 @@ CREATE INDEX catalog_browse_title ON catalog_browse_rows(library_id,kind,sort_ke
 CREATE INDEX catalog_browse_added ON catalog_browse_rows(library_id,kind,COALESCE(added_text,''),entity_id);
 CREATE INDEX catalog_browse_year ON catalog_browse_rows(library_id,kind,year,entity_id);
 CREATE INDEX catalog_browse_item ON catalog_browse_rows(item_id) WHERE item_id IS NOT NULL;
-CREATE INDEX catalog_browse_feature ON catalog_browse_rows(library_id,kind,available,backdrop,entity_id);
 CREATE INDEX catalog_browse_recent_kind ON catalog_browse_rows(library_id,kind,COALESCE(added_text,'') DESC,entity_id DESC) WHERE item_id IS NOT NULL;
 CREATE INDEX catalog_browse_recent_all ON catalog_browse_rows(library_id,COALESCE(added_text,'') DESC,entity_id DESC) WHERE item_id IS NOT NULL;
 CREATE INDEX catalog_browse_duration ON catalog_browse_rows(library_id,kind,COALESCE(duration_max,0),entity_id);
@@ -1332,7 +1331,7 @@ END;
 -- ===== everything else
 CREATE TABLE configuration(key TEXT PRIMARY KEY,value TEXT NOT NULL) STRICT;
 CREATE TABLE accounts(id TEXT PRIMARY KEY,username TEXT NOT NULL UNIQUE,password_hash BLOB NOT NULL,profile_id TEXT NOT NULL,epoch INTEGER NOT NULL DEFAULT 1) STRICT;
-CREATE TABLE libraries(id TEXT PRIMARY KEY,name TEXT NOT NULL,kind TEXT NOT NULL,root TEXT NOT NULL UNIQUE) STRICT;
+CREATE TABLE libraries(id TEXT PRIMARY KEY,name TEXT NOT NULL,kind TEXT NOT NULL,root TEXT NOT NULL UNIQUE, position INTEGER NOT NULL DEFAULT 0) STRICT;
 CREATE TABLE metadata_jobs(item_id INTEGER PRIMARY KEY REFERENCES catalog_entities(id) ON DELETE CASCADE,status TEXT NOT NULL DEFAULT 'pending',attempts INTEGER NOT NULL DEFAULT 0,next_attempt TEXT NOT NULL DEFAULT '',error TEXT NOT NULL DEFAULT '') STRICT;
 CREATE TABLE provider_evidence(item_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,provider TEXT NOT NULL,provider_id INTEGER NOT NULL,payload TEXT NOT NULL,observed_at TEXT NOT NULL,PRIMARY KEY(item_id,provider)) STRICT;
 CREATE TABLE jobs(id TEXT PRIMARY KEY,library_id TEXT NOT NULL REFERENCES libraries(id),status TEXT NOT NULL,processed INTEGER NOT NULL DEFAULT 0,error TEXT NOT NULL DEFAULT '',created_at TEXT NOT NULL) STRICT;
@@ -2626,7 +2625,7 @@ CREATE TABLE social_cast_devices(
   state TEXT NOT NULL CHECK(state IN ('pending','active','stopped','expired','revoked')),
   created_at_ms INTEGER NOT NULL,
   expires_at_ms INTEGER NOT NULL,
-  last_seen_ms INTEGER NOT NULL,
+  last_seen_ms INTEGER NOT NULL, previous_token_digest TEXT NOT NULL DEFAULT '', previous_valid_until_ms INTEGER NOT NULL DEFAULT 0, session_family_id TEXT NOT NULL DEFAULT '',
   UNIQUE(authority,account_id,profile_id,device_id)) STRICT;
 CREATE TABLE social_rate(bucket TEXT PRIMARY KEY,window_start_ms INTEGER NOT NULL,count INTEGER NOT NULL) STRICT;
 CREATE TABLE artwork_uploads(
@@ -4396,7 +4395,7 @@ CREATE TRIGGER lyric_head_monotonic BEFORE UPDATE ON lyric_resources
  WHEN NEW.revision<=OLD.revision OR NEW.item_id<>OLD.item_id OR NEW.asset_id<>OLD.asset_id OR NEW.source_version<>OLD.source_version OR NEW.source_duration<>OLD.source_duration OR NEW.source_start<>OLD.source_start OR NEW.source_end<>OLD.source_end OR NEW.scope<>OLD.scope OR NEW.authority<>OLD.authority OR NEW.account_id<>OLD.account_id OR NEW.profile_id<>OLD.profile_id
  BEGIN SELECT RAISE(ABORT,'invalid lyric resource transition'); END;
 CREATE TRIGGER screen_policy_create AFTER INSERT ON libraries WHEN NEW.kind IN('movie','tv','anime') BEGIN
- INSERT INTO screen_metadata_policies(library_id,providers) VALUES(NEW.id,CASE WHEN NEW.kind='anime' THEN '["anilist"]' ELSE '["tmdb","tvdb"]' END);
+ INSERT INTO screen_metadata_policies(library_id,providers) VALUES(NEW.id,'["tmdb"]');
 END;
 CREATE TRIGGER screen_configuration_change AFTER UPDATE OF revision ON library_configuration WHEN NEW.revision<>OLD.revision BEGIN
  UPDATE screen_metadata_work SET status='pending',generation=generation+1,revision=revision+1,lease='',lease_until='',next_attempt='',error='' WHERE library_id=NEW.library_id;
@@ -5302,7 +5301,7 @@ END;
 CREATE TRIGGER rec_profile_items_insert AFTER INSERT ON personal_items BEGIN
  INSERT INTO rec_profile_jobs(profile_id,work_id,revision) VALUES(NEW.profile_id,COALESCE((SELECT show_id FROM catalog_episodes WHERE entity_id=NEW.item_id),(SELECT album_id FROM catalog_songs WHERE entity_id=NEW.item_id),(SELECT book_id FROM catalog_book_files WHERE entity_id=NEW.item_id),NEW.item_id),1) ON CONFLICT(profile_id,work_id) DO UPDATE SET revision=revision+1;
 END;
-CREATE TRIGGER rec_profile_items_update AFTER UPDATE OF watchlisted,favorite,rating,reaction,watched,not_interested ON personal_items
+CREATE TRIGGER rec_profile_items_update AFTER UPDATE OF watchlisted,favorite,rating,watched,not_interested ON personal_items
  WHEN OLD.watchlisted IS NOT NEW.watchlisted OR OLD.favorite IS NOT NEW.favorite OR OLD.rating IS NOT NEW.rating OR OLD.watched IS NOT NEW.watched OR OLD.not_interested IS NOT NEW.not_interested BEGIN
  INSERT INTO rec_profile_jobs(profile_id,work_id,revision) VALUES(NEW.profile_id,COALESCE((SELECT show_id FROM catalog_episodes WHERE entity_id=NEW.item_id),(SELECT album_id FROM catalog_songs WHERE entity_id=NEW.item_id),(SELECT book_id FROM catalog_book_files WHERE entity_id=NEW.item_id),NEW.item_id),1) ON CONFLICT(profile_id,work_id) DO UPDATE SET revision=revision+1;
 END;
@@ -6336,3 +6335,72 @@ CREATE INDEX live_channel_choices_groups ON live_channel_choices(generation_id,g
 
 CREATE INDEX download_request_items_item ON download_request_items(item_id,preparation_id);
 CREATE INDEX download_requests_target ON download_requests(target_id);
+
+-- Tables and indexes for current personal state, show settings and capture recovery.
+CREATE INDEX social_cast_devices_previous ON social_cast_devices(previous_token_digest) WHERE previous_token_digest<>'';
+
+CREATE TABLE catalog_show_settings(
+ entity_id INTEGER PRIMARY KEY REFERENCES catalog_entities(id) ON DELETE CASCADE,
+ hide_seasons INTEGER NOT NULL DEFAULT 0 CHECK(hide_seasons IN(0,1)),
+ absolute_numbering INTEGER NOT NULL DEFAULT 0 CHECK(absolute_numbering IN(0,1)),
+ ranges INTEGER NOT NULL DEFAULT 0 CHECK(ranges IN(0,1)),
+ newest_first INTEGER NOT NULL DEFAULT 0 CHECK(newest_first IN(0,1)),
+ revision INTEGER NOT NULL DEFAULT 1) STRICT;
+
+CREATE TABLE play_history(
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
+ playback_id TEXT NOT NULL UNIQUE,
+ authority TEXT NOT NULL,
+ account_id TEXT NOT NULL,
+ profile_id TEXT NOT NULL,
+ user_name TEXT NOT NULL,
+ profile_name TEXT NOT NULL DEFAULT '',
+ item_id INTEGER NOT NULL,
+ library_id TEXT NOT NULL,
+ kind INTEGER NOT NULL,
+ title TEXT NOT NULL,
+ parent_title TEXT NOT NULL DEFAULT '',
+ season INTEGER,
+ episode INTEGER,
+ device_id TEXT NOT NULL DEFAULT '',
+ device_name TEXT NOT NULL DEFAULT '',
+ platform TEXT NOT NULL DEFAULT '',
+ started_ms INTEGER NOT NULL,
+ updated_ms INTEGER NOT NULL,
+ position_ms INTEGER NOT NULL DEFAULT 0,
+ duration_ms INTEGER NOT NULL DEFAULT 0,
+ completed INTEGER NOT NULL DEFAULT 0 CHECK(completed IN(0,1)), converted INTEGER NOT NULL DEFAULT 0 CHECK(converted IN(0,1))) STRICT;
+
+CREATE INDEX play_history_recent ON play_history(started_ms DESC,id DESC);
+
+CREATE INDEX play_history_account ON play_history(account_id,started_ms DESC,id DESC);
+
+CREATE INDEX play_history_library ON play_history(library_id,started_ms DESC,id DESC);
+
+CREATE TABLE play_counts(
+ item_id INTEGER PRIMARY KEY REFERENCES catalog_entities(id) ON DELETE CASCADE,
+ plays INTEGER NOT NULL,
+ last_played_ms INTEGER NOT NULL) STRICT;
+
+CREATE TABLE personal_play_counts(
+ profile_id TEXT NOT NULL,
+ item_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,
+ plays INTEGER NOT NULL,
+ PRIMARY KEY(profile_id,item_id)) STRICT, WITHOUT ROWID;
+
+CREATE INDEX personal_play_counts_item ON personal_play_counts(item_id);
+
+CREATE TRIGGER catalog_facet_episode_insert AFTER INSERT ON catalog_episodes BEGIN
+ INSERT INTO catalog_dirty(domain,entity_id,revision) VALUES(33,NEW.show_id,1) ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
+END;
+
+CREATE TRIGGER catalog_facet_episode_delete AFTER DELETE ON catalog_episodes BEGIN
+ INSERT INTO catalog_dirty(domain,entity_id,revision) VALUES(33,OLD.show_id,1) ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
+END;
+
+CREATE TRIGGER catalog_facet_episode_move AFTER UPDATE OF show_id ON catalog_episodes WHEN OLD.show_id IS NOT NEW.show_id BEGIN
+ INSERT INTO catalog_dirty(domain,entity_id,revision) VALUES(33,OLD.show_id,1) ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
+ INSERT INTO catalog_dirty(domain,entity_id,revision) VALUES(33,NEW.show_id,1) ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
+END;
+
+CREATE INDEX rec_profile_signals_positive_recent ON rec_profile_signals(profile_id,at) WHERE weight>0;

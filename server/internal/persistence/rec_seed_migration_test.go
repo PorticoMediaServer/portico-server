@@ -8,7 +8,7 @@ import (
 	"portico.local/server/internal/dbwork"
 )
 
-func TestPositiveRecommendationSeedIndexUpgradesExistingHistory(t *testing.T) {
+func TestPositiveRecommendationSeedIndexExistsInBaseline(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.sqlite")
 	db, err := dbwork.OpenHandle(path, dbwork.DefaultPolicy())
 	if err != nil {
@@ -18,13 +18,7 @@ func TestPositiveRecommendationSeedIndexUpgradesExistingHistory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	older := make([]schemaMigration, 0, len(steps))
-	for _, step := range steps {
-		if step.version <= 10 {
-			older = append(older, step)
-		}
-	}
-	if err := migrateWith(context.Background(), db, older); err != nil {
+	if err := migrateWith(context.Background(), db, steps); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := db.Exec(`INSERT INTO rec_profile_signals(profile_id,work_id,weight,engaged,hidden,at,long,short) VALUES('p',1,2,1,0,'2026-01-01',2,2),('p',2,-1,0,1,'2026-01-02',-1,-1),('p',3,0,1,0,'2026-01-03',0,0)`); err != nil {
@@ -48,6 +42,6 @@ func TestPositiveRecommendationSeedIndexUpgradesExistingHistory(t *testing.T) {
 		t.Fatal(err)
 	}
 	if rows != 3 || positive != 1 || version != schemaVersion {
-		t.Fatalf("upgrade altered history or omitted index: rows=%d positive=%d version=%d", rows, positive, version)
+		t.Fatalf("reopen altered history or omitted index: rows=%d positive=%d version=%d", rows, positive, version)
 	}
 }

@@ -14,7 +14,7 @@ func TestSchemaMigrationsAreNumberedAndImmutable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(migrations) == 0 || migrations[0].version != baselineSchemaVersion {
+	if len(migrations) != 1 || migrations[0].version != baselineSchemaVersion {
 		t.Fatal("missing baseline")
 	}
 }
