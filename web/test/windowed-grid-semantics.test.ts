@@ -15,7 +15,7 @@ test('a windowed grid is a list whose cells say where they are in the whole coll
 test('focus that would be lost with a card scrolled out of the window goes to the list', () => {
   const grid = src('ui/WindowedGrid.tsx');
   assert.match(grid, /tabIndex=\{-1\} onFocusCapture=/);
-  assert.match(grid, /document\.activeElement === document\.body \|\| document\.activeElement === null\) el\.focus\(\{preventScroll: true\}\)/);
+  assert.match(grid, /document\.activeElement === document\.body \|\| document\.activeElement === null\)\) el\.focus\(\{preventScroll: true\}\)/);
 });
 
 test('the title table numbers its rows in the whole table and opts out of list semantics', () => {
