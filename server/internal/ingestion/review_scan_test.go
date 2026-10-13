@@ -178,3 +178,20 @@ func TestReportedRemovalBudgetDoesNotWaitForEachBlockedPath(t *testing.T) {
 		t.Fatalf("inconclusive helper authorized missing=%d", n)
 	}
 }
+
+func TestUnreadableOnlySubtreeFinishesWithProtectedMedia(t *testing.T) {
+	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+		t.Skip("requires POSIX directory permissions under a non-root user")
+	}
+	f := newLoopFixture(t, "movie", "Unreadable/Film (2000).mkv")
+	f.finish(f.queue())
+	blocked := filepath.Join(f.root, "Unreadable")
+	if err := os.Chmod(blocked, 0000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chmod(blocked, 0700) })
+	state := f.finish(f.queue())
+	if state.Status != "complete_with_warnings" || f.count(`SELECT count(*) FROM inventory_objects WHERE state='available'`) != 1 {
+		t.Fatalf("unreadable subtree failed or lost media: %+v", state)
+	}
+}

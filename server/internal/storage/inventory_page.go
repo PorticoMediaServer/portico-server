@@ -237,6 +237,10 @@ func LocalInventoryPage(r InventoryRequest) (InventoryPage, error) {
 			continue
 		}
 		v := snapshot(bindingPath, info)
+		if v.ObjectIdentity == "" {
+			p.Issues = append(p.Issues, InventoryIssue{Path: filepath.Join(r.RelativePath, name), Reason: "entry_unreadable", Protect: true, Warning: true})
+			continue
+		}
 		v.Path = filepath.Join(r.Root, r.RelativePath, name)
 		v.Name = name
 		p.Entries = append(p.Entries, v)

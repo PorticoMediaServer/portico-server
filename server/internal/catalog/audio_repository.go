@@ -504,7 +504,7 @@ func (s *Service) commitAudio(ctx context.Context, tx *sql.Tx, library, kind, ro
 			}
 			if merged, compatible := mergeLocalEdition(oldEdition, audioEdition(f.Tags)); compatible {
 				chosen := oldKey
-				if strings.HasPrefix(groupKey, "musicbrainz:") || !strings.HasPrefix(oldKey, "musicbrainz:") && audioEdition(f.Tags) != "|||" {
+				if strings.HasPrefix(groupKey, "musicbrainz:") || !strings.HasPrefix(oldKey, "musicbrainz:") && audioEdition(f.Tags) != emptyAudioEdition {
 					chosen = groupKey
 				}
 				if err = recordAlbumGroupTx(ctx, tx, album, chosen); err != nil {

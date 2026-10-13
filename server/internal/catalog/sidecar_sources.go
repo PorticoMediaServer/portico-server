@@ -59,7 +59,7 @@ func settleSidecarRead(ctx context.Context, tx *sql.Tx, library string, read *si
 			continue
 		}
 		var elsewhere bool
-		if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM inventory_artwork_sources s JOIN inventory_objects o ON o.asset_id=s.asset_id JOIN library_sources r ON r.id=o.source_id WHERE s.kind=? AND s.entity_id=? AND s.role=? AND s.art_key=? AND o.retired=0 AND o.state='available' AND o.root_incarnation=r.incarnation AND r.enabled=1)`, c.kind, c.entity, c.role, c.key).Scan(&elsewhere); err != nil {
+		if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM inventory_artwork_sources s CROSS JOIN inventory_objects o INDEXED BY inventory_objects_asset ON o.asset_id=s.asset_id JOIN library_sources r ON r.id=o.source_id WHERE s.kind=? AND s.entity_id=? AND s.role=? AND s.art_key=? AND o.retired=0 AND o.state='available' AND o.root_incarnation=r.incarnation AND r.enabled=1)`, c.kind, c.entity, c.role, c.key).Scan(&elsewhere); err != nil {
 			return err
 		}
 		if elsewhere {

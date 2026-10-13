@@ -167,3 +167,18 @@ func TestAudioReleaseEnrichmentKeepsVersionsAndRetiresWeakAlbumKey(t *testing.T)
 		t.Fatalf("release enrichment: songs=%d files=%d albums=%d stale album keys=%d", songs, files, albumCount(t, db), weakAliases)
 	}
 }
+
+func TestAlbumEditionWithSeparatorEnrichesUnknownEvidence(t *testing.T) {
+	s, db := openEmptyAlbumDB(t)
+	tags := map[string]string{"title": "One", "album": "Release", "album_artist": "Artist", "artist": "Artist", "track": "1", "date": "2000"}
+	commitAlbumSong(t, s, db, "one", "Release", tags, false)
+	tags["title"], tags["track"], tags["edition"] = "Two", "2", "Live | Extended"
+	commitAlbumSong(t, s, db, "two", "Release", tags, false)
+	var edition string
+	if err := db.QueryRow(`SELECT edition_key FROM catalog_albums LIMIT 1`).Scan(&edition); err != nil {
+		t.Fatal(err)
+	}
+	if albumCount(t, db) != 1 || edition != audioEdition(tags) {
+		t.Fatalf("literal edition separator lost enrichment: albums=%d edition=%q", albumCount(t, db), edition)
+	}
+}
