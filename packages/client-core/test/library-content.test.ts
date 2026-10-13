@@ -458,3 +458,28 @@ test('a quiet read while on a later page keeps that page and publishes the fresh
   await gone.revalidate();
   assert.equal(gone.getSnapshot().phase, 'error'); assert.equal(gone.getSnapshot().error!.code, 'not_found');
 });
+
+test('everything read so far is one list per section: later pages append, More works on any section, and a quiet read merges in place', async () => {
+  const shelf = (id: string, ids: string[], nextCursor = '') => ({ id, type: 'rail', heading: { key: id, fallback: id }, entries: ids.map(entry), totalCount: 9, nextCursor });
+  let first = [shelf('a', ['a1', 'a2'], 'a-next'), shelf('b', ['b1', 'b2'], 'b-next')];
+  const nav = service(async path => {
+    const cursor = new URL(path, 'https://server.test').searchParams.get('cursor');
+    if (cursor === 'a-next') return projection(path, { sections: [shelf('a', ['a3', 'a2'], '')] });
+    if (cursor === 'b-next') return projection(path, { sections: [shelf('b', ['b3'], '')] });
+    return projection(path, { sections: first });
+  });
+  await nav.select({ libraryId: 'movies', view: 'discover' });
+  await nav.next('a');
+  const ids = () => nav.getSnapshot().appended.map(s => s.entries.map(e => e.id).join(','));
+  assert.deepEqual(ids(), ['a1,a2,a3', 'b1,b2'], 'the page is appended to its own section, a repeated entry is dropped, the other section stays');
+  // The service is on a page of section a; More on section b still works.
+  await nav.next('b');
+  assert.deepEqual(ids(), ['a1,a2,a3', 'b1,b2,b3']);
+  const untouched = nav.getSnapshot().appended[1];
+  // A new title arrives at the front of section a while the screen is open.
+  first = [shelf('a', ['new', 'a1'], 'a-next-2'), shelf('b', ['b1', 'b2'], 'b-next')];
+  await nav.revalidate();
+  assert.deepEqual(ids(), ['new,a1,a2,a3', 'b1,b2,b3'], 'the fresh first page leads; what was scrolled into stays');
+  assert.equal(nav.getSnapshot().appended[1], untouched, 'a section that did not change is the same object');
+  assert.equal(nav.getSnapshot().appended[0].nextCursor, '', 'the section continues from where the person was (its end)');
+});
