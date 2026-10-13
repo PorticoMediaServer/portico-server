@@ -1,3 +1,6 @@
+import {routeBody} from "../../contracts/src/routes.ts";
+import type {RouteResponse} from "../../contracts/src/routes.ts";
+import {routePath} from "../../contracts/src/routes.ts";
 import {randomId} from './random-id.ts';
 /** The viewer's notification inbox and the feedback dialog, as framework-free services shared
  * by the web and Apple clients.
@@ -57,7 +60,7 @@ export class InboxService{
   const same=audience===this.state.audience&&view===this.state.view;
   this.publish({phase:this.state.items.length&&same?'ready':'loading',audience,view,error:undefined,...(same?{}:{items:[],more:false})});
   try{
-   const inbox=parseNotificationInbox(data(await this.api.request<unknown>(`/v1/notifications/inbox?audience=${encodeURIComponent(audience)}&state=${view}&limit=50`,'GET',undefined,controller.signal)));
+   const inbox=parseNotificationInbox(data(await this.api.request<RouteResponse<"get_notifications_inbox">>(routePath("get_notifications_inbox") + "?audience=" + (encodeURIComponent(audience)) + "&state=" + (view) + "&limit=50",'GET',undefined,controller.signal)));
    if(generation!==this.generation)return;
    this.cursor=inbox.nextCursor;
    const audiences=(inbox.audiences.filter(a=>a==='profile'||a==='account-admin') as NotificationAudience[]);
@@ -71,7 +74,7 @@ export class InboxService{
  async more():Promise<void>{
   if(!this.cursor||this.state.busy)return;const generation=this.generation,{audience,view}=this.state;this.publish({busy:true});
   try{
-   const inbox=parseNotificationInbox(data(await this.api.request<unknown>(`/v1/notifications/inbox?audience=${encodeURIComponent(audience)}&state=${view}&limit=50&cursor=${encodeURIComponent(this.cursor)}`)));
+   const inbox=parseNotificationInbox(data(await this.api.request<RouteResponse<"get_notifications_inbox">>(routePath("get_notifications_inbox") + "?audience=" + (encodeURIComponent(audience)) + "&state=" + (view) + "&limit=50&cursor=" + (encodeURIComponent(this.cursor)))));
    if(generation!==this.generation)return;this.cursor=inbox.nextCursor;
    const held=new Set(this.state.items.map(n=>n.id));
    this.publish({items:[...this.state.items,...inbox.items.filter(n=>!held.has(n.id))],counts:inbox.counts,revision:inbox.revision,more:!!inbox.nextCursor,busy:false,error:undefined});
@@ -103,7 +106,7 @@ export class InboxService{
  private async send(operations:{action:string;ids?:string[]}[],before:InboxSnapshot){
   const generation=this.generation;
   try{
-   const result=parseNotificationBatchResult(data(await this.api.request<unknown>('/v1/notifications/inbox/actions','POST',{operationId:this.operationId(),expectedRevision:0,audience:before.audience,operations})));
+   const result=parseNotificationBatchResult(data(await this.api.request<RouteResponse<"post_notifications_inbox_actions">>(routePath("post_notifications_inbox_actions"),'POST',routeBody("post_notifications_inbox_actions", {operationId:this.operationId(),expectedRevision:0,audience:before.audience,operations}))));
    if(generation!==this.generation)return;
    this.publish({counts:result.counts,revision:result.revision});this.unreadDirty=true;void this.refreshUnread();
   }catch(e){
@@ -133,7 +136,7 @@ export class InboxService{
    try{
     let total=0;
     for(const audience of audiences){
-     const raw=await Promise.race([this.api.request<unknown>('/v1/notifications/unread-count?audience='+encodeURIComponent(audience),'GET',undefined,controller.signal),cancelled]);
+     const raw=await Promise.race([this.api.request<RouteResponse<"get_notifications_unread_count">>(routePath("get_notifications_unread_count") + "?audience=" + (encodeURIComponent(audience)),'GET',undefined,controller.signal),cancelled]);
      if(controller.signal.aborted||this.disposed)return this.state.unread;
      total+=parseNotificationSummary(data(raw)).counts.unread;
     }
@@ -173,7 +176,7 @@ export class FeedbackService{
  async open():Promise<void>{
   this.publish({phase:'loading'});
   try{
-   const capabilities=parseFeedbackCapabilities(data(await this.api.request<unknown>('/v1/feedback/capabilities')));
+   const capabilities=parseFeedbackCapabilities(data(await this.api.request<RouteResponse<"get_feedback_capabilities">>(routePath("get_feedback_capabilities"))));
    this.publish(capabilities.canSubmit?{phase:'ready',capabilities}:{phase:'unavailable',capabilities,error:serviceText('feedback.off')});
   }catch(e){this.publish({phase:'unavailable',error:message(e,'feedback.unavailable','feedback')});}
  }
@@ -196,11 +199,11 @@ export class FeedbackService{
   this.publish({phase:'sending',capabilities});
   try{
    const category=capabilities.kinds.find(k=>k.id===draft.kind)?.categories.find(c=>c.id===draft.category);
-   const result=parseFeedbackSubmission(data(await this.api.request<unknown>('/v1/feedback/reports','POST',{
+   const result=parseFeedbackSubmission(data(await this.api.request<RouteResponse<"post_feedback_reports">>(routePath("post_feedback_reports"),'POST',routeBody("post_feedback_reports", {
     operationId:this.attempt,kind:draft.kind,category:draft.category,message:draft.message.trim(),
     itemId:category?.wantsItem?draft.itemId??'':'',playbackSessionId:category?.wantsPlaybackSession?draft.playbackSessionId??'':'',
     attachDiagnostics:capabilities.diagnosticsSupported&&draft.attachDiagnostics,
-   })));
+   }))));
    this.attempt='';this.publish({phase:'sent',capabilities,result});return true;
   }catch(e){this.publish({phase:'ready',capabilities,error:message(e,'feedback.sendFailed','feedback','save')});return false;}
  }

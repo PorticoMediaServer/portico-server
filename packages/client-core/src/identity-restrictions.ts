@@ -1,3 +1,4 @@
+import {routePrefix} from "../../contracts/src/routes.ts";
 import {unreadableServerResponse} from './server-messages.ts';
 /** Per-profile content restrictions, device records and the Top Shelf feed.
  *
@@ -97,7 +98,7 @@ export function parseProfileAvatar(raw:unknown):ProfileAvatar{
  if(raw.sourceMime!=='image/jpeg'&&raw.sourceMime!=='image/png'&&raw.sourceMime!=='image/webp')fail('sourceMime');
  // The URL must be a server-relative path. An absolute URL here would let a
  // compromised field point a profile picture at another origin.
- if(typeof raw.url!=='string'||!raw.url.startsWith('/v1/profiles/')||raw.url.length>512)fail('url');
+ if(typeof raw.url!=='string'||!raw.url.startsWith(routePrefix("get_profiles_id_avatar", 2))||raw.url.length>512)fail('url');
  return Object.freeze({profileId:raw.profileId as string,version:raw.version as number,updatedAt:raw.updatedAt as string,sourceMime:raw.sourceMime,url:raw.url});
 }
 

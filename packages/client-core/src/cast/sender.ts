@@ -1,3 +1,5 @@
+import {routeBody} from "../../../contracts/src/routes.ts";
+import {routePath} from "../../../contracts/src/routes.ts";
 /**
  * The Portico Cast sender, one implementation for every platform. The platform finds a Cast
  * device and opens a session (web: the Chrome Cast SDK picker; Apple: `PorticoCast` over a
@@ -118,7 +120,7 @@ export class CastController {
     this.detach.push(transport.onSessionEnd(() => this.sessionEnded()));
     this.publish({phase: 'pairing', deviceName: transport.deviceName, title: meta.title, itemId: undefined, error: undefined, errorId: undefined, takeover: undefined, audioTracks: [], textTracks: []});
     try {
-      const issued = await this.api.request<{bootstrap?: {code?: unknown}}>('/v1/cast/bootstrap', 'POST', {protocolVersion: CAST_PROTOCOL_VERSION, displayName: transport.deviceName.slice(0, 64)});
+      const issued = await this.api.request<{bootstrap?: {code?: unknown}}>(routePath("social_post_v1_cast_bootstrap"), 'POST', routeBody("social_post_v1_cast_bootstrap", {protocolVersion: CAST_PROTOCOL_VERSION, displayName: transport.deviceName.slice(0, 64)}));
       const code = issued?.bootstrap?.code;
       if (typeof code !== 'string' || !code) throw new CastFailure('cast.error.noCode');
       await this.exchange({type: 'pair', code, origin: this.origin, displayName: this.displayName});

@@ -1,3 +1,4 @@
+import {routePath} from "../../../contracts/src/routes.ts";
 /**
  * API keys, personal access tokens and webhooks in words, once for every client: what a key may
  * do, when it stops working, why it stopped, which events a webhook can be sent and how a
@@ -157,5 +158,5 @@ export function webhookAddressOk(address: string): boolean {
 
 /** Where an assistant connects: the server's address with the path every Portico server uses. */
 export function assistantAddress(serverBase: string): string {
-  return new URL('/v1/mcp', serverBase).toString();
+  return new URL(routePath("mcp_stream"), serverBase).toString();
 }

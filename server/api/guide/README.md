@@ -1,33 +1,14 @@
-# Portico server API — developer guide
+# Portico API guide
 
-Derived from the actual OpenAPI files in `server/api/` (integration base)
-and the normative `Spec — API v1 Style Guide.md`. Each endpoint citation names the
-file and `operationId` so it can be checked mechanically. Every JSON example is
-extracted and schema-validated by `check-examples.mjs` in this directory:
+The complete contract is [portico.openapi.json](../portico.openapi.json), generated from the same typed registry that serves production requests. Route paths, operation identifiers, access rules, credential scopes, admission classes, request limits and wire schemas come from that registry.
 
-```bash
-node server/api/guide/check-examples.mjs
-```
+These guides explain the API surfaces for external tools:
 
-Conventions used in every section:
+- [API keys, personal access tokens and scopes](07-keys-tokens-and-scopes.md)
+- [Bounded title queries and filesystem change reports](08-for-tools.md)
+- [Outbound webhooks](09-webhooks.md)
+- [The local MCP server](10-mcp.md)
 
-- `METHOD /v1/...` always names a route that exists in the cited OpenAPI file.
-  Where the style guide describes behavior the OpenAPI does not define, the text
-  says **not specified** instead of inventing it.
-- `code` values are the stable machine-readable strings from `x-error-codes`.
-- Timestamps in examples use RFC 3339 millisecond UTC; durations on catalogue
-  shapes are float seconds (the style guide's integer-millisecond rule is a
-  target, not the current wire format — see `01-overview.md`).
+Check the guide's examples with `node server/api/guide/check-examples.mjs`.
 
-Sections:
-
-1. `01-overview.md` — base URL, versioning, errors, pagination, idempotency, revisions, rate limits.
-2. `02-authentication.md` — direct sign-in, Portico Account challenge, sessions, refresh, TV code.
-3. `03-browsing.md` — libraries, browse and content, anchors, search, Home and layout.
-4. `04-playback-v1.md` — sessions, queues and selectors, timeline, media grants, events.
-5. `05-personal-state-and-jobs.md` — watched, favorites, watchlist, bulk jobs, downloads.
-6. `06-events.md` — the `/v1/events` feed and notifications.
-7. `07-keys-tokens-and-scopes.md` — API keys, personal access tokens, scopes, rate and concurrency limits.
-8. `08-for-tools.md` — the bounded title query and the "these paths changed" report.
-9. `09-webhooks.md` — outbound webhooks: events, payloads, checking the signature, retries.
-10. `10-mcp.md` — the built-in MCP server for AI assistants.
+The former hand-written endpoint reference and retired playback protocol examples have been removed. Use the generated contract for all current playback, identity, browsing, personal state, Live TV, DVR, download and administration operations.

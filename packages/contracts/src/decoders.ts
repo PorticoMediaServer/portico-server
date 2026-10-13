@@ -176,6 +176,8 @@ export function decodeGetGuideResponse(input: unknown): types.GetGuideResponse {
 export function decodeGetGuideChannelsResponse(input: unknown): types.GetGuideChannelsResponse { return decode("GetGuideChannelsResponse", input) as types.GetGuideChannelsResponse; }
 export function decodeGetGuideImagesDigestResponse(input: unknown): types.GetGuideImagesDigestResponse { return decode("GetGuideImagesDigestResponse", input) as types.GetGuideImagesDigestResponse; }
 export function decodeGetGuideSourcesResponse(input: unknown): types.GetGuideSourcesResponse { return decode("GetGuideSourcesResponse", input) as types.GetGuideSourcesResponse; }
+export function decodeGetHealthLiveResponse(input: unknown): types.GetHealthLiveResponse { return decode("GetHealthLiveResponse", input) as types.GetHealthLiveResponse; }
+export function decodeGetHealthReadyResponse(input: unknown): types.GetHealthReadyResponse { return decode("GetHealthReadyResponse", input) as types.GetHealthReadyResponse; }
 export function decodeGetHomeResponse(input: unknown): types.GetHomeResponse { return decode("GetHomeResponse", input) as types.GetHomeResponse; }
 export function decodeGetHomeLayoutResponse(input: unknown): types.GetHomeLayoutResponse { return decode("GetHomeLayoutResponse", input) as types.GetHomeLayoutResponse; }
 export function decodeGetHomeRowResponse(input: unknown): types.GetHomeRowResponse { return decode("GetHomeRowResponse", input) as types.GetHomeRowResponse; }
@@ -228,8 +230,6 @@ export function decodeGetListeningPreferencesResponse(input: unknown): types.Get
 export function decodeGetLiveSettingsResponse(input: unknown): types.GetLiveSettingsResponse { return decode("GetLiveSettingsResponse", input) as types.GetLiveSettingsResponse; }
 export function decodeGetLiveSourceConfigurationResponse(input: unknown): types.GetLiveSourceConfigurationResponse { return decode("GetLiveSourceConfigurationResponse", input) as types.GetLiveSourceConfigurationResponse; }
 export function decodeGetLiveTunersResponse(input: unknown): types.GetLiveTunersResponse { return decode("GetLiveTunersResponse", input) as types.GetLiveTunersResponse; }
-export function decodeGetLthLiveResponse(input: unknown): types.GetLthLiveResponse { return decode("GetLthLiveResponse", input) as types.GetLthLiveResponse; }
-export function decodeGetLthReadyResponse(input: unknown): types.GetLthReadyResponse { return decode("GetLthReadyResponse", input) as types.GetLthReadyResponse; }
 export function decodeGetMeResponse(input: unknown): types.GetMeResponse { return decode("GetMeResponse", input) as types.GetMeResponse; }
 export function decodeGetMeLibraryNavigationResponse(input: unknown): types.GetMeLibraryNavigationResponse { return decode("GetMeLibraryNavigationResponse", input) as types.GetMeLibraryNavigationResponse; }
 export function decodeGetMediaGrantResponse(input: unknown): types.GetMediaGrantResponse { return decode("GetMediaGrantResponse", input) as types.GetMediaGrantResponse; }

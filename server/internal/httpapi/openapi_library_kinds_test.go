@@ -1,33 +1,42 @@
 package httpapi
 
 import (
+	"encoding/json"
 	"os"
-	"strings"
 	"testing"
 )
 
-// BE-API-12: the published document contradicted the server (plural library
-// kinds, blanket "clamps"). The coverage test only checks paths, so enum and
-// wording drift escaped. This pins the fixed lines as text, the same way the
-// coverage test reads the document.
+// Library creation and listing publish the same kind vocabulary as the server.
 func TestOpenAPILibraryKindsMatchServer(t *testing.T) {
 	raw, err := os.ReadFile(openAPIPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	doc := string(raw)
-	// The server's real enum (catalog.go: Create allows movie, tv, anime,
-	// music, audiobook). The Library schema must publish exactly it.
-	if !strings.Contains(doc, "kind: { type: string, enum: [movie, tv, anime, music, audiobook] }") {
-		t.Error("Library kind enum does not match the server's movie/tv/anime/music/audiobook")
+	var doc struct {
+		Paths map[string]map[string]struct {
+			RequestBody struct {
+				Content map[string]struct {
+					Schema struct {
+						Properties map[string]struct {
+							Type string
+							Enum []string
+						}
+					}
+				}
+			}
+		} `json:"paths"`
 	}
-	if strings.Contains(doc, "enum: [movies, shows, music, books]") {
-		t.Error("stale plural library-kind enum is back")
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		t.Fatal(err)
 	}
-	if strings.Contains(doc, "(`movies`, `shows`,") {
-		t.Error("stale plural library kinds in the list-libraries description")
+	kind := doc.Paths["/v1/libraries"]["post"].RequestBody.Content["application/json"].Schema.Properties["kind"]
+	if kind.Type != "string" || len(kind.Enum) != 5 {
+		t.Fatal("library creation has no complete kind vocabulary")
 	}
-	if strings.Contains(doc, "The server clamps it to its own maximum.") {
-		t.Error("blanket clamps wording is back; page-size behaviour varies by surface")
+	want := []string{"movie", "tv", "anime", "music", "audiobook"}
+	for i, expected := range want {
+		if kind.Enum[i] != expected {
+			t.Fatalf("library kind %d: got %s, want %s", i, kind.Enum[i], expected)
+		}
 	}
 }

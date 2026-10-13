@@ -1,3 +1,5 @@
+import type {RouteResponse} from "../../contracts/src/routes.ts";
+import {routePath} from "../../contracts/src/routes.ts";
 import {unreadableServerResponse} from './server-messages.ts';
 /** Authorized server search projections. No local matching, grouping, ranking or query persistence.
  * Groups are independent: one group may fail while the response as a whole succeeds, and the
@@ -154,11 +156,11 @@ export function parseSearchHistory(raw:unknown,scope:ContentScope):SearchHistory
 }
 /** The profile's recent searches, newest first, as the server keeps them (it keeps none while the profile has history turned off). */
 export async function readSearchHistory(api:LibraryContentApi,scope:ContentScope,signal?:AbortSignal):Promise<SearchHistoryPage>{
- return parseSearchHistory(await api.request<unknown>('/v1/search/history','GET',undefined,signal),bound(scope));
+ return parseSearchHistory(await api.request<RouteResponse<"get_search_history">>(routePath("get_search_history"),'GET',undefined,signal),bound(scope));
 }
 /** Forgets every search the server kept for this profile. */
 export async function clearSearchHistory(api:LibraryContentApi,signal?:AbortSignal):Promise<void>{
- await api.request<unknown>('/v1/search/history','DELETE',undefined,signal);
+ await api.request<RouteResponse<"delete_search_history">>(routePath("delete_search_history"),'DELETE',undefined,signal);
 }
 export function searchPath(q:SearchQuery,limit:number,cursor?:string|null):string{
  const params=new URLSearchParams({q:q.q,limit:String(limit)});
@@ -169,7 +171,7 @@ export function searchPath(q:SearchQuery,limit:number,cursor?:string|null):strin
  if(q.libraryIds)params.set('libraryIds',q.libraryIds.join(','));
  if(q.record)params.set('record','1');
  if(cursor)params.set('cursor',cursor);
- return '/v1/search?'+params;
+ return routePath("search") + "?" + (params);
 }
 type Page=Readonly<{query:SearchQuery;cursor:string|null}>;
 type Operation=Page&{history:readonly Page[];fence?:SearchData};

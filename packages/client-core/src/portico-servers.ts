@@ -1,3 +1,9 @@
+import {routeBody as hostedRouteBody} from "../../contracts/src/hosted/routes.ts";
+import type {RouteResponse as HostedRouteResponse} from "../../contracts/src/hosted/routes.ts";
+import {routeBody} from "../../contracts/src/routes.ts";
+import type {RouteResponse} from "../../contracts/src/routes.ts";
+import {encodedRoutePath as hostedEncodedRoutePath} from "../../contracts/src/hosted/routes.ts";
+import {routePath} from "../../contracts/src/routes.ts";
 /** Portico Account members of user servers (Spec — Hosted at Scale).
  *
  * Hosted proves who a person is and keeps an index of their servers; each user server decides who
@@ -40,7 +46,7 @@ function parseAssertion(raw:unknown):IdentityAssertion{
 export async function requestIdentityAssertion(hosted:HostedRequestApi,hostedOrigin:string,serverId:string,challenge:string,kind:'interactive'|'automatic'='interactive',signal?:AbortSignal,purpose?:'custody'):Promise<IdentityAssertion>{
  if(!text(serverId,128))throw new CodedError('not_portico_server','This server is not a Portico server.');
  if(!text(challenge,128))invalid();
- return hostedGate(hostedOrigin).run(kind,async()=>parseAssertion(await hosted.request<unknown>('/v1/servers/'+encodeURIComponent(serverId)+'/identity','POST',purpose?{challenge,purpose}:{challenge},signal)));
+ return hostedGate(hostedOrigin).run(kind,async()=>parseAssertion(await hosted.request<HostedRouteResponse<"server_identity_issue">>(hostedEncodedRoutePath("server_identity_issue", {"id": encodeURIComponent(serverId)}),'POST',purpose?{challenge,purpose}:{challenge},signal)));
 }
 
 /** The server's answer does not prove it is the server this device meant to reach. */
@@ -53,7 +59,7 @@ export const challengeNotProven='This server could not prove it is the server yo
  * an assertion for it (INT M7). */
 export async function requestPorticoChallenge(server:ProfileAPI,serverId:string,signal?:AbortSignal,crypto:RouteCrypto=webRouteCrypto):Promise<string>{
  const nonce=routeBase64(crypto.random(32));
- const raw=await server.request<unknown>('/v1/direct/portico-challenge','POST',{nonce},signal);
+ const raw=await server.request<RouteResponse<"post_direct_portico_challenge">>(routePath("post_direct_portico_challenge"),'POST',routeBody("post_direct_portico_challenge", {nonce}),signal);
  if(!obj(raw)||!text(raw.challenge,128)||!obj(raw.proof)||!text(raw.proof.payload,8192)||!text(raw.proof.signature,128))invalid();
  let v:unknown;
  try{v=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(routeBytes(raw.proof.payload,undefined,6144)));}catch{throw new CodedError('challenge_not_proven',challengeNotProven);}
@@ -84,7 +90,7 @@ function sameServer(result:DirectSignIn,serverId:string):DirectSignIn{
  * `ApiError(403,'access_refused')`; a server clock far off Hosted's, `ApiError(401,'clock_skew')`. */
 export async function porticoSignIn(hosted:HostedRequestApi,hostedOrigin:string,server:ProfileAPI,serverId:string,options:{kind?:'interactive'|'automatic';signal?:AbortSignal;crypto?:RouteCrypto}={}):Promise<DirectSignIn>{
  const porticoIdentity=await assertionFor(hosted,hostedOrigin,server,serverId,options.kind??'interactive',options.signal,undefined,options.crypto);
- return sameServer(parseDirectSignIn(await server.request<unknown>('/v1/direct/sign-in','POST',{porticoIdentity},options.signal)),serverId);
+ return sameServer(parseDirectSignIn(await server.request<RouteResponse<"post_direct_sign_in">>(routePath("post_direct_sign_in"),'POST',{porticoIdentity},options.signal)),serverId);
 }
 
 /** Accepts a server invitation as a Portico Account: `POST /v1/access/invitations/accept
@@ -93,7 +99,7 @@ export async function porticoSignIn(hosted:HostedRequestApi,hostedOrigin:string,
 export async function acceptPorticoInvitation(hosted:HostedRequestApi,hostedOrigin:string,server:ProfileAPI,serverId:string,code:string,signal?:AbortSignal,crypto?:RouteCrypto):Promise<DirectSignIn>{
  const trimmed=code.trim();if(trimmed.length<32||trimmed.length>128)throw new CodedError('invitation_incomplete','This invitation code is not complete.');
  const porticoIdentity=await assertionFor(hosted,hostedOrigin,server,serverId,'interactive',signal,undefined,crypto);
- return sameServer(parseDirectSignIn(await server.request<unknown>('/v1/access/invitations/accept','POST',{code:trimmed,porticoIdentity},signal)),serverId);
+ return sameServer(parseDirectSignIn(await server.request<RouteResponse<"post_access_invitations_accept">>(routePath("post_access_invitations_accept"),'POST',{code:trimmed,porticoIdentity},signal)),serverId);
 }
 
 /** A Portico Account owner (it has no password on the server) transfers ownership:
@@ -102,7 +108,7 @@ export async function acceptPorticoInvitation(hosted:HostedRequestApi,hostedOrig
  * it (`acceptPorticoCustody`, prompted by `custodyPending` in its snapshot). */
 export async function transferPorticoOwnership(hosted:HostedRequestApi,hostedOrigin:string,server:ProfileAPI,serverId:string,accountId:string,expectedRevision:number,signal?:AbortSignal,crypto?:RouteCrypto):Promise<void>{
  const porticoIdentity=await assertionFor(hosted,hostedOrigin,server,serverId,'interactive',signal,undefined,crypto);
- await server.request('/v1/direct/ownership','POST',{accountId,expectedRevision,porticoIdentity},signal);
+ await server.request(routePath("post_direct_ownership"),'POST',{accountId,expectedRevision,porticoIdentity},signal);
 }
 
 /** A Portico Account owner accepts Hosted's custody of the server's claim (retiring it, its
@@ -111,14 +117,14 @@ export async function transferPorticoOwnership(hosted:HostedRequestApi,hostedOri
  * snapshot says `custodyPending` (after ownership was transferred to them). */
 export async function acceptPorticoCustody(hosted:HostedRequestApi,hostedOrigin:string,server:ProfileAPI,serverId:string,signal?:AbortSignal,crypto?:RouteCrypto):Promise<void>{
  const porticoIdentity=await assertionFor(hosted,hostedOrigin,server,serverId,'interactive',signal,'custody',crypto);
- await server.request('/v1/direct/ownership/custody','POST',{porticoIdentity},signal);
+ await server.request(routePath("post_direct_ownership_custody"),'POST',{porticoIdentity},signal);
 }
 
 /** Removes a server from this account's list at Hosted (`POST /v1/servers/{id}/leave`). The server
  * ends the membership at its next check-in; the owner cannot leave (409). */
 export async function leavePorticoServer(hosted:HostedRequestApi,hostedOrigin:string,serverId:string,signal?:AbortSignal):Promise<void>{
  if(!text(serverId,128))throw new CodedError('not_portico_server','This server is not a Portico server.');
- await hostedGate(hostedOrigin).run('interactive',()=>hosted.request('/v1/servers/'+encodeURIComponent(serverId)+'/leave','POST',{},signal));
+ await hostedGate(hostedOrigin).run('interactive',()=>hosted.request(hostedEncodedRoutePath("server_leave", {"id": encodeURIComponent(serverId)}),'POST',hostedRouteBody("server_leave", {}),signal));
 }
 
 /** The server no longer admits this account: drop the server or go to sign-in. */
@@ -199,7 +205,7 @@ export class ServerListWatcher{
    let moved:boolean;
    try{
     moved=await gate.run(kind,()=>this.bounded(signal,async bound=>{
-     const response=await this.fetcher(this.origin+'/v1/server-list/'+encodeURIComponent(record.watch)+'/'+encodeURIComponent(record.version),{method:'GET',cache:'no-store',credentials:'omit',redirect:'error',referrerPolicy:'no-referrer',signal:bound});
+     const response=await this.fetcher((this.origin) + hostedEncodedRoutePath("server_list_version", {"watch": encodeURIComponent(record.watch), "version": encodeURIComponent(record.version)}),{method:'GET',cache:'no-store',credentials:'omit',redirect:'error',referrerPolicy:'no-referrer',signal:bound});
      if(response.status===304)return false;
      if(response.status===200||response.status===404)return true; // 404: the watch token no longer verifies; the list answer brings a new one.
      throw new ApiError(response.status,'server_list_unavailable','Your server list could not be checked.',true,retryAfterSecondsFrom(response.headers.get('Retry-After')));

@@ -1,3 +1,4 @@
+import {encodedRoutePath, routePath} from "../../contracts/src/routes.ts";
 import {wireDurations} from './wire-units.ts';
 import {unreadableServerResponse} from './server-messages.ts';
 /** One listening policy for a proved account/profile/server/device lane.
@@ -54,7 +55,7 @@ export async function loadListeningSelection(request:ListeningRequest,scope:Queu
  do {
   if(options.signal?.aborted)throw new Error('Listening action cancelled.');
   const q=new URLSearchParams({kind:target.kind,entityId:target.id,mode:options.mix?'mix':'ordered',resume:String(options.resume??false),limit:'100'});if(options.startItem)q.set('startItem',options.startItem);if(cursor)q.set('cursor',cursor);if(seed)q.set('seed',seed);
-  const d=listeningData(await request(`/v1/libraries/${encodeURIComponent(target.libraryId)}/listening/selection?${q}`,undefined,'GET',options.signal),scope);
+  const d=listeningData(await request(encodedRoutePath("get_libraries_id_listening_selection", {"id": encodeURIComponent(target.libraryId)}) + "?" + (q),undefined,'GET',options.signal),scope);
   if(!object(d)||!object(d.target)||d.target.libraryId!==target.libraryId||d.target.kind!==target.kind||d.target.id!==target.id||!counter(d.totalCount)||!counter(d.unavailableCount)||!Array.isArray(d.entries)||d.entries.length>100||typeof d.nextCursor!=='string'||d.nextCursor.length>4096||typeof d.seed!=='string'||d.seed.length>128)bad();
   if(total!==-1&&(total!==d.totalCount||seed!==d.seed||unavailable!==d.unavailableCount))bad();
   total=d.totalCount;seed=d.seed;unavailable=d.unavailableCount;
@@ -90,9 +91,9 @@ export class ListeningService {
  }
  retryContext(){if(this.disposed)return;this.itemId='';this.publish({error:null});this.observe();}
  connect(){if(this.connected||this.disposed)return;this.connected=true;this.unsubscribe=this.playback.subscribe(()=>this.observe());this.interval=setInterval(()=>this.tick(),1000);void this.refreshPreferences();this.observe();}
- async refreshPreferences(){const g=++this.prefGeneration;this.publish({phase:'loading',error:null});try{const p=parseListeningPreferences(listeningData(await this.request('/v1/listening/preferences',undefined,'GET',this.abort.signal),this.scope));if(this.disposed||g!==this.prefGeneration)return;this.publish({phase:'ready',preferences:p,error:null});this.applyRate();}catch(e){if(!this.disposed&&g===this.prefGeneration)this.publish({phase:'error',error:'Listening preferences could not be loaded. Retry before changing them or enabling automatic progression.'});}}
+ async refreshPreferences(){const g=++this.prefGeneration;this.publish({phase:'loading',error:null});try{const p=parseListeningPreferences(listeningData(await this.request(routePath("get_listening_preferences"),undefined,'GET',this.abort.signal),this.scope));if(this.disposed||g!==this.prefGeneration)return;this.publish({phase:'ready',preferences:p,error:null});this.applyRate();}catch(e){if(!this.disposed&&g===this.prefGeneration)this.publish({phase:'error',error:'Listening preferences could not be loaded. Retry before changing them or enabling automatic progression.'});}}
  async savePreferences(patch:Partial<Omit<ListeningPreferences,'revision'>>){const old=this.state.preferences;if(this.disposed||!old||this.state.phase!=='ready')throw new Error('Load listening preferences before saving.');const next=parseListeningPreferences({...old,...patch});const g=++this.prefGeneration;this.publish({phase:'saving',error:null});
-  try{const p=parseListeningPreferences(listeningData(await this.request('/v1/listening/preferences',next,'PUT',this.abort.signal),this.scope));if(this.disposed||g!==this.prefGeneration)return;this.interact();this.publish({phase:'ready',preferences:p,error:null});this.applyRate();}
+  try{const p=parseListeningPreferences(listeningData(await this.request(routePath("put_listening_preferences"),next,'PUT',this.abort.signal),this.scope));if(this.disposed||g!==this.prefGeneration)return;this.interact();this.publish({phase:'ready',preferences:p,error:null});this.applyRate();}
   catch(e){if(this.disposed||g!==this.prefGeneration)return;const conflict=object(e)&&e.code==='listening_preferences_conflict';this.publish({phase:'error',error:conflict?'These preferences changed on another device. Reload them before saving again.':'The preference save could not be confirmed. Reload to recover its actual result.'});throw new Error(this.state.error!);}
  }
  async setRate(rate:number){const context=this.state.context;if(!context||!['song','audiobook_file'].includes(context.kind))throw new Error('Choose a music or audiobook item first.');await this.savePreferences(context.kind==='song'?{musicRate:rate}:{bookRate:rate});}
@@ -112,7 +113,7 @@ export class ListeningService {
   if(item!==this.itemId){const old=this.state.context;this.itemId=item;const generation=++this.contextGeneration;this.publish({context:null});
    if(!item){this.clearTimer();this.publish({stopped:false,message:null});}
    else if(this.listens&&!this.listens(item,p.session?.id??'')){this.clearTimer();}
-   else void this.request(`/v1/items/${encodeURIComponent(item)}/listening`,undefined,'GET',this.abort.signal).then(raw=>{if(this.disposed||generation!==this.contextGeneration)return;const context=parseItem(listeningData(raw,this.scope),item);const t=this.state.timer;
+   else void this.request(encodedRoutePath("get_items_id_listening", {"id": encodeURIComponent(item)}),undefined,'GET',this.abort.signal).then(raw=>{if(this.disposed||generation!==this.contextGeneration)return;const context=parseItem(listeningData(raw,this.scope),item);const t=this.state.timer;
     if(!['song','audiobook_file'].includes(context.kind)||t?.choice==='book'&&t.bookId!==context.bookId||t?.choice==='item'&&t.itemId!==item||old&&old.libraryId!==context.libraryId)this.clearTimer();
     this.publish({context});this.applyRate();this.tick();
    }).catch(()=>{if(!this.disposed&&generation===this.contextGeneration)this.publish({error:'Listening details could not be loaded. Retry listening details; book and chapter timers were not inferred.'});});
@@ -173,7 +174,7 @@ export class ListeningService {
  dispose(){if(this.disposed)return;this.disposed=true;this.abort.abort();this.unsubscribe?.();clearInterval(this.interval);this.chapters?.dispose();this.state=Object.freeze({...this.state,phase:'disposed',preferences:null,context:null,timer:null,stopped:false});this.listeners.clear();}
 }
 
-export async function readListeningItem(request:ListeningRequest,scope:QueueScope,itemId:string,signal?:AbortSignal){return parseItem(listeningData(await request(`/v1/items/${encodeURIComponent(itemId)}/listening`,undefined,'GET',signal),scope),itemId);}
+export async function readListeningItem(request:ListeningRequest,scope:QueueScope,itemId:string,signal?:AbortSignal){return parseItem(listeningData(await request(encodedRoutePath("get_items_id_listening", {"id": encodeURIComponent(itemId)}),undefined,'GET',signal),scope),itemId);}
 export function listeningItemInput(itemId:string,target?:ListeningTarget):QueueItemInput {
  const source=target&&['artist','album','book'].includes(target.kind)?{kind:target.kind as 'artist'|'album'|'book',id:target.id}:{kind:'item' as const,id:itemId};
  return parseQueueItem({itemId,editionId:null,partId:null,sourceContext:{...source,revision:null,entryId:null}});
@@ -181,7 +182,7 @@ export function listeningItemInput(itemId:string,target?:ListeningTarget):QueueI
 
 /** Read-only entity navigation must remain available before a playback controller connects. */
 export async function readListeningContext(request:ListeningRequest,scope:SavedScope,itemId:string,signal?:AbortSignal):Promise<ListeningItem>{
- const raw=await request(`/v1/items/${encodeURIComponent(itemId)}/listening`,undefined,'GET',signal);
+ const raw=await request(encodedRoutePath("get_items_id_listening", {"id": encodeURIComponent(itemId)}),undefined,'GET',signal);
  if(!object(raw)||!object(raw.scope)||raw.scope.serverId!==scope.serverId||JSON.stringify([raw.scope.authority,raw.scope.accountId,raw.scope.profileId])!==scope.viewerId)bad();
  return parseItem(raw.data,itemId);
 }

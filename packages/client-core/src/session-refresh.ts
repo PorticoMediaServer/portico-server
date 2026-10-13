@@ -1,3 +1,5 @@
+import type {RouteResponse} from "../../contracts/src/routes.ts";
+import {routePath} from "../../contracts/src/routes.ts";
 /**
  * Keeps a device-bound server sign-in alive (lane C, 939a746: 15-minute access tokens with a
  * rotating refresh credential, `POST /v1/auth/refresh`).
@@ -134,7 +136,7 @@ export class LocalSessionRefresher implements AuthRecovery {
     if(this.done||this.waiting()||this.now()<this.permissionWaitUntil)return Promise.resolve(false);
     const current=this.session;
     const task=(async()=>{
-      const raw=await this.o.api.request<unknown>('/v1/me');
+      const raw=await this.o.api.request<RouteResponse<"get_me">>(routePath("get_me"));
       if(this.done||this.session!==current||typeof raw!=='object'||raw===null||!('viewer' in raw))return false;
       const next=parseLocalSession({...current,viewer:(raw as {viewer:unknown}).viewer},{accountId:current.viewer.accountId,profileId:current.viewer.profileId,serverId:current.viewer.serverId,authority:current.viewer.authority},{stored:true});
       if(!['owner','admin','member'].includes(next.viewer.role)||next.viewer.role===current.viewer.role)return false;

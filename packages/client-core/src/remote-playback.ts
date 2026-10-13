@@ -1,3 +1,6 @@
+import {routeBody} from "../../contracts/src/routes.ts";
+import type {RouteResponse} from "../../contracts/src/routes.ts";
+import {routePath, encodedRoutePath} from "../../contracts/src/routes.ts";
 import {serviceProblem,serviceText} from './presentation/service-text.ts';
 import {SOCIAL_PROTOCOL,parseHandoff,parseReceiver,parseReceiverGrant,parseReceiverList,type Handoff,type Receiver,type ReceiverGrant} from './social-playback.ts';
 import type {EventsClient} from './playback-v1/events.ts';
@@ -35,7 +38,7 @@ export class HandoffController{
  /** Televisions and Cast devices this viewer may send to. A failed refresh keeps the list. */
  async refresh():Promise<void>{
   if(this.state.directoryPhase==='idle')this.publish({directoryPhase:'loading'});
-  try{this.publish({receivers:parseReceiverList(await this.api.request<unknown>('/v1/receivers')).filter(r=>r.state==='active'),directoryPhase:'ready',directoryError:undefined});}
+  try{this.publish({receivers:parseReceiverList(await this.api.request<RouteResponse<"social_get_v1_receivers">>(routePath("social_get_v1_receivers"))).filter(r=>r.state==='active'),directoryPhase:'ready',directoryError:undefined});}
   catch(e){this.publish({directoryPhase:this.state.receivers.length?'ready':'error',directoryError:status(e)===404||status(e)===503?'':serviceProblem(e,'devices','playOn.devicesUnavailable','load')});}
  }
  cancel(){this.run?.abort();this.run=undefined;if(this.state.phase!=='done')this.publish({phase:'idle',target:undefined,message:undefined});}
@@ -47,12 +50,12 @@ export class HandoffController{
   let handoff:Handoff|undefined;const device={device:target.displayName};
   try{
    this.publish({phase:'asking',target,message:undefined,receiverPlaybackId:undefined,remoteSession:undefined});
-   let grant=parseReceiverGrant(await this.api.request<unknown>(`/v1/receivers/${encodeURIComponent(target.id)}/grants`,'POST',{protocolVersion:SOCIAL_PROTOCOL,controllerDisplayName:this.device.displayName.slice(0,64)},signal));
+   let grant=parseReceiverGrant(await this.api.request<RouteResponse<"social_post_v1_receivers_id_grants">>(encodedRoutePath("social_post_v1_receivers_id_grants", {"id": encodeURIComponent(target.id)}),'POST',routeBody("social_post_v1_receivers_id_grants", {protocolVersion:SOCIAL_PROTOCOL,controllerDisplayName:this.device.displayName.slice(0,64)}),signal));
    // A television that has not met this device asks its own viewer first.
    for(let waited=0;grant.state==='pending'&&waited<60000&&!signal.aborted;waited+=this.pollMs){
     this.publish({message:serviceText('playOn.approveOn',device)});
     await wait(this.pollMs,signal);
-    const list=await this.api.request<{grants?:unknown[]}>(`/v1/receivers/${encodeURIComponent(target.id)}/grants`,'GET',undefined,signal);
+    const list=await this.api.request<{grants?:unknown[]}>(encodedRoutePath("social_get_v1_receivers_id_grants", {"id": encodeURIComponent(target.id)}),'GET',undefined,signal);
     const mine=(list.grants??[]).find(g=>(g as {id?:string}|null)?.id===grant.id);
     if(mine)grant=parseReceiverGrant({protocolVersion:SOCIAL_PROTOCOL,serverTime:'',grant:mine});
    }
@@ -60,16 +63,16 @@ export class HandoffController{
    if(grant.state==='pending')return fail(serviceText('playOn.didNotAnswer',device));
    if(grant.state!=='accepted')return fail(serviceText(grant.state==='declined'?'playOn.declined':'playOn.notAccepting',device));
    this.publish({phase:'preparing',message:undefined});
-   handoff=parseHandoff(await this.api.request<unknown>('/v1/handoffs','POST',{protocolVersion:SOCIAL_PROTOCOL,requestId:this.requestId(),receiverId:target.id,grantId:grant.id,sourcePlaybackId:source.playbackId,startPositionUs:us(source.positionSeconds)},signal));
+   handoff=parseHandoff(await this.api.request<RouteResponse<"social_post_v1_handoffs">>(routePath("social_post_v1_handoffs"),'POST',routeBody("social_post_v1_handoffs", {protocolVersion:SOCIAL_PROTOCOL,requestId:this.requestId(),receiverId:target.id,grantId:grant.id,sourcePlaybackId:source.playbackId,startPositionUs:us(source.positionSeconds)}),signal));
    this.publish({phase:'starting'});
    // The television proves it is playing; until it does, this device stays the player.
    while(handoff.state==='prepared'&&handoff.outcome==='waiting'&&!signal.aborted){
     await wait(this.pollMs,signal);if(signal.aborted)break;
-    handoff=parseHandoff(await this.api.request<unknown>('/v1/handoffs/'+encodeURIComponent(handoff.id),'GET',undefined,signal));
+    handoff=parseHandoff(await this.api.request<RouteResponse<"social_get_v1_handoffs_id">>(encodedRoutePath("social_get_v1_handoffs_id", {"id": encodeURIComponent(handoff.id)}),'GET',undefined,signal));
    }
    if(signal.aborted){void this.rollback(handoff);return false;}
    if(handoff.state!=='prepared'||handoff.outcome!=='pending')return fail(serviceText(handoff.state==='expired'?'playOn.didNotStartInTime':'playOn.couldNotStart',device));
-   handoff=parseHandoff(await this.api.request<unknown>(`/v1/handoffs/${encodeURIComponent(handoff.id)}/commit`,'POST',{protocolVersion:SOCIAL_PROTOCOL,expectedRevision:handoff.revision},signal));
+   handoff=parseHandoff(await this.api.request<RouteResponse<"social_post_v1_handoffs_id_commit">>(encodedRoutePath("social_post_v1_handoffs_id_commit", {"id": encodeURIComponent(handoff.id)}),'POST',routeBody("social_post_v1_handoffs_id_commit", {protocolVersion:SOCIAL_PROTOCOL,expectedRevision:handoff.revision}),signal));
    if(handoff.state!=='committed')return fail(serviceText('playOn.couldNotTakeOver',device));
    this.publish({phase:'done',receiverPlaybackId:handoff.receiverPlaybackId,message:serviceText('playOn.playingOn',device)});
    return true;
@@ -81,7 +84,7 @@ export class HandoffController{
  }
  /** Reattach to the destination session of a committed handoff after an app restart. */
  async reconnect(handoffId:string):Promise<boolean>{
-  try{const h=parseHandoff(await this.api.request<unknown>('/v1/handoffs/'+encodeURIComponent(handoffId)));
+  try{const h=parseHandoff(await this.api.request<RouteResponse<"social_get_v1_handoffs_id">>(encodedRoutePath("social_get_v1_handoffs_id", {"id": encodeURIComponent(handoffId)})));
    if(h.state!=='committed')return false;
    this.publish({phase:'done',receiverPlaybackId:h.receiverPlaybackId});return this.refreshRemote();
   }catch{return false;}
@@ -113,7 +116,7 @@ export class HandoffController{
    finally{this.publish({controlling:false});}
   });
  }
- private async rollback(handoff:Handoff){try{await this.api.request<unknown>(`/v1/handoffs/${encodeURIComponent(handoff.id)}/rollback`,'POST',{protocolVersion:SOCIAL_PROTOCOL,expectedRevision:handoff.revision,reason:'controller-cancelled'});}catch{/* it expires by itself */}}
+ private async rollback(handoff:Handoff){try{await this.api.request<RouteResponse<"social_post_v1_handoffs_id_rollback">>(encodedRoutePath("social_post_v1_handoffs_id_rollback", {"id": encodeURIComponent(handoff.id)}),'POST',routeBody("social_post_v1_handoffs_id_rollback", {protocolVersion:SOCIAL_PROTOCOL,expectedRevision:handoff.revision,reason:'controller-cancelled'}));}catch{/* it expires by itself */}}
 }
 
 /** What a television's player must offer to take a handoff. */
@@ -188,11 +191,11 @@ export class ReceiverHost{
     try{
      if(!this.state.receiver){
       this.publish({phase:'registering'});
-      this.publish({receiver:parseReceiver((await this.api.request<{receiver?:unknown}>('/v1/receivers','POST',{protocolVersion:SOCIAL_PROTOCOL,displayName:this.device.displayName.slice(0,64),platform:this.device.platform,keyFingerprint:this.device.keyFingerprint,supportedCommands:['load','play','pause','seek','stop'],grantPolicy:'per-device'},signal)).receiver),phase:'waiting',error:undefined});
+      this.publish({receiver:parseReceiver((await this.api.request<{receiver?:unknown}>(routePath("social_post_v1_receivers"),'POST',routeBody("social_post_v1_receivers", {protocolVersion:SOCIAL_PROTOCOL,displayName:this.device.displayName.slice(0,64),platform:this.device.platform,keyFingerprint:this.device.keyFingerprint,supportedCommands:['load','play','pause','seek','stop'],grantPolicy:'per-device'}),signal)).receiver),phase:'waiting',error:undefined});
       lastBeat=Date.now();
      }
       const id=this.state.receiver!.id;
-      if(Date.now()-lastBeat>=this.heartbeatMs){await this.api.request<unknown>(`/v1/receivers/${encodeURIComponent(id)}/heartbeat`,'POST',{protocolVersion:SOCIAL_PROTOCOL,keyFingerprint:this.device.keyFingerprint},signal);lastBeat=Date.now();}
+      if(Date.now()-lastBeat>=this.heartbeatMs){await this.api.request<RouteResponse<"social_post_v1_receivers_id_heartbeat">>(encodedRoutePath("social_post_v1_receivers_id_heartbeat", {"id": encodeURIComponent(id)}),'POST',routeBody("social_post_v1_receivers_id_heartbeat", {protocolVersion:SOCIAL_PROTOCOL,keyFingerprint:this.device.keyFingerprint}),signal);lastBeat=Date.now();}
       // While the event stream is connected the poll backs off to the safety interval;
       // on a dropped stream the 30 s poll
       // (with jitter) covers the gap until it reconnects.
@@ -215,7 +218,7 @@ export class ReceiverHost{
  return this.inboxWork??=this.readInbox(id,signal).finally(()=>{this.inboxWork=undefined;});
  }
  private async readInbox(id:string,signal:AbortSignal){
-  const inbox=await this.api.request<{grants?:unknown[];handoffs?:unknown[]}>(`/v1/receivers/${encodeURIComponent(id)}/inbox`,'GET',undefined,signal);
+  const inbox=await this.api.request<{grants?:unknown[];handoffs?:unknown[]}>(encodedRoutePath("social_get_v1_receivers_id_inbox", {"id": encodeURIComponent(id)}),'GET',undefined,signal);
   if(signal.aborted)return;
   const asking=(inbox.grants??[]).map(g=>parseReceiverGrant({protocolVersion:SOCIAL_PROTOCOL,serverTime:'',grant:g}))[0];
   if(asking?.id!==this.state.asking?.id)this.publish({asking});
@@ -237,7 +240,7 @@ export class ReceiverHost{
  async decide(grant:ReceiverGrant,decision:'accept'|'decline'):Promise<void>{
   const id=this.state.receiver?.id;if(!id)return;
   this.publish({asking:undefined});
-  try{await this.api.request<unknown>(`/v1/receivers/${encodeURIComponent(id)}/grants/${encodeURIComponent(grant.id)}/decision`,'POST',{protocolVersion:SOCIAL_PROTOCOL,decision});}catch{/* it is asked again on the next poll */}
+  try{await this.api.request<RouteResponse<"social_post_v1_receivers_id_grants_grantId_decision">>(encodedRoutePath("social_post_v1_receivers_id_grants_grantId_decision", {"id": encodeURIComponent(id), "grantId": encodeURIComponent(grant.id)}),'POST',routeBody("social_post_v1_receivers_id_grants_grantId_decision", {protocolVersion:SOCIAL_PROTOCOL,decision}));}catch{/* it is asked again on the next poll */}
  }
  /** Loads what was sent and reports readiness only once it is genuinely playing. */
  private async take(handoff:Handoff,signal:AbortSignal){
@@ -248,7 +251,7 @@ export class ReceiverHost{
    await wait(500,signal);
    const now=this.player.state();
    if(now.itemId===handoff.itemId&&now.playing&&now.playbackId){
-    try{await this.api.request<unknown>(`/v1/handoffs/${encodeURIComponent(handoff.id)}/readiness`,'POST',{protocolVersion:SOCIAL_PROTOCOL,readiness:'playing',receiverPlaybackId:now.playbackId,positionUs:us(now.positionSeconds),expectedRevision:handoff.revision},signal);}catch{/* the phone keeps playing; nothing to undo here */}
+    try{await this.api.request<RouteResponse<"social_post_v1_handoffs_id_readiness">>(encodedRoutePath("social_post_v1_handoffs_id_readiness", {"id": encodeURIComponent(handoff.id)}),'POST',routeBody("social_post_v1_handoffs_id_readiness", {protocolVersion:SOCIAL_PROTOCOL,readiness:'playing',receiverPlaybackId:now.playbackId,positionUs:us(now.positionSeconds),expectedRevision:handoff.revision}),signal);}catch{/* the phone keeps playing; nothing to undo here */}
     break;
    }
   }

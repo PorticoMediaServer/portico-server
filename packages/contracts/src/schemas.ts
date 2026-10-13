@@ -7826,116 +7826,20 @@ export const schemas = {
   },
   "DeleteAdminLibrariesIdSourcesSourceRequest": {
     "properties": {
-      "acceptReplacement": {
-        "type": "boolean"
-      },
-      "classification": {
-        "type": "string"
-      },
       "expectedRevision": {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
         "type": "integer"
-      },
-      "followSymlinks": {
-        "type": "boolean"
-      },
-      "intervalSeconds": {
-        "maximum": 9007199254740991,
-        "minimum": -9007199254740991,
-        "type": "integer"
-      },
-      "name": {
-        "type": "string"
-      },
-      "path": {
-        "type": "string"
       }
     },
     "required": [
-      "name",
-      "path",
-      "classification",
-      "followSymlinks",
-      "intervalSeconds",
-      "expectedRevision",
-      "acceptReplacement"
+      "expectedRevision"
     ],
     "type": "object"
   },
   "DeleteAdminLibrariesIdSourcesSourceResponse": {
-    "properties": {
-      "classification": {
-        "type": "string"
-      },
-      "enabled": {
-        "type": "boolean"
-      },
-      "followSymlinks": {
-        "type": "boolean"
-      },
-      "generation": {
-        "maximum": 9007199254740991,
-        "minimum": -9007199254740991,
-        "type": "integer"
-      },
-      "health": {
-        "type": "string"
-      },
-      "id": {
-        "type": "string"
-      },
-      "identityConfirmed": {
-        "type": "boolean"
-      },
-      "intervalSeconds": {
-        "maximum": 9007199254740991,
-        "minimum": -9007199254740991,
-        "type": "integer"
-      },
-      "kind": {
-        "type": "string"
-      },
-      "lastCompleteAt": {
-        "type": "string"
-      },
-      "lastProgressAt": {
-        "type": "string"
-      },
-      "libraryId": {
-        "type": "string"
-      },
-      "name": {
-        "type": "string"
-      },
-      "nextScanAt": {
-        "type": "string"
-      },
-      "path": {
-        "type": "string"
-      },
-      "resolvedPath": {
-        "type": "string"
-      }
-    },
-    "required": [
-      "identityConfirmed",
-      "id",
-      "libraryId",
-      "kind",
-      "name",
-      "path",
-      "resolvedPath",
-      "classification",
-      "generation",
-      "health",
-      "enabled",
-      "followSymlinks",
-      "intervalSeconds",
-      "nextScanAt",
-      "lastCompleteAt",
-      "lastProgressAt"
-    ],
+    "properties": {},
+    "required": [],
     "type": "object"
   },
   "DeleteAdminLibraryChannelsBlockPresetsIdRequest": {
@@ -12660,6 +12564,7 @@ export const schemas = {
     "type": "object"
   },
   "GetAdminDiagnosticsBundleResponse": {
+    "format": "binary",
     "type": "string"
   },
   "GetAdminDiagnosticsConcurrencyRequest": {
@@ -13988,6 +13893,7 @@ export const schemas = {
     "type": "object"
   },
   "GetAdminDiagnosticsPprofProfileResponse": {
+    "format": "binary",
     "type": "string"
   },
   "GetAdminDvrRecordingGroupsRequest": {
@@ -15235,6 +15141,7 @@ export const schemas = {
               ],
               "type": "object"
             },
+            "maxItems": 64,
             "type": "array"
           },
           "separator": {
@@ -17272,6 +17179,7 @@ export const schemas = {
     "type": "object"
   },
   "GetAdminLogsEventsResponse": {
+    "format": "binary",
     "type": "string"
   },
   "GetAdminLogsRequest": {
@@ -18302,6 +18210,7 @@ export const schemas = {
     "type": "object"
   },
   "GetAdminPlaybackHistoryCsvResponse": {
+    "format": "binary",
     "type": "string"
   },
   "GetAdminPlaybackHistoryRequest": {
@@ -21253,8 +21162,10 @@ export const schemas = {
         "properties": {
           "hiddenRowIds": {
             "items": {
+              "maxLength": 128,
               "type": "string"
             },
+            "maxItems": 64,
             "type": "array"
           },
           "revision": {
@@ -21264,8 +21175,10 @@ export const schemas = {
           },
           "rowOrder": {
             "items": {
+              "maxLength": 128,
               "type": "string"
             },
+            "maxItems": 64,
             "type": "array"
           }
         },
@@ -24813,9 +24726,8 @@ export const schemas = {
     "type": "object"
   },
   "GetDownloadArtifactResponse": {
-    "properties": {},
-    "required": [],
-    "type": "object"
+    "format": "binary",
+    "type": "string"
   },
   "GetDownloadArtworkRequest": {
     "properties": {},
@@ -24823,9 +24735,8 @@ export const schemas = {
     "type": "object"
   },
   "GetDownloadArtworkResponse": {
-    "properties": {},
-    "required": [],
-    "type": "object"
+    "format": "binary",
+    "type": "string"
   },
   "GetDownloadBundleRequest": {
     "properties": {},
@@ -25839,9 +25750,8 @@ export const schemas = {
     "type": "object"
   },
   "GetDownloadSubtitleOriginalResponse": {
-    "properties": {},
-    "required": [],
-    "type": "object"
+    "format": "binary",
+    "type": "string"
   },
   "GetDownloadSubtitleRequest": {
     "properties": {},
@@ -25849,9 +25759,8 @@ export const schemas = {
     "type": "object"
   },
   "GetDownloadSubtitleResponse": {
-    "properties": {},
-    "required": [],
-    "type": "object"
+    "format": "binary",
+    "type": "string"
   },
   "GetDownloadUsageRequest": {
     "properties": {},
@@ -28358,6 +28267,7 @@ export const schemas = {
     "type": "object"
   },
   "GetGuideImagesDigestResponse": {
+    "format": "binary",
     "type": "string"
   },
   "GetGuideRequest": {
@@ -28802,6 +28712,38 @@ export const schemas = {
       "viewerFence",
       "revision",
       "sources"
+    ],
+    "type": "object"
+  },
+  "GetHealthLiveRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetHealthLiveResponse": {
+    "properties": {
+      "alive": {
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "alive"
+    ],
+    "type": "object"
+  },
+  "GetHealthReadyRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetHealthReadyResponse": {
+    "properties": {
+      "ready": {
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "ready"
     ],
     "type": "object"
   },
@@ -29860,6 +29802,7 @@ export const schemas = {
           ],
           "type": "object"
         },
+        "maxItems": 64,
         "type": "array"
       },
       "serverId": {
@@ -31272,6 +31215,7 @@ export const schemas = {
     "type": "object"
   },
   "GetItemsIdArtKindResponse": {
+    "format": "binary",
     "type": "string"
   },
   "GetItemsIdCreditsRequest": {
@@ -36254,8 +36198,348 @@ export const schemas = {
     "type": "object"
   },
   "GetItemsIdPreparedVersionsResponse": {
-    "properties": {},
-    "required": [],
+    "properties": {
+      "canManage": {
+        "type": "boolean"
+      },
+      "configurationReason": {
+        "type": "string"
+      },
+      "configured": {
+        "type": "boolean"
+      },
+      "itemId": {
+        "type": "string"
+      },
+      "jobs": {
+        "items": {
+          "properties": {
+            "bytes": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "createdMs": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "errorCode": {
+              "type": "string"
+            },
+            "generation": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "id": {
+              "type": "string"
+            },
+            "itemId": {
+              "type": "string"
+            },
+            "phase": {
+              "type": "string"
+            },
+            "profileId": {
+              "type": "string"
+            },
+            "revision": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "sourceId": {
+              "type": "string"
+            },
+            "state": {
+              "type": "string"
+            },
+            "targetId": {
+              "type": "string"
+            },
+            "updatedMs": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "versionId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "itemId",
+            "sourceId",
+            "profileId",
+            "targetId",
+            "state",
+            "phase",
+            "generation",
+            "bytes",
+            "errorCode",
+            "revision",
+            "createdMs",
+            "updatedMs",
+            "versionId"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "pollAfterMs": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "preparedOffersRevision": {
+        "type": "string"
+      },
+      "profiles": {
+        "items": {
+          "properties": {
+            "audioKbps": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "description": {
+              "type": "string"
+            },
+            "height": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "videoKbps": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "width": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id",
+            "name",
+            "kind",
+            "width",
+            "height",
+            "videoKbps",
+            "audioKbps",
+            "description"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "sources": {
+        "items": {
+          "properties": {
+            "available": {
+              "type": "boolean"
+            },
+            "container": {
+              "type": "string"
+            },
+            "height": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "id": {
+              "type": "string"
+            },
+            "partIndex": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "reason": {
+              "type": "string"
+            },
+            "revision": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "revision",
+            "partIndex",
+            "container",
+            "height",
+            "available",
+            "reason"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "targets": {
+        "items": {
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "name"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "versions": {
+        "items": {
+          "properties": {
+            "createdMs": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "digest": {
+              "type": "string"
+            },
+            "editionId": {
+              "nullable": true,
+              "type": "string"
+            },
+            "facts": {
+              "properties": {
+                "audioCodec": {
+                  "type": "string"
+                },
+                "audioTracks": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "container": {
+                  "type": "string"
+                },
+                "duration": {
+                  "type": "number"
+                },
+                "height": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "videoCodec": {
+                  "type": "string"
+                },
+                "width": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "container",
+                "videoCodec",
+                "audioCodec",
+                "width",
+                "height",
+                "duration",
+                "audioTracks"
+              ],
+              "type": "object"
+            },
+            "id": {
+              "type": "string"
+            },
+            "itemId": {
+              "type": "string"
+            },
+            "partIndex": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "profileId": {
+              "type": "string"
+            },
+            "reason": {
+              "type": "string"
+            },
+            "revision": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "selectable": {
+              "type": "boolean"
+            },
+            "size": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "sourceId": {
+              "type": "string"
+            },
+            "sourceRevision": {
+              "type": "string"
+            },
+            "state": {
+              "type": "string"
+            },
+            "targetId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "itemId",
+            "sourceId",
+            "profileId",
+            "targetId",
+            "sourceRevision",
+            "partIndex",
+            "editionId",
+            "digest",
+            "size",
+            "facts",
+            "state",
+            "revision",
+            "createdMs",
+            "selectable",
+            "reason"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      }
+    },
+    "required": [
+      "itemId",
+      "canManage",
+      "preparedOffersRevision",
+      "configured",
+      "configurationReason",
+      "profiles",
+      "targets",
+      "sources",
+      "jobs",
+      "versions",
+      "pollAfterMs"
+    ],
     "type": "object"
   },
   "GetItemsIdRecommendationsRequest": {
@@ -37548,99 +37832,16 @@ export const schemas = {
   },
   "GetItemsIdSourceAvailabilityResponse": {
     "properties": {
-      "receipt": {
-        "properties": {
-          "accepted": {
-            "type": "boolean"
-          },
-          "operationId": {
-            "type": "string"
-          },
-          "removed": {
-            "type": "boolean"
-          },
-          "source": {
-            "properties": {
-              "credentialPresent": {
-                "type": "boolean"
-              },
-              "errorCode": {
-                "type": "string"
-              },
-              "generation": {
-                "maximum": 9007199254740991,
-                "minimum": -9007199254740991,
-                "type": "integer"
-              },
-              "id": {
-                "type": "string"
-              },
-              "insecureLocal": {
-                "type": "boolean"
-              },
-              "kind": {
-                "type": "string"
-              },
-              "mountId": {
-                "type": "string"
-              },
-              "name": {
-                "type": "string"
-              },
-              "origin": {
-                "type": "string"
-              },
-              "rangeSupport": {
-                "type": "string"
-              },
-              "rootPath": {
-                "type": "string"
-              },
-              "state": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "id",
-              "kind",
-              "name",
-              "rootPath",
-              "generation",
-              "state",
-              "rangeSupport",
-              "insecureLocal",
-              "credentialPresent"
-            ],
-            "type": "object"
-          }
-        },
-        "required": [
-          "operationId",
-          "accepted",
-          "removed",
-          "source"
-        ],
-        "type": "object"
+      "itemId": {
+        "type": "string"
       },
-      "scope": {
-        "properties": {
-          "serverId": {
-            "type": "string"
-          },
-          "viewerFence": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "serverId",
-          "viewerFence"
-        ],
-        "type": "object"
+      "state": {
+        "type": "string"
       }
     },
     "required": [
-      "scope",
-      "receipt"
+      "itemId",
+      "state"
     ],
     "type": "object"
   },
@@ -37795,6 +37996,7 @@ export const schemas = {
     "type": "object"
   },
   "GetItemsIdTrickplaySetThumbnailsVttResponse": {
+    "format": "binary",
     "type": "string"
   },
   "GetItemsRequest": {
@@ -42424,16 +42626,69 @@ export const schemas = {
   },
   "GetLibrariesIdMetadataAgentResponse": {
     "properties": {
-      "entityId": {
+      "agent": {
         "type": "string"
       },
-      "status": {
+      "agents": {
+        "items": {
+          "properties": {
+            "defaultLanguage": {
+              "type": "string"
+            },
+            "description": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            },
+            "languages": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "name": {
+              "type": "string"
+            },
+            "providers": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "id",
+            "name",
+            "description",
+            "providers",
+            "languages"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "language": {
         "type": "string"
+      },
+      "libraryId": {
+        "type": "string"
+      },
+      "libraryKind": {
+        "type": "string"
+      },
+      "revision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
       }
     },
     "required": [
-      "entityId",
-      "status"
+      "libraryId",
+      "libraryKind",
+      "revision",
+      "agent",
+      "agents"
     ],
     "type": "object"
   },
@@ -42444,16 +42699,78 @@ export const schemas = {
   },
   "GetLibrariesIdMetadataScreenResponse": {
     "properties": {
-      "entityId": {
+      "agent": {
         "type": "string"
+      },
+      "availableProviders": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "confirmed": {
+        "type": "boolean"
+      },
+      "consentRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "disclosure": {
+        "type": "string"
+      },
+      "disclosureVersion": {
+        "type": "string"
+      },
+      "enabled": {
+        "type": "boolean"
+      },
+      "language": {
+        "type": "string"
+      },
+      "libraryId": {
+        "type": "string"
+      },
+      "libraryKind": {
+        "type": "string"
+      },
+      "providers": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "refreshMode": {
+        "type": "string"
+      },
+      "region": {
+        "type": "string"
+      },
+      "revision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
       },
       "status": {
         "type": "string"
       }
     },
     "required": [
-      "entityId",
-      "status"
+      "libraryId",
+      "libraryKind",
+      "revision",
+      "consentRevision",
+      "confirmed",
+      "status",
+      "agent",
+      "enabled",
+      "providers",
+      "availableProviders",
+      "language",
+      "region",
+      "refreshMode",
+      "disclosure",
+      "disclosureVersion"
     ],
     "type": "object"
   },
@@ -42464,78 +42781,10 @@ export const schemas = {
   },
   "GetLibrariesIdNetworkRootsResponse": {
     "properties": {
-      "receipt": {
-        "properties": {
-          "accepted": {
-            "type": "boolean"
-          },
-          "operationId": {
-            "type": "string"
-          },
-          "removed": {
-            "type": "boolean"
-          },
-          "source": {
-            "properties": {
-              "credentialPresent": {
-                "type": "boolean"
-              },
-              "errorCode": {
-                "type": "string"
-              },
-              "generation": {
-                "maximum": 9007199254740991,
-                "minimum": -9007199254740991,
-                "type": "integer"
-              },
-              "id": {
-                "type": "string"
-              },
-              "insecureLocal": {
-                "type": "boolean"
-              },
-              "kind": {
-                "type": "string"
-              },
-              "mountId": {
-                "type": "string"
-              },
-              "name": {
-                "type": "string"
-              },
-              "origin": {
-                "type": "string"
-              },
-              "rangeSupport": {
-                "type": "string"
-              },
-              "rootPath": {
-                "type": "string"
-              },
-              "state": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "id",
-              "kind",
-              "name",
-              "rootPath",
-              "generation",
-              "state",
-              "rangeSupport",
-              "insecureLocal",
-              "credentialPresent"
-            ],
-            "type": "object"
-          }
+      "policy": {
+        "additionalProperties": {
+          "type": "any"
         },
-        "required": [
-          "operationId",
-          "accepted",
-          "removed",
-          "source"
-        ],
         "type": "object"
       },
       "scope": {
@@ -42556,7 +42805,7 @@ export const schemas = {
     },
     "required": [
       "scope",
-      "receipt"
+      "policy"
     ],
     "type": "object"
   },
@@ -45125,77 +45374,32 @@ export const schemas = {
   },
   "GetLibrariesIdStrmAnalysisPolicyResponse": {
     "properties": {
-      "receipt": {
+      "policy": {
         "properties": {
-          "accepted": {
+          "effective": {
             "type": "boolean"
           },
-          "operationId": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "libraryId": {
             "type": "string"
           },
-          "removed": {
-            "type": "boolean"
+          "revision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
           },
-          "source": {
-            "properties": {
-              "credentialPresent": {
-                "type": "boolean"
-              },
-              "errorCode": {
-                "type": "string"
-              },
-              "generation": {
-                "maximum": 9007199254740991,
-                "minimum": -9007199254740991,
-                "type": "integer"
-              },
-              "id": {
-                "type": "string"
-              },
-              "insecureLocal": {
-                "type": "boolean"
-              },
-              "kind": {
-                "type": "string"
-              },
-              "mountId": {
-                "type": "string"
-              },
-              "name": {
-                "type": "string"
-              },
-              "origin": {
-                "type": "string"
-              },
-              "rangeSupport": {
-                "type": "string"
-              },
-              "rootPath": {
-                "type": "string"
-              },
-              "state": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "id",
-              "kind",
-              "name",
-              "rootPath",
-              "generation",
-              "state",
-              "rangeSupport",
-              "insecureLocal",
-              "credentialPresent"
-            ],
-            "type": "object"
+          "scanTier": {
+            "type": "string"
           }
         },
         "required": [
-          "operationId",
-          "accepted",
-          "removed",
-          "source"
+          "libraryId",
+          "enabled",
+          "revision",
+          "effective",
+          "scanTier"
         ],
         "type": "object"
       },
@@ -45217,7 +45421,7 @@ export const schemas = {
     },
     "required": [
       "scope",
-      "receipt"
+      "policy"
     ],
     "type": "object"
   },
@@ -45270,6 +45474,7 @@ export const schemas = {
     "type": "object"
   },
   "GetLibraryChannelsIdLogoResponse": {
+    "format": "binary",
     "type": "string"
   },
   "GetLibraryFacetsRequest": {
@@ -45443,16 +45648,52 @@ export const schemas = {
   },
   "GetLibraryKindsKindMetadataAgentsResponse": {
     "properties": {
-      "entityId": {
-        "type": "string"
+      "agents": {
+        "items": {
+          "properties": {
+            "defaultLanguage": {
+              "type": "string"
+            },
+            "description": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            },
+            "languages": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "name": {
+              "type": "string"
+            },
+            "providers": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "id",
+            "name",
+            "description",
+            "providers",
+            "languages"
+          ],
+          "type": "object"
+        },
+        "type": "array"
       },
-      "status": {
+      "libraryKind": {
         "type": "string"
       }
     },
     "required": [
-      "entityId",
-      "status"
+      "libraryKind",
+      "agents"
     ],
     "type": "object"
   },
@@ -46417,38 +46658,6 @@ export const schemas = {
     ],
     "type": "object"
   },
-  "GetLthLiveRequest": {
-    "properties": {},
-    "required": [],
-    "type": "object"
-  },
-  "GetLthLiveResponse": {
-    "properties": {
-      "alive": {
-        "type": "boolean"
-      }
-    },
-    "required": [
-      "alive"
-    ],
-    "type": "object"
-  },
-  "GetLthReadyRequest": {
-    "properties": {},
-    "required": [],
-    "type": "object"
-  },
-  "GetLthReadyResponse": {
-    "properties": {
-      "ready": {
-        "type": "boolean"
-      }
-    },
-    "required": [
-      "ready"
-    ],
-    "type": "object"
-  },
   "GetMeLibraryNavigationRequest": {
     "properties": {},
     "required": [],
@@ -46520,6 +46729,7 @@ export const schemas = {
     "type": "object"
   },
   "GetMediaGrantAudioConvertedResponse": {
+    "format": "binary",
     "type": "string"
   },
   "GetMediaGrantAudioRequest": {
@@ -46528,6 +46738,7 @@ export const schemas = {
     "type": "object"
   },
   "GetMediaGrantAudioResponse": {
+    "format": "binary",
     "type": "string"
   },
   "GetMediaGrantFileRequest": {
@@ -46536,6 +46747,7 @@ export const schemas = {
     "type": "object"
   },
   "GetMediaGrantFileResponse": {
+    "format": "binary",
     "type": "string"
   },
   "GetMediaGrantRequest": {
@@ -46544,6 +46756,7 @@ export const schemas = {
     "type": "object"
   },
   "GetMediaGrantResponse": {
+    "format": "binary",
     "type": "string"
   },
   "GetMediaLinearPlaybackIdGenerationTokenNameRequest": {
@@ -46552,6 +46765,7 @@ export const schemas = {
     "type": "object"
   },
   "GetMediaLinearPlaybackIdGenerationTokenNameResponse": {
+    "format": "binary",
     "type": "string"
   },
   "GetMetadataAttentionCountsRequest": {
@@ -46756,6 +46970,7 @@ export const schemas = {
     "type": "object"
   },
   "GetMetadataKindIdArtRoleResponse": {
+    "format": "binary",
     "type": "string"
   },
   "GetMetadataKindIdPreviewRequest": {
@@ -46765,538 +46980,77 @@ export const schemas = {
   },
   "GetMetadataKindIdPreviewResponse": {
     "properties": {
-      "artwork": {
+      "descendants": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "lockedFields": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "merge": {
         "properties": {
-          "candidates": {
+          "allowed": {
+            "type": "boolean"
+          },
+          "blockers": {
             "items": {
-              "properties": {
-                "attribution": {
-                  "type": "string"
-                },
-                "current": {
-                  "type": "boolean"
-                },
-                "id": {
-                  "type": "string"
-                },
-                "imageId": {
-                  "type": "string"
-                },
-                "locale": {
-                  "type": "string"
-                },
-                "observedAt": {
-                  "type": "string"
-                },
-                "previewUrl": {
-                  "type": "string"
-                },
-                "provider": {
-                  "type": "string"
-                },
-                "rank": {
-                  "type": "number"
-                },
-                "role": {
-                  "type": "string"
-                },
-                "subject": {
-                  "type": "string"
-                },
-                "votes": {
-                  "maximum": 9007199254740991,
-                  "minimum": -9007199254740991,
-                  "nullable": true,
-                  "type": "integer"
-                }
-              },
-              "required": [
-                "id",
-                "role",
-                "subject",
-                "provider",
-                "imageId",
-                "locale",
-                "rank",
-                "votes",
-                "attribution",
-                "observedAt",
-                "current"
-              ],
-              "type": "object"
+              "type": "string"
             },
             "type": "array"
           },
-          "jobs": {
-            "items": {
-              "properties": {
-                "attempts": {
-                  "maximum": 9007199254740991,
-                  "minimum": -9007199254740991,
-                  "type": "integer"
-                },
-                "error": {
-                  "type": "string"
-                },
-                "id": {
-                  "type": "string"
-                },
-                "nextAttempt": {
-                  "type": "string"
-                },
-                "role": {
-                  "type": "string"
-                },
-                "status": {
-                  "type": "string"
-                },
-                "subject": {
-                  "type": "string"
-                }
-              },
-              "required": [
-                "id",
-                "role",
-                "subject",
-                "status",
-                "error",
-                "attempts",
-                "nextAttempt"
-              ],
-              "type": "object"
+          "references": {
+            "additionalProperties": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
             },
-            "type": "array"
+            "type": "object"
+          },
+          "target": {
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "id"
+            ],
+            "type": "object"
           }
         },
         "required": [
-          "candidates",
-          "jobs"
+          "target",
+          "allowed",
+          "blockers",
+          "references"
         ],
         "type": "object"
       },
-      "artworkRoles": {
-        "items": {
-          "type": "string"
-        },
-        "type": "array"
-      },
-      "candidates": {
-        "items": {
-          "properties": {
-            "id": {
-              "type": "string"
-            },
-            "observedAt": {
-              "type": "string"
-            },
-            "orders": {
-              "items": {
-                "properties": {
-                  "id": {
-                    "type": "string"
-                  },
-                  "name": {
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "id",
-                  "name"
-                ],
-                "type": "object"
-              },
-              "type": "array"
-            },
-            "previewUrl": {
-              "type": "string"
-            },
-            "provider": {
-              "type": "string"
-            },
-            "subtitle": {
-              "type": "string"
-            },
-            "title": {
-              "type": "string"
-            },
-            "year": {
-              "maximum": 9007199254740991,
-              "minimum": -9007199254740991,
-              "type": "integer"
-            }
-          },
-          "required": [
-            "id",
-            "provider",
-            "title",
-            "subtitle",
-            "observedAt"
-          ],
-          "type": "object"
-        },
-        "type": "array"
-      },
-      "cascades": {
-        "items": {
-          "properties": {
-            "completed": {
-              "maximum": 9007199254740991,
-              "minimum": -9007199254740991,
-              "type": "integer"
-            },
-            "failed": {
-              "maximum": 9007199254740991,
-              "minimum": -9007199254740991,
-              "type": "integer"
-            },
-            "id": {
-              "type": "string"
-            },
-            "intent": {
-              "type": "string"
-            },
-            "pending": {
-              "maximum": 9007199254740991,
-              "minimum": -9007199254740991,
-              "type": "integer"
-            },
-            "processed": {
-              "maximum": 9007199254740991,
-              "minimum": -9007199254740991,
-              "type": "integer"
-            },
-            "skipped": {
-              "maximum": 9007199254740991,
-              "minimum": -9007199254740991,
-              "type": "integer"
-            },
-            "status": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "id",
-            "intent",
-            "status",
-            "processed",
-            "failed",
-            "completed",
-            "skipped",
-            "pending"
-          ],
-          "type": "object"
-        },
-        "type": "array"
-      },
-      "history": {
-        "items": {
-          "properties": {
-            "id": {
-              "maximum": 9007199254740991,
-              "minimum": -9007199254740991,
-              "type": "integer"
-            },
-            "observedAt": {
-              "type": "string"
-            },
-            "trigger": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "id",
-            "trigger",
-            "observedAt"
-          ],
-          "type": "object"
-        },
-        "type": "array"
-      },
-      "libraryId": {
+      "message": {
         "type": "string"
       },
       "revision": {
         "type": "string"
       },
-      "schema": {
-        "items": {
-          "properties": {
-            "allowed": {
-              "items": {
-                "type": "string"
-              },
-              "type": "array"
-            },
-            "bulk": {
-              "type": "boolean"
-            },
-            "field": {
-              "type": "string"
-            },
-            "group": {
-              "type": "string"
-            },
-            "label": {
-              "type": "string"
-            },
-            "max": {
-              "maximum": 9007199254740991,
-              "minimum": -9007199254740991,
-              "type": "integer"
-            },
-            "maxLength": {
-              "maximum": 9007199254740991,
-              "minimum": -9007199254740991,
-              "type": "integer"
-            },
-            "min": {
-              "maximum": 9007199254740991,
-              "minimum": -9007199254740991,
-              "type": "integer"
-            },
-            "type": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "field",
-            "label",
-            "group",
-            "type",
-            "bulk"
-          ],
-          "type": "object"
-        },
-        "type": "array"
-      },
-      "serverId": {
-        "type": "string"
-      },
-      "snapshot": {
-        "properties": {
-          "artwork": {
-            "items": {
-              "properties": {
-                "attribution": {
-                  "type": "string"
-                },
-                "candidateId": {
-                  "type": "string"
-                },
-                "digest": {
-                  "type": "string"
-                },
-                "locked": {
-                  "type": "boolean"
-                },
-                "revision": {
-                  "maximum": 9007199254740991,
-                  "minimum": -9007199254740991,
-                  "type": "integer"
-                },
-                "role": {
-                  "type": "string"
-                },
-                "subject": {
-                  "type": "string"
-                },
-                "thumbnailDigest": {
-                  "type": "string"
-                },
-                "url": {
-                  "type": "string"
-                }
-              },
-              "required": [
-                "role",
-                "subject",
-                "candidateId",
-                "digest",
-                "thumbnailDigest",
-                "locked",
-                "revision",
-                "attribution",
-                "url"
-              ],
-              "type": "object"
-            },
-            "type": "array"
-          },
-          "fields": {
-            "additionalProperties": {
-              "properties": {
-                "automaticValue": {
-                  "type": "string"
-                },
-                "locked": {
-                  "type": "boolean"
-                },
-                "observedAt": {
-                  "type": "string"
-                },
-                "source": {
-                  "type": "string"
-                },
-                "value": {
-                  "type": "string"
-                },
-                "values": {
-                  "items": {
-                    "type": "string"
-                  },
-                  "type": "array"
-                }
-              },
-              "required": [
-                "value",
-                "automaticValue",
-                "locked",
-                "source"
-              ],
-              "type": "object"
-            },
-            "type": "object"
-          },
-          "identity": {
-            "properties": {
-              "engine": {
-                "type": "string"
-              },
-              "id": {
-                "type": "string"
-              },
-              "locked": {
-                "type": "boolean"
-              },
-              "order": {
-                "type": "string"
-              },
-              "provider": {
-                "type": "string"
-              },
-              "revision": {
-                "maximum": 9007199254740991,
-                "minimum": -9007199254740991,
-                "type": "integer"
-              },
-              "status": {
-                "type": "string"
-              },
-              "type": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "provider",
-              "id",
-              "revision",
-              "status",
-              "locked"
-            ],
-            "type": "object"
-          },
-          "relationshipLocks": {
-            "additionalProperties": {
-              "type": "boolean"
-            },
-            "type": "object"
-          },
-          "relationships": {
-            "items": {
-              "properties": {
-                "department": {
-                  "type": "string"
-                },
-                "kind": {
-                  "type": "string"
-                },
-                "label": {
-                  "type": "string"
-                },
-                "locked": {
-                  "type": "boolean"
-                },
-                "observedAt": {
-                  "type": "string"
-                },
-                "ordinal": {
-                  "maximum": 9007199254740991,
-                  "minimum": -9007199254740991,
-                  "type": "integer"
-                },
-                "provider": {
-                  "type": "string"
-                },
-                "recordId": {
-                  "type": "string"
-                },
-                "role": {
-                  "type": "string"
-                },
-                "source": {
-                  "type": "string"
-                },
-                "targetId": {
-                  "type": "string"
-                },
-                "targetKind": {
-                  "type": "string"
-                }
-              },
-              "required": [
-                "kind",
-                "targetKind",
-                "targetId",
-                "label",
-                "ordinal",
-                "source",
-                "locked"
-              ],
-              "type": "object"
-            },
-            "type": "array"
-          }
-        },
-        "required": [
-          "relationshipLocks",
-          "fields",
-          "relationships",
-          "artwork"
-        ],
-        "type": "object"
-      },
-      "target": {
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "kind": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "kind",
-          "id"
-        ],
-        "type": "object"
-      },
-      "viewerFence": {
-        "type": "string"
+      "selectedImages": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
       }
     },
     "required": [
-      "target",
-      "libraryId",
-      "serverId",
-      "viewerFence",
       "revision",
-      "snapshot",
-      "candidates",
-      "history",
-      "artwork",
-      "cascades",
-      "schema",
-      "artworkRoles"
+      "descendants",
+      "lockedFields",
+      "selectedImages",
+      "message"
     ],
     "type": "object"
   },
@@ -48800,6 +48554,7 @@ export const schemas = {
     "type": "object"
   },
   "GetPeopleIdPortraitResponse": {
+    "format": "binary",
     "type": "string"
   },
   "GetPeopleIdRequest": {
@@ -62131,6 +61886,7 @@ export const schemas = {
     "type": "object"
   },
   "GetTopshelfArtIdResponse": {
+    "format": "binary",
     "type": "string"
   },
   "GetTopshelfRequest": {
@@ -63070,9 +62826,8 @@ export const schemas = {
     "type": "object"
   },
   "HeadDownloadArtifactResponse": {
-    "properties": {},
-    "required": [],
-    "type": "object"
+    "format": "binary",
+    "type": "string"
   },
   "HeadMediaGrantAudioRequest": {
     "properties": {},
@@ -63080,6 +62835,7 @@ export const schemas = {
     "type": "object"
   },
   "HeadMediaGrantAudioResponse": {
+    "format": "binary",
     "type": "string"
   },
   "HeadV1MediaSubtitlesGrantResourceRevisionFontsFontRequest": {
@@ -67525,8 +67281,35 @@ export const schemas = {
     "type": "object"
   },
   "PatchPreferencesRequest": {
-    "properties": {},
-    "required": [],
+    "properties": {
+      "deviceClass": {
+        "type": "string"
+      },
+      "expectedRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "idempotencyKey": {
+        "type": "string"
+      },
+      "scope": {
+        "type": "string"
+      },
+      "values": {
+        "additionalProperties": {
+          "type": "any"
+        },
+        "type": "object"
+      }
+    },
+    "required": [
+      "expectedRevision",
+      "idempotencyKey",
+      "scope",
+      "deviceClass",
+      "values"
+    ],
     "type": "object"
   },
   "PatchPreferencesResponse": {
@@ -68667,8 +68450,20 @@ export const schemas = {
     "type": "object"
   },
   "PostAdminConsoleAlertsIdAcknowledgeRequest": {
-    "properties": {},
-    "required": [],
+    "properties": {
+      "expectedRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "idempotencyKey": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "expectedRevision",
+      "idempotencyKey"
+    ],
     "type": "object"
   },
   "PostAdminConsoleAlertsIdAcknowledgeResponse": {
@@ -68704,6 +68499,9 @@ export const schemas = {
   "PostAdminConsoleDiagnosticsCaptureRequest": {
     "properties": {
       "component": {
+        "enum": [
+          "scheduler"
+        ],
         "type": "string"
       },
       "expiresAt": {
@@ -68725,6 +68523,9 @@ export const schemas = {
       "data": {
         "properties": {
           "component": {
+            "enum": [
+              "scheduler"
+            ],
             "type": "string"
           },
           "expiresAt": {
@@ -70128,230 +69929,84 @@ export const schemas = {
     "type": "object"
   },
   "PostAdminIngestionJobsIdActionRequest": {
-    "properties": {
-      "acceptReplacement": {
-        "type": "boolean"
-      },
-      "classification": {
-        "type": "string"
-      },
-      "expectedRevision": {
-        "maximum": 9007199254740991,
-        "minimum": -9007199254740991,
-        "type": "integer"
-      },
-      "followSymlinks": {
-        "type": "boolean"
-      },
-      "intervalSeconds": {
-        "maximum": 9007199254740991,
-        "minimum": -9007199254740991,
-        "type": "integer"
-      },
-      "name": {
-        "type": "string"
-      },
-      "path": {
-        "type": "string"
-      }
-    },
-    "required": [
-      "name",
-      "path",
-      "classification",
-      "followSymlinks",
-      "intervalSeconds",
-      "expectedRevision",
-      "acceptReplacement"
-    ],
+    "properties": {},
+    "required": [],
     "type": "object"
   },
   "PostAdminIngestionJobsIdActionResponse": {
     "properties": {
-      "classification": {
-        "type": "string"
-      },
-      "enabled": {
-        "type": "boolean"
-      },
-      "followSymlinks": {
-        "type": "boolean"
-      },
-      "generation": {
+      "analyzed": {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
         "type": "integer"
       },
-      "health": {
+      "error": {
         "type": "string"
       },
       "id": {
         "type": "string"
       },
-      "identityConfirmed": {
-        "type": "boolean"
+      "jobs": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
       },
-      "intervalSeconds": {
+      "phase": {
+        "type": "string"
+      },
+      "processed": {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
         "type": "integer"
       },
-      "kind": {
+      "scanMode": {
         "type": "string"
       },
-      "lastCompleteAt": {
+      "sourceId": {
         "type": "string"
       },
-      "lastProgressAt": {
+      "status": {
         "type": "string"
       },
-      "libraryId": {
-        "type": "string"
-      },
-      "name": {
-        "type": "string"
-      },
-      "nextScanAt": {
-        "type": "string"
-      },
-      "path": {
-        "type": "string"
-      },
-      "resolvedPath": {
-        "type": "string"
+      "warnings": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
       }
     },
     "required": [
-      "identityConfirmed",
       "id",
-      "libraryId",
-      "kind",
-      "name",
-      "path",
-      "resolvedPath",
-      "classification",
-      "generation",
-      "health",
-      "enabled",
-      "followSymlinks",
-      "intervalSeconds",
-      "nextScanAt",
-      "lastCompleteAt",
-      "lastProgressAt"
+      "status",
+      "processed",
+      "analyzed",
+      "warnings"
     ],
     "type": "object"
   },
   "PostAdminLibrariesIdInventoryObjectActionRequest": {
     "properties": {
-      "acceptReplacement": {
-        "type": "boolean"
-      },
-      "classification": {
+      "itemId": {
         "type": "string"
       },
-      "expectedRevision": {
-        "maximum": 9007199254740991,
-        "minimum": -9007199254740991,
-        "type": "integer"
-      },
-      "followSymlinks": {
-        "type": "boolean"
-      },
-      "intervalSeconds": {
-        "maximum": 9007199254740991,
-        "minimum": -9007199254740991,
-        "type": "integer"
-      },
-      "name": {
-        "type": "string"
-      },
-      "path": {
+      "revision": {
         "type": "string"
       }
     },
     "required": [
-      "name",
-      "path",
-      "classification",
-      "followSymlinks",
-      "intervalSeconds",
-      "expectedRevision",
-      "acceptReplacement"
+      "revision",
+      "itemId"
     ],
     "type": "object"
   },
   "PostAdminLibrariesIdInventoryObjectActionResponse": {
     "properties": {
-      "classification": {
-        "type": "string"
-      },
-      "enabled": {
-        "type": "boolean"
-      },
-      "followSymlinks": {
-        "type": "boolean"
-      },
-      "generation": {
-        "maximum": 9007199254740991,
-        "minimum": -9007199254740991,
-        "type": "integer"
-      },
-      "health": {
-        "type": "string"
-      },
-      "id": {
-        "type": "string"
-      },
-      "identityConfirmed": {
-        "type": "boolean"
-      },
-      "intervalSeconds": {
-        "maximum": 9007199254740991,
-        "minimum": -9007199254740991,
-        "type": "integer"
-      },
-      "kind": {
-        "type": "string"
-      },
-      "lastCompleteAt": {
-        "type": "string"
-      },
-      "lastProgressAt": {
-        "type": "string"
-      },
-      "libraryId": {
-        "type": "string"
-      },
-      "name": {
-        "type": "string"
-      },
-      "nextScanAt": {
-        "type": "string"
-      },
-      "path": {
-        "type": "string"
-      },
-      "resolvedPath": {
+      "itemId": {
         "type": "string"
       }
     },
     "required": [
-      "identityConfirmed",
-      "id",
-      "libraryId",
-      "kind",
-      "name",
-      "path",
-      "resolvedPath",
-      "classification",
-      "generation",
-      "health",
-      "enabled",
-      "followSymlinks",
-      "intervalSeconds",
-      "nextScanAt",
-      "lastCompleteAt",
-      "lastProgressAt"
+      "itemId"
     ],
     "type": "object"
   },
@@ -70470,42 +70125,8 @@ export const schemas = {
     "type": "object"
   },
   "PostAdminLibrariesIdSourcesSourceCheckRequest": {
-    "properties": {
-      "acceptReplacement": {
-        "type": "boolean"
-      },
-      "classification": {
-        "type": "string"
-      },
-      "expectedRevision": {
-        "maximum": 9007199254740991,
-        "minimum": -9007199254740991,
-        "type": "integer"
-      },
-      "followSymlinks": {
-        "type": "boolean"
-      },
-      "intervalSeconds": {
-        "maximum": 9007199254740991,
-        "minimum": -9007199254740991,
-        "type": "integer"
-      },
-      "name": {
-        "type": "string"
-      },
-      "path": {
-        "type": "string"
-      }
-    },
-    "required": [
-      "name",
-      "path",
-      "classification",
-      "followSymlinks",
-      "intervalSeconds",
-      "expectedRevision",
-      "acceptReplacement"
-    ],
+    "properties": {},
+    "required": [],
     "type": "object"
   },
   "PostAdminLibrariesIdSourcesSourceCheckResponse": {
@@ -70584,116 +70205,58 @@ export const schemas = {
     "type": "object"
   },
   "PostAdminLibrariesIdSourcesSourceScansRequest": {
-    "properties": {
-      "acceptReplacement": {
-        "type": "boolean"
-      },
-      "classification": {
-        "type": "string"
-      },
-      "expectedRevision": {
-        "maximum": 9007199254740991,
-        "minimum": -9007199254740991,
-        "type": "integer"
-      },
-      "followSymlinks": {
-        "type": "boolean"
-      },
-      "intervalSeconds": {
-        "maximum": 9007199254740991,
-        "minimum": -9007199254740991,
-        "type": "integer"
-      },
-      "name": {
-        "type": "string"
-      },
-      "path": {
-        "type": "string"
-      }
-    },
-    "required": [
-      "name",
-      "path",
-      "classification",
-      "followSymlinks",
-      "intervalSeconds",
-      "expectedRevision",
-      "acceptReplacement"
-    ],
+    "properties": {},
+    "required": [],
     "type": "object"
   },
   "PostAdminLibrariesIdSourcesSourceScansResponse": {
     "properties": {
-      "classification": {
-        "type": "string"
-      },
-      "enabled": {
-        "type": "boolean"
-      },
-      "followSymlinks": {
-        "type": "boolean"
-      },
-      "generation": {
+      "analyzed": {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
         "type": "integer"
       },
-      "health": {
+      "error": {
         "type": "string"
       },
       "id": {
         "type": "string"
       },
-      "identityConfirmed": {
-        "type": "boolean"
+      "jobs": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
       },
-      "intervalSeconds": {
+      "phase": {
+        "type": "string"
+      },
+      "processed": {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
         "type": "integer"
       },
-      "kind": {
+      "scanMode": {
         "type": "string"
       },
-      "lastCompleteAt": {
+      "sourceId": {
         "type": "string"
       },
-      "lastProgressAt": {
+      "status": {
         "type": "string"
       },
-      "libraryId": {
-        "type": "string"
-      },
-      "name": {
-        "type": "string"
-      },
-      "nextScanAt": {
-        "type": "string"
-      },
-      "path": {
-        "type": "string"
-      },
-      "resolvedPath": {
-        "type": "string"
+      "warnings": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
       }
     },
     "required": [
-      "identityConfirmed",
       "id",
-      "libraryId",
-      "kind",
-      "name",
-      "path",
-      "resolvedPath",
-      "classification",
-      "generation",
-      "health",
-      "enabled",
-      "followSymlinks",
-      "intervalSeconds",
-      "nextScanAt",
-      "lastCompleteAt",
-      "lastProgressAt"
+      "status",
+      "processed",
+      "analyzed",
+      "warnings"
     ],
     "type": "object"
   },
@@ -76236,8 +75799,15 @@ export const schemas = {
     "type": "object"
   },
   "PostDirectProfilesIdAvatarRequest": {
-    "properties": {},
-    "required": [],
+    "properties": {
+      "image": {
+        "format": "binary",
+        "type": "string"
+      }
+    },
+    "required": [
+      "image"
+    ],
     "type": "object"
   },
   "PostDirectProfilesIdAvatarResponse": {
@@ -78100,6 +77670,8 @@ export const schemas = {
         "type": "string"
       },
       "message": {
+        "maxLength": 2000,
+        "minLength": 8,
         "type": "string"
       },
       "operationId": {
@@ -78514,8 +78086,10 @@ export const schemas = {
     "properties": {
       "hiddenRowIds": {
         "items": {
+          "maxLength": 128,
           "type": "string"
         },
+        "maxItems": 64,
         "type": "array"
       },
       "revision": {
@@ -78525,8 +78099,10 @@ export const schemas = {
       },
       "rowOrder": {
         "items": {
+          "maxLength": 128,
           "type": "string"
         },
+        "maxItems": 64,
         "type": "array"
       }
     },
@@ -79643,13 +79219,107 @@ export const schemas = {
     "type": "object"
   },
   "PostItemsIdOptimizationsRequest": {
-    "properties": {},
-    "required": [],
+    "properties": {
+      "expectedSourceRevision": {
+        "type": "string"
+      },
+      "idempotencyKey": {
+        "type": "string"
+      },
+      "itemId": {
+        "type": "string"
+      },
+      "profileId": {
+        "type": "string"
+      },
+      "sourceId": {
+        "type": "string"
+      },
+      "targetId": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "idempotencyKey",
+      "itemId",
+      "sourceId",
+      "expectedSourceRevision",
+      "profileId",
+      "targetId"
+    ],
     "type": "object"
   },
   "PostItemsIdOptimizationsResponse": {
-    "properties": {},
-    "required": [],
+    "properties": {
+      "bytes": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "createdMs": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "errorCode": {
+        "type": "string"
+      },
+      "generation": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "id": {
+        "type": "string"
+      },
+      "itemId": {
+        "type": "string"
+      },
+      "phase": {
+        "type": "string"
+      },
+      "profileId": {
+        "type": "string"
+      },
+      "revision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "sourceId": {
+        "type": "string"
+      },
+      "state": {
+        "type": "string"
+      },
+      "targetId": {
+        "type": "string"
+      },
+      "updatedMs": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "versionId": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "id",
+      "itemId",
+      "sourceId",
+      "profileId",
+      "targetId",
+      "state",
+      "phase",
+      "generation",
+      "bytes",
+      "errorCode",
+      "revision",
+      "createdMs",
+      "updatedMs",
+      "versionId"
+    ],
     "type": "object"
   },
   "PostLibrariesIdCollectionsRequest": {
@@ -79950,6 +79620,13 @@ export const schemas = {
   "PostLibrariesRequest": {
     "properties": {
       "kind": {
+        "enum": [
+          "movie",
+          "tv",
+          "anime",
+          "music",
+          "audiobook"
+        ],
         "type": "string"
       },
       "metadataAgent": {
@@ -80055,137 +79732,12 @@ export const schemas = {
   },
   "PostMeRecommendationsResetRequest": {
     "properties": {
-      "accountId": {
-        "type": "string"
-      },
-      "addItemIds": {
-        "items": {
-          "type": "string"
-        },
-        "type": "array"
-      },
-      "authority": {
-        "type": "string"
-      },
-      "definition": {
-        "properties": {
-          "libraryId": {
-            "type": "string"
-          },
-          "pivot": {
-            "type": "string"
-          },
-          "presentation": {
-            "type": "string"
-          },
-          "query": {
-            "additionalProperties": false,
-            "description": "A predicate or all/any/not group. The parser enforces the published depth and clause bounds.",
-            "nullable": true,
-            "properties": {
-              "all": {
-                "items": {
-                  "additionalProperties": {},
-                  "properties": {},
-                  "required": [],
-                  "type": "object"
-                },
-                "maxItems": 40,
-                "minItems": 1,
-                "type": "array"
-              },
-              "any": {
-                "items": {
-                  "additionalProperties": {},
-                  "properties": {},
-                  "required": [],
-                  "type": "object"
-                },
-                "maxItems": 40,
-                "minItems": 1,
-                "type": "array"
-              },
-              "field": {
-                "type": "string"
-              },
-              "not": {
-                "additionalProperties": {},
-                "properties": {},
-                "required": [],
-                "type": "object"
-              },
-              "operator": {
-                "type": "string"
-              },
-              "value": {}
-            },
-            "required": [],
-            "type": "object"
-          },
-          "sort": {
-            "items": {
-              "properties": {
-                "direction": {
-                  "type": "string"
-                },
-                "field": {
-                  "type": "string"
-                }
-              },
-              "required": [
-                "field",
-                "direction"
-              ],
-              "type": "object"
-            },
-            "type": "array"
-          }
-        },
-        "required": [
-          "libraryId",
-          "pivot",
-          "query",
-          "sort",
-          "presentation"
-        ],
-        "type": "object"
-      },
-      "expectedRevision": {
-        "maximum": 9007199254740991,
-        "minimum": -9007199254740991,
-        "type": "integer"
-      },
-      "kind": {
-        "type": "string"
-      },
-      "name": {
-        "type": "string"
-      },
       "operationId": {
-        "type": "string"
-      },
-      "profileId": {
-        "type": "string"
-      },
-      "removeEntryIds": {
-        "items": {
-          "type": "string"
-        },
-        "type": "array"
-      },
-      "role": {
-        "type": "string"
-      },
-      "summary": {
-        "type": "string"
-      },
-      "visibility": {
         "type": "string"
       }
     },
     "required": [
-      "operationId",
-      "expectedRevision"
+      "operationId"
     ],
     "type": "object"
   },
@@ -83585,137 +83137,22 @@ export const schemas = {
   },
   "PostPersonalHistoryActionsRequest": {
     "properties": {
-      "accountId": {
+      "action": {
         "type": "string"
-      },
-      "addItemIds": {
-        "items": {
-          "type": "string"
-        },
-        "type": "array"
-      },
-      "authority": {
-        "type": "string"
-      },
-      "definition": {
-        "properties": {
-          "libraryId": {
-            "type": "string"
-          },
-          "pivot": {
-            "type": "string"
-          },
-          "presentation": {
-            "type": "string"
-          },
-          "query": {
-            "additionalProperties": false,
-            "description": "A predicate or all/any/not group. The parser enforces the published depth and clause bounds.",
-            "nullable": true,
-            "properties": {
-              "all": {
-                "items": {
-                  "additionalProperties": {},
-                  "properties": {},
-                  "required": [],
-                  "type": "object"
-                },
-                "maxItems": 40,
-                "minItems": 1,
-                "type": "array"
-              },
-              "any": {
-                "items": {
-                  "additionalProperties": {},
-                  "properties": {},
-                  "required": [],
-                  "type": "object"
-                },
-                "maxItems": 40,
-                "minItems": 1,
-                "type": "array"
-              },
-              "field": {
-                "type": "string"
-              },
-              "not": {
-                "additionalProperties": {},
-                "properties": {},
-                "required": [],
-                "type": "object"
-              },
-              "operator": {
-                "type": "string"
-              },
-              "value": {}
-            },
-            "required": [],
-            "type": "object"
-          },
-          "sort": {
-            "items": {
-              "properties": {
-                "direction": {
-                  "type": "string"
-                },
-                "field": {
-                  "type": "string"
-                }
-              },
-              "required": [
-                "field",
-                "direction"
-              ],
-              "type": "object"
-            },
-            "type": "array"
-          }
-        },
-        "required": [
-          "libraryId",
-          "pivot",
-          "query",
-          "sort",
-          "presentation"
-        ],
-        "type": "object"
       },
       "expectedRevision": {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
         "type": "integer"
       },
-      "kind": {
-        "type": "string"
-      },
-      "name": {
-        "type": "string"
-      },
       "operationId": {
-        "type": "string"
-      },
-      "profileId": {
-        "type": "string"
-      },
-      "removeEntryIds": {
-        "items": {
-          "type": "string"
-        },
-        "type": "array"
-      },
-      "role": {
-        "type": "string"
-      },
-      "summary": {
-        "type": "string"
-      },
-      "visibility": {
         "type": "string"
       }
     },
     "required": [
       "operationId",
-      "expectedRevision"
+      "expectedRevision",
+      "action"
     ],
     "type": "object"
   },
@@ -83939,13 +83376,138 @@ export const schemas = {
     "type": "object"
   },
   "PostPreparedVersionsIdDeleteRequest": {
-    "properties": {},
-    "required": [],
+    "properties": {
+      "expectedRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "idempotencyKey": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "idempotencyKey",
+      "expectedRevision"
+    ],
     "type": "object"
   },
   "PostPreparedVersionsIdDeleteResponse": {
-    "properties": {},
-    "required": [],
+    "properties": {
+      "createdMs": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "digest": {
+        "type": "string"
+      },
+      "editionId": {
+        "nullable": true,
+        "type": "string"
+      },
+      "facts": {
+        "properties": {
+          "audioCodec": {
+            "type": "string"
+          },
+          "audioTracks": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "container": {
+            "type": "string"
+          },
+          "duration": {
+            "type": "number"
+          },
+          "height": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "videoCodec": {
+            "type": "string"
+          },
+          "width": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "container",
+          "videoCodec",
+          "audioCodec",
+          "width",
+          "height",
+          "duration",
+          "audioTracks"
+        ],
+        "type": "object"
+      },
+      "id": {
+        "type": "string"
+      },
+      "itemId": {
+        "type": "string"
+      },
+      "partIndex": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "profileId": {
+        "type": "string"
+      },
+      "reason": {
+        "type": "string"
+      },
+      "revision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "selectable": {
+        "type": "boolean"
+      },
+      "size": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "sourceId": {
+        "type": "string"
+      },
+      "sourceRevision": {
+        "type": "string"
+      },
+      "state": {
+        "type": "string"
+      },
+      "targetId": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "id",
+      "itemId",
+      "sourceId",
+      "profileId",
+      "targetId",
+      "sourceRevision",
+      "partIndex",
+      "editionId",
+      "digest",
+      "size",
+      "facts",
+      "state",
+      "revision",
+      "createdMs",
+      "selectable",
+      "reason"
+    ],
     "type": "object"
   },
   "PostQuickConnectCancelRequest": {
@@ -83966,187 +83528,129 @@ export const schemas = {
   },
   "PostQuickConnectDecisionRequest": {
     "properties": {
-      "enabled": {
-        "type": "boolean"
-      },
-      "revision": {
+      "decision": {
         "type": "string"
       },
-      "warningConfirmed": {
-        "type": "boolean"
+      "requestId": {
+        "type": "string"
+      },
+      "userCode": {
+        "type": "string"
       }
     },
     "required": [
-      "revision",
-      "enabled",
-      "warningConfirmed"
+      "requestId",
+      "userCode",
+      "decision"
     ],
     "type": "object"
   },
   "PostQuickConnectDecisionResponse": {
-    "properties": {
-      "authMode": {
-        "type": "string"
-      },
-      "claimInstalled": {
-        "type": "boolean"
-      },
-      "phase": {
-        "type": "string"
-      },
-      "ready": {
-        "type": "boolean"
-      },
-      "recoveryConfirmed": {
-        "type": "boolean"
-      },
-      "recoveryOwner": {
-        "type": "boolean"
-      },
-      "remoteRecovery": {
-        "type": "boolean"
-      },
-      "revision": {
-        "type": "string"
-      },
-      "sessionLabel": {
-        "type": "string"
-      }
-    },
-    "required": [
-      "authMode",
-      "phase",
-      "ready",
-      "recoveryOwner",
-      "recoveryConfirmed",
-      "remoteRecovery",
-      "claimInstalled",
-      "revision",
-      "sessionLabel"
-    ],
+    "properties": {},
+    "required": [],
     "type": "object"
   },
   "PostQuickConnectRequest": {
     "properties": {
-      "enabled": {
-        "type": "boolean"
-      },
-      "revision": {
+      "appVersion": {
         "type": "string"
       },
-      "warningConfirmed": {
-        "type": "boolean"
+      "deviceName": {
+        "type": "string"
+      },
+      "platform": {
+        "type": "string"
+      },
+      "requestId": {
+        "type": "string"
       }
     },
     "required": [
-      "revision",
-      "enabled",
-      "warningConfirmed"
+      "requestId",
+      "deviceName",
+      "platform",
+      "appVersion"
     ],
     "type": "object"
   },
   "PostQuickConnectResponse": {
     "properties": {
-      "authMode": {
+      "deviceCode": {
         "type": "string"
       },
-      "claimInstalled": {
-        "type": "boolean"
-      },
-      "phase": {
+      "expiresAt": {
         "type": "string"
       },
-      "ready": {
-        "type": "boolean"
+      "expiresIn": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
       },
-      "recoveryConfirmed": {
-        "type": "boolean"
+      "interval": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
       },
-      "recoveryOwner": {
-        "type": "boolean"
-      },
-      "remoteRecovery": {
-        "type": "boolean"
-      },
-      "revision": {
+      "userCode": {
         "type": "string"
       },
-      "sessionLabel": {
+      "verificationUri": {
+        "type": "string"
+      },
+      "verificationUriComplete": {
         "type": "string"
       }
     },
     "required": [
-      "authMode",
-      "phase",
-      "ready",
-      "recoveryOwner",
-      "recoveryConfirmed",
-      "remoteRecovery",
-      "claimInstalled",
-      "revision",
-      "sessionLabel"
+      "deviceCode",
+      "userCode",
+      "verificationUri",
+      "verificationUriComplete",
+      "expiresAt",
+      "expiresIn",
+      "interval"
     ],
     "type": "object"
   },
   "PostQuickConnectReviewRequest": {
     "properties": {
-      "enabled": {
-        "type": "boolean"
-      },
-      "revision": {
+      "userCode": {
         "type": "string"
-      },
-      "warningConfirmed": {
-        "type": "boolean"
       }
     },
     "required": [
-      "revision",
-      "enabled",
-      "warningConfirmed"
+      "userCode"
     ],
     "type": "object"
   },
   "PostQuickConnectReviewResponse": {
     "properties": {
-      "authMode": {
+      "appVersion": {
         "type": "string"
       },
-      "claimInstalled": {
-        "type": "boolean"
-      },
-      "phase": {
+      "deviceName": {
         "type": "string"
       },
-      "ready": {
-        "type": "boolean"
-      },
-      "recoveryConfirmed": {
-        "type": "boolean"
-      },
-      "recoveryOwner": {
-        "type": "boolean"
-      },
-      "remoteRecovery": {
-        "type": "boolean"
-      },
-      "revision": {
+      "expiresAt": {
         "type": "string"
       },
-      "sessionLabel": {
+      "platform": {
+        "type": "string"
+      },
+      "requestId": {
+        "type": "string"
+      },
+      "userCode": {
         "type": "string"
       }
     },
     "required": [
-      "authMode",
-      "phase",
-      "ready",
-      "recoveryOwner",
-      "recoveryConfirmed",
-      "remoteRecovery",
-      "claimInstalled",
-      "revision",
-      "sessionLabel"
+      "requestId",
+      "userCode",
+      "deviceName",
+      "platform",
+      "appVersion",
+      "expiresAt"
     ],
     "type": "object"
   },
@@ -88670,115 +88174,75 @@ export const schemas = {
   },
   "PutAdminLibrariesIdScanPolicyRequest": {
     "properties": {
-      "acceptReplacement": {
-        "type": "boolean"
-      },
-      "classification": {
-        "type": "string"
-      },
       "expectedRevision": {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
         "type": "integer"
       },
-      "followSymlinks": {
-        "type": "boolean"
+      "operations": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
       },
-      "intervalSeconds": {
-        "maximum": 9007199254740991,
-        "minimum": -9007199254740991,
-        "type": "integer"
-      },
-      "name": {
-        "type": "string"
-      },
-      "path": {
+      "tier": {
         "type": "string"
       }
     },
     "required": [
-      "name",
-      "path",
-      "classification",
-      "followSymlinks",
-      "intervalSeconds",
-      "expectedRevision",
-      "acceptReplacement"
+      "tier",
+      "operations",
+      "expectedRevision"
     ],
     "type": "object"
   },
   "PutAdminLibrariesIdScanPolicyResponse": {
     "properties": {
-      "classification": {
-        "type": "string"
+      "operations": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
       },
-      "enabled": {
-        "type": "boolean"
-      },
-      "followSymlinks": {
-        "type": "boolean"
-      },
-      "generation": {
+      "revision": {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
         "type": "integer"
       },
-      "health": {
+      "tier": {
         "type": "string"
       },
-      "id": {
-        "type": "string"
-      },
-      "identityConfirmed": {
-        "type": "boolean"
-      },
-      "intervalSeconds": {
-        "maximum": 9007199254740991,
-        "minimum": -9007199254740991,
-        "type": "integer"
-      },
-      "kind": {
-        "type": "string"
-      },
-      "lastCompleteAt": {
-        "type": "string"
-      },
-      "lastProgressAt": {
-        "type": "string"
-      },
-      "libraryId": {
-        "type": "string"
-      },
-      "name": {
-        "type": "string"
-      },
-      "nextScanAt": {
-        "type": "string"
-      },
-      "path": {
-        "type": "string"
-      },
-      "resolvedPath": {
-        "type": "string"
+      "trickplay": {
+        "properties": {
+          "intervalSeconds": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "maxTiles": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "tileWidth": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "intervalSeconds",
+          "tileWidth",
+          "maxTiles"
+        ],
+        "type": "object"
       }
     },
     "required": [
-      "identityConfirmed",
-      "id",
-      "libraryId",
-      "kind",
-      "name",
-      "path",
-      "resolvedPath",
-      "classification",
-      "generation",
-      "health",
-      "enabled",
-      "followSymlinks",
-      "intervalSeconds",
-      "nextScanAt",
-      "lastCompleteAt",
-      "lastProgressAt"
+      "tier",
+      "revision",
+      "operations",
+      "trickplay"
     ],
     "type": "object"
   },
@@ -91341,8 +90805,10 @@ export const schemas = {
     "properties": {
       "hiddenRowIds": {
         "items": {
+          "maxLength": 128,
           "type": "string"
         },
+        "maxItems": 64,
         "type": "array"
       },
       "revision": {
@@ -91352,8 +90818,10 @@ export const schemas = {
       },
       "rowOrder": {
         "items": {
+          "maxLength": 128,
           "type": "string"
         },
+        "maxItems": 64,
         "type": "array"
       }
     },
@@ -92264,64 +91732,141 @@ export const schemas = {
   },
   "PutLibrariesIdMetadataAgentRequest": {
     "properties": {
-      "candidateKey": {
+      "agent": {
         "type": "string"
       },
       "expectedRevision": {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
         "type": "integer"
-      },
-      "order": {
-        "type": "string"
       }
     },
     "required": [
       "expectedRevision",
-      "candidateKey",
-      "order"
+      "agent"
     ],
     "type": "object"
   },
   "PutLibrariesIdMetadataAgentResponse": {
     "properties": {
-      "entityId": {
+      "agent": {
         "type": "string"
       },
-      "status": {
+      "agents": {
+        "items": {
+          "properties": {
+            "defaultLanguage": {
+              "type": "string"
+            },
+            "description": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            },
+            "languages": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "name": {
+              "type": "string"
+            },
+            "providers": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "id",
+            "name",
+            "description",
+            "providers",
+            "languages"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "language": {
         "type": "string"
+      },
+      "libraryId": {
+        "type": "string"
+      },
+      "libraryKind": {
+        "type": "string"
+      },
+      "revision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
       }
     },
     "required": [
-      "entityId",
-      "status"
+      "libraryId",
+      "libraryKind",
+      "revision",
+      "agent",
+      "agents"
     ],
     "type": "object"
   },
   "PutLibrariesIdMetadataScreenRequest": {
     "properties": {
-      "candidateKey": {
+      "confirmRemote": {
+        "type": "boolean"
+      },
+      "disclosureVersion": {
         "type": "string"
+      },
+      "enabled": {
+        "type": "boolean"
+      },
+      "expectedConsentRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
       },
       "expectedRevision": {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
         "type": "integer"
       },
-      "order": {
+      "language": {
+        "type": "string"
+      },
+      "providers": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "refreshMode": {
+        "type": "string"
+      },
+      "region": {
         "type": "string"
       }
     },
     "required": [
       "expectedRevision",
-      "candidateKey",
-      "order"
+      "expectedConsentRevision",
+      "disclosureVersion",
+      "enabled",
+      "providers",
+      "language",
+      "region",
+      "refreshMode"
     ],
     "type": "object"
   },
   "PutLibrariesIdMetadataScreenResponse": {
     "properties": {
-      "entityId": {
+      "libraryId": {
         "type": "string"
       },
       "status": {
@@ -92329,126 +91874,56 @@ export const schemas = {
       }
     },
     "required": [
-      "entityId",
+      "libraryId",
       "status"
     ],
     "type": "object"
   },
   "PutLibrariesIdStrmAnalysisPolicyRequest": {
     "properties": {
-      "expectedGeneration": {
+      "enabled": {
+        "type": "boolean"
+      },
+      "expectedRevision": {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
         "type": "integer"
-      },
-      "insecureLocal": {
-        "type": "boolean"
-      },
-      "keepConnection": {
-        "type": "boolean"
-      },
-      "keepPassword": {
-        "type": "boolean"
-      },
-      "name": {
-        "type": "string"
-      },
-      "operationId": {
-        "type": "string"
-      },
-      "password": {
-        "type": "string"
-      },
-      "root": {
-        "type": "string"
-      },
-      "username": {
-        "type": "string"
       }
     },
     "required": [
-      "operationId",
-      "name",
-      "root",
-      "username",
-      "password",
-      "insecureLocal"
+      "enabled",
+      "expectedRevision"
     ],
     "type": "object"
   },
   "PutLibrariesIdStrmAnalysisPolicyResponse": {
     "properties": {
-      "receipt": {
+      "policy": {
         "properties": {
-          "accepted": {
+          "effective": {
             "type": "boolean"
           },
-          "operationId": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "libraryId": {
             "type": "string"
           },
-          "removed": {
-            "type": "boolean"
+          "revision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
           },
-          "source": {
-            "properties": {
-              "credentialPresent": {
-                "type": "boolean"
-              },
-              "errorCode": {
-                "type": "string"
-              },
-              "generation": {
-                "maximum": 9007199254740991,
-                "minimum": -9007199254740991,
-                "type": "integer"
-              },
-              "id": {
-                "type": "string"
-              },
-              "insecureLocal": {
-                "type": "boolean"
-              },
-              "kind": {
-                "type": "string"
-              },
-              "mountId": {
-                "type": "string"
-              },
-              "name": {
-                "type": "string"
-              },
-              "origin": {
-                "type": "string"
-              },
-              "rangeSupport": {
-                "type": "string"
-              },
-              "rootPath": {
-                "type": "string"
-              },
-              "state": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "id",
-              "kind",
-              "name",
-              "rootPath",
-              "generation",
-              "state",
-              "rangeSupport",
-              "insecureLocal",
-              "credentialPresent"
-            ],
-            "type": "object"
+          "scanTier": {
+            "type": "string"
           }
         },
         "required": [
-          "operationId",
-          "accepted",
-          "removed",
-          "source"
+          "libraryId",
+          "enabled",
+          "revision",
+          "effective",
+          "scanTier"
         ],
         "type": "object"
       },
@@ -92470,7 +91945,7 @@ export const schemas = {
     },
     "required": [
       "scope",
-      "receipt"
+      "policy"
     ],
     "type": "object"
   },
@@ -93056,71 +92531,40 @@ export const schemas = {
   },
   "PutLyricsProviderRequest": {
     "properties": {
-      "candidateId": {
-        "type": "string"
-      },
-      "contentBase64": {
-        "type": "string"
+      "enabled": {
+        "type": "boolean"
       },
       "expectedRevision": {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
         "type": "integer"
-      },
-      "format": {
-        "type": "string"
-      },
-      "language": {
-        "type": "string"
-      },
-      "offsetMs": {
-        "maximum": 9007199254740991,
-        "minimum": -9007199254740991,
-        "nullable": true,
-        "type": "integer"
-      },
-      "resourceId": {
-        "type": "string"
-      },
-      "rights": {
-        "type": "string"
-      },
-      "scope": {
-        "type": "string"
-      },
-      "sessionId": {
-        "type": "string"
-      },
-      "sourceId": {
-        "type": "string"
-      },
-      "sourceVersion": {
-        "type": "string"
-      },
-      "text": {
-        "type": "string"
       }
     },
     "required": [
-      "sourceId",
-      "sourceVersion",
-      "sessionId",
-      "resourceId",
-      "expectedRevision",
-      "scope",
-      "language",
-      "format",
-      "text",
-      "contentBase64",
-      "offsetMs",
-      "rights",
-      "candidateId"
+      "enabled",
+      "expectedRevision"
     ],
     "type": "object"
   },
   "PutLyricsProviderResponse": {
-    "properties": {},
-    "required": [],
+    "properties": {
+      "configured": {
+        "type": "boolean"
+      },
+      "lrclib": {
+        "type": "boolean"
+      },
+      "revision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "lrclib",
+      "configured",
+      "revision"
+    ],
     "type": "object"
   },
   "PutMeLibraryNavigationRequest": {
@@ -93319,137 +92763,22 @@ export const schemas = {
   },
   "PutSavedPinsKindIdRequest": {
     "properties": {
-      "accountId": {
-        "type": "string"
-      },
-      "addItemIds": {
-        "items": {
-          "type": "string"
-        },
-        "type": "array"
-      },
-      "authority": {
-        "type": "string"
-      },
-      "definition": {
-        "properties": {
-          "libraryId": {
-            "type": "string"
-          },
-          "pivot": {
-            "type": "string"
-          },
-          "presentation": {
-            "type": "string"
-          },
-          "query": {
-            "additionalProperties": false,
-            "description": "A predicate or all/any/not group. The parser enforces the published depth and clause bounds.",
-            "nullable": true,
-            "properties": {
-              "all": {
-                "items": {
-                  "additionalProperties": {},
-                  "properties": {},
-                  "required": [],
-                  "type": "object"
-                },
-                "maxItems": 40,
-                "minItems": 1,
-                "type": "array"
-              },
-              "any": {
-                "items": {
-                  "additionalProperties": {},
-                  "properties": {},
-                  "required": [],
-                  "type": "object"
-                },
-                "maxItems": 40,
-                "minItems": 1,
-                "type": "array"
-              },
-              "field": {
-                "type": "string"
-              },
-              "not": {
-                "additionalProperties": {},
-                "properties": {},
-                "required": [],
-                "type": "object"
-              },
-              "operator": {
-                "type": "string"
-              },
-              "value": {}
-            },
-            "required": [],
-            "type": "object"
-          },
-          "sort": {
-            "items": {
-              "properties": {
-                "direction": {
-                  "type": "string"
-                },
-                "field": {
-                  "type": "string"
-                }
-              },
-              "required": [
-                "field",
-                "direction"
-              ],
-              "type": "object"
-            },
-            "type": "array"
-          }
-        },
-        "required": [
-          "libraryId",
-          "pivot",
-          "query",
-          "sort",
-          "presentation"
-        ],
-        "type": "object"
-      },
       "expectedRevision": {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
         "type": "integer"
       },
-      "kind": {
-        "type": "string"
-      },
-      "name": {
-        "type": "string"
-      },
       "operationId": {
         "type": "string"
       },
-      "profileId": {
-        "type": "string"
-      },
-      "removeEntryIds": {
-        "items": {
-          "type": "string"
-        },
-        "type": "array"
-      },
-      "role": {
-        "type": "string"
-      },
-      "summary": {
-        "type": "string"
-      },
-      "visibility": {
-        "type": "string"
+      "pinned": {
+        "type": "boolean"
       }
     },
     "required": [
       "operationId",
-      "expectedRevision"
+      "expectedRevision",
+      "pinned"
     ],
     "type": "object"
   },
@@ -94112,7 +93441,7 @@ export const schemas = {
   },
   "PutShowsIdMetadataScreenSeasonRequest": {
     "properties": {
-      "candidateKey": {
+      "anilistId": {
         "type": "string"
       },
       "expectedRevision": {
@@ -94120,14 +93449,16 @@ export const schemas = {
         "minimum": -9007199254740991,
         "type": "integer"
       },
-      "order": {
-        "type": "string"
+      "season": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
       }
     },
     "required": [
       "expectedRevision",
-      "candidateKey",
-      "order"
+      "season",
+      "anilistId"
     ],
     "type": "object"
   },

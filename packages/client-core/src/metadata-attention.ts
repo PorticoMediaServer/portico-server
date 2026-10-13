@@ -1,3 +1,4 @@
+import {encodedRoutePath, routePath} from "../../contracts/src/routes.ts";
 import {unreadableServerResponse} from './server-messages.ts';
 import {firstOfEach,keepReadable,noteSkipped} from './tolerant.ts';
 export type AttentionIdentity=Readonly<{provider:'tmdb'|'tvdb'|'anilist';type:'movie'|'show'|'anime'|'episode';id:string}>;
@@ -35,7 +36,7 @@ export function parseMetadataAttention(raw:unknown,libraryId:string):AttentionPa
 }
 type Request=<T>(path:string,method?:string,body?:unknown)=>Promise<T>;
 export function metadataAttentionService(request:Request,libraryId:string){
- const path=`/v1/libraries/${encodeURIComponent(libraryId)}/metadata/attention`;
+ const path=encodedRoutePath("get_metadata_attention", {"id": encodeURIComponent(libraryId)});
  return Object.freeze({
   async list(cursor='',limit=25,includeInProgress=true){return parseMetadataAttention(await request<unknown>(`${path}?cursor=${encodeURIComponent(cursor)}&limit=${limit}&includeInProgress=${includeInProgress}`),libraryId);},
   async act(command:AttentionCommand){await request<unknown>(path,'POST',command);},
@@ -49,6 +50,6 @@ export function parseMetadataAttentionCounts(raw:unknown):MetadataAttentionCount
  return Object.freeze({total:raw.total,libraries:Object.freeze(libraries)});
 }
 export function serverMetadataAttentionService(request:Request){return Object.freeze({
- async counts(){return parseMetadataAttentionCounts(await request<unknown>('/v1/admin/metadata/attention/counts'));},
- async list(cursor='',limit=25,includeInProgress=false){return parseMetadataAttention(await request<unknown>(`/v1/admin/metadata/attention?cursor=${encodeURIComponent(cursor)}&limit=${limit}&includeInProgress=${includeInProgress}`),'');},
+ async counts(){return parseMetadataAttentionCounts(await request<unknown>(routePath("get_metadata_attention_counts")));},
+ async list(cursor='',limit=25,includeInProgress=false){return parseMetadataAttention(await request<unknown>(routePath("get_server_metadata_attention") + "?cursor=" + (encodeURIComponent(cursor)) + "&limit=" + (limit) + "&includeInProgress=" + (includeInProgress)),'');},
 });}

@@ -1,3 +1,5 @@
+import type {RouteResponse} from "../../contracts/src/routes.ts";
+import {routePath, encodedRoutePath} from "../../contracts/src/routes.ts";
 import {wireDurations} from './wire-units.ts';
 import {unreadableServerResponse} from './server-messages.ts';
 import {firstOfEach, keepReadable, noteSkipped, oneOfOr} from './tolerant.ts';
@@ -25,7 +27,7 @@ export function savedListPath(view: 'watchlist' | 'favorites', options: Readonly
   if (options.sort) params.set('sort', options.sort);
   if (options.direction) params.set('direction', options.direction);
   if (options.cursor) params.set('cursor', options.cursor);
-  return '/v1/content?' + params;
+  return routePath("get_saved_content") + "?" + (params);
 }
 export function personalHistoryPath(options: Readonly<{ period?: HistoryPeriod; libraryId?: string; limit?: number; cursor?: string | null }> = {}): string {
   const limit = options.limit ?? 40;
@@ -35,7 +37,7 @@ export function personalHistoryPath(options: Readonly<{ period?: HistoryPeriod; 
   if (options.period) params.set('period', options.period);
   if (options.libraryId) params.set('libraryId', options.libraryId);
   if (options.cursor) params.set('cursor', options.cursor);
-  return '/v1/personal-history?' + params;
+  return routePath("get_personal_history") + "?" + (params);
 }
 export type PlaylistOccurrence = Readonly<{ id: string; kind: 'playlist_entry'; hidden: true } | { id: string; kind: 'playlist_entry'; hidden: false; media: ContentEntry }>;
 export type PlaylistCard = Readonly<{ id: string; kind: 'playlist'; title: string; subtitle?: string; count?: number; navigation: Readonly<{ view: 'playlist'; entityId: string }> }>;
@@ -251,9 +253,9 @@ export class SavedService {
   try {
    const params = new URLSearchParams({ limit: '40' }); if (cursor) params.set('cursor', cursor);
    let path: string;
-   if (selected.view === 'playlist') path = '/v1/playlists/' + encodeURIComponent(selected.playlistId) + '/content';
-   else { path = '/v1/content'; params.set('view', selected.view); if (selected.sort) params.set('sort', selected.sort); if (selected.direction) params.set('direction', selected.direction); if ('filter' in selected && selected.filter) params.set('filter', selected.filter); }
-   const [raw, rawResource] = await this.deadline(Promise.all([api.request<unknown>(path + '?' + params, 'GET', undefined, controller.signal), selected.view === 'playlist' ? api.request<unknown>('/v1/playlists/' + encodeURIComponent(selected.playlistId), 'GET', undefined, controller.signal) : Promise.resolve(null)]), controller);
+   if (selected.view === 'playlist') path = encodedRoutePath("get_playlists_id_content", {"id": encodeURIComponent(selected.playlistId)});
+   else { path = routePath("get_saved_content"); params.set('view', selected.view); if (selected.sort) params.set('sort', selected.sort); if (selected.direction) params.set('direction', selected.direction); if ('filter' in selected && selected.filter) params.set('filter', selected.filter); }
+   const [raw, rawResource] = await this.deadline(Promise.all([api.request<unknown>(path + '?' + params, 'GET', undefined, controller.signal), selected.view === 'playlist' ? api.request<RouteResponse<"get_playlists_id">>(encodedRoutePath("get_playlists_id", {"id": encodeURIComponent(selected.playlistId)}), 'GET', undefined, controller.signal) : Promise.resolve(null)]), controller);
    if (this.disposed || generation !== this.generation || read !== this.readGeneration) return;
    const parsed = projection(raw, bound, selected), playlist = selected.view === 'playlist' ? resource(rawResource, bound, selected.playlistId) : null;
    // Two reads that disagree with each other, or one older than a change confirmed here, are not shown; the next hint reads again.
@@ -295,9 +297,9 @@ export class SavedService {
    try {
     const params = new URLSearchParams({ limit: '40' }); if (cursor) params.set('cursor', cursor);
     let path: string;
-    if (selected.view === 'playlist') path = '/v1/playlists/' + encodeURIComponent(selected.playlistId) + '/content';
-    else { path = '/v1/content'; params.set('view', selected.view); if (selected.sort) params.set('sort', selected.sort); if (selected.direction) params.set('direction', selected.direction); if ('filter' in selected && selected.filter) { if (!savedListFilters.includes(selected.filter)) throw new Error('Unknown saved list filter.'); params.set('filter', selected.filter); } }
-    const [raw, rawResource] = await this.deadline(Promise.all([api.request<unknown>(path + '?' + params, 'GET', undefined, controller.signal), selected.view === 'playlist' ? api.request<unknown>('/v1/playlists/' + encodeURIComponent(selected.playlistId), 'GET', undefined, controller.signal) : Promise.resolve(null)]), controller);
+    if (selected.view === 'playlist') path = encodedRoutePath("get_playlists_id_content", {"id": encodeURIComponent(selected.playlistId)});
+    else { path = routePath("get_saved_content"); params.set('view', selected.view); if (selected.sort) params.set('sort', selected.sort); if (selected.direction) params.set('direction', selected.direction); if ('filter' in selected && selected.filter) { if (!savedListFilters.includes(selected.filter)) throw new Error('Unknown saved list filter.'); params.set('filter', selected.filter); } }
+    const [raw, rawResource] = await this.deadline(Promise.all([api.request<unknown>(path + '?' + params, 'GET', undefined, controller.signal), selected.view === 'playlist' ? api.request<RouteResponse<"get_playlists_id">>(encodedRoutePath("get_playlists_id", {"id": encodeURIComponent(selected.playlistId)}), 'GET', undefined, controller.signal) : Promise.resolve(null)]), controller);
     if (this.disposed || generation !== this.generation || read !== this.readGeneration) return;
     const parsed = projection(raw, bound, selected), playlist = selected.view === 'playlist' ? resource(rawResource, bound, selected.playlistId) : null;
     if (playlist && this.state.lastReceipt?.playlistId === playlist.id && playlist.revision < this.state.lastReceipt.revision) throw new Failure('stale_continuation', 'The server returned a playlist older than the confirmed change. Refresh again.', true);
@@ -377,16 +379,16 @@ export class SavedService {
   try {
    if (!c.operationId) { this.allowed(c.intent); if (c.intent.action === 'reorder' && c.orderRevision !== this.state.playlist?.revision) throw new Failure('playlist_conflict', 'The playlist changed after this order was chosen. Reload and review before retrying.', true); const value = await this.deadline(this.requestId(), controller); if (!uuid.test(value)) throw new Failure('invalid_request_id', 'A UUIDv4 operation ID is required.'); if (generation !== this.generation || this.disposed) return; c.operationId = value; c.body = { operationId: value, ...(c.intent.action === 'create' ? {} : { expectedRevision: c.intent.action==='pin'?this.state.playlist!.pinRevision:c.orderRevision ?? this.state.playlist!.revision }) }; }
    if (!selected || !fence) throw new Failure('saved_required', 'Reload Saved before retrying.', true);
-   const value = c.intent; let path = '/v1/playlists', method = 'POST'; const body = { ...c.body };
-   if (value.action !== 'create') { if (selected.view !== 'playlist') throw new Error('Playlist is not selected.'); path += '/' + encodeURIComponent(selected.playlistId); }
+   const value = c.intent; let path: string = routePath("post_playlists"), method = 'POST'; const body = { ...c.body };
+   if (value.action !== 'create') { if (selected.view !== 'playlist') throw new Error('Playlist is not selected.'); path=encodedRoutePath(value.action==='rename'?'patch_playlists_id':'get_playlists_id',{id:encodeURIComponent(selected.playlistId)}); }
    switch (value.action) {
-    case 'pin': path='/v1/saved-pins/playlist/'+encodeURIComponent(this.state.playlist!.id);method='PUT';body.pinned=value.pinned;break;
+    case 'pin': path=encodedRoutePath("put_saved_pins_kind_id", {"kind": "playlist", "id": encodeURIComponent(this.state.playlist!.id)});method='PUT';body.pinned=value.pinned;break;
     case 'create': case 'rename': if(value.action==='create'&&value.itemIds)body.itemIds=value.itemIds;if (value.action === 'rename') method = 'PATCH'; if (value.name !== undefined) body.name = value.name; if (value.summary !== undefined) body.summary = value.summary; break;
-    case 'add': path += '/entries'; body.itemId = value.itemId; break;
-    case 'remove': path += '/entries/' + encodeURIComponent(value.entryId); method = 'DELETE'; break;
-    case 'reorder': path += '/order'; method = 'PUT'; body.entryIds = value.entryIds; if (value.afterEntryId !== undefined) body.afterEntryId = value.afterEntryId; break;
-    case 'delete': method = 'DELETE'; break;
-    case 'share': case 'unshare': path += '/shares'; method = value.action === 'share' ? 'PUT' : 'DELETE'; Object.assign(body, value.actor); if (value.action === 'share') body.role = value.role; break;
+    case 'add': path = encodedRoutePath('post_playlists_id_entries',{id:encodeURIComponent((selected as {playlistId:string}).playlistId)}); body.itemId = value.itemId; break;
+    case 'remove': path=encodedRoutePath('delete_playlists_id_entries_entryId',{id:encodeURIComponent((selected as {playlistId:string}).playlistId),entryId:encodeURIComponent(value.entryId)}); method = 'DELETE'; break;
+    case 'reorder': path=encodedRoutePath('reorder_playlist_window',{id:encodeURIComponent((selected as {playlistId:string}).playlistId)}); method = 'PUT'; body.entryIds = value.entryIds; if (value.afterEntryId !== undefined) body.afterEntryId = value.afterEntryId; break;
+    case 'delete':path=encodedRoutePath('delete_playlists_id',{id:encodeURIComponent((selected as {playlistId:string}).playlistId)}); method = 'DELETE'; break;
+    case 'share': case 'unshare':path=encodedRoutePath(value.action==='share'?'put_playlists_id_shares':'delete_playlists_id_shares',{id:encodeURIComponent((selected as {playlistId:string}).playlistId)}); method = value.action === 'share' ? 'PUT' : 'DELETE'; Object.assign(body, value.actor); if (value.action === 'share') body.role = value.role; break;
    }
    const raw = await this.deadline(api.request<unknown>(path, method, body, controller.signal), controller);
    if (this.disposed || generation !== this.generation) return;
@@ -437,7 +439,7 @@ export class SavedService {
   try {
    const query = new URLSearchParams({limit: String(limit ?? 100)});
    if (cursor) query.set('cursor', cursor);
-   const raw = await this.deadline(this.api.request<unknown>('/v1/playlists/' + encodeURIComponent(p.id) + '/order?' + query, 'GET', undefined, controller.signal), controller);
+   const raw = await this.deadline(this.api.request<RouteResponse<"get_playlist_order">>(encodedRoutePath("get_playlist_order", {"id": encodeURIComponent(p.id)}) + "?" + (query), 'GET', undefined, controller.signal), controller);
    if (this.disposed || generation !== this.generation || read !== this.orderGeneration) return;
    if (!record(raw) || raw.serverId !== this.bound.serverId || raw.viewerFence !== p.viewerFence || raw.playlistId !== p.id || !int(raw.revision)) invalid();
    const current = this.state.playlist;
@@ -456,7 +458,7 @@ export class SavedService {
   const generation = this.generation, read = ++this.orderGeneration, previous = window;
   this.publish({ orderLoading: true, orderError: null });
   try {
-   const raw = await this.deadline(this.api.request<unknown>('/v1/playlists/' + encodeURIComponent(previous.playlistId) + '/order?limit=100&cursor=' + encodeURIComponent(previous.nextCursor), 'GET', undefined, controller.signal), controller);
+   const raw = await this.deadline(this.api.request<RouteResponse<"get_playlist_order">>(encodedRoutePath("get_playlist_order", {"id": encodeURIComponent(previous.playlistId)}) + "?limit=100&cursor=" + (encodeURIComponent(previous.nextCursor)), 'GET', undefined, controller.signal), controller);
    if (this.disposed || generation !== this.generation || read !== this.orderGeneration) return;
    if (!record(raw) || raw.serverId !== this.bound.serverId || raw.viewerFence !== previous.viewerFence || raw.playlistId !== previous.playlistId || !int(raw.revision)) invalid();
    if (raw.revision !== previous.revision) throw new Failure('stale_continuation', 'The playlist changed. Restart its order from the first page.', true);
@@ -475,7 +477,7 @@ export class SavedService {
   this.publish({ candidatesLoading: true, candidatesError: null });
   try {
    const query = new URLSearchParams({ limit: '40' }); if (cursor) query.set('cursor', cursor);
-   const raw = await this.deadline(this.api.request<unknown>('/v1/playlists/' + encodeURIComponent(selected.playlistId) + '/share-candidates?' + query, 'GET', undefined, controller.signal), controller);
+   const raw = await this.deadline(this.api.request<RouteResponse<"get_playlists_id_share_candidates">>(encodedRoutePath("get_playlists_id_share_candidates", {"id": encodeURIComponent(selected.playlistId)}) + "?" + (query), 'GET', undefined, controller.signal), controller);
    if (this.disposed || generation !== this.generation || read !== this.candidateGeneration) return;
    if (!record(raw) || raw.serverId !== this.bound.serverId || raw.viewerFence !== p.viewerFence || raw.playlistId !== p.id || !int(raw.revision) || !text(raw.nextCursor, 4096)) invalid();
    if (raw.revision !== this.state.playlist?.revision) throw new Failure('stale_continuation', 'The playlist changed. Reload its share candidates.', true);

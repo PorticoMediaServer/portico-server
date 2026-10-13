@@ -1,3 +1,4 @@
+import {routePath, routePrefix} from "../../contracts/src/routes.ts";
 import {ApiError,HttpLocalApi,transportJSON} from './index.ts';
 import type {ServerPin} from './route-identity.ts';
 export type ClaimExpected={operationId:string;localGeneration:string;revision:string};
@@ -22,8 +23,8 @@ export class ClaimOnboarding {
  getSnapshot=()=>this.state;
  subscribe=(fn:()=>void)=>{this.listeners.add(fn);return()=>{this.listeners.delete(fn);};};
  private emit(value:ClaimSnapshot){if(this.disposed)return;this.state=value;for(const fn of this.listeners)fn();}
- private async load(signal:AbortSignal){return parseClaimStatus(await this.api.request('/v1/networking/claim','GET',undefined,signal),this.pin);}
- private async post(action:string,body:unknown,signal:AbortSignal){return parseClaimStatus(await this.api.request('/v1/networking/claim/'+action,'POST',body,signal),this.pin);}
+ private async load(signal:AbortSignal){return parseClaimStatus(await this.api.request(routePath("get_networking_claim"),'GET',undefined,signal),this.pin);}
+ private async post(action:string,body:unknown,signal:AbortSignal){return parseClaimStatus(await this.api.request(routePrefix("post_networking_claim_approve", 3)+action,'POST',body,signal),this.pin);}
  private schedule(status:ClaimStatus,delay=5000){clearTimeout(this.timer);if(!this.disposed&&status.actions.includes('continue')&&!status.approvalRequired)this.timer=setTimeout(()=>void this.refresh(true),delay);}
  private async run(work:(signal:AbortSignal)=>Promise<ClaimStatus>){
   if(this.disposed||this.state.busy)return;clearTimeout(this.timer);const controller=new AbortController();this.controller=controller;const timeout=setTimeout(()=>controller.abort(),20000);this.emit({...this.state,busy:true,error:undefined});

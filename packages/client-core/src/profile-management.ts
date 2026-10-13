@@ -1,3 +1,7 @@
+import {routeBody} from "../../contracts/src/routes.ts";
+import type {RouteResponse} from "../../contracts/src/routes.ts";
+import {routePath as hostedRoutePath} from "../../contracts/src/hosted/routes.ts";
+import {routePath, encodedRoutePath} from "../../contracts/src/routes.ts";
 import {CodedError,unreadableServerResponse} from './server-messages.ts';
 import {parseLocalSession,currentUTCTimestamp} from './local-session.ts';
 import type {LocalSession} from './index.ts';
@@ -84,7 +88,7 @@ export function parseDirectSignIn(raw:unknown):DirectSignIn{
 }
 /** `POST /v1/direct/sign-in`. */
 export async function directSignIn(api:ProfileAPI,username:string,password:string,signal?:AbortSignal):Promise<DirectSignIn>{
- return parseDirectSignIn(await api.request<unknown>('/v1/direct/sign-in','POST',{username,password},signal));
+ return parseDirectSignIn(await api.request<RouteResponse<"post_direct_sign_in">>(routePath("post_direct_sign_in"),'POST',routeBody("post_direct_sign_in", {username,password}),signal));
 }
 /** Development builds only: the server's seeded e2e owner, if it has one (`GET /v1/dev/e2e`; 404 otherwise). */
 export async function devE2EUsername(api:ProfileAPI,signal?:AbortSignal):Promise<string|undefined>{
@@ -97,7 +101,7 @@ export async function devE2ESignIn(api:ProfileAPI,username:string,signal?:AbortS
 /** Finishes a two-step sign-in: the challenge token and an authenticator or recovery code (`POST /v1/auth/two-factor/challenge`). */
 export async function completeDirectSignInChallenge(api:ProfileAPI,token:string,code:string,signal?:AbortSignal):Promise<DirectSignIn>{
  if(!text(token,256)||!text(code.trim(),64))throw new CodedError('code_required','Enter the code from your authenticator app or a recovery code.');
- const result=parseDirectSignIn(await api.request<unknown>('/v1/auth/two-factor/challenge','POST',{token,code:code.trim()},signal));
+ const result=parseDirectSignIn(await api.request<RouteResponse<"post_auth_two_factor_challenge">>(routePath("post_auth_two_factor_challenge"),'POST',routeBody("post_auth_two_factor_challenge", {token,code:code.trim()}),signal));
  if(result.kind==='challenge')invalid();
  return result;
 }
@@ -106,7 +110,7 @@ export async function completeDirectSignInChallenge(api:ProfileAPI,token:string,
  * bearer, `POST /v1/direct/password {currentPassword, newPassword}`; then sign in again.
  */
 export async function changeRequiredPassword(api:ProfileAPI,currentPassword:string,newPassword:string,signal?:AbortSignal):Promise<void>{
- await api.request('/v1/direct/password','POST',{currentPassword,newPassword},signal);
+ await api.request(routePath("post_direct_password"),'POST',routeBody("post_direct_password", {currentPassword,newPassword}),signal);
 }
 export function parseTrustedProfile(raw:unknown,scope:ProfileScope&{profileId:string;installationId:string},now=Date.now()):TrustedProfile{
  if(!obj(raw)||raw.authority!==scope.authority||raw.accountId!==scope.accountId||raw.profileId!==scope.profileId||raw.serverId!==scope.serverId||raw.installationId!==scope.installationId||!text(raw.token,4096)||!revision(raw.pinRevision)||!revision(raw.profileRevision)||!currentUTCTimestamp(raw.expiresAt)||Date.parse(raw.expiresAt)<=now||Date.parse(raw.expiresAt)>now+30*86400000+60000)invalid();
@@ -116,7 +120,7 @@ export function parseTrustedProfile(raw:unknown,scope:ProfileScope&{profileId:st
 }
 export async function selectDirectProfile(api:ProfileAPI,scope:ProfileScope&{serverId:string},profileId:string,input:ProfileSelectionInput,signal?:AbortSignal):Promise<DirectSelection>{
  if(scope.authority!=='local'||!text(profileId,128)||(input.pin!==undefined&&input.pin!==''&&!/^\d{4}$/.test(input.pin)))throw new CodedError('pin_format','Enter the four-digit profile PIN.');
- const raw=await api.request<unknown>('/v1/direct/profiles/'+encodeURIComponent(profileId)+'/select','POST',input,signal);if(!obj(raw))invalid();
+ const raw=await api.request<RouteResponse<"post_direct_profiles_id_select">>(encodedRoutePath("post_direct_profiles_id_select", {"id": encodeURIComponent(profileId)}),'POST',input,signal);if(!obj(raw))invalid();
  const session=parseLocalSession(raw.session,{authority:'local',accountId:scope.accountId,serverId:scope.serverId,profileId});
  const trustedSelection=raw.trustedSelection===undefined?undefined:parseTrustedProfile(raw.trustedSelection,{...scope,profileId,installationId:input.installationId??''});
  return Object.freeze({session,...(trustedSelection?{trustedSelection}:{})});
@@ -129,8 +133,8 @@ export function trustScopeKey(scope:ProfileScope&{profileId:string;installationI
 export class ManagedProfilesClient {
  readonly api:ProfileAPI;readonly scope:ProfileScope;
  constructor(api:ProfileAPI,scope:ProfileScope){if(!text(scope.accountId,128)||!['local','hosted'].includes(scope.authority)||(scope.authority==='local'&&!text(scope.serverId,128)))throw new Error('An account profile scope is required.');this.api=api;this.scope=Object.freeze({...scope});}
- private path(profileId?:string):string{return(this.scope.authority==='local'?'/v1/direct':'/v1/account')+'/profiles'+(profileId?'/'+encodeURIComponent(profileId):'');}
- async list(signal?:AbortSignal):Promise<readonly ManagedProfile[]>{const raw=await this.api.request<unknown>(this.scope.authority==='local'?'/v1/direct':this.path(),'GET',undefined,signal);if(this.scope.authority==='local')return parseDirectSnapshot(raw,this.scope,true).profiles;if(!obj(raw)||raw.accountId!==this.scope.accountId||raw.maxProfiles!==8)invalid();return parseManagedProfiles(raw.profiles,true);}
+ private path(profileId?:string):string{return(this.scope.authority==='local'?routePath("get_direct_account"):hostedRoutePath("account_get"))+'/profiles'+(profileId?'/'+encodeURIComponent(profileId):'');}
+ async list(signal?:AbortSignal):Promise<readonly ManagedProfile[]>{const raw=await this.api.request<RouteResponse<"get_direct_account"> & Record<string,unknown>>(this.scope.authority==='local'?routePath("get_direct_account"):this.path(),'GET',undefined,signal);if(this.scope.authority==='local')return parseDirectSnapshot(raw,this.scope,true).profiles;if(!obj(raw)||raw.accountId!==this.scope.accountId||raw.maxProfiles!==8)invalid();return parseManagedProfiles(raw.profiles,true);}
  async create(name:string,art:ProfileArt='blue',signal?:AbortSignal):Promise<void>{if(!text(name.trim(),120)||!PROFILE_ART.includes(art))throw new Error('Enter a profile name.');await this.api.request(this.path(),'POST',{name:name.trim(),art},signal);}
  async edit(profile:ManagedProfile,change:{name?:string;art?:ProfileArt;pin?:string;policy?:ProfilePolicy},signal?:AbortSignal):Promise<void>{
   if(change.pin!==undefined&&change.pin!==''&&!/^\d{4}$/.test(change.pin))throw new Error('Use exactly four numeric digits for the profile PIN.');
@@ -140,7 +144,7 @@ export class ManagedProfilesClient {
   await this.api.request(this.path(profile.id),'PATCH',{...change,...(policy?{policy}:{}),expectedRevision:profile.revision},signal);
  }
  async order(profiles:readonly ManagedProfile[],signal?:AbortSignal):Promise<void>{await this.api.request(this.path()+'/order','PUT',{profiles:profiles.map(p=>({id:p.id,revision:p.revision}))},signal);}
- async forgetTrust(profileId:string,signal?:AbortSignal):Promise<void>{await this.api.request(this.scope.authority==='local'?'/v1/direct/trust':this.path(profileId)+'/trust','DELETE',this.scope.authority==='local'?{profileId}:undefined,signal);}
+ async forgetTrust(profileId:string,signal?:AbortSignal):Promise<void>{await this.api.request(this.scope.authority==='local'?routePath("delete_direct_trust"):this.path(profileId)+'/trust','DELETE',this.scope.authority==='local'?{profileId}:undefined,signal);}
  async policies(profileId:string,signal?:AbortSignal):Promise<readonly ProfilePolicy[]>{
   if(this.scope.authority==='local'){const rows=await this.list(signal);const p=rows.find(v=>v.id===profileId);if(!p)invalid();return[{serverId:this.scope.serverId!,allowedLibraries:p.allowedLibraries??null}];}
   const raw=await this.api.request<unknown>(this.path(profileId)+'/policies','GET',undefined,signal);if(!obj(raw)||!Array.isArray(raw.items)||raw.items.length>1000)invalid();return raw.items.map(v=>{if(!obj(v)||!text(v.serverId,128))invalid();return Object.freeze({serverId:v.serverId,allowedLibraries:v.allowedLibraries===null?null:ids(v.allowedLibraries)});});

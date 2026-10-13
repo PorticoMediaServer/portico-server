@@ -1,3 +1,5 @@
+import type {RouteResponse} from "../../contracts/src/routes.ts";
+import {routePath, encodedRoutePath} from "../../contracts/src/routes.ts";
 import {wireDurations} from './wire-units.ts';
 import {unreadableServerResponse} from './server-messages.ts';
 import {firstOfEach,keepReadable,noteSkipped,oneOfOr} from './tolerant.ts';
@@ -101,7 +103,7 @@ export function parsePersonalBatchReceipt(v:unknown,serverId:string,requested:re
  if(results.filter(r=>r.ok).length!==v.updated||results.filter(r=>!r.ok).length!==v.failed)bad();
  return Object.freeze({serverId,viewerFence:v.viewerFence,operationId:v.operationId,results:Object.freeze(results),updated:v.updated,failed:v.failed});
 }
-export const PERSONAL_BATCH_PATH='/v1/items/personal-state:batch';
+export const PERSONAL_BATCH_PATH=routePath("put_items_personal_state_batch");
 function info(e:unknown):PersonalSavedError{const x=e as {code?:unknown};const code=id(x?.code)?x.code:'request_failed';return {code,message:e instanceof Error?e.message:'The request failed.',conflict:['playlist_conflict','resource_conflict','personal_state_conflict','stale_continuation','operation_expired'].includes(code)};}
 function freeze<T>(v:T):T{if(v&&typeof v==='object'){for(const c of Object.values(v))freeze(c);Object.freeze(v);}return v;}
 export function isPersonalSavedRoute(route:SavedRoute|null):boolean{return !!route&&['collections','views','history','resource'].includes(route.view);}
@@ -173,7 +175,7 @@ export class PersonalSavedService{
   const route=this.state.route,g=this.generation,ticket=++this.readTicket;if(!route||this.disposed)return;if(!quiet)this.publish({loading:true,error:null});
   try{
    const query=new URLSearchParams({limit:'40',...(cursor?{cursor}:{})});
-   const path=route.view==='resource'?'/v1/saved-resources/'+encodeURIComponent(route.resourceId!)+'/content':route.view==='history'?'/v1/personal-history':'/v1/saved-resources';
+   const path=route.view==='resource'?encodedRoutePath("get_saved_resources_id_content", {"id": encodeURIComponent(route.resourceId!)}):route.view==='history'?routePath("get_personal_history"):routePath("get_saved_resources");
    if(route.view==='collections'||route.view==='views')query.set('kind',route.view==='collections'?'collection':'view');
    if(route.view==='history'&&'period'in route&&route.period)query.set('period',route.period);
    const raw=await this.request<unknown>(path+'?'+query);if(!this.alive(g)||ticket!==this.readTicket)return;
@@ -200,25 +202,25 @@ export class PersonalSavedService{
    // A quiet read that failed leaves the page as it was; one the server answered with "gone" or "not yours" becomes the page's own state through an ordinary load.
    if(quiet){if(quiet.signal?.aborted)return;if(['unauthorized','forbidden','not_found','scope_changed','invalid_saved','invalid_cursor','stale_continuation'].includes(error.code))return this.load(null,[]);throw e;}this.publish({loading:false,error,...(['unauthorized','forbidden','not_found','scope_changed','invalid_saved'].includes(error.code)?{resources:[],resource:null,entries:[],browse:null,viewerFence:''}:{})});}
  }
- async loadLibraries():Promise<void>{const g=this.generation;try{const raw=await this.request<unknown>('/v1/libraries');if(!this.alive(g))return;if(!obj(raw))bad();const libraries=distinct(keepReadable('personal-saved','libraries',rows(raw.items,2048),v=>{if(!obj(v)||!id(v.id)||!str(v.name,512)||!id(v.kind))bad();return{id:v.id,name:v.name,kind:v.kind};}),'libraries');this.publish({libraries});}catch(e){if(this.alive(g))this.publish({error:info(e)});}}
+ async loadLibraries():Promise<void>{const g=this.generation;try{const raw=await this.request<RouteResponse<"get_libraries">>(routePath("get_libraries"));if(!this.alive(g))return;if(!obj(raw))bad();const libraries=distinct(keepReadable('personal-saved','libraries',rows(raw.items,2048),v=>{if(!obj(v)||!id(v.id)||!str(v.name,512)||!id(v.kind))bad();return{id:v.id,name:v.name,kind:v.kind};}),'libraries');this.publish({libraries});}catch(e){if(this.alive(g))this.publish({error:info(e)});}}
  async loadCandidates(cursor=''):Promise<void>{const r=this.state.resource,g=this.generation,ticket=++this.candidateTicket;if(!r?.actions.includes('share'))return;
-  try{const raw=await this.request<unknown>('/v1/saved-resources/'+encodeURIComponent(r.id)+'/share-candidates?'+new URLSearchParams({limit:'40',...(cursor?{cursor}:{})}));if(!this.alive(g)||ticket!==this.candidateTicket)return;
+  try{const raw=await this.request<RouteResponse<"get_saved_resources_id_share_candidates">>(encodedRoutePath("get_saved_resources_id_share_candidates", {"id": encodeURIComponent(r.id)}) + "?" + (new URLSearchParams({limit:'40',...(cursor?{cursor}:{})})));if(!this.alive(g)||ticket!==this.candidateTicket)return;
    if(!obj(raw)||raw.serverId!==this.scope.serverId||raw.viewerFence!==r.viewerFence||raw.resourceId!==r.id||raw.revision!==r.revision||!str(raw.nextCursor,4096))bad();const candidates=distinct(keepReadable('personal-saved','candidates',rows(raw.candidates),c=>{if(!obj(c)||!id(c.id)||!str(c.displayName,512))bad();return {...actor(c),id:c.id,displayName:c.displayName};}),'candidates');this.publish({candidates,candidateCursor:raw.nextCursor});
   }catch(e){if(this.alive(g)&&ticket===this.candidateTicket)this.publish({error:info(e)});}}
  async mutate(intent:PersonalSavedIntent):Promise<boolean>{
   if(this.disposed||this.state.loading||this.state.pending||this.command)throw new Error('Finish or dismiss the outstanding change before starting another.');
   const r=this.state.resource,g=this.generation,route=this.state.route;if(!route||!this.state.viewerFence)throw new Error('Reload Saved before changing it.');
-  let path='/v1/saved-resources',method='POST',body:Record<string,unknown>={expectedRevision:r?.revision??0};
+  let path: string=routePath("post_saved_resources"),method='POST',body:Record<string,unknown>={expectedRevision:r?.revision??0};
   if(intent.action==='create'){if(route.view!=='collections'&&route.view!=='views')throw new Error('Open the matching resource directory.');Object.assign(body,{kind:intent.kind,name:intent.name,summary:intent.summary??'',...(intent.visibility?{visibility:visibility(intent.visibility)}:{}),...(intent.definition?{definition:definition(intent.definition)}:{})});}
-  else if(intent.action==='clear-history'||intent.action==='reset-viewing-activity'){if(route.view!=='history')throw new Error('Open viewing history.');path='/v1/personal-history/actions';body={expectedRevision:this.state.revision,action:intent.action};}
+  else if(intent.action==='clear-history'||intent.action==='reset-viewing-activity'){if(route.view!=='history')throw new Error('Open viewing history.');path=routePath("post_personal_history_actions");body={expectedRevision:this.state.revision,action:intent.action};}
   else{
-   const action=intent.action==='unshare'?'share':intent.action;if(!r||!r.actions.includes(action))throw new Error('This action is not currently available to your profile.');path+='/'+encodeURIComponent(r.id);
+   const action=intent.action==='unshare'?'share':intent.action;if(!r||!r.actions.includes(action))throw new Error('This action is not currently available to your profile.');const resourceId=encodeURIComponent(r.id);
    switch(intent.action){
-    case 'update':method='PATCH';Object.assign(body,{...(intent.name!==undefined?{name:intent.name}:{}),...(intent.summary!==undefined?{summary:intent.summary}:{}),...(intent.visibility!==undefined?{visibility:visibility(intent.visibility)}:{}),...(intent.definition?{definition:definition(intent.definition)}:{})});break;
-    case 'delete':method='DELETE';break;
-    case 'entries':method='PUT';path+='/entries';if((intent.addItemIds?.length??0)>100||(intent.removeEntryIds?.length??0)>100||intent.addItemIds?.some(x=>!id(x))||intent.removeEntryIds?.some(x=>!id(x)))throw new Error('Invalid collection entries.');Object.assign(body,{addItemIds:intent.addItemIds??[],removeEntryIds:intent.removeEntryIds??[]});break;
-    case 'share':case 'unshare':path+='/shares';method=intent.action==='share'?'PUT':'DELETE';Object.assign(body,actor(intent.actor));if(intent.action==='share')body.role=intent.role;break;
-    case 'pin':path='/v1/saved-pins/'+r.kind+'/'+encodeURIComponent(r.id);method='PUT';body={expectedRevision:r.pinRevision,pinned:intent.pinned};break;
+    case 'update':path=encodedRoutePath('patch_saved_resources_id',{id:resourceId});method='PATCH';Object.assign(body,{...(intent.name!==undefined?{name:intent.name}:{}),...(intent.summary!==undefined?{summary:intent.summary}:{}),...(intent.visibility!==undefined?{visibility:visibility(intent.visibility)}:{}),...(intent.definition?{definition:definition(intent.definition)}:{})});break;
+    case 'delete':path=encodedRoutePath('delete_saved_resources_id',{id:resourceId});method='DELETE';break;
+    case 'entries':method='PUT';path=encodedRoutePath('put_saved_resources_id_entries',{id:resourceId});if((intent.addItemIds?.length??0)>100||(intent.removeEntryIds?.length??0)>100||intent.addItemIds?.some(x=>!id(x))||intent.removeEntryIds?.some(x=>!id(x)))throw new Error('Invalid collection entries.');Object.assign(body,{addItemIds:intent.addItemIds??[],removeEntryIds:intent.removeEntryIds??[]});break;
+    case 'share':case 'unshare':path=encodedRoutePath(intent.action==='share'?'put_saved_resources_id_shares':'delete_saved_resources_id_shares',{id:resourceId});method=intent.action==='share'?'PUT':'DELETE';Object.assign(body,actor(intent.actor));if(intent.action==='share')body.role=intent.role;break;
+    case 'pin':path=encodedRoutePath("put_saved_pins_kind_id", {"kind": r.kind, "id": encodeURIComponent(r.id)});method='PUT';body={expectedRevision:r.pinRevision,pinned:intent.pinned};break;
    }
   }
   this.publish({pending:true,mutationError:null,result:null});

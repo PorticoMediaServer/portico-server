@@ -1,3 +1,4 @@
+import {routePath, encodedRoutePath} from "../../../../contracts/src/routes.ts";
 /**
  * A fake Portico playback server built from `Spec — Playback Protocol v1.md` (§3–§9, §14, §15, §16)
  * and the API style guide, for client tests before lane C's server exists. In memory; enforces
@@ -175,17 +176,17 @@ export class FakePlaybackServer {
     let match: RegExpExecArray | null;
 
     if ((match = /^\/v1\/media\/grant-([^/]+)\/audio$/.exec(pathOnly)) && (m === 'GET' || m === 'HEAD')) return this.audioBytes(match[1]!, h('Range'), m === 'HEAD');
-    if (m === 'PUT' && pathOnly === '/v1/me/devices/current/capabilities') { this.capabilities.set(this.o.deviceId, body); return {status: 204, headers: {}}; }
-    if (m === 'GET' && pathOnly === '/v1/events') return this.poll(q, r.signal);
+    if (m === 'PUT' && pathOnly === routePath("get_device_capabilities")) { this.capabilities.set(this.o.deviceId, body); return {status: 204, headers: {}}; }
+    if (m === 'GET' && pathOnly === routePath("get_events")) return this.poll(q, r.signal);
     // Listening (music and books): the viewer's preferences and an item's context.
-    if (m === 'GET' && pathOnly === '/v1/listening/preferences') return {status: 200, headers: {}, body: {scope: this.viewerScope(), data: {revision: 1, musicRate: 1, bookRate: 1, autoplayNext: this.o.autoplayNext ?? true, passoutMinutes: 0}}};
+    if (m === 'GET' && pathOnly === routePath("get_listening_preferences")) return {status: 200, headers: {}, body: {scope: this.viewerScope(), data: {revision: 1, musicRate: 1, bookRate: 1, autoplayNext: this.o.autoplayNext ?? true, passoutMinutes: 0}}};
     if ((match = /^\/v1\/items\/([^/]+)\/listening$/.exec(pathOnly)) && m === 'GET') {
       const item = decodeURIComponent(match[1]!);
       return {status: 200, headers: {}, body: {scope: this.viewerScope(), data: {itemId: item, libraryId: 'library', kind: this.kindOf(item)}}};
     }
-    if (m === 'GET' && pathOnly === '/v1/me/devices') return {status: 200, headers: {}, body: {items: (this.o.devices ?? []).filter(d => d.id !== this.o.deviceId).map(d => ({...d, nowPlaying: this.nowPlaying(d.id)})), page: {limit: 50}}};
+    if (m === 'GET' && pathOnly === routePath('get_me')+'/devices') return {status: 200, headers: {}, body: {items: (this.o.devices ?? []).filter(d => d.id !== this.o.deviceId).map(d => ({...d, nowPlaying: this.nowPlaying(d.id)})), page: {limit: 50}}};
     if ((match = /^\/v1\/items\/([^/]+)\/playback-options$/.exec(pathOnly)) && m === 'GET') return {status: 200, headers: {}, body: this.options(decodeURIComponent(match[1]!), q)};
-    if (m === 'POST' && pathOnly === '/v1/playback/sessions') return this.start(h('Idempotency-Key'), body);
+    if (m === 'POST' && pathOnly === routePath("start_playback_session")) return this.start(h('Idempotency-Key'), body);
     if ((match = /^\/v1\/playback\/sessions\/([^/]+)\/transfers$/.exec(pathOnly)) && m === 'POST') return this.offer(decodeURIComponent(match[1]!), body);
     if ((match = /^\/v1\/playback\/sessions\/([^/]+)(\/timeline)?$/.exec(pathOnly))) {
       const s = this.sessions.get(decodeURIComponent(match[1]!));
@@ -195,9 +196,9 @@ export class FakePlaybackServer {
       if (m === 'GET') return s ? {status: 200, headers: {ETag: etag(s.revision)}, body: this.view(s)} : this.error(404, 'session_not_found');
     }
     if ((match = /^\/v1\/devices\/([^/]+)\/commands$/.exec(pathOnly)) && m === 'POST') return this.command(decodeURIComponent(match[1]!), body);
-    if (m === 'POST' && pathOnly === '/v1/queues') return this.createQueue(body);
+    if (m === 'POST' && pathOnly === routePath("create_queue")) return this.createQueue(body);
     if ((match = /^\/v1\/queues\/([^/:]+)(.*)$/.exec(pathOnly))) return this.queueRoute(m, decodeURIComponent(match[1]!), match[2]!, q, h('If-Match'), body);
-    if (m === 'GET' && pathOnly === '/v1/admin/sessions') return this.adminList(q);
+    if (m === 'GET' && pathOnly === routePath("list_admin_sessions")) return this.adminList(q);
     if ((match = /^\/v1\/admin\/sessions\/([^/:]+):terminate$/.exec(pathOnly)) && m === 'POST') return this.terminate(decodeURIComponent(match[1]!), body);
     return this.error(404, 'not_found');
   }
@@ -239,9 +240,9 @@ export class FakePlaybackServer {
       ...(s.ended ? {end: {reason: s.endReason ?? 'stopped', ...(s.terminatedMessage ? {message: s.terminatedMessage} : {})}} : {}),
       lease: {expiresAt: new Date(s.lastActivity + this.o.leaseMs).toISOString(), reportEveryMs: this.o.reportEveryMs},
       presentation: {
-        generation: s.generation, mode: 'stream', url: `/v1/media/grant-${s.id}/${s.generation}/master.m3u8`, startPositionMs: s.positionMs,
+        generation: s.generation, mode: 'stream', url: encodedRoutePath('get_media_grant_file',{grant:'grant-'+s.id,file:s.generation+'/master.m3u8'}), startPositionMs: s.positionMs,
         engine: this.o.engine ?? 'native', quality, audioTrackId: (s.audio as {trackId?: string} | undefined)?.trackId ?? 'a1', subtitle: {trackId: 's4', kind: 'text', delivery: 'sidecar'},
-        subtitles: [{trackId: 's4', format: 'webvtt', url: `/v1/media/subtitles/grant-${s.id}/s4/${s.generation}.vtt`}],
+        subtitles: [{trackId: 's4', format: 'webvtt', url: encodedRoutePath('get_v1_media_subtitles_grant_resource_revision_vtt',{grant:'grant-'+s.id,resource:'s4',revision:String(s.generation)})}],
         decision: {video: {action: transcoded ? 'transcode' : 'copy', reasons: transcoded ? ['bitrate_above_request'] : []}, audio: {action: 'copy', reasons: []}, subtitles: {action: 'sidecar'}},
         ...(s.kind === 'audio' ? {audioRender: this.renderPlan(s.id, s.generation, s.itemId)} : {}),
       },
@@ -290,12 +291,12 @@ export class FakePlaybackServer {
       if (!decode.some(d => fits(d, container, codec, sampleRate))) {
         if (!decode.some(d => d.codec === 'flac' && (d.containers ?? []).includes('flac')))
           return {version: 2, mode: 'unavailable', id, reason: 'This device can’t decode this audio, and it declares no format Portico could convert it to.'};
-        return {version: 2, mode: 'converted', id, reason: `This device can’t decode ${codec.toUpperCase()}, so Portico converts it to FLAC.`, url: `/v1/media/grant-${sessionId}/audio?format=flac`,
+        return {version: 2, mode: 'converted', id, reason: `This device can’t decode ${codec.toUpperCase()}, so Portico converts it to FLAC.`, url: encodedRoutePath('get_media_grant_audio',{grant:'grant-'+sessionId})+'?format=flac',
           container: 'flac', codec: 'flac', sampleRate, channels, durationFrames: src?.durationFrames ?? 180 * 44100, trim: {startFrames: 0, endFrames: 0, source: 'flac'},
           gain: src?.gain ?? {trackDb: -6, albumDb: -5, trackPeak: 0.9, albumPeak: 0.95, source: 'tags'}};
       }
     }
-    return {version: 2, mode: 'direct', id: `m-${sessionId}-${generation}`, url: `/v1/media/grant-${sessionId}/audio`,
+    return {version: 2, mode: 'direct', id: `m-${sessionId}-${generation}`, url: encodedRoutePath('get_media_grant_audio',{grant:'grant-'+sessionId}),
       container: src?.container ?? 'flac', codec: src?.codec ?? 'flac', sampleRate: src?.sampleRate ?? 44100, channels: src?.channels ?? 2,
       bytes, prefetchBytes: Math.min(bytes, 8 << 20), durationFrames: src?.durationFrames ?? 180 * 44100,
       trim: src?.trim ?? {startFrames: 0, endFrames: 0, source: 'flac'},

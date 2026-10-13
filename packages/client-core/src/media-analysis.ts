@@ -1,3 +1,4 @@
+import {encodedRoutePath} from "../../contracts/src/routes.ts";
 import type {LibraryContentApi, ContentScope} from './library-content.ts';
 import type {PlaybackSnapshot} from './index.ts';
 import {firstOfEach,keepReadable,oneOfOr} from './tolerant.ts';
@@ -68,7 +69,7 @@ export class MediaAnalysisService {
  subscribe=(f:()=>void)=>{this.listeners.add(f);return()=>this.listeners.delete(f);};getSnapshot=()=>this.state;
  private publish(update:Partial<AnalysisState>){if(this.disposed)return;this.state=Object.freeze({...this.state,...update});for(const f of this.listeners)f();}
  dispose(){this.disposed=true;this.epoch++;for(const c of this.controllers)c.abort();this.controllers.clear();this.listeners.clear();this.pendingMarker=undefined;this.state=Object.freeze({...this.state,data:null,image:null,waveform:null});}
- private base(){return '/v1/items/'+encodeURIComponent(this.target.itemId)+'/analysis';}
+ private base(){return encodedRoutePath("get_items_id_analysis", {"id": encodeURIComponent(this.target.itemId)});}
  private body(data:AnalysisView){return {sourceId:data.source.id,sourceRevision:data.source.revision,mappingRevision:data.source.mappingRevision,sessionId:this.target.sessionId??'',generation:this.target.generation??0};}
  private query(data?:AnalysisView,positionUS?:string){const q=new URLSearchParams();const target=data?this.body(data):{sourceId:this.target.sourceId??this.selectedSource??'',sessionId:this.target.sessionId??'',generation:this.target.generation??0};for(const [k,v]of Object.entries(target)){if(v!==''&&v!==0)q.set(k,String(v));}if(positionUS!==undefined)q.set('positionUS',positionUS);return '?'+q;}
  private async request(path:string,method='GET',body?:unknown):Promise<unknown>{

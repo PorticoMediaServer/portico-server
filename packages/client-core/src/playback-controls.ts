@@ -1,3 +1,4 @@
+import {encodedRoutePath, routePath} from "../../contracts/src/routes.ts";
 import {unreadableServerResponse} from './server-messages.ts';
 export type SessionControls=Readonly<{sessionId:string;revision:string;state:string;positionMs:number;actions:readonly string[]}>;
 export type RemotePlaybackControls=SessionControls&Readonly<{device:Readonly<{id:string;name:string}>;item?:Readonly<{id:string;title:string}>;kind:string}>;
@@ -14,9 +15,9 @@ export function parseRemotePlaybackControls(v:unknown):Readonly<{items:readonly 
  return Object.freeze({items:Object.freeze(items),nextCursor:v.nextCursor});
 }
 export function playbackControlsService(request:<T>(path:string,method?:string,body?:unknown)=>Promise<T>){
- const path=(id:string)=>'/v1/admin/sessions/'+encodeURIComponent(id)+'/controls';
+ const path=(id:string)=>encodedRoutePath("get_admin_session_controls", {"id": encodeURIComponent(id)});
  return Object.freeze({
- async remote(cursor='',limit=50){return parseRemotePlaybackControls(await request<unknown>(`/v1/playback/controls?cursor=${encodeURIComponent(cursor)}&limit=${limit}`));},
+ async remote(cursor='',limit=50){return parseRemotePlaybackControls(await request<unknown>(routePath("get_remote_playback_controls") + "?cursor=" + (encodeURIComponent(cursor)) + "&limit=" + (limit)));},
  async readAdmin(id:string){return parseSessionControls(await request<unknown>(path(id)));},
  async controlAdmin(current:SessionControls,action:'pause'|'resume'|'seek',positionMs?:number){return parseSessionControls(await request<unknown>(path(current.sessionId),'POST',{action,expectedRevision:current.revision,...(positionMs===undefined?{}:{positionMs})}));},
  });

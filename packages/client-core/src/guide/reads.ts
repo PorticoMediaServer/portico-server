@@ -1,3 +1,4 @@
+import {routePath} from "../../../contracts/src/routes.ts";
 import type {ChannelApi} from '../channel-guide.ts';
 import {ApiError} from '../index.ts';
 import {guideReadCapacityExceeded} from '../server-messages.ts';
@@ -38,7 +39,7 @@ export function dedupedGuideApi(api: ChannelApi): ChannelApi {
   return {
     request<T>(path: string, method?: string, body?: unknown, signal?: AbortSignal): Promise<T> {
       if (signal?.aborted) return Promise.reject(reason(signal));
-      if ((method ?? 'GET') !== 'GET' || body !== undefined || !path.startsWith('/v1/guide')) return api.request<T>(path, method, body, signal);
+      if ((method ?? 'GET') !== 'GET' || body !== undefined || !path.startsWith(routePath("get_guide"))) return api.request<T>(path, method, body, signal);
       let reads = guideReads.get(api);
       if (!reads) guideReads.set(api, (reads = new Map()));
 

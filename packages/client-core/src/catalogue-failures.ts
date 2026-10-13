@@ -1,3 +1,5 @@
+import type {RouteResponse} from "../../contracts/src/routes.ts";
+import {routePath} from "../../contracts/src/routes.ts";
 /**
  * Titles a catalogue rebuild set aside so that everything else could finish (owner only): what
  * each is, why, how often it has been tried and when it last failed. The server tries them again
@@ -22,5 +24,5 @@ export function parseCatalogueFailures(raw: unknown): CatalogueFailures {
 }
 
 export async function readCatalogueFailures(api: Readonly<{request<T>(path: string, method?: string, body?: unknown, signal?: AbortSignal): Promise<T>}>, signal?: AbortSignal): Promise<CatalogueFailures> {
-  return parseCatalogueFailures(await api.request<unknown>('/v1/admin/catalogue/failures', 'GET', undefined, signal));
+  return parseCatalogueFailures(await api.request<RouteResponse<"get_catalogue_failures">>(routePath("get_catalogue_failures"), 'GET', undefined, signal));
 }

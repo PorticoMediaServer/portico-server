@@ -1,3 +1,6 @@
+import {routeBody} from "../../contracts/src/routes.ts";
+import type {RouteResponse} from "../../contracts/src/routes.ts";
+import {encodedRoutePath, routePath} from "../../contracts/src/routes.ts";
 import {randomId} from './random-id.ts';
 import {readEventStream} from './sse.ts';
 import {presentError} from './presentation/errors.ts';
@@ -47,7 +50,7 @@ type ClockSample={offsetMs:number;rttMs:number;at:number};
  * shared presenter, or this action's own message when the failure has no category (X-04). */
 const code=(e:unknown)=>(e as {code?:string}|null)?.code??'';
 const status=(e:unknown)=>(e as {status?:number}|null)?.status??0;
-const path=(id:string,rest='')=>'/v1/groups/'+encodeURIComponent(id)+rest;
+const path=(id:string,rest='')=>encodedRoutePath("social_get_v1_groups_id", {"id": encodeURIComponent(id)})+rest;
 
 export class GroupSessionService{
  private api:GroupApi;private stream:GroupStreamOpener;private key:()=>string;private now:()=>number;private heartbeatMs:number;
@@ -77,17 +80,17 @@ export class GroupSessionService{
  /** Groups this viewer belongs to. A failed refresh keeps the list it had. */
  async refreshDirectory():Promise<void>{
   if(this.state.directoryPhase==='idle')this.publish({directoryPhase:'loading'});
-  try{this.publish({directory:parseGroupList(await this.api.request<unknown>('/v1/groups')).filter(g=>g.state!=='ended'&&g.state!=='failed'),directoryPhase:'ready',directoryError:undefined});}
+  try{this.publish({directory:parseGroupList(await this.api.request<RouteResponse<"social_get_v1_groups">>(routePath("social_get_v1_groups"))).filter(g=>g.state!=='ended'&&g.state!=='failed'),directoryPhase:'ready',directoryError:undefined});}
   catch(e){this.publish({directoryPhase:this.state.directory.length?'ready':'error',...(status(e)===404||status(e)===503?this.problem('together.error.unavailable','directoryError'):this.problem(this.say(e,'together.error.load'),'directoryError'))});}
  }
 
  async create(input:{name:string;displayName:string;hostAuthority:GroupHostAuthority}):Promise<boolean>{
   // The server binds the group to this signed-in device (B8a): hosting needs no playback authority.
-  return this.enter(async()=>parseGroupSnapshot(await this.api.request<unknown>('/v1/groups','POST',{protocolVersion:SOCIAL_PROTOCOL,name:input.name.trim(),displayName:input.displayName.trim(),hostAuthority:input.hostAuthority})),'together.error.create');
+  return this.enter(async()=>parseGroupSnapshot(await this.api.request<RouteResponse<"social_post_v1_groups">>(routePath("social_post_v1_groups"),'POST',routeBody("social_post_v1_groups", {protocolVersion:SOCIAL_PROTOCOL,name:input.name.trim(),displayName:input.displayName.trim(),hostAuthority:input.hostAuthority}))),'together.error.create');
  }
  async join(inviteCode:string,displayName:string):Promise<boolean>{
   const tidy=inviteCode.replace(/[\s-]/g,'').toUpperCase();
-  return this.enter(async()=>parseGroupSnapshot(await this.api.request<unknown>('/v1/groups/join','POST',{protocolVersion:SOCIAL_PROTOCOL,code:tidy,displayName:displayName.trim()})),'together.error.join');
+  return this.enter(async()=>parseGroupSnapshot(await this.api.request<RouteResponse<"social_post_v1_groups_join">>(routePath("social_post_v1_groups_join"),'POST',routeBody("social_post_v1_groups_join", {protocolVersion:SOCIAL_PROTOCOL,code:tidy,displayName:displayName.trim()}))),'together.error.join');
  }
  /** Re-enters a group this viewer already belongs to. */
  async open(groupId:string):Promise<boolean>{

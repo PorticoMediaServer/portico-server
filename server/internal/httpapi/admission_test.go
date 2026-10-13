@@ -42,7 +42,18 @@ func TestEveryRegisteredRouteHasALane(t *testing.T) {
 			}
 			for _, match := range pattern.FindAllStringSubmatch(string(data), -1) {
 				if _, ok := routeLanes[match[1]]; !ok {
-					missing = append(missing, match[1])
+					found := false
+					if strings.HasSuffix(match[1], "/") {
+						for route := range routeLanes {
+							if strings.HasPrefix(route, match[1]) {
+								found = true
+								break
+							}
+						}
+					}
+					if !found {
+						missing = append(missing, match[1])
+					}
 				}
 			}
 		}

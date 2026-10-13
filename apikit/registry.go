@@ -132,6 +132,9 @@ type Metadata struct {
 	Errors              []string `json:"errors"`
 	Status              int      `json:"status"`
 	ResponseContentType string   `json:"responseContentType,omitempty"`
+	RequestContentTypes []string `json:"requestContentTypes,omitempty"`
+	SuccessStatuses     []int    `json:"successStatuses,omitempty"`
+	ResponseStatuses    []int    `json:"responseStatuses,omitempty"`
 	// OptionalBody lets a route with a body contract also accept no body at all
 	// (a DELETE whose body is optional); the handler then sees the zero Request.
 	OptionalBody bool `json:"optionalBody,omitempty"`
@@ -401,6 +404,21 @@ func (r *Registry) Freeze() { r.frozen = true }
 func validate(m Metadata) error {
 	if m.ID == "" || m.Summary == "" || !(strings.HasPrefix(m.Path, "/v1/") || strings.HasPrefix(m.Path, "/health/")) || m.Status < 200 || m.Status >= 300 || m.BodyLimit < 0 || m.BodyLimit > 1<<30 {
 		return errors.New("route metadata incomplete")
+	}
+	for _, status := range m.SuccessStatuses {
+		if status < 200 || status >= 300 {
+			return errors.New("invalid success status")
+		}
+	}
+	for _, status := range m.ResponseStatuses {
+		if status < 100 || status > 599 {
+			return errors.New("invalid response status")
+		}
+	}
+	for _, typ := range m.RequestContentTypes {
+		if _, _, err := mime.ParseMediaType(typ); err != nil {
+			return errors.New("invalid request content type")
+		}
 	}
 	if m.ResponseContentType != "" {
 		if _, _, e := mime.ParseMediaType(m.ResponseContentType); e != nil {

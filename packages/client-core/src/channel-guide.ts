@@ -1,3 +1,6 @@
+import {routeBody} from "../../contracts/src/routes.ts";
+import type {RouteResponse} from "../../contracts/src/routes.ts";
+import {routePath} from "../../contracts/src/routes.ts";
 import {unreadableServerResponse} from './server-messages.ts';
 import {GUIDE_RATE_LIMIT_ATTEMPTS, isRateLimited, rateLimitDelay} from './guide/rate-limit.ts';
 import {HOUR_MS, MINUTE_MS, localDayStart, zoneOffset} from './guide/time.ts';
@@ -173,7 +176,7 @@ function path(route: GuideRoute, cursor: string): string {
  if (route.favorites !== undefined) q.set('favorites', String(route.favorites));
  if (route.includeHidden !== undefined) q.set('includeHidden', String(route.includeHidden));
  if (route.group) q.set('group', route.group);
- return '/v1/guide?' + q.toString();
+ return routePath("get_guide") + "?" + (q.toString());
 }
 /**
  * Why a channel can't be played or recorded, in plain words for viewers (US English). Server
@@ -209,7 +212,7 @@ export function unavailableIsServerWide(reason: LinearUnavailableReason | string
 }
 /** A retry uses the same request ID and expected revision, never an optimistic local toggle. */
 export async function saveChannelPreference(api: ChannelApi, serverId: string, channel: GuideChannel, requestId: string, values: {favorite: boolean; hidden: boolean}, signal?: AbortSignal): Promise<number> {
- const raw = await api.request<unknown>(channel.provenance === 'live-source' ? '/v1/channels/preferences' : '/v1/library-channels/preferences', 'POST', {requestId, sourceId: channel.sourceId, channelId: channel.id, expectedRevision: channel.preferenceRevision, ...values}, signal);
+ const raw = await api.request<RouteResponse<"post_channels_preferences">>(channel.provenance === 'live-source' ? routePath("post_channels_preferences") : routePath("post_library_channels_preferences"), 'POST', routeBody("post_channels_preferences", {requestId, sourceId: channel.sourceId, channelId: channel.id, expectedRevision: channel.preferenceRevision, ...values}), signal);
  if (!object(raw) || raw.protocolVersion !== GUIDE_PROTOCOL || raw.serverId !== serverId || !Number.isSafeInteger(raw.revision) || Number(raw.revision) <= channel.preferenceRevision) invalid();
  return Number(raw.revision);
 }

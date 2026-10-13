@@ -1,6 +1,6 @@
 # 8. Routes for tools: the title query and "these paths changed"
 
-Portico's screens are composed by the server (`03-browsing.md`). Two routes
+Portico's screens are composed by the server. Two routes
 exist for tools that are not screens.
 
 ## The title query
@@ -15,7 +15,7 @@ It answers only what an index can answer:
 
 | Parameter | Values |
 |---|---|
-| `library` | A library id from `GET /v1/libraries (openapi.yaml, operationId listLibraries)`. Required for a list. |
+| `library` | A library id from `GET /v1/libraries (portico.openapi.json, operationId get_libraries)`. Required for a list. |
 | `kind` | `movie`, `show`, `season`, `episode`, `artist`, `album`, `song`, `book`, `author`, `collection`. Required for a list. |
 | `sort` | `title` (default), `added`, `year`. |
 | `order` | `asc` (default), `desc`. |
@@ -144,3 +144,19 @@ curl -fsS -X POST "$PORTICO/v1/libraries/paths-changed" \
 ```
 
 Give the key the `library` scope only.
+
+## Request examples
+
+Create a movie library with the owner's default metadata provider:
+
+<!-- example: create-library file=portico.openapi.json operationId=post_libraries direction=request schema=@request /v1/libraries post -->
+```json
+{"name":"Movies","kind":"movie","path":"/media/movies"}
+```
+
+Report a changed file without starting a scan of every library:
+
+<!-- example: paths-changed file=portico.openapi.json operationId=report_changed_paths direction=request schema=@request /v1/libraries/paths-changed post -->
+```json
+{"paths":[{"path":"/media/movies/Arrival (2016)/Arrival.mkv","change":"changed"}]}
+```

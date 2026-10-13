@@ -1,3 +1,5 @@
+import {routeBody as hostedRouteBody} from "../../contracts/src/hosted/routes.ts";
+import {routePath as hostedRoutePath} from "../../contracts/src/hosted/routes.ts";
 import {randomId} from './random-id.ts';
 import { hostedGate, type HostedGate } from "./hosted-gate.ts";
 import { CodedError } from "./server-messages.ts";
@@ -47,17 +49,17 @@ export class HttpCredentialApi implements CredentialApi {
   }
   refresh(refreshToken: string, requestId: string, signal?: AbortSignal) {
     return this.gate.run("interactive", () => this.http.request<HostedSession>(
-      "/v1/sessions/refresh",
+      hostedRoutePath("session_refresh"),
       "POST",
-      { refreshToken, requestId },
+      hostedRouteBody("session_refresh", { refreshToken, requestId }),
       signal
     ));
   }
   revoke(refreshToken: string, signal?: AbortSignal) {
     return this.gate.run("interactive", () => this.http.request<void>(
-      "/v1/sessions/revoke",
+      hostedRoutePath("session_revoke"),
       "POST",
-      { refreshToken },
+      hostedRouteBody("session_revoke", { refreshToken }),
       signal
     ));
   }

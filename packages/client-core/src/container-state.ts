@@ -1,7 +1,10 @@
+import {routeBody} from "../../contracts/src/routes.ts";
+import type {RouteResponse} from "../../contracts/src/routes.ts";
+import {encodedRoutePath} from "../../contracts/src/routes.ts";
 import {unreadableServerResponse} from './server-messages.ts';
 import {noteSkipped} from './tolerant.ts';
 /**
- * Container personal state (`server/api/jobs.openapi.yaml`): an atomic watched mark for a show, season, album or book,
+ * Container personal state (`server/api/portico.openapi.json`): an atomic watched mark for a show, season, album or book,
  * and the title's own Watchlist and Favorite flags (a show can be on the Watchlist; a show, album,
  * book or artist can be a Favorite), so a show's action row matches a movie's.
  *
@@ -77,7 +80,7 @@ function parse(raw:unknown,withCounts:boolean):ContainerState{
 export async function getContainerState(api:ContainerStateApi,kind:ContainerKind,containerId:string,signal?:AbortSignal):Promise<ContainerState>{
  const checked=checkKind(kind);
  if(!id(containerId))throw new Error('A container id is required.');
- return parse(await api.request<unknown>('/v1/containers/'+checked+'/'+encodeURIComponent(containerId)+'/personal-state','GET',undefined,signal),true);
+ return parse(await api.request<RouteResponse<"get_container_personal_state">>(encodedRoutePath("get_container_personal_state", {"kind": checked, "id": encodeURIComponent(containerId)}),'GET',undefined,signal),true);
 }
 
 /**
@@ -89,9 +92,9 @@ export async function setContainerState(api:ContainerStateApi,kind:ContainerKind
  if(!id(containerId))throw new Error('A container id is required.');
  if(!count(input.expectedRevision)||typeof input.watched!=='boolean')throw new Error('Container watched needs the current revision and the watched value.');
  try{
-  return parse(await api.request<unknown>(
-   '/v1/containers/'+checked+'/'+encodeURIComponent(containerId)+'/personal-state','PUT',
-   {expectedRevision:input.expectedRevision,watched:input.watched},signal),false);
+  return parse(await api.request<RouteResponse<"set_container_personal_state">>(
+   encodedRoutePath("set_container_personal_state", {"kind": checked, "id": encodeURIComponent(containerId)}),'PUT',
+   routeBody("set_container_personal_state", {expectedRevision:input.expectedRevision,watched:input.watched}),signal),false);
  }catch(e){
   const v=e as {status?:unknown;code?:unknown};
   const code=typeof v?.code==='string'&&v.code?v.code:(v?.status===409||v?.status===412)?CONTAINER_REVISION_MISMATCH:'container_state_not_saved';
@@ -105,7 +108,7 @@ export async function setContainerFlag(api:ContainerStateApi,kind:ContainerKind,
  if(!id(containerId))throw new Error('A container id is required.');
  if(!containerCarries(checked,flag)||typeof value!=='boolean')throw new Error('This title does not carry that flag.');
  try{
-  return parse(await api.request<unknown>('/v1/containers/'+checked+'/'+encodeURIComponent(containerId)+'/personal-state','PUT',{expectedRevision:0,[flag]:value},signal),false);
+  return parse(await api.request<RouteResponse<"set_container_personal_state">>(encodedRoutePath("set_container_personal_state", {"kind": checked, "id": encodeURIComponent(containerId)}),'PUT',routeBody("set_container_personal_state", {expectedRevision:0,[flag]:value}),signal),false);
  }catch(e){
   const v=e as {code?:unknown};
   throw Object.assign(new Error(e instanceof Error?e.message:'The change could not be saved.'),{code:typeof v?.code==='string'&&v.code?v.code:'container_state_not_saved'});
@@ -122,5 +125,5 @@ export function containerCountLabel(watchedCount:number,unwatchedCount:number):{
 export async function undoContainerState(api:ContainerStateApi,kind:ContainerKind,containerId:string,input:Readonly<{expectedRevision:number;undoToken:string}>,signal?:AbortSignal):Promise<ContainerState>{
  const checked=checkKind(kind);
  if(!id(containerId)||!count(input.expectedRevision)||input.expectedRevision<1||!id(input.undoToken))throw new Error('A recent container mark is required.');
- return parse(await api.request<unknown>('/v1/containers/'+checked+'/'+encodeURIComponent(containerId)+'/personal-state/undo','POST',input,signal),false);
+ return parse(await api.request<RouteResponse<"undo_container_personal_state">>(encodedRoutePath("undo_container_personal_state", {"kind": checked, "id": encodeURIComponent(containerId)}),'POST',input,signal),false);
 }

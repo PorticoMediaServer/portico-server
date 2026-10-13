@@ -1,3 +1,5 @@
+import type {RouteResponse} from "../../contracts/src/routes.ts";
+import {encodedRoutePath} from "../../contracts/src/routes.ts";
 /** Owner-only scan diagnostics. Paths stay scoped to this response and are not
  * added to viewer library status or persistent client caches. */
 export type ScanIssue=Readonly<{sequence:number;line:number;path:string;reason:string;messageKey:string;warning:boolean}>;
@@ -16,7 +18,7 @@ export function parseScanIssues(raw:unknown,jobId:string):ScanIssues{
 }
 export async function readScanIssues(api:Transport,libraryId:string,jobId:string,after=0,signal?:AbortSignal):Promise<ScanIssues>{
  assert(text(libraryId,256)&&libraryId&&text(jobId,256)&&jobId&&integer(after));
- const raw=await api.request<unknown>(`/v1/admin/libraries/${encodeURIComponent(libraryId)}/scans/${encodeURIComponent(jobId)}/issues?after=${after}&limit=128`,'GET',undefined,signal);
+ const raw=await api.request<RouteResponse<"get_scan_issues">>(encodedRoutePath("get_scan_issues", {"id": encodeURIComponent(libraryId), "job": encodeURIComponent(jobId)}) + "?after=" + (after) + "&limit=128",'GET',undefined,signal);
  return parseScanIssues(raw,jobId);
 }
 export function parseInventoryChanges(raw:unknown,sourceId:string):InventoryChanges{
@@ -26,5 +28,5 @@ export function parseInventoryChanges(raw:unknown,sourceId:string):InventoryChan
 }
 export async function readInventoryChanges(api:Transport,libraryId:string,sourceId:string,after=0,signal?:AbortSignal):Promise<InventoryChanges>{
  assert(text(libraryId,256)&&libraryId&&text(sourceId,256)&&sourceId&&integer(after));
- return parseInventoryChanges(await api.request<unknown>(`/v1/admin/libraries/${encodeURIComponent(libraryId)}/sources/${encodeURIComponent(sourceId)}/changes?after=${after}`,'GET',undefined,signal),sourceId);
+ return parseInventoryChanges(await api.request<RouteResponse<"get_inventory_changes">>(encodedRoutePath("get_inventory_changes", {"id": encodeURIComponent(libraryId), "source": encodeURIComponent(sourceId)}) + "?after=" + (after),'GET',undefined,signal),sourceId);
 }

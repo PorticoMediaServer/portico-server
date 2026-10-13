@@ -1,3 +1,4 @@
+import {routePath} from "../../contracts/src/routes.ts";
 import {parseMediaItem} from './media-item.ts';
 import {unreadableServerResponse} from './server-messages.ts';
 import type {Library,MediaItem} from './index.ts';
@@ -23,7 +24,7 @@ export class CatalogService {
   const query=new URLSearchParams({limit:'40'});if(libraryId)query.set('libraryId',libraryId);if(cursor)query.set('cursor',cursor);
   let timer:ReturnType<typeof setTimeout>|undefined;
   try{
-   const result=await Promise.race([Promise.all([this.api.request<{items:Library[]}>('/v1/libraries','GET',undefined,controller.signal),this.api.request<{items:MediaItem[];nextCursor?:string}>('/v1/items?'+query,'GET',undefined,controller.signal)]),new Promise<never>((_,reject)=>{timer=setTimeout(()=>{controller.abort();reject(new Error('The server took too long to respond. Try again.'));},this.timeoutMs);})]);
+   const result=await Promise.race([Promise.all([this.api.request<{items:Library[]}>(routePath("get_libraries"),'GET',undefined,controller.signal),this.api.request<{items:MediaItem[];nextCursor?:string}>(routePath("get_items") + "?" + (query),'GET',undefined,controller.signal)]),new Promise<never>((_,reject)=>{timer=setTimeout(()=>{controller.abort();reject(new Error('The server took too long to respond. Try again.'));},this.timeoutMs);})]);
    if(this.disposed||generation!==this.state.generation)return;
    const [libraries,page]=result;if(!Array.isArray(libraries.items)||!Array.isArray(page.items)||page.items.length>40)throw new Error(unreadableServerResponse);
    this.publish({libraries:libraries.items,items:[...new Map(page.items.map(parseMediaItem).map(item=>[item.id,item])).values()],nextCursor:page.nextCursor,pending:false});

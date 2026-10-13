@@ -1,3 +1,5 @@
+import type {RouteResponse} from "../../contracts/src/routes.ts";
+import {routePath, encodedRoutePath} from "../../contracts/src/routes.ts";
 import {parseEnvelope} from './administration.ts';
 import {keepReadable} from './tolerant.ts';
 
@@ -16,10 +18,10 @@ function report(value:unknown):ClientReport{
  return Object.freeze(v) as ClientReport;
 }
 export async function sendClientReport(transport:ReportTransport,serverId:string,input:ClientReportInput,signal?:AbortSignal):Promise<ClientReport>{
- return parseEnvelope(await transport.request<unknown>('/v1/diagnostics/client-logs','POST',input,signal),serverId,report).result;
+ return parseEnvelope(await transport.request<RouteResponse<"post_client_log">>(routePath("post_client_log"),'POST',input,signal),serverId,report).result;
 }
 export async function listClientReports(transport:ReportTransport,serverId:string,cursor='',signal?:AbortSignal):Promise<ClientReportPage>{
- const raw=await transport.request<unknown>(`/v1/admin/diagnostics/client-logs?limit=25${cursor?`&cursor=${encodeURIComponent(cursor)}`:''}`,'GET',undefined,signal);
+ const raw=await transport.request<RouteResponse<"get_client_logs">>(routePath("get_client_logs") + "?limit=25" + (cursor?`&cursor=${encodeURIComponent(cursor)}`:''),'GET',undefined,signal);
  return parseEnvelope(raw,serverId,value=>{
   if(!value||typeof value!=='object')throw new Error('Invalid client reports.');
   const v=value as Record<string,unknown>;
@@ -29,9 +31,9 @@ export async function listClientReports(transport:ReportTransport,serverId:strin
  }).result;
 }
 export async function readClientReport(transport:ReportTransport,serverId:string,id:string,signal?:AbortSignal):Promise<ClientReport>{
- return parseEnvelope(await transport.request<unknown>(`/v1/admin/diagnostics/client-logs/${encodeURIComponent(id)}`,'GET',undefined,signal),serverId,report).result;
+ return parseEnvelope(await transport.request<RouteResponse<"get_client_log">>(encodedRoutePath("get_client_log", {"id": encodeURIComponent(id)}),'GET',undefined,signal),serverId,report).result;
 }
 export async function deleteClientReport(transport:ReportTransport,id:string,signal?:AbortSignal):Promise<void>{
- await transport.request(`/v1/admin/diagnostics/client-logs/${encodeURIComponent(id)}`,'DELETE',undefined,signal);
+ await transport.request(encodedRoutePath("delete_client_log", {"id": encodeURIComponent(id)}),'DELETE',undefined,signal);
 }
-export function clientReportDownloadPath(id:string):string{return `/v1/admin/diagnostics/client-logs/${encodeURIComponent(id)}/download`;}
+export function clientReportDownloadPath(id:string):string{return encodedRoutePath("download_client_log", {"id": encodeURIComponent(id)});}

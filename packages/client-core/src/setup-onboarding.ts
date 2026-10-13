@@ -1,3 +1,5 @@
+import {routeBody} from "../../contracts/src/routes.ts";
+import {routePath} from "../../contracts/src/routes.ts";
 import {randomId} from './random-id.ts';
 import {ApiError,HttpLocalApi,type LocalSession} from './index.ts';
 import {parseLocalSession} from './local-session.ts';
@@ -11,10 +13,10 @@ export async function initializeServer(api:HttpLocalApi,store:SetupDraftStore,in
  const id=serverId(api),newId=await requestId();let draft:SetupDraft|undefined;
  await store.change(old=>{if(old&&(old.serverId!==id||old.setupToken!==input.setupToken))throw new Error('A different setup is saved. Resume it or sign in with your recovery owner.');draft=old??{version:1,serverId:id,requestId:newId,setupToken:input.setupToken,name:input.name,username:input.username,authMode:input.authMode,recoverySaved:input.recoverySaved,interactive:input.interactive};return draft;});
  try{return await resumeServerSetup(api,store,signal);}catch(e){if(!(e instanceof ApiError)||e.code!=='not_found')throw e;}
- return parseLocalSession(await api.request('/v1/setup','POST',{requestId:draft!.requestId,setupToken:draft!.setupToken,username:draft!.username,password:input.password,name:draft!.name,authMode:draft!.authMode,recoverySaved:draft!.recoverySaved,interactive:draft!.interactive},signal),{serverId:id,authority:'local'});
+ return parseLocalSession(await api.request(routePath("setup_server"),'POST',routeBody("setup_server", {requestId:draft!.requestId,setupToken:draft!.setupToken,username:draft!.username,password:input.password,name:draft!.name,authMode:draft!.authMode,recoverySaved:draft!.recoverySaved,interactive:draft!.interactive}),signal),{serverId:id,authority:'local'});
 }
 export async function resumeServerSetup(api:HttpLocalApi,store:SetupDraftStore,signal:AbortSignal):Promise<LocalSession>{
  const id=serverId(api),draft=await store.read();if(!draft||draft.version!==1||draft.serverId!==id)throw new Error('No interrupted setup is saved for this server.');
- return parseLocalSession(await api.request('/v1/setup/resume','POST',{requestId:draft.requestId,setupToken:draft.setupToken},signal),{serverId:id,authority:'local'});
+ return parseLocalSession(await api.request(routePath("post_setup_resume"),'POST',routeBody("post_setup_resume", {requestId:draft.requestId,setupToken:draft.setupToken}),signal),{serverId:id,authority:'local'});
 }
 export async function completeServerSetupDraft(api:HttpLocalApi,store:SetupDraftStore){const id=serverId(api);await store.change(old=>old?.serverId===id?undefined:old);}

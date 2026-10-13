@@ -1,0 +1,74 @@
+package httpapi
+
+import (
+	"reflect"
+
+	"portico.local/apikit"
+	"portico.local/server/internal/administration"
+	"portico.local/server/internal/catalog"
+	librarychannels "portico.local/server/internal/livechannels/library"
+	"portico.local/server/internal/operations"
+	"portico.local/server/internal/playback"
+)
+
+// PublishedSchemas derives reusable schemas from the same wire types as the
+// routes. Bounds here describe limits already enforced by their owning services.
+func PublishedSchemas() (map[string]reflect.Type, map[reflect.Type]map[string]any, error) {
+	named := map[string]reflect.Type{
+		"LibraryChannelConfig": reflect.TypeFor[librarychannels.Config](),
+		"HomeLayout":           reflect.TypeFor[operations.HomeLayoutDocument](),
+		"HomeDocument":         reflect.TypeFor[catalog.HomeDocument](),
+		"DetailAction":         reflect.TypeFor[catalog.DetailAction](),
+		"AudioRenditionPlan":   reflect.TypeFor[playback.AudioRenditionPlan](),
+		"Capture":              reflect.TypeFor[operations.Capture](),
+		"FeedbackSubmission":   reflect.TypeFor[operations.FeedbackSubmission](),
+		"ContentEntry":         reflect.TypeFor[catalog.ContentEntry](),
+		"Category":             reflect.TypeFor[catalog.Category](),
+		"FilesystemPage":       reflect.TypeFor[administration.FilesystemPage](),
+	}
+	wire := map[reflect.Type]map[string]any{}
+	for name, typ := range named {
+		shape, err := apikit.Schema(typ)
+		if err != nil {
+			return nil, nil, err
+		}
+		props, _ := shape["properties"].(map[string]any)
+		field := func(key string) map[string]any { v, _ := props[key].(map[string]any); return v }
+		switch name {
+		case "HomeDocument":
+			field("rows")["maxItems"] = 64
+		case "HomeLayout":
+			for _, key := range []string{"rowOrder", "hiddenRowIds"} {
+				v := field(key)
+				v["maxItems"] = 64
+				if item, ok := v["items"].(map[string]any); ok {
+					item["maxLength"] = 128
+				}
+			}
+		case "FilesystemPage":
+			field("roots")["maxItems"] = 64
+		case "Capture":
+			field("component")["enum"] = []string{"scheduler"}
+		case "FeedbackSubmission":
+			field("message")["minLength"] = 8
+			field("message")["maxLength"] = 2000
+		}
+		wire[typ] = shape
+	}
+	return named, wire, nil
+}
+
+type libraryCreationRequest struct {
+	Name             string `json:"name"`
+	Kind             string `json:"kind"`
+	Path             string `json:"path"`
+	MetadataAgent    string `json:"metadataAgent,omitempty"`
+	MetadataLanguage string `json:"metadataLanguage,omitempty"`
+}
+
+func (libraryCreationRequest) JSONSchema() map[string]any {
+	type wire libraryCreationRequest
+	shape, _ := apikit.Schema(reflect.TypeFor[wire]())
+	shape["properties"].(map[string]any)["kind"].(map[string]any)["enum"] = []string{"movie", "tv", "anime", "music", "audiobook"}
+	return shape
+}

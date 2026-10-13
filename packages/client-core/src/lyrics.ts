@@ -1,3 +1,5 @@
+import {routeBody} from "../../contracts/src/routes.ts";
+import {encodedRoutePath, routePath} from "../../contracts/src/routes.ts";
 import {unreadableServerResponse} from './server-messages.ts';
 import type { ContentScope, LibraryContentApi } from './library-content.ts';
 export type LyricLine = Readonly<{
@@ -189,7 +191,7 @@ export class LyricsService {
     subscribe = (f: () => void) => { this.listeners.add(f); return () => { this.listeners.delete(f); }; };
     private publish(p: Partial<LyricsSnapshot>) { this.state = Object.freeze({ ...this.state, ...p, generation: this.generation }); for (const f of this.listeners)
         f(); }
-    private path(suffix = '') { return '/v1/items/' + encodeURIComponent(this.target.itemId) + '/lyrics' + suffix; }
+    private path(suffix = '') { return encodedRoutePath("get_items_id_lyrics", {"id": encodeURIComponent(this.target.itemId)}) + (suffix); }
     private query() { const q = new URLSearchParams(); if (this.target.sessionId)
         q.set('sessionId', this.target.sessionId); if (this.target.sourceId)
         q.set('sourceId', this.target.sourceId); return q.size ? '?' + q.toString() : ''; }
@@ -266,7 +268,7 @@ export class LyricsService {
     preview = (resource: LyricRevision) => this.run(async (signal) => { const raw = await this.request(this.path('/' + encodeURIComponent(resource.id) + '/revisions/' + resource.revision) + this.query(), 'GET', undefined, signal); const r = revision(raw, true); if (r.id !== resource.id || r.revision !== resource.revision)
         invalid(); return { preview: r }; });
     configureProvider = (enabled: boolean) => { const revision = this.state.data?.providers.revision; if (revision === undefined)
-        return Promise.resolve(); return this.run(async (signal) => { await this.request('/v1/lyrics/provider', 'PUT', { enabled, expectedRevision: revision }, signal); const raw = await this.request(this.path() + this.query(), 'GET', undefined, signal); return { data: this.check(raw), candidates: [] }; }); };
+        return Promise.resolve(); return this.run(async (signal) => { await this.request(routePath("put_lyrics_provider"), 'PUT', routeBody("put_lyrics_provider", { enabled, expectedRevision: revision }), signal); const raw = await this.request(this.path() + this.query(), 'GET', undefined, signal); return { data: this.check(raw), candidates: [] }; }); };
     cancel = () => { this.generation++; this.controller?.abort(); this.fence = undefined; this.publish({ data: null, preview: null, candidates: [], warnings: [], busy: false, error: '' }); };
     dispose = () => { this.disposed = true; this.generation++; this.controller?.abort(); this.listeners.clear(); };
 }

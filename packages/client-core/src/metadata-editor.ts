@@ -1,3 +1,4 @@
+import {encodedRoutePath} from "../../contracts/src/routes.ts";
 import {unreadableServerResponse} from './server-messages.ts';
 import {oneOf} from './tolerant.ts';
 /** Owner text edits are explicit CAS commands; interrupted saves are never replayed. */
@@ -45,7 +46,7 @@ export class MetadataEditorService{
   const abort=()=>rejectAbort(Object.assign(new Error('Metadata request ended.'),{code:'metadata_interrupted'}));
   c.signal.addEventListener('abort',abort,{once:true});
   timer=setTimeout(()=>c.abort(),this.options.timeoutMs??15000);
-  try{if(c.signal.aborted)abort();const result=await Promise.race([this.options.api.request('/v1/items/'+encodeURIComponent(target.itemId)+'/metadata/manual',method,body,c.signal),cancelled]);if(c.signal.aborted)throw Object.assign(new Error('Metadata request ended.'),{code:'metadata_interrupted'});return result;}
+  try{if(c.signal.aborted)abort();const result=await Promise.race([this.options.api.request(encodedRoutePath("get_items_id_metadata_manual", {"id": encodeURIComponent(target.itemId)}),method,body,c.signal),cancelled]);if(c.signal.aborted)throw Object.assign(new Error('Metadata request ended.'),{code:'metadata_interrupted'});return result;}
   finally{clearTimeout(timer);c.signal.removeEventListener('abort',abort);}
  }
  async load(target:MetadataEditorTarget){

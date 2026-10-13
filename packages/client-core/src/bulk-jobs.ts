@@ -1,8 +1,9 @@
+import {routePath} from "../../contracts/src/routes.ts";
 import {randomId} from './random-id.ts';
 import {unreadableServerResponse} from './server-messages.ts';
 import {firstOfEach,keepReadable,noteSkipped,oneOf} from './tolerant.ts';
 /**
- * Bulk jobs (`server/api/jobs.openapi.yaml`):
+ * Bulk jobs (`server/api/portico.openapi.json`):
  * one `POST /v1/jobs` for a whole personal-state, playlist-add, collection-add,
  * metadata-edit, refresh or trash action, then `GET /v1/jobs/{id}` (or a
  * `job.updated` event on `/v1/events`) for progress and
@@ -46,7 +47,7 @@ export type JobUpdatedEvent=Readonly<{
 }>;
 export interface BulkJobsApi{request<T>(path:string,method?:string,body?:unknown,signal?:AbortSignal):Promise<T>}
 
-export const JOB_PATH='/v1/jobs';
+export const JOB_PATH=routePath("create_job");
 /** Terminal states: the client stops polling and reads the failures page. */
 export const jobTerminalStates:readonly JobState[]=Object.freeze(['complete','partial','failed'] as const);
 export const isJobTerminal=(state:JobState):boolean=>state==='complete'||state==='partial'||state==='failed';

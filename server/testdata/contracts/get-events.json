@@ -6,6 +6,7 @@
   "status": 200,
   "response": {
     "events": [],
-    "nextAfter": "0"
+    "nextAfter": "0",
+    "more": false
   }
 }

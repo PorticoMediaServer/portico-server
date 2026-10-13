@@ -1,3 +1,4 @@
+import {routePath, encodedRoutePath} from "../../../contracts/src/routes.ts";
 /**
  * Live TV and Library Channels on a Playback v1 session (spec §11, §18.6; Plan — Client Playback
  * Migration §10, B6). The same surface as the /v2 `ChannelControl` (open, pause, resume, seek, go
@@ -158,7 +159,7 @@ export class V1ChannelControl implements ChannelPlayback {
     try {
       await this.stopping.catch(() => {});
       if (!this.current(a)) return;
-      const r = await call(this.http, {method: 'POST', path: '/v1/playback/sessions', headers: {'Idempotency-Key': this.key()}, body: {channelId: v1ChannelId(channel), channelGeneration: channel.generation, state: 'playing'}});
+      const r = await call(this.http, {method: 'POST', path: routePath("start_playback_session"), headers: {'Idempotency-Key': this.key()}, body: {channelId: v1ChannelId(channel), channelGeneration: channel.generation, state: 'playing'}});
       const s = parseChannelSession(r.body);
       if (!this.current(a)) { void this.stop(s.id); return; }
       a.id = s.id;
@@ -188,7 +189,7 @@ export class V1ChannelControl implements ChannelPlayback {
 
   private async read(a: Active) {
     if (!a.id || !this.current(a)) return;
-    const r = await call(this.http, {method: 'GET', path: `/v1/playback/sessions/${enc(a.id)}`});
+    const r = await call(this.http, {method: 'GET', path: encodedRoutePath("get_playback_session", {"id": enc(a.id)})});
     this.accept(a, parseChannelSession(r.body));
   }
 
@@ -217,7 +218,7 @@ export class V1ChannelControl implements ChannelPlayback {
     return this.enqueue(a, async () => {
       if (!a.id || !a.session || !this.current(a)) return;
       try {
-        const r = await call(this.http, {method: 'PATCH', path: `/v1/playback/sessions/${enc(a.id)}`, headers: {'If-Match': `"${a.session.revision}"`}, body});
+        const r = await call(this.http, {method: 'PATCH', path: encodedRoutePath("change_playback_session", {"id": enc(a.id)}), headers: {'If-Match': `"${a.session.revision}"`}, body});
         this.accept(a, parseChannelSession(r.body));
       } catch (e) {
         if (!this.current(a)) return;
@@ -226,7 +227,7 @@ export class V1ChannelControl implements ChannelPlayback {
           const current = e.current ? parseChannelSession(e.current) : undefined;
           if (current) {
             a.session = current;
-            const r = await call(this.http, {method: 'PATCH', path: `/v1/playback/sessions/${enc(a.id)}`, headers: {'If-Match': `"${current.revision}"`}, body});
+            const r = await call(this.http, {method: 'PATCH', path: encodedRoutePath("change_playback_session", {"id": enc(a.id)}), headers: {'If-Match': `"${current.revision}"`}, body});
             this.accept(a, parseChannelSession(r.body));
             return;
           }
@@ -242,7 +243,7 @@ export class V1ChannelControl implements ChannelPlayback {
     const s = a.session;
     const position = positionSeconds ?? (s.presentation.linear?.confirmedPositionMs ?? 0) / 1000;
     a.lastReport = this.now();
-    await call(this.http, {method: 'POST', path: `/v1/playback/sessions/${enc(a.id)}/timeline`, body: {seq: ++a.seq, generation: s.presentation.generation, state: this.wanted, positionMs: Math.max(0, Math.round(position * 1000))}});
+    await call(this.http, {method: 'POST', path: encodedRoutePath("report_playback_timeline", {"id": enc(a.id)}), body: {seq: ++a.seq, generation: s.presentation.generation, state: this.wanted, positionMs: Math.max(0, Math.round(position * 1000))}});
     return true;
   }
 
@@ -280,7 +281,7 @@ export class V1ChannelControl implements ChannelPlayback {
   }
 
   private stop(id: string): Promise<unknown> {
-    const work = call(this.http, {method: 'DELETE', path: `/v1/playback/sessions/${enc(id)}`}, [200, 204, 404, 410]).catch(() => {});
+    const work = call(this.http, {method: 'DELETE', path: encodedRoutePath("stop_playback_session", {"id": enc(id)})}, [200, 204, 404, 410]).catch(() => {});
     this.stopping = Promise.all([this.stopping.catch(() => {}), work]);
     return work;
   }

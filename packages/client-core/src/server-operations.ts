@@ -1,3 +1,4 @@
+import {encodedRoutePath} from "../../contracts/src/routes.ts";
 import type {ContentScope} from './library-content.ts';
 import {noteSkipped} from './tolerant.ts';
 export const operationPanels=['memory','database','build'] as const;
@@ -50,7 +51,7 @@ export class ServerOperationsService {
   const c=new AbortController();this.requests.set(name,c);const previous=this.state[name].panel;
   this.publish(name,{phase:'loading',panel:previous,error:null});let timer:ReturnType<typeof setTimeout>|undefined;
   try{
-   const raw=await Promise.race([this.options.api.requestBounded<unknown>('/v1/admin/operations/'+name,8192,c.signal),new Promise<never>((_,reject)=>{timer=setTimeout(()=>{c.abort();reject(new Error('Observation timeout.'));},this.options.timeoutMs??7000);})]);
+   const raw=await Promise.race([this.options.api.requestBounded<unknown>(encodedRoutePath("get_admin_operations_panel", {"panel": name}),8192,c.signal),new Promise<never>((_,reject)=>{timer=setTimeout(()=>{c.abort();reject(new Error('Observation timeout.'));},this.options.timeoutMs??7000);})]);
    if(this.disposed||this.fenced||c.signal.aborted)return;
    if(!record(raw)||!record(raw.scope)||raw.scope.serverId!==this.options.scope.serverId||typeof raw.scope.viewerFence!=='string'||!/^[a-f0-9]{64}$/.test(raw.scope.viewerFence)||this.fence&&this.fence!==raw.scope.viewerFence){this.revoke();return;}
    const panel=parseOperationPanel(raw.panel,name);this.fence=raw.scope.viewerFence;

@@ -1,3 +1,4 @@
+import {encodedRoutePath} from "../../contracts/src/routes.ts";
 import {unreadableServerResponse} from './server-messages.ts';
 import type {Alert} from './console.ts';
 import {firstOfEach,keepReadable,noteSkipped,oneOf,oneOfOr} from './tolerant.ts';
@@ -403,7 +404,7 @@ export function parseVersionDeletePreview(raw:unknown):VersionDeletePreview{
  return Object.freeze({...preview,assetId:raw.assetId,previewKey:raw.previewKey});
 }
 export function versionDeletionService(request:<T>(path:string,method?:string,body?:unknown)=>Promise<T>){
- const path=(item:string,asset:string)=>`/v1/admin/items/${encodeURIComponent(item)}/files/${encodeURIComponent(asset)}`;
+ const path=(item:string,asset:string)=>encodedRoutePath("delete_title_version", {"id": encodeURIComponent(item), "fileId": encodeURIComponent(asset)});
  return Object.freeze({
   async preview(item:string,asset:string){return parseVersionDeletePreview(await request<unknown>(path(item,asset)+'/delete/preview','POST'));},
   async remove(preview:VersionDeletePreview,confirmation:string,operationId:string){return parseDeleteResult(await request<unknown>(path(preview.targets[0].itemId,preview.assetId),'DELETE',{confirmation,operationId,previewKey:preview.previewKey}));},
@@ -418,5 +419,5 @@ export function parseLiveSourceChoicePage(v:unknown):LiveSourceChoicePage{
  return Object.freeze({sourceId:v.sourceId,generation:v.generation,kind,total:v.total,items:Object.freeze(items),nextCursor:v.nextCursor});
 }
 export function liveSourceChoicesService(request:<T>(path:string,method?:string,body?:unknown)=>Promise<T>,source:string){return Object.freeze({
- async list(kind:'groups'|'channels',cursor='',limit=50,q=''){return parseLiveSourceChoicePage(await request<unknown>(`/v1/admin/live/sources/${encodeURIComponent(source)}/${kind}?cursor=${encodeURIComponent(cursor)}&limit=${limit}&q=${encodeURIComponent(q)}`));},
+ async list(kind:'groups'|'channels',cursor='',limit=50,q=''){return parseLiveSourceChoicePage(await request<unknown>(encodedRoutePath(kind==='groups'?'list_live_source_groups':'list_live_source_channels',{id:encodeURIComponent(source)})+`?cursor=${encodeURIComponent(cursor)}&limit=${limit}&q=${encodeURIComponent(q)}`));},
 });}

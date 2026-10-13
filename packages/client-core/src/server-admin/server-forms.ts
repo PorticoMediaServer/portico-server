@@ -1,3 +1,5 @@
+import {routeBody} from "../../../contracts/src/routes.ts";
+import {routePath} from "../../../contracts/src/routes.ts";
 import type {ConsoleClient, RuntimeSettings, SettingsDocument} from '../console.ts';
 import {parseConnectivityStatus, parseLogSettings, type ConnectivityPolicy, type ConnectivityStatus, type LogSettings} from '../server-administration.ts';
 import {parseDVRDocument, parseEnvelope, parseLiveDefaultsDocument, folderTemplateProblems, type DVRDefaults, type DVRDocument, type LiveDefaults} from '../administration.ts';
@@ -71,13 +73,13 @@ const connectivityLoaded = (status: ConnectivityStatus): Loaded<ConnectivityDraf
 export function connectivityForm(deps: ServerFormDeps): DraftForm<ConnectivityDraft, ConnectivityStatus> {
   const ids = createOperationIds(deps.operationId);
   return new DraftForm<ConnectivityDraft, ConnectivityStatus>({
-    load: async signal => connectivityLoaded(parseConnectivityStatus(await deps.api.request('/v1/admin/connectivity/status', 'GET', undefined, signal))),
+    load: async signal => connectivityLoaded(parseConnectivityStatus(await deps.api.request(routePath("get_connectivity_status"), 'GET', undefined, signal))),
     save: async (draft, saved, status) => {
       // Only what changed is sent: the policy is a merge patch.
       const change: Record<string, unknown> = {};
       for (const key of Object.keys(draft) as (keyof ConnectivityDraft)[]) if (JSON.stringify(draft[key]) !== JSON.stringify(saved[key])) change[key] = draft[key];
       const revision = status?.policy.revision ?? 0;
-      await deps.api.request('/v1/admin/connectivity/policy', 'PATCH', {expectedRevision: revision, operationId: ids.forPayload(JSON.stringify({revision, change})), ...change});
+      await deps.api.request(routePath("change_connectivity_policy"), 'PATCH', routeBody("change_connectivity_policy", {expectedRevision: revision, operationId: ids.forPayload(JSON.stringify({revision, change})), ...change}));
       ids.release();
     },
   });
@@ -94,7 +96,7 @@ export function remoteAccessForm(deps: ServerFormDeps): DraftForm<RemoteConfigur
 }
 
 export function certificateForm(deps: ServerFormDeps): DraftForm<CertificateConfig, CertificateStatus> {
-  const api: CertificateApi = {requestCertificate: (action, body, signal) => (action === 'status' ? deps.api.request('/v1/networking/certificate', 'GET', undefined, signal) : deps.api.request(`/v1/networking/certificate/${action}`, 'POST', body, signal))};
+  const api: CertificateApi = {requestCertificate: (action, body, signal) => (action === 'status' ? deps.api.request(routePath("get_networking_certificate"), 'GET', undefined, signal) : deps.api.request(routePath(action==='config'?'post_networking_certificate_config':'post_networking_certificate_retry'), 'POST', body, signal))};
   const bounded = () => { const c = new AbortController(); setTimeout(() => c.abort(), 15_000); return c.signal; };
   return new DraftForm<CertificateConfig, CertificateStatus>({
     load: async signal => { const status = await orAbsent(loadCertificate(api, signal)); return status && {value: status.config, status}; },
@@ -113,8 +115,8 @@ export function alertsForm(deps: ServerFormDeps): DraftForm<AlertThresholds, {re
     return {value: {storageWarningPercent: v.storageWarningPercent, storageCriticalPercent: v.storageCriticalPercent, certificateWarningDays: v.certificateWarningDays}, status: {revision: v.revision}};
   };
   return new DraftForm<AlertThresholds, {revision: number}>({
-    load: async signal => read(await deps.api.request('/v1/admin/notifications/settings', 'GET', undefined, signal)),
-    save: async (draft, _saved, status) => { await deps.api.request('/v1/admin/notifications/settings', 'PATCH', {expectedRevision: status?.revision ?? 0, ...draft}); },
+    load: async signal => read(await deps.api.request(routePath("get_admin_notifications_settings"), 'GET', undefined, signal)),
+    save: async (draft, _saved, status) => { await deps.api.request(routePath("patch_admin_notifications_settings"), 'PATCH', routeBody("patch_admin_notifications_settings", {expectedRevision: status?.revision ?? 0, ...draft})); },
     validate: draft => (draft.storageCriticalPercent >= draft.storageWarningPercent ? 'server.form.alertOrder' : undefined),
   });
 }
@@ -134,9 +136,9 @@ function documentForm<T extends object, D extends {revision: number; settings: T
   });
 }
 
-export const liveDefaultsForm = (deps: ServerFormDeps) => documentForm<LiveDefaults, ReturnType<typeof parseLiveDefaultsDocument>>(deps, '/v1/admin/live/settings', parseLiveDefaultsDocument);
+export const liveDefaultsForm = (deps: ServerFormDeps) => documentForm<LiveDefaults, ReturnType<typeof parseLiveDefaultsDocument>>(deps, routePath("get_live_settings"), parseLiveDefaultsDocument);
 
-export const recordingForm = (deps: ServerFormDeps) => documentForm<DVRDefaults, DVRDocument>(deps, '/v1/admin/dvr/settings', parseDVRDocument, (draft, doc) => {
+export const recordingForm = (deps: ServerFormDeps) => documentForm<DVRDefaults, DVRDocument>(deps, routePath("get_admin_dvr_settings"), parseDVRDocument, (draft, doc) => {
   if (!doc?.folderTokens.length) return undefined;
   return [...folderTemplateProblems(draft.folderTemplate, doc.folderTokens), ...folderTemplateProblems(draft.movieFolderTemplate, doc.folderTokens)][0];
 });
@@ -154,16 +156,16 @@ export function parseMaintenanceDocument(raw: unknown): MaintenanceDocument {
   return {...v, pausedUntilUnixMillis: Number.isFinite(v.pausedUntilUnixMillis) ? v.pausedUntilUnixMillis : 0, settings: {...v.settings, backgroundSpeed:v.settings.backgroundSpeed==='gentle'||v.settings.backgroundSpeed==='fast'?v.settings.backgroundSpeed:'normal'}};
 }
 
-export const maintenanceForm = (deps: ServerFormDeps) => documentForm<MaintenanceSettings, MaintenanceDocument>(deps, '/v1/admin/maintenance/settings', parseMaintenanceDocument);
+export const maintenanceForm = (deps: ServerFormDeps) => documentForm<MaintenanceSettings, MaintenanceDocument>(deps, routePath("get_admin_maintenance_settings"), parseMaintenanceDocument);
 
 /** Reuse operationId when retrying the same pause/resume action. */
 export async function pauseBackgroundWork(deps: Pick<ServerFormDeps, 'api'>, paused: boolean, operationId: string): Promise<MaintenanceDocument> {
-  return parseMaintenanceDocument(await deps.api.request('/v1/admin/maintenance/background-pause', 'POST', {paused, operationId}));
+  return parseMaintenanceDocument(await deps.api.request(routePath("post_admin_background_pause"), 'POST', routeBody("post_admin_background_pause", {paused, operationId})));
 }
 
 export type ResourceUsage = Readonly<{connections: {ordinary: number; total: number; ordinaryLimit: number; consoleReserve: number} | null; analysis: {trackedBytes: number; limitBytes: number; measured: boolean}; localArtwork: {trackedBytes: number; limitBytes: number; measured: boolean}; streams: number; streamLimit: number | null; subtitleTracksPerFile: number; subtitleFileLimitMiB: number}>;
 export async function loadResourceUsage(api: Pick<HttpLocalApi, 'request'>, signal?: AbortSignal): Promise<ResourceUsage> {
-  const value = await api.request<ResourceUsage>('/v1/admin/resource-usage', 'GET', undefined, signal);
+  const value = await api.request<ResourceUsage>(routePath("get_admin_resource_usage"), 'GET', undefined, signal);
   if (!value || !Number.isSafeInteger(value.streams) || !Number.isSafeInteger(value.analysis?.trackedBytes) || !Number.isSafeInteger(value.analysis?.limitBytes) || !Number.isSafeInteger(value.subtitleTracksPerFile) || !Number.isSafeInteger(value.localArtwork?.trackedBytes) || !Number.isSafeInteger(value.localArtwork?.limitBytes) || typeof value.localArtwork?.measured !== 'boolean') throw new Error('The server returned resource usage this version cannot read.');
   return value;
 }
@@ -199,10 +201,10 @@ export type LogsDraft = Readonly<{retention: LogSettings['retention']}>;
 export function logsForm(deps: ServerFormDeps): DraftForm<LogsDraft, LogSettings> {
   const ids = createOperationIds(deps.operationId);
   return new DraftForm<LogsDraft, LogSettings>({
-    load: async signal => { const settings = parseLogSettings(await deps.api.request('/v1/admin/logs/settings', 'GET', undefined, signal)); return {value: {retention: settings.retention}, status: settings}; },
+    load: async signal => { const settings = parseLogSettings(await deps.api.request(routePath("get_admin_logs_settings"), 'GET', undefined, signal)); return {value: {retention: settings.retention}, status: settings}; },
     save: async (draft, _saved, status) => {
       const payload = {logLevel: status?.logLevel ?? 'info', retention: draft.retention};
-      await deps.api.request('/v1/admin/logs/settings', 'PATCH', {expectedRevision: status?.revision ?? 0, operationId: ids.forPayload(JSON.stringify({revision: status?.revision, ...payload})), ...payload});
+      await deps.api.request(routePath("patch_admin_logs_settings"), 'PATCH', routeBody("patch_admin_logs_settings", {expectedRevision: status?.revision ?? 0, operationId: ids.forPayload(JSON.stringify({revision: status?.revision, ...payload})), ...payload}));
       ids.release();
     },
   });
@@ -210,7 +212,7 @@ export function logsForm(deps: ServerFormDeps): DraftForm<LogsDraft, LogSettings
 
 /** "Record more detail for 30 minutes": on, or off again. The one control for extra detail. */
 export async function setDetailWindow(deps: ServerFormDeps, on: boolean): Promise<void> {
-  await deps.api.request('/v1/admin/logs/debug-window', 'POST', {operationId: deps.operationId(), minutes: on ? 30 : 0});
+  await deps.api.request(routePath("post_admin_logs_debug_window"), 'POST', routeBody("post_admin_logs_debug_window", {operationId: deps.operationId(), minutes: on ? 30 : 0}));
 }
 
 // ── The forms of a page ─────────────────────────────────────────────────────────────────────

@@ -1,3 +1,4 @@
+import {routePrefix} from "../../contracts/src/routes.ts";
 /**
  * The installation claim a first-party client sends when it asks a server for credentials
  * (lane C, 939a746). The server binds the new session family to the device record for this
@@ -74,7 +75,7 @@ export function credentialLock(): CredentialLock { return lock; }
  * never a reason to refresh and resend (resending a password would count twice toward lockout).
  */
 export function provesIdentity(path: string, method: string): boolean {
-  return path.startsWith('/v1/auth/') || (method.toUpperCase() === 'POST' && (/^\/v1\/(?:direct\/(?:sign-in|two-factor)|sessions(?:\?|$)|setup(?:\?|$)|hosted\/(?:attach|profiles\/offline-select)(?:\?|$))/.test(path)
+  return path.startsWith(routePrefix("get_auth_capabilities", 2)) || (method.toUpperCase() === 'POST' && (/^\/v1\/(?:direct\/(?:sign-in|two-factor)|sessions(?:\?|$)|setup(?:\?|$)|hosted\/(?:attach|profiles\/offline-select)(?:\?|$))/.test(path)
     // Binding this sign-in to this device record: a 401 means the family belongs to another device
     // (a Quick Connect grant), which is an answer, never a reason to renew the sign-in.
     || /^\/v1\/devices\/[A-Za-z0-9_-]{1,128}\/sessions\/bind$/.test(path)));

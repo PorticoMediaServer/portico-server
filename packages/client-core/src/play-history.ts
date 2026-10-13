@@ -1,3 +1,5 @@
+import type {RouteResponse} from "../../contracts/src/routes.ts";
+import {routePath} from "../../contracts/src/routes.ts";
 import {wireDurations} from './wire-units.ts';
 import {unreadableServerResponse} from './server-messages.ts';
 import {firstOfEach, keepReadable, noteSkipped} from './tolerant.ts';
@@ -86,7 +88,7 @@ export async function fetchPlayHistory(api: PlayHistoryApi, filters: PlayHistory
   if (filters.libraryId) query.set('libraryId', filters.libraryId);
   if (filters.period !== 'all') query.set('period', filters.period);
   if (cursor) query.set('cursor', cursor);
-  return parsePlayHistory(await api.request<unknown>('/v1/admin/play-history?' + query.toString(), 'GET', undefined, signal));
+  return parsePlayHistory(await api.request<RouteResponse<"get_admin_play_history">>(routePath("get_admin_play_history") + "?" + (query.toString()), 'GET', undefined, signal));
 }
 
 // ── Viewing statistics ──────────────────────────────────────────────────────────────────────
@@ -118,7 +120,7 @@ export function parsePlaySummary(value: unknown): PlaySummary {
 }
 
 export async function fetchPlaySummary(api: PlayHistoryApi, period: ViewingPeriod, signal?: AbortSignal): Promise<PlaySummary> {
-  return parsePlaySummary(await api.request<unknown>('/v1/admin/play-history/summary?period=' + period, 'GET', undefined, signal));
+  return parsePlaySummary(await api.request<RouteResponse<"get_admin_play_history_summary">>(routePath("get_admin_play_history_summary") + "?period=" + (period), 'GET', undefined, signal));
 }
 
 /** The four figures as the panel prints them: plays, people, hours to one decimal, and the share the server converted. */

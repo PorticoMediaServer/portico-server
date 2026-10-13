@@ -1,3 +1,6 @@
+import {routeBody} from "../../contracts/src/routes.ts";
+import type {RouteResponse} from "../../contracts/src/routes.ts";
+import {routePath, encodedRoutePath} from "../../contracts/src/routes.ts";
 import {unreadableServerResponse} from './server-messages.ts';
 /** Typed calls for the identity workstream on a direct server: profile restrictions and
  * devices, two-factor. Parsing is strict; these functions add no state. */
@@ -25,56 +28,56 @@ export class IdentityClient{
  private api:IdentityApi;private upload?:IdentityUpload;
  constructor(api:IdentityApi,upload?:IdentityUpload){this.api=api;this.upload=upload;}
  /** The server sends `{items}`; the parser takes the list. */
- async ratingSystems(signal?:AbortSignal):Promise<readonly RatingSystem[]>{const raw=await this.api.request<{items?:unknown}>('/v1/rating-systems','GET',undefined,signal);return parseRatingSystems(raw?.items);}
- async restrictions(profileId:string,signal?:AbortSignal):Promise<ProfileRestrictions>{return parseProfileRestrictions(await this.api.request<unknown>(`/v1/direct/profiles/${id(profileId)}/restrictions`,'GET',undefined,signal));}
+ async ratingSystems(signal?:AbortSignal):Promise<readonly RatingSystem[]>{const raw=await this.api.request<{items?:unknown}>(routePath("get_rating_systems"),'GET',undefined,signal);return parseRatingSystems(raw?.items);}
+ async restrictions(profileId:string,signal?:AbortSignal):Promise<ProfileRestrictions>{return parseProfileRestrictions(await this.api.request<RouteResponse<"get_direct_profile_restrictions">>(encodedRoutePath("get_direct_profile_restrictions", {"id": id(profileId)}),'GET',undefined,signal));}
  /** C45: the signed-in account session manages restrictions and PINs; there is no step-up proof. */
  async saveRestrictions(current:ProfileRestrictions,changes:Parameters<typeof restrictionEdit>[1]):Promise<ProfileRestrictions>{
-  return parseProfileRestrictions(await this.api.request<unknown>(`/v1/direct/profiles/${id(current.profileId)}/restrictions`,'PUT',restrictionEdit(current,changes)));
+  return parseProfileRestrictions(await this.api.request<RouteResponse<"put_direct_profile_restrictions">>(encodedRoutePath("put_direct_profile_restrictions", {"id": id(current.profileId)}),'PUT',restrictionEdit(current,changes)));
  }
- async pinRecovery():Promise<PINRecoveryMethods>{return parsePINRecoveryMethods(await this.api.request<unknown>('/v1/direct/pin-recovery'));}
- async resetPIN(profileId:string,pin:string):Promise<void>{await this.api.request(`/v1/direct/profiles/${id(profileId)}/pin-reset`,'POST',{pin});}
- async removeAvatar(profileId:string):Promise<void>{await this.api.request(`/v1/direct/profiles/${id(profileId)}/avatar`,'DELETE');}
+ async pinRecovery():Promise<PINRecoveryMethods>{return parsePINRecoveryMethods(await this.api.request<RouteResponse<"get_direct_pin_recovery">>(routePath("get_direct_pin_recovery")));}
+ async resetPIN(profileId:string,pin:string):Promise<void>{await this.api.request(encodedRoutePath("post_direct_profile_pin_reset", {"id": id(profileId)}),'POST',routeBody("post_direct_profile_pin_reset", {pin}));}
+ async removeAvatar(profileId:string):Promise<void>{await this.api.request(encodedRoutePath("delete_direct_profiles_id_avatar", {"id": id(profileId)}),'DELETE');}
  avatar(raw:unknown):ProfileAvatar{return parseProfileAvatar(raw);}
  /** Every profile's current picture version in one read; a profile with none is absent. */
- async avatars(signal?:AbortSignal):Promise<readonly ProfileAvatar[]>{const raw=await this.api.request<{items?:unknown}>('/v1/direct/profiles/avatars','GET',undefined,signal);if(!Array.isArray(raw?.items)||raw.items.length>64)throw new Error(unreadableServerResponse);return Object.freeze(raw.items.map(parseProfileAvatar));}
+ async avatars(signal?:AbortSignal):Promise<readonly ProfileAvatar[]>{const raw=await this.api.request<{items?:unknown}>(routePath("get_direct_profile_avatars"),'GET',undefined,signal);if(!Array.isArray(raw?.items)||raw.items.length>64)throw new Error(unreadableServerResponse);return Object.freeze(raw.items.map(parseProfileAvatar));}
  /** The server sniffs, crops and re-encodes the picture itself; the type sent here is only a courtesy. */
  async uploadAvatar(profileId:string,picture:Blob|ArrayBuffer|Uint8Array,contentType:string):Promise<ProfileAvatar>{
   if(!this.upload)throw new Error('This device can’t send pictures.');
   const size=picture instanceof Blob?picture.size:picture.byteLength;
   if(!size)throw new Error('That file is empty.');if(size>AVATAR_MAX_BYTES)throw new Error('Choose a picture smaller than 4 MB.');
-  return parseProfileAvatar(await this.upload(`/v1/direct/profiles/${id(profileId)}/avatar`,picture,/^image\/(jpeg|png|webp)$/.test(contentType)?contentType:'application/octet-stream'));
+  return parseProfileAvatar(await this.upload(encodedRoutePath("post_direct_profiles_id_avatar", {"id": id(profileId)}),picture,/^image\/(jpeg|png|webp)$/.test(contentType)?contentType:'application/octet-stream'));
  }
 
  async devices(installationId:string,signal?:AbortSignal):Promise<readonly Device[]>{
-  return parseDevices(await this.api.request<unknown>('/v1/devices','GET',undefined,signal));
+  return parseDevices(await this.api.request<RouteResponse<"get_devices">>(routePath("get_devices"),'GET',undefined,signal));
  }
  /** Tells the server which device this is, at sign-in. It refreshes the record when the
   * installation is already known and never overwrites a name a person gave the device. Under an
   * owner's approve-new-devices policy a new arrival is refused with `device_approval_pending`. */
- async registerDevice(device:DeviceDescription):Promise<Device>{return parseDevice(await this.api.request<unknown>('/v1/devices','POST',device));}
+ async registerDevice(device:DeviceDescription):Promise<Device>{return parseDevice(await this.api.request<RouteResponse<"post_device">>(routePath("post_device"),'POST',device));}
  /** Ties this viewing session to the device, so "sign this device out" knows what to end. */
- async bindDevice(deviceId:string,installationId:string,sessionFamilyId:string):Promise<void>{await this.api.request(`/v1/devices/${id(deviceId)}/sessions/bind`,'POST',{installationId,sessionFamilyId});}
+ async bindDevice(deviceId:string,installationId:string,sessionFamilyId:string):Promise<void>{await this.api.request(encodedRoutePath("post_device_session_binding", {"id": id(deviceId)}),'POST',routeBody("post_device_session_binding", {installationId,sessionFamilyId}));}
  /** Who has used this installation. Asked before anyone is signed in; nothing in it is a credential. */
  /** The installation id goes in the body, never the address: addresses end up in proxy and access logs. */
- async rememberedAccounts(installationId:string,signal?:AbortSignal):Promise<readonly RememberedAccount[]>{return parseRememberedAccounts(await this.api.request<unknown>('/v1/auth/remembered-accounts','POST',{installationId},signal));}
- async rememberAccount(installationId:string,automaticSignIn:boolean):Promise<readonly RememberedAccount[]>{return parseRememberedAccounts(await this.api.request<unknown>('/v1/direct/remembered-accounts','POST',{installationId,automaticSignIn}));}
- async forgetAccount(accountId:string,installationId:string):Promise<void>{await this.api.request(`/v1/direct/remembered-accounts/${id(accountId)}`,'DELETE',{installationId});}
- async editDevice(deviceId:string,edit:{name?:string;trusted?:boolean;rememberAccount?:boolean}):Promise<Device>{return parseDevice(await this.api.request<unknown>(`/v1/devices/${id(deviceId)}`,'PATCH',edit));}
- async approveDevice(deviceId:string,approved:boolean):Promise<Device>{return parseDevice(await this.api.request<unknown>(`/v1/devices/${id(deviceId)}/approval`,'POST',{approved}));}
- async signOutDevice(deviceId:string):Promise<void>{await this.api.request(`/v1/devices/${id(deviceId)}/sessions`,'DELETE');}
- async removeDevice(deviceId:string):Promise<void>{await this.api.request(`/v1/devices/${id(deviceId)}`,'DELETE');}
+ async rememberedAccounts(installationId:string,signal?:AbortSignal):Promise<readonly RememberedAccount[]>{return parseRememberedAccounts(await this.api.request<RouteResponse<"post_auth_remembered_accounts">>(routePath("post_auth_remembered_accounts"),'POST',routeBody("post_auth_remembered_accounts", {installationId}),signal));}
+ async rememberAccount(installationId:string,automaticSignIn:boolean):Promise<readonly RememberedAccount[]>{return parseRememberedAccounts(await this.api.request<RouteResponse<"post_direct_remembered_accounts">>(routePath("post_direct_remembered_accounts"),'POST',routeBody("post_direct_remembered_accounts", {installationId,automaticSignIn})));}
+ async forgetAccount(accountId:string,installationId:string):Promise<void>{await this.api.request(encodedRoutePath("delete_direct_remembered_account", {"accountId": id(accountId)}),'DELETE',routeBody("delete_direct_remembered_account", {installationId}));}
+ async editDevice(deviceId:string,edit:{name?:string;trusted?:boolean;rememberAccount?:boolean}):Promise<Device>{return parseDevice(await this.api.request<RouteResponse<"patch_device">>(encodedRoutePath("patch_device", {"id": id(deviceId)}),'PATCH',edit));}
+ async approveDevice(deviceId:string,approved:boolean):Promise<Device>{return parseDevice(await this.api.request<RouteResponse<"post_device_approval">>(encodedRoutePath("post_device_approval", {"id": id(deviceId)}),'POST',routeBody("post_device_approval", {approved})));}
+ async signOutDevice(deviceId:string):Promise<void>{await this.api.request(encodedRoutePath("delete_device_sessions", {"id": id(deviceId)}),'DELETE');}
+ async removeDevice(deviceId:string):Promise<void>{await this.api.request(encodedRoutePath("delete_device", {"id": id(deviceId)}),'DELETE');}
  /** Ends every session of the account (C45: no password; the signed-in session is the authority). */
- async signOutEverywhere():Promise<void>{await this.api.request('/v1/direct/sessions/sign-out-everywhere','POST');}
+ async signOutEverywhere():Promise<void>{await this.api.request(routePath("post_direct_sign_out_everywhere"),'POST');}
  /** A direct account's password. C45: the current password always, plus `code` (authenticator or
   * recovery code) when two-step verification is on, in this one request. */
- async changePassword(currentPassword:string,newPassword:string,code?:string):Promise<void>{await this.api.request('/v1/direct/password','POST',{currentPassword,newPassword,...(code?{code}:{})});}
+ async changePassword(currentPassword:string,newPassword:string,code?:string):Promise<void>{await this.api.request(routePath("post_direct_password"),'POST',routeBody("post_direct_password", {currentPassword,newPassword,...(code?{code}:{})}));}
 
- async twoFactor(signal?:AbortSignal):Promise<TwoFactorState>{return parseTwoFactorState(await this.api.request<unknown>('/v1/direct/two-factor','GET',undefined,signal));}
- async enrolTwoFactor(password:string):Promise<TwoFactorEnrolment>{return parseTwoFactorEnrolment(await this.api.request<unknown>('/v1/direct/two-factor/enrol','POST',{password}));}
+ async twoFactor(signal?:AbortSignal):Promise<TwoFactorState>{return parseTwoFactorState(await this.api.request<RouteResponse<"get_direct_two_factor">>(routePath("get_direct_two_factor"),'GET',undefined,signal));}
+ async enrolTwoFactor(password:string):Promise<TwoFactorEnrolment>{return parseTwoFactorEnrolment(await this.api.request<RouteResponse<"post_direct_two_factor_enrol">>(routePath("post_direct_two_factor_enrol"),'POST',routeBody("post_direct_two_factor_enrol", {password})));}
  /** C45: confirming enrolment sends the current password with the first code. */
- async verifyTwoFactor(password:string,code:string):Promise<TwoFactorState>{return parseTwoFactorState(await this.api.request<unknown>('/v1/direct/two-factor/verify','POST',{password,code}));}
+ async verifyTwoFactor(password:string,code:string):Promise<TwoFactorState>{return parseTwoFactorState(await this.api.request<RouteResponse<"post_direct_two_factor_verify">>(routePath("post_direct_two_factor_verify"),'POST',routeBody("post_direct_two_factor_verify", {password,code})));}
  /** C45: turning it off sends the current password and a current code. */
- async disableTwoFactor(password:string,code:string):Promise<void>{await this.api.request('/v1/direct/two-factor','DELETE',{password,code});}
+ async disableTwoFactor(password:string,code:string):Promise<void>{await this.api.request(routePath("delete_direct_two_factor"),'DELETE',routeBody("delete_direct_two_factor", {password,code}));}
 }
 
 /** Registers this device and binds the session in one step, after a direct sign-in. Returns

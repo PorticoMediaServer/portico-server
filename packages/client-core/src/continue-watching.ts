@@ -1,3 +1,4 @@
+import {encodedRoutePath} from "../../contracts/src/routes.ts";
 /**
  * X-12: Remove from Continue Watching, on the server's own dismissal (api/home.md, "Continue
  * Watching dismissal"): `PUT /v1/items/{id}/personal-state {continueDismissed: true}` takes the
@@ -22,7 +23,7 @@ export type ContinueDismissalInput = Readonly<{
 
 const operation = /^[A-Za-z0-9_-]{1,128}$/;
 const revisionValue = (v: unknown): v is number => typeof v === 'number' && Number.isSafeInteger(v) && v >= 0;
-const itemPath = (itemId: string) => '/v1/items/' + encodeURIComponent(itemId);
+const itemPath = (itemId: string) => encodedRoutePath("get_items_id", {"id": encodeURIComponent(itemId)});
 
 /** The personal revision in a detail or a personal-state receipt (`{personal: {revision}}`). */
 export function personalRevision(raw: unknown): number | undefined {

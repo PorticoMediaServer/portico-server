@@ -1,3 +1,4 @@
+import {encodedRoutePath, routePath} from "../../../contracts/src/routes.ts";
 /**
  * Playback options (spec §4.1) and device capabilities (§3).
  *
@@ -38,7 +39,7 @@ export class PlaybackOptionsClient {
   constructor(http: V1Http) { this.http = http; }
 
   async options(itemId: string, preview: OptionsPreview = {}, signal?: AbortSignal): Promise<PlaybackOptions> {
-    const r = await call(this.http, {method: 'GET', path: `/v1/items/${enc(itemId)}/playback-options${query(preview)}`, signal});
+    const r = await call(this.http, {method: 'GET', path: encodedRoutePath("get_playback_options", {"itemId": enc(itemId)}) + (query(preview)), signal});
     return parseOptions(r.body);
   }
 }
@@ -100,7 +101,7 @@ export class CapabilityPublisher {
     const key = this.scope() + '\n' + JSON.stringify(document);
     if (key === this.last) return Promise.resolve(false);
     if (this.inflight) return this.inflight;
-    const work = call(this.http, {method: 'PUT', path: '/v1/me/devices/current/capabilities', body: document, signal})
+    const work = call(this.http, {method: 'PUT', path: routePath("put_device_capabilities"), body: document, signal})
       .then(() => { this.last = key; return true; })
       .catch(() => false)
       .finally(() => { if (this.inflight === work) this.inflight = undefined; });
@@ -110,7 +111,7 @@ export class CapabilityPublisher {
   /** What the server holds for this device, or undefined when it has published nothing. */
   async read(signal?: AbortSignal): Promise<StoredCapabilities | undefined> {
     try {
-      const r = await call(this.http, {method: 'GET', path: '/v1/me/devices/current/capabilities', signal});
+      const r = await call(this.http, {method: 'GET', path: routePath("get_device_capabilities"), signal});
       const b = r.body as {revision?: unknown; capabilities?: unknown} | undefined;
       if (!b || typeof b.revision !== 'number' || !b.capabilities || typeof b.capabilities !== 'object') return undefined;
       return Object.freeze({revision: b.revision, capabilities: b.capabilities as CapabilityDocument});

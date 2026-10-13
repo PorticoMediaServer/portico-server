@@ -346,8 +346,8 @@ func registerDownloads(r *apikit.Registry, d Dependencies) {
 		http.ServeContent(body, q, out.Artifact.FileName, out.Modified, out.Reader)
 	}
 	rawRoute := func(id, method, path, summary string, lane apikit.Lane, query []string, serve http.HandlerFunc) {
-		m := apikit.Metadata{Admission: admission(id), ID: id, Method: method, Path: path, Summary: summary, Access: apikit.Public, Requires: scope(id), Lane: lane, Cost: apikit.Constant, Status: 200, Query: query, Errors: []string{"invalid_request", "invalid_download_grant", "downloads_not_allowed", "download_unavailable", "download_not_ready", "download_source_offline", "downloads_unavailable", "not_found", "internal"}}
-		if err := apikit.RegisterRaw(r, apikit.RawRoute[noBody, noBody]{Metadata: m, Serve: serve}); err != nil {
+		m := apikit.Metadata{ResponseContentType: "application/octet-stream", Admission: admission(id), ID: id, Method: method, Path: path, Summary: summary, Access: apikit.Public, Requires: scope(id), Lane: lane, Cost: apikit.Constant, Status: 200, Query: query, Errors: []string{"invalid_request", "invalid_download_grant", "downloads_not_allowed", "download_unavailable", "download_not_ready", "download_source_offline", "downloads_unavailable", "not_found", "internal"}}
+		if err := apikit.RegisterRaw(r, apikit.RawRoute[noBody, SubtitleBytesContract]{Metadata: m, Serve: serve}); err != nil {
 			panic(m.ID + ": " + err.Error())
 		}
 	}

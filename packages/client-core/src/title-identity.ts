@@ -1,3 +1,6 @@
+import {routeBody} from "../../contracts/src/routes.ts";
+import type {RouteResponse} from "../../contracts/src/routes.ts";
+import {routePath, encodedRoutePath} from "../../contracts/src/routes.ts";
 /** Titles as things in their own right: titles whose files are gone from disk,
  * saying two titles are one, and removing a library. Owner only. These routes
  * are on the typed registry, so their answers are plain JSON (no envelope). */
@@ -49,14 +52,14 @@ export async function listMissingTitles(api:TitleIdentityApi,input:{libraryId?:s
  if(input.cursor)params.set('cursor',input.cursor);
  if(input.limit)params.set('limit',String(input.limit));
  const query=params.toString();
- return parseMissingTitlesPage(await api.request<unknown>('/v1/admin/missing-titles'+(query?'?'+query:''),'GET',undefined,signal));
+ return parseMissingTitlesPage(await api.request<RouteResponse<"list_missing_titles">>(routePath("list_missing_titles") + (query?'?'+query:''),'GET',undefined,signal));
 }
 /** Removes missing titles and files now, whatever the owner's rule says. The server works in
  * short passes; this repeats until nothing is left and returns the totals. Watch state is kept. */
 export async function emptyMissingTitles(api:TitleIdentityApi,libraryId?:string,signal?:AbortSignal):Promise<MissingEmptied>{
  let titles=0,files=0;
  for(let pass=0;pass<1000;pass++){
-  const step=parseMissingEmptied(await api.request<unknown>('/v1/admin/missing-titles/empty','POST',libraryId?{libraryId}:{},signal));
+  const step=parseMissingEmptied(await api.request<RouteResponse<"empty_missing_titles">>(routePath("empty_missing_titles"),'POST',libraryId?{libraryId}:{},signal));
   titles+=step.titles;files+=step.files;
   if(!step.more)return Object.freeze({titles,files,more:false});
  }
@@ -66,7 +69,7 @@ export async function emptyMissingTitles(api:TitleIdentityApi,libraryId?:string,
  * files as versions and everyone's state combined. Returns the id that remains. */
 export async function mergeTitles(api:TitleIdentityApi,fromId:string,intoId:string):Promise<string>{
  if(!id(fromId)||!id(intoId)||fromId===intoId)invalid('titles to merge');
- const out=await api.request<unknown>('/v1/admin/titles/merge','POST',{fromId,intoId});
+ const out=await api.request<RouteResponse<"merge_titles">>(routePath("merge_titles"),'POST',routeBody("merge_titles", {fromId,intoId}));
  if(!obj(out)||!id(out.itemId))invalid('merged title');
  return out.itemId;
 }
@@ -75,7 +78,7 @@ export async function mergeTitles(api:TitleIdentityApi,fromId:string,intoId:stri
  * Files on disk are not touched and watch state is kept in case its titles return. */
 export async function removeLibrary(api:TitleIdentityApi,libraryId:string,confirmation:string,expectedRevision:number):Promise<void>{
  if(!id(libraryId)||!text(confirmation,200)||!count(expectedRevision))invalid('library to remove');
- const out=await api.request<unknown>('/v1/admin/libraries/'+encodeURIComponent(libraryId),'DELETE',{confirmation,expectedRevision});
+ const out=await api.request<RouteResponse<"remove_library">>(encodedRoutePath("remove_library", {"id": encodeURIComponent(libraryId)}),'DELETE',routeBody("remove_library", {confirmation,expectedRevision}));
  if(!obj(out)||out.removing!==true)invalid('library removal');
 }
 
@@ -103,7 +106,7 @@ export function folderOfPath(folders:readonly LibraryFolder[],filePath:string):s
  return best?.id;
 }
 
-const libraryBase=(libraryId:string)=>'/v1/admin/libraries/'+encodeURIComponent(libraryId);
+const libraryBase=(libraryId:string)=>encodedRoutePath("get_admin_libraries_id", {"id": encodeURIComponent(libraryId)});
 
 /** A library's folders. An unreadable folder is left out alone: it only narrows the search, and a file is still found without it. */
 export async function libraryFolders(api:TitleIdentityApi,libraryId:string,signal?:AbortSignal):Promise<readonly LibraryFolder[]>{

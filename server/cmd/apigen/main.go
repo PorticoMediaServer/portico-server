@@ -21,7 +21,11 @@ func main() {
 	if err != nil {
 		fail(err)
 	}
-	artifacts, err := apikit.GenerateWith(registry.Definitions(), apikit.Options{Errors: registry.ErrorDefinitions()})
+	components, wire, err := httpapi.PublishedSchemas()
+	if err != nil {
+		fail(err)
+	}
+	artifacts, err := apikit.GenerateWith(registry.Definitions(), apikit.Options{Errors: registry.ErrorDefinitions(), Components: components, WireSchemas: wire})
 	if err != nil {
 		fail(err)
 	}

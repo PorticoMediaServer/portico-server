@@ -1,3 +1,8 @@
+import type {RouteResponse as HostedRouteResponse} from "../../contracts/src/hosted/routes.ts";
+import {routeBody} from "../../contracts/src/routes.ts";
+import type {RouteResponse} from "../../contracts/src/routes.ts";
+import {routePath as hostedRoutePath, encodedRoutePath as hostedEncodedRoutePath} from "../../contracts/src/hosted/routes.ts";
+import {routePath} from "../../contracts/src/routes.ts";
 import {hostedGate} from './hosted-gate.ts';
 import {ApiError,HttpLocalApi,type HostedServer,type LocalSession} from './index.ts';
 import {credentialLock,installationIdentity} from './installation.ts';
@@ -43,7 +48,7 @@ export function parseRememberedServer(value:unknown):RememberedServer|undefined 
 function hostedOrigin(origin:string):string {const value=routeOrigin(origin),u=new URL(value);if(u.protocol!=='https:'&&!['localhost','127.0.0.1','[::1]'].includes(u.hostname))throw new RouteError('invalid_account_origin','Portico Account services require HTTPS.');return value;}
 function memoryRecord(memory:RouteMemory):RememberedServer['routes']{return {current:memory.current?.envelope,previous:memory.previous?.envelope,paired:[...memory.paired],lastGood:memory.lastGood};}
 async function routeKey(source:HostedConnectionSource,env:ConnectionEnvironment,signal:AbortSignal):Promise<RouteKey>{
- const origin=hostedOrigin(source.origin),response=await (env.fetcher??globalThis.fetch)(origin+'/v1/keys',{signal,redirect:'error',credentials:'omit',headers:{Accept:'application/json'}}),key=await routeJSON(response,signal,2048);
+ const origin=hostedOrigin(source.origin),response=await (env.fetcher??globalThis.fetch)((origin) + hostedRoutePath("keys_get"),{signal,redirect:'error',credentials:'omit',headers:{Accept:'application/json'}}),key=await routeJSON(response,signal,2048);
  if(!object(key)||typeof key.keyId!=='string'||typeof key.publicKey!=='string'||key.keyId.length>256||key.publicKey.length!==43)throw new RouteError('invalid_account_key','Account route verification is unavailable.');return {keyId:key.keyId,publicKey:key.publicKey};
 }
 function sameSelection(a:RememberedServer|undefined,b:RememberedServer):boolean {
@@ -59,11 +64,11 @@ function attachPersistence(connection:RouteConnection,env:ConnectionEnvironment,
 async function currentDocument(source:HostedConnectionSource,env:ConnectionEnvironment,pin:ServerPin,key:RouteKey,signal:AbortSignal):Promise<{routes:VerifiedRoutes;key:RouteKey}>{
  // Asking for fresh routes is the app's own idea, never a tap: it waits for the shared circuit,
  // and connections to the same server share one request.
- const signed=await hostedGate(source.origin).run('automatic',()=>source.request<unknown>('/v1/servers/'+encodeURIComponent(pin.serverId)+'/routes',signal),'routes:'+pin.serverId);
+ const signed=await hostedGate(source.origin).run('automatic',()=>source.request<HostedRouteResponse<"server_routes_get">>(hostedEncodedRoutePath("server_routes_get", {"id": encodeURIComponent(pin.serverId)}),signal),'routes:'+pin.serverId);
  try{return {routes:await verifyRoutes(signed,key,{accountId:source.accountId,serverId:pin.serverId,pin},env.crypto),key};}catch(e){if(!(e instanceof RouteError)||e.code!=='invalid_signature')throw e;const freshKey=await routeKey(source,env,signal);return {routes:await verifyRoutes(signed,freshKey,{accountId:source.accountId,serverId:pin.serverId,pin},env.crypto),key:freshKey};}
 }
 export async function connectHostedServer(server:HostedServer,source:HostedConnectionSource,env:ConnectionEnvironment,signal:AbortSignal):Promise<{api:HttpLocalApi;connection:RouteConnection;hosted:NonNullable<RememberedServer['hosted']>}> {
- const key=await routeKey(source,env,signal),signed=server.routes??await source.request<unknown>('/v1/servers/'+encodeURIComponent(server.id)+'/routes',signal);
+ const key=await routeKey(source,env,signal),signed=server.routes??await source.request<HostedRouteResponse<"server_routes_get">>(hostedEncodedRoutePath("server_routes_get", {"id": encodeURIComponent(server.id)}),signal);
  const verified=await verifyRoutes(signed,key,{accountId:source.accountId,serverId:server.id},env.crypto);
  if(verified.document.publicKey!==server.publicKey||verified.document.policyRevision<server.policyRevision)throw new RouteError('identity_mismatch','The server directory and signed identity disagree.');
  const origin=verified.document.candidates.find(c=>c.baseUrl===server.baseUrl)?.baseUrl??verified.document.candidates[0]?.baseUrl;
@@ -283,7 +288,7 @@ export function refreshStoredSession(o:RefreshStoredOptions):Promise<LocalSessio
   const bound=new AbortController(),abort=()=>bound.abort(),timer=setTimeout(abort,o.timeoutMs??15_000);
   o.signal?.addEventListener('abort',abort,{once:true});if(o.signal?.aborted)abort();
   let raw:unknown;
-  try{raw=await o.api.request<unknown>('/v1/auth/refresh','POST',{refreshToken:session.refreshToken,installationId:identity.installationId,requestId},bound.signal);}
+  try{raw=await o.api.request<RouteResponse<"post_auth_refresh">>(routePath("post_auth_refresh"),'POST',routeBody("post_auth_refresh", {refreshToken:session.refreshToken,installationId:identity.installationId,requestId}),bound.signal);}
   catch(e){
    const status=(e as {status?:unknown}|null)?.status;
    // Only a 401 ends the sign-in (revoked, unknown family, or a reused refresh token). No 403 does:

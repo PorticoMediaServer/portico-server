@@ -1,3 +1,6 @@
+import {routeBody} from "../../contracts/src/routes.ts";
+import type {RouteResponse} from "../../contracts/src/routes.ts";
+import {routePath} from "../../contracts/src/routes.ts";
 import {parseBackupsDocument,parseEnvelope,type BackupsDocument,type RestoreSource,type RestoreStaged} from './administration.ts';
 
 /** Typed clients for the spec §4 backup routes (`Spec — Backups (Plex model).md`).
@@ -5,10 +8,10 @@ import {parseBackupsDocument,parseEnvelope,type BackupsDocument,type RestoreSour
  * TODO(be backups): switch to generated types once apigen publishes these routes. */
 export type BackupTransport={request<T>(path:string,method?:string,body?:unknown,signal?:AbortSignal):Promise<T>};
 
-const BACKUPS_PATH='/v1/admin/backups';
-const RESTORE_PATH='/v1/admin/backups/restore';
+const BACKUPS_PATH=routePath("get_admin_backups");
+const RESTORE_PATH=routePath("post_admin_backups_restore");
 /** The owner-only fix-permissions operation (spec §6.2), as be/backups publishes it. */
-export const STATE_PERMISSIONS_FIX_PATH='/v1/admin/state-permissions:fix';
+export const STATE_PERMISSIONS_FIX_PATH=routePath("post_admin_state_permissions_fix");
 
 /** getBackups reads the whole backups document: the list, the running backup (if any) and the last restore. */
 export async function getBackups(transport:BackupTransport,serverId:string,signal?:AbortSignal):Promise<BackupsDocument>{
@@ -124,5 +127,5 @@ export async function waitForServerAnswer(get:()=>Promise<BackupsDocument>,optio
 
 /** Restart is owner-only and works for portable launches as well as services. */
 export async function restartServer(transport:BackupTransport,signal?:AbortSignal):Promise<void>{
- await transport.request<unknown>('/v1/admin/restart','POST',{},signal);
+ await transport.request<RouteResponse<"post_admin_restart">>(routePath("post_admin_restart"),'POST',routeBody("post_admin_restart", {}),signal);
 }

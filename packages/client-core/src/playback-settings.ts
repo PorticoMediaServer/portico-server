@@ -1,3 +1,4 @@
+import {routePath} from "../../contracts/src/routes.ts";
 import type {ContentScope} from './library-content.ts';
 import type {OperationsApi} from './server-operations.ts';
 export type PlaybackDiagnostics={directConfigured:boolean;hlsConfigured:boolean;finiteHlsConfigured:boolean;lifecycle:'unavailable'|'running'|'stopping';activeConversionSessions:number|null;conversionSessionLimit:number|null;conversionLimitSource:'fixed_runtime'|'owner_policy'|'unavailable';outputPolicy:'per_session_plan'|'unavailable'};
@@ -30,7 +31,7 @@ export class PlaybackSettingsService{
   if(this.disposed||this.fenced||this.pending)return;
   const c=new AbortController();this.pending=c;const previous=this.state.observation;this.publish({phase:'loading',observation:previous,error:null,canRefresh:false});let timer:ReturnType<typeof setTimeout>|undefined;
   try{
-   const raw=await Promise.race([this.options.api.requestBounded<unknown>('/v1/admin/playback/diagnostics',8192,c.signal),new Promise<never>((_,reject)=>{timer=setTimeout(()=>{c.abort();reject(new Error('Playback observation timed out.'));},this.options.timeoutMs??7000);})]);
+   const raw=await Promise.race([this.options.api.requestBounded<unknown>(routePath("get_admin_playback_diagnostics"),8192,c.signal),new Promise<never>((_,reject)=>{timer=setTimeout(()=>{c.abort();reject(new Error('Playback observation timed out.'));},this.options.timeoutMs??7000);})]);
    if(this.disposed||this.fenced||c.signal.aborted)return;
    if(!object(raw)||!object(raw.scope)||raw.scope.serverId!==this.options.scope.serverId||typeof raw.scope.viewerFence!=='string'||!/^[a-f0-9]{64}$/.test(raw.scope.viewerFence)||this.fence&&this.fence!==raw.scope.viewerFence){this.revoke();return;}
    const observation=parsePlaybackObservation(raw);this.fence=raw.scope.viewerFence;this.publish({phase:'ready',observation,error:null,canRefresh:true});

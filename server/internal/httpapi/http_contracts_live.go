@@ -10,15 +10,15 @@ import (
 
 func registerLiveHTTPContracts(registry *apikit.Registry) error {
 	// internal/httpapi/dvr.go:82
-	if err := apikit.RegisterHTTP[struct{}, LiveOwnerResult[dvr.Page]](registry, apikit.Metadata{ID: "get_dvr", Method: "GET", Path: "/v1/dvr", Summary: "Get dvr", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.PageSized, BodyLimit: 0, Status: 200, Query: []string{"cursor", "limit", "state"}, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[struct{}, LiveOwnerResult[dvr.Page]](registry, apikit.Metadata{ID: "get_dvr", Method: "GET", Path: "/v1/dvr", Summary: "Read dvr", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.PageSized, BodyLimit: 0, Status: 200, Query: []string{"cursor", "limit", "state"}, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/dvr.go:103
-	if err := apikit.RegisterHTTP[struct{}, LiveOwnerResult[dvr.Detail]](registry, apikit.Metadata{ID: "get_dvr_recordings_id", Method: "GET", Path: "/v1/dvr/recordings/{id}", Summary: "Get id", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, BodyLimit: 0, Status: 200, Query: []string{"after"}, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[struct{}, LiveOwnerResult[dvr.Detail]](registry, apikit.Metadata{ID: "get_dvr_recordings_id", Method: "GET", Path: "/v1/dvr/recordings/{id}", Summary: "Read dvr recordings", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, BodyLimit: 0, Status: 200, Query: []string{"after"}, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/dvr.go:111
-	if err := apikit.RegisterHTTP[struct{}, LiveOwnerResult[dvr.ChannelChoices]](registry, apikit.Metadata{ID: "get_dvr_channels", Method: "GET", Path: "/v1/dvr/channels", Summary: "Get channels", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.PageSized, BodyLimit: 0, Status: 200, Query: []string{"cursor", "search", "sourceId"}, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[struct{}, LiveOwnerResult[dvr.ChannelChoices]](registry, apikit.Metadata{ID: "get_dvr_channels", Method: "GET", Path: "/v1/dvr/channels", Summary: "Read dvr channels", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.PageSized, BodyLimit: 0, Status: 200, Query: []string{"cursor", "search", "sourceId"}, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/dvr.go:120
@@ -27,47 +27,47 @@ func registerLiveHTTPContracts(registry *apikit.Registry) error {
 		Occurrence  dvr.Occurrence "json:\"occurrence\""
 		Options     *dvr.Options   "json:\"options\""
 		UseDefaults bool           "json:\"useDefaults\""
-	}, LiveOwnerResult[dvr.Recording]](registry, apikit.Metadata{ID: "post_dvr_recordings", Method: "POST", Path: "/v1/dvr/recordings", Summary: "Post recordings", Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	}, LiveOwnerResult[dvr.Recording]](registry, apikit.Metadata{ID: "post_dvr_recordings", Method: "POST", Path: "/v1/dvr/recordings", Summary: "Run dvr recordings", Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/dvr.go:136
-	if err := apikit.RegisterHTTP[dvr.UpdateInput, LiveOwnerResult[dvr.Recording]](registry, apikit.Metadata{ID: "patch_dvr_recordings_id", Method: "PATCH", Path: "/v1/dvr/recordings/{id}", Summary: "Patch id", Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[dvr.UpdateInput, LiveOwnerResult[dvr.Recording]](registry, apikit.Metadata{ID: "patch_dvr_recordings_id", Method: "PATCH", Path: "/v1/dvr/recordings/{id}", Summary: "Change dvr recordings", Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/dvr.go:143
-	if err := apikit.RegisterHTTP[dvr.Mutation, LiveOwnerResult[dvr.Recording]](registry, apikit.Metadata{ID: "post_dvr_recordings_id_cancel", Method: "POST", Path: "/v1/dvr/recordings/{id}/cancel", Summary: "Post cancel", Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[dvr.Mutation, LiveOwnerResult[dvr.Recording]](registry, apikit.Metadata{ID: "post_dvr_recordings_id_cancel", Method: "POST", Path: "/v1/dvr/recordings/{id}/cancel", Summary: "Run dvr recordings cancel", Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/dvr.go:150
-	if err := apikit.RegisterHTTP[dvr.KeepInput, LiveOwnerResult[dvr.Recording]](registry, apikit.Metadata{ID: "put_dvr_recordings_id_keep", Method: "PUT", Path: "/v1/dvr/recordings/{id}/keep", Summary: "Put keep", Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[dvr.KeepInput, LiveOwnerResult[dvr.Recording]](registry, apikit.Metadata{ID: "put_dvr_recordings_id_keep", Method: "PUT", Path: "/v1/dvr/recordings/{id}/keep", Summary: "Save dvr recordings keep", Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/dvr.go:157
-	if err := apikit.RegisterHTTP[struct{}, LiveOwnerResult[dvr.DeletePreview]](registry, apikit.Metadata{ID: "get_dvr_recordings_id_delete_preview", Method: "GET", Path: "/v1/dvr/recordings/{id}/delete-preview", Summary: "Get delete preview", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, BodyLimit: 0, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[struct{}, LiveOwnerResult[dvr.DeletePreview]](registry, apikit.Metadata{ID: "get_dvr_recordings_id_delete_preview", Method: "GET", Path: "/v1/dvr/recordings/{id}/delete-preview", Summary: "Read dvr recordings delete preview", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, BodyLimit: 0, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/dvr.go:160
-	if err := apikit.RegisterHTTP[dvr.Mutation, LiveOwnerResult[dvr.Recording]](registry, apikit.Metadata{ID: "delete_dvr_recordings_id", Method: "DELETE", Path: "/v1/dvr/recordings/{id}", Summary: "Delete id", Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[dvr.Mutation, LiveOwnerResult[dvr.Recording]](registry, apikit.Metadata{ID: "delete_dvr_recordings_id", Method: "DELETE", Path: "/v1/dvr/recordings/{id}", Summary: "Remove dvr recordings", Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/dvr.go:167
-	if err := apikit.RegisterHTTP[dvr.RuleConfig, LiveOwnerResult[dvr.RulePreview]](registry, apikit.Metadata{ID: "post_dvr_rules_preview", Method: "POST", Path: "/v1/dvr/rules/preview", Summary: "Post preview", Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[dvr.RuleConfig, LiveOwnerResult[dvr.RulePreview]](registry, apikit.Metadata{ID: "post_dvr_rules_preview", Method: "POST", Path: "/v1/dvr/rules/preview", Summary: "Run dvr rules preview", Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/dvr.go:174
-	if err := apikit.RegisterHTTP[dvr.RuleInput, LiveOwnerResult[dvr.Rule]](registry, apikit.Metadata{ID: "put_dvr_rules_id", Method: "PUT", Path: "/v1/dvr/rules/{id}", Summary: "Put id", Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[dvr.RuleInput, LiveOwnerResult[dvr.Rule]](registry, apikit.Metadata{ID: "put_dvr_rules_id", Method: "PUT", Path: "/v1/dvr/rules/{id}", Summary: "Save dvr rules", Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/dvr.go:184
-	if err := apikit.RegisterHTTP[dvr.DeleteRuleInput, LiveOwnerResult[map[string]bool]](registry, apikit.Metadata{ID: "delete_dvr_rules_id", Method: "DELETE", Path: "/v1/dvr/rules/{id}", Summary: "Delete id", Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[dvr.DeleteRuleInput, LiveOwnerResult[map[string]bool]](registry, apikit.Metadata{ID: "delete_dvr_rules_id", Method: "DELETE", Path: "/v1/dvr/rules/{id}", Summary: "Remove dvr rules", Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/dvr.go:192
-	if err := apikit.RegisterHTTP[struct{}, LiveOwnerResult[dvr.StorageStatus]](registry, apikit.Metadata{ID: "get_dvr_storage", Method: "GET", Path: "/v1/dvr/storage", Summary: "Get storage", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, BodyLimit: 0, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[struct{}, LiveOwnerResult[dvr.StorageStatus]](registry, apikit.Metadata{ID: "get_dvr_storage", Method: "GET", Path: "/v1/dvr/storage", Summary: "Read dvr storage", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, BodyLimit: 0, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/dvr.go:195
-	if err := apikit.RegisterHTTP[dvr.StoragePolicyInput, LiveOwnerResult[dvr.StoragePolicy]](registry, apikit.Metadata{ID: "put_dvr_storage", Method: "PUT", Path: "/v1/dvr/storage", Summary: "Put storage", Access: apikit.Device, Requires: apikit.ScopeAdmin, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[dvr.StoragePolicyInput, LiveOwnerResult[dvr.StoragePolicy]](registry, apikit.Metadata{ID: "put_dvr_storage", Method: "PUT", Path: "/v1/dvr/storage", Summary: "Save dvr storage", Access: apikit.Device, Requires: apikit.ScopeAdmin, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/guide_directory.go:156
@@ -75,7 +75,7 @@ func registerLiveHTTPContracts(registry *apikit.Registry) error {
 		ProtocolVersion string                 `json:"protocolVersion"`
 		ServerID        string                 `json:"serverId"`
 		Directory       livechannels.Directory `json:"directory"`
-	}](registry, apikit.Metadata{ID: "get_guide_channels", Method: "GET", Path: "/v1/guide/channels", Summary: "Get channels", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, BodyLimit: 0, Status: 200, Query: []string{"anchorChannelId", "anchorProvenance", "anchorSourceId", "direction", "favorites", "group", "includeHidden", "kind", "limit", "offset", "revision", "search", "sort", "sourceId", "timezone"}, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	}](registry, apikit.Metadata{ID: "get_guide_channels", Method: "GET", Path: "/v1/guide/channels", Summary: "Read guide channels", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, BodyLimit: 0, Status: 200, Query: []string{"anchorChannelId", "anchorProvenance", "anchorSourceId", "direction", "favorites", "group", "includeHidden", "kind", "limit", "offset", "revision", "search", "sort", "sourceId", "timezone"}, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/guide_directory.go:185
@@ -85,11 +85,11 @@ func registerLiveHTTPContracts(registry *apikit.Registry) error {
 		ViewerFence     string                       `json:"viewerFence"`
 		Revision        string                       `json:"revision"`
 		Sources         []livechannels.SourceSummary `json:"sources"`
-	}](registry, apikit.Metadata{ID: "get_guide_sources", Method: "GET", Path: "/v1/guide/sources", Summary: "Get sources", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, BodyLimit: 0, Status: 200, Query: []string{"includeHidden", "timezone"}, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	}](registry, apikit.Metadata{ID: "get_guide_sources", Method: "GET", Path: "/v1/guide/sources", Summary: "Read guide sources", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, BodyLimit: 0, Status: 200, Query: []string{"includeHidden", "timezone"}, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/guide_images.go:14
-	if err := apikit.RegisterHTTP[struct{}, string](registry, apikit.Metadata{ID: "get_guide_images_digest", Method: "GET", Path: "/v1/guide/images/{digest}", Summary: "Get digest", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Media, Admission: laneMedia, Cost: apikit.Constant, BodyLimit: 0, Status: 200, ResponseContentType: "application/octet-stream", Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[struct{}, SubtitleBytesContract](registry, apikit.Metadata{ID: "get_guide_images_digest", Method: "GET", Path: "/v1/guide/images/{digest}", Summary: "Read guide images", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Media, Admission: laneMedia, Cost: apikit.Constant, BodyLimit: 0, Status: 200, ResponseContentType: "application/octet-stream", Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/library_channels.go:167
@@ -97,7 +97,7 @@ func registerLiveHTTPContracts(registry *apikit.Registry) error {
 		ProtocolVersion string                    `json:"protocolVersion"`
 		ServerID        string                    `json:"serverId"`
 		Channels        []librarychannels.Channel `json:"channels"`
-	}](registry, apikit.Metadata{ID: "get_admin_library_channels", Method: "GET", Path: "/v1/admin/library-channels", Summary: "Get library channels", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.Constant, BodyLimit: 0, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	}](registry, apikit.Metadata{ID: "get_admin_library_channels", Method: "GET", Path: "/v1/admin/library-channels", Summary: "Read server library channels", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.Constant, BodyLimit: 0, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/library_channels.go:171
@@ -105,7 +105,7 @@ func registerLiveHTTPContracts(registry *apikit.Registry) error {
 		ProtocolVersion string                  `json:"protocolVersion"`
 		ServerID        string                  `json:"serverId"`
 		Channel         librarychannels.Channel `json:"channel"`
-	}](registry, apikit.Metadata{ID: "post_admin_library_channels", Method: "POST", Path: "/v1/admin/library-channels", Summary: "Post library channels", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.Constant, BodyLimit: 1048576, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	}](registry, apikit.Metadata{ID: "post_admin_library_channels", Method: "POST", Path: "/v1/admin/library-channels", Summary: "Run server library channels", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.Constant, BodyLimit: 1048576, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/library_channels.go:179
@@ -115,7 +115,7 @@ func registerLiveHTTPContracts(registry *apikit.Registry) error {
 		ProtocolVersion string                 `json:"protocolVersion"`
 		ServerID        string                 `json:"serverId"`
 		Config          librarychannels.Config `json:"config"`
-	}](registry, apikit.Metadata{ID: "post_admin_library_channels_defaults", Method: "POST", Path: "/v1/admin/library-channels/defaults", Summary: "Post defaults", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.Constant, BodyLimit: 4096, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	}](registry, apikit.Metadata{ID: "post_admin_library_channels_defaults", Method: "POST", Path: "/v1/admin/library-channels/defaults", Summary: "Run server library channels defaults", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.Constant, BodyLimit: 4096, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/library_channels.go:189
@@ -123,7 +123,7 @@ func registerLiveHTTPContracts(registry *apikit.Registry) error {
 		ProtocolVersion string                  `json:"protocolVersion"`
 		ServerID        string                  `json:"serverId"`
 		Preview         librarychannels.Preview `json:"preview"`
-	}](registry, apikit.Metadata{ID: "post_admin_library_channels_preview", Method: "POST", Path: "/v1/admin/library-channels/preview", Summary: "Post preview", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.Constant, BodyLimit: 1048576, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	}](registry, apikit.Metadata{ID: "post_admin_library_channels_preview", Method: "POST", Path: "/v1/admin/library-channels/preview", Summary: "Run server library channels preview", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.Constant, BodyLimit: 1048576, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/library_channels.go:197
@@ -131,7 +131,7 @@ func registerLiveHTTPContracts(registry *apikit.Registry) error {
 		ProtocolVersion string `json:"protocolVersion"`
 		ServerID        string `json:"serverId"`
 		Saved           bool   `json:"saved"`
-	}](registry, apikit.Metadata{ID: "post_admin_library_channels_reorder", Method: "POST", Path: "/v1/admin/library-channels/reorder", Summary: "Post reorder", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.Constant, BodyLimit: 32768, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	}](registry, apikit.Metadata{ID: "post_admin_library_channels_reorder", Method: "POST", Path: "/v1/admin/library-channels/reorder", Summary: "Run server library channels reorder", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.Constant, BodyLimit: 32768, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/library_channels.go:205
@@ -143,7 +143,7 @@ func registerLiveHTTPContracts(registry *apikit.Registry) error {
 		ProtocolVersion string                  `json:"protocolVersion"`
 		ServerID        string                  `json:"serverId"`
 		Channel         librarychannels.Channel `json:"channel"`
-	}](registry, apikit.Metadata{ID: "post_admin_library_channels_id_regenerate", Method: "POST", Path: "/v1/admin/library-channels/{id}/regenerate", Summary: "Post regenerate", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.Constant, BodyLimit: 4096, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	}](registry, apikit.Metadata{ID: "post_admin_library_channels_id_regenerate", Method: "POST", Path: "/v1/admin/library-channels/{id}/regenerate", Summary: "Run server library channels regenerate", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.Constant, BodyLimit: 4096, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/library_channels.go:217
@@ -151,7 +151,7 @@ func registerLiveHTTPContracts(registry *apikit.Registry) error {
 		ProtocolVersion string `json:"protocolVersion"`
 		ServerID        string `json:"serverId"`
 		Deleted         bool   `json:"deleted"`
-	}](registry, apikit.Metadata{ID: "post_admin_library_channels_id_delete", Method: "POST", Path: "/v1/admin/library-channels/{id}/delete", Summary: "Post delete", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.Constant, BodyLimit: 4096, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	}](registry, apikit.Metadata{ID: "post_admin_library_channels_id_delete", Method: "POST", Path: "/v1/admin/library-channels/{id}/delete", Summary: "Run server library channels delete", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.Constant, BodyLimit: 4096, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/library_channels.go:225
@@ -159,7 +159,7 @@ func registerLiveHTTPContracts(registry *apikit.Registry) error {
 		ProtocolVersion string                     `json:"protocolVersion"`
 		ServerID        string                     `json:"serverId"`
 		Templates       []librarychannels.Template `json:"templates"`
-	}](registry, apikit.Metadata{ID: "get_admin_library_channels_templates", Method: "GET", Path: "/v1/admin/library-channels/templates", Summary: "Get templates", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.Constant, BodyLimit: 0, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	}](registry, apikit.Metadata{ID: "get_admin_library_channels_templates", Method: "GET", Path: "/v1/admin/library-channels/templates", Summary: "Read server library channels templates", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.Constant, BodyLimit: 0, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/library_channels.go:229
@@ -170,7 +170,7 @@ func registerLiveHTTPContracts(registry *apikit.Registry) error {
 		ProtocolVersion string                  `json:"protocolVersion"`
 		ServerID        string                  `json:"serverId"`
 		Channel         librarychannels.Channel `json:"channel"`
-	}](registry, apikit.Metadata{ID: "post_admin_library_channels_templates_id_install", Method: "POST", Path: "/v1/admin/library-channels/templates/{id}/install", Summary: "Post install", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.Constant, BodyLimit: 4096, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	}](registry, apikit.Metadata{ID: "post_admin_library_channels_templates_id_install", Method: "POST", Path: "/v1/admin/library-channels/templates/{id}/install", Summary: "Run server library channels templates install", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.Constant, BodyLimit: 4096, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/library_channels.go:247
@@ -178,7 +178,7 @@ func registerLiveHTTPContracts(registry *apikit.Registry) error {
 		ProtocolVersion string `json:"protocolVersion"`
 		ServerID        string `json:"serverId"`
 		Revision        int64  `json:"revision"`
-	}](registry, apikit.Metadata{ID: "post_library_channels_preferences", Method: "POST", Path: "/v1/library-channels/preferences", Summary: "Post preferences", Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Default, Admission: laneDefault, Cost: apikit.Constant, BodyLimit: 4096, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	}](registry, apikit.Metadata{ID: "post_library_channels_preferences", Method: "POST", Path: "/v1/library-channels/preferences", Summary: "Run library channels preferences", Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Default, Admission: laneDefault, Cost: apikit.Constant, BodyLimit: 4096, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/live_channels.go:224
@@ -190,7 +190,7 @@ func registerLiveHTTPContracts(registry *apikit.Registry) error {
 		ProtocolVersion string `json:"protocolVersion"`
 		ServerID        string `json:"serverId"`
 		Saved           bool   `json:"saved"`
-	}](registry, apikit.Metadata{ID: "post_admin_live_sources_id_enabled", Method: "POST", Path: "/v1/admin/live-sources/{id}/enabled", Summary: "Post enabled", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	}](registry, apikit.Metadata{ID: "post_admin_live_sources_id_enabled", Method: "POST", Path: "/v1/admin/live-sources/{id}/enabled", Summary: "Run server live sources enabled", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/live_channels.go:243
@@ -200,7 +200,7 @@ func registerLiveHTTPContracts(registry *apikit.Registry) error {
 		ProtocolVersion string `json:"protocolVersion"`
 		ServerID        string `json:"serverId"`
 		Scheduled       bool   `json:"scheduled"`
-	}](registry, apikit.Metadata{ID: "post_admin_live_sources_id_refresh", Method: "POST", Path: "/v1/admin/live-sources/{id}/refresh", Summary: "Post refresh", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	}](registry, apikit.Metadata{ID: "post_admin_live_sources_id_refresh", Method: "POST", Path: "/v1/admin/live-sources/{id}/refresh", Summary: "Run server live sources refresh", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/live_channels.go:256
@@ -211,7 +211,7 @@ func registerLiveHTTPContracts(registry *apikit.Registry) error {
 		ProtocolVersion string `json:"protocolVersion"`
 		ServerID        string `json:"serverId"`
 		Removed         bool   `json:"removed"`
-	}](registry, apikit.Metadata{ID: "post_admin_live_sources_id_remove", Method: "POST", Path: "/v1/admin/live-sources/{id}/remove", Summary: "Post remove", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	}](registry, apikit.Metadata{ID: "post_admin_live_sources_id_remove", Method: "POST", Path: "/v1/admin/live-sources/{id}/remove", Summary: "Run server live sources remove", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/live_channels.go:270
@@ -219,7 +219,7 @@ func registerLiveHTTPContracts(registry *apikit.Registry) error {
 		ProtocolVersion string `json:"protocolVersion"`
 		ServerID        string `json:"serverId"`
 		Revision        int64  `json:"revision"`
-	}](registry, apikit.Metadata{ID: "post_channels_preferences", Method: "POST", Path: "/v1/channels/preferences", Summary: "Post preferences", Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	}](registry, apikit.Metadata{ID: "post_channels_preferences", Method: "POST", Path: "/v1/channels/preferences", Summary: "Run channels preferences", Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/live_channels.go:281
@@ -227,22 +227,22 @@ func registerLiveHTTPContracts(registry *apikit.Registry) error {
 		ProtocolVersion string             `json:"protocolVersion"`
 		ServerID        string             `json:"serverId"`
 		Guide           livechannels.Guide `json:"guide"`
-	}](registry, apikit.Metadata{ID: "get_guide", Method: "GET", Path: "/v1/guide", Summary: "Get guide", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Default, Admission: laneDefault, Cost: apikit.PageSized, BodyLimit: 0, Status: 200, Query: []string{"channels", "cursor", "end", "favorites", "group", "includeHidden", "kind", "limit", "programmes", "search", "sourceId", "start", "timezone"}, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	}](registry, apikit.Metadata{ID: "get_guide", Method: "GET", Path: "/v1/guide", Summary: "Read guide", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Default, Admission: laneDefault, Cost: apikit.PageSized, BodyLimit: 0, Status: 200, Query: []string{"channels", "cursor", "end", "favorites", "group", "includeHidden", "kind", "limit", "programmes", "search", "sourceId", "start", "timezone"}, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/recording_owners.go:29
 	if err := apikit.RegisterHTTP[struct{}, LiveOwnerResult[struct {
 		Items      []recordingOwnerChoice `json:"items"`
 		NextCursor string                 `json:"nextCursor"`
-	}]](registry, apikit.Metadata{ID: "get_admin_dvr_recording_owners", Method: "GET", Path: "/v1/admin/dvr/recording-owners", Summary: "Get recording owners", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.PageSized, BodyLimit: 0, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	}]](registry, apikit.Metadata{ID: "get_admin_dvr_recording_owners", Method: "GET", Path: "/v1/admin/dvr/recording-owners", Summary: "Read server dvr recording owners", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.PageSized, BodyLimit: 0, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/recording_permissions.go:17
-	if err := apikit.RegisterHTTP[struct{}, LiveOwnerResult[[]recordingaccess.Grant]](registry, apikit.Metadata{ID: "get_admin_dvr_recording_permissions", Method: "GET", Path: "/v1/admin/dvr/recording-permissions", Summary: "Get recording permissions", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.Constant, BodyLimit: 0, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[struct{}, LiveOwnerResult[[]recordingaccess.Grant]](registry, apikit.Metadata{ID: "get_admin_dvr_recording_permissions", Method: "GET", Path: "/v1/admin/dvr/recording-permissions", Summary: "Read server dvr recording permissions", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.Constant, BodyLimit: 0, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/recording_permissions.go:31
-	if err := apikit.RegisterHTTP[recordingaccess.Grant, LiveOwnerResult[recordingaccess.Grant]](registry, apikit.Metadata{ID: "put_admin_dvr_recording_permissions", Method: "PUT", Path: "/v1/admin/dvr/recording-permissions", Summary: "Put recording permissions", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[recordingaccess.Grant, LiveOwnerResult[recordingaccess.Grant]](registry, apikit.Metadata{ID: "put_admin_dvr_recording_permissions", Method: "PUT", Path: "/v1/admin/dvr/recording-permissions", Summary: "Save server dvr recording permissions", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	return nil

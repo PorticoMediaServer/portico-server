@@ -13,9 +13,7 @@
 //     `@request <path> <method>` (requestBody schema), or
 //     `@response <path> <method> <status>` (that response's schema for
 //     <ct>, defaulting to the block's contentType or application/json).
-//  3. Loads the cited OpenAPI YAML file (via system python3+pyyaml; no npm
-//     dependencies) and resolves the schema (following local $refs and
-//     `playback-v2.openapi.json` external refs).
+//  3. Loads the generated OpenAPI JSON document and resolves local schemas.
 //  4. Validates each example with a small built-in JSON-Schema validator
 //     (OpenAPI 3.1 subset: types incl. type-arrays, enum/const, pattern,
 //     length/range limits, required/properties/additionalProperties, items,
@@ -35,22 +33,8 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const API_DIR = join(HERE, "..");
 const GUIDE_DIR = HERE;
 
-const YAML_FILES = [
-  "openapi.yaml",
-  "admin-access.openapi.yaml",
-  "admin-libraries.openapi.yaml",
-  "browse.openapi.yaml",
-  "delivery.openapi.yaml",
-  "home.openapi.yaml",
-  "identity.openapi.yaml",
-  "jobs.openapi.yaml",
-  "metadata-editor.openapi.yaml",
-  "notifications.openapi.yaml",
-  "search-people.openapi.yaml",
-  "telemetry.openapi.yaml",
-];
-
-const JSON_FILES = ["playback-v2.openapi.json", "portico.openapi.json"];
+const YAML_FILES = [];
+const JSON_FILES = ["portico.openapi.json"];
 
 // ---------------------------------------------------------------- YAML load
 

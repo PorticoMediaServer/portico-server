@@ -1,3 +1,4 @@
+import {routePath} from "../../contracts/src/routes.ts";
 /**
  * Recommendation feedback (Recommendations plan P5): "Not interested" on a recommendation card and
  * "Reset recommendations" in Privacy.
@@ -17,7 +18,7 @@ import {unreadableServerResponse} from './server-messages.ts';
 
 type Api = {request<T>(path: string, method?: string, body?: unknown, signal?: AbortSignal): Promise<T>};
 
-export const RESET_RECOMMENDATIONS_PATH = '/v1/me/recommendations:reset';
+export const RESET_RECOMMENDATIONS_PATH = routePath("post_me_recommendations_reset");
 
 const operation = /^[A-Za-z0-9_-]{1,128}$/;
 const containerKinds = new Set(['show', 'album', 'book']);

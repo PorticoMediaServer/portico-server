@@ -1,3 +1,4 @@
+import {routePath, encodedRoutePath} from "../../../contracts/src/routes.ts";
 /**
  * Playback sessions (spec §5) and the controller that plays one on a `MediaPlayer`.
  *
@@ -82,7 +83,7 @@ export class SessionsClient {
     const body = {...target, ...options};
     let waited = 0;
     for (;;) {
-      const r = await call(this.http, {method: 'POST', path: '/v1/playback/sessions', headers: {'Idempotency-Key': key}, body, signal: extra.signal}, [201, 200, 202]);
+      const r = await call(this.http, {method: 'POST', path: routePath("start_playback_session"), headers: {'Idempotency-Key': key}, body, signal: extra.signal}, [201, 200, 202]);
       if (r.status !== 202) return parseSession(r.body);
       const b = r.body as {retryAfterMs?: unknown} | undefined;
       const wait = Math.min(10_000, Math.max(250, typeof b?.retryAfterMs === 'number' ? b.retryAfterMs : Number(header(r, 'Retry-After') ?? 1) * 1000));
@@ -98,13 +99,13 @@ export class SessionsClient {
   }
 
   async get(id: string, signal?: AbortSignal): Promise<Session> {
-    return parseSession((await call(this.http, {method: 'GET', path: `/v1/playback/sessions/${enc(id)}`, signal})).body);
+    return parseSession((await call(this.http, {method: 'GET', path: encodedRoutePath("get_playback_session", {"id": enc(id)}), signal})).body);
   }
 
   /** `PATCH` with `If-Match`. A 412 throws `PlaybackApiError` whose `current` is the parsed session. */
   async patch(id: string, revision: string, change: SessionChange, signal?: AbortSignal): Promise<Session> {
     try {
-      return parseSession((await call(this.http, {method: 'PATCH', path: `/v1/playback/sessions/${enc(id)}`, headers: {'If-Match': revision, 'Content-Type': 'application/merge-patch+json'}, body: change, signal})).body);
+      return parseSession((await call(this.http, {method: 'PATCH', path: encodedRoutePath("change_playback_session", {"id": enc(id)}), headers: {'If-Match': revision, 'Content-Type': 'application/merge-patch+json'}, body: change, signal})).body);
     } catch (e) {
       if (e instanceof PlaybackApiError && e.status === 412 && e.current !== undefined) {
         let current: Session | undefined;
@@ -116,11 +117,11 @@ export class SessionsClient {
   }
 
   async stop(id: string, positionMs?: number, signal?: AbortSignal): Promise<void> {
-    await call(this.http, {method: 'DELETE', path: `/v1/playback/sessions/${enc(id)}`, ...(signal ? {signal} : {}), ...(positionMs !== undefined ? {body: {positionMs: Math.max(0, Math.round(positionMs))}} : {})}, [204, 200, 404, 410]);
+    await call(this.http, {method: 'DELETE', path: encodedRoutePath("stop_playback_session", {"id": enc(id)}), ...(signal ? {signal} : {}), ...(positionMs !== undefined ? {body: {positionMs: Math.max(0, Math.round(positionMs))}} : {})}, [204, 200, 404, 410]);
   }
 
   async timeline(id: string, report: TimelineReport, signal?: AbortSignal): Promise<{reportEveryMs?: number}> {
-    const r = await call(this.http, {method: 'POST', path: `/v1/playback/sessions/${enc(id)}/timeline`, body: report, ...(signal ? {signal} : {})});
+    const r = await call(this.http, {method: 'POST', path: encodedRoutePath("report_playback_timeline", {"id": enc(id)}), body: report, ...(signal ? {signal} : {})});
     const every = Number(header(r, 'Report-Every-Ms'));
     return Number.isFinite(every) && every > 0 ? {reportEveryMs: every} : {};
   }
