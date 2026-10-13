@@ -75,8 +75,12 @@ export function CredentialList({kind, title, description, read, create, revoke, 
       {working.map(row)}
       {read.data && !working.length ? <SettingsEmpty title={words.none} /> : null}
       {showEnded ? ended.map(row) : null}
-      {ended.length ? <SettingsFooter><Button size="sm" variant="ghost" label={showEnded ? t('api.credential.hideEnded') : t('api.credential.showEnded', {count: ended.length})} aria-expanded={showEnded} onClick={() => setShowEnded(v => !v)} /></SettingsFooter> : null}
-      {footnote ? <SettingsFooter><Text as="p" variant="caption" tone="tertiary">{footnote}</Text></SettingsFooter> : null}
+      {ended.length || footnote ? (
+        <SettingsFooter>
+          {ended.length ? <Button size="sm" variant="ghost" label={showEnded ? t('api.credential.hideEnded') : t('api.credential.showEnded', {count: ended.length})} aria-expanded={showEnded} onClick={() => setShowEnded(v => !v)} /> : null}
+          {footnote ? <Text as="p" variant="caption" tone="tertiary" style={{flexBasis: '100%'}}>{footnote}</Text> : null}
+        </SettingsFooter>
+      ) : null}
       {create ? <CreateCredentialDialog open={adding} onClose={() => setAdding(false)} words={words} scopes={options?.scopes.length ? options.scopes : apiScopes} create={create} onCreated={read.reload} /> : null}
       <ConfirmDialog open={!!revoking} onOpenChange={o => !o && setRevoking(undefined)} title={words.revokeTitle(revoking?.name ?? '')} body={words.revokeBody} confirmLabel={t('web.access.revoke')} cancelLabel={t('action.cancel')} busy={action.busy} error={action.error}
         onConfirm={() => void action.run(async () => { if (!revoking) return; await revoke(revoking.id); setRevoking(undefined); read.reload(); }, words.revoked)} />

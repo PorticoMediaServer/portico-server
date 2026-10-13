@@ -5,8 +5,7 @@ import type {FeedbackReport, FeedbackStatus} from '@core/console.ts';
 export {feedbackCategoryLabel} from '@core/server-admin/panel-logic.ts';
 import {QUIET_READ_EVERY_MS, sendFresh, useAction, useConsole, useRead, when} from '../../admin/console';
 import {devicePlatform} from '@core/server-admin/people-words.ts';
-import {Badge, Button, Dialog, Freshness, ListRow, Notice, Select, StateView, Surface, Text, TextArea} from '../../ui';
-import {SectionHeader} from './Server';
+import {Badge, Button, Dialog, Freshness, Notice, Select, SettingsEmpty, SettingsGroup, SettingsLoading, SettingsNote, SettingsRow, Text, TextArea} from '../../ui';
 import {useI18n} from '../../app/i18n';
 import s from './Server.module.css';
 
@@ -22,13 +21,13 @@ export function FeedbackPanel() {
   const [selected, setSelected] = useState<FeedbackReport | null>(null);
   const items = read.data?.items ?? [];
   return (
-    <>
-      <SectionHeader title={t('settings.server.feedback')} lede={t('web.console.nav.feedbackLede')} actions={<div style={{display: 'flex', gap: 12, alignItems: 'center'}}><BroadcastButton /><Freshness at={read.at} onRefresh={read.reload} refreshing={read.loading} /></div>} />
-      {read.error && !read.data ? <Notice tone="error" action={{label: t('action.tryAgain'), onClick: read.reload}}>{read.error}</Notice> : null}
-      {read.data && !items.length ? <StateView icon="mail" title={t('web.feedback.inboxEmpty')} body={t('web.feedback.inboxEmptyBody')} /> : null}
-      {items.length ? <Surface padless>{items.map(r => <ListRow key={r.id} icon="mail" title={r.message.split('\n')[0]} subtitle={t('web.feedback.rowSubtitle', {category: feedbackCategoryName(t, has, r.category), when: when(i18n, r.createdAt), about: r.itemId ? 'yes' : 'no'})} meta={<Badge tone={statusTone(r.status)}>{feedbackStatusName(t, has, r.status)}</Badge>} onClick={() => setSelected(r)} />)}</Surface> : null}
+    <SettingsGroup title={t('settings.server.feedback')} description={t('web.console.nav.feedbackLede')} action={<div style={{display: 'flex', gap: 12, alignItems: 'center'}}><Freshness at={read.at} onRefresh={read.reload} refreshing={read.loading} /><BroadcastButton /></div>}>
+      {read.error ? <SettingsNote><Notice tone={read.data ? 'warning' : 'error'} compact action={{label: t('action.tryAgain'), onClick: read.reload}}>{read.error}</Notice></SettingsNote> : null}
+      {!read.data && read.loading ? <SettingsLoading thing={t('server.thing.reports')} /> : null}
+      {read.data && !items.length ? <SettingsEmpty title={t('web.feedback.inboxEmpty')} body={t('web.feedback.inboxEmptyBody')} /> : null}
+      {items.map(r => <SettingsRow key={r.id} icon="mail" label={r.message.split('\n')[0]} help={t('web.feedback.rowSubtitle', {category: feedbackCategoryName(t, has, r.category), when: when(i18n, r.createdAt), about: r.itemId ? 'yes' : 'no'})} meta={<Badge tone={statusTone(r.status)}>{feedbackStatusName(t, has, r.status)}</Badge>} onClick={() => setSelected(r)} />)}
       <TriageDialog report={selected} onClose={() => setSelected(null)} onChanged={() => { setSelected(null); read.reload(); }} />
-    </>
+    </SettingsGroup>
   );
 }
 

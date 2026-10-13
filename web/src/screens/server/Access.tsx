@@ -10,7 +10,7 @@ import {createOperationIds} from './operation-ids';
 import {findInPages, nextCursorOf, useCursorList} from '../../admin/cursor-read';
 import {ListPager} from './ListPager';
 import {useSession} from '../../app/session';
-import {Button, ConfirmDialog, Dialog, Input, Notice, Select, SettingsEmpty, SettingsFooter, SettingsGroup, SettingsLoading, SettingsNote, SettingsRow, Status, Switch, Text, TextArea} from '../../ui';
+import {Button, ConfirmDialog, Dialog, Input, Notice, Select, SettingsEmpty, SettingsFooter, SettingsGroup, SettingsLoading, SettingsNote, SettingsRow, Status, Switch, Text, TextArea, relative} from '../../ui';
 import {useI18n} from '../../app/i18n';
 
 const items = <T,>(raw: unknown, each: (x: unknown) => T): T[] => {
@@ -164,8 +164,7 @@ export function InvitationsPanel() {
 
 /** An account's devices, in the one place they are managed: approve, block, and see when each was last here. */
 export function AccountDevices({accountId}: {/** Absent: everyone's devices, most recently seen first, each with whose it is. */ accountId?: string}) {
-  const i18n = useI18n();
-  const {t} = i18n;
+  const {t} = useI18n();
   const {api} = useSession();
   const page = async (cursor: string) => { const raw = await api.request(accessListPath('devices', cursor) + (accountId ? '&account=' + encodeURIComponent(accountId) : '')); return {items: [...parseAccessDevicePage(raw).items], nextCursor: nextCursorOf(raw)}; };
   // A device that has just signed in and waits for approval appears here by itself.
@@ -190,7 +189,7 @@ export function AccountDevices({accountId}: {/** Absent: everyone's devices, mos
       {action.notice ? <SettingsNote><Notice tone="success" compact>{action.notice}</Notice></SettingsNote> : null}
       {!mine && read.loading ? <SettingsLoading thing={t('server.thing.devices')} /> : null}
       {mine?.map(d => (
-        <SettingsRow key={d.id} icon={d.platform === 'tvos' || d.platform === 'androidtv' ? 'tvDevice' : d.platform === 'web' ? 'browser' : d.platform === 'api' ? 'lock' : 'phone'} label={d.name} help={deviceFacts(t, d, {showOwner: !accountId, relative: iso => i18n.relativeTime(iso)})}
+        <SettingsRow key={d.id} icon={d.platform === 'tvos' || d.platform === 'androidtv' ? 'tvDevice' : d.platform === 'web' ? 'browser' : d.platform === 'ios' || d.platform === 'android' ? 'phone' : d.platform === 'api' ? 'lock' : 'profile'} label={d.name} help={deviceFacts(t, d, {showOwner: !accountId, relative: iso => relative(Date.now() - Date.parse(iso))})}
           state={<Status tone={d.trust === 'approved' ? 'healthy' : d.trust === 'blocked' ? 'danger' : 'warning'}>{d.trust === 'approved' ? t('web.access.trustApproved') : d.trust === 'blocked' ? t('web.access.trustBlocked') : t('web.access.trustWaiting')}</Status>}
           control={<div style={{display: 'flex', gap: 8}}>{d.trust !== 'approved' ? <Button size="sm" variant="secondary" label={t('web.devices.approve')} disabled={action.busy} onClick={() => void trust(d, 'approved')} /> : null}{d.trust !== 'blocked' ? <Button size="sm" variant="ghost" label={t('web.access.block')} disabled={action.busy} onClick={() => { action.clear(); setBlocking(d); }} /> : null}</div>} />
       ))}
