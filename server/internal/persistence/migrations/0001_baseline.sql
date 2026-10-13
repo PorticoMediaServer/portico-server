@@ -2611,14 +2611,6 @@ CREATE TABLE access_devices(
  trust TEXT NOT NULL DEFAULT 'pending' CHECK(trust IN('pending','approved','blocked')),
  first_seen_ms INTEGER NOT NULL, last_seen_ms INTEGER NOT NULL,
  revision INTEGER NOT NULL DEFAULT 1 CHECK(revision>0)) STRICT;
-CREATE TABLE access_api_keys(
- id TEXT PRIMARY KEY, account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
- profile_id TEXT NOT NULL, name TEXT NOT NULL,
- scope TEXT NOT NULL CHECK(scope IN('read-only','playback','library-management','full')),
- secret_hash TEXT NOT NULL UNIQUE, hint TEXT NOT NULL,
- created_ms INTEGER NOT NULL, last_used_ms INTEGER, created_by TEXT NOT NULL,
- revoked INTEGER NOT NULL DEFAULT 0 CHECK(revoked IN(0,1)),
- revision INTEGER NOT NULL DEFAULT 1 CHECK(revision>0)) STRICT;
 CREATE TABLE access_receipts(
  scope TEXT NOT NULL, operation_id TEXT NOT NULL, digest TEXT NOT NULL,
  body TEXT NOT NULL, created_ms INTEGER NOT NULL, PRIMARY KEY(scope,operation_id)) STRICT;
@@ -3815,7 +3807,6 @@ CREATE UNIQUE INDEX direct_one_owner ON direct_memberships(role) WHERE role='own
 CREATE INDEX access_invitation_page ON access_invitations(created_ms DESC,id DESC);
 CREATE INDEX access_devices_page ON access_devices(last_seen_ms DESC,id DESC);
 CREATE INDEX access_devices_account ON access_devices(account_id,id);
-CREATE INDEX access_api_keys_page ON access_api_keys(created_ms DESC,id DESC);
 CREATE INDEX client_log_uploads_page ON client_log_uploads(received_ms DESC,id DESC);
 CREATE INDEX audio_tag_evidence_asset ON audio_tag_evidence(asset_id,field,value);
 CREATE INDEX inventory_objects_directory ON inventory_objects(source_id,root_incarnation,directory_path,retired,id);
@@ -5651,3 +5642,155 @@ CREATE INDEX saved_resource_entries_item_id_fk ON saved_resource_entries(item_id
 CREATE INDEX subtitle_provider_candidates_item_id_fk ON subtitle_provider_candidates(item_id);
 CREATE INDEX subtitle_resources_source_id_fk ON subtitle_resources(source_id);
 CREATE INDEX video_nfo_status_asset_id_fk ON video_nfo_status(asset_id);
+
+-- ===== API keys and personal access tokens
+-- A key or token is a session family that does not rotate (see
+-- internal/identity/api_credentials.go). This row is what the family cannot
+-- say about itself: its name, its scopes, and who may list and end it.
+-- secret_hash is the digest of the secret, the same value the family's token
+-- row is keyed on; the secret itself is never stored.
+CREATE TABLE api_credentials(
+ id TEXT PRIMARY KEY, kind TEXT NOT NULL CHECK(kind IN('key','token')),
+ account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE, profile_id TEXT NOT NULL,
+ name TEXT NOT NULL, scopes TEXT NOT NULL, secret_hash TEXT NOT NULL UNIQUE, hint TEXT NOT NULL,
+ family_id TEXT NOT NULL UNIQUE, device_id TEXT NOT NULL,
+ created_ms INTEGER NOT NULL, expires_ms INTEGER NOT NULL DEFAULT 0, revoked_ms INTEGER NOT NULL DEFAULT 0) STRICT;
+CREATE INDEX api_credentials_page ON api_credentials(kind,created_ms DESC,id DESC);
+CREATE INDEX api_credentials_account ON api_credentials(account_id,kind,created_ms DESC,id DESC);
+-- Kept apart from api_credentials so that recording a use never looks like a
+-- change of authority.
+CREATE TABLE api_credential_use(
+ credential_id TEXT PRIMARY KEY REFERENCES api_credentials(id) ON DELETE CASCADE,
+ last_used_ms INTEGER NOT NULL, requests INTEGER NOT NULL DEFAULT 0) STRICT;
+
+-- ===== scans limited to paths an outside tool reported
+CREATE TABLE inventory_path_notices(
+ source_id TEXT NOT NULL REFERENCES library_sources(id) ON DELETE CASCADE,
+ relative_path TEXT NOT NULL, created_ms INTEGER NOT NULL,
+ PRIMARY KEY(source_id,relative_path)) WITHOUT ROWID, STRICT;
+CREATE TABLE inventory_run_targets(
+ job_id TEXT NOT NULL REFERENCES jobs(id) ON DELETE CASCADE, relative_path TEXT NOT NULL,
+ PRIMARY KEY(job_id,relative_path)) WITHOUT ROWID, STRICT;
+
+-- ===== outbound webhooks
+-- events is a comma-delimited list with a leading and trailing comma, so one
+-- instr() answers "is this webhook subscribed".
+CREATE TABLE webhooks(
+ id TEXT PRIMARY KEY, name TEXT NOT NULL, url TEXT NOT NULL, secret TEXT NOT NULL, events TEXT NOT NULL,
+ enabled INTEGER NOT NULL DEFAULT 1 CHECK(enabled IN(0,1)),
+ failures INTEGER NOT NULL DEFAULT 0, dropped INTEGER NOT NULL DEFAULT 0,
+ created_ms INTEGER NOT NULL, updated_ms INTEGER NOT NULL,
+ revision INTEGER NOT NULL DEFAULT 1 CHECK(revision>0)) STRICT;
+-- The delivery queue and the delivery log are one table: a row is pending until
+-- it is delivered or given up on, and stays as the log entry afterwards.
+CREATE TABLE webhook_deliveries(
+ id TEXT PRIMARY KEY, webhook_id TEXT NOT NULL REFERENCES webhooks(id) ON DELETE CASCADE,
+ type TEXT NOT NULL, subject TEXT NOT NULL DEFAULT '', data TEXT NOT NULL DEFAULT '{}',
+ state TEXT NOT NULL DEFAULT 'pending' CHECK(state IN('pending','delivered','failed')),
+ attempts INTEGER NOT NULL DEFAULT 0, next_attempt_ms INTEGER NOT NULL, created_ms INTEGER NOT NULL,
+ finished_ms INTEGER NOT NULL DEFAULT 0, status INTEGER NOT NULL DEFAULT 0,
+ duration_ms INTEGER NOT NULL DEFAULT 0, error TEXT NOT NULL DEFAULT '') STRICT;
+CREATE INDEX webhook_deliveries_due ON webhook_deliveries(state,next_attempt_ms,created_ms);
+CREATE INDEX webhook_deliveries_log ON webhook_deliveries(webhook_id,created_ms DESC,id DESC);
+CREATE INDEX webhook_deliveries_queue ON webhook_deliveries(webhook_id,state);
+-- Several changes to one thing before the first attempt are one delivery.
+CREATE UNIQUE INDEX webhook_deliveries_coalesce ON webhook_deliveries(webhook_id,type,subject) WHERE state='pending' AND attempts=0 AND subject<>'';
+CREATE TABLE webhook_state(key TEXT PRIMARY KEY, value TEXT NOT NULL) WITHOUT ROWID, STRICT;
+-- Every event, from a trigger below or from the server, is one insert here. The
+-- row never rests: the trigger gives each subscribed webhook a delivery and
+-- removes it. A webhook with a thousand deliveries waiting takes no more; the
+-- count of what it missed is kept for the owner.
+CREATE TABLE webhook_events(type TEXT NOT NULL, subject TEXT NOT NULL DEFAULT '', data TEXT NOT NULL DEFAULT '{}') STRICT;
+CREATE TRIGGER webhook_events_fan_out AFTER INSERT ON webhook_events BEGIN
+ UPDATE webhooks SET dropped=dropped+1 WHERE enabled=1 AND instr(events,','||NEW.type||',')>0
+  AND (SELECT count(*) FROM webhook_deliveries d WHERE d.webhook_id=webhooks.id AND d.state='pending')>=1000;
+ INSERT OR IGNORE INTO webhook_deliveries(id,webhook_id,type,subject,data,next_attempt_ms,created_ms)
+  SELECT lower(hex(randomblob(16))),w.id,NEW.type,NEW.subject,NEW.data,
+   CAST((julianday('now')-2440587.5)*86400000 AS INTEGER)+CASE WHEN NEW.type IN('title.added','title.updated') THEN 45000 ELSE 0 END,CAST((julianday('now')-2440587.5)*86400000 AS INTEGER)
+  FROM webhooks w WHERE w.enabled=1 AND instr(w.events,','||NEW.type||',')>0
+   AND (SELECT count(*) FROM webhook_deliveries d WHERE d.webhook_id=w.id AND d.state='pending')<1000
+   AND NOT(NEW.type='title.updated' AND EXISTS(SELECT 1 FROM webhook_deliveries d WHERE d.webhook_id=w.id AND d.type='title.added' AND d.subject=NEW.subject AND d.state='pending' AND d.attempts=0));
+ DELETE FROM webhook_events WHERE rowid=NEW.rowid;
+END;
+-- Titles are films, shows, episodes, albums and books. A member's private
+-- recordings library is never reported.
+CREATE TRIGGER webhook_title_added AFTER INSERT ON catalog_entities
+ WHEN NEW.kind IN(1,2,4,6,8) AND NEW.retired=0 AND EXISTS(SELECT 1 FROM webhooks WHERE enabled=1 AND instr(events,',title.added,')>0) AND NOT EXISTS(SELECT 1 FROM dvr_private_libraries p JOIN catalog_libraries l ON l.library_id=p.library_id WHERE l.id=NEW.library_id) BEGIN
+ INSERT INTO webhook_events(type,subject,data) VALUES('title.added',lower(hex(NEW.public_id)),json_object('entity',lower(hex(NEW.public_id)),'kind',NEW.kind,'title',NEW.title,'year',NEW.year,'libraryId',(SELECT library_id FROM catalog_libraries WHERE id=NEW.library_id),'parent',(SELECT lower(hex(public_id)) FROM catalog_entities WHERE id=NEW.parent_id)));
+END;
+CREATE TRIGGER webhook_title_updated AFTER UPDATE OF title,year ON catalog_entities
+ WHEN NEW.kind IN(1,2,4,6,8) AND NEW.retired=0 AND (NEW.title<>OLD.title OR NEW.year<>OLD.year) AND EXISTS(SELECT 1 FROM webhooks WHERE enabled=1 AND instr(events,',title.updated,')>0) AND NOT EXISTS(SELECT 1 FROM dvr_private_libraries p JOIN catalog_libraries l ON l.library_id=p.library_id WHERE l.id=NEW.library_id) BEGIN
+ INSERT INTO webhook_events(type,subject,data) VALUES('title.updated',lower(hex(NEW.public_id)),json_object('entity',lower(hex(NEW.public_id)),'kind',NEW.kind,'title',NEW.title,'year',NEW.year,'libraryId',(SELECT library_id FROM catalog_libraries WHERE id=NEW.library_id),'parent',(SELECT lower(hex(public_id)) FROM catalog_entities WHERE id=NEW.parent_id)));
+END;
+CREATE TRIGGER webhook_title_metadata_updated AFTER UPDATE OF metadata_revision ON metadata_publication_heads
+ WHEN NEW.metadata_revision<>OLD.metadata_revision AND EXISTS(SELECT 1 FROM webhooks WHERE enabled=1 AND instr(events,',title.updated,')>0) BEGIN
+ INSERT INTO webhook_events(type,subject,data) SELECT 'title.updated',lower(hex(e.public_id)),json_object('entity',lower(hex(e.public_id)),'kind',e.kind,'title',e.title,'year',e.year,'libraryId',(SELECT library_id FROM catalog_libraries WHERE id=e.library_id),'parent',(SELECT lower(hex(public_id)) FROM catalog_entities WHERE id=e.parent_id))
+  FROM catalog_entities e WHERE e.id=NEW.item_id AND e.kind IN(1,2,4,6,8) AND e.retired=0 AND NOT EXISTS(SELECT 1 FROM dvr_private_libraries p JOIN catalog_libraries l ON l.library_id=p.library_id WHERE l.id=e.library_id);
+END;
+CREATE TRIGGER webhook_title_removed BEFORE DELETE ON catalog_entities
+ WHEN OLD.kind IN(1,2,4,6,8) AND OLD.retired=0 AND EXISTS(SELECT 1 FROM webhooks WHERE enabled=1 AND instr(events,',title.removed,')>0) AND NOT EXISTS(SELECT 1 FROM dvr_private_libraries p JOIN catalog_libraries l ON l.library_id=p.library_id WHERE l.id=OLD.library_id) BEGIN
+ INSERT INTO webhook_events(type,subject,data) VALUES('title.removed',lower(hex(OLD.public_id)),json_object('entity',lower(hex(OLD.public_id)),'kind',OLD.kind,'title',OLD.title,'year',OLD.year,'libraryId',(SELECT library_id FROM catalog_libraries WHERE id=OLD.library_id),'parent',(SELECT lower(hex(public_id)) FROM catalog_entities WHERE id=OLD.parent_id)));
+END;
+CREATE TRIGGER webhook_title_retired AFTER UPDATE OF retired ON catalog_entities
+ WHEN NEW.kind IN(1,2,4,6,8) AND NEW.retired=1 AND OLD.retired=0 AND EXISTS(SELECT 1 FROM webhooks WHERE enabled=1 AND instr(events,',title.removed,')>0) AND NOT EXISTS(SELECT 1 FROM dvr_private_libraries p JOIN catalog_libraries l ON l.library_id=p.library_id WHERE l.id=NEW.library_id) BEGIN
+ INSERT INTO webhook_events(type,subject,data) VALUES('title.removed',lower(hex(NEW.public_id)),json_object('entity',lower(hex(NEW.public_id)),'kind',NEW.kind,'title',NEW.title,'year',NEW.year,'libraryId',(SELECT library_id FROM catalog_libraries WHERE id=NEW.library_id),'parent',(SELECT lower(hex(public_id)) FROM catalog_entities WHERE id=NEW.parent_id)));
+END;
+-- A scan is a job that walks folders; a job that only analyses one file is not.
+CREATE TRIGGER webhook_scan_started AFTER UPDATE OF status ON jobs
+ WHEN NEW.status='running' AND OLD.status='queued' AND EXISTS(SELECT 1 FROM webhooks WHERE enabled=1 AND instr(events,',scan.started,')>0)
+  AND EXISTS(SELECT 1 FROM inventory_directories d WHERE d.job_id=NEW.id)
+  AND NOT EXISTS(SELECT 1 FROM dvr_private_libraries p WHERE p.library_id=NEW.library_id) BEGIN
+ INSERT INTO webhook_events(type,subject,data) VALUES('scan.started',NEW.id,json_object('jobId',NEW.id,'libraryId',NEW.library_id,'library',(SELECT name FROM libraries WHERE id=NEW.library_id)));
+END;
+CREATE TRIGGER webhook_scan_finished AFTER UPDATE OF status ON jobs
+ WHEN NEW.status IN('complete','complete_with_warnings','failed','cancelled') AND OLD.status NOT IN('complete','complete_with_warnings','failed','cancelled') AND EXISTS(SELECT 1 FROM webhooks WHERE enabled=1 AND instr(events,',scan.finished,')>0)
+  AND EXISTS(SELECT 1 FROM inventory_directories d WHERE d.job_id=NEW.id)
+  AND NOT EXISTS(SELECT 1 FROM dvr_private_libraries p WHERE p.library_id=NEW.library_id) BEGIN
+ INSERT INTO webhook_events(type,subject,data) VALUES('scan.finished',NEW.id,json_object('jobId',NEW.id,'libraryId',NEW.library_id,'library',(SELECT name FROM libraries WHERE id=NEW.library_id),'outcome',NEW.status,'processed',NEW.processed));
+END;
+-- A session that replaces one already playing the same thing on the same device
+-- (a change of quality or version) is neither a start nor a stop.
+CREATE TRIGGER webhook_playback_started AFTER INSERT ON playback_v1_sessions
+ WHEN NEW.state IN('playing','paused') AND NEW.ended_ms=0 AND EXISTS(SELECT 1 FROM webhooks WHERE enabled=1 AND instr(events,',playback.started,')>0) AND NOT EXISTS(SELECT 1 FROM playback_v1_sessions o WHERE o.id<>NEW.id AND o.device_id=NEW.device_id AND o.item_id=NEW.item_id AND o.channel_id=NEW.channel_id AND o.ended_ms=0 AND o.state<>'preparing') BEGIN
+ INSERT INTO webhook_events(type,subject,data) VALUES('playback.started',NEW.id,json_object('sessionId',NEW.id,'kind',NEW.kind,'state',NEW.state,'positionMs',NEW.position_ms,'reason',NEW.end_reason,'accountId',NEW.account_id,'user',(SELECT username FROM accounts WHERE id=NEW.account_id),'profileId',NEW.profile_id,'profile',(SELECT name FROM direct_profiles WHERE id=NEW.profile_id),'deviceId',NEW.device_id,'device',(SELECT name FROM identity_devices WHERE id=NEW.device_id),'platform',(SELECT platform FROM identity_devices WHERE id=NEW.device_id),'entity',(SELECT lower(hex(public_id)) FROM catalog_entities WHERE id=NEW.item_id),'title',(SELECT title FROM catalog_entities WHERE id=NEW.item_id),'channelId',NEW.channel_id));
+END;
+CREATE TRIGGER webhook_playback_state AFTER UPDATE OF state ON playback_v1_sessions
+ WHEN NEW.state<>OLD.state AND NEW.state IN('playing','paused') AND NEW.ended_ms=0 AND EXISTS(SELECT 1 FROM webhooks WHERE enabled=1)
+  AND NOT(OLD.state='preparing' AND EXISTS(SELECT 1 FROM playback_v1_sessions o WHERE o.id<>NEW.id AND o.device_id=NEW.device_id AND o.item_id=NEW.item_id AND o.channel_id=NEW.channel_id AND o.ended_ms=0 AND o.state<>'preparing')) BEGIN
+ INSERT INTO webhook_events(type,subject,data) VALUES(CASE WHEN OLD.state='preparing' THEN 'playback.started' WHEN NEW.state='paused' THEN 'playback.paused' ELSE 'playback.resumed' END,NEW.id,json_object('sessionId',NEW.id,'kind',NEW.kind,'state',NEW.state,'positionMs',NEW.position_ms,'reason',NEW.end_reason,'accountId',NEW.account_id,'user',(SELECT username FROM accounts WHERE id=NEW.account_id),'profileId',NEW.profile_id,'profile',(SELECT name FROM direct_profiles WHERE id=NEW.profile_id),'deviceId',NEW.device_id,'device',(SELECT name FROM identity_devices WHERE id=NEW.device_id),'platform',(SELECT platform FROM identity_devices WHERE id=NEW.device_id),'entity',(SELECT lower(hex(public_id)) FROM catalog_entities WHERE id=NEW.item_id),'title',(SELECT title FROM catalog_entities WHERE id=NEW.item_id),'channelId',NEW.channel_id));
+END;
+CREATE TRIGGER webhook_playback_stopped AFTER UPDATE OF ended_ms ON playback_v1_sessions
+ WHEN NEW.ended_ms>0 AND OLD.ended_ms=0 AND OLD.state<>'preparing' AND EXISTS(SELECT 1 FROM webhooks WHERE enabled=1 AND instr(events,',playback.stopped,')>0)
+  AND NOT(NEW.end_reason='replaced' AND EXISTS(SELECT 1 FROM playback_v1_sessions o WHERE o.id<>NEW.id AND o.device_id=NEW.device_id AND o.item_id=NEW.item_id AND o.channel_id=NEW.channel_id AND o.ended_ms=0 AND o.state<>'preparing')) BEGIN
+ INSERT INTO webhook_events(type,subject,data) VALUES('playback.stopped',NEW.id,json_object('sessionId',NEW.id,'kind',NEW.kind,'state',NEW.state,'positionMs',NEW.position_ms,'reason',NEW.end_reason,'accountId',NEW.account_id,'user',(SELECT username FROM accounts WHERE id=NEW.account_id),'profileId',NEW.profile_id,'profile',(SELECT name FROM direct_profiles WHERE id=NEW.profile_id),'deviceId',NEW.device_id,'device',(SELECT name FROM identity_devices WHERE id=NEW.device_id),'platform',(SELECT platform FROM identity_devices WHERE id=NEW.device_id),'entity',(SELECT lower(hex(public_id)) FROM catalog_entities WHERE id=NEW.item_id),'title',(SELECT title FROM catalog_entities WHERE id=NEW.item_id),'channelId',NEW.channel_id));
+END;
+CREATE TRIGGER webhook_recording_done AFTER UPDATE OF state ON dvr_recordings
+ WHEN NEW.state<>OLD.state AND NEW.state IN('completed','incomplete-playable','failed') AND EXISTS(SELECT 1 FROM webhooks WHERE enabled=1) BEGIN
+ INSERT INTO webhook_events(type,subject,data) VALUES(CASE WHEN NEW.state='failed' THEN 'recording.failed' ELSE 'recording.finished' END,NEW.id,
+  json_object('recordingId',NEW.id,'state',NEW.state,'reason',NEW.reason,
+   'title',CASE WHEN json_valid(NEW.programme_json) THEN json_extract(NEW.programme_json,'$.title') END,
+   'channelId',NEW.channel_id,'accountId',NEW.account_id,'user',(SELECT username FROM accounts WHERE id=NEW.account_id),
+   'profileId',NEW.profile_id,'profile',(SELECT name FROM direct_profiles WHERE id=NEW.profile_id)));
+END;
+-- A session starting for a profile on a device. A key or token is not a sign-in.
+CREATE TRIGGER webhook_member_signed_in AFTER INSERT ON identity_device_families
+ WHEN EXISTS(SELECT 1 FROM webhooks WHERE enabled=1 AND instr(events,',member.signed_in,')>0) BEGIN
+ INSERT INTO webhook_events(type,subject,data) SELECT 'member.signed_in',f.account_id||':'||f.profile_id||':'||d.id,
+  json_object('accountId',f.account_id,'user',(SELECT username FROM accounts WHERE id=f.account_id),
+   'profileId',f.profile_id,'profile',(SELECT name FROM direct_profiles WHERE id=f.profile_id),'role',f.role,
+   'deviceId',d.id,'device',d.name,'platform',d.platform,'app',d.app,'address',d.ip)
+  FROM authorization_session_families f JOIN identity_devices d ON d.id=NEW.device_id
+  WHERE f.id=NEW.family_id AND f.role<>'account' AND d.platform<>'api';
+END;
+CREATE TRIGGER webhook_storage_low AFTER INSERT ON notification_records
+ WHEN NEW.category='storage.low' AND EXISTS(SELECT 1 FROM webhooks WHERE enabled=1 AND instr(events,',storage.low,')>0) BEGIN
+ INSERT INTO webhook_events(type,subject,data) VALUES('storage.low','storage',json_object('severity',NEW.severity,
+  'freePercent',CASE WHEN json_valid(NEW.arguments) THEN json_extract(NEW.arguments,'$.freePercent') END,
+  'freeBytes',CASE WHEN json_valid(NEW.arguments) THEN json_extract(NEW.arguments,'$.freeBytes') END));
+END;
+CREATE TRIGGER webhook_storage_lower AFTER UPDATE OF severity ON notification_records
+ WHEN NEW.category='storage.low' AND NEW.severity<>OLD.severity AND EXISTS(SELECT 1 FROM webhooks WHERE enabled=1 AND instr(events,',storage.low,')>0) BEGIN
+ INSERT INTO webhook_events(type,subject,data) VALUES('storage.low','storage',json_object('severity',NEW.severity,
+  'freePercent',CASE WHEN json_valid(NEW.arguments) THEN json_extract(NEW.arguments,'$.freePercent') END,
+  'freeBytes',CASE WHEN json_valid(NEW.arguments) THEN json_extract(NEW.arguments,'$.freeBytes') END));
+END;

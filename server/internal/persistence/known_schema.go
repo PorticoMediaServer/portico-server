@@ -15,9 +15,7 @@ import (
 // for, and a count of foreign objects is how an owner finds out that is what
 // they have. Nothing is ever dropped automatically: a build that does not define
 // a table cannot know what removing it would cost.
-const knownSchemaObjects = `
-index access_api_keys_page
-index access_devices_account
+const knownSchemaObjects = `index access_devices_account
 index access_devices_page
 index access_invitation_page
 index access_invitation_pending
@@ -32,6 +30,8 @@ index analysis_artifact_result
 index analysis_marker_source
 index analysis_result_source
 index analysis_stage_job
+index api_credentials_account
+index api_credentials_page
 index api_events_audience
 index api_events_expiry
 index api_idempotency_expiry
@@ -422,7 +422,10 @@ index tvdb_publication_show
 index tvdb_publication_terminal
 index video_nfo_asset
 index video_nfo_status_asset_id_fk
-table access_api_keys
+index webhook_deliveries_coalesce
+index webhook_deliveries_due
+index webhook_deliveries_log
+index webhook_deliveries_queue
 table access_devices
 table access_invitations
 table access_limits
@@ -446,6 +449,8 @@ table analysis_markers
 table analysis_probe_bindings
 table analysis_results
 table analysis_stage_runs
+table api_credential_use
+table api_credentials
 table api_events
 table api_idempotency
 table artwork_candidates
@@ -694,7 +699,9 @@ table inventory_directories
 table inventory_directory_cache
 table inventory_objects
 table inventory_operation_jobs
+table inventory_path_notices
 table inventory_policy_pending
+table inventory_run_targets
 table inventory_runs
 table inventory_source_active
 table inventory_version_links
@@ -1027,6 +1034,10 @@ table tvdb_series_candidates
 table video_nfo_evidence
 table video_nfo_status
 table viewer_revisions
+table webhook_deliveries
+table webhook_events
+table webhook_state
+table webhooks
 trigger admin_revision_jobs_DELETE
 trigger admin_revision_jobs_INSERT
 trigger admin_revision_jobs_UPDATE
@@ -1684,12 +1695,26 @@ trigger w2i01_music_artwork_identity
 trigger w2i01_screen_artwork
 trigger w2i01_screen_artwork_consent
 trigger w2i01_screen_artwork_policy
+trigger webhook_events_fan_out
+trigger webhook_member_signed_in
+trigger webhook_playback_started
+trigger webhook_playback_state
+trigger webhook_playback_stopped
+trigger webhook_recording_done
+trigger webhook_scan_finished
+trigger webhook_scan_started
+trigger webhook_storage_low
+trigger webhook_storage_lower
+trigger webhook_title_added
+trigger webhook_title_metadata_updated
+trigger webhook_title_removed
+trigger webhook_title_retired
+trigger webhook_title_updated
 view authorization_access
 view inventory_asset_availability
 view inventory_item_availability
 view inventory_library_availability
-view listening_book_context
-`
+view listening_book_context`
 
 // subsystemSchemaObjects is empty: the guardrail finds no runtime schema
 // declarations outside persistence. Persistence's own legacy installers need

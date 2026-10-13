@@ -659,7 +659,7 @@ var authorityTables = []string{
 	"policy", "library_network_policy", "playback_owner_policy",
 	"authorization_session_families", "authorization_family_tokens", "authorization_family_renewals",
 	"dvr_private_libraries", "onboarding_state_v1", "quick_connect_v1",
-	"api_keys", "access_api_keys", "identity_account_factors", "identity_browser_accounts",
+	"api_credentials", "identity_account_factors", "identity_browser_accounts",
 	"hosted_profile_revisions", "hosted_profile_erasure_receipts", "social_group_members",
 }
 
