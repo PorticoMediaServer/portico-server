@@ -79,7 +79,7 @@ func (d Dependencies) dvrRoutes(mux *http.ServeMux) {
 			write(w, 200, map[string]any{"protocolVersion": dvr.Version, "serverId": d.Identity.ID(), "result": result})
 		}
 	}
-	mux.HandleFunc("GET /v1/dvr", wrap(false, func(ctx context.Context, p identity.Principal, r *http.Request) (any, error) {
+	d.httpHandle(mux, "GET /v1/dvr", wrap(false, func(ctx context.Context, p identity.Principal, r *http.Request) (any, error) {
 		q := r.URL.Query()
 		for k, v := range q {
 			if (k != "state" && k != "cursor" && k != "limit") || len(v) != 1 {
@@ -100,7 +100,7 @@ func (d Dependencies) dvrRoutes(mux *http.ServeMux) {
 		}
 		return d.DVR.List(ctx, d.liveAuthority(p), channelSubject(p), dvr.Query{State: state, Cursor: q.Get("cursor"), Limit: limit})
 	}))
-	mux.HandleFunc("GET /v1/dvr/recordings/{id}", wrap(false, func(ctx context.Context, p identity.Principal, r *http.Request) (any, error) {
+	d.httpHandle(mux, "GET /v1/dvr/recordings/{id}", wrap(false, func(ctx context.Context, p identity.Principal, r *http.Request) (any, error) {
 		for k, v := range r.URL.Query() {
 			if k != "after" || len(v) != 1 {
 				return nil, dvr.ErrInvalid
@@ -108,7 +108,7 @@ func (d Dependencies) dvrRoutes(mux *http.ServeMux) {
 		}
 		return d.DVR.Detail(ctx, d.liveAuthority(p), channelSubject(p), r.PathValue("id"), r.URL.Query().Get("after"))
 	}))
-	mux.HandleFunc("GET /v1/dvr/channels", wrap(false, func(ctx context.Context, p identity.Principal, r *http.Request) (any, error) {
+	d.httpHandle(mux, "GET /v1/dvr/channels", wrap(false, func(ctx context.Context, p identity.Principal, r *http.Request) (any, error) {
 		for k, v := range r.URL.Query() {
 			if (k != "sourceId" && k != "search" && k != "cursor") || len(v) != 1 {
 				return nil, dvr.ErrInvalid
@@ -117,7 +117,7 @@ func (d Dependencies) dvrRoutes(mux *http.ServeMux) {
 		q := r.URL.Query()
 		return d.DVR.ChannelChoices(ctx, d.liveAuthority(p), channelSubject(p), q.Get("sourceId"), q.Get("search"), q.Get("cursor"))
 	}))
-	mux.HandleFunc("POST /v1/dvr/recordings", wrap(false, func(ctx context.Context, p identity.Principal, r *http.Request) (any, error) {
+	d.httpHandle(mux, "POST /v1/dvr/recordings", wrap(false, func(ctx context.Context, p identity.Principal, r *http.Request) (any, error) {
 		var body struct {
 			RequestID   string         `json:"requestId"`
 			Occurrence  dvr.Occurrence `json:"occurrence"`
@@ -133,45 +133,45 @@ func (d Dependencies) dvrRoutes(mux *http.ServeMux) {
 		}
 		return d.DVR.Schedule(ctx, d.liveAuthority(p), channelSubject(p), in)
 	}))
-	mux.HandleFunc("PATCH /v1/dvr/recordings/{id}", wrap(false, func(ctx context.Context, p identity.Principal, r *http.Request) (any, error) {
+	d.httpHandle(mux, "PATCH /v1/dvr/recordings/{id}", wrap(false, func(ctx context.Context, p identity.Principal, r *http.Request) (any, error) {
 		var in dvr.UpdateInput
 		if e := liveBody(r, &in); e != nil {
 			return nil, e
 		}
 		return d.DVR.Update(ctx, d.liveAuthority(p), channelSubject(p), r.PathValue("id"), in)
 	}))
-	mux.HandleFunc("POST /v1/dvr/recordings/{id}/cancel", wrap(false, func(ctx context.Context, p identity.Principal, r *http.Request) (any, error) {
+	d.httpHandle(mux, "POST /v1/dvr/recordings/{id}/cancel", wrap(false, func(ctx context.Context, p identity.Principal, r *http.Request) (any, error) {
 		var in dvr.Mutation
 		if e := liveBody(r, &in); e != nil {
 			return nil, e
 		}
 		return d.DVR.Cancel(ctx, d.liveAuthority(p), channelSubject(p), r.PathValue("id"), in)
 	}))
-	mux.HandleFunc("PUT /v1/dvr/recordings/{id}/keep", wrap(false, func(ctx context.Context, p identity.Principal, r *http.Request) (any, error) {
+	d.httpHandle(mux, "PUT /v1/dvr/recordings/{id}/keep", wrap(false, func(ctx context.Context, p identity.Principal, r *http.Request) (any, error) {
 		var in dvr.KeepInput
 		if e := liveBody(r, &in); e != nil {
 			return nil, e
 		}
 		return d.DVR.SetKeep(ctx, d.liveAuthority(p), channelSubject(p), r.PathValue("id"), in)
 	}))
-	mux.HandleFunc("GET /v1/dvr/recordings/{id}/delete-preview", wrap(false, func(ctx context.Context, p identity.Principal, r *http.Request) (any, error) {
+	d.httpHandle(mux, "GET /v1/dvr/recordings/{id}/delete-preview", wrap(false, func(ctx context.Context, p identity.Principal, r *http.Request) (any, error) {
 		return d.DVR.PreviewDelete(ctx, d.liveAuthority(p), channelSubject(p), r.PathValue("id"))
 	}))
-	mux.HandleFunc("DELETE /v1/dvr/recordings/{id}", wrap(false, func(ctx context.Context, p identity.Principal, r *http.Request) (any, error) {
+	d.httpHandle(mux, "DELETE /v1/dvr/recordings/{id}", wrap(false, func(ctx context.Context, p identity.Principal, r *http.Request) (any, error) {
 		var in dvr.Mutation
 		if e := liveBody(r, &in); e != nil {
 			return nil, e
 		}
 		return d.DVR.Delete(ctx, d.liveAuthority(p), channelSubject(p), r.PathValue("id"), in)
 	}))
-	mux.HandleFunc("POST /v1/dvr/rules/preview", wrap(false, func(ctx context.Context, p identity.Principal, r *http.Request) (any, error) {
+	d.httpHandle(mux, "POST /v1/dvr/rules/preview", wrap(false, func(ctx context.Context, p identity.Principal, r *http.Request) (any, error) {
 		var in dvr.RuleConfig
 		if e := liveBody(r, &in); e != nil {
 			return nil, e
 		}
 		return d.DVR.PreviewRule(ctx, d.liveAuthority(p), channelSubject(p), in)
 	}))
-	mux.HandleFunc("PUT /v1/dvr/rules/{id}", wrap(false, func(ctx context.Context, p identity.Principal, r *http.Request) (any, error) {
+	d.httpHandle(mux, "PUT /v1/dvr/rules/{id}", wrap(false, func(ctx context.Context, p identity.Principal, r *http.Request) (any, error) {
 		var in dvr.RuleInput
 		if e := liveBody(r, &in); e != nil {
 			return nil, e
@@ -181,7 +181,7 @@ func (d Dependencies) dvrRoutes(mux *http.ServeMux) {
 		}
 		return d.DVR.SaveRule(ctx, d.liveAuthority(p), channelSubject(p), in)
 	}))
-	mux.HandleFunc("DELETE /v1/dvr/rules/{id}", wrap(false, func(ctx context.Context, p identity.Principal, r *http.Request) (any, error) {
+	d.httpHandle(mux, "DELETE /v1/dvr/rules/{id}", wrap(false, func(ctx context.Context, p identity.Principal, r *http.Request) (any, error) {
 		var in dvr.DeleteRuleInput
 		if e := liveBody(r, &in); e != nil {
 			return nil, e
@@ -189,10 +189,10 @@ func (d Dependencies) dvrRoutes(mux *http.ServeMux) {
 		e := d.DVR.DeleteRule(ctx, d.liveAuthority(p), channelSubject(p), r.PathValue("id"), in)
 		return map[string]bool{"deleted": e == nil}, e
 	}))
-	mux.HandleFunc("GET /v1/dvr/storage", wrap(true, func(ctx context.Context, p identity.Principal, r *http.Request) (any, error) {
+	d.httpHandle(mux, "GET /v1/dvr/storage", wrap(true, func(ctx context.Context, p identity.Principal, r *http.Request) (any, error) {
 		return d.DVR.StorageStatus(ctx, d.liveAuthority(p))
 	}))
-	mux.HandleFunc("PUT /v1/dvr/storage", wrap(true, func(ctx context.Context, p identity.Principal, r *http.Request) (any, error) {
+	d.httpHandle(mux, "PUT /v1/dvr/storage", wrap(true, func(ctx context.Context, p identity.Principal, r *http.Request) (any, error) {
 		var in dvr.StoragePolicyInput
 		if e := liveBody(r, &in); e != nil {
 			return nil, e

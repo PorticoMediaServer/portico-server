@@ -14,7 +14,7 @@ import (
 )
 
 func (d Dependencies) recordingPermissionRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("GET /v1/admin/dvr/recording-permissions", d.administrationHandler(30*time.Second, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
+	d.httpHandle(mux, "GET /v1/admin/dvr/recording-permissions", d.administrationHandler(30*time.Second, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
 		if r.URL.RawQuery != "" {
 			return nil, administration.ErrInput
 		}
@@ -28,7 +28,7 @@ func (d Dependencies) recordingPermissionRoutes(mux *http.ServeMux) {
 		}
 		return recordingaccess.ReadGrantsTx(ctx, g.Tx())
 	}))
-	mux.HandleFunc("PUT /v1/admin/dvr/recording-permissions", d.administrationHandler(30*time.Second, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
+	d.httpHandle(mux, "PUT /v1/admin/dvr/recording-permissions", d.administrationHandler(30*time.Second, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
 		var body recordingaccess.Grant
 		if e := decode(w, r, &body); e != nil {
 			return nil, administration.ErrInput

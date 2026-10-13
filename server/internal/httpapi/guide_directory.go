@@ -153,7 +153,7 @@ func (d Dependencies) guideDeliveryAvailability() (bool, string) {
 }
 
 func (d Dependencies) guideDirectoryRoutes(mux *http.ServeMux, store *livechannels.Store, handle func(bool, func(context.Context, http.ResponseWriter, *http.Request, identity.Principal) (any, error)) http.HandlerFunc) {
-	mux.HandleFunc("GET /v1/guide/channels", handle(false, func(ctx context.Context, _ http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
+	d.httpHandle(mux, "GET /v1/guide/channels", handle(false, func(ctx context.Context, _ http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
 		query, err := directoryQuery(r.URL.Query())
 		if err != nil {
 			return nil, err
@@ -182,7 +182,7 @@ func (d Dependencies) guideDirectoryRoutes(mux *http.ServeMux, store *livechanne
 		}
 		return map[string]any{"protocolVersion": "1.0", "serverId": d.Identity.ID(), "directory": directory}, nil
 	}))
-	mux.HandleFunc("GET /v1/guide/sources", handle(false, func(ctx context.Context, _ http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
+	d.httpHandle(mux, "GET /v1/guide/sources", handle(false, func(ctx context.Context, _ http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
 		q := r.URL.Query()
 		for key, values := range q {
 			if len(values) != 1 || (key != "timezone" && key != "includeHidden") {

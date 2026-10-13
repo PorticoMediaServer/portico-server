@@ -11,7 +11,7 @@ import (
 // not see is published without its image path, and this read carries no
 // programme identity of its own.
 func (d Dependencies) guideImageRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("GET /v1/guide/images/{digest}", func(w http.ResponseWriter, r *http.Request) {
+	d.httpHandle(mux, "GET /v1/guide/images/{digest}", func(w http.ResponseWriter, r *http.Request) {
 		if d.Administration == nil {
 			administrationFailure(w, administration.ErrUnavailable)
 			return

@@ -702,6 +702,48 @@ export const routes = [
     "admission": "security-fence"
   },
   {
+    "id": "delete_dvr_recordings_id",
+    "method": "DELETE",
+    "path": "/v1/dvr/recordings/{id}",
+    "summary": "Delete id",
+    "access": "device",
+    "requires": "playback",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "delete_dvr_rules_id",
+    "method": "DELETE",
+    "path": "/v1/dvr/rules/{id}",
+    "summary": "Delete id",
+    "access": "device",
+    "requires": "playback",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
     "id": "delete_metadata_kind_id_art_role_upload_candidateId",
     "method": "DELETE",
     "path": "/v1/metadata/{kind}/{id}/art/{role}/upload/{candidateId}",
@@ -1202,6 +1244,48 @@ export const routes = [
     "status": 200
   },
   {
+    "id": "get_admin_dvr_recording_owners",
+    "method": "GET",
+    "path": "/v1/admin/dvr/recording-owners",
+    "summary": "Get recording owners",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin"
+  },
+  {
+    "id": "get_admin_dvr_recording_permissions",
+    "method": "GET",
+    "path": "/v1/admin/dvr/recording-permissions",
+    "summary": "Get recording permissions",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin"
+  },
+  {
     "id": "get_admin_feedback",
     "method": "GET",
     "path": "/v1/admin/feedback",
@@ -1394,6 +1478,48 @@ export const routes = [
     "status": 200,
     "http": true,
     "admission": "admin-heavy"
+  },
+  {
+    "id": "get_admin_library_channels",
+    "method": "GET",
+    "path": "/v1/admin/library-channels",
+    "summary": "Get library channels",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin"
+  },
+  {
+    "id": "get_admin_library_channels_templates",
+    "method": "GET",
+    "path": "/v1/admin/library-channels/templates",
+    "summary": "Get templates",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin"
   },
   {
     "id": "get_admin_maintenance_settings",
@@ -2431,6 +2557,124 @@ export const routes = [
     "status": 200
   },
   {
+    "id": "get_dvr",
+    "method": "GET",
+    "path": "/v1/dvr",
+    "summary": "Get dvr",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "cursor",
+      "limit",
+      "state"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "get_dvr_channels",
+    "method": "GET",
+    "path": "/v1/dvr/channels",
+    "summary": "Get channels",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "cursor",
+      "search",
+      "sourceId"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "get_dvr_recordings_id",
+    "method": "GET",
+    "path": "/v1/dvr/recordings/{id}",
+    "summary": "Get id",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "query": [
+      "after"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "get_dvr_recordings_id_delete_preview",
+    "method": "GET",
+    "path": "/v1/dvr/recordings/{id}/delete-preview",
+    "summary": "Get delete preview",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "get_dvr_storage",
+    "method": "GET",
+    "path": "/v1/dvr/storage",
+    "summary": "Get storage",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
     "id": "get_events",
     "method": "GET",
     "path": "/v1/events",
@@ -2542,6 +2786,127 @@ export const routes = [
       "internal"
     ],
     "status": 200
+  },
+  {
+    "id": "get_guide",
+    "method": "GET",
+    "path": "/v1/guide",
+    "summary": "Get guide",
+    "access": "device",
+    "requires": "read",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "channels",
+      "cursor",
+      "end",
+      "favorites",
+      "group",
+      "includeHidden",
+      "kind",
+      "limit",
+      "programmes",
+      "search",
+      "sourceId",
+      "start",
+      "timezone"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
+  },
+  {
+    "id": "get_guide_channels",
+    "method": "GET",
+    "path": "/v1/guide/channels",
+    "summary": "Get channels",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "query": [
+      "anchorChannelId",
+      "anchorProvenance",
+      "anchorSourceId",
+      "direction",
+      "favorites",
+      "group",
+      "includeHidden",
+      "kind",
+      "limit",
+      "offset",
+      "revision",
+      "search",
+      "sort",
+      "sourceId",
+      "timezone"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "get_guide_images_digest",
+    "method": "GET",
+    "path": "/v1/guide/images/{digest}",
+    "summary": "Get digest",
+    "access": "device",
+    "requires": "read",
+    "lane": "media",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "responseContentType": "application/octet-stream",
+    "http": true,
+    "admission": "media"
+  },
+  {
+    "id": "get_guide_sources",
+    "method": "GET",
+    "path": "/v1/guide/sources",
+    "summary": "Get sources",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "query": [
+      "includeHidden",
+      "timezone"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
   },
   {
     "id": "get_home",
@@ -5891,6 +6256,27 @@ export const routes = [
     "admission": "auth"
   },
   {
+    "id": "patch_dvr_recordings_id",
+    "method": "PATCH",
+    "path": "/v1/dvr/recordings/{id}",
+    "summary": "Patch id",
+    "access": "device",
+    "requires": "playback",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
     "id": "patch_items_id_metadata_manual",
     "method": "PATCH",
     "path": "/v1/items/{id}/metadata/manual",
@@ -6219,6 +6605,216 @@ export const routes = [
     "admission": "admin-heavy"
   },
   {
+    "id": "post_admin_library_channels",
+    "method": "POST",
+    "path": "/v1/admin/library-channels",
+    "summary": "Post library channels",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 1048576,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin"
+  },
+  {
+    "id": "post_admin_library_channels_defaults",
+    "method": "POST",
+    "path": "/v1/admin/library-channels/defaults",
+    "summary": "Post defaults",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 4096,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin"
+  },
+  {
+    "id": "post_admin_library_channels_id_delete",
+    "method": "POST",
+    "path": "/v1/admin/library-channels/{id}/delete",
+    "summary": "Post delete",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 4096,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin"
+  },
+  {
+    "id": "post_admin_library_channels_id_regenerate",
+    "method": "POST",
+    "path": "/v1/admin/library-channels/{id}/regenerate",
+    "summary": "Post regenerate",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 4096,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin"
+  },
+  {
+    "id": "post_admin_library_channels_preview",
+    "method": "POST",
+    "path": "/v1/admin/library-channels/preview",
+    "summary": "Post preview",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 1048576,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin"
+  },
+  {
+    "id": "post_admin_library_channels_reorder",
+    "method": "POST",
+    "path": "/v1/admin/library-channels/reorder",
+    "summary": "Post reorder",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 32768,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin"
+  },
+  {
+    "id": "post_admin_library_channels_templates_id_install",
+    "method": "POST",
+    "path": "/v1/admin/library-channels/templates/{id}/install",
+    "summary": "Post install",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 4096,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin"
+  },
+  {
+    "id": "post_admin_live_sources_id_enabled",
+    "method": "POST",
+    "path": "/v1/admin/live-sources/{id}/enabled",
+    "summary": "Post enabled",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin"
+  },
+  {
+    "id": "post_admin_live_sources_id_refresh",
+    "method": "POST",
+    "path": "/v1/admin/live-sources/{id}/refresh",
+    "summary": "Post refresh",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin"
+  },
+  {
+    "id": "post_admin_live_sources_id_remove",
+    "method": "POST",
+    "path": "/v1/admin/live-sources/{id}/remove",
+    "summary": "Post remove",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin"
+  },
+  {
     "id": "post_admin_restart",
     "method": "POST",
     "path": "/v1/admin/restart",
@@ -6394,6 +6990,27 @@ export const routes = [
     "status": 200,
     "http": true,
     "admission": "security-fence"
+  },
+  {
+    "id": "post_channels_preferences",
+    "method": "POST",
+    "path": "/v1/channels/preferences",
+    "summary": "Post preferences",
+    "access": "device",
+    "requires": "playback",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
   },
   {
     "id": "post_client_log",
@@ -6825,6 +7442,69 @@ export const routes = [
     "admission": "security-fence"
   },
   {
+    "id": "post_dvr_recordings",
+    "method": "POST",
+    "path": "/v1/dvr/recordings",
+    "summary": "Post recordings",
+    "access": "device",
+    "requires": "playback",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "post_dvr_recordings_id_cancel",
+    "method": "POST",
+    "path": "/v1/dvr/recordings/{id}/cancel",
+    "summary": "Post cancel",
+    "access": "device",
+    "requires": "playback",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "post_dvr_rules_preview",
+    "method": "POST",
+    "path": "/v1/dvr/rules/preview",
+    "summary": "Post preview",
+    "access": "device",
+    "requires": "playback",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
     "id": "post_feedback",
     "method": "POST",
     "path": "/v1/feedback",
@@ -7116,6 +7796,27 @@ export const routes = [
     "status": 202,
     "http": true,
     "admission": "browsing"
+  },
+  {
+    "id": "post_library_channels_preferences",
+    "method": "POST",
+    "path": "/v1/library-channels/preferences",
+    "summary": "Post preferences",
+    "access": "device",
+    "requires": "playback",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 4096,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
   },
   {
     "id": "post_me_recommendations_reset",
@@ -7825,6 +8526,27 @@ export const routes = [
     "status": 200
   },
   {
+    "id": "put_admin_dvr_recording_permissions",
+    "method": "PUT",
+    "path": "/v1/admin/dvr/recording-permissions",
+    "summary": "Put recording permissions",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin"
+  },
+  {
     "id": "put_admin_libraries_id_scan_policy",
     "method": "PUT",
     "path": "/v1/admin/libraries/{id}/scan-policy",
@@ -8056,6 +8778,69 @@ export const routes = [
       "internal"
     ],
     "status": 200
+  },
+  {
+    "id": "put_dvr_recordings_id_keep",
+    "method": "PUT",
+    "path": "/v1/dvr/recordings/{id}/keep",
+    "summary": "Put keep",
+    "access": "device",
+    "requires": "playback",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "put_dvr_rules_id",
+    "method": "PUT",
+    "path": "/v1/dvr/rules/{id}",
+    "summary": "Put id",
+    "access": "device",
+    "requires": "playback",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "put_dvr_storage",
+    "method": "PUT",
+    "path": "/v1/dvr/storage",
+    "summary": "Put storage",
+    "access": "device",
+    "requires": "admin",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
   },
   {
     "id": "put_home_layout",
