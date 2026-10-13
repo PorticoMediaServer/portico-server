@@ -17,15 +17,16 @@ type SourceVideo struct {
 }
 
 type SourceAudio struct {
-	Title      string `json:"title,omitempty"`
-	Index      int    `json:"index"`
-	Ordinal    int    `json:"ordinal"`
-	Codec      string `json:"codec"`
-	Channels   int    `json:"channels"`
-	Layout     string `json:"layout,omitempty"`
-	Language   string `json:"language,omitempty"`
-	Default    bool   `json:"default,omitempty"`
-	Commentary bool   `json:"commentary,omitempty"`
+	NativeCodec string `json:"-"`
+	Title       string `json:"title,omitempty"`
+	Index       int    `json:"index"`
+	Ordinal     int    `json:"ordinal"`
+	Codec       string `json:"codec"`
+	Channels    int    `json:"channels"`
+	Layout      string `json:"layout,omitempty"`
+	Language    string `json:"language,omitempty"`
+	Default     bool   `json:"default,omitempty"`
+	Commentary  bool   `json:"commentary,omitempty"`
 	assets.StreamDetail
 }
 
@@ -133,7 +134,7 @@ func loadDeliverySource(ctx context.Context, q sourceQuery, asset string) (Deliv
 			}
 			s.Video = v
 		case "audio":
-			s.Audio = append(s.Audio, SourceAudio{Index: st.Index, Ordinal: len(s.Audio), Codec: audioFamily(st.Codec), Channels: st.Channels, Layout: st.ChannelLayout, Language: st.Language, Title: publicAudioText(st.Title, 96), Default: st.Default, Commentary: st.Commentary, StreamDetail: st.Detail})
+			s.Audio = append(s.Audio, SourceAudio{Index: st.Index, Ordinal: len(s.Audio), Codec: audioFamily(st.Codec), NativeCodec: st.Codec, Channels: st.Channels, Layout: st.ChannelLayout, Language: st.Language, Title: publicAudioText(st.Title, 96), Default: st.Default, Commentary: st.Commentary, StreamDetail: st.Detail})
 		}
 	}
 	if err = rows.Err(); err != nil {

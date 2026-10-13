@@ -50,6 +50,9 @@ func keptRange(v *SourceVideo, client ClientProfile, codec *ClientVideoCodec) st
 		return ""
 	}
 	r := v.DynamicRange
+	if r == "hdr10plus" || r == "hdr10_plus" {
+		r = assets.RangeHDR10
+	}
 	if r == assets.RangeDolbyVision {
 		r = dolbyVisionFallback(v)
 	}
@@ -115,7 +118,7 @@ func chooseVideoOutput(v *SourceVideo, client ClientProfile, transports []Client
 							converted := audioOutputFor(audio, client, target, &t, outputs)
 							if !converted.NoRate {
 								audioScore = converted.Channels * 10
-								if converted.Lossless {
+								if converted.LosslessCodec {
 									audioScore++
 								}
 							}
@@ -158,7 +161,7 @@ func losslessAudio(a *SourceAudio) bool {
 
 func convertedProfileAllowed(profile string, profiles []string) bool {
 	for _, p := range profiles {
-		if profileName(p) == profileName(profile) {
+		if profileName(p) == profileName(profile) || profile == "baseline" && profileName(p) == "constrained_baseline" {
 			return true
 		}
 	}

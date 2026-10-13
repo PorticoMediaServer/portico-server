@@ -313,7 +313,6 @@ var routeScopes = map[string]apikit.Scope{
 	"POST /v1/items/{id}/delete":                                      apikit.ScopeLibrary,
 	"POST /v1/items/{id}/delete/preview":                              apikit.ScopeLibrary,
 	"GET /v1/items/{id}/detail":                                       apikit.ScopeRead,
-	"GET /v1/items/{id}/download-options":                             apikit.ScopeRead,
 	"GET /v1/items/{id}/listening":                                    apikit.ScopeRead,
 	"GET /v1/items/{id}/lyrics":                                       apikit.ScopeRead,
 	"POST /v1/items/{id}/lyrics":                                      apikit.ScopeLibrary,

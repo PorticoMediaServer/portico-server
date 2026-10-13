@@ -238,7 +238,6 @@ var routeLanes = map[string]string{
 	"GET /v1/items/{id}/chapters/{chapter}/image":                         laneMedia,
 	"GET /v1/items/{id}/detail":                                           laneBrowsing,
 	"GET /v1/items/{id}/credits":                                          laneBrowsing,
-	"GET /v1/items/{id}/download-options":                                 laneBrowsing,
 	"GET /v1/items/{id}/listening":                                        laneBrowsing,
 	"GET /v1/items/{id}/playback-offers":                                  lanePlayback,
 	"GET /v1/items/{id}/recommendations":                                  laneExpensive,

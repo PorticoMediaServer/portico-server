@@ -88,7 +88,14 @@ func sanitizeConverterOutput(text string, secrets ...string) string {
 }
 
 // Local and bridge jobs use the same conservative encoder-backend grants.
-func conversionJobHardware(plan *DeliveryPlan) bool {
+func conversionJobHardware(plan *DeliveryPlan, stages ...[]decoder.HardwareStage) bool {
+	for _, graph := range stages {
+		for _, stage := range graph {
+			if stage.Execution == decoder.ExecutionHardware {
+				return true
+			}
+		}
+	}
 	return plan != nil && plan.HardwareBackend != "" && plan.HardwareBackend != string(decoder.BackendSoftware)
 }
 

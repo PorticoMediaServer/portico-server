@@ -47,7 +47,7 @@ export type ClientVideoCodec={codec:string;profiles?:string[];maxLevel?:number;b
  /** The only sample entries the engine plays from an original file (AVFoundation: `hvc1`, not `hev1`). */
  codecTags?:string[];evidence?:ProfileEvidence};
 /** An audio codec the engine decodes itself. */
-export type ClientAudioCodec={codec:string;maxChannels?:number;maxSampleRate?:number;objectAudio?:('atmos'|'dtsx')[];evidence?:ProfileEvidence};
+export type ClientAudioCodec={codec:string;maxChannels?:number;maxSampleRate?:number;maxBitDepth?:number;objectAudio?:('atmos'|'dtsx')[];evidence?:ProfileEvidence};
 /** An audio codec the engine can hand to the audio output undecoded. Used only while
  * `audioOutput.route` is hdmi, arc, earc, optical or spdif and the viewer has not turned it off. */
 export type ClientAudioPassthrough={codec:string;maxChannels?:number;objectAudio?:('atmos'|'dtsx')[];evidence?:ProfileEvidence};
@@ -101,7 +101,7 @@ function engineProblem(e:EngineCapabilities|undefined,path:string):string|null{
   if(v.evidence!==undefined&&!evidences.includes(v.evidence))return path+'.video.'+v.codec+'.evidence';
  }
  for(const a of e.audio??[]){
-  if(typeof a.codec!=='string'||!token.test(a.codec)||!int(a.maxChannels,64)||!int(a.maxSampleRate,1<<22)||!tokens(a.objectAudio,4))return path+'.audio.'+a.codec;
+  if(typeof a.codec!=='string'||!token.test(a.codec)||!int(a.maxChannels,64)||!int(a.maxSampleRate,1<<22)||!int(a.maxBitDepth,64)||!tokens(a.objectAudio,4))return path+'.audio.'+a.codec;
   if(a.evidence!==undefined&&!evidences.includes(a.evidence))return path+'.audio.'+a.codec+'.evidence';
  }
  for(const a of e.audioPassthrough??[]){

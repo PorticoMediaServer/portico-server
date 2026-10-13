@@ -64,35 +64,6 @@ tags:
   - name: downloads
   - name: receipts
 paths:
-  /v1/items/{id}/download-options:
-    get:
-      tags: [downloads]
-      operationId: getDownloadOptions
-      summary: Publish the download menu for one item.
-      description: |
-        One read returns the source description, every quality the ladder offers
-        for this source with a size for each, the profile's download policy and
-        the storage the server is still willing to commit. `estimated` is false
-        for the original and for a rung that is already prepared, and true where
-        the size is bitrate times duration plus 3% container overhead. A rung
-        taller than the source is omitted rather than offered as an upscale.
-        `preparationId` and `preparationState` are present when this viewer
-        already holds a live claim at that quality.
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema: {type: string}
-      responses:
-        "200":
-          description: The item's download menu.
-          content:
-            application/json:
-              schema: {$ref: "#/components/schemas/DownloadOptionsView"}
-        "401": {$ref: "#/components/responses/Unauthorized"}
-        "404": {$ref: "#/components/responses/NotFound"}
-        "503": {$ref: "#/components/responses/DownloadsUnavailable"}
-      x-error-codes: [unauthorized, not_found, downloads_unavailable]
   /v1/downloads/preparations:
     post:
       tags: [downloads]
@@ -855,57 +826,6 @@ components:
         expiresAt: {type: string, format: date-time}
         replayWindowSeconds: {type: integer}
         artifact: {$ref: "#/components/schemas/DownloadArtifact"}
-    QualityOption:
-      type: object
-      required: [quality, label, kind, estimatedBytes, estimated, available, requiresPreparation]
-      properties:
-        quality: {type: string}
-        label: {type: string}
-        kind: {type: string, enum: [source, optimized]}
-        targetDisplayHeight: {type: integer}
-        maxVideoBitrateBps: {type: integer}
-        maxAudioBitrateBps: {type: integer}
-        estimatedBytes: {type: integer}
-        estimated: {type: boolean, description: "True when the size is bitrate times duration rather than a measured artifact."}
-        available: {type: boolean}
-        reason: {$ref: "#/components/schemas/ReasonCode"}
-        requiresPreparation: {type: boolean, description: "True when asking for this rung will queue a conversion first."}
-        preparedProfileId: {type: string, description: "The optimization recipe this rung maps onto."}
-        preparedVersionId: {type: string, description: "Present when a published version already satisfies the rung."}
-        preparationId: {type: string, description: "A live claim this viewer already holds at this quality."}
-        preparationState: {type: string}
-    DownloadOptionsView:
-      type: object
-      required: [itemId, kind, source, options, policy, storage]
-      properties:
-        itemId: {type: string}
-        kind: {type: string}
-        source:
-          type: object
-          required: [container, durationSeconds, bytes, available]
-          properties:
-            container: {type: string}
-            videoCodec: {type: string}
-            audioCodec: {type: string}
-            height: {type: integer}
-            durationSeconds: {type: number}
-            bytes: {type: integer}
-            available: {type: boolean}
-        options: {type: array, items: {$ref: "#/components/schemas/QualityOption"}}
-        policy:
-          type: object
-          required: [allowDownloads]
-          properties:
-            allowDownloads: {type: boolean}
-            reason: {$ref: "#/components/schemas/ReasonCode"}
-        storage:
-          type: object
-          required: [maxPreparedBytes, committedBytes, retentionDays]
-          properties:
-            maxPreparedBytes: {type: integer, description: "0 means unlimited."}
-            committedBytes: {type: integer}
-            remainingBytes: {type: [integer, "null"]}
-            retentionDays: {type: integer}
     ReceiptViewer:
       type: object
       required: [authority, accountId, profileId, serverId]

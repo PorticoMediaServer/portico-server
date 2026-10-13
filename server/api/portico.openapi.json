@@ -18598,7 +18598,7 @@
           }
         },
         "summary": "List offline qualities this device can play and this server can produce",
-        "x-access": "device",
+        "x-access": "viewer_item_restrictions",
         "x-cost": "page_sized",
         "x-lane": "browsing",
         "x-scope": "read"
@@ -23073,6 +23073,11 @@
                                       "evidence": {
                                         "type": "string"
                                       },
+                                      "maxBitDepth": {
+                                        "maximum": 9007199254740991,
+                                        "minimum": -9007199254740991,
+                                        "type": "integer"
+                                      },
                                       "maxChannels": {
                                         "maximum": 9007199254740991,
                                         "minimum": -9007199254740991,
@@ -23297,6 +23302,11 @@
                                       },
                                       "evidence": {
                                         "type": "string"
+                                      },
+                                      "maxBitDepth": {
+                                        "maximum": 9007199254740991,
+                                        "minimum": -9007199254740991,
+                                        "type": "integer"
                                       },
                                       "maxChannels": {
                                         "maximum": 9007199254740991,
@@ -23738,6 +23748,11 @@
                                 "evidence": {
                                   "type": "string"
                                 },
+                                "maxBitDepth": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
                                 "maxChannels": {
                                   "maximum": 9007199254740991,
                                   "minimum": -9007199254740991,
@@ -23962,6 +23977,11 @@
                                 },
                                 "evidence": {
                                   "type": "string"
+                                },
+                                "maxBitDepth": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
                                 },
                                 "maxChannels": {
                                   "maximum": 9007199254740991,

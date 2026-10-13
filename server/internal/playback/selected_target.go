@@ -3,6 +3,7 @@ package playback
 import (
 	"portico.local/server/internal/assets"
 	"portico.local/server/internal/decoder"
+	"strconv"
 )
 
 func videoOf(s DeliverySource) *SourceVideo { return s.Video }
@@ -23,9 +24,12 @@ func bestAudioConversionTransport(transports []ClientTransport, client ClientPro
 		}
 		out := audioOutputFor(audio, client, target, &t, outputs)
 		if out.NoRate {
+			if !out.NoOutput && audio != nil {
+				nearest = append(nearest, RouteRejection{RejectAudioSampleRate, strconv.Itoa(audio.SampleRate)})
+			}
 			continue
 		}
-		better := name == "" || out.Channels > best.Channels || out.Channels == best.Channels && out.Lossless && !best.Lossless
+		better := name == "" || out.Channels > best.Channels || out.Channels == best.Channels && out.LosslessCodec && !best.LosslessCodec
 		if better {
 			name, best = t.Transport, out
 		}
@@ -53,12 +57,11 @@ func finishConversionTarget(p *DeliveryPlan, video *SourceVideo, audio *SourceAu
 		if p.VideoAction == "copy" {
 			t.BitDepth = video.BitDepth
 			t.DynamicRange = effectiveRange(video, client.videoCodec(video.Codec), client)
-			// An accepted native DV track stays intact. A base fallback strips it.
-			if t.DynamicRange == assets.RangeDolbyVision {
-				t.DynamicRange, t.SourceRange = assets.RangeHDR10, assets.RangeHDR10
-			} else {
-				t.DolbyVisionProfile, t.DolbyVisionCompatibility = video.DolbyVisionProfile, video.DolbyVisionCompatibility
+			if video.DolbyVisionProfile == 7 {
+				t.DynamicRange = assets.RangeHDR10
 			}
+			t.DolbyVisionProfile, t.DolbyVisionCompatibility = video.DolbyVisionProfile, video.DolbyVisionCompatibility
+			t.CopyDolbyVision = t.DynamicRange == assets.RangeDolbyVision
 		} else {
 			t.DolbyVisionProfile, t.DolbyVisionCompatibility = video.DolbyVisionProfile, video.DolbyVisionCompatibility
 			boundConvertedPicture(p, video, client.videoCodec(p.OutputVideoCodec))
@@ -88,9 +91,9 @@ func finishConversionTarget(p *DeliveryPlan, video *SourceVideo, audio *SourceAu
 			t.AudioChannelLayout = audio.Layout
 		}
 		if t.AudioCodec == "flac" {
-			t.AudioBitDepth = audio.BitDepth
-			if t.AudioBitDepth == 0 {
-				t.AudioBitDepth = 24
+			t.AudioBitDepth = flacDepth(audio, client.audioCodec(t.AudioCodec))
+			if sourceAudioDepth(audio) > t.AudioBitDepth {
+				p.AudioLossless = false
 			}
 			if t.AudioSampleRate != audio.SampleRate && audio.SampleRate > 0 {
 				p.AudioLossless = false
@@ -113,6 +116,20 @@ func finishConversionTarget(p *DeliveryPlan, video *SourceVideo, audio *SourceAu
 		return err
 	}
 	p.HardwareBackend = string(graph.Backend)
+	if p.VideoAction == "convert" {
+		reasons := p.ReasonCodes[:0]
+		for _, reason := range p.ReasonCodes {
+			if reason != ReasonHardwareBackend && reason != ReasonSoftwareFallback {
+				reasons = append(reasons, reason)
+			}
+		}
+		p.ReasonCodes = reasons
+		reason := ReasonHardwareBackend
+		if graph.Backend == decoder.BackendSoftware {
+			reason = ReasonSoftwareFallback
+		}
+		p.ReasonCodes = append(p.ReasonCodes, reason)
+	}
 	if graph.Backend == decoder.BackendSoftware {
 		p.HardwareNative = false
 		p.ConversionProbe = nil
@@ -164,7 +181,7 @@ func boundConvertedPicture(p *DeliveryPlan, v *SourceVideo, cap *ClientVideoCode
 }
 
 func baseCopyRejections(video *SourceVideo, client ClientProfile, facts *decoder.ToolchainFacts) []RouteRejection {
-	if video == nil || video.DynamicRange != assets.RangeDolbyVision || nativeDolbyVision(video, client.videoCodec(video.Codec), client) {
+	if video == nil || video.DynamicRange != assets.RangeDolbyVision || video.DolbyVisionProfile != 7 && nativeDolbyVision(video, client.videoCodec(video.Codec), client) {
 		return nil
 	}
 	if facts == nil || !facts.BitstreamFilters["dovi_rpu"] || video.DolbyVisionProfile == 7 && !facts.BitstreamFilters["filter_units"] {

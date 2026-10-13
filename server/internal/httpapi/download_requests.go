@@ -45,7 +45,7 @@ func downloadRequestError(e error) error {
 	return e
 }
 func registerDownloadRequests(r *apikit.Registry, d Dependencies) {
-	v1Route(r, apikit.Metadata{ID: "get_download_options", Method: "GET", Path: "/v1/items/{itemId}/download-options", Summary: "List offline qualities this device can play and this server can produce", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Cost: apikit.PageSized, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}, func(ctx context.Context, q *http.Request, _ noBody) (downloads.DownloadOptionsView, error) {
+	v1Route(r, apikit.Metadata{ID: "get_download_options", Method: "GET", Path: "/v1/items/{itemId}/download-options", Summary: "List offline qualities this device can play and this server can produce", Access: apikit.ViewerItem, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Cost: apikit.PageSized, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}, func(ctx context.Context, q *http.Request, _ noBody) (downloads.DownloadOptionsView, error) {
 		p, owner, err := d.downloadViewer(q)
 		if err != nil {
 			return downloads.DownloadOptionsView{}, err

@@ -51,10 +51,6 @@ const (
 	ReasonSubtitleBurnIn            = "subtitle_burn_in"
 	ReasonFiniteNormalization       = "finite_timeline_normalization"
 	ReasonAlternateAudioPolicy      = "alternate_audio_fixed_output_policy"
-	// ReasonDolbyVisionApproximate: a Dolby Vision Profile 5 picture (no HDR10
-	// or SDR base layer) is converted by a tone mapper that can't apply its
-	// reshaping, so its colors are approximate. Clients warn before playing.
-	ReasonDolbyVisionApproximate = "dolby_vision_colors_approximate"
 
 	// Preference and owner-policy codes.
 	ReasonDirectPlayPreferred     = "direct_play_preferred"
@@ -409,6 +405,9 @@ func planDelivery(in DeliveryInput) (p DeliveryPlan, err error) {
 		height = video.Height
 	}
 	hdr := video != nil && video.DynamicRange != "" && video.DynamicRange != assets.RangeSDR
+	if video != nil && video.DynamicRange == assets.RangeDolbyVision && dolbyVisionFallback(video) == assets.RangeSDR {
+		hdr = false
+	}
 	rungFixed := in.Target.Kind == QualityFixed
 	overHeight := in.Target.MaxVideoHeight > 0 && height > in.Target.MaxVideoHeight
 	ceiling := in.Target.MaxVideoBitrateBPS
@@ -613,6 +612,13 @@ func planDelivery(in DeliveryInput) (p DeliveryPlan, err error) {
 			rejections = append(rejections, RouteRejection{RejectTranscodingDisabled, ""})
 		}
 		if transport == "" {
+			for _, t := range transports {
+				out := audioOutputFor(audio, client, in.Target, &t, outputs)
+				if audio != nil && out.NoRate && !out.NoOutput {
+					rejections = append(rejections, RouteRejection{RejectAudioSampleRate, strconv.Itoa(audio.SampleRate)})
+					break
+				}
+			}
 			rejections = append(rejections, RouteRejection{RejectTransport, TransportHLSTS})
 		}
 		route := DeliveryVideoConversion
@@ -1220,6 +1226,9 @@ func serverConversionRejections(f *decoder.ToolchainFacts, hardware decoder.Hard
 		return ""
 	}(), func() string {
 		if audio != nil {
+			if audio.NativeCodec != "" {
+				return audio.NativeCodec
+			}
 			return audio.Codec
 		}
 		return ""

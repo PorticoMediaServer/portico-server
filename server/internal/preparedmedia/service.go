@@ -263,6 +263,9 @@ func (s *Service) Submit(ctx context.Context, p identity.Principal, r Request) (
 		return out, e
 	}
 	recipe, _ := profile(r.ProfileID)
+	if !ProfileProducible(recipe) {
+		return out, ErrUnsupported
+	}
 	if (recipe.Kind == "audio") != (sel.Kind == "song" || sel.Kind == "audiobook_file") {
 		return out, ErrUnsupported
 	}

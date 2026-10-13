@@ -34,6 +34,7 @@ type ConversionTarget struct {
 	SourceRange              string  `json:"sourceRange"`
 	DolbyVisionProfile       int     `json:"dolbyVisionProfile"`
 	DolbyVisionCompatibility int     `json:"dolbyVisionCompatibility"`
+	CopyDolbyVision          bool    `json:"copyDolbyVision,omitempty"`
 	VideoProfile             string  `json:"videoProfile,omitempty"`
 	VideoLevel               int     `json:"videoLevel"`
 	MasterDisplay            string  `json:"masterDisplay,omitempty"`
@@ -44,6 +45,9 @@ var masteringDisplayPattern = regexp.MustCompile(`^G\([0-9]{1,5},[0-9]{1,5}\)B\(
 var maxCLLPattern = regexp.MustCompile(`^[0-9]{1,5},[0-9]{1,5}$`)
 
 func (t ConversionTarget) Normalized() (ConversionTarget, error) {
+	if t.SourceRange == "hdr10plus" {
+		t.SourceRange = "hdr10_plus"
+	}
 	if t.VideoCodec == "" {
 		t.VideoCodec = "h264"
 	}
@@ -64,7 +68,7 @@ func (t ConversionTarget) Normalized() (ConversionTarget, error) {
 	}
 	if t.Packaging == "" {
 		t.Packaging = "mpegts_hls"
-		if (t.VideoCodec != "h264" && t.VideoCodec != "hevc" && t.VideoCodec != "mpeg2video") || t.AudioCodec == "flac" || t.AudioCodec == "opus" || t.AudioCodec == "truehd" {
+		if (t.VideoCodec != "h264" && t.VideoCodec != "mpeg2video") || t.AudioCodec == "flac" || t.AudioCodec == "opus" || t.AudioCodec == "truehd" {
 			t.Packaging = "fmp4_hls"
 		}
 	}
@@ -89,7 +93,7 @@ func (t ConversionTarget) Normalized() (ConversionTarget, error) {
 	if t.BitDepth != 8 && t.BitDepth != 10 || t.VideoCodec == "h264" && t.BitDepth != 8 {
 		return t, ErrInvalidConfiguration
 	}
-	if t.DynamicRange != "sdr" && t.DynamicRange != "hdr10" && t.DynamicRange != "hlg" {
+	if t.DynamicRange != "sdr" && t.DynamicRange != "hdr10" && t.DynamicRange != "hlg" && !(t.CopyDolbyVision && t.DynamicRange == "dolby_vision") {
 		return t, ErrInvalidConfiguration
 	}
 	if t.DynamicRange != "sdr" && (t.BitDepth != 10 || t.ToneMap || t.VideoCodec == "h264") {
@@ -98,11 +102,14 @@ func (t ConversionTarget) Normalized() (ConversionTarget, error) {
 	if t.SourceRange != "" && t.SourceRange != "sdr" && t.SourceRange != "hdr10" && t.SourceRange != "hdr10_plus" && t.SourceRange != "hlg" && t.SourceRange != "dolby_vision" {
 		return t, ErrInvalidConfiguration
 	}
-	if base := DolbyVisionBaseRange(t.DolbyVisionProfile, t.DolbyVisionCompatibility); base != "" && t.SourceRange == "dolby_vision" {
+	if base := DolbyVisionBaseRange(t.DolbyVisionProfile, t.DolbyVisionCompatibility); !t.CopyDolbyVision && base != "" && t.SourceRange == "dolby_vision" {
 		t.SourceRange = base
 	}
 	if t.SourceRange != "" && t.DynamicRange != "sdr" && t.SourceRange != t.DynamicRange && !(t.SourceRange == "hdr10_plus" && t.DynamicRange == "hdr10") {
 		return t, errors.New("dynamic_range_conversion_unavailable")
+	}
+	if t.CopyDolbyVision && (t.VideoCodec != "hevc" || t.BitDepth != 10 || t.DynamicRange != "dolby_vision" || t.SourceRange != "dolby_vision" || t.DolbyVisionProfile == 0 || t.Packaging != "fmp4_hls") {
+		return t, ErrInvalidConfiguration
 	}
 	if t.SourceRange != "" && t.SourceRange != "sdr" && t.DynamicRange == "sdr" && !t.ToneMap {
 		return t, errors.New("hdr_requires_tone_mapping")

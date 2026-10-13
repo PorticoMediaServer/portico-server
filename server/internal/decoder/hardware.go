@@ -672,7 +672,7 @@ func BuildConversion(r ConversionRequest) (ConversionGraph, error) {
 		pixel, surface = "yuv420p10le", "p010le"
 	}
 
-	if r.CopyVideo && r.ConvertVideo || r.CopyAudio && r.ConvertAudio {
+	if r.CopyVideo && r.ConvertVideo || r.CopyAudio && r.ConvertAudio || target.CopyDolbyVision && !r.CopyVideo {
 		return out, ErrInvalidConfiguration
 	}
 	if math.IsNaN(r.MaxFrameRate) || math.IsInf(r.MaxFrameRate, 0) || r.MaxFrameRate < 0 || r.MaxFrameRate > 240 {
@@ -742,7 +742,7 @@ func BuildConversion(r ConversionRequest) (ConversionGraph, error) {
 	}
 	out.Backend = backend
 	if r.CopyVideo {
-		if target.DolbyVisionProfile > 0 && r.Target != nil {
+		if target.DolbyVisionProfile > 0 && r.Target != nil && !target.CopyDolbyVision {
 			base := DolbyVisionBaseRange(target.DolbyVisionProfile, target.DolbyVisionCompatibility)
 			if base == "" || base != target.DynamicRange {
 				return out, errors.New("dolby_vision_base_layer_unavailable")

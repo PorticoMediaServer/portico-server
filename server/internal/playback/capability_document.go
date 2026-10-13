@@ -122,6 +122,7 @@ type ClientAudioCodec struct {
 	Codec         string   `json:"codec"`
 	MaxChannels   int      `json:"maxChannels"`
 	MaxSampleRate int      `json:"maxSampleRate"`
+	MaxBitDepth   int      `json:"maxBitDepth,omitempty"`
 	ObjectAudio   []string `json:"objectAudio"`
 	Evidence      string   `json:"evidence,omitempty"`
 }
@@ -476,7 +477,7 @@ func (e *EngineCapabilities) validate(path string) error {
 		}
 	}
 	for _, a := range e.Audio {
-		if !profileToken.MatchString(a.Codec) || a.MaxChannels < 0 || a.MaxChannels > 64 || a.MaxSampleRate < 0 || a.MaxSampleRate > 1<<22 || !profileTokens(a.ObjectAudio, 4) || (a.Evidence != "" && !evidenceValue(a.Evidence)) {
+		if !profileToken.MatchString(a.Codec) || a.MaxChannels < 0 || a.MaxChannels > 64 || a.MaxSampleRate < 0 || a.MaxSampleRate > 1<<22 || a.MaxBitDepth < 0 || a.MaxBitDepth > 64 || !profileTokens(a.ObjectAudio, 4) || (a.Evidence != "" && !evidenceValue(a.Evidence)) {
 			return capabilityField(path + ".audio")
 		}
 	}

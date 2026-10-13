@@ -921,7 +921,7 @@ export const routes = [
     "method": "GET",
     "path": "/v1/items/{itemId}/download-options",
     "summary": "List offline qualities this device can play and this server can produce",
-    "access": "device",
+    "access": "viewer_item_restrictions",
     "requires": "read",
     "lane": "browsing",
     "cost": "page_sized",

@@ -3,12 +3,13 @@ package playback
 import (
 	"portico.local/server/internal/assets"
 	"portico.local/server/internal/decoder"
+	"strconv"
 	"strings"
 	"testing"
 )
 
 func plannerToolchain() *decoder.ToolchainFacts {
-	return &decoder.ToolchainFacts{Encoders: map[string]bool{"libx264": true, "libx265": true, "libaom-av1": true, "aac": true, "ac3": true, "eac3": true, "flac": true, "libopus": true}, Decoders: map[string]bool{"vc1": true, "pcm": true, "truehd": true, "aac": true}, Filters: map[string]bool{"zscale": true, "tonemap": true, "bwdif": true}}
+	return &decoder.ToolchainFacts{Encoders: map[string]bool{"libx264": true, "libx265": true, "libaom-av1": true, "aac": true, "ac3": true, "eac3": true, "flac": true, "libopus": true}, Decoders: map[string]bool{"vc1": true, "pcm": true, "truehd": true, "aac": true, "hevc": true, "h264": true, "eac3": true}, Filters: map[string]bool{"zscale": true, "tonemap": true, "bwdif": true}}
 }
 func allOutputClient() ClientProfile {
 	p := appleTVProfile()
@@ -42,7 +43,7 @@ func TestEveryRegisteredOutputHasAnExecutablePlannerTarget(t *testing.T) {
 	}
 	for _, output := range outputs.Video {
 		for _, dr := range output.Ranges {
-			t.Run(output.Codec+string(rune('0'+output.BitDepth))+dr, func(t *testing.T) {
+			t.Run(output.Codec+strconv.Itoa(output.BitDepth)+dr, func(t *testing.T) {
 				source := videoSource("mkv", "vc1", assets.StreamDetail{BitDepth: output.BitDepth, Width: 1920, Height: 1080, FrameRate: 24, DynamicRange: dr}, SourceAudio{Index: 1, Codec: "aac", Channels: 2})
 				selected := plan(source, ConversionOutputs{Video: []ConversionVideoOutput{output}, Audio: outputs.Audio})
 				if selected.OutputVideoCodec != output.Codec || selected.OutputBitDepth != output.BitDepth || selected.OutputRange != dr {
@@ -53,7 +54,7 @@ func TestEveryRegisteredOutputHasAnExecutablePlannerTarget(t *testing.T) {
 	}
 	for _, output := range outputs.Audio {
 		for channels := range output.Bitrates {
-			t.Run(output.Codec+string(rune('0'+channels)), func(t *testing.T) {
+			t.Run(output.Codec+strconv.Itoa(channels), func(t *testing.T) {
 				local := client
 				local.Audio = []ClientAudioCodec{{Codec: output.Codec, MaxChannels: 8}}
 				local.AudioOutput.MaxChannels = 8
@@ -146,5 +147,48 @@ func TestSubtitleOriginalsBesideConvertedStreamsAvoidBurn(t *testing.T) {
 	p := planDocument(t, videoSource("mp4", "h264", avcDetail, SourceAudio{Index: 1, Codec: "aac", Channels: 2}), doc, func(in *DeliveryInput) { in.SubtitleKind = SubtitlePGS; in.SubtitleBesideStream = true })
 	if p.Engine != EngineMPV {
 		t.Fatal(p.Engine)
+	}
+}
+
+func TestDolbyVisionCopyAndSDRBaseTargetsStayAccurate(t *testing.T) {
+	video := hdr10Detail
+	video.DynamicRange = assets.RangeDolbyVision
+	video.DolbyVisionProfile = 5
+	video.CodecTag = "dvh1"
+	source := videoSource("mp4", "hevc", video, SourceAudio{Index: 1, Codec: "truehd", Channels: 8, StreamDetail: assets.StreamDetail{SampleRate: 48000, BitsPerSample: 24}})
+	p := decide(t, source, appleTVProfile(), func(in *DeliveryInput) { in.Server = plannerToolchain(); in.FMP4Output = true })
+	if p.Strategy != DeliveryAudioConversion || p.ConversionTarget == nil || !p.ConversionTarget.CopyDolbyVision || p.ConversionTarget.DynamicRange != assets.RangeDolbyVision || hevcSampleEntry(&p) != "dvh1" {
+		t.Fatal(p.ConversionTarget)
+	}
+	_, args, _, err := p.CodecArgs()
+	if err != nil || strings.Contains(strings.Join(args, " "), "-bsf:v") {
+		t.Fatal(args, err)
+	}
+	video.DolbyVisionProfile = 8
+	video.DolbyVisionCompatibility = 2
+	source = videoSource("mp4", "hevc", video, SourceAudio{Index: 1, Codec: "aac", Channels: 2})
+	p = decide(t, source, appleTVProfile(), func(in *DeliveryInput) { in.Server = plannerToolchain(); in.FMP4Output = true; in.BurnIn = true })
+	if p.ToneMap || p.OutputRange != assets.RangeSDR || p.ConversionTarget.SourceRange != assets.RangeSDR || p.ConversionTarget.CopyDolbyVision {
+		t.Fatal(p.ConversionTarget)
+	}
+}
+
+func TestAudioSampleDepthCeilingUsesMpvBeforeReducingSamples(t *testing.T) {
+	native := appleTVProfile()
+	for i := range native.Audio {
+		if native.Audio[i].Codec == "flac" {
+			native.Audio[i].MaxBitDepth = 16
+		}
+	}
+	source := videoSource("mp4", "h264", avcDetail, SourceAudio{Index: 1, Codec: "flac", Channels: 2, StreamDetail: assets.StreamDetail{BitsPerSample: 24, SampleRate: 48000}})
+	doc := documentOf(native, mpvProfile(native))
+	p := planDocument(t, source, doc, nil)
+	if p.Engine != EngineMPV || p.Strategy != DeliveryOriginal {
+		t.Fatal(p.Engine, p.Strategy)
+	}
+	doc.EngineSetting = EngineSettingNative
+	p = planDocument(t, source, doc, nil)
+	if p.AudioLossless || p.ConversionTarget == nil || p.ConversionTarget.AudioBitDepth != 16 || p.OutputAudioCodec != "flac" {
+		t.Fatal(p.ConversionTarget, p.AudioLossless)
 	}
 }

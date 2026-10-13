@@ -24,20 +24,21 @@ import (
 // AudioRenditionPlan describes independently produced audio on the source clock.
 // A published but unrequested rendition owns no process or generated segments.
 type AudioRenditionPlan struct {
-	Failure     string `json:"failure,omitempty"`
-	Ordinal     int    `json:"ordinal"`
-	StreamIndex int    `json:"streamIndex"`
-	Action      string `json:"action"`
-	Codec       string `json:"codec"`
-	Channels    int    `json:"channels"`
-	BitrateBPS  int    `json:"bitrateBps"`
-	Downmix     string `json:"downmix,omitempty"`
-	SampleRate  int    `json:"sampleRate,omitempty"`
-	BitDepth    int    `json:"bitDepth,omitempty"`
-	Language    string `json:"language"`
-	Label       string `json:"label"`
-	Default     bool   `json:"default"`
-	Commentary  bool   `json:"commentary,omitempty"`
+	Failure       string `json:"failure,omitempty"`
+	Ordinal       int    `json:"ordinal"`
+	StreamIndex   int    `json:"streamIndex"`
+	Action        string `json:"action"`
+	Codec         string `json:"codec"`
+	Channels      int    `json:"channels"`
+	BitrateBPS    int    `json:"bitrateBps"`
+	Downmix       string `json:"downmix,omitempty"`
+	SampleRate    int    `json:"sampleRate,omitempty"`
+	BitDepth      int    `json:"bitDepth,omitempty"`
+	ChannelLayout string `json:"channelLayout,omitempty"`
+	Language      string `json:"language"`
+	Label         string `json:"label"`
+	Default       bool   `json:"default"`
+	Commentary    bool   `json:"commentary,omitempty"`
 }
 
 func planAudioRenditions(p DeliveryPlan, source DeliverySource, client ClientProfile, target QualityTarget, convert bool) []AudioRenditionPlan {
@@ -85,8 +86,11 @@ func planAudioRenditions(p DeliveryPlan, source DeliverySource, client ClientPro
 				r.Downmix = DownmixITULimited
 			}
 		}
+		if r.Channels == a.Channels && (a.Layout == "mono" || a.Layout == "stereo" || a.Layout == "5.1" || a.Layout == "5.1(side)" || a.Layout == "7.1") {
+			r.ChannelLayout = a.Layout
+		}
 		if r.Codec == "flac" {
-			r.BitDepth = a.BitDepth
+			r.BitDepth = flacDepth(&a, client.audioCodec(r.Codec))
 		}
 		r.Label = fmt.Sprintf("%s · %s · track %d", r.Language, strings.ToUpper(r.Codec), a.Ordinal+1)
 		if a.Title != "" {
@@ -534,7 +538,7 @@ func (h *HLS) produceRendition(ctx context.Context, id string, r AudioRenditionP
 	}
 	offset := strconv.Itoa(from * HLSSegmentSeconds)
 	args := []string{"-nostdin", "-hide_banner", "-loglevel", "error", "-y", "-protocol_whitelist", "file,pipe", "-ss", offset, "-i", input.Argument, "-ss", "0", "-map", "0:" + strconv.Itoa(r.StreamIndex), "-vn", "-sn", "-dn"}
-	audioTarget := decoder.ConversionTarget{AudioCodec: r.Codec, AudioChannels: r.Channels, AudioBitrateBPS: r.BitrateBPS, AudioSampleRate: r.SampleRate, AudioBitDepth: r.BitDepth, Packaging: renditionPackaging(r.Codec)}
+	audioTarget := decoder.ConversionTarget{AudioCodec: r.Codec, AudioChannels: r.Channels, AudioBitrateBPS: r.BitrateBPS, AudioSampleRate: r.SampleRate, AudioChannelLayout: r.ChannelLayout, AudioBitDepth: r.BitDepth, Packaging: renditionPackaging(r.Codec)}
 	graph, err := decoder.BuildConversion(decoder.ConversionRequest{Target: &audioTarget, Toolchain: decoder.CurrentToolchain(), CopyAudio: r.Action == "copy", ConvertAudio: r.Action == "convert", AudioCodec: r.Codec, AudioChannels: r.Channels, AudioBitrateBPS: r.BitrateBPS, Downmix: r.Downmix == DownmixITULimited, AudioSampleRate: r.SampleRate})
 	if err != nil {
 		failed(FailureConverter)
