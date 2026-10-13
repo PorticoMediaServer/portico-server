@@ -4,6 +4,7 @@ import {personHref} from '../../app/open';
 import {useNavigate, useParams, useSearch} from '@tanstack/react-router';
 import type {ContentEntry} from '@core/library-content.ts';
 import {defaultShowSettings, saveShowSettings, type ShowSettings, type ShowWorkspaceRoute, type WorkspaceSeason} from '@core/show-workspace.ts';
+import {useFreshness} from '../../app/freshness';
 import {useShowRecommendations, useShowWorkspace} from '../../app/detail';
 import {homeRowHeading} from '@core/home.ts';
 import {useNotInterested} from '../../app/not-interested-notice';
@@ -113,7 +114,9 @@ export function ShowScreen() {
   const firstPage = data?.episodes.sections[0];
   const where = useMemo<EpisodeScope | undefined>(() => (show && selected ? {libraryId: show.libraryId, showId: show.id, seasonId: selected.seasonId, ...(selected.group ? {group: selected.group} : {})} : undefined), [show, selected]);
   const seed = useMemo(() => (firstPage && snapshot.pagination.cursor === null ? {entries: firstPage.entries, nextCursor: firstPage.nextCursor || null, total: firstPage.totalCount} : undefined), [firstPage, snapshot.pagination.cursor]);
-  const episodes = useEpisodes(api, scope, where, seed);
+  const {hub: freshnessHub} = useFreshness();
+  const settle = useCallback(() => freshnessHub.settled(), [freshnessHub]);
+  const episodes = useEpisodes(api, scope, where, seed, settle);
 
   /** Loaded episodes from `index` on, in order, so Up Next continues through the season. */
   const sequenceFrom = useCallback((episode: ContentEntry): ContentEntry[] => {
