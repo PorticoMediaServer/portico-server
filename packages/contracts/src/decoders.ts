@@ -25,6 +25,7 @@ export function decodeDownloadClientLogResponse(input: unknown): types.DownloadC
 export function decodeEmptyMissingTitlesResponse(input: unknown): types.EmptyMissingTitlesResponse { return decode("EmptyMissingTitlesResponse", input) as types.EmptyMissingTitlesResponse; }
 export function decodeGetAdminBackupsResponse(input: unknown): types.GetAdminBackupsResponse { return decode("GetAdminBackupsResponse", input) as types.GetAdminBackupsResponse; }
 export function decodeGetAdminMaintenanceSettingsResponse(input: unknown): types.GetAdminMaintenanceSettingsResponse { return decode("GetAdminMaintenanceSettingsResponse", input) as types.GetAdminMaintenanceSettingsResponse; }
+export function decodeGetAdminResourceUsageResponse(input: unknown): types.GetAdminResourceUsageResponse { return decode("GetAdminResourceUsageResponse", input) as types.GetAdminResourceUsageResponse; }
 export function decodeGetAdminUpdatesResponse(input: unknown): types.GetAdminUpdatesResponse { return decode("GetAdminUpdatesResponse", input) as types.GetAdminUpdatesResponse; }
 export function decodeGetApiAccessOptionsResponse(input: unknown): types.GetApiAccessOptionsResponse { return decode("GetApiAccessOptionsResponse", input) as types.GetApiAccessOptionsResponse; }
 export function decodeGetAuthCapabilitiesResponse(input: unknown): types.GetAuthCapabilitiesResponse { return decode("GetAuthCapabilitiesResponse", input) as types.GetAuthCapabilitiesResponse; }

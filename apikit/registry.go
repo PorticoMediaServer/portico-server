@@ -394,7 +394,7 @@ func matchRoute(pattern, path string) (map[string]string, int, bool) {
 }
 func (r *Registry) Freeze() { r.frozen = true }
 func validate(m Metadata) error {
-	if m.ID == "" || m.Summary == "" || !strings.HasPrefix(m.Path, "/v1/") || m.Status < 200 || m.Status >= 300 || m.BodyLimit < 0 || m.BodyLimit > 48<<20 {
+	if m.ID == "" || m.Summary == "" || !strings.HasPrefix(m.Path, "/v1/") || m.Status < 200 || m.Status >= 300 || m.BodyLimit < 0 || m.BodyLimit > 1<<30 {
 		return errors.New("route metadata incomplete")
 	}
 	if m.ResponseContentType != "" {

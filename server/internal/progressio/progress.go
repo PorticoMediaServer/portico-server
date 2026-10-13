@@ -28,28 +28,41 @@ func New(parent context.Context, idle, overall time.Duration) (context.Context, 
 	}
 	ctx, cancel := context.WithCancel(parent)
 	w := &Watch{idle: idle, cancel: cancel, outer: outer}
-	w.timer = time.AfterFunc(idle, func() {
-		w.mu.Lock()
-		defer w.mu.Unlock()
-		if !w.closed {
-			w.closed = true
-			w.cancel()
-		}
-	})
+	w.Ping()
 	return ctx, w
+}
+
+// NewDormant starts measuring only when Ping is called after resource admission.
+// Waiting for a worker slot or an owner pause is not stalled producer input.
+func NewDormant(parent context.Context, idle time.Duration) (context.Context, *Watch) {
+	ctx, cancel := context.WithCancel(parent)
+	return ctx, &Watch{idle: idle, cancel: cancel, outer: func() {}}
 }
 func (w *Watch) Ping() {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	if !w.closed {
-		w.timer.Reset(w.idle)
+		if w.timer == nil {
+			w.timer = time.AfterFunc(w.idle, func() {
+				w.mu.Lock()
+				defer w.mu.Unlock()
+				if !w.closed {
+					w.closed = true
+					w.cancel()
+				}
+			})
+		} else {
+			w.timer.Reset(w.idle)
+		}
 	}
 }
 func (w *Watch) Close() {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	w.closed = true
-	w.timer.Stop()
+	if w.timer != nil {
+		w.timer.Stop()
+	}
 	w.cancel()
 	w.outer()
 }
@@ -117,3 +130,18 @@ func (b *body) Read(p []byte) (int, error) {
 	return n, err
 }
 func (b *body) Close() error { b.watch.Close(); return b.ReadCloser.Close() }
+
+func (w *Watch) Writer(out io.Writer) io.Writer { return &progressWriter{out, w} }
+
+type progressWriter struct {
+	io.Writer
+	watch *Watch
+}
+
+func (w *progressWriter) Write(p []byte) (int, error) {
+	n, err := w.Writer.Write(p)
+	if n > 0 {
+		w.watch.Ping()
+	}
+	return n, err
+}

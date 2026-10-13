@@ -269,7 +269,7 @@ export const settingsMessages = {
   'settings.server.missingTitlesDays': 'Keep missing titles for',
   'settings.server.schedule': 'Schedule',
   'settings.server.windows': 'Maintenance windows',
-  'settings.server.windowsLede': 'When the server does its heavier background work. Times are the server’s own.',
+  'settings.server.windowsLede': 'When scheduled backups run. Other background work follows your speed choice. Times are the server’s own.',
   'settings.server.jobs': 'Scheduled jobs',
   'settings.server.jobs.next': 'Next: {when}',
   'settings.server.jobs.last': 'Last: {when}',

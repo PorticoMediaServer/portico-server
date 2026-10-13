@@ -9,14 +9,16 @@ package httpapi
 // /v1/downloads/settings is an ordinary read while /v1/downloads/artifacts/{grant}
 // is a byte stream — and a prefix rule cannot tell them apart.
 var routeLanes = map[string]string{
-	"GET /v1/console/registry":                   laneAdmin,
-	"GET /v1/libraries/{id}/metadata/attention":  laneBrowsing,
-	"POST /v1/libraries/{id}/metadata/attention": laneBrowsing,
-	"GET /v1/admin/metadata/settings":            laneAdmin,
-	"PUT /v1/admin/metadata/settings":            laneAdmin,
-	"POST /v1/shows/{id}/metadata/refresh":       laneBrowsing,
-	"GET /v1/items/{id}/metadata/screen":         laneBrowsing,
-	"GET /v1/shows/{id}/metadata/screen":         laneBrowsing,
+	"POST /v1/admin/maintenance/background-pause": laneAdmin,
+	"GET /v1/admin/resource-usage":                laneAdmin,
+	"GET /v1/console/registry":                    laneAdmin,
+	"GET /v1/libraries/{id}/metadata/attention":   laneBrowsing,
+	"POST /v1/libraries/{id}/metadata/attention":  laneBrowsing,
+	"GET /v1/admin/metadata/settings":             laneAdmin,
+	"PUT /v1/admin/metadata/settings":             laneAdmin,
+	"POST /v1/shows/{id}/metadata/refresh":        laneBrowsing,
+	"GET /v1/items/{id}/metadata/screen":          laneBrowsing,
+	"GET /v1/shows/{id}/metadata/screen":          laneBrowsing,
 
 	// The MCP endpoint (mcp.go). Its tool calls are admitted again, each in
 	// the lane of the API route it uses.

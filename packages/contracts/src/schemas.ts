@@ -1653,6 +1653,16 @@ export const schemas = {
           "advertisedInterface": {
             "type": "string"
           },
+          "analysisStageStorageMiB": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "analysisStorageGiB": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
           "apiRequestsPerMinute": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
@@ -1820,6 +1830,16 @@ export const schemas = {
             "minimum": -9007199254740991,
             "type": "integer"
           },
+          "subtitleFileLimitMiB": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "subtitleTrackLimit": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
           "temporaryDirectory": {
             "type": "string"
           },
@@ -1853,6 +1873,10 @@ export const schemas = {
           }
         },
         "required": [
+          "analysisStorageGiB",
+          "analysisStageStorageMiB",
+          "subtitleTrackLimit",
+          "subtitleFileLimitMiB",
           "name",
           "transcodingEnabled",
           "perAccountCap",
@@ -1938,6 +1962,16 @@ export const schemas = {
               "advertisedInterface": {
                 "type": "string"
               },
+              "analysisStageStorageMiB": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "analysisStorageGiB": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
               "apiRequestsPerMinute": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
@@ -2105,6 +2139,16 @@ export const schemas = {
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
+              "subtitleFileLimitMiB": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "subtitleTrackLimit": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
               "temporaryDirectory": {
                 "type": "string"
               },
@@ -2138,6 +2182,10 @@ export const schemas = {
               }
             },
             "required": [
+              "analysisStorageGiB",
+              "analysisStageStorageMiB",
+              "subtitleTrackLimit",
+              "subtitleFileLimitMiB",
               "name",
               "transcodingEnabled",
               "perAccountCap",
@@ -2206,6 +2254,16 @@ export const schemas = {
               "advertisedInterface": {
                 "type": "string"
               },
+              "analysisStageStorageMiB": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "analysisStorageGiB": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
               "apiRequestsPerMinute": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
@@ -2373,6 +2431,16 @@ export const schemas = {
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
+              "subtitleFileLimitMiB": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "subtitleTrackLimit": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
               "temporaryDirectory": {
                 "type": "string"
               },
@@ -2406,6 +2474,10 @@ export const schemas = {
               }
             },
             "required": [
+              "analysisStorageGiB",
+              "analysisStageStorageMiB",
+              "subtitleTrackLimit",
+              "subtitleFileLimitMiB",
               "name",
               "transcodingEnabled",
               "perAccountCap",
@@ -6456,6 +6528,96 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "GetAdminResourceUsageRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetAdminResourceUsageResponse": {
+    "properties": {
+      "analysis": {
+        "properties": {
+          "limitBytes": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "trackedBytes": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "trackedBytes",
+          "limitBytes"
+        ],
+        "type": "object"
+      },
+      "connections": {
+        "nullable": true,
+        "properties": {
+          "consoleReserve": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "ordinary": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "ordinaryLimit": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "total": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "ordinary",
+          "total",
+          "ordinaryLimit",
+          "consoleReserve"
+        ],
+        "type": "object"
+      },
+      "streamLimit": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "nullable": true,
+        "type": "integer"
+      },
+      "streams": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "subtitleFileLimitMiB": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "subtitleTracksPerFile": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "connections",
+      "analysis",
+      "streams",
+      "streamLimit",
+      "subtitleTracksPerFile",
+      "subtitleFileLimitMiB"
+    ],
+    "type": "object"
+  },
   "GetAdminUpdatesRequest": {
     "properties": {},
     "required": [],
@@ -7830,6 +7992,16 @@ export const schemas = {
               "advertisedInterface": {
                 "type": "string"
               },
+              "analysisStageStorageMiB": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "analysisStorageGiB": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
               "apiRequestsPerMinute": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
@@ -7997,6 +8169,16 @@ export const schemas = {
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
+              "subtitleFileLimitMiB": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "subtitleTrackLimit": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
               "temporaryDirectory": {
                 "type": "string"
               },
@@ -8030,6 +8212,10 @@ export const schemas = {
               }
             },
             "required": [
+              "analysisStorageGiB",
+              "analysisStageStorageMiB",
+              "subtitleTrackLimit",
+              "subtitleFileLimitMiB",
               "name",
               "transcodingEnabled",
               "perAccountCap",
@@ -8098,6 +8284,16 @@ export const schemas = {
               "advertisedInterface": {
                 "type": "string"
               },
+              "analysisStageStorageMiB": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "analysisStorageGiB": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
               "apiRequestsPerMinute": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
@@ -8265,6 +8461,16 @@ export const schemas = {
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
+              "subtitleFileLimitMiB": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "subtitleTrackLimit": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
               "temporaryDirectory": {
                 "type": "string"
               },
@@ -8298,6 +8504,10 @@ export const schemas = {
               }
             },
             "required": [
+              "analysisStorageGiB",
+              "analysisStageStorageMiB",
+              "subtitleTrackLimit",
+              "subtitleFileLimitMiB",
               "name",
               "transcodingEnabled",
               "perAccountCap",

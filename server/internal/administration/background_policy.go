@@ -63,6 +63,8 @@ func (s *Service) PauseBackground(ctx context.Context, auth Authorize, change Ba
 // ApplyBackgroundPolicy refreshes the process projection from durable authority.
 // It is called at startup and after every maintenance mutation.
 func (s *Service) ApplyBackgroundPolicy(ctx context.Context) {
+	s.backgroundMu.Lock()
+	defer s.backgroundMu.Unlock()
 	snapshot, err := dbwork.BeginSnapshot(ctx, s.db)
 	if err != nil {
 		return

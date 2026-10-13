@@ -59,3 +59,18 @@ func TestOverallSafetyCapAndParentCancellation(t *testing.T) {
 		t.Fatal("lost parent cancellation")
 	}
 }
+
+func TestWaitingForAdmissionDoesNotStartIdleTimer(t *testing.T) {
+	ctx, watch := NewDormant(context.Background(), 20*time.Millisecond)
+	defer watch.Close()
+	time.Sleep(40 * time.Millisecond)
+	if ctx.Err() != nil {
+		t.Fatal("resource queue consumed the producer deadline")
+	}
+	watch.Ping()
+	select {
+	case <-ctx.Done():
+	case <-time.After(time.Second):
+		t.Fatal("started producer had no idle bound")
+	}
+}

@@ -150,6 +150,9 @@ func main() {
 			log.Print("Restart requested")
 			os.Exit(supervise.RestartExitCode)
 		}
+		if !errors.Is(e, context.Canceled) {
+			serveEarlyStartupFailure(e)
+		}
 		log.Fatal(e)
 	}
 }
@@ -294,6 +297,7 @@ func run() (runErr error) {
 		reporter.fail(runErr)
 		log.Printf("Portico could not start. A recovery page is available on %s; fix the cause and restart the service: %v", listener.Addr(), runErr)
 		serveStartupRecovery(ctx, listener, reporter)
+		runErr = errors.Join(runErr, ctx.Err())
 	}()
 
 	// One process owns one state directory. The lock is taken now — after the

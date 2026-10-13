@@ -1572,6 +1572,16 @@
                             "advertisedInterface": {
                               "type": "string"
                             },
+                            "analysisStageStorageMiB": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "analysisStorageGiB": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
                             "apiRequestsPerMinute": {
                               "maximum": 9007199254740991,
                               "minimum": -9007199254740991,
@@ -1739,6 +1749,16 @@
                               "minimum": -9007199254740991,
                               "type": "integer"
                             },
+                            "subtitleFileLimitMiB": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "subtitleTrackLimit": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
                             "temporaryDirectory": {
                               "type": "string"
                             },
@@ -1772,6 +1792,10 @@
                             }
                           },
                           "required": [
+                            "analysisStorageGiB",
+                            "analysisStageStorageMiB",
+                            "subtitleTrackLimit",
+                            "subtitleFileLimitMiB",
                             "name",
                             "transcodingEnabled",
                             "perAccountCap",
@@ -1840,6 +1864,16 @@
                             "advertisedInterface": {
                               "type": "string"
                             },
+                            "analysisStageStorageMiB": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "analysisStorageGiB": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
                             "apiRequestsPerMinute": {
                               "maximum": 9007199254740991,
                               "minimum": -9007199254740991,
@@ -2007,6 +2041,16 @@
                               "minimum": -9007199254740991,
                               "type": "integer"
                             },
+                            "subtitleFileLimitMiB": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "subtitleTrackLimit": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
                             "temporaryDirectory": {
                               "type": "string"
                             },
@@ -2040,6 +2084,10 @@
                             }
                           },
                           "required": [
+                            "analysisStorageGiB",
+                            "analysisStageStorageMiB",
+                            "subtitleTrackLimit",
+                            "subtitleFileLimitMiB",
                             "name",
                             "transcodingEnabled",
                             "perAccountCap",
@@ -2175,6 +2223,16 @@
                       },
                       "advertisedInterface": {
                         "type": "string"
+                      },
+                      "analysisStageStorageMiB": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "analysisStorageGiB": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
                       },
                       "apiRequestsPerMinute": {
                         "maximum": 9007199254740991,
@@ -2343,6 +2401,16 @@
                         "minimum": -9007199254740991,
                         "type": "integer"
                       },
+                      "subtitleFileLimitMiB": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "subtitleTrackLimit": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
                       "temporaryDirectory": {
                         "type": "string"
                       },
@@ -2376,6 +2444,10 @@
                       }
                     },
                     "required": [
+                      "analysisStorageGiB",
+                      "analysisStageStorageMiB",
+                      "subtitleTrackLimit",
+                      "subtitleFileLimitMiB",
                       "name",
                       "transcodingEnabled",
                       "perAccountCap",
@@ -2469,6 +2541,16 @@
                             "advertisedInterface": {
                               "type": "string"
                             },
+                            "analysisStageStorageMiB": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "analysisStorageGiB": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
                             "apiRequestsPerMinute": {
                               "maximum": 9007199254740991,
                               "minimum": -9007199254740991,
@@ -2636,6 +2718,16 @@
                               "minimum": -9007199254740991,
                               "type": "integer"
                             },
+                            "subtitleFileLimitMiB": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "subtitleTrackLimit": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
                             "temporaryDirectory": {
                               "type": "string"
                             },
@@ -2669,6 +2761,10 @@
                             }
                           },
                           "required": [
+                            "analysisStorageGiB",
+                            "analysisStageStorageMiB",
+                            "subtitleTrackLimit",
+                            "subtitleFileLimitMiB",
                             "name",
                             "transcodingEnabled",
                             "perAccountCap",
@@ -2737,6 +2833,16 @@
                             "advertisedInterface": {
                               "type": "string"
                             },
+                            "analysisStageStorageMiB": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "analysisStorageGiB": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
                             "apiRequestsPerMinute": {
                               "maximum": 9007199254740991,
                               "minimum": -9007199254740991,
@@ -2904,6 +3010,16 @@
                               "minimum": -9007199254740991,
                               "type": "integer"
                             },
+                            "subtitleFileLimitMiB": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "subtitleTrackLimit": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
                             "temporaryDirectory": {
                               "type": "string"
                             },
@@ -2937,6 +3053,10 @@
                             }
                           },
                           "required": [
+                            "analysisStorageGiB",
+                            "analysisStageStorageMiB",
+                            "subtitleTrackLimit",
+                            "subtitleFileLimitMiB",
                             "name",
                             "transcodingEnabled",
                             "perAccountCap",
@@ -6776,6 +6896,110 @@
         "x-lane": "default",
         "x-max-body-bytes": 4096,
         "x-scope": "library"
+      }
+    },
+    "/v1/admin/resource-usage": {
+      "get": {
+        "operationId": "get_admin_resource_usage",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "analysis": {
+                      "properties": {
+                        "limitBytes": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "trackedBytes": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "trackedBytes",
+                        "limitBytes"
+                      ],
+                      "type": "object"
+                    },
+                    "connections": {
+                      "nullable": true,
+                      "properties": {
+                        "consoleReserve": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "ordinary": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "ordinaryLimit": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "total": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "ordinary",
+                        "total",
+                        "ordinaryLimit",
+                        "consoleReserve"
+                      ],
+                      "type": "object"
+                    },
+                    "streamLimit": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "nullable": true,
+                      "type": "integer"
+                    },
+                    "streams": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "subtitleFileLimitMiB": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "subtitleTracksPerFile": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "connections",
+                    "analysis",
+                    "streams",
+                    "streamLimit",
+                    "subtitleTracksPerFile",
+                    "subtitleFileLimitMiB"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Read current resource usage and owner limits",
+        "x-access": "owner",
+        "x-cost": "page_sized",
+        "x-lane": "default",
+        "x-scope": "admin"
       }
     },
     "/v1/admin/restart": {
@@ -19952,7 +20176,7 @@
         "x-access": "viewer_item_restrictions",
         "x-cost": "constant",
         "x-lane": "default",
-        "x-max-body-bytes": 50331648,
+        "x-max-body-bytes": 805306368,
         "x-scope": "playback"
       }
     },
@@ -20358,7 +20582,7 @@
         "x-access": "viewer_item_restrictions",
         "x-cost": "constant",
         "x-lane": "default",
-        "x-max-body-bytes": 50331648,
+        "x-max-body-bytes": 805306368,
         "x-scope": "library"
       }
     },
@@ -20439,7 +20663,7 @@
         "x-access": "viewer_item_restrictions",
         "x-cost": "constant",
         "x-lane": "default",
-        "x-max-body-bytes": 50331648,
+        "x-max-body-bytes": 805306368,
         "x-scope": "library"
       }
     },
@@ -20529,7 +20753,7 @@
         "x-access": "viewer_item_restrictions",
         "x-cost": "constant",
         "x-lane": "default",
-        "x-max-body-bytes": 50331648,
+        "x-max-body-bytes": 805306368,
         "x-scope": "library"
       }
     },
@@ -20828,7 +21052,7 @@
         "x-access": "viewer_item_restrictions",
         "x-cost": "constant",
         "x-lane": "default",
-        "x-max-body-bytes": 50331648,
+        "x-max-body-bytes": 805306368,
         "x-scope": "library"
       }
     },
@@ -20925,7 +21149,7 @@
         "x-access": "viewer_item_restrictions",
         "x-cost": "constant",
         "x-lane": "default",
-        "x-max-body-bytes": 50331648,
+        "x-max-body-bytes": 805306368,
         "x-scope": "library"
       }
     },
@@ -21027,7 +21251,7 @@
         "x-access": "viewer_item_restrictions",
         "x-cost": "constant",
         "x-lane": "default",
-        "x-max-body-bytes": 50331648,
+        "x-max-body-bytes": 805306368,
         "x-scope": "library"
       }
     },
@@ -21102,7 +21326,7 @@
         "x-access": "viewer_item_restrictions",
         "x-cost": "constant",
         "x-lane": "default",
-        "x-max-body-bytes": 50331648,
+        "x-max-body-bytes": 805306368,
         "x-scope": "library"
       },
       "put": {
@@ -21228,7 +21452,7 @@
         "x-access": "viewer_item_restrictions",
         "x-cost": "constant",
         "x-lane": "default",
-        "x-max-body-bytes": 50331648,
+        "x-max-body-bytes": 805306368,
         "x-scope": "library"
       }
     },

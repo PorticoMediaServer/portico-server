@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"portico.local/apikit"
+	"portico.local/apikit/apierror"
 	"portico.local/server/internal/administration"
 )
 
@@ -16,7 +17,7 @@ func registerBackgroundPause(registry *apikit.Registry, d Dependencies) error {
 		}
 		p, _ := d.foundationCaller(r)
 		if d.Administration == nil {
-			return administration.MaintenanceDocument{}, foundationAdministrationError(administration.ErrInput)
+			return administration.MaintenanceDocument{}, &apierror.Error{Code: "internal"}
 		}
 		out, err := d.Administration.PauseBackground(ctx, d.administrationAuthority(p), body)
 		if err != nil {

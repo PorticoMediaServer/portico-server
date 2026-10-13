@@ -88,7 +88,7 @@ func (c *Client) runWithStem(ctx context.Context, key, op, path, stem string, vi
 	if duration <= 0 {
 		duration = 30 * time.Second
 	}
-	ctx, progress := progressio.New(ctx, duration, 4*time.Hour)
+	ctx, progress := progressio.NewDormant(ctx, duration)
 	defer progress.Close()
 	req := request{Stem: stem, Operation: op, Path: path, Identity: c.expectedIdentity, ManagedArtifact: c.managedRecording(path)}
 	if c.MountedRoot != nil {
@@ -98,6 +98,7 @@ func (c *Client) runWithStem(ctx context.Context, key, op, path, stem string, vi
 	cmd := exec.Command(c.Binary, "--portico-storage-helper")
 	cmd.Stdin = bytes.NewReader(data)
 	return c.Supervisor.Run(ctx, filepath.Clean(key), cmd, func(reader io.Reader) error {
+		progress.Ping()
 		scanner := bufio.NewScanner(progress.Reader(reader))
 		scanner.Buffer(make([]byte, 4096), 64<<10)
 		for scanner.Scan() {
@@ -413,8 +414,8 @@ func (c *Client) readBlob(ctx context.Context, key, path string, limit int64, su
 			return nil, err
 		}
 	}
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
+	ctx, progress := progressio.NewDormant(ctx, 30*time.Second)
+	defer progress.Close()
 	req := request{Operation: "blob", Path: path, Limit: limit, ManagedArtifact: c.managedRecording(path)}
 	if subtitle {
 		req.Operation = "subtitle-blob"
@@ -439,7 +440,8 @@ func (c *Client) readBlob(ctx context.Context, key, path string, limit int64, su
 	var raw []byte
 	err = c.Supervisor.Run(ctx, key, cmd, func(r io.Reader) error {
 		var err error
-		raw, err = io.ReadAll(io.LimitReader(r, limit+1))
+		progress.Ping()
+		raw, err = io.ReadAll(io.LimitReader(progress.Reader(r), limit+1))
 		if int64(len(raw)) > limit {
 			return errors.New("local metadata exceeds limit")
 		}

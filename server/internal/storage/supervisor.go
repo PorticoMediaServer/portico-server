@@ -223,6 +223,9 @@ func (s *Supervisor) run(ctx context.Context, key string, cmd *exec.Cmd, consume
 // of an ingest probe. Playback keeps its bounded client-facing wait.
 func (s *Supervisor) admit(ctx context.Context, key string, limited bool) (pool, error) {
 	p := poolFor(ctx, key)
+	if (p == poolBackground || p == poolScanProbe) && !dbwork.WaitBackground(ctx) {
+		return p, ctx.Err()
+	}
 	var timer *time.Timer
 	var timeout <-chan time.Time
 	start := time.Now()

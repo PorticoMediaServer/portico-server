@@ -159,6 +159,9 @@ func Open(p Policy, task string, now time.Time) bool {
 // OccurrenceStart is Open with the open occurrence's start: the moment after
 // which a scheduled backup counts as covering this occurrence.
 func OccurrenceStart(p Policy, task string, now time.Time) (time.Time, bool) {
+	if !Allowed(p, task, now) {
+		return time.Time{}, false
+	}
 	for _, w := range p.Windows {
 		if !w.Enabled || !contains(w.Tasks, task) || w.DurationMinutes <= 0 {
 			continue

@@ -15,6 +15,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"portico.local/server/internal/mediaexec"
+	"portico.local/server/internal/progressio"
 	"portico.local/server/internal/supervise"
 	"sort"
 	"strconv"
@@ -258,8 +259,8 @@ func (e *Encoder) probe(ctx context.Context, input Input, interval string) (prob
 	var p probe
 	started := time.Now()
 	b := &boundedBuffer{max: e.limits.ProbeBytes}
-	ctx, cancel := context.WithTimeout(ctx, e.limits.AnalyzeTimeout)
-	defer cancel()
+	ctx, progress := progressio.New(ctx, e.limits.AnalyzeTimeout, 4*time.Hour)
+	defer progress.Close()
 	args := []string{"-v", "error", "-protocol_whitelist", "file,pipe", "-probesize", "8388608", "-analyzeduration", "3000000", "-show_streams", "-show_format", "-show_entries", "format=duration,format_name:stream=index,codec_type,codec_name,width,height,pix_fmt,r_frame_rate,avg_frame_rate,start_time,color_transfer:packet=stream_index,pts_time,dts_time,duration_time,flags", "-of", "json"}
 	if interval != "metadata" {
 		args = append(args, "-show_packets")
@@ -272,7 +273,7 @@ func (e *Encoder) probe(ctx context.Context, input Input, interval string) (prob
 	if err != nil {
 		return p, err
 	}
-	cmd.Stdout = b
+	cmd.Stdout = progress.Writer(b)
 	cmd.Stderr = io.Discard
 	cmd.WaitDelay = time.Second
 	if err := cmd.Run(); err != nil {
@@ -291,7 +292,7 @@ func (e *Encoder) probe(ctx context.Context, input Input, interval string) (prob
 	return p, nil
 }
 func (e *Encoder) Analyze(ctx context.Context, input Input) (*Source, error) {
-	ctx, cancel := context.WithTimeout(ctx, e.limits.AnalyzeTimeout)
+	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	if err := input.check(ctx); err != nil {
 		return nil, err
@@ -404,7 +405,7 @@ func (e *Encoder) Analyze(ctx context.Context, input Input) (*Source, error) {
 	return s, nil
 }
 func (e *Encoder) Encode(ctx context.Context, s *Source, input Input, r Request) (Window, error) {
-	ctx, cancelAll := context.WithTimeout(ctx, e.limits.EncodeTimeout)
+	ctx, cancelAll := context.WithCancel(ctx)
 	defer cancelAll()
 	w := Window{Index: r.Index, Policy: Policy}
 	if s == nil || !s.admitted || s.Policy != Policy || r.Index < 0 {
@@ -590,6 +591,8 @@ func (e *Encoder) Encode(ctx context.Context, s *Source, input Input, r Request)
 // A single actor runs at most one encoder/copy child. All private output paths
 // share one temporary byte budget, including a closed intermediate during mux.
 func (e *Encoder) runWindow(ctx context.Context, args []string, inherited []*os.File, paths []string) (Work, error) {
+	ctx, progress := progressio.New(ctx, e.limits.EncodeTimeout, 4*time.Hour)
+	defer progress.Close()
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	// Writes only into the folders of the window's own output paths, each file
@@ -616,12 +619,17 @@ func (e *Encoder) runWindow(ctx context.Context, args []string, inherited []*os.
 	}
 	done := make(chan error, 1)
 	supervise.Go("playback.vod.wait", func() { done <- cmd.Wait() })
+	var producedBytes int64
 	overBudget := func() bool {
 		var bytes int64
 		for _, path := range paths {
 			if info, err := os.Stat(path); err == nil {
 				bytes += info.Size()
 			}
+		}
+		if bytes > producedBytes {
+			progress.Ping()
+			producedBytes = bytes
 		}
 		return bytes > e.limits.OutputBytes
 	}

@@ -9,9 +9,11 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/signal"
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"portico.local/server/internal/dbwork"
@@ -221,6 +223,22 @@ func serveStartupRecovery(ctx context.Context, listener net.Listener, reporter *
 		case <-done:
 		}
 	}()
-	_ = server.Serve(listener)
+	_ = server.Serve(capConnections(listener, consoleConnectionReserve))
 	close(done)
+}
+
+// Errors before a state directory or listener is available have no reporter in
+// run. Bind the configured port independently, without touching the bad state.
+func serveEarlyStartupFailure(err error) {
+	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer cancel()
+	listener, listenErr := net.Listen("tcp", env("PORTICO_BIND", defaultBind))
+	if listenErr != nil {
+		log.Printf("The recovery page could not bind its port: %v", listenErr)
+		return
+	}
+	defer listener.Close()
+	reporter := newStartupReporter()
+	reporter.fail(err)
+	serveStartupRecovery(ctx, listener, reporter)
 }
