@@ -1,6 +1,6 @@
 import {useCallback, useEffect, useMemo, useRef, useSyncExternalStore} from 'react';
 import {DocumentPool, serviceDocument, type PooledDocument, type QuietService} from '@core/freshness-pool.ts';
-import {FreshnessHub, type FreshDocument, type FreshDocumentOptions, type FreshnessDependency, type Reachability} from '@core/freshness-hub.ts';
+import {FreshnessHub, dependsOn, type FreshDocument, type FreshDocumentOptions, type FreshnessDependency, type Reachability} from '@core/freshness-hub.ts';
 import type {HttpLocalApi} from '@core/index.ts';
 import {useDeviceEvents} from './device-events';
 import {useSession} from './session';
@@ -127,6 +127,27 @@ export function usePooledService<S extends QuietService & Store<T>, T>(key: stri
  * called when one of `dependencies` moved, on the hub's usual terms (gathered, paused for input,
  * retried quietly). Returns `markCurrent`, for when the screen has just read it itself.
  */
+/**
+ * For a list the server sends no hint for (the guide, recordings, downloads): the same quiet
+ * read, asked for every `everyMs` while the tab is in front, as well as when one of
+ * `dependencies` moves. The hub decides when it actually runs (the screen open, input paused) and
+ * retries a failed read by itself; nothing is read while the tab is hidden, and one read catches
+ * up when it is shown again.
+ */
+export function useQuietRefresh(name: string, revalidate: FreshDocumentOptions['revalidate'], hasContent: () => boolean = () => true, options: {dependencies?: readonly FreshnessDependency[]; everyMs?: number} = {}): () => void {
+  const {hub} = useFreshness();
+  const clock = dependsOn.clock(name);
+  const everyMs = options.everyMs ?? 30000;
+  const key = (options.dependencies ?? []).join('\n');
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const dependencies = useMemo(() => [clock, ...(key ? key.split('\n') : [])], [clock, key]);
+  useEffect(() => {
+    const timer = setInterval(() => { if (hub.isActive()) hub.note(clock); }, everyMs);
+    return () => clearInterval(timer);
+  }, [hub, clock, everyMs]);
+  return useFreshDocument(dependencies, revalidate, hasContent);
+}
+
 export function useFreshDocument(dependencies: readonly FreshnessDependency[], revalidate: FreshDocumentOptions['revalidate'], hasContent: () => boolean = () => true): () => void {
   const {hub} = useFreshness();
   const key = dependencies.join('\n');

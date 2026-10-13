@@ -12,8 +12,13 @@ import {useDVRClient} from '../live/guide';
 import {createNowStore, type NowStore} from '../live/now-store';
 import {DVRView} from '../live/DVR';
 import {Artwork, Badge, Button, Chip, Chips, Dialog, Icon, IconButton, Menu, Notice, Page, PageHeader, Segmented, Select, Skeleton, StateView, Text, Toast, cx, useArtworkUrl, useCompact, useHoverCapable, type MenuItem} from '../../ui';
+import {useQuietRefresh} from '../../app/freshness';
+import {dependsOn} from '@core/freshness-hub.ts';
 import s from './Channels.module.css';
 import {dvrPaddings, dvrLimits} from '../live/dvr-groups';
+
+/** A finished or failed recording and a conflict each raise a notice: the one hint the server sends for the guide. */
+const guideHints = Object.freeze([dependsOn.event('notification.changed')]);
 
 /* Geometry (Spec §3.1, web). */
 const COL = 240;
@@ -172,6 +177,11 @@ function GuideScreen({entry, name, library, sources, picker, search}: {entry: st
     store.reset(newSource());
   }, [queryKey]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => () => store.dispose(), [store]);
+  // The server sends no hint when the guide is brought in again or a recording is set on another
+  // device (a programme's badge), only a notice when a recording finishes, fails or conflicts. The
+  // programmes in view are read again on that notice and, quietly, twice a minute while the guide is in
+  // front: what is shown stays until the answer is in, and nothing is read while the tab is hidden.
+  useQuietRefresh('guide', async context => { await context.settle(); forgetGuideReads(); store.invalidate(); }, () => true, {dependencies: guideHints});
   const snapshot = useSyncExternalStore(store.subscribe, store.getSnapshot);
 
   // Groups and favorites of this source, unfiltered (chips): the top groups by count, plus All.

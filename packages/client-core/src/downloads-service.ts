@@ -2,6 +2,7 @@ import {routeBody} from "../../contracts/src/routes.ts";
 import type {RouteResponse} from "../../contracts/src/routes.ts";
 import {routePath, encodedRoutePath} from "../../contracts/src/routes.ts";
 import {randomId} from './random-id.ts';
+import {mergeRevalidatedList} from './freshness-actions.ts';
 /** The server side of downloads, as one framework-free service shared by web and Apple: what
  * the server is preparing for this profile, what may be asked for, and the actions on each.
  *
@@ -74,6 +75,24 @@ export class DownloadsService{
    else{this.failures++;this.publish({phase:this.state.items.length?'ready':'error',error:say(e,'downloads.error.load'),failure:e});}
   }
   this.schedule(generation);
+ }
+ /**
+  * Reads the list again behind what is shown (a download asked for on another device, one the
+  * server finished, failed or let go). The first page is merged in: rows already loaded below it
+  * stay, unchanged rows are the same rows. Nothing is said if the read fails: what is shown stays
+  * and the call rejects, for the caller to try again later.
+  */
+ async revalidate():Promise<void>{
+  if(this.disposed||this.state.phase!=='ready'||this.state.unavailable||this.state.loadingMore)return;
+  const generation=this.generation;
+  const result=parseDownloadPage(await this.api.request<unknown>(this.pagePath('')));
+  if(generation!==this.generation||this.disposed||this.state.loadingMore)return;
+  const fresh=result.items.filter(p=>p.state!=='cancelled'||p.actions.length>0);
+  const items=mergeRevalidatedList(this.state.items,fresh,p=>p.id,{same:(a,b)=>JSON.stringify(a)===JSON.stringify(b),complete:!result.nextCursor});
+  if(items!==this.state.items)this.publish({items:Object.freeze([...items]),...(this.state.nextCursor?{}:{nextCursor:result.nextCursor})});
+  void this.api.request<RouteResponse<"get_download_usage">>(routePath("get_download_usage")).then(raw=>{try{if(generation===this.generation)this.publish({usage:parseDownloadUsage(raw)});}catch{}},()=>{});
+  // Something that started being prepared elsewhere is followed at the ordinary pace from here.
+  clearTimeout(this.timer);this.schedule(generation);
  }
  /** Reads the next page and appends it (deduplicated by id). A no-op without a cursor. */
  async loadMore():Promise<void>{

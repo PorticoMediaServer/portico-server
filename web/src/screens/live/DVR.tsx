@@ -1,4 +1,4 @@
-import {useCallback, useEffect, useMemo, useState} from 'react';
+import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {useNavigate} from '@tanstack/react-router';
 import {useChannelGuide} from './guide';
 import {activeRecording, countUnwatched, mutableRecording, playableRecording, type DeletePreview, type DVRPage, type DVRView as View, type Recording, type RecordingDetail, type RecordingRule, type RecordingStorage, type RuleConfig} from '@core/dvr.ts';
@@ -10,6 +10,11 @@ import {useDVRClient, useGuideFormat, localTimezone} from './guide';
 import {groupRecordings, isExceptionBadge, dvrPaddings, dvrLimits} from './dvr-groups';
 import {ListPager} from '../server/ListPager';
 import {currentI18n, useI18n, type I18n} from '../../app/i18n';
+import {useQuietRefresh} from '../../app/freshness';
+import {dependsOn} from '@core/freshness-hub.ts';
+
+/** A finished or failed recording and a conflict each raise a notice: the one hint the server sends for this page. */
+const dvrHints = Object.freeze([dependsOn.event('notification.changed')]);
 
 const views = (t: I18n['t']): {id: View; label: string}[] => [{id: 'upcoming', label: t('web.dvr.upcoming')}, {id: 'recorded', label: t('web.dvr.recorded')}, {id: 'rules', label: t('web.dvr.rules')}, {id: 'history', label: t('web.dvr.history')}, {id: 'storage', label: t('web.dvr.storage')}];
 const statusOf = (e: unknown) => (e && typeof e === 'object' && typeof (e as {status?: unknown}).status === 'number' ? (e as {status: number}).status : 0);
@@ -96,6 +101,20 @@ export function DVRView() {
   }, [dvr]);
   useEffect(() => { setCursors(['']); }, [view]);
   useEffect(() => { setPage(undefined); load(view, cursor); }, [load, view, cursor]);
+  // Recordings start, finish and fail by the clock, and the server sends no hint for it: the view
+  // on screen is read again when a recording's notice arrives and, quietly, twice a minute while
+  // this page is in front. What is shown stays until the answer is in; a failed read says nothing.
+  const shown = useRef({view, cursor});
+  shown.current = {view, cursor};
+  useQuietRefresh('dvr', async context => {
+    if (!dvr) return;
+    const asked = {view, cursor};
+    const same = () => shown.current.view === asked.view && shown.current.cursor === asked.cursor;
+    if (asked.view === 'storage') { const next = await dvr.storage(); await context.settle(); if (same()) setStorage(next); return; }
+    const next = await dvr.list(asked.view, asked.cursor);
+    await context.settle();
+    if (same()) setPage(next);
+  }, () => !busy && !confirm && !editing && !conflict && (view === 'storage' ? !!storage : !!page), {dependencies: dvrHints});
   const act = async (fn: () => Promise<unknown>) => {
     setBusy(true);
     setError('');

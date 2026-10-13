@@ -301,3 +301,40 @@ test('large queued lists use one bounded sparse page and rotate older claims',as
   assert.equal(service.getSnapshot().items.length,350,'paging content is preserved');
  }finally{service.dispose();}
 });
+
+test('a quiet read brings in what changed elsewhere and keeps the rows that did not',async()=>{
+ const first=preparation({id:'one'}),second=preparation({id:'two',itemId:'item2'});
+ const s=server([first,second]),service=new DownloadsService(s.api,()=>'op',10);
+ try{
+  await service.refresh();
+  const before=service.getSnapshot().items;
+  // Nothing moved: the list is the same list (no re-render), and nothing is said.
+  await service.revalidate();
+  assert.equal(service.getSnapshot().items,before);
+  // Asked for on another device, and one let go: both show without the page being reloaded.
+  s.set([preparation({id:'new',itemId:'item3'}),first]);
+  await service.revalidate();
+  const after=service.getSnapshot().items;
+  assert.deepEqual(after.map(p=>p.id),['new','one']);
+  assert.equal(after[1],before[0],'an unchanged row is the same row');
+  assert.equal(service.getSnapshot().error,undefined);
+ }finally{service.dispose();}
+});
+
+test('a quiet read that fails leaves the list as it is and says nothing',async()=>{
+ const s=server([preparation()]),service=new DownloadsService(s.api,()=>'op',10);
+ try{
+  await service.refresh();
+  const before=service.getSnapshot();
+  s.failWith(new TypeError('Failed to fetch'));
+  await assert.rejects(service.revalidate());
+  assert.equal(service.getSnapshot().items,before.items);
+  assert.equal(service.getSnapshot().error,undefined,'no error reaches the page');
+  assert.equal(service.getSnapshot().phase,'ready');
+ }finally{service.dispose();}
+});
+
+test('a quiet read never runs before the first load or on a server without downloads',async()=>{
+ const s=server([preparation()]),service=new DownloadsService(s.api,()=>'op',10);
+ try{await service.revalidate();assert.equal(s.calls.length,0);}finally{service.dispose();}
+});

@@ -307,3 +307,28 @@ test('History observations refresh history dependencies without moving personal 
   assert.deepEqual([history, personalReads], [2, 1]);
   historyDoc.dispose(); personalDoc.dispose(); hub.dispose();
 });
+
+test('a list the server sends no hint for is read again when this device\'s clock says to look', async () => {
+  const c = clock(), hub = new FreshnessHub(c.env);
+  let recordings = 0, films = 0;
+  const dvr = hub.document({dependencies: [dependsOn.clock('dvr'), dependsOn.event('notification.changed')], revalidate: async () => { recordings++; }});
+  const other = hub.document({dependencies: [dependsOn.content('films')], revalidate: async () => { films++; }});
+  dvr.setOpen(true); other.setOpen(true);
+  hub.note(dependsOn.clock('dvr'));
+  await c.advance(5_000);
+  assert.equal(recordings, 1, 'read once, on the hub\'s usual terms');
+  assert.equal(films, 0, 'nothing else is disturbed');
+  // The one hint the server does send for it (a recording finished) reads it again too.
+  hub.accept({id: 'n1', type: 'notification.changed', resource: {kind: 'inbox', id: 'inbox'}});
+  await c.advance(5_000);
+  assert.equal(recordings, 2);
+  // A screen that is not open only remembers, and catches up once when shown again.
+  dvr.setOpen(false);
+  hub.note(dependsOn.clock('dvr')); hub.note(dependsOn.clock('dvr'));
+  await c.advance(60_000);
+  assert.equal(recordings, 2);
+  dvr.setOpen(true);
+  await c.advance(5_000);
+  assert.equal(recordings, 3);
+  hub.dispose();
+});
