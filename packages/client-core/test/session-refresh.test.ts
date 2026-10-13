@@ -398,3 +398,24 @@ test('device-bound envelopes parse; the refresh credential stays out of viewer r
   assert.equal(viewers.rotate({...renewed, sessionFamilyId: 'other'}), false);
   assert.equal(viewers.rotate({...renewed, tokenGeneration: '1'}), false, 'never rolls back');
 });
+
+test('two tabs with no lock between them (plain HTTP) send one renewal request id, so the server never sees a reused credential', async t => {
+  const {server, store, env} = setup(t);
+  // No cross-tab lock: each tab's "lock" lets its own work straight through, as a tab-local lock does for another tab.
+  setCredentialLock((_name, work) => work());
+  t.after(() => setCredentialLock(undefined));
+  server.expireAccess();
+  const ids: string[] = [];
+  const fetch: typeof globalThis.fetch = async (input, init) => {
+    if (String(input).endsWith('/v1/auth/refresh')) ids.push((JSON.parse(String(init?.body)) as {requestId: string}).requestId);
+    return server.fetch(input, init);
+  };
+  const tab = () => refreshStoredSession({env, api: new HttpLocalApi(ORIGIN, 'access_1', fetch), family: {sessionFamilyId: 'family_1', serverId: 'srv'}, rejected: 'access_1'});
+  const [a, b] = await Promise.all([tab(), tab()]);
+  assert.equal(a.accessToken, 'access_2');
+  assert.equal(b.accessToken, 'access_2', 'the second tab gets the same renewed sign-in, not a refusal');
+  assert.equal(server.rotations, 1);
+  assert.equal(new Set(ids).size, 1, 'both tabs named the same request');
+  assert.equal(store.peek()!.session.refreshToken, 'refresh_000000000002');
+  assert.equal(store.peek()!.pendingRefresh, undefined);
+});

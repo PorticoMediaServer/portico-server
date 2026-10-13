@@ -259,7 +259,22 @@ export function refreshStoredSession(o:RefreshStoredOptions):Promise<LocalSessio
   let requestId=record.pendingRefresh;
   if(!requestId){
    const id=routeBase64((o.env.crypto??webRouteCrypto).random(24));requestId=id;
-   await o.env.storage.change(current=>same(current)&&current!.session.refreshToken===session.refreshToken?{...current!,pendingRefresh:id}:current);
+   // The first context to save a request id owns this renewal. The lock above does not reach
+   // other tabs where the browser has no Web Locks (a page on plain HTTP), so two tabs can get
+   // here together: the store's own atomic change lets exactly one id in, and the other tab
+   // reads it back and sends the very same request, which the server answers once for both.
+   // Sending two different ids for one refresh credential would look like theft and end the sign-in.
+   await o.env.storage.change(current=>same(current)&&current!.session.refreshToken===session.refreshToken&&!current!.pendingRefresh?{...current!,pendingRefresh:id}:current);
+   let after:RememberedServer|undefined;
+   try{after=parseRememberedServer(await o.env.storage.read());}catch{after=undefined;}
+   if(after&&same(after)){
+    if(after.session.refreshToken!==session.refreshToken){
+     // Another context finished the renewal in the meantime: use what it stored, send nothing.
+     if(Date.parse(after.session.expiresAt)-now()>minValid&&!after.pendingRefresh)return after.session;
+     throw new SessionRefreshError('refresh_unavailable_now','The server couldn’t renew your sign-in right now.',false);
+    }
+    if(after.pendingRefresh)requestId=after.pendingRefresh;
+   }
   }
   // React Native lacks AbortSignal.any/timeout: a plain controller bounds the request.
   const bound=new AbortController(),abort=()=>bound.abort(),timer=setTimeout(abort,o.timeoutMs??15_000);
