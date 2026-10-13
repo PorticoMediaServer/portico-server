@@ -19,6 +19,7 @@ import {useInlineForm} from '../settings/ServerForms';
 import page from '../settings/Settings.module.css';
 import {Badge, Button, Checkbox, ConfirmDialog, Dialog, Freshness, Icon, Input, ListRow, Loading, Menu, Notice, Select, SettingsGroup, SettingsRow, StateView, Tabs, Text, type MenuItem} from '../../ui';
 import {SectionHeader} from './Server';
+import {readScanIssues, type ScanIssue} from '@core/scan-issues.ts';
 import {useFreshDocument} from '../../app/freshness';
 import {dependsOn} from '@core/freshness-hub.ts';
 import {NeedsAttentionPanel, hasAttentionList, useAttentionCounts} from './NeedsAttention';
@@ -274,6 +275,9 @@ function LibraryDetail({service, snapshot, libraryId, onBack, onRemoved}: {servi
   const i18n = useI18n();
   const {t} = i18n;
   const [issuesOpen, setIssuesOpen] = useState(false);
+  const [skippedFor, setSkippedFor] = useState<string>();
+  // A scan moving on shows its count and state here without a reload.
+  useFreshDocument(useMemo(() => [dependsOn.event('library.scan.updated', libraryId), dependsOn.event('library.scan.updated')], [libraryId]), () => service.selectLibrary(libraryId), () => !!snapshot.selected.data);
   const menu: MenuItem[] = [{id: 'rename', label: t('web.libraries.rename'), icon: 'edit'}, ...(library?.actions.includes('scan') ? [{id: 'scan-all', label: t('web.libraries.scanAllFiles'), icon: 'refresh' as const}] : []), ...(library?.kind === 'music' ? [{id: 'lyrics', label: t('web.libraries.fetchLyrics'), icon: 'lyrics' as const}] : [])];
   return (
     <>
@@ -302,6 +306,8 @@ function LibraryDetail({service, snapshot, libraryId, onBack, onRemoved}: {servi
           </SettingsGroup> : null}
           {tab === 'scanning' ? <SettingsGroup title={t('web.libraries.scan')} description={t('web.libraries.scanLede')}>
             <SettingsRow label={t('web.libraries.lastScan')} state={scan ? [jobLabel[scan.status], t('server.libraries.files', {count: scan.processed}), scan.warnings ? t('server.libraries.warnings', {count: scan.warnings}) : '', scan.finishedAt ? t('web.libraries.scanFinished', {when: i18n.dateTime(scan.finishedAt)}) : scan.updatedAt ? t('web.libraries.scanUpdated', {when: i18n.dateTime(scan.updatedAt)}) : '', scan.error || ''].filter(Boolean).join(' · ') : t('web.libraries.notScannedYet')} control={scan && scan.status === 'running' && scan.actions.includes('cancel') ? <Button size="sm" variant="outline" label={t('web.libraries.cancelScan')} onClick={() => void action.run(() => service.cancelJob(scan.id))} /> : scan?.status === 'paused' && scan.actions.includes('resume') ? <Button size="sm" variant="outline" label={t('entry.resume')} onClick={() => void action.run(() => service.controlJob(scan.id, 'resume'))} /> : scan?.status === 'failed' && scan.actions.includes('retry') ? <Button size="sm" variant="outline" label={t('action.tryAgain')} onClick={() => void action.run(() => service.controlJob(scan.id, 'retry'))} /> : undefined} meta={scan ? <Badge tone={jobTone(scan.status)} dot={scan.status === 'running'} live={scan.status === 'running'}>{jobLabel[scan.status]}</Badge> : undefined} />
+            {/* What the scan left out and why, a page at a time: paths are the owner's to see, never a viewer's. */}
+            {scan && scan.status !== 'queued' ? <SettingsRow label={t('server.scan.skipped')} help={t('server.scan.skippedHelp')} control={<Button size="sm" variant="ghost" label={t('server.scan.skippedOpen')} onClick={() => setSkippedFor(scan.id)} />} /> : null}
             {library.attention ? <SettingsRow icon="warning" label={library.attention.atLeast ? t('web.libraries.attentionAtLeast', {count: i18n.number(library.attention.files)}) : t('web.libraries.attention', {count: library.attention.files})} help={t('web.libraries.attentionHelp')} control={<Button size="sm" variant="outline" label={t('web.libraries.attentionReview')} onClick={() => setIssuesOpen(true)} />} /> : null}
             {config ? <ScanPolicyRow inventory={inventory.service} snapshot={inventory.snapshot} /> : null}
             {lookup.data ? <LookupStatusRow policy={lookup.data} onChange={() => setTab('metadata')} /> : null}
@@ -331,6 +337,7 @@ function LibraryDetail({service, snapshot, libraryId, onBack, onRemoved}: {servi
       <Dialog open={rename !== null} onOpenChange={o => !o && setRename(null)} title={t('web.libraries.renameTitle')} actions={<><Button variant="ghost" label={t('action.cancel')} onClick={() => setRename(null)} /><Button variant="primary" label={t('web.libraries.rename')} loading={action.busy} disabled={!rename?.trim()} onClick={() => library && void action.run(() => service.rename(rename!.trim(), library.revision)).then(ok => ok && setRename(null))} /></>}>
         <Input label={t('profile.name')} value={rename ?? ''} onChange={e => setRename(e.target.value)} maxLength={100} autoFocus />
       </Dialog>
+      {skippedFor && library ? <ScanSkippedDialog libraryId={library.id} jobId={skippedFor} onClose={() => setSkippedFor(undefined)} /> : null}
       {issuesOpen && library ? <EpisodeIssuesDialog libraryId={library.id} onClose={() => setIssuesOpen(false)} /> : null}
       <ConfirmDialog open={removing && !!library} onOpenChange={o => !o && setRemoving(false)} title={t('server.library.removeTitle', {name: library?.name ?? ''})} typedConfirmation={library?.name} confirmLabel={t('server.library.remove')} cancelLabel={t('action.cancel')} busy={action.busy} error={action.error}
         body={<div style={{display: 'flex', flexDirection: 'column', gap: 8}}><span>{t('server.library.removeGoes')}</span><span>{t('server.library.removeKept')}</span></div>}
@@ -410,6 +417,44 @@ function SourceDialog({value, onClose, onSave, busy, error}: {value: {id?: strin
       <Checkbox checked={draft.followSymlinks} onCheckedChange={v => setDraft({...draft, followSymlinks: v})} label={t('web.libraries.followSymlinks')} />
       <Select label={t('web.libraries.rescanInterval')} value={String(draft.intervalSeconds)} options={[{value: '900', label: t('web.libraries.every15m')}, {value: '3600', label: t('web.libraries.everyHour')}, {value: '21600', label: t('web.libraries.every6h')}, {value: '86400', label: t('web.libraries.daily')}, {value: '0', label: t('web.libraries.onlyWhenAsked')}]} onChange={e => setDraft({...draft, intervalSeconds: Number(e.target.value)})} />
       {error ? <Notice tone="error" compact>{error}</Notice> : null}
+    </Dialog>
+  );
+}
+
+/**
+ * What one scan skipped and why: each file or folder with the reason in a sentence, oldest
+ * first, a page at a time. The rest of the scan was used; nothing here stopped it.
+ */
+function ScanSkippedDialog({libraryId, jobId, onClose}: {libraryId: string; jobId: string; onClose: () => void}) {
+  const i18n = useI18n();
+  const {t} = i18n;
+  const {api} = useSession();
+  const [items, setItems] = useState<readonly ScanIssue[]>();
+  const [next, setNext] = useState<number>();
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<unknown>(null);
+  const load = (after: number) => {
+    setLoading(true); setError(null);
+    readScanIssues(api, libraryId, jobId, after).then(page => { setItems(prev => (after ? [...(prev ?? []), ...page.items] : page.items)); setNext(page.hasMore ? page.nextSequence : undefined); }, setError).finally(() => setLoading(false));
+  };
+  useEffect(() => { load(0); }, [api, libraryId, jobId]); // eslint-disable-line react-hooks/exhaustive-deps
+  const reason = (x: ScanIssue) => (i18n.has(x.messageKey) ? t(x.messageKey as MessageId) : t('server.scan.skippedOther'));
+  return (
+    <Dialog open onOpenChange={o => !o && onClose()} title={t('server.scan.skipped')} description={t('server.scan.skippedHelp')} width={640} actions={<Button variant="primary" label={t('action.done')} onClick={onClose} />}>
+      {error ? <Notice tone="error" compact action={{label: t('action.tryAgain'), onClick: () => load(items?.length && next ? next : 0)}}>{problem(error)}</Notice> : null}
+      {!items && loading ? <Loading /> : null}
+      {items && !items.length && !error ? <Text variant="body" tone="secondary">{t('server.scan.skippedNone')}</Text> : null}
+      {items?.length ? (
+        <ul style={{listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', maxHeight: 420, overflowY: 'auto'}}>
+          {items.map(x => (
+            <li key={x.sequence} style={{display: 'flex', flexDirection: 'column', gap: 4, padding: '8px 0', borderTop: '1px solid var(--line-soft)'}}>
+              <Text variant="mono" style={{fontSize: 12, overflowWrap: 'anywhere'}}>{x.path}{x.line ? ` · ${t('server.scan.line', {line: x.line})}` : ''}</Text>
+              <Text variant="caption" tone={x.warning ? 'warning' : 'tertiary'}>{reason(x)}</Text>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      {next !== undefined && items?.length ? <div><Button size="sm" variant="ghost" label={t('action.showMore')} loading={loading} onClick={() => load(next)} /></div> : null}
     </Dialog>
   );
 }

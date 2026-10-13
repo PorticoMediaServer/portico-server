@@ -178,6 +178,9 @@ export function LibrarySettingsSections({library, tab}: {library: {id: string; n
             })}
             <SettingsRow label={t('server.library.ownKeys')} help={t('server.library.ownKeysHelp')} control={<Button size="sm" variant="ghost" label={t('settings.server.metadata')} onClick={() => void navigate({to: '/settings/$section', params: {section: 'server-metadata'}, search: {}})} />} />
           </SettingsGroup> : null}
+          {tab === 'scanning' ? <SettingsGroup>
+            <SettingsRow label={t('scan.monitorChanges')} help={t('scan.monitorChanges.help')} control={<Switch checked={draft.monitorChanges} onCheckedChange={v => setDraft({...draft, monitorChanges: v})} label={t('scan.monitorChanges')} />} />
+          </SettingsGroup> : null}
           {tab === 'scanning' ? byCost.map(g => (
             <SettingsGroup key={g.cost.id} title={g.cost.name} description={g.cost.description}>
               {g.operations.map(o => <SettingsRow key={o.id} label={o.name} help={`${o.description}${o.requires.length ? ` Needs: ${o.requires.map(r => doc.analysisMatrix.operations.find(x => x.id === r)?.name ?? r).join(', ')}.` : ''}`} control={<Switch checked={draft.analysis.includes(o.id)} onCheckedChange={v => toggle(o.id, v)} label={o.name} />} />)}
