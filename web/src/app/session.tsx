@@ -326,6 +326,19 @@ export function SessionProvider({children}: {children: React.ReactNode}) {
   const lastViewerKey = useRef(viewerKey);
   useEffect(() => { if (lastViewerKey.current !== viewerKey) { lastViewerKey.current = viewerKey; audioByteCache.clear(); } }, [viewerKey]);
 
+  /* A directly signed-in server that is now reached at another address (its identity proven
+     there) is remembered at that address, so the server switcher never offers a dead one. */
+  useEffect(() => {
+    const current = scope.session;
+    if (scope.phase !== 'ready' || !current || current.viewer.authority !== 'local') return;
+    const follow = () => {
+      const route = api.getRouteSnapshot();
+      if (route?.phase === 'ready' && route.origin) void knownServers.setAddress(current.viewer.serverId, route.origin).catch(() => {});
+    };
+    follow();
+    return api.subscribeRoute(follow);
+  }, [scope, api]);
+
   /* A hosted viewer cannot outlive its Portico Account session in this browser. */
   useEffect(() => {
     if (scope.phase === 'signedOut' || scope.session?.viewer.authority !== 'hosted') return;
